@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Document</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="description" content="Description">
+  <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  <link rel="stylesheet" href="//unpkg.com/docsify/lib/themes/vue.css">
+  <style>
+    :focus {outline:none;}
+    ::-moz-focus-inner {border:0;}
+    .app-name-link > img {
+      width: 115px;
+    }
+    .sidebar-nav > ul > li > a {
+      font-weight: 700;
+    }
+    .sidebar-nav > ul > ul > li {
+      margin: 0px 0;
+      line-height: 1.5em;
+    }
+    .sidebar-nav > ul > ul {
+      display: none;
+    }
+    .sidebar-nav > ul > ul.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    window.$docsify = {
+      name: 'Fiber',
+      repo: 'fenny/fiber',
+    }
+  </script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
+  <script src="//unpkg.com/prismjs/components/prism-go.min.js"></script>
+  <script type="text/javascript">
+    window.addEventListener('hashchange', function (e) {
+      var hash = window.location.hash
+      $('.sidebar-nav > ul > ul').removeClass('active')
+      $('.section-link[href="' + hash + '"]').parent().parent().addClass('active')
+    })
+    $(document).ready(function() {
+      setTimeout(function() {
+        $('.sidebar-nav > ul > li:first-child').next().addClass('active')
+      }, 50)
+    })
+    $(document).on('click', '.sidebar-nav > ul > li', function(e) {
+      $('.sidebar-nav > ul > ul').removeClass('active')
+      var next = $(this).next()
+      if (next.prop("tagName") != "UL") {
+        return;
+      }
+      next.addClass('active')
+    })
+  </script>
+  <script>
+    ((window.gitter = {}).chat = {}).options = {
+      room: 'FiberGo/community'
+    };
+  </script>
+  <script src="https://sidecar.gitter.im/dist/sidecar.v1.js" async defer></script>
+</body>
+</html>
