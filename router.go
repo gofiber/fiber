@@ -14,7 +14,7 @@ type route struct {
 	anyPath bool
 	regex   *regexp.Regexp
 	params  []string
-	handler func(*Context)
+	handler func(*Ctx)
 }
 
 // Settings :
@@ -147,11 +147,11 @@ func (r *Fiber) register(method string, args ...interface{}) {
 	// Pre-set variables for interface assertion
 	var ok bool
 	var path string
-	var handler func(*Context)
+	var handler func(*Ctx)
 	// Register only handler: app.Get(handler)
 	if len(args) == 1 {
 		// Convert interface to func(*Context)
-		handler, ok = args[0].(func(*Context))
+		handler, ok = args[0].(func(*Ctx))
 		if !ok {
 			panic("Invalid handler must be func(*express.Context)")
 		}
@@ -168,7 +168,7 @@ func (r *Fiber) register(method string, args ...interface{}) {
 			panic("Invalid path, must begin with slash '/' or wildcard '*'")
 		}
 		// Convert interface to func(*Context)
-		handler, ok = args[1].(func(*Context))
+		handler, ok = args[1].(func(*Ctx))
 		if !ok {
 			panic("Invalid handler, must be func(*express.Context)")
 		}
@@ -261,25 +261,25 @@ func (r *Fiber) Listen(port int) {
 		// Express custom handler
 		Handler: r.handler,
 		// Server settings
-		// Name:                               r.Settings.Name,
-		// Concurrency:                        r.Settings.Concurrency,
-		// DisableKeepalive:                   r.Settings.DisableKeepAlive,
-		// ReadBufferSize:                     r.Settings.ReadBufferSize,
-		// WriteBufferSize:                    r.Settings.WriteBufferSize,
-		// WriteTimeout:                       r.Settings.WriteTimeout,
-		// IdleTimeout:                        r.Settings.IdleTimeout,
-		// MaxConnsPerIP:                      r.Settings.MaxConnsPerIP,
-		// MaxRequestsPerConn:                 r.Settings.MaxRequestsPerConn,
-		// TCPKeepalive:                       r.Settings.TCPKeepalive,
-		// TCPKeepalivePeriod:                 r.Settings.TCPKeepalivePeriod,
-		// MaxRequestBodySize:                 r.Settings.MaxRequestBodySize,
-		// ReduceMemoryUsage:                  r.Settings.ReduceMemoryUsage,
-		// GetOnly:                            r.Settings.GetOnly,
-		// DisableHeaderNamesNormalizing:      r.Settings.DisableHeaderNamesNormalizing,
-		// SleepWhenConcurrencyLimitsExceeded: r.Settings.SleepWhenConcurrencyLimitsExceeded,
-		// NoDefaultServerHeader:              r.Settings.NoDefaultServerHeader,
-		// NoDefaultContentType:               r.Settings.NoDefaultContentType,
-		// KeepHijackedConns:                  r.Settings.KeepHijackedConns,
+		Name:                               r.Settings.Name,
+		Concurrency:                        r.Settings.Concurrency,
+		DisableKeepalive:                   r.Settings.DisableKeepAlive,
+		ReadBufferSize:                     r.Settings.ReadBufferSize,
+		WriteBufferSize:                    r.Settings.WriteBufferSize,
+		WriteTimeout:                       r.Settings.WriteTimeout,
+		IdleTimeout:                        r.Settings.IdleTimeout,
+		MaxConnsPerIP:                      r.Settings.MaxConnsPerIP,
+		MaxRequestsPerConn:                 r.Settings.MaxRequestsPerConn,
+		TCPKeepalive:                       r.Settings.TCPKeepalive,
+		TCPKeepalivePeriod:                 r.Settings.TCPKeepalivePeriod,
+		MaxRequestBodySize:                 r.Settings.MaxRequestBodySize,
+		ReduceMemoryUsage:                  r.Settings.ReduceMemoryUsage,
+		GetOnly:                            r.Settings.GetOnly,
+		DisableHeaderNamesNormalizing:      r.Settings.DisableHeaderNamesNormalizing,
+		SleepWhenConcurrencyLimitsExceeded: r.Settings.SleepWhenConcurrencyLimitsExceeded,
+		NoDefaultServerHeader:              r.Settings.NoDefaultServerHeader,
+		NoDefaultContentType:               r.Settings.NoDefaultContentType,
+		KeepHijackedConns:                  r.Settings.KeepHijackedConns,
 	}
 	if r.Settings.TLSEnable {
 		if err := server.ListenAndServeTLS(fmt.Sprintf(":%v", port), r.Settings.CertFile, r.Settings.CertKey); err != nil {

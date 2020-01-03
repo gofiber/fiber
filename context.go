@@ -1,20 +1,21 @@
 package fiber
 
 import (
-	"fmt"
+	"mime"
+	"path/filepath"
 
 	"github.com/valyala/fasthttp"
 )
 
-// Next : Calls the next function that matches the route.
-func (ctx *Context) Next() {
+// Next :
+func (ctx *Ctx) Next() {
 	ctx.next = true
 	ctx.params = nil
 	ctx.values = nil
 }
 
 // Params :
-func (ctx *Context) Params(key string) string {
+func (ctx *Ctx) Params(key string) string {
 	if ctx.params == nil {
 		return ""
 	}
@@ -26,18 +27,23 @@ func (ctx *Context) Params(key string) string {
 	return ""
 }
 
-// Method https://expressjs.com/en/4x/api.html#req.method
-func (ctx *Context) Method() string {
-	return b2s(ctx.Fasthttp.Method())
+// Query :
+func (ctx *Ctx) Query(key string) string {
+	return b2s(ctx.Fasthttp.QueryArgs().Peek(key))
 }
 
-// Path https://expressjs.com/en/4x/api.html#req.path
-func (ctx *Context) Path() string {
-	return b2s(ctx.Fasthttp.Path())
+// Method :
+func (ctx *Ctx) Method() string {
+	return b2s(ctx.Fasthttp.Request.Header.Method())
+}
+
+// Path :
+func (ctx *Ctx) Path() string {
+	return b2s(ctx.Fasthttp.URI().Path())
 }
 
 // Body :
-func (ctx *Context) Body(args ...interface{}) string {
+func (ctx *Ctx) Body(args ...interface{}) string {
 	if len(args) == 0 {
 		return b2s(ctx.Fasthttp.Request.Body())
 	}
@@ -57,43 +63,183 @@ func (ctx *Context) Body(args ...interface{}) string {
 }
 
 // Cookies :
-func (ctx *Context) Cookies(args ...interface{}) string {
+func (ctx *Ctx) Cookies(args ...interface{}) string {
+	if len(args) == 0 {
+		return ctx.Get("Cookie")
+	}
 	if len(args) == 1 {
-		switch arg := args[0].(type) {
-		case string:
-			return b2s(ctx.Fasthttp.Request.Header.Cookie(arg))
-		case func(string, string):
-			ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-				arg(b2s(k), b2s(v))
-			})
-		default:
-			panic("Invalid argument")
+		str, strOk := args[0].(string)
+		if strOk {
+			return ctx.Get(str)
 		}
-		return ""
+		fnc, fncOk := args[0].(func(string, string))
+		if fncOk {
+			ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
+				fnc(b2s(k), b2s(v))
+			})
+			return ""
+		}
+		panic("Invalid parameters")
 	}
 	if len(args) > 1 {
-		key, keyOk := args[0].(string)
-		val, valOk := args[1].(string)
-		if !keyOk || !valOk {
-			panic("Invalid key or value string")
-		}
 		cook := &fasthttp.Cookie{}
-		cook.SetKey(key)
-		cook.SetValue(val)
+		cook.SetKey(args[0].(string))
+		cook.SetValue(args[1].(string))
 		if len(args) > 2 {
-			switch arg := args[2].(type) {
-
-			default:
-				fmt.Printf("%T\n", arg)
-			}
-			// fmt.Println(args[2])
-			// opt, optOk := args[2].(struct{})
-			// if !optOk {
-			// 	panic("Invalid cookie options")
-			// }
-			// fmt.Println(opt)
+			// Do something with cookie options (args[2])
+			// Dont forget to finish this
 		}
 		ctx.Fasthttp.Response.Header.SetCookie(cook)
 	}
 	return ""
+}
+
+// ClearCookies :
+func (ctx *Ctx) ClearCookies(args ...interface{}) {
+	if len(args) == 0 {
+		ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
+			ctx.Fasthttp.Response.Header.DelClientCookie(string(k))
+		})
+	}
+	if len(args) == 1 {
+		ctx.Fasthttp.Response.Header.DelClientCookie(args[0].(string))
+	}
+}
+
+// Send :
+func (ctx *Ctx) Send(args ...interface{}) {
+	if len(args) == 1 {
+		str, ok := args[0].(string)
+		if ok {
+			ctx.Fasthttp.Response.SetBodyString(str)
+			return
+		}
+		ctx.Fasthttp.Response.SetBodyString(b2s(args[0].([]byte)))
+		return
+	}
+	panic("To many arguments!")
+}
+
+// Write :
+func (ctx *Ctx) Write(args ...interface{}) {
+	if len(args) == 1 {
+		str, ok := args[0].(string)
+		if ok {
+			ctx.Fasthttp.Response.AppendBodyString(str)
+			return
+		}
+		ctx.Fasthttp.Response.AppendBodyString(b2s(args[0].([]byte)))
+		return
+	}
+	panic("To many arguments!")
+}
+
+// Set :
+func (ctx *Ctx) Set(key string, val string) {
+	ctx.Fasthttp.Response.Header.SetCanonical(s2b(key), s2b(val))
+}
+
+// Get :
+func (ctx *Ctx) Get(key string) string {
+	return b2s(ctx.Fasthttp.Request.Header.Peek(key))
+}
+
+// Redirect :
+func (ctx *Ctx) Redirect(args ...interface{}) {
+	if len(args) == 1 {
+		ctx.Set("Location", args[0].(string))
+		ctx.Status(302)
+	}
+	if len(args) == 2 {
+		ctx.Set("Location", args[1].(string))
+		ctx.Status(args[0].(int))
+	}
+}
+
+// Status :
+func (ctx *Ctx) Status(status int) *Ctx {
+	ctx.Fasthttp.Response.SetStatusCode(status)
+	return ctx
+}
+
+// Type :
+func (ctx *Ctx) Type(ext string) *Ctx {
+	if ext[0] != '.' {
+		ext = "." + ext
+	}
+	m := mime.TypeByExtension(ext)
+	ctx.Set("Content-Type", m)
+	return ctx
+}
+
+// Hostname :
+func (ctx *Ctx) Hostname() string {
+	return b2s(ctx.Fasthttp.URI().Host())
+}
+
+// OriginalURL :
+func (ctx *Ctx) OriginalURL() string {
+	return b2s(ctx.Fasthttp.Request.Header.RequestURI())
+}
+
+// Protocol :
+func (ctx *Ctx) Protocol() string {
+	if ctx.Fasthttp.IsTLS() {
+		return "https"
+	}
+	return "http"
+}
+
+// Secure :
+func (ctx *Ctx) Secure() bool {
+	return ctx.Fasthttp.IsTLS()
+}
+
+// IP :
+func (ctx *Ctx) IP() string {
+	return ctx.Fasthttp.RemoteIP().String()
+}
+
+// Xhr :
+func (ctx *Ctx) Xhr() bool {
+	return ctx.Get("X-Requested-With") == "XMLHttpRequest"
+}
+
+// Is :
+func (ctx *Ctx) Is(ext string) bool {
+	if ext[0] != '.' {
+		ext = "." + ext
+	}
+	exts, _ := mime.ExtensionsByType(ctx.Get("Content-Type"))
+	if len(exts) > 0 {
+		for _, item := range exts {
+			if item == ext {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Attachment :
+func (ctx *Ctx) Attachment(args ...interface{}) {
+	if len(args) == 1 {
+		filename := args[0].(string)
+		ctx.Type(filepath.Ext(filename))
+		ctx.Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+		return
+	}
+	ctx.Set("Content-Disposition", "attachment")
+}
+
+// SendFile :
+func (ctx *Ctx) SendFile(path string) {
+	fasthttp.ServeFile(ctx.Fasthttp, path)
+	//ctx.Type(filepath.Ext(path))
+	//ctx.Fasthttp.SendFile(path)
+}
+
+// Location :
+func (ctx *Ctx) Location(path string) {
+	ctx.Set("Location", path)
 }
