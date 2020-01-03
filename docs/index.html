@@ -7,25 +7,84 @@
   <meta name="description" content="Description">
   <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
   <link rel="stylesheet" href="//unpkg.com/docsify/lib/themes/vue.css">
+  <link href="https://fonts.googleapis.com/css?family=Fira+Mono&display=swap" rel="stylesheet">
   <style>
-    :focus {outline:none;}
-    ::-moz-focus-inner {border:0;}
-    .app-name-link > img {
-      width: 115px;
-    }
-    .sidebar-nav > ul > li > a {
-      font-weight: 700;
-    }
-    .sidebar-nav > ul > ul > li {
-      margin: 0px 0;
-      line-height: 1.5em;
-    }
-    .sidebar-nav > ul > ul {
-      display: none;
-    }
-    .sidebar-nav > ul > ul.active {
-      display: block;
-    }
+
+
+  :focus {
+    outline: none;
+  }
+
+   ::-moz-focus-inner {
+    border: 0;
+  }
+
+  .app-name-link>img {
+    width: 115px;
+  }
+
+  .sidebar-nav>ul>li>a {
+    font-weight: 700;
+  }
+
+  .sidebar-nav>ul>ul>li {
+    margin: 0px 0;
+    line-height: 1.5em;
+  }
+
+  .sidebar-nav>ul>ul {
+    display: none;
+  }
+
+  .sidebar-nav>ul>ul.active {
+    display: block;
+  }
+
+  pre>code {
+    font-family: 'Fira Mono' !important;
+    font-weight: 600;
+  }
+
+  .token.function {
+    color: hsl(207, 82%, 66%);
+  }
+
+  .token.keyword {
+    color: hsl(286, 60%, 67%);
+  }
+
+  .token.string {
+    color: hsl( 95, 38%, 62%);
+  }
+
+  .token.boolean,
+  .token.number {
+    color: hsl( 29, 54%, 61%);
+  }
+
+  code .token {
+    color: hsl(286, 60%, 67%);
+  }
+
+  .markdown-section pre>code,
+  .markdown-section code,
+  .markdown-section pre {
+    background-color: #313440;
+  }
+
+  .markdown-section pre>code,
+  .token.punctuation {
+    color: hsl(220, 14%, 71%);
+  }
+
+  .token.cdata,
+  .token.comment,
+  .token.doctype,
+  .token.prolog {
+    color: hsl(220, 10%, 40%);
+  }
+  .token.property { color: hsl(187, 47%, 55%); }
+
   </style>
 </head>
 <body>
@@ -38,7 +97,24 @@
   </script>
   <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
   <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
-  <script src="//unpkg.com/prismjs/components/prism-go.min.js"></script>
+  <script type="text/javascript" src="https://unpkg.com/prismjs@1.17.1/components/prism-bash.js">
+
+  </script>
+  <script type="text/javascript">
+    Prism.languages.go = Prism.languages.extend('clike', {
+      'keyword': /\b(?:break|case|chan|const|continue|default|defer|else|fallthrough|for|func|go(?:to)?|if|import|interface|map|package|range|return|select|struct|switch|type|var)\b/,
+      'builtin': /\b(?:bool|byte|complex(?:64|128)|error|float(?:32|64)|rune|string|u?int(?:8|16|32|64)?|uintptr|append|cap|close|complex|copy|delete|imag|len|make|new|panic|print(?:ln)?|real|recover)\b/,
+      'boolean': /\b(?:_|iota|nil|true|false)\b/,
+      'operator': /[*\/%^!=]=?|\+[=+]?|-[=-]?|\|[=|]?|&(?:=|&|\^=?)?|>(?:>=?|=)?|<(?:<=?|=|-)?|:=|\.\.\./,
+      'number': /(?:\b0x[a-f\d]+|(?:\b\d+\.?\d*|\B\.\d+)(?:e[-+]?\d+)?)i?/i,
+      'function': /\w+(?=\()/,
+      'string': {
+        pattern: /(["'`])(\\[\s\S]|(?!\1)[^\\])*\1/,
+        greedy: true
+      },
+      'property': /\b(\w*Ctx\w*)\b/,
+      });
+  </script>
   <script type="text/javascript">
     window.addEventListener('hashchange', function (e) {
       var hash = window.location.hash
@@ -46,7 +122,7 @@
       $('.section-link[href="' + hash + '"]').trigger('click')
       $('.section-link[href="' + hash + '"]').parent().parent().addClass('active')
     })
-    $(document).ready(function() {
+    $(window).ready(function() {
       setTimeout(function() {
       var hash = window.location.hash
       if (hash == '#/') {
