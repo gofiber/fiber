@@ -43,12 +43,21 @@
     window.addEventListener('hashchange', function (e) {
       var hash = window.location.hash
       $('.sidebar-nav > ul > ul').removeClass('active')
+      $('.section-link[href="' + hash + '"]').trigger('click')
       $('.section-link[href="' + hash + '"]').parent().parent().addClass('active')
     })
     $(document).ready(function() {
       setTimeout(function() {
+      var hash = window.location.hash
+      if (hash == '#/') {
+        $('.sidebar-nav > ul:nth-child(1) > li:nth-child(1)').addClass('active')
         $('.sidebar-nav > ul > li:first-child').next().addClass('active')
-      }, 50)
+      } else {
+        $('.sidebar-nav > ul > ul').removeClass('active')
+        $('.section-link[href="' + hash + '"]').trigger('click')
+        $('.section-link[href="' + hash + '"]').parent().parent().addClass('active')
+      }
+    }, 100)
     })
     $(document).on('click', '.sidebar-nav > ul > li', function(e) {
       $('.sidebar-nav > ul > ul').removeClass('active')

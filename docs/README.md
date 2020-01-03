@@ -3,10 +3,10 @@ docsify init ./docs
 docsify serve ./docs
 -->
 
-[![GoDoc](https://godoc.org/github.com/fenny/fastex?status.svg)](http://godoc.org/github.com/fenny/fastex) [![fuzzit](https://app.fuzzit.dev/badge?org_id=fastex&branch=master)](https://fuzzit.dev) [![Go Report](https://goreportcard.com/badge/github.com/fenny/fastex)](https://goreportcard.com/report/github.com/fenny/fastex) [![Join the chat at https://gitter.im/FaradayRF/Lobby](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/fastex-chat/community)<br>  
-<img src="https://i.imgur.com/31gxky7.jpg" width="150" alt="accessibility text"><br>  
+[![GoDoc](https://godoc.org/github.com/fenny/fiber?status.svg)](http://godoc.org/github.com/fenny/fiber) [![fuzzit](https://app.fuzzit.dev/badge?org_id=fiber&branch=master)](https://fuzzit.dev) [![Go Report](https://goreportcard.com/badge/github.com/fenny/fiber)](https://goreportcard.com/report/github.com/fenny/fiber) [![Join the chat at https://gitter.im/FaradayRF/Lobby](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/fiber-chat/community)<br>  
+<img src="logo.jpg" width="150" alt="accessibility text"><br>  
 **Fiber** is a router framework build on top of [FastHTTP](https://github.com/valyala/fasthttp), the fastest HTTP package for **Go**.<br>
-This library is inspired by [fiber](https://github.com/fiberjs/fiber), one of the most populair and well known web frameworks for **Nodejs**.
+This library is inspired by [Expressjs](https://github.com/expressjs/fiber), one of the most populair and well known web framework for **Nodejs**.
 
 ### Getting started
 
@@ -27,7 +27,7 @@ import "github.com/fenny/fiber"
 
 func main {
   app := fiber.New()
-  app.Get("/", func(c *fiber.Context) {
+  app.Get("/", func(c *fiber.Ctx) {
     c.Send("Hello, World!")
   })
   app.Listen(8080)
@@ -47,14 +47,14 @@ Each route can have one or more handler functions, which are executed when the r
 Route definition takes the following structures:
 
 ```go
-app.Method(Handler)
-app.Method(Path, Handler)
+app.Method(handler)
+app.Method(path, handler)
 ```
 
-* **app** is an instance of **fastex**.
+* **app** is an instance of **fiber**.
 * **Method** is an [HTTP request method](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods), in capitalization: Get, Put, Post etc
-* **Path** is a path on the server.
-* **Handler** is a function executed when the route is matched.
+* **path** is a path on the server.
+* **handler** is a function executed when the route is matched.
 
 This tutorial assumes that an instance of fiber named app is created and the server is running. If you are not familiar with creating an app and starting it, see the [Hello world](#hello-world) example.
 
