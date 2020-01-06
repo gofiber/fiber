@@ -141,6 +141,10 @@ func (ctx *Ctx) Set(key string, val string) {
 
 // Get :
 func (ctx *Ctx) Get(key string) string {
+	// https://en.wikipedia.org/wiki/HTTP_referer
+	if key == "referrer" {
+		key = "referer"
+	}
 	return b2s(ctx.Fasthttp.Request.Header.Peek(key))
 }
 
@@ -224,7 +228,7 @@ func (ctx *Ctx) Is(ext string) bool {
 // Attachment :
 func (ctx *Ctx) Attachment(args ...interface{}) {
 	if len(args) == 1 {
-		filename := args[0].(string)
+		filename := filepath.Base(args[0].(string))
 		ctx.Type(filepath.Ext(filename))
 		ctx.Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 		return
@@ -232,9 +236,25 @@ func (ctx *Ctx) Attachment(args ...interface{}) {
 	ctx.Set("Content-Disposition", "attachment")
 }
 
+// Download :
+func (ctx *Ctx) Download(args ...interface{}) {
+	var file string
+	var filename string
+	if len(args) == 1 {
+		file = args[0].(string)
+		filename = filepath.Base(file)
+	}
+	if len(args) == 2 {
+		file = args[0].(string)
+		filename = args[1].(string)
+	}
+	ctx.Set("Content-Disposition", "attachment; filename="+filename)
+	ctx.SendFile(file)
+}
+
 // SendFile :
-func (ctx *Ctx) SendFile(path string) {
-	fasthttp.ServeFile(ctx.Fasthttp, path)
+func (ctx *Ctx) SendFile(file string) {
+	fasthttp.ServeFile(ctx.Fasthttp, file)
 	//ctx.Type(filepath.Ext(path))
 	//ctx.Fasthttp.SendFile(path)
 }

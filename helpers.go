@@ -1,6 +1,8 @@
 package fiber
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -49,6 +51,20 @@ func getRegex(path string) (*regexp.Regexp, error) {
 	pattern += "/?$"
 	regex, err := regexp.Compile(pattern)
 	return regex, err
+}
+
+func walk(root string) (files []string, dir bool, err error) {
+	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			if !strings.Contains(path, ".fasthttp.gz") {
+				files = append(files, path)
+			}
+		} else {
+			dir = true
+		}
+		return nil
+	})
+	return files, dir, err
 }
 
 // Credits to @savsgio
