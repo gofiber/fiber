@@ -146,8 +146,13 @@ I suggest you only play with these settings if you know what you are doing.
 ```go
 app := fiber.New()
 
+// Enables TLS, you need to provide a certificate key and file
 app.TLSEnable = false,
+
+// Cerficate key
 app.CertKey = ""
+
+// Certificate file
 app.CertFile = ""
 
 // Server name for sending in response headers.
@@ -380,7 +385,13 @@ Here is a simple example of a middleware function that prints "ip > path" when a
 app := fiber.New()
 app.Get(func(c *fiber.Ctx) {
 	fmt.Println(c.IP(), "=>", c.Path())
+	// => Prints ip and path
+
+	c.Set("X-Logged", "true")
+	// => Sets response header
+
 	c.Next()
+	// Go to next middleware
 })
 app.Get("/", func(c *fiber.Ctx) {
 	c.Send("Hello, World!")
@@ -411,6 +422,28 @@ app.Get("/", func(c *fiber.Ctx) {
   // => Content-Type: image/png
 })
 ```
+
+#### BasicAuth
+BasicAuth returns the username and password provided in the request's Authorization header, if the request uses HTTP Basic Authentication.
+```go
+// Function signature
+user, pass, ok := c.BasicAuth()
+
+// Example
+// curl --user john:doe http://localhost:8080
+app.Get("/", func(c *fiber.Ctx) {
+
+	user, pass, ok := c.BasicAuth()
+
+	if ok && user == "john" && pass == "doe" {
+		c.Send("Welcome " + user)
+		return
+	}
+
+	c.Status(403).Send("Forbidden")
+})
+```
+
 
 #### Body
 Contains the raw post body submitted in the request.  
@@ -499,6 +532,23 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
+#### Fasthttp
+You can still access and use all Fasthttp methods and properties.  
+Please read the [Fasthttp Documentation](https://godoc.org/github.com/valyala/fasthttp) for more information
+```go
+// Function signature
+c.Fasthttp...
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+	string(c.Fasthttp.Request.Header.Method())
+	// => "GET"
+
+	c.Fasthttp.Response.Write([]byte("Hello, World!"))
+	// => "Hello, World!"
+})
+```
+
 #### Get
 Returns the HTTP response header specified by field. The match is case-insensitive.
 ```go
@@ -565,7 +615,32 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 #### Json
-!> Planned for V2
+Converts any interface to json using [FFJson](https://github.com/pquerna/ffjson), this functions also sets the content header to application/json.
+```go
+// Function signature
+err := c.Json(v interface{})
+
+// Example
+type SomeData struct {
+	Name string
+	Age  uint8
+}
+
+app := fiber.New()
+app.Get("/json", func(c *fiber.Ctx) {
+	data := SomeData{
+		Name: "Grame",
+		Age:  20,
+	}
+	c.Json(data)
+	// or
+	err := c.Json(data)
+	if err != nil {
+		// etc
+	}
+})
+app.Listen(8080)
+```
 
 #### Jsonp
 !> Planned for V2
@@ -766,6 +841,22 @@ app.Get("/", func(c *fiber.Ctx) {
 
   c.Type("png")
   // => 'image/png'
+})
+```
+
+#### Write
+Appends to the HTTP response.
+
+The Write parameter can be a buffer or string
+```go
+// Function signature
+c.Write(body string)
+c.Write(body []byte)
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  c.Write("Hello, ")
+	c.Write([]byte("World!"))
 })
 ```
 
