@@ -289,6 +289,7 @@ app.Post(...)
 app.Put(...)
 app.Trace(...)
 // Matches all HTTP verbs
+app.Use(...)
 app.All(...)
 ```
 #### Listen
@@ -873,6 +874,84 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-### License
+### Examples
 
-MIT © [Fenny](https://github.com/fenny/fiber/blob/master/LICENSE)
+#### 404 Handling
+```go
+package main
+
+import "github.com/fenny/fiber"
+
+func main() {
+	app := fiber.New()
+
+	app.Get("./static")
+	app.Get(notFound)
+
+	app.Listen(8080)
+}
+
+func notFound(c *fiber.Ctx) {
+	c.Status(404).Send("Not Found")
+}
+```
+#### Static Caching
+```go
+package main
+
+import "github.com/fenny/fiber"
+
+func main() {
+	app := fiber.New()
+	app.Get(cacheControl)
+	app.Get("./static")
+	app.Listen(8080)
+}
+
+func cacheControl(c *fiber.Ctx) {
+	c.Set("Cache-Control", "max-age=2592000, public")
+	c.Next()
+}
+```
+#### Enable CORS
+```go
+package main
+
+import "./fiber"
+
+func main() {
+	app := fiber.New()
+
+	app.All("/api", enableCors)
+	app.Get("/api", apiHandler)
+
+	app.Listen(8080)
+}
+
+func enableCors(c *fiber.Ctx) {
+	c.Set("Access-Control-Allow-Origin", "*")
+	c.Set("Access-Control-Allow-Headers", "X-Requested-With")
+	c.Next()
+}
+func apiHandler(c *fiber.Ctx) {
+	c.Send("Hi, I'm API!")
+}
+```
+#### Returning JSON
+
+### License & Thanks
+Special thanks to some amazing people and organizations:  
+
+[@valyala](https://github.com/valyala)  
+[@julienschmidt](https://github.com/julienschmidt)  
+[@savsgio](https://github.com/savsgio)  
+[@vincentLiuxiang](https://github.com/vincentLiuxiang)  
+[@pillarjs](https://github.com/pillarjs)  
+
+
+MIT © [Fiber](https://github.com/fenny/fiber/blob/master/LICENSE)  
+MIT © [Fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)  
+MIT © [Express](https://github.com/expressjs/express/blob/master/LICENSE)  
+MIT © [Lu](https://github.com/vincentLiuxiang/lu/blob/master/LICENSE)  
+MIT © [Path-to-regexp](https://github.com/pillarjs/path-to-regexp/blob/master/LICENSE)  
+Apache © [Atreugo](https://github.com/savsgio/atreugo/blob/master/LICENSE)  
