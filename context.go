@@ -1,9 +1,13 @@
 package fiber
 
 import (
+	"bytes"
+	"encoding/base64"
 	"mime"
 	"path/filepath"
+	"strings"
 
+	"github.com/pquerna/ffjson/ffjson"
 	"github.com/valyala/fasthttp"
 )
 
@@ -40,6 +44,29 @@ func (ctx *Ctx) Method() string {
 // Path :
 func (ctx *Ctx) Path() string {
 	return b2s(ctx.Fasthttp.URI().Path())
+}
+
+// BasicAuth :
+func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
+	auth := ctx.Get("Authorization")
+	if auth == "" {
+		return
+	}
+	const prefix = "Basic "
+	// Case insensitive prefix match.
+	if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
+		return
+	}
+	c, err := base64.StdEncoding.DecodeString(auth[len(prefix):])
+	if err != nil {
+		return
+	}
+	cs := string(c)
+	s := strings.IndexByte(cs, ':')
+	if s < 0 {
+		return
+	}
+	return cs[:s], cs[s+1:], true
 }
 
 // Body :
@@ -146,6 +173,16 @@ func (ctx *Ctx) Get(key string) string {
 		key = "referer"
 	}
 	return b2s(ctx.Fasthttp.Request.Header.Peek(key))
+}
+
+// Json :
+func (ctx *Ctx) Json(v interface{}) error {
+	ctx.Set("Content-Type", "application/json")
+	b := bytes.NewBuffer(nil)
+	enc := ffjson.NewEncoder(b)
+	err := enc.Encode(v)
+	ctx.Send(b.Bytes())
+	return err
 }
 
 // Redirect :

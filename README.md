@@ -1,4 +1,7 @@
-<img src="docs/logo.jpg" width="150" alt="Fiber"><br><br>
+<p align="center">
+  <img src="https://fenny.github.io/fiber/logo.jpg" width="150" alt="Fiber">
+  <br><br>
+</p>
 
 [![Latest Release](https://img.shields.io/github/release/fenny/fiber.svg)](https://github.com/fenny/fiber/releases/latest)
 [![GoDoc](https://godoc.org/github.com/fenny/fiber?status.svg)](http://godoc.org/github.com/fenny/fiber)
