@@ -127,6 +127,11 @@ func (r *Fiber) Get(args ...interface{}) {
 	r.register("GET", args...)
 }
 
+// Use :
+func (r *Fiber) Use(args ...interface{}) {
+	r.register("*", args...)
+}
+
 // All :
 func (r *Fiber) All(args ...interface{}) {
 	r.register("*", args...)
