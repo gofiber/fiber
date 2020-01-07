@@ -9,8 +9,24 @@
   <link rel="stylesheet" href="//unpkg.com/docsify/lib/themes/vue.css">
   <link href="https://fonts.googleapis.com/css?family=Fira+Mono&display=swap" rel="stylesheet">
   <style>
-
-
+  .sidebar li {
+    margin: 0px 0;
+}
+  .sidebar-toggle span {
+    background-color: #fff;
+  }
+  .sidebar-toggle {
+    cursor: pointer;
+    background: #42b983;
+    width: 36px;
+    border-top-right-radius: 4px;
+  }
+  .sidebar-toggle .sidebar-toggle-button:hover {
+    opacity: 1;
+  }
+  .sidebar-nav > ul > ul > li {
+    font-size: 11px;
+  }
   :focus {
     outline: none;
   }
@@ -144,11 +160,11 @@
       next.addClass('active')
     })
   </script>
-  <script>
+  <!-- <script>
     ((window.gitter = {}).chat = {}).options = {
       room: 'FiberGo/community'
     };
-  </script>
-  <script src="https://sidecar.gitter.im/dist/sidecar.v1.js" async defer></script>
+  </script> -->
+  <!-- <script src="https://sidecar.gitter.im/dist/sidecar.v1.js" async defer></script> -->
 </body>
 </html>
