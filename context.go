@@ -71,12 +71,17 @@ func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
 }
 
 // Form :
-func (ctx *Ctx) MultipartForm() *multipart.Form {
+func (ctx *Ctx) Form() *multipart.Form {
 	form, err := ctx.Fasthttp.MultipartForm()
 	if err != nil {
 		return nil
 	}
 	return form
+}
+
+// SaveFile :
+func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) {
+	fasthttp.SaveMultipartFile(fh, path)
 }
 
 // // FormValue :
@@ -97,11 +102,6 @@ func (ctx *Ctx) MultipartForm() *multipart.Form {
 // 	files = form.File[key]
 // 	return files
 // }
-
-// SaveFile :
-func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) {
-	fasthttp.SaveMultipartFile(fh, path)
-}
 
 // Body :
 func (ctx *Ctx) Body(args ...interface{}) string {

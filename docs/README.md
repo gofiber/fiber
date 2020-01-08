@@ -550,6 +550,41 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
+#### Form
+To access multipart form entries, you can parse the binary with .Form().  
+This returns a map[string][]string, so given a key the value will be a string slice.  
+So accepting multiple files or values is easy, as shown below!
+```go
+// Function signature
+c.Form()
+
+// Example
+app.Post("/", func(c *fiber.Ctx) {
+	// Parse the multipart form
+	if form := c.Form(); form != nil {
+		// => *multipart.Form
+
+		if token := form.Value["token"]; len(token) > 0 {
+			// Get key value
+			fmt.Println(token[0])
+		}
+
+		// Get all files from "documents" key
+		files := form.File["documents"]
+		// => []*multipart.FileHeader
+
+		// Loop trough files
+		for _, file := range files {
+			fmt.Println(file.Filename, file.Size, file.Header["Content-Type"][0])
+			// => "tutorial.pdf" 360641 "application/pdf"
+
+			// Save the files to disk
+			c.SaveFile(file, fmt.Sprintf("./%s", file.Filename))
+		}
+	}
+})
+```
+
 #### Get
 Returns the HTTP response header specified by field. The match is case-insensitive.
 ```go
@@ -766,6 +801,15 @@ app.Get("/", func(c *fiber.Ctx) {
   c.Redirect(301, "http://example.com")
   c.Redirect("../login")
 })
+```
+
+#### SaveFile
+This function is used to save any multipart file to disk.  
+You can see a working example here: [Multiple file upload](#form)
+
+```go
+// Function signature
+c.SaveFile(fh *multipart.FileHeader, path string)
 ```
 
 #### Send
