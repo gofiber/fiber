@@ -2,8 +2,11 @@ package fiber
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +21,7 @@ const (
 |   __|_| |_ ___ ___
 |   __| | . | -_|  _|
 |__|  |_|___|___|_|%s
+
 `
 )
 
@@ -33,6 +37,7 @@ type route struct {
 // Settings :
 type Settings struct {
 	Name                               string
+	ClearTerminal                      bool
 	HideBanner                         bool
 	TLSEnable                          bool
 	CertKey                            string
@@ -69,6 +74,7 @@ func New() *Fiber {
 	return &Fiber{
 		Settings: &Settings{
 			Name:                               "",
+			ClearTerminal:                      false,
 			HideBanner:                         false,
 			TLSEnable:                          false,
 			CertKey:                            "",
@@ -331,8 +337,20 @@ func (r *Fiber) Listen(args ...interface{}) {
 		NoDefaultContentType:               r.Settings.NoDefaultContentType,
 		KeepHijackedConns:                  r.Settings.KeepHijackedConns,
 	}
+	if r.Settings.ClearTerminal {
+		var cmd *exec.Cmd
+		goos := runtime.GOOS
+		if goos == "windows" {
+			cmd = exec.Command("cmd", "/c", "cls")
+		}
+		if goos == "linux" {
+			cmd = exec.Command("clear")
+		}
+		cmd.Stdout = os.Stdout
+		cmd.Run()
+	}
 	if !r.Settings.HideBanner {
-		fmt.Printf(color.CyanString(banner), color.GreenString(":"+port))
+		fmt.Printf(color.HiCyanString(banner), color.GreenString(":"+port))
 	}
 	// fmt.Printf(banner, Version)
 	if r.Settings.TLSEnable {
