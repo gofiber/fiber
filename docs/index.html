@@ -8,25 +8,9 @@
   <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
   <link rel="stylesheet" href="//unpkg.com/docsify/lib/themes/vue.css">
   <link href="https://fonts.googleapis.com/css?family=Fira+Mono&display=swap" rel="stylesheet">
+  <link rel="shortcut icon" href="favicon.ico" />
+
   <style>
-  .sidebar li {
-    margin: 0px 0;
-}
-  .sidebar-toggle span {
-    background-color: #fff;
-  }
-  .sidebar-toggle {
-    cursor: pointer;
-    background: #42b983;
-    width: 36px;
-    border-top-right-radius: 4px;
-  }
-  .sidebar-toggle .sidebar-toggle-button:hover {
-    opacity: 1;
-  }
-  .sidebar-nav > ul > ul > li {
-    font-size: 11px;
-  }
   :focus {
     outline: none;
   }
@@ -34,87 +18,81 @@
    ::-moz-focus-inner {
     border: 0;
   }
+    .sidebar-nav > ul > li > a {
+      font-weight: 700;
+    }
+    .app-sub-sidebar > li::before {
+      content: "";
+      padding-right: 0px;
+      float: left;
+    }
+    .app-sub-sidebar {
+      margin: 0 0 0 7px !important;
+      line-height: 1.2em !important;
+    }
+    .app-sub-sidebar > li {
+      margin: 0px 0 !important;
+    }
+    .app-sub-sidebar > li > a {
+      font-size: 12px !important;
+    }
+    pre>code {
+      font-family: 'Fira Mono' !important;
+      font-weight: 600;
+    }
 
-  .app-name-link>img {
-    width: 115px;
-  }
+    .token.function {
+      color: hsl(207, 82%, 66%);
+    }
 
-  .sidebar-nav>ul>li>a {
-    font-weight: 700;
-  }
+    .token.keyword {
+      color: hsl(286, 60%, 67%);
+    }
 
-  .sidebar-nav>ul>ul>li {
-    margin: 0px 0;
-    line-height: 1.5em;
-  }
+    .token.string {
+      color: hsl( 95, 38%, 62%);
+    }
 
-  .sidebar-nav>ul>ul {
-    display: none;
-  }
+    .token.boolean,
+    .token.number {
+      color: hsl( 29, 54%, 61%);
+    }
 
-  .sidebar-nav>ul>ul.active {
-    display: block;
-  }
+    code .token {
+      color: hsl(286, 60%, 67%);
+    }
 
-  pre>code {
-    font-family: 'Fira Mono' !important;
-    font-weight: 600;
-  }
+    .markdown-section pre>code,
+    .markdown-section code,
+    .markdown-section pre {
+      background-color: #313440;
+    }
 
-  .token.function {
-    color: hsl(207, 82%, 66%);
-  }
+    .markdown-section pre>code,
+    .token.punctuation {
+      color: hsl(220, 14%, 71%);
+    }
 
-  .token.keyword {
-    color: hsl(286, 60%, 67%);
-  }
-
-  .token.string {
-    color: hsl( 95, 38%, 62%);
-  }
-
-  .token.boolean,
-  .token.number {
-    color: hsl( 29, 54%, 61%);
-  }
-
-  code .token {
-    color: hsl(286, 60%, 67%);
-  }
-
-  .markdown-section pre>code,
-  .markdown-section code,
-  .markdown-section pre {
-    background-color: #313440;
-  }
-
-  .markdown-section pre>code,
-  .token.punctuation {
-    color: hsl(220, 14%, 71%);
-  }
-
-  .token.cdata,
-  .token.comment,
-  .token.doctype,
-  .token.prolog {
-    color: hsl(220, 10%, 40%);
-  }
-  .token.property { color: hsl(187, 47%, 55%); }
-
+    .token.cdata,
+    .token.comment,
+    .token.doctype,
+    .token.prolog {
+      color: hsl(220, 10%, 40%);
+    }
+    .token.property { color: hsl(187, 47%, 55%); }
   </style>
 </head>
 <body>
   <div id="app"></div>
+  <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
   <script>
     window.$docsify = {
       name: 'Fiber',
       repo: 'fenny/fiber',
+      loadSidebar: "sidebar.md",
+      homepage: 'getting_started.md',
+      subMaxLevel: 2
     }
-  </script>
-  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
-  <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
-  <script type="text/javascript" src="https://unpkg.com/prismjs@1.17.1/components/prism-bash.js">
-
   </script>
   <script type="text/javascript">
     Prism.languages.go = Prism.languages.extend('clike', {
@@ -131,40 +109,5 @@
       'property': /\b(\w*Ctx\w*)\b/,
       });
   </script>
-  <script type="text/javascript">
-    window.addEventListener('hashchange', function (e) {
-      var hash = window.location.hash
-      $('.sidebar-nav > ul > ul').removeClass('active')
-      $('.section-link[href="' + hash + '"]').trigger('click')
-      $('.section-link[href="' + hash + '"]').parent().parent().addClass('active')
-    })
-    $(window).ready(function() {
-      setTimeout(function() {
-      var hash = window.location.hash
-      if (hash == '#/') {
-        $('.sidebar-nav > ul:nth-child(1) > li:nth-child(1)').addClass('active')
-        $('.sidebar-nav > ul > li:first-child').next().addClass('active')
-      } else {
-        $('.sidebar-nav > ul > ul').removeClass('active')
-        $('.section-link[href="' + hash + '"]').trigger('click')
-        $('.section-link[href="' + hash + '"]').parent().parent().addClass('active')
-      }
-    }, 100)
-    })
-    $(document).on('click', '.sidebar-nav > ul > li', function(e) {
-      $('.sidebar-nav > ul > ul').removeClass('active')
-      var next = $(this).next()
-      if (next.prop("tagName") != "UL") {
-        return;
-      }
-      next.addClass('active')
-    })
-  </script>
-  <!-- <script>
-    ((window.gitter = {}).chat = {}).options = {
-      room: 'FiberGo/community'
-    };
-  </script> -->
-  <!-- <script src="https://sidecar.gitter.im/dist/sidecar.v1.js" async defer></script> -->
 </body>
 </html>

@@ -79,6 +79,24 @@ func (ctx *Ctx) Form() *multipart.Form {
 	return form
 }
 
+// FormFile :
+func (ctx *Ctx) FormValue(key string) *multipart.Form {
+	form, err := ctx.Fasthttp.MultipartForm()
+	if err != nil {
+		return nil
+	}
+	return form
+}
+
+// FormFile :
+func (ctx *Ctx) FormFile(key string) *multipart.Form {
+	form, err := ctx.Fasthttp.MultipartForm()
+	if err != nil {
+		return nil
+	}
+	return form
+}
+
 // SaveFile :
 func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) {
 	fasthttp.SaveMultipartFile(fh, path)
