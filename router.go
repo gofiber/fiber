@@ -16,11 +16,11 @@ import (
 )
 
 const (
-	Version = "v0.2.0"
+	Version = `v0.3.0`
 	banner  = ` _____ _ _
 |   __|_| |_ ___ ___
 |   __| | . | -_|  _|
-|__|  |_|___|___|_|%s
+|__|  |_|___|___|_|%s %s
 
 `
 )
@@ -46,6 +46,7 @@ type Settings struct {
 	DisableKeepAlive                   bool
 	ReadBufferSize                     int
 	WriteBufferSize                    int
+	ReadTimeout                        time.Duration
 	WriteTimeout                       time.Duration
 	IdleTimeout                        time.Duration
 	MaxConnsPerIP                      int
@@ -84,6 +85,7 @@ func New() *Fiber {
 			ReadBufferSize:                     4096,
 			WriteBufferSize:                    4096,
 			WriteTimeout:                       0,
+			ReadTimeout:                        0,
 			IdleTimeout:                        0,
 			MaxConnsPerIP:                      0,
 			MaxRequestsPerConn:                 0,
@@ -322,6 +324,7 @@ func (r *Fiber) Listen(args ...interface{}) {
 		DisableKeepalive:                   r.Settings.DisableKeepAlive,
 		ReadBufferSize:                     r.Settings.ReadBufferSize,
 		WriteBufferSize:                    r.Settings.WriteBufferSize,
+		ReadTimeout:                        r.Settings.ReadTimeout,
 		WriteTimeout:                       r.Settings.WriteTimeout,
 		IdleTimeout:                        r.Settings.IdleTimeout,
 		MaxConnsPerIP:                      r.Settings.MaxConnsPerIP,
@@ -350,7 +353,7 @@ func (r *Fiber) Listen(args ...interface{}) {
 		cmd.Run()
 	}
 	if !r.Settings.HideBanner {
-		fmt.Printf(color.HiCyanString(banner), color.GreenString(":"+port))
+		fmt.Printf(color.HiCyanString(banner), color.GreenString(":"+port), color.HiBlackString("("+Version+")"))
 	}
 	// fmt.Printf(banner, Version)
 	if r.Settings.TLSEnable {

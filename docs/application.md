@@ -56,6 +56,14 @@ app.ReadBufferSize = 4096
 // Per-connection buffer size for responses' writing.
 app.WriteBufferSize = 4096
 
+// ReadTimeout is the amount of time allowed to read
+// the full request including body. The connection's read
+// deadline is reset when the connection opens, or for
+// keep-alive connections after the first byte has been read.
+//
+// By default request read timeout is unlimited.
+app.ReadTimeout = 0
+
 // WriteTimeout is the maximum duration before timing out
 // writes of the response. It is reset after the request handler
 // has returned.
