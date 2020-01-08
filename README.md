@@ -2,7 +2,7 @@
   <img src="https://fenny.github.io/fiber/logo.jpg" width="150" alt="Fiber">
   <br><br>
 </p>
-
+[![Fiber](https://fenny.github.io/fiber/logo.jpg)](https://fenny.github.io/fiber)
 [![Latest Release](https://img.shields.io/github/release/fenny/fiber.svg)](https://github.com/fenny/fiber/releases/latest)
 [![GoDoc](https://godoc.org/github.com/fenny/fiber?status.svg)](http://godoc.org/github.com/fenny/fiber)
 [![Go Report](https://goreportcard.com/badge/github.com/fenny/fiber)](https://goreportcard.com/report/github.com/fenny/fiber)
