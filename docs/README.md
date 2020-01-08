@@ -920,6 +920,42 @@ app.Get("/", func(c *fiber.Ctx) {
 
 ### Examples
 
+#### Multiple File Upload
+```go
+
+package main
+
+import "github.com/fenny/fiber"
+
+func main() {
+	app := fiber.New()
+	app.Post("/", func(c *fiber.Ctx) {
+		// Parse the multipart form
+		if form := c.Form(); form != nil {
+			// => *multipart.Form
+
+			if token := form.Value["token"]; len(token) > 0 {
+				// Get key value
+				fmt.Println(token[0])
+			}
+
+			// Get all files from "documents" key
+			files := form.File["documents"]
+			// => []*multipart.FileHeader
+
+			// Loop trough files
+			for _, file := range files {
+				fmt.Println(file.Filename, file.Size, file.Header["Content-Type"][0])
+				// => "tutorial.pdf" 360641 "application/pdf"
+
+				// Save the files to disk
+				c.SaveFile(file, fmt.Sprintf("./%s", file.Filename))
+			}
+		}
+	})
+	app.Listen(8080)
+}
+```
 #### 404 Handling
 ```go
 package main
