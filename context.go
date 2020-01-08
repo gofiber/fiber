@@ -70,31 +70,19 @@ func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
 	return cs[:s], cs[s+1:], true
 }
 
-// Form :
-func (ctx *Ctx) Form() *multipart.Form {
-	form, err := ctx.Fasthttp.MultipartForm()
-	if err != nil {
-		return nil
-	}
-	return form
+// MultipartForm :
+func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
+	return ctx.Fasthttp.MultipartForm()
 }
 
 // FormFile :
-func (ctx *Ctx) FormValue(key string) *multipart.Form {
-	form, err := ctx.Fasthttp.MultipartForm()
-	if err != nil {
-		return nil
-	}
-	return form
+func (ctx *Ctx) FormValue(key string) string {
+	return b2s(ctx.Fasthttp.FormValue(key))
 }
 
 // FormFile :
-func (ctx *Ctx) FormFile(key string) *multipart.Form {
-	form, err := ctx.Fasthttp.MultipartForm()
-	if err != nil {
-		return nil
-	}
-	return form
+func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
+	return ctx.Fasthttp.FormFile(key)
 }
 
 // SaveFile :

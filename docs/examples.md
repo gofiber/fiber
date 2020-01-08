@@ -11,7 +11,7 @@ func main() {
 	app := fiber.New()
 	app.Post("/", func(c *fiber.Ctx) {
 		// Parse the multipart form
-		if form := c.Form(); form != nil {
+		if form := c.MultipartForm(); form != nil {
 			// => *multipart.Form
 
 			// Get all files from "documents" key

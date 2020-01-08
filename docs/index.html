@@ -135,6 +135,23 @@
     }
   </script>
   <script type="text/javascript">
+  Prism.languages.curl = Prism.languages.extend('clike', {
+  'curl': /\bcurl\b/,
+  'url': /https?:[a-zA-Z0-9:.?=\/\-_{}]*/,
+  'parameter': {
+    pattern: /[A-Za-z0-9\[\]-_]+ *(?=[=])/,
+  },
+  'value': [{
+    pattern: /([=])([A-Za-z0-9-_.]*)/,
+    lookbehind: true,
+  }, {
+    pattern: /(["'])(\\(?:\r\n|[\s\S])|(?!\1)[^\\\r\n])*\1/,
+  }, {
+    pattern: /(\-u )([A-Za-z0-9-_.{}]*)/,
+    lookbehind: true,
+  }],
+  'option': / *-[a-zA-Z]*\b/,
+});
     Prism.languages.go = Prism.languages.extend('clike', {
       'keyword': /\b(?:break|case|chan|const|continue|default|defer|else|fallthrough|for|func|go(?:to)?|if|import|interface|map|package|range|return|select|struct|switch|type|var)\b/,
       'builtin': /\b(?:bool|byte|complex(?:64|128)|error|float(?:32|64)|rune|string|u?int(?:8|16|32|64)?|uintptr|append|cap|close|complex|copy|delete|imag|len|make|new|panic|print(?:ln)?|real|recover)\b/,
