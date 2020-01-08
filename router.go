@@ -4,10 +4,21 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/valyala/fasthttp"
+)
+
+const (
+	Version = "v0.2.0"
+	banner  = ` _____ _ _
+|   __|_| |_ ___ ___
+|   __| | . | -_|  _|
+|__|  |_|___|___|_|%s
+`
 )
 
 type route struct {
@@ -21,10 +32,11 @@ type route struct {
 
 // Settings :
 type Settings struct {
+	Name                               string
+	HideBanner                         bool
 	TLSEnable                          bool
 	CertKey                            string
 	CertFile                           string
-	Name                               string
 	Concurrency                        int
 	DisableKeepAlive                   bool
 	ReadBufferSize                     int
@@ -56,10 +68,11 @@ type Fiber struct {
 func New() *Fiber {
 	return &Fiber{
 		Settings: &Settings{
+			Name:                               "",
+			HideBanner:                         false,
 			TLSEnable:                          false,
 			CertKey:                            "",
 			CertFile:                           "",
-			Name:                               "",
 			Concurrency:                        256 * 1024,
 			DisableKeepAlive:                   false,
 			ReadBufferSize:                     4096,
@@ -281,14 +294,14 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 
 // Listen :
 func (r *Fiber) Listen(args ...interface{}) {
-	var port int
+	var port string
 	var addr string
 	if len(args) == 1 {
-		port = args[0].(int)
+		port = strconv.Itoa(args[0].(int))
 	}
 	if len(args) == 2 {
 		addr = args[0].(string)
-		port = args[1].(int)
+		port = strconv.Itoa(args[1].(int))
 	}
 	// Disable server header if server name is not given
 	if r.Settings.Name != "" {
@@ -318,13 +331,17 @@ func (r *Fiber) Listen(args ...interface{}) {
 		NoDefaultContentType:               r.Settings.NoDefaultContentType,
 		KeepHijackedConns:                  r.Settings.KeepHijackedConns,
 	}
+	if !r.Settings.HideBanner {
+		fmt.Printf(color.CyanString(banner), color.GreenString(":"+port))
+	}
+	// fmt.Printf(banner, Version)
 	if r.Settings.TLSEnable {
-		if err := server.ListenAndServeTLS(fmt.Sprintf("%s:%v", addr, port), r.Settings.CertFile, r.Settings.CertKey); err != nil {
+		if err := server.ListenAndServeTLS(fmt.Sprintf("%s:%s", addr, port), r.Settings.CertFile, r.Settings.CertKey); err != nil {
 			panic(err)
 		}
-		return
-	}
-	if err := server.ListenAndServe(fmt.Sprintf("%s:%v", addr, port)); err != nil {
-		panic(err)
+	} else {
+		if err := server.ListenAndServe(fmt.Sprintf("%s:%s", addr, port)); err != nil {
+			panic(err)
+		}
 	}
 }

@@ -146,8 +146,14 @@ I suggest you only play with these settings if you know what you are doing.
 ```go
 app := fiber.New()
 
+app.Name = ""
+// The maximum number of concurrent connections the server may serve.
+
+// Hides the "Fiber" banner when you launch your application.
+app.HideBanner = false
+
 // Enables TLS, you need to provide a certificate key and file
-app.TLSEnable = false,
+app.TLSEnable = false
 
 // Cerficate key
 app.CertKey = ""
@@ -158,10 +164,6 @@ app.CertFile = ""
 // Server name for sending in response headers.
 //
 // No server header is send if left empty.
-
-app.Name = ""
-// The maximum number of concurrent connections the server may serve.
-
 app.Concurrency = 256 * 1024
 
 // Whether to disable keep-alive connections.
