@@ -8,9 +8,8 @@
 **[Fiber](https://github.com/fenny/fiber)** is a router framework build on top of **[FastHTTP](https://github.com/valyala/fasthttp)**, the fastest HTTP package for **[Go](https://golang.org/doc/)**.<br>
 This library is inspired by **[Express](https://expressjs.com/en/4x/api.html)**, one of the most populair and well known web framework for **[Nodejs](https://nodejs.org/en/about/)**.
 
-## Full Documentation
-We created an full documentation page with easy navigation.  
-[Click here to view Documentation](https://fenny.github.io/fiber/)
+## Full API Documentation
+*[Click here](https://fenny.github.io/fiber/)*
 
 ## Installing
 Assuming you’ve already installed [Go](https://golang.org/doc/), install the [Fiber](https://github.com/fenny/fiber) package by calling the following command:
