@@ -1,4 +1,4 @@
-<img src="logo.jpg" width="150" alt="accessibility text"><br><br>
+<img src="docs/logo.jpg" width="150" alt="accessibility text"><br><br>
 [![Latest Release](https://img.shields.io/github/release/fenny/fiber.svg)](https://github.com/fenny/fiber/releases/latest)
 [![GoDoc](https://godoc.org/github.com/fenny/fiber?status.svg)](http://godoc.org/github.com/fenny/fiber)
 [![Go Report](https://goreportcard.com/badge/github.com/fenny/fiber)](https://goreportcard.com/report/github.com/fenny/fiber)
@@ -127,4 +127,4 @@ http://localhost:8080/static/images/bg.png
 http://localhost:8080/static/hello.html
 ```
 
-*Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/getting_started.md)*
+*Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/README.md)*
