@@ -3,13 +3,21 @@ package fiber
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"mime"
+	"mime/multipart"
 	"path/filepath"
 	"strings"
 
 	"github.com/pquerna/ffjson/ffjson"
 	"github.com/valyala/fasthttp"
 )
+
+// Context struct
+type FileHeader struct {
+	*multipart.FileHeader
+	Type string
+}
 
 // Next :
 func (ctx *Ctx) Next() {
@@ -67,6 +75,49 @@ func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
 		return
 	}
 	return cs[:s], cs[s+1:], true
+}
+
+// Form :
+func (ctx *Ctx) Form() (*multipart.Form, error) {
+	form, err := ctx.Fasthttp.MultipartForm()
+	if err != nil {
+		return nil, err
+	}
+	return form, nil
+}
+
+// FormValue :
+func (ctx *Ctx) FormValue(key string) string {
+	form, err := ctx.Fasthttp.MultipartForm()
+	if err != nil {
+		return ""
+	}
+	if len(form.Value[key]) == 0 {
+		return ""
+	}
+	return form.Value[key][0]
+}
+
+// FormFile :
+func (ctx *Ctx) FormFile(key string) (*FileHeader, error) {
+	form, err := ctx.Fasthttp.MultipartForm()
+	if err != nil {
+		return nil, err
+	}
+	files := form.File[key]
+	if len(files) == 0 {
+		return nil, errors.New("there is no uploaded file associated with the given key")
+	}
+	fh := &FileHeader{
+		FileHeader: files[0],
+		Type:       files[0].Header["Content-Type"][0],
+	}
+	return fh, nil
+}
+
+// SaveFile :
+func (fh *FileHeader) Save(path string) {
+	fasthttp.SaveMultipartFile(fh.FileHeader, path)
 }
 
 // Body :
