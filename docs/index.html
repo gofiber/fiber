@@ -90,6 +90,14 @@
     width: 36px;
     cursor: pointer;
   }
+  @media screen and (max-width:768px) {
+  .sidebar-toggle {
+    padding: 10px;
+  }
+  body.close .sidebar-toggle {
+    display: none;
+  }
+  }
   .sidebar-toggle .sidebar-toggle-button:hover {
     opacity: .8;
   }
