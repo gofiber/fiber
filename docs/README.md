@@ -934,11 +934,6 @@ func main() {
 		if form := c.Form(); form != nil {
 			// => *multipart.Form
 
-			if token := form.Value["token"]; len(token) > 0 {
-				// Get key value
-				fmt.Println(token[0])
-			}
-
 			// Get all files from "documents" key
 			files := form.File["documents"]
 			// => []*multipart.FileHeader
@@ -1018,6 +1013,33 @@ func apiHandler(c *fiber.Ctx) {
 }
 ```
 #### Returning JSON
+```go
+package main
+
+import "./fiber"
+
+type Data struct {
+	Name string
+	Age  int
+}
+
+func main() {
+app := fiber.New()
+	app.Get("/json", func(c *fiber.Ctx) {
+		data := SomeData{
+			Name: "John",
+			Age:  20,
+		}
+		c.Json(data)
+		// or
+		err := c.Json(data)
+		if err != nil {
+			c.Send("Something went wrong!")
+		}
+	})
+	app.Listen(8080)
+}
+```
 
 ### License & Thanks
 Special thanks to some amazing people and organizations:  
