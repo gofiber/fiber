@@ -176,30 +176,35 @@ func (ctx *Ctx) ClearCookies(args ...interface{}) {
 
 // Send :
 func (ctx *Ctx) Send(args ...interface{}) {
-	if len(args) == 1 {
-		str, ok := args[0].(string)
-		if ok {
-			ctx.Fasthttp.Response.SetBodyString(str)
-			return
-		}
-		ctx.Fasthttp.Response.SetBodyString(b2s(args[0].([]byte)))
-		return
+	// https://github.com/valyala/fasthttp/blob/master/http.go#L490
+	if len(args) != 1 {
+		panic("To many arguments!")
 	}
-	panic("To many arguments!")
+	switch body := args[0].(type) {
+	case string:
+		ctx.Fasthttp.Response.SetBodyRaw(s2b(body))
+		//ctx.Fasthttp.Response.SetBodyString(str)
+	case []byte:
+		ctx.Fasthttp.Response.SetBodyRaw(body)
+		//ctx.Fasthttp.Response.SetBodyString(b2s(args[0].([]byte)))
+	default:
+		panic("body must be a string or []byte")
+	}
 }
 
 // Write :
 func (ctx *Ctx) Write(args ...interface{}) {
-	if len(args) == 1 {
-		str, ok := args[0].(string)
-		if ok {
-			ctx.Fasthttp.Response.AppendBodyString(str)
-			return
-		}
-		ctx.Fasthttp.Response.AppendBodyString(b2s(args[0].([]byte)))
-		return
+	if len(args) != 1 {
+		panic("To many arguments!")
 	}
-	panic("To many arguments!")
+	switch body := args[0].(type) {
+	case string:
+		ctx.Fasthttp.Response.AppendBodyString(body)
+	case []byte:
+		ctx.Fasthttp.Response.AppendBodyString(b2s(body))
+	default:
+		panic("body must be a string or []byte")
+	}
 }
 
 // Set :
