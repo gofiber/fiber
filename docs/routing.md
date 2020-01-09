@@ -75,19 +75,20 @@ The [Next](context#next) function is a function in the [Fiber](https://github.co
 
 Functions that are designed to make changes to the request or response are called middleware functions.
 
-Here is a simple example of a middleware function that prints "ip > path" when a request to the app passes through it.
+Here is a simple example of a middleware function that sets some response headers when a request to the app passes through it.
 
 ```go
 app := fiber.New()
-app.Get(func(c *fiber.Ctx) {
-	fmt.Println(c.IP(), "=>", c.Path())
-	// => Prints ip and path
-
-	c.Set("X-Logged", "true")
-	// => Sets response header
-
+app.Use(func(c *fiber.Ctx) {
+  // Set some security headers
+	c.Set("X-XSS-Protection", "1; mode=block")
+	c.Set("X-Content-Type-Options", "nosniff")
+	c.Set("X-Download-Options", "noopen")
+	c.Set("Strict-Transport-Security", "max-age=5184000")
+	c.Set("X-Frame-Options", "SAMEORIGIN")
+	c.Set("X-DNS-Prefetch-Control", "off")
+  // Go to next middleware
 	c.Next()
-	// Go to next middleware
 })
 app.Get("/", func(c *fiber.Ctx) {
 	c.Send("Hello, World!")
