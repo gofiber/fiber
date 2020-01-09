@@ -63,7 +63,7 @@ func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
 	if err != nil {
 		return
 	}
-	cs := string(c)
+	cs := b2s(c)
 	s := strings.IndexByte(cs, ':')
 	if s < 0 {
 		return
@@ -76,7 +76,7 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 	return ctx.Fasthttp.MultipartForm()
 }
 
-// FormFile :
+// FormValue :
 func (ctx *Ctx) FormValue(key string) string {
 	return b2s(ctx.Fasthttp.FormValue(key))
 }
@@ -166,7 +166,7 @@ func (ctx *Ctx) Cookies(args ...interface{}) string {
 func (ctx *Ctx) ClearCookies(args ...interface{}) {
 	if len(args) == 0 {
 		ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-			ctx.Fasthttp.Response.Header.DelClientCookie(string(k))
+			ctx.Fasthttp.Response.Header.DelClientCookie(b2s(k))
 		})
 	}
 	if len(args) == 1 {
@@ -182,11 +182,11 @@ func (ctx *Ctx) Send(args ...interface{}) {
 	}
 	switch body := args[0].(type) {
 	case string:
-		ctx.Fasthttp.Response.SetBodyRaw(s2b(body))
-		//ctx.Fasthttp.Response.SetBodyString(str)
+		//ctx.Fasthttp.Response.SetBodyRaw(s2b(body))
+		ctx.Fasthttp.Response.SetBodyString(body)
 	case []byte:
-		ctx.Fasthttp.Response.SetBodyRaw(body)
-		//ctx.Fasthttp.Response.SetBodyString(b2s(args[0].([]byte)))
+		//ctx.Fasthttp.Response.SetBodyRaw(body)
+		ctx.Fasthttp.Response.SetBodyString(b2s(body))
 	default:
 		panic("body must be a string or []byte")
 	}
@@ -322,14 +322,12 @@ func (ctx *Ctx) Attachment(args ...interface{}) {
 
 // Download :
 func (ctx *Ctx) Download(args ...interface{}) {
-	var file string
-	var filename string
-	if len(args) == 1 {
-		file = args[0].(string)
-		filename = filepath.Base(file)
+	if len(args) == 0 {
+		panic("Missing filename")
 	}
-	if len(args) == 2 {
-		file = args[0].(string)
+	file := args[0].(string)
+	filename := filepath.Base(file)
+	if len(args) > 1 {
 		filename = args[1].(string)
 	}
 	ctx.Set("Content-Disposition", "attachment; filename="+filename)
@@ -338,6 +336,7 @@ func (ctx *Ctx) Download(args ...interface{}) {
 
 // SendFile :
 func (ctx *Ctx) SendFile(file string) {
+	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
 	fasthttp.ServeFile(ctx.Fasthttp, file)
 	//ctx.Type(filepath.Ext(path))
 	//ctx.Fasthttp.SendFile(path)
