@@ -136,18 +136,16 @@ func (ctx *Ctx) Cookies(args ...interface{}) string {
 		return ctx.Get("Cookie")
 	}
 	if len(args) == 1 {
-		str, strOk := args[0].(string)
-		if strOk {
-			return ctx.Get(str)
-		}
-		fnc, fncOk := args[0].(func(string, string))
-		if fncOk {
+		switch arg := args[0].(type) {
+		case string:
+			return ctx.Get(arg)
+		case func(string, string):
 			ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-				fnc(b2s(k), b2s(v))
+				arg(b2s(k), b2s(v))
 			})
-			return ""
+		default:
+			panic("Argument must be a string or func(string, string)")
 		}
-		panic("Invalid parameters")
 	}
 	if len(args) > 1 {
 		cook := &fasthttp.Cookie{}
@@ -163,14 +161,14 @@ func (ctx *Ctx) Cookies(args ...interface{}) string {
 }
 
 // ClearCookies :
-func (ctx *Ctx) ClearCookies(args ...interface{}) {
+func (ctx *Ctx) ClearCookies(args ...string) {
 	if len(args) == 0 {
 		ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
 			ctx.Fasthttp.Response.Header.DelClientCookie(b2s(k))
 		})
 	}
 	if len(args) == 1 {
-		ctx.Fasthttp.Response.Header.DelClientCookie(args[0].(string))
+		ctx.Fasthttp.Response.Header.DelClientCookie(args[0])
 	}
 }
 
@@ -310,9 +308,9 @@ func (ctx *Ctx) Is(ext string) bool {
 }
 
 // Attachment :
-func (ctx *Ctx) Attachment(args ...interface{}) {
+func (ctx *Ctx) Attachment(args ...string) {
 	if len(args) == 1 {
-		filename := filepath.Base(args[0].(string))
+		filename := filepath.Base(args[0])
 		ctx.Type(filepath.Ext(filename))
 		ctx.Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 		return
@@ -321,14 +319,14 @@ func (ctx *Ctx) Attachment(args ...interface{}) {
 }
 
 // Download :
-func (ctx *Ctx) Download(args ...interface{}) {
+func (ctx *Ctx) Download(args ...string) {
 	if len(args) == 0 {
 		panic("Missing filename")
 	}
-	file := args[0].(string)
+	file := args[0]
 	filename := filepath.Base(file)
 	if len(args) > 1 {
-		filename = args[1].(string)
+		filename = args[1]
 	}
 	ctx.Set("Content-Disposition", "attachment; filename="+filename)
 	ctx.SendFile(file)
