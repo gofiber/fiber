@@ -5,7 +5,7 @@ The ctx object represents the HTTP request and response and has methods for the 
 !> Planned for V2
 
 ## Attachment
-Sets the HTTP response Content-Disposition header field to “attachment”. If a filename is given, then it sets the Content-Type based on the extension name via res.type(), and sets the Content-Disposition “filename=” parameter.
+Sets the HTTP response [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header field to “attachment”. If a filename is given, then it sets the Content-Type based on the extension name via (Type)[#type], and sets the Content-Disposition “filename=” parameter.
 ```go
 // Function signature
 c.Attachment()
@@ -23,10 +23,10 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 ## BasicAuth
-BasicAuth returns the username and password provided in the request's Authorization header, if the request uses HTTP Basic Authentication.
+BasicAuth returns the username and password provided in the request's Authorization header, if the request uses [HTTP Basic Authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication).
 ```go
 // Function signature
-user, pass, ok := c.BasicAuth()
+c.BasicAuth() (user, pass string, ok bool)
 
 // Example
 // curl --user john:doe http://localhost:8080
@@ -46,32 +46,36 @@ app.Get("/", func(c *fiber.Ctx) {
 
 ## Body
 Contains the raw post body submitted in the request.  
-Calling a key in body returns a string value if exist or you loop trough the cookies using a function.
+Calling a key in body returns a string value if exist or you loop trough the body params using a key value function callback.
 
 The following example shows how to use the body function.
 ```go
 // Function signature
-c.Body()
-c.Body(key string)
-c.Body(func(key string, value string))
+c.Body() string
+c.Body(key string) string
+c.Body(func(key string, value string)) func(string, string)
 
 // Example
+// curl -X POST http://localhost:8080 -d user=john
 app.Post("/", func(c *fiber.Ctx) {
 	// Get the raw body post
-  c.Body() // => user=john
+  c.Body()
+  // => user=john
 
-	// Get the body value using the key
-  c.Body("user") // => "john"
+	// Get the body value using specific key
+  c.Body("user")
+  // => "john"
 
 	// Loop trough all body params
   c.Body(func(key string, val string) {
-    fmt.Printl(key, val)  // => "user", "john"
+    fmt.Printl(key, val)  
+    // => "user" "john"
   })
 })
 ```
 
 ## ClearCookies
-Clears all client cookies, or a specific cookie by name.
+Clears all client cookies or a specific cookie by name by setting the expire date in the past.
 ```go
 // Function signature
 c.ClearCookies()
@@ -79,16 +83,16 @@ c.ClearCookies(key string)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-  // Delete all cookies from client side
+  // Expires all cookies
   c.ClearCookies()
 
-  // Delete specific cookie
+  // Expire specific cookie
   c.ClearCookies("user")
 })
 ```
 
 ## Cookies
-Clears all cookies from client, or a specific cookie by name by adjusting the expiration.
+Get and set cookies
 ```go
 // Function signature
 c.Cookies() string
@@ -99,17 +103,21 @@ c.Cookies(func(key string, value string))
 // Example
 app.Get("/", func(c *fiber.Ctx) {
 	// Create cookie with key, value
-	c.Cookies("name", "john") // => Cookie: name=john
+	c.Cookies("name", "john")
+  // => Cookie: name=john
 
 	// Get cookie by key
-	c.Cookies("name") // => "john"
+	c.Cookies("name")
+  // => "john"
 
 	// Get raw cookie header
-	c.Cookies() // => name=john;
+	c.Cookies()
+  // => name=john;
 
 	// Show all cookies
 	c.Cookies(func(key string, val string) {
-		fmt.Println(key, val) // => "name", "john"
+		fmt.Println(key, val)
+    // => "name", "john"
 	})
 })
 ```
@@ -156,7 +164,14 @@ c.FormFile(name string) (*multipart.FileHeader, error)
 
 // Example
 app.Post("/", func(c *fiber.Ctx) {
+  // Get first file from form field "document"
 	file, err := c.FormFile("document")
+
+  // Check for errors
+  if err == nil {
+    // Save file to root directory
+    c.SaveFile(file, fmt.Sprintf("./%s", file.Filename))
+  }
 })
 ```
 
@@ -168,7 +183,9 @@ c.FormValue(name string) string
 
 // Example
 app.Post("/", func(c *fiber.Ctx) {
+  // Get first value from form field "name"
 	c.FormValue("name")
+  // => "john" or "" if not exist
 })
 ```
 
@@ -182,13 +199,13 @@ c.Get(field string) string
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   c.Get("Content-Type")
-  // "text/plain"
+  // => "text/plain"
 
   c.Get("content-type")
-  // "text/plain"
+  // => "text/plain"
 
   c.Get("something")
-  // ""
+  // => ""
 })
 ```
 
@@ -238,30 +255,34 @@ app.Get("/", func(c *fiber.Ctx) {
 	// => false
 })
 ```
+
 ## Json
 Converts any interface to json using [FFJson](https://github.com/pquerna/ffjson), this functions also sets the content header to application/json.
 ```go
 // Function signature
-err := c.Json(v interface{})
+c.Json(v interface{}) error
 
 // Example
-type SomeData struct {
+type SomeStruct struct {
 	Name string
 	Age  uint8
 }
 
 app := fiber.New()
 app.Get("/json", func(c *fiber.Ctx) {
-	data := SomeData{
+	data := SomeStruct{
 		Name: "Grame",
 		Age:  20,
 	}
 	c.Json(data)
-	// or
-	err := c.Json(data)
-	if err != nil {
-		// etc
-	}
+
+	// Or with error checking
+  if err := c.Json(data); err != nil {
+    c.Status(500).Send("Bad Request")
+  }
+  // => "{"Name": "Grame", "Age": 20}"
+
+
 })
 app.Listen(8080)
 ```
@@ -283,7 +304,7 @@ app.Post("/", func(c *fiber.Ctx) {
 ```
 
 ## MultipartForm
-To access multipart form entries, you can parse the binary with .Form().  
+To access multipart form entries, you can parse the binary with .MultipartForm().  
 This returns a map[string][]string, so given a key the value will be a string slice.  
 So accepting multiple files or values is easy, as shown below!
 ```go
@@ -524,12 +545,19 @@ c.Write(body []byte)
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   c.Write("Hello, ")
+  // => "Hello, "
+
 	c.Write([]byte("World!"))
+  // => "Hello, World!"
+
+  // Send sets the body, and does not append
+  c.Send("My name is Jeff")
+  // => "My name is Jeff"
 })
 ```
 
 ## Xhr
-A Boolean property that is true if the request’s X-Requested-With header field is “XMLHttpRequest”, indicating that the request was issued by a client library such as jQuery.
+A Boolean property that is true if the request’s **X-Requested-With** header field is **XMLHttpRequest**, indicating that the request was issued by a client library such as [jQuery](https://api.jquery.com/jQuery.ajax/).
 ```go
 // Function signature
 c.Xhr() bool

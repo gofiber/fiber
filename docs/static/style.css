@@ -1,0 +1,111 @@
+:focus {
+  outline: none;
+}
+
+ ::-moz-focus-inner {
+  border: 0;
+}
+
+.sidebar-nav>ul>li>a {
+  font-weight: 700;
+}
+
+.app-sub-sidebar>li::before {
+  content: "";
+  padding-right: 0px;
+  float: left;
+}
+
+.app-sub-sidebar {
+  margin: 0 0 0 7px !important;
+  line-height: 1.2em !important;
+}
+
+.app-sub-sidebar>li {
+  margin: 0px 0 !important;
+}
+
+.app-sub-sidebar>li>a {
+  font-size: 12px !important;
+}
+
+pre>code {
+  font-family: 'Fira Mono' !important;
+  font-weight: 600;
+}
+
+.token.function {
+  color: hsl(207, 82%, 66%);
+}
+
+.token.keyword {
+  color: hsl(286, 60%, 67%);
+}
+
+.token.string {
+  color: hsl( 95, 38%, 62%);
+}
+
+.token.boolean,
+.token.number {
+  color: hsl( 29, 54%, 61%);
+}
+
+code .token {
+  color: hsl(286, 60%, 67%);
+}
+
+.markdown-section pre>code,
+.markdown-section code,
+.markdown-section pre {
+  background-color: #313440;
+}
+
+.markdown-section pre>code,
+.token.punctuation {
+  color: hsl(220, 14%, 71%);
+}
+
+.token.cdata,
+.token.comment,
+.token.doctype,
+.token.prolog {
+  color: hsl(220, 10%, 40%);
+}
+
+.token.property {
+  color: hsl(187, 47%, 55%);
+}
+
+.sidebar-toggle {
+  background: #42b983;
+}
+
+.sidebar-toggle span {
+  background-color: white;
+}
+
+.sidebar-toggle {
+  width: 36px;
+  cursor: pointer;
+}
+
+@media screen and (max-width:768px) {
+  .sidebar-toggle {
+    padding: 10px;
+  }
+  body.close .sidebar-toggle {
+    display: none;
+  }
+}
+
+.sidebar-toggle .sidebar-toggle-button:hover {
+  opacity: .8;
+}
+.sidebar {
+  width: 250px;
+}
+.sidebar > h1 {
+  text-align: left;
+  margin: 0 0 0 15px;
+}
