@@ -1,16 +1,17 @@
 package fiber
 
 import (
-	"bytes"
 	"encoding/base64"
 	"mime"
 	"mime/multipart"
 	"path/filepath"
 	"strings"
 
-	"github.com/pquerna/ffjson/ffjson"
+	"github.com/json-iterator/go"
 	"github.com/valyala/fasthttp"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // Next :
 func (ctx *Ctx) Next() {
@@ -217,11 +218,12 @@ func (ctx *Ctx) Get(key string) string {
 
 // Json :
 func (ctx *Ctx) Json(v interface{}) error {
+	raw, err := json.Marshal(&v)
+	if err != nil {
+		return err
+	}
 	ctx.Set("Content-Type", "application/json")
-	b := bytes.NewBuffer(nil)
-	enc := ffjson.NewEncoder(b)
-	err := enc.Encode(v)
-	ctx.Send(b.Bytes())
+	ctx.Send(b2s(raw))
 	return err
 }
 

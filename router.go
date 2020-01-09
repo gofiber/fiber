@@ -12,11 +12,12 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	// ParseJSON "github.com/tidwall/gjson"
 	"github.com/valyala/fasthttp"
 )
 
 const (
-	Version = `v0.3.0`
+	Version = `v0.3.1`
 	banner  = ` _____ _ _
 |   __|_| |_ ___ ___
 |   __| | . | -_|  _|
@@ -66,7 +67,6 @@ type Settings struct {
 // Fiber :
 type Fiber struct {
 	routes   []*route
-	methods  []string
 	Settings *Settings
 }
 
@@ -316,7 +316,7 @@ func (r *Fiber) Listen(args ...interface{}) {
 		r.Settings.NoDefaultServerHeader = false
 	}
 	server := &fasthttp.Server{
-		// Express custom handler
+		// Fiber custom handler
 		Handler: r.handler,
 		// Server settings
 		Name:                               r.Settings.Name,
@@ -355,7 +355,6 @@ func (r *Fiber) Listen(args ...interface{}) {
 	if !r.Settings.HideBanner {
 		fmt.Printf(color.HiCyanString(banner), color.GreenString(":"+port), color.HiBlackString("("+Version+")"))
 	}
-	// fmt.Printf(banner, Version)
 	if r.Settings.TLSEnable {
 		if err := server.ListenAndServeTLS(fmt.Sprintf("%s:%s", addr, port), r.Settings.CertFile, r.Settings.CertKey); err != nil {
 			panic(err)
