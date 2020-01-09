@@ -93,9 +93,14 @@ code .token {
 @media screen and (max-width:768px) {
   .sidebar-toggle {
     padding: 10px;
+    left: auto;
+    right: 0;
   }
   body.close .sidebar-toggle {
     display: none;
+  }
+  .sidebar {
+    width: 200px;
   }
 }
 
