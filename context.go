@@ -130,32 +130,31 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 	return ""
 }
 
+// Cookie :
+func (ctx *Ctx) Cookie(name, value string, options ...interface{}) {
+	cook := &fasthttp.Cookie{}
+	if len(options) > 0 {
+		// options
+	}
+	cook.SetKey(name)
+	cook.SetValue(value)
+	ctx.Fasthttp.Response.Header.SetCookie(cook)
+}
+
 // Cookies :
 func (ctx *Ctx) Cookies(args ...interface{}) string {
 	if len(args) == 0 {
 		return ctx.Get("Cookie")
 	}
-	if len(args) == 1 {
-		switch arg := args[0].(type) {
-		case string:
-			return ctx.Get(arg)
-		case func(string, string):
-			ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-				arg(b2s(k), b2s(v))
-			})
-		default:
-			panic("Argument must be a string or func(string, string)")
-		}
-	}
-	if len(args) > 1 {
-		cook := &fasthttp.Cookie{}
-		cook.SetKey(args[0].(string))
-		cook.SetValue(args[1].(string))
-		if len(args) > 2 {
-			// Do something with cookie options (args[2])
-			// Dont forget to finish this
-		}
-		ctx.Fasthttp.Response.Header.SetCookie(cook)
+	switch arg := args[0].(type) {
+	case string:
+		return b2s(ctx.Fasthttp.Request.Header.Cookie(arg))
+	case func(string, string):
+		ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
+			arg(b2s(k), b2s(v))
+		})
+	default:
+		panic("Argument must be a string or func(string, string)")
 	}
 	return ""
 }
@@ -174,6 +173,7 @@ func (ctx *Ctx) ClearCookies(args ...string) {
 
 // Send :
 func (ctx *Ctx) Send(args ...interface{}) {
+
 	// https://github.com/valyala/fasthttp/blob/master/http.go#L490
 	if len(args) != 1 {
 		panic("To many arguments!")
@@ -188,6 +188,16 @@ func (ctx *Ctx) Send(args ...interface{}) {
 	default:
 		panic("body must be a string or []byte")
 	}
+}
+
+// SendString internal use
+func (ctx *Ctx) SendString(body string) {
+	ctx.Fasthttp.Response.SetBodyString(body)
+}
+
+// SendByte internal use
+func (ctx *Ctx) SendByte(body []byte) {
+	ctx.Fasthttp.Response.SetBodyString(b2s(body))
 }
 
 // Write :
@@ -226,8 +236,8 @@ func (ctx *Ctx) Json(v interface{}) error {
 		return err
 	}
 	ctx.Set("Content-Type", "application/json")
-	ctx.Send(b2s(raw))
-	return err
+	ctx.SendByte(raw)
+	return nil
 }
 
 // Redirect :
@@ -263,8 +273,8 @@ func (ctx *Ctx) Hostname() string {
 	return b2s(ctx.Fasthttp.URI().Host())
 }
 
-// OriginalURL :
-func (ctx *Ctx) OriginalURL() string {
+// OriginalUrl :
+func (ctx *Ctx) OriginalUrl() string {
 	return b2s(ctx.Fasthttp.Request.Header.RequestURI())
 }
 
@@ -281,8 +291,8 @@ func (ctx *Ctx) Secure() bool {
 	return ctx.Fasthttp.IsTLS()
 }
 
-// IP :
-func (ctx *Ctx) IP() string {
+// Ip :
+func (ctx *Ctx) Ip() string {
 	return ctx.Fasthttp.RemoteIP().String()
 }
 
@@ -343,4 +353,82 @@ func (ctx *Ctx) SendFile(file string) {
 // Location :
 func (ctx *Ctx) Location(path string) {
 	ctx.Set("Location", path)
+}
+
+// Subdomains :
+func (ctx *Ctx) Subdomains() (subs []string) {
+	subs = strings.Split(ctx.Hostname(), ".")
+	subs = subs[:len(subs)-2]
+	return subs
+}
+
+// Ips https://expressjs.com/en/4x/api.html#req.ips
+func (ctx *Ctx) Ips() []string {
+	ips := strings.Split(ctx.Get("X-Forwarded-For"), " ")
+	return ips
+}
+
+// Jsonp TODO https://expressjs.com/en/4x/api.html#res.jsonp
+func (ctx *Ctx) Jsonp(args ...interface{}) error {
+	jsonp := "callback("
+	if len(args) == 1 {
+		raw, err := json.Marshal(&args[0])
+		if err != nil {
+			return err
+		}
+		jsonp += b2s(raw) + ");"
+	} else if len(args) == 2 {
+		jsonp = args[0].(string) + "("
+		raw, err := json.Marshal(&args[0])
+		if err != nil {
+			return err
+		}
+		jsonp += b2s(raw) + ");"
+	} else {
+		panic("Missing interface{}")
+	}
+	ctx.Set("X-Content-Type-Options", "nosniff")
+	ctx.Set("Content-Type", "text/javascript")
+	ctx.SendString(jsonp)
+	return nil
+}
+
+// Vary TODO https://expressjs.com/en/4x/api.html#res.vary
+func (ctx *Ctx) Vary() {
+
+}
+
+// Links TODO https://expressjs.com/en/4x/api.html#res.links
+func (ctx *Ctx) Links() {
+
+}
+
+// Append TODO https://expressjs.com/en/4x/api.html#res.append
+func (ctx *Ctx) Append(field, val string) {
+	prev := ctx.Get(field)
+	value := val
+	if prev != "" {
+		value = prev + "; " + val
+	}
+	ctx.Set(field, value)
+}
+
+// Accepts TODO https://expressjs.com/en/4x/api.html#req.accepts
+func (ctx *Ctx) Accepts() bool {
+	return true
+}
+
+// Range TODO https://expressjs.com/en/4x/api.html#req.range
+func (ctx *Ctx) Range() bool {
+	return true
+}
+
+// Fresh TODO https://expressjs.com/en/4x/api.html#req.fresh
+func (ctx *Ctx) Fresh() bool {
+	return true
+}
+
+// Stale TODO https://expressjs.com/en/4x/api.html#req.fresh
+func (ctx *Ctx) Stale() bool {
+	return true
 }

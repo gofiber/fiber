@@ -245,6 +245,7 @@ func (r *Fiber) registerHandler(method, path string, handler func(*Ctx)) {
 
 // handler :
 func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
+	found := false
 	// get custom context from sync pool
 	ctx := acquireCtx(fctx)
 	// get path and method from main context
@@ -263,6 +264,7 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 				ctx.params = &[]string{"*"}
 				ctx.values = []string{path}
 			}
+			found = true
 			// Execute handler with context
 			route.handler(ctx)
 			// if next is not set, leave loop and release ctx
@@ -287,6 +289,7 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 				ctx.values = matches[0][1:len(matches[0])]
 			}
 		}
+		found = true
 		// Execute handler with context
 		route.handler(ctx)
 		// if next is not set, leave loop and release ctx
@@ -295,6 +298,10 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 		}
 		// set next to false for next iteration
 		ctx.next = false
+	}
+	if !found {
+		// No routes found
+		ctx.Status(404).Send("Not Found")
 	}
 	// release context back into sync pool
 	releaseCtx(ctx)

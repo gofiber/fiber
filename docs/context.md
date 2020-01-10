@@ -4,6 +4,28 @@ The ctx object represents the HTTP request and response and has methods for the 
 ## Accepts
 !> Planned for V2
 
+## Append
+Appends the specified value to the HTTP response header field. If the header is not already set, it creates the header with the specified value. The value parameter must be a string.
+```go
+// Function signature
+c.Append(field, value string)
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  // Let's see if the Link header exist
+  c.Get("Link")
+  // => ""
+
+  // Lets append some values to the link header
+  c.Append("Link", "http://localhost")
+  // => Link: http://localhost
+
+  c.Append("Link", "http://google.com")
+  // => Link: http://localhost; http://google.com
+})
+```
+
+
 ## Attachment
 Sets the HTTP response [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header field to “attachment”. If a filename is given, then it sets the Content-Type based on the extension name via (Type)[#type], and sets the Content-Disposition “filename=” parameter.
 ```go
@@ -53,7 +75,7 @@ The following example shows how to use the body function.
 // Function signature
 c.Body() string
 c.Body(key string) string
-c.Body(func(key string, value string)) func(string, string)
+c.Body(func(key value string)) func(string, string)
 
 // Example
 // curl -X POST http://localhost:8080 -d user=john
@@ -91,31 +113,41 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
+## Cookie
+Sets cookie name to value, the third options parameter is not implemented yet.
+```go
+c.Cookie(name, value string)
+//c.Cookie(name, value string, options...)
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  // Set cookie
+	c.Cookie("name", "john")
+  // => Cookie: name=john;
+})
+
+```
+
 ## Cookies
 Get and set cookies
 ```go
 // Function signature
 c.Cookies() string
 c.Cookies(key string) string
-c.Cookies(key string, value string) string
-c.Cookies(func(key string, value string))
+c.Cookies(func(key, value string)) string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-	// Create cookie with key, value
-	c.Cookies("name", "john")
-  // => Cookie: name=john
+  // Get raw cookie header
+	c.Cookies()
+  // => name=john;
 
 	// Get cookie by key
 	c.Cookies("name")
   // => "john"
 
-	// Get raw cookie header
-	c.Cookies()
-  // => name=john;
-
 	// Show all cookies
-	c.Cookies(func(key string, val string) {
+	c.Cookies(func(key, val string) {
 		fmt.Println(key, val)
     // => "name", "john"
 	})
@@ -127,7 +159,7 @@ Transfers the file at path as an “attachment”. Typically, browsers will prom
 ```go
 // Function signature
 c.Download(path string)
-c.Download(path string, filename string)
+c.Download(path, filename string)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
@@ -223,15 +255,15 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-## IP
+## Ip
 Contains the remote IP address of the request.
 ```go
 // Function signature
-c.IP() string
+c.Ip() string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-  c.IP()
+  c.Ip()
   // => "127.0.0.1"
 })
 ```
@@ -288,7 +320,33 @@ app.Listen(8080)
 ```
 
 ## Jsonp
-!> Planned for V2
+Sends a JSON response with JSONP support. This method is identical to [Json()](#json), except that it opts-in to JSONP callback support.
+
+By default, the JSONP callback name is simply callback. Override this by passing a named string in the function.
+```go
+// Function signature
+c.Jsonp(json interface{}) error
+c.Jsonp(callback string, v interface{}) error
+// Example
+type JsonStruct struct {
+	name string
+	age  uint8
+}
+
+app := fiber.New()
+app.Get("/", func(c *fiber.Ctx) {
+	data := JsonStruct{
+		name: "Grame",
+		age:  20,
+	}
+	c.Jsonp(data)
+  // => callback({"name": "Grame", "age": 20})
+
+  c.Jsonp("customFunc", data)
+  // => customFunc({"name": "Grame", "age": 20})
+})
+app.Listen(8080)
+```
 
 ## Method
 Contains a string corresponding to the HTTP method of the request: GET, POST, PUT, and so on.
@@ -359,16 +417,16 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-## OriginalURL
+## OriginalUrl
 Contains the original request URL.
 ```go
 // Function signature
-c.OriginalURL() string
+c.OriginalUrl() string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
 	// GET /search?q=something
-	c.OriginalURL()
+	c.OriginalUrl()
 	// => '/search?q=something'
 })
 ```
@@ -488,7 +546,7 @@ app.Get("/not-found", func(c *fiber.Ctx) {
 Sets the response’s HTTP header field to value. To set multiple fields at once, pass an object as the parameter.
 ```go
 // Function signature
-c.Set(key string, value string)
+c.Set(key, value string)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
