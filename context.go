@@ -2,50 +2,109 @@ package fiber
 
 import (
 	"encoding/base64"
+	"fmt"
 	"mime"
 	"mime/multipart"
 	"path/filepath"
 	"strings"
+	"sync"
 
-	"github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/valyala/fasthttp"
 )
 
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
+// Ctx struct
+type Ctx struct {
+	noCopy   noCopy
+	next     bool
+	params   *[]string
+	values   []string
+	Fasthttp *fasthttp.RequestCtx
+}
 
-// Next :
-func (ctx *Ctx) Next() {
-	ctx.next = true
+// Ctx pool
+var ctxPool = sync.Pool{
+	New: func() interface{} {
+		return new(Ctx)
+	},
+}
+
+// Get new Ctx from pool
+func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
+	ctx := ctxPool.Get().(*Ctx)
+	ctx.Fasthttp = fctx
+	return ctx
+}
+
+// Return Context to pool
+func releaseCtx(ctx *Ctx) {
+	ctx.next = false
 	ctx.params = nil
 	ctx.values = nil
+	ctx.Fasthttp = nil
+	ctxPool.Put(ctx)
 }
 
-// Params :
-func (ctx *Ctx) Params(key string) string {
-	if ctx.params == nil {
-		return ""
+// Accepts :
+func (ctx *Ctx) Accepts(ext string) bool {
+	accept := ctx.Get("Accept")
+	if ext[0] != '.' {
+		ext = "." + ext
 	}
-	for i := 0; i < len(*ctx.params); i++ {
-		if (*ctx.params)[i] == key {
-			return ctx.values[i]
-		}
+	// Accept: text/*, application/json
+	// n = text/html => no match
+	m := mime.TypeByExtension(ext)
+	if strings.Contains(accept, m) {
+		return true
 	}
-	return ""
+	// Accept: text/*, application/json
+	// n = text/* => match
+	m = strings.Split(m, "/")[0]
+	if strings.Contains(accept, m+"/*") {
+		return true
+	}
+	return false
 }
 
-// Query :
-func (ctx *Ctx) Query(key string) string {
-	return b2s(ctx.Fasthttp.QueryArgs().Peek(key))
+// AcceptsCharsets TODO
+func (ctx *Ctx) AcceptsCharsets() {
+
 }
 
-// Method :
-func (ctx *Ctx) Method() string {
-	return b2s(ctx.Fasthttp.Request.Header.Method())
+// AcceptsCharsets TODO
+func (ctx *Ctx) AcceptsEncodings() {
+
 }
 
-// Path :
-func (ctx *Ctx) Path() string {
-	return b2s(ctx.Fasthttp.URI().Path())
+// AcceptsCharsets TODO
+func (ctx *Ctx) AcceptsLanguages() {
+
+}
+
+// Append :
+func (ctx *Ctx) Append(field, val string) {
+	prev := ctx.Get(field)
+	value := val
+	if prev != "" {
+		value = prev + "; " + val
+	}
+	ctx.Set(field, value)
+}
+
+// Attachment :
+func (ctx *Ctx) Attachment(name ...string) {
+	if len(name) > 0 {
+		filename := filepath.Base(name[0])
+		ctx.Type(filepath.Ext(filename))
+		ctx.Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+		return
+	}
+	ctx.Set("Content-Disposition", "attachment")
+}
+
+// BaseUrl TODO
+func (ctx *Ctx) BaseUrl() {
+
 }
 
 // BasicAuth :
@@ -71,45 +130,6 @@ func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
 	return cs[:s], cs[s+1:], true
 }
 
-// MultipartForm :
-func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
-	return ctx.Fasthttp.MultipartForm()
-}
-
-// FormValue :
-func (ctx *Ctx) FormValue(key string) string {
-	return b2s(ctx.Fasthttp.FormValue(key))
-}
-
-// FormFile :
-func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
-	return ctx.Fasthttp.FormFile(key)
-}
-
-// SaveFile :
-func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) {
-	fasthttp.SaveMultipartFile(fh, path)
-}
-
-// // FormValue :
-// func (ctx *Ctx) FormValues(key string) (values []string) {
-// 	form, err := ctx.Fasthttp.MultipartForm()
-// 	if err != nil {
-// 		return values
-// 	}
-// 	return form.Value[key]
-// }
-//
-// // FormFile :
-// func (ctx *Ctx) FormFiles(key string) (files []*multipart.FileHeader) {
-// 	form, err := ctx.Fasthttp.MultipartForm()
-// 	if err != nil {
-// 		return files
-// 	}
-// 	files = form.File[key]
-// 	return files
-// }
-
 // Body :
 func (ctx *Ctx) Body(args ...interface{}) string {
 	if len(args) == 0 {
@@ -128,6 +148,18 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 		}
 	}
 	return ""
+}
+
+// ClearCookie :
+func (ctx *Ctx) ClearCookie(name ...string) {
+	if len(name) == 0 {
+		ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
+			ctx.Fasthttp.Response.Header.DelClientCookie(b2s(k))
+		})
+	}
+	if len(name) > 0 {
+		ctx.Fasthttp.Response.Header.DelClientCookie(name[0])
+	}
 }
 
 // Cookie :
@@ -159,16 +191,224 @@ func (ctx *Ctx) Cookies(args ...interface{}) string {
 	return ""
 }
 
-// ClearCookies :
-func (ctx *Ctx) ClearCookies(args ...string) {
-	if len(args) == 0 {
-		ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-			ctx.Fasthttp.Response.Header.DelClientCookie(b2s(k))
-		})
+// Download :
+func (ctx *Ctx) Download(file string, name ...string) {
+	filename := filepath.Base(file)
+	if len(name) > 0 {
+		filename = name[0]
 	}
-	if len(args) == 1 {
-		ctx.Fasthttp.Response.Header.DelClientCookie(args[0])
+	ctx.Set("Content-Disposition", "attachment; filename="+filename)
+	ctx.SendFile(file)
+}
+
+// End TODO
+func (ctx *Ctx) End() {
+
+}
+
+// Format TODO
+func (ctx *Ctx) Format() {
+
+}
+
+// FormFile :
+func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
+	return ctx.Fasthttp.FormFile(key)
+}
+
+// FormValue :
+func (ctx *Ctx) FormValue(key string) string {
+	return b2s(ctx.Fasthttp.FormValue(key))
+}
+
+// Fresh TODO https://expressjs.com/en/4x/api.html#req.fresh
+func (ctx *Ctx) Fresh() bool {
+	return true
+}
+
+// Get :
+func (ctx *Ctx) Get(key string) string {
+	// https://en.wikipedia.org/wiki/HTTP_referer
+	if key == "referrer" {
+		key = "referer"
 	}
+	return b2s(ctx.Fasthttp.Request.Header.Peek(key))
+}
+
+// HeadersSent TODO
+func (ctx *Ctx) HeadersSent() {
+
+}
+
+// Hostname :
+func (ctx *Ctx) Hostname() string {
+	return b2s(ctx.Fasthttp.URI().Host())
+}
+
+// Ip :
+func (ctx *Ctx) Ip() string {
+	return ctx.Fasthttp.RemoteIP().String()
+}
+
+// Ips https://expressjs.com/en/4x/api.html#req.ips
+func (ctx *Ctx) Ips() []string {
+	ips := strings.Split(ctx.Get("X-Forwarded-For"), ",")
+	for i := range ips {
+		ips[i] = strings.TrimSpace(ips[i])
+	}
+	return ips
+}
+
+// Is :
+func (ctx *Ctx) Is(ext string) bool {
+	if ext[0] != '.' {
+		ext = "." + ext
+	}
+	exts, _ := mime.ExtensionsByType(ctx.Get("Content-Type"))
+	if len(exts) > 0 {
+		for _, item := range exts {
+			if item == ext {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Json :
+func (ctx *Ctx) Json(v interface{}) error {
+	raw, err := jsoniter.Marshal(&v)
+	if err != nil {
+		return err
+	}
+	ctx.Set("Content-Type", "application/json")
+	ctx.Fasthttp.Response.SetBodyString(b2s(raw))
+	return nil
+}
+
+// Jsonp :
+func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
+	cbName := "callback"
+	// Default cbName is "callback"
+	if len(cb) > 0 {
+		cbName = cb[0]
+	}
+	fmt.Println(cbName[0])
+	raw, err := jsoniter.Marshal(&v)
+	if err != nil {
+		return err
+	}
+	// Create buffer with length of json + cbname + ( );
+	buf := make([]byte, len(raw)+len(cbName)+3)
+
+	count := 0
+	count += copy(buf[count:], cbName)
+	count += copy(buf[count:], "(")
+	count += copy(buf[count:], raw)
+	count += copy(buf[count:], ");")
+
+	ctx.Set("X-Content-Type-Options", "nosniff")
+	ctx.Set("Content-Type", "text/javascript")
+	ctx.Fasthttp.Response.SetBodyString(b2s(buf))
+	return nil
+}
+
+// Links TODO
+func (ctx *Ctx) Links() {
+
+}
+
+// Locals TODO
+func (ctx *Ctx) Locals() {
+
+}
+
+// Location :
+func (ctx *Ctx) Location(path string) {
+	ctx.Set("Location", path)
+}
+
+// Method :
+func (ctx *Ctx) Method() string {
+	return b2s(ctx.Fasthttp.Request.Header.Method())
+}
+
+// MultipartForm :
+func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
+	return ctx.Fasthttp.MultipartForm()
+}
+
+// Next :
+func (ctx *Ctx) Next() {
+	ctx.next = true
+	ctx.params = nil
+	ctx.values = nil
+}
+
+// OriginalUrl :
+func (ctx *Ctx) OriginalUrl() string {
+	return b2s(ctx.Fasthttp.Request.Header.RequestURI())
+}
+
+// Params :
+func (ctx *Ctx) Params(key string) string {
+	if ctx.params == nil {
+		return ""
+	}
+	for i := 0; i < len(*ctx.params); i++ {
+		if (*ctx.params)[i] == key {
+			return ctx.values[i]
+		}
+	}
+	return ""
+}
+
+// Path :
+func (ctx *Ctx) Path() string {
+	return b2s(ctx.Fasthttp.URI().Path())
+}
+
+// Protocol :
+func (ctx *Ctx) Protocol() string {
+	if ctx.Fasthttp.IsTLS() {
+		return "https"
+	}
+	return "http"
+}
+
+// Query :
+func (ctx *Ctx) Query(key string) string {
+	return b2s(ctx.Fasthttp.QueryArgs().Peek(key))
+}
+
+// Range TODO
+func (ctx *Ctx) Range() {
+
+}
+
+// Redirect :
+func (ctx *Ctx) Redirect(path string, status ...int) {
+	ctx.Set("Location", path)
+	if len(status) > 0 {
+		ctx.Status(status[0])
+	} else {
+		ctx.Status(302)
+	}
+}
+
+// Render TODO https://expressjs.com/en/4x/api.html#res.render
+func (ctx *Ctx) Render() {
+
+}
+
+// Route TODO https://expressjs.com/en/4x/api.html#res.render
+func (ctx *Ctx) Route() {
+
+}
+
+// Secure :
+func (ctx *Ctx) Secure() bool {
+	return ctx.Fasthttp.IsTLS()
 }
 
 // Send :
@@ -190,29 +430,17 @@ func (ctx *Ctx) Send(args ...interface{}) {
 	}
 }
 
-// SendString internal use
-func (ctx *Ctx) SendString(body string) {
-	ctx.Fasthttp.Response.SetBodyString(body)
+// SendFile :
+func (ctx *Ctx) SendFile(file string) {
+	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
+	fasthttp.ServeFile(ctx.Fasthttp, file)
+	//ctx.Type(filepath.Ext(path))
+	//ctx.Fasthttp.SendFile(path)
 }
 
-// SendByte internal use
-func (ctx *Ctx) SendByte(body []byte) {
-	ctx.Fasthttp.Response.SetBodyString(b2s(body))
-}
+// SendStatus :
+func (ctx *Ctx) SendStatus() {
 
-// Write :
-func (ctx *Ctx) Write(args ...interface{}) {
-	if len(args) != 1 {
-		panic("To many arguments!")
-	}
-	switch body := args[0].(type) {
-	case string:
-		ctx.Fasthttp.Response.AppendBodyString(body)
-	case []byte:
-		ctx.Fasthttp.Response.AppendBodyString(b2s(body))
-	default:
-		panic("body must be a string or []byte")
-	}
 }
 
 // Set :
@@ -220,42 +448,27 @@ func (ctx *Ctx) Set(key string, val string) {
 	ctx.Fasthttp.Response.Header.SetCanonical(s2b(key), s2b(val))
 }
 
-// Get :
-func (ctx *Ctx) Get(key string) string {
-	// https://en.wikipedia.org/wiki/HTTP_referer
-	if key == "referrer" {
-		key = "referer"
-	}
-	return b2s(ctx.Fasthttp.Request.Header.Peek(key))
+// SignedCookies TODO
+func (ctx *Ctx) SignedCookies() {
+
 }
 
-// Json :
-func (ctx *Ctx) Json(v interface{}) error {
-	raw, err := json.Marshal(&v)
-	if err != nil {
-		return err
-	}
-	ctx.Set("Content-Type", "application/json")
-	ctx.SendByte(raw)
-	return nil
-}
-
-// Redirect :
-func (ctx *Ctx) Redirect(args ...interface{}) {
-	if len(args) == 1 {
-		ctx.Set("Location", args[0].(string))
-		ctx.Status(302)
-	}
-	if len(args) == 2 {
-		ctx.Set("Location", args[1].(string))
-		ctx.Status(args[0].(int))
-	}
+// Stale TODO https://expressjs.com/en/4x/api.html#req.fresh
+func (ctx *Ctx) Stale() bool {
+	return true
 }
 
 // Status :
 func (ctx *Ctx) Status(status int) *Ctx {
 	ctx.Fasthttp.Response.SetStatusCode(status)
 	return ctx
+}
+
+// Subdomains :
+func (ctx *Ctx) Subdomains() (subs []string) {
+	subs = strings.Split(ctx.Hostname(), ".")
+	subs = subs[:len(subs)-2]
+	return subs
 }
 
 // Type :
@@ -268,167 +481,27 @@ func (ctx *Ctx) Type(ext string) *Ctx {
 	return ctx
 }
 
-// Hostname :
-func (ctx *Ctx) Hostname() string {
-	return b2s(ctx.Fasthttp.URI().Host())
+// Vary TODO
+func (ctx *Ctx) Vary() {
+
 }
 
-// OriginalUrl :
-func (ctx *Ctx) OriginalUrl() string {
-	return b2s(ctx.Fasthttp.Request.Header.RequestURI())
-}
-
-// Protocol :
-func (ctx *Ctx) Protocol() string {
-	if ctx.Fasthttp.IsTLS() {
-		return "https"
+// Write :
+func (ctx *Ctx) Write(args ...interface{}) {
+	if len(args) == 0 {
+		panic("Missing body")
 	}
-	return "http"
-}
-
-// Secure :
-func (ctx *Ctx) Secure() bool {
-	return ctx.Fasthttp.IsTLS()
-}
-
-// Ip :
-func (ctx *Ctx) Ip() string {
-	return ctx.Fasthttp.RemoteIP().String()
+	switch body := args[0].(type) {
+	case string:
+		ctx.Fasthttp.Response.SetBodyString(body)
+	case []byte:
+		ctx.Fasthttp.Response.AppendBodyString(b2s(body))
+	default:
+		panic("body must be a string or []byte")
+	}
 }
 
 // Xhr :
 func (ctx *Ctx) Xhr() bool {
 	return ctx.Get("X-Requested-With") == "XMLHttpRequest"
-}
-
-// Is :
-func (ctx *Ctx) Is(ext string) bool {
-	if ext[0] != '.' {
-		ext = "." + ext
-	}
-	exts, _ := mime.ExtensionsByType(ctx.Get("Content-Type"))
-	if len(exts) > 0 {
-		for _, item := range exts {
-			if item == ext {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// Attachment :
-func (ctx *Ctx) Attachment(args ...string) {
-	if len(args) == 1 {
-		filename := filepath.Base(args[0])
-		ctx.Type(filepath.Ext(filename))
-		ctx.Set("Content-Disposition", `attachment; filename="`+filename+`"`)
-		return
-	}
-	ctx.Set("Content-Disposition", "attachment")
-}
-
-// Download :
-func (ctx *Ctx) Download(args ...string) {
-	if len(args) == 0 {
-		panic("Missing filename")
-	}
-	file := args[0]
-	filename := filepath.Base(file)
-	if len(args) > 1 {
-		filename = args[1]
-	}
-	ctx.Set("Content-Disposition", "attachment; filename="+filename)
-	ctx.SendFile(file)
-}
-
-// SendFile :
-func (ctx *Ctx) SendFile(file string) {
-	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
-	fasthttp.ServeFile(ctx.Fasthttp, file)
-	//ctx.Type(filepath.Ext(path))
-	//ctx.Fasthttp.SendFile(path)
-}
-
-// Location :
-func (ctx *Ctx) Location(path string) {
-	ctx.Set("Location", path)
-}
-
-// Subdomains :
-func (ctx *Ctx) Subdomains() (subs []string) {
-	subs = strings.Split(ctx.Hostname(), ".")
-	subs = subs[:len(subs)-2]
-	return subs
-}
-
-// Ips https://expressjs.com/en/4x/api.html#req.ips
-func (ctx *Ctx) Ips() []string {
-	ips := strings.Split(ctx.Get("X-Forwarded-For"), " ")
-	return ips
-}
-
-// Jsonp TODO https://expressjs.com/en/4x/api.html#res.jsonp
-func (ctx *Ctx) Jsonp(args ...interface{}) error {
-	jsonp := "callback("
-	if len(args) == 1 {
-		raw, err := json.Marshal(&args[0])
-		if err != nil {
-			return err
-		}
-		jsonp += b2s(raw) + ");"
-	} else if len(args) == 2 {
-		jsonp = args[0].(string) + "("
-		raw, err := json.Marshal(&args[0])
-		if err != nil {
-			return err
-		}
-		jsonp += b2s(raw) + ");"
-	} else {
-		panic("Missing interface{}")
-	}
-	ctx.Set("X-Content-Type-Options", "nosniff")
-	ctx.Set("Content-Type", "text/javascript")
-	ctx.SendString(jsonp)
-	return nil
-}
-
-// Vary TODO https://expressjs.com/en/4x/api.html#res.vary
-func (ctx *Ctx) Vary() {
-
-}
-
-// Links TODO https://expressjs.com/en/4x/api.html#res.links
-func (ctx *Ctx) Links() {
-
-}
-
-// Append TODO https://expressjs.com/en/4x/api.html#res.append
-func (ctx *Ctx) Append(field, val string) {
-	prev := ctx.Get(field)
-	value := val
-	if prev != "" {
-		value = prev + "; " + val
-	}
-	ctx.Set(field, value)
-}
-
-// Accepts TODO https://expressjs.com/en/4x/api.html#req.accepts
-func (ctx *Ctx) Accepts() bool {
-	return true
-}
-
-// Range TODO https://expressjs.com/en/4x/api.html#req.range
-func (ctx *Ctx) Range() bool {
-	return true
-}
-
-// Fresh TODO https://expressjs.com/en/4x/api.html#req.fresh
-func (ctx *Ctx) Fresh() bool {
-	return true
-}
-
-// Stale TODO https://expressjs.com/en/4x/api.html#req.fresh
-func (ctx *Ctx) Stale() bool {
-	return true
 }

@@ -9,13 +9,13 @@
 **[Fiber](https://github.com/fenny/fiber)** is a router framework build on top of [FastHTTP](https://github.com/valyala/fasthttp), the fastest HTTP package for **[Go](https://golang.org/doc/)**.<br>
 This library is inspired by [Express](https://expressjs.com/en/4x/api.html), one of the most populair and well known web framework for **[Nodejs](https://nodejs.org/en/about/)**.
 
-## Installing
+#### Installing
 Assuming you’ve already installed [Go](https://golang.org/doc/), install the [Fiber](https://github.com/fenny/fiber) package by calling the following command:
 ```shell
 $ go get -u github.com/fenny/fiber
 ```
 
-## Hello world
+#### Hello world
 Embedded below is essentially the simplest Fiber app you can create.
 ```shell
 $ create server.go
@@ -38,7 +38,7 @@ $ go run server.go
 ```
 Browse to http://localhost:8080 and you should see Hello, World! on the page.
 
-## Basic routing
+#### Basic routing
 Routing refers to determining how an application responds to a client request to a particular endpoint, which is a URI (or path) and a specific HTTP request method (GET, POST, and so on).
 
 Each route can have one handler function, that is executed when the route is matched.
@@ -84,7 +84,7 @@ app.Delete("/user", func(c *fiber.Ctx) {
 })
 ```
 
-## Static files
+#### Static files
 To serve static files such as images, CSS files, and JavaScript files, replace your function handler with a file or directory string.
 ```go
 // Function signature

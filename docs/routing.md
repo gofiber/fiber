@@ -1,7 +1,7 @@
 # Routing
 
 
-## Paths
+#### Paths
 Route paths, in combination with a request method, define the endpoints at which requests can be made. Route paths can be strings, string patterns, or regular expressions.
 
 The characters ?, +, "8", and () are subsets of their regular expression counterparts. The hyphen (-) and the dot (.) are interpreted literally by string-based paths.
@@ -47,7 +47,7 @@ app.Get("/ab(cd)?e", func(c *fiber.Ctx) {
 })
 ```
 
-## Parameters
+#### Parameters
 Route parameters are named URL segments that are used to capture the values specified at their position in the URL. The captured values can be retrieved using the [Params](context#params) function, with the name of the route parameter specified in the path as their respective keys.
 
 To define routes with route parameters, simply specify the route parameters in the path of the route as shown below.
@@ -70,7 +70,7 @@ app.Get("/user/:name?", func(c *fiber.Ctx) {
 
 !> The hyphen (-) and the dot (.) are not interpreted literally yet, planned for V2
 
-## Middleware
+#### Middleware
 The [Next](context#next) function is a function in the [Fiber](https://github.com/fenny/fiber) router which, when called, executes the next function that matches the current route.
 
 Functions that are designed to make changes to the request or response are called middleware functions.

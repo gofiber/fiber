@@ -1,6 +1,6 @@
 # Examples
 
-## Multiple File Upload
+#### Multiple File Upload
 ```go
 
 package main
@@ -31,7 +31,7 @@ func main() {
 	app.Listen(8080)
 }
 ```
-## 404 Handling
+#### 404 Handling
 ```go
 package main
 
@@ -50,7 +50,7 @@ func notFound(c *fiber.Ctx) {
 	c.Status(404).Send("Not Found")
 }
 ```
-## Static Caching
+#### Static Caching
 ```go
 package main
 
@@ -68,7 +68,7 @@ func cacheControl(c *fiber.Ctx) {
 	c.Next()
 }
 ```
-## Enable CORS
+#### Enable CORS
 ```go
 package main
 
@@ -92,7 +92,7 @@ func apiHandler(c *fiber.Ctx) {
 	c.Send("Hi, I'm API!")
 }
 ```
-## Returning JSON
+#### Returning JSON
 ```go
 package main
 

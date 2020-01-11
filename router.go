@@ -11,38 +11,69 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
-	// ParseJSON "github.com/tidwall/gjson"
+	// This json parsing lib is awesome *.*
+	// "github.com/tidwall/gjson"
 	"github.com/valyala/fasthttp"
 )
 
 const (
-	Version = `v0.4.0`
-	banner  = ` _____ _ _
-|   __|_| |_ ___ ___
-|   __| | . | -_|  _|
-|__|  |_|___|___|_|%s %s
+	// Version for debugging
+	Version = `0.5.0`
+	// Port and Version are printed with the banner
+	banner = `%s  _____ _ _
+ |   __|_| |_ ___ ___
+ |   __| | . | -_|  _|
+ |__|  |_|___|___|_|%s
+ %s%s
 
-`
+ `
+	// https://play.golang.org/p/r6GNeV1gbH
+	cReset   = "\x1b[0000m"
+	cBlack   = "\x1b[1;30m"
+	cRed     = "\x1b[1;31m"
+	cGreen   = "\x1b[1;32m"
+	cYellow  = "\x1b[1;33m"
+	cBlue    = "\x1b[1;34m"
+	cMagenta = "\x1b[1;35m"
+	cCyan    = "\x1b[1;36m"
+	cWhite   = "\x1b[1;37m"
 )
 
+// Fiber structure
+type Fiber struct {
+	// Stores all routes
+	routes []*route
+	// Fasthttp server settings
+	Fasthttp *Fasthttp
+	// Server name header
+	Server string
+	// Provide certificate files to enable TLS
+	CertKey  string
+	CertFile string
+	// Disable the fiber banner on launch
+	NoBanner bool
+	// Clears terminal on launch
+	ClearTerminal bool
+}
+
 type route struct {
-	method  string
-	any     bool
-	path    string
-	regex   *regexp.Regexp
-	params  []string
+	// HTTP method in uppercase, can be a * for Use() & All()
+	method string
+	// Any bool is for routes without a path or * and /*
+	any bool
+	// Stores the orignal path
+	path string
+	// Stores compiled regex special routes :params, *wildcards, optionals?
+	regex *regexp.Regexp
+	// Store params if special routes :params, *wildcards, optionals?
+	params []string
+	// Callback function for specific route
 	handler func(*Ctx)
 }
 
-// Settings :
-type Settings struct {
-	Name                               string
-	ClearTerminal                      bool
-	HideBanner                         bool
-	TLSEnable                          bool
-	CertKey                            string
-	CertFile                           string
+// Fasthttp settings
+// https://github.com/valyala/fasthttp/blob/master/server.go#L150
+type Fasthttp struct {
 	Concurrency                        int
 	DisableKeepAlive                   bool
 	ReadBufferSize                     int
@@ -59,27 +90,25 @@ type Settings struct {
 	GetOnly                            bool
 	DisableHeaderNamesNormalizing      bool
 	SleepWhenConcurrencyLimitsExceeded time.Duration
-	NoDefaultServerHeader              bool
 	NoDefaultContentType               bool
 	KeepHijackedConns                  bool
 }
 
-// Fiber :
-type Fiber struct {
-	routes   []*route
-	Settings *Settings
-}
-
-// New :
+// New creates a Fiber instance
 func New() *Fiber {
 	return &Fiber{
-		Settings: &Settings{
-			Name:                               "",
-			ClearTerminal:                      false,
-			HideBanner:                         false,
-			TLSEnable:                          false,
-			CertKey:                            "",
-			CertFile:                           "",
+		// No server header is sent when set empty ""
+		Server: "",
+		// TLS is disabled by default, unless files are provided
+		CertKey:  "",
+		CertFile: "",
+		// Fiber banner is printed by default
+		NoBanner: false,
+		// Terminal is not cleared by default
+		ClearTerminal: false,
+		Fasthttp: &Fasthttp{
+			// Default fasthttp settings
+			// https://github.com/valyala/fasthttp/blob/master/server.go#L150
 			Concurrency:                        256 * 1024,
 			DisableKeepAlive:                   false,
 			ReadBufferSize:                     4096,
@@ -96,68 +125,76 @@ func New() *Fiber {
 			GetOnly:                            false,
 			DisableHeaderNamesNormalizing:      false,
 			SleepWhenConcurrencyLimitsExceeded: 0,
-			NoDefaultServerHeader:              true,
 			NoDefaultContentType:               false,
 			KeepHijackedConns:                  false,
 		},
 	}
 }
 
-// Connect :
+// Connect establishes a tunnel to the server
+// identified by the target resource.
 func (r *Fiber) Connect(args ...interface{}) {
 	r.register("CONNECT", args...)
 }
 
-// Put :
+// Put replaces all current representations
+// of the target resource with the request payload.
 func (r *Fiber) Put(args ...interface{}) {
 	r.register("PUT", args...)
 }
 
-// Post :
+// Post is used to submit an entity to the specified resource,
+// often causing a change in state or side effects on the server.
 func (r *Fiber) Post(args ...interface{}) {
 	r.register("POST", args...)
 }
 
-// Delete :
+// Delete deletes the specified resource.
 func (r *Fiber) Delete(args ...interface{}) {
 	r.register("DELETE", args...)
 }
 
-// Head :
+// Head asks for a response identical to that of a GET request,
+// but without the response body.
 func (r *Fiber) Head(args ...interface{}) {
 	r.register("HEAD", args...)
 }
 
-// Patch :
+// Patch is used to apply partial modifications to a resource.
 func (r *Fiber) Patch(args ...interface{}) {
 	r.register("PATCH", args...)
 }
 
-// Options :
+// Options is used to describe the communication options
+// for the target resource.
 func (r *Fiber) Options(args ...interface{}) {
 	r.register("OPTIONS", args...)
 }
 
-// Trace :
+// Trace performs a message loop-back test
+// along the path to the target resource.
 func (r *Fiber) Trace(args ...interface{}) {
 	r.register("TRACE", args...)
 }
 
-// Get :
+// Get requests a representation of the specified resource.
+// Requests using GET should only retrieve data.
 func (r *Fiber) Get(args ...interface{}) {
 	r.register("GET", args...)
 }
 
-// Use :
-func (r *Fiber) Use(args ...interface{}) {
-	r.register("*", args...)
-}
-
-// All :
+// All matches any HTTP method
 func (r *Fiber) All(args ...interface{}) {
 	r.register("*", args...)
 }
 
+// Use is another name for All()
+// People using Expressjs are used to this
+func (r *Fiber) Use(args ...interface{}) {
+	r.All(args...)
+}
+
+// Function to add a route correctly
 func (r *Fiber) register(method string, args ...interface{}) {
 	// Options
 	var path string
@@ -204,12 +241,15 @@ func (r *Fiber) registerStatic(method, prefix, root string) {
 	if prefix == "" {
 		prefix = "/"
 	}
-	files, _, err := walk(root)
+	files, _, err := walkDir(root)
 	if err != nil {
 		panic(err)
 	}
 	mount := filepath.Clean(root)
 	for _, file := range files {
+		if strings.Contains(file, ".fasthttp.gz") {
+			continue
+		}
 		path := filepath.Join(prefix, strings.Replace(file, mount, "", 1))
 		filePath := file
 		if filepath.Base(filePath) == "index.html" {
@@ -243,7 +283,14 @@ func (r *Fiber) registerHandler(method, path string, handler func(*Ctx)) {
 	r.routes = append(r.routes, &route{method, false, path, regex, params, handler})
 }
 
-// handler :
+// handler create a new context struct from the pool
+// then try to match a route as efficient as possible.
+// 1 > loop trough all routes
+// 2 > if method != * or method != method   							SKIP
+// 3 > if any == true or (path == path && params == nil): MATCH
+// 4 > if regex == nil: 																	SKIP
+// 5 > if regex.match(path) != true: 											SKIP
+// 6 > if params != nil && len(params) > 0 								REGEXPARAMS
 func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 	found := false
 	// get custom context from sync pool
@@ -276,8 +323,12 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 			// continue to go to the next route
 			continue
 		}
+		// Skip route if regex does not exist
+		if route.regex == nil {
+			continue
+		}
 		// Skip route if regex does not match
-		if route.regex == nil || !route.regex.MatchString(path) {
+		if !route.regex.MatchString(path) {
 			continue
 		}
 		// If we have parameters, lets find the matches
@@ -299,15 +350,16 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 		// set next to false for next iteration
 		ctx.next = false
 	}
+	// No routes found
 	if !found {
-		// No routes found
+		// Custom 404 handler?
 		ctx.Status(404).Send("Not Found")
 	}
 	// release context back into sync pool
 	releaseCtx(ctx)
 }
 
-// Listen :
+// Listen starts the server with the correct settings
 func (r *Fiber) Listen(args ...interface{}) {
 	var port string
 	var addr string
@@ -318,52 +370,49 @@ func (r *Fiber) Listen(args ...interface{}) {
 		addr = args[0].(string)
 		port = strconv.Itoa(args[1].(int))
 	}
-	// Disable server header if server name is not given
-	if r.Settings.Name != "" {
-		r.Settings.NoDefaultServerHeader = false
-	}
 	server := &fasthttp.Server{
-		// Fiber custom handler
-		Handler: r.handler,
-		// Server settings
-		Name:                               r.Settings.Name,
-		Concurrency:                        r.Settings.Concurrency,
-		DisableKeepalive:                   r.Settings.DisableKeepAlive,
-		ReadBufferSize:                     r.Settings.ReadBufferSize,
-		WriteBufferSize:                    r.Settings.WriteBufferSize,
-		ReadTimeout:                        r.Settings.ReadTimeout,
-		WriteTimeout:                       r.Settings.WriteTimeout,
-		IdleTimeout:                        r.Settings.IdleTimeout,
-		MaxConnsPerIP:                      r.Settings.MaxConnsPerIP,
-		MaxRequestsPerConn:                 r.Settings.MaxRequestsPerConn,
-		TCPKeepalive:                       r.Settings.TCPKeepalive,
-		TCPKeepalivePeriod:                 r.Settings.TCPKeepalivePeriod,
-		MaxRequestBodySize:                 r.Settings.MaxRequestBodySize,
-		ReduceMemoryUsage:                  r.Settings.ReduceMemoryUsage,
-		GetOnly:                            r.Settings.GetOnly,
-		DisableHeaderNamesNormalizing:      r.Settings.DisableHeaderNamesNormalizing,
-		SleepWhenConcurrencyLimitsExceeded: r.Settings.SleepWhenConcurrencyLimitsExceeded,
-		NoDefaultServerHeader:              r.Settings.NoDefaultServerHeader,
-		NoDefaultContentType:               r.Settings.NoDefaultContentType,
-		KeepHijackedConns:                  r.Settings.KeepHijackedConns,
+		Handler:                            r.handler,
+		Name:                               r.Server,
+		Concurrency:                        r.Fasthttp.Concurrency,
+		DisableKeepalive:                   r.Fasthttp.DisableKeepAlive,
+		ReadBufferSize:                     r.Fasthttp.ReadBufferSize,
+		WriteBufferSize:                    r.Fasthttp.WriteBufferSize,
+		ReadTimeout:                        r.Fasthttp.ReadTimeout,
+		WriteTimeout:                       r.Fasthttp.WriteTimeout,
+		IdleTimeout:                        r.Fasthttp.IdleTimeout,
+		MaxConnsPerIP:                      r.Fasthttp.MaxConnsPerIP,
+		MaxRequestsPerConn:                 r.Fasthttp.MaxRequestsPerConn,
+		TCPKeepalive:                       r.Fasthttp.TCPKeepalive,
+		TCPKeepalivePeriod:                 r.Fasthttp.TCPKeepalivePeriod,
+		MaxRequestBodySize:                 r.Fasthttp.MaxRequestBodySize,
+		ReduceMemoryUsage:                  r.Fasthttp.ReduceMemoryUsage,
+		GetOnly:                            r.Fasthttp.GetOnly,
+		DisableHeaderNamesNormalizing:      r.Fasthttp.DisableHeaderNamesNormalizing,
+		SleepWhenConcurrencyLimitsExceeded: r.Fasthttp.SleepWhenConcurrencyLimitsExceeded,
+		NoDefaultServerHeader:              r.Server == "",
+		NoDefaultContentType:               r.Fasthttp.NoDefaultContentType,
+		KeepHijackedConns:                  r.Fasthttp.KeepHijackedConns,
 	}
-	if r.Settings.ClearTerminal {
-		var cmd *exec.Cmd
-		goos := runtime.GOOS
-		if goos == "windows" {
-			cmd = exec.Command("cmd", "/c", "cls")
+	if r.ClearTerminal {
+		if runtime.GOOS == "linux" {
+			cmd := exec.Command("clear")
+			cmd.Stdout = os.Stdout
+			cmd.Run()
+		} else if runtime.GOOS == "windows" {
+			cmd := exec.Command("cmd", "/c", "cls")
+			cmd.Stdout = os.Stdout
+			cmd.Run()
 		}
-		if goos == "linux" {
-			cmd = exec.Command("clear")
-		}
-		cmd.Stdout = os.Stdout
-		cmd.Run()
 	}
-	if !r.Settings.HideBanner {
-		fmt.Printf(color.HiCyanString(banner), color.GreenString(":"+port), color.HiBlackString("("+Version+")"))
+	if !r.NoBanner {
+		fmt.Printf(banner, cGreen,
+			cBlack+Version,
+			cBlack+"Express on steriods",
+			cGreen+":"+port+cReset,
+		)
 	}
-	if r.Settings.TLSEnable {
-		if err := server.ListenAndServeTLS(fmt.Sprintf("%s:%s", addr, port), r.Settings.CertFile, r.Settings.CertKey); err != nil {
+	if r.CertKey != "" && r.CertFile != "" {
+		if err := server.ListenAndServeTLS(fmt.Sprintf("%s:%s", addr, port), r.CertFile, r.CertKey); err != nil {
 			panic(err)
 		}
 	} else {

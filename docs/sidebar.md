@@ -1,6 +1,6 @@
 - [Getting Started](/ "Fiber - Getting Started")
 - [Application](application.md "Fiber - Application")
-- [Routing](routing.md "Fiber - Routing")
 - [Context](context.md "Fiber - Context")
+- [Routing](routing.md "Fiber - Routing")
 - [Examples](examples.md "Fiber - Examples")
 - [License](license.md "Fiber - License")
