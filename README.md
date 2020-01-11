@@ -1,4 +1,4 @@
-<img src="docs/static/logo.jpg" width="150" alt="Fiber"><span style="color:red"><b>IMPORTANT:<b> This is still a beta version, not ready for production until v1.0.0 release!</span><br><br>
+<img src="docs/static/logo.jpg" width="150" alt="Fiber"><span style="color:red"><b>IMPORTANT:</b> This is still a beta version, not ready for production until v1.0.0 release!</span><br><br>
 [![Latest Release](https://img.shields.io/github/release/fenny/fiber.svg)](https://github.com/fenny/fiber/releases/latest)
 [![GoDoc](https://godoc.org/github.com/fenny/fiber?status.svg)](http://godoc.org/github.com/fenny/fiber)
 [![Go Report](https://goreportcard.com/badge/github.com/fenny/fiber)](https://goreportcard.com/report/github.com/fenny/fiber)
