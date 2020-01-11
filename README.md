@@ -9,10 +9,10 @@
 This library is inspired by **[Express](https://expressjs.com/en/4x/api.html)**, one of the most populair and well known web framework for **[Nodejs](https://nodejs.org/en/about/)**.
 
 ## Full API Documentation
-*[Click here](https://fenny.github.io/fiber/)*
+**[Click here](https://fenny.github.io/fiber/)**
 
 ## Installing
-Assuming you’ve already installed [Go](https://golang.org/doc/), install the [Fiber](https://github.com/fenny/fiber) package by calling the following command:
+Assuming you’ve already installed **[Go](https://golang.org/doc/)**, install the **[Fiber](https://github.com/fenny/fiber)** package by calling the following command:
 ```shell
 $ go get -u github.com/fenny/fiber
 ```
@@ -38,7 +38,7 @@ func main() {
 ```shell
 $ go run server.go
 ```
-Browse to http://localhost:8080 and you should see Hello, World! on the page.
+Browse to **http://localhost:8080** and you should see Hello, World! on the page.
 
 ## Basic routing
 Routing refers to determining how an application responds to a client request to a particular endpoint, which is a URI (or path) and a specific HTTP request method (GET, POST, and so on).
@@ -56,12 +56,12 @@ app.Method(func(*fiber.Ctx))
 ```
 
 * **app** is an instance of **[Fiber](#hello-world)**.
-* **Method** is an [HTTP request method](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods), in capitalization: Get, Put, Post etc
+* **Method** is an **[HTTP request method](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods)**, in capitalization: Get, Put, Post etc
 * **path string** is a path or prefix (for static files) on the server.
 * **static string** is a file path or directory.
 * **func(*fiber.Ctx)** is a function executed when the route is matched.
 
-This tutorial assumes that an instance of fiber named app is created and the server is running. If you are not familiar with creating an app and starting it, see the [Hello world](#hello-world) example.
+This tutorial assumes that an instance of fiber named app is created and the server is running. If you are not familiar with creating an app and starting it, see the **[Hello world](#hello-world)** example.
 
 The following examples illustrate defining simple routes.  
 ```go
