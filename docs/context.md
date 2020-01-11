@@ -149,18 +149,18 @@ c.Cookies(func(key, value string)) string
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Get raw cookie header
-	c.Cookies()
+  c.Cookies()
   // => name=john;
 
-	// Get cookie by key
-	c.Cookies("name")
+  // Get cookie by key
+  c.Cookies("name")
   // => "john"
 
-	// Show all cookies
-	c.Cookies(func(key, val string) {
-		fmt.Println(key, val)
+  // Show all cookies
+  c.Cookies(func(key, val string) {
+    fmt.Println(key, val)
     // => "name", "john"
-	})
+  })
 })
 ```
 
@@ -174,10 +174,10 @@ c.Download(path, filename string)
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   c.Download("./files/report-12345.pdf")
-	// => Download report-12345.pdf
+  // => Download report-12345.pdf
 
   c.Download("./files/report-12345.pdf", "report.pdf")
-	// => Download report.pdf
+  // => Download report.pdf
 })
 ```
 
@@ -193,11 +193,11 @@ c.Fasthttp...
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-	string(c.Fasthttp.Request.Header.Method())
-	// => "GET"
+  c.Fasthttp.Request.Header.Method()
+  // => []byte("GET")
 
-	c.Fasthttp.Response.Write([]byte("Hello, World!"))
-	// => "Hello, World!"
+  c.Fasthttp.Response.Write([]byte("Hello, World!"))
+  // => "Hello, World!"
 })
 ```
 
@@ -213,7 +213,7 @@ c.FormFile(name string) (*multipart.FileHeader, error)
 // Example
 app.Post("/", func(c *fiber.Ctx) {
   // Get first file from form field "document"
-	file, err := c.FormFile("document")
+  file, err := c.FormFile("document")
 
   // Check for errors
   if err == nil {
@@ -232,7 +232,7 @@ c.FormValue(name string) string
 // Example
 app.Post("/", func(c *fiber.Ctx) {
   // Get first value from form field "name"
-	c.FormValue("name")
+  c.FormValue("name")
   // => "john" or "" if not exist
 })
 ```
@@ -311,15 +311,15 @@ c.Is(typ string) bool
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-	// Content-Type: text/html; charset=utf-8
-	c.Is("html")  
-	// => true
+  // Content-Type: text/html; charset=utf-8
+  c.Is("html")  
+  // => true
 
-	c.Is(".html")
-	// => true
+  c.Is(".html")
+  // => true
 
-	c.Is("json")  
-	// => false
+  c.Is("json")  
+  // => false
 })
 ```
 
@@ -331,19 +331,19 @@ c.Json(v interface{}) error
 
 // Example
 type SomeStruct struct {
-	Name string
-	Age  uint8
+  Name string
+  Age  uint8
 }
 
 app := fiber.New()
 app.Get("/json", func(c *fiber.Ctx) {
-	data := SomeStruct{
-		Name: "Grame",
-		Age:  20,
-	}
-	c.Json(data)
+  data := SomeStruct{
+    Name: "Grame",
+    Age:  20,
+  }
+  c.Json(data)
 
-	// Or with error checking
+  // Or with error checking
   if err := c.Json(data); err != nil {
     c.Status(500).Send("Bad Request")
   }
@@ -360,24 +360,24 @@ Sends a JSON response with JSONP support. This method is identical to [Json()](#
 By default, the JSONP callback name is simply callback. Override this by passing a named string in the function.
 ```go
 // Function signature
-c.Jsonp(json interface{}) error
-c.Jsonp(callback string, v interface{}) error
+c.Jsonp(v interface{}) error
+c.Jsonp(v interface{}, callback string) error
 // Example
 type JsonStruct struct {
-	name string
-	age  uint8
+  name string
+  age  uint8
 }
 
 app := fiber.New()
 app.Get("/", func(c *fiber.Ctx) {
-	data := JsonStruct{
-		name: "Grame",
-		age:  20,
-	}
-	c.Jsonp(data)
+  data := JsonStruct{
+    name: "Grame",
+    age:  20,
+  }
+  c.Jsonp(data)
   // => callback({"name": "Grame", "age": 20})
 
-  c.Jsonp("customFunc", data)
+  c.Jsonp(data, "customFunc")
   // => customFunc({"name": "Grame", "age": 20})
 })
 app.Listen(8080)
@@ -397,8 +397,8 @@ c.Location(path string)
 
 // Example
 app.Post("/", func(c *fiber.Ctx) {
-	c.Location("http://example.com")
-	c.Location("/foo/bar")
+  c.Location("http://example.com")
+  c.Location("/foo/bar")
 })
 ```
 
@@ -410,8 +410,8 @@ c.Method() string
 
 // Example
 app.Post("/", func(c *fiber.Ctx) {
-	c.Method()
-	// => "POST"
+  c.Method()
+  // => "POST"
 })
 ```
 
@@ -425,28 +425,28 @@ c.MultipartForm() (*multipart.Form, error)
 
 // Example
 app.Post("/", func(c *fiber.Ctx) {
-	// Parse the multipart form
-	if form, err := c.MultipartForm(); err == nil {
-		// => *multipart.Form
+  // Parse the multipart form
+  if form, err := c.MultipartForm(); err == nil {
+    // => *multipart.Form
 
-		if token := form.Value["token"]; len(token) > 0 {
-			// Get key value
-			fmt.Println(token[0])
-		}
+    if token := form.Value["token"]; len(token) > 0 {
+      // Get key value
+      fmt.Println(token[0])
+    }
 
-		// Get all files from "documents" key
-		files := form.File["documents"]
-		// => []*multipart.FileHeader
+    // Get all files from "documents" key
+    files := form.File["documents"]
+    // => []*multipart.FileHeader
 
-		// Loop trough files
-		for _, file := range files {
-			fmt.Println(file.Filename, file.Size, file.Header["Content-Type"][0])
-			// => "tutorial.pdf" 360641 "application/pdf"
+    // Loop trough files
+    for _, file := range files {
+      fmt.Println(file.Filename, file.Size, file.Header["Content-Type"][0])
+      // => "tutorial.pdf" 360641 "application/pdf"
 
-			// Save the files to disk
-			c.SaveFile(file, fmt.Sprintf("./%s", file.Filename))
-		}
-	}
+      // Save the files to disk
+      c.SaveFile(file, fmt.Sprintf("./%s", file.Filename))
+    }
+  }
 })
 ```
 
@@ -458,16 +458,16 @@ c.Next()
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-	fmt.Printl("1st route!")
-	c.Next()
+  fmt.Printl("1st route!")
+  c.Next()
 })
 app.Get("*", func(c *fiber.Ctx) {
-	fmt.Printl("2nd route!")
-	c.Next()
+  fmt.Printl("2nd route!")
+  c.Next()
 })
 app.Get("/", func(c *fiber.Ctx) {
-	fmt.Printl("3rd route!")
-	c.Send("Hello, World!")
+  fmt.Printl("3rd route!")
+  c.Send("Hello, World!")
 })
 ```
 
@@ -479,9 +479,9 @@ c.OriginalUrl() string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-	// GET /search?q=something
-	c.OriginalUrl()
-	// => '/search?q=something'
+  // GET /search?q=something
+  c.OriginalUrl()
+  // => '/search?q=something'
 })
 ```
 
@@ -493,9 +493,9 @@ c.Params(param string) string
 
 // Example
 app.Get("/user/:name", func(c *fiber.Ctx) {
-	// GET /user/tj
-	c.Params("name")
-	// => "tj"
+  // GET /user/tj
+  c.Params("name")
+  // => "tj"
 })
 ```
 
@@ -507,9 +507,9 @@ c.Path() string
 
 // Example
 app.Get("/users", func(c *fiber.Ctx) {
-	// example.com/users?sort=desc
-	c.Path()
-	// => "/users"
+  // example.com/users?sort=desc
+  c.Path()
+  // => "/users"
 })
 ```
 
@@ -522,8 +522,8 @@ c.Protocol() string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-	c.Protocol()
-	// => "http"
+  c.Protocol()
+  // => "http"
 })
 ```
 #### Query
@@ -552,14 +552,14 @@ Redirects to the URL derived from the specified path, with specified status, a p
 ```go
 // Function signature
 c.Redirect(path string)
-c.Redirect(status int, path string)
+c.Redirect(path string, status int)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   c.Redirect("/foo/bar")
-  c.Redirect("http://example.com")
-  c.Redirect(301, "http://example.com")
   c.Redirect("../login")
+  c.Redirect("http://example.com")
+  c.Redirect("http://example.com", 301)
 })
 ```
 
