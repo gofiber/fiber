@@ -2,7 +2,6 @@ package fiber
 
 import (
 	"encoding/base64"
-	"fmt"
 	"mime"
 	"mime/multipart"
 	"path/filepath"
@@ -288,28 +287,33 @@ func (ctx *Ctx) Json(v interface{}) error {
 
 // Jsonp :
 func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
-	cbName := "callback"
-	// Default cbName is "callback"
-	if len(cb) > 0 {
-		cbName = cb[0]
-	}
-	fmt.Println(cbName[0])
 	raw, err := jsoniter.Marshal(&v)
 	if err != nil {
 		return err
 	}
-	// Create buffer with length of json + cbname + ( );
-	buf := make([]byte, len(raw)+len(cbName)+3)
 
-	count := 0
-	count += copy(buf[count:], cbName)
-	count += copy(buf[count:], "(")
-	count += copy(buf[count:], raw)
-	count += copy(buf[count:], ");")
+	var builder strings.Builder
+	if len(cb) > 0 {
+		builder.Write(s2b(cb[0]))
+	} else {
+		builder.Write([]byte("callback"))
+	}
+	builder.Write([]byte("("))
+	builder.Write(raw)
+	builder.Write([]byte(");"))
+
+	// Create buffer with length of json + cbname + ( );
+	// buf := make([]byte, len(raw)+len(cbName)+3)
+	//
+	// count := 0
+	// count += copy(buf[count:], cbName)
+	// count += copy(buf[count:], "(")
+	// count += copy(buf[count:], raw)
+	// count += copy(buf[count:], ");")
 
 	ctx.Set("X-Content-Type-Options", "nosniff")
-	ctx.Set("Content-Type", "text/javascript")
-	ctx.Fasthttp.Response.SetBodyString(b2s(buf))
+	ctx.Set("Content-Type", "application/javascript")
+	ctx.Fasthttp.Response.SetBodyString(builder.String())
 	return nil
 }
 
