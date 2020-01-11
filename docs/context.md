@@ -90,15 +90,15 @@ c.Body(func(key value string)) func(string, string)
 // Example
 // curl -X POST http://localhost:8080 -d user=john
 app.Post("/", func(c *fiber.Ctx) {
-	// Get the raw body post
+  // Get the raw body post
   c.Body()
   // => user=john
 
-	// Get the body value using specific key
+  // Get the body value using specific key
   c.Body("user")
   // => "john"
 
-	// Loop trough all body params
+  // Loop trough all body params
   c.Body(func(key string, val string) {
     fmt.Printl(key, val)  
     // => "user" "john"
@@ -132,14 +132,14 @@ c.Cookie(name, value string)
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Set cookie
-	c.Cookie("name", "john")
+  c.Cookie("name", "john")
   // => Cookie: name=john;
 })
 
 ```
 
 #### Cookies
-Get and set cookies
+Get cookies
 ```go
 // Function signature
 c.Cookies() string
@@ -708,7 +708,7 @@ app.Get("/", func(c *fiber.Ctx) {
   c.Write("Hello, ")
   // => "Hello, "
 
-	c.Write([]byte("World!"))
+  c.Write([]byte("World!"))
   // => "Hello, World!"
 
   // Send sets the body, and does not append
