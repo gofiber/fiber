@@ -8,9 +8,7 @@
 <!-- **[Fiber](https://github.com/fenny/fiber)** is a router framework build on top of **[FastHTTP](https://github.com/valyala/fasthttp)**, the fastest HTTP package for **[Go](https://golang.org/doc/)**.<br>
 This library is inspired by **[Express](https://expressjs.com/en/4x/api.html)**, one of the most populair and well known web framework for **[Nodejs](https://nodejs.org/en/about/)**. -->
 
-**[Fiber](https://github.com/fenny/fiber)** is an **[Express](https://expressjs.com/en/4x/api.html)** style HTTP framework implementation running on **[FastHTTP](https://github.com/valyala/fasthttp)**, the fastest HTTP engine for **[Go](https://golang.org/doc/)**. The package make use of similar framework convention as they are in `expressjs`. People switching from **[Nodejs](https://nodejs.org/en/about/)** to **[Golang](https://golang.org/doc/)** often end up in a bad learning curve to start building their webapps, this project is meant to ease things up, but with performance in mind.  
-
-Enjoy Express on **steriods**
+**[Fiber](https://github.com/fenny/fiber)** is an **[Express](https://expressjs.com/en/4x/api.html)** style HTTP framework implementation running on **[FastHTTP](https://github.com/valyala/fasthttp)**, the fastest HTTP engine for **[Go](https://golang.org/doc/)**. The package make use of similar framework convention as they are in `expressjs`. People switching from **[Nodejs](https://nodejs.org/en/about/)** to **[Golang](https://golang.org/doc/)** often end up in a bad learning curve to start building their webapps, this project is meant to ease things up, but with performance in mind (**Express on steriods**)
 
 ## Full API Documentation
 **[Click here](https://fenny.github.io/fiber/)**
