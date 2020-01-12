@@ -615,7 +615,7 @@ c.SendBytes(body []byte)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-	c.SendBytes([]byte("Hello, World!"))
+  c.SendBytes([]byte("Hello, World!"))
 })
 ```
 
@@ -639,7 +639,7 @@ c.SendStatus(status int)
 
 // Example
 app.Get("/not-found", func(c *fiber.Ctx) {
-	c.SendStatus(415)
+  c.SendStatus(415)
   // Status: 415
   // Body: "Unsupported Media Type"
 
@@ -659,7 +659,7 @@ c.SendString(body string)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-	c.SendString("Hello, World!")
+  c.SendString("Hello, World!")
 })
 ```
 
