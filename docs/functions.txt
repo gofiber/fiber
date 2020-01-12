@@ -42,8 +42,10 @@ Route
 SaveFile
 Secure
 Send
+SendBytes
 SendFile
 SendStatus
+SendString
 Set
 Write
 SignedCookies

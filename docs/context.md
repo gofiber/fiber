@@ -67,7 +67,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 	user, pass, ok := c.BasicAuth()
 
-	if !ok || user != "john" || pass != "doe" {
+	if !ok || user != "john" && pass != "doe" {
 		c.Status(403).Send("Forbidden")
     return
 	}
@@ -606,6 +606,19 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
+#### SendBytes
+Same as Send() but without type assertion.  
+I suggest using this in production for optimal performance.
+```go
+// Function signature
+c.SendBytes(body []byte)
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+	c.SendBytes([]byte("Hello, World!"))
+})
+```
+
 #### SendFile
 Transfers the file at the given path. Sets the Content-Type response HTTP header field based on the filename’s extension.
 ```go
@@ -619,7 +632,36 @@ app.Get("/not-found", func(c *fiber.Ctx) {
 ```
 
 #### SendStatus
-!> Planned for V1
+Sets the status code, but also the correct status message in the body if the response body is still empty.
+```go
+// Function signature
+c.SendStatus(status int)
+
+// Example
+app.Get("/not-found", func(c *fiber.Ctx) {
+	c.SendStatus(415)
+  // Status: 415
+  // Body: "Unsupported Media Type"
+
+  c.Send("Hello, World!")
+  c.SendStatus(415)
+  // Status: 415
+  // Body: "Hello, World!"
+})
+```
+
+#### SendString
+Same as Send() but without type assertion.  
+I suggest using this in production for optimal performance.
+```go
+// Function signature
+c.SendString(body string)
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+	c.SendString("Hello, World!")
+})
+```
 
 #### Set
 Sets the response’s HTTP header field to value. To set multiple fields at once, pass an object as the parameter.

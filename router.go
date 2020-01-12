@@ -18,7 +18,7 @@ import (
 
 const (
 	// Version for debugging
-	Version = `0.5.0`
+	Version = `0.5.5`
 	// Port and Version are printed with the banner
 	banner = `%s  _____ _ _
  |   __|_| |_ ___ ___

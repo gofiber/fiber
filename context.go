@@ -434,6 +434,11 @@ func (ctx *Ctx) Send(args ...interface{}) {
 	}
 }
 
+// SendBytes : Same as Send() but without type assertion
+func (ctx *Ctx) SendBytes(body []byte) {
+	ctx.Fasthttp.Response.SetBodyString(b2s(body))
+}
+
 // SendFile :
 func (ctx *Ctx) SendFile(file string) {
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
@@ -443,8 +448,20 @@ func (ctx *Ctx) SendFile(file string) {
 }
 
 // SendStatus :
-func (ctx *Ctx) SendStatus() {
+func (ctx *Ctx) SendStatus(status int) {
+	ctx.Status(status)
+	// Only set status body when there is no response body
+	if len(ctx.Fasthttp.Response.Body()) == 0 {
+		msg := statusMessages[status]
+		if msg != "" {
+			ctx.Fasthttp.Response.SetBodyString(msg)
+		}
+	}
+}
 
+// SendString : Same as Send() but without type assertion
+func (ctx *Ctx) SendString(body string) {
+	ctx.Fasthttp.Response.SetBodyString(body)
 }
 
 // Set :
