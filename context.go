@@ -5,6 +5,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -45,39 +46,39 @@ func releaseCtx(ctx *Ctx) {
 }
 
 // Accepts :
-func (ctx *Ctx) Accepts(ext string) bool {
-	accept := ctx.Get("Accept")
-	if ext[0] != '.' {
-		ext = "." + ext
-	}
-	// Accept: text/*, application/json
-	// n = text/html => no match
-	m := mime.TypeByExtension(ext)
-	if strings.Contains(accept, m) {
-		return true
-	}
-	// Accept: text/*, application/json
-	// n = text/* => match
-	m = strings.Split(m, "/")[0]
-	if strings.Contains(accept, m+"/*") {
+func (ctx *Ctx) Accepts(typ string) bool {
+	accept := ctx.Get("Accept-Charset")
+	if strings.Contains(accept, typ) {
 		return true
 	}
 	return false
 }
 
-// AcceptsCharsets TODO
-func (ctx *Ctx) AcceptsCharsets() {
-
+// AcceptsCharsets :
+func (ctx *Ctx) AcceptsCharsets(charset string) bool {
+	accept := ctx.Get("Accept-Charset")
+	if strings.Contains(accept, charset) {
+		return true
+	}
+	return false
 }
 
-// AcceptsCharsets TODO
-func (ctx *Ctx) AcceptsEncodings() {
-
+// AcceptsEncodings :
+func (ctx *Ctx) AcceptsEncodings(encoding string) bool {
+	accept := ctx.Get("Accept-Encoding")
+	if strings.Contains(accept, encoding) {
+		return true
+	}
+	return false
 }
 
-// AcceptsCharsets TODO
-func (ctx *Ctx) AcceptsLanguages() {
-
+// AcceptsLanguages :
+func (ctx *Ctx) AcceptsLanguages(lang string) bool {
+	accept := ctx.Get("Accept-Language")
+	if strings.Contains(accept, lang) {
+		return true
+	}
+	return false
 }
 
 // Append :
@@ -101,9 +102,9 @@ func (ctx *Ctx) Attachment(name ...string) {
 	ctx.Set("Content-Disposition", "attachment")
 }
 
-// BaseUrl TODO
-func (ctx *Ctx) BaseUrl() {
-
+// BaseUrl :
+func (ctx *Ctx) BaseUrl() string {
+	return ctx.Protocol() + "://" + ctx.Hostname()
 }
 
 // BasicAuth :
@@ -405,9 +406,47 @@ func (ctx *Ctx) Render() {
 
 }
 
-// Route TODO https://expressjs.com/en/4x/api.html#res.render
-func (ctx *Ctx) Route() {
-
+// Route : Only use in debugging
+func (ctx *Ctx) Route(r *Fiber) (s struct {
+	Method   string
+	Path     string
+	Wildcard bool
+	Regex    *regexp.Regexp
+	Params   []string
+	Values   []string
+	Handler  func(*Ctx)
+}) {
+	path := ctx.Path()
+	method := ctx.Method()
+	for _, route := range r.routes {
+		if route.method != "*" && route.method != method {
+			continue
+		}
+		if route.any || (route.path == path && route.params == nil) {
+			s.Method = method
+			s.Path = path
+			s.Wildcard = route.any
+			s.Regex = route.regex
+			s.Params = route.params
+			s.Values = ctx.values
+			s.Handler = route.handler
+			return
+		}
+		if route.regex == nil {
+			continue
+		}
+		if !route.regex.MatchString(path) {
+			continue
+		}
+		s.Method = method
+		s.Path = path
+		s.Wildcard = route.any
+		s.Regex = route.regex
+		s.Params = route.params
+		s.Handler = route.handler
+		return
+	}
+	return
 }
 
 // Secure :
@@ -502,9 +541,17 @@ func (ctx *Ctx) Type(ext string) *Ctx {
 	return ctx
 }
 
-// Vary TODO
-func (ctx *Ctx) Vary() {
-
+// Vary :
+func (ctx *Ctx) Vary(field ...string) {
+	vary := ctx.Get("Vary")
+	for _, f := range field {
+		if !strings.Contains(vary, f) {
+			vary += ", " + f
+		}
+	}
+	if len(field) > 0 {
+		ctx.Set("Vary", vary)
+	}
 }
 
 // Write :

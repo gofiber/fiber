@@ -1,5 +1,5 @@
 # Getting started
-<img src="logo.jpg" width="150" alt="accessibility text"><br><br>
+<img src="static/logo.jpg" width="150" alt="accessibility text"><br><br>
 [![Latest Release](https://img.shields.io/github/release/fenny/fiber.svg)](https://github.com/fenny/fiber/releases/latest)
 [![GoDoc](https://godoc.org/github.com/fenny/fiber?status.svg)](http://godoc.org/github.com/fenny/fiber)
 [![Go Report](https://goreportcard.com/badge/github.com/fenny/fiber)](https://goreportcard.com/report/github.com/fenny/fiber)
@@ -26,11 +26,11 @@ package main
 import "github.com/fenny/fiber"
 
 func main() {
-	app := fiber.New()
-	app.Get("/", func(c *fiber.Ctx) {
-		c.Send("Hello, World!")
-	})
-	app.Listen(8080)
+  app := fiber.New()
+  app.Get("/", func(c *fiber.Ctx) {
+    c.Send("Hello, World!")
+  })
+  app.Listen(8080)
 }
 ```
 ```shell

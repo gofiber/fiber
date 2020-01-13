@@ -18,12 +18,12 @@ import (
 
 const (
 	// Version for debugging
-	Version = `0.5.5`
+	Version = `0.6.0`
 	// Port and Version are printed with the banner
 	banner = `%s  _____ _ _
- |   __|_| |_ ___ ___
- |   __| | . | -_|  _|
- |__|  |_|___|___|_|%s
+ %s|   __|_| |_ ___ ___
+ %s|   __| | . | -_|  _|
+ %s|__|  |_|___|___|_|%s
  %s%s
 
  `
@@ -360,15 +360,11 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 }
 
 // Listen starts the server with the correct settings
-func (r *Fiber) Listen(args ...interface{}) {
-	var port string
-	var addr string
-	if len(args) == 1 {
-		port = strconv.Itoa(args[0].(int))
-	}
-	if len(args) == 2 {
-		addr = args[0].(string)
-		port = strconv.Itoa(args[1].(int))
+func (r *Fiber) Listen(port int, addr ...string) {
+	portStr := strconv.Itoa(port)
+	var address string
+	if len(addr) > 0 {
+		address = addr[0]
 	}
 	server := &fasthttp.Server{
 		Handler:                            r.handler,
@@ -405,18 +401,18 @@ func (r *Fiber) Listen(args ...interface{}) {
 		}
 	}
 	if !r.NoBanner {
-		fmt.Printf(banner, cGreen,
+		fmt.Printf(banner, cGreen, cGreen, cGreen, cGreen,
 			cBlack+Version,
 			cBlack+"Express on steriods",
-			cGreen+":"+port+cReset,
+			cGreen+":"+portStr+cReset,
 		)
 	}
 	if r.CertKey != "" && r.CertFile != "" {
-		if err := server.ListenAndServeTLS(fmt.Sprintf("%s:%s", addr, port), r.CertFile, r.CertKey); err != nil {
+		if err := server.ListenAndServeTLS(fmt.Sprintf("%s:%s", address, portStr), r.CertFile, r.CertKey); err != nil {
 			panic(err)
 		}
 	} else {
-		if err := server.ListenAndServe(fmt.Sprintf("%s:%s", addr, port)); err != nil {
+		if err := server.ListenAndServe(fmt.Sprintf("%s:%s", address, portStr)); err != nil {
 			panic(err)
 		}
 	}

@@ -2,16 +2,89 @@
 The ctx object represents the HTTP request and response and has methods for the request query string, parameters, body, HTTP headers, and so on. In this documentation and by convention, the context is always referred to as c but its actual name is determined by the parameters to the callback function in which you’re working.
 
 #### Accepts
-!> Planned for V1
+Checks if the specified content types are acceptable, based on the request’s Accept HTTP header field.
+```go
+// Function signature
+c.Accepts(ext string) bool
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  // Accept: text/html
+  c.Accepts("html")
+  // => true
+
+  // Accept: text/*, application/json
+  c.Accepts("text")
+  // => // => true
+
+  c.Accepts("json")
+  // => // => true
+
+  c.Accepts("application/json")
+  // => // => true
+})
+```
 
 #### AcceptsCharsets
-!> Planned for V1
+Returns the first accepted charset of the specified character sets, based on the request’s Accept-Charset HTTP header field
+```go
+// Function signature
+c.AcceptsCharsets(charset string) bool
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  // Accept-Charset: utf-8, iso-8859-1;q=0.2, utf-7;q=0.5
+  c.AcceptsCharsets("utf-8")
+  // => true
+
+  c.AcceptsCharsets("iso-8859-1")
+  // => true
+
+  c.AcceptsCharsets("utf-16")
+  // => false
+})
+```
+
 
 #### AcceptsEncodings
-!> Planned for V1
+Returns the first accepted encoding of the specified encodings, based on the request’s Accept-Encoding HTTP header field.
+```go
+// Function signature
+c.AcceptsEncodings(charset string) bool
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  // Accept-Encoding: gzip, compress;q=0.2
+  c.AcceptsEncodings("gzip")
+  // => true
+
+  c.AcceptsEncodings("compress")
+  // => true
+
+  c.AcceptsEncodings("deflate")
+  // => false
+})
+```
 
 #### AcceptsLanguages
-!> Planned for V1
+Returns the first accepted language of the specified languages, based on the request’s Accept-Language HTTP header field.
+```go
+// Function signature
+c.AcceptsLanguages(charset string) bool
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  // Accept-Language: en;q=0.8, es, pt
+  c.AcceptsLanguages("en")
+  // => true
+
+  c.AcceptsLanguages("pt")
+  // => true
+
+  c.AcceptsLanguages("fr")
+  // => false
+})
+```
 
 #### Append
 Appends the specified value to the HTTP response header field. If the header is not already set, it creates the header with the specified value. The value parameter must be a string.
@@ -53,7 +126,20 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### BaseUrl
-!> Planned for V1
+
+#### AcceptsLanguages
+Returns the base URL, protocol and hostname combined.
+```go
+// Function signature
+c.BaseUrl() bool
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  // http://webtech.oregonstate.edu/faq/page/2?sort=date
+  c.BaseUrl()
+  // => "http://webtech.oregonstate.edu"
+})
+```
 
 #### BasicAuth
 BasicAuth returns the username and password provided in the request's Authorization header, if the request uses [HTTP Basic Authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication).
@@ -65,12 +151,12 @@ c.BasicAuth() (user, pass string, ok bool)
 // curl --user john:doe http://localhost:8080
 app.Get("/", func(c *fiber.Ctx) {
 
-	user, pass, ok := c.BasicAuth()
+  user, pass, ok := c.BasicAuth()
 
-	if !ok || user != "john" && pass != "doe" {
-		c.Status(403).Send("Forbidden")
+  if !ok || user != "john" || pass != "doe" {
+    c.Status(403).Send("Forbidden")
     return
-	}
+  }
 
   c.Send("Welcome " + user)
 })
@@ -342,16 +428,22 @@ app.Get("/json", func(c *fiber.Ctx) {
     Age:  20,
   }
   c.Json(data)
-
-  // Or with error checking
+  // => "{"Name": "Grame", "Age": 20}"
+})
+app.Listen(8080)
+```
+Or with error checking
+```go
+app.Get("/json", func(c *fiber.Ctx) {
+  data := SomeStruct{
+    Name: "Grame",
+    Age:  20,
+  }
   if err := c.Json(data); err != nil {
     c.Status(500).Send("Bad Request")
   }
   // => "{"Name": "Grame", "Age": 20}"
-
-
 })
-app.Listen(8080)
 ```
 
 #### Jsonp
@@ -567,7 +659,35 @@ app.Get("/", func(c *fiber.Ctx) {
 !> Planned for V1
 
 #### Route
-!> Planned for V1
+Contains the currently-matched route struct, **only use this for debugging**.
+It returns an anonymous struct containing the following values:
+```go
+// Route struct
+struct {
+  Method   string
+  Path     string
+  Wildcard bool
+  Regex    *regexp.Regexp
+  Params   []string
+  Values   []string
+  Handler  func(*Ctx)
+}
+```
+```go
+// Function signature
+c.Route(app *Fiber) struct
+
+// Example
+app.Get("/hello", func(c *fiber.Ctx) {
+  c.Route(app)
+  // {GET /hello false <nil> [] [] 0x7b4ab0}
+})
+app.Post("/:api?", func(c *fiber.Ctx) {
+  c.Route(app)
+  // {POST / false ^(?:/([^/]+?))?/?$ [lol] [] 0x7b49e0}
+})
+```
+
 
 #### SaveFile
 This function is used to save any multipart file to disk.  
@@ -600,9 +720,9 @@ c.Send(body []byte)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-	c.Send("Hello, World!")
+  c.Send("Hello, World!")
 
-	c.Send([]byte("Hello, World!"))
+  c.Send([]byte("Hello, World!"))
 })
 ```
 
@@ -627,7 +747,7 @@ c.SendFile(path string)
 
 // Example
 app.Get("/not-found", func(c *fiber.Ctx) {
-	c.SendFile("./public/404.html")
+  c.SendFile("./public/404.html")
 })
 ```
 
@@ -672,7 +792,7 @@ c.Set(key, value string)
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   c.Set("Content-Type", "text/plain")
-	// => "Content-type: text/plain"
+  // => "Content-type: text/plain"
 })
 ```
 
@@ -734,7 +854,33 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### Vary
-!> Planned for V1
+Adds the given header field to the Vary response header of res. This can be a string of a single field, a string of a valid Vary header, or multiple fields.
+
+This will append the header if not already listed, otherwise leaves it listed in the current location.
+```go
+// Function signature
+c.Vary(field ...string)
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  // Let's assume there are no values in Vary yet
+  c.Get("Vary")
+  // => ""
+
+  c.Vary("Origin")
+  // => "Vary: Origin"
+
+  c.Vary("User-Agent")
+  // => "Vary: Origin, User-Agent"
+
+  // It checks for duplicates
+  c.Vary("Origin")
+  // => "Vary: Origin, User-Agent"
+
+  c.Vary("Accept-Encoding", "Accept")
+  // => "Vary: Origin, User-Agent", "Accept-Encoding", "Accept"
+})
+```
 
 #### Write
 Appends to the HTTP response.

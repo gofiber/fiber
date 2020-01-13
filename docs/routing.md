@@ -54,16 +54,16 @@ To define routes with route parameters, simply specify the route parameters in t
 
 ```go
 app.Get("/user/:name/books/:title", func(c *fiber.Ctx) {
-	c.Write(c.Params("name"))
-	c.Write(c.Params("title"))
+  c.Write(c.Params("name"))
+  c.Write(c.Params("title"))
 })
 
 app.Get("/user/*", func(c *fiber.Ctx) {
-	c.Send(c.Params("*"))
+  c.Send(c.Params("*"))
 })
 
 app.Get("/user/:name?", func(c *fiber.Ctx) {
-	c.Send(c.Params("name"))
+  c.Send(c.Params("name"))
 })
 ```
 ?>The name of route parameters must be made up of “word characters” ([A-Za-z0-9_]).
@@ -81,17 +81,17 @@ Here is a simple example of a middleware function that sets some response header
 app := fiber.New()
 app.Use(func(c *fiber.Ctx) {
   // Set some security headers
-	c.Set("X-XSS-Protection", "1; mode=block")
-	c.Set("X-Content-Type-Options", "nosniff")
-	c.Set("X-Download-Options", "noopen")
-	c.Set("Strict-Transport-Security", "max-age=5184000")
-	c.Set("X-Frame-Options", "SAMEORIGIN")
-	c.Set("X-DNS-Prefetch-Control", "off")
+  c.Set("X-XSS-Protection", "1; mode=block")
+  c.Set("X-Content-Type-Options", "nosniff")
+  c.Set("X-Download-Options", "noopen")
+  c.Set("Strict-Transport-Security", "max-age=5184000")
+  c.Set("X-Frame-Options", "SAMEORIGIN")
+  c.Set("X-DNS-Prefetch-Control", "off")
   // Go to next middleware
-	c.Next()
+  c.Next()
 })
 app.Get("/", func(c *fiber.Ctx) {
-	c.Send("Hello, World!")
+  c.Send("Hello, World!")
 })
 app.Listen(8080)
 ```

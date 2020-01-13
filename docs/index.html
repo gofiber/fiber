@@ -15,16 +15,24 @@
 <body>
   <div id="app"></div>
   <script src="//unpkg.com/docsify/lib/docsify.min.js"></script>
+
   <script>
     window.$docsify = {
-      name: 'Fiber v0.5.5',
+      name: 'Fiber v0.6.0',
       repo: 'fenny/fiber',
       loadSidebar: "sidebar.md",
       homepage: 'getting_started.md',
       subMaxLevel: 4,
-      auto2top: true
+      auto2top: true,
+      pagination: {
+        previousText: 'Previous',
+        nextText: 'Next',
+        crossChapter: true,
+        crossChapterText: true,
+      }
     }
   </script>
+    <script src="//unpkg.com/docsify-pagination/dist/docsify-pagination.min.js"></script>
   <script type="text/javascript">
   Prism.languages.curl = Prism.languages.extend('clike', {
   'curl': /\bcurl\b/,

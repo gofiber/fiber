@@ -8,27 +8,28 @@ package main
 import "github.com/fenny/fiber"
 
 func main() {
-	app := fiber.New()
-	app.Post("/", func(c *fiber.Ctx) {
-		// Parse the multipart form
-		if form := c.MultipartForm(); form != nil {
-			// => *multipart.Form
+  // lol
+  app := fiber.New()
+  app.Post("/", func(c *fiber.Ctx) {
+    // Parse the multipart form
+    if form := c.MultipartForm(); form != nil {
+      // => *multipart.Form
 
-			// Get all files from "documents" key
-			files := form.File["documents"]
-			// => []*multipart.FileHeader
+      // Get all files from "documents" key
+      files := form.File["documents"]
+      // => []*multipart.FileHeader
 
-			// Loop trough files
-			for _, file := range files {
-				fmt.Println(file.Filename, file.Size, file.Header["Content-Type"][0])
-				// => "tutorial.pdf" 360641 "application/pdf"
+      // Loop trough files
+      for _, file := range files {
+        fmt.Println(file.Filename, file.Size, file.Header["Content-Type"][0])
+        // => "tutorial.pdf" 360641 "application/pdf"
 
-				// Save the files to disk
-				c.SaveFile(file, fmt.Sprintf("./%s", file.Filename))
-			}
-		}
-	})
-	app.Listen(8080)
+        // Save the files to disk
+        c.SaveFile(file, fmt.Sprintf("./%s", file.Filename))
+      }
+    }
+  })
+  app.Listen(8080)
 }
 ```
 #### 404 Handling
@@ -38,16 +39,16 @@ package main
 import "github.com/fenny/fiber"
 
 func main() {
-	app := fiber.New()
+  app := fiber.New()
 
-	app.Get("./static")
-	app.Get(notFound)
+  app.Get("./static")
+  app.Get(notFound)
 
-	app.Listen(8080)
+  app.Listen(8080)
 }
 
 func notFound(c *fiber.Ctx) {
-	c.Status(404).Send("Not Found")
+  c.Status(404).Send("Not Found")
 }
 ```
 #### Static Caching
@@ -57,15 +58,15 @@ package main
 import "github.com/fenny/fiber"
 
 func main() {
-	app := fiber.New()
-	app.Get(cacheControl)
-	app.Get("./static")
-	app.Listen(8080)
+  app := fiber.New()
+  app.Get(cacheControl)
+  app.Get("./static")
+  app.Listen(8080)
 }
 
 func cacheControl(c *fiber.Ctx) {
-	c.Set("Cache-Control", "max-age=2592000, public")
-	c.Next()
+  c.Set("Cache-Control", "max-age=2592000, public")
+  c.Next()
 }
 ```
 #### Enable CORS
@@ -75,21 +76,21 @@ package main
 import "./fiber"
 
 func main() {
-	app := fiber.New()
+  app := fiber.New()
 
-	app.All("/api", enableCors)
-	app.Get("/api", apiHandler)
+  app.All("/api", enableCors)
+  app.Get("/api", apiHandler)
 
-	app.Listen(8080)
+  app.Listen(8080)
 }
 
 func enableCors(c *fiber.Ctx) {
-	c.Set("Access-Control-Allow-Origin", "*")
-	c.Set("Access-Control-Allow-Headers", "X-Requested-With")
-	c.Next()
+  c.Set("Access-Control-Allow-Origin", "*")
+  c.Set("Access-Control-Allow-Headers", "X-Requested-With")
+  c.Next()
 }
 func apiHandler(c *fiber.Ctx) {
-	c.Send("Hi, I'm API!")
+  c.Send("Hi, I'm API!")
 }
 ```
 #### Returning JSON
@@ -99,25 +100,25 @@ package main
 import "./fiber"
 
 type Data struct {
-	Name string
-	Age  int
+  Name string
+  Age  int
 }
 
 func main() {
-app := fiber.New()
-	app.Get("/json", func(c *fiber.Ctx) {
-		data := SomeData{
-			Name: "John",
-			Age:  20,
-		}
-		c.Json(data)
-		// or
-		err := c.Json(data)
-		if err != nil {
-			c.Send("Something went wrong!")
-		}
-	})
-	app.Listen(8080)
+  app := fiber.New()
+  app.Get("/json", func(c *fiber.Ctx) {
+    data := SomeData{
+      Name: "John",
+      Age:  20,
+    }
+    c.Json(data)
+    // or
+    err := c.Json(data)
+    if err != nil {
+      c.Send("Something went wrong!")
+    }
+  })
+  app.Listen(8080)
 }
 ```
 

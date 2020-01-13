@@ -75,12 +75,12 @@ app.All(...)
 Binds and listens for connections on the specified host and port.
 ```go
 // Function signature
-app.Listen(port int)
-app.Listen(addr string, port int)
+app.Listen(port int, addr ...string)
+
 
 // Example
 app.Listen(8080)
-app.Listen("127.0.0.1", 8080)
+app.Listen(8080, "127.0.0.1")
 ```
 
 

@@ -1,18 +1,14 @@
 # License & Thanks
 Special thanks to some amazing people and organizations:  
 
-[@valyala](https://github.com/valyala)  
-[@julienschmidt](https://github.com/julienschmidt)  
-[@savsgio](https://github.com/savsgio)  
-[@vincentLiuxiang](https://github.com/vincentLiuxiang)  
-[@pillarjs](https://github.com/pillarjs)  
+[@fenny](https://github.com/fenny) / [Fiber](https://github.com/fenny/fiber/blob/master/LICENSE)  
+[@valyala](https://github.com/valyala) / [Fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)  
+[@julienschmidt](https://github.com/julienschmidt) / [HttpRouter](https://github.com/julienschmidt/httprouter)  
+[@savsgio](https://github.com/savsgio) / [Atreugo](https://github.com/savsgio/atreugo/blob/master/LICENSE)  
+[@vincentLiuxiang](https://github.com/vincentLiuxiang) / [Lu](https://github.com/vincentLiuxiang/lu/blob/master/LICENSE)  
+[@tj](https://github.com/tj) / [Expressjs](https://github.com/expressjs/express)  
+[@pillarjs](https://github.com/pillarjs) / [Path-to-regexp](https://github.com/pillarjs/path-to-regexp/blob/master/LICENSE)  
+[@techempower](https://github.com/TechEmpower) / [FrameworkBenchmarks](https://github.com/TechEmpower/FrameworkBenchmarks)  
 
-
-MIT © [Fiber](https://github.com/fenny/fiber/blob/master/LICENSE)  
-MIT © [Fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)  
-MIT © [Express](https://github.com/expressjs/express/blob/master/LICENSE)  
-MIT © [Lu](https://github.com/vincentLiuxiang/lu/blob/master/LICENSE)  
-MIT © [Path-to-regexp](https://github.com/pillarjs/path-to-regexp/blob/master/LICENSE)  
-Apache © [Atreugo](https://github.com/savsgio/atreugo/blob/master/LICENSE)  
 
 *Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/license.md)*
