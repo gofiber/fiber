@@ -854,7 +854,7 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### Vary
-Adds the given header field to the Vary response header of res. This can be a string of a single field, a string of a valid Vary header, or multiple fields.
+Adds the given header field to the Vary response header of res. This can be a string of a single field, or multiple fields.
 
 This will append the header if not already listed, otherwise leaves it listed in the current location.
 ```go
