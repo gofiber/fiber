@@ -25,7 +25,7 @@ If we enable http pipelining, test result as below:
 
 ![](static/benchmarks/benchmark-pipeline.png)
 
-#### Basic Test
+#### Concurrency Test
 In 30 ms processing time, the test result for 100, 1000, 5000 clients is:
 
 ![](static/benchmarks/concurrency.png)
