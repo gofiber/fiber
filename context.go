@@ -2,14 +2,16 @@ package fiber
 
 import (
 	"encoding/base64"
+	"fmt"
 	"mime"
 	"mime/multipart"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/json-iterator/go"
 	"github.com/valyala/fasthttp"
 )
 
@@ -21,6 +23,18 @@ type Ctx struct {
 	values   []string
 	locals   map[string]string
 	Fasthttp *fasthttp.RequestCtx
+}
+
+// Cookie :
+type Cookie struct {
+	Expire int // time.Unix(1578981376, 0)
+	MaxAge int
+	Domain string
+	Path   string
+
+	HttpOnly bool
+	Secure   bool
+	SameSite string
 }
 
 // Ctx pool
@@ -157,6 +171,7 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 func (ctx *Ctx) ClearCookie(name ...string) {
 	if len(name) == 0 {
 		ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
+			fmt.Println(b2s(k), b2s(v))
 			ctx.Fasthttp.Response.Header.DelClientCookie(b2s(k))
 		})
 	} else if len(name) > 0 {
@@ -167,19 +182,55 @@ func (ctx *Ctx) ClearCookie(name ...string) {
 }
 
 // Cookie :
-func (ctx *Ctx) Cookie(name, value string, options ...interface{}) {
+func (ctx *Ctx) Cookie(key, value string, options ...interface{}) {
 	cook := &fasthttp.Cookie{}
-	if len(options) > 0 {
-		// options
-	}
-	cook.SetKey(name)
+	cook.SetKey(key)
 	cook.SetValue(value)
+	if len(options) > 0 {
+		switch opt := options[0].(type) {
+		case *Cookie:
+			if opt.Expire > 0 {
+				cook.SetExpire(time.Unix(int64(opt.Expire), 0))
+			}
+			// if opt.MaxAge > 0 {
+			// 	cook.SetMaxAge(opt.MaxAge)
+			// }
+			if opt.Domain != "" {
+				cook.SetDomain(opt.Domain)
+			}
+			if opt.Path != "" {
+				cook.SetPath(opt.Path)
+			}
+			if opt.HttpOnly {
+				cook.SetHTTPOnly(opt.HttpOnly)
+			}
+			if opt.Secure {
+				cook.SetSecure(opt.Secure)
+			}
+			if opt.SameSite != "" {
+				sameSite := fasthttp.CookieSameSiteDisabled
+				if strings.EqualFold(opt.SameSite, "lax") {
+					sameSite = fasthttp.CookieSameSiteLaxMode
+				} else if strings.EqualFold(opt.SameSite, "strict") {
+					sameSite = fasthttp.CookieSameSiteStrictMode
+				} else if strings.EqualFold(opt.SameSite, "none") {
+					sameSite = fasthttp.CookieSameSiteNoneMode
+				} else {
+					sameSite = fasthttp.CookieSameSiteDefaultMode
+				}
+				cook.SetSameSite(sameSite)
+			}
+		default:
+			panic("Invalid cookie options")
+		}
+	}
 	ctx.Fasthttp.Response.Header.SetCookie(cook)
 }
 
 // Cookies :
 func (ctx *Ctx) Cookies(args ...interface{}) string {
 	if len(args) == 0 {
+		//return b2s(ctx.Fasthttp.Response.Header.Peek("Cookie"))
 		return ctx.Get("Cookie")
 	}
 	switch arg := args[0].(type) {

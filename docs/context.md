@@ -214,14 +214,39 @@ app.Get("/", func(c *fiber.Ctx) {
 #### Cookie
 Sets cookie name to value, the third options parameter is not implemented yet.
 ```go
-c.Cookie(name, value string)
-//c.Cookie(name, value string, options...)
-
+// Function signature
+c.Cookie(name, value string, options ...interface{})
+// Cookie options struct
+&fiber.Cookie{
+  Expire int64 // Unix timestamp
+  MaxAge int // Seconds
+  Domain string
+  Path string
+  HttpOnly bool
+  Secure bool
+  SameSite string // "lax", "strict", "none", ""
+}
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Set cookie
   c.Cookie("name", "john")
   // => Cookie: name=john;
+
+  // Set cookie with optionss
+  options := &fiber.Cookie{
+    Expire:   1579033664,
+    // Use MaxAge instead of Expire, its 2019
+    // Expire will not be used if MaxAge is set
+    MaxAge:   60,
+    Domain:   "example.com",
+    Path:     "/",
+    HttpOnly: true,
+    Secure:   true,
+    SameSite: "lax",
+  }
+  c.Cookie("name", "john", options)
+  // => name=john; max-age=60; domain=example.com; path=/; HttpOnly; secure; SameSite=Lax
+
 })
 
 ```
