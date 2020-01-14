@@ -2,5 +2,6 @@
 - [Application](application.md "Fiber - Application")
 - [Context](context.md "Fiber - Context")
 - [Routing](routing.md "Fiber - Routing")
+- [Benchmarks](benchmarks.md "Fiber - Benchmarks")
 - [Examples](examples.md "Fiber - Examples")
 - [License](license.md "Fiber - License")

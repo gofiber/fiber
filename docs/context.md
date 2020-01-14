@@ -90,7 +90,7 @@ app.Get("/", func(c *fiber.Ctx) {
 Appends the specified value to the HTTP response header field. If the header is not already set, it creates the header with the specified value. The value parameter must be a string.
 ```go
 // Function signature
-c.Append(field, value string)
+c.Append(field, values ...string)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
@@ -98,12 +98,12 @@ app.Get("/", func(c *fiber.Ctx) {
   c.Get("Link")
   // => ""
 
-  // Lets append some values to the link header
-  c.Append("Link", "http://localhost")
-  // => Link: http://localhost
+  c.Append("Link", "http://google.com", "http://localhost")
+  // => Link: http://localhost, http://google.com
 
-  c.Append("Link", "http://google.com")
-  // => Link: http://localhost; http://google.com
+  c.Append("Link", "Test")
+  // => Link: http://localhost, http://google.com, Test
+
 })
 ```
 
@@ -196,16 +196,18 @@ app.Post("/", func(c *fiber.Ctx) {
 Clears all client cookies or a specific cookie by name by setting the expire date in the past.
 ```go
 // Function signature
-c.ClearCookie()
-c.ClearCookie(key string)
+c.ClearCookie(key ...string)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-  // Expires all cookies
+  // Clears all cookies
   c.ClearCookie()
 
   // Expire specific cookie
   c.ClearCookie("user")
+
+  // Expire multiple cookies
+  c.ClearCookie("token", "session", "track_id", "version")
 })
 ```
 
@@ -267,7 +269,7 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### End
+#### !End
 !> Planned for V1
 
 #### Fasthttp
@@ -287,7 +289,7 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### Format
+#### !Format
 !> Planned for V1
 
 #### FormFile
@@ -323,7 +325,7 @@ app.Post("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### Fresh
+#### !Fresh
 !> Planned for V1
 
 #### Get
@@ -345,7 +347,7 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### HeadersSent
+#### !HeadersSent
 !> Planned for V1
 
 #### Hostname
@@ -476,10 +478,48 @@ app.Listen(8080)
 ```
 
 #### Links
-!> Planned for V1
+Joins the links followed by the propery to populate the response’s Link HTTP header field.
+```go
+// Function signature
+c.Links(link ...string)
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  c.Link(
+    "http://api.example.com/users?page=2", "next",
+    "http://api.example.com/users?page=5", "last",
+  )
+  // Link: <http://api.example.com/users?page=2>; rel="next",
+  //       <http://api.example.com/users?page=5>; rel="last"
+})
+```
 
 #### Locals
-!> Planned for V1
+A function that stores string variables scoped to the request, and therefore available only to the routes that match the request.  
+
+This is usefull if you want to pass some specific values to the next middleware.
+```go
+// Function signature
+c.Locals(key string, value ...string) string
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  c.Locals("user", "admin")
+  // => Locals("user") = "admin"
+
+  // Next middleware
+  c.Next()
+})
+app.Get("/", func(c *fiber.Ctx) {
+  if c.Locals("user") != "admin" {
+    c.Status(200).Send("Welcome admin!")
+    // => "admin"
+  } else {
+    c.SendStatus(403)
+    // => 403 Forbidden
+  }
+})
+```
 
 #### Location
 Sets the response Location HTTP header to the specified path parameter.
@@ -636,7 +676,7 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### Range
+#### !Range
 !> Planned for V1
 
 #### Redirect
@@ -655,7 +695,7 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### Render
+#### !Render
 !> Planned for V1
 
 #### Route
@@ -796,10 +836,10 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### SignedCookies
+#### !SignedCookies
 !> Planned for V1
 
-#### Stale
+#### !Stale
 !> Planned for V1
 
 #### Status

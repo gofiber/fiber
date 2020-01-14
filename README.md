@@ -13,6 +13,11 @@ This library is inspired by **[Express](https://expressjs.com/en/4x/api.html)**,
 ## Full API Documentation
 **[Click here](https://fenny.github.io/fiber/)**
 
+## Benchmarks
+**[See all benchmarks](https://fenny.github.io/fiber/#/benchmarks)**
+
+![](https://fenny.github.io/fiber/static/benchmarks/concurrency-pipeline.png)
+
 ## Installing
 Assuming you’ve already installed **[Go](https://golang.org/doc/)**, install the **[Fiber](https://github.com/fenny/fiber)** package by calling the following command:
 ```shell

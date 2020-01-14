@@ -19,6 +19,7 @@ type Ctx struct {
 	next     bool
 	params   *[]string
 	values   []string
+	locals   map[string]string
 	Fasthttp *fasthttp.RequestCtx
 }
 
@@ -41,6 +42,7 @@ func releaseCtx(ctx *Ctx) {
 	ctx.next = false
 	ctx.params = nil
 	ctx.values = nil
+	ctx.locals = nil
 	ctx.Fasthttp = nil
 	ctxPool.Put(ctx)
 }
@@ -82,13 +84,14 @@ func (ctx *Ctx) AcceptsLanguages(lang string) bool {
 }
 
 // Append :
-func (ctx *Ctx) Append(field, val string) {
-	prev := ctx.Get(field)
-	value := val
-	if prev != "" {
-		value = prev + "; " + val
+func (ctx *Ctx) Append(field string, values ...string) {
+	newVal := ctx.Get(field)
+	if len(values) > 0 {
+		for i := range values {
+			newVal = newVal + ", " + values[i]
+		}
 	}
-	ctx.Set(field, value)
+	ctx.Set(field, newVal)
 }
 
 // Attachment :
@@ -156,9 +159,10 @@ func (ctx *Ctx) ClearCookie(name ...string) {
 		ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
 			ctx.Fasthttp.Response.Header.DelClientCookie(b2s(k))
 		})
-	}
-	if len(name) > 0 {
-		ctx.Fasthttp.Response.Header.DelClientCookie(name[0])
+	} else if len(name) > 0 {
+		for i := range name {
+			ctx.Fasthttp.Response.Header.DelClientCookie(name[i])
+		}
 	}
 }
 
@@ -318,14 +322,33 @@ func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
 	return nil
 }
 
-// Links TODO
-func (ctx *Ctx) Links() {
-
+// Links :
+func (ctx *Ctx) Links(link ...string) {
+	h := ""
+	for i, l := range link {
+		if i%2 == 0 {
+			h += "<" + l + ">"
+		} else {
+			h += `; rel="` + l + `",`
+		}
+	}
+	if len(link) > 0 {
+		h = strings.TrimSuffix(h, ",")
+		ctx.Set("Link", h)
+	}
 }
 
-// Locals TODO
-func (ctx *Ctx) Locals() {
-
+// Locals :
+func (ctx *Ctx) Locals(key string, val ...string) string {
+	if ctx.locals == nil {
+		ctx.locals = make(map[string]string)
+	}
+	if len(val) == 0 {
+		return ctx.locals[key]
+	} else {
+		ctx.locals[key] = val[0]
+	}
+	return ""
 }
 
 // Location :
