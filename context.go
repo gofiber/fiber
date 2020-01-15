@@ -1,3 +1,10 @@
+// 🚀 Fiber, Express on Steriods
+// 📌 Don't use in production until version 1.0.0
+// 🖥 https://github.com/fenny/fiber
+
+// 🦸 Not all heroes wear capes, thank you +1000
+// 💖 @valyala, @dgrr, @erikdubbelboer, @savsgio, @julienschmidt
+
 package fiber
 
 import (
@@ -18,6 +25,7 @@ import (
 // Ctx struct
 type Ctx struct {
 	noCopy   noCopy
+	route    *route
 	next     bool
 	params   *[]string
 	values   []string
@@ -53,6 +61,7 @@ func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 
 // Return Context to pool
 func releaseCtx(ctx *Ctx) {
+	ctx.route = nil
 	ctx.next = false
 	ctx.params = nil
 	ctx.values = nil
@@ -192,9 +201,9 @@ func (ctx *Ctx) Cookie(key, value string, options ...interface{}) {
 			if opt.Expire > 0 {
 				cook.SetExpire(time.Unix(int64(opt.Expire), 0))
 			}
-			// if opt.MaxAge > 0 {
-			// 	cook.SetMaxAge(opt.MaxAge)
-			// }
+			if opt.MaxAge > 0 {
+				cook.SetMaxAge(opt.MaxAge)
+			}
 			if opt.Domain != "" {
 				cook.SetDomain(opt.Domain)
 			}
@@ -481,7 +490,7 @@ func (ctx *Ctx) Render() {
 }
 
 // Route : Only use in debugging
-func (ctx *Ctx) Route(r *Fiber) (s struct {
+func (ctx *Ctx) Route() (s struct {
 	Method   string
 	Path     string
 	Wildcard bool
@@ -490,36 +499,13 @@ func (ctx *Ctx) Route(r *Fiber) (s struct {
 	Values   []string
 	Handler  func(*Ctx)
 }) {
-	path := ctx.Path()
-	method := ctx.Method()
-	for _, route := range r.routes {
-		if route.method != "*" && route.method != method {
-			continue
-		}
-		if route.any || (route.path == path && route.params == nil) {
-			s.Method = method
-			s.Path = path
-			s.Wildcard = route.any
-			s.Regex = route.regex
-			s.Params = route.params
-			s.Values = ctx.values
-			s.Handler = route.handler
-			return
-		}
-		if route.regex == nil {
-			continue
-		}
-		if !route.regex.MatchString(path) {
-			continue
-		}
-		s.Method = method
-		s.Path = path
-		s.Wildcard = route.any
-		s.Regex = route.regex
-		s.Params = route.params
-		s.Handler = route.handler
-		return
-	}
+	s.Method = ctx.route.method
+	s.Path = ctx.route.path
+	s.Wildcard = ctx.route.wildcard
+	s.Regex = ctx.route.regex
+	s.Params = ctx.route.params
+	s.Values = ctx.values
+	s.Handler = ctx.route.handler
 	return
 }
 

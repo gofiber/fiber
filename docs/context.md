@@ -7,6 +7,7 @@ Checks if the specified content types are acceptable, based on the request’s A
 // Function signature
 c.Accepts(ext string) bool
 
+
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Accept: text/html
@@ -20,8 +21,8 @@ app.Get("/", func(c *fiber.Ctx) {
   c.Accepts("json")
   // => // => true
 
-  c.Accepts("application/json")
-  // => // => true
+  c.Accepts("☕")
+  // => // => false
 })
 ```
 
@@ -725,31 +726,28 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### Route
 Contains the currently-matched route struct, **only use this for debugging**.
-It returns an anonymous struct containing the following values:
-```go
-// Route struct
-struct {
-  Method   string
-  Path     string
-  Wildcard bool
-  Regex    *regexp.Regexp
-  Params   []string
-  Values   []string
-  Handler  func(*Ctx)
-}
-```
+It returns an anonymous struct as shown below.
 ```go
 // Function signature
-c.Route(app *Fiber) struct
+c.Route() struct {
+	Method   string
+	Path     string
+	Wildcard bool
+	Regex    *regexp.Regexp
+	Params   []string
+	Values   []string
+	Handler  func(*Ctx)
+}
 
 // Example
 app.Get("/hello", func(c *fiber.Ctx) {
-  c.Route(app)
-  // {GET /hello false <nil> [] [] 0x7b4ab0}
+  c.Route()
+  // => {GET /hello false <nil> [] [] 0x7b4ab0}
 })
+// http://localhost:8080/hello
 app.Post("/:api?", func(c *fiber.Ctx) {
-  c.Route(app)
-  // {POST / false ^(?:/([^/]+?))?/?$ [lol] [] 0x7b49e0}
+  c.Route()
+  // => {POST / false ^(?:/([^/]+?))?/?$ [api] [hello] 0x7b49e0}
 })
 ```
 

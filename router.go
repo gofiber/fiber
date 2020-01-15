@@ -1,3 +1,10 @@
+// 🚀 Fiber, Express on Steriods
+// 📌 Don't use in production until version 1.0.0
+// 🖥 https://github.com/fenny/fiber
+
+// 🦸 Not all heroes wear capes, thank you +1000
+// 💖 @valyala, @dgrr, @erikdubbelboer, @savsgio, @julienschmidt
+
 package fiber
 
 import (
@@ -5,20 +12,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
-	// This json parsing lib is awesome *.*
+	// This json parsing lib is awesome
 	// "github.com/tidwall/gjson"
 	"github.com/valyala/fasthttp"
 )
 
 const (
 	// Version for debugging
-	Version = `0.6.1`
+	Version = `0.6.2`
 	// Port and Version are printed with the banner
 	banner = `%s  _____ _ _
  %s|   __|_| |_ ___ ___
@@ -59,10 +67,10 @@ type Fiber struct {
 type route struct {
 	// HTTP method in uppercase, can be a * for Use() & All()
 	method string
-	// Any bool is for routes without a path or * and /*
-	any bool
 	// Stores the orignal path
 	path string
+	// wildcard bool is for routes without a path, * and /*
+	wildcard bool
 	// Stores compiled regex special routes :params, *wildcards, optionals?
 	regex *regexp.Regexp
 	// Store params if special routes :params, *wildcards, optionals?
@@ -230,13 +238,14 @@ func (r *Fiber) register(method string, args ...interface{}) {
 		// function route!!
 		r.registerHandler(method, path, handler)
 	} else {
+		fmt.Println(reflect.TypeOf(handler))
 		panic("Every route needs to contain either a dir/file path or callback function")
 	}
 }
 func (r *Fiber) registerStatic(method, prefix, root string) {
-	var any bool
+	var wildcard bool
 	if prefix == "*" || prefix == "/*" {
-		any = true
+		wildcard = true
 	}
 	if prefix == "" {
 		prefix = "/"
@@ -253,25 +262,25 @@ func (r *Fiber) registerStatic(method, prefix, root string) {
 		path := filepath.Join(prefix, strings.Replace(file, mount, "", 1))
 		filePath := file
 		if filepath.Base(filePath) == "index.html" {
-			r.routes = append(r.routes, &route{method, any, prefix, nil, nil, func(c *Ctx) {
+			r.routes = append(r.routes, &route{method, prefix, wildcard, nil, nil, func(c *Ctx) {
 				c.SendFile(filePath)
 			}})
 		}
-		r.routes = append(r.routes, &route{method, any, path, nil, nil, func(c *Ctx) {
+		r.routes = append(r.routes, &route{method, path, wildcard, nil, nil, func(c *Ctx) {
 			c.SendFile(filePath)
 		}})
 	}
 }
 func (r *Fiber) registerHandler(method, path string, handler func(*Ctx)) {
 	if path == "" || path == "*" || path == "/*" {
-		r.routes = append(r.routes, &route{method, true, path, nil, nil, handler})
+		r.routes = append(r.routes, &route{method, path, true, nil, nil, handler})
 		return
 	}
 	// Get params from path
 	params := getParams(path)
 	// If path has no params, we dont need regex
 	if len(params) == 0 {
-		r.routes = append(r.routes, &route{method, false, path, nil, nil, handler})
+		r.routes = append(r.routes, &route{method, path, false, nil, nil, handler})
 		return
 	}
 
@@ -280,7 +289,7 @@ func (r *Fiber) registerHandler(method, path string, handler func(*Ctx)) {
 	if err != nil {
 		panic("Invalid url pattern: " + path)
 	}
-	r.routes = append(r.routes, &route{method, false, path, regex, params, handler})
+	r.routes = append(r.routes, &route{method, path, false, regex, params, handler})
 }
 
 // handler create a new context struct from the pool
@@ -305,13 +314,15 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 			continue
 		}
 		// First check if we match a static path or wildcard
-		if route.any || (route.path == path && route.params == nil) {
+		if route.wildcard || (route.path == path && route.params == nil) {
 			// If * always set the path to the wildcard parameter
-			if route.any {
+			if route.wildcard {
 				ctx.params = &[]string{"*"}
 				ctx.values = []string{path}
 			}
 			found = true
+			// Set route pointer if user wants to call .Route()
+			ctx.route = route
 			// Execute handler with context
 			route.handler(ctx)
 			// if next is not set, leave loop and release ctx
@@ -341,6 +352,8 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 			}
 		}
 		found = true
+		// Set route pointer if user wants to call .Route()
+		ctx.route = route
 		// Execute handler with context
 		route.handler(ctx)
 		// if next is not set, leave loop and release ctx
