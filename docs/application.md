@@ -8,8 +8,6 @@ app := fiber.New()
 // Optional fiber settings
 // Sends the "Server" header, disabled by default
 app.Server = ""
-// Clears console when launched, disabled by default
-app.ClearConsole = false
 // Hides fiber banner, enabled by default
 app.NoBanner = false
 ```

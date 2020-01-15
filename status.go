@@ -2,7 +2,7 @@
 // 📌 Don't use in production until version 1.0.0
 // 🖥 https://github.com/fenny/fiber
 
-// 🦸 Not all heroes wear capes, thank you +1000
+// 🦸 Not all heroes wear capes, thank you to some amazing people
 // 💖 @valyala, @dgrr, @erikdubbelboer, @savsgio, @julienschmidt
 
 package fiber

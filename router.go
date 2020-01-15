@@ -2,19 +2,15 @@
 // 📌 Don't use in production until version 1.0.0
 // 🖥 https://github.com/fenny/fiber
 
-// 🦸 Not all heroes wear capes, thank you +1000
+// 🦸 Not all heroes wear capes, thank you to some amazing people
 // 💖 @valyala, @dgrr, @erikdubbelboer, @savsgio, @julienschmidt
 
 package fiber
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"reflect"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -26,7 +22,7 @@ import (
 
 const (
 	// Version for debugging
-	Version = `0.6.2`
+	Version = `0.6.9`
 	// Port and Version are printed with the banner
 	banner = `%s  _____ _ _
  %s|   __|_| |_ ___ ___
@@ -60,8 +56,6 @@ type Fiber struct {
 	CertFile string
 	// Disable the fiber banner on launch
 	NoBanner bool
-	// Clears terminal on launch
-	ClearTerminal bool
 }
 
 type route struct {
@@ -112,8 +106,6 @@ func New() *Fiber {
 		CertFile: "",
 		// Fiber banner is printed by default
 		NoBanner: false,
-		// Terminal is not cleared by default
-		ClearTerminal: false,
 		Fasthttp: &Fasthttp{
 			// Default fasthttp settings
 			// https://github.com/valyala/fasthttp/blob/master/server.go#L150
@@ -202,93 +194,124 @@ func (r *Fiber) Use(args ...interface{}) {
 	r.All(args...)
 }
 
+type staticHandler struct {
+	root string
+}
+
+// Static :
+func Static(root string) staticHandler {
+	return staticHandler{
+		root: root,
+	}
+}
+
 // Function to add a route correctly
 func (r *Fiber) register(method string, args ...interface{}) {
-	// Options
-	var path string
-	var static string
-	var handler func(*Ctx)
-	// app.Get(handler)
+	// Prepare possible variables
+	var path string          // We could have a path/prefix
+	var static staticHandler // We could have a static handler
+	var handler func(*Ctx)   // We could have a ctx handler
+	// Only 1 argument, so no path/prefix
 	if len(args) == 1 {
+		// Is it a static or ctx handler?
 		switch arg := args[0].(type) {
-		case string:
-			static = arg
 		case func(*Ctx):
 			handler = arg
+		case staticHandler:
+			static = arg
 		}
 	}
-	// app.Get(path, handler)
-	if len(args) == 2 {
+	// More than 1 argument, we have a path/prefix + static/ctx handler
+	if len(args) > 1 {
+		// Lets get the path/prefix first
 		path = args[0].(string)
+		// Path must start with a / or *
 		if path[0] != '/' && path[0] != '*' {
 			panic("Invalid path, must begin with slash '/' or wildcard '*'")
 		}
+		// Is the second argument a static or ctx handler?
 		switch arg := args[1].(type) {
-		case string:
-			static = arg
 		case func(*Ctx):
 			handler = arg
+		case staticHandler:
+			static = arg
 		}
 	}
-	// Is this a static file handler?
-	if static != "" {
-		// static file route!!
+	// Let's see what we go to call the correct register function
+
+	// If the static handler contains a root string
+	if static.root != "" {
+		// Register the static handler
 		r.registerStatic(method, path, static)
 	} else if handler != nil {
-		// function route!!
+		// Register the default ctx handler
 		r.registerHandler(method, path, handler)
 	} else {
-		fmt.Println(reflect.TypeOf(handler))
+		// No static nor ctx handler provided :()
 		panic("Every route needs to contain either a dir/file path or callback function")
 	}
 }
-func (r *Fiber) registerStatic(method, prefix, root string) {
+func (r *Fiber) registerStatic(method, prefix string, static staticHandler) {
+	// Lets see if this route needs to match all
+	// This only applies to single files, cant serve multiple on one route
 	var wildcard bool
 	if prefix == "*" || prefix == "/*" {
 		wildcard = true
 	}
+	// If no prefix is given, default is / => /file.txt
 	if prefix == "" {
 		prefix = "/"
 	}
-	files, _, err := walkDir(root)
+	// Lets get all files from path / di
+	files, _, err := walkDir(static.root)
 	if err != nil {
 		panic(err)
 	}
-	mount := filepath.Clean(root)
+	// ./static/compiled => static/compiled
+	mount := filepath.Clean(static.root)
+	// Loop over all files
 	for _, file := range files {
+		// Ignore the .gzipped files by fasthttp
 		if strings.Contains(file, ".fasthttp.gz") {
 			continue
 		}
+		// Time to create a fake path for the route match
+		// static/index.html => /index.html
 		path := filepath.Join(prefix, strings.Replace(file, mount, "", 1))
+		// Store original file path to use in ctx handler
 		filePath := file
+		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" {
 			r.routes = append(r.routes, &route{method, prefix, wildcard, nil, nil, func(c *Ctx) {
 				c.SendFile(filePath)
 			}})
 		}
+		// Add the route + SendFile(filepath) to routes
 		r.routes = append(r.routes, &route{method, path, wildcard, nil, nil, func(c *Ctx) {
 			c.SendFile(filePath)
 		}})
 	}
 }
 func (r *Fiber) registerHandler(method, path string, handler func(*Ctx)) {
+	// If the route needs to match any path
 	if path == "" || path == "*" || path == "/*" {
 		r.routes = append(r.routes, &route{method, path, true, nil, nil, handler})
 		return
 	}
 	// Get params from path
 	params := getParams(path)
-	// If path has no params, we dont need regex
+	// If path has no params (simple path), we dont need regex
 	if len(params) == 0 {
 		r.routes = append(r.routes, &route{method, path, false, nil, nil, handler})
 		return
 	}
 
-	// Compile regix from path
+	// We have parametes, so we need to compile regix from the path
 	regex, err := getRegex(path)
 	if err != nil {
 		panic("Invalid url pattern: " + path)
 	}
+	// Add regex + params to route
 	r.routes = append(r.routes, &route{method, path, false, regex, params, handler})
 }
 
@@ -401,17 +424,6 @@ func (r *Fiber) Listen(port int, addr ...string) {
 		NoDefaultServerHeader:              r.Server == "",
 		NoDefaultContentType:               r.Fasthttp.NoDefaultContentType,
 		KeepHijackedConns:                  r.Fasthttp.KeepHijackedConns,
-	}
-	if r.ClearTerminal {
-		if runtime.GOOS == "linux" {
-			cmd := exec.Command("clear")
-			cmd.Stdout = os.Stdout
-			cmd.Run()
-		} else if runtime.GOOS == "windows" {
-			cmd := exec.Command("cmd", "/c", "cls")
-			cmd.Stdout = os.Stdout
-			cmd.Run()
-		}
 	}
 	if !r.NoBanner {
 		fmt.Printf(banner, cGreen, cGreen, cGreen, cGreen,
