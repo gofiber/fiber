@@ -20,7 +20,7 @@ import (
 )
 
 // Version for debugging
-const Version = "0.6.9"
+const Version = "0.7.0"
 
 // Fiber structure
 type Fiber struct {
