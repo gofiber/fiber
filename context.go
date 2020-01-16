@@ -1,6 +1,6 @@
 // 🚀 Fiber, Express on Steriods
 // 📌 Don't use in production until version 1.0.0
-// 🖥 https://github.com/fenny/fiber
+// 🖥 https://github.com/gofiber/fiber
 
 // 🦸 Not all heroes wear capes, thank you to some amazing people
 // 💖 @valyala, @dgrr, @erikdubbelboer, @savsgio, @julienschmidt
