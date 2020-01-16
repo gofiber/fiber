@@ -69,4 +69,6 @@ http://localhost:8080/hello.html
 ## API Documentation
 We created an extended API documentation including examples, **[click here](https://gofiber.github.io/fiber/)**
 
+
+
 *Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/README.md)*
