@@ -80,7 +80,7 @@ func main() {
     c.Next()
   })
   app.Get("/api/back-end/:action?", func(c *fiber.Ctx) {
-    if c.Locals("auth") != "admin {
+    if c.Locals("auth") != "admin" {
       c.Status(403).Send("Forbidden")
       return
     }
