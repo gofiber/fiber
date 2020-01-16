@@ -35,17 +35,34 @@
   </script>
     <script src="//unpkg.com/docsify-pagination/dist/docsify-pagination.min.js"></script>
   <script>
-  setTimeout(function() {
-    $('.app-sub-sidebar li').each(function(idx, li) {
-      var n = $(li);
-      var txt = n.children('.section-link')
-      if (txt.text().startsWith("!")) {
-        txt.html(txt.text().replace('!', ''))
-        n.css('opacity', '0.4')
-        console.log(n)
-      }
-    });
-  },500)
+  if (window.location.hash.startsWith("#/context")) {
+    setTimeout(function( ) {
+      $('.app-sub-sidebar li').each(function(idx, li) {
+        var n = $(li);
+        var txt = n.children('.section-link')
+        if (txt.text().startsWith("!")) {
+          txt.html(txt.text().replace('!', ''))
+          n.css('opacity', '0.4')
+          console.log(n)
+        }
+      });
+    }, 250)
+  })
+  $(window).on('hashchange', function() {
+    if (window.location.hash.startsWith("#/context")) {
+      setTimeout(function( ) {
+        $('.app-sub-sidebar li').each(function(idx, li) {
+          var n = $(li);
+          var txt = n.children('.section-link')
+          if (txt.text().startsWith("!")) {
+            txt.html(txt.text().replace('!', ''))
+            n.css('opacity', '0.4')
+            console.log(n)
+          }
+        });
+      }, 250)
+    }
+  })
 
     //
 
