@@ -72,7 +72,7 @@ http://localhost:8080/hello.html
 ```
 
 ## Middleware
-Middleware never has been so easy!
+Middleware has never been so easy, just like express you call the Next() matching route function!
 ```go
 package main
 
