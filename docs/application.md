@@ -9,7 +9,7 @@ app := fiber.New()
 // Sends the "Server" header, disabled by default
 app.Server = ""
 // Hides fiber banner, enabled by default
-app.NoBanner = false
+app.Banner = true
 ```
 
 #### TLS
@@ -65,6 +65,7 @@ app.Post(...)
 app.Put(...)
 app.Trace(...)
 // Matches all HTTP verbs
+// Use & All are the same function
 app.Use(...)
 app.All(...)
 ```

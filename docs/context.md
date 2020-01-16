@@ -7,7 +7,6 @@ Checks if the specified content types are acceptable, based on the request’s A
 // Function signature
 c.Accepts(ext string) bool
 
-
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Accept: text/html

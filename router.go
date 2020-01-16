@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,42 +19,24 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-const (
-	// Version for debugging
-	Version = `0.6.9`
-	// Port and Version are printed with the banner
-	banner = `%s  _____ _ _
- %s|   __|_| |_ ___ ___
- %s|   __| | . | -_|  _|
- %s|__|  |_|___|___|_|%s
- %s%s
-
- `
-	// https://play.golang.org/p/r6GNeV1gbH
-	cReset   = "\x1b[0000m"
-	cBlack   = "\x1b[1;30m"
-	cRed     = "\x1b[1;31m"
-	cGreen   = "\x1b[1;32m"
-	cYellow  = "\x1b[1;33m"
-	cBlue    = "\x1b[1;34m"
-	cMagenta = "\x1b[1;35m"
-	cCyan    = "\x1b[1;36m"
-	cWhite   = "\x1b[1;37m"
-)
+// Version for debugging
+const Version = "0.6.9"
 
 // Fiber structure
 type Fiber struct {
 	// Stores all routes
 	routes []*route
-	// Fasthttp server settings
-	Fasthttp *Fasthttp
 	// Server name header
 	Server string
+	// Disable the fiber banner on launch
+	Banner bool
+	// RedirectTrailingSlash TODO*
+	RedirectTrailingSlash bool
 	// Provide certificate files to enable TLS
 	CertKey  string
 	CertFile string
-	// Disable the fiber banner on launch
-	NoBanner bool
+	// Fasthttp server settings
+	Fasthttp *Fasthttp
 }
 
 type route struct {
@@ -105,7 +86,7 @@ func New() *Fiber {
 		CertKey:  "",
 		CertFile: "",
 		// Fiber banner is printed by default
-		NoBanner: false,
+		Banner: true,
 		Fasthttp: &Fasthttp{
 			// Default fasthttp settings
 			// https://github.com/valyala/fasthttp/blob/master/server.go#L150
@@ -194,81 +175,36 @@ func (r *Fiber) Use(args ...interface{}) {
 	r.All(args...)
 }
 
-type staticHandler struct {
-	root string
-}
-
 // Static :
-func Static(root string) staticHandler {
-	return staticHandler{
-		root: root,
-	}
-}
-
-// Function to add a route correctly
-func (r *Fiber) register(method string, args ...interface{}) {
-	// Prepare possible variables
-	var path string          // We could have a path/prefix
-	var static staticHandler // We could have a static handler
-	var handler func(*Ctx)   // We could have a ctx handler
-	// Only 1 argument, so no path/prefix
-	if len(args) == 1 {
-		// Is it a static or ctx handler?
-		switch arg := args[0].(type) {
-		case func(*Ctx):
-			handler = arg
-		case staticHandler:
-			static = arg
-		}
-	}
-	// More than 1 argument, we have a path/prefix + static/ctx handler
-	if len(args) > 1 {
-		// Lets get the path/prefix first
-		path = args[0].(string)
-		// Path must start with a / or *
-		if path[0] != '/' && path[0] != '*' {
-			panic("Invalid path, must begin with slash '/' or wildcard '*'")
-		}
-		// Is the second argument a static or ctx handler?
-		switch arg := args[1].(type) {
-		case func(*Ctx):
-			handler = arg
-		case staticHandler:
-			static = arg
-		}
-	}
-	// Let's see what we go to call the correct register function
-
-	// If the static handler contains a root string
-	if static.root != "" {
-		// Register the static handler
-		r.registerStatic(method, path, static)
-	} else if handler != nil {
-		// Register the default ctx handler
-		r.registerHandler(method, path, handler)
-	} else {
-		// No static nor ctx handler provided :()
-		panic("Every route needs to contain either a dir/file path or callback function")
-	}
-}
-func (r *Fiber) registerStatic(method, prefix string, static staticHandler) {
-	// Lets see if this route needs to match all
-	// This only applies to single files, cant serve multiple on one route
+func (r *Fiber) Static(args ...string) {
+	var prefix string
+	var root string
 	var wildcard bool
+
+	if len(args) == 1 {
+		// Static(root)
+		prefix = "/"
+		root = args[0]
+	} else if len(args) > 1 {
+		// Static(prefix, root)
+		prefix = args[0]
+		root = args[1]
+		// If no prefix is given, default is / => /file.txt
+		if prefix == "" {
+			prefix = "/"
+		}
+	}
+	// Check if wildcard for single files
 	if prefix == "*" || prefix == "/*" {
 		wildcard = true
 	}
-	// If no prefix is given, default is / => /file.txt
-	if prefix == "" {
-		prefix = "/"
-	}
-	// Lets get all files from path / di
-	files, _, err := walkDir(static.root)
+	// Lets get all files from root
+	files, _, err := walkDir(root)
 	if err != nil {
 		panic(err)
 	}
 	// ./static/compiled => static/compiled
-	mount := filepath.Clean(static.root)
+	mount := filepath.Clean(root)
 	// Loop over all files
 	for _, file := range files {
 		// Ignore the .gzipped files by fasthttp
@@ -282,17 +218,32 @@ func (r *Fiber) registerStatic(method, prefix string, static staticHandler) {
 		filePath := file
 		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" {
-			r.routes = append(r.routes, &route{method, prefix, wildcard, nil, nil, func(c *Ctx) {
+			r.routes = append(r.routes, &route{"GET", prefix, wildcard, nil, nil, func(c *Ctx) {
 				c.SendFile(filePath)
 			}})
 		}
 		// Add the route + SendFile(filepath) to routes
-		r.routes = append(r.routes, &route{method, path, wildcard, nil, nil, func(c *Ctx) {
+		r.routes = append(r.routes, &route{"GET", path, wildcard, nil, nil, func(c *Ctx) {
 			c.SendFile(filePath)
 		}})
 	}
 }
-func (r *Fiber) registerHandler(method, path string, handler func(*Ctx)) {
+
+// Function to add a route correctly
+func (r *Fiber) register(method string, args ...interface{}) {
+	// Prepare possible variables
+	var path string        // We could have a path/prefix
+	var handler func(*Ctx) // We could have a ctx handler
+	// Only 1 argument, so no path/prefix
+	if len(args) == 1 {
+		handler = args[0].(func(*Ctx))
+	} else if len(args) > 1 {
+		path = args[0].(string)
+		handler = args[1].(func(*Ctx))
+		if path[0] != '/' && path[0] != '*' {
+			panic("Invalid path, must begin with slash '/' or wildcard '*'")
+		}
+	}
 	// If the route needs to match any path
 	if path == "" || path == "*" || path == "/*" {
 		r.routes = append(r.routes, &route{method, path, true, nil, nil, handler})
@@ -397,7 +348,6 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 
 // Listen starts the server with the correct settings
 func (r *Fiber) Listen(port int, addr ...string) {
-	portStr := strconv.Itoa(port)
 	var address string
 	if len(addr) > 0 {
 		address = addr[0]
@@ -425,19 +375,17 @@ func (r *Fiber) Listen(port int, addr ...string) {
 		NoDefaultContentType:               r.Fasthttp.NoDefaultContentType,
 		KeepHijackedConns:                  r.Fasthttp.KeepHijackedConns,
 	}
-	if !r.NoBanner {
-		fmt.Printf(banner, cGreen, cGreen, cGreen, cGreen,
-			cBlack+Version,
-			cBlack+"Express on steriods",
-			cGreen+":"+portStr+cReset,
-		)
+	if r.Banner {
+		// https://play.golang.org/p/r6GNeV1gbH
+		// http://patorjk.com/software/taag
+		fmt.Printf("\x1b[1;32m  _____ _ _\n \x1b[1;32m|   __|_| |_ ___ ___\n \x1b[1;32m|   __| | . | -_|  _|\n \x1b[1;32m|__|  |_|___|___|_|\x1b[1;30m%s\n \x1b[1;30m%s\x1b[1;32m%v\x1b[0000m\n\n", Version, "Express on steriods:", port)
 	}
 	if r.CertKey != "" && r.CertFile != "" {
-		if err := server.ListenAndServeTLS(fmt.Sprintf("%s:%s", address, portStr), r.CertFile, r.CertKey); err != nil {
+		if err := server.ListenAndServeTLS(fmt.Sprintf("%s:%v", address, port), r.CertFile, r.CertKey); err != nil {
 			panic(err)
 		}
 	} else {
-		if err := server.ListenAndServe(fmt.Sprintf("%s:%s", address, portStr)); err != nil {
+		if err := server.ListenAndServe(fmt.Sprintf("%s:%v", address, port)); err != nil {
 			panic(err)
 		}
 	}
