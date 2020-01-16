@@ -12,7 +12,7 @@
 * Rapid Server-Side Programming
 * Easy routing with parameters
 * Static files with custom prefix
-* Middleware support
+* Middleware with Next support
 * Express API endpoints
 * **[API Documentation](https://gofiber.github.io/fiber/)**
 
