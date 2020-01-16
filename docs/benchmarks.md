@@ -1,12 +1,29 @@
 # Benchmarks
-Benchmarks are performed by [go-web-framework-benchmark](https://github.com/smallnest/go-web-framework-benchmark) on a digitalocean machine.
+
+#### TechEmpower
+* **CPU**  Intel Xeon Gold 5120  
+* **MEM** 32GB  
+* **GO** go1.13.6 linux/amd64  
+* **OS** Linux  
+* **NET** Dedicated Cisco 10-gigabit Ethernet switch.
+
+
+Below you can see the results of tested go frameworks responding in plaintext.  
+To view the list yourself, [Plaintext Go Results](https://www.techempower.com/benchmarks/#section=test&runid=739210f5-fcac-4e74-8d65-12f68368b0bd&hw=ph&test=plaintext&l=zijocf-v).  
+To see all language frameworks, [Plaintext All Results](https://www.techempower.com/benchmarks/#section=test&runid=739210f5-fcac-4e74-8d65-12f68368b0bd&hw=ph&test=plaintext).  
+
+![](static/benchmarks/techempower-plaintext.png)
+
+![](static/benchmarks/techempower-plaintext-latency.png)
+
+#### Go-Web
+[go-web-framework-benchmark](https://github.com/smallnest/go-web-framework-benchmark)
 
 * **CPU** Intel(R) Xeon(R) Gold 6140 CPU @ 2.30GHz
 * **MEM** 4GB
 * **GO** go1.13.6 linux/amd64
-* **OS** Ubuntu 18.04.3 LTS  
+* **OS** Linux  
 
-#### Basic Test
 The first test case is to mock 0 ms, 10 ms, 100 ms, 500 ms processing time in handlers.  
 
 ![](static/benchmarks/benchmark.png)
@@ -25,8 +42,7 @@ If we enable http pipelining, test result as below:
 
 ![](static/benchmarks/benchmark-pipeline.png)
 
-#### Concurrency Test
-In 30 ms processing time, the test result for 100, 1000, 5000 clients is:
+Concurrency test in 30 ms processing time, the test result for 100, 1000, 5000 clients is:
 
 ![](static/benchmarks/concurrency.png)
 
@@ -38,6 +54,6 @@ If we enable http pipelining, test result as below:
 
 ![](static/benchmarks/concurrency-pipeline.png)
 
-#### CPU-Bound Test
+CPU-Bound Test  
 
 ![](static/benchmarks/cpubound_benchmark.png)

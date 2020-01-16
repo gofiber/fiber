@@ -525,25 +525,42 @@ A function that stores string variables scoped to the request, and therefore ava
 This is usefull if you want to pass some specific values to the next middleware.
 ```go
 // Function signature
-c.Locals(key string, value ...string) string
+c.Locals(key string)
+c.Locals(key string, value interface{}) interface{}
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   c.Locals("user", "admin")
-  // => Locals("user") = "admin"
-
-  // Next middleware
   c.Next()
 })
 app.Get("/", func(c *fiber.Ctx) {
   if c.Locals("user") != "admin" {
     c.Status(200).Send("Welcome admin!")
-    // => "admin"
   } else {
     c.SendStatus(403)
     // => 403 Forbidden
   }
 })
+```
+
+You can put any type inside the locals, don't forget to convert it back when you are using the variable
+```go
+type JSON struct {
+  Message string `json:"message"`
+}
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  c.Locals("user", JSON{"Hello, World!"})
+  // => user: {"message":"Hello, World!"}
+  c.Next()
+})
+app.Get("/", func(c *fiber.Ctx) {
+  if val, ok := c.Locals("user").(JSON); ok {
+    fmt.Println(val.Message)
+  }
+})
+```
 ```
 
 #### Location

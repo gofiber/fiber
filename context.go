@@ -29,7 +29,6 @@ type Ctx struct {
 	next     bool
 	params   *[]string
 	values   []string
-	locals   map[string]string
 	Fasthttp *fasthttp.RequestCtx
 }
 
@@ -65,7 +64,6 @@ func releaseCtx(ctx *Ctx) {
 	ctx.next = false
 	ctx.params = nil
 	ctx.values = nil
-	ctx.locals = nil
 	ctx.Fasthttp = nil
 	ctxPool.Put(ctx)
 }
@@ -399,16 +397,13 @@ func (ctx *Ctx) Links(link ...string) {
 }
 
 // Locals :
-func (ctx *Ctx) Locals(key string, val ...string) string {
-	if ctx.locals == nil {
-		ctx.locals = make(map[string]string)
-	}
+func (ctx *Ctx) Locals(key string, val ...interface{}) interface{} {
 	if len(val) == 0 {
-		return ctx.locals[key]
+		return ctx.Fasthttp.UserValue(key)
 	} else {
-		ctx.locals[key] = val[0]
+		ctx.Fasthttp.SetUserValue(key, val[0])
 	}
-	return ""
+	return nil
 }
 
 // Location :
