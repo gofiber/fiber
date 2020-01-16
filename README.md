@@ -35,7 +35,7 @@ import "github.com/gofiber/fiber"
 func main() {
   app := fiber.New()
   app.Get("/:name", func(c *fiber.Ctx) {
-    c.Send("Hello, " + c.Params("name") + !")
+    c.Send("Hello, " + c.Params("name") + "!")
   })
   app.Listen(8080)
 }
