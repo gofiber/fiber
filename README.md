@@ -97,6 +97,9 @@ func main() {
 ## API Documentation
 We created an extended API documentation including examples, **[click here](https://gofiber.github.io/fiber/)**
 
+## License
+gofiber/fiber is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE.md).
+
 
 
 *Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/README.md)*
