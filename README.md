@@ -34,8 +34,8 @@ import "github.com/gofiber/fiber"
 
 func main() {
   app := fiber.New()
-  app.Get("/", func(c *fiber.Ctx) {
-    c.Send("Hello, World!")
+  app.Get("/:name", func(c *fiber.Ctx) {
+    c.Send("Hello, " + c.Params("name") + !")
   })
   app.Listen(8080)
 }
@@ -54,16 +54,20 @@ import "github.com/gofiber/fiber"
 
 func main() {
   app := fiber.New()
-  app.Static("./public")
+  app.Get("/static", func(c *fiber.Ctx) {
+    c.Set("X-XSS-Protection", "1; mode=block")
+    c.Next()
+  })
+  app.Static("/static", ./public")
   app.Listen(8080)
 }
 ```
 Now, you can load the files that are in the public directory:
 ```shell
-http://localhost:8080/images/gopher.png
-http://localhost:8080/css/style.css
-http://localhost:8080/js/jquery.js
-http://localhost:8080/hello.html
+http://localhost:8080/static/images/gopher.png
+http://localhost:8080/static/css/style.css
+http://localhost:8080/static/js/jquery.js
+http://localhost:8080/static/hello.html
 ```
 
 ## API Documentation
