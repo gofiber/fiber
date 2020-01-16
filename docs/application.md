@@ -83,4 +83,4 @@ app.Listen(8080, "127.0.0.1")
 ```
 
 
-*Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/application.md)*
+*Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/docs/application.md)*
