@@ -1,7 +1,7 @@
 # License & Thanks
 Special thanks to some amazing people and organizations:  
 
-[@fenny](https://github.com/fenny) / [Fiber](https://github.com/fenny/fiber/blob/master/LICENSE)  
+[@fenny](https://github.com/fenny) / [Fiber](https://github.com/gofiber/fiber/blob/master/LICENSE)  
 [@valyala](https://github.com/valyala) / [Fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)  
 [@julienschmidt](https://github.com/julienschmidt) / [HttpRouter](https://github.com/julienschmidt/httprouter)  
 [@savsgio](https://github.com/savsgio) / [Atreugo](https://github.com/savsgio/atreugo/blob/master/LICENSE)  
