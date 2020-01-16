@@ -41,7 +41,7 @@ import "github.com/fenny/fiber"
 func main() {
   app := fiber.New()
 
-  app.Get("./static")
+  app.Static("./static")
   app.Get(notFound)
 
   app.Listen(8080)
@@ -60,7 +60,7 @@ import "github.com/fenny/fiber"
 func main() {
   app := fiber.New()
   app.Get(cacheControl)
-  app.Get("./static")
+  app.Static("./static")
   app.Listen(8080)
 }
 
