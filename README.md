@@ -1,5 +1,5 @@
 <p align="center">
-  <img height="300" src="https://gofiber.github.io/fiber/static/logo.jpg">
+  <img height="150" src="https://gofiber.github.io/fiber/static/logo.jpg">
 </p>
 
 # Fiber ![](https://img.shields.io/github/release/gofiber/fiber) ![](https://img.shields.io/github/issues/gofiber/fiber) ![](https://img.shields.io/github/stars/gofiber/fiber) ![](https://godoc.org/github.com/valyala/fasthttp?status.svg) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) ![](https://img.shields.io/github/languages/top/gofiber/fiber) ![](https://img.shields.io/github/languages/code-size/gofiber/fiber)
