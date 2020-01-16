@@ -12,7 +12,6 @@
 
 [![](https://gofiber.github.io/fiber/static/benchmarks/benchmark.png)](https://gofiber.github.io/fiber/#/benchmarks) 
 
-![](https://gofiber.github.io/fiber/static/benchmarks/benchmark.png?v=12) 
 ## Features
 * Optimized for speed and low memory usage.
 * Rapid Server-Side Programming
