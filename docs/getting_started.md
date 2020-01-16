@@ -103,7 +103,7 @@ http://localhost:8080/js/app.js
 http://localhost:8080/images/bg.png
 http://localhost:8080/hello.html
 ```
-To use multiple static assets directories, call the express.static middleware function multiple times:
+To use multiple static assets directories, call the Static function multiple times:
 ```go
 app.Static("./public")
 app.Static("./files")
