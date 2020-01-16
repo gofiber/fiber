@@ -13,7 +13,7 @@
 * Easy routing with parameters
 * Static files with custom prefix
 * Middleware support
-* Supports Express API endpoints
+* Express API endpoints
 * **[API Documentation](https://gofiber.github.io/fiber/)**
 
 ## Installing
