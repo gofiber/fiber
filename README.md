@@ -1,27 +1,27 @@
 <img src="docs/static/logo.jpg" width="150" alt="Fiber"><br><br><span style="color:red"><b>IMPORTANT: Do not use this in production, API might change before we release v1.0.0!</span></b><br><br>
-[![Latest Release](https://img.shields.io/github/release/fenny/fiber.svg)](https://github.com/fenny/fiber/releases/latest)
-[![GoDoc](https://godoc.org/github.com/fenny/fiber?status.svg)](http://godoc.org/github.com/fenny/fiber)
-[![Go Report](https://goreportcard.com/badge/github.com/fenny/fiber)](https://goreportcard.com/report/github.com/fenny/fiber)
-[![GitHub license](https://img.shields.io/github/license/fenny/fiber.svg)](https://github.com/fenny/fiber/blob/master/LICENSE)
+[![Latest Release](https://img.shields.io/github/release/gofiber/fiber.svg)](https://github.com/gofiber/fiber/releases/latest)
+[![GoDoc](https://godoc.org/github.com/gofiber/fiber?status.svg)](http://godoc.org/github.com/gofiber/fiber)
+[![Go Report](https://goreportcard.com/badge/github.com/gofiber/fiber)](https://goreportcard.com/report/github.com/gofiber/fiber)
+[![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE)
 [![Join the chat at https://gitter.im/FiberGo/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/FiberGo/community)
 <br><br>
-<!-- **[Fiber](https://github.com/fenny/fiber)** is a router framework build on top of **[FastHTTP](https://github.com/valyala/fasthttp)**, the fastest HTTP package for **[Go](https://golang.org/doc/)**.<br>
+<!-- **[Fiber](https://github.com/gofiber/fiber)** is a router framework build on top of **[FastHTTP](https://github.com/valyala/fasthttp)**, the fastest HTTP package for **[Go](https://golang.org/doc/)**.<br>
 This library is inspired by **[Express](https://expressjs.com/en/4x/api.html)**, one of the most populair and well known web framework for **[Nodejs](https://nodejs.org/en/about/)**. -->
 
-**[Fiber](https://github.com/fenny/fiber)** is an **[Express](https://expressjs.com/en/4x/api.html)** style HTTP framework implementation running on **[FastHTTP](https://github.com/valyala/fasthttp)**, the fastest HTTP engine for **[Go](https://golang.org/doc/)**. The package make use of similar framework convention as they are in expressjs. People switching from **[Nodejs](https://nodejs.org/en/about/)** to **[Golang](https://golang.org/doc/)** often end up in a bad learning curve to start building their webapps, this project is meant to ease things up, but with performance in mind (**Express on steriods**)
+**[Fiber](https://github.com/gofiber/fiber)** is an **[Express](https://expressjs.com/en/4x/api.html)** style HTTP framework implementation running on **[FastHTTP](https://github.com/valyala/fasthttp)**, the fastest HTTP engine for **[Go](https://golang.org/doc/)**. The package make use of similar framework convention as they are in expressjs. People switching from **[Nodejs](https://nodejs.org/en/about/)** to **[Golang](https://golang.org/doc/)** often end up in a bad learning curve to start building their webapps, this project is meant to ease things up, but with performance in mind (**Express on steriods**)
 
 ## Full API Documentation
-**[Click here](https://fenny.github.io/fiber/)**
+**[Click here](https://gofiber.github.io/fiber/)**
 
 ## Benchmarks
-**[See all benchmarks](https://fenny.github.io/fiber/#/benchmarks)**
+**[See all benchmarks](https://gofiber.github.io/fiber/#/benchmarks)**
 
-![](https://fenny.github.io/fiber/static/benchmarks/benchmark.png)
+![](https://gofiber.github.io/fiber/static/benchmarks/benchmark.png)
 
 ## Installing
-Assuming you’ve already installed **[Go](https://golang.org/doc/)**, install the **[Fiber](https://github.com/fenny/fiber)** package by calling the following command:
+Assuming you’ve already installed **[Go](https://golang.org/doc/)**, install the **[Fiber](https://github.com/gofiber/fiber)** package by calling the following command:
 ```shell
-$ go get -u github.com/fenny/fiber
+$ go get -u github.com/gofiber/fiber
 ```
 
 ## Hello world
@@ -32,7 +32,7 @@ $ create server.go
 ```go
 package main
 
-import "github.com/fenny/fiber"
+import "github.com/gofiber/fiber"
 
 func main() {
   app := fiber.New()
@@ -130,4 +130,4 @@ http://localhost:8080/static/images/bg.png
 http://localhost:8080/static/hello.html
 ```
 
-*Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/README.md)*
+*Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/README.md)*
