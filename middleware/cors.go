@@ -3,7 +3,7 @@ package middleware
 import (
 	"fmt"
 
-	"github.com/fenny/fiber"
+	"github.com/gofiber/fiber"
 )
 
 // Cors : Enable cross-origin resource sharing (CORS) with various options.

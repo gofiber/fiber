@@ -3,7 +3,7 @@ package middleware
 import (
 	"fmt"
 
-	"github.com/fenny/fiber"
+	"github.com/gofiber/fiber"
 )
 
 // Helmet : Helps secure your apps by setting various HTTP headers.
