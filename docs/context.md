@@ -561,7 +561,6 @@ app.Get("/", func(c *fiber.Ctx) {
   }
 })
 ```
-```
 
 #### Location
 Sets the response Location HTTP header to the specified path parameter.
