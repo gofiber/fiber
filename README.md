@@ -60,9 +60,9 @@ func main() {
 ```
 Now, you can load the files that are in the public directory:
 ```shell
-http://localhost:8080/images/kitten.jpg
+http://localhost:8080/images/gopher.png
 http://localhost:8080/css/style.css
-http://localhost:8080/js/app.js
+http://localhost:8080/js/jquery.js
 http://localhost:8080/hello.html
 ```
 
