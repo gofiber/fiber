@@ -56,19 +56,16 @@ Route definition takes the following structures:
 
 ```go
 // Function signature
-app.Method(path string, static string)
-app.Method(path string, func(*fiber.Ctx))
-app.Method(static string)
 app.Method(func(*fiber.Ctx))
+app.Method(path string, func(*fiber.Ctx))
 ```
 
 * **app** is an instance of **[Fiber](#hello-world)**.
-* **Method** is an **[HTTP request method](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods)**, in capitalization: Get, Put, Post etc
+* **Method** is an [HTTP request method](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods), in capitalization: Get, Put, Post etc
 * **path string** is a path or prefix (for static files) on the server.
-* **static string** is a file path or directory.
 * **func(*fiber.Ctx)** is a function executed when the route is matched.
 
-This tutorial assumes that an instance of fiber named app is created and the server is running. If you are not familiar with creating an app and starting it, see the **[Hello world](#hello-world)** example.
+This tutorial assumes that an instance of fiber named app is created and the server is running. If you are not familiar with creating an app and starting it, see the [Hello world](#hello-world) example.
 
 The following examples illustrate defining simple routes.  
 ```go
@@ -97,13 +94,13 @@ app.Delete("/user", func(c *fiber.Ctx) {
 To serve static files such as images, CSS files, and JavaScript files, replace your function handler with a file or directory string.
 ```go
 // Function signature
-app.Method(static string)
-app.Method(path string, static string)
+app.Static(root string)
+app.Static(prefix, root string)
 ```
 For example, use the following code to serve images, CSS files, and JavaScript files in a directory named public:
 
 ```go
-app.Get("./public")
+app.Static("./public")
 ```
 Now, you can load the files that are in the public directory:
 ```shell
@@ -115,14 +112,14 @@ http://localhost:8080/hello.html
 ```
 To use multiple static assets directories, call the express.static middleware function multiple times:
 ```go
-app.Get("./public")
-app.Get("./files")
+app.Static("./public")
+app.Static("./files")
 ```
 ?>For best results, use a reverse proxy cache like [NGINX](https://www.nginx.com/resources/wiki/start/topics/examples/reverseproxycachingexample/) to improve performance of serving static assets.  
 
 To create a virtual path prefix (where the path does not actually exist in the file system) for files that are served by the express.static function, specify a mount path for the static directory, as shown below:
 ```go
-app.Get("/static", "./public")
+app.Static("/static", "./public")
 ```
 Now, you can load the files that are in the public directory from the /static path prefix.
 ```shell

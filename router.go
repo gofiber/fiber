@@ -177,21 +177,17 @@ func (r *Fiber) Use(args ...interface{}) {
 
 // Static :
 func (r *Fiber) Static(args ...string) {
-	var prefix string
-	var root string
-	var wildcard bool
-
+	prefix := "/"
+	root := "./"
+	wildcard := false
+	gzip := true
 	if len(args) == 1 {
-		// Static(root)
-		prefix = "/"
 		root = args[0]
-	} else if len(args) > 1 {
-		// Static(prefix, root)
+	} else if len(args) == 2 {
 		prefix = args[0]
 		root = args[1]
-		// If no prefix is given, default is / => /file.txt
-		if prefix == "" {
-			prefix = "/"
+		if prefix[0] != '/' {
+			prefix = "/" + prefix
 		}
 	}
 	// Check if wildcard for single files
@@ -219,12 +215,12 @@ func (r *Fiber) Static(args ...string) {
 		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" {
 			r.routes = append(r.routes, &route{"GET", prefix, wildcard, nil, nil, func(c *Ctx) {
-				c.SendFile(filePath)
+				c.SendFile(filePath, gzip)
 			}})
 		}
 		// Add the route + SendFile(filepath) to routes
 		r.routes = append(r.routes, &route{"GET", path, wildcard, nil, nil, func(c *Ctx) {
-			c.SendFile(filePath)
+			c.SendFile(filePath, gzip)
 		}})
 	}
 }

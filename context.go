@@ -539,9 +539,13 @@ func (ctx *Ctx) SendBytes(body []byte) {
 }
 
 // SendFile :
-func (ctx *Ctx) SendFile(file string) {
-	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
+func (ctx *Ctx) SendFile(file string, gzip ...bool) {
+	// Disable gzipping
+	if len(gzip) > 0 && !gzip[0] {
+		fasthttp.ServeFileUncompressed(ctx.Fasthttp, file)
+	}
 	fasthttp.ServeFile(ctx.Fasthttp, file)
+	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
 	//ctx.Type(filepath.Ext(path))
 	//ctx.Fasthttp.SendFile(path)
 }

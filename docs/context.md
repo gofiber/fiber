@@ -802,14 +802,17 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### SendFile
-Transfers the file at the given path. Sets the Content-Type response HTTP header field based on the filename’s extension.
+Transfers the file at the given path. Sets the Content-Type response HTTP header field based on the filename’s extension.  
 ```go
 // Function signature
-c.SendFile(path string)
+c.SendFile(path string, gzip ...bool)
 
 // Example
 app.Get("/not-found", func(c *fiber.Ctx) {
   c.SendFile("./public/404.html")
+
+  // SendFile using gzipping by default, set it to false to disable.
+  c.SendFile("./public/404.html", false)
 })
 ```
 
