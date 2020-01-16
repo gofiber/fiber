@@ -90,8 +90,8 @@ app.Get("/", func(c *fiber.Ctx) {
 Appends the specified value to the HTTP response header field. If the header is not already set, it creates the header with the specified value. The value parameter must be a string.
 ```go
 // Function signature
+c.Append(field, value string)
 c.Append(field, values ...string)
-
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Let's see if the Link header exist
@@ -196,7 +196,8 @@ app.Post("/", func(c *fiber.Ctx) {
 Clears all client cookies or a specific cookie by name by setting the expire date in the past.
 ```go
 // Function signature
-c.ClearCookie(key ...string)
+c.ClearCookie()
+c.ClearCookie(key string)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
@@ -215,7 +216,9 @@ app.Get("/", func(c *fiber.Ctx) {
 Sets cookie name to value, the third options parameter is not implemented yet.
 ```go
 // Function signature
-c.Cookie(name, value string, options ...interface{})
+c.Cookie(name, value string)
+c.Cookie(name, value string, options *Cookie{})
+
 // Cookie options struct
 &fiber.Cookie{
   Expire int64 // Unix timestamp
@@ -821,7 +824,8 @@ app.Get("/", func(c *fiber.Ctx) {
 Transfers the file at the given path. Sets the Content-Type response HTTP header field based on the filename’s extension.  
 ```go
 // Function signature
-c.SendFile(path string, gzip ...bool)
+c.SendFile(path string)
+c.SendFile(path string, gzip bool)
 
 // Example
 app.Get("/not-found", func(c *fiber.Ctx) {
