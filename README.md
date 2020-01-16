@@ -43,7 +43,7 @@ func main() {
 ```bash
 $ go run server.go
 ```
-Browse to **http://localhost:8080** and you should see Hello, World! on the page.
+Browse to **http://localhost:8080** and you should see `Hello, World!` on the page.
 
 ## Static files
 To serve static files, use the [Static](https://gofiber.github.io/fiber/#/?id=static-files) method.
