@@ -1,4 +1,4 @@
-module fiber
+module github.com/gofiber/fiber
 
 go 1.13
 
