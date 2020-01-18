@@ -20,16 +20,26 @@ import (
 	"strings"
 	"time"
 
-	// This json parsing lib is awesome
 	// "github.com/tidwall/gjson"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/reuseport"
 )
 
-// Version for debugging
-const Version = "0.9.0"
+const (
+	// Version for debugging
+	Version = "0.9.3"
+	// https://play.golang.org/p/r6GNeV1gbH
+	banner = "" +
+		" \x1b[1;32m _____ _ _\n" +
+		" \x1b[1;32m|   __|_| |_ ___ ___\n" +
+		" \x1b[1;32m|   __| | . | -_|  _|\n" +
+		" \x1b[1;32m|__|  |_|___|___|_|\x1b[1;30m%s\x1b[1;32m%s\n" +
+		" \x1b[1;30m%s\x1b[1;32m%v\x1b[0000m\n\n"
+)
 
-var child = flag.Bool("fiber-child", false, "is child process")
+var (
+	prefork = flag.Bool("prefork", false, "use prefork")
+	child   = flag.Bool("child", false, "is child process")
+)
 
 // Fiber structure
 type Fiber struct {
@@ -44,9 +54,11 @@ type Fiber struct {
 	CertFile string
 	// Fasthttp server settings
 	Fasthttp *Fasthttp
-	// ALPHA SETTINGS, DO NOT USE!
-	RedirectTrailingSlash bool
-	Prefork               bool
+	// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
+	// -prefork
+	Prefork bool
+	// -child
+	Child bool
 }
 
 type route struct {
@@ -89,6 +101,8 @@ type Fasthttp struct {
 
 // New creates a Fiber instance
 func New() *Fiber {
+	// Parse flags
+	flag.Parse()
 	return &Fiber{
 		// No server header is sent when set empty ""
 		Server: "",
@@ -96,10 +110,16 @@ func New() *Fiber {
 		CertKey:  "",
 		CertFile: "",
 		// Fiber banner is printed by default
+		// Disable if it's a child process (when preforking)
 		Banner: true,
+		// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
+		// Prefork can be set within code, or with flag -prefork
+		Prefork: *prefork,
+		// True or false if process is child when prefork is enabled
+		Child: *child,
+		// Default fasthttp settings
+		// https://github.com/valyala/fasthttp/blob/master/server.go#L150
 		Fasthttp: &Fasthttp{
-			// Default fasthttp settings
-			// https://github.com/valyala/fasthttp/blob/master/server.go#L150
 			Concurrency:                        256 * 1024,
 			DisableKeepAlive:                   false,
 			ReadBufferSize:                     4096,
@@ -274,12 +294,6 @@ func (r *Fiber) register(method string, args ...interface{}) {
 
 // handler create a new context struct from the pool
 // then try to match a route as efficient as possible.
-// 1 > loop trough all routes
-// 2 > if method != * or method != method   							SKIP
-// 3 > if any == true or (path == path && params == nil): MATCH
-// 4 > if regex == nil: 																	SKIP
-// 5 > if regex.match(path) != true: 											SKIP
-// 6 > if params != nil && len(params) > 0 								REGEXPARAMS
 func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 	found := false
 	// get custom context from sync pool
@@ -354,10 +368,11 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 
 // Listen starts the server with the correct settings
 func (r *Fiber) Listen(port int, addr ...string) {
-	var address string
+	host := fmt.Sprintf(":%v", port)
 	if len(addr) > 0 {
-		address = addr[0]
+		host = fmt.Sprintf("%s:%v", addr[0], port)
 	}
+	// Copy settings to fasthttp server
 	server := &fasthttp.Server{
 		Handler:                            r.handler,
 		Name:                               r.Server,
@@ -381,51 +396,63 @@ func (r *Fiber) Listen(port int, addr ...string) {
 		NoDefaultContentType:               r.Fasthttp.NoDefaultContentType,
 		KeepHijackedConns:                  r.Fasthttp.KeepHijackedConns,
 	}
-	flag.Parse()
-	if r.Banner && !*child {
-		// https://play.golang.org/p/r6GNeV1gbH
-		// http://patorjk.com/software/taag
-		fmt.Printf("\x1b[1;32m  _____ _ _\n \x1b[1;32m|   __|_| |_ ___ ___\n \x1b[1;32m|   __| | . | -_|  _|\n \x1b[1;32m|__|  |_|___|___|_|\x1b[1;30m%s\n \x1b[1;30m%s\x1b[1;32m%v\x1b[0000m\n\n", Version, "Express on steriods:", port)
-	}
-	if r.Prefork {
-		ln := getListener(port, address)
-		if r.CertKey != "" && r.CertFile != "" {
-			if err := server.ServeTLS(ln, r.CertFile, r.CertKey); err != nil {
-				panic(err)
-			}
+	// Print banner if enabled
+	if r.Banner && !r.Child {
+		if r.Prefork {
+			fmt.Printf(banner, Version, "-prefork", "Express on steriods", host)
 		} else {
-			if err := server.Serve(ln); err != nil {
-				panic(err)
-			}
+			fmt.Printf(banner, Version, "", "Express on steriods", host)
+		}
+	}
+	// Create listener
+	var listener net.Listener
+	var err error
+	if r.Prefork {
+		listener, err = r.reuseport(host)
+		if err != nil {
+			panic(err)
 		}
 	} else {
-		runtime.GOMAXPROCS(runtime.NumCPU())
-		if r.CertKey != "" && r.CertFile != "" {
-			if err := server.ListenAndServeTLS(fmt.Sprintf("%s:%v", address, port), r.CertFile, r.CertKey); err != nil {
-				panic(err)
-			}
-		} else {
-			if err := server.ListenAndServe(fmt.Sprintf("%s:%v", address, port)); err != nil {
-				panic(err)
-			}
+		listener, err = net.Listen("tcp4", host)
+		if err != nil {
+			panic(err)
 		}
+		runtime.GOMAXPROCS(runtime.NumCPU())
+	}
+	// Check if TLS is enabled
+	if r.CertKey != "" && r.CertFile != "" {
+		if err := server.ServeTLS(listener, r.CertFile, r.CertKey); err != nil {
+			panic(err)
+		}
+	}
+	if err := server.Serve(listener); err != nil {
+		panic(err)
 	}
 }
 
-func getListener(port int, address string) net.Listener {
-	var addr = fmt.Sprintf("%s:%v", address, port)
-
-	// ‍👩‍👧 We are a parent
-	if !*child {
-		// 👶 Make some babies
-		fmt.Printf(" \x1b[1;30mStarting \x1b[1;32m%v\x1b[1;30m childs on port \x1b[1;32m%v\x1b[0000m\n\n", runtime.NumCPU(), port)
+func (r *Fiber) reuseport(host string) (net.Listener, error) {
+	var listener net.Listener
+	if !r.Child {
+		addr, err := net.ResolveTCPAddr("tcp4", host)
+		if err != nil {
+			return nil, err
+		}
+		tcplistener, err := net.ListenTCP("tcp4", addr)
+		if err != nil {
+			return nil, err
+		}
+		fl, err := tcplistener.File()
+		if err != nil {
+			return nil, err
+		}
 		children := make([]*exec.Cmd, runtime.NumCPU())
 		for i := range children {
-			children[i] = exec.Command(os.Args[0], "-fiber-child")
+			children[i] = exec.Command(os.Args[0], append(os.Args[1:], "-child")...)
 			children[i].Stdout = os.Stdout
 			children[i].Stderr = os.Stderr
+			children[i].ExtraFiles = []*os.File{fl}
 			if err := children[i].Start(); err != nil {
-				panic(err)
+				return nil, err
 			}
 		}
 		for _, ch := range children {
@@ -433,11 +460,15 @@ func getListener(port int, address string) net.Listener {
 				log.Print(err)
 			}
 		}
+		os.Exit(0)
+	} else {
+		fmt.Printf(" \x1b[1;30mChild \x1b[1;32m#%v\x1b[1;30m reuseport\x1b[1;32m%s\x1b[0000m\n", os.Getpid(), host)
+		var err error
+		listener, err = net.FileListener(os.NewFile(3, ""))
+		if err != nil {
+			return nil, err
+		}
+		runtime.GOMAXPROCS(1)
 	}
-	runtime.GOMAXPROCS(1)
-	ln, err := reuseport.Listen("tcp4", addr)
-	if err != nil {
-		panic(err)
-	}
-	return ln
+	return listener, nil
 }
