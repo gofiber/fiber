@@ -10,6 +10,9 @@ app := fiber.New()
 app.Server = ""
 // Hides fiber banner, enabled by default
 app.Banner = true
+// Enable prefork
+// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
+app.Prefork = false
 ```
 
 #### TLS
@@ -68,6 +71,29 @@ app.Trace(...)
 // Use & All are the same function
 app.Use(...)
 app.All(...)
+```
+
+#### Prefork
+Prefork enables use of the SO_REUSEPORT socket option, which is available in newer versions of many operating systems, including DragonFly BSD and Linux (kernel version 3.9 and later).  
+This will spawn multiple go processes depending on how many cpu cores you have and reuse the port.  
+Read more here [SO_REUSEPORT](https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/)
+```bash
+go run main.go -prefork
+# Or on build
+./main -prefork
+```
+
+You can also enable preforking within the application.
+```go
+// Function signature
+app.Prefork = true
+
+// Example
+app := fiber.New()
+app.Get("/", func(c *fiber.Ctx) {
+  c.Send(fmt.Printf("Conn accepted via PID%v", os.Getpid()))
+})
+app.Listen(8080)
 ```
 
 #### Listen
