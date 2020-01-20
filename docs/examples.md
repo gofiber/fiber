@@ -8,27 +8,20 @@ package main
 import "github.com/fenny/fiber"
 
 func main() {
-  // lol
   app := fiber.New()
+
   app.Post("/", func(c *fiber.Ctx) {
-    // Parse the multipart form
     if form := c.MultipartForm(); form != nil {
-      // => *multipart.Form
-
-      // Get all files from "documents" key
       files := form.File["documents"]
-      // => []*multipart.FileHeader
-
-      // Loop trough files
       for _, file := range files {
         fmt.Println(file.Filename, file.Size, file.Header["Content-Type"][0])
         // => "tutorial.pdf" 360641 "application/pdf"
-
-        // Save the files to disk
         c.SaveFile(file, fmt.Sprintf("./%s", file.Filename))
+        // Saves the file to disk
       }
     }
   })
+
   app.Listen(8080)
 }
 ```
@@ -42,13 +35,12 @@ func main() {
   app := fiber.New()
 
   app.Static("./static")
-  app.Get(notFound)
+  app.Use(func (c *fiber.Ctx) {
+    c.SendStatus(404)
+    // => 404 "Not Found"
+  })
 
   app.Listen(8080)
-}
-
-func notFound(c *fiber.Ctx) {
-  c.Status(404).Send("Not Found")
 }
 ```
 #### Static Caching
@@ -59,14 +51,14 @@ import "github.com/fenny/fiber"
 
 func main() {
   app := fiber.New()
-  app.Get(cacheControl)
-  app.Static("./static")
-  app.Listen(8080)
-}
 
-func cacheControl(c *fiber.Ctx) {
-  c.Set("Cache-Control", "max-age=2592000, public")
-  c.Next()
+  app.Get(func(c *fiber.Ctx) {
+    c.Set("Cache-Control", "max-age=2592000, public")
+    c.Next()
+  })
+  app.Static("./static")
+
+  app.Listen(8080)
 }
 ```
 #### Enable CORS
@@ -78,19 +70,16 @@ import "./fiber"
 func main() {
   app := fiber.New()
 
-  app.All("/api", enableCors)
-  app.Get("/api", apiHandler)
+  app.Use("/api", func(c *fiber.Ctx) {
+    c.Set("Access-Control-Allow-Origin", "*")
+    c.Set("Access-Control-Allow-Headers", "X-Requested-With")
+    c.Next()
+  })
+  app.Get("/api", func(c *fiber.Ctx) {
+    c.Send("Hi, I'm API!")
+  })
 
   app.Listen(8080)
-}
-
-func enableCors(c *fiber.Ctx) {
-  c.Set("Access-Control-Allow-Origin", "*")
-  c.Set("Access-Control-Allow-Headers", "X-Requested-With")
-  c.Next()
-}
-func apiHandler(c *fiber.Ctx) {
-  c.Send("Hi, I'm API!")
 }
 ```
 #### Returning JSON
@@ -106,19 +95,35 @@ type Data struct {
 
 func main() {
   app := fiber.New()
+
   app.Get("/json", func(c *fiber.Ctx) {
-    data := SomeData{
-      Name: "John",
-      Age:  20,
+    data := Data{
+      Name: "John", `json:"name"`
+      Age:  20, `json:"age"`
     }
-    c.Json(data)
-    // or
     err := c.Json(data)
     if err != nil {
-      c.Send("Something went wrong!")
+      c.SendStatus(500)
     }
   })
+
   app.Listen(8080)
+}
+```
+#### Enable TLS/HTTTPS
+```go
+package main
+
+import "./fiber"
+
+func main() {
+  app := fiber.New()
+
+  app.Get("/", func(c *fiber.Ctx) {
+    c.Send(c.Protocol()) // => "https"
+  })
+
+  app.Listen(443, "server.crt", "server.key")
 }
 ```
 

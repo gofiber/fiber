@@ -1,63 +1,111 @@
 # Application
-The app object conventionally denotes the Fiber application.
+The app instance conventionally denotes the Fiber application.
 
-#### Initialize
-Creates an Fiber instance name "app"
+#### New
+Creates an new Fiber instance that we named "**app**".
 ```go
 app := fiber.New()
-// Optional fiber settings
-// Sends the "Server" header, disabled by default
-app.Server = ""
-// Hides fiber banner, enabled by default
-app.Banner = true
-// Enable prefork
-// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
-app.Prefork = false
+// ...
+// Application logic here...
+// ...
+app.Listen(8080)
 ```
 
-#### TLS
-To enable TLS you need to provide a certkey and certfile.
+#### Server
+Fiber by default does not send a [server header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Server), but you can enable this by changing the server value.
 ```go
-// Enable TLS
 app := fiber.New()
 
-app.CertKey("./cert.key")
-app.CertFile("./cert.pem")
+app.Server = "Windows 95"
+// => Server: Windows 95
 
-app.Listen(443)
+app.Listen(8080)
 ```
-#### Fasthttp
-You can pass some Fasthttp server settings via the Fiber instance.  
-Make sure that you set these settings before calling the [Listen](#listen) method. You can find the description of each property in [Fasthttp server settings](https://github.com/valyala/fasthttp/blob/master/server.go#L150)
 
-!>Only change these settings if you know what you are doing.
+#### Banner
+When you launch your Fiber application, the console will print a banner containing the package version and listening port. This is enabled by default, disable it by setting the Banner value to false.  
+
+![](https://i.imgur.com/96l7g9l.png)
+
 ```go
 app := fiber.New()
 
-app.Fasthttp.Concurrency = 256 * 1024
-app.Fasthttp.DisableKeepAlive = false
-app.Fasthttp.ReadBufferSize = 4096
-app.Fasthttp.WriteBufferSize = 4096
-app.Fasthttp.ReadTimeout = 0
-app.Fasthttp.WriteTimeout = 0
-app.Fasthttp.IdleTimeout = 0
-app.Fasthttp.MaxConnsPerIP = 0
-app.Fasthttp.MaxRequestsPerConn = 0
-app.Fasthttp.TCPKeepalive = false
-app.Fasthttp.TCPKeepalivePeriod = 0
-app.Fasthttp.MaxRequestBodySize = 4 * 1024 * 1024
-app.Fasthttp.ReduceMemoryUsage = false
-app.Fasthttp.GetOnly = false
-app.Fasthttp.DisableHeaderNamesNormalizing = false
-app.Fasthttp.SleepWhenConcurrencyLimitsExceeded = 0
-app.Fasthttp.NoDefaultContentType = false
-app.Fasthttp.KeepHijackedConns = false
+app.Banner = false
+
+app.Listen(8080)
+```
+
+#### Engine
+You can edit some of the Fasthttp server settings via the Fiber instance.  
+Make sure that you set these settings before calling the [Listen](#listen) method. You can find the description of each value in [Fasthttp server settings](https://github.com/valyala/fasthttp/blob/master/server.go#L150)
+
+**Only change these settings if you know what you are doing.**
+```go
+app := fiber.New()
+
+// These are the default fasthttp settings
+app.Engine.Concurrency = 256 * 1024
+app.Engine.DisableKeepAlive = false
+app.Engine.ReadBufferSize = 4096
+app.Engine.WriteBufferSize = 4096
+app.Engine.ReadTimeout = 0
+app.Engine.WriteTimeout = 0
+app.Engine.IdleTimeout = 0
+app.Engine.MaxConnsPerIP = 0
+app.Engine.MaxRequestsPerConn = 0
+app.Engine.TCPKeepalive = false
+app.Engine.TCPKeepalivePeriod = 0
+app.Engine.MaxRequestBodySize = 4 * 1024 * 1024
+app.Engine.ReduceMemoryUsage = false
+app.Engine.GetOnly = false
+app.Engine.DisableHeaderNamesNormalizing = false
+app.Engine.SleepWhenConcurrencyLimitsExceeded = 0
+app.Engine.NoDefaultContentType = false
+app.Engine.KeepHijackedConns = false
+
+// Start your app
+app.Listen(8080)
+```
+
+#### Prefork
+Prefork enables use of the **[SO_REUSEPORT](https://lwn.net/Articles/542629/)** socket option, which is available in newer versions of many operating systems, including DragonFly BSD and Linux (kernel version 3.9 and later). This will spawn multiple go processes listening on the same port.
+
+NGINX has a great article about [Socket Sharding](https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/), these pictures are taken from the same article.
+
+<img src="https://cdn.wp.nginx.com/wp-content/uploads/2015/05/Slack-for-iOS-Upload-1-e1432652484191.png" style="width: 50%;float: left;"/>  
+<img src="https://cdn.wp.nginx.com/wp-content/uploads/2015/05/Slack-for-iOS-Upload-e1432652376641.png" style="width: 50%;float: left;"/>  
+<div style="clear:both"></div>  
+
+You can enable the **prefork** feature by adding the **-prefork** flag.
+
+```bash
+./server -prefork
+```
+
+Or enable the **Prefork** option in your app.
+```go
+app := fiber.New()
+
+app.Prefork = true
+
+app.Get("/", func(c *fiber.Ctx) {
+  c.Send(fmt.Sprintf("Hi, I'm worker #%v", os.Getpid()))
+  // => Hi, I'm worker #16858
+  // => Hi, I'm worker #16877
+  // => Hi, I'm worker #16895
+})
+
+app.Listen(8080)
 ```
 
 #### Methods
-Routes an HTTP request, where METHOD is the HTTP method of the request, such as GET, PUT, POST, and so on capitalized. Thus, the actual methods are app.Get(), app.Post(), app.Put(), and so on. See Routing methods below for the complete list.
+Routes an HTTP request, where METHOD is the [HTTP method](https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods) of the request, such as GET, PUT, POST, and so on capitalized. Thus, the actual methods are **app.Get()**, **app.Post()**, **app.Put()**, and so on.
 ```go
 // Function signature
+app.Get(handler func(*Ctx))
+app.Get(path string, handler func(*Ctx))
+
+// Methods
 app.Connect(...)
 app.Delete(...)
 app.Get(...)
@@ -67,45 +115,27 @@ app.Patch(...)
 app.Post(...)
 app.Put(...)
 app.Trace(...)
-// Matches all HTTP verbs
-// Use & All are the same function
-app.Use(...)
+
+// Matches all HTTP verbs, Use refers to All
 app.All(...)
-```
-
-#### Prefork
-Prefork enables use of the SO_REUSEPORT socket option, which is available in newer versions of many operating systems, including DragonFly BSD and Linux (kernel version 3.9 and later).  
-This will spawn multiple go processes depending on how many cpu cores you have and reuse the port.  
-Read more here [SO_REUSEPORT](https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/)
-```bash
-go run main.go -prefork
-# Or on build
-./main -prefork
-```
-
-You can also enable preforking within the application.
-```go
-// Function signature
-app.Prefork = true
-
-// Example
-app := fiber.New()
-app.Get("/", func(c *fiber.Ctx) {
-  c.Send(fmt.Printf("Conn accepted via PID%v", os.Getpid()))
-})
-app.Listen(8080)
+app.Use(...)
 ```
 
 #### Listen
-Binds and listens for connections on the specified host and port.
+Binds and listens for connections on the specified address. This can be a **INT** for port or **STRING** for address. To enable **TLS/HTTPS** you can append your **cert** and **key** path.
 ```go
 // Function signature
-app.Listen(port int, addr ...string)
+app.Listen(address interface{}, tls ...string)
 
-
-// Example
+// Examples
 app.Listen(8080)
-app.Listen(8080, "127.0.0.1")
+app.Listen("8080")
+app.Listen(":8080")
+app.Listen("127.0.0.1:8080")
+
+// Enable TLS/HTTPS
+app.Listen(443, "server.crt", "server.key")
+app.Listen("127.0.0.1:443", "server.crt", "server.key")
 ```
 
 

@@ -90,8 +90,8 @@ app.Get("/", func(c *fiber.Ctx) {
 Appends the specified value to the HTTP response header field. If the header is not already set, it creates the header with the specified value. The value parameter must be a string.
 ```go
 // Function signature
-c.Append(field, value string)
 c.Append(field, values ...string)
+
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Let's see if the Link header exist
@@ -111,8 +111,7 @@ app.Get("/", func(c *fiber.Ctx) {
 Sets the HTTP response [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header field to “attachment”. If a filename is given, then it sets the Content-Type based on the extension name via (Type)[#type], and sets the Content-Disposition “filename=” parameter.
 ```go
 // Function signature
-c.Attachment()
-c.Attachment(file string)
+c.Attachment(file ...string)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
@@ -298,7 +297,7 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### !End
-!> Planned for V1
+!> Planned for v2.0.0
 
 #### Fasthttp
 You can still access and use all Fasthttp methods and properties.  
@@ -318,7 +317,7 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### !Format
-!> Planned for V1
+!> Planned for v2.0.0
 
 #### FormFile
 MultipartForm files can be retrieved by name, the first file from the given key is returned.
@@ -354,7 +353,7 @@ app.Post("/", func(c *fiber.Ctx) {
 ```
 
 #### !Fresh
-!> Planned for V1
+!> Planned for v2.0.0
 
 #### Get
 Returns the HTTP response header specified by field. The match is case-insensitive.
@@ -376,7 +375,7 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### !HeadersSent
-!> Planned for V1
+!> Planned for v2.0.0
 
 #### Hostname
 Contains the hostname derived from the Host HTTP header.
@@ -721,7 +720,7 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### !Range
-!> Planned for V1
+!> Planned for v2.0.0
 
 #### Redirect
 Redirects to the URL derived from the specified path, with specified status, a positive integer that corresponds to an HTTP status code . If not specified, status defaults to “302 “Found”.
@@ -740,7 +739,7 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### !Render
-!> Planned for V1
+!> Planned for v2.0.0
 
 #### Route
 Contains the currently-matched route struct, **only use this for debugging**.
@@ -882,10 +881,10 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### !SignedCookies
-!> Planned for V1
+!> Planned for v2.0.0
 
 #### !Stale
-!> Planned for V1
+!> Planned for v2.0.0
 
 #### Status
 Sets the HTTP status for the response. It is a chainable alias of Node’s response.statusCode.

@@ -6,7 +6,7 @@
 [![Join the chat at https://gitter.im/FiberGo/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/FiberGo/community)
 <br>
 # Getting started
-!>**IMPORTANT: Do not use this in production, API might change before we release v1.0.0!**  
+!>**IMPORTANT: Always use versioning control using [go.mod](https://blog.golang.org/using-go-modules) to avoid breaking API changes!**  
 
 **[Fiber](https://github.com/gofiber/fiber)** is a router framework build on top of [FastHTTP](https://github.com/valyala/fasthttp), the fastest HTTP package for **[Go](https://golang.org/doc/)**.<br>
 This library is inspired by [Express](https://expressjs.com/en/4x/api.html), one of the most populair and well known web framework for **[Nodejs](https://nodejs.org/en/about/)**.
@@ -54,9 +54,9 @@ app.Method(path string, func(*fiber.Ctx))
 ```
 
 * **app** is an instance of **[Fiber](#hello-world)**.
-* **Method** is an [HTTP request method](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods), in capitalization: Get, Put, Post etc
-* **path string** is a path or prefix (for static files) on the server.
-* **func(*fiber.Ctx)** is a function executed when the route is matched.
+* **Method** is an [HTTP request method](application?id=methods), in capitalization: Get, Put, Post etc
+* **path string** is a path on the server.
+* **func(*fiber.Ctx)** is a function containing the [Context](/context) executed when the route is matched.
 
 This tutorial assumes that an instance of fiber named app is created and the server is running. If you are not familiar with creating an app and starting it, see the [Hello world](#hello-world) example.
 
@@ -67,19 +67,28 @@ app.Get("/", func(c *fiber.Ctx) {
   c.Send("Hello, World!")
 })
 
-//Respond to POST request on the root route (/), the application’s home page:
-app.Post("/", func(c *fiber.Ctx) {
-  c.Send("Got a POST request")
+// Parameter
+// http://localhost:8080/hello%20world
+app.Post("/:value", func(c *fiber.Ctx) {
+  c.Send("Post request with value: " + c.Params("value"))
+  // => Post request with value: hello world
 })
 
-// Respond to a PUT request to the /user route:
-app.Put("/user", func(c *fiber.Ctx) {
-  c.Send("Got a PUT request at /user")
+// Optional parameter
+// http://localhost:8080/hello%20world
+app.Get("/:value?", func(c *fiber.Ctx) {
+  if c.Params("value") != "" {
+    c.Send("Get request with value: " + c.Params("Value"))
+    return // => Post request with value: hello world
+  }
+  c.Send("Get request without value")
 })
 
-// Respond to a DELETE request to the /user route:
-app.Delete("/user", func(c *fiber.Ctx) {
-  c.Send("Got a DELETE request at /user")
+// Wildcard
+// http://localhost:8080/api/user/john
+app.Get("/api/*", func(c *fiber.Ctx) {
+  c.Send("API path with wildcard: " + c.Params("*"))
+  // => API path with wildcard: user/john
 })
 ```
 

@@ -57,3 +57,5 @@ If we enable http pipelining, test result as below:
 CPU-Bound Test  
 
 ![](static/benchmarks/cpubound_benchmark.png)
+
+*Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/benchmarks.md)*
