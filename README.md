@@ -84,17 +84,16 @@ import "github.com/gofiber/fiber"
 func main() {
   app := fiber.New()
 
-  app.Get("/", func(c *fiber.Ctx) {
-    c.Set("random-header", "random-value")
-    c.Write("1st route!\n")
+  app.Use(func(c *fiber.Ctx) {
+    c.Write("Match anything!\n")
     c.Next()
   })
-  app.Get("/", func(c *fiber.Ctx) {
-    c.Write("2nd route!\n")
+  app.Use("/api", func(c *fiber.Ctx) {
+    c.Write("Match starting with /api\n")
     c.Next()
   })
-  app.Get("/", func(c *fiber.Ctx) {
-    c.Write("3rd route!\n")
+  app.Get("/api/user", func(c *fiber.Ctx) {
+    c.Write("Match exact path /api/user\n")
   })
 
 
