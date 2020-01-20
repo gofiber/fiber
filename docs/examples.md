@@ -110,7 +110,7 @@ func main() {
   app.Listen(8080)
 }
 ```
-#### Enable TLS/HTTTPS
+#### TLS/HTTPS
 ```go
 package main
 
