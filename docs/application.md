@@ -116,9 +116,10 @@ app.Post(...)
 app.Put(...)
 app.Trace(...)
 
-// Matches all HTTP verbs, Use refers to All
-app.All(...)
-app.Use(...)
+// Both All & Use matches all kind of HTTP request
+// But there is a big difference
+app.All(...) // Will match complete path with :params support
+app.Use(...) // Will only see wheter url starts with specified path without :params support
 ```
 
 #### Static
@@ -171,7 +172,6 @@ app.Listen("127.0.0.1:8080")
 
 // Enable TLS/HTTPS
 app.Listen(443, "server.crt", "server.key")
-app.Listen("127.0.0.1:443", "server.crt", "server.key")
 ```
 
 

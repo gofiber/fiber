@@ -77,8 +77,11 @@ Functions that are designed to make changes to the request or response are calle
 
 Here is a simple example of a middleware function that sets some response headers when a request to the app passes through it.
 
+If you are not sure when to use **All()** vs **Use()**, read about the [Methods API here](/application/#methods)
+
 ```go
 app := fiber.New()
+// Use method path is a "mount" or "prefix" path and limits the middleware to only apply to any paths requested that begin with it. This means you cannot use :params on the Use method
 app.Use(func(c *fiber.Ctx) {
   // Set some security headers
   c.Set("X-XSS-Protection", "1; mode=block")

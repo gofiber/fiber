@@ -51,12 +51,12 @@ func (r *Fiber) Static(args ...string) {
 		filePath := file
 		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" {
-			r.routes = append(r.routes, &route{"GET", prefix, wildcard, nil, nil, func(c *Ctx) {
+			r.routes = append(r.routes, &route{"GET", prefix, wildcard, false, nil, nil, func(c *Ctx) {
 				c.SendFile(filePath, gzip)
 			}})
 		}
 		// Add the route + SendFile(filepath) to routes
-		r.routes = append(r.routes, &route{"GET", path, wildcard, nil, nil, func(c *Ctx) {
+		r.routes = append(r.routes, &route{"GET", path, wildcard, false, nil, nil, func(c *Ctx) {
 			c.SendFile(filePath, gzip)
 		}})
 	}

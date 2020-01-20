@@ -61,11 +61,10 @@ func (r *Fiber) Get(args ...interface{}) {
 
 // All matches any HTTP method
 func (r *Fiber) All(args ...interface{}) {
-	r.register("*", args...)
+	r.register("ALL", args...)
 }
 
-// Use is another name for All()
-// People using Expressjs are used to this
+// Use only matches the starting path
 func (r *Fiber) Use(args ...interface{}) {
-	r.All(args...)
+	r.register("USE", args...)
 }
