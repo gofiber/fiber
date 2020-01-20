@@ -836,7 +836,7 @@ app.Get("/not-found", func(c *fiber.Ctx) {
 ```
 
 #### SendStatus
-Sets the status code, but also the correct status message in the body if the response body is still empty.
+Sets the status code, but also the correct status message in the body if the response body is still empty. You can find all status codes and messages in [status.go](https://github.com/gofiber/fiber/blob/master/status.go)
 ```go
 // Function signature
 c.SendStatus(status int)

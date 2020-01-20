@@ -121,6 +121,42 @@ app.All(...)
 app.Use(...)
 ```
 
+#### Static
+To serve static files such as images, CSS files, and JavaScript files, replace your function handler with a file or directory string.
+```go
+// Function signature
+app.Static(root string)
+app.Static(prefix, root string)
+```
+For example, use the following code to serve images, CSS files, and JavaScript files in a directory named public:
+
+```go
+app.Static("./public")
+```
+Now, you can load the files that are in the public directory:
+```shell
+http://localhost:8080/hello.html
+http://localhost:8080/js/jquery.js
+http://localhost:8080/css/style.css
+```
+To use multiple static assets directories, call the Static function multiple times:
+```go
+app.Static("./public")
+app.Static("./files")
+```
+?>For best results, use a reverse proxy cache like [NGINX](https://www.nginx.com/resources/wiki/start/topics/examples/reverseproxycachingexample/) to improve performance of serving static assets.  
+
+To create a virtual path prefix (where the path does not actually exist in the file system) for files that are served by the express.static function, specify a mount path for the static directory, as shown below:
+```go
+app.Static("/static", "./public")
+```
+Now, you can load the files that are in the public directory from the /static path prefix.
+```shell
+http://localhost:8080/static/hello.html
+http://localhost:8080/static/js/jquery.js
+http://localhost:8080/static/css/style.css
+```
+
 #### Listen
 Binds and listens for connections on the specified address. This can be a **INT** for port or **STRING** for address. To enable **TLS/HTTPS** you can append your **cert** and **key** path.
 ```go

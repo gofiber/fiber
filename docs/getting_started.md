@@ -29,9 +29,11 @@ import "github.com/gofiber/fiber"
 
 func main() {
   app := fiber.New()
+
   app.Get("/", func(c *fiber.Ctx) {
     c.Send("Hello, World!")
   })
+
   app.Listen(8080)
 }
 ```
@@ -106,30 +108,9 @@ app.Static("./public")
 ```
 Now, you can load the files that are in the public directory:
 ```shell
-http://localhost:8080/images/kitten.jpg
-http://localhost:8080/css/style.css
-http://localhost:8080/js/app.js
-http://localhost:8080/images/bg.png
 http://localhost:8080/hello.html
-```
-To use multiple static assets directories, call the Static function multiple times:
-```go
-app.Static("./public")
-app.Static("./files")
-```
-?>For best results, use a reverse proxy cache like [NGINX](https://www.nginx.com/resources/wiki/start/topics/examples/reverseproxycachingexample/) to improve performance of serving static assets.  
-
-To create a virtual path prefix (where the path does not actually exist in the file system) for files that are served by the express.static function, specify a mount path for the static directory, as shown below:
-```go
-app.Static("/static", "./public")
-```
-Now, you can load the files that are in the public directory from the /static path prefix.
-```shell
-http://localhost:8080/static/images/kitten.jpg
-http://localhost:8080/static/css/style.css
-http://localhost:8080/static/js/app.js
-http://localhost:8080/static/images/bg.png
-http://localhost:8080/static/hello.html
+http://localhost:8080/js/jquery.js
+http://localhost:8080/css/style.css
 ```
 
 *Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/docs/getting_started.md)*

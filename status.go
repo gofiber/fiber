@@ -10,6 +10,7 @@ package fiber
 // Credits @valyala
 // https://github.com/valyala/fasthttp/blob/master/status.go
 
+// statusMessages https://gofiber.github.io/fiber/#/context?id=sendstatus
 var statusMessages = map[int]string{
 	100: "Continue",
 	101: "Switching Protocols",
