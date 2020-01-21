@@ -15,7 +15,7 @@ import (
 
 const (
 	// Version for debugging
-	Version = "1.0.0-pre-release"
+	Version = "1.0.1-beta"
 	// https://play.golang.org/p/r6GNeV1gbH
 	banner = "" +
 		" \x1b[1;32m _____ _ _\n" +

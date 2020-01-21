@@ -13,15 +13,52 @@ import (
 	"mime/multipart"
 	"regexp"
 	"strings"
+
+	"github.com/valyala/fasthttp"
 )
 
 // Accepts : https://gofiber.github.io/fiber/#/context?id=accepts
-func (ctx *Ctx) Accepts(typ string) bool {
-	accept := ctx.Get("Accept-Charset")
-	if strings.Contains(accept, typ) {
-		return true
+func (ctx *Ctx) Accepts(types ...string) string {
+	// No types given, return ""
+	if len(types) == 0 {
+		return ""
 	}
-	return false
+	// Get accept header
+	h := ctx.Get("Accept")
+	if h == "" {
+		return types[0]
+	}
+	for _, typ := range types {
+		// match any, return first type
+		if strings.Contains(h, "*/*") {
+			return typ
+		}
+		// convert typ to mime
+		if typ[0] != '.' {
+			typ = "." + typ
+		}
+		m := strings.Split(mime.TypeByExtension(typ), ";")[0]
+		// if header contains mime, return typ
+		if strings.Contains(h, m) {
+			return typ
+		}
+		// if header contains type/*
+		if strings.Contains(h, strings.Split(m, "/")[0]+"/*") {
+			return typ
+		}
+
+		// if header contains */type
+		if strings.Contains(h, "/"+strings.Split(m, "/")[0]) {
+			return typ
+		}
+		if typ == "html" && strings.Contains(h, "text/*") {
+			return typ
+		}
+		if strings.Contains(h, strings.Split(typ, "/")[0]) {
+			return typ
+		}
+	}
+	return ""
 }
 
 // AcceptsCharsets : https://gofiber.github.io/fiber/#/context?id=acceptscharsets
@@ -80,6 +117,10 @@ func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
 }
 
 // Body : https://gofiber.github.io/fiber/#/context?id=body
+// curl -X POST \
+//   http://localhost:8080 \
+//   -H 'Content-Type: application/x-www-form-urlencoded' \
+//   -d john=doe
 func (ctx *Ctx) Body(args ...interface{}) string {
 	if len(args) == 0 {
 		return b2s(ctx.Fasthttp.Request.Body())
@@ -256,6 +297,11 @@ func (ctx *Ctx) Route() (s struct {
 	s.Values = ctx.values
 	s.Handler = ctx.route.handler
 	return
+}
+
+// SaveFile : https://gofiber.github.io/fiber/#/context?id=secure
+func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) {
+	fasthttp.SaveMultipartFile(fh, path)
 }
 
 // Secure : https://gofiber.github.io/fiber/#/context?id=secure
