@@ -18,74 +18,110 @@ import (
 )
 
 // Accepts : https://gofiber.github.io/fiber/#/context?id=accepts
-func (ctx *Ctx) Accepts(types ...string) string {
-	// No types given, return ""
-	if len(types) == 0 {
-		return ""
+func (ctx *Ctx) Accepts(offers ...string) string {
+	if len(offers) == 0 {
+		panic("You must provide atleast one content type string")
 	}
-	// Get accept header
 	h := ctx.Get("Accept")
 	if h == "" {
-		return types[0]
+		return offers[0]
 	}
-	for _, typ := range types {
-		// match any, return first type
-		if strings.Contains(h, "*/*") {
-			return typ
+	specs := strings.Split(h, ",")
+	for _, offer := range offers {
+		mimetype := mime.TypeByExtension("." + offer)
+		if mimetype != "" {
+			mimetype = strings.Split(mimetype, ";")[0]
+		} else {
+			mimetype = offer
 		}
-		// convert typ to mime
-		if typ[0] != '.' {
-			typ = "." + typ
-		}
-		m := strings.Split(mime.TypeByExtension(typ), ";")[0]
-		// if header contains mime, return typ
-		if strings.Contains(h, m) {
-			return typ
-		}
-		// if header contains type/*
-		if strings.Contains(h, strings.Split(m, "/")[0]+"/*") {
-			return typ
-		}
-
-		// if header contains */type
-		if strings.Contains(h, "/"+strings.Split(m, "/")[0]) {
-			return typ
-		}
-		if typ == "html" && strings.Contains(h, "text/*") {
-			return typ
-		}
-		if strings.Contains(h, strings.Split(typ, "/")[0]) {
-			return typ
+		for _, spec := range specs {
+			spec = strings.TrimSpace(spec)
+			if strings.HasPrefix(spec, "*/*") {
+				return offer
+			}
+			if strings.HasPrefix(spec, mimetype) {
+				return offer
+			}
+			if strings.Contains(spec, "/*") {
+				if strings.HasPrefix(spec, strings.Split(mimetype, "/")[0]) {
+					return offer
+				}
+			}
 		}
 	}
 	return ""
 }
 
 // AcceptsCharsets : https://gofiber.github.io/fiber/#/context?id=acceptscharsets
-func (ctx *Ctx) AcceptsCharsets(charset string) bool {
-	accept := ctx.Get("Accept-Charset")
-	if strings.Contains(accept, charset) {
-		return true
+func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
+	if len(offers) == 0 {
+		panic("You must provide atleast one content type string")
 	}
-	return false
+	h := ctx.Get("Accept-Charset")
+	if h == "" {
+		return offers[0]
+	}
+	specs := strings.Split(h, ",")
+	for _, offer := range offers {
+		for _, spec := range specs {
+			spec = strings.TrimSpace(spec)
+			if strings.HasPrefix(spec, "*") {
+				return offer
+			}
+			if strings.HasPrefix(spec, offer) {
+				return offer
+			}
+		}
+	}
+	return ""
 }
 
 // AcceptsEncodings : https://gofiber.github.io/fiber/#/context?id=acceptsencodings
-func (ctx *Ctx) AcceptsEncodings(encoding string) bool {
-	accept := ctx.Get("Accept-Encoding")
-	if strings.Contains(accept, encoding) {
-		return true
+func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
+	if len(offers) == 0 {
+		panic("You must provide atleast one content type string")
 	}
-	return false
+	h := ctx.Get("Accept-Encoding")
+	if h == "" {
+		return offers[0]
+	}
+	specs := strings.Split(h, ",")
+	for _, offer := range offers {
+		for _, spec := range specs {
+			spec = strings.TrimSpace(spec)
+			if strings.HasPrefix(spec, "*") {
+				return offer
+			}
+			if strings.HasPrefix(spec, offer) {
+				return offer
+			}
+		}
+	}
+	return ""
 }
 
 // AcceptsLanguages : https://gofiber.github.io/fiber/#/context?id=acceptslanguages
-func (ctx *Ctx) AcceptsLanguages(lang string) bool {
-	accept := ctx.Get("Accept-Language")
-	if strings.Contains(accept, lang) {
-		return true
+func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
+	if len(offers) == 0 {
+		panic("You must provide atleast one content type string")
 	}
-	return false
+	h := ctx.Get("Accept-Language")
+	if h == "" {
+		return offers[0]
+	}
+	specs := strings.Split(h, ",")
+	for _, offer := range offers {
+		for _, spec := range specs {
+			spec = strings.TrimSpace(spec)
+			if strings.HasPrefix(spec, "*") {
+				return offer
+			}
+			if strings.HasPrefix(spec, offer) {
+				return offer
+			}
+		}
+	}
+	return ""
 }
 
 // BaseUrl : https://gofiber.github.io/fiber/#/context?id=baseurl

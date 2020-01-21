@@ -2,26 +2,31 @@
 The ctx object represents the HTTP request and response and has methods for the request query string, parameters, body, HTTP headers, and so on. In this documentation and by convention, the context is always referred to as c but its actual name is determined by the parameters to the callback function in which you’re working.
 
 #### Accepts
-Checks if the specified content types are acceptable, based on the request’s Accept HTTP header field.
+Checks if the specified content types are acceptable, based on the request’s Accept HTTP header field. You can use an extention or content-type format
 ```go
 // Function signature
-c.Accepts(ext string) bool
+c.Accepts(types ...string) string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Accept: text/html
   c.Accepts("html")
-  // => true
+  // => "html"
 
   // Accept: text/*, application/json
-  c.Accepts("text")
-  // => // => true
+  c.Accepts("html")
+  // => true
+  c.Accepts("text/html")
+  //=> "text/html"
+  c.Accepts("json", "text")
+  // => "json"
+  c.Accepts("application/json")
+  // => "application/json"
 
-  c.Accepts("json")
-  // => // => true
-
-  c.Accepts("☕")
-  // => // => false
+  // Accept: text/*, application/json
+  c.Accepts("image/png"
+  c.Accepts("png")
+  // => ""
 })
 ```
 
@@ -29,19 +34,19 @@ app.Get("/", func(c *fiber.Ctx) {
 Returns the first accepted charset of the specified character sets, based on the request’s Accept-Charset HTTP header field
 ```go
 // Function signature
-c.AcceptsCharsets(charset string) bool
+c.AcceptsCharsets(charsets ...string) string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Accept-Charset: utf-8, iso-8859-1;q=0.2, utf-7;q=0.5
   c.AcceptsCharsets("utf-8")
-  // => true
+  // => "utf-8"
 
-  c.AcceptsCharsets("iso-8859-1")
-  // => true
+  c.AcceptsCharsets("utf-16", "iso-8859-1")
+  // => "iso-8859-1"
 
   c.AcceptsCharsets("utf-16")
-  // => false
+  // => ""
 })
 ```
 
@@ -50,19 +55,19 @@ app.Get("/", func(c *fiber.Ctx) {
 Returns the first accepted encoding of the specified encodings, based on the request’s Accept-Encoding HTTP header field.
 ```go
 // Function signature
-c.AcceptsEncodings(charset string) bool
+c.AcceptsEncodings(encodings ...string) string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Accept-Encoding: gzip, compress;q=0.2
   c.AcceptsEncodings("gzip")
-  // => true
+  // => "gzip"
 
-  c.AcceptsEncodings("compress")
-  // => true
+  c.AcceptsEncodings("compress", "br")
+  // => "compress"
 
   c.AcceptsEncodings("deflate")
-  // => false
+  // => ""
 })
 ```
 
@@ -70,19 +75,19 @@ app.Get("/", func(c *fiber.Ctx) {
 Returns the first accepted language of the specified languages, based on the request’s Accept-Language HTTP header field.
 ```go
 // Function signature
-c.AcceptsLanguages(charset string) bool
+c.AcceptsLanguages(languages ...string) string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // Accept-Language: en;q=0.8, es, pt
   c.AcceptsLanguages("en")
-  // => true
+  // => "en"
 
-  c.AcceptsLanguages("pt")
-  // => true
+  c.AcceptsLanguages("pt", "nl")
+  // => "pt"
 
   c.AcceptsLanguages("fr")
-  // => false
+  // => ""
 })
 ```
 
