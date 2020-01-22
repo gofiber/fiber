@@ -1,5 +1,5 @@
-// 🚀 Fiber, Express on Steriods
-// 📌 Don't use in production until version 1.0.0
+// 🔌 Fiber is an Expressjs inspired web framework build on 🚀 Fasthttp.
+// 📌 Please open an issue if you got suggestions or found a bug!
 // 🖥 https://github.com/gofiber/fiber
 
 // 🦸 Not all heroes wear capes, thank you to some amazing people
@@ -15,7 +15,7 @@ import (
 
 const (
 	// Version for debugging
-	Version = "1.0.1-beta"
+	Version = "1.0.2"
 	// https://play.golang.org/p/r6GNeV1gbH
 	banner = "" +
 		" \x1b[1;32m _____ _ _\n" +
