@@ -24,7 +24,7 @@ app.Get("/", func(c *fiber.Ctx) {
   // => "application/json"
 
   // Accept: text/*, application/json
-  c.Accepts("image/png"
+  c.Accepts("image/png")
   c.Accepts("png")
   // => ""
 })
@@ -321,8 +321,29 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### !Format
-!> Planned for v2.0.0
+#### Format
+Performs content-negotiation on the Accept HTTP header. It uses [Accepts](#accepts) to select a proper format. If the header is not specified or there is no proper format, text/plain is used.
+
+```go
+// Function signature
+c.Format(body string)
+c.Format(body []byte)
+
+// Example
+app.Get("/", func(c *fiber.Ctx) {
+  // Accept: text/plain
+  c.Format("Hello, World!")
+  // => Hello, World!
+
+  // Accept: text/html
+  c.Format("Hello, World!")
+  // => <p>Hello, World!</p
+
+  // Accept: application/json
+  c.Format("Hello, World!")
+  // => "Hello, World!"
+})
+```
 
 #### FormFile
 MultipartForm files can be retrieved by name, the first file from the given key is returned.
@@ -444,7 +465,7 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### Json
-Converts any interface to json using [Jsoniter](https://github.com/json-iterator/go), this functions also sets the content header to application/json.
+Converts any interface or string to json using [Jsoniter](https://github.com/json-iterator/go), this function also sets the content header to application/json.
 ```go
 // Function signature
 c.Json(v interface{}) error
@@ -463,9 +484,13 @@ app.Get("/json", func(c *fiber.Ctx) {
   }
   c.Json(data)
   // => "{"Name": "Grame", "Age": 20}"
+
+  c.Json("Hello, World!")
+  // => "Hello, World!"
 })
 app.Listen(8080)
 ```
+
 Or with error checking
 ```go
 app.Get("/json", func(c *fiber.Ctx) {
