@@ -13,22 +13,22 @@ To view the list yourself, [Plaintext Go Results](https://www.techempower.com/be
 To see all language frameworks, [Plaintext All Results](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=plaintext).  
 
 Plaintext  
-![](static/benchmarks/techempower-plaintext.png)
+[![](static/benchmarks/techempower-plaintext.png)](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=plaintext&l=zijocf-1r)
 
 Plaintext latency  
-![](static/benchmarks/techempower-plaintext-latency.png)
+[![](static/benchmarks/techempower-plaintext-latency.png)](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=plaintext&l=zijocf-1r)
 
 JSON serialization  
-![](static/benchmarks/techempower-json.png)
+[![](static/benchmarks/techempower-json.png)](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=json&l=zijocf-1r)
 
 Single query  
-![](static/benchmarks/techempower-single-query.png)
+[![](static/benchmarks/techempower-single-query.png)](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=db&l=zijocf-1r)
 
 Multiple queries  
-![](static/benchmarks/techempower-multiple-queries.png)
+[![](static/benchmarks/techempower-multiple-queries.png)](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=query&l=zijocf-1r)
 
 Data updates  
-![](static/benchmarks/techempower-updates.png)
+[![](static/benchmarks/techempower-updates.png)](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=update&l=zijocf-1r)
 
 #### Go-Web
 [go-web-framework-benchmark](https://github.com/smallnest/go-web-framework-benchmark)
