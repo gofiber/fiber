@@ -68,8 +68,8 @@ If we enable http pipelining, test result as below:
 
 ![](static/benchmarks/concurrency-pipeline.png)
 
-CPU-Bound Test  
-
-![](static/benchmarks/cpubound_benchmark.png)
+<!-- CPU-Bound Test  
+This benchmark is outdated
+![](static/benchmarks/cpubound_benchmark.png) -->
 
 *Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/benchmarks.md)*
