@@ -1032,4 +1032,27 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
+#### Xml
+Xml sets the header to "application/xml" and marshals your interface to xml.
+```go
+// Function signature
+c.Xml(xml interface{}) error
+
+// Example
+type person struct {
+	Name  string `xml:"name"`
+	Stars int    `xml:"stars"`
+}
+
+app := fiber.New()
+app.Get("/", func(c *fiber.Ctx) {
+	c.Xml(person{"John", 50})
+	// => Content-Type: application/xml
+	// => <person><name>John</name><stars>50</stars></person>
+
+})
+app.Listen(8080)
+
+```
+
 *Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/context.md)*

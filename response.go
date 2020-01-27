@@ -7,6 +7,7 @@
 package fiber
 
 import (
+	"encoding/xml"
 	"fmt"
 	"mime"
 	"path/filepath"
@@ -321,4 +322,15 @@ func (ctx *Ctx) Write(args ...interface{}) {
 	default:
 		panic("body must be a string or []byte")
 	}
+}
+
+// Xml : https://gofiber.github.io/fiber/#/context?id=xml
+func (ctx *Ctx) Xml(v interface{}) error {
+	raw, err := xml.Marshal(v)
+	if err != nil {
+		return err
+	}
+	ctx.Set("Content-Type", "application/xml")
+	ctx.Fasthttp.Response.SetBody(raw)
+	return nil
 }
