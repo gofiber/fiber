@@ -11,6 +11,7 @@
 **[Fiber](https://github.com/gofiber/fiber)** is an **[Express](https://expressjs.com/en/4x/api.html)** styled HTTP framework implementation running on **[Fasthttp](https://github.com/valyala/fasthttp)**, the **fastest** HTTP engine for **[Go](https://golang.org/doc/)**. The package make use of similar framework convention as they are in express. People switching from **[Node](https://nodejs.org/en/about/)** to **[Go](https://golang.org/doc/)** often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind. See **[API Documentation](https://gofiber.github.io/fiber/)**
 
 [![](https://gofiber.github.io/fiber/static/benchmarks/benchmark.png)](https://gofiber.github.io/fiber/#/benchmarks)
+[Click here to see all benchmark results](https://gofiber.github.io/fiber/#/benchmarks)
 
 ## Features
 * Optimized for speed and low memory usage.
