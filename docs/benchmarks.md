@@ -16,6 +16,14 @@ To see all language frameworks, [Plaintext All Results](https://www.techempower.
 
 ![](static/benchmarks/techempower-plaintext-latency.png)
 
+![](static/benchmarks/techempower-json.png)
+
+![](static/benchmarks/techempower-single-query.png)
+
+![](static/benchmarks/techempower-multiple-queries.png)
+
+![](static/benchmarks/techempower-updates.png)
+
 #### Go-Web
 [go-web-framework-benchmark](https://github.com/smallnest/go-web-framework-benchmark)
 
