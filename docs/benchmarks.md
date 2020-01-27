@@ -12,16 +12,22 @@ Below you can see the results of tested go frameworks responding in plaintext.
 To view the list yourself, [Plaintext Go Results](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=plaintext&l=zijocf-1r).  
 To see all language frameworks, [Plaintext All Results](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=plaintext).  
 
+Plaintext  
 ![](static/benchmarks/techempower-plaintext.png)
 
+Plaintext latency  
 ![](static/benchmarks/techempower-plaintext-latency.png)
 
+JSON serialization  
 ![](static/benchmarks/techempower-json.png)
 
+Single query  
 ![](static/benchmarks/techempower-single-query.png)
 
+Multiple queries  
 ![](static/benchmarks/techempower-multiple-queries.png)
 
+Data updates  
 ![](static/benchmarks/techempower-updates.png)
 
 #### Go-Web
