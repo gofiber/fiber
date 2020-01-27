@@ -9,8 +9,8 @@
 
 
 Below you can see the results of tested go frameworks responding in plaintext.  
-To view the list yourself, [Plaintext Go Results](https://www.techempower.com/benchmarks/#section=test&runid=739210f5-fcac-4e74-8d65-12f68368b0bd&hw=ph&test=plaintext&l=zijocf-v).  
-To see all language frameworks, [Plaintext All Results](https://www.techempower.com/benchmarks/#section=test&runid=739210f5-fcac-4e74-8d65-12f68368b0bd&hw=ph&test=plaintext).  
+To view the list yourself, [Plaintext Go Results](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=plaintext&l=zijocf-1r).  
+To see all language frameworks, [Plaintext All Results](https://www.techempower.com/benchmarks/#section=test&runid=8721f3a4-7b13-4703-9cd8-91b6779668c2&hw=ph&test=plaintext).  
 
 ![](static/benchmarks/techempower-plaintext.png)
 
