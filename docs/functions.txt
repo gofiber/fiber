@@ -55,3 +55,4 @@ Subdomains
 Type
 Vary
 Xhr
+Xml
