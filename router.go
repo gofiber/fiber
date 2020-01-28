@@ -17,27 +17,27 @@ import (
 
 type route struct {
 	// HTTP method in uppercase, can be a * for Use() & All()
-	method string
+	Method string
 	// Stores the orignal path
-	path string
-	// Bool that defines if the route is a Use()
-	use bool
+	Path string
+	// Bool that defines if the route is a Use() middleware
+	Midware bool
 	// wildcard bool is for routes without a path, * and /*
-	wildcard bool
+	Wildcard bool
 	// Stores compiled regex special routes :params, *wildcards, optionals?
-	regex *regexp.Regexp
+	Regex *regexp.Regexp
 	// Store params if special routes :params, *wildcards, optionals?
-	params []string
+	Params []string
 	// Callback function for specific route
-	handler func(*Ctx)
+	Handler func(*Ctx)
 }
 
 // Function to add a route correctly
 func (r *Fiber) register(method string, args ...interface{}) {
-	// Set if method is Use()
-	var use = method == "USE"
+	// Set if method is Use() midware
+	var midware = method == "MIDWARE"
 	// Match any method
-	if method == "ALL" || method == "USE" {
+	if method == "ALL" || midware {
 		method = "*"
 	}
 	// Prepare possible variables
@@ -53,23 +53,23 @@ func (r *Fiber) register(method string, args ...interface{}) {
 			panic("Invalid path, must begin with slash '/' or wildcard '*'")
 		}
 	}
-	if use && strings.Contains(path, "/:") {
+	if midware && strings.Contains(path, "/:") {
 		panic("You cannot use :params in Use()")
 	}
 	// If Use() path == "/", match anything aka *
-	if use && path == "/" {
+	if midware && path == "/" {
 		path = "*"
 	}
 	// If the route needs to match any path
 	if path == "" || path == "*" || path == "/*" {
-		r.routes = append(r.routes, &route{method, path, use, true, nil, nil, handler})
+		r.routes = append(r.routes, &route{method, path, midware, true, nil, nil, handler})
 		return
 	}
 	// Get params from path
 	params := getParams(path)
 	// If path has no params (simple path), we dont need regex (also for use())
-	if use || len(params) == 0 {
-		r.routes = append(r.routes, &route{method, path, use, false, nil, nil, handler})
+	if midware || len(params) == 0 {
+		r.routes = append(r.routes, &route{method, path, midware, false, nil, nil, handler})
 		return
 	}
 
@@ -79,7 +79,7 @@ func (r *Fiber) register(method string, args ...interface{}) {
 		panic("Invalid url pattern: " + path)
 	}
 	// Add regex + params to route
-	r.routes = append(r.routes, &route{method, path, use, false, regex, params, handler})
+	r.routes = append(r.routes, &route{method, path, midware, false, regex, params, handler})
 }
 
 // then try to match a route as efficient as possible.
@@ -93,14 +93,14 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 	// loop trough routes
 	for _, route := range r.routes {
 		// Skip route if method is not allowed
-		if route.method != "*" && route.method != method {
+		if route.Method != "*" && route.Method != method {
 			continue
 		}
 		// First check if we match a wildcard or static path
-		if route.wildcard || route.path == path {
+		if route.Wildcard || route.Path == path {
 			// if route.wildcard || (route.path == path && route.params == nil) {
 			// If * always set the path to the wildcard parameter
-			if route.wildcard {
+			if route.Wildcard {
 				ctx.params = &[]string{"*"}
 				ctx.values = []string{path}
 			}
@@ -108,7 +108,7 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 			// Set route pointer if user wants to call .Route()
 			ctx.route = route
 			// Execute handler with context
-			route.handler(ctx)
+			route.Handler(ctx)
 			// if next is not set, leave loop and release ctx
 			if !ctx.next {
 				break
@@ -120,11 +120,11 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 		}
 		// If route is Use() and path starts with route.path
 		// aka strings.HasPrefix(route.path, path)
-		if route.use && strings.HasPrefix(path, route.path) {
+		if route.Midware && strings.HasPrefix(path, route.Path) {
 			fmt.Println(ctx.params)
 			found = true
 			ctx.route = route
-			route.handler(ctx)
+			route.Handler(ctx)
 			if !ctx.next {
 				break
 			}
@@ -132,19 +132,19 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 			continue
 		}
 		// Skip route if regex does not exist
-		if route.regex == nil {
+		if route.Regex == nil {
 			continue
 		}
 		// Skip route if regex does not match
-		if !route.regex.MatchString(path) {
+		if !route.Regex.MatchString(path) {
 			continue
 		}
 		// If we have parameters, lets find the matches
-		if len(route.params) > 0 {
-			matches := route.regex.FindAllStringSubmatch(path, -1)
+		if len(route.Params) > 0 {
+			matches := route.Regex.FindAllStringSubmatch(path, -1)
 			// If we have matches, add params and values to context
 			if len(matches) > 0 && len(matches[0]) > 1 {
-				ctx.params = &route.params
+				ctx.params = &route.Params
 				ctx.values = matches[0][1:len(matches[0])]
 			}
 		}
@@ -152,7 +152,7 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 		// Set route pointer if user wants to call .Route()
 		ctx.route = route
 		// Execute handler with context
-		route.handler(ctx)
+		route.Handler(ctx)
 		// if next is not set, leave loop and release ctx
 		if !ctx.next {
 			break

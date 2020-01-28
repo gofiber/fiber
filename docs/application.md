@@ -123,7 +123,8 @@ app.Use(...) // Will only see wheter url starts with specified path without :par
 ```
 
 #### Static
-To serve static files such as images, CSS files, and JavaScript files, replace your function handler with a file or directory string.
+To serve static files such as images, CSS files, and JavaScript files, replace your function handler with a file or directory string.  
+By default this method will send `index.html` files in response to a request on a directory.
 ```go
 // Function signature
 app.Static(root string)

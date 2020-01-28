@@ -66,5 +66,5 @@ func (r *Fiber) All(args ...interface{}) {
 
 // Use only matches the starting path
 func (r *Fiber) Use(args ...interface{}) {
-	r.register("USE", args...)
+	r.register("MIDWARE", args...)
 }

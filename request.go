@@ -11,7 +11,6 @@ import (
 	"encoding/base64"
 	"mime"
 	"mime/multipart"
-	"regexp"
 	"strings"
 
 	"github.com/valyala/fasthttp"
@@ -316,23 +315,8 @@ func (ctx *Ctx) Range() {
 }
 
 // Route : https://gofiber.github.io/fiber/#/context?id=route
-func (ctx *Ctx) Route() (s struct {
-	Method   string
-	Path     string
-	Wildcard bool
-	Regex    *regexp.Regexp
-	Params   []string
-	Values   []string
-	Handler  func(*Ctx)
-}) {
-	s.Method = ctx.route.method
-	s.Path = ctx.route.path
-	s.Wildcard = ctx.route.wildcard
-	s.Regex = ctx.route.regex
-	s.Params = ctx.route.params
-	s.Values = ctx.values
-	s.Handler = ctx.route.handler
-	return
+func (ctx *Ctx) Route() *route {
+	return ctx.route
 }
 
 // SaveFile : https://gofiber.github.io/fiber/#/context?id=secure

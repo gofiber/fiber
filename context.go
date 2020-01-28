@@ -35,7 +35,7 @@ type Cookie struct {
 }
 
 // Ctx pool
-var ctxPool = sync.Pool{
+var poolCtx = sync.Pool{
 	New: func() interface{} {
 		return new(Ctx)
 	},
@@ -43,7 +43,7 @@ var ctxPool = sync.Pool{
 
 // Get new Ctx from pool
 func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
-	ctx := ctxPool.Get().(*Ctx)
+	ctx := poolCtx.Get().(*Ctx)
 	ctx.Fasthttp = fctx
 	return ctx
 }
@@ -55,5 +55,5 @@ func releaseCtx(ctx *Ctx) {
 	ctx.params = nil
 	ctx.values = nil
 	ctx.Fasthttp = nil
-	ctxPool.Put(ctx)
+	poolCtx.Put(ctx)
 }
