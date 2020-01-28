@@ -15,7 +15,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
   // Accept: text/*, application/json
   c.Accepts("html")
-  // => true
+  // => "html"
   c.Accepts("text/html")
   //=> "text/html"
   c.Accepts("json", "text")
