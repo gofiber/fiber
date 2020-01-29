@@ -10,10 +10,13 @@ package fiber
 import (
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strings"
 	"unsafe"
+)
+
+var (
+	applicationjson = []byte("application/json")
 )
 
 var replacer = strings.NewReplacer(":", "", "?", "")
@@ -73,33 +76,11 @@ func walkDir(root string) (files []string, isDir bool, err error) {
 	return files, isDir, err
 }
 
-// b2s converts byte slice to a string without memory allocation.
-// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-//
-// Note it may break if string and/or slice header will change
-// in the future go versions.
-func b2s(b []byte) string {
-	sh := (*reflect.StringHeader)(unsafe.Pointer(&b))
-	bh := reflect.SliceHeader{
-		Data: sh.Data,
-		Len:  sh.Len,
-		Cap:  sh.Len,
-	}
-	return *(*string)(unsafe.Pointer(&bh))
+func B2S(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
 }
-
-// s2b converts string to a byte slice without memory allocation.
-//
-// Note it may break if string and/or slice header will change
-// in the future go versions.
-func s2b(s string) []byte {
-	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	bh := reflect.SliceHeader{
-		Data: sh.Data,
-		Len:  sh.Len,
-		Cap:  sh.Len,
-	}
-	return *(*[]byte)(unsafe.Pointer(&bh))
+func S2B(s string) []byte {
+	return *(*[]byte)(unsafe.Pointer(&s))
 }
 
 // NoCopy embed this type into a struct, which mustn't be copied,

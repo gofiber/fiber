@@ -15,6 +15,7 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/tidwall/sjson"
 	"github.com/valyala/fasthttp"
 )
 
@@ -49,7 +50,7 @@ func (ctx *Ctx) ClearCookie(name ...string) {
 		return
 	}
 	ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-		ctx.Fasthttp.Response.Header.DelClientCookie(b2s(k))
+		ctx.Fasthttp.Response.Header.DelClientCookie(B2S(k))
 	})
 }
 
@@ -124,7 +125,7 @@ func (ctx *Ctx) Format(args ...interface{}) {
 	case string:
 		body = b
 	case []byte:
-		body = b2s(b)
+		body = B2S(b)
 	default:
 		panic("Body must be a string or []byte")
 	}
@@ -151,7 +152,7 @@ func (ctx *Ctx) Json(v interface{}) error {
 	if err != nil {
 		return err
 	}
-	ctx.Set("Content-Type", "application/json")
+	ctx.Fasthttp.Response.Header.SetContentTypeBytes(applicationjson)
 	ctx.Fasthttp.Response.SetBodyString(raw)
 	return nil
 }
@@ -165,7 +166,7 @@ func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
 
 	var builder strings.Builder
 	if len(cb) > 0 {
-		builder.Write(s2b(cb[0]))
+		builder.Write(S2B(cb[0]))
 	} else {
 		builder.Write([]byte("callback"))
 	}
@@ -231,11 +232,11 @@ func (ctx *Ctx) Send(args ...interface{}) {
 	}
 	switch body := args[0].(type) {
 	case string:
-		//ctx.Fasthttp.Response.SetBodyRaw(s2b(body))
+		//ctx.Fasthttp.Response.SetBodyRaw(S2B(body))
 		ctx.Fasthttp.Response.SetBodyString(body)
 	case []byte:
 		//ctx.Fasthttp.Response.SetBodyRaw(body)
-		ctx.Fasthttp.Response.SetBodyString(b2s(body))
+		ctx.Fasthttp.Response.SetBodyString(B2S(body))
 	default:
 		panic("body must be a string or []byte")
 	}
@@ -243,7 +244,7 @@ func (ctx *Ctx) Send(args ...interface{}) {
 
 // SendBytes : https://gofiber.github.io/fiber/#/context?id=sendbytes
 func (ctx *Ctx) SendBytes(body []byte) {
-	ctx.Fasthttp.Response.SetBodyString(b2s(body))
+	ctx.Fasthttp.Response.SetBodyString(B2S(body))
 }
 
 // SendFile : https://gofiber.github.io/fiber/#/context?id=sendfile
@@ -277,7 +278,33 @@ func (ctx *Ctx) SendString(body string) {
 
 // Set : https://gofiber.github.io/fiber/#/context?id=set
 func (ctx *Ctx) Set(key string, val string) {
-	ctx.Fasthttp.Response.Header.SetCanonical(s2b(key), s2b(val))
+	ctx.Fasthttp.Response.Header.SetCanonical(S2B(key), S2B(val))
+}
+
+// Sjson : https://github.com/tidwall/sjson
+func (ctx *Ctx) Sjson(json, path string, value interface{}) error {
+	raw, err := sjson.SetBytesOptions(S2B(json), path, value, &sjson.Options{
+		Optimistic: true,
+	})
+	if err != nil {
+		return err
+	}
+	ctx.Fasthttp.Response.Header.SetContentTypeBytes(applicationjson)
+	ctx.Fasthttp.Response.SetBodyString(B2S(raw))
+	return nil
+}
+
+// SjsonString : https://github.com/tidwall/sjson
+func (ctx *Ctx) SjsonStr(json, path, value string) error {
+	raw, err := sjson.SetBytesOptions(S2B(json), path, S2B(value), &sjson.Options{
+		Optimistic: true,
+	})
+	if err != nil {
+		return err
+	}
+	ctx.Fasthttp.Response.Header.SetContentTypeBytes(applicationjson)
+	ctx.Fasthttp.Response.SetBodyString(B2S(raw))
+	return nil
 }
 
 // Status : https://gofiber.github.io/fiber/#/context?id=status
@@ -318,7 +345,7 @@ func (ctx *Ctx) Write(args ...interface{}) {
 	case string:
 		ctx.Fasthttp.Response.SetBodyString(body)
 	case []byte:
-		ctx.Fasthttp.Response.AppendBodyString(b2s(body))
+		ctx.Fasthttp.Response.AppendBodyString(B2S(body))
 	default:
 		panic("body must be a string or []byte")
 	}
