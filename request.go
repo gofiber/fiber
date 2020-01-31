@@ -21,18 +21,18 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 	if len(offers) == 0 {
 		panic("You must provide atleast one content type string")
 	}
-	h := ctx.Get("Accept")
+	h := ctx.Get(fasthttp.HeaderAccept)
 	if h == "" {
 		return offers[0]
 	}
 	specs := strings.Split(h, ",")
 	for _, offer := range offers {
-		mimetype := mime.TypeByExtension("." + offer)
-		if mimetype != "" {
-			mimetype = strings.Split(mimetype, ";")[0]
-		} else {
-			mimetype = offer
-		}
+		mimetype := getType(offer)
+		// if mimetype != "" {
+		// 	mimetype = strings.Split(mimetype, ";")[0]
+		// } else {
+		// 	mimetype = offer
+		// }
 		for _, spec := range specs {
 			spec = strings.TrimSpace(spec)
 			if strings.HasPrefix(spec, "*/*") {
@@ -56,7 +56,7 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
 	if len(offers) == 0 {
 		panic("You must provide atleast one content type string")
 	}
-	h := ctx.Get("Accept-Charset")
+	h := ctx.Get(fasthttp.HeaderAcceptCharset)
 	if h == "" {
 		return offers[0]
 	}
@@ -80,7 +80,7 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
 	if len(offers) == 0 {
 		panic("You must provide atleast one content type string")
 	}
-	h := ctx.Get("Accept-Encoding")
+	h := ctx.Get(fasthttp.HeaderAcceptEncoding)
 	if h == "" {
 		return offers[0]
 	}
@@ -104,7 +104,7 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	if len(offers) == 0 {
 		panic("You must provide atleast one content type string")
 	}
-	h := ctx.Get("Accept-Language")
+	h := ctx.Get(fasthttp.HeaderAcceptLanguage)
 	if h == "" {
 		return offers[0]
 	}
@@ -130,7 +130,7 @@ func (ctx *Ctx) BaseUrl() string {
 
 // BasicAuth : https://gofiber.github.io/fiber/#/context?id=basicauth
 func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
-	auth := ctx.Get("Authorization")
+	auth := ctx.Get(fasthttp.HeaderAuthorization)
 	if auth == "" {
 		return
 	}
@@ -143,7 +143,7 @@ func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
 	if err != nil {
 		return
 	}
-	cs := B2S(c)
+	cs := getString(c)
 	s := strings.IndexByte(cs, ':')
 	if s < 0 {
 		return
@@ -158,18 +158,18 @@ func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
 //   -d john=doe
 func (ctx *Ctx) Body(args ...interface{}) string {
 	if len(args) == 0 {
-		return B2S(ctx.Fasthttp.Request.Body())
+		return getString(ctx.Fasthttp.Request.Body())
 	}
 	if len(args) == 1 {
 		switch arg := args[0].(type) {
 		case string:
-			return B2S(ctx.Fasthttp.Request.PostArgs().Peek(arg))
+			return getString(ctx.Fasthttp.Request.PostArgs().Peek(arg))
 		case func(string, string):
 			ctx.Fasthttp.Request.PostArgs().VisitAll(func(k []byte, v []byte) {
-				arg(B2S(k), B2S(v))
+				arg(getString(k), getString(v))
 			})
 		default:
-			return B2S(ctx.Fasthttp.Request.Body())
+			return getString(ctx.Fasthttp.Request.Body())
 		}
 	}
 	return ""
@@ -178,18 +178,19 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 // Cookies : https://gofiber.github.io/fiber/#/context?id=cookies
 func (ctx *Ctx) Cookies(args ...interface{}) string {
 	if len(args) == 0 {
-		//return B2S(ctx.Fasthttp.Response.Header.Peek("Cookie"))
-		return ctx.Get("Cookie")
+		return ctx.Get(fasthttp.HeaderCookie)
 	}
 	switch arg := args[0].(type) {
 	case string:
-		return B2S(ctx.Fasthttp.Request.Header.Cookie(arg))
+		return getString(ctx.Fasthttp.Request.Header.Cookie(arg))
+	case []byte:
+		return getString(ctx.Fasthttp.Request.Header.CookieBytes(arg))
 	case func(string, string):
 		ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-			arg(B2S(k), B2S(v))
+			arg(getString(k), getString(v))
 		})
 	default:
-		panic("Argument must be a string or func(string, string)")
+		return ctx.Get(fasthttp.HeaderCookie)
 	}
 	return ""
 }
@@ -201,7 +202,7 @@ func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 
 // FormValue : https://gofiber.github.io/fiber/#/context?id=formvalue
 func (ctx *Ctx) FormValue(key string) string {
-	return B2S(ctx.Fasthttp.FormValue(key))
+	return getString(ctx.Fasthttp.FormValue(key))
 }
 
 // Fresh : https://gofiber.github.io/fiber/#/context?id=fresh
@@ -215,12 +216,12 @@ func (ctx *Ctx) Get(key string) string {
 	if key == "referrer" {
 		key = "referer"
 	}
-	return B2S(ctx.Fasthttp.Request.Header.Peek(key))
+	return getString(ctx.Fasthttp.Request.Header.Peek(key))
 }
 
 // Hostname : https://gofiber.github.io/fiber/#/context?id=hostname
 func (ctx *Ctx) Hostname() string {
-	return B2S(ctx.Fasthttp.URI().Host())
+	return getString(ctx.Fasthttp.URI().Host())
 }
 
 // Ip : https://gofiber.github.io/fiber/#/context?id=Ip
@@ -230,7 +231,7 @@ func (ctx *Ctx) Ip() string {
 
 // Ips : https://gofiber.github.io/fiber/#/context?id=ips
 func (ctx *Ctx) Ips() []string {
-	ips := strings.Split(ctx.Get("X-Forwarded-For"), ",")
+	ips := strings.Split(ctx.Get(fasthttp.HeaderXForwardedFor), ",")
 	for i := range ips {
 		ips[i] = strings.TrimSpace(ips[i])
 	}
@@ -242,7 +243,7 @@ func (ctx *Ctx) Is(ext string) bool {
 	if ext[0] != '.' {
 		ext = "." + ext
 	}
-	exts, _ := mime.ExtensionsByType(ctx.Get("Content-Type"))
+	exts, _ := mime.ExtensionsByType(ctx.Get(fasthttp.HeaderContentType))
 	if len(exts) > 0 {
 		for _, item := range exts {
 			if item == ext {
@@ -265,7 +266,7 @@ func (ctx *Ctx) Locals(key string, val ...interface{}) interface{} {
 
 // Method : https://gofiber.github.io/fiber/#/context?id=method
 func (ctx *Ctx) Method() string {
-	return B2S(ctx.Fasthttp.Request.Header.Method())
+	return getString(ctx.Fasthttp.Request.Header.Method())
 }
 
 // MultipartForm : https://gofiber.github.io/fiber/#/context?id=multipartform
@@ -275,7 +276,7 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 
 // OriginalUrl : https://gofiber.github.io/fiber/#/context?id=originalurl
 func (ctx *Ctx) OriginalUrl() string {
-	return B2S(ctx.Fasthttp.Request.Header.RequestURI())
+	return getString(ctx.Fasthttp.Request.Header.RequestURI())
 }
 
 // Params : https://gofiber.github.io/fiber/#/context?id=params
@@ -293,7 +294,7 @@ func (ctx *Ctx) Params(key string) string {
 
 // Path : https://gofiber.github.io/fiber/#/context?id=path
 func (ctx *Ctx) Path() string {
-	return B2S(ctx.Fasthttp.URI().Path())
+	return getString(ctx.Fasthttp.URI().Path())
 }
 
 // Protocol : https://gofiber.github.io/fiber/#/context?id=protocol
@@ -306,7 +307,7 @@ func (ctx *Ctx) Protocol() string {
 
 // Query : https://gofiber.github.io/fiber/#/context?id=query
 func (ctx *Ctx) Query(key string) string {
-	return B2S(ctx.Fasthttp.QueryArgs().Peek(key))
+	return getString(ctx.Fasthttp.QueryArgs().Peek(key))
 }
 
 // Range : https://gofiber.github.io/fiber/#/context?id=range

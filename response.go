@@ -9,25 +9,24 @@ package fiber
 import (
 	"encoding/xml"
 	"fmt"
-	"mime"
 	"path/filepath"
 	"strings"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/tidwall/sjson"
 	"github.com/valyala/fasthttp"
 )
 
 // Append : https://gofiber.github.io/fiber/#/context?id=append
 func (ctx *Ctx) Append(field string, values ...string) {
-	value := ctx.Get(field)
-	if len(values) > 0 {
-		for i := range values {
-			value = fmt.Sprintf("%s, %s", value, values[i])
-		}
+	if len(values) == 0 {
+		return
 	}
-	ctx.Set(field, value)
+	h := ctx.Get(field)
+	for i := range values {
+		h += h + "," + values[i]
+	}
+	ctx.Set(field, h)
 }
 
 // Attachment : https://gofiber.github.io/fiber/#/context?id=attachment
@@ -35,10 +34,10 @@ func (ctx *Ctx) Attachment(name ...string) {
 	if len(name) > 0 {
 		filename := filepath.Base(name[0])
 		ctx.Type(filepath.Ext(filename))
-		ctx.Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+		ctx.Set(fasthttp.HeaderContentDisposition, `attachment; filename="`+filename+`"`)
 		return
 	}
-	ctx.Set("Content-Disposition", "attachment")
+	ctx.Set(fasthttp.HeaderContentDisposition, "attachment")
 }
 
 // ClearCookie : https://gofiber.github.io/fiber/#/context?id=clearcookie
@@ -50,7 +49,7 @@ func (ctx *Ctx) ClearCookie(name ...string) {
 		return
 	}
 	ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-		ctx.Fasthttp.Response.Header.DelClientCookie(B2S(k))
+		ctx.Fasthttp.Response.Header.DelClientCookie(getString(k))
 	})
 }
 
@@ -106,7 +105,7 @@ func (ctx *Ctx) Download(file string, name ...string) {
 	if len(name) > 0 {
 		filename = name[0]
 	}
-	ctx.Set("Content-Disposition", "attachment; filename="+filename)
+	ctx.Set(fasthttp.HeaderContentDisposition, "attachment; filename="+filename)
 	ctx.SendFile(file)
 }
 
@@ -117,26 +116,25 @@ func (ctx *Ctx) End() {
 
 // Format : https://gofiber.github.io/fiber/#/context?id=format
 func (ctx *Ctx) Format(args ...interface{}) {
-	if len(args) == 0 {
-		panic("Missing string or []byte body")
-	}
 	var body string
-	switch b := args[0].(type) {
-	case string:
-		body = b
-	case []byte:
-		body = B2S(b)
-	default:
-		panic("Body must be a string or []byte")
-	}
 	accept := ctx.Accepts("html", "json")
-	switch accept {
-	case "html":
-		ctx.SendString("<p>" + body + "</p>")
-	case "json":
-		ctx.Json(body)
-	default:
-		ctx.SendString(body)
+	for i := range args {
+		switch arg := args[i].(type) {
+		case string:
+			body = arg
+		case []byte:
+			body = getString(arg)
+		default:
+			body = fmt.Sprintf("%v", arg)
+		}
+		switch accept {
+		case "html":
+			ctx.SendString("<p>" + body + "</p>")
+		case "json":
+			ctx.Json(body)
+		default:
+			ctx.SendString(body)
+		}
 	}
 }
 
@@ -147,13 +145,12 @@ func (ctx *Ctx) HeadersSent() {
 
 // Json : https://gofiber.github.io/fiber/#/context?id=json
 func (ctx *Ctx) Json(v interface{}) error {
-
-	raw, err := jsoniter.MarshalToString(&v)
+	raw, err := jsoniter.Marshal(&v)
 	if err != nil {
 		return err
 	}
-	ctx.Fasthttp.Response.Header.SetContentTypeBytes(applicationjson)
-	ctx.Fasthttp.Response.SetBodyString(raw)
+	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJson)
+	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 	return nil
 }
 
@@ -163,20 +160,15 @@ func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
 	if err != nil {
 		return err
 	}
-
-	var builder strings.Builder
+	str := "callback("
 	if len(cb) > 0 {
-		builder.Write(S2B(cb[0]))
-	} else {
-		builder.Write([]byte("callback"))
+		str = cb[0] + "("
 	}
-	builder.Write([]byte("("))
-	builder.Write(raw)
-	builder.Write([]byte(");"))
+	str += getString(raw) + ");"
 
-	ctx.Set("X-Content-Type-Options", "nosniff")
-	ctx.Set("Content-Type", "application/javascript")
-	ctx.Fasthttp.Response.SetBodyString(builder.String())
+	ctx.Set(fasthttp.HeaderXContentTypeOptions, "nosniff")
+	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJs)
+	ctx.Fasthttp.Response.SetBodyString(str)
 	return nil
 }
 
@@ -192,17 +184,18 @@ func (ctx *Ctx) Links(link ...string) {
 	}
 	if len(link) > 0 {
 		h = strings.TrimSuffix(h, ",")
-		ctx.Set("Link", h)
+		ctx.Set(fasthttp.HeaderLink, h)
 	}
 }
 
 // Location : https://gofiber.github.io/fiber/#/context?id=location
 func (ctx *Ctx) Location(path string) {
-	ctx.Set("Location", path)
+	ctx.Set(fasthttp.HeaderLocation, path)
 }
 
 // Next : https://gofiber.github.io/fiber/#/context?id=next
 func (ctx *Ctx) Next() {
+	ctx.route = nil
 	ctx.next = true
 	ctx.params = nil
 	ctx.values = nil
@@ -210,12 +203,12 @@ func (ctx *Ctx) Next() {
 
 // Redirect : https://gofiber.github.io/fiber/#/context?id=redirect
 func (ctx *Ctx) Redirect(path string, status ...int) {
-	ctx.Set("Location", path)
+	code := 302
 	if len(status) > 0 {
-		ctx.Status(status[0])
-	} else {
-		ctx.Status(302)
+		code = status[0]
 	}
+	ctx.Set(fasthttp.HeaderLocation, path)
+	ctx.Fasthttp.Response.SetStatusCode(code)
 }
 
 // Render : https://gofiber.github.io/fiber/#/context?id=render
@@ -225,26 +218,21 @@ func (ctx *Ctx) Render() {
 
 // Send : https://gofiber.github.io/fiber/#/context?id=send
 func (ctx *Ctx) Send(args ...interface{}) {
-
-	// https://github.com/valyala/fasthttp/blob/master/http.go#L490
-	if len(args) == 0 {
-		panic("Missing string or []byte body")
-	}
-	switch body := args[0].(type) {
-	case string:
-		//ctx.Fasthttp.Response.SetBodyRaw(S2B(body))
-		ctx.Fasthttp.Response.SetBodyString(body)
-	case []byte:
-		//ctx.Fasthttp.Response.SetBodyRaw(body)
-		ctx.Fasthttp.Response.SetBodyString(B2S(body))
-	default:
-		panic("body must be a string or []byte")
+	for i := range args {
+		switch body := args[i].(type) {
+		case string:
+			ctx.Fasthttp.Response.SetBodyString(body)
+		case []byte:
+			ctx.Fasthttp.Response.SetBodyString(getString(body))
+		default:
+			ctx.Fasthttp.Response.SetBodyString(fmt.Sprintf("%v", body))
+		}
 	}
 }
 
 // SendBytes : https://gofiber.github.io/fiber/#/context?id=sendbytes
 func (ctx *Ctx) SendBytes(body []byte) {
-	ctx.Fasthttp.Response.SetBodyString(B2S(body))
+	ctx.Fasthttp.Response.SetBodyString(getString(body))
 }
 
 // SendFile : https://gofiber.github.io/fiber/#/context?id=sendfile
@@ -252,6 +240,7 @@ func (ctx *Ctx) SendFile(file string, gzip ...bool) {
 	// Disable gzipping
 	if len(gzip) > 0 && !gzip[0] {
 		fasthttp.ServeFileUncompressed(ctx.Fasthttp, file)
+		return
 	}
 	fasthttp.ServeFile(ctx.Fasthttp, file)
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
@@ -261,10 +250,10 @@ func (ctx *Ctx) SendFile(file string, gzip ...bool) {
 
 // SendStatus : https://gofiber.github.io/fiber/#/context?id=sendstatus
 func (ctx *Ctx) SendStatus(status int) {
-	ctx.Status(status)
+	ctx.Fasthttp.Response.SetStatusCode(status)
 	// Only set status body when there is no response body
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
-		msg := statusMessages[status]
+		msg := getStatus(status)
 		if msg != "" {
 			ctx.Fasthttp.Response.SetBodyString(msg)
 		}
@@ -278,33 +267,7 @@ func (ctx *Ctx) SendString(body string) {
 
 // Set : https://gofiber.github.io/fiber/#/context?id=set
 func (ctx *Ctx) Set(key string, val string) {
-	ctx.Fasthttp.Response.Header.SetCanonical(S2B(key), S2B(val))
-}
-
-// Sjson : https://github.com/tidwall/sjson
-func (ctx *Ctx) Sjson(json, path string, value interface{}) error {
-	raw, err := sjson.SetBytesOptions(S2B(json), path, value, &sjson.Options{
-		Optimistic: true,
-	})
-	if err != nil {
-		return err
-	}
-	ctx.Fasthttp.Response.Header.SetContentTypeBytes(applicationjson)
-	ctx.Fasthttp.Response.SetBodyString(B2S(raw))
-	return nil
-}
-
-// SjsonString : https://github.com/tidwall/sjson
-func (ctx *Ctx) SjsonStr(json, path, value string) error {
-	raw, err := sjson.SetBytesOptions(S2B(json), path, S2B(value), &sjson.Options{
-		Optimistic: true,
-	})
-	if err != nil {
-		return err
-	}
-	ctx.Fasthttp.Response.Header.SetContentTypeBytes(applicationjson)
-	ctx.Fasthttp.Response.SetBodyString(B2S(raw))
-	return nil
+	ctx.Fasthttp.Response.Header.SetCanonical(getBytes(key), getBytes(val))
 }
 
 // Status : https://gofiber.github.io/fiber/#/context?id=status
@@ -315,39 +278,35 @@ func (ctx *Ctx) Status(status int) *Ctx {
 
 // Type : https://gofiber.github.io/fiber/#/context?id=type
 func (ctx *Ctx) Type(ext string) *Ctx {
-	if ext[0] != '.' {
-		ext = "." + ext
-	}
-	m := mime.TypeByExtension(ext)
-	ctx.Set("Content-Type", m)
+	ctx.Fasthttp.Response.Header.SetContentType(getType(ext))
 	return ctx
 }
 
 // Vary : https://gofiber.github.io/fiber/#/context?id=vary
-func (ctx *Ctx) Vary(field ...string) {
-	vary := ctx.Get("Vary")
-	for _, f := range field {
-		if !strings.Contains(vary, f) {
-			vary += ", " + f
+func (ctx *Ctx) Vary(fields ...string) {
+	if len(fields) == 0 {
+		return
+	}
+	vary := ctx.Get(fasthttp.HeaderVary)
+	for _, field := range fields {
+		if !strings.Contains(vary, field) {
+			vary += ", " + field
 		}
 	}
-	if len(field) > 0 {
-		ctx.Set("Vary", vary)
-	}
+	ctx.Set(fasthttp.HeaderVary, vary)
 }
 
 // Write : https://gofiber.github.io/fiber/#/context?id=write
 func (ctx *Ctx) Write(args ...interface{}) {
-	if len(args) == 0 {
-		panic("Missing string or []byte body")
-	}
-	switch body := args[0].(type) {
-	case string:
-		ctx.Fasthttp.Response.SetBodyString(body)
-	case []byte:
-		ctx.Fasthttp.Response.AppendBodyString(B2S(body))
-	default:
-		panic("body must be a string or []byte")
+	for i := range args {
+		switch body := args[i].(type) {
+		case string:
+			ctx.Fasthttp.Response.AppendBodyString(body)
+		case []byte:
+			ctx.Fasthttp.Response.AppendBodyString(getString(body))
+		default:
+			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
+		}
 	}
 }
 
@@ -357,7 +316,7 @@ func (ctx *Ctx) Xml(v interface{}) error {
 	if err != nil {
 		return err
 	}
-	ctx.Set("Content-Type", "application/xml")
+	ctx.Fasthttp.Response.Header.SetContentType(contentTypeXml)
 	ctx.Fasthttp.Response.SetBody(raw)
 	return nil
 }

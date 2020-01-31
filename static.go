@@ -17,6 +17,7 @@ func (r *Fiber) Static(args ...string) {
 	prefix := "/"
 	root := "./"
 	wildcard := false
+	// enable / disable gzipping somewhere?
 	gzip := true
 	if len(args) == 1 {
 		root = args[0]
@@ -32,7 +33,7 @@ func (r *Fiber) Static(args ...string) {
 		wildcard = true
 	}
 	// Lets get all files from root
-	files, _, err := walkDir(root)
+	files, _, err := getFiles(root)
 	if err != nil {
 		panic(err)
 	}
@@ -50,7 +51,7 @@ func (r *Fiber) Static(args ...string) {
 		// Store original file path to use in ctx handler
 		filePath := file
 		// If the file is an index.html, bind the prefix to index.html directly
-		if filepath.Base(filePath) == "index.html" {
+		if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
 			r.routes = append(r.routes, &route{"GET", prefix, wildcard, false, nil, nil, func(c *Ctx) {
 				c.SendFile(filePath, gzip)
 			}})

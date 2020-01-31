@@ -10,12 +10,10 @@ package fiber
 import (
 	"flag"
 	"time"
-	// "github.com/tidwall/gjson"
 )
 
 const (
-	// Version for debugging
-	Version = "1.2.0"
+	Version = "1.2.1"
 	// https://play.golang.org/p/r6GNeV1gbH
 	banner = "" +
 		" \x1b[1;32m _____ _ _\n" +
@@ -34,9 +32,9 @@ var (
 type Fiber struct {
 	// Server name header
 	Server string
-	// Disable the fiber banner on launch
+	// Show fiber banner
 	Banner bool
-	// Fasthttp server settings
+	// https://github.com/valyala/fasthttp/blob/master/server.go#L150
 	Engine *engine
 	// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
 	Prefork bool
@@ -69,19 +67,11 @@ type engine struct {
 
 // New creates a Fiber instance
 func New() *Fiber {
-	// Parse flags
 	flag.Parse()
 	return &Fiber{
-		// No server header is sent when set empty ""
-		Server: "",
-		// Fiber banner is printed by default
-		// Disable if it's a child process (when preforking)
-		Banner: true,
-		// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
-		// Prefork can be set within code, or with flag -prefork
+		Server:  "",
+		Banner:  true,
 		Prefork: *prefork,
-		// Default fasthttp settings
-		// https://github.com/valyala/fasthttp/blob/master/server.go#L150
 		Engine: &engine{
 			Concurrency:                        256 * 1024,
 			DisableKeepAlive:                   false,

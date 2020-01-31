@@ -7,9 +7,6 @@
 
 package fiber
 
-// Credits @valyala
-// https://github.com/valyala/fasthttp/blob/master/status.go
-
 // statusMessages https://gofiber.github.io/fiber/#/context?id=sendstatus
 var statusMessages = map[int]string{
 	100: "Continue",
@@ -31,7 +28,7 @@ var statusMessages = map[int]string{
 	303: "See Other",
 	304: "Not Modified",
 	305: "Use Proxy",
-	// 306:"Switch Proxy",
+	306: "Switch Proxy",
 	307: "Temporary Redirect",
 	308: "Permanent Redirect",
 	400: "Bad Request",

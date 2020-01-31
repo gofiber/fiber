@@ -8,7 +8,6 @@
 package fiber
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -121,7 +120,6 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 		// If route is Use() and path starts with route.path
 		// aka strings.HasPrefix(route.path, path)
 		if route.Midware && strings.HasPrefix(path, route.Path) {
-			fmt.Println(ctx.params)
 			found = true
 			ctx.route = route
 			route.Handler(ctx)

@@ -264,6 +264,7 @@ Get cookies
 // Function signature
 c.Cookies() string
 c.Cookies(key string) string
+c.Cookies(key []byte) string
 c.Cookies(func(key, value string)) string
 
 // Example
@@ -274,6 +275,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
   // Get cookie by key
   c.Cookies("name")
+  c.Cookies([]byte("name"))
   // => "john"
 
   // Show all cookies
@@ -822,17 +824,21 @@ c.Protocol() == "https"
 #### Send
 Sends the HTTP response.
 
-The Send parameter can be a buffer or string
+The Send parameters can be of any type
 ```go
 // Function signature
-c.Send(body string)
-c.Send(body []byte)
+c.Send(bodies ...interface{})
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   c.Send("Hello, World!")
+  // => "Hello, World!"
 
   c.Send([]byte("Hello, World!"))
+  // => "Hello, World!"
+
+  c.Send(123)
+  // => "123"
 })
 ```
 
@@ -946,7 +952,7 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### Type
-Sets the Content-Type HTTP header to the MIME type as determined by mime.lookup() for the specified type. If type contains the “/” character, then it sets the Content-Type to type.
+Sets the Content-Type HTTP header to the MIME type listed [here](https://github.com/nginx/nginx/blob/master/conf/mime.types) specified by the file extension.
 ```go
 // Function signature
 c.Type(typ string) string
@@ -968,7 +974,7 @@ app.Get("/", func(c *fiber.Ctx) {
 ```
 
 #### Vary
-Adds the given header field to the Vary response header of res. This can be a string of a single field, or multiple fields.
+Adds the given header field to the Vary response header of res. This can be a single field, or multiple fields.
 
 This will append the header if not already listed, otherwise leaves it listed in the current location.
 ```go
@@ -979,40 +985,41 @@ c.Vary(field ...string)
 app.Get("/", func(c *fiber.Ctx) {
   // Let's assume there are no values in Vary yet
   c.Get("Vary")
-  // => ""
+  // =>
 
   c.Vary("Origin")
-  // => "Vary: Origin"
+  // => Vary: Origin
 
   c.Vary("User-Agent")
-  // => "Vary: Origin, User-Agent"
+  // => Vary: Origin, User-Agent
 
   // It checks for duplicates
   c.Vary("Origin")
-  // => "Vary: Origin, User-Agent"
+  // => Vary: Origin, User-Agent
 
   c.Vary("Accept-Encoding", "Accept")
-  // => "Vary: Origin, User-Agent", "Accept-Encoding", "Accept"
+  // => Vary: Origin, User-Agent, Accept-Encoding, Accept
 })
 ```
 
 #### Write
 Appends to the HTTP response.
 
-The Write parameter can be a buffer or string
+The Write parameter can be any type
 ```go
 // Function signature
-c.Write(body string)
-c.Write(body []byte)
+c.Write(bodies ...interface{})
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   c.Write("Hello, ")
   // => "Hello, "
 
-  c.Write([]byte("World!"))
-  // => "Hello, World!"
+  c.Write([]byte("World! "))
+  // => "Hello, World! "
 
+  c.Write(123)
+  // => "Hello, World! 123"
   // Send sets the body, and does not append
   c.Send("My name is Jeff")
   // => "My name is Jeff"

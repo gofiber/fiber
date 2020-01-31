@@ -15,44 +15,31 @@ import (
 	"unsafe"
 )
 
-var (
-	applicationjson = []byte("application/json")
-)
-
-var replacer = strings.NewReplacer(":", "", "?", "")
-
 func getParams(path string) (params []string) {
 	segments := strings.Split(path, "/")
+	replacer := strings.NewReplacer(":", "", "?", "")
 	for _, s := range segments {
 		if s == "" {
 			continue
-		}
-		if strings.Contains(s, ":") {
-			s = replacer.Replace(s)
-			params = append(params, s)
-			continue
-		}
-		if strings.Contains(s, "*") {
+		} else if s[0] == ':' {
+			params = append(params, replacer.Replace(s))
+		} else if s[0] == '*' {
 			params = append(params, "*")
 		}
 	}
 	return params
 }
-
 func getRegex(path string) (*regexp.Regexp, error) {
 	pattern := "^"
 	segments := strings.Split(path, "/")
 	for _, s := range segments {
-		if s == "" {
-			continue
-		}
-		if strings.Contains(s, ":") {
+		if s[0] == ':' {
 			if strings.Contains(s, "?") {
 				pattern += "(?:/([^/]+?))?"
 			} else {
 				pattern += "/(?:([^/]+?))"
 			}
-		} else if strings.Contains(s, "*") {
+		} else if s[0] == '*' {
 			pattern += "/(.*)"
 		} else {
 			pattern += "/" + s
@@ -62,9 +49,7 @@ func getRegex(path string) (*regexp.Regexp, error) {
 	regex, err := regexp.Compile(pattern)
 	return regex, err
 }
-
-// walkDir loops trough directory and store file paths in array
-func walkDir(root string) (files []string, isDir bool, err error) {
+func getFiles(root string) (files []string, isDir bool, err error) {
 	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
 			files = append(files, path)
@@ -75,39 +60,23 @@ func walkDir(root string) (files []string, isDir bool, err error) {
 	})
 	return files, isDir, err
 }
-
-func B2S(b []byte) string {
+func getType(ext string) (mime string) {
+	if ext[0] == '.' {
+		ext = ext[1:]
+	}
+	mime = contentTypes[ext]
+	if mime == "" {
+		return contentTypeOctetStream
+	}
+	return mime
+}
+func getStatus(status int) (msg string) {
+	msg = statusMessages[status]
+	return msg
+}
+func getString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
-func S2B(s string) []byte {
+func getBytes(s string) []byte {
 	return *(*[]byte)(unsafe.Pointer(&s))
-}
-
-// NoCopy embed this type into a struct, which mustn't be copied,
-// so `go vet` gives a warning if this struct is copied.
-//
-// See https://github.com/golang/go/issues/8005#issuecomment-190753527 for details.
-// and also: https://stackoverflow.com/questions/52494458/nocopy-minimal-example
-type noCopy struct{}
-
-// Lock ...
-func (*noCopy) Lock() {}
-
-// Unlock ...
-func (*noCopy) Unlock() {}
-
-// StringSliceIndexOf returns index position in slice from given string
-// If value is -1, the string does not found
-func stringSliceIndexOf(vs []string, s string) int {
-	for i, v := range vs {
-		if v == s {
-			return i
-		}
-	}
-	return -1
-}
-
-// StringSliceInclude returns true or false if given string is in slice
-func stringSliceInclude(vs []string, t string) bool {
-	return stringSliceIndexOf(vs, t) >= 0
 }
