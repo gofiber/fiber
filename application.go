@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	Version = "1.2.1"
+	Version = "1.2.2"
 	// https://play.golang.org/p/r6GNeV1gbH
 	banner = "" +
 		" \x1b[1;32m _____ _ _\n" +
@@ -38,6 +38,7 @@ type Fiber struct {
 	Engine *engine
 	// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
 	Prefork bool
+	child   bool
 	// Stores all routes
 	routes []*route
 }
@@ -72,6 +73,7 @@ func New() *Fiber {
 		Server:  "",
 		Banner:  true,
 		Prefork: *prefork,
+		child:   *child,
 		Engine: &engine{
 			Concurrency:                        256 * 1024,
 			DisableKeepAlive:                   false,

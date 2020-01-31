@@ -71,8 +71,7 @@ func getType(ext string) (mime string) {
 	return mime
 }
 func getStatus(status int) (msg string) {
-	msg = statusMessages[status]
-	return msg
+	return statusMessages[status]
 }
 func getString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))

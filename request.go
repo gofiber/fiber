@@ -152,10 +152,6 @@ func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
 }
 
 // Body : https://gofiber.github.io/fiber/#/context?id=body
-// curl -X POST \
-//   http://localhost:8080 \
-//   -H 'Content-Type: application/x-www-form-urlencoded' \
-//   -d john=doe
 func (ctx *Ctx) Body(args ...interface{}) string {
 	if len(args) == 0 {
 		return getString(ctx.Fasthttp.Request.Body())

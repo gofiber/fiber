@@ -827,7 +827,7 @@ Sends the HTTP response.
 The Send parameters can be of any type
 ```go
 // Function signature
-c.Send(bodies ...interface{})
+c.Send(body ...interface{})
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {

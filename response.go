@@ -218,15 +218,16 @@ func (ctx *Ctx) Render() {
 
 // Send : https://gofiber.github.io/fiber/#/context?id=send
 func (ctx *Ctx) Send(args ...interface{}) {
-	for i := range args {
-		switch body := args[i].(type) {
-		case string:
-			ctx.Fasthttp.Response.SetBodyString(body)
-		case []byte:
-			ctx.Fasthttp.Response.SetBodyString(getString(body))
-		default:
-			ctx.Fasthttp.Response.SetBodyString(fmt.Sprintf("%v", body))
-		}
+	if len(args) == 0 {
+		return
+	}
+	switch body := args[0].(type) {
+	case string:
+		ctx.Fasthttp.Response.SetBodyString(body)
+	case []byte:
+		ctx.Fasthttp.Response.SetBodyString(getString(body))
+	default:
+		ctx.Fasthttp.Response.SetBodyString(fmt.Sprintf("%v", body))
 	}
 }
 
