@@ -507,6 +507,21 @@ app.Get("/json", func(c *fiber.Ctx) {
 })
 ```
 
+#### JsonBytes
+This function accepts raw []byte bodies and sets the content header to application/json. This function is used if you do not need type assertion.
+```go
+// Function signature
+c.Json(json []byte)
+
+// Example
+app := fiber.New()
+app.Get("/json", func(c *fiber.Ctx) {
+  c.JsonBytes([]byte(`"{"hello": "world"}"`))
+})
+app.Listen(8080)
+```
+
+
 #### Jsonp
 Sends a JSON response with JSONP support. This method is identical to [Json()](#json), except that it opts-in to JSONP callback support.
 
@@ -515,6 +530,7 @@ By default, the JSONP callback name is simply callback. Override this by passing
 // Function signature
 c.Jsonp(v interface{}) error
 c.Jsonp(v interface{}, callback string) error
+
 // Example
 type JsonStruct struct {
   name string
@@ -532,6 +548,20 @@ app.Get("/", func(c *fiber.Ctx) {
 
   c.Jsonp(data, "customFunc")
   // => customFunc({"name": "Grame", "age": 20})
+})
+app.Listen(8080)
+```
+
+#### JsonString
+This function accepts raw string body and sets the content header to application/json. This function is used if you do not need type assertion.
+```go
+// Function signature
+c.Json(json string)
+
+// Example
+app := fiber.New()
+app.Get("/json", func(c *fiber.Ctx) {
+  c.JsonString(`"{"hello": "world"}"`)
 })
 app.Listen(8080)
 ```

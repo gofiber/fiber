@@ -154,6 +154,12 @@ func (ctx *Ctx) Json(v interface{}) error {
 	return nil
 }
 
+// JsonBytes : https://gofiber.github.io/fiber/#/context?id=jsonbytes
+func (ctx *Ctx) JsonBytes(raw []byte) {
+	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJson)
+	ctx.Fasthttp.Response.SetBodyString(getString(raw))
+}
+
 // Jsonp : https://gofiber.github.io/fiber/#/context?id=jsonp
 func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
 	raw, err := jsoniter.Marshal(&v)
@@ -170,6 +176,12 @@ func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
 	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJs)
 	ctx.Fasthttp.Response.SetBodyString(str)
 	return nil
+}
+
+// JsonString : https://gofiber.github.io/fiber/#/context?id=jsonstring
+func (ctx *Ctx) JsonString(raw string) {
+	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJson)
+	ctx.Fasthttp.Response.SetBodyString(raw)
 }
 
 // Links : https://gofiber.github.io/fiber/#/context?id=links
