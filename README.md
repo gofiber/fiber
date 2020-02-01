@@ -1,14 +1,18 @@
-# Fiber Web Framework <img src="images/flags/en.svg" alt="en"/> <a href="README_RU.md"><img src="images/flags/ru.svg" alt="ru"/></a>
+# 🔌 Fiber Web Framework <img src="images/flags/en.svg" alt="en"/> <a href="README_RU.md"><img src="images/flags/ru.svg" alt="ru"/></a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber)
 
 <img align="right" height="180px" src="https://gofiber.github.io/fiber/static/logo.jpg" />
 
-**[Fiber](https://github.com/gofiber/fiber)** is an [Express](https://expressjs.com/en/4x/api.html)-styled HTTP web framework implementation running on [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for Go (Golang). The package make use of similar framework convention as they are in Express. 
+**[Fiber](https://github.com/gofiber/fiber)** is an [Express](https://expressjs.com/en/4x/api.html)-styled HTTP web framework implementation running on [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for Go (Golang). The package make use of **similar framework convention** as they are in Express. 
 
-People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind. 
+People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind.
 
-📚 See **[API Documentation](https://gofiber.github.io/fiber/)**.
+## API Documentation
+
+📚 We created an extended API documentation (_including examples_), **[click here](https://gofiber.github.io/fiber/)**.
+
+## Benchmark
 
 [![](https://gofiber.github.io/fiber/static/benchmarks/benchmark.png)](https://gofiber.github.io/fiber/#/benchmarks)
 
@@ -22,7 +26,7 @@ People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://go
 * Static files with custom prefix
 * Middleware with Next support
 * Express API endpoints
-* [Comprehensible documentation](https://gofiber.github.io/fiber/)
+* [Extended documentation](https://gofiber.github.io/fiber/)
 
 ## Installing
 
@@ -65,7 +69,7 @@ Go to console and run:
 $ go run server.go
 ```
 
-And now, browse to **http://localhost:8080** and you should see `Hello, World!` on the page! 🎉
+And now, browse to `http://localhost:8080` and you should see `Hello, World!` on the page! 🎉
 
 ## Static files
 
@@ -130,10 +134,15 @@ func main() {
 }
 ```
 
-## API Documentation
+## Project assistance
 
-We created an extended API documentation including examples, **[click here](https://gofiber.github.io/fiber/)**.
+If you want to say «thank you» or/and support active development `gofiber/fiber`:
 
+1. Add a GitHub Star to project.
+2. Twit about project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%94%8C%20Fiber%20is%20an%20Express.js%20inspired%20Go%20web%20framework%20build%20on%20%F0%9F%9A%80%20Fasthttp%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+3. Help us to translate this `README` and [API Docs](https://gofiber.github.io/fiber/) to another language.
+
+Thanks for your support! 😘 Together, we make `Fiber Web Framework` better every day.
 
 ## Stargazers over time
 
@@ -141,6 +150,4 @@ We created an extended API documentation including examples, **[click here](http
 
 ## License
 
-☝️ _Please note:_ `gofiber/fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/edit/master/LICENSE).
-
-*Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/README.md)*
+⚠️ _Please note:_ `gofiber/fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/edit/master/LICENSE).
