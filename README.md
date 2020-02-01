@@ -42,7 +42,7 @@ $ go get -u github.com/gofiber/fiber
 
 ## Hello, world!
 
-Embedded below is essentially the simplest Fiber app you can create.
+Embedded below is essentially the simplest Fiber app you can create:
 
 ```go
 // server.go
@@ -75,7 +75,7 @@ And now, browse to `http://localhost:8080` and you should see `Hello, World!` on
 
 ## Static files
 
-To serve static files, use the [Static](https://gofiber.github.io/fiber/#/?id=static-files) method.
+To serve static files, use the [Static](https://gofiber.github.io/fiber/#/?id=static-files) method:
 
 ```go
 package main
@@ -104,7 +104,7 @@ http://localhost:8080/css/style.css
 
 ## Middleware
 
-Middleware has never been so easy, just like Express you call the `Next()` matching route function!
+Middleware has never been so easy! Just like Express you call the `Next()` matching route function:
 
 ```go
 package main
