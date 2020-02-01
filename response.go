@@ -10,6 +10,7 @@ package fiber
 import (
 	"encoding/xml"
 	"fmt"
+	"log"
 	"path/filepath"
 	"strings"
 	"time"
@@ -141,7 +142,9 @@ func (ctx *Ctx) Format(args ...interface{}) {
 		case "html":
 			ctx.SendString("<p>" + body + "</p>")
 		case "json":
-			ctx.JSON(body)
+			if err := ctx.JSON(body); err != nil {
+				log.Fatal(err)
+			}
 		default:
 			ctx.SendString(body)
 		}

@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"encoding/base64"
+	"log"
 	"mime"
 	"mime/multipart"
 	"strings"
@@ -338,7 +339,9 @@ func (ctx *Ctx) Route() *Route {
 
 // SaveFile : https://gofiber.github.io/fiber/#/context?id=secure
 func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) {
-	fasthttp.SaveMultipartFile(fh, path)
+	if err := fasthttp.SaveMultipartFile(fh, path); err != nil {
+		log.Fatal(err)
+	}
 }
 
 // Secure : https://gofiber.github.io/fiber/#/context?id=secure
