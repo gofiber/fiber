@@ -75,7 +75,7 @@ $ go run server.go
 
 ## Статичные файлы
 
-Для работы со статическими файлами, используйте метод [Static](https://gofiber.github.io/fiber/#/?id=static-files):
+Для получения доступа к статичным файлам, используйте метод [Static](https://gofiber.github.io/fiber/#/?id=static-files):
 
 ```go
 package main
@@ -94,7 +94,7 @@ func main() {
 }
 ```
 
-Now, you can load the files that are in the public directory:
+Теперь вы можете получить доступ ко всем файлам, которые находятся в папке `./public`:
 
 ```console
 http://localhost:8080/hello.html
@@ -104,7 +104,7 @@ http://localhost:8080/css/style.css
 
 ## Middleware
 
-Middleware has never been so easy, just like Express you call the `Next()` matching route function!
+Еще никогда работа с middleware не была настолько простой! Так же, как и в Express, вы должны вызывать метод `Next()` для дальнейшего следования по маршрутам роутера:
 
 ```go
 package main
