@@ -1,4 +1,4 @@
-// 🔌 Fiber is an Expressjs inspired web framework build on 🚀 Fasthttp.
+// 🔌 Fiber is an Express.js inspired web framework build on 🚀 Fasthttp.
 // 📌 Please open an issue if you got suggestions or found a bug!
 // 🖥 https://github.com/gofiber/fiber
 
@@ -9,9 +9,9 @@ package fiber
 
 // common content types
 const (
-	contentTypeJson        = "application/json"
+	contentTypeJSON        = "application/json"
 	contentTypeJs          = "application/javascript"
-	contentTypeXml         = "application/xml"
+	contentTypeXML         = "application/xml"
 	contentTypeOctetStream = "application/octet-stream"
 )
 

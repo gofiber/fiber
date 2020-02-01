@@ -4,7 +4,7 @@ AcceptsEncodings
 AcceptsLanguages
 Append
 Attachment
-BaseUrl
+BaseURL
 BasicAuth
 Body
 ClearCookie
@@ -19,10 +19,10 @@ Fresh
 Get
 HeadersSent
 Hostname
-Ip
+IP
 Ips
 Is
-Json
+JSON
 Jsonp
 Links
 Locals
@@ -55,4 +55,4 @@ Subdomains
 Type
 Vary
 Xhr
-Xml
+XML

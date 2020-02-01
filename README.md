@@ -4,11 +4,11 @@
 
 <img align="right" height="180px" src="docs/static/logo_320px_trans.png" alt="Fiber logo" />
 
-**[Fiber](https://github.com/gofiber/fiber)** is an [Express](https://expressjs.com/en/4x/api.html)-styled HTTP web framework implementation running on [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for Go (Golang). The package make use of **similar framework convention** as they are in Express. 
+**[Fiber](https://github.com/gofiber/fiber)** is an [Express](https://expressjs.com/en/4x/api.html)-styled HTTP web framework implementation running on [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for Go (Golang). The package make use of **similar framework convention** as they are in Express.
 
 People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind.
 
-**In other languages:** <a href="README_RU.md"><img width="20px" src="docs/static/ru.svg" alt="ru"/></a>
+**In other languages:** <a href="README_RU.md"><img width="20px" src="docs/static/flags/ru.svg" alt="ru"/></a>
 
 ## API Documentation
 
@@ -22,13 +22,13 @@ People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://go
 
 ## Features
 
-* Optimized for speed and low memory usage
-* Rapid Server-Side Programming
-* Easy routing with parameters
-* Static files with custom prefix
-* Middleware with Next support
-* Express API endpoints
-* [Extended documentation](https://gofiber.github.io/fiber/)
+- Optimized for speed and low memory usage
+- Rapid Server-Side Programming
+- Easy routing with parameters
+- Static files with custom prefix
+- Middleware with Next support
+- Express API endpoints
+- [Extended documentation](https://gofiber.github.io/fiber/)
 
 ## Installing
 
@@ -37,7 +37,7 @@ Assuming you’ve already installed Go `1.11+` 😉
 Install the [Fiber](https://github.com/gofiber/fiber) package by calling the following command:
 
 ```console
-$ go get -u github.com/gofiber/fiber
+go get -u github.com/gofiber/fiber
 ```
 
 ## Hello, world!
@@ -59,7 +59,7 @@ func main() {
   app.Get("/", func(c *fiber.Ctx) {
     c.Send("Hello, World!")
   })
-  
+
   // Start server on http://localhost:8080
   app.Listen(8080)
 }
@@ -68,7 +68,7 @@ func main() {
 Go to console and run:
 
 ```console
-$ go run server.go
+go run server.go
 ```
 
 And now, browse to `http://localhost:8080` and you should see `Hello, World!` on the page! 🎉
@@ -85,10 +85,10 @@ import "github.com/gofiber/fiber"
 func main() {
   // Create new Fiber instance
   app := fiber.New()
-  
+
   // Serve all static files on ./public folder
   app.Static("./public")
-  
+
   // Start server on http://localhost:8080
   app.Listen(8080)
 }
@@ -116,21 +116,21 @@ func main() {
   app := fiber.New()
 
   // Define all used middlewares in Use()
-  
+
   app.Use(func(c *fiber.Ctx) {
     c.Write("Match anything!\n")
     c.Next()
   })
-  
+
   app.Use("/api", func(c *fiber.Ctx) {
     c.Write("Match starting with /api\n")
     c.Next()
   })
-  
+
   app.Get("/api/user", func(c *fiber.Ctx) {
     c.Write("Match exact path /api/user\n")
   })
-  
+
   // Start server on http://localhost:8080
   app.Listen(8080)
 }
