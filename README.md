@@ -1,8 +1,8 @@
-# 🔌 Fiber Web Framework <img src="images/flags/en.svg" alt="en"/> <a href="README_RU.md"><img src="images/flags/ru.svg" alt="ru"/></a>
+# 🔌 Fiber Web Framework <img width="26px" src="docs/static/en.svg" alt="en"/> <a href="README_RU.md"><img width="26px" src="docs/static/ru.svg" alt="ru"/></a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber)
 
-<img align="right" height="180px" src="https://gofiber.github.io/fiber/static/logo.jpg" />
+<img align="right" height="180px" src="docs/static/logo.jpg" />
 
 **[Fiber](https://github.com/gofiber/fiber)** is an [Express](https://expressjs.com/en/4x/api.html)-styled HTTP web framework implementation running on [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for Go (Golang). The package make use of **similar framework convention** as they are in Express. 
 
