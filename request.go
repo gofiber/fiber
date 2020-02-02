@@ -366,7 +366,7 @@ func (ctx *Ctx) Subdomains() (subs []string) {
 	return subs
 }
 
-// Xhr : https://gofiber.github.io/fiber/#/context?id=xhr
-func (ctx *Ctx) Xhr() bool {
+// XHR : https://gofiber.github.io/fiber/#/context?id=xhr
+func (ctx *Ctx) XHR() bool {
 	return ctx.Get("X-Requested-With") == "XMLHttpRequest"
 }

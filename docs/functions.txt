@@ -23,14 +23,16 @@ IP
 Ips
 Is
 JSON
-Jsonp
+JSONP
+JSONString
+JSONBytes
 Links
 Locals
 Location
 Method
 MultipartForm
 Next
-OriginalUrl
+OriginalURL
 Params
 Path
 Protocol
@@ -54,5 +56,5 @@ Status
 Subdomains
 Type
 Vary
-Xhr
+XHR
 XML

@@ -175,8 +175,8 @@ func (ctx *Ctx) JSONBytes(raw []byte) {
 	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 }
 
-// Jsonp : https://gofiber.github.io/fiber/#/context?id=jsonp
-func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
+// JSONP : https://gofiber.github.io/fiber/#/context?id=jsonp
+func (ctx *Ctx) JSONP(v interface{}, cb ...string) error {
 	raw, err := jsoniter.Marshal(&v)
 	if err != nil {
 		return err

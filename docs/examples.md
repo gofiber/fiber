@@ -109,7 +109,7 @@ func main() {
       Name: "John", `json:"name"`
       Age:  20, `json:"age"`
     }
-    err := c.Json(data)
+    err := c.JSON(data)
     if err != nil {
       c.SendStatus(500)
     }

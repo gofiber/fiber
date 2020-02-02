@@ -141,7 +141,7 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### BaseUrl
+#### BaseURL
 
 #### AcceptsLanguages
 
@@ -149,12 +149,12 @@ Returns the base URL, protocol and hostname combined.
 
 ```go
 // Function signature
-c.BaseUrl() bool
+c.BaseURL() bool
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // http://webtech.oregonstate.edu/faq/page/2?sort=date
-  c.BaseUrl()
+  c.BaseURL()
   // => "http://webtech.oregonstate.edu"
 })
 ```
@@ -512,13 +512,13 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### Json
+#### JSON
 
 Converts any interface or string to json using [Jsoniter](https://github.com/json-iterator/go), this function also sets the content header to application/json.
 
 ```go
 // Function signature
-c.Json(v interface{}) error
+c.JSON(v interface{}) error
 
 // Example
 type SomeStruct struct {
@@ -532,10 +532,10 @@ app.Get("/json", func(c *fiber.Ctx) {
     Name: "Grame",
     Age:  20,
   }
-  c.Json(data)
+  c.JSON(data)
   // => "{"Name": "Grame", "Age": 20}"
 
-  c.Json("Hello, World!")
+  c.JSON("Hello, World!")
   // => "Hello, World!"
 })
 app.Listen(8080)
@@ -549,73 +549,73 @@ app.Get("/json", func(c *fiber.Ctx) {
     Name: "Grame",
     Age:  20,
   }
-  if err := c.Json(data); err != nil {
+  if err := c.JSON(data); err != nil {
     c.Status(500).Send("Bad Request")
   }
   // => "{"Name": "Grame", "Age": 20}"
 })
 ```
 
-#### JsonBytes
+#### JSONBytes
 
 This function accepts raw []byte bodies and sets the content header to application/json. This function is used if you do not need type assertion.
 
 ```go
 // Function signature
-c.Json(json []byte)
+c.JSON(json []byte)
 
 // Example
 app := fiber.New()
 app.Get("/json", func(c *fiber.Ctx) {
-  c.JsonBytes([]byte(`"{"hello": "world"}"`))
+  c.JSONBytes([]byte(`"{"hello": "world"}"`))
 })
 app.Listen(8080)
 ```
 
-#### Jsonp
+#### JSONP
 
-Sends a JSON response with JSONP support. This method is identical to [Json()](#json), except that it opts-in to JSONP callback support.
+Sends a JSON response with JSONP support. This method is identical to [JSON()](#json), except that it opts-in to JSONP callback support.
 
 By default, the JSONP callback name is simply callback. Override this by passing a named string in the function.
 
 ```go
 // Function signature
-c.Jsonp(v interface{}) error
-c.Jsonp(v interface{}, callback string) error
+c.JSONP(v interface{}) error
+c.JSONP(v interface{}, callback string) error
 
 // Example
-type JsonStruct struct {
+type SomeStruct struct {
   name string
   age  uint8
 }
 
 app := fiber.New()
 app.Get("/", func(c *fiber.Ctx) {
-  data := JsonStruct{
+  data := SomeStruct{
     name: "Grame",
     age:  20,
   }
-  c.Jsonp(data)
+  c.JSONP(data)
   // => callback({"name": "Grame", "age": 20})
 
-  c.Jsonp(data, "customFunc")
+  c.JSONP(data, "customFunc")
   // => customFunc({"name": "Grame", "age": 20})
 })
 app.Listen(8080)
 ```
 
-#### JsonString
+#### JSONString
 
 This function accepts raw string body and sets the content header to application/json. This function is used if you do not need type assertion.
 
 ```go
 // Function signature
-c.Json(json string)
+c.JSON(json string)
 
 // Example
 app := fiber.New()
 app.Get("/json", func(c *fiber.Ctx) {
-  c.JsonString(`"{"hello": "world"}"`)
+  c.JSONString(`"{"hello": "world"}"`)
 })
 app.Listen(8080)
 ```
@@ -775,18 +775,18 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### OriginalUrl
+#### OriginalURL
 
 Contains the original request URL.
 
 ```go
 // Function signature
-c.OriginalUrl() string
+c.OriginalURL() string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
   // GET /search?q=something
-  c.OriginalUrl()
+  c.OriginalURL()
   // => '/search?q=something'
 })
 ```
@@ -1164,28 +1164,28 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### Xhr
+#### XHR
 
 A Boolean property that is true if the request’s **X-Requested-With** header field is **XMLHttpRequest**, indicating that the request was issued by a client library such as [jQuery](https://api.jquery.com/jQuery.ajax/).
 
 ```go
 // Function signature
-c.Xhr() bool
+c.XHR() bool
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-  c.Xhr()
+  c.XHR()
   // => true
 })
 ```
 
-#### Xml
+#### XML
 
-Xml sets the header to "application/xml" and marshals your interface to xml.
+XML sets the header to "application/xml" and marshals your interface to xml.
 
 ```go
 // Function signature
-c.Xml(xml interface{}) error
+c.XML(xml interface{}) error
 
 // Example
 type person struct {
@@ -1195,7 +1195,7 @@ type person struct {
 
 app := fiber.New()
 app.Get("/", func(c *fiber.Ctx) {
-	c.Xml(person{"John", 50})
+	c.XML(person{"John", 50})
 	// => Content-Type: application/xml
 	// => <person><name>John</name><stars>50</stars></person>
 
