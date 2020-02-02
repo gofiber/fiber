@@ -6,6 +6,8 @@ labels: ""
 assignees: ""
 ---
 
+☝️ **Don't forget to add title above!** ☝️
+
 **Your environment:**
 
 - Fiber Web Framework [e.g. `1.2.3`]:
@@ -16,7 +18,7 @@ assignees: ""
 
 A clear and concise description of what the bug is.
 
-## To Reproduce
+## To reproduce
 
 Steps to reproduce the behavior:
 
