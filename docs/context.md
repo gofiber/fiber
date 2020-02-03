@@ -459,7 +459,7 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### Ip
+#### IP
 
 Contains the remote IP address of the request.
 
@@ -474,7 +474,7 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### Ips
+#### IPs
 
 contains an array of IP addresses specified in the X-Forwarded-For request header.
 
