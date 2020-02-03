@@ -4,7 +4,7 @@
 
 <img align="right" height="180px" src="docs/static/logo_320px_trans.png" alt="Fiber logo" />
 
-**[Fiber](https://github.com/gofiber/fiber)** — это [Express](https://expressjs.com/en/4x/api.html)-подобный HTTP веб фреймворк, использующий всю мощь [Fasthttp](https://github.com/valyala/fasthttp), самого **быстрого** HTTP движка для Go (Golang). Мы используем **аналогичную** схему именования методов, как и у Express.
+**[Fiber](https://github.com/gofiber/fiber)** — это [Express.js](https://expressjs.com/en/4x/api.html) подобный HTTP веб фреймворк, использующий всю мощь [Fasthttp](https://github.com/valyala/fasthttp), самого **быстрого** HTTP движка для Go (Golang). Мы используем **аналогичную** схему именования методов, как и у Express.
 
 Разработчики, пришедшие из [Node.js](https://nodejs.org/en/about/) в [Go](https://golang.org/doc/) очень часто испытывают трудности при создании своих первых веб-приложений. Данный проект призван, в том числе, **облегчить** процесс перехода для таких разработчиков.
 
