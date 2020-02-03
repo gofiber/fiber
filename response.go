@@ -86,16 +86,17 @@ func (ctx *Ctx) Cookie(key, value string, options ...interface{}) {
 				cook.SetSecure(opt.Secure)
 			}
 			if opt.SameSite != "" {
-				sameSite := fasthttp.CookieSameSiteDisabled
+				sameSite := fasthttp.CookieSameSiteDefaultMode
 				if strings.EqualFold(opt.SameSite, "lax") {
 					sameSite = fasthttp.CookieSameSiteLaxMode
 				} else if strings.EqualFold(opt.SameSite, "strict") {
 					sameSite = fasthttp.CookieSameSiteStrictMode
 				} else if strings.EqualFold(opt.SameSite, "none") {
 					sameSite = fasthttp.CookieSameSiteNoneMode
-				} else {
-					sameSite = fasthttp.CookieSameSiteDefaultMode
 				}
+				// } else {
+				// 	sameSite = fasthttp.CookieSameSiteDisabled
+				// }
 				cook.SetSameSite(sameSite)
 			}
 		default:
