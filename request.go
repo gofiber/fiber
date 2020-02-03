@@ -239,9 +239,9 @@ func (ctx *Ctx) Hostname() string {
 	return getString(ctx.Fasthttp.URI().Host())
 }
 
-// Ip : DEPRECATED
-func (ctx *Ctx) Ip() string { // NOLINT
-	fmt.Println("Fiber deprecated c.Ip(): Use c.IP() instead")
+// Ip is deprecated, this will be removed in v2: Use c.IP() instead
+func (ctx *Ctx) Ip() string {
+	fmt.Println("Fiber deprecated c.Ip(), this will be removed in v2: Use c.IP() instead")
 	return ctx.IP()
 }
 
@@ -250,9 +250,9 @@ func (ctx *Ctx) IP() string {
 	return ctx.Fasthttp.RemoteIP().String()
 }
 
-// Ips : DEPRECATED
+// Ips is deprecated, this will be removed in v2: Use c.IPs() instead
 func (ctx *Ctx) Ips() []string { // NOLINT
-	fmt.Println("Fiber deprecated c.Ips(): Use c.IPs() instead")
+	fmt.Println("Fiber deprecated c.Ips(), this will be removed in v2: Use c.IPs() instead")
 	return ctx.IPs()
 }
 
@@ -302,9 +302,9 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 	return ctx.Fasthttp.MultipartForm()
 }
 
-// OriginalUrl : DEPRECATED
+// OriginalUrl is deprecated, this will be removed in v2: Use c.OriginalURL() instead
 func (ctx *Ctx) OriginalUrl() string {
-	fmt.Println("Fiber deprecated c.OriginalUrl(): Use c.OriginalURL() instead")
+	fmt.Println("Fiber deprecated c.OriginalUrl(), this will be removed in v2: Use c.OriginalURL() instead")
 	return ctx.OriginalURL()
 }
 
@@ -384,9 +384,9 @@ func (ctx *Ctx) Subdomains() (subs []string) {
 	return subs
 }
 
-// Xhr : DEPRECATED
+// Xhr is deprecated, this will be removed in v2: Use c.XHR() instead
 func (ctx *Ctx) Xhr() bool {
-	fmt.Println("Fiber deprecated c.Xhr(): Use c.XHR() instead")
+	fmt.Println("Fiber deprecated c.Xhr(), this will be removed in v2: Use c.XHR() instead")
 	return ctx.XHR()
 }
 
