@@ -36,7 +36,7 @@ Assuming you’ve already installed Go `1.11+` 😉
 
 Install the [Fiber](https://github.com/gofiber/fiber) package by calling the following command:
 
-```console
+```bash
 go get -u github.com/gofiber/fiber
 ```
 
@@ -67,7 +67,7 @@ func main() {
 
 Go to console and run:
 
-```console
+```bash
 go run server.go
 ```
 
@@ -96,7 +96,7 @@ func main() {
 
 Now, you can load the files that are in the public directory:
 
-```console
+```bash
 http://localhost:8080/hello.html
 http://localhost:8080/js/script.js
 http://localhost:8080/css/style.css

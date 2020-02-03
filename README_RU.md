@@ -36,7 +36,7 @@
 
 Установит пакет [Fiber](https://github.com/gofiber/fiber) с помощью следующей команды в консоле:
 
-```console
+```bash
 go get -u github.com/gofiber/fiber
 ```
 
@@ -67,7 +67,7 @@ func main() {
 
 Перейдите в консоль и запустите:
 
-```console
+```bash
 go run server.go
 ```
 
@@ -96,7 +96,7 @@ func main() {
 
 Теперь вы можете получить доступ ко всем файлам, которые находятся в папке `./public`:
 
-```console
+```bash
 http://localhost:8080/hello.html
 http://localhost:8080/js/script.js
 http://localhost:8080/css/style.css
