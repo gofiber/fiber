@@ -12,7 +12,7 @@ People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://go
 
 ## API Documentation
 
-📚 We created an extended API documentation (_including examples_), **[click here](https://gofiber.github.io/fiber/)**.
+📚 We created an extended **API documentation** (_including examples_), **[click here](https://gofiber.github.io/fiber/)**.
 
 ## Benchmark
 
