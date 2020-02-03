@@ -63,14 +63,14 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 	if r.Prefork && runtime.NumCPU() > 1 {
 		if r.Banner && !r.child {
 			cores := fmt.Sprintf("%s\x1b[1;30m %v cores", host, runtime.NumCPU())
-			fmt.Printf(banner, Version, " prefork", "Express on steriods", cores)
+			fmt.Printf(banner, Version, " prefork", "Express on steroids", cores)
 		}
 		r.prefork(server, host, tls...)
 	}
 
 	// Prefork disabled
 	if r.Banner {
-		fmt.Printf(banner, Version, "", "Express on steriods", host)
+		fmt.Printf(banner, Version, "", "Express on steroids", host)
 	}
 
 	ln, err := net.Listen("tcp4", host)
