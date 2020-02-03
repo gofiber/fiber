@@ -8,7 +8,7 @@
 
 Разработчики, пришедшие из [Node.js](https://nodejs.org/en/about/) в [Go](https://golang.org/doc/) очень часто испытывают трудности при создании своих первых веб-приложений. Данный проект призван, в том числе, **облегчить** процесс перехода для таких разработчиков.
 
-**На других языках:** <a href="README.md"><img width="20px" src="docs/static/flags/en.svg" alt="en"/></a>
+**На других языках:** <a href="README.md"><img width="20px" src="docs/static/flags/en.svg" alt="en"/></a> <a href="README_CH.md"><img width="20px" src="docs/static/flags/ch.svg" alt="ch"/></a>
 
 ## Документация по API
 
