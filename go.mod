@@ -1,6 +1,6 @@
 module github.com/gofiber/fiber
 
-go 1.13
+go 1.11
 
 require (
 	github.com/json-iterator/go v1.1.9
