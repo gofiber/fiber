@@ -4,7 +4,7 @@
 
 <img align="right" height="180px" src="docs/static/logo_320px_trans.png" alt="Fiber logo" />
 
-**[Fiber](https://github.com/gofiber/fiber)** is an [Express](https://expressjs.com/en/4x/api.html)-styled HTTP web framework implementation running on [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for Go (Golang). The package make use of **similar framework convention** as they are in Express.
+**[Fiber](https://github.com/gofiber/fiber)** is an [Express.js](https://expressjs.com/en/4x/api.html) styled HTTP web framework implementation running on [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for Go (Golang). The package make use of **similar framework convention** as they are in Express.
 
 People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind.
 
@@ -12,7 +12,7 @@ People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://go
 
 ## API Documentation
 
-📚 We created an extended API documentation (_including examples_), **[click here](https://gofiber.github.io/fiber/)**.
+📚 We created an extended **API documentation** (_including examples_), **[click here](https://gofiber.github.io/fiber/)**.
 
 ## Benchmark
 
@@ -36,7 +36,7 @@ Assuming you’ve already installed Go `1.11+` 😉
 
 Install the [Fiber](https://github.com/gofiber/fiber) package by calling the following command:
 
-```console
+```bash
 go get -u github.com/gofiber/fiber
 ```
 
@@ -67,7 +67,7 @@ func main() {
 
 Go to console and run:
 
-```console
+```bash
 go run server.go
 ```
 
@@ -96,7 +96,7 @@ func main() {
 
 Now, you can load the files that are in the public directory:
 
-```console
+```bash
 http://localhost:8080/hello.html
 http://localhost:8080/js/script.js
 http://localhost:8080/css/style.css

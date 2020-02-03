@@ -459,33 +459,33 @@ app.Get("/", func(c *fiber.Ctx) {
 })
 ```
 
-#### Ip
+#### IP
 
 Contains the remote IP address of the request.
 
 ```go
 // Function signature
-c.Ip() string
+c.IP() string
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
-  c.Ip()
+  c.IP()
   // => "127.0.0.1"
 })
 ```
 
-#### Ips
+#### IPs
 
 contains an array of IP addresses specified in the X-Forwarded-For request header.
 
 ```go
 // Function signature
-c.Ips() []string
+c.IPs() []string
 
 // Example
 // X-Forwarded-For: proxy1, 127.0.0.1", proxy3
 app.Get("/", func(c *fiber.Ctx) {
-  c.Ips()
+  c.IPs()
   // => ["proxy1", "127.0.0.1", "proxy3"]
 })
 ```
