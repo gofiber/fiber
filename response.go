@@ -157,9 +157,9 @@ func (ctx *Ctx) HeadersSent() {
 
 }
 
-// Json : DEPRECATED
+// Json is deprecated, this will be removed in v2: Use c.JSON() instead
 func (ctx *Ctx) Json(v interface{}) error {
-	fmt.Println("Fiber deprecated c.Json(): Use c.JSON() instead")
+	fmt.Println("Fiber deprecated c.Json(), this will be removed in v2: Use c.JSON() instead")
 	return ctx.JSON(v)
 }
 
@@ -176,9 +176,9 @@ func (ctx *Ctx) JSON(v interface{}) error {
 	return nil
 }
 
-// JsonBytes : DEPRECATED
+// JsonBytes is deprecated, this will be removed in v2: Use c.JSONBytes() instead
 func (ctx *Ctx) JsonBytes(raw []byte) {
-	fmt.Println("Fiber deprecated c.JsonBytes(): Use c.JSONBytes() instead")
+	fmt.Println("Fiber deprecated c.JsonBytes(), this will be removed in v2: Use c.JSONBytes() instead")
 	ctx.JSONBytes(raw)
 }
 
@@ -188,9 +188,9 @@ func (ctx *Ctx) JSONBytes(raw []byte) {
 	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 }
 
-// Jsonp : DEPRECATED
+// Jsonp is deprecated, this will be removed in v2: Use c.JSONP() instead
 func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
-	fmt.Println("Fiber deprecated c.Jsonp(): Use c.JSONP() instead")
+	fmt.Println("Fiber deprecated c.Jsonp(), this will be removed in v2: Use c.JSONP() instead")
 	return ctx.JSONP(v, cb...)
 }
 
@@ -214,9 +214,9 @@ func (ctx *Ctx) JSONP(v interface{}, cb ...string) error {
 	return nil
 }
 
-// JsonString : DEPRECATED
+// JsonString is deprecated, this will be removed in v2: Use c.JSONString() instead
 func (ctx *Ctx) JsonString(raw string) {
-	fmt.Println("Fiber deprecated c.JsonString(): Use c.JSONString() instead")
+	fmt.Println("Fiber deprecated c.JsonString(), this will be removed in v2: Use c.JSONString() instead")
 	ctx.JSONString(raw)
 }
 
@@ -372,9 +372,9 @@ func (ctx *Ctx) Write(args ...interface{}) {
 	}
 }
 
-// Xml : DEPRECATED
+// Xml is deprecated, this will be removed in v2: Use c.XML() instead
 func (ctx *Ctx) Xml(v interface{}) error {
-	fmt.Println("Fiber deprecated c.Xml(): Use c.XML() instead")
+	fmt.Println("Fiber deprecated c.Xml(), this will be removed in v2: Use c.XML() instead")
 	return ctx.XML(v)
 }
 
