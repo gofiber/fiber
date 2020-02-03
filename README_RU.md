@@ -1,4 +1,4 @@
-# 🔌 Веб фреймворк Fiber
+# 🔌 Веб фреймворк Fiber <a href="README.md"><img width="20px" src="docs/static/flags/en.svg" alt="en"/></a> <a href="README_CH.md"><img width="20px" src="docs/static/flags/ch.svg" alt="ch"/></a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
 
@@ -7,8 +7,6 @@
 **[Fiber](https://github.com/gofiber/fiber)** — это [Express.js](https://expressjs.com/en/4x/api.html) подобный HTTP веб фреймворк, использующий всю мощь [Fasthttp](https://github.com/valyala/fasthttp), самого **быстрого** HTTP движка для Go (Golang). Мы используем **аналогичную** схему именования методов, как и у Express.
 
 Разработчики, пришедшие из [Node.js](https://nodejs.org/en/about/) в [Go](https://golang.org/doc/) очень часто испытывают трудности при создании своих первых веб-приложений. Данный проект призван, в том числе, **облегчить** процесс перехода для таких разработчиков.
-
-**На других языках:** <a href="README.md"><img width="20px" src="docs/static/flags/en.svg" alt="en"/></a> <a href="README_CH.md"><img width="20px" src="docs/static/flags/ch.svg" alt="ch"/></a>
 
 ## Документация по API
 
