@@ -1,4 +1,4 @@
-# 🔌 Fiber Web Framework
+# 🔌 Fiber Web Framework <a href="README_RU.md"><img width="20px" src="docs/static/flags/ru.svg" alt="ru"/></a> <a href="README_CH.md"><img width="20px" src="docs/static/flags/ch.svg" alt="ch"/></a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
 
@@ -7,8 +7,6 @@
 **[Fiber](https://github.com/gofiber/fiber)** is an [Express.js](https://expressjs.com/en/4x/api.html) styled HTTP web framework implementation running on [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for Go (Golang). The package make use of **similar framework convention** as they are in Express.
 
 People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind.
-
-**In other languages:** <a href="README_RU.md"><img width="20px" src="docs/static/flags/ru.svg" alt="ru"/></a> <a href="README_CH.md"><img width="20px" src="docs/static/flags/ch.svg" alt="ch"/></a>
 
 ## API Documentation
 

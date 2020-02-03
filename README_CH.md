@@ -1,4 +1,4 @@
-# 🔌 Fiber Web Framework
+# 🔌 Fiber Web Framework <a href="README.md"><img width="20px" src="docs/static/flags/en.svg" alt="en"/></a> <a href="README_RU.md"><img width="20px" src="docs/static/flags/ru.svg" alt="ru"/></a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
 
@@ -7,8 +7,6 @@
 **[Fiber](https://github.com/gofiber/fiber)** 是一个 [Express.js](https://expressjs.com/en/4x/api.html) 运行的样式化HTTP Web框架实现 [Fasthttp](https://github.com/valyala/fasthttp), **最快的** HTTP引擎 Go (Golang). 该软件包使用了**相似的框架约定** Express.
 
 人们从 [Node.js](https://nodejs.org/en/about/) 至 [Go](https://golang.org/doc/) 通常会遇到学习曲线不好的问题，从而开始构建他们的Web应用程序, 这个项目是为了 **缓解** 事情准备 **快速** 发展，但与 **零内存分配** 和 **性能** 心里.
-
-**用其他语言:** <a href="README.md"><img width="20px" src="docs/static/flags/en.svg" alt="en"/></a> <a href="README_RU.md"><img width="20px" src="docs/static/flags/ru.svg" alt="ru"/></a>
 
 ## API Documentation
 
