@@ -1,8 +1,8 @@
 # Examples
 
 #### Multiple File Upload
-```go
 
+```go
 package main
 
 import "github.com/fenny/fiber"
@@ -25,7 +25,9 @@ func main() {
   app.Listen(8080)
 }
 ```
+
 #### 404 Handling
+
 ```go
 package main
 
@@ -43,7 +45,9 @@ func main() {
   app.Listen(8080)
 }
 ```
+
 #### Static Caching
+
 ```go
 package main
 
@@ -61,7 +65,9 @@ func main() {
   app.Listen(8080)
 }
 ```
+
 #### Enable CORS
+
 ```go
 package main
 
@@ -82,7 +88,9 @@ func main() {
   app.Listen(8080)
 }
 ```
+
 #### Returning JSON
+
 ```go
 package main
 
@@ -101,7 +109,7 @@ func main() {
       Name: "John", `json:"name"`
       Age:  20, `json:"age"`
     }
-    err := c.Json(data)
+    err := c.JSON(data)
     if err != nil {
       c.SendStatus(500)
     }
@@ -110,7 +118,9 @@ func main() {
   app.Listen(8080)
 }
 ```
+
 #### TLS/HTTPS
+
 ```go
 package main
 
@@ -127,4 +137,4 @@ func main() {
 }
 ```
 
-*Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/examples.md)*
+_Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/examples.md)_

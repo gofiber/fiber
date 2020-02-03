@@ -1,4 +1,4 @@
-// 🔌 Fiber is an Expressjs inspired web framework build on 🚀 Fasthttp.
+// 🔌 Fiber is an Express.js inspired web framework build on 🚀 Fasthttp.
 // 📌 Please open an issue if you got suggestions or found a bug!
 // 🖥 https://github.com/gofiber/fiber
 
@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	// Version : Fiber version
 	Version = "1.2.3"
 	// https://play.golang.org/p/r6GNeV1gbH
 	banner = "" +
@@ -40,7 +41,7 @@ type Fiber struct {
 	Prefork bool
 	child   bool
 	// Stores all routes
-	routes []*route
+	routes []*Route
 }
 
 // Fasthttp settings

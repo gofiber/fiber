@@ -1,4 +1,4 @@
-// 🔌 Fiber is an Expressjs inspired web framework build on 🚀 Fasthttp.
+// 🔌 Fiber is an Express.js inspired web framework build on 🚀 Fasthttp.
 // 📌 Please open an issue if you got suggestions or found a bug!
 // 🖥 https://github.com/gofiber/fiber
 
@@ -67,20 +67,24 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 		}
 		r.prefork(server, host, tls...)
 	}
+
 	// Prefork disabled
 	if r.Banner {
 		fmt.Printf(banner, Version, "", "Express on steriods", host)
 	}
+
 	ln, err := net.Listen("tcp4", host)
 	if err != nil {
 		panic(err)
 	}
+
 	// enable TLS/HTTPS
 	if len(tls) > 1 {
 		if err := server.ServeTLS(ln, tls[0], tls[1]); err != nil {
 			panic(err)
 		}
 	}
+
 	if err := server.Serve(ln); err != nil {
 		panic(err)
 	}
@@ -92,6 +96,7 @@ func (r *Fiber) prefork(server *fasthttp.Server, host string, tls ...string) {
 	if !r.child {
 		// Create babies
 		childs := make([]*exec.Cmd, runtime.NumCPU())
+
 		for i := range childs {
 			childs[i] = exec.Command(os.Args[0], "-prefork", "-child")
 			childs[i].Stdout = os.Stdout
@@ -100,26 +105,32 @@ func (r *Fiber) prefork(server *fasthttp.Server, host string, tls ...string) {
 				panic(err)
 			}
 		}
+
 		for _, child := range childs {
 			if err := child.Wait(); err != nil {
 				panic(err)
 			}
 
 		}
+
 		os.Exit(0)
 	}
+
 	// Child proc
 	runtime.GOMAXPROCS(1)
+
 	ln, err := reuseport.Listen("tcp4", host)
 	if err != nil {
 		panic(err)
 	}
+
 	// enable TLS/HTTPS
 	if len(tls) > 1 {
 		if err := server.ServeTLS(ln, tls[0], tls[1]); err != nil {
 			panic(err)
 		}
 	}
+
 	if err := server.Serve(ln); err != nil {
 		panic(err)
 	}

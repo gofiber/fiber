@@ -1,4 +1,4 @@
-// 🔌 Fiber is an Expressjs inspired web framework build on 🚀 Fasthttp.
+// 🔌 Fiber is an Express.js inspired web framework build on 🚀 Fasthttp.
 // 📌 Please open an issue if you got suggestions or found a bug!
 // 🖥 https://github.com/gofiber/fiber
 
@@ -13,23 +13,23 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Ctx struct
+// Ctx : struct
 type Ctx struct {
-	route    *route
+	route    *Route
 	next     bool
 	params   *[]string
 	values   []string
 	Fasthttp *fasthttp.RequestCtx
 }
 
-// Cookie :
+// Cookie : struct
 type Cookie struct {
 	Expire int // time.Unix(1578981376, 0)
 	MaxAge int
 	Domain string
 	Path   string
 
-	HttpOnly bool
+	HTTPOnly bool
 	Secure   bool
 	SameSite string
 }
