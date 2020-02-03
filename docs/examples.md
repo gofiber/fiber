@@ -56,7 +56,7 @@ import "github.com/fenny/fiber"
 func main() {
   app := fiber.New()
 
-  app.Get(func(c *fiber.Ctx) {
+  app.Use(func(c *fiber.Ctx) {
     c.Set("Cache-Control", "max-age=2592000, public")
     c.Next()
   })
