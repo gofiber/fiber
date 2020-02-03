@@ -10,6 +10,7 @@ package fiber
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"unsafe"
@@ -78,10 +79,22 @@ func getStatus(status int) (msg string) {
 	return statusMessages[status]
 }
 
+// #nosec G103
+// getString converts byte slice to a string without memory allocation.
+// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
 func getString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
-func getBytes(s string) []byte {
-	return *(*[]byte)(unsafe.Pointer(&s))
+// #nosec G103
+// getBytes converts string to a byte slice without memory allocation.
+// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
+func getBytes(s string) (b []byte) {
+	// return *(*[]byte)(unsafe.Pointer(&s))
+	bh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+	sh := *(*reflect.StringHeader)(unsafe.Pointer(&s))
+	bh.Data = sh.Data
+	bh.Len = sh.Len
+	bh.Cap = sh.Len
+	return b
 }

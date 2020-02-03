@@ -97,6 +97,7 @@ func (r *Fiber) prefork(server *fasthttp.Server, host string, tls ...string) {
 		// Create babies
 		childs := make([]*exec.Cmd, runtime.NumCPU())
 
+		// #nosec G204
 		for i := range childs {
 			childs[i] = exec.Command(os.Args[0], "-prefork", "-child")
 			childs[i].Stdout = os.Stdout
