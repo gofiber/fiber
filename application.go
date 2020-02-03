@@ -14,7 +14,7 @@ import (
 
 const (
 	// Version : Fiber version
-	Version = "1.2.3"
+	Version = "1.3.0"
 	// https://play.golang.org/p/r6GNeV1gbH
 	banner = "" +
 		" \x1b[1;32m _____ _ _\n" +

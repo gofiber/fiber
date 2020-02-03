@@ -156,6 +156,12 @@ func (ctx *Ctx) HeadersSent() {
 
 }
 
+// Json : DEPRECATED
+func (ctx *Ctx) Json(v interface{}) error {
+	fmt.Println("Fiber deprecated c.Json(): Use c.JSON() instead")
+	return ctx.JSON(v)
+}
+
 // JSON : https://gofiber.github.io/fiber/#/context?id=json
 func (ctx *Ctx) JSON(v interface{}) error {
 	raw, err := jsoniter.Marshal(&v)
@@ -169,10 +175,22 @@ func (ctx *Ctx) JSON(v interface{}) error {
 	return nil
 }
 
+// JsonBytes : DEPRECATED
+func (ctx *Ctx) JsonBytes(raw []byte) {
+	fmt.Println("Fiber deprecated c.JsonBytes(): Use c.JSONBytes() instead")
+	ctx.JSONBytes(raw)
+}
+
 // JSONBytes : https://gofiber.github.io/fiber/#/context?id=jsonbytes
 func (ctx *Ctx) JSONBytes(raw []byte) {
 	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
 	ctx.Fasthttp.Response.SetBodyString(getString(raw))
+}
+
+// Jsonp : DEPRECATED
+func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
+	fmt.Println("Fiber deprecated c.Jsonp(): Use c.JSONP() instead")
+	return ctx.JSONP(v, cb...)
 }
 
 // JSONP : https://gofiber.github.io/fiber/#/context?id=jsonp
@@ -193,6 +211,12 @@ func (ctx *Ctx) JSONP(v interface{}, cb ...string) error {
 	ctx.Fasthttp.Response.SetBodyString(str)
 
 	return nil
+}
+
+// JsonString : DEPRECATED
+func (ctx *Ctx) JsonString(raw string) {
+	fmt.Println("Fiber deprecated c.JsonString(): Use c.JSONString() instead")
+	ctx.JSONString(raw)
 }
 
 // JSONString : https://gofiber.github.io/fiber/#/context?id=jsonstring
@@ -345,6 +369,12 @@ func (ctx *Ctx) Write(args ...interface{}) {
 			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
 		}
 	}
+}
+
+// Xml : DEPRECATED
+func (ctx *Ctx) Xml(v interface{}) error {
+	fmt.Println("Fiber deprecated c.Xml(): Use c.XML() instead")
+	return ctx.XML(v)
 }
 
 // XML : https://gofiber.github.io/fiber/#/context?id=xml

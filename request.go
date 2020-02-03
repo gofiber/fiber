@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"encoding/base64"
+	"fmt"
 	"log"
 	"mime"
 	"mime/multipart"
@@ -239,13 +240,25 @@ func (ctx *Ctx) Hostname() string {
 	return getString(ctx.Fasthttp.URI().Host())
 }
 
+// Ip : DEPRECATED
+func (ctx *Ctx) Ip() string { // NOLINT
+	fmt.Println("Fiber deprecated c.Ip(): Use c.IP() instead")
+	return ctx.IP()
+}
+
 // IP : https://gofiber.github.io/fiber/#/context?id=Ip
 func (ctx *Ctx) IP() string {
 	return ctx.Fasthttp.RemoteIP().String()
 }
 
-// Ips : https://gofiber.github.io/fiber/#/context?id=ips
-func (ctx *Ctx) Ips() []string {
+// Ips : DEPRECATED
+func (ctx *Ctx) Ips() []string { // NOLINT
+	fmt.Println("Fiber deprecated c.Ips(): Use c.IPs() instead")
+	return ctx.IPs()
+}
+
+// IPs : https://gofiber.github.io/fiber/#/context?id=ips
+func (ctx *Ctx) IPs() []string {
 	ips := strings.Split(ctx.Get(fasthttp.HeaderXForwardedFor), ",")
 	for i := range ips {
 		ips[i] = strings.TrimSpace(ips[i])
@@ -288,6 +301,12 @@ func (ctx *Ctx) Method() string {
 // MultipartForm : https://gofiber.github.io/fiber/#/context?id=multipartform
 func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 	return ctx.Fasthttp.MultipartForm()
+}
+
+// OriginalUrl : DEPRECATED
+func (ctx *Ctx) OriginalUrl() string {
+	fmt.Println("Fiber deprecated c.OriginalUrl(): Use c.OriginalURL() instead")
+	return ctx.OriginalURL()
 }
 
 // OriginalURL : https://gofiber.github.io/fiber/#/context?id=originalurl
@@ -364,6 +383,12 @@ func (ctx *Ctx) Subdomains() (subs []string) {
 	subs = strings.Split(ctx.Hostname(), ".")
 	subs = subs[:len(subs)-2]
 	return subs
+}
+
+// Xhr : DEPRECATED
+func (ctx *Ctx) Xhr() bool {
+	fmt.Println("Fiber deprecated c.Xhr(): Use c.XHR() instead")
+	return ctx.XHR()
 }
 
 // XHR : https://gofiber.github.io/fiber/#/context?id=xhr
