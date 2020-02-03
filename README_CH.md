@@ -8,7 +8,7 @@
 
 人们从 [Node.js](https://nodejs.org/en/about/) 至 [Go](https://golang.org/doc/) 通常会遇到学习曲线不好的问题，从而开始构建他们的Web应用程序, 这个项目是为了 **缓解** 事情准备 **快速** 发展，但与 **零内存分配** 和 **性能** 心里.
 
-**用其他语言:** <a href="README_RU.md"><img width="20px" src="docs/static/flags/ru.svg" alt="ru"/></a>
+**用其他语言:** <a href="README.md"><img width="20px" src="docs/static/flags/en.svg" alt="en"/></a> <a href="README_RU.md"><img width="20px" src="docs/static/flags/ru.svg" alt="ru"/></a>
 
 ## API Documentation
 
