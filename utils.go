@@ -1,4 +1,4 @@
-// 🔌 Fiber is an Expressjs inspired web framework build on 🚀 Fasthttp.
+// 🔌 Fiber is an Express.js inspired web framework build on 🚀 Fasthttp.
 // 📌 Please open an issue if you got suggestions or found a bug!
 // 🖥 https://github.com/gofiber/fiber
 
@@ -29,6 +29,7 @@ func getParams(path string) (params []string) {
 	}
 	return params
 }
+
 func getRegex(path string) (*regexp.Regexp, error) {
 	pattern := "^"
 	segments := strings.Split(path, "/")
@@ -49,6 +50,7 @@ func getRegex(path string) (*regexp.Regexp, error) {
 	regex, err := regexp.Compile(pattern)
 	return regex, err
 }
+
 func getFiles(root string) (files []string, isDir bool, err error) {
 	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
@@ -60,6 +62,7 @@ func getFiles(root string) (files []string, isDir bool, err error) {
 	})
 	return files, isDir, err
 }
+
 func getType(ext string) (mime string) {
 	if ext[0] == '.' {
 		ext = ext[1:]
@@ -70,12 +73,15 @@ func getType(ext string) (mime string) {
 	}
 	return mime
 }
+
 func getStatus(status int) (msg string) {
 	return statusMessages[status]
 }
+
 func getString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
+
 func getBytes(s string) []byte {
 	return *(*[]byte)(unsafe.Pointer(&s))
 }

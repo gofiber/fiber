@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	// Version : Fiber version
 	Version = "1.2.3"
 	// https://play.golang.org/p/r6GNeV1gbH
 	banner = "" +
@@ -40,7 +41,7 @@ type Fiber struct {
 	Prefork bool
 	child   bool
 	// Stores all routes
-	routes []*route
+	routes []*Route
 }
 
 // Fasthttp settings
