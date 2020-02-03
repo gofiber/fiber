@@ -228,7 +228,6 @@ func (ctx *Ctx) Fresh() bool {
 
 // Get : https://gofiber.github.io/fiber/#/context?id=get
 func (ctx *Ctx) Get(key string) string {
-	// https://en.wikipedia.org/wiki/HTTP_referer
 	if key == "referrer" {
 		key = "referer"
 	}
