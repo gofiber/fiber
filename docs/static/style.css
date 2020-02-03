@@ -1,3 +1,6 @@
+.cover-main img {
+  width: 150px;
+}
 :focus {
   outline: none;
 }
