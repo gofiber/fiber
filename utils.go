@@ -35,6 +35,9 @@ func getRegex(path string) (*regexp.Regexp, error) {
 	pattern := "^"
 	segments := strings.Split(path, "/")
 	for _, s := range segments {
+		if s == "" {
+			continue
+		}
 		if s[0] == ':' {
 			if strings.Contains(s, "?") {
 				pattern += "(?:/([^/]+?))?"
