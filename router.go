@@ -48,6 +48,14 @@ func (r *Fiber) register(method string, args ...interface{}) {
 
 	// Only 1 argument, so no path/prefix
 	if len(args) == 1 {
+		// switch arg := args[0].(type) {
+		// case func(*Ctx):
+		// 	handler = arg
+		// case func(*fiber.Ctx):
+		// 	handler = arg
+		// default:
+		// 	panic("Invalid Context function")
+		// }
 		handler = args[0].(func(*Ctx))
 	} else if len(args) > 1 {
 		path = args[0].(string)
