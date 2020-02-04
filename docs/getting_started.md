@@ -1,13 +1,6 @@
-<img src="static/logo.jpg" width="150" alt="accessibility text"><br><br>
-
-[![Latest Release](https://img.shields.io/github/release/gofiber/fiber.svg)](https://github.com/gofiber/fiber/releases/latest)
-[![GoDoc](https://godoc.org/github.com/gofiber/fiber?status.svg)](http://godoc.org/github.com/gofiber/fiber)
-[![Go Report](https://goreportcard.com/badge/github.com/gofiber/fiber)](https://goreportcard.com/report/github.com/gofiber/fiber)
-[![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE)
-[![Join the chat at https://gitter.im/FiberGo/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/FiberGo/community)
-<br>
-
 # Getting started
+
+[![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
 
 !>**IMPORTANT: Always use versioning control using [go.mod](https://blog.golang.org/using-go-modules) to avoid breaking API changes!**
 
