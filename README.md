@@ -10,13 +10,13 @@ People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://go
 
 ## API Documentation
 
-📚 We created an extended **API documentation** (_including examples_), **[click here](https://gofiber.github.io/fiber/)**.
+📚 We created an extended **API documentation** (_including examples_), **[Visit fiber.wiki](https://fiber.wiki/)**.
 
 ## Benchmark
 
-[![](https://gofiber.github.io/fiber/static/benchmarks/benchmark.png)](https://gofiber.github.io/fiber/#/benchmarks)
+[![](https://fiber.wiki/static/benchmarks/benchmark.png)](https://fiber.wiki/#/benchmarks)
 
-👉 **[Click here](https://gofiber.github.io/fiber/#/benchmarks)** to see all benchmark results.
+👉 **[Click here](https://fiber.wiki/#/benchmarks)** to see all benchmark results.
 
 ## Features
 
@@ -26,7 +26,7 @@ People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://go
 - Static files with custom prefix
 - Middleware with Next support
 - Express API endpoints
-- [Extended documentation](https://gofiber.github.io/fiber/)
+- [Extended documentation](https://fiber.wiki/)
 
 ## Installing
 
@@ -73,7 +73,7 @@ And now, browse to `http://localhost:8080` and you should see `Hello, World!` on
 
 ## Static files
 
-To serve static files, use the [Static](https://gofiber.github.io/fiber/#/?id=static-files) method:
+To serve static files, use the [Static](https://fiber.wiki/#/?id=static-files) method:
 
 ```go
 package main
@@ -140,7 +140,7 @@ If you want to say **thank you** or/and support active development `gofiber/fibe
 
 1. Add a GitHub Star to project.
 2. Tweet about project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%94%8C%20Fiber%20is%20an%20Express.js%20inspired%20Go%20web%20framework%20build%20on%20%F0%9F%9A%80%20Fasthttp%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Help us to translate this `README` and [API Docs](https://gofiber.github.io/fiber/) to another language.
+3. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
 
 Thanks for your support! 😘 Together, we make `Fiber`.
 

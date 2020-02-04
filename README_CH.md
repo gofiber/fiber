@@ -10,13 +10,13 @@
 
 ## API Documentation
 
-📚 我们创建了一个扩展我们创建了一个扩展 **API documentation** (_包括例子_), **[点击这里](https://gofiber.github.io/fiber/)**.
+📚 我们创建了一个扩展我们创建了一个扩展 **API documentation** (_包括例子_), **[点击这里](https://fiber.wiki/)**.
 
 ## Benchmark
 
-[![](https://gofiber.github.io/fiber/static/benchmarks/benchmark.png)](https://gofiber.github.io/fiber/#/benchmarks)
+[![](https://fiber.wiki/static/benchmarks/benchmark.png)](https://fiber.wiki/#/benchmarks)
 
-👉 **[点击这里](https://gofiber.github.io/fiber/#/benchmarks)** 查看所有基准测试结果.
+👉 **[点击这里](https://fiber.wiki/#/benchmarks)** 查看所有基准测试结果.
 
 ## Features
 
@@ -26,7 +26,7 @@
 - 具有自定义前缀的静态文件
 - 具有Next支持的中间件
 - Express API端点
-- [Extended documentation](https://gofiber.github.io/fiber/)
+- [Extended documentation](https://fiber.wiki/)
 
 ## Installing
 
@@ -73,7 +73,7 @@ go run server.go
 
 ## Static files
 
-要提供静态文件，请使用 [Static](https://gofiber.github.io/fiber/#/?id=static-files) 方法:
+要提供静态文件，请使用 [Static](https://fiber.wiki/#/?id=static-files) 方法:
 
 ```go
 package main
@@ -140,7 +140,7 @@ func main() {
 
 1. 将GitHub Star添加到项目中。
 2. 关于项目的推文 [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%94%8C%20Fiber%20is%20an%20Express.js%20inspired%20Go%20web%20framework%20build%20on%20%F0%9F%9A%80%20Fasthttp%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. 帮助我们翻译 `README` 和 [API Docs](https://gofiber.github.io/fiber/) 换一种语言.
+3. 帮助我们翻译 `README` 和 [API Docs](https://fiber.wiki/) 换一种语言.
 
 谢谢你的支持! 😘 我们在一起 `Fiber Web Framework` 每天都好.
 
