@@ -144,9 +144,9 @@ If you want to say **thank you** or/and support active development `gofiber/fibe
 
 Thanks for your support! 😘 Together, we make `Fiber`.
 
-## Stargazers over time
+## Stars over time
 
-[![Stars over time](https://starchart.cc/gofiber/fiber.svg)](https://starchart.cc/gofiber/fiber)
+<a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
 ## License
 
