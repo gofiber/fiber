@@ -136,17 +136,17 @@ func main() {
 
 ## Project assistance
 
-If you want to say «thank you» or/and support active development `gofiber/fiber`:
+If you want to say **thank you** or/and support active development `gofiber/fiber`:
 
 1. Add a GitHub Star to project.
 2. Tweet about project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%94%8C%20Fiber%20is%20an%20Express.js%20inspired%20Go%20web%20framework%20build%20on%20%F0%9F%9A%80%20Fasthttp%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Help us to translate this `README` and [API Docs](https://gofiber.github.io/fiber/) to another language.
 
-Thanks for your support! 😘 Together, we make `Fiber Web Framework` better every day.
+Thanks for your support! 😘 Together, we make `Fiber`.
 
 ## Stargazers over time
 
-[![Stargazers over time](https://starchart.cc/gofiber/fiber.svg)](https://starchart.cc/gofiber/fiber)
+[![Stars over time](https://starchart.cc/gofiber/fiber.svg)](https://starchart.cc/gofiber/fiber)
 
 ## License
 
