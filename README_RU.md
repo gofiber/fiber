@@ -10,13 +10,13 @@
 
 ## Документация по API
 
-📚 Мы создали расширенную **документацию по API** (_включая примеры_), **[посмотреть](https://gofiber.github.io/fiber/)**.
+📚 Мы создали расширенную **документацию по API** (_включая примеры_), **[посмотреть](https://fiber.wiki/)**.
 
 ## Бенчмарк
 
-[![](https://gofiber.github.io/fiber/static/benchmarks/benchmark.png)](https://gofiber.github.io/fiber/#/benchmarks)
+[![](https://fiber.wiki/static/benchmarks/benchmark.png)](https://fiber.wiki/#/benchmarks)
 
-👉 **[Click here](https://gofiber.github.io/fiber/#/benchmarks)** to see all benchmark results.
+👉 **[Click here](https://fiber.wiki/#/benchmarks)** to see all benchmark results.
 
 ## Особенности
 
@@ -26,7 +26,7 @@
 - Статические файлы с пользовательским префиксом
 - Middleware с поддержкой `Next()`
 - Endpoints, как у API Express
-- [Расширенная документация](https://gofiber.github.io/fiber/)
+- [Расширенная документация](https://fiber.wiki/)
 
 ## Установка
 
@@ -73,7 +73,7 @@ go run server.go
 
 ## Статичные файлы
 
-Для получения доступа к статичным файлам, используйте метод [Static](https://gofiber.github.io/fiber/#/?id=static-files):
+Для получения доступа к статичным файлам, используйте метод [Static](https://fiber.wiki/#/?id=static-files):
 
 ```go
 package main
@@ -141,7 +141,7 @@ func main() {
 
 1. Добавьте звёздочку GitHub этому репозиторию.
 2. Отправьте твит об этом проекте [в свой Twitter](https://twitter.com/intent/tweet?text=%F0%9F%94%8C%20Fiber%20is%20an%20Express.js%20inspired%20Go%20web%20framework%20build%20on%20%F0%9F%9A%80%20Fasthttp%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Помогите нам перевести `README` и [Документацию по API](https://gofiber.github.io/fiber/) на другой язык.
+3. Помогите нам перевести `README` и [Документацию по API](https://fiber.wiki/) на другой язык.
 
 Спасибо за поддержку! 😘 Вместе мы делаем `Fiber Web Framework` лучше каждый день.
 

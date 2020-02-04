@@ -2,10 +2,9 @@
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
 
-!>**IMPORTANT: Always use versioning control using [go.mod](https://blog.golang.org/using-go-modules) to avoid breaking API changes!**
+**[Fiber](https://github.com/gofiber/fiber)** is an [Express.js](https://expressjs.com/en/4x/api.html) styled HTTP web framework implementation running on [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for Go (Golang). The package make use of **similar framework convention** as they are in Express.
 
-**[Fiber](https://github.com/gofiber/fiber)** is a router framework build on top of [FastHTTP](https://github.com/valyala/fasthttp), the fastest HTTP package for **[Go](https://golang.org/doc/)**.<br>
-This library is inspired by [Express](https://expressjs.com/en/4x/api.html), one of the most populair and well known web framework for **[Nodejs](https://nodejs.org/en/about/)**.
+People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind.
 
 #### Installing
 
