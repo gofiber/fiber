@@ -100,7 +100,7 @@ func (ctx *Ctx) Cookie(key, value string, options ...interface{}) {
 				cook.SetSameSite(sameSite)
 			}
 		default:
-			panic("Invalid cookie options")
+			log.Println("Cookie: Invalid &Cookie{} struct")
 		}
 	}
 
@@ -144,7 +144,7 @@ func (ctx *Ctx) Format(args ...interface{}) {
 			ctx.SendString("<p>" + body + "</p>")
 		case "json":
 			if err := ctx.JSON(body); err != nil {
-				log.Fatal(err)
+				log.Println("Format: error serializing json ", err)
 			}
 		default:
 			ctx.SendString(body)

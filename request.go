@@ -10,7 +10,6 @@ package fiber
 import (
 	"encoding/base64"
 	"fmt"
-	"log"
 	"mime"
 	"mime/multipart"
 	"strings"
@@ -21,9 +20,8 @@ import (
 // Accepts : https://gofiber.github.io/fiber/#/context?id=accepts
 func (ctx *Ctx) Accepts(offers ...string) string {
 	if len(offers) == 0 {
-		panic("You must provide atleast one content type string")
+		return ""
 	}
-
 	h := ctx.Get(fasthttp.HeaderAccept)
 	if h == "" {
 		return offers[0]
@@ -60,7 +58,7 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 // AcceptsCharsets : https://gofiber.github.io/fiber/#/context?id=acceptscharsets
 func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
 	if len(offers) == 0 {
-		panic("You must provide atleast one content type string")
+		return ""
 	}
 
 	h := ctx.Get(fasthttp.HeaderAcceptCharset)
@@ -86,7 +84,7 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
 // AcceptsEncodings : https://gofiber.github.io/fiber/#/context?id=acceptsencodings
 func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
 	if len(offers) == 0 {
-		panic("You must provide atleast one content type string")
+		return ""
 	}
 
 	h := ctx.Get(fasthttp.HeaderAcceptEncoding)
@@ -112,9 +110,8 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
 // AcceptsLanguages : https://gofiber.github.io/fiber/#/context?id=acceptslanguages
 func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	if len(offers) == 0 {
-		panic("You must provide atleast one content type string")
+		return ""
 	}
-
 	h := ctx.Get(fasthttp.HeaderAcceptLanguage)
 	if h == "" {
 		return offers[0]
@@ -356,10 +353,8 @@ func (ctx *Ctx) Route() *Route {
 }
 
 // SaveFile : https://gofiber.github.io/fiber/#/context?id=secure
-func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) {
-	if err := fasthttp.SaveMultipartFile(fh, path); err != nil {
-		log.Fatal(err)
-	}
+func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) error {
+	return fasthttp.SaveMultipartFile(fh, path)
 }
 
 // Secure : https://gofiber.github.io/fiber/#/context?id=secure
@@ -392,5 +387,5 @@ func (ctx *Ctx) Xhr() bool {
 
 // XHR : https://gofiber.github.io/fiber/#/context?id=xhr
 func (ctx *Ctx) XHR() bool {
-	return ctx.Get("X-Requested-With") == "XMLHttpRequest"
+	return ctx.Get(fasthttp.HeaderXRequestedWith) == "XMLHttpRequest"
 }

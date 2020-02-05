@@ -8,6 +8,7 @@
 package fiber
 
 import (
+	"log"
 	"path/filepath"
 	"strings"
 )
@@ -38,7 +39,7 @@ func (r *Fiber) Static(args ...string) {
 	// Lets get all files from root
 	files, _, err := getFiles(root)
 	if err != nil {
-		panic(err)
+		log.Fatal("Static: ", err)
 	}
 
 	// ./static/compiled => static/compiled
