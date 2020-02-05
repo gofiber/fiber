@@ -147,5 +147,89 @@ func Test_BasicAuth(t *testing.T) {
 		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
 	}
 }
+func Test_Body(t *testing.T) {
+	// Raw http request
+	req := "POST /test HTTP/1.1\r\nHost: localhost:8080\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 9\r\n\r\nuser=john"
+	// Raw http request
+	app := New()
+	app.Post("/test", func(c *Ctx) {
+		if c.Body() != "user=john" {
+			t.Fatalf(`%s: Expecting %s`, t.Name(), "user=john")
+		}
+		if c.Body("user") != "john" {
+			t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+		}
+		c.Body(func(k, v string) {
+			if k != "user" {
+				t.Fatalf(`%s: Expecting %s`, t.Name(), "user")
+			}
+			if v != "john" {
+				t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+			}
+		})
+	})
+	// Send fake request
+	res, err := app.FakeRequest(req)
+	// Check for errors and if route was handled
+	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
+		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	}
+}
+func Test_Cookies(t *testing.T) {
+	// Raw http request
+	req := "GET /test HTTP/1.1\r\nHost: localhost:8080\r\nCookie: user=john\r\n\r\n"
+	// Raw http request
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		if c.Cookies() != "user=john" {
+			t.Fatalf(`%s: Expecting %s`, t.Name(), "user=john")
+		}
+		if c.Cookies("user") != "john" {
+			t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+		}
+		c.Cookies(func(k, v string) {
+			if k != "user" {
+				t.Fatalf(`%s: Expecting %s`, t.Name(), "user")
+			}
+			if v != "john" {
+				t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+			}
+		})
+	})
+	// Send fake request
+	res, err := app.FakeRequest(req)
+	// Check for errors and if route was handled
+	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
+		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	}
+}
+func Test_FormFile(t *testing.T) {
+	// Raw http request
+	req := "POST /test HTTP/1.1\r\nHost: localhost:8080\r\nCookie: user=john\r\n\r\n"
+	// Raw http request
+	app := New()
+	app.Post("/test", func(c *Ctx) {
+		if c.Cookies() != "user=john" {
+			t.Fatalf(`%s: Expecting %s`, t.Name(), "user=john")
+		}
+		if c.Cookies("user") != "john" {
+			t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+		}
+		c.Cookies(func(k, v string) {
+			if k != "user" {
+				t.Fatalf(`%s: Expecting %s`, t.Name(), "user")
+			}
+			if v != "john" {
+				t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+			}
+		})
+	})
+	// Send fake request
+	res, err := app.FakeRequest(req)
+	// Check for errors and if route was handled
+	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
+		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	}
+}
 
 // TODO: add all functions from request.go
