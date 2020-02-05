@@ -558,7 +558,7 @@ app.Get("/json", func(c *fiber.Ctx) {
 
 #### JSONBytes
 
-This function accepts raw []byte bodies and sets the content header to application/json. This function is used if you do not need type assertion.
+This function accepts a raw `[]byte` body and sets the content header to `application/json`. This function is used if you do not need json serialization.
 
 ```go
 // Function signature
@@ -606,11 +606,11 @@ app.Listen(8080)
 
 #### JSONString
 
-This function accepts raw string body and sets the content header to application/json. This function is used if you do not need type assertion.
+This function accepts a raw `string` body and sets the content header to `application/json`. This function is used if you do not need json serialization.
 
 ```go
 // Function signature
-c.JSON(json string)
+c.JSONString(json string)
 
 // Example
 app := fiber.New()
@@ -702,7 +702,7 @@ app.Post("/", func(c *fiber.Ctx) {
 
 #### Method
 
-Contains a string corresponding to the HTTP method of the request: GET, POST, PUT, and so on.
+Contains a string corresponding to the HTTP method of the request: `GET`, `POST`, `PUT`, and so on.
 
 ```go
 // Function signature
@@ -717,8 +717,8 @@ app.Post("/", func(c *fiber.Ctx) {
 
 #### MultipartForm
 
-To access multipart form entries, you can parse the binary with .MultipartForm().  
-This returns a map[string][]string, so given a key the value will be a string slice.  
+To access multipart form entries, you can parse the binary with `MultipartForm()`.  
+This returns a `map[string][]string`, so given a key the value will be a string slice.  
 So accepting multiple files or values is easy, as shown below!
 
 ```go
@@ -754,7 +754,7 @@ app.Post("/", func(c *fiber.Ctx) {
 
 #### Next
 
-When Next() is called, it executes the next function in the stack that matches the current route.
+When `Next()` is called, it executes the next function in the stack that matches the current route.
 
 ```go
 // Function signature
@@ -793,7 +793,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### Params
 
-This method can be used to get the route parameters. For example, if you have the route /user/:name, then the “name” property is available as c.Params("name"). This method defaults "".
+This method can be used to get the route parameters. For example, if you have the route `/user/:name`, then the `“name”` property is available as `c.Params("name")`. This method defaults to blank `""` if the param does not exist.
 
 ```go
 // Function signature
@@ -864,7 +864,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### Redirect
 
-Redirects to the URL derived from the specified path, with specified status, a positive integer that corresponds to an HTTP status code . If not specified, status defaults to “302 “Found”.
+Redirects to the URL derived from the specified path, with specified status, a positive integer that corresponds to an HTTP status code . If not specified, status defaults to `302 “Found`.
 
 ```go
 // Function signature
@@ -887,29 +887,21 @@ app.Get("/", func(c *fiber.Ctx) {
 #### Route
 
 Contains the currently-matched route struct, **only use this for debugging**.
-It returns an anonymous struct as shown below.
+It returns the [Route struct](https://pkg.go.dev/github.com/gofiber/fiber?tab=doc#Route).
 
 ```go
 // Function signature
-c.Route() struct {
-	Method   string
-	Path     string
-	Wildcard bool
-	Regex    *regexp.Regexp
-	Params   []string
-	Values   []string
-	Handler  func(*Ctx)
-}
+c.Route() *Route
 
 // Example
 app.Get("/hello", func(c *fiber.Ctx) {
   c.Route()
-  // => {GET /hello false <nil> [] [] 0x7b4ab0}
+  // => {GET /hello false false <nil> [] 0x7b4ab0}
 })
 // http://localhost:8080/hello
 app.Post("/:api?", func(c *fiber.Ctx) {
   c.Route()
-  // => {POST / false ^(?:/([^/]+?))?/?$ [api] [hello] 0x7b49e0}
+  // => {POST / false false ^(?:/([^/]+?))?/?$ [api] 0x7b49e0}
 })
 ```
 
@@ -938,8 +930,7 @@ c.Protocol() == "https"
 #### Send
 
 Sends the HTTP response.
-
-The Send parameters can be of any type
+The `Send()` body can be of any type
 
 ```go
 // Function signature
@@ -960,8 +951,8 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### SendBytes
 
-Same as Send() but without type assertion.  
-I suggest using this in production for optimal performance.
+Same as `Send()` but without type assertion.  
+We suggest using this if your body is a `byte slice`.
 
 ```go
 // Function signature
@@ -975,7 +966,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### SendFile
 
-Transfers the file at the given path. Sets the Content-Type response HTTP header field based on the filename’s extension.
+Transfers the file at the given path. Sets the `Content-Type` response HTTP header field based on the filename’s extension.
 
 ```go
 // Function signature
@@ -1014,8 +1005,8 @@ app.Get("/not-found", func(c *fiber.Ctx) {
 
 #### SendString
 
-Same as Send() but without type assertion.  
-I suggest using this in production for optimal performance.
+Same as `Send()` but without type assertion.  
+We suggest using this in production when your body is a `string`.
 
 ```go
 // Function signature
@@ -1029,11 +1020,11 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### Set
 
-Sets the response’s HTTP header field to value. To set multiple fields at once, pass an object as the parameter.
+Sets the response’s `HTTP header` field to `value`.
 
 ```go
 // Function signature
-c.Set(key, value string)
+c.Set(field, value string)
 
 // Example
 app.Get("/", func(c *fiber.Ctx) {
@@ -1052,7 +1043,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### Status
 
-Sets the HTTP status for the response. It is a chainable alias of Node’s response.statusCode.
+Sets the `HTTP status` for the response, it is a chainable method.
 
 ```go
 // Function signature
@@ -1069,7 +1060,7 @@ app.Get("/", func(c *fiber.Ctx) {
 #### Subdomains
 
 An array of subdomains in the domain name of the request.  
-The application property subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
+The application property subdomain offset, which defaults to `2`, is used for determining the beginning of the subdomain segments.
 
 ```go
 // Function signature
@@ -1166,7 +1157,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### XHR
 
-A Boolean property that is true if the request’s **X-Requested-With** header field is **XMLHttpRequest**, indicating that the request was issued by a client library such as [jQuery](https://api.jquery.com/jQuery.ajax/).
+A Boolean property that is true if the request’s `X-Requested-With` header field is `XMLHttpRequest`, indicating that the request was issued by a client library such as [jQuery](https://api.jquery.com/jQuery.ajax/).
 
 ```go
 // Function signature
@@ -1181,7 +1172,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### XML
 
-XML sets the header to "application/xml" and marshals your interface to xml.
+XML sets the header to `application/xml` and marshals your interface to xml.
 
 ```go
 // Function signature
