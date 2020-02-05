@@ -27,7 +27,11 @@ func (ctx *Ctx) Append(field string, values ...string) {
 
 	h := ctx.Get(field)
 	for i := range values {
-		h += h + "," + values[i]
+		if h == "" {
+			h += values[i]
+		} else {
+			h += ", " + values[i]
+		}
 	}
 	ctx.Set(field, h)
 }
