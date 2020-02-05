@@ -1,42 +1,15 @@
-# use the latest ubuntu environment (18.04) available on travis
-dist: bionic
-
 language: go
-
-# Force-enable Go modules. Also force go to use the code in vendor/
-# The first two envs will be unnecessary when Go 1.14 lands.
-# LINTER_VERSION is the version of golangci-lint. See current releases
-# here:
-#   https://github.com/golangci/golangci-lint/releases
-env: GO111MODULE=on GOFLAGS='-mod vendor'
-
-# You don't need to test on very old versions of the Go compiler. It's the user's
-# responsibility to keep their compiler up to date.
 go:
+  - 1.12.x
   - 1.13.x
-
-# Only clone the most recent commit.
-git:
-  depth: 1
-
-# Skip the install step. Don't `go get` dependencies. Only build with the code
-# in vendor/
-install: true
-
-# Don't email me the results of the test runs.
-notifications:
-  email: false
-
-# Anything in before_script that returns a nonzero exit code will flunk the
-# build and immediately stop. It's sorta like having set -e enabled in bash.
-# We can download and extract the golangci-lint binary in one (long) command.
-before_script:
-  - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $GOPATH/bin v1.23.1
-
-# script always runs to completion (set +e). If we have linter issues AND a
-# failing test, we want to see both. Configure golangci-lint with a
-# .golangci.yml file at the top level of your repo.
+  - tip
+env:
+  - GO111MODULE=on
+install:
+  - go get -v golang.org/x/lint/golint
 script:
-  - golangci-lint run       # run a bunch of code checkers/linters in parallel
-  - go test -v -race ./...  # Run all the tests with the race detector enabled
-#Test
+  - golint -set_exit_status ./...
+  - go test -race ./...
+matrix:
+  allow_failures:
+    - go: tip
