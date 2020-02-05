@@ -1,6 +1,6 @@
 ![logo](static/logo_320px_trans.png)
 
-# Fiber <small>1.3.2</small>
+# Fiber <small>v1.3.3</small>
 
 > Express.js inspired web framework written in Go.
 
