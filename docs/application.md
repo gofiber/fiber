@@ -200,4 +200,27 @@ app.Listen("127.0.0.1:8080")
 app.Listen(443, "server.crt", "server.key")
 ```
 
+#### FakeRequest
+
+FakeRequest is used for testing your application and package internals. You can send a http request locally without listening on a port. This is super handy to write simple and automated tests for your app.
+
+```go
+// Function signature
+app.FakeRequest(rawHTTP string) (string, error)
+
+// Example
+app := New()
+app.Get("/", func(c *Ctx) {
+  fmt.Println(c.BaseURL()) // => http://google.com
+})
+// app.Listen(8080) // Disable if testing
+
+// Send fake request
+body, err := app.FakeRequest("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n")
+if err != nil {
+  panic(err)
+}
+fmt.Println(body)
+```
+
 _Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/docs/application.md)_
