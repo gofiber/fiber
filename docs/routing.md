@@ -76,7 +76,7 @@ app.Get("/user/:name?", func(c *fiber.Ctx) {
 
 #### Middleware
 
-The [Next](context#next) function is a function in the [Fiber](https://github.com/fenny/fiber) router which, when called, executes the next function that matches the current route.
+The [Next](context#next) function is a function in the [Fiber](https://github.com/gofiber/fiber) router which, when called, executes the next function that matches the current route.
 
 Functions that are designed to make changes to the request or response are called middleware functions.
 
@@ -104,4 +104,4 @@ app.Get("/", func(c *fiber.Ctx) {
 app.Listen(8080)
 ```
 
-_Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/routing.md)_
+_Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/docs/routing.md)_

@@ -5,7 +5,7 @@
 ```go
 package main
 
-import "github.com/fenny/fiber"
+import "github.com/gofiber/fiber"
 
 func main() {
   app := fiber.New()
@@ -31,7 +31,7 @@ func main() {
 ```go
 package main
 
-import "github.com/fenny/fiber"
+import "github.com/gofiber/fiber"
 
 func main() {
   app := fiber.New()
@@ -51,7 +51,7 @@ func main() {
 ```go
 package main
 
-import "github.com/fenny/fiber"
+import "github.com/gofiber/fiber"
 
 func main() {
   app := fiber.New()
@@ -137,4 +137,4 @@ func main() {
 }
 ```
 
-_Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/examples.md)_
+_Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/docs/examples.md)_
