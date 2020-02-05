@@ -73,4 +73,4 @@ If we enable http pipelining, test result as below:
 This benchmark is outdated
 ![](static/benchmarks/cpubound_benchmark.png) -->
 
-_Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/benchmarks.md)_
+_Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/docs/benchmarks.md)_

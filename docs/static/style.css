@@ -114,6 +114,10 @@ code .token {
 .gitter-chat-embed-action-bar {
   background: none;
 }
+.markdown-section code {
+  background-color: #3ea07f;
+  color: #fff;
+}
 @media screen and (max-width:768px) {
   .sidebar-toggle {
     padding: 10px;

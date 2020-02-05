@@ -11,4 +11,4 @@ Special thanks to some amazing people and organizations:
 [@pillarjs](https://github.com/pillarjs) / [Path-to-regexp](https://github.com/pillarjs/path-to-regexp/blob/master/LICENSE)  
 [@techempower](https://github.com/TechEmpower) / [FrameworkBenchmarks](https://github.com/TechEmpower/FrameworkBenchmarks)
 
-_Caught a mistake? [Edit this page on GitHub!](https://github.com/Fenny/fiber/blob/master/docs/license.md)_
+_Caught a mistake? [Edit this page on GitHub!](https://github.com/gofiber/fiber/blob/master/docs/license.md)_
