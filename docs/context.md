@@ -1,10 +1,10 @@
 # Context
 
-The ctx object represents the HTTP request and response and has methods for the request query string, parameters, body, HTTP headers, and so on. In this documentation and by convention, the context is always referred to as c but its actual name is determined by the parameters to the callback function in which you’re working.
+The `Ctx` struct represents the HTTP request and response and has methods for the request query string, parameters, body, HTTP headers, and so on. In this documentation and by convention, the context is always referred to as `c` but its actual name is determined by the parameters to the callback function in which you’re working.
 
 #### Accepts
 
-Checks if the specified content types are acceptable, based on the request’s Accept HTTP header field. You can use an extention or content-type format
+Checks if the specified content types are acceptable, based on the request’s `Accept HTTP header` field. You can use an extention or content-type format
 
 ```go
 // Function signature
@@ -35,7 +35,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### AcceptsCharsets
 
-Returns the first accepted charset of the specified character sets, based on the request’s Accept-Charset HTTP header field
+Returns the first accepted charset of the specified character sets, based on the request’s `Accept-Charset HTTP header` field
 
 ```go
 // Function signature
@@ -57,7 +57,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### AcceptsEncodings
 
-Returns the first accepted encoding of the specified encodings, based on the request’s Accept-Encoding HTTP header field.
+Returns the first accepted encoding of the specified encodings, based on the request’s `Accept-Encoding HTTP header` field.
 
 ```go
 // Function signature
@@ -79,7 +79,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### AcceptsLanguages
 
-Returns the first accepted language of the specified languages, based on the request’s Accept-Language HTTP header field.
+Returns the first accepted language of the specified languages, based on the request’s `Accept-Language HTTP header` field.
 
 ```go
 // Function signature
@@ -101,7 +101,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### Append
 
-Appends the specified value to the HTTP response header field. If the header is not already set, it creates the header with the specified value. The value parameter must be a string.
+Appends the specified value to the HTTP response header field. If the header is not already set, it creates the header with the specified value. The values parameter must be a `string.`
 
 ```go
 // Function signature
@@ -124,7 +124,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### Attachment
 
-Sets the HTTP response [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header field to “attachment”. If a filename is given, then it sets the Content-Type based on the extension name via [Type](#type), and sets the Content-Disposition “filename=” parameter.
+Sets the HTTP response [Content-Disposition](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Disposition) header field to `attachment`. If a filename is given, then it sets the Content-Type based on the extension name via [Type](#type), and sets the `Content-Disposition` `filename=` parameter.
 
 ```go
 // Function signature
@@ -161,7 +161,7 @@ app.Get("/", func(c *fiber.Ctx) {
 
 #### BasicAuth
 
-BasicAuth returns the username and password provided in the request's Authorization header, if the request uses [HTTP Basic Authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication).
+Returns the username and password provided in the request's `Authorization header`, if the request uses [HTTP Basic Authentication](https://developer.mozilla.org/en-US/docs/Web/HTTP/Authentication).
 
 ```go
 // Function signature
