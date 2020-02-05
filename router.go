@@ -124,7 +124,8 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 			// If * always set the path to the wildcard parameter
 			if route.Wildcard {
 				ctx.params = &[]string{"*"}
-				ctx.values = []string{path}
+				ctx.values = make([]string, 1)
+				ctx.values[0] = path
 			}
 			found = true
 			// Set route pointer if user wants to call .Route()
@@ -170,6 +171,7 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 			// If we have matches, add params and values to context
 			if len(matches) > 0 && len(matches[0]) > 1 {
 				ctx.params = &route.Params
+				// ctx.values = make([]string, len(*ctx.params))
 				ctx.values = matches[0][1:len(matches[0])]
 			}
 		}
