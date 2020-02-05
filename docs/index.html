@@ -48,10 +48,9 @@
         if (txt.text().startsWith("!")) {
           txt.html(txt.text().replace('!', ''))
           n.css('opacity', '0.4')
-          console.log(n)
         }
       });
-    }, 250)
+    }, 500)
   }
   $(window).on('hashchange', function() {
     if (window.location.hash.startsWith("#/context")) {
@@ -62,10 +61,9 @@
           if (txt.text().startsWith("!")) {
             txt.html(txt.text().replace('!', ''))
             n.css('opacity', '0.4')
-            console.log(n)
           }
         });
-      }, 250)
+      }, 500)
     }
   })
 
