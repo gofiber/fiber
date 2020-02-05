@@ -8,6 +8,7 @@
 package fiber
 
 import (
+	"log"
 	"regexp"
 	"strings"
 
@@ -61,12 +62,12 @@ func (r *Fiber) register(method string, args ...interface{}) {
 		path = args[0].(string)
 		handler = args[1].(func(*Ctx))
 		if path[0] != '/' && path[0] != '*' {
-			panic("Invalid path, must begin with slash '/' or wildcard '*'")
+			log.Fatal("Router: Invalid path, must begin with slash '/' or wildcard '*'")
 		}
 	}
 
 	if midware && strings.Contains(path, "/:") {
-		panic("You cannot use :params in Use()")
+		log.Fatal("Router: You cannot use :params in Use()")
 	}
 
 	// If Use() path == "/", match anything aka *
@@ -92,7 +93,7 @@ func (r *Fiber) register(method string, args ...interface{}) {
 	// We have parametes, so we need to compile regex from the path
 	regex, err := getRegex(path)
 	if err != nil {
-		panic("Invalid url pattern: " + path)
+		log.Fatal("Router: Invalid url pattern: " + path)
 	}
 
 	// Add regex + params to route
