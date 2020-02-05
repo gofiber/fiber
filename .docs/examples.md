@@ -97,8 +97,8 @@ package main
 import "./fiber"
 
 type Data struct {
-  Name string
-  Age  int
+  Name string `json:"name"`
+  Age  int    `json:"age"`
 }
 
 func main() {
@@ -106,8 +106,8 @@ func main() {
 
   app.Get("/json", func(c *fiber.Ctx) {
     data := Data{
-      Name: "John", `json:"name"`
-      Age:  20, `json:"age"`
+      Name: "John", 
+      Age:  20, 
     }
     err := c.JSON(data)
     if err != nil {
