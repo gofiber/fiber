@@ -1,6 +1,6 @@
-# 🔌 Fiber Web Framework
+# 🚀 Fiber  <a href="README_RU.md"><img width="20px" src="docs/static/flags/ru.svg" alt="ru"/></a> <a href="README_CH.md"><img width="20px" src="docs/static/flags/ch.svg" alt="ch"/></a>
 
-[![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/FiberGo/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/FiberGo/community)
+[![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
 
 <img align="right" height="180px" src="docs/static/logo_320px_trans.png" alt="Fiber logo" />
 
@@ -8,17 +8,15 @@
 
 People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind.
 
-**In other languages:** <a href="README_RU.md"><img width="20px" src="docs/static/flags/ru.svg" alt="ru"/></a> <a href="README_CH.md"><img width="20px" src="docs/static/flags/ch.svg" alt="ch"/></a>
-
 ## API Documentation
 
-📚 We created an extended **API documentation** (_including examples_), **[click here](https://gofiber.github.io/fiber/)**.
+📚 We created an extended **API documentation** (_including examples_), **[Visit fiber.wiki](https://fiber.wiki/)**.
 
 ## Benchmark
 
-[![](https://gofiber.github.io/fiber/static/benchmarks/benchmark.png)](https://gofiber.github.io/fiber/#/benchmarks)
+[![](https://fiber.wiki/static/benchmarks/benchmark.png)](https://fiber.wiki/#/benchmarks)
 
-👉 **[Click here](https://gofiber.github.io/fiber/#/benchmarks)** to see all benchmark results.
+👉 **[Click here](https://fiber.wiki/#/benchmarks)** to see all benchmark results.
 
 ## Features
 
@@ -28,7 +26,7 @@ People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://go
 - Static files with custom prefix
 - Middleware with Next support
 - Express API endpoints
-- [Extended documentation](https://gofiber.github.io/fiber/)
+- [Extended documentation](https://fiber.wiki/)
 
 ## Installing
 
@@ -75,7 +73,7 @@ And now, browse to `http://localhost:8080` and you should see `Hello, World!` on
 
 ## Static files
 
-To serve static files, use the [Static](https://gofiber.github.io/fiber/#/?id=static-files) method:
+To serve static files, use the [Static](https://fiber.wiki/#/?id=static-files) method:
 
 ```go
 package main
@@ -138,17 +136,17 @@ func main() {
 
 ## Project assistance
 
-If you want to say «thank you» or/and support active development `gofiber/fiber`:
+If you want to say **thank you** or/and support active development `gofiber/fiber`:
 
 1. Add a GitHub Star to project.
-2. Twit about project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%94%8C%20Fiber%20is%20an%20Express.js%20inspired%20Go%20web%20framework%20build%20on%20%F0%9F%9A%80%20Fasthttp%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Help us to translate this `README` and [API Docs](https://gofiber.github.io/fiber/) to another language.
+2. Tweet about project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%94%8C%20Fiber%20is%20an%20Express.js%20inspired%20Go%20web%20framework%20build%20on%20%F0%9F%9A%80%20Fasthttp%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+3. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
 
-Thanks for your support! 😘 Together, we make `Fiber Web Framework` better every day.
+Thanks for your support! 😘 Together, we make `Fiber`.
 
-## Stargazers over time
+## Stars over time
 
-[![Stargazers over time](https://starchart.cc/gofiber/fiber.svg)](https://starchart.cc/gofiber/fiber)
+<a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
 ## License
 

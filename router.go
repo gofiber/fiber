@@ -8,6 +8,7 @@
 package fiber
 
 import (
+	"log"
 	"regexp"
 	"strings"
 
@@ -48,17 +49,25 @@ func (r *Fiber) register(method string, args ...interface{}) {
 
 	// Only 1 argument, so no path/prefix
 	if len(args) == 1 {
+		// switch arg := args[0].(type) {
+		// case func(*Ctx):
+		// 	handler = arg
+		// case func(*fiber.Ctx):
+		// 	handler = arg
+		// default:
+		// 	panic("Invalid Context function")
+		// }
 		handler = args[0].(func(*Ctx))
 	} else if len(args) > 1 {
 		path = args[0].(string)
 		handler = args[1].(func(*Ctx))
 		if path[0] != '/' && path[0] != '*' {
-			panic("Invalid path, must begin with slash '/' or wildcard '*'")
+			log.Fatal("Router: Invalid path, must begin with slash '/' or wildcard '*'")
 		}
 	}
 
 	if midware && strings.Contains(path, "/:") {
-		panic("You cannot use :params in Use()")
+		log.Fatal("Router: You cannot use :params in Use()")
 	}
 
 	// If Use() path == "/", match anything aka *
@@ -84,7 +93,7 @@ func (r *Fiber) register(method string, args ...interface{}) {
 	// We have parametes, so we need to compile regex from the path
 	regex, err := getRegex(path)
 	if err != nil {
-		panic("Invalid url pattern: " + path)
+		log.Fatal("Router: Invalid url pattern: " + path)
 	}
 
 	// Add regex + params to route
@@ -115,7 +124,8 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 			// If * always set the path to the wildcard parameter
 			if route.Wildcard {
 				ctx.params = &[]string{"*"}
-				ctx.values = []string{path}
+				ctx.values = make([]string, 1)
+				ctx.values[0] = path
 			}
 			found = true
 			// Set route pointer if user wants to call .Route()
@@ -161,6 +171,7 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 			// If we have matches, add params and values to context
 			if len(matches) > 0 && len(matches[0]) > 1 {
 				ctx.params = &route.Params
+				// ctx.values = make([]string, len(*ctx.params))
 				ctx.values = matches[0][1:len(matches[0])]
 			}
 		}

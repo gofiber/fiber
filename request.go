@@ -10,7 +10,6 @@ package fiber
 import (
 	"encoding/base64"
 	"fmt"
-	"log"
 	"mime"
 	"mime/multipart"
 	"strings"
@@ -21,9 +20,8 @@ import (
 // Accepts : https://gofiber.github.io/fiber/#/context?id=accepts
 func (ctx *Ctx) Accepts(offers ...string) string {
 	if len(offers) == 0 {
-		panic("You must provide atleast one content type string")
+		return ""
 	}
-
 	h := ctx.Get(fasthttp.HeaderAccept)
 	if h == "" {
 		return offers[0]
@@ -60,7 +58,7 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 // AcceptsCharsets : https://gofiber.github.io/fiber/#/context?id=acceptscharsets
 func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
 	if len(offers) == 0 {
-		panic("You must provide atleast one content type string")
+		return ""
 	}
 
 	h := ctx.Get(fasthttp.HeaderAcceptCharset)
@@ -86,7 +84,7 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
 // AcceptsEncodings : https://gofiber.github.io/fiber/#/context?id=acceptsencodings
 func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
 	if len(offers) == 0 {
-		panic("You must provide atleast one content type string")
+		return ""
 	}
 
 	h := ctx.Get(fasthttp.HeaderAcceptEncoding)
@@ -112,9 +110,8 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
 // AcceptsLanguages : https://gofiber.github.io/fiber/#/context?id=acceptslanguages
 func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	if len(offers) == 0 {
-		panic("You must provide atleast one content type string")
+		return ""
 	}
-
 	h := ctx.Get(fasthttp.HeaderAcceptLanguage)
 	if h == "" {
 		return offers[0]
@@ -228,7 +225,6 @@ func (ctx *Ctx) Fresh() bool {
 
 // Get : https://gofiber.github.io/fiber/#/context?id=get
 func (ctx *Ctx) Get(key string) string {
-	// https://en.wikipedia.org/wiki/HTTP_referer
 	if key == "referrer" {
 		key = "referer"
 	}
@@ -240,9 +236,9 @@ func (ctx *Ctx) Hostname() string {
 	return getString(ctx.Fasthttp.URI().Host())
 }
 
-// Ip : DEPRECATED
-func (ctx *Ctx) Ip() string { // NOLINT
-	fmt.Println("Fiber deprecated c.Ip(): Use c.IP() instead")
+// Ip is deprecated, this will be removed in v2: Use c.IP() instead
+func (ctx *Ctx) Ip() string {
+	fmt.Println("Fiber deprecated c.Ip(), this will be removed in v2: Use c.IP() instead")
 	return ctx.IP()
 }
 
@@ -251,9 +247,9 @@ func (ctx *Ctx) IP() string {
 	return ctx.Fasthttp.RemoteIP().String()
 }
 
-// Ips : DEPRECATED
+// Ips is deprecated, this will be removed in v2: Use c.IPs() instead
 func (ctx *Ctx) Ips() []string { // NOLINT
-	fmt.Println("Fiber deprecated c.Ips(): Use c.IPs() instead")
+	fmt.Println("Fiber deprecated c.Ips(), this will be removed in v2: Use c.IPs() instead")
 	return ctx.IPs()
 }
 
@@ -303,9 +299,9 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 	return ctx.Fasthttp.MultipartForm()
 }
 
-// OriginalUrl : DEPRECATED
+// OriginalUrl is deprecated, this will be removed in v2: Use c.OriginalURL() instead
 func (ctx *Ctx) OriginalUrl() string {
-	fmt.Println("Fiber deprecated c.OriginalUrl(): Use c.OriginalURL() instead")
+	fmt.Println("Fiber deprecated c.OriginalUrl(), this will be removed in v2: Use c.OriginalURL() instead")
 	return ctx.OriginalURL()
 }
 
@@ -357,10 +353,8 @@ func (ctx *Ctx) Route() *Route {
 }
 
 // SaveFile : https://gofiber.github.io/fiber/#/context?id=secure
-func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) {
-	if err := fasthttp.SaveMultipartFile(fh, path); err != nil {
-		log.Fatal(err)
-	}
+func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) error {
+	return fasthttp.SaveMultipartFile(fh, path)
 }
 
 // Secure : https://gofiber.github.io/fiber/#/context?id=secure
@@ -385,13 +379,13 @@ func (ctx *Ctx) Subdomains() (subs []string) {
 	return subs
 }
 
-// Xhr : DEPRECATED
+// Xhr is deprecated, this will be removed in v2: Use c.XHR() instead
 func (ctx *Ctx) Xhr() bool {
-	fmt.Println("Fiber deprecated c.Xhr(): Use c.XHR() instead")
+	fmt.Println("Fiber deprecated c.Xhr(), this will be removed in v2: Use c.XHR() instead")
 	return ctx.XHR()
 }
 
 // XHR : https://gofiber.github.io/fiber/#/context?id=xhr
 func (ctx *Ctx) XHR() bool {
-	return ctx.Get("X-Requested-With") == "XMLHttpRequest"
+	return ctx.Get(fasthttp.HeaderXRequestedWith) == "XMLHttpRequest"
 }

@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -32,7 +33,7 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 		}
 		host = val
 	default:
-		panic("Host must be an INT port or STRING address")
+		log.Fatal("Listen: Host must be an INT port or STRING address")
 	}
 	// Create fasthttp server
 	server := &fasthttp.Server{
@@ -63,30 +64,30 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 	if r.Prefork && runtime.NumCPU() > 1 {
 		if r.Banner && !r.child {
 			cores := fmt.Sprintf("%s\x1b[1;30m %v cores", host, runtime.NumCPU())
-			fmt.Printf(banner, Version, " prefork", "Express on steriods", cores)
+			fmt.Printf(banner, Version, " prefork", "Express on steroids", cores)
 		}
 		r.prefork(server, host, tls...)
 	}
 
 	// Prefork disabled
 	if r.Banner {
-		fmt.Printf(banner, Version, "", "Express on steriods", host)
+		fmt.Printf(banner, Version, "", "Express on steroids", host)
 	}
 
 	ln, err := net.Listen("tcp4", host)
 	if err != nil {
-		panic(err)
+		log.Fatal("Listen: ", err)
 	}
 
 	// enable TLS/HTTPS
 	if len(tls) > 1 {
 		if err := server.ServeTLS(ln, tls[0], tls[1]); err != nil {
-			panic(err)
+			log.Fatal("Listen: ", err)
 		}
 	}
 
 	if err := server.Serve(ln); err != nil {
-		panic(err)
+		log.Fatal("Listen: ", err)
 	}
 }
 
@@ -103,13 +104,13 @@ func (r *Fiber) prefork(server *fasthttp.Server, host string, tls ...string) {
 			childs[i].Stdout = os.Stdout
 			childs[i].Stderr = os.Stderr
 			if err := childs[i].Start(); err != nil {
-				panic(err)
+				log.Fatal("Listen-prefork: ", err)
 			}
 		}
 
 		for _, child := range childs {
 			if err := child.Wait(); err != nil {
-				panic(err)
+				log.Fatal("Listen-prefork: ", err)
 			}
 
 		}
@@ -122,17 +123,17 @@ func (r *Fiber) prefork(server *fasthttp.Server, host string, tls ...string) {
 
 	ln, err := reuseport.Listen("tcp4", host)
 	if err != nil {
-		panic(err)
+		log.Fatal("Listen-prefork: ", err)
 	}
 
 	// enable TLS/HTTPS
 	if len(tls) > 1 {
 		if err := server.ServeTLS(ln, tls[0], tls[1]); err != nil {
-			panic(err)
+			log.Fatal("Listen-prefork: ", err)
 		}
 	}
 
 	if err := server.Serve(ln); err != nil {
-		panic(err)
+		log.Fatal("Listen-prefork: ", err)
 	}
 }
