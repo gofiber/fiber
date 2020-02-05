@@ -92,20 +92,10 @@ code .token {
   width: 36px;
   cursor: pointer;
 }
-
-@media screen and (max-width:768px) {
-  .sidebar-toggle {
-    padding: 10px;
-    left: auto;
-    right: 0;
-  }
-  body.close .sidebar-toggle {
-    display: none;
-  }
-  .sidebar {
-    width: 200px;
-  }
+.gitter-open-chat-button {
+  background-color: #42b983;
 }
+
 
 .sidebar-toggle .sidebar-toggle-button:hover {
   opacity: .8;
@@ -116,4 +106,33 @@ code .token {
 .sidebar > h1 {
   text-align: left;
   margin: 0 0 0 15px;
+}
+.gitter-chat-embed {
+  border-left: 1px solid #3ea07f;
+  box-shadow: none;
+}
+.gitter-chat-embed-action-bar {
+  background: none;
+}
+@media screen and (max-width:768px) {
+  .sidebar-toggle {
+    padding: 10px;
+    left: auto;
+    right: 10px;
+    border-top-left-radius: .5em;
+border-top-right-radius: .5em;
+  }
+  body.close .sidebar-toggle {
+    display: none;
+  }
+  body.close .content {
+    transform: translateX(225px);
+}
+  .sidebar {
+    width: 200px;
+  }
+  .gitter-open-chat-button {
+    left: 10px;
+    right: auto;
+  }
 }
