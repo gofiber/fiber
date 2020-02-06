@@ -175,6 +175,8 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 		switch arg := args[0].(type) {
 		case string:
 			return getString(ctx.Fasthttp.Request.PostArgs().Peek(arg))
+		case []byte:
+			return getString(ctx.Fasthttp.Request.PostArgs().PeekBytes(arg))
 		case func(string, string):
 			ctx.Fasthttp.Request.PostArgs().VisitAll(func(k []byte, v []byte) {
 				arg(getString(k), getString(v))
