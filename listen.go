@@ -23,6 +23,9 @@ import (
 
 // Shutdown server gracefully
 func (r *Fiber) Shutdown() error {
+	if r.httpServer == nil {
+		return fmt.Errorf("Server is not running")
+	}
 	return r.httpServer.Shutdown()
 }
 

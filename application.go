@@ -75,10 +75,11 @@ type engine struct {
 func New() *Fiber {
 	flag.Parse()
 	return &Fiber{
-		Server:  "",
-		Banner:  true,
-		Prefork: *prefork,
-		child:   *child,
+		Server:     "",
+		httpServer: nil,
+		Banner:     true,
+		Prefork:    *prefork,
+		child:      *child,
 		Engine: &engine{
 			Concurrency:                        256 * 1024,
 			DisableKeepAlive:                   false,
