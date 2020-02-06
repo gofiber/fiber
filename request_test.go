@@ -14,6 +14,7 @@ import (
 func Test_Accepts(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.Accepts()
 		expect := ".xml"
 		result := c.Accepts(expect)
 		if result != expect {
@@ -30,6 +31,8 @@ func Test_Accepts(t *testing.T) {
 func Test_AcceptsCharsets(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.AcceptsCharsets()
+
 		expect := "utf-8"
 		result := c.AcceptsCharsets(expect)
 		if result != expect {
@@ -46,6 +49,7 @@ func Test_AcceptsCharsets(t *testing.T) {
 func Test_AcceptsEncodings(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.AcceptsEncodings()
 		expect := "gzip"
 		result := c.AcceptsEncodings(expect)
 		if result != expect {
@@ -62,6 +66,7 @@ func Test_AcceptsEncodings(t *testing.T) {
 func Test_AcceptsLanguages(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.AcceptsLanguages()
 		expect := "fr"
 		result := c.AcceptsLanguages(expect)
 		if result != expect {
@@ -78,6 +83,7 @@ func Test_AcceptsLanguages(t *testing.T) {
 func Test_BaseURL(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.BaseUrl() // deprecated
 		expect := "http://google.com"
 		result := c.BaseURL()
 		if result != expect {
@@ -113,6 +119,7 @@ func Test_BasicAuth(t *testing.T) {
 func Test_Body(t *testing.T) {
 	app := New()
 	app.Post("/test", func(c *Ctx) {
+		c.Body(1)
 		expect := "john=doe"
 		result := c.Body()
 		if result != expect {
@@ -120,6 +127,11 @@ func Test_Body(t *testing.T) {
 		}
 		expect = "doe"
 		result = c.Body("john")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		expect = "doe"
+		result = c.Body([]byte("john"))
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
@@ -147,6 +159,7 @@ func Test_Body(t *testing.T) {
 func Test_Cookies(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.Cookies(1)
 		expect := "john=doe"
 		result := c.Cookies()
 		if result != expect {
@@ -154,6 +167,11 @@ func Test_Cookies(t *testing.T) {
 		}
 		expect = "doe"
 		result = c.Cookies("john")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		expect = "doe"
+		result = c.Cookies([]byte("john"))
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
@@ -229,9 +247,15 @@ func Test_Get(t *testing.T) {
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
+		expect = "Cookie"
+		result = c.Get("referrer")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
+	req.Header.Set("Referer", "Cookie")
 	_, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
@@ -255,6 +279,7 @@ func Test_Hostname(t *testing.T) {
 func Test_IP(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.Ip() // deprecated
 		expect := "0.0.0.0"
 		result := c.IP()
 		if result != expect {
@@ -270,6 +295,7 @@ func Test_IP(t *testing.T) {
 func Test_IPs(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.Ips() // deprecated
 		expect := []string{"0.0.0.0", "1.1.1.1"}
 		result := c.IPs()
 		if result[0] != expect[0] && result[1] != expect[1] {
@@ -286,6 +312,7 @@ func Test_IPs(t *testing.T) {
 func Test_Is(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.Is(".json")
 		expect := true
 		result := c.Is("html")
 		if result != expect {
@@ -388,6 +415,7 @@ func Test_MultipartForm(t *testing.T) {
 func Test_OriginalURL(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.OriginalUrl() // deprecated
 		expect := "/test?search=demo"
 		result := c.OriginalURL()
 		if result != expect {
@@ -546,10 +574,11 @@ func Test_Subdomains(t *testing.T) {
 func Test_XHR(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
-		expect := "XMLHttpRequest"
-		result := c.Get("X-Requested-With")
+		c.Xhr() // deprecated
+		expect := true
+		result := c.XHR()
 		if result != expect {
-			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
 		}
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
