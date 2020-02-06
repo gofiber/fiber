@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"net/http"
+	"net/http/httputil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -107,8 +109,24 @@ func getBytes(s string) (b []byte) {
 	return b
 }
 
-// FakeRequest creates a readWriter and calls ServeConn on local servver
-func (r *Fiber) FakeRequest(raw string) (string, error) {
+// FakeRequest is the same as Test
+func (r *Fiber) FakeRequest(req interface{}) (string, error) {
+	return r.Test(req)
+}
+
+// Test creates a readWriter and calls ServeConn on local servver
+func (r *Fiber) Test(req interface{}) (string, error) {
+	raw := ""
+	switch r := req.(type) {
+	case string:
+		raw = r
+	case *http.Request:
+		d, err := httputil.DumpRequest(r, true)
+		if err != nil {
+			return "", err
+		}
+		raw = getString(d)
+	}
 	server := &fasthttp.Server{
 		Handler:                            r.handler,
 		Name:                               r.Server,
