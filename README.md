@@ -150,4 +150,4 @@ Thanks for your support! 😘 Together, we make `Fiber`.
 
 ## License
 
-⚠️ _Please note:_ `gofiber/fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/edit/master/LICENSE).
+⚠️ _Please note:_ `gofiber/fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/master/LICENSE).
