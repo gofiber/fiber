@@ -24,7 +24,7 @@ func (ctx *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := ctx.Get(field)
+	h := getString(ctx.Fasthttp.Response.Header.Peek(field))
 	for i := range values {
 		if h == "" {
 			h += values[i]
@@ -50,11 +50,12 @@ func (ctx *Ctx) Attachment(name ...string) {
 func (ctx *Ctx) ClearCookie(name ...string) {
 	if len(name) > 0 {
 		for i := range name {
+			//ctx.Fasthttp.Request.Header.DelAllCookies()
 			ctx.Fasthttp.Response.Header.DelClientCookie(name[i])
 		}
 		return
 	}
-
+	//ctx.Fasthttp.Response.Header.DelAllCookies()
 	ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
 		ctx.Fasthttp.Response.Header.DelClientCookie(getString(k))
 	})
@@ -330,7 +331,6 @@ func (ctx *Ctx) SendString(body string) {
 
 // Set : https://gofiber.github.io/fiber/#/context?id=set
 func (ctx *Ctx) Set(key string, val string) {
-	ctx.Fasthttp.Request.Header.SetCanonical(getBytes(key), getBytes(val))
 	ctx.Fasthttp.Response.Header.SetCanonical(getBytes(key), getBytes(val))
 }
 
@@ -352,14 +352,16 @@ func (ctx *Ctx) Vary(fields ...string) {
 		return
 	}
 
-	vary := ctx.Get(fasthttp.HeaderVary)
-	for _, field := range fields {
-		if !strings.Contains(vary, field) {
-			vary += ", " + field
+	h := getString(ctx.Fasthttp.Response.Header.Peek(fasthttp.HeaderVary))
+	for i := range fields {
+		if h == "" {
+			h += fields[i]
+		} else {
+			h += ", " + fields[i]
 		}
 	}
 
-	ctx.Set(fasthttp.HeaderVary, vary)
+	ctx.Set(fasthttp.HeaderVary, h)
 }
 
 // Write : https://gofiber.github.io/fiber/#/context?id=write

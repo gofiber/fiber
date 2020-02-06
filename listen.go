@@ -21,6 +21,11 @@ import (
 	"github.com/valyala/fasthttp/reuseport"
 )
 
+// Shutdown server gracefully
+func (r *Fiber) Shutdown() error {
+	return r.httpServer.Shutdown()
+}
+
 // Listen : https://gofiber.github.io/fiber/#/application?id=listen
 func (r *Fiber) Listen(address interface{}, tls ...string) {
 	host := ""
@@ -36,7 +41,7 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 		log.Fatal("Listen: Host must be an INT port or STRING address")
 	}
 	// Create fasthttp server
-	server := r.setupServer()
+	r.httpServer = r.setupServer()
 
 	// Prefork enabled
 	if r.Prefork && runtime.NumCPU() > 1 {
@@ -44,7 +49,7 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 			cores := fmt.Sprintf("%s\x1b[1;30m %v cores", host, runtime.NumCPU())
 			fmt.Printf(banner, Version, " prefork", "Express on steroids", cores)
 		}
-		r.prefork(server, host, tls...)
+		r.prefork(host, tls...)
 	}
 
 	// Prefork disabled
@@ -59,18 +64,18 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 
 	// enable TLS/HTTPS
 	if len(tls) > 1 {
-		if err := server.ServeTLS(ln, tls[0], tls[1]); err != nil {
+		if err := r.httpServer.ServeTLS(ln, tls[0], tls[1]); err != nil {
 			log.Fatal("Listen: ", err)
 		}
 	}
 
-	if err := server.Serve(ln); err != nil {
+	if err := r.httpServer.Serve(ln); err != nil {
 		log.Fatal("Listen: ", err)
 	}
 }
 
 // https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
-func (r *Fiber) prefork(server *fasthttp.Server, host string, tls ...string) {
+func (r *Fiber) prefork(host string, tls ...string) {
 	// Master proc
 	if !r.child {
 		// Create babies
@@ -106,12 +111,12 @@ func (r *Fiber) prefork(server *fasthttp.Server, host string, tls ...string) {
 
 	// enable TLS/HTTPS
 	if len(tls) > 1 {
-		if err := server.ServeTLS(ln, tls[0], tls[1]); err != nil {
+		if err := r.httpServer.ServeTLS(ln, tls[0], tls[1]); err != nil {
 			log.Fatal("Listen-prefork: ", err)
 		}
 	}
 
-	if err := server.Serve(ln); err != nil {
+	if err := r.httpServer.Serve(ln); err != nil {
 		log.Fatal("Listen-prefork: ", err)
 	}
 }

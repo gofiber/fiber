@@ -10,6 +10,8 @@ package fiber
 import (
 	"flag"
 	"time"
+
+	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -33,7 +35,8 @@ var (
 // Fiber structure
 type Fiber struct {
 	// Server name header
-	Server string
+	Server     string
+	httpServer *fasthttp.Server
 	// Show fiber banner
 	Banner bool
 	// https://github.com/valyala/fasthttp/blob/master/server.go#L150

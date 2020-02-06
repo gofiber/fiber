@@ -120,7 +120,7 @@ func (r *Fiber) Test(req *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 	// Setup a fiber server struct
-	server := r.setupServer()
+	r.httpServer = r.setupServer()
 	// Create fake connection
 	conn := &conn{}
 	// Pass HTTP request to conn
@@ -128,7 +128,7 @@ func (r *Fiber) Test(req *http.Request) (*http.Response, error) {
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
-		channel <- server.ServeConn(conn)
+		channel <- r.httpServer.ServeConn(conn)
 	}()
 	// Wait for callback
 	select {
@@ -137,7 +137,7 @@ func (r *Fiber) Test(req *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 		// Throw timeout error after 200ms
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(500 * time.Millisecond):
 		return nil, fmt.Errorf("Timeout")
 	}
 	// Get raw HTTP response

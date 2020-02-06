@@ -270,13 +270,7 @@ func Test_Get(t *testing.T) {
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
-		expect = "Hello, World!"
-		c.Set("Accept-Charset", expect)
-		result = c.Get("Accept-Charset")
-		if result != expect {
-			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
-		}
-		expect = "Cookie"
+		expect = "Monster"
 		result = c.Get("referrer")
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
@@ -284,7 +278,7 @@ func Test_Get(t *testing.T) {
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
-	req.Header.Set("Referer", "Cookie")
+	req.Header.Set("Referer", "Monster")
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
