@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -34,6 +35,11 @@ func (r *Fiber) Static(args ...string) {
 	// Check if wildcard for single files
 	if prefix == "*" || prefix == "/*" {
 		wildcard = true
+	}
+
+	// Check if root exists
+	if _, err := os.Lstat(root); err != nil {
+		log.Fatal("Static: ", err)
 	}
 
 	// Lets get all files from root
