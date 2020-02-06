@@ -36,29 +36,7 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 		log.Fatal("Listen: Host must be an INT port or STRING address")
 	}
 	// Create fasthttp server
-	server := &fasthttp.Server{
-		Handler:                            r.handler,
-		Name:                               r.Server,
-		Concurrency:                        r.Engine.Concurrency,
-		DisableKeepalive:                   r.Engine.DisableKeepAlive,
-		ReadBufferSize:                     r.Engine.ReadBufferSize,
-		WriteBufferSize:                    r.Engine.WriteBufferSize,
-		ReadTimeout:                        r.Engine.ReadTimeout,
-		WriteTimeout:                       r.Engine.WriteTimeout,
-		IdleTimeout:                        r.Engine.IdleTimeout,
-		MaxConnsPerIP:                      r.Engine.MaxConnsPerIP,
-		MaxRequestsPerConn:                 r.Engine.MaxRequestsPerConn,
-		TCPKeepalive:                       r.Engine.TCPKeepalive,
-		TCPKeepalivePeriod:                 r.Engine.TCPKeepalivePeriod,
-		MaxRequestBodySize:                 r.Engine.MaxRequestBodySize,
-		ReduceMemoryUsage:                  r.Engine.ReduceMemoryUsage,
-		GetOnly:                            r.Engine.GetOnly,
-		DisableHeaderNamesNormalizing:      r.Engine.DisableHeaderNamesNormalizing,
-		SleepWhenConcurrencyLimitsExceeded: r.Engine.SleepWhenConcurrencyLimitsExceeded,
-		NoDefaultServerHeader:              r.Server == "",
-		NoDefaultContentType:               r.Engine.NoDefaultContentType,
-		KeepHijackedConns:                  r.Engine.KeepHijackedConns,
-	}
+	server := r.setupServer()
 
 	// Prefork enabled
 	if r.Prefork && runtime.NumCPU() > 1 {
@@ -135,5 +113,31 @@ func (r *Fiber) prefork(server *fasthttp.Server, host string, tls ...string) {
 
 	if err := server.Serve(ln); err != nil {
 		log.Fatal("Listen-prefork: ", err)
+	}
+}
+
+func (r *Fiber) setupServer() *fasthttp.Server {
+	return &fasthttp.Server{
+		Handler:                            r.handler,
+		Name:                               r.Server,
+		Concurrency:                        r.Engine.Concurrency,
+		DisableKeepalive:                   r.Engine.DisableKeepAlive,
+		ReadBufferSize:                     r.Engine.ReadBufferSize,
+		WriteBufferSize:                    r.Engine.WriteBufferSize,
+		ReadTimeout:                        r.Engine.ReadTimeout,
+		WriteTimeout:                       r.Engine.WriteTimeout,
+		IdleTimeout:                        r.Engine.IdleTimeout,
+		MaxConnsPerIP:                      r.Engine.MaxConnsPerIP,
+		MaxRequestsPerConn:                 r.Engine.MaxRequestsPerConn,
+		TCPKeepalive:                       r.Engine.TCPKeepalive,
+		TCPKeepalivePeriod:                 r.Engine.TCPKeepalivePeriod,
+		MaxRequestBodySize:                 r.Engine.MaxRequestBodySize,
+		ReduceMemoryUsage:                  r.Engine.ReduceMemoryUsage,
+		GetOnly:                            r.Engine.GetOnly,
+		DisableHeaderNamesNormalizing:      r.Engine.DisableHeaderNamesNormalizing,
+		SleepWhenConcurrencyLimitsExceeded: r.Engine.SleepWhenConcurrencyLimitsExceeded,
+		NoDefaultServerHeader:              r.Server == "",
+		NoDefaultContentType:               r.Engine.NoDefaultContentType,
+		KeepHijackedConns:                  r.Engine.KeepHijackedConns,
 	}
 }

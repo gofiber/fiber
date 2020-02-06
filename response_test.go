@@ -2,7 +2,6 @@ package fiber
 
 import (
 	"net/http"
-	"strings"
 	"testing"
 )
 
@@ -13,11 +12,14 @@ func Test_Append(t *testing.T) {
 		c.Append("X-Test", "lo", "world")
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
-	res, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
-	if !strings.Contains(res, "X-Test: hel, lo, world") {
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	if resp.Header.Get("X-Test") != "hel, lo, world" {
 		t.Fatalf(`%s: Expecting %s`, t.Name(), "X-Test: hel, lo, world")
 	}
 }
