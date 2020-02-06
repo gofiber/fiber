@@ -228,9 +228,9 @@ func (ctx *Ctx) Get(key string) string {
 	if key == "referrer" {
 		key = "referer"
 	}
-	h := ctx.Fasthttp.Response.Header.Peek(key)
+	h := ctx.Fasthttp.Request.Header.Peek(key)
 	if len(h) == 0 {
-		h = ctx.Fasthttp.Request.Header.Peek(key)
+		h = ctx.Fasthttp.Response.Header.Peek(key)
 	}
 	return getString(h)
 }

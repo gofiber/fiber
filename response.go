@@ -330,6 +330,7 @@ func (ctx *Ctx) SendString(body string) {
 
 // Set : https://gofiber.github.io/fiber/#/context?id=set
 func (ctx *Ctx) Set(key string, val string) {
+	ctx.Fasthttp.Request.Header.SetCanonical(getBytes(key), getBytes(val))
 	ctx.Fasthttp.Response.Header.SetCanonical(getBytes(key), getBytes(val))
 }
 
