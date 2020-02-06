@@ -176,5 +176,294 @@ func Test_Cookies(t *testing.T) {
 func Test_FormFile(t *testing.T) {
 
 }
+func Test_FormValue(t *testing.T) {
+
+}
+func Test_Fresh(t *testing.T) {
+
+}
+func Test_Get(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "utf-8, iso-8859-1;q=0.5"
+		result := c.Get("Accept-Charset")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		expect = "Hello, World!"
+		c.Set("Accept-Charset", expect)
+		result = c.Get("Accept-Charset")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Hostname(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "google.com"
+		result := c.Hostname()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "http://google.com/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_IP(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "0.0.0.0"
+		result := c.IP()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "http://google.com/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_IPs(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := []string{"0.0.0.0", "1.1.1.1"}
+		result := c.IPs()
+		if result[0] != expect[0] && result[1] != expect[1] {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Forwarded-For", "0.0.0.0, 1.1.1.1")
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Is(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := true
+		result := c.Is("html")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Content-Type", "text/html")
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Locals(t *testing.T) {
+	app := New()
+	app.Use(func(c *Ctx) {
+		c.Locals("john", "doe")
+		c.Next()
+	})
+	app.Get("/test", func(c *Ctx) {
+		expect := "doe"
+		result := c.Locals("john")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Method(t *testing.T) {
+	app := New()
+	app.Get(func(c *Ctx) {
+		expect := "GET"
+		result := c.Method()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	app.Post(func(c *Ctx) {
+		expect := "POST"
+		result := c.Method()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	app.Put(func(c *Ctx) {
+		expect := "PUT"
+		result := c.Method()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	req, _ = http.NewRequest("POST", "/test", nil)
+	_, err = app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	req, _ = http.NewRequest("PUT", "/test", nil)
+	_, err = app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_MultipartForm(t *testing.T) {
+
+}
+func Test_OriginalURL(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "/test?search=demo"
+		result := c.OriginalURL()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "http://google.com/test?search=demo", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Params(t *testing.T) {
+	app := New()
+	app.Get("/test/:user", func(c *Ctx) {
+		expect := "john"
+		result := c.Params("user")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	app.Get("/test2/*", func(c *Ctx) {
+		expect := "im/a/cookie"
+		result := c.Params("*")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test/john", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	req, _ = http.NewRequest("GET", "/test2/im/a/cookie", nil)
+	_, err = app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Path(t *testing.T) {
+	app := New()
+	app.Get("/test/:user", func(c *Ctx) {
+		expect := "/test/john"
+		result := c.Path()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test/john", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Query(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "john"
+		result := c.Query("search")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		expect = "20"
+		result = c.Query("age")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test?search=john&age=20", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Range(t *testing.T) {
+
+}
+func Test_Route(t *testing.T) {
+
+}
+func Test_SaveFile(t *testing.T) {
+
+}
+func Test_Secure(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := false
+		result := c.Secure()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_SignedCookies(t *testing.T) {
+
+}
+func Test_Stale(t *testing.T) {
+
+}
+func Test_Subdomains(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := []string{"john", "doe"}
+		result := c.Subdomains()
+		if result[0] != expect[0] && result[1] != expect[1] {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "http://john.doe.google.com/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_XHR(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "XMLHttpRequest"
+		result := c.Get("X-Requested-With")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
 
 // TODO: add all functions from request.go

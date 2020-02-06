@@ -228,11 +228,7 @@ func (ctx *Ctx) Get(key string) string {
 	if key == "referrer" {
 		key = "referer"
 	}
-	h := ctx.Fasthttp.Response.Header.Peek(key)
-	if len(h) == 0 {
-		h = ctx.Fasthttp.Request.Header.Peek(key)
-	}
-	return getString(h)
+	return getString(ctx.Fasthttp.Request.Header.Peek(key))
 }
 
 // Hostname : https://gofiber.github.io/fiber/#/context?id=hostname
