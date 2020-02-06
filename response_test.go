@@ -1,27 +1,24 @@
 package fiber
 
 import (
+	"net/http"
 	"strings"
 	"testing"
 )
 
 func Test_Append(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\n\r\n"
-	// Create fiber app
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		c.Append("X-Test", "hello", "world")
+	app.Get("/test", func(c *Ctx) {
+		c.Append("X-Test", "hel")
+		c.Append("X-Test", "lo", "world")
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	res, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
-	// Check if function works correctly
-	if !strings.Contains(res, "X-Test: hello, world") {
-		t.Fatalf(`%s: Expecting %s`, t.Name(), "X-Test: hello, world")
+	if !strings.Contains(res, "X-Test: hel, lo, world") {
+		t.Fatalf(`%s: Expecting %s`, t.Name(), "X-Test: hel, lo, world")
 	}
 }
 

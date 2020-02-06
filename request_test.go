@@ -1,235 +1,180 @@
 package fiber
 
 import (
+	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
 
 func Test_Accepts(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n\r\n"
-	// Create fiber app
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		expecting := "html"
-		result := c.Accepts(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
-		}
-
-		expecting = ".xml"
-		result = c.Accepts(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+	app.Get("/test", func(c *Ctx) {
+		expect := ".xml"
+		result := c.Accepts(expect)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_AcceptsCharsets(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\nAccept-Charset: utf-8, iso-8859-1;q=0.5\r\n\r\n"
-	// Raw http request
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		expecting := "utf-8"
-		result := c.AcceptsCharsets(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
-		}
-
-		expecting = "iso-8859-1"
-		result = c.AcceptsCharsets(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+	app.Get("/test", func(c *Ctx) {
+		expect := "utf-8"
+		result := c.AcceptsCharsets(expect)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_AcceptsEncodings(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\nAccept-Encoding: deflate, gzip;q=1.0, *;q=0.5\r\n\r\n"
-	// Raw http request
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		expecting := "gzip"
-		result := c.AcceptsEncodings(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
-		}
-
-		expecting = "*"
-		result = c.AcceptsEncodings(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+	app.Get("/test", func(c *Ctx) {
+		expect := "gzip"
+		result := c.AcceptsEncodings(expect)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept-Encoding", "deflate, gzip;q=1.0, *;q=0.5")
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_AcceptsLanguages(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\nAccept-Language: fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5\r\n\r\n"
-	// Raw http request
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		expecting := "fr"
-		result := c.AcceptsLanguages(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
-		}
-
-		expecting = "en"
-		result = c.AcceptsLanguages(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+	app.Get("/test", func(c *Ctx) {
+		expect := "fr"
+		result := c.AcceptsLanguages(expect)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept-Encoding", "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_BaseURL(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\n\r\n"
-	// Raw http request
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		expecting := "http://localhost:8080"
+	app.Get("/test", func(c *Ctx) {
+		expect := "http://google.com"
 		result := c.BaseURL()
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "http://google.com/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_BasicAuth(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\nAuthorization: Basic am9objpkb2U=\r\n\r\n"
-	// Raw http request
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		user, pass, ok := c.BasicAuth()
-		if !ok {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "ok")
+	app.Get("/test", func(c *Ctx) {
+		expect1 := "john"
+		expect2 := "doe"
+		result1, result2, _ := c.BasicAuth()
+		if result1 != expect1 {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect1, expect1)
 		}
-		if user != "john" || pass != "doe" {
-			if !ok {
-				t.Fatalf(`%s: Expecting john & doe`, t.Name())
-			}
+		if result2 != expect2 {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), result2, expect2)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.SetBasicAuth("john", "doe")
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_Body(t *testing.T) {
-	// Raw http request
-	req := "POST /test HTTP/1.1\r\nHost: localhost:8080\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 9\r\n\r\nuser=john"
-	// Raw http request
 	app := New()
 	app.Post("/test", func(c *Ctx) {
-		if c.Body() != "user=john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "user=john")
+		expect := "john=doe"
+		result := c.Body()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
-		if c.Body("user") != "john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+		expect = "doe"
+		result = c.Body("john")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 		c.Body(func(k, v string) {
-			if k != "user" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "user")
+			expect = "john"
+			if k != "john" {
+				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, k)
 			}
-			if v != "john" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+			expect = "doe"
+			if v != "doe" {
+				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, v)
 			}
 		})
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	data := url.Values{}
+	data.Set("john", "doe")
+	req, _ := http.NewRequest("POST", "/test", strings.NewReader(data.Encode()))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_Cookies(t *testing.T) {
-	// Raw http request
-	req := "GET /test HTTP/1.1\r\nHost: localhost:8080\r\nCookie: user=john\r\n\r\n"
-	// Raw http request
 	app := New()
 	app.Get("/test", func(c *Ctx) {
-		if c.Cookies() != "user=john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "user=john")
+		expect := "john=doe"
+		result := c.Cookies()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
-		if c.Cookies("user") != "john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+		expect = "doe"
+		result = c.Cookies("john")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 		c.Cookies(func(k, v string) {
-			if k != "user" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "user")
+			expect = "john"
+			if k != "john" {
+				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, k)
 			}
-			if v != "john" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+			expect = "doe"
+			if v != "doe" {
+				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, v)
 			}
 		})
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "john", Value: "doe"})
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_FormFile(t *testing.T) {
-	// Raw http request
-	req := "POST /test HTTP/1.1\r\nHost: localhost:8080\r\nCookie: user=john\r\n\r\n"
-	// Raw http request
-	app := New()
-	app.Post("/test", func(c *Ctx) {
-		if c.Cookies() != "user=john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "user=john")
-		}
-		if c.Cookies("user") != "john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
-		}
-		c.Cookies(func(k, v string) {
-			if k != "user" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "user")
-			}
-			if v != "john" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
-			}
-		})
-	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
-	}
+
 }
 
 // TODO: add all functions from request.go

@@ -24,7 +24,6 @@ func (ctx *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-
 	h := ctx.Get(field)
 	for i := range values {
 		if h == "" {
