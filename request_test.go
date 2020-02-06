@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
@@ -14,18 +15,25 @@ import (
 func Test_Accepts(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
-		c.Accepts()
-		expect := ".xml"
+		expect := ""
 		result := c.Accepts(expect)
+		if c.Accepts() != "" {
+			t.Fatalf(`Expecting %s, got %s`, expect, result)
+		}
+		expect = ".xml"
+		result = c.Accepts(expect)
 		if result != expect {
-			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+			t.Fatalf(`Expecting %s, got %s`, expect, result)
 		}
 	})
-	req, _ := http.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_AcceptsCharsets(t *testing.T) {
@@ -41,9 +49,12 @@ func Test_AcceptsCharsets(t *testing.T) {
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_AcceptsEncodings(t *testing.T) {
@@ -58,9 +69,12 @@ func Test_AcceptsEncodings(t *testing.T) {
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Encoding", "deflate, gzip;q=1.0, *;q=0.5")
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_AcceptsLanguages(t *testing.T) {
@@ -75,9 +89,12 @@ func Test_AcceptsLanguages(t *testing.T) {
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Language", "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_BaseURL(t *testing.T) {
@@ -91,9 +108,12 @@ func Test_BaseURL(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "http://google.com/test", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_BasicAuth(t *testing.T) {
@@ -111,9 +131,12 @@ func Test_BasicAuth(t *testing.T) {
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.SetBasicAuth("john", "doe")
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Body(t *testing.T) {
@@ -151,9 +174,12 @@ func Test_Body(t *testing.T) {
 	req, _ := http.NewRequest("POST", "/test", strings.NewReader(data.Encode()))
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Cookies(t *testing.T) {
@@ -217,9 +243,12 @@ func Test_FormValue(t *testing.T) {
 
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Fresh(t *testing.T) {
@@ -256,9 +285,12 @@ func Test_Get(t *testing.T) {
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
 	req.Header.Set("Referer", "Cookie")
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Hostname(t *testing.T) {
@@ -271,9 +303,12 @@ func Test_Hostname(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "http://google.com/test", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_IP(t *testing.T) {
@@ -287,9 +322,12 @@ func Test_IP(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "http://google.com/test", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_IPs(t *testing.T) {
@@ -304,9 +342,12 @@ func Test_IPs(t *testing.T) {
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("X-Forwarded-For", "0.0.0.0, 1.1.1.1")
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Is(t *testing.T) {
@@ -321,9 +362,12 @@ func Test_Is(t *testing.T) {
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Content-Type", "text/html")
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Locals(t *testing.T) {
@@ -340,9 +384,12 @@ func Test_Locals(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Method(t *testing.T) {
@@ -369,19 +416,28 @@ func Test_Method(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 	req, _ = http.NewRequest("POST", "/test", nil)
-	_, err = app.Test(req)
+	resp, err = app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
 	req, _ = http.NewRequest("PUT", "/test", nil)
-	_, err = app.Test(req)
+	resp, err = app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_MultipartForm(t *testing.T) {
@@ -407,9 +463,12 @@ func Test_MultipartForm(t *testing.T) {
 
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_OriginalURL(t *testing.T) {
@@ -423,9 +482,12 @@ func Test_OriginalURL(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "http://google.com/test?search=demo", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Params(t *testing.T) {
@@ -445,14 +507,20 @@ func Test_Params(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "/test/john", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
 	req, _ = http.NewRequest("GET", "/test2/im/a/cookie", nil)
-	_, err = app.Test(req)
+	resp, err = app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Path(t *testing.T) {
@@ -465,9 +533,12 @@ func Test_Path(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "/test/john", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Query(t *testing.T) {
@@ -485,9 +556,12 @@ func Test_Query(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "/test?search=john&age=20", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Range(t *testing.T) {
@@ -511,9 +585,12 @@ func Test_Route(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_SaveFile(t *testing.T) {
@@ -529,9 +606,12 @@ func Test_Secure(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_SignedCookies(t *testing.T) {
@@ -540,9 +620,12 @@ func Test_SignedCookies(t *testing.T) {
 		c.SignedCookies()
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Stale(t *testing.T) {
@@ -566,9 +649,12 @@ func Test_Subdomains(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "http://john.doe.google.com/test", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_XHR(t *testing.T) {
@@ -583,8 +669,11 @@ func Test_XHR(t *testing.T) {
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
-	_, err := app.Test(req)
+	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
