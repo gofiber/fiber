@@ -1,8 +1,8 @@
-# 🚀 Fiber  <a href="README.md"><img width="20px" src="docs/static/flags/en.svg" alt="en"/></a> <a href="README_RU.md"><img width="20px" src="docs/static/flags/ru.svg" alt="ru"/></a>
+# 🚀 Fiber  <a href="README.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/en.svg" alt="en"/></a> <a href="README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
 
-<img align="right" height="180px" src="docs/static/logo_320px_trans.png" alt="Fiber logo" />
+<img align="right" height="180px" src="https://github.com/gofiber/docs/blob/master/static/logo_320px_trans.png" alt="Fiber logo" />
 
 **[Fiber](https://github.com/gofiber/fiber)** 是一个 [Express.js](https://expressjs.com/en/4x/api.html) 运行的样式化HTTP Web框架实现 [Fasthttp](https://github.com/valyala/fasthttp), **最快的** HTTP引擎 Go (Golang). 该软件包使用了**相似的框架约定** Express.
 
@@ -150,4 +150,4 @@ func main() {
 
 ## License
 
-⚠️ _请注意:_ `gofiber/fiber` 是根据以下条款获得许可的免费开源软件 [MIT License](https://github.com/gofiber/fiber/edit/master/LICENSE).
+⚠️ _请注意:_ `gofiber/fiber` 是根据以下条款获得许可的免费开源软件 [MIT License](https://github.com/gofiber/fiber/master/LICENSE).
