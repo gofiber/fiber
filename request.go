@@ -132,6 +132,12 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	return ""
 }
 
+// BaseUrl : https://gofiber.github.io/fiber/#/context?id=baseurl
+func (ctx *Ctx) BaseUrl() string {
+	fmt.Println("Fiber deprecated c.BaseUrl(), this will be removed in v2: Use c.BaseURL() instead")
+	return ctx.BaseURL()
+}
+
 // BaseURL : https://gofiber.github.io/fiber/#/context?id=baseurl
 func (ctx *Ctx) BaseURL() string {
 	return ctx.Protocol() + "://" + ctx.Hostname()
@@ -314,10 +320,6 @@ func (ctx *Ctx) OriginalURL() string {
 
 // Params : https://gofiber.github.io/fiber/#/context?id=params
 func (ctx *Ctx) Params(key string) string {
-	if ctx.params == nil {
-		return ""
-	}
-
 	for i := 0; i < len(*ctx.params); i++ {
 		if (*ctx.params)[i] == key {
 			return ctx.values[i]
