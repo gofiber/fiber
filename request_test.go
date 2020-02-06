@@ -1,6 +1,9 @@
 package fiber
 
 import (
+	"bytes"
+	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -66,7 +69,7 @@ func Test_AcceptsLanguages(t *testing.T) {
 		}
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
-	req.Header.Set("Accept-Encoding", "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
+	req.Header.Set("Accept-Language", "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
 	_, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
@@ -174,13 +177,43 @@ func Test_Cookies(t *testing.T) {
 	}
 }
 func Test_FormFile(t *testing.T) {
-
+	// TODO
 }
 func Test_FormValue(t *testing.T) {
+	app := New()
+	app.Post("/test", func(c *Ctx) {
+		expect := "john"
+		result := c.FormValue("name")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
 
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	writer.WriteField("name", "john")
+	writer.Close()
+	req, _ := http.NewRequest("POST", "/test", body)
+	contentType := fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary())
+
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 }
 func Test_Fresh(t *testing.T) {
-
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Fresh()
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 }
 func Test_Get(t *testing.T) {
 	app := New()
@@ -325,7 +358,32 @@ func Test_Method(t *testing.T) {
 	}
 }
 func Test_MultipartForm(t *testing.T) {
+	app := New()
+	app.Post("/test", func(c *Ctx) {
+		expect := "john"
+		result, err := c.MultipartForm()
+		if err != nil {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, err)
+		}
+		if result.Value["name"][0] != expect {
+			t.Fatalf(`%s: Expecting %s, got %v`, t.Name(), expect, result)
+		}
+	})
 
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	writer.WriteField("name", "john")
+	writer.Close()
+	req, _ := http.NewRequest("POST", "/test", body)
+	contentType := fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary())
+
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 }
 func Test_OriginalURL(t *testing.T) {
 	app := New()
@@ -405,13 +463,33 @@ func Test_Query(t *testing.T) {
 	}
 }
 func Test_Range(t *testing.T) {
-
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Range()
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 }
 func Test_Route(t *testing.T) {
-
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "/test"
+		result := c.Route().Path
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 }
 func Test_SaveFile(t *testing.T) {
-
+	// TODO
 }
 func Test_Secure(t *testing.T) {
 	app := New()
@@ -429,10 +507,26 @@ func Test_Secure(t *testing.T) {
 	}
 }
 func Test_SignedCookies(t *testing.T) {
-
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.SignedCookies()
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 }
 func Test_Stale(t *testing.T) {
-
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Stale()
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 }
 func Test_Subdomains(t *testing.T) {
 	app := New()
@@ -465,5 +559,3 @@ func Test_XHR(t *testing.T) {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
-
-// TODO: add all functions from request.go
