@@ -45,3 +45,19 @@ Installation is done using the
 ```bash
 go get github.com/gofiber/fiber
 ```
+
+## Features
+
+  * Robust routing
+  * Focus on high performance
+  * HTTP helpers (redirection, caching, etc)
+  * Content negotiation
+
+- Optimized for extreme performance 
+- Low memory footprint
+- Rapid Server-side programming
+- Middlewares with `Next` support
+- Robust routing with parameters
+- Serve static files
+- Express API endpoints
+- [Extended API doc](https://fiber.wiki/)
