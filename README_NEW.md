@@ -60,7 +60,7 @@ go get github.com/gofiber/fiber
 
 ## Philosophy
 
-People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind.
+People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps or micro services. Fiber, as a web framework, was created with the idea of minimalism so new and experienced gophers can rapidly develop web application's. If you have ever implemented a web application on Node.js using Express.js, then many methods and principles will seem very common to you.
 
 ## Examples
 
