@@ -1,6 +1,6 @@
 # Fiber
 
-[Expressjs](https://github.com/expressjs/express) inspired `web framework` for [Go](https://golang.org/doc/), designed to `ease` things up for `fast development` with `zero memory allocation` and raw `performance` in mind.
+[Expressjs](https://github.com/expressjs/express) styled HTTP `web framework` build on [Fasthttp]() for [Go](https://golang.org/doc/), designed to `ease` things up for `fast development` with `zero memory allocation` and raw `performance` in mind.
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases)
 [![](https://img.shields.io/badge/godoc-reference-blue.svg?longCache=true&style=flat)](https://pkg.go.dev/github.com/gofiber/fiber?tab=doc)
