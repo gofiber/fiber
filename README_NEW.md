@@ -85,7 +85,7 @@ app.Listen(3000)
 ```
 
 _**Routing**_
-```go
+```golang
 // ...
 app := fiber.New()
 
