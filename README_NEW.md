@@ -14,20 +14,24 @@ package main
 import "github.com/gofiber/fiber"
 
 func main() {
+  // Create new Fiber instance
   app := fiber.New()
 
+  // Create new route with GET method
   app.Get("/", func(c *fiber.Ctx) {
     c.Write("Hello, World!")
   })
 
+  // Start server on http://localhost:3000
   app.Listen(3000)
 }
 ```
 
 ## ⚙️ Installation
 
-Before installing, [download and install Go](https://golang.org/dl/).
-Go `1.11` or higher is required.
+Before installing, [download and install](https://golang.org/dl/) Go.
+
+> Go `1.11` (with enabled Go Modules) or higher is required.
 
 Installation is done using the
 [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
@@ -38,7 +42,7 @@ go get github.com/gofiber/fiber
 
 ## 🤖 Benchmarks
 
-These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [wiki#benchmarks](https://fiber.wiki/#benchmarks).
+These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://fiber.wiki/#benchmarks).
 
 <p float="left" align="middle">
   <img src="https://fiber.wiki/static/benchmarks/benchmark-pipeline.png" width="49%" />
@@ -54,17 +58,17 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 - Express [API endpoints](https://fiber.wiki/#/context)
 - Middleware & [Next](https://fiber.wiki/#context?id=next) support
 - Rapid server-side programming
-- [And much more, click here](https://fiber.wiki/)
+- And much more, [visit our Wiki](https://fiber.wiki/)
 
 ## 💡 Philosophy
 
-People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps or micro services. Fiber, as a web framework, was created with the idea of minimalism so new and experienced gophers can rapidly develop web application's.
+People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often don't understand how to start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and the philosophy of UNIX, so that newbie gophers can quickly enter the new world of Go, but be in it like home.
 
-Fiber is **inspired** by the Express framework, the most popular web framework on Internet. We combined the ease of Express and raw **performance** of Go. If you have ever implemented a web application on Node.js using Express.js, then many methods and principles will seem very common to you.
+Fiber is **inspired** by the Express framework, the most popular web framework on Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express.js or similar_), then many methods and principles will seem **very common** to you.
 
 ## 👀 Examples
 
-Listed below are some of the common examples. If you want to see more code examples, please visit our [recipes repository](https://github.com/gofiber/recipes) or [API documentation](https://fiber.wiki).
+Listed below are some of the common examples. If you want to see more code examples, please visit Fiber community [Cookbook repository](https://github.com/gofiber/recipes) or [API documentation](https://fiber.wiki).
 
 ### Static files
 
@@ -72,13 +76,17 @@ Listed below are some of the common examples. If you want to see more code examp
 // ...
 app := fiber.New()
 
+// Without prefix
 app.Static("./public")
-// http://localhost:3000/js/script.js
-// http://localhost:3000/css/style.css
 
-app.Static("/xxx", "./public")
-// http://localhost:3000/xxx/js/script.js
-// http://localhost:3000/xxx/css/style.css
+// => http://localhost:3000/js/script.js
+// => http://localhost:3000/css/style.css
+
+// With prefix
+app.Static("/your-prefix", "./public")
+
+// => http://localhost:3000/your-prefix/js/script.js
+// => http://localhost:3000/your-prefix/css/style.css
 
 app.Listen(3000)
 ```
@@ -168,7 +176,7 @@ type Data struct {
   Age  int    `json:"age"`
 }
 
-// The last route
+// Return JSON data
 app.Get("/json", func (c *fiber.Ctx) {
   c.JSON(&Data{
     Name: "John",
@@ -178,6 +186,10 @@ app.Get("/json", func (c *fiber.Ctx) {
 
 app.Listen(3000)
 ```
+
+## 💬 What people say about Fiber?
+
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
 
 ## 👍 Project assistance
 
@@ -189,7 +201,7 @@ If you want to say **thank you** or/and support active development `gofiber/fibe
 
 Thanks for your support! 😘 Together, we make `Fiber`.
 
-## ⭐️ Stars over time
+### ⭐️ Stars over time
 
 <a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
