@@ -1,4 +1,4 @@
-# Fiber
+[![Fiber Logo](https://i.imgur.com/ILjddkv.png)](https://fiber.wiki)
 
 [Expressjs](https://github.com/expressjs/express) styled HTTP `web framework` build on [Fasthttp]() for [Go](https://golang.org/doc/), designed to `ease` things up for `fast development` with `zero memory allocation` and raw `performance` in mind.
 
