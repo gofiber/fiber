@@ -10,7 +10,7 @@ Designed to ease things up for fast development with zero memory allocation and 
 ![](https://img.shields.io/badge/goreport-A+-brightgreen.svg?longCache=true&style=flat)
 [![](https://img.shields.io/badge/gitter-chat-brightgreen.svg?longCache=true&style=flat)](https://pkg.go.dev/github.com/gofiber/fiber?tab=doc)
 
-```go
+```golang
 package main
 
 import "github.com/gofiber/fiber"
@@ -69,7 +69,7 @@ Fiber is inspired by the Express framework, the most populair web framework on w
 Listed below are some of the common examples. If you want to see more code examples, please visit our [recipes repository](https://github.com/gofiber/recipes) or [api documentation](https://fiber.wiki).
 
 _**Static files**_
-```go
+```golang
 // ...
 app := fiber.New()
 
@@ -108,7 +108,7 @@ app.Listen(3000)
 ```
 
 _**Middleware**_
-```go
+```golang
 // ...
 app := fiber.New()
 
@@ -140,7 +140,7 @@ app.Listen(3000)
 ```
 
 _**404 Handling**_
-```go
+```golang
 // ...
 app := fiber.New()
 
@@ -155,7 +155,7 @@ app.Listen(3000)
 ```
 
 _**JSON Response**_
-```go
+```golang
 // ...
 app := fiber.New()
 
