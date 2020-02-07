@@ -40,7 +40,7 @@ Before installing, [download and install Go](https://golang.org/dl/).
 Go `1.11` or higher is required.
 
 Installation is done using the
-[`go get` command](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
+[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
 go get github.com/gofiber/fiber
