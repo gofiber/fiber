@@ -16,7 +16,7 @@ import (
 
 const (
 	// Version : Fiber version
-	Version = "1.3.3"
+	Version = "1.4.0"
 	website = "https://fiber.wiki"
 	// https://play.golang.org/p/r6GNeV1gbH
 	banner = "" +

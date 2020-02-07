@@ -236,7 +236,9 @@ func Test_FormValue(t *testing.T) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
-	writer.WriteField("name", "john")
+	if err := writer.WriteField("name", "john"); err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 	writer.Close()
 	req, _ := http.NewRequest("POST", "/test", body)
 	contentType := fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary())
@@ -450,7 +452,9 @@ func Test_MultipartForm(t *testing.T) {
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
-	writer.WriteField("name", "john")
+	if err := writer.WriteField("name", "john"); err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 	writer.Close()
 	req, _ := http.NewRequest("POST", "/test", body)
 	contentType := fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary())

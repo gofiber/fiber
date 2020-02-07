@@ -1,14 +1,12 @@
 package fiber
 
 import (
-	"sync"
 	"testing"
 )
 
-var wg sync.WaitGroup
+// var wg sync.WaitGroup
 
 func Test_Connect(t *testing.T) {
-	return
 	// app := New()
 	// app.Banner = false
 	//

@@ -158,12 +158,16 @@ func Test_JSON(t *testing.T) {
 	}
 	app := New()
 	app.Get("/test", func(c *Ctx) {
-		c.Json("")
+		if err := c.JSON(""); err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 		data := SomeStruct{
 			Name: "Grame",
 			Age:  20,
 		}
-		c.JSON(data)
+		if err := c.JSON(data); err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 	})
 	req, _ := http.NewRequest("GET", "http://example.com/test", nil)
 	resp, err := app.Test(req)
@@ -216,12 +220,16 @@ func Test_JSONP(t *testing.T) {
 	}
 	app := New()
 	app.Get("/test", func(c *Ctx) {
-		c.Jsonp("")
+		if err := c.JSONP(""); err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 		data := SomeStruct{
 			Name: "Grame",
 			Age:  20,
 		}
-		c.JSONP(data, "alwaysjohn")
+		if err := c.JSONP(data, "alwaysjohn"); err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 	})
 	req, _ := http.NewRequest("GET", "http://example.com/test", nil)
 	resp, err := app.Test(req)
@@ -543,8 +551,12 @@ func Test_XML(t *testing.T) {
 	}
 	app := New()
 	app.Get("/test", func(c *Ctx) {
-		c.Xml("")
-		c.XML(person{"John", 50})
+		if err := c.XML(""); err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
+		if err := c.XML(person{"John", 50}); err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 	})
 	req, _ := http.NewRequest("GET", "http://example.com/test", nil)
 	resp, err := app.Test(req)
