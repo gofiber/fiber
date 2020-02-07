@@ -66,7 +66,7 @@ Fiber is inspired by the Express framework, the most populair web framework on w
 
 ## Examples
 
-Listed below are some of the common examples. If you want to see more code examples, please visit our [recipes repository](https://github.com/gofiber/recipes).
+Listed below are some of the common examples. If you want to see more code examples, please visit our [recipes repository](https://github.com/gofiber/recipes) or [api documentation](https://fiber.wiki).
 
 **Static files**
 ```go
