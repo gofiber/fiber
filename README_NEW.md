@@ -68,7 +68,7 @@ Fiber is inspired by the Express framework, the most populair web framework on w
 
 Listed below are some of the common examples. If you want to see more code examples, please visit our [recipes repository](https://github.com/gofiber/recipes) or [api documentation](https://fiber.wiki).
 
-**Static files**
+_**Static files**_
 ```go
 // ...
 app := fiber.New()
@@ -84,7 +84,7 @@ app.Static("/50shades", "./private")
 app.Listen(3000)
 ```
 
-**Routing**
+_**Routing**_
 ```go
 // ...
 app := fiber.New()
@@ -107,7 +107,7 @@ app.Get("/api*", func(c *fiber.Ctx) {
 app.Listen(3000)
 ```
 
-**Middleware**
+_**Middleware**_
 ```go
 // ...
 app := fiber.New()
@@ -139,7 +139,7 @@ app.Post("/api/register", func(c *fiber.Ctx) {
 app.Listen(3000)
 ```
 
-**404 Handling**
+_**404 Handling**_
 ```go
 // ...
 app := fiber.New()
@@ -154,7 +154,7 @@ app.Use(func (c *fiber.Ctx) {
 app.Listen(3000)
 ```
 
-**JSON Response**
+_**JSON Response**_
 ```go
 // ...
 app := fiber.New()
