@@ -73,14 +73,71 @@ Listed below are some of the common examples. If you want to see more code examp
 ```go
 // ...
 app := fiber.New()
+
 app.Static("./public")
-// http://localhost:3000/hello.html
 // http://localhost:3000/js/script.js
 // http://localhost:3000/css/style.css
+
 app.Static("/50shades", "./private")
-// http://localhost:3000/50shades/hello.html
 // http://localhost:3000/50shades/js/script.js
 // http://localhost:3000/50shades/css/style.css
+
+app.Listen(3000)
+```
+
+**Routing**
+
+```go
+// ...
+app := fiber.New()
+
+// param
+app.Get("/:name", func(c *fiber.Ctx) {
+  c.Send("Hello, " + c.Params("name"))
+})
+
+// optional param
+app.Get("/:name/:lastname?", func(c *fiber.Ctx) {
+  c.Send("Hello, " + c.Params("name") + " " + c.Params("lastname"))
+})
+
+// wildcard
+app.Get("/api*", func(c *fiber.Ctx) {
+  c.Send("/api" + c.Params("*"))
+})
+
+app.Listen(3000)
+```
+
+**Middleware**
+
+```go
+// ...
+app := fiber.New()
+
+// match any post route
+app.Post(func(c *fiber.Ctx) {
+  user, pass, ok := c.BasicAuth()
+  if !ok || user != "john || pass != "doe" {
+    return c.Status(403).Send("Sorry John")
+  }
+  c.Next()
+})
+
+// match all routes starting with /api
+app.Use("/api", func(c *fiber.Ctx) {
+  c.Set("Access-Control-Allow-Origin", "*")
+  c.Set("Access-Control-Allow-Headers", "X-Requested-With")
+  c.Next()
+})
+
+// optional param
+app.Post("/api/register", func(c *fiber.Ctx) {
+  username := c.Body("username")
+  password := c.Body("password")
+  // ..
+})
+
 app.Listen(3000)
 ```
 
