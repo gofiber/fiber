@@ -77,9 +77,9 @@ app.Static("./public")
 // http://localhost:3000/js/script.js
 // http://localhost:3000/css/style.css
 
-app.Static("/50shades", "./private")
-// http://localhost:3000/50shades/js/script.js
-// http://localhost:3000/50shades/css/style.css
+app.Static("/xxx", "./public")
+// http://localhost:3000/xxx/js/script.js
+// http://localhost:3000/xxx/css/style.css
 
 app.Listen(3000)
 ```
