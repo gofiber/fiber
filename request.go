@@ -9,11 +9,13 @@ package fiber
 
 import (
 	"encoding/base64"
+	"encoding/xml"
 	"fmt"
 	"mime"
 	"mime/multipart"
 	"strings"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/valyala/fasthttp"
 )
 
@@ -192,6 +194,17 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 		}
 	}
 	return ""
+}
+
+// BodyParser : https://gofiber.github.io/fiber/#/context?id=bodyparser
+func (ctx *Ctx) BodyParser(v interface{}) error {
+	cType := getString(ctx.Fasthttp.Request.Header.ContentType())
+	if cType == contentTypeJSON {
+		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), v)
+	} else if cType == contentTypeXML {
+		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), v)
+	}
+	return fmt.Errorf("Cannot Parse Content-Type: %v", cType)
 }
 
 // Cookies : https://gofiber.github.io/fiber/#/context?id=cookies
