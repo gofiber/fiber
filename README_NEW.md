@@ -1,14 +1,14 @@
+<img height="160px" src="https://github.com/gofiber/docs/blob/master/static/logo_320px_trans.png" alt="Fiber logo" />
+
 # 🚀 Fiber <a href="README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="README_CH.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
-
-<img align="right" height="160px" src="https://github.com/gofiber/docs/blob/master/static/logo_320px_trans.png" alt="Fiber logo" />
 
 **Fiber** — is an [Express.js](https://github.com/expressjs/express) **inspired** web framework build on [Fasthttp](https://github.com/valyala/fasthttp) for [Go](https://golang.org/doc/). Designed to **ease** things up for **fast** development with **zero memory allocation** and **performance** in mind.
 
 ## ⚡️ Quick start
 
-```golang
+```go
 package main
 
 import "github.com/gofiber/fiber"
@@ -68,7 +68,7 @@ Listed below are some of the common examples. If you want to see more code examp
 
 ### Static files
 
-```golang
+```go
 // ...
 app := fiber.New()
 
@@ -85,7 +85,7 @@ app.Listen(3000)
 
 ### Routing
 
-```golang
+```go
 // ...
 app := fiber.New()
 
@@ -109,7 +109,7 @@ app.Listen(3000)
 
 ### Middleware
 
-```golang
+```go
 // ...
 app := fiber.New()
 
@@ -142,7 +142,7 @@ app.Listen(3000)
 
 ### 404 Handling
 
-```golang
+```go
 // ...
 app := fiber.New()
 
@@ -158,7 +158,7 @@ app.Listen(3000)
 
 ### JSON Response
 
-```golang
+```go
 // ...
 app := fiber.New()
 
