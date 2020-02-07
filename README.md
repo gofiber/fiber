@@ -1,4 +1,4 @@
-# 🚀 Fiber  <a href="README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="README_CH.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
+# 🚀 Fiber <a href="README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="README_CH.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
 
@@ -113,7 +113,7 @@ func main() {
   // Create new Fiber instance
   app := fiber.New()
 
-  // Define all used middlewares in Use()
+  // Define all used middleware in Use()
 
   app.Use(func(c *fiber.Ctx) {
     c.Write("Match anything!\n")
@@ -134,7 +134,7 @@ func main() {
 }
 ```
 
-## Project assistance
+## 👍 Project assistance
 
 If you want to say **thank you** or/and support active development `gofiber/fiber`:
 
@@ -144,7 +144,7 @@ If you want to say **thank you** or/and support active development `gofiber/fibe
 
 Thanks for your support! 😘 Together, we make `Fiber`.
 
-## Stars over time
+## ⭐️ Stars over time
 
 <a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
