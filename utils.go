@@ -8,10 +8,13 @@
 package fiber
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io/ioutil"
 	"net"
+	"net/http"
+	"net/http/httputil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,8 +22,6 @@ import (
 	"strings"
 	"time"
 	"unsafe"
-
-	"github.com/valyala/fasthttp"
 )
 
 func getParams(path string) (params []string) {
@@ -75,6 +76,9 @@ func getFiles(root string) (files []string, isDir bool, err error) {
 }
 
 func getType(ext string) (mime string) {
+	if ext == "" {
+		return mime
+	}
 	if ext[0] == '.' {
 		ext = ext[1:]
 	}
@@ -107,92 +111,68 @@ func getBytes(s string) (b []byte) {
 	return b
 }
 
-// FakeRequest creates a readWriter and calls ServeConn on local servver
-func (r *Fiber) FakeRequest(raw string) (string, error) {
-	server := &fasthttp.Server{
-		Handler:                            r.handler,
-		Name:                               r.Server,
-		Concurrency:                        r.Engine.Concurrency,
-		DisableKeepalive:                   r.Engine.DisableKeepAlive,
-		ReadBufferSize:                     r.Engine.ReadBufferSize,
-		WriteBufferSize:                    r.Engine.WriteBufferSize,
-		ReadTimeout:                        r.Engine.ReadTimeout,
-		WriteTimeout:                       r.Engine.WriteTimeout,
-		IdleTimeout:                        r.Engine.IdleTimeout,
-		MaxConnsPerIP:                      r.Engine.MaxConnsPerIP,
-		MaxRequestsPerConn:                 r.Engine.MaxRequestsPerConn,
-		TCPKeepalive:                       r.Engine.TCPKeepalive,
-		TCPKeepalivePeriod:                 r.Engine.TCPKeepalivePeriod,
-		MaxRequestBodySize:                 r.Engine.MaxRequestBodySize,
-		ReduceMemoryUsage:                  r.Engine.ReduceMemoryUsage,
-		GetOnly:                            r.Engine.GetOnly,
-		DisableHeaderNamesNormalizing:      r.Engine.DisableHeaderNamesNormalizing,
-		SleepWhenConcurrencyLimitsExceeded: r.Engine.SleepWhenConcurrencyLimitsExceeded,
-		NoDefaultServerHeader:              r.Server == "",
-		NoDefaultContentType:               r.Engine.NoDefaultContentType,
-		KeepHijackedConns:                  r.Engine.KeepHijackedConns,
+// Test takes a http.Request and execute a fake connection to the application
+// It returns a http.Response when the connection was successfull
+func (r *Fiber) Test(req *http.Request) (*http.Response, error) {
+	// Get raw http request
+	reqRaw, err := httputil.DumpRequest(req, true)
+	if err != nil {
+		return nil, err
 	}
-	rw := &readWriter{}
-	rw.r.WriteString(raw)
-
-	ch := make(chan error)
+	// Setup a fiber server struct
+	r.httpServer = r.setupServer()
+	// Create fake connection
+	conn := &conn{}
+	// Pass HTTP request to conn
+	conn.r.Write(reqRaw)
+	// Serve conn to server
+	channel := make(chan error)
 	go func() {
-		ch <- server.ServeConn(rw)
+		channel <- r.httpServer.ServeConn(conn)
 	}()
-
+	// Wait for callback
 	select {
-	case err := <-ch:
+	case err := <-channel:
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-	case <-time.After(200 * time.Millisecond):
-		return "", fmt.Errorf("Timeout")
+		// Throw timeout error after 200ms
+	case <-time.After(500 * time.Millisecond):
+		return nil, fmt.Errorf("Timeout")
 	}
-
-	err := server.ServeConn(rw)
+	// Get raw HTTP response
+	respRaw, err := ioutil.ReadAll(&conn.w)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	resp, err := ioutil.ReadAll(&rw.w)
+	// Create buffer
+	reader := strings.NewReader(getString(respRaw))
+	buffer := bufio.NewReader(reader)
+	// Convert raw HTTP response to http.Response
+	resp, err := http.ReadResponse(buffer, req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return getString(resp), nil
+	// Return *http.Response
+	return resp, nil
 }
 
-// Readwriter for test cases
-type readWriter struct {
+// https://golang.org/src/net/net.go#L113
+type conn struct {
 	net.Conn
 	r bytes.Buffer
 	w bytes.Buffer
 }
 
-func (rw *readWriter) Close() error {
-	return nil
-}
-
-func (rw *readWriter) Read(b []byte) (int, error) {
-	return rw.r.Read(b)
-}
-
-func (rw *readWriter) Write(b []byte) (int, error) {
-	return rw.w.Write(b)
-}
-
-func (rw *readWriter) RemoteAddr() net.Addr {
+func (c *conn) RemoteAddr() net.Addr {
 	return &net.TCPAddr{
-		IP: net.IPv4zero,
+		IP: net.IPv4(0, 0, 0, 0),
 	}
 }
-
-func (rw *readWriter) LocalAddr() net.Addr {
-	return rw.RemoteAddr()
-}
-
-func (rw *readWriter) SetReadDeadline(t time.Time) error {
-	return nil
-}
-
-func (rw *readWriter) SetWriteDeadline(t time.Time) error {
-	return nil
-}
+func (c *conn) LocalAddr() net.Addr                { return c.LocalAddr() }
+func (c *conn) Read(b []byte) (int, error)         { return c.r.Read(b) }
+func (c *conn) Write(b []byte) (int, error)        { return c.w.Write(b) }
+func (c *conn) Close() error                       { return nil }
+func (c *conn) SetDeadline(t time.Time) error      { return nil }
+func (c *conn) SetReadDeadline(t time.Time) error  { return nil }
+func (c *conn) SetWriteDeadline(t time.Time) error { return nil }

@@ -9,11 +9,13 @@ package fiber
 
 import (
 	"encoding/base64"
+	"encoding/xml"
 	"fmt"
 	"mime"
 	"mime/multipart"
 	"strings"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/valyala/fasthttp"
 )
 
@@ -132,6 +134,12 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	return ""
 }
 
+// BaseUrl : https://gofiber.github.io/fiber/#/context?id=baseurl
+func (ctx *Ctx) BaseUrl() string {
+	fmt.Println("Fiber deprecated c.BaseUrl(), this will be removed in v2: Use c.BaseURL() instead")
+	return ctx.BaseURL()
+}
+
 // BaseURL : https://gofiber.github.io/fiber/#/context?id=baseurl
 func (ctx *Ctx) BaseURL() string {
 	return ctx.Protocol() + "://" + ctx.Hostname()
@@ -175,6 +183,8 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 		switch arg := args[0].(type) {
 		case string:
 			return getString(ctx.Fasthttp.Request.PostArgs().Peek(arg))
+		case []byte:
+			return getString(ctx.Fasthttp.Request.PostArgs().PeekBytes(arg))
 		case func(string, string):
 			ctx.Fasthttp.Request.PostArgs().VisitAll(func(k []byte, v []byte) {
 				arg(getString(k), getString(v))
@@ -184,6 +194,17 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 		}
 	}
 	return ""
+}
+
+// BodyParser : https://gofiber.github.io/fiber/#/context?id=bodyparser
+func (ctx *Ctx) BodyParser(v interface{}) error {
+	cType := getString(ctx.Fasthttp.Request.Header.ContentType())
+	if cType == contentTypeJSON {
+		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), v)
+	} else if cType == contentTypeXML {
+		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), v)
+	}
+	return fmt.Errorf("Cannot Parse Content-Type: %v", cType)
 }
 
 // Cookies : https://gofiber.github.io/fiber/#/context?id=cookies
@@ -312,10 +333,6 @@ func (ctx *Ctx) OriginalURL() string {
 
 // Params : https://gofiber.github.io/fiber/#/context?id=params
 func (ctx *Ctx) Params(key string) string {
-	if ctx.params == nil {
-		return ""
-	}
-
 	for i := 0; i < len(*ctx.params); i++ {
 		if (*ctx.params)[i] == key {
 			return ctx.values[i]

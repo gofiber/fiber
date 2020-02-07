@@ -150,4 +150,4 @@ func main() {
 
 ## License
 
-⚠️ _请注意:_ `gofiber/fiber` 是根据以下条款获得许可的免费开源软件 [MIT License](https://github.com/gofiber/fiber/edit/master/LICENSE).
+⚠️ _请注意:_ `gofiber/fiber` 是根据以下条款获得许可的免费开源软件 [MIT License](https://github.com/gofiber/fiber/master/LICENSE).

@@ -1,235 +1,673 @@
 package fiber
 
 import (
+	"bytes"
+	"fmt"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 )
 
 func Test_Accepts(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8\r\n\r\n"
-	// Create fiber app
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		expecting := "html"
-		result := c.Accepts(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+	app.Get("/test", func(c *Ctx) {
+		expect := ""
+		result := c.Accepts(expect)
+		if c.Accepts() != "" {
+			t.Fatalf(`Expecting %s, got %s`, expect, result)
 		}
-
-		expecting = ".xml"
-		result = c.Accepts(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+		expect = ".xml"
+		result = c.Accepts(expect)
+		if result != expect {
+			t.Fatalf(`Expecting %s, got %s`, expect, result)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_AcceptsCharsets(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\nAccept-Charset: utf-8, iso-8859-1;q=0.5\r\n\r\n"
-	// Raw http request
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		expecting := "utf-8"
-		result := c.AcceptsCharsets(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
-		}
+	app.Get("/test", func(c *Ctx) {
+		c.AcceptsCharsets()
 
-		expecting = "iso-8859-1"
-		result = c.AcceptsCharsets(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+		expect := "utf-8"
+		result := c.AcceptsCharsets(expect)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_AcceptsEncodings(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\nAccept-Encoding: deflate, gzip;q=1.0, *;q=0.5\r\n\r\n"
-	// Raw http request
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		expecting := "gzip"
-		result := c.AcceptsEncodings(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
-		}
-
-		expecting = "*"
-		result = c.AcceptsEncodings(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+	app.Get("/test", func(c *Ctx) {
+		c.AcceptsEncodings()
+		expect := "gzip"
+		result := c.AcceptsEncodings(expect)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept-Encoding", "deflate, gzip;q=1.0, *;q=0.5")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_AcceptsLanguages(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\nAccept-Language: fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5\r\n\r\n"
-	// Raw http request
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		expecting := "fr"
-		result := c.AcceptsLanguages(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
-		}
-
-		expecting = "en"
-		result = c.AcceptsLanguages(expecting)
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+	app.Get("/test", func(c *Ctx) {
+		c.AcceptsLanguages()
+		expect := "fr"
+		result := c.AcceptsLanguages(expect)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept-Language", "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_BaseURL(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\n\r\n"
-	// Raw http request
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		expecting := "http://localhost:8080"
+	app.Get("/test", func(c *Ctx) {
+		c.BaseUrl() // deprecated
+		expect := "http://google.com"
 		result := c.BaseURL()
-		if result != expecting {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), expecting)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "http://google.com/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_BasicAuth(t *testing.T) {
-	// Raw http request
-	req := "GET / HTTP/1.1\r\nHost: localhost:8080\r\nAuthorization: Basic am9objpkb2U=\r\n\r\n"
-	// Raw http request
 	app := New()
-	app.Get("/", func(c *Ctx) {
-		user, pass, ok := c.BasicAuth()
-		if !ok {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "ok")
+	app.Get("/test", func(c *Ctx) {
+		expect1 := "john"
+		expect2 := "doe"
+		result1, result2, _ := c.BasicAuth()
+		if result1 != expect1 {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect1, expect1)
 		}
-		if user != "john" || pass != "doe" {
-			if !ok {
-				t.Fatalf(`%s: Expecting john & doe`, t.Name())
-			}
+		if result2 != expect2 {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), result2, expect2)
 		}
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.SetBasicAuth("john", "doe")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Body(t *testing.T) {
-	// Raw http request
-	req := "POST /test HTTP/1.1\r\nHost: localhost:8080\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 9\r\n\r\nuser=john"
-	// Raw http request
 	app := New()
 	app.Post("/test", func(c *Ctx) {
-		if c.Body() != "user=john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "user=john")
+		c.Body(1)
+		expect := "john=doe"
+		result := c.Body()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
-		if c.Body("user") != "john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+		expect = "doe"
+		result = c.Body("john")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		expect = "doe"
+		result = c.Body([]byte("john"))
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 		c.Body(func(k, v string) {
-			if k != "user" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "user")
+			expect = "john"
+			if k != "john" {
+				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, k)
 			}
-			if v != "john" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+			expect = "doe"
+			if v != "doe" {
+				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, v)
 			}
 		})
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+	data := url.Values{}
+	data.Set("john", "doe")
+	req, _ := http.NewRequest("POST", "/test", strings.NewReader(data.Encode()))
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
 func Test_Cookies(t *testing.T) {
-	// Raw http request
-	req := "GET /test HTTP/1.1\r\nHost: localhost:8080\r\nCookie: user=john\r\n\r\n"
-	// Raw http request
 	app := New()
 	app.Get("/test", func(c *Ctx) {
-		if c.Cookies() != "user=john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "user=john")
+		c.Cookies(1)
+		expect := "john=doe"
+		result := c.Cookies()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
-		if c.Cookies("user") != "john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+		expect = "doe"
+		result = c.Cookies("john")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		expect = "doe"
+		result = c.Cookies([]byte("john"))
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 		c.Cookies(func(k, v string) {
-			if k != "user" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "user")
+			expect = "john"
+			if k != "john" {
+				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, k)
 			}
-			if v != "john" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
+			expect = "doe"
+			if v != "doe" {
+				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, v)
 			}
 		})
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "john", Value: "doe"})
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_FormFile(t *testing.T) {
-	// Raw http request
-	req := "POST /test HTTP/1.1\r\nHost: localhost:8080\r\nCookie: user=john\r\n\r\n"
-	// Raw http request
+	// TODO
+}
+func Test_FormValue(t *testing.T) {
 	app := New()
 	app.Post("/test", func(c *Ctx) {
-		if c.Cookies() != "user=john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "user=john")
+		expect := "john"
+		result := c.FormValue("name")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
-		if c.Cookies("user") != "john" {
-			t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
-		}
-		c.Cookies(func(k, v string) {
-			if k != "user" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "user")
-			}
-			if v != "john" {
-				t.Fatalf(`%s: Expecting %s`, t.Name(), "john")
-			}
-		})
 	})
-	// Send fake request
-	res, err := app.FakeRequest(req)
-	// Check for errors and if route was handled
-	if err != nil || !strings.Contains(res, "HTTP/1.1 200 OK") {
-		t.Fatalf(`%s: Error serving FakeRequest %s`, t.Name(), err)
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	writer.WriteField("name", "john")
+	writer.Close()
+	req, _ := http.NewRequest("POST", "/test", body)
+	contentType := fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary())
+
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
+func Test_Fresh(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Fresh()
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Get(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "utf-8, iso-8859-1;q=0.5"
+		result := c.Get("Accept-Charset")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		expect = "Monster"
+		result = c.Get("referrer")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
+	req.Header.Set("Referer", "Monster")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_Hostname(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "google.com"
+		result := c.Hostname()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "http://google.com/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_IP(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Ip() // deprecated
+		expect := "0.0.0.0"
+		result := c.IP()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "http://google.com/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_IPs(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Ips() // deprecated
+		expect := []string{"0.0.0.0", "1.1.1.1"}
+		result := c.IPs()
+		if result[0] != expect[0] && result[1] != expect[1] {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Forwarded-For", "0.0.0.0, 1.1.1.1")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_Is(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Is(".json")
+		expect := true
+		result := c.Is("html")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("Content-Type", "text/html")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_Locals(t *testing.T) {
+	app := New()
+	app.Use(func(c *Ctx) {
+		c.Locals("john", "doe")
+		c.Next()
+	})
+	app.Get("/test", func(c *Ctx) {
+		expect := "doe"
+		result := c.Locals("john")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_Method(t *testing.T) {
+	app := New()
+	app.Get(func(c *Ctx) {
+		expect := "GET"
+		result := c.Method()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	app.Post(func(c *Ctx) {
+		expect := "POST"
+		result := c.Method()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	app.Put(func(c *Ctx) {
+		expect := "PUT"
+		result := c.Method()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	req, _ = http.NewRequest("POST", "/test", nil)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	req, _ = http.NewRequest("PUT", "/test", nil)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_MultipartForm(t *testing.T) {
+	app := New()
+	app.Post("/test", func(c *Ctx) {
+		expect := "john"
+		result, err := c.MultipartForm()
+		if err != nil {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, err)
+		}
+		if result.Value["name"][0] != expect {
+			t.Fatalf(`%s: Expecting %s, got %v`, t.Name(), expect, result)
+		}
+	})
 
-// TODO: add all functions from request.go
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	writer.WriteField("name", "john")
+	writer.Close()
+	req, _ := http.NewRequest("POST", "/test", body)
+	contentType := fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary())
+
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_OriginalURL(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.OriginalUrl() // deprecated
+		expect := "/test?search=demo"
+		result := c.OriginalURL()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "http://google.com/test?search=demo", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_Params(t *testing.T) {
+	app := New()
+	app.Get("/test/:user", func(c *Ctx) {
+		expect := "john"
+		result := c.Params("user")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	app.Get("/test2/*", func(c *Ctx) {
+		expect := "im/a/cookie"
+		result := c.Params("*")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test/john", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	req, _ = http.NewRequest("GET", "/test2/im/a/cookie", nil)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_Path(t *testing.T) {
+	app := New()
+	app.Get("/test/:user", func(c *Ctx) {
+		expect := "/test/john"
+		result := c.Path()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test/john", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_Query(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "john"
+		result := c.Query("search")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		expect = "20"
+		result = c.Query("age")
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test?search=john&age=20", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_Range(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Range()
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Route(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := "/test"
+		result := c.Route().Path
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_SaveFile(t *testing.T) {
+	// TODO
+}
+func Test_Secure(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := false
+		result := c.Secure()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_SignedCookies(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.SignedCookies()
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_Stale(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Stale()
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
+func Test_Subdomains(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		expect := []string{"john", "doe"}
+		result := c.Subdomains()
+		if result[0] != expect[0] && result[1] != expect[1] {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "http://john.doe.google.com/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_XHR(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Xhr() // deprecated
+		expect := true
+		result := c.XHR()
+		if result != expect {
+			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
+		}
+	})
+	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}

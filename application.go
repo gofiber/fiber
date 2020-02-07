@@ -10,6 +10,8 @@ package fiber
 import (
 	"flag"
 	"time"
+
+	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -33,7 +35,8 @@ var (
 // Fiber structure
 type Fiber struct {
 	// Server name header
-	Server string
+	Server     string
+	httpServer *fasthttp.Server
 	// Show fiber banner
 	Banner bool
 	// https://github.com/valyala/fasthttp/blob/master/server.go#L150
@@ -72,10 +75,11 @@ type engine struct {
 func New() *Fiber {
 	flag.Parse()
 	return &Fiber{
-		Server:  "",
-		Banner:  true,
-		Prefork: *prefork,
-		child:   *child,
+		Server:     "",
+		httpServer: nil,
+		Banner:     true,
+		Prefork:    *prefork,
+		child:      *child,
 		Engine: &engine{
 			Concurrency:                        256 * 1024,
 			DisableKeepAlive:                   false,
