@@ -48,14 +48,14 @@ go get github.com/gofiber/fiber
 
 ## Features
 
-* Robust routing
-* Serve static files
-* Extreme performance 
+* Robust [routing](https://fiber.wiki/#/routing)
+* Serve [static files](https://fiber.wiki/#/application?id=static)
+* [Extreme performance](https://fiber.wiki/#/benchmarks)
 * Low memory footprint
-* Express API endpoints
-* Middleware & `Next` support
+* Express [API endpoints](https://fiber.wiki/#/context)
+* Middleware & [Next](https://fiber.wiki/#context?id=next) support
 * Rapid server-side programming
-* [Extended API documentation](https://fiber.wiki/)
+* [And much more, click here](https://fiber.wiki/)
 
 
 ## Philosophy
