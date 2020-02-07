@@ -29,13 +29,8 @@ func main() {
 
 These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [wiki#benchmarks](https://fiber.wiki/#benchmarks).
 <p float="left" align="middle">
-  <img src="https://fiber.wiki/static/benchmarks/concurrency-pipeline.png" width="49%" />
+  <img src="https://fiber.wiki/static/benchmarks/benchmark-pipeline.png" width="49%" />
   <img src="https://fiber.wiki/static/benchmarks/benchmark_alloc.png" width="49%" /> 
-</p>
-
-<p float="left" align="middle">
-  <img src="https://fiber.wiki/static/benchmarks/benchmark.png" width="49%" />
-  <img src="https://fiber.wiki/static/benchmarks/benchmark-pipeline.png" width="49%" /> 
 </p>
 
 ## Installation
