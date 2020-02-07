@@ -53,7 +53,7 @@ go get github.com/gofiber/fiber
 * Extreme performance 
 * Low memory footprint
 * Express API endpoints
-* Middlewares & `Next` support
+* Middleware & `Next` support
 * Rapid server-side programming
 * [Extended API documentation](https://fiber.wiki/)
 
