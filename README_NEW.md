@@ -29,12 +29,11 @@ func main() {
 
 ## ⚙️ Installation
 
-Before installing, [download and install](https://golang.org/dl/) Go.
+First of all, [download](https://golang.org/dl/) and install Go.
 
 > Go `1.11` (with enabled Go Modules) or higher is required.
 
-Installation is done using the
-[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+Installation is done using the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
 go get github.com/gofiber/fiber
