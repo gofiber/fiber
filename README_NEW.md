@@ -25,6 +25,7 @@ func main() {
 }
 ```
 ## Benchmarks
+Fiber is tested using [TechEmpower Benchmarks](https://github.com/TechEmpower/FrameworkBenchmarks) & [Go Web Benchmarks](https://github.com/smallnest/go-web-framework-benchmark)
 <p float="left" align="middle">
   <img src="https://fiber.wiki/static/benchmarks/concurrency-pipeline.png" width="49%" />
   <img src="https://fiber.wiki/static/benchmarks/benchmark_alloc.png" width="49%" /> 
