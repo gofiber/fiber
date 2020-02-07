@@ -12,6 +12,35 @@ import (
 	"testing"
 )
 
+func TestBind(t *testing.T) {
+	app := New()
+	app.Post("/test", func(c *Ctx) {
+		type req struct {
+			Foo string `json:"foo"`
+		}
+
+		var r req
+		if err := c.Bind(&r); err != nil {
+			t.Fatalf(`Expecting to bind request to value`)
+		}
+
+		c.Status(http.StatusOK)
+	})
+
+	buf := bytes.NewBuffer(nil)
+	buf.WriteString(`{"foo": "bar"}`)
+
+	req := httptest.NewRequest("POST", "/test", bytes.NewReader(buf.Bytes()))
+	req.Header.Set("Accept", "application/json")
+	req.Header.Add("Content-Length", strconv.Itoa(buf.Len()))
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
 func Test_Accepts(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {

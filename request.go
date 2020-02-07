@@ -14,6 +14,7 @@ import (
 	"mime/multipart"
 	"strings"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/valyala/fasthttp"
 )
 
@@ -53,6 +54,11 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 		}
 	}
 	return ""
+}
+
+// Bind :
+func (ctx *Ctx) Bind(v interface{}) error {
+	return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), v)
 }
 
 // AcceptsCharsets : https://gofiber.github.io/fiber/#/context?id=acceptscharsets
