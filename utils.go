@@ -124,7 +124,10 @@ func (r *Fiber) Test(req *http.Request) (*http.Response, error) {
 	// Create fake connection
 	conn := &conn{}
 	// Pass HTTP request to conn
-	conn.r.Write(reqRaw)
+	_, err = conn.r.Write(reqRaw)
+	if err != nil {
+		return nil, err
+	}
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
