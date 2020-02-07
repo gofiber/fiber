@@ -3,7 +3,7 @@ language: go
 os:
   - linux
   - windows
-
+  - osx
 go:
   - 1.13.x
 env:
@@ -13,5 +13,3 @@ install:
 script:
 #  - golint -set_exit_status ./...
   - go test -race ./...
-
-dist: xenial
