@@ -24,3 +24,13 @@ func main() {
   app.Listen(3000)
 }
 ```
+## Benchmarks
+<p float="left" align="middle">
+  <img src="https://fiber.wiki/static/benchmarks/techempower-updates.png" width="49%" />
+  <img src="https://fiber.wiki/static/benchmarks/techempower-plaintext-latency.png" width="49%" /> 
+</p>
+
+<p float="left" align="middle">
+  <img src="https://fiber.wiki/static/benchmarks/benchmark.png" width="49%" />
+  <img src="https://fiber.wiki/static/benchmarks/benchmark-pipeline.png" width="49%" /> 
+</p>
