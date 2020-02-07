@@ -48,16 +48,23 @@ go get github.com/gofiber/fiber
 
 ## Features
 
-  * Robust routing
-  * Focus on high performance
-  * HTTP helpers (redirection, caching, etc)
-  * Content negotiation
+* Robust routing
+* Serve static files
+* Extreme performance 
+* Low memory footprint
+* Express API endpoints
+* Middlewares & `Next` support
+* Rapid server-side programming
+* [Extended API documentation](https://fiber.wiki/)
 
-- Optimized for extreme performance 
-- Low memory footprint
-- Rapid Server-side programming
-- Middlewares with `Next` support
-- Robust routing with parameters
-- Serve static files
-- Express API endpoints
-- [Extended API doc](https://fiber.wiki/)
+
+## Philosophy
+
+People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind.
+
+## Examples
+
+
+## License
+
+`gofiber/fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/master/LICENSE).
