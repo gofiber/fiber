@@ -1,6 +1,6 @@
-[![Fiber Logo](https://i.imgur.com/ILjddkv.png)](https://fiber.wiki)
+[![Fiber Logo](https://i.imgur.com/9IhxH1m.png)](https://fiber.wiki)
 
-[Expressjs](https://github.com/expressjs/express) styled HTTP `web framework` build on [Fasthttp]() for [Go](https://golang.org/doc/), designed to `ease` things up for `fast development` with `zero memory allocation` and raw `performance` in mind.
+[Expressjs](https://github.com/expressjs/express) styled HTTP web framework build on [Fasthttp](https://github.com/valyala/fasthttp) for [Go](https://golang.org/doc/), designed to ease things up for fast development with zero memory allocation and raw performance in mind.
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases)
 [![](https://img.shields.io/badge/godoc-reference-blue.svg?longCache=true&style=flat)](https://pkg.go.dev/github.com/gofiber/fiber?tab=doc)
