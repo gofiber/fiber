@@ -7,10 +7,10 @@ import (
 
 func Test_Static(t *testing.T) {
 	app := New()
-	app.Static("./middleware")
-	app.Static("/john", "./middleware")
-	app.Static("*", "./middleware/cors.go")
-	req, _ := http.NewRequest("GET", "/cors.go", nil)
+	app.Static("./.github")
+	app.Static("/john", "./.github")
+	app.Static("*", "./.github/stale.yml")
+	req, _ := http.NewRequest("GET", "/stale.yml", nil)
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
@@ -21,7 +21,7 @@ func Test_Static(t *testing.T) {
 	if resp.Header.Get("Content-Length") == "" {
 		t.Fatalf(`%s: Missing Content-Length`, t.Name())
 	}
-	req, _ = http.NewRequest("GET", "/john/cors.go", nil)
+	req, _ = http.NewRequest("GET", "/john/stale.yml", nil)
 	resp, err = app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
