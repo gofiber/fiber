@@ -64,6 +64,7 @@ func getRegex(path string) (*regexp.Regexp, error) {
 }
 
 func getFiles(root string) (files []string, isDir bool, err error) {
+	root = filepath.Clean(root)
 	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
 			files = append(files, path)
