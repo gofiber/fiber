@@ -26,8 +26,8 @@ func main() {
 ```
 ## Benchmarks
 <p float="left" align="middle">
-  <img src="https://fiber.wiki/static/benchmarks/techempower-updates.png" width="49%" />
-  <img src="https://fiber.wiki/static/benchmarks/techempower-plaintext-latency.png" width="49%" /> 
+  <img src="https://fiber.wiki/static/benchmarks/concurrency-pipeline.png" width="49%" />
+  <img src="https://fiber.wiki/static/benchmarks/benchmark_alloc.png" width="49%" /> 
 </p>
 
 <p float="left" align="middle">
