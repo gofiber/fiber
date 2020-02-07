@@ -66,6 +66,23 @@ Fiber is inspired by the Express framework, the most populair web framework on w
 
 ## Examples
 
+Listed below are some of the common examples. If you want to see more code examples, please visit our [recipes repository](https://github.com/gofiber/recipes).
+
+**Static files**
+
+```go
+// ...
+app := fiber.New()
+app.Static("./public")
+// http://localhost:3000/hello.html
+// http://localhost:3000/js/script.js
+// http://localhost:3000/css/style.css
+app.Static("/50shades", "./private")
+// http://localhost:3000/50shades/hello.html
+// http://localhost:3000/50shades/js/script.js
+// http://localhost:3000/50shades/css/style.css
+app.Listen(3000)
+```
 
 ## License
 
