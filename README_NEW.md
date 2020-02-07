@@ -69,7 +69,6 @@ Fiber is inspired by the Express framework, the most populair web framework on w
 Listed below are some of the common examples. If you want to see more code examples, please visit our [recipes repository](https://github.com/gofiber/recipes).
 
 **Static files**
-
 ```go
 // ...
 app := fiber.New()
@@ -86,7 +85,6 @@ app.Listen(3000)
 ```
 
 **Routing**
-
 ```go
 // ...
 app := fiber.New()
@@ -110,7 +108,6 @@ app.Listen(3000)
 ```
 
 **Middleware**
-
 ```go
 // ...
 app := fiber.New()
@@ -118,8 +115,9 @@ app := fiber.New()
 // match any post route
 app.Post(func(c *fiber.Ctx) {
   user, pass, ok := c.BasicAuth()
-  if !ok || user != "john || pass != "doe" {
-    return c.Status(403).Send("Sorry John")
+  if !ok || user != "john" || pass != "doe" {
+    c.Status(403).Send("Sorry John")
+    return
   }
   c.Next()
 })
@@ -140,6 +138,43 @@ app.Post("/api/register", func(c *fiber.Ctx) {
 
 app.Listen(3000)
 ```
+
+**404 Handling**
+```go
+// ...
+app := fiber.New()
+
+// ..application routes
+
+// last route
+app.Use(func (c *fiber.Ctx) {
+  c.SendStatus(404)
+})
+
+app.Listen(3000)
+```
+
+**JSON Response**
+```go
+// ...
+app := fiber.New()
+
+type Data struct {
+  Name string `json:"name"`
+  Age  int    `json:"age"`
+}
+
+// last route
+app.Get("/json", func (c *fiber.Ctx) {
+  c.JSON(&Data{
+    Name: "John",
+    Age:  20,
+  })
+})
+
+app.Listen(3000)
+```
+
 
 ## License
 
