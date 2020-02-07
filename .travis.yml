@@ -2,7 +2,7 @@ language: go
 
 os:
   - linux
-  - windows
+#  - windows
   - osx
 go:
   - 1.13.x
