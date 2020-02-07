@@ -4,9 +4,9 @@
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases)
 [![](https://img.shields.io/badge/godoc-reference-blue.svg?longCache=true&style=flat)](https://pkg.go.dev/github.com/gofiber/fiber?tab=doc)
-![](https://img.shields.io/badge/coverage-84.6%25-brightgreen.svg?longCache=true&style=flat)
-![](https://img.shields.io/badge/go-100.0%25-brightgreen.svg?longCache=true&style=flat)
-![](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?longCache=true&style=flat)
+![](https://img.shields.io/badge/coverage-84%25-brightgreen.svg?longCache=true&style=flat)
+![](https://img.shields.io/badge/go-100%25-brightgreen.svg?longCache=true&style=flat)
+![](https://img.shields.io/badge/goreport-A+-brightgreen.svg?longCache=true&style=flat)
 [![](https://img.shields.io/badge/gitter-chat-brightgreen.svg?longCache=true&style=flat)](https://pkg.go.dev/github.com/gofiber/fiber?tab=doc)
 
 ```go
