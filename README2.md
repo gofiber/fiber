@@ -61,7 +61,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 
 ## 💡 Philosophy
 
-People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often don't understand how to start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that newbie gophers can quickly enter the new world of Go, but be in it like home.
+People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) having a heard time on how to start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that new gophers can quickly enter the world of Go, but with a warm welcome.
 
 Fiber is **inspired** by the Express framework, the most popular web framework on Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express.js or similar_), then many methods and principles will seem **very common** to you.
 
