@@ -14,15 +14,12 @@ package main
 import "github.com/gofiber/fiber"
 
 func main() {
-  // Create new Fiber instance
   app := fiber.New()
 
-  // Create new route with GET method
   app.Get("/", func(c *fiber.Ctx) {
-    c.Write("Hello, World!")
+    c.Send("Hello, World!")
   })
-
-  // Start server on http://localhost:3000
+  
   app.Listen(3000)
 }
 ```
