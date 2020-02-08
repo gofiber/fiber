@@ -20,6 +20,7 @@ func (r *Fiber) Static(args ...string) {
 	root := "./"
 	wildcard := false
 	// enable / disable gzipping somewhere?
+	// todo v2.0.0
 	gzip := true
 
 	if len(args) == 1 {
