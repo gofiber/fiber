@@ -33,6 +33,8 @@ func (r *Fiber) Static(args ...string) {
 	}
 
 	// Check if wildcard for single files
+	// app.Static("*", "./public/index.html")
+	// app.Static("/*", "./public/index.html")
 	if prefix == "*" || prefix == "/*" {
 		wildcard = true
 	}
