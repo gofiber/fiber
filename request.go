@@ -1,9 +1,9 @@
-// 🔌 Fiber is an Express.js inspired web framework build on 🚀 Fasthttp.
+// 🚀 Fiber is an Express.js inspired web framework written in Go with 💖
 // 📌 Please open an issue if you got suggestions or found a bug!
-// 🖥 https://github.com/gofiber/fiber
+// 🖥 Links: https://github.com/gofiber/fiber, https://fiber.wiki
 
 // 🦸 Not all heroes wear capes, thank you to some amazing people
-// 💖 @valyala, @dgrr, @erikdubbelboer, @savsgio, @julienschmidt
+// 💖 @valyala, @erikdubbelboer, @savsgio, @julienschmidt, @koddr
 
 package fiber
 
@@ -204,7 +204,7 @@ func (ctx *Ctx) BodyParser(v interface{}) error {
 	} else if cType == contentTypeXML {
 		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), v)
 	}
-	return fmt.Errorf("Cannot Parse Content-Type: %v", cType)
+	return fmt.Errorf("Cannot parse Content-Type: %v", cType)
 }
 
 // Cookies : https://gofiber.github.io/fiber/#/context?id=cookies
