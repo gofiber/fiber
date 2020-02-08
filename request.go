@@ -390,9 +390,13 @@ func (ctx *Ctx) Stale() bool {
 }
 
 // Subdomains : https://gofiber.github.io/fiber/#/context?id=subdomains
-func (ctx *Ctx) Subdomains() (subs []string) {
+func (ctx *Ctx) Subdomains(offset ...int) (subs []string) {
+	o := 2
+	if len(offset) > 0 {
+		o = offset[0]
+	}
 	subs = strings.Split(ctx.Hostname(), ".")
-	subs = subs[:len(subs)-2]
+	subs = subs[:len(subs)-o]
 	return subs
 }
 
