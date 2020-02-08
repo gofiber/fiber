@@ -7,7 +7,6 @@
 
 package fiber
 
-// statusMessages https://gofiber.github.io/fiber/#/context?id=sendstatus
 var statusMessages = map[int]string{
 	100: "Continue",
 	101: "Switching Protocols",

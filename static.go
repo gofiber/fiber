@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-// Static https://gofiber.github.io/fiber/#/application?id=static
+// Static https://fiber.wiki/application#static
 func (r *Fiber) Static(args ...string) {
 	prefix := "/"
 	root := "./"

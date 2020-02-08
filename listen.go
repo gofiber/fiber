@@ -29,7 +29,7 @@ func (r *Fiber) Shutdown() error {
 	return r.httpServer.Shutdown()
 }
 
-// Listen : https://gofiber.github.io/fiber/#/application?id=listen
+// Listen : https://fiber.wiki/application#listen
 func (r *Fiber) Listen(address interface{}, tls ...string) {
 	host := ""
 	switch val := address.(type) {

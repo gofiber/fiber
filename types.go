@@ -7,7 +7,6 @@
 
 package fiber
 
-// common content types
 const (
 	contentTypeJSON        = "application/json"
 	contentTypeJs          = "application/javascript"
