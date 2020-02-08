@@ -14,9 +14,9 @@
 
 ## Бенчмарк
 
-[![](https://fiber.wiki/static/benchmarks/benchmark.png)](https://fiber.wiki/#/benchmarks)
+[![](https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark.png)](https://fiber.wiki/benchmarks)
 
-👉 **[Click here](https://fiber.wiki/#/benchmarks)** to see all benchmark results.
+👉 **[Click here](https://fiber.wiki/benchmarks)** to see all benchmark results.
 
 ## Особенности
 
@@ -73,7 +73,7 @@ go run server.go
 
 ## Статичные файлы
 
-Для получения доступа к статичным файлам, используйте метод [Static](https://fiber.wiki/#/?id=static-files):
+Для получения доступа к статичным файлам, используйте метод [Static](https://fiber.wiki/application#static):
 
 ```go
 package main

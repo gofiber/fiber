@@ -41,21 +41,21 @@ go get github.com/gofiber/fiber
 
 ## 🤖 Benchmarks
 
-These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://fiber.wiki/#benchmarks).
+These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://fiber.wiki/benchmarks).
 
 <p float="left" align="middle">
-  <img src="https://fiber.wiki/static/benchmarks/benchmark-pipeline.png" width="49%" />
-  <img src="https://fiber.wiki/static/benchmarks/benchmark_alloc.png" width="49%" />
+  <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark-pipeline.png" width="49%" />
+  <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark_alloc.png" width="49%" />
 </p>
 
 ## 🎯 Main features
 
-- Robust [routing](https://fiber.wiki/#/routing)
-- Serve [static files](https://fiber.wiki/#/application?id=static)
-- [Extreme performance](https://fiber.wiki/#/benchmarks)
+- Robust [routing](https://fiber.wiki/routing)
+- Serve [static files](https://fiber.wiki/application#static)
+- [Extreme performance](https://fiber.wiki/benchmarks)
 - Low memory footprint
-- Express [API endpoints](https://fiber.wiki/#/context)
-- Middleware & [Next](https://fiber.wiki/#context?id=next) support
+- Express [API endpoints](https://fiber.wiki/context)
+- Middleware & [Next](https://fiber.wiki/context#next) support
 - Rapid server-side programming
 - And much more, [visit our Wiki](https://fiber.wiki/)
 

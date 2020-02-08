@@ -14,9 +14,9 @@ People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://go
 
 ## Benchmark
 
-[![](https://fiber.wiki/static/benchmarks/benchmark.png)](https://fiber.wiki/#/benchmarks)
+[![](https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark.png)](https://fiber.wiki/benchmarks)
 
-👉 **[Click here](https://fiber.wiki/#/benchmarks)** to see all benchmark results.
+👉 **[Click here](https://fiber.wiki/benchmarks)** to see all benchmark results.
 
 ## Features
 
@@ -73,7 +73,7 @@ And now, browse to `http://localhost:8080` and you should see `Hello, World!` on
 
 ## Static files
 
-To serve static files, use the [Static](https://fiber.wiki/#/?id=static-files) method:
+To serve static files, use the [Static](https://fiber.wiki/application#static) method:
 
 ```go
 package main

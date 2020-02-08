@@ -14,7 +14,7 @@
 
 ## Benchmark
 
-[![](https://fiber.wiki/static/benchmarks/benchmark.png)](https://fiber.wiki/#/benchmarks)
+[![](https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark.png)](https://fiber.wiki/benchmarks)
 
 👉 **[点击这里](https://fiber.wiki/#/benchmarks)** 查看所有基准测试结果.
 
@@ -73,7 +73,7 @@ go run server.go
 
 ## Static files
 
-要提供静态文件，请使用 [Static](https://fiber.wiki/#/?id=static-files) 方法:
+要提供静态文件，请使用 [Static](https://fiber.wiki/application#static) 方法:
 
 ```go
 package main
