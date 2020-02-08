@@ -1,9 +1,9 @@
-// 🔌 Fiber is an Express.js inspired web framework build on 🚀 Fasthttp.
+// 🚀 Fiber is an Express.js inspired web framework written in Go with 💖
 // 📌 Please open an issue if you got suggestions or found a bug!
-// 🖥 https://github.com/gofiber/fiber
+// 🖥 Links: https://github.com/gofiber/fiber, https://fiber.wiki
 
 // 🦸 Not all heroes wear capes, thank you to some amazing people
-// 💖 @valyala, @dgrr, @erikdubbelboer, @savsgio, @julienschmidt
+// 💖 @valyala, @erikdubbelboer, @savsgio, @julienschmidt, @koddr
 
 package fiber
 
@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-// Static https://gofiber.github.io/fiber/#/application?id=static
+// Static https://fiber.wiki/application#static
 func (r *Fiber) Static(args ...string) {
 	prefix := "/"
 	root := "./"

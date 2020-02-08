@@ -1,9 +1,9 @@
-// 🔌 Fiber is an Express.js inspired web framework build on 🚀 Fasthttp.
+// 🚀 Fiber is an Express.js inspired web framework written in Go with 💖
 // 📌 Please open an issue if you got suggestions or found a bug!
-// 🖥 https://github.com/gofiber/fiber
+// 🖥 Links: https://github.com/gofiber/fiber, https://fiber.wiki
 
 // 🦸 Not all heroes wear capes, thank you to some amazing people
-// 💖 @valyala, @dgrr, @erikdubbelboer, @savsgio, @julienschmidt
+// 💖 @valyala, @erikdubbelboer, @savsgio, @julienschmidt, @koddr
 
 package fiber
 
@@ -29,7 +29,7 @@ func (r *Fiber) Shutdown() error {
 	return r.httpServer.Shutdown()
 }
 
-// Listen : https://gofiber.github.io/fiber/#/application?id=listen
+// Listen : https://fiber.wiki/application#listen
 func (r *Fiber) Listen(address interface{}, tls ...string) {
 	host := ""
 	switch val := address.(type) {

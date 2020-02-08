@@ -1,6 +1,6 @@
 <img height="160px" src="https://github.com/gofiber/docs/blob/master/static/logo_320px_trans.png" alt="Fiber logo" />
 
-# 🚀 Fiber <a href="README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="README_CH.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
+# 🚀 Fiber <a href="https://github.com/gofiber/fiber/blob/master/.github/readme_ru.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="https://github.com/gofiber/fiber/blob/master/.github/readme_ch.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
 
@@ -41,27 +41,27 @@ go get github.com/gofiber/fiber
 
 ## 🤖 Benchmarks
 
-These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://fiber.wiki/#benchmarks).
+These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://fiber.wiki/benchmarks).
 
 <p float="left" align="middle">
-  <img src="https://fiber.wiki/static/benchmarks/benchmark-pipeline.png" width="49%" />
-  <img src="https://fiber.wiki/static/benchmarks/benchmark_alloc.png" width="49%" />
+  <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark-pipeline.png" width="49%" />
+  <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark_alloc.png" width="49%" />
 </p>
 
 ## 🎯 Main features
 
-- Robust [routing](https://fiber.wiki/#/routing)
-- Serve [static files](https://fiber.wiki/#/application?id=static)
-- [Extreme performance](https://fiber.wiki/#/benchmarks)
+- Robust [routing](https://fiber.wiki/routing)
+- Serve [static files](https://fiber.wiki/application#static)
+- [Extreme performance](https://fiber.wiki/benchmarks)
 - Low memory footprint
-- Express [API endpoints](https://fiber.wiki/#/context)
-- Middleware & [Next](https://fiber.wiki/#context?id=next) support
+- Express [API endpoints](https://fiber.wiki/context)
+- Middleware & [Next](https://fiber.wiki/context#next) support
 - Rapid server-side programming
 - And much more, [visit our Wiki](https://fiber.wiki/)
 
 ## 💡 Philosophy
 
-People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often don't understand how to start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that newbie gophers can quickly enter the new world of Go, but be in it like home.
+People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) having a heard time on how to start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that new gophers can quickly enter the world of Go, but with a warm welcome.
 
 Fiber is **inspired** by the Express framework, the most popular web framework on Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express.js or similar_), then many methods and principles will seem **very common** to you.
 

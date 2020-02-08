@@ -1,6 +1,7 @@
-# 🚀 Fiber <a href="README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="README_CH.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
 
-[![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
+# 🚀 Fiber <a href="https://github.com/gofiber/fiber/blob/master/.github/README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="https://github.com/gofiber/fiber/blob/master/.github/README_CH.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
+
+[![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community) [![Gitpod Ready-to-Code](https://img.shields.io/badge/Gitpod-Ready--to--Code-blue?logo=gitpod)](https://gitpod.io/#https://github.com/gofiber/fiber) 
 
 <img align="right" height="180px" src="https://github.com/gofiber/docs/blob/master/static/logo_320px_trans.png" alt="Fiber logo" />
 
@@ -14,9 +15,9 @@ People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://go
 
 ## Benchmark
 
-[![](https://fiber.wiki/static/benchmarks/benchmark.png)](https://fiber.wiki/#/benchmarks)
+[![](https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark.png)](https://fiber.wiki/benchmarks)
 
-👉 **[Click here](https://fiber.wiki/#/benchmarks)** to see all benchmark results.
+👉 **[Click here](https://fiber.wiki/benchmarks)** to see all benchmark results.
 
 ## Features
 
@@ -73,7 +74,7 @@ And now, browse to `http://localhost:8080` and you should see `Hello, World!` on
 
 ## Static files
 
-To serve static files, use the [Static](https://fiber.wiki/#/?id=static-files) method:
+To serve static files, use the [Static](https://fiber.wiki/application#static) method:
 
 ```go
 package main

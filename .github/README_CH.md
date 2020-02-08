@@ -1,4 +1,4 @@
-# 🚀 Fiber  <a href="README.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/en.svg" alt="en"/></a> <a href="README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a>
+# 🚀 Fiber  <a href="https://github.com/gofiber/fiber/blob/master/README.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/en.svg" alt="en"/></a> <a href="https://github.com/gofiber/fiber/blob/master/.github/README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community)
 
@@ -14,7 +14,7 @@
 
 ## Benchmark
 
-[![](https://fiber.wiki/static/benchmarks/benchmark.png)](https://fiber.wiki/#/benchmarks)
+[![](https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark.png)](https://fiber.wiki/benchmarks)
 
 👉 **[点击这里](https://fiber.wiki/#/benchmarks)** 查看所有基准测试结果.
 
@@ -73,7 +73,7 @@ go run server.go
 
 ## Static files
 
-要提供静态文件，请使用 [Static](https://fiber.wiki/#/?id=static-files) 方法:
+要提供静态文件，请使用 [Static](https://fiber.wiki/application#static) 方法:
 
 ```go
 package main
