@@ -71,7 +71,7 @@ type engine struct {
 	KeepHijackedConns                  bool
 }
 
-// New creates a Fiber instance
+// New https://fiber.wiki/application#new
 func New() *Fiber {
 	flag.Parse()
 	return &Fiber{
