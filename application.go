@@ -27,7 +27,7 @@ import (
 
 const (
 	// Version : Fiber version
-	Version = "1.4.1"
+	Version = "1.4.2"
 	website = "https://fiber.wiki"
 	banner  = ` ______   __     ______     ______     ______
 /\  ___\ /\ \   /\  == \   /\  ___\   /\  == \
@@ -115,70 +115,161 @@ func New() *Fiber {
 	}
 }
 
+// Group :
+type Group struct {
+	path  string
+	fiber *Fiber
+}
+
+// Group :
+func (f *Fiber) Group(path string) *Group {
+	return &Group{
+		path:  path,
+		fiber: f,
+	}
+}
+
 // Connect establishes a tunnel to the server
 // identified by the target resource.
-func (r *Fiber) Connect(args ...interface{}) {
-	r.register("CONNECT", args...)
+func (f *Fiber) Connect(args ...interface{}) *Fiber {
+	f.register("CONNECT", args...)
+	return f
+}
+
+// Connect for group
+func (g *Group) Connect(args ...interface{}) *Group {
+	g.register("CONNECT", args...)
+	return g
 }
 
 // Put replaces all current representations
 // of the target resource with the request payload.
-func (r *Fiber) Put(args ...interface{}) {
-	r.register("PUT", args...)
+func (f *Fiber) Put(args ...interface{}) *Fiber {
+	f.register("PUT", args...)
+	return f
+}
+
+// Put for group
+func (g *Group) Put(args ...interface{}) *Group {
+	g.register("PUT", args...)
+	return g
 }
 
 // Post is used to submit an entity to the specified resource,
 // often causing a change in state or side effects on the server.
-func (r *Fiber) Post(args ...interface{}) {
-	r.register("POST", args...)
+func (f *Fiber) Post(args ...interface{}) *Fiber {
+	f.register("POST", args...)
+	return f
+}
+
+// Post for group
+func (g *Group) Post(args ...interface{}) *Group {
+	g.register("POST", args...)
+	return g
 }
 
 // Delete deletes the specified resource.
-func (r *Fiber) Delete(args ...interface{}) {
-	r.register("DELETE", args...)
+func (f *Fiber) Delete(args ...interface{}) *Fiber {
+	f.register("DELETE", args...)
+	return f
+}
+
+// Delete for group
+func (g *Group) Delete(args ...interface{}) *Group {
+	g.register("DELETE", args...)
+	return g
 }
 
 // Head asks for a response identical to that of a GET request,
 // but without the response body.
-func (r *Fiber) Head(args ...interface{}) {
-	r.register("HEAD", args...)
+func (f *Fiber) Head(args ...interface{}) *Fiber {
+	f.register("HEAD", args...)
+	return f
+}
+
+// Head for group
+func (g *Group) Head(args ...interface{}) *Group {
+	g.register("HEAD", args...)
+	return g
 }
 
 // Patch is used to apply partial modifications to a resource.
-func (r *Fiber) Patch(args ...interface{}) {
-	r.register("PATCH", args...)
+func (f *Fiber) Patch(args ...interface{}) *Fiber {
+	f.register("PATCH", args...)
+	return f
+}
+
+// Patch for group
+func (g *Group) Patch(args ...interface{}) *Group {
+	g.register("PATCH", args...)
+	return g
 }
 
 // Options is used to describe the communication options
 // for the target resource.
-func (r *Fiber) Options(args ...interface{}) {
-	r.register("OPTIONS", args...)
+func (f *Fiber) Options(args ...interface{}) *Fiber {
+	f.register("OPTIONS", args...)
+	return f
+}
+
+// Options for group
+func (g *Group) Options(args ...interface{}) *Group {
+	g.register("OPTIONS", args...)
+	return g
 }
 
 // Trace performs a message loop-back test
 // along the path to the target resource.
-func (r *Fiber) Trace(args ...interface{}) {
-	r.register("TRACE", args...)
+func (f *Fiber) Trace(args ...interface{}) *Fiber {
+	f.register("TRACE", args...)
+	return f
+}
+
+// Trace for group
+func (g *Group) Trace(args ...interface{}) *Group {
+	g.register("TRACE", args...)
+	return g
 }
 
 // Get requests a representation of the specified resource.
 // Requests using GET should only retrieve data.
-func (r *Fiber) Get(args ...interface{}) {
-	r.register("GET", args...)
+func (f *Fiber) Get(args ...interface{}) *Fiber {
+	f.register("GET", args...)
+	return f
+}
+
+// Get for group
+func (g *Group) Get(args ...interface{}) *Group {
+	g.register("GET", args...)
+	return g
 }
 
 // All matches any HTTP method
-func (r *Fiber) All(args ...interface{}) {
-	r.register("ALL", args...)
+func (f *Fiber) All(args ...interface{}) *Fiber {
+	f.register("ALL", args...)
+	return f
+}
+
+// All for group
+func (g *Group) All(args ...interface{}) *Group {
+	g.register("ALL", args...)
+	return g
 }
 
 // Use only matches the starting path
-func (r *Fiber) Use(args ...interface{}) {
-	r.register("MIDWARE", args...)
+func (f *Fiber) Use(args ...interface{}) *Fiber {
+	f.register("USE", args...)
+	return f
+}
+
+// Use for group
+func (g *Group) Use(args ...interface{}) *Group {
+	g.register("USE", args...)
+	return g
 }
 
 // Static https://fiber.wiki/application#static
-func (r *Fiber) Static(args ...string) {
+func (f *Fiber) Static(args ...string) {
 	prefix := "/"
 	root := "./"
 	wildcard := false
@@ -233,20 +324,20 @@ func (r *Fiber) Static(args ...string) {
 
 		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
-			r.routes = append(r.routes, &Route{"GET", prefix, wildcard, false, nil, nil, func(c *Ctx) {
+			f.routes = append(f.routes, &Route{"GET", prefix, wildcard, false, nil, nil, func(c *Ctx) {
 				c.SendFile(filePath, gzip)
 			}})
 		}
 
 		// Add the route + SendFile(filepath) to routes
-		r.routes = append(r.routes, &Route{"GET", path, wildcard, false, nil, nil, func(c *Ctx) {
+		f.routes = append(f.routes, &Route{"GET", path, wildcard, false, nil, nil, func(c *Ctx) {
 			c.SendFile(filePath, gzip)
 		}})
 	}
 }
 
 // Listen : https://fiber.wiki/application#listen
-func (r *Fiber) Listen(address interface{}, tls ...string) {
+func (f *Fiber) Listen(address interface{}, tls ...string) {
 	host := ""
 	switch val := address.(type) {
 	case int:
@@ -260,21 +351,21 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 		log.Fatal("Listen: Host must be an INT port or STRING address")
 	}
 	// Create fasthttp server
-	r.httpServer = r.setupServer()
+	f.httpServer = f.setupServer()
 
 	out := colorable.NewColorableStdout()
 
 	// Prefork enabled
-	if r.Prefork && runtime.NumCPU() > 1 {
-		if r.Banner && !r.child {
+	if f.Prefork && runtime.NumCPU() > 1 {
+		if f.Banner && f.child {
 			//cores := fmt.Sprintf("%s\x1b[1;30m %v cores", host, runtime.NumCPU())
 			fmt.Fprintf(out, "\x1b[1;32m"+banner, "\x1b[1;30m", "\x1b[1;32mv"+Version+"\x1b[1;30m", "\x1b[1;32m"+host+"\x1b[1;30m", "\x1b[1;32mfiber.wiki")
 		}
-		r.prefork(host, tls...)
+		f.prefork(host, tls...)
 	}
 
 	// Prefork disabled
-	if r.Banner {
+	if f.Banner {
 		fmt.Fprintf(out, "\x1b[1;32m"+banner, "\x1b[1;30m", "\x1b[1;32mv"+Version+"\x1b[1;30m", "\x1b[1;32m"+host+"\x1b[1;30m", "\x1b[1;32mfiber.wiki")
 	}
 
@@ -285,28 +376,28 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 
 	// enable TLS/HTTPS
 	if len(tls) > 1 {
-		if err := r.httpServer.ServeTLS(ln, tls[0], tls[1]); err != nil {
+		if err := f.httpServer.ServeTLS(ln, tls[0], tls[1]); err != nil {
 			log.Fatal("Listen: ", err)
 		}
 	}
 
-	if err := r.httpServer.Serve(ln); err != nil {
+	if err := f.httpServer.Serve(ln); err != nil {
 		log.Fatal("Listen: ", err)
 	}
 }
 
 // Shutdown server gracefully
-func (r *Fiber) Shutdown() error {
-	if r.httpServer == nil {
+func (f *Fiber) Shutdown() error {
+	if f.httpServer == nil {
 		return fmt.Errorf("Server is not running")
 	}
-	return r.httpServer.Shutdown()
+	return f.httpServer.Shutdown()
 }
 
 // https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
-func (r *Fiber) prefork(host string, tls ...string) {
+func (f *Fiber) prefork(host string, tls ...string) {
 	// Master proc
-	if !r.child {
+	if !f.child {
 		// Create babies
 		childs := make([]*exec.Cmd, runtime.NumCPU())
 
@@ -340,38 +431,38 @@ func (r *Fiber) prefork(host string, tls ...string) {
 
 	// enable TLS/HTTPS
 	if len(tls) > 1 {
-		if err := r.httpServer.ServeTLS(ln, tls[0], tls[1]); err != nil {
+		if err := f.httpServer.ServeTLS(ln, tls[0], tls[1]); err != nil {
 			log.Fatal("Listen-prefork: ", err)
 		}
 	}
 
-	if err := r.httpServer.Serve(ln); err != nil {
+	if err := f.httpServer.Serve(ln); err != nil {
 		log.Fatal("Listen-prefork: ", err)
 	}
 }
 
-func (r *Fiber) setupServer() *fasthttp.Server {
+func (f *Fiber) setupServer() *fasthttp.Server {
 	return &fasthttp.Server{
-		Handler:                            r.handler,
-		Name:                               r.Server,
-		Concurrency:                        r.Engine.Concurrency,
-		DisableKeepalive:                   r.Engine.DisableKeepAlive,
-		ReadBufferSize:                     r.Engine.ReadBufferSize,
-		WriteBufferSize:                    r.Engine.WriteBufferSize,
-		ReadTimeout:                        r.Engine.ReadTimeout,
-		WriteTimeout:                       r.Engine.WriteTimeout,
-		IdleTimeout:                        r.Engine.IdleTimeout,
-		MaxConnsPerIP:                      r.Engine.MaxConnsPerIP,
-		MaxRequestsPerConn:                 r.Engine.MaxRequestsPerConn,
-		TCPKeepalive:                       r.Engine.TCPKeepalive,
-		TCPKeepalivePeriod:                 r.Engine.TCPKeepalivePeriod,
-		MaxRequestBodySize:                 r.Engine.MaxRequestBodySize,
-		ReduceMemoryUsage:                  r.Engine.ReduceMemoryUsage,
-		GetOnly:                            r.Engine.GetOnly,
-		DisableHeaderNamesNormalizing:      r.Engine.DisableHeaderNamesNormalizing,
-		SleepWhenConcurrencyLimitsExceeded: r.Engine.SleepWhenConcurrencyLimitsExceeded,
-		NoDefaultServerHeader:              r.Server == "",
-		NoDefaultContentType:               r.Engine.NoDefaultContentType,
-		KeepHijackedConns:                  r.Engine.KeepHijackedConns,
+		Handler:                            f.handler,
+		Name:                               f.Server,
+		Concurrency:                        f.Engine.Concurrency,
+		DisableKeepalive:                   f.Engine.DisableKeepAlive,
+		ReadBufferSize:                     f.Engine.ReadBufferSize,
+		WriteBufferSize:                    f.Engine.WriteBufferSize,
+		ReadTimeout:                        f.Engine.ReadTimeout,
+		WriteTimeout:                       f.Engine.WriteTimeout,
+		IdleTimeout:                        f.Engine.IdleTimeout,
+		MaxConnsPerIP:                      f.Engine.MaxConnsPerIP,
+		MaxRequestsPerConn:                 f.Engine.MaxRequestsPerConn,
+		TCPKeepalive:                       f.Engine.TCPKeepalive,
+		TCPKeepalivePeriod:                 f.Engine.TCPKeepalivePeriod,
+		MaxRequestBodySize:                 f.Engine.MaxRequestBodySize,
+		ReduceMemoryUsage:                  f.Engine.ReduceMemoryUsage,
+		GetOnly:                            f.Engine.GetOnly,
+		DisableHeaderNamesNormalizing:      f.Engine.DisableHeaderNamesNormalizing,
+		SleepWhenConcurrencyLimitsExceeded: f.Engine.SleepWhenConcurrencyLimitsExceeded,
+		NoDefaultServerHeader:              f.Server == "",
+		NoDefaultContentType:               f.Engine.NoDefaultContentType,
+		KeepHijackedConns:                  f.Engine.KeepHijackedConns,
 	}
 }

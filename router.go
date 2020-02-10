@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"log"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -67,10 +68,27 @@ func releaseCtx(ctx *Ctx) {
 	poolCtx.Put(ctx)
 }
 
+func (g *Group) register(method string, args ...interface{}) {
+	path := g.path
+	var handler func(*Ctx)
+	if len(args) == 1 {
+		handler = args[0].(func(*Ctx))
+	} else if len(args) > 1 {
+		path = path + args[0].(string)
+		handler = args[1].(func(*Ctx))
+		if path[0] != '/' && path[0] != '*' {
+			path = "/" + path
+		}
+		path = strings.Replace(path, "//", "/", -1)
+		path = filepath.Clean(path)
+	}
+	g.fiber.register(method, path, handler)
+}
+
 // Function to add a route correctly
-func (r *Fiber) register(method string, args ...interface{}) {
+func (f *Fiber) register(method string, args ...interface{}) {
 	// Set if method is Use() midware
-	var midware = method == "MIDWARE"
+	var midware = method == "USE"
 
 	// Match any method
 	if method == "ALL" || midware {
@@ -83,20 +101,12 @@ func (r *Fiber) register(method string, args ...interface{}) {
 
 	// Only 1 argument, so no path/prefix
 	if len(args) == 1 {
-		// switch arg := args[0].(type) {
-		// case func(*Ctx):
-		// 	handler = arg
-		// case func(*fiber.Ctx):
-		// 	handler = arg
-		// default:
-		// 	panic("Invalid Context function")
-		// }
 		handler = args[0].(func(*Ctx))
 	} else if len(args) > 1 {
 		path = args[0].(string)
 		handler = args[1].(func(*Ctx))
 		if path[0] != '/' && path[0] != '*' {
-			log.Fatal("Router: Invalid path, must begin with slash '/' or wildcard '*'")
+			path = "/" + path
 		}
 	}
 
@@ -111,7 +121,7 @@ func (r *Fiber) register(method string, args ...interface{}) {
 
 	// If the route needs to match any path
 	if path == "" || path == "*" || path == "/*" {
-		r.routes = append(r.routes, &Route{method, path, midware, true, nil, nil, handler})
+		f.routes = append(f.routes, &Route{method, path, midware, true, nil, nil, handler})
 		return
 	}
 
@@ -120,7 +130,7 @@ func (r *Fiber) register(method string, args ...interface{}) {
 
 	// If path has no params (simple path), we don't need regex (also for use())
 	if midware || len(params) == 0 {
-		r.routes = append(r.routes, &Route{method, path, midware, false, nil, nil, handler})
+		f.routes = append(f.routes, &Route{method, path, midware, false, nil, nil, handler})
 		return
 	}
 
@@ -131,11 +141,11 @@ func (r *Fiber) register(method string, args ...interface{}) {
 	}
 
 	// Add regex + params to route
-	r.routes = append(r.routes, &Route{method, path, midware, false, regex, params, handler})
+	f.routes = append(f.routes, &Route{method, path, midware, false, regex, params, handler})
 }
 
 // then try to match a route as efficient as possible.
-func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
+func (f *Fiber) handler(fctx *fasthttp.RequestCtx) {
 	found := false
 
 	// get custom context from sync pool
@@ -146,7 +156,7 @@ func (r *Fiber) handler(fctx *fasthttp.RequestCtx) {
 	method := ctx.Method()
 
 	// loop trough routes
-	for _, route := range r.routes {
+	for _, route := range f.routes {
 		// Skip route if method is not allowed
 		if route.Method != "*" && route.Method != method {
 			continue
