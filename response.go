@@ -19,6 +19,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Cookie : struct
+type Cookie struct {
+	Expire int // time.Unix(1578981376, 0)
+	MaxAge int
+	Domain string
+	Path   string
+
+	HTTPOnly bool
+	Secure   bool
+	SameSite string
+}
+
 // Append : https://fiber.wiki/context#append
 func (ctx *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
@@ -224,7 +236,7 @@ func (ctx *Ctx) JsonString(raw string) {
 	ctx.JSONString(raw)
 }
 
-// JSONString : https://fiber.wiki/context#jsonstring
+// JSONString : https://fiber.wiki/context#json
 func (ctx *Ctx) JSONString(raw string) {
 	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
 	ctx.Fasthttp.Response.SetBodyString(raw)
