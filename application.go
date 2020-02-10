@@ -20,7 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattn/go-colorable"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/reuseport"
 )
@@ -35,7 +34,7 @@ const (
  \ \_\    \ \_\  \ \_____\  \ \_____\  \ \_\ \_\
   \/_/     \/_/   \/_____/   \/_____/   \/_/ /_/
 
-%sFiber %s listening on %s, visit %s
+Fiber %s listening on %s, visit %s
 `
 )
 
@@ -353,20 +352,18 @@ func (f *Fiber) Listen(address interface{}, tls ...string) {
 	// Create fasthttp server
 	f.httpServer = f.setupServer()
 
-	out := colorable.NewColorableStdout()
-
 	// Prefork enabled
 	if f.Prefork && runtime.NumCPU() > 1 {
 		if f.Banner && f.child {
-			//cores := fmt.Sprintf("%s\x1b[1;30m %v cores", host, runtime.NumCPU())
-			fmt.Fprintf(out, "\x1b[1;32m"+banner, "\x1b[1;30m", "\x1b[1;32mv"+Version+"\x1b[1;30m", "\x1b[1;32m"+host+"\x1b[1;30m", "\x1b[1;32mfiber.wiki")
+			//cores := fmt.Sprintf("%s %v cores", host, runtime.NumCPU())
+			fmt.Printf(banner, Version, host, website)
 		}
 		f.prefork(host, tls...)
 	}
 
 	// Prefork disabled
 	if f.Banner {
-		fmt.Fprintf(out, "\x1b[1;32m"+banner, "\x1b[1;30m", "\x1b[1;32mv"+Version+"\x1b[1;30m", "\x1b[1;32m"+host+"\x1b[1;30m", "\x1b[1;32mfiber.wiki")
+		fmt.Printf(banner, Version, host, website)
 	}
 
 	ln, err := net.Listen("tcp4", host)
