@@ -113,14 +113,14 @@ func getBytes(s string) (b []byte) {
 
 // Test takes a http.Request and execute a fake connection to the application
 // It returns a http.Response when the connection was successfull
-func (r *Fiber) Test(req *http.Request) (*http.Response, error) {
+func (f *Fiber) Test(req *http.Request) (*http.Response, error) {
 	// Get raw http request
 	reqRaw, err := httputil.DumpRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
 	// Setup a fiber server struct
-	r.httpServer = r.setupServer()
+	f.httpServer = f.setupServer()
 	// Create fake connection
 	conn := &conn{}
 	// Pass HTTP request to conn
@@ -131,7 +131,7 @@ func (r *Fiber) Test(req *http.Request) (*http.Response, error) {
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
-		channel <- r.httpServer.ServeConn(conn)
+		channel <- f.httpServer.ServeConn(conn)
 	}()
 	// Wait for callback
 	select {
