@@ -11,9 +11,19 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/valyala/fasthttp"
 )
+
+// Ctx : struct
+type Ctx struct {
+	route    *Route
+	next     bool
+	params   *[]string
+	values   []string
+	Fasthttp *fasthttp.RequestCtx
+}
 
 // Route : struct
 type Route struct {
@@ -31,6 +41,30 @@ type Route struct {
 	Params []string
 	// Callback function for specific route
 	Handler func(*Ctx)
+}
+
+// Ctx pool
+var poolCtx = sync.Pool{
+	New: func() interface{} {
+		return new(Ctx)
+	},
+}
+
+// Get new Ctx from pool
+func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
+	ctx := poolCtx.Get().(*Ctx)
+	ctx.Fasthttp = fctx
+	return ctx
+}
+
+// Return Context to pool
+func releaseCtx(ctx *Ctx) {
+	ctx.route = nil
+	ctx.next = false
+	ctx.params = nil
+	ctx.values = nil
+	ctx.Fasthttp = nil
+	poolCtx.Put(ctx)
 }
 
 // Function to add a route correctly
