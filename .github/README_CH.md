@@ -40,7 +40,7 @@ go get -u github.com/gofiber/fiber
 
 ## Hello, world!
 
-本质上，下面嵌入是您可以创建的最简单的Fiber应用程序:
+以下代码段是您可以创建的最简单的Fiber应用程序:
 
 ```go
 // server.go
@@ -69,11 +69,11 @@ func main() {
 go run server.go
 ```
 
-现在，浏览至 `http://localhost:8080` 你应该看到 `Hello, World!` 在页面上！ 🎉
+现在，请用浏览器打开此链接 `http://localhost:8080` 你应该看到 `Hello, World!` 在页面上！ 🎉
 
 ## Static files
 
-要提供静态文件，请使用 [Static](https://fiber.wiki/application#static) 方法:
+要提供静态文件支持，请使用 [Static](https://fiber.wiki/application#static) 方法:
 
 ```go
 package main
@@ -102,7 +102,7 @@ http://localhost:8080/css/style.css
 
 ## Middleware
 
-中间件从未如此简单！就像Express，您致电 `Next()` 匹配路线功能:
+中间件从未如此简单！就像Express，向Express `Next()`致敬:
 
 ```go
 package main
@@ -136,7 +136,7 @@ func main() {
 
 ## Project assistance
 
-如果您要说声谢谢或/并且支持积极的发展 `gofiber/fiber`:
+如果您要说声谢谢或者积极支持fiber的发展 `gofiber/fiber`:
 
 1. 将GitHub Star添加到项目中。
 2. 关于项目的推文 [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%94%8C%20Fiber%20is%20an%20Express.js%20inspired%20Go%20web%20framework%20build%20on%20%F0%9F%9A%80%20Fasthttp%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
