@@ -195,8 +195,6 @@ If you want to say **thank you** and/or support the active development of `fiber
 
 <a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;" ></a>
 
-Thanks for your support! Together, we make `Fiber`.
-
 ### ⭐️ Stars
 
 <a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
