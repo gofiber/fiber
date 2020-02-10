@@ -1,154 +1,206 @@
+<img alt="Fiber" src="https://i.imgur.com/Nwvx4cu.png" width="250"/><a href="https://github.com/gofiber/fiber/blob/master/.github/README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="https://github.com/gofiber/fiber/blob/master/.github/README_CH.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
 
-# 🚀 Fiber <a href="https://github.com/gofiber/fiber/blob/master/.github/README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="https://github.com/gofiber/fiber/blob/master/.github/README_CH.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
+[![](https://img.shields.io/github/release/gofiber/fiber?style=flat-square)](https://github.com/gofiber/fiber/releases) [![](https://img.shields.io/badge/api-documentation-blue?style=flat-square)](https://fiber.wiki) ![](https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square) [![](https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square)](https://gocover.io/github.com/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square)](https://travis-ci.org/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square)](https://travis-ci.org/gofiber/fiber)
 
-[![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community) [![Gitpod Ready-to-Code](https://img.shields.io/badge/Gitpod-Ready--to--Code-blue?logo=gitpod)](https://gitpod.io/#https://github.com/gofiber/fiber)
+**Fiber** is an [Expressjs](https://github.com/expressjs/express) inspired **web framework** build on top of [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for [Go](https://golang.org/doc/). Designed to **ease** things up for **fast** development with **zero memory allocation** and **performance** in mind.
 
-<img align="right" height="180px" src="https://github.com/gofiber/docs/blob/master/static/logo_320px_trans.png" alt="Fiber logo" />
-
-**[Fiber](https://github.com/gofiber/fiber)** is an [Express.js](https://expressjs.com/en/4x/api.html) styled HTTP web framework implementation running on [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for Go (Golang). The package make use of **similar framework convention** as they are in Express.
-
-People switching from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) often end up in a bad learning curve to start building their webapps, this project is meant to **ease** things up for **fast** development, but with **zero memory allocation** and **performance** in mind.
-
-## API Documentation
-
-📚 We created an extended **API documentation** (_including examples_), **[Visit fiber.wiki](https://fiber.wiki/)**.
-
-## Benchmark
-
-[![](https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark.png)](https://fiber.wiki/benchmarks)
-
-👉 **[Click here](https://fiber.wiki/benchmarks)** to see all benchmark results.
-
-## Features
-
-- Optimized for speed and low memory usage
-- Rapid Server-Side Programming
-- Easy routing with parameters
-- Static files with custom prefix
-- Middleware with Next support
-- Express API endpoints
-- [Extended documentation](https://fiber.wiki/)
-
-## Installing
-
-Assuming you’ve already installed Go `1.11+` 😉
-
-Install the [Fiber](https://github.com/gofiber/fiber) package by calling the following command:
-
-```bash
-go get -u github.com/gofiber/fiber
-```
-
-## Hello, world!
-
-Embedded below is essentially the simplest Fiber app you can create:
+## ⚡️ Quick start
 
 ```go
-// server.go
-
 package main
 
 import "github.com/gofiber/fiber"
 
 func main() {
-  // Create new Fiber instance
   app := fiber.New()
 
-  // Create new route with GET method
   app.Get("/", func(c *fiber.Ctx) {
     c.Send("Hello, World!")
   })
 
-  // Start server on http://localhost:8080
-  app.Listen(8080)
+  app.Listen(3000)
 }
 ```
 
-Go to console and run:
+## ⚙️ Installation
+
+First of all, [download](https://golang.org/dl/) and install Go. `1.11` or higher is required.
+
+Installation is done using the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-go run server.go
+go get github.com/gofiber/fiber
 ```
 
-And now, browse to `http://localhost:8080` and you should see `Hello, World!` on the page! 🎉
+## 🤖 Benchmarks
 
-## Static files
+These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://fiber.wiki/benchmarks).
 
-To serve static files, use the [Static](https://fiber.wiki/application#static) method:
+<p float="left" align="middle">
+  <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark-pipeline.png" width="49%" />
+  <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark_alloc.png" width="49%" />
+</p>
+
+## 🎯 Features
+
+- Robust [routing](https://fiber.wiki/routing)
+- Serve [static files](https://fiber.wiki/application#static)
+- Extreme [performance](https://fiber.wiki/benchmarks)
+- [Low memory](https://fiber.wiki/benchmarks) footprint
+- Express [API endpoints](https://fiber.wiki/context)
+- Middleware & [Next](https://fiber.wiki/context#next) support
+- [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
+- And much more, [explore Fiber](https://fiber.wiki/)
+
+## 💡 Philosophy
+
+New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
+
+Fiber is **inspired** by the Expressjs framework, the most popular web framework on Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express.js or similar_), then many methods and principles will seem **very common** to you.
+
+## 👀 Examples
+
+Listed below are some of the common examples. If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our [API documentation](https://fiber.wiki).
+
+### Static files
 
 ```go
-package main
-
-import "github.com/gofiber/fiber"
-
 func main() {
-  // Create new Fiber instance
   app := fiber.New()
 
-  // Serve all static files on ./public folder
+  app.Static("./public")
+  // => http://localhost:3000/js/script.js
+  // => http://localhost:3000/css/style.css
+
+  app.Static("/prefix", "./public")
+  // => http://localhost:3000/prefix/js/script.js
+  // => http://localhost:3000/prefix/css/style.css
+
+  app.Listen(3000)
+}
+```
+
+### Routing
+
+```go
+func main() {
+  app := fiber.New()
+
+  // GET /john
+  app.Get("/:name", func(c *fiber.Ctx) {
+    fmt.Printf("Hello %s!", c.Params("name"))
+    // => Hello john!
+  })
+
+  // GET /john
+  app.Get("/:name/:age?", func(c *fiber.Ctx) {
+    fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
+    // => Name: john, Age:
+  })
+
+  // GET /api/register
+  app.Get("/api*", func(c *fiber.Ctx) {
+    fmt.Printf("/api%s", c.Params("*"))
+    // => /api/register
+  })
+
+  app.Listen(3000)
+}
+```
+
+### Middleware
+
+```go
+func main() {
+  app := fiber.New()
+
+  // Match any post route
+  app.Post(func(c *fiber.Ctx) {
+    user, pass, ok := c.BasicAuth()
+    if !ok || user != "john" || pass != "doe" {
+      c.Status(403).Send("Sorry John")
+      return
+    }
+    c.Next()
+  })
+
+  // Match all routes starting with /api
+  app.Use("/api", func(c *fiber.Ctx) {
+    c.Set("Access-Control-Allow-Origin", "*")
+    c.Set("Access-Control-Allow-Headers", "X-Requested-With")
+    c.Next()
+  })
+
+  // Optional param
+  app.Post("/api/register", func(c *fiber.Ctx) {
+    username := c.Body("username")
+    password := c.Body("password")
+    // ..
+  })
+
+  app.Listen(3000)
+}
+```
+
+### 404 Handling
+
+```go
+func main() {
+  app := fiber.New()
+
+  // Serve static files from "public" directory
   app.Static("./public")
 
-  // Start server on http://localhost:8080
-  app.Listen(8080)
+  // Last middleware
+  app.Use(func (c *fiber.Ctx) {
+    c.SendStatus(404) // => 404 "Not Found"
+  })
+
+  app.Listen(3000)
 }
 ```
 
-Now, you can load the files that are in the public directory:
-
-```bash
-http://localhost:8080/hello.html
-http://localhost:8080/js/script.js
-http://localhost:8080/css/style.css
-```
-
-## Middleware
-
-Middleware has never been so easy! Just like Express you call the `Next()` matching route function:
+### JSON Response
 
 ```go
-package main
-
-import "github.com/gofiber/fiber"
-
 func main() {
-  // Create new Fiber instance
   app := fiber.New()
 
-  // Define all used middleware in Use()
+  type User struct {
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+  }
 
-  app.Use(func(c *fiber.Ctx) {
-    c.Write("Match anything!\n")
-    c.Next()
+  // Serialize JSON
+  app.Get("/json", func (c *fiber.Ctx) {
+    c.JSON(&User{"John", 20})
   })
 
-  app.Use("/api", func(c *fiber.Ctx) {
-    c.Write("Match starting with /api\n")
-    c.Next()
-  })
-
-  app.Get("/api/user", func(c *fiber.Ctx) {
-    c.Write("Match exact path /api/user\n")
-  })
-
-  // Start server on http://localhost:8080
-  app.Listen(8080)
+  app.Listen(3000)
 }
 ```
 
-## 👍 Project assistance
+## 💬 Media
 
-If you want to say **thank you** or/and support active development `gofiber/fiber`:
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
 
-1. Add a GitHub Star to project.
-2. Tweet about project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%94%8C%20Fiber%20is%20an%20Express.js%20inspired%20Go%20web%20framework%20build%20on%20%F0%9F%9A%80%20Fasthttp%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
+## 👍 Contribute
 
-Thanks for your support! 😘 Together, we make `Fiber`.
+If you want to say **thank you** and/or support the active development of `fiber`:
 
-## ⭐️ Stars over time
+1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to project.
+2. Tweet about project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
+4. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
+
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" style="height: 35px !important;" ></a>
+
+Thanks for your support! Together, we make `Fiber`.
+
+### ⭐️ Stars
 
 <a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
-## License
+## ⚠️ License
 
-⚠️ _Please note:_ `gofiber/fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/master/LICENSE).
+`Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/master/LICENSE).
