@@ -1,10 +1,8 @@
-<img height="160px" src="https://github.com/gofiber/docs/blob/master/static/logo_320px_trans.png" alt="Fiber logo" />
+![](https://i.imgur.com/PFEjoFz.png)<a href="https://github.com/gofiber/fiber/blob/master/.github/readme_ru.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="https://github.com/gofiber/fiber/blob/master/.github/readme_ch.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
 
-# 🚀 Fiber <a href="https://github.com/gofiber/fiber/blob/master/.github/readme_ru.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"/></a> <a href="https://github.com/gofiber/fiber/blob/master/.github/readme_ch.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"/></a>
+[![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community) [![Gitpod Ready-to-Code](https://img.shields.io/badge/Gitpod-Ready--to--Code-blue?logo=gitpod)](https://gitpod.io/#https://github.com/gofiber/fiber)
 
-[![](https://img.shields.io/github/release/gofiber/fiber)](https://github.com/gofiber/fiber/releases) ![](https://img.shields.io/github/languages/top/gofiber/fiber) [![](https://godoc.org/github.com/gofiber/fiber?status.svg)](https://godoc.org/github.com/gofiber/fiber) ![](https://goreportcard.com/badge/github.com/gofiber/fiber) [![GitHub license](https://img.shields.io/github/license/gofiber/fiber.svg)](https://github.com/gofiber/fiber/blob/master/LICENSE) [![Join the chat at https://gitter.im/gofiber/community](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/gofiber/community) [![Gitpod Ready-to-Code](https://img.shields.io/badge/Gitpod-Ready--to--Code-blue?logo=gitpod)](https://gitpod.io/#https://github.com/gofiber/fiber) 
-
-**Fiber** — is an [Express.js](https://github.com/expressjs/express) **inspired** web framework build on [Fasthttp](https://github.com/valyala/fasthttp) for [Go](https://golang.org/doc/). Designed to **ease** things up for **fast** development with **zero memory allocation** and **performance** in mind.
+**Fiber** is an [Expressjs](https://github.com/expressjs/express) **inspired** web framework build on [Fasthttp](https://github.com/valyala/fasthttp) for [Go](https://golang.org/doc/). Designed to **ease** things up for **fast** development with **zero memory allocation** and **performance** in mind.
 
 ## ⚡️ Quick start
 
@@ -19,7 +17,7 @@ func main() {
   app.Get("/", func(c *fiber.Ctx) {
     c.Send("Hello, World!")
   })
-  
+
   app.Listen(3000)
 }
 ```
@@ -45,7 +43,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
   <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark_alloc.png" width="49%" />
 </p>
 
-## 🎯 Main features
+## 🎯 Features
 
 - Robust [routing](https://fiber.wiki/routing)
 - Serve [static files](https://fiber.wiki/application#static)
@@ -54,7 +52,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 - Express [API endpoints](https://fiber.wiki/context)
 - Middleware & [Next](https://fiber.wiki/context#next) support
 - Rapid server-side programming
-- And much more, [visit our Wiki](https://fiber.wiki/)
+- And much more, [explore Fiber](https://fiber.wiki/)
 
 ## 💡 Philosophy
 
@@ -64,141 +62,144 @@ Fiber is **inspired** by the Express framework, the most popular web framework o
 
 ## 👀 Examples
 
-Listed below are some of the common examples. If you want to see more code examples, please visit Fiber community [Cookbook repository](https://github.com/gofiber/recipes) or [API documentation](https://fiber.wiki).
+Listed below are some of the common examples. If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our [API documentation](https://fiber.wiki).
 
 ### Static files
 
 ```go
-// ...
-app := fiber.New()
+func main() {
+  app := fiber.New()
 
-// Without prefix
-app.Static("./public")
+  app.Static("./public")
+  // => http://localhost:3000/js/script.js
+  // => http://localhost:3000/css/style.css
 
-// => http://localhost:3000/js/script.js
-// => http://localhost:3000/css/style.css
+  app.Static("/prefix", "./public")
+  // => http://localhost:3000/prefix/js/script.js
+  // => http://localhost:3000/prefix/css/style.css
 
-// With prefix
-app.Static("/your-prefix", "./public")
-
-// => http://localhost:3000/your-prefix/js/script.js
-// => http://localhost:3000/your-prefix/css/style.css
-
-app.Listen(3000)
+  app.Listen(3000)
+}
 ```
 
 ### Routing
 
 ```go
-// ...
-app := fiber.New()
+func main() {
+  app := fiber.New()
 
-// URL with param
-app.Get("/:name", func(c *fiber.Ctx) {
-  c.Send("Hello, " + c.Params("name"))
-})
+  // GET /john
+  app.Get("/:name", func(c *fiber.Ctx) {
+    fmt.Printf("Hello %s!", c.Params("name"))
+    // => Hello john!
+  })
 
-// URL optional param
-app.Get("/:name/:lastname?", func(c *fiber.Ctx) {
-  c.Send("Hello, " + c.Params("name") + " " + c.Params("lastname"))
-})
+  // GET /john
+  app.Get("/:name/:age?", func(c *fiber.Ctx) {
+    fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
+    // => Name: john, Age:
+  })
 
-// URL with wildcard
-app.Get("/api*", func(c *fiber.Ctx) {
-  c.Send("/api" + c.Params("*"))
-})
+  // GET /api/register
+  app.Get("/api*", func(c *fiber.Ctx) {
+    fmt.Printf("/api%s", c.Params("*"))
+    // => /api/register
+  })
 
-app.Listen(3000)
+  app.Listen(3000)
+}
 ```
 
 ### Middleware
 
 ```go
-// ...
-app := fiber.New()
+func main() {
+  app := fiber.New()
 
-// Match any post route
-app.Post(func(c *fiber.Ctx) {
-  user, pass, ok := c.BasicAuth()
-  if !ok || user != "john" || pass != "doe" {
-    c.Status(403).Send("Sorry John")
-    return
-  }
-  c.Next()
-})
+  // Match any post route
+  app.Post(func(c *fiber.Ctx) {
+    user, pass, ok := c.BasicAuth()
+    if !ok || user != "john" || pass != "doe" {
+      c.Status(403).Send("Sorry John")
+      return
+    }
+    c.Next()
+  })
 
-// Match all routes starting with /api
-app.Use("/api", func(c *fiber.Ctx) {
-  c.Set("Access-Control-Allow-Origin", "*")
-  c.Set("Access-Control-Allow-Headers", "X-Requested-With")
-  c.Next()
-})
+  // Match all routes starting with /api
+  app.Use("/api", func(c *fiber.Ctx) {
+    c.Set("Access-Control-Allow-Origin", "*")
+    c.Set("Access-Control-Allow-Headers", "X-Requested-With")
+    c.Next()
+  })
 
-// Optional param
-app.Post("/api/register", func(c *fiber.Ctx) {
-  username := c.Body("username")
-  password := c.Body("password")
-  // ..
-})
+  // Optional param
+  app.Post("/api/register", func(c *fiber.Ctx) {
+    username := c.Body("username")
+    password := c.Body("password")
+    // ..
+  })
 
-app.Listen(3000)
+  app.Listen(3000)
+}
 ```
 
 ### 404 Handling
 
 ```go
-// ...
-app := fiber.New()
+func main() {
+  app := fiber.New()
 
-// ... app routes here
+  // Serve static files from "public" directory
+  app.Static("./public")
 
-// The last route
-app.Use(func (c *fiber.Ctx) {
-  c.SendStatus(404)
-})
+  // Last middleware
+  app.Use(func (c *fiber.Ctx) {
+    c.SendStatus(404) // => 404 "Not Found"
+  })
 
-app.Listen(3000)
+  app.Listen(3000)
+}
 ```
 
 ### JSON Response
 
 ```go
-// ...
-app := fiber.New()
+func main() {
+  app := fiber.New()
 
-// Data structure
-type Data struct {
-  Name string `json:"name"`
-  Age  int    `json:"age"`
-}
+  type User struct {
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+  }
 
-// Return JSON data
-app.Get("/json", func (c *fiber.Ctx) {
-  c.JSON(&Data{
-    Name: "John",
-    Age:  20,
+  // Serialize JSON
+  app.Get("/json", func (c *fiber.Ctx) {
+    c.JSON(&User{"John", 20})
   })
-})
 
-app.Listen(3000)
+  app.Listen(3000)
+}
 ```
 
-## 💬 What people say about Fiber?
+## 💬 Media
 
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
 
-## 👍 Project assistance
+## 👍 Contribute
 
-If you want to say **thank you** or/and support active development `gofiber/fiber`:
+If you want to say **thank you** and/or support the active development of `fiber`:
 
 1. Add a GitHub Star to project.
 2. Tweet about project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Write review and usage articles on [Medium](https://medium.com/), [Dev.to](https://dev.to/) and personal blogs.
+3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
 4. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
 
-Thanks for your support! 😘 Together, we make `Fiber`.
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" style="height: 51px !important;width: 217px !important;" ></a>
 
-### ⭐️ Stars over time
+Thanks for your support! Together, we make `Fiber`.
+
+### ⭐️ Stars
 
 <a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
