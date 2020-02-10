@@ -46,11 +46,11 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 
 - Robust [routing](https://fiber.wiki/routing)
 - Serve [static files](https://fiber.wiki/application#static)
-- [Extreme performance](https://fiber.wiki/benchmarks)
-- Low memory footprint
+- Extreme [performance](https://fiber.wiki/benchmarks)
+- [Low memory](https://fiber.wiki/benchmarks) footprint
 - Express [API endpoints](https://fiber.wiki/context)
 - Middleware & [Next](https://fiber.wiki/context#next) support
-- Rapid server-side programming
+- [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
 - And much more, [explore Fiber](https://fiber.wiki/)
 
 ## 💡 Philosophy
