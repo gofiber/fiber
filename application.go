@@ -27,15 +27,16 @@ import (
 
 const (
 	// Version : Fiber version
-	Version = "1.4.0"
+	Version = "1.4.1"
 	website = "https://fiber.wiki"
-	// https://play.golang.org/p/r6GNeV1gbH
-	banner = "" +
-		" \x1b[1;32m _____ _ _\n" +
-		" \x1b[1;32m|   __|_| |_ ___ ___\n" +
-		" \x1b[1;32m|   __| | . | -_|  _|\n" +
-		" \x1b[1;32m|__|  |_|___|___|_|\x1b[1;30m%s\x1b[1;32m%s\n" +
-		" \x1b[1;30m%s\x1b[1;32m%v\x1b[0000m\n\n"
+	banner  = ` ______   __     ______     ______     ______
+/\  ___\ /\ \   /\  == \   /\  ___\   /\  == \
+\ \  __\ \ \ \  \ \  __<   \ \  __\   \ \  __<
+ \ \_\    \ \_\  \ \_____\  \ \_____\  \ \_\ \_\
+  \/_/     \/_/   \/_____/   \/_____/   \/_/ /_/
+
+%sFiber %s listening on %s, visit %s
+`
 )
 
 var (
@@ -266,15 +267,15 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 	// Prefork enabled
 	if r.Prefork && runtime.NumCPU() > 1 {
 		if r.Banner && !r.child {
-			cores := fmt.Sprintf("%s\x1b[1;30m %v cores", host, runtime.NumCPU())
-			fmt.Fprintf(out, banner, Version, " prefork", "Express on steroids", cores)
+			//cores := fmt.Sprintf("%s\x1b[1;30m %v cores", host, runtime.NumCPU())
+			fmt.Fprintf(out, "\x1b[1;32m"+banner, "\x1b[1;30m", "\x1b[1;32mv"+Version+"\x1b[1;30m", "\x1b[1;32m"+host+"\x1b[1;30m", "\x1b[1;32mfiber.wiki")
 		}
 		r.prefork(host, tls...)
 	}
 
 	// Prefork disabled
 	if r.Banner {
-		fmt.Fprintf(out, banner, Version, "", "Express on steroids", host)
+		fmt.Fprintf(out, "\x1b[1;32m"+banner, "\x1b[1;30m", "\x1b[1;32mv"+Version+"\x1b[1;30m", "\x1b[1;32m"+host+"\x1b[1;30m", "\x1b[1;32mfiber.wiki")
 	}
 
 	ln, err := net.Listen("tcp4", host)
