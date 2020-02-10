@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mattn/go-colorable"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/reuseport"
 )
@@ -260,18 +261,20 @@ func (r *Fiber) Listen(address interface{}, tls ...string) {
 	// Create fasthttp server
 	r.httpServer = r.setupServer()
 
+	out := colorable.NewColorableStdout()
+
 	// Prefork enabled
 	if r.Prefork && runtime.NumCPU() > 1 {
 		if r.Banner && !r.child {
 			cores := fmt.Sprintf("%s\x1b[1;30m %v cores", host, runtime.NumCPU())
-			fmt.Printf(banner, Version, " prefork", "Express on steroids", cores)
+			fmt.Fprintf(out, banner, Version, " prefork", "Express on steroids", cores)
 		}
 		r.prefork(host, tls...)
 	}
 
 	// Prefork disabled
 	if r.Banner {
-		fmt.Printf(banner, Version, "", "Express on steroids", host)
+		fmt.Fprintf(out, banner, Version, "", "Express on steroids", host)
 	}
 
 	ln, err := net.Listen("tcp4", host)
