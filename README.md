@@ -56,7 +56,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 
 New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
 
-Fiber is **inspired** by the Expressjs framework, the most popular web framework on Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express.js or similar_), then many methods and principles will seem **very common** to you.
+Fiber is **inspired** by the Expressjs, the most popular web framework on Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express.js or similar_), then many methods and principles will seem **very common** to you.
 
 ## 👀 Examples
 
@@ -193,9 +193,7 @@ If you want to say **thank you** and/or support the active development of `fiber
 3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
 4. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" style="height: 35px !important;" ></a>
-
-Thanks for your support! Together, we make `Fiber`.
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;" ></a>
 
 ### ⭐️ Stars
 
