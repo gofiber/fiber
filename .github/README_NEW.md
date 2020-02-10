@@ -25,7 +25,7 @@ func main() {
 
 ## ⚙️ Installation
 
-First of all, [download](https://golang.org/dl/) and install Go. Go `1.11` or higher is required.
+First of all, [download](https://golang.org/dl/) and install Go(`1.11` or higher is required).
 
 Installation is done using the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
