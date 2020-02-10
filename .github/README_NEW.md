@@ -189,7 +189,7 @@ func main() {
 
 If you want to say **thank you** and/or support the active development of `fiber`:
 
-1. Add a GitHub Star to project.
+1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to project.
 2. Tweet about project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
 4. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
