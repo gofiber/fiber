@@ -27,7 +27,7 @@ import (
 
 const (
 	// Version : Fiber version
-	Version = "1.4.0"
+	Version = "1.4.1"
 	website = "https://fiber.wiki"
 	banner  = ` ______   __     ______     ______     ______
 /\  ___\ /\ \   /\  == \   /\  ___\   /\  == \
