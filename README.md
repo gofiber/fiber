@@ -1,35 +1,49 @@
 <p align="center">
-  <a href="https://fiber.wiki"><img alt="Fiber" width="200" src="https://github.com/gofiber/docs/blob/master/static/logo_short.svg"></a><br>
-<a href="https://github.com/gofiber/fiber/blob/master/README.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_pt.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/pt.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/cn.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/de.svg">
-</a>
-
-<a href="https://github.com/gofiber/fiber/releases"><img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square"></a>
-<a href="https://fiber.wiki"><img src="https://img.shields.io/badge/api-documentation-blue?style=flat-square"></a>
-<a href="#"><img src="https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square"></a>
-<a href="https://gocover.io/github.com/gofiber/fiber"><img src="https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square"></a>
-<a href="https://travis-ci.org/gofiber/fiber"><img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square"></a>
-<a href="https://travis-ci.org/gofiber/fiber"><img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square"></a>
-
-  </p>
+  <a href="https://fiber.wiki">
+    <img alt="Fiber" width="200" src="https://github.com/gofiber/docs/blob/master/static/logo_short.svg">
+  </a>
+  <br>
+  <a href="https://github.com/gofiber/fiber/blob/master/README.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_pt.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/pt.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/cn.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/de.svg">
+  </a>
+  <br>
+  <a href="https://github.com/gofiber/fiber/releases">
+    <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
+  </a>
+  <a href="https://fiber.wiki">
+    <img src="https://img.shields.io/badge/api-documentation-blue?style=flat-square">
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square">
+  </a>
+  <a href="https://gocover.io/github.com/gofiber/fiber">
+    <img src="https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square">
+  </a>
+  <a href="https://travis-ci.org/gofiber/fiber">
+    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square">
+  </a>
+  <a href="https://travis-ci.org/gofiber/fiber">
+    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
+  </a>
+</p>
 
 **Fiber** is an [Expressjs](https://github.com/expressjs/express) inspired **web framework** build on top of [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for [Go](https://golang.org/doc/). Designed to **ease** things up for **fast** development with **zero memory allocation** and **performance** in mind.
 
