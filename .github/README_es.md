@@ -1,5 +1,4 @@
-<img alt="Fiber" src="https://i.imgur.com/Nwvx4cu.png" width="250">
-<a href="https://github.com/gofiber/fiber/blob/master/README.md">
+<img alt="Fiber" src="https://i.imgur.com/Nwvx4cu.png" width="250"><a href="https://github.com/gofiber/fiber/blob/master/README.md">
   <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
 </a>
 <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
