@@ -21,7 +21,7 @@
 
 **Fiber** is an [Expressjs](https://github.com/expressjs/express) inspired **web framework** build on top of [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for [Go](https://golang.org/doc/). Designed to **ease** things up for **fast** development with **zero memory allocation** and **performance** in mind.
 
-## ⚡️ Quick start
+## ⚡️ Quickstart
 
 ```go
 package main
@@ -74,7 +74,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 
 New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
 
-Fiber is **inspired** by the Expressjs, the most popular web framework on Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express.js or similar_), then many methods and principles will seem **very common** to you.
+Fiber is **inspired** by the Expressjs, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express.js or similar_), then many methods and principles will seem **very common** to you.
 
 ## 👀 Examples
 
@@ -206,8 +206,8 @@ func main() {
 
 If you want to say **thank you** and/or support the active development of `fiber`:
 
-1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to project.
-2. Tweet about project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to the project.
+2. Tweet about the project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
 4. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
 
