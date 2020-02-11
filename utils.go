@@ -8,13 +8,9 @@
 package fiber
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net"
-	"net/http"
-	"net/http/httputil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -111,56 +107,20 @@ func getBytes(s string) (b []byte) {
 	return b
 }
 
-// Test takes a http.Request and execute a fake connection to the application
-// It returns a http.Response when the connection was successfull
-func (f *Fiber) Test(req *http.Request) (*http.Response, error) {
-	// Get raw http request
-	reqRaw, err := httputil.DumpRequest(req, true)
+// Check for error and format
+func checkErr(err error, title ...string) {
 	if err != nil {
-		return nil, err
-	}
-	// Setup a fiber server struct
-	f.httpServer = f.setupServer()
-	// Create fake connection
-	conn := &conn{}
-	// Pass HTTP request to conn
-	_, err = conn.r.Write(reqRaw)
-	if err != nil {
-		return nil, err
-	}
-	// Serve conn to server
-	channel := make(chan error)
-	go func() {
-		channel <- f.httpServer.ServeConn(conn)
-	}()
-	// Wait for callback
-	select {
-	case err := <-channel:
-		if err != nil {
-			return nil, err
+		t := "Error"
+		if len(title) > 0 {
+			t = title[0]
 		}
-		// Throw timeout error after 200ms
-	case <-time.After(500 * time.Millisecond):
-		return nil, fmt.Errorf("Timeout")
+		fmt.Printf("\n%s%s: %v%s\n\n", "\x1b[1;30m", t, err, "\x1b[0m")
+		os.Exit(1)
 	}
-	// Get raw HTTP response
-	respRaw, err := ioutil.ReadAll(&conn.w)
-	if err != nil {
-		return nil, err
-	}
-	// Create buffer
-	reader := strings.NewReader(getString(respRaw))
-	buffer := bufio.NewReader(reader)
-	// Convert raw HTTP response to http.Response
-	resp, err := http.ReadResponse(buffer, req)
-	if err != nil {
-		return nil, err
-	}
-	// Return *http.Response
-	return resp, nil
 }
 
 // https://golang.org/src/net/net.go#L113
+// Helper methods for Testing
 type conn struct {
 	net.Conn
 	r bytes.Buffer
