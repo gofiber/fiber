@@ -22,8 +22,12 @@
   <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/de.svg">
 </a>
 
-
-[![](https://img.shields.io/github/release/gofiber/fiber?style=flat-square)](https://github.com/gofiber/fiber/releases) [![](https://img.shields.io/badge/api-documentation-blue?style=flat-square)](https://fiber.wiki) ![](https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square) [![](https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square)](https://gocover.io/github.com/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square)](https://travis-ci.org/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square)](https://travis-ci.org/gofiber/fiber)
+<a href="https://github.com/gofiber/fiber/releases"><img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square"></a>
+<a href="https://fiber.wiki"><img src="https://img.shields.io/badge/api-documentation-blue?style=flat-square"></a>
+<a href="#"><img src="https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square"></a>
+<a href="https://gocover.io/github.com/gofiber/fiber"><img src="https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square"></a>
+<a href="https://travis-ci.org/gofiber/fiber"><img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square"></a>
+<a href="https://travis-ci.org/gofiber/fiber"><img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square"></a>
 
   </p>
 
