@@ -1,4 +1,22 @@
-<img alt="Fiber" src="https://i.imgur.com/Nwvx4cu.png" width="250"><a href="https://github.com/gofiber/fiber/blob/master/.github/README_RU.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg" alt="ru"></a> <a href="https://github.com/gofiber/fiber/blob/master/.github/README_CH.md"><img width="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg" alt="ch"></a>
+<img alt="Fiber" src="https://i.imgur.com/Nwvx4cu.png" width="250">
+<a href="https://github.com/gofiber/fiber/blob/master/README.md">
+  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
+</a>
+<a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
+  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
+</a>
+<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
+  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
+</a>
+<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
+  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
+</a>
+<a href="https://github.com/gofiber/fiber/blob/master/.github/README_pt.md">
+  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/pt.svg">
+</a>
+<a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
+  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/cn.svg">
+</a>
 
 [![](https://img.shields.io/github/release/gofiber/fiber?style=flat-square)](https://github.com/gofiber/fiber/releases) [![](https://img.shields.io/badge/api-documentation-blue?style=flat-square)](https://fiber.wiki) ![](https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square) [![](https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square)](https://gocover.io/github.com/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square)](https://travis-ci.org/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square)](https://travis-ci.org/gofiber/fiber)
 
