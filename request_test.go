@@ -22,12 +22,18 @@ func Test_Accepts(t *testing.T) {
 		}
 		expect = ".xml"
 		result = c.Accepts(expect)
+		t.Log(result)
 		if result != expect {
 			t.Fatalf(`Expecting %s, got %s`, expect, result)
 		}
+		expect = ".whaaaaat"
+		result = c.Accepts(expect)
+		if result != "" {
+			t.Fatalf(`Expecting %s, got %s`, "", result)
+		}
 	})
 	req := httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9")
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)

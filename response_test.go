@@ -28,6 +28,7 @@ func Test_Append(t *testing.T) {
 func Test_Attachment(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.Attachment()
 		c.Attachment("./static/img/logo.png")
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
@@ -551,6 +552,9 @@ func Test_XML(t *testing.T) {
 	}
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		if err := c.Xml(""); err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 		if err := c.XML(""); err != nil {
 			t.Fatalf(`%s: %s`, t.Name(), err)
 		}
