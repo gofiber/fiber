@@ -21,7 +21,7 @@
 
 **Fiber**是一个基于[Expressjs的](https://github.com/expressjs/express) **Web框架，**建立在[Fasthttp](https://github.com/valyala/fasthttp) （ [Go](https://golang.org/doc/) **最快的** HTTP引擎）的基础上。旨在**简化** **零内存分配**和**性能的**情况，以便**快速**开发。
 
-## ⚡️快速入门
+## ⚡️ 快速入门
 
 ```go
 package main
@@ -39,7 +39,7 @@ func main() {
 }
 ```
 
-## Installation️安装
+## ⚙️ 安装
 
 首先， [下载](https://golang.org/dl/)并安装Go。 `1.11`或更高。
 
@@ -49,7 +49,7 @@ func main() {
 go get github.com/gofiber/fiber
 ```
 
-## 🤖基准
+## 🤖 基准
 
 这些测试由[TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)和[Go Web执行](https://github.com/smallnest/go-web-framework-benchmark) 。如果要查看所有结果，请访问我们的[Wiki](https://fiber.wiki/benchmarks) 。
 
@@ -58,7 +58,7 @@ go get github.com/gofiber/fiber
   <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark_alloc.png" width="49%">
 </p>
 
-## 🎯特点
+## 🎯 特点
 
 - 强大的[路由](https://fiber.wiki/routing)
 - 服务[静态文件](https://fiber.wiki/application#static)
@@ -69,13 +69,13 @@ go get github.com/gofiber/fiber
 - [快速的](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
 - 以及更多[探索纤维](https://fiber.wiki/)
 
-## 💡哲学
+## 💡 哲学
 
 从[Node.js](https://nodejs.org/en/about/)切换到[Go的](https://golang.org/doc/)新地鼠在开始构建Web应用程序或微服务之前正在应对学习过程。 Fiber作为一个**Web框架** ，是按照**极简主义**的思想并遵循**UNIX方式创建的** ，因此新的gopher可以以热烈和可信赖的欢迎**方式**迅速进入Go的世界。
 
 Fiber **受** Internet上最流行的Web框架Expressjs的**启发** 。我们结合了Express的**易用**性和Go的**原始性能** 。如果您曾经在Node.js上实现过Web应用程序（ *使用Express.js或类似工具* ），那么许多方法和原理对您来说似乎**非常普遍** 。
 
-## 👀例子
+## 👀 例子
 
 下面列出了一些常见示例。如果您想查看更多代码示例，请访问我们的[Recipes存储库](https://github.com/gofiber/recipes)或访问我们的[API文档](https://fiber.wiki) 。
 
@@ -197,11 +197,11 @@ func main() {
 }
 ```
 
-## 💬媒体
+## 💬 媒体
 
 - [欢迎使用Fiber —用❤️用Go语言编写的Express.js风格的Web框架](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *通过[维克·肖斯塔克（VicShóstak）](https://github.com/koddr) ，2020年2月3日*
 
-## 👍贡献
+## 👍 贡献
 
 如果您要说声**谢谢**和/或支持`fiber`的积极发展：
 
@@ -212,10 +212,10 @@ func main() {
 
 <a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;"></a>
 
-### ⭐️星星
+### ⭐️ 星星
 
 <a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
-## License️许可证
+## ⚠️ 许可证
 
 `Fiber`是根据[MIT许可证许可的](https://github.com/gofiber/fiber/master/LICENSE)免费开源软件。

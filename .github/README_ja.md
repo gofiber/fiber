@@ -21,7 +21,7 @@
 
 **Fiber**は、 [Go](https://golang.org/doc/)用の**最速の** HTTPエンジンである[Fasthttpの](https://github.com/valyala/fasthttp)上に構築された[Expressjsに](https://github.com/expressjs/express)ヒントを得た**Webフレームワーク**です。 **ゼロのメモリ割り当て**と**パフォーマンス**を念頭に置いて、開発を**迅速**に**行える**ように設計されてい**ます** 。
 
-## ⚡️クイックスタート
+## ⚡️ クイックスタート
 
 ```go
 package main
@@ -39,7 +39,7 @@ func main() {
 }
 ```
 
-## Installation️インストール
+## ⚙️ インストール
 
 まず、Goを[ダウンロード](https://golang.org/dl/)してインストールします。 `1.11`以降が必要です。
 
@@ -49,7 +49,7 @@ func main() {
 go get github.com/gofiber/fiber
 ```
 
-## 🤖ベンチマーク
+## 🤖 ベンチマーク
 
 これらのテストは[TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)および[Go Web](https://github.com/smallnest/go-web-framework-benchmark)によって実行され[ます](https://github.com/smallnest/go-web-framework-benchmark) 。すべての結果を表示するには、 [Wikiに](https://fiber.wiki/benchmarks)アクセスしてください。
 
@@ -58,7 +58,7 @@ go get github.com/gofiber/fiber
   <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark_alloc.png" width="49%">
 </p>
 
-## 🎯機能
+## 🎯 機能
 
 - 堅牢な[ルーティング](https://fiber.wiki/routing)
 - [静的ファイルを提供する](https://fiber.wiki/application#static)
@@ -69,13 +69,13 @@ go get github.com/gofiber/fiber
 - [迅速な](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)サーバー側プログラミング
 - さらに、 [Fiberを探索する](https://fiber.wiki/)
 
-## 💡哲学
+## 💡 哲学
 
 [Node.js](https://nodejs.org/en/about/)から[Go](https://golang.org/doc/)への切り替えを行う新しいgopherは、Webアプリケーションまたはマイクロサービスの構築を開始する前に、学習曲線に対処しています。 **Webフレームワーク**としてのFiberは、 **ミニマリズム**と**UNIXの方法**に基づいて作成されたため、新しいgopherがGoの世界にすばやく入ることができます。
 
 Fiberは、インターネットで最も人気のあるWebフレームワークであるExpressjsに**触発さ**れています。 Expressの**使いやすさ**とGoの**生のパフォーマンス**を組み合わせました。 （ *Express.jsなどを使用*して）Node.jsにWebアプリケーションを実装したことがある場合、多くの方法と原則が**非常に一般的**です。
 
-## 👀例
+## 👀 例
 
 以下に一般的な例をいくつか示します。他のコード例をご覧になりたい場合は、 [Recipesリポジトリ](https://github.com/gofiber/recipes)または[APIドキュメントを](https://fiber.wiki)ご覧ください。
 
@@ -197,11 +197,11 @@ func main() {
 }
 ```
 
-## 💬メディア
+## 💬 メディア
 
 - [ファイバーへようこそ— Go with❤️で記述されたExpress.jsスタイルのWebフレームワーク](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *[ヴィック・ショースタク](https://github.com/koddr) 、2020年2月3日*
 
-## 貢献する
+## 👍 貢献する
 
 **ありがとう、**および/または`fiber`積極的な開発をサポートしたい場合：
 
@@ -212,10 +212,10 @@ func main() {
 
 <a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;"></a>
 
-### ⭐️スター
+### ⭐️ スター
 
 <a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
-## License️ライセンス
+## ⚠️ ライセンス
 
 `Fiber`は、 [MIT Licenseに](https://github.com/gofiber/fiber/master/LICENSE)基づいてライセンスされた無料のオープンソースソフトウェアです。
