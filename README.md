@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://fiber.wiki">
-    <img alt="Fiber" width="200" src="https://github.com/gofiber/docs/blob/master/static/logo_short.svg">
+    <img alt="Fiber" height="75" src="https://github.com/gofiber/docs/blob/master/static/logo.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
