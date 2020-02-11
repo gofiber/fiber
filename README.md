@@ -21,7 +21,7 @@
 
 **Fiber** is an [Expressjs](https://github.com/expressjs/express) inspired **web framework** build on top of [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for [Go](https://golang.org/doc/). Designed to **ease** things up for **fast** development with **zero memory allocation** and **performance** in mind.
 
-## ⚡️ Quick start
+## ⚡️ Quickstart
 
 ```go
 package main
