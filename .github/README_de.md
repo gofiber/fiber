@@ -19,7 +19,7 @@
 
 [![](https://img.shields.io/github/release/gofiber/fiber?style=flat-square)](https://github.com/gofiber/fiber/releases) [![](https://img.shields.io/badge/api-documentation-blue?style=flat-square)](https://fiber.wiki) ![](https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square) [![](https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square)](https://gocover.io/github.com/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square)](https://travis-ci.org/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square)](https://travis-ci.org/gofiber/fiber)
 
-**Fiber** ist ein von [Expressjs](https://github.com/expressjs/express) inspiriertes **web framework** aufgebaut auf [Fasthttp](https://github.com/valyala/fasthttp), die **schnellste** HTTP engine für [Go](https://golang.org/doc/). Erschaffen um Dinge zu **vereinfachen**, für **schnelle** Entwicklung mit **keinen Speicherzuweisungen** und **Performance** im Hinterkopf.
+**Fiber** ist ein von [Expressjs](https://github.com/expressjs/express) inspiriertes **Web-Framework**, aufgebaut auf [Fasthttp](https://github.com/valyala/fasthttp) - die **schnellste** HTTP engine für [Go](https://golang.org/doc/). Kreiert um Dinge zu **vereinfachen**, für **schnelle** Entwicklung mit **keinen Speicherzuweisungen** und **Performance** im Hinterkopf.
 
 ## ⚡️ Schnellstart
 
@@ -43,7 +43,7 @@ func main() {
 
 Als erstes, [downloade](https://golang.org/dl/) und installiere Go. `1.11` oder höher.
 
-Die Installation wird durch das  [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) Kommando gestartet.
+Die Installation wird durch das  [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) Kommando gestartet:
 
 ```bash
 go get github.com/gofiber/fiber
@@ -68,11 +68,11 @@ Diese Tests wurden von [TechEmpower](https://github.com/TechEmpower/FrameworkBen
 - Middleware & [Next](https://fiber.wiki/context#next) Support
 - [Schnelle](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) serverseitige Programmierung
 - Übersetzt in [5 Sprachen](https://fiber.wiki/)
-- Und vieles mehr, [erkunde Fiber](https://fiber.wiki/)
+- Und vieles mehr - [erkunde Fiber](https://fiber.wiki/)
 
 ## 💡 Philosophie
 
-Neue gophers welche von [Node.js](https://nodejs.org/en/about/) zu [Go](https://golang.org/doc/) umsteigen, müssen eine Lernkurve durchlaufen, bevor sie ihre Webanwendungen oder Microservices erstellen können. Fiber, als ein **Web-Framework**, wurde erschaffen mit der Idee von **Minimalismus** und folgt dem **UNIX Weg** damit neue Gophers mit einem herzlichen und vertrauenswürdigen Willkommen schnell in die Welt von Go eintreten können.
+Neue gopher welche von [Node.js](https://nodejs.org/en/about/) zu [Go](https://golang.org/doc/) umsteigen, müssen eine Lernkurve durchlaufen, bevor sie ihre Webanwendungen oder Microservices erstellen können. Fiber, als ein **Web-Framework**, wurde erschaffen mit der Idee von **Minimalismus** und folgt dem **UNIX Weg** damit neue Gophers mit einem herzlichen und vertrauenswürdigen Willkommen schnell in die Welt von Go eintreten können.
 
 Fiber ist **inspiriert** von Expressjs, dem beliebtesten Web-Framework im Internet. Wir haben die **Leichtigkeit** von Express und die **Rohleistung** von Go kombiniert. Wenn du jemals eine Webanwendung mit Node.js implementiert hast (_mit Express.js oder ähnlichem_), werden dir viele Methoden und Prinzipien **sehr vertraut** vorkommen.
 
