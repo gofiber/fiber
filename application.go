@@ -393,7 +393,7 @@ func (app *Application) Shutdown() error {
 }
 
 // Test takes a http.Request and execute a fake connection to the application
-// It returns a http.Response when the connection was successfull
+// It returns a http.Response when the connection was successful
 func (app *Application) Test(req *http.Request) (*http.Response, error) {
 	// Get raw http request
 	reqRaw, err := httputil.DumpRequest(req, true)
