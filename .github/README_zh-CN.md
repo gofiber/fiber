@@ -19,7 +19,7 @@
 
 [![](https://img.shields.io/github/release/gofiber/fiber?style=flat-square)](https://github.com/gofiber/fiber/releases) [![](https://img.shields.io/badge/api-documentation-blue?style=flat-square)](https://fiber.wiki) ![](https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square) [![](https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square)](https://gocover.io/github.com/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square)](https://travis-ci.org/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square)](https://travis-ci.org/gofiber/fiber)
 
-**Fiber**是一个基于[Expressjs的](https://github.com/expressjs/express) **Web框架，**建立在[Fasthttp](https://github.com/valyala/fasthttp) （ [Go](https://golang.org/doc/) **最快的** HTTP引擎）的基础上。旨在**简化** **零内存分配**和**性能的**情况，以便**快速**开发。
+**Fiber**是一个基于[Expressjs的](https://github.com/expressjs/express) **Web框架，**建立在[Fasthttp](https://github.com/valyala/fasthttp) （ [Go](https://golang.org/doc/) **最快的** HTTP引擎）的基础上。皆在**简化** **零内存分配**和**提高性能**，以便**快速**开发。
 
 ## ⚡️ 快速入门
 
@@ -49,31 +49,31 @@ func main() {
 go get github.com/gofiber/fiber
 ```
 
-## 🤖 基准
+## 🤖 性能
 
 这些测试由[TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)和[Go Web执行](https://github.com/smallnest/go-web-framework-benchmark) 。如果要查看所有结果，请访问我们的[Wiki](https://fiber.wiki/benchmarks) 。
 
 <p float="left" align="middle">
-  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
-  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark_alloc.png" width="49%">
+  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
+  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets/benchmark_alloc.png" width="49%">
 </p>
 
 ## 🎯 特点
 
 - 强大的[路由](https://fiber.wiki/routing)
-- 服务[静态文件](https://fiber.wiki/application#static)
+- [静态文件](https://fiber.wiki/application#static)服务
 - 极限[表现](https://fiber.wiki/benchmarks)
-- [低内存](https://fiber.wiki/benchmarks)占用
+- [内存占用低](https://fiber.wiki/benchmarks)
 - Express [API端点](https://fiber.wiki/context)
-- 中间件和[下一个](https://fiber.wiki/context#next)支持
+- 中间件和[Next](https://fiber.wiki/context#next)支持
 - [快速的](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
-- 以及更多[探索纤维](https://fiber.wiki/)
+- 以及更多[文档](https://fiber.wiki/)
 
 ## 💡 哲学
 
-从[Node.js](https://nodejs.org/en/about/)切换到[Go的](https://golang.org/doc/)新地鼠在开始构建Web应用程序或微服务之前正在应对学习过程。 Fiber作为一个**Web框架** ，是按照**极简主义**的思想并遵循**UNIX方式创建的** ，因此新的gopher可以以热烈和可信赖的欢迎**方式**迅速进入Go的世界。
+从[Node.js](https://nodejs.org/en/about/)切换到[Go的](https://golang.org/doc/)新gopher在开始构建Web应用程序或微服务之前正在应对学习过程。 Fiber作为一个**Web框架** ，是按照**极简主义**的思想并遵循**UNIX方式创建的** ，因此新的gopher可以以热烈和可信赖的欢迎**方式**迅速进入Go的世界。
 
-Fiber **受** Internet上最流行的Web框架Expressjs的**启发** 。我们结合了Express的**易用**性和Go的**原始性能** 。如果您曾经在Node.js上实现过Web应用程序（ *使用Express.js或类似工具* ），那么许多方法和原理对您来说似乎**非常普遍** 。
+Fiber **受** Internet上最流行的Web框架Expressjs的**启发** 。我们结合了Express的**易用**性和Go的**原始性能** 。如果您曾经在Node.js上实现过Web应用程序（ *使用Express.js或类似工具* ），那么许多方法和原理对您来说似乎**非常易懂** 。
 
 ## 👀 例子
 
@@ -177,7 +177,7 @@ func main() {
 }
 ```
 
-### JSON回应
+### JSON响应
 
 ```go
 func main() {
@@ -199,11 +199,11 @@ func main() {
 
 ## 💬 媒体
 
-- [欢迎使用Fiber —用❤️用Go语言编写的Express.js风格的Web框架](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *通过[维克·肖斯塔克（VicShóstak）](https://github.com/koddr) ，2020年2月3日*
+- [欢迎使用Fiber —用Go语言编写的Express.js风格的Web框架](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *作者[维克·肖斯塔克（VicShóstak）](https://github.com/koddr) ，2020年2月3日*
 
 ## 👍 贡献
 
-如果您要说声**谢谢**和/或支持`fiber`的积极发展：
+如果您要说声**谢谢**或支持`fiber`的积极发展：
 
 1. 将[GitHub Star](https://github.com/gofiber/fiber/stargazers)添加到项目中。
 2. [在Twitter上](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)发布有关项目[的推文](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) 。
