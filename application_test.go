@@ -110,16 +110,12 @@ func Test_Listen(t *testing.T) {
 	app.Banner = false
 	go func() {
 		time.Sleep(1 * time.Second)
-		if err := app.Shutdown(); err != nil {
-			t.Fatalf(`%s: Shutdown %v`, t.Name(), err)
-		}
+		app.Shutdown()
 	}()
 	app.Listen(3002)
 	go func() {
 		time.Sleep(1 * time.Second)
-		if err := app.Shutdown(); err != nil {
-			t.Fatalf(`%s: Shutdown %v`, t.Name(), err)
-		}
+		app.Shutdown()
 	}()
 	app.Listen("3002")
 }
