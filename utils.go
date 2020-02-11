@@ -9,7 +9,6 @@ package fiber
 
 import (
 	"bytes"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -108,16 +107,16 @@ func getBytes(s string) (b []byte) {
 }
 
 // Check for error and format
-func checkErr(err error, title ...string) {
-	if err != nil {
-		t := "Error"
-		if len(title) > 0 {
-			t = title[0]
-		}
-		fmt.Printf("\n%s%s: %v%s\n\n", "\x1b[1;30m", t, err, "\x1b[0m")
-		os.Exit(1)
-	}
-}
+// func checkErr(err error, title ...string) {
+// 	if err != nil {
+// 		t := "Error"
+// 		if len(title) > 0 {
+// 			t = title[0]
+// 		}
+// 		fmt.Printf("\n%s%s: %v%s\n\n", "\x1b[1;30m", t, err, "\x1b[0m")
+// 		os.Exit(1)
+// 	}
+// }
 
 // https://golang.org/src/net/net.go#L113
 // Helper methods for Testing
