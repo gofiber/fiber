@@ -204,7 +204,7 @@ func (ctx *Ctx) BodyParser(v interface{}) error {
 	} else if cType == contentTypeXML {
 		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), &v)
 	}
-	return fmt.Errorf("Cannot parse Content-Type: %v", cType)
+	return fmt.Errorf("cannot parse content-type: %v", cType)
 }
 
 // Cookies : https://fiber.wiki/context#cookies

@@ -1,25 +1,52 @@
-<img alt="Fiber" src="https://i.imgur.com/Nwvx4cu.png"><a href="https://github.com/gofiber/fiber/blob/master/README.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_pt.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/pt.svg">
-</a>
-<a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
-  <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/cn.svg">
-</a>
-
-[![](https://img.shields.io/github/release/gofiber/fiber?style=flat-square)](https://github.com/gofiber/fiber/releases) [![](https://img.shields.io/badge/api-documentation-blue?style=flat-square)](https://fiber.wiki) ![](https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square) [![](https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square)](https://gocover.io/github.com/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square)](https://travis-ci.org/gofiber/fiber) [![](https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square)](https://travis-ci.org/gofiber/fiber)
-
-**Fiber** is an [Expressjs](https://github.com/expressjs/express) inspired **web framework** build on top of [Fasthttp](https://github.com/valyala/fasthttp), the **fastest** HTTP engine for [Go](https://golang.org/doc/). Designed to **ease** things up for **fast** development with **zero memory allocation** and **performance** in mind.
+<p align="center">
+  <a href="https://fiber.wiki">
+    <img alt="Fiber" height="100" src="https://github.com/gofiber/docs/blob/master/static/logo.svg">
+  </a>
+  <br><br>
+  <a href="https://github.com/gofiber/fiber/blob/master/README.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_pt.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/pt.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/cn.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/de.svg">
+  </a>
+  <br><br>
+  <a href="https://github.com/gofiber/fiber/releases">
+    <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
+  </a>
+  <a href="https://fiber.wiki">
+    <img src="https://img.shields.io/badge/api-documentation-blue?style=flat-square">
+  </a>
+  <a href="#">
+    <img src="https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square">
+  </a>
+  <a href="https://gocover.io/github.com/gofiber/fiber">
+    <img src="https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square">
+  </a>
+  <a href="https://travis-ci.org/gofiber/fiber">
+    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square">
+  </a>
+  <a href="https://travis-ci.org/gofiber/fiber">
+    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
+  </a>
+</p>
+<p align="center">
+  <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> build on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://golang.org/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
+</p>
 
 ## ⚡️ Quickstart
 
@@ -64,7 +91,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 - Serve [static files](https://fiber.wiki/application#static)
 - Extreme [performance](https://fiber.wiki/benchmarks)
 - [Low memory](https://fiber.wiki/benchmarks) footprint
-- Express [API endpoints](https://fiber.wiki/context)
+- [API endpoints](https://fiber.wiki/context)
 - Middleware & [Next](https://fiber.wiki/context#next) support
 - [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
 - Translated in [5 languages](https://fiber.wiki/)
@@ -74,7 +101,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 
 New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
 
-Fiber is **inspired** by the Expressjs, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express.js or similar_), then many methods and principles will seem **very common** to you.
+Fiber is **inspired** by Express, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express or similar_), then many methods and principles will seem **very common** to you.
 
 ## 👀 Examples
 
