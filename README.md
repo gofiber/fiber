@@ -2,7 +2,8 @@
   <a href="https://fiber.wiki">
     <img alt="Fiber" width="200" src="https://github.com/gofiber/docs/blob/master/static/logo_short.svg">
   </a>
-  <br>
+</p>
+<p align="center">
   <a href="https://github.com/gofiber/fiber/blob/master/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>
@@ -43,6 +44,8 @@
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
   </a>
+</p>
+<p align="center">
   <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Expressjs</a> inspired <b>web framework</b> build on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://golang.org/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
 </p>
 
