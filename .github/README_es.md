@@ -45,7 +45,7 @@
   </a>
 </p>
 <p align="center">
-<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Expressjs</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a> , el motor HTTP <strong>más rápido</strong> para <a href="https://golang.org/doc/">Go</a> . Diseñado para <strong>facilitar las</strong> cosas para <strong>un</strong> desarrollo <strong>rápido</strong> con <strong>cero asignación de memoria</strong> y <strong>rendimiento</strong> en mente.<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Expressjs</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a> , el motor HTTP <strong>más rápido</strong> para <a href="https://golang.org/doc/">Go</a> . Diseñado para <strong>facilitar las</strong> cosas para <strong>un</strong> desarrollo <strong>rápido</strong> con <strong>cero asignación de memoria</strong> y <strong>rendimiento</strong> en mente.
+<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Expressjs</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a> , el motor HTTP <strong>más rápido</strong> para <a href="https://golang.org/doc/">Go</a> . Diseñado para <strong>facilitar las</strong> cosas para <strong>un</strong> desarrollo <strong>rápido</strong> con <strong>cero asignación de memoria</strong> y <strong>rendimiento</strong> en mente.
 </p>
 
 ## ⚡️ Inicio rápido
