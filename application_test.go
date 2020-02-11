@@ -110,12 +110,12 @@ func Test_Listen(t *testing.T) {
 	app.Banner = false
 	go func() {
 		time.Sleep(1 * time.Second)
-		app.Shutdown()
+		_ = app.Shutdown()
 	}()
 	app.Listen(3002)
 	go func() {
 		time.Sleep(1 * time.Second)
-		app.Shutdown()
+		_ = app.Shutdown()
 	}()
 	app.Listen("3002")
 }
