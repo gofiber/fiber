@@ -16,7 +16,6 @@
 <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
   <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/cn.svg">
 </a>
-<<<<<<< HEAD
 <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
   <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/de.svg">
 </a>
