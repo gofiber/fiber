@@ -387,7 +387,7 @@ func (app *Application) Listen(address interface{}, tls ...string) {
 // Shutdown server gracefully
 func (app *Application) Shutdown() error {
 	if app.httpServer == nil {
-		return fmt.Errorf("Server is not running")
+		return fmt.Errorf("server is not running")
 	}
 	return app.httpServer.Shutdown()
 }
@@ -422,7 +422,7 @@ func (app *Application) Test(req *http.Request) (*http.Response, error) {
 		}
 		// Throw timeout error after 200ms
 	case <-time.After(500 * time.Millisecond):
-		return nil, fmt.Errorf("Timeout")
+		return nil, fmt.Errorf("timeout")
 	}
 	// Get raw HTTP response
 	respRaw, err := ioutil.ReadAll(&conn.w)
