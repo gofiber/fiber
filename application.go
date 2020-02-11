@@ -37,7 +37,7 @@ const (
  \ \_\    \ \_\  \ \_____\  \ \_____\  \ \_\ \_\
   \/_/     \/_/   \/_____/   \/_____/   \/_/ /_/
 
-` + "\x1b[1;30mFiber \x1b[1;32mv%s\x1b[1;30m %s on \x1b[1;32m%s\x1b[1;30m, visit \x1b[1;32m%s\x1b[0m\n\n"
+` + "\x1b[0mFiber \x1b[1;32mv%s\x1b[0m %s on \x1b[1;32m%s\x1b[0m, visit \x1b[1;32m%s\x1b[0m\n\n"
 )
 
 var (
