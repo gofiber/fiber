@@ -200,9 +200,9 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 func (ctx *Ctx) BodyParser(v interface{}) error {
 	cType := getString(ctx.Fasthttp.Request.Header.ContentType())
 	if cType == contentTypeJSON {
-		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), v)
+		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), &v)
 	} else if cType == contentTypeXML {
-		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), v)
+		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), &v)
 	}
 	return fmt.Errorf("Cannot parse Content-Type: %v", cType)
 }

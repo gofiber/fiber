@@ -3,7 +3,6 @@ package fiber
 import (
 	"net/http"
 	"testing"
-	"time"
 )
 
 var handler = func(c *Ctx) {}
@@ -12,7 +11,7 @@ func Test_Methods(t *testing.T) {
 	app := New()
 
 	methods := []string{"CONNECT", "PUT", "POST", "DELETE", "HEAD", "PATCH", "OPTIONS", "TRACE", "GET", "ALL", "USE"}
-
+	app.Connect("", handler)
 	app.Connect("/CONNECT", handler)
 	app.Put("/PUT", handler)
 	app.Post("/POST", handler)
@@ -105,17 +104,17 @@ func Test_Group(t *testing.T) {
 	}
 }
 
-func Test_Listen(t *testing.T) {
-	app := New()
-	app.Banner = false
-	go func() {
-		time.Sleep(1 * time.Second)
-		_ = app.Shutdown()
-	}()
-	app.Listen(3002)
-	go func() {
-		time.Sleep(1 * time.Second)
-		_ = app.Shutdown()
-	}()
-	app.Listen("3002")
-}
+// func Test_Listen(t *testing.T) {
+// 	app := New()
+// 	app.Banner = false
+// 	go func() {
+// 		time.Sleep(1 * time.Second)
+// 		_ = app.Shutdown()
+// 	}()
+// 	app.Listen(3002)
+// 	go func() {
+// 		time.Sleep(1 * time.Second)
+// 		_ = app.Shutdown()
+// 	}()
+// 	app.Listen("3002")
+// }

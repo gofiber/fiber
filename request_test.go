@@ -188,6 +188,30 @@ func Test_Body(t *testing.T) {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
+func Test_BodyParser(t *testing.T) {
+	app := New()
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	app.Post("/test", func(c *Ctx) {
+		d := new(Demo)
+		err := c.BodyParser(&d)
+		if err != nil {
+			t.Fatalf(`%s: BodyParser %v`, t.Name(), err)
+		}
+		if d.Name != "john" {
+			t.Fatalf(`%s: Expect %s got %s`, t.Name(), "john", d)
+		}
+	})
+	req := httptest.NewRequest("POST", "/test", bytes.NewBuffer([]byte(`{"name":"john"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Length", strconv.Itoa(len([]byte(`{"name":"john"}`))))
+
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+}
 func Test_Cookies(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
