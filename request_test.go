@@ -22,12 +22,18 @@ func Test_Accepts(t *testing.T) {
 		}
 		expect = ".xml"
 		result = c.Accepts(expect)
+		t.Log(result)
 		if result != expect {
 			t.Fatalf(`Expecting %s, got %s`, expect, result)
 		}
+		expect = ".whaaaaat"
+		result = c.Accepts(expect)
+		if result != "" {
+			t.Fatalf(`Expecting %s, got %s`, "", result)
+		}
 	})
 	req := httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9")
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
@@ -180,6 +186,30 @@ func Test_Body(t *testing.T) {
 	}
 	if resp.StatusCode != 200 {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_BodyParser(t *testing.T) {
+	app := New()
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	app.Post("/test", func(c *Ctx) {
+		d := new(Demo)
+		err := c.BodyParser(&d)
+		if err != nil {
+			t.Fatalf(`%s: BodyParser %v`, t.Name(), err)
+		}
+		if d.Name != "john" {
+			t.Fatalf(`%s: Expect %s got %s`, t.Name(), "john", d)
+		}
+	})
+	req := httptest.NewRequest("POST", "/test", bytes.NewBuffer([]byte(`{"name":"john"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Length", strconv.Itoa(len([]byte(`{"name":"john"}`))))
+
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_Cookies(t *testing.T) {

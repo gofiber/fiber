@@ -105,7 +105,7 @@ func (app *Application) register(method string, args ...interface{}) {
 	} else if len(args) > 1 {
 		path = args[0].(string)
 		handler = args[1].(func(*Ctx))
-		if path[0] != '/' && path[0] != '*' {
+		if path == "" || path[0] != '/' && path[0] != '*' {
 			path = "/" + path
 		}
 	}
