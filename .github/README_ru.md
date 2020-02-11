@@ -54,8 +54,8 @@ go get github.com/gofiber/fiber
 Эти тесты выполняются [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) и [Go Web](https://github.com/smallnest/go-web-framework-benchmark) . Если вы хотите увидеть все результаты, пожалуйста, посетите нашу [вики](https://fiber.wiki/benchmarks) .
 
 <p float="left" align="middle">
-  <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark-pipeline.png" width="49%">
-  <img src="https://github.com/gofiber/docs/blob/master/static/benchmarks/benchmark_alloc.png" width="49%">
+  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
+  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark_alloc.png" width="49%">
 </p>
 
 ## 🎯 Особенности
