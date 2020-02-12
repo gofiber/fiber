@@ -8,7 +8,6 @@
 package fiber
 
 import (
-	"fmt"
 	"log"
 	"path/filepath"
 	"regexp"
@@ -133,7 +132,6 @@ func (app *Application) register(method string, args ...interface{}) {
 	// If path has no params (simple path), we don't need regex (also for use())
 	if midware || len(params) == 0 {
 		app.routes = append(app.routes, &Route{method, path, midware, false, nil, nil, handler})
-		fmt.Println(app.routes[0])
 		return
 	}
 
