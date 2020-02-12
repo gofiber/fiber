@@ -299,11 +299,6 @@ func (app *Application) Static(args ...string) {
 		wildcard = true
 	}
 
-	// Check if root exists
-	if _, err := os.Lstat(root); err != nil {
-		log.Fatal("Static: ", err)
-	}
-
 	// Lets get all files from root
 	files, _, err := getFiles(root)
 	if err != nil {
@@ -326,7 +321,7 @@ func (app *Application) Static(args ...string) {
 		// for windows: static\index.html => /index.html
 		path = filepath.ToSlash(path)
 		// Store absolute file path to use in ctx handler
-		filePath := path
+		filePath := file
 
 		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
@@ -426,7 +421,7 @@ func (app *Application) Test(req *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 		// Throw timeout error after 200ms
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return nil, fmt.Errorf("timeout")
 	}
 	// Get raw HTTP response

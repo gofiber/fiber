@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -60,6 +61,10 @@ func getRegex(path string) (*regexp.Regexp, error) {
 
 func getFiles(root string) (files []string, isDir bool, err error) {
 	root = filepath.Clean(root)
+	// Check if dir/file exists
+	if _, err := os.Lstat(root); err != nil {
+		return files, isDir, fmt.Errorf("%s", err)
+	}
 	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
 			files = append(files, path)

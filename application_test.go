@@ -47,7 +47,6 @@ func Test_Static(t *testing.T) {
 	app := New()
 	app.Static("./.github")
 	app.Static("/john", "./.github")
-	app.Static("*", "./.github/stale.yml")
 	req, _ := http.NewRequest("GET", "/stale.yml", nil)
 	resp, err := app.Test(req)
 	if err != nil {
