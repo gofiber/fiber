@@ -8,7 +8,6 @@ import (
 )
 
 func Test_Append(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Append("X-Test", "hel")
@@ -27,7 +26,6 @@ func Test_Append(t *testing.T) {
 	}
 }
 func Test_Attachment(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Attachment()
@@ -49,7 +47,6 @@ func Test_Attachment(t *testing.T) {
 	}
 }
 func Test_ClearCookie(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.ClearCookie()
@@ -83,7 +80,6 @@ func Test_ClearCookie(t *testing.T) {
 	}
 }
 func Test_Cookie(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		options := &Cookie{
@@ -109,11 +105,9 @@ func Test_Cookie(t *testing.T) {
 	}
 }
 func Test_Download(t *testing.T) {
-	t.Parallel()
 	// TODO
 }
 func Test_Format(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Format("Hello, World!")
@@ -157,11 +151,9 @@ func Test_Format(t *testing.T) {
 	}
 }
 func Test_HeadersSent(t *testing.T) {
-	t.Parallel()
 	// TODO
 }
 func Test_JSON(t *testing.T) {
-	t.Parallel()
 	type SomeStruct struct {
 		Name string
 		Age  uint8
@@ -202,7 +194,6 @@ func Test_JSON(t *testing.T) {
 	}
 }
 func Test_JSONBytes(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.JsonBytes([]byte(""))
@@ -228,7 +219,6 @@ func Test_JSONBytes(t *testing.T) {
 	}
 }
 func Test_JSONP(t *testing.T) {
-	t.Parallel()
 	type SomeStruct struct {
 		Name string
 		Age  uint8
@@ -269,7 +259,6 @@ func Test_JSONP(t *testing.T) {
 	}
 }
 func Test_JSONString(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.JsonString("")
@@ -295,7 +284,6 @@ func Test_JSONString(t *testing.T) {
 	}
 }
 func Test_Links(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Links(
@@ -316,7 +304,6 @@ func Test_Links(t *testing.T) {
 	}
 }
 func Test_Location(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Location("http://example.com")
@@ -334,7 +321,6 @@ func Test_Location(t *testing.T) {
 	}
 }
 func Test_Next(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Use("/", func(c *Ctx) {
 		c.Next()
@@ -355,7 +341,6 @@ func Test_Next(t *testing.T) {
 	}
 }
 func Test_Redirect(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Redirect("http://example.com", 301)
@@ -373,11 +358,9 @@ func Test_Redirect(t *testing.T) {
 	}
 }
 func Test_Render(t *testing.T) {
-	t.Parallel()
 	// TODO
 }
 func Test_Send(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Send([]byte("Hello, World"))
@@ -401,7 +384,6 @@ func Test_Send(t *testing.T) {
 	}
 }
 func Test_SendBytes(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.SendBytes([]byte("Hello, World"))
@@ -423,7 +405,6 @@ func Test_SendBytes(t *testing.T) {
 	}
 }
 func Test_SendStatus(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.SendStatus(415)
@@ -445,7 +426,6 @@ func Test_SendStatus(t *testing.T) {
 	}
 }
 func Test_SendString(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.SendString("Don't crash please")
@@ -467,7 +447,6 @@ func Test_SendString(t *testing.T) {
 	}
 }
 func Test_Set(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Set("X-1", "1")
@@ -493,7 +472,6 @@ func Test_Set(t *testing.T) {
 	}
 }
 func Test_Status(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Status(400)
@@ -516,7 +494,6 @@ func Test_Status(t *testing.T) {
 	}
 }
 func Test_Type(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Type(".json")
@@ -534,7 +511,6 @@ func Test_Type(t *testing.T) {
 	}
 }
 func Test_Vary(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Vary("Origin")
@@ -554,7 +530,6 @@ func Test_Vary(t *testing.T) {
 	}
 }
 func Test_Write(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Write("Hello, ")
@@ -578,7 +553,6 @@ func Test_Write(t *testing.T) {
 	}
 }
 func Test_XML(t *testing.T) {
-	t.Parallel()
 	type person struct {
 		Name  string `xml:"name"`
 		Stars int    `xml:"stars"`

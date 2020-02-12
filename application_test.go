@@ -8,7 +8,6 @@ import (
 var handler = func(c *Ctx) {}
 
 func Test_Methods(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	methods := []string{"CONNECT", "PUT", "POST", "DELETE", "HEAD", "PATCH", "OPTIONS", "TRACE", "GET", "ALL", "USE"}
@@ -45,7 +44,6 @@ func Test_Methods(t *testing.T) {
 }
 
 func Test_Static(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Static("/yesyes*", ".github/FUNDING.yml")
@@ -86,7 +84,6 @@ func Test_Static(t *testing.T) {
 	}
 }
 func Test_Group(t *testing.T) {
-	t.Parallel()
 	app := New()
 	grp := app.Group("/test")
 	grp.Get("/", handler)

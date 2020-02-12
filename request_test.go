@@ -13,7 +13,6 @@ import (
 )
 
 func Test_Accepts(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		expect := ""
@@ -44,7 +43,6 @@ func Test_Accepts(t *testing.T) {
 	}
 }
 func Test_AcceptsCharsets(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.AcceptsCharsets()
@@ -66,7 +64,6 @@ func Test_AcceptsCharsets(t *testing.T) {
 	}
 }
 func Test_AcceptsEncodings(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.AcceptsEncodings()
@@ -87,7 +84,6 @@ func Test_AcceptsEncodings(t *testing.T) {
 	}
 }
 func Test_AcceptsLanguages(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.AcceptsLanguages()
@@ -108,7 +104,6 @@ func Test_AcceptsLanguages(t *testing.T) {
 	}
 }
 func Test_BaseURL(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.BaseUrl() // deprecated
@@ -128,7 +123,6 @@ func Test_BaseURL(t *testing.T) {
 	}
 }
 func Test_BasicAuth(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		expect1 := "john"
@@ -152,7 +146,6 @@ func Test_BasicAuth(t *testing.T) {
 	}
 }
 func Test_Body(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Post("/test", func(c *Ctx) {
 		c.Body(1)
@@ -196,7 +189,6 @@ func Test_Body(t *testing.T) {
 	}
 }
 func Test_BodyParser(t *testing.T) {
-	t.Parallel()
 	app := New()
 	type Demo struct {
 		Name string `json:"name"`
@@ -221,7 +213,6 @@ func Test_BodyParser(t *testing.T) {
 	}
 }
 func Test_Cookies(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Cookies(1)
@@ -260,11 +251,9 @@ func Test_Cookies(t *testing.T) {
 	}
 }
 func Test_FormFile(t *testing.T) {
-	t.Parallel()
 	// TODO
 }
 func Test_FormValue(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Post("/test", func(c *Ctx) {
 		expect := "john"
@@ -295,7 +284,6 @@ func Test_FormValue(t *testing.T) {
 	}
 }
 func Test_Fresh(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Fresh()
@@ -307,7 +295,6 @@ func Test_Fresh(t *testing.T) {
 	}
 }
 func Test_Get(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		expect := "utf-8, iso-8859-1;q=0.5"
@@ -333,7 +320,6 @@ func Test_Get(t *testing.T) {
 	}
 }
 func Test_Hostname(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		expect := "google.com"
@@ -352,7 +338,6 @@ func Test_Hostname(t *testing.T) {
 	}
 }
 func Test_IP(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Ip() // deprecated
@@ -372,7 +357,6 @@ func Test_IP(t *testing.T) {
 	}
 }
 func Test_IPs(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Ips() // deprecated
@@ -393,7 +377,6 @@ func Test_IPs(t *testing.T) {
 	}
 }
 func Test_Is(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Is(".json")
@@ -414,7 +397,6 @@ func Test_Is(t *testing.T) {
 	}
 }
 func Test_Locals(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Use(func(c *Ctx) {
 		c.Locals("john", "doe")
@@ -437,7 +419,6 @@ func Test_Locals(t *testing.T) {
 	}
 }
 func Test_Method(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get(func(c *Ctx) {
 		expect := "GET"
@@ -486,7 +467,6 @@ func Test_Method(t *testing.T) {
 	}
 }
 func Test_MultipartForm(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Post("/test", func(c *Ctx) {
 		expect := "john"
@@ -520,7 +500,6 @@ func Test_MultipartForm(t *testing.T) {
 	}
 }
 func Test_OriginalURL(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.OriginalUrl() // deprecated
@@ -540,7 +519,6 @@ func Test_OriginalURL(t *testing.T) {
 	}
 }
 func Test_Params(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test/:user", func(c *Ctx) {
 		expect := "john"
@@ -574,7 +552,6 @@ func Test_Params(t *testing.T) {
 	}
 }
 func Test_Path(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test/:user", func(c *Ctx) {
 		expect := "/test/john"
@@ -593,7 +570,6 @@ func Test_Path(t *testing.T) {
 	}
 }
 func Test_Query(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		expect := "john"
@@ -617,7 +593,6 @@ func Test_Query(t *testing.T) {
 	}
 }
 func Test_Range(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Range()
@@ -629,7 +604,6 @@ func Test_Range(t *testing.T) {
 	}
 }
 func Test_Route(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		expect := "/test"
@@ -648,11 +622,9 @@ func Test_Route(t *testing.T) {
 	}
 }
 func Test_SaveFile(t *testing.T) {
-	t.Parallel()
 	// TODO
 }
 func Test_Secure(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		expect := false
@@ -671,7 +643,6 @@ func Test_Secure(t *testing.T) {
 	}
 }
 func Test_SignedCookies(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.SignedCookies()
@@ -686,7 +657,6 @@ func Test_SignedCookies(t *testing.T) {
 	}
 }
 func Test_Stale(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Stale()
@@ -698,7 +668,6 @@ func Test_Stale(t *testing.T) {
 	}
 }
 func Test_Subdomains(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		expect := []string{"john", "doe"}
@@ -717,7 +686,6 @@ func Test_Subdomains(t *testing.T) {
 	}
 }
 func Test_XHR(t *testing.T) {
-	t.Parallel()
 	app := New()
 	app.Get("/test", func(c *Ctx) {
 		c.Xhr() // deprecated
