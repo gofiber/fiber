@@ -45,10 +45,23 @@ func Test_Methods(t *testing.T) {
 
 func Test_Static(t *testing.T) {
 	app := New()
+
+	app.Static("/yesyes*", ".github/FUNDING.yml")
 	app.Static("./.github")
 	app.Static("/john", "./.github")
 	req, _ := http.NewRequest("GET", "/stale.yml", nil)
 	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	if resp.Header.Get("Content-Length") == "" {
+		t.Fatalf(`%s: Missing Content-Length`, t.Name())
+	}
+	req, _ = http.NewRequest("GET", "/yesyes/john/doe", nil)
+	resp, err = app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}

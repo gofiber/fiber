@@ -278,6 +278,7 @@ func (app *Application) Static(args ...string) {
 	prefix := "/"
 	root := "./"
 	wildcard := false
+	midware := false
 	// enable / disable gzipping somewhere?
 	// todo v2.0.0
 	gzip := true
@@ -298,8 +299,11 @@ func (app *Application) Static(args ...string) {
 	if prefix == "*" || prefix == "/*" {
 		wildcard = true
 	} else if strings.Contains(prefix, "*") {
-
+		prefix = strings.Replace(prefix, "*", "", -1)
+		midware = true
 	}
+
+	fmt.Println(prefix)
 
 	// Lets get all files from root
 	files, _, err := getFiles(root)
@@ -327,13 +331,13 @@ func (app *Application) Static(args ...string) {
 
 		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
-			app.routes = append(app.routes, &Route{"GET", prefix, wildcard, false, nil, nil, func(c *Ctx) {
+			app.routes = append(app.routes, &Route{"GET", prefix, midware, wildcard, nil, nil, func(c *Ctx) {
 				c.SendFile(filePath, gzip)
 			}})
 		}
 
 		// Add the route + SendFile(filepath) to routes
-		app.routes = append(app.routes, &Route{"GET", path, wildcard, false, nil, nil, func(c *Ctx) {
+		app.routes = append(app.routes, &Route{"GET", path, midware, wildcard, nil, nil, func(c *Ctx) {
 			c.SendFile(filePath, gzip)
 		}})
 	}
