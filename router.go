@@ -81,6 +81,7 @@ func (grp *Group) register(method string, args ...interface{}) {
 		}
 		path = strings.Replace(path, "//", "/", -1)
 		path = filepath.Clean(path)
+		path = filepath.ToSlash(path)
 	}
 	grp.app.register(method, path, handler)
 }

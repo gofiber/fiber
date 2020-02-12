@@ -75,7 +75,7 @@ func Test_Group(t *testing.T) {
 	app := New()
 	grp := app.Group("/test")
 	grp.Get("/", handler)
-	grp.Get("/test/:demo?", handler)
+	grp.Get("/:demo?", handler)
 	grp.Connect("/CONNECT", handler)
 	grp.Put("/PUT", handler)
 	grp.Post("/POST", handler)
