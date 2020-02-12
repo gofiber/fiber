@@ -41,7 +41,7 @@ type Route struct {
 	// Store params if special routes :params, *wildcards, optionals?
 	Params []string
 	// Callback function for specific route
-	Handler func(*Ctx)
+	Handler func(*Ctx) error
 }
 
 // Ctx pool
@@ -98,14 +98,14 @@ func (app *Application) register(method string, args ...interface{}) {
 
 	// Prepare possible variables
 	var path string        // We could have a path/prefix
-	var handler func(*Ctx) // We could have a ctx handler
+	var handler func(*Ctx) error // We could have a ctx handler
 
 	// Only 1 argument, so no path/prefix
 	if len(args) == 1 {
-		handler = args[0].(func(*Ctx))
+		handler = args[0].(func(*Ctx) error)
 	} else if len(args) > 1 {
 		path = args[0].(string)
-		handler = args[1].(func(*Ctx))
+		handler = args[1].(func(*Ctx) error)
 		if path == "" || path[0] != '/' && path[0] != '*' {
 			path = "/" + path
 		}
@@ -135,7 +135,7 @@ func (app *Application) register(method string, args ...interface{}) {
 		return
 	}
 
-	// We have parametes, so we need to compile regex from the path
+	// We have parameters, so we need to compile regex from the path
 	regex, err := getRegex(path)
 	if err != nil {
 		log.Fatal("Router: Invalid url pattern: " + path)
@@ -176,7 +176,9 @@ func (app *Application) handler(fctx *fasthttp.RequestCtx) {
 			// Set route pointer if user wants to call .Route()
 			ctx.route = route
 			// Execute handler with context
-			route.Handler(ctx)
+			if err := route.Handler(ctx); err != nil {
+
+			}
 			// if next is not set, leave loop and release ctx
 			if !ctx.next {
 				break
@@ -192,7 +194,9 @@ func (app *Application) handler(fctx *fasthttp.RequestCtx) {
 		if route.Midware && strings.HasPrefix(path, route.Path) {
 			found = true
 			ctx.route = route
-			route.Handler(ctx)
+			if err := route.Handler(ctx); err != nil {
+
+			}
 			if !ctx.next {
 				break
 			}
@@ -227,7 +231,9 @@ func (app *Application) handler(fctx *fasthttp.RequestCtx) {
 		ctx.route = route
 
 		// Execute handler with context
-		route.Handler(ctx)
+		if err := route.Handler(ctx); err != nil {
+
+		}
 
 		// if next is not set, leave loop and release ctx
 		if !ctx.next {
