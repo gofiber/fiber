@@ -8,6 +8,7 @@
 package fiber
 
 import (
+	"fmt"
 	"log"
 	"path/filepath"
 	"regexp"
@@ -21,6 +22,7 @@ import (
 type Ctx struct {
 	route    *Route
 	next     bool
+	error    error
 	params   *[]string
 	values   []string
 	Fasthttp *fasthttp.RequestCtx
@@ -62,6 +64,7 @@ func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 func releaseCtx(ctx *Ctx) {
 	ctx.route = nil
 	ctx.next = false
+	ctx.error = nil
 	ctx.params = nil
 	ctx.values = nil
 	ctx.Fasthttp = nil
@@ -156,6 +159,15 @@ func (app *Application) handler(fctx *fasthttp.RequestCtx) {
 	path := ctx.Path()
 	method := ctx.Method()
 
+	if app.recover != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				ctx.error = fmt.Errorf("panic: %v", r)
+				app.recover(ctx)
+			}
+		}()
+	}
+
 	// loop trough routes
 	for _, route := range app.routes {
 		// Skip route if method is not allowed
@@ -241,7 +253,7 @@ func (app *Application) handler(fctx *fasthttp.RequestCtx) {
 	// No routes found
 	if !found {
 		// Custom 404 handler?
-		ctx.Status(404).Send("Not Found")
+		ctx.SendStatus(404)
 	}
 
 	// release context back into sync pool
