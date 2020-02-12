@@ -46,6 +46,9 @@
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
   </a>
+  <a href="https://travis-ci.org/gofiber/fiber">
+    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
+  </a>
 </p>
 <p align="center">
   <strong>Fiber</strong> — это <strong>веб фреймворк</strong>, который был вдохновлен <a href="https://github.com/expressjs/express">Express</a> и основан на <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, самом быстром HTTP-движке написанном на <a href="https://golang.org/doc/">Go</a>. Фреймворк был разработан с целью <strong>упростить</strong> процесс <strong>быстрой</strong> разработки <strong>высокопроизводительных</strong> веб-приложений с <strong>нулевым распределением памяти</strong>.
@@ -96,7 +99,7 @@ go get -u github.com/gofiber/fiber
 - Доступ к [статичным файлам](https://fiber.wiki/application#static)
 - Экстремальная [производительность](https://fiber.wiki/benchmarks)
 - [Низкий объем потребления памяти](https://fiber.wiki/benchmarks)
-- [Endpoints](https://fiber.wiki/context) Express [API](https://fiber.wiki/context)
+- [Эндпоинты](https://fiber.wiki/context) Express [API](https://fiber.wiki/context)
 - Middleware и поддержка [Next](https://fiber.wiki/context#next)
 - [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
 - И многое другое, [посетите наш Wiki](https://fiber.wiki/)
