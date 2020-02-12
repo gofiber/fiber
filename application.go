@@ -322,11 +322,7 @@ func (app *Application) Static(args ...string) {
 		// for windows: static\index.html => /index.html
 		path = filepath.ToSlash(path)
 		// Store absolute file path to use in ctx handler
-		var filePath string
-		var err error
-		if filePath, err = filepath.Abs(file); err != nil {
-			log.Fatal("Static: ", err)
-		}
+		filePath := path
 
 		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
