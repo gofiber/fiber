@@ -316,7 +316,6 @@ func (ctx *Ctx) SendFile(file string, gzip ...bool) {
 		fasthttp.ServeFileUncompressed(ctx.Fasthttp, file)
 		return
 	}
-
 	fasthttp.ServeFile(ctx.Fasthttp, file)
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
 	//ctx.Type(filepath.Ext(path))

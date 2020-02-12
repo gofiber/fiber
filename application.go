@@ -321,12 +321,12 @@ func (app *Application) Static(args ...string) {
 		path := filepath.Join(prefix, strings.Replace(file, mount, "", 1))
 		// for windows: static\index.html => /index.html
 		path = filepath.ToSlash(path)
-		// Store original file path to use in ctx handler
-		workdir, err := os.Getwd()
-		if err != nil {
+		// Store absolute file path to use in ctx handler
+		var filePath string
+		var err error
+		if filePath, err = filepath.Abs(file); err != nil {
 			log.Fatal("Static: ", err)
 		}
-		filePath := filepath.Join(workdir, file)
 
 		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
