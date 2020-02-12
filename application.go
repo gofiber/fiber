@@ -329,14 +329,16 @@ func (app *Application) Static(args ...string) {
 
 		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
-			app.routes = append(app.routes, &Route{"GET", prefix, midware, wildcard, nil, nil, func(c *Ctx) {
+			app.routes = append(app.routes, &Route{"GET", prefix, midware, wildcard, nil, nil, func(c *Ctx) error {
 				c.SendFile(filePath, gzip)
+				return nil
 			}})
 		}
 
 		// Add the route + SendFile(filepath) to routes
-		app.routes = append(app.routes, &Route{"GET", path, midware, wildcard, nil, nil, func(c *Ctx) {
+		app.routes = append(app.routes, &Route{"GET", path, midware, wildcard, nil, nil, func(c *Ctx) error {
 			c.SendFile(filePath, gzip)
+			return nil
 		}})
 	}
 }
