@@ -303,8 +303,6 @@ func (app *Application) Static(args ...string) {
 		midware = true
 	}
 
-	fmt.Println(prefix)
-
 	// Lets get all files from root
 	files, _, err := getFiles(root)
 	if err != nil {
