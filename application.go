@@ -29,8 +29,10 @@ import (
 )
 
 const (
-	// Version : Fiber version
-	Version = "1.4.3"
+	// Version : Fiber release
+	Version = "1.4.4"
+	// Website : Fiber documentation
+	Website = "https://fiber.wiki"
 	banner  = "\x1b[1;32m" + ` ______   __     ______     ______     ______
 /\  ___\ /\ \   /\  == \   /\  ___\   /\  == \
 \ \  __\ \ \ \  \ \  __<   \ \  __\   \ \  __<
@@ -48,7 +50,8 @@ var (
 // Application structure
 type Application struct {
 	// Server name header
-	Server     string
+	Server string
+	// HTTP server struct
 	httpServer *fasthttp.Server
 	// Show fiber banner
 	Banner bool
@@ -56,7 +59,8 @@ type Application struct {
 	Engine *engine
 	// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
 	Prefork bool
-	child   bool
+	// is child process
+	child bool
 	// Stores all routes
 	routes []*Route
 }
