@@ -6,12 +6,12 @@
   <a href="https://github.com/gofiber/fiber/blob/master/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
-  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
   </a>
+  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
+  </a>-->
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
   </a>
@@ -46,9 +46,12 @@
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
   </a>
+  <a href="https://travis-ci.org/gofiber/fiber">
+    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
+  </a>
 </p>
 <p align="center">
-<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Expressjs</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a> , el motor HTTP <strong>más rápido</strong> para <a href="https://golang.org/doc/">Go</a> . Diseñado para <strong>facilitar las</strong> cosas para <strong>un</strong> desarrollo <strong>rápido</strong> con <strong>cero asignación de memoria</strong> y <strong>rendimiento</strong> en mente.
+<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Express</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, el motor HTTP <strong>más rápido</strong> para <a href="https://golang.org/doc/">Go</a>. Diseñado para <strong>facilitar las</strong> cosas para <strong>un</strong> desarrollo <strong>rápido</strong> con <strong>cero asignación de memoria</strong> y <strong>rendimiento</strong> en mente.
 </p>
 
 ## ⚡️ Inicio rápido
@@ -229,18 +232,18 @@ func main() {
 
 ## 💬 Medios
 
-- [Bienvenido a Fiber: un marco web con estilo Express.js escrito en Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *por [Vic Shóstak](https://github.com/koddr) , 03 feb 2020*
+- [Bienvenido a Fiber: un marco web con estilo Express.js escrito en Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *por [Vic Shóstak](https://github.com/koddr), 03 feb 2020*
 
 ## 👍 Contribuir
 
-Si quiere **agradecer** y / o apoyar el desarrollo activo de la `fiber` :
+Si quiere **agradecer** y/o apoyar el desarrollo activo de la `Fiber`:
 
 1. Agregue una [estrella de GitHub](https://github.com/gofiber/fiber/stargazers) al proyecto.
-2. Tuitea sobre el proyecto [en tu Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) .
+2. Tuitea sobre el proyecto [en tu Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Escriba una reseña o tutorial en [Medium](https://medium.com/) , [Dev.to](https://dev.to/) o blog personal.
 4. Ayúdanos a traducir este `README` y [API Docs](https://fiber.wiki/) a otro idioma.
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;"></a>
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 
 ## ☕ Supporters
 
@@ -255,10 +258,10 @@ Si quiere **agradecer** y / o apoyar el desarrollo activo de la `fiber` :
   </tr>
 </table>
 
-## ⭐️ estrellas
+## ⭐️ Estrellas
 
 <a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
 ## Licencia
 
-`Fiber` es un software gratuito y de código abierto licenciado bajo la [Licencia MIT](https://github.com/gofiber/fiber/master/LICENSE) .
+`Fiber` es un software gratuito y de código abierto licenciado bajo la [Licencia MIT](https://github.com/gofiber/fiber/blob/master/LICENSE).

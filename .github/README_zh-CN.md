@@ -6,11 +6,11 @@
   <a href="https://github.com/gofiber/fiber/blob/master/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
-  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
@@ -18,9 +18,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_pt.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/pt.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
+  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/cn.svg">
-  </a>
+  </a>-->
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/de.svg">
   </a>
@@ -48,7 +48,7 @@
   </a>
 </p>
 <p align="center">
-  <strong>Fiber</strong>是一个基于<a href="https://github.com/expressjs/express">Expressjs的</a> <strong>Web框架，<strong>建立在<a href="https://github.com/valyala/fasthttp">Fasthttp</a> （ <a href="https://golang.org/doc/">Go</a> <strong>最快的</strong> HTTP引擎）的基础上。皆在</strong>简化</strong> <strong>零内存分配</strong>和<strong>提高性能</strong>，以便<strong>快速</strong>开发。
+  <strong>Fiber</strong>是一个基于<a href="https://github.com/expressjs/express">Express的</a> <strong>Web框架，<strong>建立在<a href="https://github.com/valyala/fasthttp">Fasthttp</a> （ <a href="https://golang.org/doc/">Go</a> <strong>最快的</strong> HTTP引擎）的基础上。皆在</strong>简化</strong> <strong>零内存分配</strong>和<strong>提高性能</strong>，以便<strong>快速</strong>开发。
 </p>
 
 ## ⚡️ 快速入门
@@ -229,18 +229,18 @@ func main() {
 
 ## 💬 媒体
 
-- [欢迎使用Fiber —用Go语言编写的Express.js风格的Web框架](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *作者[维克·肖斯塔克（VicShóstak）](https://github.com/koddr) ，2020年2月3日*
+- [欢迎使用Fiber —用Go语言编写的Express.js风格的Web框架](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *作者[维克·肖斯塔克（VicShóstak）](https://github.com/koddr)，2020年2月3日*
 
 ## 👍 贡献
 
-如果您要说声**谢谢**或支持`fiber`的积极发展：
+如果您要说声**谢谢**或支持`Fiber`的积极发展：
 
 1. 将[GitHub Star](https://github.com/gofiber/fiber/stargazers)添加到项目中。
 2. [在Twitter上](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)发布有关项目[的推文](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) 。
 3. 在[Medium](https://medium.com/) ， [Dev.to](https://dev.to/)或个人博客上写评论或教程。
 4. 帮助我们将此`README` [文件](https://fiber.wiki/)和[API文档](https://fiber.wiki/)翻译成另一种语言。
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;"></a>
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 
 ### ⭐️ 星星
 
@@ -248,4 +248,4 @@ func main() {
 
 ## ⚠️ 许可证
 
-`Fiber`是根据[MIT许可证许可的](https://github.com/gofiber/fiber/master/LICENSE)免费开源软件。
+`Fiber`是根据[MIT许可证许可的](https://github.com/gofiber/fiber/blob/master/LICENSE)免费开源软件。
