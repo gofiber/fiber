@@ -29,8 +29,10 @@ import (
 )
 
 const (
-	// Version : Fiber version
-	Version = "1.4.3"
+	// Version : Fiber release
+	Version = "1.4.4"
+	// Website : Fiber documentation
+	Website = "https://fiber.wiki"
 	banner  = "\x1b[1;32m" + ` ______   __     ______     ______     ______
 /\  ___\ /\ \   /\  == \   /\  ___\   /\  == \
 \ \  __\ \ \ \  \ \  __<   \ \  __\   \ \  __<
@@ -48,7 +50,8 @@ var (
 // Application structure
 type Application struct {
 	// Server name header
-	Server     string
+	Server string
+	// HTTP server struct
 	httpServer *fasthttp.Server
 	// Show fiber banner
 	Banner bool
@@ -56,7 +59,8 @@ type Application struct {
 	Engine *engine
 	// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
 	Prefork bool
-	child   bool
+	// is child process
+	child bool
 	// Stores all routes
 	routes []*Route
 }
@@ -274,6 +278,7 @@ func (app *Application) Static(args ...string) {
 	prefix := "/"
 	root := "./"
 	wildcard := false
+	midware := false
 	// enable / disable gzipping somewhere?
 	// todo v2.0.0
 	gzip := true
@@ -293,11 +298,9 @@ func (app *Application) Static(args ...string) {
 	// app.Static("/*", "./public/index.html")
 	if prefix == "*" || prefix == "/*" {
 		wildcard = true
-	}
-
-	// Check if root exists
-	if _, err := os.Lstat(root); err != nil {
-		log.Fatal("Static: ", err)
+	} else if strings.Contains(prefix, "*") {
+		prefix = strings.Replace(prefix, "*", "", -1)
+		midware = true
 	}
 
 	// Lets get all files from root
@@ -321,22 +324,18 @@ func (app *Application) Static(args ...string) {
 		path := filepath.Join(prefix, strings.Replace(file, mount, "", 1))
 		// for windows: static\index.html => /index.html
 		path = filepath.ToSlash(path)
-		// Store absolute file path to use in ctx handler
-		var filePath string
-		var err error
-		if filePath, err = filepath.Abs(file); err != nil {
-			log.Fatal("Static: ", err)
-		}
+		// Store file path to use in ctx handler
+		filePath := file
 
 		// If the file is an index.html, bind the prefix to index.html directly
 		if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
-			app.routes = append(app.routes, &Route{"GET", prefix, wildcard, false, nil, nil, func(c *Ctx) {
+			app.routes = append(app.routes, &Route{"GET", prefix, midware, wildcard, nil, nil, func(c *Ctx) {
 				c.SendFile(filePath, gzip)
 			}})
 		}
 
 		// Add the route + SendFile(filepath) to routes
-		app.routes = append(app.routes, &Route{"GET", path, wildcard, false, nil, nil, func(c *Ctx) {
+		app.routes = append(app.routes, &Route{"GET", path, midware, wildcard, nil, nil, func(c *Ctx) {
 			c.SendFile(filePath, gzip)
 		}})
 	}
@@ -426,7 +425,7 @@ func (app *Application) Test(req *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 		// Throw timeout error after 200ms
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(1000 * time.Millisecond):
 		return nil, fmt.Errorf("timeout")
 	}
 	// Get raw HTTP response
