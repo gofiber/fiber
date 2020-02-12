@@ -232,9 +232,9 @@ func main() {
 }
 ```
 
-## 💬 СМИ
+## 💬 Медиа
 
-- [Добро пожаловать в Fiber - фреймворк в стиле Express.js, написанный на Go с ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *[Vic Shóstak](https://github.com/koddr), 3 февраля 2020 г.*
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *[Vic Shóstak](https://github.com/koddr), 3 февраля 2020 г.*
 
 ## 👍 Помощь проекту
 
@@ -245,7 +245,7 @@ func main() {
 3. Сделайте обзор фреймворка на [Medium](https://medium.com/), [Dev.to](https://dev.to/) или в личном блоге.
 4. Помогите нам перевести `README` и [API](https://fiber.wiki/) на другой язык.
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;"></a>
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 
 ## ☕ Supporters
 
@@ -266,4 +266,4 @@ func main() {
 
 ## ⚠️ Лицензия
 
-`Fiber` - это бесплатное программное обеспечение с открытым исходным кодом, лицензированное по [лицензии MIT](https://github.com/gofiber/fiber/master/LICENSE) .
+`Fiber` — это бесплатное программное обеспечение с открытым исходным кодом, лицензированное по [лицензии MIT](https://github.com/gofiber/fiber/master/LICENSE) .
