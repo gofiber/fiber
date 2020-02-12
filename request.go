@@ -241,7 +241,7 @@ func (ctx *Ctx) FormValue(key string) string {
 
 // Fresh : https://fiber.wiki/context#fresh
 func (ctx *Ctx) Fresh() bool {
-	return true
+	return false
 }
 
 // Get : https://fiber.wiki/context#get
@@ -361,7 +361,10 @@ func (ctx *Ctx) Query(key string) string {
 
 // Range : https://fiber.wiki/context#range
 func (ctx *Ctx) Range() {
-
+	// https://expressjs.com/en/api.html#req.range
+	// https://github.com/jshttp/range-parser/blob/master/index.js
+	// r := ctx.Fasthttp.Request.Header.Peek(fasthttp.HeaderRange)
+	// *magic*
 }
 
 // Route : https://fiber.wiki/context#route
@@ -386,7 +389,7 @@ func (ctx *Ctx) SignedCookies() {
 
 // Stale : https://fiber.wiki/context#stale
 func (ctx *Ctx) Stale() bool {
-	return true
+	return !ctx.Fresh()
 }
 
 // Subdomains : https://fiber.wiki/context#subdomains
