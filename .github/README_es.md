@@ -264,4 +264,4 @@ Si quiere **agradecer** y/o apoyar el desarrollo activo de la `Fiber`:
 
 ## Licencia
 
-`Fiber` es un software gratuito y de código abierto licenciado bajo la [Licencia MIT](https://github.com/gofiber/fiber/blob/master/LICENSE) .
+`Fiber` es un software gratuito y de código abierto licenciado bajo la [Licencia MIT](https://github.com/gofiber/fiber/blob/master/LICENSE).
