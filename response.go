@@ -265,11 +265,14 @@ func (ctx *Ctx) Location(path string) {
 }
 
 // Next : https://fiber.wiki/context#next
-func (ctx *Ctx) Next() {
+func (ctx *Ctx) Next(err ...error) {
 	ctx.route = nil
 	ctx.next = true
 	ctx.params = nil
 	ctx.values = nil
+	if len(err) > 0 {
+		ctx.error = err[0]
+	}
 }
 
 // Redirect : https://fiber.wiki/context#redirect

@@ -229,6 +229,11 @@ func (ctx *Ctx) Cookies(args ...interface{}) string {
 	return ""
 }
 
+// Error returns err that is passed via Next(err)
+func (ctx *Ctx) Error() error {
+	return ctx.error
+}
+
 // FormFile : https://fiber.wiki/context#formfile
 func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 	return ctx.Fasthttp.FormFile(key)
