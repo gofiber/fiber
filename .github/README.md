@@ -241,7 +241,7 @@ If you want to say **thank you** and/or support the active development of `fiber
 3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
 4. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;" ></a>
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 
 ## ☕ Supporters
 
@@ -249,7 +249,7 @@ If you want to say **thank you** and/or support the active development of `fiber
   <tr>
     <td align="center">
       <a href="https://www.buymeacoffee.com/fenny">
-        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="100px;" style="border-radius:50%"></br>
+        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75" style="border-radius:50%"></br>
         <b>ToishY</b>
         </a>
       </td>
