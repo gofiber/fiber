@@ -181,12 +181,12 @@ func (ctx *Ctx) Json(v interface{}) error {
 
 // JSON : https://fiber.wiki/context#json
 func (ctx *Ctx) JSON(v interface{}) error {
+	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
 	raw, err := jsoniter.Marshal(&v)
 	if err != nil {
+		ctx.Fasthttp.Response.SetBodyString("")
 		return err
 	}
-
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
 	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 
 	return nil
