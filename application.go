@@ -297,6 +297,8 @@ func (app *Application) Static(args ...string) {
 	// app.Static("/*", "./public/index.html")
 	if prefix == "*" || prefix == "/*" {
 		wildcard = true
+	} else if strings.Contains(prefix, "*") {
+
 	}
 
 	// Lets get all files from root
@@ -320,7 +322,7 @@ func (app *Application) Static(args ...string) {
 		path := filepath.Join(prefix, strings.Replace(file, mount, "", 1))
 		// for windows: static\index.html => /index.html
 		path = filepath.ToSlash(path)
-		// Store absolute file path to use in ctx handler
+		// Store file path to use in ctx handler
 		filePath := file
 
 		// If the file is an index.html, bind the prefix to index.html directly
