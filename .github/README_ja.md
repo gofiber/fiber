@@ -236,7 +236,7 @@ func main() {
 
 ## 👍 貢献する
 
-**ありがとう、**および/または`fiber`積極的な開発をサポートしたい場合：
+**ありがとう、**および/または`Fiber`積極的な開発をサポートしたい場合：
 
 1. [GitHub Star](https://github.com/gofiber/fiber/stargazers)をプロジェクトに追加し[ます](https://github.com/gofiber/fiber/stargazers) 。
 2. [あなたのTwitterで](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)プロジェクトについてツイート[してください](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) 。
