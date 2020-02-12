@@ -48,10 +48,10 @@
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> build on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://golang.org/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
+  <b>Fiber</b>는 <a href="https://github.com/expressjs/express">Express</a>에서 영감을 받고, <a href="https://golang.org/doc/">Go</a>를 위한 <b>가장 빠른</b> HTTP 엔진인 <a ref="https://github.com/valyala/fasthttp">Fasthttp</a>를 토대로 만들어진 <b>web framework</b> 입니다. <b>비 메모리 할당</b>과 <b>성능</b>을 고려한 <b>빠른</b> 개발을 위해 <b>손쉽게</b> 사용되도록 설계되었습니다.
 </p>
 
-## ⚡️ Quickstart
+## ⚡️ 빠른 시작
 
 ```go
 package main
@@ -69,48 +69,48 @@ func main() {
 }
 ```
 
-## ⚙️ Installation
+## ⚙️ 설치
 
-First of all, [download](https://golang.org/dl/) and install Go. `1.11` or higher is required.
+우선, Go를 [다운로드](https://golang.org/dl/)하고 설치합니다. `1.11` 버전 이상이 요구됩니다.
 
-Installation is done using the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 명령어를 이용해 설치가 완료됩니다:
 
 ```bash
 go get github.com/gofiber/fiber
 ```
 
-## 🤖 Benchmarks
+## 🤖 벤치마크
 
-These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://fiber.wiki/benchmarks).
+이 테스트들은 [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)와 [Go Web](https://github.com/smallnest/go-web-framework-benchmark)을 통해 측정되었습니다. 만약 모든 결과를 보고 싶다면, [Wiki](https://fiber.wiki/benchmarks)를 확인해 주세요.
 
 <p float="left" align="middle">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark_alloc.png" width="49%">
 </p>
 
-## 🎯 Features
+## 🎯 특징
 
-- Robust [routing](https://fiber.wiki/routing)
-- Serve [static files](https://fiber.wiki/application#static)
-- Extreme [performance](https://fiber.wiki/benchmarks)
-- [Low memory](https://fiber.wiki/benchmarks) footprint
-- [API endpoints](https://fiber.wiki/context)
-- Middleware & [Next](https://fiber.wiki/context#next) support
-- [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
-- Translated in [5 languages](https://fiber.wiki/)
-- And much more, [explore Fiber](https://fiber.wiki/)
+- 견고한 [라우팅](https://fiber.wiki/routing)
+- [정적 파일](https://fiber.wiki/application#static) 제공
+- 뛰어난 [성능](https://fiber.wiki/benchmarks)
+- [적은 메모리](https://fiber.wiki/benchmarks) 공간
+- [API 엔드포인트](https://fiber.wiki/context)
+- 미들웨어 & [Next](https://fiber.wiki/context#next) 지원
+- [빠른](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 서버 사이드 프로그래밍
+- [5개 언어](https://fiber.wiki/)로 번역됨
+- 더 알고 싶다면, [Fiber 둘러보기](https://fiber.wiki/)
 
-## 💡 Philosophy
+## 💡 철학
 
-New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
+[Node.js](https://nodejs.org/en/about/)에서 [Go](https://golang.org/doc/)로 전환하는 새로운 고퍼분들은 웹 어플리케이션이나 마이크로 서비스 개발을 시작할 수 있게 되기 전에 학습 곡선에 시달리고 있습니다. Fiber는 **web framework**로서, 새로운 고퍼분들이 따뜻하고 믿음직한 환영을 가지고 빠르게 Go의 세상에 진입할 수 있게 **미니멀리즘**의 개념과 **UNIX 방식**에 따라 개발되었습니다.
 
-Fiber is **inspired** by Express, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express or similar_), then many methods and principles will seem **very common** to you.
+Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에서 **영감을 받았습니다.** 우리는 Express의 쉬운 사용과 Go의 성능을 결합하였습니다. 만약 당신이 Node.js (Express 또는 비슷한 것을 사용하여) 로 웹 어플리케이션을 개발한 경험이 있다면, 많은 메소드들과 원리들이 매우 비슷하게 느껴질 것 입니다.
 
-## 👀 Examples
+## 👀 예제
 
-Listed below are some of the common examples. If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our [API documentation](https://fiber.wiki).
+다음은 일반적인 예제들 입니다. 더 많은 코드 예제를 보고 싶다면, [Recipes 저장소](https://github.com/gofiber/recipes) 또는 [API 문서](https://fiber.wiki)를 방문하세요.
 
-### Static files
+### 정적 파일
 
 ```go
 func main() {
@@ -128,7 +128,7 @@ func main() {
 }
 ```
 
-### Routing
+### 라우팅
 
 ```go
 func main() {
@@ -156,7 +156,7 @@ func main() {
 }
 ```
 
-### Middleware
+### 미들웨어
 
 ```go
 func main() {
@@ -190,7 +190,7 @@ func main() {
 }
 ```
 
-### 404 Handling
+### 404 처리
 
 ```go
 func main() {
@@ -208,7 +208,7 @@ func main() {
 }
 ```
 
-### JSON Response
+### JSON 응답
 
 ```go
 func main() {
@@ -228,18 +228,18 @@ func main() {
 }
 ```
 
-## 💬 Media
+## 💬 미디어
 
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
 
-## 👍 Contribute
+## 👍 기여
 
-If you want to say **thank you** and/or support the active development of `fiber`:
+`fiber`의 활발한 개발을 지원하고 감사 인사를 하고 싶다면:
 
-1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to the project.
-2. Tweet about the project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
-4. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
+1. 프로젝트에 [GitHub Star](https://github.com/gofiber/fiber/stargazers)를 추가하세요.
+2. [트위터에서](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) 프로젝트에 대해 트윗하세요.
+3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) 또는 개인 블로그에 리뷰 또는 튜토리얼을 작성하세요.
+4. `README` 와 [API 문서](https://fiber.wiki/)를 다른 언어로 번역하는 것을 도와주세요.
 
 <a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;" ></a>
 
@@ -247,6 +247,6 @@ If you want to say **thank you** and/or support the active development of `fiber
 
 <a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
-## ⚠️ License
+## ⚠️ 라이센스
 
-`Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/master/LICENSE).
+`Fiber` 는 [MIT License](https://github.com/gofiber/fiber/master/LICENSE)에 따른 무료 오픈소스 소프트웨어 입니다.
