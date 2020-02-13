@@ -268,12 +268,19 @@ If you want to say **thank you** and/or support the active development of `Fiber
 
 ## ☕ Supporters
 
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 <table>
   <tr>
+     <td align="center">
+            <a href="https://www.buymeacoffee.com/fenny">
+        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75" style="border-radius:50%"></br>
+        <b>@HenrikBinggl</b>
+        </a>
+  </td>
     <td align="center">
             <a href="https://www.buymeacoffee.com/fenny">
         <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75" style="border-radius:50%"></br>
-        <b>koddr</b>
+        <b>@MarvinJWendt</b>
         </a>
   </td>
     <td align="center">
@@ -283,7 +290,7 @@ If you want to say **thank you** and/or support the active development of `Fiber
         </a>
       </td>
   </tr>
-</table><a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
+</table>
 
 ## ⭐️ Stars
 
