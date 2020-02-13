@@ -271,16 +271,22 @@ If you want to say **thank you** and/or support the active development of `Fiber
 <a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 <table>
   <tr>
-     <td align="center">
+    <td align="center">
             <a href="https://www.buymeacoffee.com/fenny">
+        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75" style="border-radius:50%"></br>
+        <b>@koddr</b>
+        </a>
+  </td>
+     <td align="center">
+            <a href="https://github.com/koddr">
         <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75" style="border-radius:50%"></br>
-        <b>@HenrikBinggl</b>
+        <b>@koddr</b>
         </a>
   </td>
     <td align="center">
-            <a href="https://www.buymeacoffee.com/fenny">
-        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75" style="border-radius:50%"></br>
-        <b>@MarvinJWendt</b>
+            <a href="https://github.com/MarvinJWendt">
+        <img src="https://github.com/MarvinJWendt" width="75" style="border-radius:50%"></br>
+  <b>@MarvinJWendt</b>
         </a>
   </td>
     <td align="center">
