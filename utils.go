@@ -18,7 +18,11 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/gorilla/schema"
 )
+
+var schemaDecoder = schema.NewDecoder()
 
 func getParams(path string) (params []string) {
 	segments := strings.Split(path, "/")
@@ -83,9 +87,9 @@ func getType(ext string) (mime string) {
 	if ext[0] == '.' {
 		ext = ext[1:]
 	}
-	mime = contentTypes[ext]
+	mime = mimeTypes[ext]
 	if mime == "" {
-		return contentTypeOctetStream
+		return mimeApplicationOctetStream
 	}
 	return mime
 }
@@ -209,14 +213,17 @@ var statusMessages = map[int]string{
 }
 
 const (
-	contentTypeJSON        = "application/json"
-	contentTypeJs          = "application/javascript"
-	contentTypeXML         = "application/xml"
-	contentTypeOctetStream = "application/octet-stream"
+	mimeApplicationJSON        = "application/json"
+	mimeApplicationJavascript  = "application/javascript"
+	mimeApplicationXML         = "application/xml"
+	mimeTextXML                = "text/xml"
+	mimeApplicationOctetStream = "application/octet-stream"
+	mimeApplicationForm        = "application/x-www-form-urlencoded"
+	mimeMultipartForm          = "multipart/form-data"
 )
 
 // https://github.com/nginx/nginx/blob/master/conf/mime.types
-var contentTypes = map[string]string{
+var mimeTypes = map[string]string{
 	"html":    "text/html",
 	"htm":     "text/html",
 	"shtml":   "text/html",

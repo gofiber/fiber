@@ -30,7 +30,7 @@ import (
 
 const (
 	// Version : Fiber release
-	Version = "1.5.0"
+	Version = "1.6.0"
 	// Website : Fiber documentation
 	Website = "https://fiber.wiki"
 	banner  = "\x1b[1;32m" + ` ______   __     ______     ______     ______
@@ -93,6 +93,7 @@ type engine struct {
 // New https://fiber.wiki/application#new
 func New() *Application {
 	flag.Parse()
+	schemaDecoder.SetAliasTag("form")
 	return &Application{
 		Server:     "",
 		httpServer: nil,
