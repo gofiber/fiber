@@ -181,12 +181,12 @@ func (ctx *Ctx) Json(v interface{}) error {
 
 // JSON : https://fiber.wiki/context#json
 func (ctx *Ctx) JSON(v interface{}) error {
+	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
 	raw, err := jsoniter.Marshal(&v)
 	if err != nil {
+		ctx.Fasthttp.Response.SetBodyString("")
 		return err
 	}
-
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
 	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 
 	return nil
@@ -265,11 +265,14 @@ func (ctx *Ctx) Location(path string) {
 }
 
 // Next : https://fiber.wiki/context#next
-func (ctx *Ctx) Next() {
+func (ctx *Ctx) Next(err ...error) {
 	ctx.route = nil
 	ctx.next = true
 	ctx.params = nil
 	ctx.values = nil
+	if len(err) > 0 {
+		ctx.error = err[0]
+	}
 }
 
 // Redirect : https://fiber.wiki/context#redirect

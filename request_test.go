@@ -376,26 +376,27 @@ func Test_IPs(t *testing.T) {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
-func Test_Is(t *testing.T) {
-	app := New()
-	app.Get("/test", func(c *Ctx) {
-		c.Is(".json")
-		expect := true
-		result := c.Is("html")
-		if result != expect {
-			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
-		}
-	})
-	req, _ := http.NewRequest("GET", "/test", nil)
-	req.Header.Set("Content-Type", "text/html")
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf(`%s: %s`, t.Name(), err)
-	}
-	if resp.StatusCode != 200 {
-		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
-	}
-}
+
+// func Test_Is(t *testing.T) {
+// 	app := New()
+// 	app.Get("/test", func(c *Ctx) {
+// 		c.Is(".json")
+// 		expect := true
+// 		result := c.Is("html")
+// 		if result != expect {
+// 			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
+// 		}
+// 	})
+// 	req, _ := http.NewRequest("GET", "/test", nil)
+// 	req.Header.Set("Content-Type", "text/html")
+// 	resp, err := app.Test(req)
+// 	if err != nil {
+// 		t.Fatalf(`%s: %s`, t.Name(), err)
+// 	}
+// 	if resp.StatusCode != 200 {
+// 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+// 	}
+// }
 func Test_Locals(t *testing.T) {
 	app := New()
 	app.Use(func(c *Ctx) {

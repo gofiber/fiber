@@ -30,7 +30,7 @@ import (
 
 const (
 	// Version : Fiber release
-	Version = "1.4.4"
+	Version = "1.5.0"
 	// Website : Fiber documentation
 	Website = "https://fiber.wiki"
 	banner  = "\x1b[1;32m" + ` ______   __     ______     ______     ______
@@ -63,6 +63,8 @@ type Application struct {
 	child bool
 	// Stores all routes
 	routes []*Route
+	// Recover holds a handler that is executed on a panic
+	recover func(*Ctx)
 }
 
 // Fasthttp settings
@@ -118,6 +120,16 @@ func New() *Application {
 			KeepHijackedConns:                  false,
 		},
 	}
+}
+
+// Recover catches panics and avoids crashes
+func (app *Application) Recover(ctx func(*Ctx)) {
+	app.recover = ctx
+}
+
+// Recover binding for groups
+func (grp *Group) Recover(ctx func(*Ctx)) {
+	grp.app.recover = ctx
 }
 
 // Group :

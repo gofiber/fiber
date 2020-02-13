@@ -6,11 +6,11 @@
   <a href="https://github.com/gofiber/fiber/blob/master/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
-  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
@@ -24,9 +24,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/de.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ko.md">
+  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ko.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/kr.svg">
-  </a>
+  </a>-->
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
@@ -45,6 +45,9 @@
   </a>
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
+  </a>
+  <a href="https://travis-ci.org/gofiber/fiber">
+    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
   </a>
 </p>
 <p align="center">
@@ -234,14 +237,14 @@ func main() {
 
 ## 👍 기여
 
-`fiber`의 활발한 개발을 지원하고 감사 인사를 하고 싶다면:
+`Fiber`의 활발한 개발을 지원하고 감사 인사를 하고 싶다면:
 
 1. 프로젝트에 [GitHub Star](https://github.com/gofiber/fiber/stargazers)를 추가하세요.
 2. [트위터에서](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) 프로젝트에 대해 트윗하세요.
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) 또는 개인 블로그에 리뷰 또는 튜토리얼을 작성하세요.
 4. `README` 와 [API 문서](https://fiber.wiki/)를 다른 언어로 번역하는 것을 도와주세요.
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;" ></a>
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 
 ## ☕ Supporters
 
@@ -262,4 +265,4 @@ func main() {
 
 ## ⚠️ 라이센스
 
-`Fiber` 는 [MIT License](https://github.com/gofiber/fiber/master/LICENSE)에 따른 무료 오픈소스 소프트웨어 입니다.
+`Fiber` 는 [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE)에 따른 무료 오픈소스 소프트웨어 입니다.

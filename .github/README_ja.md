@@ -6,15 +6,15 @@
   <a href="https://github.com/gofiber/fiber/blob/master/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
-  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
   </a>
+  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
+  </a>-->
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_pt.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/pt.svg">
   </a>
@@ -46,9 +46,12 @@
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
   </a>
+  <a href="https://travis-ci.org/gofiber/fiber">
+    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
+  </a>
 </p>
 <p align="center">
-<strong>Fiber</strong>は、 <a href="https://golang.org/doc/">Go</a>用の<strong>最速の</strong> HTTPエンジンである<a href="https://github.com/valyala/fasthttp">Fasthttpの</a>上に構築された<a href="https://github.com/expressjs/express">Expressjsに</a>ヒントを得た<strong>Webフレームワーク</strong>です。 <strong>ゼロのメモリ割り当て</strong>と<strong>パフォーマンス</strong>を念頭に置いて、開発を<strong>迅速</strong>に<strong>行える</strong>ように設計されてい<strong>ます</strong> 。
+<strong>Fiber</strong>は、 <a href="https://golang.org/doc/">Go</a>用の<strong>最速の</strong> HTTPエンジンである<a href="https://github.com/valyala/fasthttp">Fasthttpの</a>上に構築された<a href="https://github.com/expressjs/express">Expressに</a>ヒントを得た<strong>Webフレームワーク</strong>です。 <strong>ゼロのメモリ割り当て</strong>と<strong>パフォーマンス</strong>を念頭に置いて、開発を<strong>迅速</strong>に<strong>行える</strong>ように設計されてい<strong>ます</strong> 。
 </p>
 
 ## ⚡️ クイックスタート
@@ -233,14 +236,14 @@ func main() {
 
 ## 👍 貢献する
 
-**ありがとう、**および/または`fiber`積極的な開発をサポートしたい場合：
+**ありがとう、**および/または`Fiber`積極的な開発をサポートしたい場合：
 
 1. [GitHub Star](https://github.com/gofiber/fiber/stargazers)をプロジェクトに追加し[ます](https://github.com/gofiber/fiber/stargazers) 。
 2. [あなたのTwitterで](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)プロジェクトについてツイート[してください](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) 。
 3. [Medium](https://medium.com/) 、 [Dev.to、](https://dev.to/)または個人のブログでレビューまたはチュートリアルを書いてください。
 4. この`README`と[APIドキュメント](https://fiber.wiki/)を別の言語に翻訳するためにご協力ください。
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" style="height: 35px !important;"></a>
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 
 ## ☕ Supporters
 
@@ -261,4 +264,4 @@ func main() {
 
 ## ⚠️ ライセンス
 
-`Fiber`は、 [MIT Licenseに](https://github.com/gofiber/fiber/master/LICENSE)基づいてライセンスされた無料のオープンソースソフトウェアです。
+`Fiber`は、 [MIT Licenseに](https://github.com/gofiber/fiber/blob/master/LICENSE)基づいてライセンスされた無料のオープンソースソフトウェアです。
