@@ -272,29 +272,29 @@ If you want to say **thank you** and/or support the active development of `Fiber
 <table>
   <tr>
     <td align="center">
-            <a href="https://www.buymeacoffee.com/fenny">
-        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75" style="border-radius:50%"></br>
-      <small><b>HenrikBinggl</b></small>
+        <a href="https://www.buymeacoffee.com/fenny">
+          <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75"></br>
+          <sub><b>HenrikBinggl</b></sub>
         </a>
-  </td>
-     <td align="center">
-            <a href="https://github.com/koddr">
-        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75" style="border-radius:50%"></br>
-        <small><b>koddr</b></small>
-        </a>
-  </td>
+    </td>
     <td align="center">
-            <a href="https://github.com/MarvinJWendt">
-        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="75" style="border-radius:50%"></br>
-  <small><b>MarvinJWendt</b></small>
-        </a>
-  </td>
+      <a href="https://github.com/koddr">
+        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75"></br>
+        <sub><b>koddr</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/MarvinJWendt">
+        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="75"></br>
+        <sub><b>MarvinJWendt</b></sub>
+      </a>
+    </td>
     <td align="center">
       <a href="https://www.buymeacoffee.com/fenny">
-        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75" style="border-radius:50%"></br>
-        <small><b>ToishY</b></small>
-        </a>
-      </td>
+        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75"></br>
+        <sub><b>ToishY</b></sub>
+      </a>
+    </td>
   </tr>
 </table>
 
