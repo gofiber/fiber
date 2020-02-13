@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"mime"
 	"mime/multipart"
+	"net/url"
 	"strings"
 
 	jsoniter "github.com/json-iterator/go"
@@ -198,13 +199,33 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 
 // BodyParser : https://fiber.wiki/context#bodyparser
 func (ctx *Ctx) BodyParser(v interface{}) error {
-	cType := getString(ctx.Fasthttp.Request.Header.ContentType())
-	if cType == contentTypeJSON {
-		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), &v)
-	} else if cType == contentTypeXML {
-		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), &v)
+	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
+	// application/json
+	if strings.HasPrefix(ctype, mimeApplicationJSON) {
+		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), v)
 	}
-	return fmt.Errorf("cannot parse content-type: %v", cType)
+	// application/xml text/xml
+	if strings.HasPrefix(ctype, mimeApplicationXML) || strings.HasPrefix(ctype, mimeTextXML) {
+		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), v)
+	}
+	// application/x-www-form-urlencoded
+	if strings.HasPrefix(ctype, mimeApplicationForm) {
+		data, err := url.ParseQuery(getString(ctx.Fasthttp.PostBody()))
+		if err != nil {
+			return err
+		}
+		return schemaDecoder.Decode(v, data)
+	}
+	// multipart/form-data
+	if strings.HasPrefix(ctype, mimeMultipartForm) {
+		data, err := ctx.Fasthttp.MultipartForm()
+		if err != nil {
+			return err
+		}
+		return schemaDecoder.Decode(v, data.Value)
+
+	}
+	return fmt.Errorf("cannot parse content-type: %v", ctype)
 }
 
 // Cookies : https://fiber.wiki/context#cookies

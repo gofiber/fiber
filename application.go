@@ -93,6 +93,7 @@ type engine struct {
 // New https://fiber.wiki/application#new
 func New() *Application {
 	flag.Parse()
+	schemaDecoder.SetAliasTag("form")
 	return &Application{
 		Server:     "",
 		httpServer: nil,
