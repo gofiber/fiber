@@ -243,9 +243,11 @@ func main() {
   app.Get("/json", func (c *fiber.Ctx) {
     panic("Something went wrong!")
   })
+  
   app.Recover(func(c *fiber.Ctx) {
     c.Status(500).Send(c.Error())
   })
+  
   app.Listen(3000)
 }
 ```
