@@ -8,15 +8,23 @@
 package fiber
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
+	"html/template"
+	"io/ioutil"
 	"log"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/CloudyKit/jet"
+	"github.com/aymerick/raymond"
+	"github.com/cbroglie/mustache"
+	"github.com/eknkc/amber"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/valyala/fasthttp"
+	"github.com/yosssi/ace"
 )
 
 // Cookie : struct
@@ -287,8 +295,73 @@ func (ctx *Ctx) Redirect(path string, status ...int) {
 }
 
 // Render : https://fiber.wiki/context#render
-func (ctx *Ctx) Render() {
-
+func (ctx *Ctx) Render(file string, v ...interface{}) error {
+	var err error
+	var raw []byte
+	var html string
+	var data interface{}
+	var tmpl *template.Template
+	if len(v) > 0 {
+		data = v[0]
+	}
+	if raw, err = ioutil.ReadFile(file); err != nil {
+		return err
+	}
+	engine := filepath.Ext(file)
+	switch engine {
+	case ".template": // https://golang.org/pkg/text/template/
+		if tmpl, err = template.New("test").Parse(getString(raw)); err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		if err = tmpl.Execute(&buf, data); err != nil {
+			return err
+		}
+		html = buf.String()
+	case ".ace": // https://github.com/yosssi/ace
+		if tmpl, err = ace.Load(strings.TrimSuffix(file, filepath.Ext(file)), "", nil); err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		if err = tmpl.Execute(&buf, data); err != nil {
+			return err
+		}
+		html = buf.String()
+	case ".amber": // https://github.com/eknkc/amber
+		if tmpl, err = amber.Compile(getString(raw), amber.DefaultOptions); err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		if err = tmpl.Execute(&buf, data); err != nil {
+			return err
+		}
+		html = buf.String()
+	case ".jet": // https://github.com/CloudyKit/jet
+		d, f := filepath.Split(file)
+		var jetview = jet.NewHTMLSet(d)
+		var t *jet.Template
+		if t, err = jetview.GetTemplate(f); err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		if err = t.Execute(&buf, make(jet.VarMap), data); err != nil {
+			return err
+		}
+		html = buf.String()
+	case ".mustache": // https://github.com/hoisie/mustache
+		if html, err = mustache.Render(getString(raw), data); err != nil {
+			return err
+		}
+	case ".raymond": // https://github.com/aymerick/raymond
+		if html, err = raymond.Render(getString(raw), data); err != nil {
+			return err
+		}
+	default:
+		err = fmt.Errorf("render: does not support the %s extension", engine)
+	}
+	ctx.Set("Content-Type", "text/html")
+	ctx.SendString(html)
+	return err
 }
 
 // Send : https://fiber.wiki/context#send
