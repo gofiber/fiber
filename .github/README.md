@@ -274,7 +274,7 @@ If you want to say **thank you** and/or support the active development of `Fiber
     <td align="center">
             <a href="https://www.buymeacoffee.com/fenny">
         <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75" style="border-radius:50%"></br>
-      <small><bHenrikBinggl</b></small>
+      <small><b>HenrikBinggl</b></small>
         </a>
   </td>
      <td align="center">
