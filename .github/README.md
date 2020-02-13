@@ -126,6 +126,9 @@ func main() {
   app.Static("/prefix", "./public")
   // => http://localhost:3000/prefix/js/script.js
   // => http://localhost:3000/prefix/css/style.css
+  
+  app.Static("*", "./public/index.html")
+  // => http://localhost:3000/anything/returns/the/index/file
 
   app.Listen(3000)
 }
@@ -227,6 +230,22 @@ func main() {
     c.JSON(&User{"John", 20})
   })
 
+  app.Listen(3000)
+}
+```
+
+### Recover
+
+```go
+func main() {
+  app := fiber.New()
+  
+  app.Get("/json", func (c *fiber.Ctx) {
+    panic("Something went wrong!")
+  })
+  app.Recover(func(c *fiber.Ctx) {
+    c.Status(500).Send(c.Error())
+  })
   app.Listen(3000)
 }
 ```
