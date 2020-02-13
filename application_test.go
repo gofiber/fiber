@@ -45,7 +45,8 @@ func Test_Methods(t *testing.T) {
 
 func Test_Static(t *testing.T) {
 	app := New()
-
+	grp := app.Group("/v1")
+	grp.Static("/v2", ".travis.yml")
 	app.Static("/yesyes*", ".github/FUNDING.yml")
 	app.Static("./.github")
 	app.Static("/john", "./.github")
@@ -72,6 +73,17 @@ func Test_Static(t *testing.T) {
 		t.Fatalf(`%s: Missing Content-Length`, t.Name())
 	}
 	req, _ = http.NewRequest("GET", "/john/stale.yml", nil)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	if resp.Header.Get("Content-Length") == "" {
+		t.Fatalf(`%s: Missing Content-Length`, t.Name())
+	}
+	req, _ = http.NewRequest("GET", "/v1/v2", nil)
 	resp, err = app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)

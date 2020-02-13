@@ -30,7 +30,7 @@ import (
 
 const (
 	// Version : Fiber release
-	Version = "1.6.0"
+	Version = "1.6.1"
 	// Website : Fiber documentation
 	Website = "https://fiber.wiki"
 	banner  = "\x1b[1;32m" + ` ______   __     ______     ______     ______
@@ -284,6 +284,24 @@ func (app *Application) Use(args ...interface{}) *Application {
 func (grp *Group) Use(args ...interface{}) *Group {
 	grp.register("USE", args...)
 	return grp
+}
+
+// Static for groups
+func (grp *Group) Static(args ...string) {
+	prefix := grp.path
+	root := "./"
+
+	if len(args) == 1 {
+		root = args[0]
+	} else if len(args) == 2 {
+		root = args[1]
+		prefix = prefix + args[0]
+		prefix = strings.Replace(prefix, "//", "/", -1)
+		prefix = filepath.Clean(prefix)
+		prefix = filepath.ToSlash(prefix)
+	}
+	fmt.Println(prefix, root)
+	grp.app.Static(prefix, root)
 }
 
 // Static https://fiber.wiki/application#static
