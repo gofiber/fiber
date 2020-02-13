@@ -181,7 +181,7 @@ func (ctx *Ctx) Json(v interface{}) error {
 
 // JSON : https://fiber.wiki/context#json
 func (ctx *Ctx) JSON(v interface{}) error {
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
+	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationJSON)
 	raw, err := jsoniter.Marshal(&v)
 	if err != nil {
 		ctx.Fasthttp.Response.SetBodyString("")
@@ -200,7 +200,7 @@ func (ctx *Ctx) JsonBytes(raw []byte) {
 
 // JSONBytes : https://fiber.wiki/context#jsonbytes
 func (ctx *Ctx) JSONBytes(raw []byte) {
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
+	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationJSON)
 	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 }
 
@@ -224,7 +224,7 @@ func (ctx *Ctx) JSONP(v interface{}, cb ...string) error {
 	str += getString(raw) + ");"
 
 	ctx.Set(fasthttp.HeaderXContentTypeOptions, "nosniff")
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJs)
+	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationJavascript)
 	ctx.Fasthttp.Response.SetBodyString(str)
 
 	return nil
@@ -238,7 +238,7 @@ func (ctx *Ctx) JsonString(raw string) {
 
 // JSONString : https://fiber.wiki/context#json
 func (ctx *Ctx) JSONString(raw string) {
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
+	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationJSON)
 	ctx.Fasthttp.Response.SetBodyString(raw)
 }
 
@@ -405,7 +405,7 @@ func (ctx *Ctx) XML(v interface{}) error {
 		return err
 	}
 
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeXML)
+	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationXML)
 	ctx.Fasthttp.Response.SetBody(raw)
 
 	return nil

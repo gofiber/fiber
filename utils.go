@@ -87,9 +87,9 @@ func getType(ext string) (mime string) {
 	if ext[0] == '.' {
 		ext = ext[1:]
 	}
-	mime = contentTypes[ext]
+	mime = mimeTypes[ext]
 	if mime == "" {
-		return contentTypeOctetStream
+		return mimeApplicationOctetStream
 	}
 	return mime
 }
@@ -213,27 +213,17 @@ var statusMessages = map[int]string{
 }
 
 const (
-	contentTypeJSON              = "application/json"
-	contentTypeJs                = "application/javascript"
-	contentTypeXML               = "application/xml"
-	contentTypeOctetStream       = "application/octet-stream"
-	contentTypeFormURLEncoded    = "application/x-www-form-urlencoded"
-	contentTypeMultipartFormData = "multipart/form-data"
-)
-
-const (
-	mimeApplicationJSON           = "application/json"
-	mimeApplicationJavascrippt    = "application/javascript"
-	mimeApplicationXML            = "application/xml"
-	mimeTextXML                   = "text/xml"
-	mimeApplicationOctetStream    = "application/octet-stream"
-	mimeApplicationFormURLEncoded = "application/x-www-form-urlencoded"
-	mimeApplicationForm           = "application/x-www-form-urlencoded"
-	mimeMultipartForm             = "multipart/form-data"
+	mimeApplicationJSON        = "application/json"
+	mimeApplicationJavascript  = "application/javascript"
+	mimeApplicationXML         = "application/xml"
+	mimeTextXML                = "text/xml"
+	mimeApplicationOctetStream = "application/octet-stream"
+	mimeApplicationForm        = "application/x-www-form-urlencoded"
+	mimeMultipartForm          = "multipart/form-data"
 )
 
 // https://github.com/nginx/nginx/blob/master/conf/mime.types
-var contentTypes = map[string]string{
+var mimeTypes = map[string]string{
 	"html":    "text/html",
 	"htm":     "text/html",
 	"shtml":   "text/html",
