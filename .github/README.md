@@ -272,6 +272,11 @@ If you want to say **thank you** and/or support the active development of `Fiber
 <table>
   <tr>
     <td align="center">
+      <a href="https://github.com/koddr">
+        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75" style="border-radius:50%"></br>
+        <b>koddr</b>
+        </a>
+      </td>
       <a href="https://www.buymeacoffee.com/fenny">
         <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75" style="border-radius:50%"></br>
         <b>ToishY</b>
