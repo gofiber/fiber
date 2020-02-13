@@ -202,7 +202,7 @@ func main() {
   app.Static("./public")
 
   // Last middleware
-  app.Use(func (c *fiber.Ctx) {
+  app.Use(func(c *fiber.Ctx) {
     c.SendStatus(404) // => 404 "Not Found"
   })
 
@@ -222,7 +222,7 @@ func main() {
   }
 
   // Serialize JSON
-  app.Get("/json", func (c *fiber.Ctx) {
+  app.Get("/json", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
   })
 
