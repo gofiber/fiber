@@ -285,7 +285,7 @@ If you want to say **thank you** and/or support the active development of `Fiber
   </td>
     <td align="center">
             <a href="https://github.com/MarvinJWendt">
-        <img src="https://github.com/MarvinJWendt" width="75" style="border-radius:50%"></br>
+        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="75" style="border-radius:50%"></br>
   <b>@MarvinJWendt</b>
         </a>
   </td>
