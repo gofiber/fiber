@@ -272,8 +272,8 @@ If you want to say **thank you** and/or support the active development of `Fiber
 <table>
   <tr>
     <td align="center">
-        <a href="https://www.buymeacoffee.com/fenny">
-          <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75"></br>
+        <a href="https://github.com/bihe">
+          <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="75"></br>
           <sub><b>HenrikBinggl</b></sub>
         </a>
     </td>
@@ -290,8 +290,8 @@ If you want to say **thank you** and/or support the active development of `Fiber
       </a>
     </td>
     <td align="center">
-      <a href="https://www.buymeacoffee.com/fenny">
-        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75"></br>
+      <a href="https://github.com/toishy">
+        <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="75"></br>
         <sub><b>ToishY</b></sub>
       </a>
     </td>
