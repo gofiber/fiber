@@ -157,105 +157,93 @@ func main() {
 
 ### 中间件
 
-<details>
-  <summary>📜 Show code snippet</summary>
-  ```go
-  func main() {
-    app := fiber.New()
+```go
+func main() {
+  app := fiber.New()
 
-    // Match any post route
-    app.Post(func(c *fiber.Ctx) {
-      user, pass, ok := c.BasicAuth()
-      if !ok || user != "john" || pass != "doe" {
-        c.Status(403).Send("Sorry John")
-        return
-      }
-      c.Next()
-    })
+  // Match any post route
+  app.Post(func(c *fiber.Ctx) {
+    user, pass, ok := c.BasicAuth()
+    if !ok || user != "john" || pass != "doe" {
+      c.Status(403).Send("Sorry John")
+      return
+    }
+    c.Next()
+  })
 
-    // Match all routes starting with /api
-    app.Use("/api", func(c *fiber.Ctx) {
-      c.Set("Access-Control-Allow-Origin", "*")
-      c.Set("Access-Control-Allow-Headers", "X-Requested-With")
-      c.Next()
-    })
+  // Match all routes starting with /api
+  app.Use("/api", func(c *fiber.Ctx) {
+    c.Set("Access-Control-Allow-Origin", "*")
+    c.Set("Access-Control-Allow-Headers", "X-Requested-With")
+    c.Next()
+  })
 
-    // Optional param
-    app.Post("/api/register", func(c *fiber.Ctx) {
-      username := c.Body("username")
-      password := c.Body("password")
-      // ..
-    })
+  // Optional param
+  app.Post("/api/register", func(c *fiber.Ctx) {
+    username := c.Body("username")
+    password := c.Body("password")
+    // ..
+  })
 
-    app.Listen(3000)
-  }
-  ```
-</summary>
+  app.Listen(3000)
+}
+```
 
 ### 404处理
 
-<details>
-  <summary>📜 Show code snippet</summary>
-  ```go
-  func main() {
-    app := fiber.New()
+```go
+func main() {
+  app := fiber.New()
 
-    // Serve static files from "public" directory
-    app.Static("./public")
+  // Serve static files from "public" directory
+  app.Static("./public")
 
-    // Last middleware
-    app.Use(func(c *fiber.Ctx) {
-      c.SendStatus(404) // => 404 "Not Found"
-    })
+  // Last middleware
+  app.Use(func(c *fiber.Ctx) {
+    c.SendStatus(404) // => 404 "Not Found"
+  })
 
-    app.Listen(3000)
-  }
-  ```
-</summary>
+  app.Listen(3000)
+}
+```
 
 ### JSON响应
 
-<details>
-  <summary>📜 Show code snippet</summary>
-  ```go
-  func main() {
-    app := fiber.New()
+```go
+func main() {
+  app := fiber.New()
 
-    type User struct {
-      Name string `json:"name"`
-      Age  int    `json:"age"`
-    }
-
-    // Serialize JSON
-    app.Get("/json", func(c *fiber.Ctx) {
-      c.JSON(&User{"John", 20})
-    })
-
-    app.Listen(3000)
+  type User struct {
+    Name string `json:"name"`
+    Age  int    `json:"age"`
   }
-  ```
-</summary>
+
+  // Serialize JSON
+  app.Get("/json", func(c *fiber.Ctx) {
+    c.JSON(&User{"John", 20})
+  })
+
+  app.Listen(3000)
+}
+```
 
 ### Recover
 
-<details>
-  <summary>📜 Show code snippet</summary>
-  ```go
-  func main() {
-    app := fiber.New()
+```go
+func main() {
+  app := fiber.New()
 
-    app.Get("/json", func(c *fiber.Ctx) {
-      panic("Something went wrong!")
-    })
+  app.Get("/json", func(c *fiber.Ctx) {
+    panic("Something went wrong!")
+  })
 
-    app.Recover(func(c *fiber.Ctx) {
-      c.Status(500).Send(c.Error())
-    })
+  app.Recover(func(c *fiber.Ctx) {
+    c.Status(500).Send(c.Error())
+  })
 
-    app.Listen(3000)
-  }
-  ```
-</details>
+  app.Listen(3000)
+}
+```
 
 ## 💬 媒体
 
