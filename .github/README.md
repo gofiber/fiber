@@ -126,7 +126,7 @@ func main() {
   app.Static("/prefix", "./public")
   // => http://localhost:3000/prefix/js/script.js
   // => http://localhost:3000/prefix/css/style.css
-  
+
   app.Static("*", "./public/index.html")
   // => http://localhost:3000/anything/returns/the/index/file
 
@@ -206,7 +206,7 @@ func main() {
   app.Static("./public")
 
   // Last middleware
-  app.Use(func (c *fiber.Ctx) {
+  app.Use(func(c *fiber.Ctx) {
     c.SendStatus(404) // => 404 "Not Found"
   })
 
@@ -226,7 +226,7 @@ func main() {
   }
 
   // Serialize JSON
-  app.Get("/json", func (c *fiber.Ctx) {
+  app.Get("/json", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
   })
 
@@ -239,15 +239,15 @@ func main() {
 ```go
 func main() {
   app := fiber.New()
-  
-  app.Get("/json", func (c *fiber.Ctx) {
+
+  app.Get("/json", func(c *fiber.Ctx) {
     panic("Something went wrong!")
   })
-  
+
   app.Recover(func(c *fiber.Ctx) {
     c.Status(500).Send(c.Error())
   })
-  
+
   app.Listen(3000)
 }
 ```
