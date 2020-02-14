@@ -324,35 +324,3 @@ If you want to say **thank you** and/or support the active development of `Fiber
 ## ⚠️ License
 
 `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE).
-
-# A collapsible section containing code
-<details>
-  <summary>Click to expand!</summary>
-  
-  ```javascript
-    function whatIsLove() {
-      console.log('Baby Don't hurt me. Don't hurt me');
-      return 'No more';
-    }
-  ```
-</details>
-
-<details>
-  <summary>📜 Show code snippet</summary>
-  
-  ```golang
-  func main() {
-    app := fiber.New()
-
-    app.Get("/json", func(c *fiber.Ctx) {
-      panic("Something went wrong!")
-    })
-
-    app.Recover(func(c *fiber.Ctx) {
-      c.Status(500).Send(c.Error())
-    })
-
-    app.Listen(3000)
-  }
-  ```
-</details>
