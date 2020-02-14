@@ -320,6 +320,7 @@ If you want to say **thank you** and/or support the active development of `Fiber
 
 <details>
   <summary>📜 Show code snippet</summary>
+  
   ```golang
   func main() {
     app := fiber.New()
