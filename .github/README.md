@@ -3,7 +3,7 @@
     <img alt="Fiber" height="100" src="https://github.com/gofiber/docs/blob/master/static/logo.svg">
   </a>
   <br><br>
-  <!--<a href="https://github.com/gofiber/fiber/blob/master/README.md">
+  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>-->
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
@@ -136,121 +136,136 @@ func main() {
 
 ### Routing
 
-```go
-func main() {
-  app := fiber.New()
+<details>
+  <summary>📜 Show code snippet</summary>
+  ```go
+  func main() {
+    app := fiber.New()
 
-  // GET /john
-  app.Get("/:name", func(c *fiber.Ctx) {
-    fmt.Printf("Hello %s!", c.Params("name"))
-    // => Hello john!
-  })
+    // GET /john
+    app.Get("/:name", func(c *fiber.Ctx) {
+      fmt.Printf("Hello %s!", c.Params("name"))
+      // => Hello john!
+    })
 
-  // GET /john
-  app.Get("/:name/:age?", func(c *fiber.Ctx) {
-    fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
-    // => Name: john, Age:
-  })
+    // GET /john
+    app.Get("/:name/:age?", func(c *fiber.Ctx) {
+      fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
+      // => Name: john, Age:
+    })
 
-  // GET /api/register
-  app.Get("/api*", func(c *fiber.Ctx) {
-    fmt.Printf("/api%s", c.Params("*"))
-    // => /api/register
-  })
+    // GET /api/register
+    app.Get("/api*", func(c *fiber.Ctx) {
+      fmt.Printf("/api%s", c.Params("*"))
+      // => /api/register
+    })
 
-  app.Listen(3000)
-}
-```
+    app.Listen(3000)
+  }
+  ```
+</summary>
 
 ### Middleware
 
-```go
-func main() {
-  app := fiber.New()
+<details>
+  <summary>📜 Show code snippet</summary>
+  ```go
+  func main() {
+    app := fiber.New()
 
-  // Match any post route
-  app.Post(func(c *fiber.Ctx) {
-    user, pass, ok := c.BasicAuth()
-    if !ok || user != "john" || pass != "doe" {
-      c.Status(403).Send("Sorry John")
-      return
-    }
-    c.Next()
-  })
+    // Match any post route
+    app.Post(func(c *fiber.Ctx) {
+      user, pass, ok := c.BasicAuth()
+      if !ok || user != "john" || pass != "doe" {
+        c.Status(403).Send("Sorry John")
+        return
+      }
+      c.Next()
+    })
 
-  // Match all routes starting with /api
-  app.Use("/api", func(c *fiber.Ctx) {
-    c.Set("Access-Control-Allow-Origin", "*")
-    c.Set("Access-Control-Allow-Headers", "X-Requested-With")
-    c.Next()
-  })
+    // Match all routes starting with /api
+    app.Use("/api", func(c *fiber.Ctx) {
+      c.Set("Access-Control-Allow-Origin", "*")
+      c.Set("Access-Control-Allow-Headers", "X-Requested-With")
+      c.Next()
+    })
 
-  // Optional param
-  app.Post("/api/register", func(c *fiber.Ctx) {
-    username := c.Body("username")
-    password := c.Body("password")
-    // ..
-  })
+    // Optional param
+    app.Post("/api/register", func(c *fiber.Ctx) {
+      username := c.Body("username")
+      password := c.Body("password")
+      // ..
+    })
 
-  app.Listen(3000)
-}
-```
+    app.Listen(3000)
+  }
+  ```
+</summary>
 
 ### 404 Handling
 
-```go
-func main() {
-  app := fiber.New()
+<details>
+  <summary>📜 Show code snippet</summary>
+  ```go
+  func main() {
+    app := fiber.New()
 
-  // Serve static files from "public" directory
-  app.Static("./public")
+    // Serve static files from "public" directory
+    app.Static("./public")
 
-  // Last middleware
-  app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404) // => 404 "Not Found"
-  })
+    // Last middleware
+    app.Use(func(c *fiber.Ctx) {
+      c.SendStatus(404) // => 404 "Not Found"
+    })
 
-  app.Listen(3000)
-}
-```
+    app.Listen(3000)
+  }
+  ```
+</summary>
 
 ### JSON Response
 
-```go
-func main() {
-  app := fiber.New()
+<details>
+  <summary>📜 Show code snippet</summary>
+  ```go
+  func main() {
+    app := fiber.New()
 
-  type User struct {
-    Name string `json:"name"`
-    Age  int    `json:"age"`
+    type User struct {
+      Name string `json:"name"`
+      Age  int    `json:"age"`
+    }
+
+    // Serialize JSON
+    app.Get("/json", func(c *fiber.Ctx) {
+      c.JSON(&User{"John", 20})
+    })
+
+    app.Listen(3000)
   }
-
-  // Serialize JSON
-  app.Get("/json", func(c *fiber.Ctx) {
-    c.JSON(&User{"John", 20})
-  })
-
-  app.Listen(3000)
-}
-```
+  ```
+</summary>
 
 ### Recover
 
-```go
-func main() {
-  app := fiber.New()
+<details>
+  <summary>📜 Show code snippet</summary>
+  ```go
+  func main() {
+    app := fiber.New()
 
-  app.Get("/json", func(c *fiber.Ctx) {
-    panic("Something went wrong!")
-  })
+    app.Get("/json", func(c *fiber.Ctx) {
+      panic("Something went wrong!")
+    })
 
-  app.Recover(func(c *fiber.Ctx) {
-    c.Status(500).Send(c.Error())
-  })
+    app.Recover(func(c *fiber.Ctx) {
+      c.Status(500).Send(c.Error())
+    })
 
-  app.Listen(3000)
-}
-```
+    app.Listen(3000)
+  }
+  ```
+</details>
 
 ## 💬 Media
 
