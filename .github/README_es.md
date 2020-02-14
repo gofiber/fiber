@@ -3,7 +3,7 @@
     <img alt="Fiber" height="100" src="https://github.com/gofiber/docs/blob/master/static/logo.svg">
   </a>
   <br><br>
-  <a href="https://github.com/gofiber/fiber/blob/master/README.md">
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
@@ -230,6 +230,24 @@ func main() {
 }
 ```
 
+### Recover
+
+```go
+func main() {
+  app := fiber.New()
+
+  app.Get("/json", func(c *fiber.Ctx) {
+    panic("Something went wrong!")
+  })
+
+  app.Recover(func(c *fiber.Ctx) {
+    c.Status(500).Send(c.Error())
+  })
+
+  app.Listen(3000)
+}
+```
+
 ## 💬 Medios
 
 - [Bienvenido a Fiber: un marco web con estilo Express.js escrito en Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *por [Vic Shóstak](https://github.com/koddr), 03 feb 2020*
@@ -243,18 +261,35 @@ Si quiere **agradecer** y/o apoyar el desarrollo activo de la `Fiber`:
 3. Escriba una reseña o tutorial en [Medium](https://medium.com/) , [Dev.to](https://dev.to/) o blog personal.
 4. Ayúdanos a traducir este `README` y [API Docs](https://fiber.wiki/) a otro idioma.
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
-
 ## ☕ Supporters
 
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 <table>
   <tr>
     <td align="center">
-      <a href="https://www.buymeacoffee.com/fenny">
-        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="100px;" style="border-radius:50%"></br>
-        <b>ToishY</b>
+        <a href="https://github.com/bihe">
+          <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="75"></br>
+          <sub><b>HenrikBinggl</b></sub>
         </a>
-      </td>
+    </td>
+    <td align="center">
+      <a href="https://github.com/koddr">
+        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75"></br>
+        <sub><b>koddr</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/MarvinJWendt">
+        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="75"></br>
+        <sub><b>MarvinJWendt</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/toishy">
+        <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="75"></br>
+        <sub><b>ToishY</b></sub>
+      </a>
+    </td>
   </tr>
 </table>
 
