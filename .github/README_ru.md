@@ -204,7 +204,7 @@ func main() {
   app.Static("./public")
 
   // Последний middleware
-  app.Use(func (c *fiber.Ctx) {
+  app.Use(func(c *fiber.Ctx) {
     c.SendStatus(404) // => 404 "Not Found"
   })
 
@@ -224,7 +224,7 @@ func main() {
   }
 
   // Сериализация JSON
-  app.Get("/json", func (c *fiber.Ctx) {
+  app.Get("/json", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
   })
 

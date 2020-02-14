@@ -127,6 +127,9 @@ func main() {
   // => http://localhost:3000/prefix/js/script.js
   // => http://localhost:3000/prefix/css/style.css
 
+  app.Static("*", "./public/index.html")
+  // => http://localhost:3000/anything/returns/the/index/file
+
   app.Listen(3000)
 }
 ```
@@ -203,7 +206,7 @@ func main() {
   app.Static("./public")
 
   // Last middleware
-  app.Use(func (c *fiber.Ctx) {
+  app.Use(func(c *fiber.Ctx) {
     c.SendStatus(404) // => 404 "Not Found"
   })
 
@@ -223,8 +226,26 @@ func main() {
   }
 
   // Serialize JSON
-  app.Get("/json", func (c *fiber.Ctx) {
+  app.Get("/json", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
+  })
+
+  app.Listen(3000)
+}
+```
+
+### Recover
+
+```go
+func main() {
+  app := fiber.New()
+
+  app.Get("/json", func(c *fiber.Ctx) {
+    panic("Something went wrong!")
+  })
+
+  app.Recover(func(c *fiber.Ctx) {
+    c.Status(500).Send(c.Error())
   })
 
   app.Listen(3000)
@@ -242,20 +263,38 @@ If you want to say **thank you** and/or support the active development of `Fiber
 1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to the project.
 2. Tweet about the project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
-4. Help us to translate this `README` and [API Docs](https://fiber.wiki/) to another language.
+4. Help us to translate this `README` to another language.
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 
 ## ☕ Supporters
 
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 <table>
   <tr>
     <td align="center">
-      <a href="https://www.buymeacoffee.com/fenny">
-        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="75" style="border-radius:50%"></br>
-        <b>ToishY</b>
+        <a href="https://github.com/bihe">
+          <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="75"></br>
+          <sub><b>HenrikBinggl</b></sub>
         </a>
-      </td>
+    </td>
+    <td align="center">
+      <a href="https://github.com/koddr">
+        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75"></br>
+        <sub><b>koddr</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/MarvinJWendt">
+        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="75"></br>
+        <sub><b>MarvinJWendt</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/toishy">
+        <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="75"></br>
+        <sub><b>ToishY</b></sub>
+      </a>
+    </td>
   </tr>
 </table>
 
