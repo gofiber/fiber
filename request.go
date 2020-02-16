@@ -311,7 +311,7 @@ func (ctx *Ctx) IPs() []string {
 }
 
 // Is : https://fiber.wiki/context#is
-func (ctx *Ctx) IS(ext string) bool {
+func (ctx *Ctx) Is(ext string) bool {
 	if ext[0] != '.' {
 		ext = "." + ext
 	}
