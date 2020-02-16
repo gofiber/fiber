@@ -113,22 +113,22 @@ Fiber is **inspired** by Express, the most popular web framework on the Internet
 
 Listed below are some of the common examples. If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our [API documentation](https://fiber.wiki).
 
-### Static files
+### Serve static files
 
 ```go
 func main() {
   app := fiber.New()
 
-  app.Static("./public")
+  app.Static("/public")
   // => http://localhost:3000/js/script.js
   // => http://localhost:3000/css/style.css
 
-  app.Static("/prefix", "./public")
+  app.Static("/prefix", "/public")
   // => http://localhost:3000/prefix/js/script.js
   // => http://localhost:3000/prefix/css/style.css
 
-  app.Static("*", "./public/index.html")
-  // => http://localhost:3000/anything/returns/the/index/file
+  app.Static("*", "/public/index.html")
+  // => http://localhost:3000/any/path/shows/index/html
 
   app.Listen(3000)
 }
@@ -136,139 +136,126 @@ func main() {
 
 ### Routing
 
-<details>
-  <summary>📜 Show code snippet</summary>
+```go
+func main() {
+  app := fiber.New()
 
-  ```go
-  func main() {
-    app := fiber.New()
+  // GET /john
+  app.Get("/:name", func(c *fiber.Ctx) {
+    fmt.Printf("Hello %s!", c.Params("name"))
+    // => Hello john!
+  })
 
-    // GET /john
-    app.Get("/:name", func(c *fiber.Ctx) {
-      fmt.Printf("Hello %s!", c.Params("name"))
-      // => Hello john!
-    })
+  // GET /john
+  app.Get("/:name/:age?", func(c *fiber.Ctx) {
+    fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
+    // => Name: john, Age:
+  })
 
-    // GET /john
-    app.Get("/:name/:age?", func(c *fiber.Ctx) {
-      fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
-      // => Name: john, Age:
-    })
+  // GET /api/register
+  app.Get("/api*", func(c *fiber.Ctx) {
+    fmt.Printf("/api%s", c.Params("*"))
+    // => /api/register
+  })
 
-    // GET /api/register
-    app.Get("/api*", func(c *fiber.Ctx) {
-      fmt.Printf("/api%s", c.Params("*"))
-      // => /api/register
-    })
+  app.Listen(3000)
+}
+```
 
-    app.Listen(3000)
-  }
-  ```
-</details>
+### Middleware & Next
 
-### Middleware
+```go
+func main() {
+  app := fiber.New()
 
-<details>
-  <summary>📜 Show code snippet</summary>
+  // Match any route
+  app.Use(func(c *fiber.Ctx) {
+    fmt.Println("First middleware")
+    c.Next()
+  })
 
-  ```go
-  func main() {
-    app := fiber.New()
+  // Match all routes starting with /api
+  app.Use("/api", func(c *fiber.Ctx) {
+    fmt.Println("Second middleware")
+    c.Next()
+  })
 
-    // Match any post route
-    app.Use(func(c *fiber.Ctx) {
-      if c.IP() == "1.2.3.4" {
-        c.SendStatus(403)
-        return
-      }
-      c.Next()
-    })
+  // POST /api/register
+  app.Post("/api/register", func(c *fiber.Ctx) {
+    fmt.Println("Last middleware")
+    c.Send("Hello, World!")
+  })
 
-    // Match all routes starting with /api
-    app.Use("/api", func(c *fiber.Ctx) {
-      c.Set("Access-Control-Allow-Origin", "*")
-      c.Set("Access-Control-Allow-Headers", "X-Requested-With")
-      c.Next()
-    })
-
-    // POST /api/register
-    app.Post("/api/register", func(c *fiber.Ctx) {
-      username := c.Body("username")
-      password := c.Body("password")
-      // ..
-    })
-
-    app.Listen(3000)
-  }
-  ```
-</details>
-
-### Custom 404
+  app.Listen(3000)
+}
+```
 
 <details>
-  <summary>📜 Show code snippet</summary>
+  <summary>📜 Show more code examples</summary>
 
-  ```go
-  func main() {
-    app := fiber.New()
+### Custom 404 response
 
-    // Serve static files from "public" directory
-    app.Static("./public")
+```go
+func main() {
+  app := fiber.New()
 
-    // Last middleware
-    app.Use(func(c *fiber.Ctx) {
-      c.SendStatus(404) // => 404 "Not Found"
-    })
+  app.Static("/public")
+  app.Get("/demo", func(c *fiber.Ctx) {
+    c.Send("This is a demo!")
+  })
+  app.Post("/register", func(c *fiber.Ctx) {
+    c.Send("Welcome!")
+  })
 
-    app.Listen(3000)
-  }
-  ```
-</details>
+  // Last middleware to match anything
+  app.Use(func(c *fiber.Ctx) {
+    c.SendStatus(404) // => 404 "Not Found"
+  })
+
+  app.Listen(3000)
+}
+```
 
 ### JSON Response
 
-<details>
-  <summary>📜 Show code snippet</summary>
+```go
+func main() {
+  app := fiber.New()
 
-  ```go
-  func main() {
-    app := fiber.New()
-
-    type User struct {
-      Name string `json:"name"`
-      Age  int    `json:"age"`
-    }
-
-    // Serialize JSON
-    app.Get("/json", func(c *fiber.Ctx) {
-      c.JSON(&User{"John", 20})
-    })
-
-    app.Listen(3000)
+  type User struct {
+    Name string `json:"name"`
+    Age  int    `json:"age"`
   }
-  ```
-</details>
 
-### Recover
+  // Serialize JSON
+  app.Get("/json", func(c *fiber.Ctx) {
+    c.JSON(&User{"John", 20})
+    // => {"name":"John", "age":20}
+  })
 
-<details>
-  <summary>📜 Show code snippet</summary>
+  app.Listen(3000)
+}
+```
 
-  ```go
-  func main() {
-    app := fiber.New()
 
-    app.Get("/json", func(c *fiber.Ctx) {
-      panic("Something went wrong!")
-    })
+### Recover from panic
 
-    app.Recover(func(c *fiber.Ctx) {
-      c.Status(500).Send(c.Error())
-    })
+```go
+func main() {
+  app := fiber.New()
 
-    app.Listen(3000)
-  }
-  ```
+  app.Get("/", func(c *fiber.Ctx) {
+    panic("Something went wrong!")
+  })
+
+  app.Recover(func(c *fiber.Ctx) {
+    c.Status(500).Send(c.Error())
+    // => 500 "Something went wrong!"
+  })
+
+  app.Listen(3000)
+}
+```
 </details>
 
 ## 💬 Media
@@ -287,30 +274,32 @@ If you want to say **thank you** and/or support the active development of `Fiber
 
 ## ☕ Supporters
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 <table>
   <tr>
     <td align="center">
         <a href="https://github.com/bihe">
-          <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="75"></br>
+          <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
           <sub><b>HenrikBinggl</b></sub>
         </a>
     </td>
     <td align="center">
       <a href="https://github.com/koddr">
-        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75"></br>
+        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="100px"></br>
         <sub><b>koddr</b></sub>
       </a>
     </td>
     <td align="center">
       <a href="https://github.com/MarvinJWendt">
-        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="75"></br>
+        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="100px"></br>
         <sub><b>MarvinJWendt</b></sub>
       </a>
     </td>
     <td align="center">
       <a href="https://github.com/toishy">
-        <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="75"></br>
+        <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="100px"></br>
         <sub><b>ToishY</b></sub>
       </a>
     </td>

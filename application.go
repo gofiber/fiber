@@ -24,14 +24,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/reuseport"
+	fasthttp "github.com/valyala/fasthttp"
+	reuseport "github.com/valyala/fasthttp/reuseport"
 )
 
 const (
 	// Version : Fiber release
 	Version = "1.6.1"
-	// Website : Fiber documentation
+	// Website : Fiber website
 	Website = "https://fiber.wiki"
 	banner  = "\x1b[1;32m" + ` ______   __     ______     ______     ______
 /\  ___\ /\ \   /\  == \   /\  ___\   /\  == \
@@ -300,7 +300,6 @@ func (grp *Group) Static(args ...string) {
 		prefix = filepath.Clean(prefix)
 		prefix = filepath.ToSlash(prefix)
 	}
-	fmt.Println(prefix, root)
 	grp.app.Static(prefix, root)
 }
 
