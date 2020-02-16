@@ -3,9 +3,9 @@
     <img alt="Fiber" height="100" src="https://github.com/gofiber/docs/blob/master/static/logo.svg">
   </a>
   <br><br>
-  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
-  </a>-->
+  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
   </a>
