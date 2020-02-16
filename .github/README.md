@@ -113,27 +113,6 @@ Fiber is **inspired** by Express, the most popular web framework on the Internet
 
 Listed below are some of the common examples. If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our [API documentation](https://fiber.wiki).
 
-### Serve static files
-
-```go
-func main() {
-  app := fiber.New()
-
-  app.Static("/public")
-  // => http://localhost:3000/js/script.js
-  // => http://localhost:3000/css/style.css
-
-  app.Static("/prefix", "/public")
-  // => http://localhost:3000/prefix/js/script.js
-  // => http://localhost:3000/prefix/css/style.css
-
-  app.Static("*", "/public/index.html")
-  // => http://localhost:3000/any/path/shows/index/html
-
-  app.Listen(3000)
-}
-```
-
 ### Routing
 
 ```go
@@ -157,6 +136,27 @@ func main() {
     fmt.Printf("/api%s", c.Params("*"))
     // => /api/register
   })
+
+  app.Listen(3000)
+}
+```
+
+### Serve static files
+
+```go
+func main() {
+  app := fiber.New()
+
+  app.Static("/public")
+  // => http://localhost:3000/js/script.js
+  // => http://localhost:3000/css/style.css
+
+  app.Static("/prefix", "/public")
+  // => http://localhost:3000/prefix/js/script.js
+  // => http://localhost:3000/prefix/css/style.css
+
+  app.Static("*", "/public/index.html")
+  // => http://localhost:3000/any/path/shows/index/html
 
   app.Listen(3000)
 }
@@ -191,7 +191,7 @@ func main() {
 ```
 
 <details>
-  <summary>📜 Show more code examples</summary>
+  <summary>📚 Show more code examples</summary>
 
 ### Custom 404 response
 
@@ -277,6 +277,7 @@ If you want to say **thank you** and/or support the active development of `Fiber
 <a href="https://www.buymeacoffee.com/fenny" target="_blank">
   <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
 </a>
+
 <table>
   <tr>
     <td align="center">
@@ -288,7 +289,7 @@ If you want to say **thank you** and/or support the active development of `Fiber
     <td align="center">
       <a href="https://github.com/koddr">
         <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="100px"></br>
-        <sub><b>koddr</b></sub>
+        <sub><b>Vic Shóstak</b></sub>
       </a>
     </td>
     <td align="center">
