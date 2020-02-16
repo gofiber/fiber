@@ -51,7 +51,7 @@
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b> est un framework web  inspiré d' <a href="https://github.com/expressjs/express">Express</a>. Il se base sur <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, l'implémentation HTTP de <a href="https://golang.org/doc/">Go</a> <b>la plus rapide</b>, concue pour <b>faciliter</b> les choses ( développement <b>rapide</b>), tout en gardant en tête <b>l'absence d'allocations mémoires</b>, ainsi que les <b>performances</b>.
+  <b>Fiber</b> est un framework web  inspiré d' <a href="https://github.com/expressjs/express">Express</a>. Il se base sur <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, l'implémentation HTTP de <a href="https://golang.org/doc/">Go</a> <b>la plus rapide</b>. Conçu pour <b>faciliter</b> les choses pour des développements <b>rapides</b>, Fiber garde à l'esprit <b>l'absence d'allocations mémoires</b>, ainsi que les <b>performances</b>.
 </p>
 
 ## ⚡️ Quickstart
@@ -74,9 +74,9 @@ func main() {
 
 ## ⚙️ Installation
 
-First of all, [download](https://golang.org/dl/) and install Go. `1.11` or higher is required.
+Premièrement, [téléchargez](https://golang.org/dl/) et installez Go. Version `1.11` ou supérieur requise.
 
-Installation is done using the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+L'installation est ensuite lancée via la commande  [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
 go get github.com/gofiber/fiber
@@ -84,7 +84,7 @@ go get github.com/gofiber/fiber
 
 ## 🤖 Benchmarks
 
-These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://fiber.wiki/benchmarks).
+Ces tests sont effectués par [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) et [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Si vous voulez voir tous les résultats, n'hésitez pas à consulter notre [Wiki](https://fiber.wiki/benchmarks).
 
 <p float="left" align="middle">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
@@ -93,25 +93,25 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 
 ## 🎯 Features
 
-- Robust [routing](https://fiber.wiki/routing)
+-  [Routing](https://fiber.wiki/routing) robuste
 - Serve [static files](https://fiber.wiki/application#static)
-- Extreme [performance](https://fiber.wiki/benchmarks)
-- [Low memory](https://fiber.wiki/benchmarks) footprint
+- [Performances](https://fiber.wiki/benchmarks) extrêmes
+- [Faible empreinte mémoire](https://fiber.wiki/benchmarks)
 - [API endpoints](https://fiber.wiki/context)
 - Middleware & [Next](https://fiber.wiki/context#next) support
-- [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
-- Available in [5 languages](https://fiber.wiki/)
-- And much more, [explore Fiber](https://fiber.wiki/)
+- Programmation côté serveur [rapide](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 
+- Disponible en [5 langues](https://fiber.wiki/)
+- Et plus encore, [explorez Fiber](https://fiber.wiki/)
 
 ## 💡 Philosophie
 
-New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
+Les nouveaux gophers qui passent de [Node.js](https://nodejs.org/en/about/) à [Go](https://golang.org/doc/) sont confrontés à une courbe d'apprentissage, avant de pouvoir construire leurs applications web et microservices. Fiber, en tant que **framework web**, a été mis en point avec l'idée de **minimalisme**, tout en suivant l'**UNIX way**, afin que les nouveaux gophers puissent rapidement entrer dans le monde de Go, avec un accueil chaleureux, de confiance. 
 
-Fiber is **inspired** by Express, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express or similar_), then many methods and principles will seem **very common** to you.
+Fiber est **inspiré** par Express, le framework web le plus populaire d'Internet. Nous avons combiné la **facilité** d'Express, et la **performance brute** de Go. Si vous avez déja développé une application web en Node.js (_en utilisant Express ou équivalent_), alors de nombreuses méthodes et principes vous sembleront **familiers**. 
 
 ## 👀 Exemples
 
-Ci-dessous quelques exemples courants. Si vous voulez voir plus d'exemples, rendez-vous sur notre [repository de recettes](https://github.com/gofiber/recipes) ou visitez notre [documentation API](https://fiber.wiki).
+Ci-dessous quelques exemples courants. Si vous voulez voir plus d'exemples, rendez-vous sur notre ["Recipes repository"](https://github.com/gofiber/recipes) ou visitez notre [documentation API](https://fiber.wiki).
 
 ### Serve static files
 
@@ -260,7 +260,7 @@ func main() {
 
 ## 💬 Media
 
-- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _par [Vic Shóstak](https://github.com/koddr), 03 Février 2020_
 
 ## 👍 Contribuer
 
@@ -311,4 +311,4 @@ Si vous voulez nous remercier et/ou soutenir le développement actif de `Fiber`:
 
 ## ⚠️ Licence
 
-`Fiber` est un logiciel gratuit et open-source, licencié sous [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE).
+`Fiber` est un logiciel gratuit et open-source, sous [Licence MIT](https://github.com/gofiber/fiber/blob/master/LICENSE).
