@@ -23,7 +23,7 @@ import (
 	"github.com/cbroglie/mustache"
 	"github.com/eknkc/amber"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/valyala/fasthttp"
+	fasthttp "github.com/valyala/fasthttp"
 	"github.com/yosssi/ace"
 )
 
@@ -176,12 +176,10 @@ func (ctx *Ctx) Format(args ...interface{}) {
 	}
 }
 
-// HeadersSent : https://fiber.wiki/context#headerssent
-func (ctx *Ctx) HeadersSent() {
+// HeadersSent indicates if the app sent HTTP headers for the response.
+// func (ctx *Ctx) HeadersSent() {}
 
-}
-
-// Json is deprecated, this will be removed in v2: Use c.JSON() instead
+// Json will be removed in v2
 func (ctx *Ctx) Json(v interface{}) error {
 	fmt.Println("Fiber deprecated c.Json(), this will be removed in v2: Use c.JSON() instead")
 	return ctx.JSON(v)
@@ -200,19 +198,19 @@ func (ctx *Ctx) JSON(v interface{}) error {
 	return nil
 }
 
-// JsonBytes is deprecated, this will be removed in v2: Use c.JSONBytes() instead
+// JsonBytes ...
 func (ctx *Ctx) JsonBytes(raw []byte) {
-	fmt.Println("Fiber deprecated c.JsonBytes(), this will be removed in v2: Use c.JSONBytes() instead")
 	ctx.JSONBytes(raw)
 }
 
-// JSONBytes : https://fiber.wiki/context#jsonbytes
+// JSONBytes will be removed in v2
 func (ctx *Ctx) JSONBytes(raw []byte) {
+	fmt.Println("Fiber deprecated c.JSONBytes(), this will function be removed in v2")
 	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationJSON)
 	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 }
 
-// Jsonp is deprecated, this will be removed in v2: Use c.JSONP() instead
+// Jsonp will be removed in v2
 func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
 	fmt.Println("Fiber deprecated c.Jsonp(), this will be removed in v2: Use c.JSONP() instead")
 	return ctx.JSONP(v, cb...)
@@ -238,14 +236,14 @@ func (ctx *Ctx) JSONP(v interface{}, cb ...string) error {
 	return nil
 }
 
-// JsonString is deprecated, this will be removed in v2: Use c.JSONString() instead
+// JsonString ...
 func (ctx *Ctx) JsonString(raw string) {
-	fmt.Println("Fiber deprecated c.JsonString(), this will be removed in v2: Use c.JSONString() instead")
 	ctx.JSONString(raw)
 }
 
-// JSONString : https://fiber.wiki/context#json
+// JSONString will be removed in v2
 func (ctx *Ctx) JSONString(raw string) {
+	fmt.Println("Fiber deprecated c.JSONString(), this function will be removed in v2")
 	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationJSON)
 	ctx.Fasthttp.Response.SetBodyString(raw)
 }
@@ -465,14 +463,14 @@ func (ctx *Ctx) Write(args ...interface{}) {
 	}
 }
 
-// Xml is deprecated, this will be removed in v2: Use c.XML() instead
+// Xml ...
 func (ctx *Ctx) Xml(v interface{}) error {
-	fmt.Println("Fiber deprecated c.Xml(), this will be removed in v2: Use c.XML() instead")
 	return ctx.XML(v)
 }
 
-// XML : https://fiber.wiki/context#xml
+// XML will be removed in v2
 func (ctx *Ctx) XML(v interface{}) error {
+	fmt.Println("Fiber deprecated c.XML(), this function will be removed in v2")
 	raw, err := xml.Marshal(v)
 	if err != nil {
 		return err

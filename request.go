@@ -17,7 +17,7 @@ import (
 	"strings"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/valyala/fasthttp"
+	fasthttp "github.com/valyala/fasthttp"
 )
 
 // Accepts : https://fiber.wiki/context#accepts
@@ -135,7 +135,7 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	return ""
 }
 
-// BaseUrl : https://fiber.wiki/context#baseurl
+// BaseUrl will be removed in v2
 func (ctx *Ctx) BaseUrl() string {
 	fmt.Println("Fiber deprecated c.BaseUrl(), this will be removed in v2: Use c.BaseURL() instead")
 	return ctx.BaseURL()
@@ -148,6 +148,7 @@ func (ctx *Ctx) BaseURL() string {
 
 // BasicAuth : https://fiber.wiki/context#basicauth
 func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
+	fmt.Println("Fiber deprecated c.BasicAuth(), this will be removed in v2 and be available as a separate middleware")
 	auth := ctx.Get(fasthttp.HeaderAuthorization)
 	if auth == "" {
 		return
@@ -283,7 +284,7 @@ func (ctx *Ctx) Hostname() string {
 	return getString(ctx.Fasthttp.URI().Host())
 }
 
-// Ip is deprecated, this will be removed in v2: Use c.IP() instead
+// Ip will be removed in v2
 func (ctx *Ctx) Ip() string {
 	fmt.Println("Fiber deprecated c.Ip(), this will be removed in v2: Use c.IP() instead")
 	return ctx.IP()
@@ -294,7 +295,7 @@ func (ctx *Ctx) IP() string {
 	return ctx.Fasthttp.RemoteIP().String()
 }
 
-// Ips is deprecated, this will be removed in v2: Use c.IPs() instead
+// Ips will be removed in v2
 func (ctx *Ctx) Ips() []string { // NOLINT
 	fmt.Println("Fiber deprecated c.Ips(), this will be removed in v2: Use c.IPs() instead")
 	return ctx.IPs()
@@ -310,7 +311,7 @@ func (ctx *Ctx) IPs() []string {
 }
 
 // Is : https://fiber.wiki/context#is
-func (ctx *Ctx) Is(ext string) bool {
+func (ctx *Ctx) IS(ext string) bool {
 	if ext[0] != '.' {
 		ext = "." + ext
 	}
@@ -346,7 +347,7 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 	return ctx.Fasthttp.MultipartForm()
 }
 
-// OriginalUrl is deprecated, this will be removed in v2: Use c.OriginalURL() instead
+// OriginalUrl will be removed in v2
 func (ctx *Ctx) OriginalUrl() string {
 	fmt.Println("Fiber deprecated c.OriginalUrl(), this will be removed in v2: Use c.OriginalURL() instead")
 	return ctx.OriginalURL()
@@ -429,7 +430,7 @@ func (ctx *Ctx) Subdomains(offset ...int) (subs []string) {
 	return subs
 }
 
-// Xhr is deprecated, this will be removed in v2: Use c.XHR() instead
+// Xhr will be removed in v2
 func (ctx *Ctx) Xhr() bool {
 	fmt.Println("Fiber deprecated c.Xhr(), this will be removed in v2: Use c.XHR() instead")
 	return ctx.XHR()
