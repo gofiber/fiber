@@ -15,7 +15,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/valyala/fasthttp"
+	fasthttp "github.com/valyala/fasthttp"
 )
 
 // Ctx is the context that contains everything

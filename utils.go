@@ -19,7 +19,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/gorilla/schema"
+	schema "github.com/gorilla/schema"
 )
 
 var schemaDecoder = schema.NewDecoder()
