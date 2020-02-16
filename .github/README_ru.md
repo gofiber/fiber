@@ -3,7 +3,7 @@
     <img alt="Fiber" height="100" src="https://github.com/gofiber/docs/blob/master/static/logo.svg">
   </a>
   <br><br>
-  <a href="https://github.com/gofiber/fiber/blob/master/README.md">
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>
   <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
@@ -102,6 +102,7 @@ go get -u github.com/gofiber/fiber
 - [Эндпоинты](https://fiber.wiki/context) Express [API](https://fiber.wiki/context)
 - Middleware и поддержка [Next](https://fiber.wiki/context#next)
 - [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
+- Available in [5 languages](https://fiber.wiki/)
 - И многое другое, [посетите наш Wiki](https://fiber.wiki/)
 
 ## 💡 Философия
@@ -134,103 +135,141 @@ func main() {
 
 ### Маршрутизация
 
-```go
-func main() {
-  app := fiber.New()
+<details>
+  <summary>📜 Show code snippet</summary>
 
-  // GET /john
-  app.Get("/:name", func(c *fiber.Ctx) {
-    fmt.Printf("Hello %s!", c.Params("name"))
-    // => Hello john!
-  })
+  ```go
+  func main() {
+    app := fiber.New()
 
-  // GET /john
-  app.Get("/:name/:age?", func(c *fiber.Ctx) {
-    fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
-    // => Name: john, Age:
-  })
+    // GET /john
+    app.Get("/:name", func(c *fiber.Ctx) {
+      fmt.Printf("Hello %s!", c.Params("name"))
+      // => Hello john!
+    })
 
-  // GET /api/register
-  app.Get("/api*", func(c *fiber.Ctx) {
-    fmt.Printf("/api%s", c.Params("*"))
-    // => /api/register
-  })
+    // GET /john
+    app.Get("/:name/:age?", func(c *fiber.Ctx) {
+      fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
+      // => Name: john, Age:
+    })
 
-  app.Listen(3000)
-}
-```
+    // GET /api/register
+    app.Get("/api*", func(c *fiber.Ctx) {
+      fmt.Printf("/api%s", c.Params("*"))
+      // => /api/register
+    })
+
+    app.Listen(3000)
+  }
+  ```
+</details>
 
 ### Middleware
 
-```go
-func main() {
-  app := fiber.New()
+<details>
+  <summary>📜 Show code snippet</summary>
 
-  // Принимает POST запрос с любого адреса
-  app.Post(func(c *fiber.Ctx) {
-    user, pass, ok := c.BasicAuth()
-    if !ok || user != "john" || pass != "doe" {
-      c.Status(403).Send("Sorry John")
-      return
-    }
-    c.Next()
-  })
+  ```go
+  func main() {
+    app := fiber.New()
 
-  // Разрешает все адреса, начинающиеся на "/api"
-  app.Use("/api", func(c *fiber.Ctx) {
-    c.Set("Access-Control-Allow-Origin", "*")
-    c.Set("Access-Control-Allow-Headers", "X-Requested-With")
-    c.Next()
-  })
+    // Match any post route
+    app.Use(func(c *fiber.Ctx) {
+      if c.IP() == "1.2.3.4" {
+        c.SendStatus(403)
+        return
+      }
+      c.Next()
+    })
 
-  // Опциональный параметр
-  app.Post("/api/register", func(c *fiber.Ctx) {
-    username := c.Body("username")
-    password := c.Body("password")
-    // ..
-  })
+    // Match all routes starting with /api
+    app.Use("/api", func(c *fiber.Ctx) {
+      c.Set("Access-Control-Allow-Origin", "*")
+      c.Set("Access-Control-Allow-Headers", "X-Requested-With")
+      c.Next()
+    })
 
-  app.Listen(3000)
-}
-```
+    // POST /api/register
+    app.Post("/api/register", func(c *fiber.Ctx) {
+      username := c.Body("username")
+      password := c.Body("password")
+      // ..
+    })
+
+    app.Listen(3000)
+  }
+  ```
+</details>
 
 ### Обработка ошибки 404
 
-```go
-func main() {
-  app := fiber.New()
+<details>
+  <summary>📜 Show code snippet</summary>
 
-  // Доступ к файлам в директории "./public":
-  app.Static("./public")
+  ```go
+  func main() {
+    app := fiber.New()
 
-  // Последний middleware
-  app.Use(func (c *fiber.Ctx) {
-    c.SendStatus(404) // => 404 "Not Found"
-  })
+    // Serve static files from "public" directory
+    app.Static("./public")
 
-  app.Listen(3000)
-}
-```
+    // Last middleware
+    app.Use(func(c *fiber.Ctx) {
+      c.SendStatus(404) // => 404 "Not Found"
+    })
+
+    app.Listen(3000)
+  }
+  ```
+</details>
 
 ### JSON Response
 
-```go
-func main() {
-  app := fiber.New()
+<details>
+  <summary>📜 Show code snippet</summary>
 
-  type User struct {
-    Name string `json:"name"`
-    Age  int    `json:"age"`
+  ```go
+  func main() {
+    app := fiber.New()
+
+    type User struct {
+      Name string `json:"name"`
+      Age  int    `json:"age"`
+    }
+
+    // Serialize JSON
+    app.Get("/json", func(c *fiber.Ctx) {
+      c.JSON(&User{"John", 20})
+    })
+
+    app.Listen(3000)
   }
+  ```
+</details>
 
-  // Сериализация JSON
-  app.Get("/json", func (c *fiber.Ctx) {
-    c.JSON(&User{"John", 20})
-  })
+### Recover
 
-  app.Listen(3000)
-}
-```
+<details>
+  <summary>📜 Show code snippet</summary>
+
+  ```go
+  func main() {
+    app := fiber.New()
+
+    app.Get("/json", func(c *fiber.Ctx) {
+      panic("Something went wrong!")
+    })
+
+    app.Recover(func(c *fiber.Ctx) {
+      c.Status(500).Send(c.Error())
+    })
+
+    app.Listen(3000)
+  }
+  ```
+</details>
+
 
 ## 💬 Медиа
 
@@ -245,18 +284,35 @@ func main() {
 3. Сделайте обзор фреймворка на [Medium](https://medium.com/), [Dev.to](https://dev.to/) или в личном блоге.
 4. Помогите нам перевести `README` и [API](https://fiber.wiki/) на другой язык.
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
-
 ## ☕ Supporters
 
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 <table>
   <tr>
     <td align="center">
-      <a href="https://www.buymeacoffee.com/fenny">
-        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="100px;" style="border-radius:50%"></br>
-        <b>ToishY</b>
+        <a href="https://github.com/bihe">
+          <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="75"></br>
+          <sub><b>HenrikBinggl</b></sub>
         </a>
-      </td>
+    </td>
+    <td align="center">
+      <a href="https://github.com/koddr">
+        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="75"></br>
+        <sub><b>koddr</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/MarvinJWendt">
+        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="75"></br>
+        <sub><b>MarvinJWendt</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/toishy">
+        <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="75"></br>
+        <sub><b>ToishY</b></sub>
+      </a>
+    </td>
   </tr>
 </table>
 
