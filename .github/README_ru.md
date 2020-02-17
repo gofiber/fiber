@@ -99,10 +99,10 @@ go get -u github.com/gofiber/fiber
 - Доступ к [статичным файлам](https://fiber.wiki/application#static)
 - Экстремальная [производительность](https://fiber.wiki/benchmarks)
 - [Низкий объем потребления памяти](https://fiber.wiki/benchmarks)
-- [Эндпоинты](https://fiber.wiki/context) Express [API](https://fiber.wiki/context)
+- [Эндпоинты](https://fiber.wiki/context), как в [API](https://fiber.wiki/context) Express
 - Middleware и поддержка [Next](https://fiber.wiki/context#next)
 - [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
-- Available in [5 languages](https://fiber.wiki/)
+- Переведен на [5 языков](https://fiber.wiki/)
 - И многое другое, [посетите наш Wiki](https://fiber.wiki/)
 
 ## 💡 Философия
@@ -114,27 +114,6 @@ Fiber **вдохновлен** Express, самым популярным веб �
 ## 👀 Примеры
 
 Ниже перечислены некоторые из распространенных примеров. Если вы хотите увидеть больше примеров кода, пожалуйста, посетите наш [репозиторий рецептов](https://github.com/gofiber/recipes) или [документацию по API](https://fiber.wiki).
-
-### Serve static files
-
-```go
-func main() {
-  app := fiber.New()
-
-  app.Static("/public")
-  // => http://localhost:3000/js/script.js
-  // => http://localhost:3000/css/style.css
-
-  app.Static("/prefix", "/public")
-  // => http://localhost:3000/prefix/js/script.js
-  // => http://localhost:3000/prefix/css/style.css
-
-  app.Static("*", "/public/index.html")
-  // => http://localhost:3000/any/path/shows/index/html
-
-  app.Listen(3000)
-}
-```
 
 ### Routing
 
@@ -159,6 +138,27 @@ func main() {
     fmt.Printf("/api%s", c.Params("*"))
     // => /api/register
   })
+
+  app.Listen(3000)
+}
+```
+
+### Serve static files
+
+```go
+func main() {
+  app := fiber.New()
+
+  app.Static("/public")
+  // => http://localhost:3000/js/script.js
+  // => http://localhost:3000/css/style.css
+
+  app.Static("/prefix", "/public")
+  // => http://localhost:3000/prefix/js/script.js
+  // => http://localhost:3000/prefix/css/style.css
+
+  app.Static("*", "/public/index.html")
+  // => http://localhost:3000/any/path/shows/index/html
 
   app.Listen(3000)
 }
@@ -193,7 +193,7 @@ func main() {
 ```
 
 <details>
-  <summary>📜 Show more code examples</summary>
+  <summary>📚 Показать больше примеров кода</summary>
 
 ### Custom 404 response
 
@@ -239,7 +239,6 @@ func main() {
 }
 ```
 
-
 ### Recover from panic
 
 ```go
@@ -259,6 +258,7 @@ func main() {
 }
 ```
 </details>
+
 ## 💬 Медиа
 
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *[Vic Shóstak](https://github.com/koddr), 3 февраля 2020 г.*
@@ -288,7 +288,7 @@ func main() {
     <td align="center">
       <a href="https://github.com/koddr">
         <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="100px"></br>
-        <sub><b>koddr</b></sub>
+        <sub><b>Vic Shóstak</b></sub>
       </a>
     </td>
     <td align="center">
