@@ -80,7 +80,7 @@ func main() {
 
 ## ⚙️ Установка
 
-Прежде всего, [скачайте](https://golang.org/dl/) и установите Go. Версия **1.11** (с включенными [модулями Go](https://golang.org/doc/go1.11#modules)) или выше.
+Прежде всего, [скачайте](https://golang.org/dl/) и установите Go. Версия **1.11** или выше.
 
 Установка выполняется с помощью команды [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
