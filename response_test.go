@@ -28,6 +28,7 @@ func Test_Append(t *testing.T) {
 func Test_Attachment(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		c.Attachment()
 		c.Attachment("./static/img/logo.png")
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
@@ -112,6 +113,7 @@ func Test_Format(t *testing.T) {
 		c.Format("Hello, World!")
 	})
 	app.Get("/test2", func(c *Ctx) {
+		c.Format([]byte("Hello, World!"))
 		c.Format("Hello, World!")
 	})
 	req, _ := http.NewRequest("GET", "http://example.com/test", nil)
@@ -158,6 +160,9 @@ func Test_JSON(t *testing.T) {
 	}
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		if err := c.Json(""); err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 		if err := c.JSON(""); err != nil {
 			t.Fatalf(`%s: %s`, t.Name(), err)
 		}
@@ -220,6 +225,9 @@ func Test_JSONP(t *testing.T) {
 	}
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		if err := c.Jsonp(""); err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 		if err := c.JSONP(""); err != nil {
 			t.Fatalf(`%s: %s`, t.Name(), err)
 		}
@@ -551,6 +559,9 @@ func Test_XML(t *testing.T) {
 	}
 	app := New()
 	app.Get("/test", func(c *Ctx) {
+		if err := c.Xml(""); err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 		if err := c.XML(""); err != nil {
 			t.Fatalf(`%s: %s`, t.Name(), err)
 		}

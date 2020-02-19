@@ -8,15 +8,23 @@
 package fiber
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
+	"html/template"
+	"io/ioutil"
 	"log"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/CloudyKit/jet"
+	"github.com/aymerick/raymond"
+	"github.com/cbroglie/mustache"
+	"github.com/eknkc/amber"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/valyala/fasthttp"
+	fasthttp "github.com/valyala/fasthttp"
+	"github.com/yosssi/ace"
 )
 
 // Cookie : struct
@@ -168,12 +176,10 @@ func (ctx *Ctx) Format(args ...interface{}) {
 	}
 }
 
-// HeadersSent : https://fiber.wiki/context#headerssent
-func (ctx *Ctx) HeadersSent() {
+// HeadersSent indicates if the app sent HTTP headers for the response.
+// func (ctx *Ctx) HeadersSent() {}
 
-}
-
-// Json is deprecated, this will be removed in v2: Use c.JSON() instead
+// Json will be removed in v2
 func (ctx *Ctx) Json(v interface{}) error {
 	fmt.Println("Fiber deprecated c.Json(), this will be removed in v2: Use c.JSON() instead")
 	return ctx.JSON(v)
@@ -181,30 +187,30 @@ func (ctx *Ctx) Json(v interface{}) error {
 
 // JSON : https://fiber.wiki/context#json
 func (ctx *Ctx) JSON(v interface{}) error {
+	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationJSON)
 	raw, err := jsoniter.Marshal(&v)
 	if err != nil {
+		ctx.Fasthttp.Response.SetBodyString("")
 		return err
 	}
-
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
 	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 
 	return nil
 }
 
-// JsonBytes is deprecated, this will be removed in v2: Use c.JSONBytes() instead
+// JsonBytes ...
 func (ctx *Ctx) JsonBytes(raw []byte) {
-	fmt.Println("Fiber deprecated c.JsonBytes(), this will be removed in v2: Use c.JSONBytes() instead")
 	ctx.JSONBytes(raw)
 }
 
-// JSONBytes : https://fiber.wiki/context#jsonbytes
+// JSONBytes will be removed in v2
 func (ctx *Ctx) JSONBytes(raw []byte) {
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
+	fmt.Println("Fiber deprecated c.JSONBytes(), this will function be removed in v2")
+	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationJSON)
 	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 }
 
-// Jsonp is deprecated, this will be removed in v2: Use c.JSONP() instead
+// Jsonp will be removed in v2
 func (ctx *Ctx) Jsonp(v interface{}, cb ...string) error {
 	fmt.Println("Fiber deprecated c.Jsonp(), this will be removed in v2: Use c.JSONP() instead")
 	return ctx.JSONP(v, cb...)
@@ -224,21 +230,21 @@ func (ctx *Ctx) JSONP(v interface{}, cb ...string) error {
 	str += getString(raw) + ");"
 
 	ctx.Set(fasthttp.HeaderXContentTypeOptions, "nosniff")
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJs)
+	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationJavascript)
 	ctx.Fasthttp.Response.SetBodyString(str)
 
 	return nil
 }
 
-// JsonString is deprecated, this will be removed in v2: Use c.JSONString() instead
+// JsonString ...
 func (ctx *Ctx) JsonString(raw string) {
-	fmt.Println("Fiber deprecated c.JsonString(), this will be removed in v2: Use c.JSONString() instead")
 	ctx.JSONString(raw)
 }
 
-// JSONString : https://fiber.wiki/context#json
+// JSONString will be removed in v2
 func (ctx *Ctx) JSONString(raw string) {
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeJSON)
+	fmt.Println("Fiber deprecated c.JSONString(), this function will be removed in v2")
+	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationJSON)
 	ctx.Fasthttp.Response.SetBodyString(raw)
 }
 
@@ -265,11 +271,14 @@ func (ctx *Ctx) Location(path string) {
 }
 
 // Next : https://fiber.wiki/context#next
-func (ctx *Ctx) Next() {
+func (ctx *Ctx) Next(err ...error) {
 	ctx.route = nil
 	ctx.next = true
 	ctx.params = nil
 	ctx.values = nil
+	if len(err) > 0 {
+		ctx.error = err[0]
+	}
 }
 
 // Redirect : https://fiber.wiki/context#redirect
@@ -284,8 +293,73 @@ func (ctx *Ctx) Redirect(path string, status ...int) {
 }
 
 // Render : https://fiber.wiki/context#render
-func (ctx *Ctx) Render() {
-
+func (ctx *Ctx) Render(file string, v ...interface{}) error {
+	var err error
+	var raw []byte
+	var html string
+	var data interface{}
+	var tmpl *template.Template
+	if len(v) > 0 {
+		data = v[0]
+	}
+	if raw, err = ioutil.ReadFile(file); err != nil {
+		return err
+	}
+	engine := filepath.Ext(file)
+	switch engine {
+	case ".template": // https://golang.org/pkg/text/template/
+		if tmpl, err = template.New("test").Parse(getString(raw)); err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		if err = tmpl.Execute(&buf, data); err != nil {
+			return err
+		}
+		html = buf.String()
+	case ".ace": // https://github.com/yosssi/ace
+		if tmpl, err = ace.Load(strings.TrimSuffix(file, filepath.Ext(file)), "", nil); err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		if err = tmpl.Execute(&buf, data); err != nil {
+			return err
+		}
+		html = buf.String()
+	case ".amber": // https://github.com/eknkc/amber
+		if tmpl, err = amber.Compile(getString(raw), amber.DefaultOptions); err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		if err = tmpl.Execute(&buf, data); err != nil {
+			return err
+		}
+		html = buf.String()
+	case ".jet": // https://github.com/CloudyKit/jet
+		d, f := filepath.Split(file)
+		var jetview = jet.NewHTMLSet(d)
+		var t *jet.Template
+		if t, err = jetview.GetTemplate(f); err != nil {
+			return err
+		}
+		var buf bytes.Buffer
+		if err = t.Execute(&buf, make(jet.VarMap), data); err != nil {
+			return err
+		}
+		html = buf.String()
+	case ".mustache": // https://github.com/hoisie/mustache
+		if html, err = mustache.Render(getString(raw), data); err != nil {
+			return err
+		}
+	case ".raymond": // https://github.com/aymerick/raymond
+		if html, err = raymond.Render(getString(raw), data); err != nil {
+			return err
+		}
+	default:
+		err = fmt.Errorf("render: does not support the %s extension", engine)
+	}
+	ctx.Set("Content-Type", "text/html")
+	ctx.SendString(html)
+	return err
 }
 
 // Send : https://fiber.wiki/context#send
@@ -316,7 +390,6 @@ func (ctx *Ctx) SendFile(file string, gzip ...bool) {
 		fasthttp.ServeFileUncompressed(ctx.Fasthttp, file)
 		return
 	}
-
 	fasthttp.ServeFile(ctx.Fasthttp, file)
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
 	//ctx.Type(filepath.Ext(path))
@@ -390,20 +463,20 @@ func (ctx *Ctx) Write(args ...interface{}) {
 	}
 }
 
-// Xml is deprecated, this will be removed in v2: Use c.XML() instead
+// Xml ...
 func (ctx *Ctx) Xml(v interface{}) error {
-	fmt.Println("Fiber deprecated c.Xml(), this will be removed in v2: Use c.XML() instead")
 	return ctx.XML(v)
 }
 
-// XML : https://fiber.wiki/context#xml
+// XML will be removed in v2
 func (ctx *Ctx) XML(v interface{}) error {
+	fmt.Println("Fiber deprecated c.XML(), this function will be removed in v2")
 	raw, err := xml.Marshal(v)
 	if err != nil {
 		return err
 	}
 
-	ctx.Fasthttp.Response.Header.SetContentType(contentTypeXML)
+	ctx.Fasthttp.Response.Header.SetContentType(mimeApplicationXML)
 	ctx.Fasthttp.Response.SetBody(raw)
 
 	return nil

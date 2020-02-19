@@ -8,13 +8,9 @@
 package fiber
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"net"
-	"net/http"
-	"net/http/httputil"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -22,7 +18,11 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+
+	schema "github.com/gorilla/schema"
 )
+
+var schemaDecoder = schema.NewDecoder()
 
 func getParams(path string) (params []string) {
 	segments := strings.Split(path, "/")
@@ -64,6 +64,11 @@ func getRegex(path string) (*regexp.Regexp, error) {
 }
 
 func getFiles(root string) (files []string, isDir bool, err error) {
+	root = filepath.Clean(root)
+	// Check if dir/file exists
+	if _, err := os.Lstat(root); err != nil {
+		return files, isDir, fmt.Errorf("%s", err)
+	}
 	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
 			files = append(files, path)
@@ -82,9 +87,9 @@ func getType(ext string) (mime string) {
 	if ext[0] == '.' {
 		ext = ext[1:]
 	}
-	mime = contentTypes[ext]
+	mime = mimeTypes[ext]
 	if mime == "" {
-		return contentTypeOctetStream
+		return mimeApplicationOctetStream
 	}
 	return mime
 }
@@ -111,56 +116,20 @@ func getBytes(s string) (b []byte) {
 	return b
 }
 
-// Test takes a http.Request and execute a fake connection to the application
-// It returns a http.Response when the connection was successfull
-func (f *Fiber) Test(req *http.Request) (*http.Response, error) {
-	// Get raw http request
-	reqRaw, err := httputil.DumpRequest(req, true)
-	if err != nil {
-		return nil, err
-	}
-	// Setup a fiber server struct
-	f.httpServer = f.setupServer()
-	// Create fake connection
-	conn := &conn{}
-	// Pass HTTP request to conn
-	_, err = conn.r.Write(reqRaw)
-	if err != nil {
-		return nil, err
-	}
-	// Serve conn to server
-	channel := make(chan error)
-	go func() {
-		channel <- f.httpServer.ServeConn(conn)
-	}()
-	// Wait for callback
-	select {
-	case err := <-channel:
-		if err != nil {
-			return nil, err
-		}
-		// Throw timeout error after 200ms
-	case <-time.After(500 * time.Millisecond):
-		return nil, fmt.Errorf("Timeout")
-	}
-	// Get raw HTTP response
-	respRaw, err := ioutil.ReadAll(&conn.w)
-	if err != nil {
-		return nil, err
-	}
-	// Create buffer
-	reader := strings.NewReader(getString(respRaw))
-	buffer := bufio.NewReader(reader)
-	// Convert raw HTTP response to http.Response
-	resp, err := http.ReadResponse(buffer, req)
-	if err != nil {
-		return nil, err
-	}
-	// Return *http.Response
-	return resp, nil
-}
+// Check for error and format
+// func checkErr(err error, title ...string) {
+// 	if err != nil {
+// 		t := "Error"
+// 		if len(title) > 0 {
+// 			t = title[0]
+// 		}
+// 		fmt.Printf("\n%s%s: %v%s\n\n", "\x1b[1;30m", t, err, "\x1b[0m")
+// 		os.Exit(1)
+// 	}
+// }
 
 // https://golang.org/src/net/net.go#L113
+// Helper methods for Testing
 type conn struct {
 	net.Conn
 	r bytes.Buffer
@@ -244,22 +213,25 @@ var statusMessages = map[int]string{
 }
 
 const (
-	contentTypeJSON        = "application/json"
-	contentTypeJs          = "application/javascript"
-	contentTypeXML         = "application/xml"
-	contentTypeOctetStream = "application/octet-stream"
+	mimeApplicationJSON        = "application/json"
+	mimeApplicationJavascript  = "application/javascript"
+	mimeApplicationXML         = "application/xml"
+	mimeTextXML                = "text/xml"
+	mimeApplicationOctetStream = "application/octet-stream"
+	mimeApplicationForm        = "application/x-www-form-urlencoded"
+	mimeMultipartForm          = "multipart/form-data"
 )
 
 // https://github.com/nginx/nginx/blob/master/conf/mime.types
-var contentTypes = map[string]string{
+var mimeTypes = map[string]string{
 	"html":    "text/html",
 	"htm":     "text/html",
 	"shtml":   "text/html",
 	"css":     "text/css",
-	"xml":     "text/xml",
 	"gif":     "image/gif",
 	"jpeg":    "image/jpeg",
 	"jpg":     "image/jpeg",
+	"xml":     "application/xml",
 	"js":      "application/javascript",
 	"atom":    "application/atom+xml",
 	"rss":     "application/rss+xml",

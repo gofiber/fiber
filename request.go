@@ -13,10 +13,11 @@ import (
 	"fmt"
 	"mime"
 	"mime/multipart"
+	"net/url"
 	"strings"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/valyala/fasthttp"
+	fasthttp "github.com/valyala/fasthttp"
 )
 
 // Accepts : https://fiber.wiki/context#accepts
@@ -134,7 +135,7 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	return ""
 }
 
-// BaseUrl : https://fiber.wiki/context#baseurl
+// BaseUrl will be removed in v2
 func (ctx *Ctx) BaseUrl() string {
 	fmt.Println("Fiber deprecated c.BaseUrl(), this will be removed in v2: Use c.BaseURL() instead")
 	return ctx.BaseURL()
@@ -147,6 +148,7 @@ func (ctx *Ctx) BaseURL() string {
 
 // BasicAuth : https://fiber.wiki/context#basicauth
 func (ctx *Ctx) BasicAuth() (user, pass string, ok bool) {
+	fmt.Println("Fiber deprecated c.BasicAuth(), this will be removed in v2 and be available as a separate middleware")
 	auth := ctx.Get(fasthttp.HeaderAuthorization)
 	if auth == "" {
 		return
@@ -198,13 +200,33 @@ func (ctx *Ctx) Body(args ...interface{}) string {
 
 // BodyParser : https://fiber.wiki/context#bodyparser
 func (ctx *Ctx) BodyParser(v interface{}) error {
-	cType := getString(ctx.Fasthttp.Request.Header.ContentType())
-	if cType == contentTypeJSON {
+	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
+	// application/json
+	if strings.HasPrefix(ctype, mimeApplicationJSON) {
 		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), v)
-	} else if cType == contentTypeXML {
+	}
+	// application/xml text/xml
+	if strings.HasPrefix(ctype, mimeApplicationXML) || strings.HasPrefix(ctype, mimeTextXML) {
 		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), v)
 	}
-	return fmt.Errorf("Cannot parse Content-Type: %v", cType)
+	// application/x-www-form-urlencoded
+	if strings.HasPrefix(ctype, mimeApplicationForm) {
+		data, err := url.ParseQuery(getString(ctx.Fasthttp.PostBody()))
+		if err != nil {
+			return err
+		}
+		return schemaDecoder.Decode(v, data)
+	}
+	// multipart/form-data
+	if strings.HasPrefix(ctype, mimeMultipartForm) {
+		data, err := ctx.Fasthttp.MultipartForm()
+		if err != nil {
+			return err
+		}
+		return schemaDecoder.Decode(v, data.Value)
+
+	}
+	return fmt.Errorf("cannot parse content-type: %v", ctype)
 }
 
 // Cookies : https://fiber.wiki/context#cookies
@@ -229,6 +251,11 @@ func (ctx *Ctx) Cookies(args ...interface{}) string {
 	return ""
 }
 
+// Error returns err that is passed via Next(err)
+func (ctx *Ctx) Error() error {
+	return ctx.error
+}
+
 // FormFile : https://fiber.wiki/context#formfile
 func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 	return ctx.Fasthttp.FormFile(key)
@@ -241,7 +268,7 @@ func (ctx *Ctx) FormValue(key string) string {
 
 // Fresh : https://fiber.wiki/context#fresh
 func (ctx *Ctx) Fresh() bool {
-	return true
+	return false
 }
 
 // Get : https://fiber.wiki/context#get
@@ -257,7 +284,7 @@ func (ctx *Ctx) Hostname() string {
 	return getString(ctx.Fasthttp.URI().Host())
 }
 
-// Ip is deprecated, this will be removed in v2: Use c.IP() instead
+// Ip will be removed in v2
 func (ctx *Ctx) Ip() string {
 	fmt.Println("Fiber deprecated c.Ip(), this will be removed in v2: Use c.IP() instead")
 	return ctx.IP()
@@ -268,7 +295,7 @@ func (ctx *Ctx) IP() string {
 	return ctx.Fasthttp.RemoteIP().String()
 }
 
-// Ips is deprecated, this will be removed in v2: Use c.IPs() instead
+// Ips will be removed in v2
 func (ctx *Ctx) Ips() []string { // NOLINT
 	fmt.Println("Fiber deprecated c.Ips(), this will be removed in v2: Use c.IPs() instead")
 	return ctx.IPs()
@@ -320,7 +347,7 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 	return ctx.Fasthttp.MultipartForm()
 }
 
-// OriginalUrl is deprecated, this will be removed in v2: Use c.OriginalURL() instead
+// OriginalUrl will be removed in v2
 func (ctx *Ctx) OriginalUrl() string {
 	fmt.Println("Fiber deprecated c.OriginalUrl(), this will be removed in v2: Use c.OriginalURL() instead")
 	return ctx.OriginalURL()
@@ -361,7 +388,10 @@ func (ctx *Ctx) Query(key string) string {
 
 // Range : https://fiber.wiki/context#range
 func (ctx *Ctx) Range() {
-
+	// https://expressjs.com/en/api.html#req.range
+	// https://github.com/jshttp/range-parser/blob/master/index.js
+	// r := ctx.Fasthttp.Request.Header.Peek(fasthttp.HeaderRange)
+	// *magic*
 }
 
 // Route : https://fiber.wiki/context#route
@@ -386,7 +416,7 @@ func (ctx *Ctx) SignedCookies() {
 
 // Stale : https://fiber.wiki/context#stale
 func (ctx *Ctx) Stale() bool {
-	return true
+	return !ctx.Fresh()
 }
 
 // Subdomains : https://fiber.wiki/context#subdomains
@@ -400,7 +430,7 @@ func (ctx *Ctx) Subdomains(offset ...int) (subs []string) {
 	return subs
 }
 
-// Xhr is deprecated, this will be removed in v2: Use c.XHR() instead
+// Xhr will be removed in v2
 func (ctx *Ctx) Xhr() bool {
 	fmt.Println("Fiber deprecated c.Xhr(), this will be removed in v2: Use c.XHR() instead")
 	return ctx.XHR()

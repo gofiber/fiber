@@ -22,12 +22,18 @@ func Test_Accepts(t *testing.T) {
 		}
 		expect = ".xml"
 		result = c.Accepts(expect)
+		t.Log(result)
 		if result != expect {
 			t.Fatalf(`Expecting %s, got %s`, expect, result)
 		}
+		expect = ".whaaaaat"
+		result = c.Accepts(expect)
+		if result != "" {
+			t.Fatalf(`Expecting %s, got %s`, "", result)
+		}
 	})
 	req := httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9")
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
@@ -83,6 +89,11 @@ func Test_AcceptsLanguages(t *testing.T) {
 		c.AcceptsLanguages()
 		expect := "fr"
 		result := c.AcceptsLanguages(expect)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		expect = "*"
+		result = c.AcceptsLanguages(expect)
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
@@ -180,6 +191,30 @@ func Test_Body(t *testing.T) {
 	}
 	if resp.StatusCode != 200 {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_BodyParser(t *testing.T) {
+	app := New()
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	app.Post("/test", func(c *Ctx) {
+		d := new(Demo)
+		err := c.BodyParser(&d)
+		if err != nil {
+			t.Fatalf(`%s: BodyParser %v`, t.Name(), err)
+		}
+		if d.Name != "john" {
+			t.Fatalf(`%s: Expect %s got %s`, t.Name(), "john", d)
+		}
+	})
+	req := httptest.NewRequest("POST", "/test", bytes.NewBuffer([]byte(`{"name":"john"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Length", strconv.Itoa(len([]byte(`{"name":"john"}`))))
+
+	_, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_Cookies(t *testing.T) {
@@ -346,26 +381,28 @@ func Test_IPs(t *testing.T) {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
-func Test_Is(t *testing.T) {
-	app := New()
-	app.Get("/test", func(c *Ctx) {
-		c.Is(".json")
-		expect := true
-		result := c.Is("html")
-		if result != expect {
-			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
-		}
-	})
-	req, _ := http.NewRequest("GET", "/test", nil)
-	req.Header.Set("Content-Type", "text/html")
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf(`%s: %s`, t.Name(), err)
-	}
-	if resp.StatusCode != 200 {
-		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
-	}
-}
+
+// func Test_Is(t *testing.T) {
+// 	app := New()
+// 	app.Get("/test", func(c *Ctx) {
+// 		c.Is(".json")
+// 		expect := true
+// 		result := c.Is("html")
+// 		if result != expect {
+// 			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
+// 		}
+// 	})
+// 	req, _ := http.NewRequest("GET", "/test", nil)
+// 	req.Header.Set("Content-Type", "text/html")
+// 	resp, err := app.Test(req)
+// 	if err != nil {
+// 		t.Fatalf(`%s: %s`, t.Name(), err)
+// 	}
+// 	if resp.StatusCode != 200 {
+// 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+// 	}
+// }
+
 func Test_Locals(t *testing.T) {
 	app := New()
 	app.Use(func(c *Ctx) {
@@ -642,6 +679,10 @@ func Test_Subdomains(t *testing.T) {
 	app.Get("/test", func(c *Ctx) {
 		expect := []string{"john", "doe"}
 		result := c.Subdomains()
+		if result[0] != expect[0] && result[1] != expect[1] {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		result = c.Subdomains(1)
 		if result[0] != expect[0] && result[1] != expect[1] {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}

@@ -8,25 +8,27 @@
 package fiber
 
 import (
+	"fmt"
 	"log"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 
-	"github.com/valyala/fasthttp"
+	fasthttp "github.com/valyala/fasthttp"
 )
 
-// Ctx : struct
+// Ctx is the context that contains everything
 type Ctx struct {
 	route    *Route
 	next     bool
+	error    error
 	params   *[]string
 	values   []string
 	Fasthttp *fasthttp.RequestCtx
 }
 
-// Route : struct
+// Route struct
 type Route struct {
 	// HTTP method in uppercase, can be a * for Use() & All()
 	Method string
@@ -62,14 +64,15 @@ func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 func releaseCtx(ctx *Ctx) {
 	ctx.route = nil
 	ctx.next = false
+	ctx.error = nil
 	ctx.params = nil
 	ctx.values = nil
 	ctx.Fasthttp = nil
 	poolCtx.Put(ctx)
 }
 
-func (g *Group) register(method string, args ...interface{}) {
-	path := g.path
+func (grp *Group) register(method string, args ...interface{}) {
+	path := grp.path
 	var handler func(*Ctx)
 	if len(args) == 1 {
 		handler = args[0].(func(*Ctx))
@@ -81,12 +84,13 @@ func (g *Group) register(method string, args ...interface{}) {
 		}
 		path = strings.Replace(path, "//", "/", -1)
 		path = filepath.Clean(path)
+		path = filepath.ToSlash(path)
 	}
-	g.fiber.register(method, path, handler)
+	grp.app.register(method, path, handler)
 }
 
 // Function to add a route correctly
-func (f *Fiber) register(method string, args ...interface{}) {
+func (app *Application) register(method string, args ...interface{}) {
 	// Set if method is Use() midware
 	var midware = method == "USE"
 
@@ -105,7 +109,7 @@ func (f *Fiber) register(method string, args ...interface{}) {
 	} else if len(args) > 1 {
 		path = args[0].(string)
 		handler = args[1].(func(*Ctx))
-		if path[0] != '/' && path[0] != '*' {
+		if path == "" || path[0] != '/' && path[0] != '*' {
 			path = "/" + path
 		}
 	}
@@ -121,7 +125,7 @@ func (f *Fiber) register(method string, args ...interface{}) {
 
 	// If the route needs to match any path
 	if path == "" || path == "*" || path == "/*" {
-		f.routes = append(f.routes, &Route{method, path, midware, true, nil, nil, handler})
+		app.routes = append(app.routes, &Route{method, path, midware, true, nil, nil, handler})
 		return
 	}
 
@@ -130,7 +134,7 @@ func (f *Fiber) register(method string, args ...interface{}) {
 
 	// If path has no params (simple path), we don't need regex (also for use())
 	if midware || len(params) == 0 {
-		f.routes = append(f.routes, &Route{method, path, midware, false, nil, nil, handler})
+		app.routes = append(app.routes, &Route{method, path, midware, false, nil, nil, handler})
 		return
 	}
 
@@ -141,11 +145,11 @@ func (f *Fiber) register(method string, args ...interface{}) {
 	}
 
 	// Add regex + params to route
-	f.routes = append(f.routes, &Route{method, path, midware, false, regex, params, handler})
+	app.routes = append(app.routes, &Route{method, path, midware, false, regex, params, handler})
 }
 
 // then try to match a route as efficient as possible.
-func (f *Fiber) handler(fctx *fasthttp.RequestCtx) {
+func (app *Application) handler(fctx *fasthttp.RequestCtx) {
 	found := false
 
 	// get custom context from sync pool
@@ -155,8 +159,17 @@ func (f *Fiber) handler(fctx *fasthttp.RequestCtx) {
 	path := ctx.Path()
 	method := ctx.Method()
 
+	if app.recover != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				ctx.error = fmt.Errorf("panic: %v", r)
+				app.recover(ctx)
+			}
+		}()
+	}
+
 	// loop trough routes
-	for _, route := range f.routes {
+	for _, route := range app.routes {
 		// Skip route if method is not allowed
 		if route.Method != "*" && route.Method != method {
 			continue
@@ -240,7 +253,7 @@ func (f *Fiber) handler(fctx *fasthttp.RequestCtx) {
 	// No routes found
 	if !found {
 		// Custom 404 handler?
-		ctx.Status(404).Send("Not Found")
+		ctx.SendStatus(404)
 	}
 
 	// release context back into sync pool

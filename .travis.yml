@@ -2,7 +2,7 @@ language: go
 
 os:
   - linux
-#  - windows
+  - windows
   - osx
 go:
   - 1.13.x
@@ -12,4 +12,4 @@ install:
   - go get -v golang.org/x/lint/golint
 script:
 #  - golint -set_exit_status ./...
-  - go test -race ./...
+  - go test ./...

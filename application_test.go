@@ -5,12 +5,13 @@ import (
 	"testing"
 )
 
+var handler = func(c *Ctx) {}
+
 func Test_Methods(t *testing.T) {
 	app := New()
 
-	handler := func(c *Ctx) {}
 	methods := []string{"CONNECT", "PUT", "POST", "DELETE", "HEAD", "PATCH", "OPTIONS", "TRACE", "GET", "ALL", "USE"}
-
+	app.Connect("", handler)
 	app.Connect("/CONNECT", handler)
 	app.Put("/PUT", handler)
 	app.Post("/POST", handler)
@@ -44,11 +45,27 @@ func Test_Methods(t *testing.T) {
 
 func Test_Static(t *testing.T) {
 	app := New()
+	grp := app.Group("/v1")
+	grp.Static("/v2", ".travis.yml")
+	grp.Static(".travis.yml")
+	app.Static("/yesyes*", ".github/FUNDING.yml")
 	app.Static("./.github")
+	app.Static("github", ".github/FUNDING.yml")
+	app.Static("/*", "./.github")
 	app.Static("/john", "./.github")
-	app.Static("*", "./.github/stale.yml")
 	req, _ := http.NewRequest("GET", "/stale.yml", nil)
 	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	if resp.Header.Get("Content-Length") == "" {
+		t.Fatalf(`%s: Missing Content-Length`, t.Name())
+	}
+	req, _ = http.NewRequest("GET", "/yesyes/john/doe", nil)
+	resp, err = app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
@@ -69,4 +86,63 @@ func Test_Static(t *testing.T) {
 	if resp.Header.Get("Content-Length") == "" {
 		t.Fatalf(`%s: Missing Content-Length`, t.Name())
 	}
+	req, _ = http.NewRequest("GET", "/v1/v2", nil)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	if resp.Header.Get("Content-Length") == "" {
+		t.Fatalf(`%s: Missing Content-Length`, t.Name())
+	}
 }
+func Test_Group(t *testing.T) {
+	app := New()
+	grp := app.Group("/test")
+	grp.Get("/", handler)
+	grp.Get("/:demo?", handler)
+	grp.Connect("/CONNECT", handler)
+	grp.Put("/PUT", handler)
+	grp.Post("/POST", handler)
+	grp.Delete("/DELETE", handler)
+	grp.Head("/HEAD", handler)
+	grp.Patch("/PATCH", handler)
+	grp.Options("/OPTIONS", handler)
+	grp.Trace("/TRACE", handler)
+	grp.All("/ALL", handler)
+	grp.Use("/USE", handler)
+	req, _ := http.NewRequest("GET", "/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	req, _ = http.NewRequest("GET", "/test/test", nil)
+	resp, err = app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+
+// func Test_Listen(t *testing.T) {
+// t.Parallel()
+// 	app := New()
+// 	app.Banner = false
+// 	go func() {
+// 		time.Sleep(1 * time.Second)
+// 		_ = app.Shutdown()
+// 	}()
+// 	app.Listen(3002)
+// 	go func() {
+// 		time.Sleep(1 * time.Second)
+// 		_ = app.Shutdown()
+// 	}()
+// 	app.Listen("3002")
+// }
