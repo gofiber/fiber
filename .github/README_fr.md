@@ -30,6 +30,9 @@
   <!-- <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fr.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/fr.svg">
   </a> -->
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_tr.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/tr.svg">
+  </a>
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
@@ -102,15 +105,15 @@ Ces tests sont effectués par [TechEmpower](https://github.com/TechEmpower/Frame
 - [Faible empreinte mémoire](https://fiber.wiki/benchmarks)
 - [API endpoints](https://fiber.wiki/context)
 - Middleware & [Next](https://fiber.wiki/context#next) support
-- Programmation côté serveur [rapide](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 
+- Programmation côté serveur [rapide](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 - Disponible en [5 langues](https://fiber.wiki/)
 - Et plus encore, [explorez Fiber](https://fiber.wiki/)
 
 ## 💡 Philosophie
 
-Les nouveaux gophers qui passent de [Node.js](https://nodejs.org/en/about/) à [Go](https://golang.org/doc/) sont confrontés à une courbe d'apprentissage, avant de pouvoir construire leurs applications web et microservices. Fiber, en tant que **framework web**, a été mis au point avec en tête l'idée de **minimalisme**, tout en suivant l'**UNIX way**, afin que les nouveaux gophers puissent rapidement entrer dans le monde de Go, avec un accueil chaleureux, de confiance. 
+Les nouveaux gophers qui passent de [Node.js](https://nodejs.org/en/about/) à [Go](https://golang.org/doc/) sont confrontés à une courbe d'apprentissage, avant de pouvoir construire leurs applications web et microservices. Fiber, en tant que **framework web**, a été mis au point avec en tête l'idée de **minimalisme**, tout en suivant l'**UNIX way**, afin que les nouveaux gophers puissent rapidement entrer dans le monde de Go, avec un accueil chaleureux, de confiance.
 
-Fiber est **inspiré** par Express, le framework web le plus populaire d'Internet. Nous avons combiné la **facilité** d'Express, et la **performance brute** de Go. Si vous avez déja développé une application web en Node.js (_en utilisant Express ou équivalent_), alors de nombreuses méthodes et principes vous sembleront **familiers**. 
+Fiber est **inspiré** par Express, le framework web le plus populaire d'Internet. Nous avons combiné la **facilité** d'Express, et la **performance brute** de Go. Si vous avez déja développé une application web en Node.js (_en utilisant Express ou équivalent_), alors de nombreuses méthodes et principes vous sembleront **familiers**.
 
 ## 👀 Exemples
 
