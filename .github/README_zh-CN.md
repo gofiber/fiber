@@ -79,6 +79,7 @@ func main() {
 使用[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)命令完成安装：
 
 ```bash
+export GOPROXY=https://goproxy.cn
 go get github.com/gofiber/fiber
 ```
 
