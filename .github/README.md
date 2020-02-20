@@ -2,8 +2,7 @@
   <a href="https://fiber.wiki">
     <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
   </a>
-  <br>Express inspired Go web framework
-  <br><br>
+  <br>
   <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>-->
