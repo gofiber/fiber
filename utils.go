@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -25,17 +24,6 @@ var socketUpgrade = websocket.FastHTTPUpgrader{
 	CheckOrigin: func(fctx *fasthttp.RequestCtx) bool {
 		return true
 	},
-}
-
-func upgrade(ctx *fasthttp.RequestCtx) <-chan *websocket.Conn {
-	channel := make(chan *websocket.Conn)
-	go func() {
-		defer close(channel)
-		socketUpgrade.Upgrade(ctx, func(fconn *websocket.Conn) {
-			channel <- fconn
-		})
-	}()
-	return channel
 }
 
 var (
@@ -148,34 +136,6 @@ func getString(b []byte) string {
 // See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
 func getBytes(s string) (b []byte) {
 	return *(*[]byte)(unsafe.Pointer(&s))
-}
-
-func routeArgs(args ...interface{}) (path string, arrCtx []func(*Ctx), arrConn []func(*Conn), err error) {
-	var ok bool
-	var index int
-	if len(args) == 0 {
-		err = fmt.Errorf("Missing a handler in your route arguments")
-		return
-	}
-	if len(args) > 1 {
-		if path, ok = args[0].(string); !ok {
-			err = fmt.Errorf("Expecting string path, but got %v", reflect.TypeOf(args[0]))
-			return
-		}
-		index++
-	}
-	for i := index; i < len(args); i++ {
-		switch arg := args[i].(type) {
-		case func(*Ctx):
-			arrCtx = append(arrCtx, arg)
-		case func(*Conn):
-			arrConn = append(arrConn, arg)
-		default:
-			err = fmt.Errorf("Invalid handler: %v", reflect.TypeOf(arg))
-			return
-		}
-	}
-	return
 }
 
 // https://golang.org/src/net/net.go#L113
