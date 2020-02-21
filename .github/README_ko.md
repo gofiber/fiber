@@ -1,9 +1,9 @@
 <p align="center">
   <a href="https://fiber.wiki">
-    <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="100" src="https://github.com/gofiber/docs/blob/master/static/logo.svg">
   </a>
-  <br>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
+  <br><br>
+  <a href="https://github.com/gofiber/fiber/blob/master/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
@@ -27,12 +27,6 @@
   <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ko.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/kr.svg">
   </a>-->
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fr.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/fr.svg">
-  </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_tr.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/tr.svg">
-  </a>
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
@@ -57,7 +51,7 @@
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b>는 <a href="https://github.com/expressjs/express">Express</a>에서 영감을 받고, <a href="https://golang.org/doc/">Go</a>를 위한 <b>가장 빠른</b> HTTP 엔진인 <a ref="https://github.com/valyala/fasthttp">Fasthttp</a>를 토대로 만들어진 <b>웹 프레임워크</b> 입니다. <b>비 메모리 할당</b>과 <b>성능</b>을 고려한 <b>빠른</b> 개발을 위해 <b>손쉽게</b> 사용되도록 설계되었습니다.
+  <b>Fiber</b>는 <a href="https://github.com/expressjs/express">Express</a>에서 영감을 받고, <a href="https://golang.org/doc/">Go</a>를 위한 <b>가장 빠른</b> HTTP 엔진인 <a ref="https://github.com/valyala/fasthttp">Fasthttp</a>를 토대로 만들어진 <b>web framework</b> 입니다. <b>비 메모리 할당</b>과 <b>성능</b>을 고려한 <b>빠른</b> 개발을 위해 <b>손쉽게</b> 사용되도록 설계되었습니다.
 </p>
 
 ## ⚡️ 빠른 시작
@@ -119,28 +113,25 @@ Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에�
 
 다음은 일반적인 예제들 입니다. 더 많은 코드 예제를 보고 싶다면, [Recipes 저장소](https://github.com/gofiber/recipes) 또는 [API 문서](https://fiber.wiki)를 방문하세요.
 
-### Serve static files
+### 정적 파일
 
 ```go
 func main() {
   app := fiber.New()
 
-  app.Static("/public")
+  app.Static("./public")
   // => http://localhost:3000/js/script.js
   // => http://localhost:3000/css/style.css
 
-  app.Static("/prefix", "/public")
+  app.Static("/prefix", "./public")
   // => http://localhost:3000/prefix/js/script.js
   // => http://localhost:3000/prefix/css/style.css
-
-  app.Static("*", "./public/index.html")
-  // => http://localhost:3000/anything/returns/the/index/file
 
   app.Listen(3000)
 }
 ```
 
-### Routing
+### 라우팅
 
 ```go
 func main() {
@@ -168,53 +159,51 @@ func main() {
 }
 ```
 
-### Middleware & Next
+### 미들웨어
 
 ```go
 func main() {
   app := fiber.New()
 
-  // Match any route
-  app.Use(func(c *fiber.Ctx) {
-    fmt.Println("First middleware")
+  // Match any post route
+  app.Post(func(c *fiber.Ctx) {
+    user, pass, ok := c.BasicAuth()
+    if !ok || user != "john" || pass != "doe" {
+      c.Status(403).Send("Sorry John")
+      return
+    }
     c.Next()
   })
 
   // Match all routes starting with /api
   app.Use("/api", func(c *fiber.Ctx) {
-    fmt.Println("Second middleware")
+    c.Set("Access-Control-Allow-Origin", "*")
+    c.Set("Access-Control-Allow-Headers", "X-Requested-With")
     c.Next()
   })
 
-  // POST /api/register
+  // Optional param
   app.Post("/api/register", func(c *fiber.Ctx) {
-    fmt.Println("Last middleware")
-    c.Send("Hello, World!")
+    username := c.Body("username")
+    password := c.Body("password")
+    // ..
   })
 
   app.Listen(3000)
 }
 ```
 
-<details>
-  <summary>📜 Show more code examples</summary>
-
-### Custom 404 response
+### 404 처리
 
 ```go
 func main() {
   app := fiber.New()
 
-  app.Static("/public")
-  app.Get("/demo", func(c *fiber.Ctx) {
-    c.Send("This is a demo!")
-  })
-  app.Post("/register", func(c *fiber.Ctx) {
-    c.Send("Welcome!")
-  })
+  // Serve static files from "public" directory
+  app.Static("./public")
 
-  // Last middleware to match anything
-  app.Use(func(c *fiber.Ctx) {
+  // Last middleware
+  app.Use(func (c *fiber.Ctx) {
     c.SendStatus(404) // => 404 "Not Found"
   })
 
@@ -222,7 +211,7 @@ func main() {
 }
 ```
 
-### JSON Response
+### JSON 응답
 
 ```go
 func main() {
@@ -234,35 +223,13 @@ func main() {
   }
 
   // Serialize JSON
-  app.Get("/json", func(c *fiber.Ctx) {
+  app.Get("/json", func (c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
-    // => {"name":"John", "age":20}
   })
 
   app.Listen(3000)
 }
 ```
-
-
-### Recover from panic
-
-```go
-func main() {
-  app := fiber.New()
-
-  app.Get("/", func(c *fiber.Ctx) {
-    panic("Something went wrong!")
-  })
-
-  app.Recover(func(c *fiber.Ctx) {
-    c.Status(500).Send(c.Error())
-    // => 500 "Something went wrong!"
-  })
-
-  app.Listen(3000)
-}
-```
-</details>
 
 ## 💬 미디어
 
@@ -277,37 +244,18 @@ func main() {
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) 또는 개인 블로그에 리뷰 또는 튜토리얼을 작성하세요.
 4. `README` 와 [API 문서](https://fiber.wiki/)를 다른 언어로 번역하는 것을 도와주세요.
 
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
+
 ## ☕ Supporters
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
 <table>
   <tr>
     <td align="center">
-        <a href="https://github.com/bihe">
-          <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
-          <sub><b>HenrikBinggl</b></sub>
+      <a href="https://www.buymeacoffee.com/fenny">
+        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="100px;" style="border-radius:50%"></br>
+        <b>ToishY</b>
         </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/koddr">
-        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="100px"></br>
-        <sub><b>koddr</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/MarvinJWendt">
-        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="100px"></br>
-        <sub><b>MarvinJWendt</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/toishy">
-        <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="100px"></br>
-        <sub><b>ToishY</b></sub>
-      </a>
-    </td>
+      </td>
   </tr>
 </table>
 
