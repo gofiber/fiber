@@ -11,5 +11,5 @@ require (
 	github.com/gorilla/schema v1.1.0
 	github.com/json-iterator/go v1.1.9
 	github.com/valyala/fasthttp v1.9.0
-	github.com/yosssi/ace v0.0.5
+	gopkg.in/yaml.v2 v2.2.8 // indirect
 )
