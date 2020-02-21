@@ -92,6 +92,11 @@ func Test_AcceptsLanguages(t *testing.T) {
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
+		expect = "*"
+		result = c.AcceptsLanguages(expect)
+		if result != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Language", "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
@@ -397,6 +402,7 @@ func Test_IPs(t *testing.T) {
 // 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 // 	}
 // }
+
 func Test_Locals(t *testing.T) {
 	app := New()
 	app.Use(func(c *Ctx) {
@@ -673,6 +679,10 @@ func Test_Subdomains(t *testing.T) {
 	app.Get("/test", func(c *Ctx) {
 		expect := []string{"john", "doe"}
 		result := c.Subdomains()
+		if result[0] != expect[0] && result[1] != expect[1] {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
+		}
+		result = c.Subdomains(1)
 		if result[0] != expect[0] && result[1] != expect[1] {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}

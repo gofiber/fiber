@@ -1,11 +1,11 @@
 <p align="center">
   <a href="https://fiber.wiki">
-    <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="100" src="https://github.com/gofiber/docs/blob/master/static/logo.svg">
   </a>
-  <br>
-  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
+  <br><br>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
-  </a>-->
+  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
   </a>
@@ -29,9 +29,6 @@
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fr.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/fr.svg">
-  </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_tr.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/tr.svg">
   </a>
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
@@ -57,10 +54,10 @@
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> build on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://golang.org/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
+    <b>Fiber</b>, <a href="https://golang.org/doc/">Go</a> için <b>en hızlı</b> HTTP motoru olan <a href="https://github.com/valyala/fasthttp">Fasthttp</a> üzerine inşa edilmiş, <a href="https://github.com/expressjs/express">Express</a> den ilham alan bir <b>web çatısıdır</b>. <b>Sıfır bellek ayırma</b> ve <b>performans</b> göz önünde bulundurularak <b>hızlı</b> geliştirme için işleri <b>kolaylaştırmak</b> üzere tasarlandı.
 </p>
 
-## ⚡️ Quickstart
+## ⚡️ Hızlı Başlangıç
 
 ```go
 package main
@@ -71,57 +68,55 @@ func main() {
   app := fiber.New()
 
   app.Get("/", func(c *fiber.Ctx) {
-    c.Send("Hello, World!")
+    c.Send("Merhaba dünya!")
   })
 
   app.Listen(3000)
 }
 ```
 
-## ⚙️ Installation
+## ⚙️ Kurulum
 
-First of all, [download](https://golang.org/dl/) and install Go. `1.11` or higher is required.
+İlk önce, Go yu [indirip](https://golang.org/dl/) kuruyoruz. `1.11` veya daha yeni sürüm gereklidir.
 
-Installation is done using the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu kullanarak kurulumu tamamlıyoruz:
 
 ```bash
 go get github.com/gofiber/fiber
 ```
 
-## 🤖 Benchmarks
+## 🤖 Performans Ölçümleri
 
-These tests are performed by [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://fiber.wiki/benchmarks).
+Bu testler [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) ve [Go Web](https://github.com/smallnest/go-web-framework-benchmark) ile koşuldu. Bütün sonuçları görmek için lütfen [Wiki](https://fiber.wiki/benchmarks) sayfasını ziyaret ediniz.
 
 <p float="left" align="middle">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark_alloc.png" width="49%">
 </p>
 
-## 🎯 Features
+## 🎯 Özellikler
 
-- Robust [routing](https://fiber.wiki/routing)
-- Serve [static files](https://fiber.wiki/application#static)
-- Extreme [performance](https://fiber.wiki/benchmarks)
-- [Low memory](https://fiber.wiki/benchmarks) footprint
-- [API endpoints](https://fiber.wiki/context)
-- Middleware & [Next](https://fiber.wiki/context#next) support
-- [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
-- Available in 9 other languages
-- And much more, [explore Fiber](https://fiber.wiki/)
+- Güçlü [rotalar](https://fiber.wiki/routing)
+- [Statik dosya](https://fiber.wiki/application#static) yönetimi
+- Olağanüstü [performans](https://fiber.wiki/benchmarks)
+- [Düşük bellek](https://fiber.wiki/benchmarks) tüketimi
+- [API uç noktaları](https://fiber.wiki/context)
+- Ara katman & [Sonraki](https://fiber.wiki/context#next) desteği
+- [Hızlı](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) sunucu taraflı programlama
+- [5 dilde](https://fiber.wiki/) mevcut
+- Ve daha fazlası, [Fiber ı keşfet](https://fiber.wiki/)
 
-## 💡 Philosophy
+## 💡 Felsefe
 
-New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
+[Node.js](https://nodejs.org/en/about/) den [Go](https://golang.org/doc/) ya geçen yeni gopher lar kendi web uygulamalarını ve mikroservislerini yazmaya başlamadan önce dili öğrenmek ile uğraşıyorlar. Fiber, bir **web çatısı** olarak, **minimalizm** ve **UNIX yolu**nu izlemek fikri ile oluşturuldu. Böylece yeni gopher lar sıcak ve güvenilir bir hoşgeldin ile Go dünyasına giriş yapabilirler.
 
-Fiber is **inspired** by Express, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express or similar_), then many methods and principles will seem **very common** to you.
+Fiber internet üzerinde en popüler olan Express web çatısından **esinlenmiştir**. Biz Express in **kolaylığını** ve Go nun **ham performansını** birleştirdik. Daha önce Node.js üzerinde (Express veya benzerini kullanarak) bir web uygulaması geliştirdiyseniz, pek çok metod ve prensip size **çok tanıdık** gelecektir.
 
-We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues) (_and all over the Internet_) to create a **fast**, **flexible** and **friendly** Go web framework for **any** tasks, **deadlines** and developer **skills**! Just like Express does in the JavaScript world.
+## 👀 Örnekler
 
-## 👀 Examples
+Aşağıda yaygın örneklerden bazıları listelenmiştir. Daha fazla kod örneği görmek için, lütfen [Kod depomuzu](https://github.com/gofiber/recipes) veya [API dökümantasyonunu](https://fiber.wiki) ziyaret ediniz.
 
-Listed below are some of the common examples. If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our [API documentation](https://fiber.wiki).
-
-### Routing
+### Rotalar
 
 ```go
 func main() {
@@ -149,7 +144,7 @@ func main() {
 }
 ```
 
-### Serve static files
+### Statik dosya yönetimi
 
 ```go
 func main() {
@@ -170,7 +165,7 @@ func main() {
 }
 ```
 
-### Middleware & Next
+### Ara Katman & Sonraki
 
 ```go
 func main() {
@@ -199,20 +194,18 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 Daha fazla kod örneği görüntüle</summary>
 
-### Custom 404 response
+### Özel 404 Cevabı
 
 ```go
 func main() {
   app := fiber.New()
 
   app.Static("/public")
-  
   app.Get("/demo", func(c *fiber.Ctx) {
     c.Send("This is a demo!")
   })
-  
   app.Post("/register", func(c *fiber.Ctx) {
     c.Send("Welcome!")
   })
@@ -226,7 +219,7 @@ func main() {
 }
 ```
 
-### JSON Response
+### JSON Cevabı
 
 ```go
 func main() {
@@ -247,7 +240,8 @@ func main() {
 }
 ```
 
-### Recover from `panic`
+
+### Panikten Kurtarma
 
 ```go
 func main() {
@@ -267,24 +261,24 @@ func main() {
 ```
 </details>
 
-## 💬 Media
+## 💬 Medya
 
-- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) , [Vic Shóstak](https://github.com/koddr) tarafından, 03 Şub 2020
 
-## 👍 Contribute
+## 👍 Destek
 
-If you want to say **thank you** and/or support the active development of `Fiber`:
+Eğer  **teşekkür etmek** ve/veya `Fiber` ın aktif geliştirilmesini desteklemek istiyorsanız:
 
-1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to the project.
-2. Tweet about the project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
-4. Help us to translate this `README` to another language.
+1. Projeye [GitHub Yıldızı](https://github.com/gofiber/fiber/stargazers) verin.
+2. [Twitter hesabınızdan](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) proje hakkında tweet atın.
+3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) veya kişisel blog üzerinden bir inceleme veya eğitici yazı yazın.
+4. Bu `BENİOKU` sayfasını başka bir dile tercüme etmek için bize yardım edin.
 
 
-## ☕ Supporters
+## ☕ Destekleyenler
 
 <a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Bir Kahve Ismarla" height="100" >
 </a>
 
 <table>
@@ -316,10 +310,10 @@ If you want to say **thank you** and/or support the active development of `Fiber
   </tr>
 </table>
 
-## ⭐️ Stars
+## ⭐️ Yıldızlar
 
-<a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
+<a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Zamana göre yıldız sayısı" style="max-width:100%;"></a>
 
-## ⚠️ License
+## ⚠️ Lisans
 
-`Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE).
+`Fiber` [MIT Lisansı](https://github.com/gofiber/fiber/blob/master/LICENSE) kapsamında ücretsiz ve açık kaynak kodlu bir yazılımdır.
