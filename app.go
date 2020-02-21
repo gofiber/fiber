@@ -72,8 +72,8 @@ type (
 
 // New ...
 func New(settings ...*Settings) (app *App) {
-	var prefork = flag.Bool("prefork", false, "use prefork")
-	var child = flag.Bool("child", false, "is child process")
+	var prefork = flag.Bool("fiberprefork", false, "use prefork")
+	var child = flag.Bool("fiberchild", false, "is child process")
 
 	app = &App{
 		child: *child,
@@ -302,7 +302,7 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 
 		// #nosec G204
 		for i := range childs {
-			childs[i] = exec.Command(os.Args[0], "-prefork", "-child")
+			childs[i] = exec.Command(os.Args[0], "-fiberprefork", "-fiberchild")
 			childs[i].Stdout = os.Stdout
 			childs[i].Stderr = os.Stderr
 			childs[i].ExtraFiles = []*os.File{fl}
