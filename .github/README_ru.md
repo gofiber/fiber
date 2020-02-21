@@ -1,9 +1,9 @@
 <p align="center">
   <a href="https://fiber.wiki">
-    <img alt="Fiber" height="100" src="https://github.com/gofiber/docs/blob/master/static/logo.svg">
+    <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
   </a>
-  <br><br>
-  <a href="https://github.com/gofiber/fiber/blob/master/README.md">
+  <br>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
   </a>
   <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
@@ -26,6 +26,12 @@
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ko.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/kr.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fr.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/fr.svg">
+  </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_tr.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/tr.svg">
   </a>
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
@@ -74,11 +80,9 @@ func main() {
 
 ## ⚙️ Установка
 
-Прежде всего, [скачайте](https://golang.org/dl/) и установите Go.
+Прежде всего, [скачайте](https://golang.org/dl/) и установите Go. Версия **1.11** или выше.
 
-> Go **1.11** (с включенными [модулями Go](https://golang.org/doc/go1.11#modules)) или выше.
-
-Установка выполняется с помощью команды [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) :
+Установка выполняется с помощью команды [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
 go get -u github.com/gofiber/fiber
@@ -99,9 +103,10 @@ go get -u github.com/gofiber/fiber
 - Доступ к [статичным файлам](https://fiber.wiki/application#static)
 - Экстремальная [производительность](https://fiber.wiki/benchmarks)
 - [Низкий объем потребления памяти](https://fiber.wiki/benchmarks)
-- [Эндпоинты](https://fiber.wiki/context) Express [API](https://fiber.wiki/context)
+- [Эндпоинты](https://fiber.wiki/context), как в [API](https://fiber.wiki/context) Express
 - Middleware и поддержка [Next](https://fiber.wiki/context#next)
 - [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
+- Переведен на 9 других языков
 - И многое другое, [посетите наш Wiki](https://fiber.wiki/)
 
 ## 💡 Философия
@@ -110,29 +115,13 @@ go get -u github.com/gofiber/fiber
 
 Fiber **вдохновлен** Express, самым популярным веб фреймворком в Интернете. Мы объединили **простоту** Express и **чистую производительность** Go. Если вы когда-либо реализовывали веб-приложение на Node.js (*с использованием Express или аналогичного фреймворка*), то многие методы и принципы покажутся вам **очень знакомыми**.
 
+Мы **прислушиваемся** к нашим пользователям в [issues](https://github.com/gofiber/fiber/issues) (_и остальном Интернете_), чтобы создать **быстрый**, **гибкий** и **дружелюбный** веб фреймворк на Go для **любых** задач, **дедлайнов** и **уровней** разработчиков! Как это делает Express в мире JavaScript.
+
 ## 👀 Примеры
 
 Ниже перечислены некоторые из распространенных примеров. Если вы хотите увидеть больше примеров кода, пожалуйста, посетите наш [репозиторий рецептов](https://github.com/gofiber/recipes) или [документацию по API](https://fiber.wiki).
 
-### Статические файлы
-
-```go
-func main() {
-  app := fiber.New()
-
-  app.Static("./public")
-  // => http://localhost:3000/js/script.js
-  // => http://localhost:3000/css/style.css
-
-  app.Static("/prefix", "./public")
-  // => http://localhost:3000/prefix/js/script.js
-  // => http://localhost:3000/prefix/css/style.css
-
-  app.Listen(3000)
-}
-```
-
-### Маршрутизация
+### Роутинг
 
 ```go
 func main() {
@@ -160,51 +149,76 @@ func main() {
 }
 ```
 
-### Middleware
+### Обслуживание статичных файлов
 
 ```go
 func main() {
   app := fiber.New()
 
-  // Принимает POST запрос с любого адреса
-  app.Post(func(c *fiber.Ctx) {
-    user, pass, ok := c.BasicAuth()
-    if !ok || user != "john" || pass != "doe" {
-      c.Status(403).Send("Sorry John")
-      return
-    }
+  app.Static("/public")
+  // => http://localhost:3000/js/script.js
+  // => http://localhost:3000/css/style.css
+
+  app.Static("/prefix", "/public")
+  // => http://localhost:3000/prefix/js/script.js
+  // => http://localhost:3000/prefix/css/style.css
+
+  app.Static("*", "/public/index.html")
+  // => http://localhost:3000/any/path/shows/index/html
+
+  app.Listen(3000)
+}
+```
+
+### Middleware и функция Next
+
+```go
+func main() {
+  app := fiber.New()
+
+  // Match any route
+  app.Use(func(c *fiber.Ctx) {
+    fmt.Println("First middleware")
     c.Next()
   })
 
-  // Разрешает все адреса, начинающиеся на "/api"
+  // Match all routes starting with /api
   app.Use("/api", func(c *fiber.Ctx) {
-    c.Set("Access-Control-Allow-Origin", "*")
-    c.Set("Access-Control-Allow-Headers", "X-Requested-With")
+    fmt.Println("Second middleware")
     c.Next()
   })
 
-  // Опциональный параметр
+  // POST /api/register
   app.Post("/api/register", func(c *fiber.Ctx) {
-    username := c.Body("username")
-    password := c.Body("password")
-    // ..
+    fmt.Println("Last middleware")
+    c.Send("Hello, World!")
   })
 
   app.Listen(3000)
 }
 ```
 
-### Обработка ошибки 404
+<details>
+  <summary>📚 Показать больше примеров кода</summary>
+
+### Обработка 404 ошибки
 
 ```go
 func main() {
   app := fiber.New()
 
-  // Доступ к файлам в директории "./public":
-  app.Static("./public")
+  app.Static("/public")
 
-  // Последний middleware
-  app.Use(func (c *fiber.Ctx) {
+  app.Get("/demo", func(c *fiber.Ctx) {
+    c.Send("This is a demo!")
+  })
+
+  app.Post("/register", func(c *fiber.Ctx) {
+    c.Send("Welcome!")
+  })
+
+  // Last middleware to match anything
+  app.Use(func(c *fiber.Ctx) {
     c.SendStatus(404) // => 404 "Not Found"
   })
 
@@ -212,7 +226,7 @@ func main() {
 }
 ```
 
-### JSON Response
+### Ответ в формате JSON
 
 ```go
 func main() {
@@ -223,14 +237,35 @@ func main() {
     Age  int    `json:"age"`
   }
 
-  // Сериализация JSON
-  app.Get("/json", func (c *fiber.Ctx) {
+  // Serialize JSON
+  app.Get("/json", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
+    // => {"name":"John", "age":20}
   })
 
   app.Listen(3000)
 }
 ```
+
+### Восстановление работы после `panic`
+
+```go
+func main() {
+  app := fiber.New()
+
+  app.Get("/", func(c *fiber.Ctx) {
+    panic("Something went wrong!")
+  })
+
+  app.Recover(func(c *fiber.Ctx) {
+    c.Status(500).Send(c.Error())
+    // => 500 "Something went wrong!"
+  })
+
+  app.Listen(3000)
+}
+```
+</details>
 
 ## 💬 Медиа
 
@@ -245,18 +280,37 @@ func main() {
 3. Сделайте обзор фреймворка на [Medium](https://medium.com/), [Dev.to](https://dev.to/) или в личном блоге.
 4. Помогите нам перевести `README` и [API](https://fiber.wiki/) на другой язык.
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
+## ☕ Те, кто уже поддержал проект
 
-## ☕ Supporters
-
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 <table>
   <tr>
     <td align="center">
-      <a href="https://www.buymeacoffee.com/fenny">
-        <img src="https://img.buymeacoffee.com/api/?name=ToishY&size=300&bg-image=bmc" width="100px;" style="border-radius:50%"></br>
-        <b>ToishY</b>
+        <a href="https://github.com/bihe">
+          <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
+          <sub><b>HenrikBinggl</b></sub>
         </a>
-      </td>
+    </td>
+    <td align="center">
+      <a href="https://github.com/koddr">
+        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="100px"></br>
+        <sub><b>Vic Shóstak</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/MarvinJWendt">
+        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="100px"></br>
+        <sub><b>MarvinJWendt</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/toishy">
+        <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="100px"></br>
+        <sub><b>ToishY</b></sub>
+      </a>
+    </td>
   </tr>
 </table>
 
