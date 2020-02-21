@@ -1,3 +1,5 @@
+// https://fiber.wiki
+
 package fiber
 
 import (
@@ -19,7 +21,7 @@ import (
 )
 
 // Version of Fiber
-const Version = "2.0.0"
+const Version = "1.0.0"
 
 type (
 	// App denotes the Fiber application.
