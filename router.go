@@ -3,6 +3,7 @@ package fiber
 import (
 	"fmt"
 	"log"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -30,80 +31,92 @@ type Route struct {
 }
 
 func (app *App) registerStatic(grpPrefix string, args ...string) {
-	// // Initiate variables
-	// var gzip = true
-	// var root string
-	// var prefix string
-	// var method = "GET"
-	// var path = groupPrefix
-	// // Parse provided path
-	// if len(args) == 1 {
-	// 	root = args[0]
-	// } else if len(args) > 1 {
-	// 	root = args[1]
-	// 	// Non empty paths must start with a "/" or "*"
-	// 	if len(path) > 0 && path[0] != '/' && path[0] != '*' {
-	// 		path = "/" + path
-	// 	}
-	// 	// When grouping, always remove single slash
-	// 	if len(groupPrefix) > 0 && path == "/" {
-	// 		path = ""
-	// 	}
-	// 	// Prepent group prefix if exist
-	// 	path = groupPrefix + path
-	// 	// Clean path by removing double "//" => "/"
-	// 	path = strings.Replace(path, "//", "/", -1)
-	// }
-	// // Set path to "*" if path is "" or "/*"
-	// if path == "/*" {
-	// 	path = "*"
-	// }
-	//
-	// // Set prefix for paths containing only a wildcard
-	// if len(path) > 1 && strings.Contains(path, "*") {
-	// 	// Store prefix for matching routes beggining with...
-	// 	prefix = strings.Split(path, "*")[0]
-	// }
-	// // Get file(s) from root
-	// files, _, err := getFiles(root)
-	// if err != nil {
-	// 	log.Fatal("Static: ", err)
-	// }
-	// // ./static/compiled => static/compiled
-	// mount := filepath.Clean(root)
-	// // Loop over all files
-	// for _, file := range files {
-	// 	// Ignore the .gzipped files by fasthttp
-	// 	if strings.Contains(file, ".fasthttp.gz") {
-	// 		continue
-	// 	}
-	// 	// Time to create a fake path for the route match
-	// 	// static/index.html => /index.html
-	// 	fakePath := filepath.Join(path, strings.Replace(file, mount, "", 1))
-	// 	// for windows: static\index.html => /index.html
-	// 	fakePath = filepath.ToSlash(fakePath)
-	// 	// Store file path to use in ctx handler
-	// 	filePath := file
-	// 	// If the file is an index.html, bind the prefix to index.html directly
-	// 	if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
-	// 		app.routes = append(app.routes, &Route{
-	// 			Method: method,
-	// 			Path:   prefix,
-	// 			Prefix: prefix,
-	// 			HandlerCtx: func(c *Ctx) {
-	// 				c.SendFile(filePath, gzip)
-	// 			},
-	// 		})
-	// 	}
-	// 	app.routes = append(app.routes, &Route{
-	// 		Method: method,
-	// 		Path:   fakePath,
-	// 		Prefix: prefix,
-	// 		HandlerCtx: func(c *Ctx) {
-	// 			c.SendFile(filePath, gzip)
-	// 		},
-	// 	})
-	// }
+	var prefix = "/"
+	var root = "./"
+	// enable / disable gzipping somewhere?
+	// todo v2.0.0
+	gzip := true
+
+	if len(args) == 1 {
+		root = args[0]
+	}
+	if len(args) == 2 {
+		prefix = args[0]
+		root = args[1]
+	}
+
+	// A non wildcard path must start with a '/'
+	if prefix != "*" && len(prefix) > 0 && prefix[0] != '/' {
+		prefix = "/" + prefix
+	}
+	// Prepend group prefix
+	if len(grpPrefix) > 0 {
+		// `/v1`+`/` => `/v1`+``
+		if prefix == "/" {
+			prefix = grpPrefix
+		} else {
+			prefix = grpPrefix + prefix
+		}
+		// Remove duplicate slashes `//`
+		prefix = strings.Replace(prefix, "//", "/", -1)
+	}
+	// Empty or '/*' path equals "match anything"
+	// TODO fix * for paths with grpprefix
+	if prefix == "/*" {
+		prefix = "*"
+	}
+	// Lets get all files from root
+	files, _, err := getFiles(root)
+	if err != nil {
+		log.Fatal("Static: ", err)
+	}
+	// ./static/compiled => static/compiled
+	mount := filepath.Clean(root)
+	// Loop over all files
+	for _, file := range files {
+		// Ignore the .gzipped files by fasthttp
+		if strings.Contains(file, ".fasthttp.gz") {
+			continue
+		}
+		// Time to create a fake path for the route match
+		// static/index.html => /index.html
+		path := filepath.Join(prefix, strings.Replace(file, mount, "", 1))
+		// for windows: static\index.html => /index.html
+		path = filepath.ToSlash(path)
+		// Store file path to use in ctx handler
+		filePath := file
+
+		if len(prefix) > 1 && strings.Contains(prefix, "*") {
+			app.routes = append(app.routes, &Route{
+				Method: "GET",
+				Path:   path,
+				Prefix: strings.Split(prefix, "*")[0],
+				HandlerCtx: func(c *Ctx) {
+					c.SendFile(filePath, gzip)
+				},
+			})
+			return
+		}
+		// If the file is an index.html, bind the prefix to index.html directly
+		if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
+			app.routes = append(app.routes, &Route{
+				Method: "GET",
+				Path:   prefix,
+				HandlerCtx: func(c *Ctx) {
+					c.SendFile(filePath, gzip)
+				},
+			})
+		}
+
+		// Add the route + SendFile(filepath) to routes
+		app.routes = append(app.routes, &Route{
+			Method: "GET",
+			Path:   path,
+			HandlerCtx: func(c *Ctx) {
+				c.SendFile(filePath, gzip)
+			},
+		})
+	}
 }
 func (app *App) register(method, grpPrefix string, args ...interface{}) {
 	// Set variables
@@ -252,7 +265,6 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	}
 	// loop trough routes
 	for _, route := range app.routes {
-		// fmt.Println(route)
 		// Skip route if method does not match
 		if route.Method != "*" && route.Method != method {
 			continue
