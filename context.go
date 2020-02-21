@@ -30,6 +30,7 @@ import (
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 // For more information please visit our documentation: https://fiber.wiki/context
 type Ctx struct {
+	app      *App
 	route    *Route
 	next     bool
 	error    error
@@ -658,14 +659,24 @@ func (ctx *Ctx) Render(file string, data interface{}, e ...string) error {
 	var raw []byte
 	var html string
 	var engine string
-	if raw, err = ioutil.ReadFile(file); err != nil {
-		return err
-	}
+
 	if len(e) > 0 {
 		engine = e[0]
+	} else if ctx.app.Settings.ViewEngine != "" {
+		engine = ctx.app.Settings.ViewEngine
 	} else {
 		engine = filepath.Ext(file)[1:]
 	}
+	if ctx.app.Settings.ViewFolder != "" {
+		file = filepath.Join(ctx.app.Settings.ViewFolder, file)
+	}
+	if ctx.app.Settings.ViewExtension != "" {
+		file = file + ctx.app.Settings.ViewExtension
+	}
+	if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
+		return err
+	}
+
 	switch engine {
 	case "amber": // https://github.com/eknkc/amber
 		var buf bytes.Buffer

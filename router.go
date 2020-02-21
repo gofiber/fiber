@@ -245,6 +245,9 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	var match = false
 	// get custom context from sync pool
 	ctx := acquireCtx(fctx)
+	if ctx.app == nil {
+		ctx.app = app
+	}
 	// get path and method
 	path := ctx.Path()
 	if !app.Settings.CaseSensitive {
