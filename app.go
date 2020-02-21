@@ -70,34 +70,18 @@ type (
 	}
 )
 
-var prefork, child bool
-
-func regBoolVar(p *bool, name string, value bool, usage string) {
-	if flag.Lookup(name) == nil {
-		flag.BoolVar(p, name, value, usage)
-	}
-}
-func getBoolFlag(name string) bool {
-	return flag.Lookup(name).Value.(flag.Getter).Get().(bool)
-}
-func init() {
-	regBoolVar(&prefork, "prefork", false, "use prefork")
-	regBoolVar(&child, "child", false, "is child process")
-}
-
 // New ...
 func New(settings ...*Settings) (app *App) {
-	flag.Parse()
-	prefork = getBoolFlag("prefork")
-	child = getBoolFlag("child")
+	var prefork = flag.Bool("prefork", false, "use prefork")
+	var child = flag.Bool("child", false, "is child process")
 
 	app = &App{
-		child: child,
+		child: *child,
 	}
 	if len(settings) > 0 {
 		opt := settings[0]
 		if !opt.Prefork {
-			opt.Prefork = prefork
+			opt.Prefork = *prefork
 		}
 		if opt.Concurrency == 0 {
 			opt.Concurrency = 256 * 1024
@@ -115,7 +99,7 @@ func New(settings ...*Settings) (app *App) {
 		return
 	}
 	app.Settings = &Settings{
-		Prefork:            prefork,
+		Prefork:            *prefork,
 		Concurrency:        256 * 1024,
 		ReadBufferSize:     4096,
 		WriteBufferSize:    4096,
