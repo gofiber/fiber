@@ -72,6 +72,14 @@ func (app *App) registerStatic(grpPrefix string, args ...string) {
 	}
 	// ./static/compiled => static/compiled
 	mount := filepath.Clean(root)
+
+	if !app.Settings.CaseSensitive {
+		prefix = strings.ToLower(prefix)
+	}
+	if !app.Settings.StrictRouting && len(prefix) > 1 {
+		prefix = strings.TrimRight(prefix, "/")
+	}
+
 	// Loop over all files
 	for _, file := range files {
 		// Ignore the .gzipped files by fasthttp
@@ -107,7 +115,12 @@ func (app *App) registerStatic(grpPrefix string, args ...string) {
 				},
 			})
 		}
-
+		if !app.Settings.CaseSensitive {
+			path = strings.ToLower(path)
+		}
+		if !app.Settings.StrictRouting && len(prefix) > 1 {
+			path = strings.TrimRight(path, "/")
+		}
 		// Add the route + SendFile(filepath) to routes
 		app.routes = append(app.routes, &Route{
 			Method: "GET",
