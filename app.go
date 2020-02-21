@@ -75,6 +75,7 @@ var child = flag.Bool("fiber-child", false, "is child process")
 
 // New ...
 func New(settings ...*Settings) (app *App) {
+	flag.Parse()
 	app = &App{
 		child: *child,
 	}
