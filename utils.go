@@ -2,7 +2,6 @@ package fiber
 
 import (
 	"bytes"
-	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -25,11 +24,6 @@ var socketUpgrade = websocket.FastHTTPUpgrader{
 		return true
 	},
 }
-
-var (
-	prefork = flag.Bool("prefork", false, "use prefork")
-	child   = flag.Bool("child", false, "is child process")
-)
 
 // MIME types
 const (
