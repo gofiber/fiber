@@ -1,3 +1,10 @@
+// 🚀 Fiber is an Express.js inspired web framework written in Go with 💖
+// 📌 Please open an issue if you got suggestions or found a bug!
+// 🖥 Links: https://github.com/gofiber/fiber, https://fiber.wiki
+
+// 🦸 Not all heroes wear capes, thank you to some amazing people
+// 💖 @valyala, @erikdubbelboer, @savsgio, @julienschmidt, @koddr
+
 package fiber
 
 import (
@@ -6,44 +13,18 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
 	"unsafe"
 
-	websocket "github.com/fasthttp/websocket"
 	schema "github.com/gorilla/schema"
-	fasthttp "github.com/valyala/fasthttp"
 )
 
 var schemaDecoder = schema.NewDecoder()
-var socketUpgrade = websocket.FastHTTPUpgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(fctx *fasthttp.RequestCtx) bool {
-		return true
-	},
-}
-
-// MIME types
-const (
-	MIMEApplicationJSON       = "application/json"
-	MIMEApplicationJavaScript = "application/javascript"
-	MIMEApplicationXML        = "application/xml"
-	MIMETextXML               = "text/xml"
-	MIMEApplicationForm       = "application/x-www-form-urlencoded"
-	MIMEApplicationProtobuf   = "application/protobuf"
-	MIMEApplicationMsgpack    = "application/msgpack"
-	MIMETextHTML              = "text/html"
-	MIMETextPlain             = "text/plain"
-	MIMEMultipartForm         = "multipart/form-data"
-	MIMEOctetStream           = "application/octet-stream"
-)
 
 func getParams(path string) (params []string) {
-	if len(path) < 1 {
-		return
-	}
 	segments := strings.Split(path, "/")
 	replacer := strings.NewReplacer(":", "", "?", "")
 	for _, s := range segments {
@@ -51,12 +32,11 @@ func getParams(path string) (params []string) {
 			continue
 		} else if s[0] == ':' {
 			params = append(params, replacer.Replace(s))
-		}
-		if strings.Contains(s, "*") {
+		} else if s[0] == '*' {
 			params = append(params, "*")
 		}
 	}
-	return
+	return params
 }
 
 func getRegex(path string) (*regexp.Regexp, error) {
@@ -83,20 +63,21 @@ func getRegex(path string) (*regexp.Regexp, error) {
 	return regex, err
 }
 
-func getFiles(root string) (files []string, dir bool, err error) {
+func getFiles(root string) (files []string, isDir bool, err error) {
 	root = filepath.Clean(root)
+	// Check if dir/file exists
 	if _, err := os.Lstat(root); err != nil {
-		return files, dir, fmt.Errorf("%s", err)
+		return files, isDir, fmt.Errorf("%s", err)
 	}
 	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if !info.IsDir() {
 			files = append(files, path)
 		} else {
-			dir = true
+			isDir = true
 		}
 		return err
 	})
-	return
+	return files, isDir, err
 }
 
 func getType(ext string) (mime string) {
@@ -104,18 +85,17 @@ func getType(ext string) (mime string) {
 		return mime
 	}
 	if ext[0] == '.' {
-		mime = extensionMIME[ext[1:]]
-	} else {
-		mime = extensionMIME[ext]
+		ext = ext[1:]
 	}
+	mime = mimeTypes[ext]
 	if mime == "" {
-		return MIMEOctetStream
+		return mimeApplicationOctetStream
 	}
 	return mime
 }
 
 func getStatus(status int) (msg string) {
-	return statusMessage[status]
+	return statusMessages[status]
 }
 
 // #nosec G103
@@ -129,32 +109,47 @@ func getString(b []byte) string {
 // getBytes converts string to a byte slice without memory allocation.
 // See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
 func getBytes(s string) (b []byte) {
-	return *(*[]byte)(unsafe.Pointer(&s))
+	// return *(*[]byte)(unsafe.Pointer(&s))
+	sh := *(*reflect.StringHeader)(unsafe.Pointer(&s))
+	bh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+	bh.Data, bh.Len, bh.Cap = sh.Data, sh.Len, sh.Len
+	return b
 }
 
+// Check for error and format
+// func checkErr(err error, title ...string) {
+// 	if err != nil {
+// 		t := "Error"
+// 		if len(title) > 0 {
+// 			t = title[0]
+// 		}
+// 		fmt.Printf("\n%s%s: %v%s\n\n", "\x1b[1;30m", t, err, "\x1b[0m")
+// 		os.Exit(1)
+// 	}
+// }
+
 // https://golang.org/src/net/net.go#L113
-// Helper methods for application#test
-type testConn struct {
+// Helper methods for Testing
+type conn struct {
 	net.Conn
 	r bytes.Buffer
 	w bytes.Buffer
 }
 
-func (c *testConn) RemoteAddr() net.Addr {
+func (c *conn) RemoteAddr() net.Addr {
 	return &net.TCPAddr{
 		IP: net.IPv4(0, 0, 0, 0),
 	}
 }
-func (c *testConn) LocalAddr() net.Addr                { return c.RemoteAddr() }
-func (c *testConn) Read(b []byte) (int, error)         { return c.r.Read(b) }
-func (c *testConn) Write(b []byte) (int, error)        { return c.w.Write(b) }
-func (c *testConn) Close() error                       { return nil }
-func (c *testConn) SetDeadline(t time.Time) error      { return nil }
-func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
-func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
+func (c *conn) LocalAddr() net.Addr                { return c.LocalAddr() }
+func (c *conn) Read(b []byte) (int, error)         { return c.r.Read(b) }
+func (c *conn) Write(b []byte) (int, error)        { return c.w.Write(b) }
+func (c *conn) Close() error                       { return nil }
+func (c *conn) SetDeadline(t time.Time) error      { return nil }
+func (c *conn) SetReadDeadline(t time.Time) error  { return nil }
+func (c *conn) SetWriteDeadline(t time.Time) error { return nil }
 
-// HTTP status codes
-var statusMessage = map[int]string{
+var statusMessages = map[int]string{
 	100: "Continue",
 	101: "Switching Protocols",
 	102: "Processing",
@@ -217,8 +212,18 @@ var statusMessage = map[int]string{
 	511: "Network Authentication Required",
 }
 
-// MIME types for file extensions
-var extensionMIME = map[string]string{
+const (
+	mimeApplicationJSON        = "application/json"
+	mimeApplicationJavascript  = "application/javascript"
+	mimeApplicationXML         = "application/xml"
+	mimeTextXML                = "text/xml"
+	mimeApplicationOctetStream = "application/octet-stream"
+	mimeApplicationForm        = "application/x-www-form-urlencoded"
+	mimeMultipartForm          = "multipart/form-data"
+)
+
+// https://github.com/nginx/nginx/blob/master/conf/mime.types
+var mimeTypes = map[string]string{
 	"html":    "text/html",
 	"htm":     "text/html",
 	"shtml":   "text/html",

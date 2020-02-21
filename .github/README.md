@@ -208,11 +208,11 @@ func main() {
   app := fiber.New()
 
   app.Static("/public")
-
+  
   app.Get("/demo", func(c *fiber.Ctx) {
     c.Send("This is a demo!")
   })
-
+  
   app.Post("/register", func(c *fiber.Ctx) {
     c.Send("Welcome!")
   })
