@@ -7,51 +7,67 @@ import (
 
 var handler = func(c *Ctx) {}
 
+func is200(t *testing.T, app *App, url string, m ...string) {
+	method := "GET"
+	if len(m) > 0 {
+		method = m[0]
+	}
+	req, _ := http.NewRequest(method, url, nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("%s - %s - %v", method, url, err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("%s - %s - %v", method, url, resp.StatusCode)
+	}
+}
 func Test_Methods(t *testing.T) {
 	app := New()
 
-	methods := []string{"CONNECT", "PUT", "POST", "DELETE", "HEAD", "PATCH", "OPTIONS", "TRACE", "GET", "ALL", "USE"}
-	app.Connect("", handler)
-	app.Connect("/CONNECT", handler)
-	app.Put("/PUT", handler)
-	app.Post("/POST", handler)
-	app.Delete("/DELETE", handler)
-	app.Head("/HEAD", handler)
-	app.Patch("/PATCH", handler)
-	app.Options("/OPTIONS", handler)
-	app.Trace("/TRACE", handler)
-	app.Get("/GET", handler)
-	app.All("/ALL", handler)
-	app.Use("/USE", handler)
+	app.Connect("/:john?/:doe?", handler)
+	is200(t, app, "/", "CONNECT")
 
-	for _, method := range methods {
-		var req *http.Request
-		if method == "ALL" {
-			req, _ = http.NewRequest("CONNECT", "/"+method, nil)
-		} else if method == "USE" {
-			req, _ = http.NewRequest("OPTIONS", "/"+method+"/test", nil)
-		} else {
-			req, _ = http.NewRequest(method, "/"+method, nil)
-		}
-		resp, err := app.Test(req)
-		if err != nil {
-			t.Fatalf(`%s: %s %s`, t.Name(), method, err)
-		}
-		if resp.StatusCode != 200 {
-			t.Fatalf(`%s: %s expecting 200 but received %v`, t.Name(), method, resp.StatusCode)
-		}
-	}
+	app.Connect("/:john?/:doe?", handler)
+	is200(t, app, "/", "CONNECT")
+
+	app.Put("/:john?/:doe?", handler)
+	is200(t, app, "/", "CONNECT")
+
+	app.Post("/:john?/:doe?", handler)
+	is200(t, app, "/", "POST")
+
+	app.Delete("/:john?/:doe?", handler)
+	is200(t, app, "/", "DELETE")
+
+	app.Head("/:john?/:doe?", handler)
+	is200(t, app, "/", "HEAD")
+
+	app.Patch("/:john?/:doe?", handler)
+	is200(t, app, "/", "PATCH")
+
+	app.Options("/:john?/:doe?", handler)
+	is200(t, app, "/", "OPTIONS")
+
+	app.Trace("/:john?/:doe?", handler)
+	is200(t, app, "/", "TRACE")
+
+	app.Get("/:john?/:doe?", handler)
+	is200(t, app, "/", "GET")
+
+	app.All("/:john?/:doe?", handler)
+	is200(t, app, "/", "POST")
+
+	app.Use("/:john?/:doe?", handler)
+	is200(t, app, "/", "GET")
+
 }
 
 func Test_Static(t *testing.T) {
 	app := New()
 	grp := app.Group("/v1")
 	grp.Static("/v2", ".travis.yml")
-	grp.Static(".travis.yml")
 	app.Static("/yesyes*", ".github/FUNDING.yml")
 	app.Static("./.github")
-	app.Static("github", ".github/FUNDING.yml")
-	app.Static("/*", "./.github")
 	app.Static("/john", "./.github")
 	req, _ := http.NewRequest("GET", "/stale.yml", nil)
 	resp, err := app.Test(req)
@@ -98,37 +114,53 @@ func Test_Static(t *testing.T) {
 		t.Fatalf(`%s: Missing Content-Length`, t.Name())
 	}
 }
+
 func Test_Group(t *testing.T) {
 	app := New()
+
 	grp := app.Group("/test")
 	grp.Get("/", handler)
+	is200(t, app, "/test", "GET")
+
 	grp.Get("/:demo?", handler)
+	is200(t, app, "/test/john", "GET")
+
 	grp.Connect("/CONNECT", handler)
+	is200(t, app, "/test/CONNECT", "CONNECT")
+
 	grp.Put("/PUT", handler)
+	is200(t, app, "/test/PUT", "PUT")
+
 	grp.Post("/POST", handler)
+	is200(t, app, "/test/POST", "POST")
+
 	grp.Delete("/DELETE", handler)
+	is200(t, app, "/test/DELETE", "DELETE")
+
 	grp.Head("/HEAD", handler)
+	is200(t, app, "/test/HEAD", "HEAD")
+
 	grp.Patch("/PATCH", handler)
+	is200(t, app, "/test/PATCH", "PATCH")
+
 	grp.Options("/OPTIONS", handler)
+	is200(t, app, "/test/OPTIONS", "OPTIONS")
+
 	grp.Trace("/TRACE", handler)
+	is200(t, app, "/test/TRACE", "TRACE")
+
 	grp.All("/ALL", handler)
+	is200(t, app, "/test/ALL", "POST")
+
 	grp.Use("/USE", handler)
-	req, _ := http.NewRequest("GET", "/test", nil)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf(`%s: %s`, t.Name(), err)
-	}
-	if resp.StatusCode != 200 {
-		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
-	}
-	req, _ = http.NewRequest("GET", "/test/test", nil)
-	resp, err = app.Test(req)
-	if err != nil {
-		t.Fatalf(`%s: %s`, t.Name(), err)
-	}
-	if resp.StatusCode != 200 {
-		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
-	}
+	is200(t, app, "/test/USE/oke", "GET")
+
+	api := grp.Group("/v1")
+	api.Post("/", handler)
+	is200(t, app, "/test/v1/", "POST")
+
+	api.Get("/users", handler)
+	is200(t, app, "/test/v1/users", "GET")
 }
 
 // func Test_Listen(t *testing.T) {
