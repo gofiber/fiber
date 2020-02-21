@@ -70,34 +70,19 @@ type (
 	}
 )
 
-var prefork, child bool
-
-func regBoolVar(p *bool, name string, value bool, usage string) {
-	if flag.Lookup(name) == nil {
-		flag.BoolVar(p, name, value, usage)
-	}
-}
-func getBoolFlag(name string) bool {
-	return flag.Lookup(name).Value.(flag.Getter).Get().(bool)
-}
-func init() {
-	regBoolVar(&prefork, "prefork", false, "use prefork")
-	regBoolVar(&child, "child", false, "is child process")
-}
+var prefork = flag.Bool("fiber-prefork", false, "use prefork")
+var child = flag.Bool("fiber-child", false, "is child process")
 
 // New ...
 func New(settings ...*Settings) (app *App) {
 	flag.Parse()
-	prefork = getBoolFlag("prefork")
-	child = getBoolFlag("child")
-
 	app = &App{
-		child: child,
+		child: *child,
 	}
 	if len(settings) > 0 {
 		opt := settings[0]
 		if !opt.Prefork {
-			opt.Prefork = prefork
+			opt.Prefork = *prefork
 		}
 		if opt.Concurrency == 0 {
 			opt.Concurrency = 256 * 1024
@@ -115,7 +100,7 @@ func New(settings ...*Settings) (app *App) {
 		return
 	}
 	app.Settings = &Settings{
-		Prefork:            prefork,
+		Prefork:            *prefork,
 		Concurrency:        256 * 1024,
 		ReadBufferSize:     4096,
 		WriteBufferSize:    4096,
@@ -318,7 +303,7 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 
 		// #nosec G204
 		for i := range childs {
-			childs[i] = exec.Command(os.Args[0], "-prefork", "-child")
+			childs[i] = exec.Command(os.Args[0], "-fiber-prefork", "-fiber-child")
 			childs[i].Stdout = os.Stdout
 			childs[i].Stderr = os.Stderr
 			childs[i].ExtraFiles = []*os.File{fl}

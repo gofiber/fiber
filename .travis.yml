@@ -5,7 +5,7 @@ os:
   - windows
   - osx
 go:
-  - 1.13.x
+  - 1.11.x
 env:
   - GO111MODULE=on
 install:
