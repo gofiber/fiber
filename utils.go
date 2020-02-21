@@ -151,7 +151,7 @@ func (c *testConn) RemoteAddr() net.Addr {
 		IP: net.IPv4(0, 0, 0, 0),
 	}
 }
-func (c *testConn) LocalAddr() net.Addr                { return c.LocalAddr() }
+func (c *testConn) LocalAddr() net.Addr                { return c.RemoteAddr() }
 func (c *testConn) Read(b []byte) (int, error)         { return c.r.Read(b) }
 func (c *testConn) Write(b []byte) (int, error)        { return c.w.Write(b) }
 func (c *testConn) Close() error                       { return nil }
