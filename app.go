@@ -109,6 +109,18 @@ func New(settings ...*Settings) (app *App) {
 	return
 }
 
+
+// Recover
+func (app *App) Recover(cb func(*Ctx)) {
+	app.recover = cb
+}
+
+// Recover
+func (grp *Group) Recover(cb func(*Ctx)) {
+	grp.app.recover = cb
+}
+
+
 // Static ...
 func (app *App) Static(args ...string) *App {
 	app.registerStatic("/", args...)
