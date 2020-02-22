@@ -204,6 +204,65 @@ func main() {
 <details>
   <summary>📚 Show more code examples</summary>
 
+### Template engines
+
+Already supports:
+
+- [html](https://golang.org/pkg/html/template/)
+- [amber](https://github.com/eknkc/amber)
+- [handlebars](https://github.com/aymerick/raymond)
+- [mustache](https://github.com/cbroglie/mustache)
+- [pug](https://github.com/Joker/jade)
+
+```go
+func main() {
+  // You can setup template engine before initiation app:
+  app := fiber.New(&fiber.Settings{
+    ViewEngine:    "mustache",
+    ViewFolder:    "./views",
+    ViewExtension: ".tmpl",
+  })
+
+  // OR after initiation app at any convenient location:
+  app.Settings.ViewEngine = "mustache"
+  app.Settings.ViewFolder = "./views"
+  app.Settings.ViewExtension = ".tmpl"
+
+  // And now, you can call template `./views/home.tmpl` like this:
+  app.Get("/", func(c *fiber.Ctx) {
+    c.Render("home", fiber.Map{
+      "title": "Homepage",
+      "year":  1999,
+    })
+  })
+  
+  // ...
+}
+```
+
+### Grouping routes into chains
+
+```go
+func main() {
+  app := fiber.New()
+  
+  // Root API route
+  api := app.Group("/api", cors())  // /api
+  
+  // API v1 routes
+  v1 := api.Group("/v1", mysql())   // /api/v1
+  v1.Get("/list", handler)          // /api/v1/list
+  v1.Get("/user", handler)          // /api/v1/user
+  
+  // API v2 routes
+  v2 := api.Group("/v2", mongodb()) // /api/v2
+  v2.Get("/list", handler)          // /api/v2/list
+  v2.Get("/user", handler)          // /api/v2/user
+  
+  // ...
+}
+```
+
 ### Custom 404 response
 
 ```go
@@ -250,6 +309,37 @@ func main() {
 }
 ```
 
+### WebSocket support
+
+```go
+func main() {
+  app := fiber.New()
+
+  app.WebSocket("/ws/:name", func(c *fiber.Conn) {
+    log.Println(c.Params("name"))
+
+    for {
+      mt, msg, err := c.ReadMessage()
+      if err != nil {
+        log.Println("read:", err)
+        break
+      }
+
+      log.Printf("recovery: %s", msg)
+
+      err = c.WriteMessage(mt, msg)
+      if err != nil {
+        log.Println("write:", err)
+        break
+      }
+    }
+  })
+
+  // Listen on ws://localhost:3000/ws/john
+  app.Listen(3000)
+}
+```
+
 ### Recover from `panic`
 
 ```go
@@ -272,7 +362,8 @@ func main() {
 
 ## 💬 Media
 
-- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) (_by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_)
+- [Fiber official release is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
 
 ## 👍 Contribute
 
