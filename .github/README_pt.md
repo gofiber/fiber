@@ -40,6 +40,9 @@
   <a href="https://fiber.wiki">
     <img src="https://img.shields.io/badge/api-documentation-blue?style=flat-square">
   </a>
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
+    <img src="https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square">
+  </a>
   <a href="#">
     <img src="https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square">
   </a>
