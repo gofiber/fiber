@@ -326,3 +326,4 @@ If you want to say **thank you** and/or support the active development of `Fiber
 ## ⚠️ License
 
 `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE).
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
