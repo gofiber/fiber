@@ -22,6 +22,7 @@ import (
 	handlebars "github.com/aymerick/raymond"
 	mustache "github.com/cbroglie/mustache"
 	amber "github.com/eknkc/amber"
+
 	// core
 	websocket "github.com/fasthttp/websocket"
 	jsoniter "github.com/json-iterator/go"
@@ -104,7 +105,6 @@ func acquireConn(fconn *websocket.Conn) *Conn {
 
 // Return Conn to pool
 func releaseConn(conn *Conn) {
-	conn.Close()
 	conn.params = nil
 	conn.values = nil
 	conn.Conn = nil
