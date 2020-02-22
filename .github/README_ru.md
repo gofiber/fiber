@@ -204,6 +204,67 @@ func main() {
 <details>
   <summary>📚 Показать больше примеров кода</summary>
 
+### Работа с шаблонами
+
+Поддерживаемые движки шаблонов:
+
+- [html](https://golang.org/pkg/html/template/)
+- [amber](https://github.com/eknkc/amber)
+- [handlebars](https://github.com/aymerick/raymond)
+- [mustache](https://github.com/cbroglie/mustache)
+- [pug](https://github.com/Joker/jade)
+
+```go
+func main() {
+  // Вы можете настроить нужный движок для шаблонов 
+  // перед инициализацией приложения:
+  app := fiber.New(&fiber.Settings{
+    ViewEngine:    "mustache",
+    ViewFolder:    "./views",
+    ViewExtension: ".tmpl",
+  })
+
+  // ИЛИ уже после инициализации приложения,
+  // в любом удобном месте:
+  app.Settings.ViewEngine = "mustache"
+  app.Settings.ViewFolder = "./views"
+  app.Settings.ViewExtension = ".tmpl"
+
+  // Теперь, вы сможете вызывать шаблон `./views/home.tmpl` вот так:
+  app.Get("/", func(c *fiber.Ctx) {
+    c.Render("home", fiber.Map{
+      "title": "Homepage",
+      "year":  1999,
+    })
+  })
+  
+  // ...
+}
+```
+
+### Группировка роутов в цепочки
+
+```go
+func main() {
+  app := fiber.New()
+  
+  // Корневой API роут
+  api := app.Group("/api", cors())  // /api
+  
+  // Роуты для API v1
+  v1 := api.Group("/v1", mysql())   // /api/v1
+  v1.Get("/list", handler)          // /api/v1/list
+  v1.Get("/user", handler)          // /api/v1/user
+  
+  // Роуты для API v2
+  v2 := api.Group("/v2", mongodb()) // /api/v2
+  v2.Get("/list", handler)          // /api/v2/list
+  v2.Get("/user", handler)          // /api/v2/user
+  
+  // ...
+}
+```
+
 ### Обработка 404 ошибки
 
 ```go
@@ -272,7 +333,8 @@ func main() {
 
 ## 💬 Медиа
 
-- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *[Vic Shóstak](https://github.com/koddr), 3 февраля 2020 г.*
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) (_by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_)
+- [Fiber official release is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
 
 ## 👍 Помощь проекту
 
