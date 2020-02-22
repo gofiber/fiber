@@ -120,7 +120,6 @@ func (grp *Group) Recover(cb func(*Ctx)) {
 	grp.app.recover = cb
 }
 
-
 // Static ...
 func (app *App) Static(args ...string) *App {
 	app.registerStatic("/", args...)
