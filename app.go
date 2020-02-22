@@ -21,7 +21,7 @@ import (
 )
 
 // Version of Fiber
-const Version = "1.0.0"
+const Version = "1.7.1"
 
 type (
 	// App denotes the Fiber application.
@@ -108,7 +108,6 @@ func New(settings ...*Settings) (app *App) {
 	}
 	return
 }
-
 
 // Recover
 func (app *App) Recover(cb func(*Ctx)) {
