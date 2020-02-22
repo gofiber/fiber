@@ -204,6 +204,67 @@ func main() {
 <details>
   <summary>📚 Показать больше примеров кода</summary>
 
+### Работа с шаблонами
+
+Поддерживаемые движки шаблонов:
+
+- [html](https://golang.org/pkg/html/template/)
+- [amber](https://github.com/eknkc/amber)
+- [handlebars](https://github.com/aymerick/raymond)
+- [mustache](https://github.com/cbroglie/mustache)
+- [pug](https://github.com/Joker/jade)
+
+```go
+func main() {
+  // Вы можете настроить нужный движок для шаблонов 
+  // перед инициализацией приложения:
+  app := fiber.New(&fiber.Settings{
+    ViewEngine:    "mustache",
+    ViewFolder:    "./views",
+    ViewExtension: ".tmpl",
+  })
+
+  // ИЛИ уже после инициализации приложения,
+  // в любом удобном месте:
+  app.Settings.ViewEngine = "mustache"
+  app.Settings.ViewFolder = "./views"
+  app.Settings.ViewExtension = ".tmpl"
+
+  // Теперь, вы сможете вызывать шаблон `./views/home.tmpl` вот так:
+  app.Get("/", func(c *fiber.Ctx) {
+    c.Render("home", fiber.Map{
+      "title": "Homepage",
+      "year":  1999,
+    })
+  })
+  
+  // ...
+}
+```
+
+### Группировка роутов в цепочки
+
+```go
+func main() {
+  app := fiber.New()
+  
+  // Корневой API роут
+  api := app.Group("/api", cors())  // /api
+  
+  // Роуты для API v1
+  v1 := api.Group("/v1", mysql())   // /api/v1
+  v1.Get("/list", handler)          // /api/v1/list
+  v1.Get("/user", handler)          // /api/v1/user
+  
+  // Роуты для API v2
+  v2 := api.Group("/v2", mongodb()) // /api/v2
+  v2.Get("/list", handler)          // /api/v2/list
+  v2.Get("/user", handler)          // /api/v2/user
+  
+  // ...
+}
+```
+
 ### Обработка 404 ошибки
 
 ```go
