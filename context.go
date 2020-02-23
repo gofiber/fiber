@@ -287,6 +287,7 @@ func (ctx *Ctx) Body(key ...string) string {
 
 // BodyParser : https://fiber.wiki/context#bodyparser
 func (ctx *Ctx) BodyParser(out interface{}) error {
+	// TODO : Query Params
 	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
 	// application/json
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
@@ -313,15 +314,15 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 		return schemaDecoder.Decode(out, data.Value)
 
 	}
-	return fmt.Errorf("cannot parse content-type: %v", ctype)
+	return fmt.Errorf("BodyParser: cannot parse content-type: %v", ctype)
 }
 
 // ClearCookie : https://fiber.wiki/context#clearcookie
-func (ctx *Ctx) ClearCookie(name ...string) {
-	if len(name) > 0 {
-		for i := range name {
+func (ctx *Ctx) ClearCookie(key ...string) {
+	if len(key) > 0 {
+		for i := range key {
 			//ctx.Fasthttp.Request.Header.DelAllCookies()
-			ctx.Fasthttp.Response.Header.DelClientCookie(name[i])
+			ctx.Fasthttp.Response.Header.DelClientCookie(key[i])
 		}
 		return
 	}
