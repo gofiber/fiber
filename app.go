@@ -214,10 +214,10 @@ func (app *App) Listen(address interface{}, tls ...string) error {
 	}
 	// Create fasthttp server
 	app.server = app.newServer()
-	// Print banner
-	// if app.Settings.Banner && !app.child {
-	// 	fmt.Printf("Fiber-%s is listening on %s\n", Version, addr)
-	// }
+	// Print listening message
+	if !app.child {
+		fmt.Printf("Fiber v%s listening on %s\n", Version, addr)
+	}
 	var ln net.Listener
 	var err error
 	// Prefork enabled
