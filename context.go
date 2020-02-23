@@ -474,17 +474,17 @@ func (ctx *Ctx) Hostname() string {
 }
 
 // IP : https://fiber.wiki/context#Ip
-func (ctx *Ctx) IP() (ip string) {
+func (ctx *Ctx) IP() string {
 	return ctx.Fasthttp.RemoteIP().String()
 }
 
 // IPs : https://fiber.wiki/context#ips
-func (ctx *Ctx) IPs() (ips []string) {
-	ips = strings.Split(ctx.Get(fasthttp.HeaderXForwardedFor), ",")
+func (ctx *Ctx) IPs() []string {
+	ips := strings.Split(ctx.Get(fasthttp.HeaderXForwardedFor), ",")
 	for i := range ips {
 		ips[i] = strings.TrimSpace(ips[i])
 	}
-	return
+	return ips
 }
 
 // Is : https://fiber.wiki/context#is
@@ -791,12 +791,12 @@ func (ctx *Ctx) Set(key string, val string) {
 }
 
 // Subdomains : https://fiber.wiki/context#subdomains
-func (ctx *Ctx) Subdomains(offset ...int) (subdomains []string) {
+func (ctx *Ctx) Subdomains(offset ...int) []string {
 	o := 2
 	if len(offset) > 0 {
 		o = offset[0]
 	}
-	subdomains = strings.Split(ctx.Hostname(), ".")
+	subdomains := strings.Split(ctx.Hostname(), ".")
 	subdomains = subdomains[:len(subdomains)-o]
 	return subdomains
 }
