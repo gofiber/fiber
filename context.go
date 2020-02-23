@@ -126,7 +126,7 @@ type Cookie struct {
 }
 
 // Accepts : https://fiber.wiki/context#accepts
-func (ctx *Ctx) Accepts(offers ...string) (included string) {
+func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -136,8 +136,8 @@ func (ctx *Ctx) Accepts(offers ...string) (included string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, offer := range offers {
-		mimetype := getType(offer)
+	for _, value := range offers {
+		mimetype := getType(value)
 		// if mimetype != "" {
 		// 	mimetype = strings.Split(mimetype, ";")[0]
 		// } else {
@@ -146,16 +146,16 @@ func (ctx *Ctx) Accepts(offers ...string) (included string) {
 		for _, spec := range specs {
 			spec = strings.TrimSpace(spec)
 			if strings.HasPrefix(spec, "*/*") {
-				return offer
+				return value
 			}
 
 			if strings.HasPrefix(spec, mimetype) {
-				return offer
+				return value
 			}
 
 			if strings.Contains(spec, "/*") {
 				if strings.HasPrefix(spec, strings.Split(mimetype, "/")[0]) {
-					return offer
+					return value
 				}
 			}
 		}
@@ -164,7 +164,7 @@ func (ctx *Ctx) Accepts(offers ...string) (included string) {
 }
 
 // AcceptsCharsets : https://fiber.wiki/context#acceptscharsets
-func (ctx *Ctx) AcceptsCharsets(offers ...string) (included string) {
+func (ctx *Ctx) AcceptsCharsets(offers ...string) (offer string) {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -175,14 +175,14 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) (included string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, offer := range offers {
+	for _, value := range offers {
 		for _, spec := range specs {
 			spec = strings.TrimSpace(spec)
 			if strings.HasPrefix(spec, "*") {
-				return offer
+				return value
 			}
-			if strings.HasPrefix(spec, offer) {
-				return offer
+			if strings.HasPrefix(spec, value) {
+				return value
 			}
 		}
 	}
@@ -190,7 +190,7 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) (included string) {
 }
 
 // AcceptsEncodings : https://fiber.wiki/context#acceptsencodings
-func (ctx *Ctx) AcceptsEncodings(offers ...string) (included string) {
+func (ctx *Ctx) AcceptsEncodings(offers ...string) (offer string) {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -201,14 +201,14 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) (included string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, offer := range offers {
+	for _, value := range offers {
 		for _, spec := range specs {
 			spec = strings.TrimSpace(spec)
 			if strings.HasPrefix(spec, "*") {
-				return offer
+				return value
 			}
-			if strings.HasPrefix(spec, offer) {
-				return offer
+			if strings.HasPrefix(spec, value) {
+				return value
 			}
 		}
 	}
@@ -216,7 +216,7 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) (included string) {
 }
 
 // AcceptsLanguages : https://fiber.wiki/context#acceptslanguages
-func (ctx *Ctx) AcceptsLanguages(offers ...string) (included string) {
+func (ctx *Ctx) AcceptsLanguages(offers ...string) (offer string) {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -226,14 +226,14 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) (included string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, offer := range offers {
+	for _, value := range offers {
 		for _, spec := range specs {
 			spec = strings.TrimSpace(spec)
 			if strings.HasPrefix(spec, "*") {
-				return offer
+				return value
 			}
-			if strings.HasPrefix(spec, offer) {
-				return offer
+			if strings.HasPrefix(spec, value) {
+				return value
 			}
 		}
 	}
