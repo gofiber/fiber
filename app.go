@@ -75,7 +75,7 @@ type (
 var prefork = flag.Bool("fiber-prefork", false, "use prefork")
 var child = flag.Bool("fiber-child", false, "is child process")
 
-// New ...
+// New: https://fiber.wiki/application#new
 func New(settings ...*Settings) (app *App) {
 	flag.Parse()
 	app = &App{
@@ -111,89 +111,89 @@ func New(settings ...*Settings) (app *App) {
 	return
 }
 
-// Recover
-func (app *App) Recover(cb func(*Ctx)) {
-	app.recover = cb
+// Recover : https://fiber.wiki/application#recover
+func (app *App) Recover(callback func(*Ctx)) {
+	app.recover = callback
 }
 
-// Recover
-func (grp *Group) Recover(cb func(*Ctx)) {
-	grp.app.recover = cb
+// Recover : https://fiber.wiki/application#recover
+func (grp *Group) Recover(callback func(*Ctx)) {
+	grp.app.recover = callback
 }
 
-// Static ...
+// Static : https://fiber.wiki/application#static
 func (app *App) Static(args ...string) *App {
 	app.registerStatic("/", args...)
 	return app
 }
 
-// WebSocket ...
+// WebSocket : https://fiber.wiki/application#websocket
 func (app *App) WebSocket(args ...interface{}) *App {
 	app.register("GET", "", args...)
 	return app
 }
 
-// Connect ...
+// Connect : https://fiber.wiki/application#http-methods
 func (app *App) Connect(args ...interface{}) *App {
 	app.register("CONNECT", "", args...)
 	return app
 }
 
-// Put ...
+// Put : https://fiber.wiki/application#http-methods
 func (app *App) Put(args ...interface{}) *App {
 	app.register("PUT", "", args...)
 	return app
 }
 
-// Post ...
+// Post : https://fiber.wiki/application#http-methods
 func (app *App) Post(args ...interface{}) *App {
 	app.register("POST", "", args...)
 	return app
 }
 
-// Delete ...
+// Delete : https://fiber.wiki/application#http-methods
 func (app *App) Delete(args ...interface{}) *App {
 	app.register("DELETE", "", args...)
 	return app
 }
 
-// Head ...
+// Head : https://fiber.wiki/application#http-methods
 func (app *App) Head(args ...interface{}) *App {
 	app.register("HEAD", "", args...)
 	return app
 }
 
-// Patch ...
+// Patch : https://fiber.wiki/application#http-methods
 func (app *App) Patch(args ...interface{}) *App {
 	app.register("PATCH", "", args...)
 	return app
 }
 
-// Options ...
+// Options : https://fiber.wiki/application#http-methods
 func (app *App) Options(args ...interface{}) *App {
 	app.register("OPTIONS", "", args...)
 	return app
 }
 
-// Trace ...
+// Trace : https://fiber.wiki/application#http-methods
 func (app *App) Trace(args ...interface{}) *App {
 	app.register("TRACE", "", args...)
 	return app
 }
 
-// Get ...
+// Get : https://fiber.wiki/application#http-methods
 func (app *App) Get(args ...interface{}) *App {
 	app.register("GET", "", args...)
 	return app
 }
 
-// All ...
+// All : https://fiber.wiki/application#http-methods
 func (app *App) All(args ...interface{}) *App {
 	app.register("ALL", "", args...)
 	return app
 }
 
-// Use ...
+// Use : https://fiber.wiki/application#http-methods
 func (app *App) Use(args ...interface{}) *App {
 	app.register("USE", "", args...)
 	return app
@@ -238,7 +238,8 @@ func (app *App) Listen(address interface{}, tls ...string) error {
 	return app.server.Serve(ln)
 }
 
-// Shutdown server gracefully
+// Shutdown : TODO: Docs
+// Shutsdown the server gracefully
 func (app *App) Shutdown() error {
 	if app.server == nil {
 		return fmt.Errorf("Server is not running")
@@ -246,11 +247,10 @@ func (app *App) Shutdown() error {
 	return app.server.Shutdown()
 }
 
-// Test takes a http.Request and execute a fake connection to the application
-// It returns a http.Response when the connection was successful
-func (app *App) Test(req *http.Request) (*http.Response, error) {
+// Test : https://fiber.wiki/application#test
+func (app *App) Test(request *http.Request) (*http.Response, error) {
 	// Get raw http request
-	reqRaw, err := httputil.DumpRequest(req, true)
+	reqRaw, err := httputil.DumpRequest(request, true)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +287,7 @@ func (app *App) Test(req *http.Request) (*http.Response, error) {
 	reader := strings.NewReader(getString(respRaw))
 	buffer := bufio.NewReader(reader)
 	// Convert raw HTTP response to http.Response
-	resp, err := http.ReadResponse(buffer, req)
+	resp, err := http.ReadResponse(buffer, request)
 	if err != nil {
 		return nil, err
 	}

@@ -126,7 +126,7 @@ type Cookie struct {
 }
 
 // Accepts : https://fiber.wiki/context#accepts
-func (ctx *Ctx) Accepts(offers ...string) string {
+func (ctx *Ctx) Accepts(offers ...string) (included string) {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -164,7 +164,7 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 }
 
 // AcceptsCharsets : https://fiber.wiki/context#acceptscharsets
-func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
+func (ctx *Ctx) AcceptsCharsets(offers ...string) (included string) {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -190,7 +190,7 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
 }
 
 // AcceptsEncodings : https://fiber.wiki/context#acceptsencodings
-func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
+func (ctx *Ctx) AcceptsEncodings(offers ...string) (included string) {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -216,7 +216,7 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
 }
 
 // AcceptsLanguages : https://fiber.wiki/context#acceptslanguages
-func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
+func (ctx *Ctx) AcceptsLanguages(offers ...string) (included string) {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -273,38 +273,28 @@ func (ctx *Ctx) BaseURL() string {
 }
 
 // Body : https://fiber.wiki/context#body
-func (ctx *Ctx) Body(args ...interface{}) string {
-	if len(args) == 0 {
+func (ctx *Ctx) Body(key ...string) string {
+	// Return request body
+	if len(key) == 0 {
 		return getString(ctx.Fasthttp.Request.Body())
 	}
-
-	if len(args) == 1 {
-		switch arg := args[0].(type) {
-		case string:
-			return getString(ctx.Fasthttp.Request.PostArgs().Peek(arg))
-		case []byte:
-			return getString(ctx.Fasthttp.Request.PostArgs().PeekBytes(arg))
-		case func(string, string):
-			ctx.Fasthttp.Request.PostArgs().VisitAll(func(k []byte, v []byte) {
-				arg(getString(k), getString(v))
-			})
-		default:
-			return getString(ctx.Fasthttp.Request.Body())
-		}
+	// Return post value by key
+	if len(key) > 0 {
+		return getString(ctx.Fasthttp.Request.PostArgs().Peek(key[0]))
 	}
 	return ""
 }
 
 // BodyParser : https://fiber.wiki/context#bodyparser
-func (ctx *Ctx) BodyParser(v interface{}) error {
+func (ctx *Ctx) BodyParser(out interface{}) error {
 	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
 	// application/json
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
-		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), v)
+		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), out)
 	}
 	// application/xml text/xml
 	if strings.HasPrefix(ctype, MIMEApplicationXML) || strings.HasPrefix(ctype, MIMETextXML) {
-		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), v)
+		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), out)
 	}
 	// application/x-www-form-urlencoded
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
@@ -312,7 +302,7 @@ func (ctx *Ctx) BodyParser(v interface{}) error {
 		if err != nil {
 			return err
 		}
-		return schemaDecoder.Decode(v, data)
+		return schemaDecoder.Decode(out, data)
 	}
 	// multipart/form-data
 	if strings.HasPrefix(ctype, MIMEMultipartForm) {
@@ -320,7 +310,7 @@ func (ctx *Ctx) BodyParser(v interface{}) error {
 		if err != nil {
 			return err
 		}
-		return schemaDecoder.Decode(v, data.Value)
+		return schemaDecoder.Decode(out, data.Value)
 
 	}
 	return fmt.Errorf("cannot parse content-type: %v", ctype)
@@ -431,30 +421,27 @@ func (ctx *Ctx) Error() error {
 }
 
 // Format : https://fiber.wiki/context#format
-func (ctx *Ctx) Format(args ...interface{}) {
-	var body string
-
+func (ctx *Ctx) Format(body interface{}) {
+	var b string
 	accept := ctx.Accepts("html", "json")
 
-	for i := range args {
-		switch arg := args[i].(type) {
-		case string:
-			body = arg
-		case []byte:
-			body = getString(arg)
-		default:
-			body = fmt.Sprintf("%v", arg)
+	switch val := body.(type) {
+	case string:
+		b = val
+	case []byte:
+		b = getString(val)
+	default:
+		b = fmt.Sprintf("%v", val)
+	}
+	switch accept {
+	case "html":
+		ctx.SendString("<p>" + b + "</p>")
+	case "json":
+		if err := ctx.JSON(body); err != nil {
+			log.Println("Format: error serializing json ", err)
 		}
-		switch accept {
-		case "html":
-			ctx.SendString("<p>" + body + "</p>")
-		case "json":
-			if err := ctx.JSON(body); err != nil {
-				log.Println("Format: error serializing json ", err)
-			}
-		default:
-			ctx.SendString(body)
-		}
+	default:
+		ctx.SendString(b)
 	}
 }
 
@@ -464,7 +451,7 @@ func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 }
 
 // FormValue : https://fiber.wiki/context#formvalue
-func (ctx *Ctx) FormValue(key string) string {
+func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
 
@@ -474,7 +461,7 @@ func (ctx *Ctx) Fresh() bool {
 }
 
 // Get : https://fiber.wiki/context#get
-func (ctx *Ctx) Get(key string) string {
+func (ctx *Ctx) Get(key string) (value string) {
 	if key == "referrer" {
 		key = "referer"
 	}
@@ -487,40 +474,40 @@ func (ctx *Ctx) Hostname() string {
 }
 
 // IP : https://fiber.wiki/context#Ip
-func (ctx *Ctx) IP() string {
+func (ctx *Ctx) IP() (ip string) {
 	return ctx.Fasthttp.RemoteIP().String()
 }
 
 // IPs : https://fiber.wiki/context#ips
-func (ctx *Ctx) IPs() []string {
-	ips := strings.Split(ctx.Get(fasthttp.HeaderXForwardedFor), ",")
+func (ctx *Ctx) IPs() (ips []string) {
+	ips = strings.Split(ctx.Get(fasthttp.HeaderXForwardedFor), ",")
 	for i := range ips {
 		ips[i] = strings.TrimSpace(ips[i])
 	}
-	return ips
+	return
 }
 
 // Is : https://fiber.wiki/context#is
-func (ctx *Ctx) Is(ext string) bool {
-	if ext[0] != '.' {
-		ext = "." + ext
+func (ctx *Ctx) Is(extension string) (match bool) {
+	if extension[0] != '.' {
+		extension = "." + extension
 	}
 
 	exts, _ := mime.ExtensionsByType(ctx.Get(fasthttp.HeaderContentType))
 	if len(exts) > 0 {
 		for _, item := range exts {
-			if item == ext {
+			if item == extension {
 				return true
 			}
 		}
 	}
-	return false
+	return
 }
 
 // JSON : https://fiber.wiki/context#json
-func (ctx *Ctx) JSON(v interface{}) error {
+func (ctx *Ctx) JSON(json interface{}) error {
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-	raw, err := jsoniter.Marshal(&v)
+	raw, err := jsoniter.Marshal(&json)
 	if err != nil {
 		ctx.Fasthttp.Response.SetBodyString("")
 		return err
@@ -531,15 +518,15 @@ func (ctx *Ctx) JSON(v interface{}) error {
 }
 
 // JSONP : https://fiber.wiki/context#jsonp
-func (ctx *Ctx) JSONP(v interface{}, cb ...string) error {
-	raw, err := jsoniter.Marshal(&v)
+func (ctx *Ctx) JSONP(json interface{}, callback ...string) error {
+	raw, err := jsoniter.Marshal(&json)
 	if err != nil {
 		return err
 	}
 
 	str := "callback("
-	if len(cb) > 0 {
-		str = cb[0] + "("
+	if len(callback) > 0 {
+		str = callback[0] + "("
 	}
 	str += getString(raw) + ");"
 
@@ -568,12 +555,12 @@ func (ctx *Ctx) Links(link ...string) {
 }
 
 // Locals : https://fiber.wiki/context#locals
-func (ctx *Ctx) Locals(key string, val ...interface{}) interface{} {
-	if len(val) == 0 {
+func (ctx *Ctx) Locals(key string, value ...interface{}) (val interface{}) {
+	if len(value) == 0 {
 		return ctx.Fasthttp.UserValue(key)
 	}
-	ctx.Fasthttp.SetUserValue(key, val[0])
-	return nil
+	ctx.Fasthttp.SetUserValue(key, value[0])
+	return value[0]
 }
 
 // Location : https://fiber.wiki/context#location
@@ -608,16 +595,16 @@ func (ctx *Ctx) OriginalURL() string {
 }
 
 // Params : https://fiber.wiki/context#params
-func (ctx *Ctx) Params(key string) string {
+func (ctx *Ctx) Params(key string) (value string) {
 	if ctx.params == nil {
-		return ""
+		return
 	}
 	for i := 0; i < len(*ctx.params); i++ {
 		if (*ctx.params)[i] == key {
 			return ctx.values[i]
 		}
 	}
-	return ""
+	return
 }
 
 // Path : https://fiber.wiki/context#path
@@ -634,7 +621,7 @@ func (ctx *Ctx) Protocol() string {
 }
 
 // Query : https://fiber.wiki/context#query
-func (ctx *Ctx) Query(key string) string {
+func (ctx *Ctx) Query(key string) (value string) {
 	return getString(ctx.Fasthttp.QueryArgs().Peek(key))
 }
 
@@ -658,18 +645,18 @@ func (ctx *Ctx) Redirect(path string, status ...int) {
 }
 
 // Render : https://fiber.wiki/context#render
-func (ctx *Ctx) Render(file string, data interface{}, e ...string) error {
+func (ctx *Ctx) Render(file string, bind interface{}, engine ...string) error {
 	var err error
 	var raw []byte
 	var html string
-	var engine string
+	var e string
 
-	if len(e) > 0 {
-		engine = e[0]
+	if len(engine) > 0 {
+		e = engine[0]
 	} else if ctx.app.Settings.ViewEngine != "" {
-		engine = ctx.app.Settings.ViewEngine
+		e = ctx.app.Settings.ViewEngine
 	} else {
-		engine = filepath.Ext(file)[1:]
+		e = filepath.Ext(file)[1:]
 	}
 	if ctx.app.Settings.ViewFolder != "" {
 		file = filepath.Join(ctx.app.Settings.ViewFolder, file)
@@ -681,7 +668,7 @@ func (ctx *Ctx) Render(file string, data interface{}, e ...string) error {
 		return err
 	}
 
-	switch engine {
+	switch e {
 	case "amber": // https://github.com/eknkc/amber
 		var buf bytes.Buffer
 		var tmpl *template.Template
@@ -689,17 +676,17 @@ func (ctx *Ctx) Render(file string, data interface{}, e ...string) error {
 		if tmpl, err = amber.Compile(getString(raw), amber.DefaultOptions); err != nil {
 			return err
 		}
-		if err = tmpl.Execute(&buf, data); err != nil {
+		if err = tmpl.Execute(&buf, bind); err != nil {
 			return err
 		}
 		html = buf.String()
 
 	case "handlebars": // https://github.com/aymerick/raymond
-		if html, err = handlebars.Render(getString(raw), data); err != nil {
+		if html, err = handlebars.Render(getString(raw), bind); err != nil {
 			return err
 		}
 	case "mustache": // https://github.com/cbroglie/mustache
-		if html, err = mustache.Render(getString(raw), data); err != nil {
+		if html, err = mustache.Render(getString(raw), bind); err != nil {
 			return err
 		}
 	case "pug": // https://github.com/Joker/jade
@@ -712,7 +699,7 @@ func (ctx *Ctx) Render(file string, data interface{}, e ...string) error {
 		if tmpl, err = template.New("").Parse(parsed); err != nil {
 			return err
 		}
-		if err = tmpl.Execute(&buf, data); err != nil {
+		if err = tmpl.Execute(&buf, bind); err != nil {
 			return err
 		}
 		html = buf.String()
@@ -724,7 +711,7 @@ func (ctx *Ctx) Render(file string, data interface{}, e ...string) error {
 		if tmpl, err = template.New("").Parse(getString(raw)); err != nil {
 			return err
 		}
-		if err = tmpl.Execute(&buf, data); err != nil {
+		if err = tmpl.Execute(&buf, bind); err != nil {
 			return err
 		}
 		html = buf.String()
@@ -740,8 +727,8 @@ func (ctx *Ctx) Route() *Route {
 }
 
 // SaveFile : https://fiber.wiki/context#secure
-func (ctx *Ctx) SaveFile(fh *multipart.FileHeader, path string) error {
-	return fasthttp.SaveMultipartFile(fh, path)
+func (ctx *Ctx) SaveFile(fileheader *multipart.FileHeader, path string) error {
+	return fasthttp.SaveMultipartFile(fileheader, path)
 }
 
 // Secure : https://fiber.wiki/context#secure
@@ -750,18 +737,19 @@ func (ctx *Ctx) Secure() bool {
 }
 
 // Send : https://fiber.wiki/context#send
-func (ctx *Ctx) Send(args ...interface{}) {
-	if len(args) == 0 {
-		return
+func (ctx *Ctx) Send(bodies ...interface{}) {
+	if len(bodies) > 0 {
+		ctx.Fasthttp.Response.SetBodyString("")
 	}
-
-	switch body := args[0].(type) {
-	case string:
-		ctx.Fasthttp.Response.SetBodyString(body)
-	case []byte:
-		ctx.Fasthttp.Response.SetBodyString(getString(body))
-	default:
-		ctx.Fasthttp.Response.SetBodyString(fmt.Sprintf("%v", body))
+	for i := range bodies {
+		switch body := bodies[i].(type) {
+		case string:
+			ctx.Fasthttp.Response.AppendBodyString(body)
+		case []byte:
+			ctx.Fasthttp.Response.AppendBodyString(getString(body))
+		default:
+			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
+		}
 	}
 }
 
@@ -803,14 +791,14 @@ func (ctx *Ctx) Set(key string, val string) {
 }
 
 // Subdomains : https://fiber.wiki/context#subdomains
-func (ctx *Ctx) Subdomains(offset ...int) (subs []string) {
+func (ctx *Ctx) Subdomains(offset ...int) (subdomains []string) {
 	o := 2
 	if len(offset) > 0 {
 		o = offset[0]
 	}
-	subs = strings.Split(ctx.Hostname(), ".")
-	subs = subs[:len(subs)-o]
-	return subs
+	subdomains = strings.Split(ctx.Hostname(), ".")
+	subdomains = subdomains[:len(subdomains)-o]
+	return subdomains
 }
 
 // SignedCookies : https://fiber.wiki/context#signedcookies
@@ -854,9 +842,9 @@ func (ctx *Ctx) Vary(fields ...string) {
 }
 
 // Write : https://fiber.wiki/context#write
-func (ctx *Ctx) Write(args ...interface{}) {
-	for i := range args {
-		switch body := args[i].(type) {
+func (ctx *Ctx) Write(bodies ...interface{}) {
+	for i := range bodies {
+		switch body := bodies[i].(type) {
 		case string:
 			ctx.Fasthttp.Response.AppendBodyString(body)
 		case []byte:

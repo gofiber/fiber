@@ -12,10 +12,10 @@ type Group struct {
 	app    *App
 }
 
-// Group ...
-func (app *App) Group(prefix string, args ...interface{}) *Group {
-	if len(args) > 0 {
-		app.register("USE", prefix, args...)
+// Group : https://fiber.wiki/application#group
+func (app *App) Group(prefix string, handlers ...interface{}) *Group {
+	if len(handlers) > 0 {
+		app.register("USE", prefix, handlers...)
 	}
 	return &Group{
 		prefix: prefix,
@@ -23,22 +23,22 @@ func (app *App) Group(prefix string, args ...interface{}) *Group {
 	}
 }
 
-// Group ...
-func (grp *Group) Group(newPrfx string, args ...interface{}) *Group {
-	var prefix = grp.prefix
-	if len(newPrfx) > 0 && newPrfx[0] != '/' && newPrfx[0] != '*' {
-		newPrfx = "/" + newPrfx
+// Group : https://fiber.wiki/application#group
+func (grp *Group) Group(prefix string, handlers ...interface{}) *Group {
+	var oldPrefix = grp.prefix
+	if len(prefix) > 0 && prefix[0] != '/' && prefix[0] != '*' {
+		prefix = "/" + prefix
 	}
 	// When grouping, always remove single slash
-	if len(prefix) > 0 && newPrfx == "/" {
-		newPrfx = ""
+	if len(oldPrefix) > 0 && prefix == "/" {
+		prefix = ""
 	}
 	// Prepent group prefix if exist
-	prefix = prefix + newPrfx
+	newPrefix := oldPrefix + prefix
 	// Clean path by removing double "//" => "/"
-	prefix = strings.Replace(prefix, "//", "/", -1)
-	if len(args) > 0 {
-		grp.app.register("USE", prefix, args...)
+	newPrefix = strings.Replace(newPrefix, "//", "/", -1)
+	if len(handlers) > 0 {
+		grp.app.register("USE", newPrefix, handlers...)
 	}
 	return &Group{
 		prefix: prefix,
@@ -46,79 +46,79 @@ func (grp *Group) Group(newPrfx string, args ...interface{}) *Group {
 	}
 }
 
-// Static ...
+// Static : https://fiber.wiki/application#static
 func (grp *Group) Static(args ...string) *Group {
 	grp.app.registerStatic(grp.prefix, args...)
 	return grp
 }
 
-// WebSocket ...
+// WebSocket : https://fiber.wiki/application#websocket
 func (grp *Group) WebSocket(args ...interface{}) *Group {
 	grp.app.register("GET", grp.prefix, args...)
 	return grp
 }
 
-// Connect ...
+// Connect : https://fiber.wiki/application#http-methods
 func (grp *Group) Connect(args ...interface{}) *Group {
 	grp.app.register("CONNECT", grp.prefix, args...)
 	return grp
 }
 
-// Put ...
+// Put : https://fiber.wiki/application#http-methods
 func (grp *Group) Put(args ...interface{}) *Group {
 	grp.app.register("PUT", grp.prefix, args...)
 	return grp
 }
 
-// Post ...
+// Post : https://fiber.wiki/application#http-methods
 func (grp *Group) Post(args ...interface{}) *Group {
 	grp.app.register("POST", grp.prefix, args...)
 	return grp
 }
 
-// Delete ...
+// Delete : https://fiber.wiki/application#http-methods
 func (grp *Group) Delete(args ...interface{}) *Group {
 	grp.app.register("DELETE", grp.prefix, args...)
 	return grp
 }
 
-// Head ...
+// Head : https://fiber.wiki/application#http-methods
 func (grp *Group) Head(args ...interface{}) *Group {
 	grp.app.register("HEAD", grp.prefix, args...)
 	return grp
 }
 
-// Patch ...
+// Patch : https://fiber.wiki/application#http-methods
 func (grp *Group) Patch(args ...interface{}) *Group {
 	grp.app.register("PATCH", grp.prefix, args...)
 	return grp
 }
 
-// Options ...
+// Options : https://fiber.wiki/application#http-methods
 func (grp *Group) Options(args ...interface{}) *Group {
 	grp.app.register("OPTIONS", grp.prefix, args...)
 	return grp
 }
 
-// Trace ...
+// Trace : https://fiber.wiki/application#http-methods
 func (grp *Group) Trace(args ...interface{}) *Group {
 	grp.app.register("TRACE", grp.prefix, args...)
 	return grp
 }
 
-// Get ...
+// Get : https://fiber.wiki/application#http-methods
 func (grp *Group) Get(args ...interface{}) *Group {
 	grp.app.register("GET", grp.prefix, args...)
 	return grp
 }
 
-// All ...
+// All : https://fiber.wiki/application#http-methods
 func (grp *Group) All(args ...interface{}) *Group {
 	grp.app.register("ALL", grp.prefix, args...)
 	return grp
 }
 
-// Use ...
+// Use : https://fiber.wiki/application#http-methods
 func (grp *Group) Use(args ...interface{}) *Group {
 	grp.app.register("USE", grp.prefix, args...)
 	return grp

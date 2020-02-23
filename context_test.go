@@ -129,7 +129,6 @@ func Test_BaseURL(t *testing.T) {
 func Test_Body(t *testing.T) {
 	app := New()
 	app.Post("/test", func(c *Ctx) {
-		c.Body(1)
 		expect := "john=doe"
 		result := c.Body()
 		if result != expect {
@@ -140,21 +139,6 @@ func Test_Body(t *testing.T) {
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
-		expect = "doe"
-		result = c.Body([]byte("john"))
-		if result != expect {
-			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
-		}
-		c.Body(func(k, v string) {
-			expect = "john"
-			if k != "john" {
-				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, k)
-			}
-			expect = "doe"
-			if v != "doe" {
-				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, v)
-			}
-		})
 	})
 	data := url.Values{}
 	data.Set("john", "doe")
