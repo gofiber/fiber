@@ -41,7 +41,7 @@ func (grp *Group) Group(prefix string, handlers ...interface{}) *Group {
 		grp.app.register("USE", newPrefix, handlers...)
 	}
 	return &Group{
-		prefix: prefix,
+		prefix: newPrefix,
 		app:    grp.app,
 	}
 }
