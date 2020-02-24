@@ -334,7 +334,7 @@ func main() {
 ## 💬 Медиа
 
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) (_by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_)
-- [Fiber official release is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
+- [Fiber release v1.7 is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
 
 ## 👍 Помощь проекту
 
@@ -361,7 +361,7 @@ func main() {
     <td align="center">
       <a href="https://github.com/koddr">
         <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="100px"></br>
-        <sub><b>Vic Shóstak</b></sub>
+        <sub><b>Vic&nbsp;Shóstak</b></sub>
       </a>
     </td>
     <td align="center">
