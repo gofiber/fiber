@@ -345,8 +345,11 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 }
 
 // Cookies : https://fiber.wiki/context#cookies
-func (ctx *Ctx) Cookies(name string) (value string) {
-	return getString(ctx.Fasthttp.Request.Header.Cookie(name))
+func (ctx *Ctx) Cookies(key ...string) (value string) {
+	if len(key) == 0 {
+		return ctx.Get(fasthttp.HeaderCookie)
+	}
+	return getString(ctx.Fasthttp.Request.Header.Cookie(key[0]))
 }
 
 // Download : https://fiber.wiki/context#download
