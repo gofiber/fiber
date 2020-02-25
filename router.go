@@ -278,7 +278,11 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	if app.recover != nil {
 		defer func() {
 			if r := recover(); r != nil {
-				ctx.error = fmt.Errorf("panic: %v", r)
+				err, ok := r.(error)
+				if !ok {
+					err = fmt.Errorf("%v", r)
+				}
+				ctx.error = err
 				app.recover(ctx)
 			}
 		}()
