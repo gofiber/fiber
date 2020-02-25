@@ -72,19 +72,27 @@ type (
 	}
 )
 
-var prefork = flag.Bool("fiber-prefork", false, "use prefork")
-var child = flag.Bool("fiber-child", false, "is child process")
+var prefork bool
+var child bool
 
-// New: https://fiber.wiki/application#new
+func init() {
+	// https://stackoverflow.com/questions/49193480/golang-flag-redefined
+	regBoolVar(&prefork, "fiber-prefork", false, "use prefork")
+	regBoolVar(&child, "fiber-child", false, "is child process")
+}
+
+// New : https://fiber.wiki/application#new
 func New(settings ...*Settings) (app *App) {
 	flag.Parse()
+	prefork = getBoolFlag("fiber-prefork")
+	child = getBoolFlag("fiber-child")
 	app = &App{
-		child: *child,
+		child: child,
 	}
 	if len(settings) > 0 {
 		opt := settings[0]
 		if !opt.Prefork {
-			opt.Prefork = *prefork
+			opt.Prefork = prefork
 		}
 		if opt.Concurrency == 0 {
 			opt.Concurrency = 256 * 1024
@@ -102,7 +110,7 @@ func New(settings ...*Settings) (app *App) {
 		return
 	}
 	app.Settings = &Settings{
-		Prefork:            *prefork,
+		Prefork:            prefork,
 		Concurrency:        256 * 1024,
 		ReadBufferSize:     4096,
 		WriteBufferSize:    4096,
