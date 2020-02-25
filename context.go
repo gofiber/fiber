@@ -115,14 +115,13 @@ func releaseConn(conn *Conn) {
 
 // Cookie : struct
 type Cookie struct {
-	Expire int // time.Unix(1578981376, 0)
-	MaxAge int
-	Domain string
-	Path   string
-
-	HTTPOnly bool
+	Name     string
+	Value    string
+	Path     string
+	Domain   string
+	Expires  time.Time
 	Secure   bool
-	SameSite string
+	HTTPOnly bool
 }
 
 // Accepts : https://fiber.wiki/context#accepts
@@ -333,75 +332,21 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 }
 
 // Cookie : https://fiber.wiki/context#cookie
-func (ctx *Ctx) Cookie(key, value string, options ...interface{}) {
-	cook := &fasthttp.Cookie{}
-
-	cook.SetKey(key)
-	cook.SetValue(value)
-
-	if len(options) > 0 {
-		switch opt := options[0].(type) {
-		case *Cookie:
-			if opt.Expire > 0 {
-				cook.SetExpire(time.Unix(int64(opt.Expire), 0))
-			}
-			if opt.MaxAge > 0 {
-				cook.SetMaxAge(opt.MaxAge)
-			}
-			if opt.Domain != "" {
-				cook.SetDomain(opt.Domain)
-			}
-			if opt.Path != "" {
-				cook.SetPath(opt.Path)
-			}
-			if opt.HTTPOnly {
-				cook.SetHTTPOnly(opt.HTTPOnly)
-			}
-			if opt.Secure {
-				cook.SetSecure(opt.Secure)
-			}
-			if opt.SameSite != "" {
-				sameSite := fasthttp.CookieSameSiteDefaultMode
-				if strings.EqualFold(opt.SameSite, "lax") {
-					sameSite = fasthttp.CookieSameSiteLaxMode
-				} else if strings.EqualFold(opt.SameSite, "strict") {
-					sameSite = fasthttp.CookieSameSiteStrictMode
-				} else if strings.EqualFold(opt.SameSite, "none") {
-					sameSite = fasthttp.CookieSameSiteNoneMode
-				}
-				// } else {
-				// 	sameSite = fasthttp.CookieSameSiteDisabled
-				// }
-				cook.SetSameSite(sameSite)
-			}
-		default:
-			log.Println("Cookie: Invalid &Cookie{} struct")
-		}
-	}
-
-	ctx.Fasthttp.Response.Header.SetCookie(cook)
+func (ctx *Ctx) Cookie(cookie *Cookie) {
+	fcookie := &fasthttp.Cookie{}
+	fcookie.SetKey(cookie.Name)
+	fcookie.SetValue(cookie.Value)
+	fcookie.SetPath(cookie.Path)
+	fcookie.SetDomain(cookie.Domain)
+	fcookie.SetExpire(cookie.Expires)
+	fcookie.SetSecure(cookie.Secure)
+	fcookie.SetHTTPOnly(cookie.HTTPOnly)
+	ctx.Fasthttp.Response.Header.SetCookie(fcookie)
 }
 
 // Cookies : https://fiber.wiki/context#cookies
-func (ctx *Ctx) Cookies(args ...interface{}) string {
-	if len(args) == 0 {
-		return ctx.Get(fasthttp.HeaderCookie)
-	}
-
-	switch arg := args[0].(type) {
-	case string:
-		return getString(ctx.Fasthttp.Request.Header.Cookie(arg))
-	case []byte:
-		return getString(ctx.Fasthttp.Request.Header.CookieBytes(arg))
-	case func(string, string):
-		ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-			arg(getString(k), getString(v))
-		})
-	default:
-		return ctx.Get(fasthttp.HeaderCookie)
-	}
-
-	return ""
+func (ctx *Ctx) Cookies(name string) (value string) {
+	return getString(ctx.Fasthttp.Request.Header.Cookie(name))
 }
 
 // Download : https://fiber.wiki/context#download
@@ -802,7 +747,7 @@ func (ctx *Ctx) Subdomains(offset ...int) []string {
 	return subdomains
 }
 
-// SignedCookies : https://fiber.wiki/context#signedcookies
+// Signeds : https://fiber.wiki/context#signedcookies
 func (ctx *Ctx) SignedCookies() {
 
 }
