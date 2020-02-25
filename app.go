@@ -46,6 +46,8 @@ type (
 		CaseSensitive bool `default:"false"`
 		// Enables the "Server: value" HTTP header.
 		ServerHeader string `default:""`
+		// Enables handler values to be immutable even if you return from handler
+		Immutable bool `default:"false"`
 		// fasthttp settings
 		GETOnly              bool          `default:"false"`
 		IdleTimeout          time.Duration `default:"0"`
@@ -72,20 +74,22 @@ type (
 	}
 )
 
-var prefork bool
-var child bool
-
 func init() {
-	// https://stackoverflow.com/questions/49193480/golang-flag-redefined
-	regBoolVar(&prefork, "fiber-prefork", false, "use prefork")
-	regBoolVar(&child, "fiber-child", false, "is child process")
+	flag.Bool("prefork", false, "Use prefork")
+	flag.Bool("child", false, "Is a child process")
 }
 
 // New : https://fiber.wiki/application#new
 func New(settings ...*Settings) (app *App) {
-	flag.Parse()
-	prefork = getBoolFlag("fiber-prefork")
-	child = getBoolFlag("fiber-child")
+	var prefork bool
+	var child bool
+	for _, arg := range os.Args[1:] {
+		if arg == "-prefork" {
+			prefork = true
+		} else if arg == "-child" {
+			child = true
+		}
+	}
 	app = &App{
 		child: child,
 	}
@@ -93,6 +97,11 @@ func New(settings ...*Settings) (app *App) {
 		opt := settings[0]
 		if !opt.Prefork {
 			opt.Prefork = prefork
+		}
+		if opt.Immutable {
+			getString = func(b []byte) string {
+				return string(b)
+			}
 		}
 		if opt.Concurrency == 0 {
 			opt.Concurrency = 256 * 1024
@@ -307,11 +316,11 @@ func (app *App) Test(request *http.Request) (*http.Response, error) {
 func (app *App) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
 	if !app.child {
-		addr, err := net.ResolveTCPAddr("tcp", address)
+		addr, err := net.ResolveTCPAddr("tcp4", address)
 		if err != nil {
 			return ln, err
 		}
-		tcplistener, err := net.ListenTCP("tcp", addr)
+		tcplistener, err := net.ListenTCP("tcp4", addr)
 		if err != nil {
 			return ln, err
 		}
@@ -319,14 +328,14 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 		if err != nil {
 			return ln, err
 		}
+		files := []*os.File{fl}
 		childs := make([]*exec.Cmd, runtime.NumCPU()/2)
-
 		// #nosec G204
 		for i := range childs {
-			childs[i] = exec.Command(os.Args[0], "-fiber-prefork", "-fiber-child")
+			childs[i] = exec.Command(os.Args[0], append(os.Args[1:], "-prefork", "-child")...)
 			childs[i].Stdout = os.Stdout
 			childs[i].Stderr = os.Stderr
-			childs[i].ExtraFiles = []*os.File{fl}
+			childs[i].ExtraFiles = files
 			if err := childs[i].Start(); err != nil {
 				return ln, err
 			}
@@ -339,6 +348,7 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 		}
 		os.Exit(0)
 	} else {
+		runtime.GOMAXPROCS(1)
 		ln, err = net.FileListener(os.NewFile(3, ""))
 	}
 	return ln, err

@@ -126,7 +126,7 @@ func getStatus(status int) (msg string) {
 // #nosec G103
 // getString converts byte slice to a string without memory allocation.
 // See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-func getString(b []byte) (s string) {
+var getString = func(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 

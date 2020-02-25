@@ -7,7 +7,6 @@ package fiber
 import (
 	"encoding/xml"
 	"fmt"
-	// "html/template"
 	"io/ioutil"
 	"log"
 	"mime"
