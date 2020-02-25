@@ -5,10 +5,9 @@
 package fiber
 
 import (
-	"bytes"
 	"encoding/xml"
 	"fmt"
-	"html/template"
+	// "html/template"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -19,14 +18,8 @@ import (
 	"sync"
 	"time"
 
-	// templates
-	pug "github.com/Joker/jade"
-	handlebars "github.com/aymerick/raymond"
-	mustache "github.com/cbroglie/mustache"
-	amber "github.com/eknkc/amber"
-
-	// core
 	websocket "github.com/fasthttp/websocket"
+	template "github.com/gofiber/template"
 	jsoniter "github.com/json-iterator/go"
 	fasthttp "github.com/valyala/fasthttp"
 )
@@ -619,51 +612,25 @@ func (ctx *Ctx) Render(file string, bind interface{}, engine ...string) error {
 
 	switch e {
 	case "amber": // https://github.com/eknkc/amber
-		var buf bytes.Buffer
-		var tmpl *template.Template
-
-		if tmpl, err = amber.Compile(getString(raw), amber.DefaultOptions); err != nil {
+		if html, err = template.Amber(getString(raw), bind); err != nil {
 			return err
 		}
-		if err = tmpl.Execute(&buf, bind); err != nil {
-			return err
-		}
-		html = buf.String()
-
 	case "handlebars": // https://github.com/aymerick/raymond
-		if html, err = handlebars.Render(getString(raw), bind); err != nil {
+		if html, err = template.Handlebars(getString(raw), bind); err != nil {
 			return err
 		}
 	case "mustache": // https://github.com/cbroglie/mustache
-		if html, err = mustache.Render(getString(raw), bind); err != nil {
+		if html, err = template.Mustache(getString(raw), bind); err != nil {
 			return err
 		}
 	case "pug": // https://github.com/Joker/jade
-		var parsed string
-		var buf bytes.Buffer
-		var tmpl *template.Template
-		if parsed, err = pug.Parse("", raw); err != nil {
+		if html, err = template.Pug(getString(raw), bind); err != nil {
 			return err
 		}
-		if tmpl, err = template.New("").Parse(parsed); err != nil {
-			return err
-		}
-		if err = tmpl.Execute(&buf, bind); err != nil {
-			return err
-		}
-		html = buf.String()
-
 	default: // https://golang.org/pkg/text/template/
-		var buf bytes.Buffer
-		var tmpl *template.Template
-
-		if tmpl, err = template.New("").Parse(getString(raw)); err != nil {
+		if html, err = template.HTML(getString(raw), bind); err != nil {
 			return err
 		}
-		if err = tmpl.Execute(&buf, bind); err != nil {
-			return err
-		}
-		html = buf.String()
 	}
 	ctx.Set("Content-Type", "text/html")
 	ctx.SendString(html)
@@ -748,11 +715,6 @@ func (ctx *Ctx) Subdomains(offset ...int) []string {
 	subdomains := strings.Split(ctx.Hostname(), ".")
 	subdomains = subdomains[:len(subdomains)-o]
 	return subdomains
-}
-
-// Signeds : https://fiber.wiki/context#signedcookies
-func (ctx *Ctx) SignedCookies() {
-
 }
 
 // Stale : https://fiber.wiki/context#stale

@@ -590,20 +590,6 @@ func Test_Secure(t *testing.T) {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
-func Test_SignedCookies(t *testing.T) {
-	app := New()
-	app.Get("/test", func(c *Ctx) {
-		c.SignedCookies()
-	})
-	req, _ := http.NewRequest("GET", "/test", nil)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf(`%s: %s`, t.Name(), err)
-	}
-	if resp.StatusCode != 200 {
-		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
-	}
-}
 func Test_Stale(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
