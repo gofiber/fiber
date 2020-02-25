@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -125,7 +126,7 @@ func getStatus(status int) (msg string) {
 // #nosec G103
 // getString converts byte slice to a string without memory allocation.
 // See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-func getString(b []byte) string {
+func getString(b []byte) (s string) {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
@@ -134,6 +135,16 @@ func getString(b []byte) string {
 // See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
 func getBytes(s string) (b []byte) {
 	return *(*[]byte)(unsafe.Pointer(&s))
+}
+
+// https://stackoverflow.com/questions/49193480/golang-flag-redefined
+func regBoolVar(p *bool, name string, value bool, usage string) {
+	if flag.Lookup(name) == nil {
+		flag.BoolVar(p, name, value, usage)
+	}
+}
+func getBoolFlag(name string) bool {
+	return flag.Lookup(name).Value.(flag.Getter).Get().(bool)
 }
 
 // https://golang.org/src/net/net.go#L113
