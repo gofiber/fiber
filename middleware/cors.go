@@ -15,7 +15,7 @@ type CORSConfig struct {
 	// Optional. Default value []string{"*"}.
 	AllowOrigins []string
 
-	// Optional. Default value DefaultCORSConfig.AllowMethods.
+	// Optional. Default value []string{"GET","POST","HEAD","PUT","DELETE","PATCH"}
 	AllowMethods []string
 
 	// Optional. Default value []string{}.
@@ -31,36 +31,33 @@ type CORSConfig struct {
 	MaxAge int
 }
 
-var defaultCORSConfig = CORSConfig{
-	AllowOrigins: []string{"*"},
-	AllowMethods: []string{
-		fiber.MethodGet,
-		fiber.MethodPost,
-		fiber.MethodHead,
-		fiber.MethodPut,
-		fiber.MethodDelete,
-		fiber.MethodPatch,
-	},
-}
-
 // Cors ...
 func Cors(config ...CORSConfig) func(*fiber.Ctx) {
-	// Init config, if any...
+	// Init config
 	var cfg CORSConfig
+	// Set config if provided
 	if len(config) > 0 {
 		cfg = config[0]
 	}
 	if len(cfg.AllowOrigins) == 0 {
-		cfg.AllowOrigins = defaultCORSConfig.AllowOrigins
+		cfg.AllowOrigins = []string{"*"}
 	}
 	if len(cfg.AllowMethods) == 0 {
-		cfg.AllowMethods = defaultCORSConfig.AllowMethods
+		cfg.AllowMethods = []string{
+			fiber.MethodGet,
+			fiber.MethodPost,
+			fiber.MethodHead,
+			fiber.MethodPut,
+			fiber.MethodDelete,
+			fiber.MethodPatch,
+		}
 	}
+	// Parse some values
 	allowMethods := strings.Join(cfg.AllowMethods, ",")
 	allowHeaders := strings.Join(cfg.AllowHeaders, ",")
 	exposeHeaders := strings.Join(cfg.ExposeHeaders, ",")
 	maxAge := strconv.Itoa(cfg.MaxAge)
-
+	// Return middleware handler
 	return func(c *fiber.Ctx) {
 		origin := c.Get(fiber.HeaderOrigin)
 		allowOrigin := ""

@@ -11,7 +11,6 @@ import (
 
 // SecureConfig ...
 type SecureConfig struct {
-
 	// Optional. Default value "1; mode=block".
 	XSSProtection string `yaml:"xss_protection"`
 
@@ -44,30 +43,24 @@ type SecureConfig struct {
 	ReferrerPolicy string `yaml:"referrer_policy"`
 }
 
-var defaultSecureConfig = SecureConfig{
-	XSSProtection:      "1; mode=block",
-	ContentTypeNosniff: "nosniff",
-	XFrameOptions:      "SAMEORIGIN",
-	HSTSPreloadEnabled: false,
-}
-
 // Secure ...
 func Secure(config ...SecureConfig) func(*fiber.Ctx) {
-	// Init config, if any...
+	// Init config
 	var cfg SecureConfig
+	// Set config if provided
 	if len(config) > 0 {
 		cfg = config[0]
 	}
 	if cfg.XSSProtection == "" {
-		cfg.XSSProtection = defaultSecureConfig.XSSProtection
+		cfg.XSSProtection = "1; mode=block"
 	}
 	if cfg.ContentTypeNosniff == "" {
-		cfg.ContentTypeNosniff = defaultSecureConfig.ContentTypeNosniff
+		cfg.ContentTypeNosniff = "nosniff"
 	}
 	if cfg.XFrameOptions == "" {
-		cfg.XFrameOptions = defaultSecureConfig.XFrameOptions
+		cfg.XFrameOptions = "SAMEORIGIN"
 	}
-
+	// Return middleware handler
 	return func(c *fiber.Ctx) {
 		if cfg.XSSProtection != "" {
 			c.Set(fiber.HeaderXXSSProtection, cfg.XSSProtection)

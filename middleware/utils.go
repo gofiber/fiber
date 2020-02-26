@@ -1,6 +1,8 @@
 package middleware
 
-import "strings"
+import (
+	"strings"
+)
 
 // Source: https://github.com/labstack/echo/blob/master/middleware/util.go
 
