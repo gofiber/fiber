@@ -29,21 +29,6 @@ var socketUpgrade = websocket.FastHTTPUpgrader{
 	},
 }
 
-// MIME types
-const (
-	MIMEApplicationJSON       = "application/json"
-	MIMEApplicationJavaScript = "application/javascript"
-	MIMEApplicationXML        = "application/xml"
-	MIMETextXML               = "text/xml"
-	MIMEApplicationForm       = "application/x-www-form-urlencoded"
-	MIMEApplicationProtobuf   = "application/protobuf"
-	MIMEApplicationMsgpack    = "application/msgpack"
-	MIMETextHTML              = "text/html"
-	MIMETextPlain             = "text/plain"
-	MIMEMultipartForm         = "multipart/form-data"
-	MIMEOctetStream           = "application/octet-stream"
-)
-
 func getParams(path string) (params []string) {
 	if len(path) < 1 {
 		return
@@ -157,6 +142,33 @@ func (c *testConn) SetDeadline(t time.Time) error      { return nil }
 func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
 
+// HTTP Methods
+const (
+	MethodGet     = "GET"
+	MethodHead    = "HEAD"
+	MethodPut     = "PUT"
+	MethodPatch   = "PATCH"
+	MethodPost    = "POST"
+	MethodDelete  = "DELETE"
+	MethodOptions = "OPTIONS"
+	MethodTrace   = "TRACE"
+)
+
+// MIME types
+const (
+	MIMEApplicationJSON       = "application/json"
+	MIMEApplicationJavaScript = "application/javascript"
+	MIMEApplicationXML        = "application/xml"
+	MIMETextXML               = "text/xml"
+	MIMEApplicationForm       = "application/x-www-form-urlencoded"
+	MIMEApplicationProtobuf   = "application/protobuf"
+	MIMEApplicationMsgpack    = "application/msgpack"
+	MIMETextHTML              = "text/html"
+	MIMETextPlain             = "text/plain"
+	MIMEMultipartForm         = "multipart/form-data"
+	MIMEOctetStream           = "application/octet-stream"
+)
+
 // HTTP status codes
 var statusMessage = map[int]string{
 	100: "Continue",
@@ -221,7 +233,7 @@ var statusMessage = map[int]string{
 	511: "Network Authentication Required",
 }
 
-// MIME types for file extensions
+// File extensions MIME types
 var extensionMIME = map[string]string{
 	"html":    "text/html",
 	"htm":     "text/html",
@@ -329,3 +341,126 @@ var extensionMIME = map[string]string{
 	"wmv":     "video/x-ms-wmv",
 	"avi":     "video/x-msvideo",
 }
+
+// HTTP Headers
+// https://github.com/valyala/fasthttp/blob/master/headers.go
+const (
+	HeaderAuthorization                   = "Authorization"
+	HeaderProxyAuthenticate               = "Proxy-Authenticate"
+	HeaderProxyAuthorization              = "Proxy-Authorization"
+	HeaderWWWAuthenticate                 = "WWW-Authenticate"
+	HeaderAge                             = "Age"
+	HeaderCacheControl                    = "Cache-Control"
+	HeaderClearSiteData                   = "Clear-Site-Data"
+	HeaderExpires                         = "Expires"
+	HeaderPragma                          = "Pragma"
+	HeaderWarning                         = "Warning"
+	HeaderAcceptCH                        = "Accept-CH"
+	HeaderAcceptCHLifetime                = "Accept-CH-Lifetime"
+	HeaderContentDPR                      = "Content-DPR"
+	HeaderDPR                             = "DPR"
+	HeaderEarlyData                       = "Early-Data"
+	HeaderSaveData                        = "Save-Data"
+	HeaderViewportWidth                   = "Viewport-Width"
+	HeaderWidth                           = "Width"
+	HeaderETag                            = "ETag"
+	HeaderIfMatch                         = "If-Match"
+	HeaderIfModifiedSince                 = "If-Modified-Since"
+	HeaderIfNoneMatch                     = "If-None-Match"
+	HeaderIfUnmodifiedSince               = "If-Unmodified-Since"
+	HeaderLastModified                    = "Last-Modified"
+	HeaderVary                            = "Vary"
+	HeaderConnection                      = "Connection"
+	HeaderKeepAlive                       = "Keep-Alive"
+	HeaderAccept                          = "Accept"
+	HeaderAcceptCharset                   = "Accept-Charset"
+	HeaderAcceptEncoding                  = "Accept-Encoding"
+	HeaderAcceptLanguage                  = "Accept-Language"
+	HeaderCookie                          = "Cookie"
+	HeaderExpect                          = "Expect"
+	HeaderMaxForwards                     = "Max-Forwards"
+	HeaderSetCookie                       = "Set-Cookie"
+	HeaderAccessControlAllowCredentials   = "Access-Control-Allow-Credentials"
+	HeaderAccessControlAllowHeaders       = "Access-Control-Allow-Headers"
+	HeaderAccessControlAllowMethods       = "Access-Control-Allow-Methods"
+	HeaderAccessControlAllowOrigin        = "Access-Control-Allow-Origin"
+	HeaderAccessControlExposeHeaders      = "Access-Control-Expose-Headers"
+	HeaderAccessControlMaxAge             = "Access-Control-Max-Age"
+	HeaderAccessControlRequestHeaders     = "Access-Control-Request-Headers"
+	HeaderAccessControlRequestMethod      = "Access-Control-Request-Method"
+	HeaderOrigin                          = "Origin"
+	HeaderTimingAllowOrigin               = "Timing-Allow-Origin"
+	HeaderXPermittedCrossDomainPolicies   = "X-Permitted-Cross-Domain-Policies"
+	HeaderDNT                             = "DNT"
+	HeaderTk                              = "Tk"
+	HeaderContentDisposition              = "Content-Disposition"
+	HeaderContentEncoding                 = "Content-Encoding"
+	HeaderContentLanguage                 = "Content-Language"
+	HeaderContentLength                   = "Content-Length"
+	HeaderContentLocation                 = "Content-Location"
+	HeaderContentType                     = "Content-Type"
+	HeaderForwarded                       = "Forwarded"
+	HeaderVia                             = "Via"
+	HeaderXForwardedFor                   = "X-Forwarded-For"
+	HeaderXForwardedHost                  = "X-Forwarded-Host"
+	HeaderXForwardedProto                 = "X-Forwarded-Proto"
+	HeaderLocation                        = "Location"
+	HeaderFrom                            = "From"
+	HeaderHost                            = "Host"
+	HeaderReferer                         = "Referer"
+	HeaderReferrerPolicy                  = "Referrer-Policy"
+	HeaderUserAgent                       = "User-Agent"
+	HeaderAllow                           = "Allow"
+	HeaderServer                          = "Server"
+	HeaderAcceptRanges                    = "Accept-Ranges"
+	HeaderContentRange                    = "Content-Range"
+	HeaderIfRange                         = "If-Range"
+	HeaderRange                           = "Range"
+	HeaderContentSecurityPolicy           = "Content-Security-Policy"
+	HeaderContentSecurityPolicyReportOnly = "Content-Security-Policy-Report-Only"
+	HeaderCrossOriginResourcePolicy       = "Cross-Origin-Resource-Policy"
+	HeaderExpectCT                        = "Expect-CT"
+	HeaderFeaturePolicy                   = "Feature-Policy"
+	HeaderPublicKeyPins                   = "Public-Key-Pins"
+	HeaderPublicKeyPinsReportOnly         = "Public-Key-Pins-Report-Only"
+	HeaderStrictTransportSecurity         = "Strict-Transport-Security"
+	HeaderUpgradeInsecureRequests         = "Upgrade-Insecure-Requests"
+	HeaderXContentTypeOptions             = "X-Content-Type-Options"
+	HeaderXDownloadOptions                = "X-Download-Options"
+	HeaderXFrameOptions                   = "X-Frame-Options"
+	HeaderXPoweredBy                      = "X-Powered-By"
+	HeaderXXSSProtection                  = "X-XSS-Protection"
+	HeaderLastEventID                     = "Last-Event-ID"
+	HeaderNEL                             = "NEL"
+	HeaderPingFrom                        = "Ping-From"
+	HeaderPingTo                          = "Ping-To"
+	HeaderReportTo                        = "Report-To"
+	HeaderTE                              = "TE"
+	HeaderTrailer                         = "Trailer"
+	HeaderTransferEncoding                = "Transfer-Encoding"
+	HeaderSecWebSocketAccept              = "Sec-WebSocket-Accept"
+	HeaderSecWebSocketExtensions          = "Sec-WebSocket-Extensions"
+	HeaderSecWebSocketKey                 = "Sec-WebSocket-Key"
+	HeaderSecWebSocketProtocol            = "Sec-WebSocket-Protocol"
+	HeaderSecWebSocketVersion             = "Sec-WebSocket-Version"
+	HeaderAcceptPatch                     = "Accept-Patch"
+	HeaderAcceptPushPolicy                = "Accept-Push-Policy"
+	HeaderAcceptSignature                 = "Accept-Signature"
+	HeaderAltSvc                          = "Alt-Svc"
+	HeaderDate                            = "Date"
+	HeaderIndex                           = "Index"
+	HeaderLargeAllocation                 = "Large-Allocation"
+	HeaderLink                            = "Link"
+	HeaderPushPolicy                      = "Push-Policy"
+	HeaderRetryAfter                      = "Retry-After"
+	HeaderServerTiming                    = "Server-Timing"
+	HeaderSignature                       = "Signature"
+	HeaderSignedHeaders                   = "Signed-Headers"
+	HeaderSourceMap                       = "SourceMap"
+	HeaderUpgrade                         = "Upgrade"
+	HeaderXDNSPrefetchControl             = "X-DNS-Prefetch-Control"
+	HeaderXPingback                       = "X-Pingback"
+	HeaderXRequestedWith                  = "X-Requested-With"
+	HeaderXRobotsTag                      = "X-Robots-Tag"
+	HeaderXUACompatible                   = "X-UA-Compatible"
+)
