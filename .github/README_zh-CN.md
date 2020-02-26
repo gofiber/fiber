@@ -54,7 +54,7 @@
   </a>
 </p>
 <p align="center">
-  <strong>Fiber</strong>是一个基于<a href="https://github.com/expressjs/express">Express的</a> <strong>Web框架，<strong>建立在<a href="https://github.com/valyala/fasthttp">Fasthttp</a> （ <a href="https://golang.org/doc/">Go</a> <strong>最快的</strong> HTTP引擎）的基础上。皆在</strong>简化</strong> <strong>零内存分配</strong>和<strong>提高性能</strong>，以便<strong>快速</strong>开发。
+  <b>Fiber</b>是一个基于<a href="https://github.com/expressjs/express">Express的</a> <b>Web框架</b>，建立在<a href="https://golang.org/doc/">Go</a>语言写的 <b>最快的</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>HTTP引擎的基础上。皆在</b>简化</b> <b>零内存分配</b>和<b>提高性能</b>，以便<b>快速</b>开发。
 </p>
 
 ## ⚡️ 快速入门
@@ -82,6 +82,7 @@ func main() {
 使用[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)命令完成安装：
 
 ```bash
+export GO111MODULE=on
 export GOPROXY=https://goproxy.cn
 go get github.com/gofiber/fiber
 ```
@@ -109,36 +110,15 @@ go get github.com/gofiber/fiber
 
 ## 💡 哲学
 
-从[Node.js](https://nodejs.org/en/about/)切换到[Go的](https://golang.org/doc/)新gopher在开始构建Web应用程序或微服务之前正在应对学习过程。 Fiber作为一个**Web框架** ，是按照**极简主义**的思想并遵循**UNIX方式创建的** ，因此新的gopher可以以热烈和可信赖的欢迎**方式**迅速进入Go的世界。
+从[Node.js](https://nodejs.org/en/about/)切换到[Go的](https://golang.org/doc/)新gopher在开始构建Web应用程序或微服务之前正在应对学习过程。 Fiber作为一个**Web框架** ，是按照**极简主义**的思想并遵循**UNIX方式创建的**，因此新的gopher可以以热烈和可信赖的欢迎**方式**迅速进入Go的世界。
 
-Fiber **受** Internet上最流行的Web框架Expressjs的**启发** 。我们结合了Express的**易用**性和Go的**原始性能** 。如果您曾经在Node.js上实现过Web应用程序（ *使用Express.js或类似工具* ），那么许多方法和原理对您来说似乎**非常易懂** 。
+Fiber **受** Internet上最流行的Web框架Expressjs的**启发** 。我们结合了Express的**易用**性和Go的**原始性能** 。如果您曾经在Node.js上实现过Web应用程序(*使用Express.js或类似工具*)，那么许多方法和原理对您来说似乎**非常易懂**。
 
-## 👀 例子
+## 👀 示例
 
 下面列出了一些常见示例。如果您想查看更多代码示例，请访问我们的[Recipes存储库](https://github.com/gofiber/recipes)或访问我们的[API文档](https://fiber.wiki) 。
 
-### Serve static files
-
-```go
-func main() {
-  app := fiber.New()
-
-  app.Static("/public")
-  // => http://localhost:3000/js/script.js
-  // => http://localhost:3000/css/style.css
-
-  app.Static("/prefix", "/public")
-  // => http://localhost:3000/prefix/js/script.js
-  // => http://localhost:3000/prefix/css/style.css
-
-  app.Static("*", "/public/index.html")
-  // => http://localhost:3000/any/path/shows/index/html
-
-  app.Listen(3000)
-}
-```
-
-### Routing
+### 路由
 
 ```go
 func main() {
@@ -166,7 +146,28 @@ func main() {
 }
 ```
 
-### Middleware & Next
+### 静态文件
+
+```go
+func main() {
+  app := fiber.New()
+
+  app.Static("/public")
+  // => http://localhost:3000/js/script.js
+  // => http://localhost:3000/css/style.css
+
+  app.Static("/prefix", "/public")
+  // => http://localhost:3000/prefix/js/script.js
+  // => http://localhost:3000/prefix/css/style.css
+
+  app.Static("*", "/public/index.html")
+  // => http://localhost:3000/any/path/shows/index/html
+
+  app.Listen(3000)
+}
+```
+
+### 中间件
 
 ```go
 func main() {
@@ -195,9 +196,68 @@ func main() {
 ```
 
 <details>
-  <summary>📜 Show more code examples</summary>
+  <summary>📚 显示更多代码示例</summary>
 
-### Custom 404 response
+### 模板引擎
+
+已经支持的:
+
+- [html](https://golang.org/pkg/html/template/)
+- [amber](https://github.com/eknkc/amber)
+- [handlebars](https://github.com/aymerick/raymond)
+- [mustache](https://github.com/cbroglie/mustache)
+- [pug](https://github.com/Joker/jade)
+
+```go
+func main() {
+  // You can setup template engine before initiation app:
+  app := fiber.New(&fiber.Settings{
+    ViewEngine:    "mustache",
+    ViewFolder:    "./views",
+    ViewExtension: ".tmpl",
+  })
+
+  // OR after initiation app at any convenient location:
+  app.Settings.ViewEngine = "mustache"
+  app.Settings.ViewFolder = "./views"
+  app.Settings.ViewExtension = ".tmpl"
+
+  // And now, you can call template `./views/home.tmpl` like this:
+  app.Get("/", func(c *fiber.Ctx) {
+    c.Render("home", fiber.Map{
+      "title": "Homepage",
+      "year":  1999,
+    })
+  })
+
+  // ...
+}
+```
+
+### 组路由
+
+```go
+func main() {
+  app := fiber.New()
+
+  // Root API route
+  api := app.Group("/api", cors())  // /api
+
+  // API v1 routes
+  v1 := api.Group("/v1", mysql())   // /api/v1
+  v1.Get("/list", handler)          // /api/v1/list
+  v1.Get("/user", handler)          // /api/v1/user
+
+  // API v2 routes
+  v2 := api.Group("/v2", mongodb()) // /api/v2
+  v2.Get("/list", handler)          // /api/v2/list
+  v2.Get("/user", handler)          // /api/v2/user
+
+  // ...
+}
+```
+
+### 自定义 404 响应
 
 ```go
 func main() {
@@ -220,7 +280,7 @@ func main() {
 }
 ```
 
-### JSON Response
+### JSON
 
 ```go
 func main() {
@@ -241,8 +301,38 @@ func main() {
 }
 ```
 
+### WebSocket
 
-### Recover from panic
+```go
+func main() {
+  app := fiber.New()
+
+  app.WebSocket("/ws/:name", func(c *fiber.Conn) {
+    log.Println(c.Params("name"))
+
+    for {
+      mt, msg, err := c.ReadMessage()
+      if err != nil {
+        log.Println("read:", err)
+        break
+      }
+
+      log.Printf("recovery: %s", msg)
+
+      err = c.WriteMessage(mt, msg)
+      if err != nil {
+        log.Println("write:", err)
+        break
+      }
+    }
+  })
+
+  // Listen on ws://localhost:3000/ws/john
+  app.Listen(3000)
+}
+```
+
+### 从 panic 中恢复
 
 ```go
 func main() {
@@ -265,16 +355,17 @@ func main() {
 
 ## 💬 媒体
 
-- [欢迎使用Fiber —用Go语言编写的Express.js风格的Web框架](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *作者[维克·肖斯塔克（VicShóstak）](https://github.com/koddr)，2020年2月3日*
+- [欢迎使用Fiber —用Go语言编写的Express.js风格的Web框架 ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *作者[维克·肖斯塔克(VicShóstak)](https://github.com/koddr)，2020年2月3日*
+- [Fiber 1.7 已经发布! 🎉 他仍然快速、灵活且友善](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) *作者[维克·肖斯塔克(VicShóstak)](https://github.com/koddr), 2020年2月21日)
 
 ## 👍 贡献
 
 如果您要说声**谢谢**或支持`Fiber`的积极发展：
 
 1. 将[GitHub Star](https://github.com/gofiber/fiber/stargazers)添加到项目中。
-2. [在Twitter上](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)发布有关项目[的推文](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) 。
-3. 在[Medium](https://medium.com/) ， [Dev.to](https://dev.to/)或个人博客上写评论或教程。
-4. 帮助我们将此`README` [文件](https://fiber.wiki/)和[API文档](https://fiber.wiki/)翻译成另一种语言
+2. [在Twitter上](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)发布有关项目[的推文](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)。
+3. 在[Medium](https://medium.com/)，[Dev.to](https://dev.to/)或个人博客上写评论或教程。
+4. 帮助我们将此`README文件`翻译成其它语言。
 
 ## ☕ Supporters
 
