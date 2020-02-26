@@ -7,21 +7,8 @@ import (
 	"github.com/gofiber/fiber"
 )
 
-// package main
-//
-// import (
-// 	"github.com/gofiber/fiber"
-// 	"github.com/gofiber/fiber/middleware"
-// )
-//
-// func main() {
-// 	app := fiber.New()
-// 	app.Use(middleware.Cors())
-// 	app.Get("/", func(c *fiber.Ctx) {
-// 		c.Send("Hello jQuery!")
-// 	})
-// 	app.Listen(3000)
-// }
+// Usage
+// app.Use(middleware.Cors())
 
 // CORSConfig ...
 type CORSConfig struct {

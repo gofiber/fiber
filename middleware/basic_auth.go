@@ -8,28 +8,13 @@ import (
 	"github.com/gofiber/fiber"
 )
 
-// package main
-//
-// import (
-// 	"github.com/gofiber/fiber"
-// 	"github.com/gofiber/fiber/middleware"
-// )
-//
-// func validator(user, pass string) bool {
-// 	if user == "john" && pass == "doe" {
-// 		return true
-// 	}
-// 	return false
-// }
-//
-// func main() {
-// 	app := fiber.New()
-// 	app.Use(middleware.BasicAuth(validator))
-// 	app.Get("/", func(c *fiber.Ctx) {
-// 		c.Send("Authorized!")
-// 	})
-// 	app.Listen(3000)
-// }
+// Usage
+// app.Use(middleware.BasicAuth(func(user, pass string) bool {
+//   if user == "john" && pass == "doe" {
+//     return true
+//   }
+//   return false
+// }))
 
 // BasicAuth ...
 func BasicAuth(validator func(string, string) bool, realm ...string) func(*fiber.Ctx) {
