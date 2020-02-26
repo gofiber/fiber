@@ -34,7 +34,6 @@ type Ctx struct {
 	params   *[]string
 	values   []string
 	Fasthttp *fasthttp.RequestCtx
-	Socket   *websocket.Conn
 }
 
 // Ctx pool
@@ -59,7 +58,6 @@ func releaseCtx(ctx *Ctx) {
 	ctx.params = nil
 	ctx.values = nil
 	ctx.Fasthttp = nil
-	ctx.Socket = nil
 	poolCtx.Put(ctx)
 }
 
