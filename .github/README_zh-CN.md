@@ -212,15 +212,15 @@ func main() {
 func main() {
   // You can setup template engine before initiation app:
   app := fiber.New(&fiber.Settings{
-    ViewEngine:    "mustache",
-    ViewFolder:    "./views",
-    ViewExtension: ".tmpl",
+    TemplateEngine:    "mustache",
+    TemplateFolder:    "./views",
+    TemplateExtension: ".tmpl",
   })
 
   // OR after initiation app at any convenient location:
-  app.Settings.ViewEngine = "mustache"
-  app.Settings.ViewFolder = "./views"
-  app.Settings.ViewExtension = ".tmpl"
+  app.Settings.TemplateEngine = "mustache"
+  app.Settings.TemplateFolder = "./views"
+  app.Settings.TemplateExtension = ".tmpl"
 
   // And now, you can call template `./views/home.tmpl` like this:
   app.Get("/", func(c *fiber.Ctx) {
