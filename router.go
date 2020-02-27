@@ -1,4 +1,6 @@
-// https://fiber.wiki
+// 🚀 Fiber is an Express inspired web framework written in Go with 💖
+// 📌 API Documentation: https://fiber.wiki
+// 📝 Github Repository: https://github.com/gofiber/fiber
 
 package fiber
 
@@ -6,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strings"
 
@@ -20,15 +21,15 @@ type Route struct {
 	Method string
 	// Stores the original path
 	Path string
-	// Prefix is for ending wildcards or middlewares
+	// Prefix is for ending wildcards or middleware
 	Prefix string
-	// Stores regex for :params & :optionals?
+	// Stores regex for complex paths
 	Regex *regexp.Regexp
-	// Stores params keys for :params & :optionals?
+	// Stores params keys for :params / :optional? / *
 	Params []string
-	// Callback function for context
+	// Handler for context
 	HandlerCtx func(*Ctx)
-	// Callback function for websockets
+	// Handler for websockets
 	HandlerConn func(*Conn)
 }
 
@@ -133,43 +134,62 @@ func (app *App) registerStatic(grpPrefix string, args ...string) {
 		})
 	}
 }
-func (app *App) register(method, grpPrefix string, args ...interface{}) {
+func (app *App) registerWebSocket(method, group, path string, handler func(*Conn)) {
+	if len(path) > 0 && path[0] != '/' {
+		path = "/" + path
+	}
+	if len(group) > 0 {
+		// `/v1`+`/` => `/v1`+``
+		if path == "/" {
+			path = group
+		} else {
+			path = group + path
+		}
+		// Remove duplicate slashes `//`
+		path = strings.Replace(path, "//", "/", -1)
+	}
+	// Routes are case insensitive by default
+	if !app.Settings.CaseSensitive {
+		path = strings.ToLower(path)
+	}
+	if !app.Settings.StrictRouting && len(path) > 1 {
+		path = strings.TrimRight(path, "/")
+	}
+	// Get ':param' & ':optional?' & '*' from path
+	params := getParams(path)
+	if len(params) > 0 {
+		log.Fatal("WebSocket routes do not support path parameters: `:param, :optional?, *`")
+	}
+	app.routes = append(app.routes, &Route{
+		Method: method, Path: path, HandlerConn: handler,
+	})
+}
+func (app *App) registerMethod(method, group, path string, handlers ...func(*Ctx)) {
+	// No special paths for websockets
+	if len(handlers) == 0 {
+		log.Fatalf("Missing handler in route")
+	}
 	// Set variables
-	var path = "*"
 	var prefix string
 	var middleware = method == "USE"
-	var handlersCtx []func(*Ctx)
-	var handlersConn []func(*Conn)
-	for i := 0; i < len(args); i++ {
-		switch arg := args[i].(type) {
-		case string:
-			path = arg
-		case func(*Ctx):
-			handlersCtx = append(handlersCtx, arg)
-		case func(*Conn):
-			handlersConn = append(handlersConn, arg)
-		default:
-			log.Fatalf("Invalid argument type: %v", reflect.TypeOf(arg))
-		}
-	}
 	// A non wildcard path must start with a '/'
 	if path != "*" && len(path) > 0 && path[0] != '/' {
 		path = "/" + path
 	}
 	// Prepend group prefix
-	if len(grpPrefix) > 0 {
+	if len(group) > 0 {
 		// `/v1`+`/` => `/v1`+``
 		if path == "/" {
-			path = grpPrefix
+			path = group
 		} else {
-			path = grpPrefix + path
+			path = group + path
 		}
 		// Remove duplicate slashes `//`
 		path = strings.Replace(path, "//", "/", -1)
 	}
 	// Empty or '/*' path equals "match anything"
 	// TODO fix * for paths with grpprefix
-	if path == "" || path == "/*" {
+	if path == "/*" || (middleware && path == "") {
 		path = "*"
 	}
 	if method == "ALL" || middleware {
@@ -184,14 +204,9 @@ func (app *App) register(method, grpPrefix string, args ...interface{}) {
 	}
 	// If the route can match anything
 	if path == "*" {
-		for i := range handlersCtx {
+		for i := range handlers {
 			app.routes = append(app.routes, &Route{
-				Method: method, Path: path, HandlerCtx: handlersCtx[i],
-			})
-		}
-		for i := range handlersConn {
-			app.routes = append(app.routes, &Route{
-				Method: method, Path: path, HandlerConn: handlersConn[i],
+				Method: method, Path: path, HandlerCtx: handlers[i],
 			})
 		}
 		return
@@ -205,14 +220,9 @@ func (app *App) register(method, grpPrefix string, args ...interface{}) {
 
 	// If path has no params (simple path)
 	if len(params) == 0 {
-		for i := range handlersCtx {
+		for i := range handlers {
 			app.routes = append(app.routes, &Route{
-				Method: method, Path: path, Prefix: prefix, HandlerCtx: handlersCtx[i],
-			})
-		}
-		for i := range handlersConn {
-			app.routes = append(app.routes, &Route{
-				Method: method, Path: path, Prefix: prefix, HandlerConn: handlersConn[i],
+				Method: method, Path: path, Prefix: prefix, HandlerCtx: handlers[i],
 			})
 		}
 		return
@@ -222,16 +232,10 @@ func (app *App) register(method, grpPrefix string, args ...interface{}) {
 	// If its a middleware, we also create a prefix
 	if len(params) == 1 && params[0] == "*" {
 		prefix = strings.Split(path, "*")[0]
-		for i := range handlersCtx {
+		for i := range handlers {
 			app.routes = append(app.routes, &Route{
 				Method: method, Path: path, Prefix: prefix,
-				Params: params, HandlerCtx: handlersCtx[i],
-			})
-		}
-		for i := range handlersConn {
-			app.routes = append(app.routes, &Route{
-				Method: method, Path: path, Prefix: prefix,
-				Params: params, HandlerConn: handlersConn[i],
+				Params: params, HandlerCtx: handlers[i],
 			})
 		}
 		return
@@ -242,16 +246,10 @@ func (app *App) register(method, grpPrefix string, args ...interface{}) {
 		log.Fatal("Router: Invalid path pattern: " + path)
 	}
 	// Add route with regex
-	for i := range handlersCtx {
+	for i := range handlers {
 		app.routes = append(app.routes, &Route{
 			Method: method, Path: path, Regex: regex,
-			Params: params, HandlerCtx: handlersCtx[i],
-		})
-	}
-	for i := range handlersConn {
-		app.routes = append(app.routes, &Route{
-			Method: method, Path: path, Regex: regex,
-			Params: params, HandlerConn: handlersConn[i],
+			Params: params, HandlerCtx: handlers[i],
 		})
 	}
 }
@@ -260,6 +258,7 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	var match = false
 	// get custom context from sync pool
 	ctx := acquireCtx(fctx)
+	defer releaseCtx(ctx)
 	if ctx.app == nil {
 		ctx.app = app
 	}
@@ -276,7 +275,11 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	if app.recover != nil {
 		defer func() {
 			if r := recover(); r != nil {
-				ctx.error = fmt.Errorf("panic: %v", r)
+				err, ok := r.(error)
+				if !ok {
+					err = fmt.Errorf("%v", r)
+				}
+				ctx.error = err
 				app.recover(ctx)
 			}
 		}()
@@ -304,14 +307,11 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 				err := socketUpgrade.Upgrade(ctx.Fasthttp, func(fconn *websocket.Conn) {
 					conn := acquireConn(fconn)
 					defer releaseConn(conn)
-					conn.params = ctx.params
-					conn.values = ctx.values
-					releaseCtx(ctx)
 					route.HandlerConn(conn)
 				})
 				// Upgrading failed
 				if err != nil {
-					panic(err)
+					log.Fatalf("Failed to upgrade websocket connection")
 				}
 				return
 			}
@@ -341,23 +341,6 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 				// ctx.values = matches[0][1:len(matches[0])]
 				// parse query source
 				ctx.values = []string{strings.Replace(path, route.Prefix, "", 1)}
-			}
-			// Websocket request
-			if route.HandlerConn != nil {
-				// Try to upgrade
-				err := socketUpgrade.Upgrade(ctx.Fasthttp, func(fconn *websocket.Conn) {
-					conn := acquireConn(fconn)
-					defer releaseConn(conn)
-					conn.params = ctx.params
-					conn.values = ctx.values
-					releaseCtx(ctx)
-					route.HandlerConn(conn)
-				})
-				// Upgrading failed
-				if err != nil {
-					panic(err)
-				}
-				return
 			}
 			// No handler for HTTP nor websocket
 			if route.HandlerCtx == nil {
@@ -398,23 +381,6 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 				ctx.values = matches[0][1:len(matches[0])]
 			}
 		}
-		// Websocket route
-		if route.HandlerConn != nil {
-			// Try to upgrade
-			err := socketUpgrade.Upgrade(ctx.Fasthttp, func(fconn *websocket.Conn) {
-				conn := acquireConn(fconn)
-				conn.params = ctx.params
-				conn.values = ctx.values
-				releaseCtx(ctx)
-				defer releaseConn(conn)
-				route.HandlerConn(conn)
-			})
-			// Upgrading failed
-			if err != nil {
-				panic(err)
-			}
-			return
-		}
 		// No handler for HTTP nor websocket
 		if route.HandlerCtx == nil {
 			continue
@@ -436,5 +402,4 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	if !match {
 		ctx.SendStatus(404)
 	}
-	releaseCtx(ctx)
 }

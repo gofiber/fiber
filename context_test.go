@@ -1,4 +1,6 @@
-// https://fiber.wiki
+// 🚀 Fiber is an Express inspired web framework written in Go with 💖
+// 📌 API Documentation: https://fiber.wiki
+// 📝 Github Repository: https://github.com/gofiber/fiber
 
 package fiber
 
@@ -13,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func Test_Accepts(t *testing.T) {
@@ -127,7 +130,6 @@ func Test_BaseURL(t *testing.T) {
 func Test_Body(t *testing.T) {
 	app := New()
 	app.Post("/test", func(c *Ctx) {
-		c.Body(1)
 		expect := "john=doe"
 		result := c.Body()
 		if result != expect {
@@ -138,21 +140,6 @@ func Test_Body(t *testing.T) {
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
-		expect = "doe"
-		result = c.Body([]byte("john"))
-		if result != expect {
-			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
-		}
-		c.Body(func(k, v string) {
-			expect = "john"
-			if k != "john" {
-				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, k)
-			}
-			expect = "doe"
-			if v != "doe" {
-				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, v)
-			}
-		})
 	})
 	data := url.Values{}
 	data.Set("john", "doe")
@@ -194,7 +181,6 @@ func Test_BodyParser(t *testing.T) {
 func Test_Cookies(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
-		c.Cookies(1)
 		expect := "john=doe"
 		result := c.Cookies()
 		if result != expect {
@@ -205,21 +191,6 @@ func Test_Cookies(t *testing.T) {
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
-		expect = "doe"
-		result = c.Cookies([]byte("john"))
-		if result != expect {
-			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
-		}
-		c.Cookies(func(k, v string) {
-			expect = "john"
-			if k != "john" {
-				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, k)
-			}
-			expect = "doe"
-			if v != "doe" {
-				t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, v)
-			}
-		})
 	})
 
 	req, _ := http.NewRequest("GET", "/test", nil)
@@ -398,21 +369,21 @@ func Test_Locals(t *testing.T) {
 }
 func Test_Method(t *testing.T) {
 	app := New()
-	app.Get(func(c *Ctx) {
+	app.Get("/test", func(c *Ctx) {
 		expect := "GET"
 		result := c.Method()
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	app.Post(func(c *Ctx) {
+	app.Post("/test", func(c *Ctx) {
 		expect := "POST"
 		result := c.Method()
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	app.Put(func(c *Ctx) {
+	app.Put("/test", func(c *Ctx) {
 		expect := "PUT"
 		result := c.Method()
 		if result != expect {
@@ -619,20 +590,6 @@ func Test_Secure(t *testing.T) {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 }
-func Test_SignedCookies(t *testing.T) {
-	app := New()
-	app.Get("/test", func(c *Ctx) {
-		c.SignedCookies()
-	})
-	req, _ := http.NewRequest("GET", "/test", nil)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf(`%s: %s`, t.Name(), err)
-	}
-	if resp.StatusCode != 200 {
-		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
-	}
-}
 func Test_Stale(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
@@ -756,16 +713,16 @@ func Test_ClearCookie(t *testing.T) {
 }
 func Test_Cookie(t *testing.T) {
 	app := New()
+	expire := time.Now().Add(24 * time.Hour)
+	var dst []byte
+	dst = expire.In(time.UTC).AppendFormat(dst, time.RFC1123)
+	httpdate := strings.Replace(string(dst), "UTC", "GMT", -1)
 	app.Get("/test", func(c *Ctx) {
-		options := &Cookie{
-			MaxAge:   60,
-			Domain:   "example.com",
-			Path:     "/",
-			HTTPOnly: true,
-			Secure:   false,
-			SameSite: "lax",
-		}
-		c.Cookie("name", "john", options)
+		cookie := new(Cookie)
+		cookie.Name = "username"
+		cookie.Value = "jon"
+		cookie.Expires = expire
+		c.Cookie(cookie)
 	})
 	req, _ := http.NewRequest("GET", "http://example.com/test", nil)
 	resp, err := app.Test(req)
@@ -775,8 +732,8 @@ func Test_Cookie(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
-	if !strings.Contains(resp.Header.Get("Set-Cookie"), "name=john; max-age=60; domain=example.com; path=/; HttpOnly; SameSite=Lax") {
-		t.Fatalf(`%s: Expecting %s`, t.Name(), "name=john; max-age=60; domain=example.com; path=/; HttpOnly; SameSite=Lax")
+	if !strings.Contains(resp.Header.Get("Set-Cookie"), "username=jon; expires="+string(httpdate)+"; path=/") {
+		t.Fatalf(`%s: Expecting %s`, t.Name(), "username=jon; expires="+string(httpdate)+"; path=/")
 	}
 }
 func Test_Download(t *testing.T) {
