@@ -651,9 +651,9 @@ func (ctx *Ctx) Secure() bool {
 
 // Send : https://fiber.wiki/context#send
 func (ctx *Ctx) Send(bodies ...interface{}) {
-	// if len(bodies) > 0 {
-	// 	ctx.Fasthttp.Response.SetBodyString("")
-	// }
+	if len(bodies) > 0 {
+		ctx.Fasthttp.Response.SetBodyString("")
+	}
 	for i := range bodies {
 		switch body := bodies[i].(type) {
 		case string:
