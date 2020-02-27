@@ -194,7 +194,7 @@ func (app *App) Options(args ...interface{}) *App {
 
 // Trace : https://fiber.wiki/application#http-methods
 func (app *App) Trace(args ...interface{}) *App {
-	app.register(http.MethodOptions, "", args...)
+	app.register(http.MethodTrace, "", args...)
 	return app
 }
 
