@@ -219,16 +219,16 @@ func main() {
   // Вы можете настроить нужный движок для шаблонов 
   // перед инициализацией приложения:
   app := fiber.New(&fiber.Settings{
-    ViewEngine:    "mustache",
-    ViewFolder:    "./views",
-    ViewExtension: ".tmpl",
+    TemplateEngine:    "mustache",
+    TemplateFolder:    "./views",
+    TemplateExtension: ".tmpl",
   })
 
   // ИЛИ уже после инициализации приложения,
   // в любом удобном месте:
-  app.Settings.ViewEngine = "mustache"
-  app.Settings.ViewFolder = "./views"
-  app.Settings.ViewExtension = ".tmpl"
+  app.Settings.TemplateEngine = "mustache"
+  app.Settings.TemplateFolder = "./views"
+  app.Settings.TemplateExtension = ".tmpl"
 
   // Теперь, вы сможете вызывать шаблон `./views/home.tmpl` вот так:
   app.Get("/", func(c *fiber.Ctx) {
