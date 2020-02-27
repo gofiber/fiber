@@ -9,11 +9,13 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
 	"os/exec"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -23,7 +25,7 @@ import (
 )
 
 // Version of Fiber
-const Version = "1.7.1"
+const Version = "1.8.0"
 
 type (
 	// App denotes the Fiber application.
@@ -46,6 +48,8 @@ type (
 		CaseSensitive bool `default:"false"`
 		// Enables the "Server: value" HTTP header.
 		ServerHeader string `default:""`
+		// Enables handler values to be immutable even if you return from handler
+		Immutable bool `default:"false"`
 		// fasthttp settings
 		GETOnly              bool          `default:"false"`
 		IdleTimeout          time.Duration `default:"0"`
@@ -65,26 +69,40 @@ type (
 		NoHeaderNormalizing  bool          `default:"false"`
 		NoDefaultContentType bool          `default:"false"`
 		// template settings
-		ViewCache     bool   `default:"false"`
-		ViewFolder    string `default:""`
-		ViewEngine    string `default:""`
-		ViewExtension string `default:""`
+		TemplateFolder    string `default:""`
+		TemplateEngine    string `default:""`
+		TemplateExtension string `default:""`
 	}
 )
 
-var prefork = flag.Bool("fiber-prefork", false, "use prefork")
-var child = flag.Bool("fiber-child", false, "is child process")
+func init() {
+	flag.Bool("prefork", false, "Use prefork")
+	flag.Bool("child", false, "Is a child process")
+}
 
-// New ...
+// New : https://fiber.wiki/application#new
 func New(settings ...*Settings) (app *App) {
-	flag.Parse()
+	var prefork bool
+	var child bool
+	for _, arg := range os.Args[1:] {
+		if arg == "-prefork" {
+			prefork = true
+		} else if arg == "-child" {
+			child = true
+		}
+	}
 	app = &App{
-		child: *child,
+		child: child,
 	}
 	if len(settings) > 0 {
 		opt := settings[0]
 		if !opt.Prefork {
-			opt.Prefork = *prefork
+			opt.Prefork = prefork
+		}
+		if opt.Immutable {
+			getString = func(b []byte) string {
+				return string(b)
+			}
 		}
 		if opt.Concurrency == 0 {
 			opt.Concurrency = 256 * 1024
@@ -102,7 +120,7 @@ func New(settings ...*Settings) (app *App) {
 		return
 	}
 	app.Settings = &Settings{
-		Prefork:            *prefork,
+		Prefork:            prefork,
 		Concurrency:        256 * 1024,
 		ReadBufferSize:     4096,
 		WriteBufferSize:    4096,
@@ -111,92 +129,110 @@ func New(settings ...*Settings) (app *App) {
 	return
 }
 
-// Recover
-func (app *App) Recover(cb func(*Ctx)) {
-	app.recover = cb
+// Group : https://fiber.wiki/application#group
+func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
+	if len(handlers) > 0 {
+		app.registerMethod("USE", prefix, "", handlers...)
+	}
+	return &Group{
+		prefix: prefix,
+		app:    app,
+	}
 }
 
-// Recover
-func (grp *Group) Recover(cb func(*Ctx)) {
-	grp.app.recover = cb
-}
-
-// Static ...
+// Static : https://fiber.wiki/application#static
 func (app *App) Static(args ...string) *App {
 	app.registerStatic("/", args...)
 	return app
 }
 
-// WebSocket ...
-func (app *App) WebSocket(args ...interface{}) *App {
-	app.register("GET", "", args...)
-	return app
-}
-
-// Connect ...
-func (app *App) Connect(args ...interface{}) *App {
-	app.register("CONNECT", "", args...)
-	return app
-}
-
-// Put ...
-func (app *App) Put(args ...interface{}) *App {
-	app.register("PUT", "", args...)
-	return app
-}
-
-// Post ...
-func (app *App) Post(args ...interface{}) *App {
-	app.register("POST", "", args...)
-	return app
-}
-
-// Delete ...
-func (app *App) Delete(args ...interface{}) *App {
-	app.register("DELETE", "", args...)
-	return app
-}
-
-// Head ...
-func (app *App) Head(args ...interface{}) *App {
-	app.register("HEAD", "", args...)
-	return app
-}
-
-// Patch ...
-func (app *App) Patch(args ...interface{}) *App {
-	app.register("PATCH", "", args...)
-	return app
-}
-
-// Options ...
-func (app *App) Options(args ...interface{}) *App {
-	app.register("OPTIONS", "", args...)
-	return app
-}
-
-// Trace ...
-func (app *App) Trace(args ...interface{}) *App {
-	app.register("TRACE", "", args...)
-	return app
-}
-
-// Get ...
-func (app *App) Get(args ...interface{}) *App {
-	app.register("GET", "", args...)
-	return app
-}
-
-// All ...
-func (app *App) All(args ...interface{}) *App {
-	app.register("ALL", "", args...)
-	return app
-}
-
-// Use ...
+// Use : https://fiber.wiki/application#http-methods
 func (app *App) Use(args ...interface{}) *App {
-	app.register("USE", "", args...)
+	var path = ""
+	var handlers []func(*Ctx)
+	for i := 0; i < len(args); i++ {
+		switch arg := args[i].(type) {
+		case string:
+			path = arg
+		case func(*Ctx):
+			handlers = append(handlers, arg)
+		default:
+			log.Fatalf("Invalid handler: %v", reflect.TypeOf(arg))
+		}
+	}
+	app.registerMethod("USE", "", path, handlers...)
 	return app
+}
+
+// Connect : https://fiber.wiki/application#http-methods
+func (app *App) Connect(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodConnect, "", path, handlers...)
+	return app
+}
+
+// Put : https://fiber.wiki/application#http-methods
+func (app *App) Put(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodPut, "", path, handlers...)
+	return app
+}
+
+// Post : https://fiber.wiki/application#http-methods
+func (app *App) Post(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodPost, "", path, handlers...)
+	return app
+}
+
+// Delete : https://fiber.wiki/application#http-methods
+func (app *App) Delete(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodDelete, "", path, handlers...)
+	return app
+}
+
+// Head : https://fiber.wiki/application#http-methods
+func (app *App) Head(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodHead, "", path, handlers...)
+	return app
+}
+
+// Patch : https://fiber.wiki/application#http-methods
+func (app *App) Patch(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodPatch, "", path, handlers...)
+	return app
+}
+
+// Options : https://fiber.wiki/application#http-methods
+func (app *App) Options(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodOptions, "", path, handlers...)
+	return app
+}
+
+// Trace : https://fiber.wiki/application#http-methods
+func (app *App) Trace(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodTrace, "", path, handlers...)
+	return app
+}
+
+// Get : https://fiber.wiki/application#http-methods
+func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodGet, "", path, handlers...)
+	return app
+}
+
+// All : https://fiber.wiki/application#http-methods
+func (app *App) All(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod("ALL", "", path, handlers...)
+	return app
+}
+
+// WebSocket : https://fiber.wiki/application#websocket
+func (app *App) WebSocket(path string, handler func(*Conn)) *App {
+	app.registerWebSocket(http.MethodGet, "", path, handler)
+	return app
+}
+
+// Recover : https://fiber.wiki/application#recover
+func (app *App) Recover(handler func(*Ctx)) {
+	app.recover = handler
 }
 
 // Listen : https://fiber.wiki/application#listen
@@ -214,10 +250,10 @@ func (app *App) Listen(address interface{}, tls ...string) error {
 	}
 	// Create fasthttp server
 	app.server = app.newServer()
-	// Print banner
-	// if app.Settings.Banner && !app.child {
-	// 	fmt.Printf("Fiber-%s is listening on %s\n", Version, addr)
-	// }
+	// Print listening message
+	if !app.child {
+		fmt.Printf("Fiber v%s listening on %s\n", Version, addr)
+	}
 	var ln net.Listener
 	var err error
 	// Prefork enabled
@@ -238,7 +274,8 @@ func (app *App) Listen(address interface{}, tls ...string) error {
 	return app.server.Serve(ln)
 }
 
-// Shutdown server gracefully
+// Shutdown : TODO: Docs
+// Shutsdown the server gracefully
 func (app *App) Shutdown() error {
 	if app.server == nil {
 		return fmt.Errorf("Server is not running")
@@ -246,11 +283,10 @@ func (app *App) Shutdown() error {
 	return app.server.Shutdown()
 }
 
-// Test takes a http.Request and execute a fake connection to the application
-// It returns a http.Response when the connection was successful
-func (app *App) Test(req *http.Request) (*http.Response, error) {
+// Test : https://fiber.wiki/application#test
+func (app *App) Test(request *http.Request) (*http.Response, error) {
 	// Get raw http request
-	reqRaw, err := httputil.DumpRequest(req, true)
+	reqRaw, err := httputil.DumpRequest(request, true)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +311,7 @@ func (app *App) Test(req *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 		// Throw timeout error after 200ms
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(200 * time.Millisecond):
 		return nil, fmt.Errorf("timeout")
 	}
 	// Get raw HTTP response
@@ -287,7 +323,7 @@ func (app *App) Test(req *http.Request) (*http.Response, error) {
 	reader := strings.NewReader(getString(respRaw))
 	buffer := bufio.NewReader(reader)
 	// Convert raw HTTP response to http.Response
-	resp, err := http.ReadResponse(buffer, req)
+	resp, err := http.ReadResponse(buffer, request)
 	if err != nil {
 		return nil, err
 	}
@@ -299,11 +335,11 @@ func (app *App) Test(req *http.Request) (*http.Response, error) {
 func (app *App) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
 	if !app.child {
-		addr, err := net.ResolveTCPAddr("tcp", address)
+		addr, err := net.ResolveTCPAddr("tcp4", address)
 		if err != nil {
 			return ln, err
 		}
-		tcplistener, err := net.ListenTCP("tcp", addr)
+		tcplistener, err := net.ListenTCP("tcp4", addr)
 		if err != nil {
 			return ln, err
 		}
@@ -311,14 +347,14 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 		if err != nil {
 			return ln, err
 		}
+		files := []*os.File{fl}
 		childs := make([]*exec.Cmd, runtime.NumCPU()/2)
-
 		// #nosec G204
 		for i := range childs {
-			childs[i] = exec.Command(os.Args[0], "-fiber-prefork", "-fiber-child")
+			childs[i] = exec.Command(os.Args[0], append(os.Args[1:], "-prefork", "-child")...)
 			childs[i].Stdout = os.Stdout
 			childs[i].Stderr = os.Stderr
-			childs[i].ExtraFiles = []*os.File{fl}
+			childs[i].ExtraFiles = files
 			if err := childs[i].Start(); err != nil {
 				return ln, err
 			}
@@ -331,6 +367,7 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 		}
 		os.Exit(0)
 	} else {
+		runtime.GOMAXPROCS(1)
 		ln, err = net.FileListener(os.NewFile(3, ""))
 	}
 	return ln, err
