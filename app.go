@@ -9,11 +9,13 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
 	"os/exec"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -128,14 +130,15 @@ func New(settings ...*Settings) (app *App) {
 	return
 }
 
-// Recover : https://fiber.wiki/application#recover
-func (app *App) Recover(callback func(*Ctx)) {
-	app.recover = callback
-}
-
-// Recover : https://fiber.wiki/application#recover
-func (grp *Group) Recover(callback func(*Ctx)) {
-	grp.app.recover = callback
+// Group : https://fiber.wiki/application#group
+func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
+	if len(handlers) > 0 {
+		app.registerMethod("USE", prefix, "", handlers...)
+	}
+	return &Group{
+		prefix: prefix,
+		app:    app,
+	}
 }
 
 // Static : https://fiber.wiki/application#static
@@ -144,76 +147,93 @@ func (app *App) Static(args ...string) *App {
 	return app
 }
 
-// WebSocket : https://fiber.wiki/application#websocket
-func (app *App) WebSocket(args ...interface{}) *App {
-	app.register(http.MethodGet, "", args...)
+// Use : https://fiber.wiki/application#http-methods
+func (app *App) Use(args ...interface{}) *App {
+	var path = ""
+	var handlers []func(*Ctx)
+	for i := 0; i < len(args); i++ {
+		switch arg := args[i].(type) {
+		case string:
+			path = arg
+		case func(*Ctx):
+			handlers = append(handlers, arg)
+		default:
+			log.Fatalf("Invalid handler: %v", reflect.TypeOf(arg))
+		}
+	}
+	app.registerMethod("USE", "", path, handlers...)
 	return app
 }
 
 // Connect : https://fiber.wiki/application#http-methods
-func (app *App) Connect(args ...interface{}) *App {
-	app.register(http.MethodConnect, "", args...)
+func (app *App) Connect(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodConnect, "", path, handlers...)
 	return app
 }
 
 // Put : https://fiber.wiki/application#http-methods
-func (app *App) Put(args ...interface{}) *App {
-	app.register(http.MethodPut, "", args...)
+func (app *App) Put(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodPut, "", path, handlers...)
 	return app
 }
 
 // Post : https://fiber.wiki/application#http-methods
-func (app *App) Post(args ...interface{}) *App {
-	app.register(http.MethodPost, "", args...)
+func (app *App) Post(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodPost, "", path, handlers...)
 	return app
 }
 
 // Delete : https://fiber.wiki/application#http-methods
-func (app *App) Delete(args ...interface{}) *App {
-	app.register(http.MethodDelete, "", args...)
+func (app *App) Delete(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodDelete, "", path, handlers...)
 	return app
 }
 
 // Head : https://fiber.wiki/application#http-methods
-func (app *App) Head(args ...interface{}) *App {
-	app.register(http.MethodHead, "", args...)
+func (app *App) Head(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodHead, "", path, handlers...)
 	return app
 }
 
 // Patch : https://fiber.wiki/application#http-methods
-func (app *App) Patch(args ...interface{}) *App {
-	app.register(http.MethodPatch, "", args...)
+func (app *App) Patch(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodPatch, "", path, handlers...)
 	return app
 }
 
 // Options : https://fiber.wiki/application#http-methods
-func (app *App) Options(args ...interface{}) *App {
-	app.register(http.MethodOptions, "", args...)
+func (app *App) Options(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodOptions, "", path, handlers...)
 	return app
 }
 
 // Trace : https://fiber.wiki/application#http-methods
-func (app *App) Trace(args ...interface{}) *App {
-	app.register(http.MethodTrace, "", args...)
+func (app *App) Trace(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodTrace, "", path, handlers...)
 	return app
 }
 
 // Get : https://fiber.wiki/application#http-methods
-func (app *App) Get(args ...interface{}) *App {
-	app.register(http.MethodGet, "", args...)
+func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod(http.MethodGet, "", path, handlers...)
 	return app
 }
 
 // All : https://fiber.wiki/application#http-methods
-func (app *App) All(args ...interface{}) *App {
-	app.register("ALL", "", args...)
+func (app *App) All(path string, handlers ...func(*Ctx)) *App {
+	app.registerMethod("ALL", "", path, handlers...)
 	return app
 }
 
-// Use : https://fiber.wiki/application#http-methods
-func (app *App) Use(args ...interface{}) *App {
-	app.register("USE", "", args...)
+// WebSocket : https://fiber.wiki/application#websocket
+func (app *App) WebSocket(path string, handler func(*Conn)) *App {
+	app.registerWebSocket(http.MethodGet, "", path, handler)
 	return app
+}
+
+// Recover : https://fiber.wiki/application#recover
+func (app *App) Recover(handler func(*Ctx)) {
+	app.recover = handler
 }
 
 // Listen : https://fiber.wiki/application#listen
@@ -292,7 +312,7 @@ func (app *App) Test(request *http.Request) (*http.Response, error) {
 			return nil, err
 		}
 		// Throw timeout error after 200ms
-	case <-time.After(1000 * time.Millisecond):
+	case <-time.After(200 * time.Millisecond):
 		return nil, fmt.Errorf("timeout")
 	}
 	// Get raw HTTP response

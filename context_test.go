@@ -369,21 +369,21 @@ func Test_Locals(t *testing.T) {
 }
 func Test_Method(t *testing.T) {
 	app := New()
-	app.Get(func(c *Ctx) {
+	app.Get("/test", func(c *Ctx) {
 		expect := "GET"
 		result := c.Method()
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	app.Post(func(c *Ctx) {
+	app.Post("/test", func(c *Ctx) {
 		expect := "POST"
 		result := c.Method()
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	app.Put(func(c *Ctx) {
+	app.Put("/test", func(c *Ctx) {
 		expect := "PUT"
 		result := c.Method()
 		if result != expect {

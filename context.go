@@ -63,22 +63,7 @@ func releaseCtx(ctx *Ctx) {
 
 // Conn https://godoc.org/github.com/gorilla/websocket#pkg-index
 type Conn struct {
-	params *[]string
-	values []string
 	*websocket.Conn
-}
-
-// Params : https://fiber.wiki/application#websocket
-func (conn *Conn) Params(key string) string {
-	if conn.params == nil {
-		return ""
-	}
-	for i := 0; i < len(*conn.params); i++ {
-		if (*conn.params)[i] == key {
-			return conn.values[i]
-		}
-	}
-	return ""
 }
 
 // Conn pool
@@ -97,8 +82,6 @@ func acquireConn(fconn *websocket.Conn) *Conn {
 
 // Return Conn to pool
 func releaseConn(conn *Conn) {
-	conn.params = nil
-	conn.values = nil
 	conn.Conn = nil
 	poolConn.Put(conn)
 }
