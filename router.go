@@ -258,6 +258,7 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	var match = false
 	// get custom context from sync pool
 	ctx := acquireCtx(fctx)
+	defer releaseCtx(ctx)
 	if ctx.app == nil {
 		ctx.app = app
 	}
@@ -306,7 +307,6 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 				err := socketUpgrade.Upgrade(ctx.Fasthttp, func(fconn *websocket.Conn) {
 					conn := acquireConn(fconn)
 					defer releaseConn(conn)
-					releaseCtx(ctx)
 					route.HandlerConn(conn)
 				})
 				// Upgrading failed
@@ -402,5 +402,4 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	if !match {
 		ctx.SendStatus(404)
 	}
-	releaseCtx(ctx)
 }

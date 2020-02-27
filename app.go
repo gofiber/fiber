@@ -69,10 +69,9 @@ type (
 		NoHeaderNormalizing  bool          `default:"false"`
 		NoDefaultContentType bool          `default:"false"`
 		// template settings
-		ViewCache     bool   `default:"false"`
-		ViewFolder    string `default:""`
-		ViewEngine    string `default:""`
-		ViewExtension string `default:""`
+		TemplateFolder    string `default:""`
+		TemplateEngine    string `default:""`
+		TemplateExtension string `default:""`
 	}
 )
 

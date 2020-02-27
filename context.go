@@ -575,16 +575,16 @@ func (ctx *Ctx) Render(file string, bind interface{}, engine ...string) error {
 
 	if len(engine) > 0 {
 		e = engine[0]
-	} else if ctx.app.Settings.ViewEngine != "" {
-		e = ctx.app.Settings.ViewEngine
+	} else if ctx.app.Settings.TemplateEngine != "" {
+		e = ctx.app.Settings.TemplateEngine
 	} else {
 		e = filepath.Ext(file)[1:]
 	}
-	if ctx.app.Settings.ViewFolder != "" {
-		file = filepath.Join(ctx.app.Settings.ViewFolder, file)
+	if ctx.app.Settings.TemplateFolder != "" {
+		file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
 	}
-	if ctx.app.Settings.ViewExtension != "" {
-		file = file + ctx.app.Settings.ViewExtension
+	if ctx.app.Settings.TemplateExtension != "" {
+		file = file + ctx.app.Settings.TemplateExtension
 	}
 	if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
 		return err
