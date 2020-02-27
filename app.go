@@ -23,7 +23,7 @@ import (
 )
 
 // Version of Fiber
-const Version = "1.7.1"
+const Version = "1.8.0"
 
 type (
 	// App denotes the Fiber application.
@@ -46,6 +46,8 @@ type (
 		CaseSensitive bool `default:"false"`
 		// Enables the "Server: value" HTTP header.
 		ServerHeader string `default:""`
+		// Enables handler values to be immutable even if you return from handler
+		Immutable bool `default:"false"`
 		// fasthttp settings
 		GETOnly              bool          `default:"false"`
 		IdleTimeout          time.Duration `default:"0"`
@@ -72,19 +74,34 @@ type (
 	}
 )
 
-var prefork = flag.Bool("fiber-prefork", false, "use prefork")
-var child = flag.Bool("fiber-child", false, "is child process")
+func init() {
+	flag.Bool("prefork", false, "Use prefork")
+	flag.Bool("child", false, "Is a child process")
+}
 
-// New ...
+// New : https://fiber.wiki/application#new
 func New(settings ...*Settings) (app *App) {
-	flag.Parse()
+	var prefork bool
+	var child bool
+	for _, arg := range os.Args[1:] {
+		if arg == "-prefork" {
+			prefork = true
+		} else if arg == "-child" {
+			child = true
+		}
+	}
 	app = &App{
-		child: *child,
+		child: child,
 	}
 	if len(settings) > 0 {
 		opt := settings[0]
 		if !opt.Prefork {
-			opt.Prefork = *prefork
+			opt.Prefork = prefork
+		}
+		if opt.Immutable {
+			getString = func(b []byte) string {
+				return string(b)
+			}
 		}
 		if opt.Concurrency == 0 {
 			opt.Concurrency = 256 * 1024
@@ -102,7 +119,7 @@ func New(settings ...*Settings) (app *App) {
 		return
 	}
 	app.Settings = &Settings{
-		Prefork:            *prefork,
+		Prefork:            prefork,
 		Concurrency:        256 * 1024,
 		ReadBufferSize:     4096,
 		WriteBufferSize:    4096,
@@ -111,89 +128,89 @@ func New(settings ...*Settings) (app *App) {
 	return
 }
 
-// Recover
-func (app *App) Recover(cb func(*Ctx)) {
-	app.recover = cb
+// Recover : https://fiber.wiki/application#recover
+func (app *App) Recover(callback func(*Ctx)) {
+	app.recover = callback
 }
 
-// Recover
-func (grp *Group) Recover(cb func(*Ctx)) {
-	grp.app.recover = cb
+// Recover : https://fiber.wiki/application#recover
+func (grp *Group) Recover(callback func(*Ctx)) {
+	grp.app.recover = callback
 }
 
-// Static ...
+// Static : https://fiber.wiki/application#static
 func (app *App) Static(args ...string) *App {
 	app.registerStatic("/", args...)
 	return app
 }
 
-// WebSocket ...
+// WebSocket : https://fiber.wiki/application#websocket
 func (app *App) WebSocket(args ...interface{}) *App {
-	app.register("GET", "", args...)
+	app.register(http.MethodGet, "", args...)
 	return app
 }
 
-// Connect ...
+// Connect : https://fiber.wiki/application#http-methods
 func (app *App) Connect(args ...interface{}) *App {
-	app.register("CONNECT", "", args...)
+	app.register(http.MethodConnect, "", args...)
 	return app
 }
 
-// Put ...
+// Put : https://fiber.wiki/application#http-methods
 func (app *App) Put(args ...interface{}) *App {
-	app.register("PUT", "", args...)
+	app.register(http.MethodPut, "", args...)
 	return app
 }
 
-// Post ...
+// Post : https://fiber.wiki/application#http-methods
 func (app *App) Post(args ...interface{}) *App {
-	app.register("POST", "", args...)
+	app.register(http.MethodPost, "", args...)
 	return app
 }
 
-// Delete ...
+// Delete : https://fiber.wiki/application#http-methods
 func (app *App) Delete(args ...interface{}) *App {
-	app.register("DELETE", "", args...)
+	app.register(http.MethodDelete, "", args...)
 	return app
 }
 
-// Head ...
+// Head : https://fiber.wiki/application#http-methods
 func (app *App) Head(args ...interface{}) *App {
-	app.register("HEAD", "", args...)
+	app.register(http.MethodHead, "", args...)
 	return app
 }
 
-// Patch ...
+// Patch : https://fiber.wiki/application#http-methods
 func (app *App) Patch(args ...interface{}) *App {
-	app.register("PATCH", "", args...)
+	app.register(http.MethodPatch, "", args...)
 	return app
 }
 
-// Options ...
+// Options : https://fiber.wiki/application#http-methods
 func (app *App) Options(args ...interface{}) *App {
-	app.register("OPTIONS", "", args...)
+	app.register(http.MethodOptions, "", args...)
 	return app
 }
 
-// Trace ...
+// Trace : https://fiber.wiki/application#http-methods
 func (app *App) Trace(args ...interface{}) *App {
-	app.register("TRACE", "", args...)
+	app.register(http.MethodOptions, "", args...)
 	return app
 }
 
-// Get ...
+// Get : https://fiber.wiki/application#http-methods
 func (app *App) Get(args ...interface{}) *App {
-	app.register("GET", "", args...)
+	app.register(http.MethodGet, "", args...)
 	return app
 }
 
-// All ...
+// All : https://fiber.wiki/application#http-methods
 func (app *App) All(args ...interface{}) *App {
 	app.register("ALL", "", args...)
 	return app
 }
 
-// Use ...
+// Use : https://fiber.wiki/application#http-methods
 func (app *App) Use(args ...interface{}) *App {
 	app.register("USE", "", args...)
 	return app
@@ -214,10 +231,10 @@ func (app *App) Listen(address interface{}, tls ...string) error {
 	}
 	// Create fasthttp server
 	app.server = app.newServer()
-	// Print banner
-	// if app.Settings.Banner && !app.child {
-	// 	fmt.Printf("Fiber-%s is listening on %s\n", Version, addr)
-	// }
+	// Print listening message
+	if !app.child {
+		fmt.Printf("Fiber v%s listening on %s\n", Version, addr)
+	}
 	var ln net.Listener
 	var err error
 	// Prefork enabled
@@ -238,7 +255,8 @@ func (app *App) Listen(address interface{}, tls ...string) error {
 	return app.server.Serve(ln)
 }
 
-// Shutdown server gracefully
+// Shutdown : TODO: Docs
+// Shutsdown the server gracefully
 func (app *App) Shutdown() error {
 	if app.server == nil {
 		return fmt.Errorf("Server is not running")
@@ -246,11 +264,10 @@ func (app *App) Shutdown() error {
 	return app.server.Shutdown()
 }
 
-// Test takes a http.Request and execute a fake connection to the application
-// It returns a http.Response when the connection was successful
-func (app *App) Test(req *http.Request) (*http.Response, error) {
+// Test : https://fiber.wiki/application#test
+func (app *App) Test(request *http.Request) (*http.Response, error) {
 	// Get raw http request
-	reqRaw, err := httputil.DumpRequest(req, true)
+	reqRaw, err := httputil.DumpRequest(request, true)
 	if err != nil {
 		return nil, err
 	}
@@ -287,7 +304,7 @@ func (app *App) Test(req *http.Request) (*http.Response, error) {
 	reader := strings.NewReader(getString(respRaw))
 	buffer := bufio.NewReader(reader)
 	// Convert raw HTTP response to http.Response
-	resp, err := http.ReadResponse(buffer, req)
+	resp, err := http.ReadResponse(buffer, request)
 	if err != nil {
 		return nil, err
 	}
@@ -299,11 +316,11 @@ func (app *App) Test(req *http.Request) (*http.Response, error) {
 func (app *App) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
 	if !app.child {
-		addr, err := net.ResolveTCPAddr("tcp", address)
+		addr, err := net.ResolveTCPAddr("tcp4", address)
 		if err != nil {
 			return ln, err
 		}
-		tcplistener, err := net.ListenTCP("tcp", addr)
+		tcplistener, err := net.ListenTCP("tcp4", addr)
 		if err != nil {
 			return ln, err
 		}
@@ -311,14 +328,14 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 		if err != nil {
 			return ln, err
 		}
+		files := []*os.File{fl}
 		childs := make([]*exec.Cmd, runtime.NumCPU()/2)
-
 		// #nosec G204
 		for i := range childs {
-			childs[i] = exec.Command(os.Args[0], "-fiber-prefork", "-fiber-child")
+			childs[i] = exec.Command(os.Args[0], append(os.Args[1:], "-prefork", "-child")...)
 			childs[i].Stdout = os.Stdout
 			childs[i].Stderr = os.Stderr
-			childs[i].ExtraFiles = []*os.File{fl}
+			childs[i].ExtraFiles = files
 			if err := childs[i].Start(); err != nil {
 				return ln, err
 			}
@@ -331,6 +348,7 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 		}
 		os.Exit(0)
 	} else {
+		runtime.GOMAXPROCS(1)
 		ln, err = net.FileListener(os.NewFile(3, ""))
 	}
 	return ln, err

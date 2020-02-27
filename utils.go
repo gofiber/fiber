@@ -29,21 +29,6 @@ var socketUpgrade = websocket.FastHTTPUpgrader{
 	},
 }
 
-// MIME types
-const (
-	MIMEApplicationJSON       = "application/json"
-	MIMEApplicationJavaScript = "application/javascript"
-	MIMEApplicationXML        = "application/xml"
-	MIMETextXML               = "text/xml"
-	MIMEApplicationForm       = "application/x-www-form-urlencoded"
-	MIMEApplicationProtobuf   = "application/protobuf"
-	MIMEApplicationMsgpack    = "application/msgpack"
-	MIMETextHTML              = "text/html"
-	MIMETextPlain             = "text/plain"
-	MIMEMultipartForm         = "multipart/form-data"
-	MIMEOctetStream           = "application/octet-stream"
-)
-
 func getParams(path string) (params []string) {
 	if len(path) < 1 {
 		return
@@ -125,7 +110,7 @@ func getStatus(status int) (msg string) {
 // #nosec G103
 // getString converts byte slice to a string without memory allocation.
 // See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-func getString(b []byte) string {
+var getString = func(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
@@ -156,6 +141,21 @@ func (c *testConn) Close() error                       { return nil }
 func (c *testConn) SetDeadline(t time.Time) error      { return nil }
 func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
+
+// MIME types
+const (
+	MIMEApplicationJSON       = "application/json"
+	MIMEApplicationJavaScript = "application/javascript"
+	MIMEApplicationXML        = "application/xml"
+	MIMETextXML               = "text/xml"
+	MIMEApplicationForm       = "application/x-www-form-urlencoded"
+	MIMEApplicationProtobuf   = "application/protobuf"
+	MIMEApplicationMsgpack    = "application/msgpack"
+	MIMETextHTML              = "text/html"
+	MIMETextPlain             = "text/plain"
+	MIMEMultipartForm         = "multipart/form-data"
+	MIMEOctetStream           = "application/octet-stream"
+)
 
 // HTTP status codes
 var statusMessage = map[int]string{
@@ -221,7 +221,7 @@ var statusMessage = map[int]string{
 	511: "Network Authentication Required",
 }
 
-// MIME types for file extensions
+// File extensions MIME types
 var extensionMIME = map[string]string{
 	"html":    "text/html",
 	"htm":     "text/html",
