@@ -104,7 +104,7 @@ func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 	if len(offers) == 0 {
 		return ""
 	}
-	h := ctx.Get(fasthttp.HeaderAccept)
+	h := ctx.Get(HeaderAccept)
 	if h == "" {
 		return offers[0]
 	}
@@ -143,7 +143,7 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) (offer string) {
 		return ""
 	}
 
-	h := ctx.Get(fasthttp.HeaderAcceptCharset)
+	h := ctx.Get(HeaderAcceptCharset)
 	if h == "" {
 		return offers[0]
 	}
@@ -169,7 +169,7 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) (offer string) {
 		return ""
 	}
 
-	h := ctx.Get(fasthttp.HeaderAcceptEncoding)
+	h := ctx.Get(HeaderAcceptEncoding)
 	if h == "" {
 		return offers[0]
 	}
@@ -194,7 +194,7 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) (offer string) {
 	if len(offers) == 0 {
 		return ""
 	}
-	h := ctx.Get(fasthttp.HeaderAcceptLanguage)
+	h := ctx.Get(HeaderAcceptLanguage)
 	if h == "" {
 		return offers[0]
 	}
@@ -235,10 +235,10 @@ func (ctx *Ctx) Attachment(name ...string) {
 	if len(name) > 0 {
 		filename := filepath.Base(name[0])
 		ctx.Type(filepath.Ext(filename))
-		ctx.Set(fasthttp.HeaderContentDisposition, `attachment; filename="`+filename+`"`)
+		ctx.Set(HeaderContentDisposition, `attachment; filename="`+filename+`"`)
 		return
 	}
-	ctx.Set(fasthttp.HeaderContentDisposition, "attachment")
+	ctx.Set(HeaderContentDisposition, "attachment")
 }
 
 // BaseURL : https://fiber.wiki/context#baseurl
@@ -330,7 +330,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 // Cookies : https://fiber.wiki/context#cookies
 func (ctx *Ctx) Cookies(key ...string) (value string) {
 	if len(key) == 0 {
-		return ctx.Get(fasthttp.HeaderCookie)
+		return ctx.Get(HeaderCookie)
 	}
 	return getString(ctx.Fasthttp.Request.Header.Cookie(key[0]))
 }
@@ -343,7 +343,7 @@ func (ctx *Ctx) Download(file string, name ...string) {
 		filename = name[0]
 	}
 
-	ctx.Set(fasthttp.HeaderContentDisposition, "attachment; filename="+filename)
+	ctx.Set(HeaderContentDisposition, "attachment; filename="+filename)
 	ctx.SendFile(file)
 }
 
@@ -412,7 +412,7 @@ func (ctx *Ctx) IP() string {
 
 // IPs : https://fiber.wiki/context#ips
 func (ctx *Ctx) IPs() []string {
-	ips := strings.Split(ctx.Get(fasthttp.HeaderXForwardedFor), ",")
+	ips := strings.Split(ctx.Get(HeaderXForwardedFor), ",")
 	for i := range ips {
 		ips[i] = strings.TrimSpace(ips[i])
 	}
@@ -425,7 +425,7 @@ func (ctx *Ctx) Is(extension string) (match bool) {
 		extension = "." + extension
 	}
 
-	exts, _ := mime.ExtensionsByType(ctx.Get(fasthttp.HeaderContentType))
+	exts, _ := mime.ExtensionsByType(ctx.Get(HeaderContentType))
 	if len(exts) > 0 {
 		for _, item := range exts {
 			if item == extension {
@@ -462,7 +462,7 @@ func (ctx *Ctx) JSONP(json interface{}, callback ...string) error {
 	}
 	str += getString(raw) + ");"
 
-	ctx.Set(fasthttp.HeaderXContentTypeOptions, "nosniff")
+	ctx.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
 	ctx.Fasthttp.Response.SetBodyString(str)
 
@@ -482,7 +482,7 @@ func (ctx *Ctx) Links(link ...string) {
 
 	if len(link) > 0 {
 		h = strings.TrimSuffix(h, ",")
-		ctx.Set(fasthttp.HeaderLink, h)
+		ctx.Set(HeaderLink, h)
 	}
 }
 
@@ -497,7 +497,7 @@ func (ctx *Ctx) Locals(key string, value ...interface{}) (val interface{}) {
 
 // Location : https://fiber.wiki/context#location
 func (ctx *Ctx) Location(path string) {
-	ctx.Set(fasthttp.HeaderLocation, path)
+	ctx.Set(HeaderLocation, path)
 }
 
 // Method : https://fiber.wiki/context#method
@@ -572,7 +572,7 @@ func (ctx *Ctx) Redirect(path string, status ...int) {
 		code = status[0]
 	}
 
-	ctx.Set(fasthttp.HeaderLocation, path)
+	ctx.Set(HeaderLocation, path)
 	ctx.Fasthttp.Response.SetStatusCode(code)
 }
 
@@ -730,7 +730,7 @@ func (ctx *Ctx) Vary(fields ...string) {
 		return
 	}
 
-	h := getString(ctx.Fasthttp.Response.Header.Peek(fasthttp.HeaderVary))
+	h := getString(ctx.Fasthttp.Response.Header.Peek(HeaderVary))
 	for i := range fields {
 		if h == "" {
 			h += fields[i]
@@ -739,7 +739,7 @@ func (ctx *Ctx) Vary(fields ...string) {
 		}
 	}
 
-	ctx.Set(fasthttp.HeaderVary, h)
+	ctx.Set(HeaderVary, h)
 }
 
 // Write : https://fiber.wiki/context#write
@@ -758,5 +758,5 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 
 // XHR : https://fiber.wiki/context#xhr
 func (ctx *Ctx) XHR() bool {
-	return ctx.Get(fasthttp.HeaderXRequestedWith) == "XMLHttpRequest"
+	return ctx.Get(HeaderXRequestedWith) == "XMLHttpRequest"
 }
