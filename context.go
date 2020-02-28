@@ -33,6 +33,7 @@ type Ctx struct {
 	error    error
 	params   *[]string
 	values   []string
+	compress int
 	Fasthttp *fasthttp.RequestCtx
 }
 
@@ -57,6 +58,7 @@ func releaseCtx(ctx *Ctx) {
 	ctx.error = nil
 	ctx.params = nil
 	ctx.values = nil
+	ctx.compress = 0
 	ctx.Fasthttp = nil
 	poolCtx.Put(ctx)
 }
@@ -302,6 +304,14 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 	ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
 		ctx.Fasthttp.Response.Header.DelClientCookie(getString(k))
 	})
+}
+
+// Compress : https://fiber.wiki/context#compress
+func (ctx *Ctx) Compress(level ...int) {
+	ctx.compress = 1
+	if len(level) > 0 {
+		ctx.compress = level[0]
+	}
 }
 
 // Cookie : https://fiber.wiki/context#cookie
