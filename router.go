@@ -257,9 +257,11 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	// Use this boolean to perform 404 not found at the end
 	var match = false
 	// get custom context from sync pool
-	ctx := acquireCtx(fctx)
+	ctx := acquireCtx()
 	defer releaseCtx(ctx)
 	ctx.app = app
+	ctx.Fasthttp = fctx
+	ctx.compress = app.Settings.Compression
 	// get path and method
 	path := ctx.Path()
 	if !app.Settings.CaseSensitive {
@@ -397,16 +399,16 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 		ctx.next = false
 	}
 	// Do we need to compress?
-	if ctx.compress > 0 {
-		switch ctx.compress {
-		case 1:
-			compressDefaultCompression(fctx)
+	if ctx.compress {
+		switch app.Settings.CompressionLevel {
 		case 2:
 			compressBestSpeed(fctx)
 		case 3:
 			compressBestCompression(fctx)
 		case 4:
 			compressHuffmanOnly(fctx)
+		default: // 1
+			compressDefaultCompression(fctx)
 		}
 	}
 	// No match, send default 404 Not Found
