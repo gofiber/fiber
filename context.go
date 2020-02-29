@@ -560,7 +560,7 @@ func (ctx *Ctx) Query(key string) (value string) {
 // Range : https://fiber.wiki/context#range
 func (ctx *Ctx) Range(size int64) (rangeInfo RangeInfo, err error) {
 	rangeStr := string(ctx.Fasthttp.Request.Header.Peek("range"))
-	if rangeStr == "" || strings.Index(rangeStr, "=") < 0 {
+	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
 		return rangeInfo, fmt.Errorf("malformed range header string")
 	}
 	data := strings.Split(rangeStr, "=")
