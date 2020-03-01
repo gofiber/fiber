@@ -365,6 +365,37 @@ func main() {
 }
 ```
 
+### Поддержка WebSocket
+
+```go
+func main() {
+  app := fiber.New()
+
+  app.WebSocket("/ws/:name", func(c *fiber.Conn) {
+    log.Println(c.Params("name"))
+
+    for {
+      mt, msg, err := c.ReadMessage()
+      if err != nil {
+        log.Println("read:", err)
+        break
+      }
+
+      log.Printf("recovery: %s", msg)
+
+      err = c.WriteMessage(mt, msg)
+      if err != nil {
+        log.Println("write:", err)
+        break
+      }
+    }
+  })
+
+  // Слушаем вебсокет по адресу ws://localhost:3000/ws/john
+  app.Listen(3000)
+}
+```
+
 ### Восстановление работы после `panic`
 
 ```go
