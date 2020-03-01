@@ -38,12 +38,12 @@ type Ctx struct {
 	Fasthttp *fasthttp.RequestCtx
 }
 
-// RangeInfo info of range header
-type RangeInfo struct {
+// Range info of range header
+type Range struct {
 	Type   string
 	Ranges []struct {
-		Start int64
-		End   int64
+		Start int
+		End   int
 	}
 }
 
@@ -567,21 +567,21 @@ func (ctx *Ctx) Query(key string) (value string) {
 }
 
 // Range : https://fiber.wiki/context#range
-func (ctx *Ctx) Range(size int64) (rangeInfo RangeInfo, err error) {
+func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 	rangeStr := string(ctx.Fasthttp.Request.Header.Peek("range"))
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
-		return rangeInfo, fmt.Errorf("malformed range header string")
+		return rangeData, fmt.Errorf("malformed range header string")
 	}
 	data := strings.Split(rangeStr, "=")
-	rangeInfo.Type = data[0]
+	rangeData.Type = data[0]
 	arr := strings.Split(data[1], ",")
 	for i := 0; i < len(arr); i++ {
 		item := strings.Split(arr[i], "-")
 		if len(item) == 1 {
-			return rangeInfo, fmt.Errorf("malformed range header string")
+			return rangeData, fmt.Errorf("malformed range header string")
 		}
-		start, startErr := strconv.ParseInt(item[0], 10, 64)
-		end, endErr := strconv.ParseInt(item[1], 10, 64)
+		start, startErr := strconv.Atoi(item[0])
+		end, endErr := strconv.Atoi(item[1])
 		if startErr != nil { // -nnn
 			start = size - end
 			end = size - 1
@@ -594,18 +594,18 @@ func (ctx *Ctx) Range(size int64) (rangeInfo RangeInfo, err error) {
 		if start > end || start < 0 {
 			continue
 		}
-		rangeInfo.Ranges = append(rangeInfo.Ranges, struct {
-			Start int64
-			End   int64
+		rangeData.Ranges = append(rangeData.Ranges, struct {
+			Start int
+			End   int
 		}{
 			start,
 			end,
 		})
 	}
-	if len(rangeInfo.Ranges) < 1 {
-		return rangeInfo, fmt.Errorf("unsatisfiable range")
+	if len(rangeData.Ranges) < 1 {
+		return rangeData, fmt.Errorf("unsatisfiable range")
 	}
-	return rangeInfo, nil
+	return rangeData, nil
 }
 
 // Redirect : https://fiber.wiki/context#redirect
