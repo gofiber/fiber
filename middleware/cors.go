@@ -5,11 +5,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gofiber/fiber"
+	".."
 )
 
 // CORSConfig ...
 type CORSConfig struct {
+	Skip func(*fiber.Ctx) bool
 	// Optional. Default value []string{"*"}.
 	AllowOrigins []string
 	// Optional. Default value []string{"GET","POST","HEAD","PUT","DELETE","PATCH"}
@@ -24,6 +25,20 @@ type CORSConfig struct {
 	MaxAge int
 }
 
+// CorsConfigDefault is the defaul Cors middleware config.
+var CorsConfigDefault = CORSConfig{
+	Skip:         nil,
+	AllowOrigins: []string{"*"},
+	AllowMethods: []string{
+		http.MethodGet,
+		http.MethodPost,
+		http.MethodHead,
+		http.MethodPut,
+		http.MethodDelete,
+		http.MethodPatch,
+	},
+}
+
 // Cors ...
 func Cors(config ...CORSConfig) func(*fiber.Ctx) {
 	// Init config
@@ -32,19 +47,12 @@ func Cors(config ...CORSConfig) func(*fiber.Ctx) {
 	if len(config) > 0 {
 		cfg = config[0]
 	}
-	// Set config default vvalues
+	// Set config default values
 	if len(cfg.AllowOrigins) == 0 {
-		cfg.AllowOrigins = []string{"*"}
+		cfg.AllowOrigins = CorsConfigDefault.AllowOrigins
 	}
 	if len(cfg.AllowMethods) == 0 {
-		cfg.AllowMethods = []string{
-			http.MethodGet,
-			http.MethodPost,
-			http.MethodHead,
-			http.MethodPut,
-			http.MethodDelete,
-			http.MethodPatch,
-		}
+		cfg.AllowMethods = CorsConfigDefault.AllowMethods
 	}
 	// Middleware settings
 	allowMethods := strings.Join(cfg.AllowMethods, ",")
@@ -53,6 +61,11 @@ func Cors(config ...CORSConfig) func(*fiber.Ctx) {
 	maxAge := strconv.Itoa(cfg.MaxAge)
 	// Middleware function
 	return func(c *fiber.Ctx) {
+		// Skip middleware if Skip returns true
+		if cfg.Skip != nil && cfg.Skip(c) {
+			c.Next()
+			return
+		}
 		origin := c.Get(fiber.HeaderOrigin)
 		allowOrigin := ""
 		// Check allowed origins

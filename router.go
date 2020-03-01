@@ -260,8 +260,8 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	ctx := acquireCtx()
 	defer releaseCtx(ctx)
 	ctx.app = app
-	ctx.Fasthttp = fctx
 	ctx.compress = app.Settings.Compression
+	ctx.Fasthttp = fctx
 	// get path and method
 	path := ctx.Path()
 	if !app.Settings.CaseSensitive {

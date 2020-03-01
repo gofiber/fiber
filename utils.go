@@ -493,6 +493,7 @@ const (
 	HeaderUpgrade             = "Upgrade"
 	HeaderXDNSPrefetchControl = "X-DNS-Prefetch-Control"
 	HeaderXPingback           = "X-Pingback"
+	HeaderXRequestID          = "X-Request-ID"
 	HeaderXRequestedWith      = "X-Requested-With"
 	HeaderXRobotsTag          = "X-Robots-Tag"
 	HeaderXUACompatible       = "X-UA-Compatible"
