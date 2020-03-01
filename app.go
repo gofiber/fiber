@@ -52,8 +52,7 @@ type (
 		Immutable bool `default:"false"`
 		// Enables GZip / Deflate compression for all responses
 		Compression bool `default:"false"`
-		// CompressionLevel
-		CompressionLevel int `default:"1"`
+		// CompressionLevel int  `default:"1"`
 		// fasthttp settings
 		GETOnly              bool          `default:"false"`
 		IdleTimeout          time.Duration `default:"0"`
@@ -120,9 +119,9 @@ func New(settings ...*Settings) (app *App) {
 		if opt.MaxRequestBodySize == 0 {
 			opt.MaxRequestBodySize = 4 * 1024 * 1024
 		}
-		if opt.CompressionLevel == 0 {
-			opt.CompressionLevel = 1
-		}
+		// if opt.CompressionLevel == 0 {
+		// 	opt.CompressionLevel = 1
+		// }
 		app.Settings = opt
 		return
 	}

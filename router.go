@@ -400,16 +400,17 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	}
 	// Do we need to compress?
 	if ctx.compress {
-		switch app.Settings.CompressionLevel {
-		case 2:
-			compressBestSpeed(fctx)
-		case 3:
-			compressBestCompression(fctx)
-		case 4:
-			compressHuffmanOnly(fctx)
-		default: // 1
-			compressDefaultCompression(fctx)
-		}
+		compressDefaultCompression(fctx)
+		// switch app.Settings.CompressionLevel {
+		// case 2:
+		// 	compressBestSpeed(fctx)
+		// case 3:
+		// 	compressBestCompression(fctx)
+		// case 4:
+		// 	compressHuffmanOnly(fctx)
+		// default: // 1
+		// 	compressDefaultCompression(fctx)
+		// }
 	}
 	// No match, send default 404 Not Found
 	if !match {
