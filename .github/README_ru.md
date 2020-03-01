@@ -201,6 +201,30 @@ func main() {
 }
 ```
 
+### Встроенный логгер
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+    
+    // Если вы хотите изменить конфигурацию логгера по умолчанию
+    loggerConfig := middleware.LoggerConfig{
+      Format:     "${time} - ${method} ${path}\n",
+      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
+    }
+
+    // Middleware для логгера с кастомным конфигом
+    app.Use(middleware.Logger(loggerConfig))
+
+    // ...
+}
+```
+
 <details>
   <summary>📚 Показать больше примеров кода</summary>
 
@@ -292,7 +316,7 @@ func main() {
 Проверьте работу CORS, передав любой домен в заголовке `Origin`: 
 
 ```bash
-curl -H "Origin: http://example.com" --verbose http://localhost:3000`
+curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
 ### Обработка 404 ошибки
