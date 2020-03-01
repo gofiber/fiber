@@ -552,11 +552,11 @@ func Test_Range(t *testing.T) {
 		if result.Type != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result.Type)
 		}
-		expectNum := int64(500)
+		expectNum := 500
 		if result.Ranges[0].Start != expectNum {
 			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expectNum, result.Ranges[0].Start)
 		}
-		expectNum = int64(700)
+		expectNum = 700
 		if result.Ranges[0].End != expectNum {
 			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expectNum, result.Ranges[0].End)
 		}

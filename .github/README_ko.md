@@ -88,7 +88,7 @@ func main() {
 [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 명령어를 이용해 설치가 완료됩니다:
 
 ```bash
-go get github.com/gofiber/fiber
+go get -u github.com/gofiber/fiber/...
 ```
 
 ## 🤖 벤치마크
