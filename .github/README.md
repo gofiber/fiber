@@ -201,30 +201,6 @@ func main() {
 }
 ```
 
-### Built-in logger
-
-```go
-import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
-)
-
-func main() {
-    app := fiber.New()
-    
-    // If you want to change default Logger config
-    loggerConfig := middleware.LoggerConfig{
-      Format:     "${time} - ${method} ${path}\n",
-      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
-    }
-
-    // Middleware for Logger with config
-    app.Use(middleware.Logger(loggerConfig))
-
-    // ...
-}
-```
-
 <details>
   <summary>📚 Show more code examples</summary>
 
@@ -284,6 +260,30 @@ func main() {
   v2.Get("/user", handler)          // /api/v2/user
 
   // ...
+}
+```
+
+### Built-in logger
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+    
+    // If you want to change default Logger config
+    loggerConfig := middleware.LoggerConfig{
+      Format:     "${time} - ${method} ${path}\n",
+      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
+    }
+
+    // Middleware for Logger with config
+    app.Use(middleware.Logger(loggerConfig))
+
+    // ...
 }
 ```
 
