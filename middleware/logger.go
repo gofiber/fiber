@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	".."
+	"github.com/gofiber/fiber"
 	"github.com/valyala/fasttemplate"
 )
 

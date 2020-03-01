@@ -3,7 +3,7 @@ package middleware
 import (
 	"fmt"
 
-	".."
+	"github.com/gofiber/fiber"
 	"github.com/google/uuid"
 )
 

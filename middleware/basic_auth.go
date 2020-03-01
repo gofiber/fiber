@@ -4,7 +4,7 @@ import (
 	"encoding/base64"
 	"strings"
 
-	".."
+	"github.com/gofiber/fiber"
 )
 
 // BasicAuthConfig defines the config for BasicAuth middleware

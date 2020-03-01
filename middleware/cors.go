@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	".."
+	"github.com/gofiber/fiber"
 )
 
 // CORSConfig ...

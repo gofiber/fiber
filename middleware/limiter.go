@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"time"
 
-	".."
+	"github.com/gofiber/fiber"
 )
 
 // LimiterConfig ...
