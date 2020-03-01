@@ -12,8 +12,8 @@ type BasicAuthConfig struct {
 	// Skip defines a function to skip middleware.
 	// Optional. Default: nil
 	Skip func(*fiber.Ctx) bool
-	// Users
-	// Required.
+	// Users defines the allowed credentials
+	// Required. Default: map[string]string{}
 	Users map[string]string
 	// Realm is a string to define realm attribute of BasicAuth.
 	// Optional. Default: "Restricted".
@@ -23,6 +23,7 @@ type BasicAuthConfig struct {
 // BasicAuthConfigDefault is the default BasicAuth middleware config.
 var BasicAuthConfigDefault = BasicAuthConfig{
 	Skip:  nil,
+	Users: map[string]string{},
 	Realm: "Restricted",
 }
 
@@ -34,6 +35,9 @@ func BasicAuth(config ...BasicAuthConfig) func(*fiber.Ctx) {
 		cfg = config[0]
 	}
 	// Set config default values
+	if cfg.Users == nil {
+		cfg.Users = BasicAuthConfigDefault.Users
+	}
 	if cfg.Realm == "" {
 		cfg.Realm = BasicAuthConfigDefault.Realm
 	}

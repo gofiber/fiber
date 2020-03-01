@@ -6,8 +6,8 @@ import (
 	"github.com/gofiber/fiber"
 )
 
-// SecureConfig ...
-type SecureConfig struct {
+// HelmetConfig ...
+type HelmetConfig struct {
 	// Skip defines a function to skip middleware.
 	// Optional. Default: nil
 	Skip func(*fiber.Ctx) bool
@@ -41,8 +41,8 @@ type SecureConfig struct {
 	ReferrerPolicy string
 }
 
-// SecureConfigDefault is the defaul Secure middleware config.
-var SecureConfigDefault = SecureConfig{
+// HelmetConfigDefault is the defaul Helmet middleware config.
+var HelmetConfigDefault = HelmetConfig{
 	Skip:               nil,
 	XSSProtection:      "1; mode=block",
 	ContentTypeNosniff: "nosniff",
@@ -50,21 +50,21 @@ var SecureConfigDefault = SecureConfig{
 }
 
 // Secure ...
-func Secure(config ...SecureConfig) func(*fiber.Ctx) {
+func Secure(config ...HelmetConfig) func(*fiber.Ctx) {
 	// Init config
-	var cfg SecureConfig
+	var cfg HelmetConfig
 	if len(config) > 0 {
 		cfg = config[0]
 	}
 	// Set config default values
 	if cfg.XSSProtection == "" {
-		cfg.XSSProtection = SecureConfigDefault.XSSProtection
+		cfg.XSSProtection = HelmetConfigDefault.XSSProtection
 	}
 	if cfg.ContentTypeNosniff == "" {
-		cfg.ContentTypeNosniff = SecureConfigDefault.ContentTypeNosniff
+		cfg.ContentTypeNosniff = HelmetConfigDefault.ContentTypeNosniff
 	}
 	if cfg.XFrameOptions == "" {
-		cfg.XFrameOptions = SecureConfigDefault.XFrameOptions
+		cfg.XFrameOptions = HelmetConfigDefault.XFrameOptions
 	}
 	// Return middleware handler
 	return func(c *fiber.Ctx) {
