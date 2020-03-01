@@ -88,7 +88,7 @@ func main() {
 Установка выполняется с помощью команды [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
-go get -u github.com/gofiber/fiber
+go get -u github.com/gofiber/fiber/...
 ```
 
 ## 🤖 Бенчмарки
@@ -265,6 +265,36 @@ func main() {
 }
 ```
 
+### Cross-Origin Resource Sharing (CORS)
+
+[CORS](https://developer.mozilla.org/ru/docs/Web/HTTP/CORS) — это механизм, использующий дополнительные HTTP-заголовки, чтобы дать возможность агенту пользователя получать разрешения на доступ к выбранным ресурсам с сервера на источнике (домене), отличном от того, что сайт использует в данный момент.
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware" // все middleware объединены в отдельный Go пакет
+)
+
+func main() {
+    app := fiber.New()
+
+    // Подключаем CORS для каждого роута в качестве middleware
+    app.Use(middleware.CORS())
+
+    app.Get("/", func(c *fiber.Ctx) {
+        c.Send("CORS is enabled!")
+    })
+
+    app.Listen(3000)
+}
+```
+
+Проверьте работу CORS, передав любой домен в заголовке `Origin`: 
+
+```bash
+curl -H "Origin: http://example.com" --verbose http://localhost:3000`
+```
+
 ### Обработка 404 ошибки
 
 ```go
@@ -329,6 +359,7 @@ func main() {
   app.Listen(3000)
 }
 ```
+
 </details>
 
 ## 💬 Медиа
