@@ -21,9 +21,10 @@ import (
 )
 
 var compressDefaultCompression = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressDefaultCompression)
-var compressBestSpeed = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBestSpeed)
-var compressBestCompression = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBestCompression)
-var compressHuffmanOnly = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressHuffmanOnly)
+
+// var compressBestSpeed = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBestSpeed)
+// var compressBestCompression = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBestCompression)
+// var compressHuffmanOnly = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressHuffmanOnly)
 var schemaDecoder = schema.NewDecoder()
 var socketUpgrade = websocket.FastHTTPUpgrader{
 	ReadBufferSize:  1024,
