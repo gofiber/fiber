@@ -84,7 +84,7 @@ func main() {
 ```bash
 export GO111MODULE=on
 export GOPROXY=https://goproxy.cn
-go get github.com/gofiber/fiber
+go get -u github.com/gofiber/fiber/...
 ```
 
 ## 🤖 性能

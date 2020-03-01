@@ -543,9 +543,26 @@ func Test_Query(t *testing.T) {
 func Test_Range(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
-		c.Range()
+		result, err := c.Range(1000)
+		if err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+			return
+		}
+		expect := "bytes"
+		if result.Type != expect {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result.Type)
+		}
+		expectNum := 500
+		if result.Ranges[0].Start != expectNum {
+			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expectNum, result.Ranges[0].Start)
+		}
+		expectNum = 700
+		if result.Ranges[0].End != expectNum {
+			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expectNum, result.Ranges[0].End)
+		}
 	})
 	req, _ := http.NewRequest("GET", "/test", nil)
+	req.Header.Set("range", "bytes=500-700")
 	_, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
