@@ -201,30 +201,6 @@ func main() {
 }
 ```
 
-### Встроенный логгер
-
-```go
-import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
-)
-
-func main() {
-    app := fiber.New()
-    
-    // Если вы хотите изменить конфигурацию логгера по умолчанию
-    loggerConfig := middleware.LoggerConfig{
-      Format:     "${time} - ${method} ${path}\n",
-      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
-    }
-
-    // Middleware для логгера с кастомным конфигом
-    app.Use(middleware.Logger(loggerConfig))
-
-    // ...
-}
-```
-
 <details>
   <summary>📚 Показать больше примеров кода</summary>
 
@@ -289,6 +265,30 @@ func main() {
 }
 ```
 
+### Встроенный логгер
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+    
+    // Если вы хотите изменить конфигурацию логгера по умолчанию
+    loggerConfig := middleware.LoggerConfig{
+      Format:     "${time} - ${method} ${path}\n",
+      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
+    }
+
+    // Middleware для логгера с кастомным конфигом
+    app.Use(middleware.Logger(loggerConfig))
+
+    // ...
+}
+```
+
 ### Cross-Origin Resource Sharing (CORS)
 
 [CORS](https://developer.mozilla.org/ru/docs/Web/HTTP/CORS) — это механизм, использующий дополнительные HTTP-заголовки, чтобы дать возможность агенту пользователя получать разрешения на доступ к выбранным ресурсам с сервера на источнике (домене), отличном от того, что сайт использует в данный момент.
@@ -296,7 +296,7 @@ func main() {
 ```go
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware" // все middleware объединены в отдельный Go пакет
+    "github.com/gofiber/fiber/middleware"
 )
 
 func main() {
