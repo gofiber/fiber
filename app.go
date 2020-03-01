@@ -341,11 +341,11 @@ func (app *App) Test(request *http.Request) (*http.Response, error) {
 func (app *App) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
 	if !app.child {
-		addr, err := net.ResolveTCPAddr("tcp4", address)
+		addr, err := net.ResolveTCPAddr("tcp", address)
 		if err != nil {
 			return ln, err
 		}
-		tcplistener, err := net.ListenTCP("tcp4", addr)
+		tcplistener, err := net.ListenTCP("tcp", addr)
 		if err != nil {
 			return ln, err
 		}

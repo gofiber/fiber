@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -83,7 +84,7 @@ func Logger(config ...LoggerConfig) func(*fiber.Ctx) {
 		buf := pool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer pool.Put(buf)
-		tmpl.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
+		_, err := tmpl.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
 			switch tag {
 			case "time":
 				return buf.WriteString(timestamp)
@@ -117,7 +118,12 @@ func Logger(config ...LoggerConfig) func(*fiber.Ctx) {
 			}
 			return 0, nil
 		})
-		cfg.Output.Write(buf.Bytes())
+		if err != nil {
+			buf.WriteString(err.Error())
+		}
+		if _, err := cfg.Output.Write(buf.Bytes()); err != nil {
+			fmt.Println(err)
+		}
 		c.Next()
 	}
 }
