@@ -201,6 +201,30 @@ func main() {
 }
 ```
 
+### Built-in logger
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+    
+    // If you want to change default Logger config
+    loggerConfig := middleware.LoggerConfig{
+      Format:     "${time} - ${method} ${path}\n",
+      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
+    }
+
+    // Middleware for Logger with config
+    app.Use(middleware.Logger(loggerConfig))
+
+    // ...
+}
+```
+
 <details>
   <summary>📚 Show more code examples</summary>
 
@@ -270,7 +294,7 @@ func main() {
 ```go
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware" // all middleware are combined in a separate Go package
+    "github.com/gofiber/fiber/middleware"
 )
 
 func main() {
@@ -290,7 +314,7 @@ func main() {
 Check CORS by passing any domain in `Origin` header: 
 
 ```bash
-curl -H "Origin: http://example.com" --verbose http://localhost:3000`
+curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
 ### Custom 404 response
