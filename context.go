@@ -13,6 +13,7 @@ import (
 	"mime/multipart"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -35,6 +36,15 @@ type Ctx struct {
 	values   []string
 	compress bool
 	Fasthttp *fasthttp.RequestCtx
+}
+
+// RangeInfo info of range header
+type RangeInfo struct {
+	Type   string
+	Ranges []struct {
+		Start int64
+		End   int64
+	}
 }
 
 // Ctx pool
@@ -557,11 +567,45 @@ func (ctx *Ctx) Query(key string) (value string) {
 }
 
 // Range : https://fiber.wiki/context#range
-func (ctx *Ctx) Range() {
-	// https://expressjs.com/en/api.html#req.range
-	// https://github.com/jshttp/range-parser/blob/master/index.js
-	// r := ctx.Fasthttp.Request.Header.Peek(HeaderRange)
-	// *magic*
+func (ctx *Ctx) Range(size int64) (rangeInfo RangeInfo, err error) {
+	rangeStr := string(ctx.Fasthttp.Request.Header.Peek("range"))
+	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
+		return rangeInfo, fmt.Errorf("malformed range header string")
+	}
+	data := strings.Split(rangeStr, "=")
+	rangeInfo.Type = data[0]
+	arr := strings.Split(data[1], ",")
+	for i := 0; i < len(arr); i++ {
+		item := strings.Split(arr[i], "-")
+		if len(item) == 1 {
+			return rangeInfo, fmt.Errorf("malformed range header string")
+		}
+		start, startErr := strconv.ParseInt(item[0], 10, 64)
+		end, endErr := strconv.ParseInt(item[1], 10, 64)
+		if startErr != nil { // -nnn
+			start = size - end
+			end = size - 1
+		} else if endErr != nil { // nnn-
+			end = size - 1
+		}
+		if end > size-1 { // limit last-byte-pos to current length
+			end = size - 1
+		}
+		if start > end || start < 0 {
+			continue
+		}
+		rangeInfo.Ranges = append(rangeInfo.Ranges, struct {
+			Start int64
+			End   int64
+		}{
+			start,
+			end,
+		})
+	}
+	if len(rangeInfo.Ranges) < 1 {
+		return rangeInfo, fmt.Errorf("unsatisfiable range")
+	}
+	return rangeInfo, nil
 }
 
 // Redirect : https://fiber.wiki/context#redirect
