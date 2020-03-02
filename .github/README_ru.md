@@ -88,7 +88,7 @@ func main() {
 Установка выполняется с помощью команды [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
-go get -u github.com/gofiber/fiber
+go get -u github.com/gofiber/fiber/...
 ```
 
 ## 🤖 Бенчмарки
@@ -265,6 +265,60 @@ func main() {
 }
 ```
 
+### Встроенный логгер
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+    
+    // Если вы хотите изменить конфигурацию логгера по умолчанию
+    loggerConfig := middleware.LoggerConfig{
+      Format:     "${time} - ${method} ${path}\n",
+      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
+    }
+
+    // Middleware для логгера с кастомным конфигом
+    app.Use(middleware.Logger(loggerConfig))
+
+    // ...
+}
+```
+
+### Cross-Origin Resource Sharing (CORS)
+
+[CORS](https://developer.mozilla.org/ru/docs/Web/HTTP/CORS) — это механизм, использующий дополнительные HTTP-заголовки, чтобы дать возможность агенту пользователя получать разрешения на доступ к выбранным ресурсам с сервера на источнике (домене), отличном от того, что сайт использует в данный момент.
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+
+    // Подключаем CORS для каждого роута в качестве middleware
+    app.Use(middleware.CORS())
+
+    app.Get("/", func(c *fiber.Ctx) {
+        c.Send("CORS is enabled!")
+    })
+
+    app.Listen(3000)
+}
+```
+
+Проверьте работу CORS, передав любой домен в заголовке `Origin`: 
+
+```bash
+curl -H "Origin: http://example.com" --verbose http://localhost:3000
+```
+
 ### Обработка 404 ошибки
 
 ```go
@@ -311,6 +365,37 @@ func main() {
 }
 ```
 
+### Поддержка WebSocket
+
+```go
+func main() {
+  app := fiber.New()
+
+  app.WebSocket("/ws/:name", func(c *fiber.Conn) {
+    log.Println(c.Params("name"))
+
+    for {
+      mt, msg, err := c.ReadMessage()
+      if err != nil {
+        log.Println("read:", err)
+        break
+      }
+
+      log.Printf("recovery: %s", msg)
+
+      err = c.WriteMessage(mt, msg)
+      if err != nil {
+        log.Println("write:", err)
+        break
+      }
+    }
+  })
+
+  // Слушаем вебсокет по адресу ws://localhost:3000/ws/john
+  app.Listen(3000)
+}
+```
+
 ### Восстановление работы после `panic`
 
 ```go
@@ -329,6 +414,7 @@ func main() {
   app.Listen(3000)
 }
 ```
+
 </details>
 
 ## 💬 Медиа

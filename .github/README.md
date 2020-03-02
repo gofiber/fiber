@@ -263,6 +263,60 @@ func main() {
 }
 ```
 
+### Built-in logger
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+    
+    // If you want to change default Logger config
+    loggerConfig := middleware.LoggerConfig{
+      Format:     "${time} - ${method} ${path}\n",
+      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
+    }
+
+    // Middleware for Logger with config
+    app.Use(middleware.Logger(loggerConfig))
+
+    // ...
+}
+```
+
+### Cross-Origin Resource Sharing (CORS)
+
+[CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) is a mechanism that uses additional HTTP headers to tell browsers to give a web application running at one origin, access to selected resources from a different origin. A web application executes a cross-origin HTTP request when it requests a resource that has a different origin (domain, protocol, or port) from its own.
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+
+    // Connect CORS for each route as middleware
+    app.Use(middleware.CORS())
+
+    app.Get("/", func(c *fiber.Ctx) {
+        c.Send("CORS is enabled!")
+    })
+
+    app.Listen(3000)
+}
+```
+
+Check CORS by passing any domain in `Origin` header: 
+
+```bash
+curl -H "Origin: http://example.com" --verbose http://localhost:3000
+```
+
 ### Custom 404 response
 
 ```go
