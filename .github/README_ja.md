@@ -89,7 +89,7 @@ func main() {
 そして、[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)コマンドを使用してインストールしてください。
 
 ```bash
-go get github.com/gofiber/fiber
+go get -u github.com/gofiber/fiber/...
 ```
 
 ## 🤖 ベンチマーク

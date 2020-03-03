@@ -6,48 +6,73 @@ import (
 	"github.com/gofiber/fiber"
 )
 
-// SecureConfig ...
-type SecureConfig struct {
+// HelmetConfig ...
+type HelmetConfig struct {
+	// Skip defines a function to skip middleware.
+	// Optional. Default: nil
+	Skip func(*fiber.Ctx) bool
+	// XSSProtection
 	// Optional. Default value "1; mode=block".
 	XSSProtection string
+	// ContentTypeNosniff
 	// Optional. Default value "nosniff".
 	ContentTypeNosniff string
-	// Optional. Default value "SAMEORIGIN". Possible values: "SAMEORIGIN", "DENY", "ALLOW-FROM uri"
+	// XFrameOptions
+	// Optional. Default value "SAMEORIGIN".
+	// Possible values: "SAMEORIGIN", "DENY", "ALLOW-FROM uri"
 	XFrameOptions string
+	// HSTSMaxAge
 	// Optional. Default value 0.
 	HSTSMaxAge int
+	// HSTSExcludeSubdomains
 	// Optional. Default value false.
 	HSTSExcludeSubdomains bool
+	// ContentSecurityPolicy
 	// Optional. Default value "".
 	ContentSecurityPolicy string
+	// CSPReportOnly
 	// Optional. Default value false.
 	CSPReportOnly bool
+	// HSTSPreloadEnabled
 	// Optional.  Default value false.
 	HSTSPreloadEnabled bool
+	// ReferrerPolicy
 	// Optional. Default value "".
 	ReferrerPolicy string
 }
 
+// HelmetConfigDefault is the defaul Helmet middleware config.
+var HelmetConfigDefault = HelmetConfig{
+	Skip:               nil,
+	XSSProtection:      "1; mode=block",
+	ContentTypeNosniff: "nosniff",
+	XFrameOptions:      "SAMEORIGIN",
+}
+
 // Secure ...
-func Secure(config ...SecureConfig) func(*fiber.Ctx) {
+func Secure(config ...HelmetConfig) func(*fiber.Ctx) {
 	// Init config
-	var cfg SecureConfig
-	// Set config if provided
+	var cfg HelmetConfig
 	if len(config) > 0 {
 		cfg = config[0]
 	}
-	// Set config default options
+	// Set config default values
 	if cfg.XSSProtection == "" {
-		cfg.XSSProtection = "1; mode=block"
+		cfg.XSSProtection = HelmetConfigDefault.XSSProtection
 	}
 	if cfg.ContentTypeNosniff == "" {
-		cfg.ContentTypeNosniff = "nosniff"
+		cfg.ContentTypeNosniff = HelmetConfigDefault.ContentTypeNosniff
 	}
 	if cfg.XFrameOptions == "" {
-		cfg.XFrameOptions = "SAMEORIGIN"
+		cfg.XFrameOptions = HelmetConfigDefault.XFrameOptions
 	}
 	// Return middleware handler
 	return func(c *fiber.Ctx) {
+		// Skip middleware if Skip returns true
+		if cfg.Skip != nil && cfg.Skip(c) {
+			c.Next()
+			return
+		}
 		if cfg.XSSProtection != "" {
 			c.Set(fiber.HeaderXXSSProtection, cfg.XSSProtection)
 		}

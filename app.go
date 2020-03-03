@@ -54,23 +54,23 @@ type (
 		Compression bool `default:"false"`
 		// CompressionLevel int  `default:"1"`
 		// fasthttp settings
-		GETOnly              bool          `default:"false"`
-		IdleTimeout          time.Duration `default:"0"`
-		Concurrency          int           `default:"256 * 1024"`
-		ReadTimeout          time.Duration `default:"0"`
-		WriteTimeout         time.Duration `default:"0"`
-		TCPKeepalive         bool          `default:"false"`
-		MaxConnsPerIP        int           `default:"0"`
-		ReadBufferSize       int           `default:"4096"`
-		WriteBufferSize      int           `default:"4096"`
-		ConcurrencySleep     time.Duration `default:"0"`
-		DisableKeepAlive     bool          `default:"false"`
-		ReduceMemoryUsage    bool          `default:"false"`
-		MaxRequestsPerConn   int           `default:"0"`
-		TCPKeepalivePeriod   time.Duration `default:"0"`
-		MaxRequestBodySize   int           `default:"4 * 1024 * 1024"`
-		NoHeaderNormalizing  bool          `default:"false"`
-		NoDefaultContentType bool          `default:"false"`
+		// GETOnly              bool          `default:"false"`
+		// IdleTimeout          time.Duration `default:"0"`
+		// Concurrency          int           `default:"256 * 1024"`
+		// ReadTimeout          time.Duration `default:"0"`
+		// WriteTimeout         time.Duration `default:"0"`
+		// TCPKeepalive         bool          `default:"false"`
+		// MaxConnsPerIP        int           `default:"0"`
+		// ReadBufferSize       int           `default:"4096"`
+		// WriteBufferSize      int           `default:"4096"`
+		// ConcurrencySleep     time.Duration `default:"0"`
+		// DisableKeepAlive     bool          `default:"false"`
+		// ReduceMemoryUsage    bool          `default:"false"`
+		// MaxRequestsPerConn   int           `default:"0"`
+		// TCPKeepalivePeriod   time.Duration `default:"0"`
+		BodyLimit int `default:"4 * 1024 * 1024"`
+		// NoHeaderNormalizing  bool          `default:"false"`
+		// NoDefaultContentType bool          `default:"false"`
 		// template settings
 		TemplateFolder    string `default:""`
 		TemplateEngine    string `default:""`
@@ -107,17 +107,17 @@ func New(settings ...*Settings) (app *App) {
 				return string(b)
 			}
 		}
-		if opt.Concurrency == 0 {
-			opt.Concurrency = 256 * 1024
-		}
-		if opt.ReadBufferSize == 0 {
-			opt.ReadBufferSize = 4096
-		}
-		if opt.WriteBufferSize == 0 {
-			opt.WriteBufferSize = 4096
-		}
-		if opt.MaxRequestBodySize == 0 {
-			opt.MaxRequestBodySize = 4 * 1024 * 1024
+		// if opt.Concurrency == 0 {
+		// 	opt.Concurrency = 256 * 1024
+		// }
+		// if opt.ReadBufferSize == 0 {
+		// 	opt.ReadBufferSize = 4096
+		// }
+		// if opt.WriteBufferSize == 0 {
+		// 	opt.WriteBufferSize = 4096
+		// }
+		if opt.BodyLimit == 0 {
+			opt.BodyLimit = 4 * 1024 * 1024
 		}
 		// if opt.CompressionLevel == 0 {
 		// 	opt.CompressionLevel = 1
@@ -126,11 +126,11 @@ func New(settings ...*Settings) (app *App) {
 		return
 	}
 	app.Settings = &Settings{
-		Prefork:            prefork,
-		Concurrency:        256 * 1024,
-		ReadBufferSize:     4096,
-		WriteBufferSize:    4096,
-		MaxRequestBodySize: 4 * 1024 * 1024,
+		Prefork: prefork,
+		// Concurrency:        256 * 1024,
+		// ReadBufferSize:     4096,
+		// WriteBufferSize:    4096,
+		BodyLimit: 4 * 1024 * 1024,
 	}
 	return
 }
@@ -341,11 +341,11 @@ func (app *App) Test(request *http.Request) (*http.Response, error) {
 func (app *App) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
 	if !app.child {
-		addr, err := net.ResolveTCPAddr("tcp4", address)
+		addr, err := net.ResolveTCPAddr("tcp", address)
 		if err != nil {
 			return ln, err
 		}
-		tcplistener, err := net.ListenTCP("tcp4", addr)
+		tcplistener, err := net.ListenTCP("tcp", addr)
 		if err != nil {
 			return ln, err
 		}
@@ -379,31 +379,44 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 	return ln, err
 }
 
+type disableLogger struct{}
+
+func (dl *disableLogger) Printf(format string, args ...interface{}) {
+	// fmt.Println(fmt.Sprintf(format, args...))
+}
+
 func (app *App) newServer() *fasthttp.Server {
 	return &fasthttp.Server{
 		Handler: app.handler,
+		Name:    app.Settings.ServerHeader,
+		// Concurrency:                        app.Settings.Concurrency,
+		// SleepWhenConcurrencyLimitsExceeded: app.Settings.ConcurrencySleep,
+		// DisableKeepalive:                   app.Settings.DisableKeepAlive,
+		// ReadBufferSize:                     app.Settings.ReadBufferSize,
+		// WriteBufferSize:                    app.Settings.WriteBufferSize,
+		// ReadTimeout:                        app.Settings.ReadTimeout,
+		// WriteTimeout:                       app.Settings.WriteTimeout,
+		// IdleTimeout:                        app.Settings.IdleTimeout,
+		// MaxConnsPerIP:                      app.Settings.MaxConnsPerIP,
+		// MaxRequestsPerConn:                 app.Settings.MaxRequestsPerConn,
+		// TCPKeepalive:                       app.Settings.TCPKeepalive,
+		// TCPKeepalivePeriod:                 app.Settings.TCPKeepalivePeriod,
+		MaxRequestBodySize: app.Settings.BodyLimit,
+		// ReduceMemoryUsage:                  app.Settings.ReduceMemoryUsage,
+		// GetOnly:                            app.Settings.GETOnly,
+		// DisableHeaderNamesNormalizing:      app.Settings.NoHeaderNormalizing,
+		NoDefaultServerHeader: app.Settings.ServerHeader == "",
+		// NoDefaultContentType:               app.Settings.NoDefaultContentType,
+		Logger:       &disableLogger{},
+		LogAllErrors: false,
 		ErrorHandler: func(ctx *fasthttp.RequestCtx, err error) {
-			ctx.Response.SetStatusCode(400)
-			ctx.Response.SetBodyString("Bad Request")
+			if err.Error() == "body size exceeds the given limit" {
+				ctx.Response.SetStatusCode(413)
+				ctx.Response.SetBodyString("Request Entity Too Large")
+			} else {
+				ctx.Response.SetStatusCode(400)
+				ctx.Response.SetBodyString("Bad Request")
+			}
 		},
-		Name:                               app.Settings.ServerHeader,
-		Concurrency:                        app.Settings.Concurrency,
-		SleepWhenConcurrencyLimitsExceeded: app.Settings.ConcurrencySleep,
-		DisableKeepalive:                   app.Settings.DisableKeepAlive,
-		ReadBufferSize:                     app.Settings.ReadBufferSize,
-		WriteBufferSize:                    app.Settings.WriteBufferSize,
-		ReadTimeout:                        app.Settings.ReadTimeout,
-		WriteTimeout:                       app.Settings.WriteTimeout,
-		IdleTimeout:                        app.Settings.IdleTimeout,
-		MaxConnsPerIP:                      app.Settings.MaxConnsPerIP,
-		MaxRequestsPerConn:                 app.Settings.MaxRequestsPerConn,
-		TCPKeepalive:                       app.Settings.TCPKeepalive,
-		TCPKeepalivePeriod:                 app.Settings.TCPKeepalivePeriod,
-		MaxRequestBodySize:                 app.Settings.MaxRequestBodySize,
-		ReduceMemoryUsage:                  app.Settings.ReduceMemoryUsage,
-		GetOnly:                            app.Settings.GETOnly,
-		DisableHeaderNamesNormalizing:      app.Settings.NoHeaderNormalizing,
-		NoDefaultServerHeader:              app.Settings.ServerHeader == "",
-		NoDefaultContentType:               app.Settings.NoDefaultContentType,
 	}
 }

@@ -88,7 +88,7 @@ First of all, [download](https://golang.org/dl/) and install Go. `1.11` or highe
 Installation is done using the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-go get github.com/gofiber/fiber
+go get -u github.com/gofiber/fiber/...
 ```
 
 ## 🤖 Benchmarks
@@ -235,7 +235,7 @@ func main() {
       "year":  1999,
     })
   })
-  
+
   // ...
 }
 ```
@@ -245,22 +245,76 @@ func main() {
 ```go
 func main() {
   app := fiber.New()
-  
+
   // Root API route
   api := app.Group("/api", cors())  // /api
-  
+
   // API v1 routes
   v1 := api.Group("/v1", mysql())   // /api/v1
   v1.Get("/list", handler)          // /api/v1/list
   v1.Get("/user", handler)          // /api/v1/user
-  
+
   // API v2 routes
   v2 := api.Group("/v2", mongodb()) // /api/v2
   v2.Get("/list", handler)          // /api/v2/list
   v2.Get("/user", handler)          // /api/v2/user
-  
+
   // ...
 }
+```
+
+### Built-in logger
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+    
+    // If you want to change default Logger config
+    loggerConfig := middleware.LoggerConfig{
+      Format:     "${time} - ${method} ${path}\n",
+      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
+    }
+
+    // Middleware for Logger with config
+    app.Use(middleware.Logger(loggerConfig))
+
+    // ...
+}
+```
+
+### Cross-Origin Resource Sharing (CORS)
+
+[CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) is a mechanism that uses additional HTTP headers to tell browsers to give a web application running at one origin, access to selected resources from a different origin. A web application executes a cross-origin HTTP request when it requests a resource that has a different origin (domain, protocol, or port) from its own.
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+
+    // Connect CORS for each route as middleware
+    app.Use(middleware.CORS())
+
+    app.Get("/", func(c *fiber.Ctx) {
+        c.Send("CORS is enabled!")
+    })
+
+    app.Listen(3000)
+}
+```
+
+Check CORS by passing any domain in `Origin` header: 
+
+```bash
+curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
 ### Custom 404 response
