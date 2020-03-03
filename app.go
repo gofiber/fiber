@@ -138,7 +138,7 @@ func New(settings ...*Settings) (app *App) {
 // Group : https://fiber.wiki/application#group
 func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 	if len(handlers) > 0 {
-		app.registerMethod("USE", prefix, "", handlers...)
+		app.registerMethod("USE", prefix, handlers...)
 	}
 	return &Group{
 		prefix: prefix,
@@ -166,67 +166,67 @@ func (app *App) Use(args ...interface{}) *App {
 			log.Fatalf("Invalid handler: %v", reflect.TypeOf(arg))
 		}
 	}
-	app.registerMethod("USE", "", path, handlers...)
+	app.registerMethod("USE", path, handlers...)
 	return app
 }
 
 // Connect : https://fiber.wiki/application#http-methods
 func (app *App) Connect(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodConnect, "", path, handlers...)
+	app.registerMethod(http.MethodConnect, path, handlers...)
 	return app
 }
 
 // Put : https://fiber.wiki/application#http-methods
 func (app *App) Put(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodPut, "", path, handlers...)
+	app.registerMethod(http.MethodPut, path, handlers...)
 	return app
 }
 
 // Post : https://fiber.wiki/application#http-methods
 func (app *App) Post(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodPost, "", path, handlers...)
+	app.registerMethod(http.MethodPost, path, handlers...)
 	return app
 }
 
 // Delete : https://fiber.wiki/application#http-methods
 func (app *App) Delete(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodDelete, "", path, handlers...)
+	app.registerMethod(http.MethodDelete, path, handlers...)
 	return app
 }
 
 // Head : https://fiber.wiki/application#http-methods
 func (app *App) Head(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodHead, "", path, handlers...)
+	app.registerMethod(http.MethodHead, path, handlers...)
 	return app
 }
 
 // Patch : https://fiber.wiki/application#http-methods
 func (app *App) Patch(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodPatch, "", path, handlers...)
+	app.registerMethod(http.MethodPatch, path, handlers...)
 	return app
 }
 
 // Options : https://fiber.wiki/application#http-methods
 func (app *App) Options(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodOptions, "", path, handlers...)
+	app.registerMethod(http.MethodOptions, path, handlers...)
 	return app
 }
 
 // Trace : https://fiber.wiki/application#http-methods
 func (app *App) Trace(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodTrace, "", path, handlers...)
+	app.registerMethod(http.MethodTrace, path, handlers...)
 	return app
 }
 
 // Get : https://fiber.wiki/application#http-methods
 func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodGet, "", path, handlers...)
+	app.registerMethod(http.MethodGet, path, handlers...)
 	return app
 }
 
 // All : https://fiber.wiki/application#http-methods
 func (app *App) All(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod("ALL", "", path, handlers...)
+	app.registerMethod("ALL", path, handlers...)
 	return app
 }
 

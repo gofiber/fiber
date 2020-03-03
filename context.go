@@ -30,12 +30,14 @@ import (
 type Ctx struct {
 	app      *App
 	route    *Route
-	next     bool
-	error    error
+	index    int
+	method   string
+	path     string
 	params   *[]string
 	values   []string
 	compress bool
 	Fasthttp *fasthttp.RequestCtx
+	error    error
 }
 
 // Range info of range header
@@ -55,20 +57,23 @@ var poolCtx = sync.Pool{
 }
 
 // Acquire Ctx from pool
-func acquireCtx() *Ctx {
+func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx := poolCtx.Get().(*Ctx)
+	ctx.index = -1
+	ctx.Fasthttp = fctx
 	return ctx
 }
 
 // Return Ctx to pool
 func releaseCtx(ctx *Ctx) {
 	ctx.route = nil
-	ctx.next = false
-	ctx.error = nil
+	ctx.method = ""
+	ctx.path = ""
 	ctx.params = nil
 	ctx.values = nil
 	ctx.compress = false
 	ctx.Fasthttp = nil
+	ctx.error = nil
 	poolCtx.Put(ctx)
 }
 
@@ -522,12 +527,12 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 // Next : https://fiber.wiki/context#next
 func (ctx *Ctx) Next(err ...error) {
 	ctx.route = nil
-	ctx.next = true
 	ctx.params = nil
 	ctx.values = nil
 	if len(err) > 0 {
 		ctx.error = err[0]
 	}
+	ctx.app.next(ctx)
 }
 
 // OriginalURL : https://fiber.wiki/context#originalurl
