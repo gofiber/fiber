@@ -118,7 +118,7 @@ Fiber **受** Internet上最流行的Web框架Expressjs的**启发** 。我们�
 
 下面列出了一些常见示例。如果您想查看更多代码示例，请访问我们的[Recipes存储库](https://github.com/gofiber/recipes)或访问我们的[API文档](https://fiber.wiki) 。
 
-### 路由
+### Routing
 
 ```go
 func main() {
@@ -146,13 +146,13 @@ func main() {
 }
 ```
 
-### 静态文件
-
+### Serve static files
+https://fiber.wiki/application#static
 ```go
 func main() {
   app := fiber.New()
 
-  app.Static("/public")
+  app.Static("/", "/public")
   // => http://localhost:3000/js/script.js
   // => http://localhost:3000/css/style.css
 
@@ -167,8 +167,9 @@ func main() {
 }
 ```
 
-### 中间件
-
+### Middleware & Next
+https://fiber.wiki/routing#middleware
+https://fiber.wiki/context#next
 ```go
 func main() {
   app := fiber.New()
@@ -196,12 +197,13 @@ func main() {
 ```
 
 <details>
-  <summary>📚 显示更多代码示例</summary>
+  <summary>📚 Show more code examples</summary>
 
-### 模板引擎
+### Template engines
+https://fiber.wiki/application#settings
+https://fiber.wiki/context#render
 
-已经支持的:
-
+Supported engines:
 - [html](https://golang.org/pkg/html/template/)
 - [amber](https://github.com/eknkc/amber)
 - [handlebars](https://github.com/aymerick/raymond)
@@ -234,8 +236,8 @@ func main() {
 }
 ```
 
-### 组路由
-
+### Grouping routes into chains
+https://fiber.wiki/application#group
 ```go
 func main() {
   app := fiber.New()
@@ -257,16 +259,73 @@ func main() {
 }
 ```
 
-### 自定义 404 响应
+### Middleware logger
+https://fiber.wiki/middleware#logger
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+    
+    // If you want to change default Logger config
+    loggerConfig := middleware.LoggerConfig{
+      Format:     "${time} - ${method} ${path}\n",
+      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
+    }
+
+    // Middleware for Logger with config
+    app.Use(middleware.Logger(loggerConfig))
+
+    // ...
+}
+```
+
+### Cross-Origin Resource Sharing (CORS)
+https://fiber.wiki/middleware#cors
+
+[CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) is a mechanism that uses additional HTTP headers to tell browsers to give a web application running at one origin, access to selected resources from a different origin. A web application executes a cross-origin HTTP request when it requests a resource that has a different origin (domain, protocol, or port) from its own.
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+
+    // Connect CORS for each route as middleware
+    app.Use(middleware.CORS())
+
+    app.Get("/", func(c *fiber.Ctx) {
+        c.Send("CORS is enabled!")
+    })
+
+    app.Listen(3000)
+}
+```
+
+Check CORS by passing any domain in `Origin` header: 
+
+```bash
+curl -H "Origin: http://example.com" --verbose http://localhost:3000
+```
+
+### Custom 404 response
 
 ```go
 func main() {
   app := fiber.New()
 
   app.Static("/public")
+
   app.Get("/demo", func(c *fiber.Ctx) {
     c.Send("This is a demo!")
   })
+
   app.Post("/register", func(c *fiber.Ctx) {
     c.Send("Welcome!")
   })
@@ -280,36 +339,41 @@ func main() {
 }
 ```
 
-### JSON
-
+### JSON Response
+https://fiber.wiki/context#json
 ```go
+type User struct {
+  Name string `json:"name"`
+  Age  int    `json:"age"`
+}
+
 func main() {
   app := fiber.New()
 
-  type User struct {
-    Name string `json:"name"`
-    Age  int    `json:"age"`
-  }
-
-  // Serialize JSON
-  app.Get("/json", func(c *fiber.Ctx) {
+  app.Get("/user", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
-    // => {"name":"John", "age":20}
+    // {"name":"John", "age":20}
+  })
+
+  app.Get("/json", func(c *fiber.Ctx) {
+    c.JSON(&fiber.Map{
+			"success": true,
+			"message": "Hi John!",
+    })
+    // {"success":true, "message":"Hi John!"}
   })
 
   app.Listen(3000)
 }
 ```
 
-### WebSocket
-
+### WebSocket support
+https://fiber.wiki/application#websocket
 ```go
 func main() {
   app := fiber.New()
 
-  app.WebSocket("/ws/:name", func(c *fiber.Conn) {
-    log.Println(c.Params("name"))
-
+  app.WebSocket("/ws", func(c *fiber.Conn) {
     for {
       mt, msg, err := c.ReadMessage()
       if err != nil {
@@ -327,24 +391,31 @@ func main() {
     }
   })
 
-  // Listen on ws://localhost:3000/ws/john
+  // Listen on ws://localhost:3000/ws
   app.Listen(3000)
 }
 ```
 
-### 从 panic 中恢复
-
+### Recover middleware
+https://fiber.wiki/middleware#recover
 ```go
+package main
+
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
 func main() {
   app := fiber.New()
 
+  app.Use(middleware.Recover(func(c *fiber.Ctx, err error) {
+    log.Println(err)  // "Something went wrong!"
+    c.SendStatus(500) // Internal Server Error
+  })))
+  
   app.Get("/", func(c *fiber.Ctx) {
     panic("Something went wrong!")
-  })
-
-  app.Recover(func(c *fiber.Ctx) {
-    c.Status(500).Send(c.Error())
-    // => 500 "Something went wrong!"
   })
 
   app.Listen(3000)
