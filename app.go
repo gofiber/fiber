@@ -90,7 +90,7 @@ func New(settings ...*Settings) *App {
 	}
 	// If settings exist, set some defaults
 	if len(settings) > 0 {
-		if settings[0].Prefork == false { // Default to -prefork flag if false
+		if !settings[0].Prefork { // Default to -prefork flag if false
 			settings[0].Prefork = prefork
 		}
 		if settings[0].BodyLimit == 0 { // Default MaxRequestBodySize
