@@ -70,10 +70,9 @@ func Test_Static(t *testing.T) {
 	app := New()
 	grp := app.Group("/v1")
 	grp.Static("/v2", ".travis.yml")
-	app.Static("/yesyes*", ".github/FUNDING.yml")
-	app.Static("./.github")
+	app.Static("/*", ".github/FUNDING.yml")
 	app.Static("/john", "./.github")
-	req, _ := http.NewRequest("GET", "/stale.yml", nil)
+	req, _ := http.NewRequest("GET", "/john/stale.yml", nil)
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)

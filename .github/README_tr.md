@@ -119,7 +119,7 @@ Fiber internet üzerinde en popüler olan Express web çatısından **esinlenmi�
 
 Aşağıda yaygın örneklerden bazıları listelenmiştir. Daha fazla kod örneği görmek için, lütfen [Kod depomuzu](https://github.com/gofiber/recipes) veya [API dökümantasyonunu](https://fiber.wiki) ziyaret ediniz.
 
-### Rotalar
+### Routing
 
 ```go
 func main() {
@@ -147,13 +147,13 @@ func main() {
 }
 ```
 
-### Statik dosya yönetimi
-
+### Serve static files
+https://fiber.wiki/application#static
 ```go
 func main() {
   app := fiber.New()
 
-  app.Static("/public")
+  app.Static("/", "/public")
   // => http://localhost:3000/js/script.js
   // => http://localhost:3000/css/style.css
 
@@ -168,8 +168,9 @@ func main() {
 }
 ```
 
-### Ara Katman & Sonraki
-
+### Middleware & Next
+https://fiber.wiki/routing#middleware
+https://fiber.wiki/context#next
 ```go
 func main() {
   app := fiber.New()
@@ -197,18 +198,135 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Daha fazla kod örneği görüntüle</summary>
+  <summary>📚 Show more code examples</summary>
 
-### Özel 404 Cevabı
+### Template engines
+https://fiber.wiki/application#settings
+https://fiber.wiki/context#render
+
+Supported engines:
+- [html](https://golang.org/pkg/html/template/)
+- [amber](https://github.com/eknkc/amber)
+- [handlebars](https://github.com/aymerick/raymond)
+- [mustache](https://github.com/cbroglie/mustache)
+- [pug](https://github.com/Joker/jade)
+
+```go
+func main() {
+  // You can setup template engine before initiation app:
+  app := fiber.New(&fiber.Settings{
+    TemplateEngine:    "mustache",
+    TemplateFolder:    "./views",
+    TemplateExtension: ".tmpl",
+  })
+
+  // OR after initiation app at any convenient location:
+  app.Settings.TemplateEngine = "mustache"
+  app.Settings.TemplateFolder = "./views"
+  app.Settings.TemplateExtension = ".tmpl"
+
+  // And now, you can call template `./views/home.tmpl` like this:
+  app.Get("/", func(c *fiber.Ctx) {
+    c.Render("home", fiber.Map{
+      "title": "Homepage",
+      "year":  1999,
+    })
+  })
+
+  // ...
+}
+```
+
+### Grouping routes into chains
+https://fiber.wiki/application#group
+```go
+func main() {
+  app := fiber.New()
+
+  // Root API route
+  api := app.Group("/api", cors())  // /api
+
+  // API v1 routes
+  v1 := api.Group("/v1", mysql())   // /api/v1
+  v1.Get("/list", handler)          // /api/v1/list
+  v1.Get("/user", handler)          // /api/v1/user
+
+  // API v2 routes
+  v2 := api.Group("/v2", mongodb()) // /api/v2
+  v2.Get("/list", handler)          // /api/v2/list
+  v2.Get("/user", handler)          // /api/v2/user
+
+  // ...
+}
+```
+
+### Middleware logger
+https://fiber.wiki/middleware#logger
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+    
+    // If you want to change default Logger config
+    loggerConfig := middleware.LoggerConfig{
+      Format:     "${time} - ${method} ${path}\n",
+      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
+    }
+
+    // Middleware for Logger with config
+    app.Use(middleware.Logger(loggerConfig))
+
+    // ...
+}
+```
+
+### Cross-Origin Resource Sharing (CORS)
+https://fiber.wiki/middleware#cors
+
+[CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) is a mechanism that uses additional HTTP headers to tell browsers to give a web application running at one origin, access to selected resources from a different origin. A web application executes a cross-origin HTTP request when it requests a resource that has a different origin (domain, protocol, or port) from its own.
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+    app := fiber.New()
+
+    // Connect CORS for each route as middleware
+    app.Use(middleware.CORS())
+
+    app.Get("/", func(c *fiber.Ctx) {
+        c.Send("CORS is enabled!")
+    })
+
+    app.Listen(3000)
+}
+```
+
+Check CORS by passing any domain in `Origin` header: 
+
+```bash
+curl -H "Origin: http://example.com" --verbose http://localhost:3000
+```
+
+### Custom 404 response
 
 ```go
 func main() {
   app := fiber.New()
 
   app.Static("/public")
+
   app.Get("/demo", func(c *fiber.Ctx) {
     c.Send("This is a demo!")
   })
+
   app.Post("/register", func(c *fiber.Ctx) {
     c.Send("Welcome!")
   })
@@ -222,41 +340,83 @@ func main() {
 }
 ```
 
-### JSON Cevabı
-
+### JSON Response
+https://fiber.wiki/context#json
 ```go
+type User struct {
+  Name string `json:"name"`
+  Age  int    `json:"age"`
+}
+
 func main() {
   app := fiber.New()
 
-  type User struct {
-    Name string `json:"name"`
-    Age  int    `json:"age"`
-  }
-
-  // Serialize JSON
-  app.Get("/json", func(c *fiber.Ctx) {
+  app.Get("/user", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
-    // => {"name":"John", "age":20}
+    // {"name":"John", "age":20}
+  })
+
+  app.Get("/json", func(c *fiber.Ctx) {
+    c.JSON(&fiber.Map{
+			"success": true,
+			"message": "Hi John!",
+    })
+    // {"success":true, "message":"Hi John!"}
   })
 
   app.Listen(3000)
 }
 ```
 
-
-### Panikten Kurtarma
-
+### WebSocket support
+https://fiber.wiki/application#websocket
 ```go
 func main() {
   app := fiber.New()
 
-  app.Get("/", func(c *fiber.Ctx) {
-    panic("Something went wrong!")
+  app.WebSocket("/ws", func(c *fiber.Conn) {
+    for {
+      mt, msg, err := c.ReadMessage()
+      if err != nil {
+        log.Println("read:", err)
+        break
+      }
+
+      log.Printf("recovery: %s", msg)
+
+      err = c.WriteMessage(mt, msg)
+      if err != nil {
+        log.Println("write:", err)
+        break
+      }
+    }
   })
 
-  app.Recover(func(c *fiber.Ctx) {
-    c.Status(500).Send(c.Error())
-    // => 500 "Something went wrong!"
+  // Listen on ws://localhost:3000/ws
+  app.Listen(3000)
+}
+```
+
+### Recover middleware
+https://fiber.wiki/middleware#recover
+```go
+package main
+
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/middleware"
+)
+
+func main() {
+  app := fiber.New()
+
+  app.Use(middleware.Recover(func(c *fiber.Ctx, err error) {
+    log.Println(err)  // "Something went wrong!"
+    c.SendStatus(500) // Internal Server Error
+  })))
+  
+  app.Get("/", func(c *fiber.Ctx) {
+    panic("Something went wrong!")
   })
 
   app.Listen(3000)
@@ -287,6 +447,12 @@ Eğer  **teşekkür etmek** ve/veya `Fiber` ın aktif geliştirilmesini destekle
 <table>
   <tr>
     <td align="center">
+        <a href="https://github.com/gofiber/fiber">
+          <img src="https://i.stack.imgur.com/frlIf.png" width="100px"></br>
+          <sub><b>JustDave</b></sub>
+        </a>
+    </td>
+    <td align="center">
         <a href="https://github.com/bihe">
           <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
           <sub><b>HenrikBinggl</b></sub>
@@ -295,7 +461,7 @@ Eğer  **teşekkür etmek** ve/veya `Fiber` ın aktif geliştirilmesini destekle
     <td align="center">
       <a href="https://github.com/koddr">
         <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="100px"></br>
-        <sub><b>Vic Shóstak</b></sub>
+        <sub><b>Vic&nbsp;Shóstak</b></sub>
       </a>
     </td>
     <td align="center">

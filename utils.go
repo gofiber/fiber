@@ -20,18 +20,23 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
-var compressDefaultCompression = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressDefaultCompression)
-
-// var compressBestSpeed = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBestSpeed)
-// var compressBestCompression = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBestCompression)
-// var compressHuffmanOnly = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressHuffmanOnly)
 var schemaDecoder = schema.NewDecoder()
-var socketUpgrade = websocket.FastHTTPUpgrader{
+var compressResponse = fasthttp.CompressHandlerLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressDefaultCompression)
+var websocketUpgrader = websocket.FastHTTPUpgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(fctx *fasthttp.RequestCtx) bool {
 		return true
 	},
+}
+
+func groupPaths(prefix, path string) string {
+	if path == "/" {
+		path = ""
+	}
+	path = prefix + path
+	path = strings.Replace(path, "//", "/", -1)
+	return path
 }
 
 func getParams(path string) (params []string) {
@@ -108,10 +113,6 @@ func getType(ext string) (mime string) {
 	return mime
 }
 
-func getStatus(status int) (msg string) {
-	return statusMessage[status]
-}
-
 // #nosec G103
 // getString converts byte slice to a string without memory allocation.
 // See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
@@ -122,7 +123,7 @@ var getString = func(b []byte) string {
 // #nosec G103
 // getBytes converts string to a byte slice without memory allocation.
 // See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-func getBytes(s string) (b []byte) {
+var getBytes = func(s string) (b []byte) {
 	return *(*[]byte)(unsafe.Pointer(&s))
 }
 
@@ -162,8 +163,8 @@ const (
 	MIMEOctetStream           = "application/octet-stream"
 )
 
-// HTTP status codes
-var statusMessage = map[int]string{
+// HTTP status codes with messages
+var statusMessages = map[int]string{
 	100: "Continue",
 	101: "Switching Protocols",
 	102: "Processing",
