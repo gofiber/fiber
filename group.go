@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"reflect"
-	"strings"
 )
 
 // Group ...
@@ -19,17 +18,7 @@ type Group struct {
 
 // Group : https://fiber.wiki/application#group
 func (grp *Group) Group(prefix string, handlers ...func(*Ctx)) *Group {
-	if len(prefix) > 0 && prefix[0] != '/' && prefix[0] != '*' {
-		prefix = "/" + prefix
-	}
-	// When grouping, always remove single slash
-	if len(grp.prefix) > 0 && prefix == "/" {
-		prefix = ""
-	}
-	// Prepent group prefix if exist
-	prefix = grp.prefix + prefix
-	// Clean path by removing double "//" => "/"
-	prefix = strings.Replace(prefix, "//", "/", -1)
+	prefix = groupPaths(grp.prefix, prefix)
 	if len(handlers) > 0 {
 		grp.app.registerMethod("USE", prefix, handlers...)
 	}
@@ -40,21 +29,10 @@ func (grp *Group) Group(prefix string, handlers ...func(*Ctx)) *Group {
 }
 
 // Static : https://fiber.wiki/application#static
-func (grp *Group) Static(args ...string) *Group {
-	grp.app.registerStatic(grp.prefix, args...)
+func (grp *Group) Static(prefix, root string) *Group {
+	prefix = groupPaths(grp.prefix, prefix)
+	grp.app.registerStatic(prefix, root)
 	return grp
-}
-
-func groupPaths(prefix, path string) string {
-	// `/v1`+`/` => `/v1`+``
-	if path == "/" {
-		path = prefix
-	} else {
-		path = prefix + path
-	}
-	// Remove duplicate slashes `//`
-	path = strings.Replace(path, "//", "/", -1)
-	return path
 }
 
 // Use : https://fiber.wiki/application#http-methods
@@ -68,7 +46,7 @@ func (grp *Group) Use(args ...interface{}) *Group {
 		case func(*Ctx):
 			handlers = append(handlers, arg)
 		default:
-			log.Fatalf("Invalid handlerrrr: %v", reflect.TypeOf(arg))
+			log.Fatalf("Invalid handler: %v", reflect.TypeOf(arg))
 		}
 	}
 	path = groupPaths(grp.prefix, path)
@@ -147,12 +125,14 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 }
 
 // WebSocket : https://fiber.wiki/application#websocket
-func (grp *Group) WebSocket(path string, handler func(*Conn)) *Group {
-	grp.app.registerWebSocket(http.MethodGet, grp.prefix, path, handler)
+func (grp *Group) WebSocket(path string, handle func(*Conn)) *Group {
+	path = groupPaths(grp.prefix, path)
+	grp.app.registerWebSocket(http.MethodGet, path, handle)
 	return grp
 }
 
 // Recover : https://fiber.wiki/application#recover
 func (grp *Group) Recover(handler func(*Ctx)) {
+	log.Println("Warning: Recover(handler) is deprecated since v1.8.2, please use middleware.Recover(handler, error) instead.")
 	grp.app.recover = handler
 }
