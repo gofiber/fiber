@@ -112,7 +112,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 - [API endpoints](https://fiber.wiki/context)
 - Middleware & [Next](https://fiber.wiki/context#next) support
 - [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
-- Available in 9 other languages
+- Available in 10 other languages
 - And much more, [explore Fiber](https://fiber.wiki/)
 
 ## 💡 Philosophy

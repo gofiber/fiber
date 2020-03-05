@@ -105,11 +105,11 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://github.com/TechEmpower/Frame
 
 ## 🎯 Fitur
 
-- Sistem [Routing](https://fiber.wiki/routing) yang mudah
-- Bisa menyajikan [file statis](https://fiber.wiki/application#static)
+- Sistem [Routing](https://fiber.wiki/routing) yang solid
+- Serve [file statis](https://fiber.wiki/application#static)
 - [Kinerja](https://fiber.wiki/benchmarks) ekstrim
 - [Penggunaan memori](https://fiber.wiki/benchmarks) yang kecil
-- Cocok untuk pembuatan [API](https://fiber.wiki/context)
+- Cocok untuk [API](https://fiber.wiki/context)
 - Mendukung Middleware & [Next](https://fiber.wiki/context#next) seperti Express
 - Kembangkan aplikasi dengan [Cepat](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 - Tersedia di 10 bahasa lainnya
@@ -117,7 +117,7 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://github.com/TechEmpower/Frame
 
 ## 💡 Filosofi
 
-Bagi yang baru yang beralih dari [Node.js](https://nodejs.org/en/about/) ke [Go](https://golang.org/doc/) terkadang perlu waktu yang cukup lama sebelum mereka mampu membuat aplikasi berbasis web dengan Go. Fiber, sebagai **web framework** dirancang secara **minimalis** dan mengikuti filosofi dari **UNIX**, sehingga pengguna baru dengan cepat memasuki dunia Go dengan sambutan yang hangat dan dapat diandalkan.
+Bagi yang baru yang beralih dari [Node.js](https://nodejs.org/en/about/) ke [Go](https://golang.org/doc/) terkadang perlu waktu yang cukup lama sebelum mereka mampu membuat aplikasi web dengan Go. Fiber, sebagai **web framework** dirancang secara **minimalis** dan mengikuti filosofi dari **UNIX**, sehingga pengguna baru dengan cepat memasuki dunia Go dengan sambutan yang hangat dan dapat diandalkan.
 
 Fiber terinspirasi dari Express, salah satu web framework paling terkenal di Internet. Kami menggabungkan **kemudahan** dari Express dan **kinerja luar biasa** dari Go. Apabila anda pernah membuat aplikasi dengan Node.js (_dengan Express atau yang lainnya_), maka banyak metode dan prinsip yang akan terasa **sangat umum** bagi anda.
 
