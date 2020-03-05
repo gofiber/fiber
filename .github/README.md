@@ -63,7 +63,7 @@
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> build on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://golang.org/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
+  <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://golang.org/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
 </p>
 
 ## ⚡️ Quickstart
@@ -117,11 +117,11 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 
 ## 💡 Philosophy
 
-New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follow **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
+New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follows the **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
 
-Fiber is **inspired** by Express, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application on Node.js (_using Express or similar_), then many methods and principles will seem **very common** to you.
+Fiber is **inspired** by Express, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application in Node.js (_using Express or similar_), then many methods and principles will seem **very common** to you.
 
-We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues) (_and all over the Internet_) to create a **fast**, **flexible** and **friendly** Go web framework for **any** tasks, **deadlines** and developer **skills**! Just like Express does in the JavaScript world.
+We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues) (_and all over the Internet_) to create a **fast**, **flexible** and **friendly** Go web framework for **any** task, **deadline** and developer **skill**! Just like Express does in the JavaScript world.
 
 ## 👀 Examples
 
@@ -278,7 +278,7 @@ import (
 
 func main() {
     app := fiber.New()
-    
+
     // If you want to change default Logger config
     loggerConfig := middleware.LoggerConfig{
       Format:     "${time} - ${method} ${path}\n",
@@ -317,7 +317,7 @@ func main() {
 }
 ```
 
-Check CORS by passing any domain in `Origin` header: 
+Check CORS by passing any domain in `Origin` header:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -422,7 +422,7 @@ func main() {
     log.Println(err)  // "Something went wrong!"
     c.SendStatus(500) // Internal Server Error
   })))
-  
+
   app.Get("/", func(c *fiber.Ctx) {
     panic("Something went wrong!")
   })
