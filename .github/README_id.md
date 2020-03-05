@@ -33,6 +33,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_tr.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/tr.svg">
   </a>
+  <!-- <a href="https://github.com/gofiber/fiber/blob/master/.github/README_id.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/id.svg">
+  </a> -->
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
