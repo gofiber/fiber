@@ -49,8 +49,8 @@ var HelmetConfigDefault = HelmetConfig{
 	XFrameOptions:      "SAMEORIGIN",
 }
 
-// Secure ...
-func Secure(config ...HelmetConfig) func(*fiber.Ctx) {
+// Helmet ...
+func Helmet(config ...HelmetConfig) func(*fiber.Ctx) {
 	// Init config
 	var cfg HelmetConfig
 	if len(config) > 0 {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,7 +35,7 @@ type LoggerConfig struct {
 // LoggerConfigDefault is the defaul Logger middleware config.
 var LoggerConfigDefault = LoggerConfig{
 	Skip:       nil,
-	Format:     "${time} - ${ip} - ${method} ${path}\t${ua}\n",
+	Format:     "${time} ${method} ${path} - ${ip} - ${status} - ${latency}ms\n",
 	TimeFormat: "15:04:05",
 	Output:     os.Stderr,
 }
@@ -81,6 +82,11 @@ func Logger(config ...LoggerConfig) func(*fiber.Ctx) {
 			c.Next()
 			return
 		}
+		start := time.Now()
+		// handle request
+		c.Next()
+		// build log
+		stop := time.Now()
 		buf := pool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer pool.Put(buf)
@@ -104,6 +110,10 @@ func Logger(config ...LoggerConfig) func(*fiber.Ctx) {
 				return buf.WriteString(c.OriginalURL())
 			case "ua":
 				return buf.WriteString(c.Get(fiber.HeaderUserAgent))
+			case "latency":
+				return buf.WriteString(stop.Sub(start).String())
+			case "status":
+				return buf.WriteString(strconv.Itoa(c.Fasthttp.Response.StatusCode()))
 			default:
 				switch {
 				case strings.HasPrefix(tag, "header:"):
@@ -124,6 +134,5 @@ func Logger(config ...LoggerConfig) func(*fiber.Ctx) {
 		if _, err := cfg.Output.Write(buf.Bytes()); err != nil {
 			fmt.Println(err)
 		}
-		c.Next()
 	}
 }

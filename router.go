@@ -5,8 +5,8 @@
 package fiber
 
 import (
-	"fmt"
 	"log"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -17,403 +17,311 @@ import (
 
 // Route struct
 type Route struct {
-	// HTTP method in uppercase, can be a * for "Use" & "All" routes
-	Method string
-	// Stores the original path
-	Path string
-	// Prefix is for ending wildcards or middleware
-	Prefix string
-	// Stores regex for complex paths
-	Regex *regexp.Regexp
-	// Stores params keys for :params / :optional? / *
-	Params []string
-	// Handler for context
-	HandlerCtx func(*Ctx)
-	// Handler for websockets
-	HandlerConn func(*Conn)
+	isMiddleware bool // is middleware route
+	isWebSocket  bool // is websocket route
+
+	isStar  bool // path == '*'
+	isSlash bool // path == '/'
+	isRegex bool // needs regex parsing
+
+	Method string         // http method
+	Path   string         // orginal path
+	Params []string       // path params
+	Regexp *regexp.Regexp // regexp matcher
+
+	HandleCtx  func(*Ctx)  // ctx handler
+	HandleConn func(*Conn) // conn handler
+
 }
 
-func (app *App) registerStatic(grpPrefix string, args ...string) {
-	var prefix = "/"
-	var root = "./"
-	// enable / disable gzipping somewhere?
-	// todo v2.0.0
-	gzip := true
-
-	if len(args) == 1 {
-		root = args[0]
-	}
-	if len(args) == 2 {
-		prefix = args[0]
-		root = args[1]
-	}
-
-	// A non wildcard path must start with a '/'
-	if prefix != "*" && len(prefix) > 0 && prefix[0] != '/' {
-		prefix = "/" + prefix
-	}
-	// Prepend group prefix
-	if len(grpPrefix) > 0 {
-		// `/v1`+`/` => `/v1`+``
-		if prefix == "/" {
-			prefix = grpPrefix
-		} else {
-			prefix = grpPrefix + prefix
-		}
-		// Remove duplicate slashes `//`
-		prefix = strings.Replace(prefix, "//", "/", -1)
-	}
-	// Empty or '/*' path equals "match anything"
-	// TODO fix * for paths with grpprefix
-	if prefix == "/*" {
-		prefix = "*"
-	}
-	// Lets get all files from root
-	files, _, err := getFiles(root)
-	if err != nil {
-		log.Fatal("Static: ", err)
-	}
-	// ./static/compiled => static/compiled
-	mount := filepath.Clean(root)
-
-	if !app.Settings.CaseSensitive {
-		prefix = strings.ToLower(prefix)
-	}
-	if !app.Settings.StrictRouting && len(prefix) > 1 {
-		prefix = strings.TrimRight(prefix, "/")
-	}
-
-	// Loop over all files
-	for _, file := range files {
-		// Ignore the .gzipped files by fasthttp
-		if strings.Contains(file, ".fasthttp.gz") {
-			continue
-		}
-		// Time to create a fake path for the route match
-		// static/index.html => /index.html
-		path := filepath.Join(prefix, strings.Replace(file, mount, "", 1))
-		// for windows: static\index.html => /index.html
-		path = filepath.ToSlash(path)
-		// Store file path to use in ctx handler
-		filePath := file
-
-		if len(prefix) > 1 && strings.Contains(prefix, "*") {
-			app.routes = append(app.routes, &Route{
-				Method: "GET",
-				Path:   path,
-				Prefix: strings.Split(prefix, "*")[0],
-				HandlerCtx: func(c *Ctx) {
-					c.SendFile(filePath, gzip)
-				},
-			})
+func (app *App) nextRoute(ctx *Ctx) {
+	lenr := len(app.routes) - 1
+	for ctx.index < lenr {
+		ctx.index++
+		route := app.routes[ctx.index]
+		match, values := route.matchRoute(ctx.method, ctx.path)
+		if match {
+			ctx.route = route
+			if !ctx.matched {
+				ctx.matched = true
+			}
+			if len(values) > 0 {
+				ctx.values = values
+			}
+			if route.isWebSocket {
+				if err := websocketUpgrader.Upgrade(ctx.Fasthttp, func(fconn *websocket.Conn) {
+					conn := acquireConn(fconn)
+					defer releaseConn(conn)
+					route.HandleConn(conn)
+				}); err != nil { // Upgrading failed
+					ctx.SendStatus(400)
+				}
+			} else {
+				route.HandleCtx(ctx)
+			}
 			return
 		}
-		// If the file is an index.html, bind the prefix to index.html directly
-		if filepath.Base(filePath) == "index.html" || filepath.Base(filePath) == "index.htm" {
-			app.routes = append(app.routes, &Route{
-				Method: "GET",
-				Path:   prefix,
-				HandlerCtx: func(c *Ctx) {
-					c.SendFile(filePath, gzip)
-				},
-			})
-		}
-		if !app.Settings.CaseSensitive {
-			path = strings.ToLower(path)
-		}
-		if !app.Settings.StrictRouting && len(prefix) > 1 {
-			path = strings.TrimRight(path, "/")
-		}
-		// Add the route + SendFile(filepath) to routes
-		app.routes = append(app.routes, &Route{
-			Method: "GET",
-			Path:   path,
-			HandlerCtx: func(c *Ctx) {
-				c.SendFile(filePath, gzip)
-			},
-		})
+	}
+	if !ctx.matched {
+		ctx.SendStatus(404)
 	}
 }
-func (app *App) registerWebSocket(method, group, path string, handler func(*Conn)) {
-	if len(path) > 0 && path[0] != '/' {
-		path = "/" + path
-	}
-	if len(group) > 0 {
-		// `/v1`+`/` => `/v1`+``
-		if path == "/" {
-			path = group
-		} else {
-			path = group + path
+
+func (r *Route) matchRoute(method, path string) (match bool, values []string) {
+	// is route middleware? matches all http methods
+	if r.isMiddleware {
+		// '*' or '/' means its a valid match
+		if r.isStar || r.isSlash {
+			return true, nil
 		}
-		// Remove duplicate slashes `//`
-		path = strings.Replace(path, "//", "/", -1)
+		// if midware path starts with req.path
+		if strings.HasPrefix(path, r.Path) {
+			return true, nil
+		}
+		// middlewares dont support regex so bye!
+		return false, nil
 	}
-	// Routes are case insensitive by default
+	// non-middleware route, http method must match!
+	// the wildcard method is for .All() method
+	if r.Method != method && r.Method[0] != '*' {
+		return false, nil
+	}
+	// '*' means we match anything
+	if r.isStar {
+		return true, nil
+	}
+	// simple '/' bool, so you avoid unnecessary comparison for long paths
+	if r.isSlash && path == "/" {
+		return true, nil
+	}
+	// does this route need regex matching?
+	if r.isRegex {
+		// req.path match regex pattern
+		if r.Regexp.MatchString(path) {
+			// do we have parameters
+			if len(r.Params) > 0 {
+				// get values for parameters
+				matches := r.Regexp.FindAllStringSubmatch(path, -1)
+				// did we get the values?
+				if len(matches) > 0 && len(matches[0]) > 1 {
+					values = matches[0][1:len(matches[0])]
+					return true, values
+				}
+				return false, nil
+			}
+			return true, nil
+		}
+		return false, nil
+	}
+	// last thing to do is to check for a simple path match
+	if r.Path == path {
+		return true, nil
+	}
+	// Nothing match
+	return false, nil
+}
+
+func (app *App) handler(fctx *fasthttp.RequestCtx) {
+	// get fiber context from sync pool
+	ctx := acquireCtx(fctx)
+	defer releaseCtx(ctx)
+
+	// attach app poiner and compress settings
+	ctx.app = app
+	ctx.compress = app.Settings.Compression
+
+	// Case sensitive routing
 	if !app.Settings.CaseSensitive {
-		path = strings.ToLower(path)
+		ctx.path = strings.ToLower(ctx.path)
 	}
-	if !app.Settings.StrictRouting && len(path) > 1 {
-		path = strings.TrimRight(path, "/")
+	// Strict routing
+	if !app.Settings.StrictRouting && len(ctx.path) > 1 {
+		ctx.path = strings.TrimRight(ctx.path, "/")
 	}
-	// Get ':param' & ':optional?' & '*' from path
-	params := getParams(path)
-	if len(params) > 0 {
-		log.Fatal("WebSocket routes do not support path parameters: `:param, :optional?, *`")
+
+	app.nextRoute(ctx)
+
+	if ctx.compress {
+		compressResponse(fctx)
 	}
-	app.routes = append(app.routes, &Route{
-		Method: method, Path: path, HandlerConn: handler,
-	})
 }
-func (app *App) registerMethod(method, group, path string, handlers ...func(*Ctx)) {
-	// No special paths for websockets
+
+func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
+	// Route requires atleast one handler
 	if len(handlers) == 0 {
 		log.Fatalf("Missing handler in route")
 	}
-	// Set variables
-	var prefix string
-	var middleware = method == "USE"
-	// A non wildcard path must start with a '/'
-	if path != "*" && len(path) > 0 && path[0] != '/' {
+	// Cannot have an empty path
+	if path == "" {
+		path = "/"
+	}
+	// Path always start with a '/' or '*'
+	if path[0] != '/' && path[0] != '*' {
 		path = "/" + path
 	}
-	// Prepend group prefix
-	if len(group) > 0 {
-		// `/v1`+`/` => `/v1`+``
-		if path == "/" {
-			path = group
-		} else {
-			path = group + path
-		}
-		// Remove duplicate slashes `//`
-		path = strings.Replace(path, "//", "/", -1)
-	}
-	// Empty or '/*' path equals "match anything"
-	// TODO fix * for paths with grpprefix
-	if path == "/*" || (middleware && path == "") {
-		path = "*"
-	}
-	if method == "ALL" || middleware {
-		method = "*"
-	}
-	// Routes are case insensitive by default
+
+	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
 		path = strings.ToLower(path)
 	}
+	// Strict routing, remove last `/`
 	if !app.Settings.StrictRouting && len(path) > 1 {
 		path = strings.TrimRight(path, "/")
 	}
-	// If the route can match anything
-	if path == "*" {
-		for i := range handlers {
-			app.routes = append(app.routes, &Route{
-				Method: method, Path: path, HandlerCtx: handlers[i],
-			})
-		}
-		return
-	}
-	// Get ':param' & ':optional?' & '*' from path
-	params := getParams(path)
-	// Enable prefix for midware
-	if len(params) == 0 && middleware {
-		prefix = path
-	}
 
-	// If path has no params (simple path)
-	if len(params) == 0 {
-		for i := range handlers {
-			app.routes = append(app.routes, &Route{
-				Method: method, Path: path, Prefix: prefix, HandlerCtx: handlers[i],
-			})
+	// Set route booleans
+	var isMiddleware = method == "USE"
+	// Middleware / All allows all HTTP methods
+	if isMiddleware || method == "ALL" {
+		method = "*"
+	}
+	var isStar = path == "*" || path == "/*"
+	// Middleware containing only a `/` equals wildcard
+	if isMiddleware && path == "/" {
+		isStar = true
+	}
+	var isSlash = path == "/"
+	var isRegex = false
+	// Route properties
+	var Params = getParams(path)
+	var Regexp *regexp.Regexp
+	// Params requires regex pattern
+	if len(Params) > 0 {
+		regex, err := getRegex(path)
+		if err != nil {
+			log.Fatal("Router: Invalid path pattern: " + path)
 		}
-		return
+		isRegex = true
+		Regexp = regex
 	}
-
-	// If path only contains 1 wildcard, we can create a prefix
-	// If its a middleware, we also create a prefix
-	if len(params) == 1 && params[0] == "*" {
-		prefix = strings.Split(path, "*")[0]
-		for i := range handlers {
-			app.routes = append(app.routes, &Route{
-				Method: method, Path: path, Prefix: prefix,
-				Params: params, HandlerCtx: handlers[i],
-			})
-		}
-		return
-	}
-	// We have an :param or :optional? and need to compile a regex struct
-	regex, err := getRegex(path)
-	if err != nil {
-		log.Fatal("Router: Invalid path pattern: " + path)
-	}
-	// Add route with regex
 	for i := range handlers {
 		app.routes = append(app.routes, &Route{
-			Method: method, Path: path, Regex: regex,
-			Params: params, HandlerCtx: handlers[i],
+			isMiddleware: isMiddleware,
+			isStar:       isStar,
+			isSlash:      isSlash,
+			isRegex:      isRegex,
+			Method:       method,
+			Path:         path,
+			Params:       Params,
+			Regexp:       Regexp,
+			HandleCtx:    handlers[i],
 		})
 	}
 }
-func (app *App) handler(fctx *fasthttp.RequestCtx) {
-	// Use this boolean to perform 404 not found at the end
-	var match = false
-	// get custom context from sync pool
-	ctx := acquireCtx()
-	defer releaseCtx(ctx)
-	ctx.app = app
-	ctx.compress = app.Settings.Compression
-	ctx.Fasthttp = fctx
-	// get path and method
-	path := ctx.Path()
+
+func (app *App) registerWebSocket(method, path string, handle func(*Conn)) {
+	// Cannot have an empty path
+	if path == "" {
+		path = "/"
+	}
+	// Path always start with a '/' or '*'
+	if path[0] != '/' && path[0] != '*' {
+		path = "/" + path
+	}
+
+	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
 		path = strings.ToLower(path)
 	}
+	// Strict routing, remove last `/`
 	if !app.Settings.StrictRouting && len(path) > 1 {
 		path = strings.TrimRight(path, "/")
 	}
-	method := ctx.Method()
-	// enable recovery
-	if app.recover != nil {
-		defer func() {
-			if r := recover(); r != nil {
-				err, ok := r.(error)
-				if !ok {
-					err = fmt.Errorf("%v", r)
+
+	var isWebSocket = true
+
+	var isStar = path == "*" || path == "/*"
+	var isSlash = path == "/"
+	var isRegex = false
+	// Route properties
+	var Params = getParams(path)
+	var Regexp *regexp.Regexp
+	// Params requires regex pattern
+	if len(Params) > 0 {
+		regex, err := getRegex(path)
+		if err != nil {
+			log.Fatal("Router: Invalid path pattern: " + path)
+		}
+		isRegex = true
+		Regexp = regex
+	}
+	app.routes = append(app.routes, &Route{
+		isWebSocket: isWebSocket,
+		isStar:      isStar,
+		isSlash:     isSlash,
+		isRegex:     isRegex,
+
+		Method:     method,
+		Path:       path,
+		Params:     Params,
+		Regexp:     Regexp,
+		HandleConn: handle,
+	})
+}
+
+func (app *App) registerStatic(prefix, root string) {
+	// Cannot have an empty prefix
+	if prefix == "" {
+		prefix = "/"
+	}
+	// prefix always start with a '/' or '*'
+	if prefix[0] != '/' && prefix[0] != '*' {
+		prefix = "/" + prefix
+	}
+	// Case sensitive routing, all to lowercase
+	if !app.Settings.CaseSensitive {
+		prefix = strings.ToLower(prefix)
+	}
+
+	var isStar = prefix == "*" || prefix == "/*"
+
+	files := map[string]string{}
+	// Clean root path
+	root = filepath.Clean(root)
+	// Check if root exist and is accessible
+	if _, err := os.Stat(root); err != nil {
+		log.Fatalf("%s", err)
+	}
+	// Store path url and file paths in map
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			url := "*"
+			if !isStar {
+				// /css/style.css: static/css/style.css
+				url = filepath.Join(prefix, strings.Replace(path, root, "", 1))
+			}
+			// \static\css: /static/css
+			url = filepath.ToSlash(url)
+			files[url] = path
+			if filepath.Base(path) == "index.html" {
+				files[url] = path
+			}
+		}
+		return err
+	}); err != nil {
+		log.Fatalf("%s", err)
+	}
+	compress := app.Settings.Compression
+	app.routes = append(app.routes, &Route{
+		isMiddleware: true,
+		isStar:       isStar,
+		Method:       "*",
+		Path:         prefix,
+		HandleCtx: func(c *Ctx) {
+			// Only allow GET & HEAD methods
+			if c.method == "GET" || c.method == "HEAD" {
+				path := "*"
+				if !isStar {
+					path = c.path
 				}
-				ctx.error = err
-				app.recover(ctx)
-			}
-		}()
-	}
-	// loop trough routes
-	for _, route := range app.routes {
-		// Skip route if method does not match
-		if route.Method != "*" && route.Method != method {
-			continue
-		}
-		// Set route pointer if user wants to call .Route()
-		ctx.route = route
-		// wilcard or exact same path
-		// TODO v2: enable or disable case insensitive match
-		if route.Path == "*" || route.Path == path {
-			// if * always set the path to the wildcard parameter
-			if route.Path == "*" {
-				ctx.params = &[]string{"*"}
-				ctx.values = []string{path}
-			}
-			// ctx.Fasthttp.Request.Header.ConnectionUpgrade()
-			// Websocket request
-			if route.HandlerConn != nil && websocket.FastHTTPIsWebSocketUpgrade(fctx) {
-				// Try to upgrade
-				err := socketUpgrade.Upgrade(ctx.Fasthttp, func(fconn *websocket.Conn) {
-					conn := acquireConn(fconn)
-					defer releaseConn(conn)
-					route.HandlerConn(conn)
-				})
-				// Upgrading failed
-				if err != nil {
-					log.Fatalf("Failed to upgrade websocket connection")
+				file := files[path]
+				if file != "" {
+					c.SendFile(file, compress)
+					return
 				}
-				return
 			}
-			// No handler for HTTP nor websocket
-			if route.HandlerCtx == nil {
-				continue
-			}
-			// Match found, 404 not needed
-			match = true
-			route.HandlerCtx(ctx)
-			// if next is not set, leave loop and release ctx
-			if !ctx.next {
-				break
-			} else {
-				// reset match to false
-				match = false
-			}
-			// set next to false for next iteration
-			ctx.next = false
-			// continue to go to the next route
-			continue
-		}
-		if route.Prefix != "" && strings.HasPrefix(path, route.Prefix) {
-			ctx.route = route
-			if strings.Contains(route.Path, "*") {
-				ctx.params = &[]string{"*"}
-				// ctx.values = matches[0][1:len(matches[0])]
-				// parse query source
-				ctx.values = []string{strings.Replace(path, route.Prefix, "", 1)}
-			}
-			// No handler for HTTP nor websocket
-			if route.HandlerCtx == nil {
-				continue
-			}
-			// Match found, 404 not needed
-			match = true
-			route.HandlerCtx(ctx)
-			// if next is not set, leave loop and release ctx
-			if !ctx.next {
-				break
-			} else {
-				// reset match to false
-				match = false
-			}
-			// set next to false for next iteration
-			ctx.next = false
-			// continue to go to the next route
-			continue
-		}
-
-		// Skip route if regex does not exist
-		if route.Regex == nil {
-			continue
-		}
-
-		// Skip route if regex does not match
-		if !route.Regex.MatchString(path) {
-			continue
-		}
-
-		// If we have parameters, lets find the matches
-		if len(route.Params) > 0 {
-			matches := route.Regex.FindAllStringSubmatch(path, -1)
-			// If we have matches, add params and values to context
-			if len(matches) > 0 && len(matches[0]) > 1 {
-				ctx.params = &route.Params
-				ctx.values = matches[0][1:len(matches[0])]
-			}
-		}
-		// No handler for HTTP nor websocket
-		if route.HandlerCtx == nil {
-			continue
-		}
-		// Match found, 404 not needed
-		match = true
-		route.HandlerCtx(ctx)
-		// if next is not set, leave loop and release ctx
-		if !ctx.next {
-			break
-		} else {
-			// reset match to false
-			match = false
-		}
-		// set next to false for next iteration
-		ctx.next = false
-	}
-	// Do we need to compress?
-	if ctx.compress {
-		compressDefaultCompression(fctx)
-		// switch app.Settings.CompressionLevel {
-		// case 2:
-		// 	compressBestSpeed(fctx)
-		// case 3:
-		// 	compressBestCompression(fctx)
-		// case 4:
-		// 	compressHuffmanOnly(fctx)
-		// default: // 1
-		// 	compressDefaultCompression(fctx)
-		// }
-	}
-	// No match, send default 404 Not Found
-	if !match {
-		ctx.SendStatus(404)
-	}
+			c.matched = false
+			c.Next()
+		},
+	})
 }

@@ -18,9 +18,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_pt.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/pt.svg">
   </a>
-  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/cn.svg">
-  </a>-->
+  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/de.svg">
   </a>
@@ -30,9 +30,12 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fr.md">
     <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/fr.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_id.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/id.svg">
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_tr.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/tr.svg">
   </a>
+  <!-- <a href="https://github.com/gofiber/fiber/blob/master/.github/README_id.md">
+    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/id.svg">
+  </a> -->
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
@@ -55,12 +58,15 @@
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
   </a>
+  <a href="https://travis-ci.org/gofiber/fiber">
+    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
+  </a>
 </p>
 <p align="center">
-  <b>Fiber</b>是一个基于<a href="https://github.com/expressjs/express">Express的</a> <b>Web框架</b>，建立在<a href="https://golang.org/doc/">Go</a>语言写的 <b>最快的</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>HTTP引擎的基础上。皆在</b>简化</b> <b>零内存分配</b>和<b>提高性能</b>，以便<b>快速</b>开发。
+	<b>Fiber</b> adalah <b>web framework</b> yang terinspirasi dari <a href="https://github.com/expressjs/express">Express</a> yang berbasiskan <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, HTTP engine paling <b>cepat</b> untuk <a href="https://golang.org/doc/">Go</a>. Dirancang untuk <b>mempermudah</b>, <b>mempercepat</b> pengembangan aplikasi dengan <b>alokasi memori nol-nya</b> serta <b>kinerja</b> yang selalu diperhatikan.
 </p>
 
-## ⚡️ 快速入门
+## ⚡️ Cara Mulai
 
 ```go
 package main
@@ -78,48 +84,48 @@ func main() {
 }
 ```
 
-## ⚙️ 安装
+## ⚙️ Instalasi
 
-首先， [下载](https://golang.org/dl/)并安装Go。 `1.11`或更高。
+Pertama, [unduh](https://golang.org/dl/) dan instal Go di komputer anda. Versi `1.11` atau yang lebih tinggi diperlukan.
 
-使用[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)命令完成安装：
+Instalasi dilakukkan dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
-export GO111MODULE=on
-export GOPROXY=https://goproxy.cn
 go get -u github.com/gofiber/fiber/...
 ```
 
-## 🤖 性能
+## 🤖 Pengukuran Kinerja
 
-这些测试由[TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)和[Go Web执行](https://github.com/smallnest/go-web-framework-benchmark) 。如果要查看所有结果，请访问我们的[Wiki](https://fiber.wiki/benchmarks) 。
+Pengukuran ini dilakukan oleh [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) dan [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Apabila anda ingin melihat hasil lengkapnya, silahkan kunjungi halaman [Wiki](https://fiber.wiki/benchmarks) kami.
 
 <p float="left" align="middle">
-  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
-  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets/benchmark_alloc.png" width="49%">
+  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
+  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark_alloc.png" width="49%">
 </p>
 
-## 🎯 特点
+## 🎯 Fitur
 
-- 强大的[路由](https://fiber.wiki/routing)
-- [静态文件](https://fiber.wiki/application#static)服务
-- 极限[表现](https://fiber.wiki/benchmarks)
-- [内存占用低](https://fiber.wiki/benchmarks)
-- Express [API端点](https://fiber.wiki/context)
-- 中间件和[Next](https://fiber.wiki/context#next)支持
-- [快速的](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
-- Available in [5 languages](https://fiber.wiki/)
-- 以及更多[文档](https://fiber.wiki/)
+- Sistem [Routing](https://fiber.wiki/routing) yang solid
+- Serve [file statis](https://fiber.wiki/application#static)
+- [Kinerja](https://fiber.wiki/benchmarks) ekstrim
+- [Penggunaan memori](https://fiber.wiki/benchmarks) yang kecil
+- Cocok untuk [API](https://fiber.wiki/context)
+- Mendukung Middleware & [Next](https://fiber.wiki/context#next) seperti Express
+- Kembangkan aplikasi dengan [Cepat](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
+- Tersedia di 10 bahasa lainnya
+- Dan masih banyak lagi, [kunjungi Fiber](https://fiber.wiki/)
 
-## 💡 哲学
+## 💡 Filosofi
 
-从[Node.js](https://nodejs.org/en/about/)切换到[Go的](https://golang.org/doc/)新gopher在开始构建Web应用程序或微服务之前正在应对学习过程。 Fiber作为一个**Web框架** ，是按照**极简主义**的思想并遵循**UNIX方式创建的**，因此新的gopher可以以热烈和可信赖的欢迎**方式**迅速进入Go的世界。
+Bagi yang baru yang beralih dari [Node.js](https://nodejs.org/en/about/) ke [Go](https://golang.org/doc/) terkadang perlu waktu yang cukup lama sebelum mereka mampu membuat aplikasi web dengan Go. Fiber, sebagai **web framework** dirancang secara **minimalis** dan mengikuti filosofi dari **UNIX**, sehingga pengguna baru dengan cepat memasuki dunia Go dengan sambutan yang hangat dan dapat diandalkan.
 
-Fiber **受** Internet上最流行的Web框架Expressjs的**启发** 。我们结合了Express的**易用**性和Go的**原始性能** 。如果您曾经在Node.js上实现过Web应用程序(*使用Express.js或类似工具*)，那么许多方法和原理对您来说似乎**非常易懂**。
+Fiber terinspirasi dari Express, salah satu web framework paling terkenal di Internet. Kami menggabungkan **kemudahan** dari Express dan **kinerja luar biasa** dari Go. Apabila anda pernah membuat aplikasi dengan Node.js (_dengan Express atau yang lainnya_), maka banyak metode dan prinsip yang akan terasa **sangat umum** bagi anda.
 
-## 👀 示例
+Kami **mendengarkan** para pengguna di [GitHub Issues](https://github.com/gofiber/fiber/issues) (_dan berbagai platform lainnya_) untuk menciptakan web framework yang **cepat**, **fleksibel** dan **bersahabat** untuk berbagai macam keperluan, **tenggat waktu** dan **keahlian** para pengguna! Sama halnya seperti yang dilakukkan Express di dunia JavaScript.
 
-下面列出了一些常见示例。如果您想查看更多代码示例，请访问我们的[Recipes存储库](https://github.com/gofiber/recipes)或访问我们的[API文档](https://fiber.wiki) 。
+## 👀 Contoh
+
+Dibawah ini terdapat beberapa contoh penggunaan. Jika anda ingin contoh lainnya, silahkan kunjungi [Gudang resep](https://github.com/gofiber/recipes) atau kunjungi [Dokumentasi API](https://fiber.wiki) kami.
 
 ### Routing
 
@@ -149,7 +155,7 @@ func main() {
 }
 ```
 
-### Serve static files
+### Menyajikan file statis
 https://fiber.wiki/application#static
 ```go
 func main() {
@@ -200,13 +206,13 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 Perlihatkan contoh lainnya</summary>
 
 ### Template engines
 https://fiber.wiki/application#settings
 https://fiber.wiki/context#render
 
-Supported engines:
+Mendukung:
 - [html](https://golang.org/pkg/html/template/)
 - [amber](https://github.com/eknkc/amber)
 - [handlebars](https://github.com/aymerick/raymond)
@@ -239,7 +245,7 @@ func main() {
 }
 ```
 
-### Grouping routes into chains
+### Pengelompokan routes
 https://fiber.wiki/application#group
 ```go
 func main() {
@@ -289,7 +295,7 @@ func main() {
 ### Cross-Origin Resource Sharing (CORS)
 https://fiber.wiki/middleware#cors
 
-[CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) is a mechanism that uses additional HTTP headers to tell browsers to give a web application running at one origin, access to selected resources from a different origin. A web application executes a cross-origin HTTP request when it requests a resource that has a different origin (domain, protocol, or port) from its own.
+[CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) adalah mekanisme yang menggunakan HTTP headers tambahan untuk memberitahu browser bahwa aplikasi/data kita hanya bisa diakses dari sumber (origin) tertentu, atau bisa juga diakses dari sumber berbeda. Aplikasi web memproses cross-origin HTTP request ketika request-nya berasal dari sumber berbeda (domain, protokol dan port).
 
 ```go
 import (
@@ -311,13 +317,13 @@ func main() {
 }
 ```
 
-Check CORS by passing any domain in `Origin` header: 
+Setelah diaktifkan, bisa dicoba dengan cara memberi sumber/domain berbeda di header `Origin`: 
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
-### Custom 404 response
+### Respon 404
 
 ```go
 func main() {
@@ -342,7 +348,7 @@ func main() {
 }
 ```
 
-### JSON Response
+### Respon JSON
 https://fiber.wiki/context#json
 ```go
 type User struct {
@@ -370,7 +376,7 @@ func main() {
 }
 ```
 
-### WebSocket support
+### Dukungan WebSocket
 https://fiber.wiki/application#websocket
 ```go
 func main() {
@@ -426,26 +432,27 @@ func main() {
 ```
 </details>
 
+## 💬 Media
 
-## 💬 媒体
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) (_by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_)
+- [Fiber release v1.7 is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
 
-- [欢迎使用Fiber —用Go语言编写的Express.js风格的Web框架 ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *作者[维克·肖斯塔克(VicShóstak)](https://github.com/koddr)，2020年2月3日*
-- [Fiber 1.7 已经发布! 🎉 他仍然快速、灵活且友善](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) *作者[维克·肖斯塔克(VicShóstak)](https://github.com/koddr), 2020年2月21日)
+## 👍 Berkontribusi
 
-## 👍 贡献
+Apabila anda ingin mengucapkan **terima kasih** dan/atau mendukung pengembangan `Fiber`:
 
-如果您要说声**谢谢**或支持`Fiber`的积极发展：
+1. Berikan bintang atau [GitHub Star](https://github.com/gofiber/fiber/stargazers) ke proyek ini.
+2. Bagikan [di Twitter anda](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+3. Buat ulasan atau tutorial di [Medium](https://medium.com/), [Dev.to](https://dev.to/) atau blog pribadi anda.
+4. Bantu kami menerjemahkan `README` ini ke bahasa lainnya.
 
-1. 将[GitHub Star](https://github.com/gofiber/fiber/stargazers)添加到项目中。
-2. [在Twitter上](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)发布有关项目[的推文](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)。
-3. 在[Medium](https://medium.com/)，[Dev.to](https://dev.to/)或个人博客上写评论或教程。
-4. 帮助我们将此`README文件`翻译成其它语言。
 
-## ☕ Supporters
+## ☕ Para Pendukung
 
 <a href="https://www.buymeacoffee.com/fenny" target="_blank">
   <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
 </a>
+
 <table>
   <tr>
     <td align="center">
@@ -481,10 +488,12 @@ func main() {
   </tr>
 </table>
 
-### ⭐️ 星星
+## ⭐️ Bintang
 
 <a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
 
-## ⚠️ 许可证
+## ⚠️ Lisensi
 
-`Fiber`是根据[MIT许可证许可的](https://github.com/gofiber/fiber/blob/master/LICENSE)免费开源软件。
+`Fiber` adalah perangkat lunak gratis dengan sumber terbuka berlisensi [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE).
+
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/0)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/0)[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/1)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/1)[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/2)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/2)[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/3)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/3)[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/4)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/4)[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/5)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/5)[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/6)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/6)[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/7)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/7)

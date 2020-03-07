@@ -28,23 +28,36 @@ import (
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 // For more information please visit our documentation: https://fiber.wiki/context
 type Ctx struct {
-	app      *App
-	route    *Route
-	next     bool
-	error    error
-	params   *[]string
-	values   []string
-	compress bool
-	Fasthttp *fasthttp.RequestCtx
+	app      *App                 // Reference to *App
+	route    *Route               // Reference to *Route
+	index    int                  // Index of the current stack
+	matched  bool                 // If the context found a match in stack
+	method   string               // HTTP method
+	path     string               // HTTP path
+	values   []string             // Route parameter values
+	compress bool                 // If the response needs to be compressed
+	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	err      error                // Contains error if catched
 }
 
-// Range info of range header
+// Range struct
 type Range struct {
 	Type   string
 	Ranges []struct {
 		Start int
 		End   int
 	}
+}
+
+// Cookie struct
+type Cookie struct {
+	Name     string
+	Value    string
+	Path     string
+	Domain   string
+	Expires  time.Time
+	Secure   bool
+	HTTPOnly bool
 }
 
 // Ctx pool
@@ -55,20 +68,23 @@ var poolCtx = sync.Pool{
 }
 
 // Acquire Ctx from pool
-func acquireCtx() *Ctx {
+func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx := poolCtx.Get().(*Ctx)
+	ctx.index = -1
+	ctx.path = getString(fctx.URI().Path())
+	ctx.method = getString(fctx.Request.Header.Method())
+	ctx.Fasthttp = fctx
 	return ctx
 }
 
 // Return Ctx to pool
 func releaseCtx(ctx *Ctx) {
 	ctx.route = nil
-	ctx.next = false
-	ctx.error = nil
-	ctx.params = nil
 	ctx.values = nil
 	ctx.compress = false
+	ctx.matched = false
 	ctx.Fasthttp = nil
+	ctx.err = nil
 	poolCtx.Put(ctx)
 }
 
@@ -95,17 +111,6 @@ func acquireConn(fconn *websocket.Conn) *Conn {
 func releaseConn(conn *Conn) {
 	conn.Conn = nil
 	poolConn.Put(conn)
-}
-
-// Cookie : struct
-type Cookie struct {
-	Name     string
-	Value    string
-	Path     string
-	Domain   string
-	Expires  time.Time
-	Secure   bool
-	HTTPOnly bool
 }
 
 // Accepts : https://fiber.wiki/context#accepts
@@ -358,7 +363,7 @@ func (ctx *Ctx) Download(file string, name ...string) {
 
 // Error returns err that is passed via Next(err)
 func (ctx *Ctx) Error() error {
-	return ctx.error
+	return ctx.err
 }
 
 // Format : https://fiber.wiki/context#format
@@ -522,12 +527,11 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 // Next : https://fiber.wiki/context#next
 func (ctx *Ctx) Next(err ...error) {
 	ctx.route = nil
-	ctx.next = true
-	ctx.params = nil
 	ctx.values = nil
 	if len(err) > 0 {
-		ctx.error = err[0]
+		ctx.err = err[0]
 	}
+	ctx.app.nextRoute(ctx)
 }
 
 // OriginalURL : https://fiber.wiki/context#originalurl
@@ -537,11 +541,11 @@ func (ctx *Ctx) OriginalURL() string {
 
 // Params : https://fiber.wiki/context#params
 func (ctx *Ctx) Params(key string) (value string) {
-	if ctx.params == nil {
+	if ctx.route.Params == nil {
 		return
 	}
-	for i := 0; i < len(*ctx.params); i++ {
-		if (*ctx.params)[i] == key {
+	for i := 0; i < len(ctx.route.Params); i++ {
+		if (ctx.route.Params)[i] == key {
 			return ctx.values[i]
 		}
 	}
@@ -725,7 +729,7 @@ func (ctx *Ctx) SendStatus(status int) {
 	ctx.Fasthttp.Response.SetStatusCode(status)
 	// Only set status body when there is no response body
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
-		ctx.Fasthttp.Response.SetBodyString(getStatus(status))
+		ctx.Fasthttp.Response.SetBodyString(statusMessages[status])
 	}
 }
 
