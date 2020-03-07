@@ -4,37 +4,37 @@
   </a>
   <br>
   <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/gb.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/en.svg">
   </a>-->
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/ru.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_es.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/es.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/es.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ja.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/jp.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/jp.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_pt.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/pt.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/pt.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/cn.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ch.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/de.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/de.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ko.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/kr.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ko.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fr.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/fr.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/fr.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_tr.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/tr.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/tr.svg">
   </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_id.md">
-    <img height="20px" src="https://cdnjs.cloudflare.com/ajax/libs/flag-icon-css/3.4.6/flags/4x3/id.svg">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/id.svg">
   </a>
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
@@ -125,9 +125,17 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues) 
 
 ## 👀 Examples
 
-Listed below are some of the common examples. If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our [API documentation](https://fiber.wiki).
+Listed below are some of the common examples. 
+
+> If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our [API documentation](https://fiber.wiki).
 
 ### Routing
+
+Docs:
+
+- 📖 https://fiber.wiki/#basic-routing
+
+Example:
 
 ```go
 func main() {
@@ -156,7 +164,13 @@ func main() {
 ```
 
 ### Serve static files
-https://fiber.wiki/application#static
+
+Docs:
+
+- 📖 https://fiber.wiki/application#static
+
+Example:
+
 ```go
 func main() {
   app := fiber.New()
@@ -177,8 +191,14 @@ func main() {
 ```
 
 ### Middleware & Next
-https://fiber.wiki/routing#middleware
-https://fiber.wiki/context#next
+
+Docs:
+
+- 📖 https://fiber.wiki/routing#middleware
+- 📖 https://fiber.wiki/context#next
+
+Example:
+
 ```go
 func main() {
   app := fiber.New()
@@ -209,15 +229,21 @@ func main() {
   <summary>📚 Show more code examples</summary>
 
 ### Template engines
-https://fiber.wiki/application#settings
-https://fiber.wiki/context#render
+
+Docs:
+
+- 📖 https://fiber.wiki/application#settings
+- 📖 https://fiber.wiki/context#render
 
 Supported engines:
+
 - [html](https://golang.org/pkg/html/template/)
 - [amber](https://github.com/eknkc/amber)
 - [handlebars](https://github.com/aymerick/raymond)
 - [mustache](https://github.com/cbroglie/mustache)
 - [pug](https://github.com/Joker/jade)
+
+Example:
 
 ```go
 func main() {
@@ -246,7 +272,13 @@ func main() {
 ```
 
 ### Grouping routes into chains
-https://fiber.wiki/application#group
+
+Docs:
+
+- 📖 https://fiber.wiki/application#group
+
+Example:
+
 ```go
 func main() {
   app := fiber.New()
@@ -269,7 +301,13 @@ func main() {
 ```
 
 ### Middleware logger
-https://fiber.wiki/middleware#logger
+
+Docs:
+
+- 📖 https://fiber.wiki/middleware#logger
+
+Example:
+
 ```go
 import (
     "github.com/gofiber/fiber"
@@ -293,9 +331,14 @@ func main() {
 ```
 
 ### Cross-Origin Resource Sharing (CORS)
-https://fiber.wiki/middleware#cors
 
-[CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) is a mechanism that uses additional HTTP headers to tell browsers to give a web application running at one origin, access to selected resources from a different origin. A web application executes a cross-origin HTTP request when it requests a resource that has a different origin (domain, protocol, or port) from its own.
+Docs:
+
+- 📖 https://fiber.wiki/middleware#cors
+
+> [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) is a mechanism that uses additional HTTP headers to tell browsers to give a web application running at one origin, access to selected resources from a different origin. A web application executes a cross-origin HTTP request when it requests a resource that has a different origin (domain, protocol, or port) from its own.
+
+Example:
 
 ```go
 import (
@@ -310,7 +353,7 @@ func main() {
     app.Use(middleware.CORS())
 
     app.Get("/", func(c *fiber.Ctx) {
-        c.Send("CORS is enabled!")
+      c.Send("CORS is enabled!")
     })
 
     app.Listen(3000)
@@ -324,6 +367,12 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
 ### Custom 404 response
+
+Docs:
+
+- 📖 https://fiber.wiki/application#http-methods
+
+Example:
 
 ```go
 func main() {
@@ -341,7 +390,8 @@ func main() {
 
   // Last middleware to match anything
   app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404) // => 404 "Not Found"
+    c.SendStatus(404) 
+    // => 404 "Not Found"
   })
 
   app.Listen(3000)
@@ -349,7 +399,13 @@ func main() {
 ```
 
 ### JSON Response
-https://fiber.wiki/context#json
+
+Docs:
+
+- 📖 https://fiber.wiki/context#json
+
+Example:
+
 ```go
 type User struct {
   Name string `json:"name"`
@@ -361,15 +417,15 @@ func main() {
 
   app.Get("/user", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
-    // {"name":"John", "age":20}
+    // => {"name":"John", "age":20}
   })
 
   app.Get("/json", func(c *fiber.Ctx) {
-    c.JSON(&fiber.Map{
-			"success": true,
-			"message": "Hi John!",
+    c.JSON(fiber.Map{
+      "success": true,
+      "message": "Hi John!",
     })
-    // {"success":true, "message":"Hi John!"}
+    // => {"success":true, "message":"Hi John!"}
   })
 
   app.Listen(3000)
@@ -377,7 +433,13 @@ func main() {
 ```
 
 ### WebSocket support
-https://fiber.wiki/application#websocket
+
+Docs:
+
+- 📖 https://fiber.wiki/application#websocket
+
+Example:
+
 ```go
 func main() {
   app := fiber.New()
@@ -406,10 +468,14 @@ func main() {
 ```
 
 ### Recover middleware
-https://fiber.wiki/middleware#recover
-```go
-package main
 
+Docs:
+
+- 📖 https://fiber.wiki/middleware#recover
+
+Example:
+
+```go
 import (
     "github.com/gofiber/fiber"
     "github.com/gofiber/fiber/middleware"
@@ -421,7 +487,7 @@ func main() {
   app.Use(middleware.Recover(func(c *fiber.Ctx, err error) {
     log.Println(err)  // "Something went wrong!"
     c.SendStatus(500) // Internal Server Error
-  })))
+  }))
 
   app.Get("/", func(c *fiber.Ctx) {
     panic("Something went wrong!")
@@ -436,6 +502,7 @@ func main() {
 
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) (_by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_)
 - [Fiber release v1.7 is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
+- [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) (_by [Vic Shóstak](https://github.com/koddr), 03 Mar 2020_)
 
 ## 👍 Contribute
 
@@ -455,12 +522,6 @@ If you want to say **thank you** and/or support the active development of `Fiber
 
 <table>
   <tr>
-    <td align="center">
-        <a href="https://github.com/gofiber/fiber">
-          <img src="https://i.stack.imgur.com/frlIf.png" width="100px"></br>
-          <sub><b>JustDave</b></sub>
-        </a>
-    </td>
     <td align="center">
         <a href="https://github.com/bihe">
           <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
@@ -484,6 +545,12 @@ If you want to say **thank you** and/or support the active development of `Fiber
         <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="100px"></br>
         <sub><b>ToishY</b></sub>
       </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/gofiber/fiber">
+          <img src="https://i.stack.imgur.com/frlIf.png" width="100px"></br>
+          <sub><b>JustDave</b></sub>
+        </a>
     </td>
   </tr>
 </table>
