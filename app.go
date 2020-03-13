@@ -64,11 +64,6 @@ type (
 	}
 )
 
-func init() {
-	flag.Bool("prefork", false, "Use prefork")
-	flag.Bool("child", false, "Is a child process")
-}
-
 // New : https://fiber.wiki/application#new
 func New(settings ...*Settings) *App {
 	var prefork, child bool
