@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bufio"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -25,26 +26,26 @@ import (
 )
 
 // Version of Fiber
-const Version = "1.8.0"
+const Version = "1.8.2"
 
 type (
 	// App denotes the Fiber application.
 	App struct {
-		server   *fasthttp.Server
-		routes   []*Route
-		child    bool
-		recover  func(*Ctx)
-		Settings *Settings
+		server   *fasthttp.Server // Fasthttp server settings
+		routes   []*Route         // Route stack
+		child    bool             // If current process is a child ( for prefork )
+		recover  func(*Ctx)       // Deprecated, use middleware.Recover
+		Settings *Settings        // Fiber settings
 	}
 	// Map defines a generic map of type `map[string]interface{}`.
 	Map map[string]interface{}
 	// Settings is a struct holding the server settings
 	Settings struct {
-		// fiber settings
+		// This will spawn multiple Go processes listening on the same port
 		Prefork bool `default:"false"`
-		// Enable strict routing. When enabled, the router treats "/foo" and "/foo/" as different. Otherwise, the router treats "/foo" and "/foo/" as the same.
+		// Enable strict routing. When enabled, the router treats "/foo" and "/foo/" as different.
 		StrictRouting bool `default:"false"`
-		// Enable case sensitivity. When enabled, "/Foo" and "/foo" are different routes. When disabled, "/Foo" and "/foo" are treated the same.
+		// Enable case sensitivity. When enabled, "/Foo" and "/foo" are different routes.
 		CaseSensitive bool `default:"false"`
 		// Enables the "Server: value" HTTP header.
 		ServerHeader string `default:""`
@@ -52,28 +53,13 @@ type (
 		Immutable bool `default:"false"`
 		// Enables GZip / Deflate compression for all responses
 		Compression bool `default:"false"`
-		// CompressionLevel int  `default:"1"`
-		// fasthttp settings
-		// GETOnly              bool          `default:"false"`
-		// IdleTimeout          time.Duration `default:"0"`
-		// Concurrency          int           `default:"256 * 1024"`
-		// ReadTimeout          time.Duration `default:"0"`
-		// WriteTimeout         time.Duration `default:"0"`
-		// TCPKeepalive         bool          `default:"false"`
-		// MaxConnsPerIP        int           `default:"0"`
-		// ReadBufferSize       int           `default:"4096"`
-		// WriteBufferSize      int           `default:"4096"`
-		// ConcurrencySleep     time.Duration `default:"0"`
-		// DisableKeepAlive     bool          `default:"false"`
-		// ReduceMemoryUsage    bool          `default:"false"`
-		// MaxRequestsPerConn   int           `default:"0"`
-		// TCPKeepalivePeriod   time.Duration `default:"0"`
+		// Max body size that the server accepts
 		BodyLimit int `default:"4 * 1024 * 1024"`
-		// NoHeaderNormalizing  bool          `default:"false"`
-		// NoDefaultContentType bool          `default:"false"`
-		// template settings
-		TemplateFolder    string `default:""`
-		TemplateEngine    string `default:""`
+		// Folder containing template files
+		TemplateFolder string `default:""`
+		// Template engine: html, amber, handlebars , mustache or pug
+		TemplateEngine string `default:""`
+		// Extension for the template files
 		TemplateExtension string `default:""`
 	}
 )
@@ -84,55 +70,39 @@ func init() {
 }
 
 // New : https://fiber.wiki/application#new
-func New(settings ...*Settings) (app *App) {
-	var prefork bool
-	var child bool
-	for _, arg := range os.Args[1:] {
-		if arg == "-prefork" {
+func New(settings ...*Settings) *App {
+	var prefork, child bool
+	// Loop trought args without using flag.Parse()
+	for _, v := range os.Args[1:] {
+		if v == "-prefork" {
 			prefork = true
-		} else if arg == "-child" {
+		} else if v == "-child" {
 			child = true
 		}
 	}
-	app = &App{
+	// Create default app
+	app := &App{
 		child: child,
+		Settings: &Settings{
+			Prefork:   prefork,
+			BodyLimit: 4 * 1024 * 1024,
+		},
 	}
+	// If settings exist, set some defaults
 	if len(settings) > 0 {
-		opt := settings[0]
-		if !opt.Prefork {
-			opt.Prefork = prefork
+		if !settings[0].Prefork { // Default to -prefork flag if false
+			settings[0].Prefork = prefork
 		}
-		if opt.Immutable {
-			getString = func(b []byte) string {
-				return string(b)
-			}
+		if settings[0].BodyLimit == 0 { // Default MaxRequestBodySize
+			settings[0].BodyLimit = 4 * 1024 * 1024
 		}
-		// if opt.Concurrency == 0 {
-		// 	opt.Concurrency = 256 * 1024
-		// }
-		// if opt.ReadBufferSize == 0 {
-		// 	opt.ReadBufferSize = 4096
-		// }
-		// if opt.WriteBufferSize == 0 {
-		// 	opt.WriteBufferSize = 4096
-		// }
-		if opt.BodyLimit == 0 {
-			opt.BodyLimit = 4 * 1024 * 1024
+		if settings[0].Immutable { // Replace unsafe conversion funcs
+			getString = func(b []byte) string { return string(b) }
+			getBytes = func(s string) []byte { return []byte(s) }
 		}
-		// if opt.CompressionLevel == 0 {
-		// 	opt.CompressionLevel = 1
-		// }
-		app.Settings = opt
-		return
+		app.Settings = settings[0] // Set custom settings
 	}
-	app.Settings = &Settings{
-		Prefork: prefork,
-		// Concurrency:        256 * 1024,
-		// ReadBufferSize:     4096,
-		// WriteBufferSize:    4096,
-		BodyLimit: 4 * 1024 * 1024,
-	}
-	return
+	return app
 }
 
 // Group : https://fiber.wiki/application#group
@@ -147,8 +117,8 @@ func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 }
 
 // Static : https://fiber.wiki/application#static
-func (app *App) Static(args ...string) *App {
-	app.registerStatic("/", args...)
+func (app *App) Static(prefix, root string) *App {
+	app.registerStatic(prefix, root)
 	return app
 }
 
@@ -231,18 +201,19 @@ func (app *App) All(path string, handlers ...func(*Ctx)) *App {
 }
 
 // WebSocket : https://fiber.wiki/application#websocket
-func (app *App) WebSocket(path string, handler func(*Conn)) *App {
-	app.registerWebSocket(http.MethodGet, "", path, handler)
+func (app *App) WebSocket(path string, handle func(*Conn)) *App {
+	app.registerWebSocket(http.MethodGet, path, handle)
 	return app
 }
 
 // Recover : https://fiber.wiki/application#recover
 func (app *App) Recover(handler func(*Ctx)) {
+	log.Println("Warning: Recover(handler) is deprecated since v1.8.2, please use middleware.Recover(handler, error) instead.")
 	app.recover = handler
 }
 
 // Listen : https://fiber.wiki/application#listen
-func (app *App) Listen(address interface{}, tls ...string) error {
+func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	addr, ok := address.(string)
 	if !ok {
 		port, ok := address.(int)
@@ -273,9 +244,9 @@ func (app *App) Listen(address interface{}, tls ...string) error {
 		}
 	}
 
-	// enable TLS/HTTPS
-	if len(tls) > 1 {
-		return app.server.ServeTLS(ln, tls[0], tls[1])
+	// TLS config
+	if len(tlsconfig) > 0 {
+		ln = tls.NewListener(ln, tlsconfig[0])
 	}
 	return app.server.Serve(ln)
 }
@@ -387,26 +358,11 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 
 func (app *App) newServer() *fasthttp.Server {
 	return &fasthttp.Server{
-		Handler: app.handler,
-		Name:    app.Settings.ServerHeader,
-		// Concurrency:                        app.Settings.Concurrency,
-		// SleepWhenConcurrencyLimitsExceeded: app.Settings.ConcurrencySleep,
-		// DisableKeepalive:                   app.Settings.DisableKeepAlive,
-		// ReadBufferSize:                     app.Settings.ReadBufferSize,
-		// WriteBufferSize:                    app.Settings.WriteBufferSize,
-		// ReadTimeout:                        app.Settings.ReadTimeout,
-		// WriteTimeout:                       app.Settings.WriteTimeout,
-		// IdleTimeout:                        app.Settings.IdleTimeout,
-		// MaxConnsPerIP:                      app.Settings.MaxConnsPerIP,
-		// MaxRequestsPerConn:                 app.Settings.MaxRequestsPerConn,
-		// TCPKeepalive:                       app.Settings.TCPKeepalive,
-		// TCPKeepalivePeriod:                 app.Settings.TCPKeepalivePeriod,
-		MaxRequestBodySize: app.Settings.BodyLimit,
-		// ReduceMemoryUsage:                  app.Settings.ReduceMemoryUsage,
-		// GetOnly:                            app.Settings.GETOnly,
-		// DisableHeaderNamesNormalizing:      app.Settings.NoHeaderNormalizing,
+		Handler:               app.handler,
+		Name:                  app.Settings.ServerHeader,
+		MaxRequestBodySize:    app.Settings.BodyLimit,
 		NoDefaultServerHeader: app.Settings.ServerHeader == "",
-		// NoDefaultContentType:               app.Settings.NoDefaultContentType,
+
 		Logger:       &disableLogger{},
 		LogAllErrors: false,
 		ErrorHandler: func(ctx *fasthttp.RequestCtx, err error) {
