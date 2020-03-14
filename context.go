@@ -89,7 +89,6 @@ func releaseCtx(ctx *Ctx) {
 
 // Conn https://godoc.org/github.com/gorilla/websocket#pkg-index
 type Conn struct {
-	locals map[string]interface{}
 	*websocket.Conn
 }
 
