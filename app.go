@@ -68,10 +68,10 @@ type (
 func New(settings ...*Settings) *App {
 	var prefork, child bool
 	// Loop trought args without using flag.Parse()
-	for i := range os.Args[1:] {
-		if os.Args[i] == "-prefork" {
+	for _, v := range os.Args[1:] {
+		if v == "-prefork" {
 			prefork = true
-		} else if os.Args[i] == "-child" {
+		} else if v == "-child" {
 			child = true
 		}
 	}
