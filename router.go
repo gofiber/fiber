@@ -293,8 +293,8 @@ func (app *App) registerStatic(prefix, root string) {
 			// \static\css: /static/css
 			url = filepath.ToSlash(url)
 			files[url] = path
-			if filepath.Base(path) == "index.html" {
-				files[url] = path
+			if filepath.Base(path) == "index.html" || filepath.Base(path) == "index.htm" {
+				files[filepath.ToSlash(filepath.Dir(url))] = path
 			}
 		}
 		return err
