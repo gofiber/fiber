@@ -17,6 +17,8 @@ import (
 
 // Route struct
 type Route struct {
+	isGet bool // allows HEAD requests if GET
+
 	isMiddleware bool // is middleware route
 	isWebSocket  bool // is websocket route
 
@@ -35,6 +37,7 @@ type Route struct {
 }
 
 func (app *App) nextRoute(ctx *Ctx) {
+	// Keep track of head matches
 	lenr := len(app.routes) - 1
 	for ctx.index < lenr {
 		ctx.index++
@@ -42,17 +45,15 @@ func (app *App) nextRoute(ctx *Ctx) {
 		match, values := route.matchRoute(ctx.method, ctx.path)
 		if match {
 			ctx.route = route
-			if !ctx.matched {
-				ctx.matched = true
-			}
-			if len(values) > 0 {
-				ctx.values = values
-			}
+			ctx.values = values
+			// Deprecated since v1.8.2
+			// github.com/gofiber/websocket
 			if route.isWebSocket {
 				if err := websocketUpgrader.Upgrade(ctx.Fasthttp, func(fconn *websocket.Conn) {
 					conn := acquireConn(fconn)
 					defer releaseConn(conn)
-					route.HandleConn(conn)
+					ctx.Conn = conn
+					route.HandleCtx(ctx)
 				}); err != nil { // Upgrading failed
 					ctx.SendStatus(400)
 				}
@@ -62,7 +63,7 @@ func (app *App) nextRoute(ctx *Ctx) {
 			return
 		}
 	}
-	if !ctx.matched {
+	if len(ctx.Fasthttp.Response.Body()) == 0 {
 		ctx.SendStatus(404)
 	}
 }
@@ -72,32 +73,30 @@ func (r *Route) matchRoute(method, path string) (match bool, values []string) {
 	if r.isMiddleware {
 		// '*' or '/' means its a valid match
 		if r.isStar || r.isSlash {
-			return true, nil
+			return true, values
 		}
 		// if midware path starts with req.path
 		if strings.HasPrefix(path, r.Path) {
-			return true, nil
+			return true, values
 		}
 		// middlewares dont support regex so bye!
-		return false, nil
+		return false, values
 	}
 	// non-middleware route, http method must match!
-	// the wildcard method is for .All() method
-	if r.Method != method && r.Method[0] != '*' {
-		return false, nil
-	}
-	// '*' means we match anything
-	if r.isStar {
-		return true, nil
-	}
-	// simple '/' bool, so you avoid unnecessary comparison for long paths
-	if r.isSlash && path == "/" {
-		return true, nil
-	}
-	// does this route need regex matching?
-	if r.isRegex {
-		// req.path match regex pattern
-		if r.Regexp.MatchString(path) {
+	// the wildcard method is for .All() & .Use() methods
+	// If route is GET, also match HEAD requests
+	if r.Method == method || r.Method[0] == '*' || (r.isGet && method == "HEAD") {
+		// '*' means we match anything
+		if r.isStar {
+			return true, values
+		}
+		// simple '/' bool, so you avoid unnecessary comparison for long paths
+		if r.isSlash && path == "/" {
+			return true, values
+		}
+		// does this route need regex matching?
+		// does req.path match regex pattern?
+		if r.isRegex && r.Regexp.MatchString(path) {
 			// do we have parameters
 			if len(r.Params) > 0 {
 				// get values for parameters
@@ -107,25 +106,23 @@ func (r *Route) matchRoute(method, path string) (match bool, values []string) {
 					values = matches[0][1:len(matches[0])]
 					return true, values
 				}
-				return false, nil
+				return false, values
 			}
-			return true, nil
+			return true, values
 		}
-		return false, nil
-	}
-	// last thing to do is to check for a simple path match
-	if r.Path == path {
-		return true, nil
+		// last thing to do is to check for a simple path match
+		if r.Path == path {
+			return true, values
+		}
 	}
 	// Nothing match
-	return false, nil
+	return false, values
 }
 
 func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	// get fiber context from sync pool
 	ctx := acquireCtx(fctx)
 	defer releaseCtx(ctx)
-
 	// attach app poiner and compress settings
 	ctx.app = app
 	ctx.compress = app.Settings.Compression
@@ -140,7 +137,7 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	}
 
 	app.nextRoute(ctx)
-
+	// Deprecated since v1.8.2 https://github.com/gofiber/compress
 	if ctx.compress {
 		compressResponse(fctx)
 	}
@@ -159,7 +156,8 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	if path[0] != '/' && path[0] != '*' {
 		path = "/" + path
 	}
-
+	// Store original path to strip case sensitive params
+	original := path
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
 		path = strings.ToLower(path)
@@ -168,8 +166,8 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	if !app.Settings.StrictRouting && len(path) > 1 {
 		path = strings.TrimRight(path, "/")
 	}
-
 	// Set route booleans
+	var isGet = method == "GET"
 	var isMiddleware = method == "USE"
 	// Middleware / All allows all HTTP methods
 	if isMiddleware || method == "ALL" {
@@ -183,7 +181,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	var isSlash = path == "/"
 	var isRegex = false
 	// Route properties
-	var Params = getParams(path)
+	var Params = getParams(original)
 	var Regexp *regexp.Regexp
 	// Params requires regex pattern
 	if len(Params) > 0 {
@@ -196,6 +194,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	}
 	for i := range handlers {
 		app.routes = append(app.routes, &Route{
+			isGet:        isGet,
 			isMiddleware: isMiddleware,
 			isStar:       isStar,
 			isSlash:      isSlash,
@@ -209,7 +208,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	}
 }
 
-func (app *App) registerWebSocket(method, path string, handle func(*Conn)) {
+func (app *App) registerWebSocket(method, path string, handle func(*Ctx)) {
 	// Cannot have an empty path
 	if path == "" {
 		path = "/"
@@ -218,7 +217,8 @@ func (app *App) registerWebSocket(method, path string, handle func(*Conn)) {
 	if path[0] != '/' && path[0] != '*' {
 		path = "/" + path
 	}
-
+	// Store original path to strip case sensitive params
+	original := path
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
 		path = strings.ToLower(path)
@@ -234,7 +234,7 @@ func (app *App) registerWebSocket(method, path string, handle func(*Conn)) {
 	var isSlash = path == "/"
 	var isRegex = false
 	// Route properties
-	var Params = getParams(path)
+	var Params = getParams(original)
 	var Regexp *regexp.Regexp
 	// Params requires regex pattern
 	if len(Params) > 0 {
@@ -251,11 +251,11 @@ func (app *App) registerWebSocket(method, path string, handle func(*Conn)) {
 		isSlash:     isSlash,
 		isRegex:     isRegex,
 
-		Method:     method,
-		Path:       path,
-		Params:     Params,
-		Regexp:     Regexp,
-		HandleConn: handle,
+		Method:    method,
+		Path:      path,
+		Params:    Params,
+		Regexp:    Regexp,
+		HandleCtx: handle,
 	})
 }
 
@@ -320,7 +320,6 @@ func (app *App) registerStatic(prefix, root string) {
 					return
 				}
 			}
-			c.matched = false
 			c.Next()
 		},
 	})

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"encoding/base64"
+	"log"
 	"strings"
 
 	"github.com/gofiber/fiber"
@@ -29,6 +30,7 @@ var BasicAuthConfigDefault = BasicAuthConfig{
 
 // BasicAuth ...
 func BasicAuth(config ...BasicAuthConfig) func(*fiber.Ctx) {
+	log.Println("Warning: middleware.BasicAuth() is deprecated since v1.8.3, please use github.com/gofiber/basicauth")
 	// Init config
 	var cfg BasicAuthConfig
 	if len(config) > 0 {

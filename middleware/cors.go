@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -41,6 +42,7 @@ var CorsConfigDefault = CORSConfig{
 
 // Cors ...
 func Cors(config ...CORSConfig) func(*fiber.Ctx) {
+	log.Println("Warning: middleware.Cors() is deprecated since v1.8.3, please use github.com/gofiber/cors")
 	// Init config
 	var cfg CORSConfig
 	// Set config if provided
