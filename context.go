@@ -31,13 +31,13 @@ type Ctx struct {
 	app      *App                 // Reference to *App
 	route    *Route               // Reference to *Route
 	index    int                  // Index of the current stack
-	matched  bool                 // If the context found a match in stack
 	method   string               // HTTP method
 	path     string               // HTTP path
 	values   []string             // Route parameter values
 	compress bool                 // If the response needs to be compressed
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	err      error                // Contains error if catched
+	Conn     *Conn
+	err      error // Contains error if catched
 }
 
 // Range struct
@@ -82,7 +82,6 @@ func releaseCtx(ctx *Ctx) {
 	ctx.route = nil
 	ctx.values = nil
 	ctx.compress = false
-	ctx.matched = false
 	ctx.Fasthttp = nil
 	ctx.err = nil
 	poolCtx.Put(ctx)
@@ -90,6 +89,7 @@ func releaseCtx(ctx *Ctx) {
 
 // Conn https://godoc.org/github.com/gorilla/websocket#pkg-index
 type Conn struct {
+	locals map[string]interface{}
 	*websocket.Conn
 }
 
@@ -322,6 +322,7 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 
 // Compress : https://fiber.wiki/context#compress
 func (ctx *Ctx) Compress(enable ...bool) {
+	log.Println("Warning: c.Compress() is deprecated since v1.8.2, please use github.com/gofiber/compression instead.")
 	ctx.compress = true
 	if len(enable) > 0 {
 		ctx.compress = enable[0]
@@ -740,7 +741,7 @@ func (ctx *Ctx) SendString(body string) {
 
 // Set : https://fiber.wiki/context#set
 func (ctx *Ctx) Set(key string, val string) {
-	ctx.Fasthttp.Response.Header.SetCanonical(getBytes(key), getBytes(val))
+	ctx.Fasthttp.Response.Header.Set(key, val)
 }
 
 // Subdomains : https://fiber.wiki/context#subdomains

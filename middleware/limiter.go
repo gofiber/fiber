@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"log"
 	"strconv"
 	"time"
 
@@ -48,6 +49,7 @@ var LimiterConfigDefault = LimiterConfig{
 
 // Limiter ...
 func Limiter(config ...LimiterConfig) func(*fiber.Ctx) {
+	log.Println("Warning: middleware.Limiter() is deprecated since v1.8.3, please use github.com/gofiber/limiter")
 	// Init config
 	var cfg LimiterConfig
 	// Set config if provided
