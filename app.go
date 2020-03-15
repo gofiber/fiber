@@ -115,8 +115,8 @@ func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 	}
 }
 
-// StaticConfig represents settings for serving static files
-type StaticConfig struct {
+// Static represents settings for serving static files
+type Static struct {
 	// Transparently compresses responses if set to true
 	// This works differently than the github.com/gofiber/compression middleware
 	// The server tries minimizing CPU usage by caching compressed files.
@@ -135,7 +135,7 @@ type StaticConfig struct {
 }
 
 // Static : https://fiber.wiki/application#static
-func (app *App) Static(prefix, root string, config ...StaticConfig) *App {
+func (app *App) Static(prefix, root string, config ...Static) *App {
 	app.registerStatic(prefix, root, config...)
 	return app
 }

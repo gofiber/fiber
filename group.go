@@ -29,9 +29,9 @@ func (grp *Group) Group(prefix string, handlers ...func(*Ctx)) *Group {
 }
 
 // Static : https://fiber.wiki/application#static
-func (grp *Group) Static(prefix, root string) *Group {
+func (grp *Group) Static(prefix, root string, config ...Static) *Group {
 	prefix = groupPaths(grp.prefix, prefix)
-	grp.app.registerStatic(prefix, root)
+	grp.app.registerStatic(prefix, root, config...)
 	return grp
 }
 

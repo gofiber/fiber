@@ -258,7 +258,7 @@ func (app *App) registerWebSocket(method, path string, handle func(*Ctx)) {
 	})
 }
 
-func (app *App) registerStatic(prefix, root string, config ...StaticConfig) {
+func (app *App) registerStatic(prefix, root string, config ...Static) {
 	// Cannot have an empty prefix
 	if prefix == "" {
 		prefix = "/"
