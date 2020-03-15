@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -35,13 +36,14 @@ type LoggerConfig struct {
 // LoggerConfigDefault is the defaul Logger middleware config.
 var LoggerConfigDefault = LoggerConfig{
 	Skip:       nil,
-	Format:     "${time} ${method} ${path} - ${ip} - ${status} - ${latency}ms\n",
+	Format:     "${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n",
 	TimeFormat: "15:04:05",
 	Output:     os.Stderr,
 }
 
 // Logger ...
 func Logger(config ...LoggerConfig) func(*fiber.Ctx) {
+	log.Println("Warning: middleware.Logger() is deprecated since v1.8.3, please use github.com/gofiber/logger")
 	// Init config
 	var cfg LoggerConfig
 	// Set config if provided

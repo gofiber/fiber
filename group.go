@@ -125,7 +125,7 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 }
 
 // WebSocket : https://fiber.wiki/application#websocket
-func (grp *Group) WebSocket(path string, handle func(*Conn)) *Group {
+func (grp *Group) WebSocket(path string, handle func(*Ctx)) *Group {
 	path = groupPaths(grp.prefix, path)
 	grp.app.registerWebSocket(http.MethodGet, path, handle)
 	return grp

@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/gofiber/fiber"
 	"github.com/google/uuid"
@@ -29,13 +30,14 @@ var RequestIDConfigDefault = RequestIDConfig{
 
 // RequestID adds an indentifier to the request using the `X-Request-ID` header
 func RequestID(config ...RequestIDConfig) func(*fiber.Ctx) {
+	log.Println("Warning: middleware.RequestID() is deprecated since v1.8.3, please use github.com/gofiber/requestid")
 	// Init config
 	var cfg RequestIDConfig
 	if len(config) > 0 {
 		cfg = config[0]
 	}
 	// Set config default values
-	if cfg.Generator == nil {
+	if cfg.Skip == nil {
 		cfg.Skip = RequestIDConfigDefault.Skip
 	}
 	if cfg.Generator == nil {

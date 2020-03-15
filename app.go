@@ -7,7 +7,6 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -26,7 +25,7 @@ import (
 )
 
 // Version of Fiber
-const Version = "1.8.2"
+const Version = "1.8.3"
 
 type (
 	// App denotes the Fiber application.
@@ -51,6 +50,7 @@ type (
 		ServerHeader string `default:""`
 		// Enables handler values to be immutable even if you return from handler
 		Immutable bool `default:"false"`
+		// Deprecated v1.8.2
 		// Enables GZip / Deflate compression for all responses
 		Compression bool `default:"false"`
 		// Max body size that the server accepts
@@ -64,19 +64,14 @@ type (
 	}
 )
 
-func init() {
-	flag.Bool("prefork", false, "Use prefork")
-	flag.Bool("child", false, "Is a child process")
-}
-
 // New : https://fiber.wiki/application#new
 func New(settings ...*Settings) *App {
 	var prefork, child bool
 	// Loop trought args without using flag.Parse()
-	for i := range os.Args[1:] {
-		if os.Args[i] == "-prefork" {
+	for _, v := range os.Args[1:] {
+		if v == "-prefork" {
 			prefork = true
-		} else if os.Args[i] == "-child" {
+		} else if v == "-child" {
 			child = true
 		}
 	}
@@ -90,17 +85,21 @@ func New(settings ...*Settings) *App {
 	}
 	// If settings exist, set some defaults
 	if len(settings) > 0 {
-		if !settings[0].Prefork { // Default to -prefork flag if false
-			settings[0].Prefork = prefork
+		app.Settings = settings[0] // Set custom settings
+		if !app.Settings.Prefork { // Default to -prefork flag if false
+			app.Settings.Prefork = prefork
 		}
-		if settings[0].BodyLimit == 0 { // Default MaxRequestBodySize
-			settings[0].BodyLimit = 4 * 1024 * 1024
+		if app.Settings.BodyLimit == 0 { // Default MaxRequestBodySize
+			app.Settings.BodyLimit = 4 * 1024 * 1024
 		}
-		if settings[0].Immutable { // Replace unsafe conversion funcs
+		if app.Settings.Immutable { // Replace unsafe conversion funcs
 			getString = func(b []byte) string { return string(b) }
 			getBytes = func(s string) []byte { return []byte(s) }
 		}
-		app.Settings = settings[0] // Set custom settings
+	}
+	// Deprecated
+	if app.Settings.Compression {
+		log.Println("Warning: Settings.Compression is deprecated since v1.8.2, please use github.com/gofiber/compression instead.")
 	}
 	return app
 }
@@ -201,14 +200,14 @@ func (app *App) All(path string, handlers ...func(*Ctx)) *App {
 }
 
 // WebSocket : https://fiber.wiki/application#websocket
-func (app *App) WebSocket(path string, handle func(*Conn)) *App {
+func (app *App) WebSocket(path string, handle func(*Ctx)) *App {
 	app.registerWebSocket(http.MethodGet, path, handle)
 	return app
 }
 
 // Recover : https://fiber.wiki/application#recover
 func (app *App) Recover(handler func(*Ctx)) {
-	log.Println("Warning: Recover(handler) is deprecated since v1.8.2, please use middleware.Recover(handler, error) instead.")
+	log.Println("Warning: app.Recover() is deprecated since v1.8.2, please use github.com/gofiber/recover instead.")
 	app.recover = handler
 }
 
@@ -362,9 +361,8 @@ func (app *App) newServer() *fasthttp.Server {
 		Name:                  app.Settings.ServerHeader,
 		MaxRequestBodySize:    app.Settings.BodyLimit,
 		NoDefaultServerHeader: app.Settings.ServerHeader == "",
-
-		Logger:       &disableLogger{},
-		LogAllErrors: false,
+		Logger:                &disableLogger{},
+		LogAllErrors:          false,
 		ErrorHandler: func(ctx *fasthttp.RequestCtx, err error) {
 			if err.Error() == "body size exceeds the given limit" {
 				ctx.Response.SetStatusCode(413)
