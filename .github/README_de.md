@@ -91,7 +91,7 @@ Als erstes, [downloade](https://golang.org/dl/) und installiere Go. `1.11` oder 
 Die Installation wird durch das  [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) Kommando gestartet:
 
 ```bash
-go get -u github.com/gofiber/fiber/...
+go get -u github.com/gofiber/fiber
 ```
 
 ## 🤖 Benchmarks
@@ -110,7 +110,7 @@ Diese Tests wurden von [TechEmpower](https://github.com/TechEmpower/FrameworkBen
 - Extreme [Performance](https://fiber.wiki/benchmarks)
 - [Geringe Arbeitsspeicher](https://fiber.wiki/benchmarks) verwendung
 - Express [API Endpunkte](https://fiber.wiki/context)
-- Middleware & [Next](https://fiber.wiki/context#next) Support
+- [Middleware](https://fiber.wiki/middleware) & [Next](https://fiber.wiki/context#next) Support
 - [Schnelle](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) serverseitige Programmierung
 - Übersetzt in [5 Sprachen](https://fiber.wiki/)
 - Und vieles mehr - [erkunde Fiber](https://fiber.wiki/)
@@ -430,9 +430,9 @@ func main() {
 ```
 </details>
 
-## 🧬 Available Middlewares
+## 🧬 Verfügbare Middlewares
 
-For _easier_ and _more clear_ work, we've put [middleware](https://fiber.wiki/middleware) into separate repositories:
+Für _eine leichtere_ und _übersichtlichere_ arbeit haben wir die [middleware](https://fiber.wiki/middleware) in getrennte repositories gestellt:
 
 - [Basic Authentication](https://github.com/gofiber/basicauth)
 - [Key Authentication](https://github.com/gofiber/keyauth)
@@ -451,7 +451,9 @@ For _easier_ and _more clear_ work, we've put [middleware](https://fiber.wiki/mi
 
 ## 💬 Medien
 
-- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _von [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) (_by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_)
+- [Fiber release v1.7 is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
+- [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) (_by [Vic Shóstak](https://github.com/koddr), 03 Mar 2020_)
 
 ## 👍 Mitwirken
 
