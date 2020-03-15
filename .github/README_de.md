@@ -91,7 +91,7 @@ Als erstes, [downloade](https://golang.org/dl/) und installiere Go. `1.11` oder 
 Die Installation wird durch das  [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) Kommando gestartet:
 
 ```bash
-go get -u github.com/gofiber/fiber/...
+go get -u github.com/gofiber/fiber
 ```
 
 ## 🤖 Benchmarks
@@ -110,7 +110,7 @@ Diese Tests wurden von [TechEmpower](https://github.com/TechEmpower/FrameworkBen
 - Extreme [Performance](https://fiber.wiki/benchmarks)
 - [Geringe Arbeitsspeicher](https://fiber.wiki/benchmarks) verwendung
 - Express [API Endpunkte](https://fiber.wiki/context)
-- Middleware & [Next](https://fiber.wiki/context#next) Support
+- [Middleware](https://fiber.wiki/middleware) & [Next](https://fiber.wiki/context#next) Support
 - [Schnelle](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) serverseitige Programmierung
 - Übersetzt in [5 Sprachen](https://fiber.wiki/)
 - Und vieles mehr - [erkunde Fiber](https://fiber.wiki/)
@@ -430,9 +430,30 @@ func main() {
 ```
 </details>
 
+## 🧬 Verfügbare Middlewares
+
+Für _eine leichtere_ und _übersichtlichere_ arbeit haben wir die [middleware](https://fiber.wiki/middleware) in getrennte repositories gestellt:
+
+- [Basic Authentication](https://github.com/gofiber/basicauth)
+- [Key Authentication](https://github.com/gofiber/keyauth)
+- [Compression](https://github.com/gofiber/compression)
+- [Request ID](https://github.com/gofiber/requestid)
+- [WebSocket](https://github.com/gofiber/websocket)
+- [Rewrite](https://github.com/gofiber/rewrite)
+- [Recover](https://github.com/gofiber/recover)
+- [Limiter](https://github.com/gofiber/limiter)
+- [Session](https://github.com/gofiber/session)
+- [Logger](https://github.com/gofiber/logger)
+- [Helmet](https://github.com/gofiber/helmet)
+- [CORS](https://github.com/gofiber/cors)
+- [CSRF](https://github.com/gofiber/csrf)
+- [JWT](https://github.com/gofiber/jwt)
+
 ## 💬 Medien
 
-- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _von [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) (_by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_)
+- [Fiber release v1.7 is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
+- [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) (_by [Vic Shóstak](https://github.com/koddr), 03 Mar 2020_)
 
 ## 👍 Mitwirken
 
@@ -450,12 +471,6 @@ Falls du **danke** sagen möchtest und/oder aktiv die Entwicklung von `fiber` f�
 </a>
 <table>
   <tr>
-    <td align="center">
-        <a href="https://github.com/gofiber/fiber">
-          <img src="https://i.stack.imgur.com/frlIf.png" width="100px"></br>
-          <sub><b>JustDave</b></sub>
-        </a>
-    </td>
     <td align="center">
         <a href="https://github.com/bihe">
           <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
@@ -480,6 +495,12 @@ Falls du **danke** sagen möchtest und/oder aktiv die Entwicklung von `fiber` f�
         <sub><b>ToishY</b></sub>
       </a>
     </td>
+    <td align="center">
+        <a href="https://github.com/gofiber/fiber">
+          <img src="https://i.stack.imgur.com/frlIf.png" width="100px"></br>
+          <sub><b>JustDave</b></sub>
+        </a>
+    </td>
   </tr>
 </table>
 
@@ -489,4 +510,14 @@ Falls du **danke** sagen möchtest und/oder aktiv die Entwicklung von `fiber` f�
 
 ## ⚠️ Lizenz
 
-`Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE).
+`Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logotype was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+
+<br>
+
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/0)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/0)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/1)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/1)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/2)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/2)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/3)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/3)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/4)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/4)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/5)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/5)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/6)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/6)
