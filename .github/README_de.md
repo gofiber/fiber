@@ -470,12 +470,6 @@ Falls du **danke** sagen m√∂chtest und/oder aktiv die Entwicklung von `fiber` f√
 <table>
   <tr>
     <td align="center">
-        <a href="https://github.com/gofiber/fiber">
-          <img src="https://i.stack.imgur.com/frlIf.png" width="100px"></br>
-          <sub><b>JustDave</b></sub>
-        </a>
-    </td>
-    <td align="center">
         <a href="https://github.com/bihe">
           <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
           <sub><b>HenrikBinggl</b></sub>
@@ -498,6 +492,12 @@ Falls du **danke** sagen m√∂chtest und/oder aktiv die Entwicklung von `fiber` f√
         <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="100px"></br>
         <sub><b>ToishY</b></sub>
       </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/gofiber/fiber">
+          <img src="https://i.stack.imgur.com/frlIf.png" width="100px"></br>
+          <sub><b>JustDave</b></sub>
+        </a>
     </td>
   </tr>
 </table>
