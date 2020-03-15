@@ -6,10 +6,9 @@ package fiber
 
 import (
 	"log"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	websocket "github.com/fasthttp/websocket"
 	fasthttp "github.com/valyala/fasthttp"
@@ -264,62 +263,74 @@ func (app *App) registerStatic(prefix, root string) {
 	if prefix == "" {
 		prefix = "/"
 	}
-	// prefix always start with a '/' or '*'
+	// Prefix always start with a '/' or '*'
 	if prefix[0] != '/' && prefix[0] != '*' {
 		prefix = "/" + prefix
+	}
+	// Match anything
+	var wildcard = false
+	if prefix == "*" || prefix == "/*" {
+		wildcard = true
+		prefix = "/"
 	}
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
 		prefix = strings.ToLower(prefix)
 	}
-
-	var isStar = prefix == "*" || prefix == "/*"
-
-	files := map[string]string{}
-	// Clean root path
-	root = filepath.Clean(root)
-	// Check if root exist and is accessible
-	if _, err := os.Stat(root); err != nil {
-		log.Fatalf("%s", err)
+	// For security we want to restrict to the current work directory.
+	if len(root) == 0 {
+		root = "."
 	}
-	// Store path url and file paths in map
-	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if !info.IsDir() {
-			url := "*"
-			if !isStar {
-				// /css/style.css: static/css/style.css
-				url = filepath.Join(prefix, strings.Replace(path, root, "", 1))
-			}
-			// \static\css: /static/css
-			url = filepath.ToSlash(url)
-			files[url] = path
-			if filepath.Base(path) == "index.html" || filepath.Base(path) == "index.htm" {
-				files[filepath.ToSlash(filepath.Dir(url))] = path
-			}
-		}
-		return err
-	}); err != nil {
-		log.Fatalf("%s", err)
+	// Strip trailing slashes from the root path
+	if len(root) > 0 && root[len(root)-1] == '/' {
+		root = root[:len(root)-1]
 	}
-	compress := app.Settings.Compression
+	// isSlash ?
+	var isSlash = prefix == "/"
+	if strings.Contains(prefix, "*") {
+		wildcard = true
+		prefix = strings.Split(prefix, "*")[0]
+	}
+	var stripper = len(prefix)
+	if isSlash {
+		stripper = 0
+	}
+	// Fileserver settings
+	fs := &fasthttp.FS{
+		Root:                 root,
+		GenerateIndexPages:   false,
+		AcceptByteRange:      false,
+		Compress:             false,
+		CompressedFileSuffix: ".fiber.gz",
+		CacheDuration:        10 * time.Second,
+		IndexNames:           []string{"index.html", "index.htm"},
+		PathRewrite:          fasthttp.NewPathPrefixStripper(stripper),
+		PathNotFound: func(ctx *fasthttp.RequestCtx) {
+			ctx.Response.SetStatusCode(404)
+			ctx.Response.SetBodyString("Not Found")
+		},
+	}
+	fileHandler := fs.NewRequestHandler()
 	app.routes = append(app.routes, &Route{
 		isMiddleware: true,
-		isStar:       isStar,
+		isSlash:      isSlash,
 		Method:       "*",
 		Path:         prefix,
 		HandleCtx: func(c *Ctx) {
-			// Only allow GET & HEAD methods
+			// Only handle GET & HEAD methods
 			if c.method == "GET" || c.method == "HEAD" {
-				path := "*"
-				if !isStar {
-					path = c.path
+				// Do stuff
+				if wildcard {
+					c.Fasthttp.Request.SetRequestURI(prefix)
 				}
-				file := files[path]
-				if file != "" {
-					c.SendFile(file, compress)
+				// Serve file
+				fileHandler(c.Fasthttp)
+				// End response when file is found
+				if c.Fasthttp.Response.StatusCode() != 404 {
 					return
 				}
 			}
+			// Bye
 			c.Next()
 		},
 	})
