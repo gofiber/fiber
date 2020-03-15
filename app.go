@@ -115,9 +115,28 @@ func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 	}
 }
 
+// StaticConfig represents settings for serving static files
+type StaticConfig struct {
+	// Transparently compresses responses if set to true
+	// This works differently than the github.com/gofiber/compression middleware
+	// The server tries minimizing CPU usage by caching compressed files.
+	// It adds ".fiber.gz" suffix to the original file name.
+	// Optional. Default value false
+	Compress bool
+	// Enables byte range requests if set to true.
+	// Optional. Default value false
+	ByteRange bool
+	// Enable directory browsing.
+	// Optional. Default value false.
+	Browse bool
+	// Index file for serving a directory.
+	// Optional. Default value "index.html".
+	Index string
+}
+
 // Static : https://fiber.wiki/application#static
-func (app *App) Static(prefix, root string) *App {
-	app.registerStatic(prefix, root)
+func (app *App) Static(prefix, root string, config ...StaticConfig) *App {
+	app.registerStatic(prefix, root, config...)
 	return app
 }
 

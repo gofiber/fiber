@@ -258,7 +258,7 @@ func (app *App) registerWebSocket(method, path string, handle func(*Ctx)) {
 	})
 }
 
-func (app *App) registerStatic(prefix, root string) {
+func (app *App) registerStatic(prefix, root string, config ...StaticConfig) {
 	// Cannot have an empty prefix
 	if prefix == "" {
 		prefix = "/"
@@ -303,12 +303,21 @@ func (app *App) registerStatic(prefix, root string) {
 		Compress:             false,
 		CompressedFileSuffix: ".fiber.gz",
 		CacheDuration:        10 * time.Second,
-		IndexNames:           []string{"index.html", "index.htm"},
+		IndexNames:           []string{"index.html"},
 		PathRewrite:          fasthttp.NewPathPrefixStripper(stripper),
 		PathNotFound: func(ctx *fasthttp.RequestCtx) {
 			ctx.Response.SetStatusCode(404)
 			ctx.Response.SetBodyString("Not Found")
 		},
+	}
+	// Set config if provided
+	if len(config) > 0 {
+		fs.Compress = config[0].Compress
+		fs.AcceptByteRange = config[0].ByteRange
+		fs.GenerateIndexPages = config[0].Browse
+		if config[0].Index != "" {
+			fs.IndexNames = []string{config[0].Index}
+		}
 	}
 	fileHandler := fs.NewRequestHandler()
 	app.routes = append(app.routes, &Route{
