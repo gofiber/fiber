@@ -645,6 +645,14 @@ func (ctx *Ctx) Params(key string) (value string) {
 // https://fiber.wiki/context#path
 func (ctx *Ctx) Path(override ...string) string {
 	if len(override) > 0 {
+		// Non strict routing
+		if !ctx.app.Settings.StrictRouting && len(override[0]) > 1 {
+			override[0] = strings.TrimRight(override[0], "/")
+		}
+		// Not case sensitive
+		if !ctx.app.Settings.CaseSensitive {
+			override[0] = strings.ToLower(override[0])
+		}
 		ctx.path = override[0]
 	}
 	return ctx.path
