@@ -9,7 +9,7 @@ import (
 
 // Recover ...
 func Recover(handle ...func(*fiber.Ctx, error)) func(*fiber.Ctx) {
-	log.Println("Warning: middleware.Recover() is deprecated since v1.8.3, please use github.com/gofiber/recover")
+	log.Println("Warning: middleware.Recover() is deprecated since v1.8.2, please use github.com/gofiber/recover")
 	h := func(c *fiber.Ctx, err error) {
 		log.Println(err)
 		c.SendStatus(500)
