@@ -167,6 +167,7 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) (offer string) {
 	specs := strings.Split(h, ",")
 	for _, value := range offers {
 		for _, spec := range specs {
+
 			spec = strings.TrimSpace(spec)
 			if strings.HasPrefix(spec, "*") {
 				return value

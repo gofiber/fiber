@@ -35,7 +35,14 @@ func (grp *Group) Static(prefix, root string, config ...Static) *Group {
 	return grp
 }
 
-// Use : https://fiber.wiki/application#http-methods
+// Use only match requests starting with the specified prefix
+// It's optional to provide a prefix, default: "/"
+// Example: Use("/product", handler)
+// will match 	/product
+// will match 	/product/cool
+// will match 	/product/foo
+//
+// https://fiber.wiki/application#http-methods
 func (grp *Group) Use(args ...interface{}) *Group {
 	var path = ""
 	var handlers []func(*Ctx)
@@ -117,22 +124,31 @@ func (grp *Group) Get(path string, handlers ...func(*Ctx)) *Group {
 	return grp
 }
 
-// All : https://fiber.wiki/application#http-methods
+// All matches all HTTP methods and complete paths
+// Example: All("/product", handler)
+// will match 	/product
+// won't match 	/product/cool   <-- important
+// won't match 	/product/foo    <-- important
+//
+// https://fiber.wiki/application#http-methods
 func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 	path = groupPaths(grp.prefix, path)
 	grp.app.registerMethod("ALL", path, handlers...)
 	return grp
 }
 
-// WebSocket : https://fiber.wiki/application#websocket
+// This function is deprecated since v1.8.2!
+// Please us github.com/gofiber/websocket
 func (grp *Group) WebSocket(path string, handle func(*Ctx)) *Group {
+	log.Println("Warning: app.WebSocket() is deprecated since v1.8.2, please use github.com/gofiber/websocket instead.")
 	path = groupPaths(grp.prefix, path)
 	grp.app.registerWebSocket(http.MethodGet, path, handle)
 	return grp
 }
 
-// Recover : https://fiber.wiki/application#recover
+// This function is deprecated since v1.8.2!
+// Please us github.com/gofiber/recover
 func (grp *Group) Recover(handler func(*Ctx)) {
-	log.Println("Warning: Recover(handler) is deprecated since v1.8.2, please use middleware.Recover(handler, error) instead.")
+	log.Println("Warning: Recover() is deprecated since v1.8.2, please use github.com/gofiber/recover instead.")
 	grp.app.recover = handler
 }
