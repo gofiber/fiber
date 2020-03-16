@@ -51,8 +51,7 @@ func (app *App) nextRoute(ctx *Ctx) {
 				if err := websocketUpgrader.Upgrade(ctx.Fasthttp, func(fconn *websocket.Conn) {
 					conn := acquireConn(fconn)
 					defer releaseConn(conn)
-					ctx.Conn = conn
-					route.HandleCtx(ctx)
+					route.HandleConn(conn)
 				}); err != nil { // Upgrading failed
 					ctx.SendStatus(400)
 				}

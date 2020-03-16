@@ -36,8 +36,7 @@ type Ctx struct {
 	values   []string             // Route parameter values
 	compress bool                 // If the response needs to be compressed
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	Conn     *Conn
-	err      error // Contains error if catched
+	err      error                // Contains error if catched
 }
 
 // Range struct
@@ -515,8 +514,11 @@ func (ctx *Ctx) Location(path string) {
 }
 
 // Method : https://fiber.wiki/context#method
-func (ctx *Ctx) Method() string {
-	return getString(ctx.Fasthttp.Request.Header.Method())
+func (ctx *Ctx) Method(override ...string) string {
+	if len(override) > 0 {
+		ctx.method = override[0]
+	}
+	return ctx.method
 }
 
 // MultipartForm : https://fiber.wiki/context#multipartform
@@ -552,9 +554,14 @@ func (ctx *Ctx) Params(key string) (value string) {
 	return
 }
 
-// Path : https://fiber.wiki/context#path
-func (ctx *Ctx) Path() string {
-	return getString(ctx.Fasthttp.URI().Path())
+// Returns the path part of the request URL.
+// Optionally, you could override the path.
+// https://fiber.wiki/context#path
+func (ctx *Ctx) Path(override ...string) string {
+	if len(override) > 0 {
+		ctx.path = override[0]
+	}
+	return ctx.path
 }
 
 // Protocol : https://fiber.wiki/context#protocol
