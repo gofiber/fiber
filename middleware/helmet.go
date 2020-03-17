@@ -52,7 +52,7 @@ var HelmetConfigDefault = HelmetConfig{
 
 // Helmet ...
 func Helmet(config ...HelmetConfig) func(*fiber.Ctx) {
-	log.Println("Warning: middleware.Helmet() is deprecated since v1.8.3, please use github.com/gofiber/helmet")
+	log.Println("Warning: middleware.Helmet() is deprecated since v1.8.2, please use github.com/gofiber/helmet")
 	// Init config
 	var cfg HelmetConfig
 	if len(config) > 0 {

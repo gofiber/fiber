@@ -30,7 +30,7 @@ var RequestIDConfigDefault = RequestIDConfig{
 
 // RequestID adds an indentifier to the request using the `X-Request-ID` header
 func RequestID(config ...RequestIDConfig) func(*fiber.Ctx) {
-	log.Println("Warning: middleware.RequestID() is deprecated since v1.8.3, please use github.com/gofiber/requestid")
+	log.Println("Warning: middleware.RequestID() is deprecated since v1.8.2, please use github.com/gofiber/requestid")
 	// Init config
 	var cfg RequestIDConfig
 	if len(config) > 0 {

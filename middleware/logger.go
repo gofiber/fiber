@@ -43,7 +43,7 @@ var LoggerConfigDefault = LoggerConfig{
 
 // Logger ...
 func Logger(config ...LoggerConfig) func(*fiber.Ctx) {
-	log.Println("Warning: middleware.Logger() is deprecated since v1.8.3, please use github.com/gofiber/logger")
+	log.Println("Warning: middleware.Logger() is deprecated since v1.8.2, please use github.com/gofiber/logger")
 	// Init config
 	var cfg LoggerConfig
 	// Set config if provided

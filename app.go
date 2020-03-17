@@ -25,7 +25,7 @@ import (
 )
 
 // Version of Fiber
-const Version = "1.8.32"
+const Version = "1.8.33"
 
 type (
 	// App denotes the Fiber application.
@@ -51,7 +51,6 @@ type (
 		// Enables handler values to be immutable even if you return from handler
 		Immutable bool `default:"false"`
 		// Deprecated v1.8.2
-		// Enables GZip / Deflate compression for all responses
 		Compression bool `default:"false"`
 		// Max body size that the server accepts
 		BodyLimit int `default:"4 * 1024 * 1024"`
@@ -64,7 +63,10 @@ type (
 	}
 )
 
-// New : https://fiber.wiki/application#new
+// This method creates a new Fiber named instance.
+// You can pass optional settings when creating a new instance.
+//
+// https://fiber.wiki/application#new
 func New(settings ...*Settings) *App {
 	var prefork, child bool
 	// Loop trought args without using flag.Parse()
@@ -97,14 +99,17 @@ func New(settings ...*Settings) *App {
 			getBytes = func(s string) []byte { return []byte(s) }
 		}
 	}
-	// Deprecated
+	// This function is deprecated since v1.8.2!
+	// Please us github.com/gofiber/compression
 	if app.Settings.Compression {
 		log.Println("Warning: Settings.Compression is deprecated since v1.8.2, please use github.com/gofiber/compression instead.")
 	}
 	return app
 }
 
-// Group : https://fiber.wiki/application#group
+// You can group routes by creating a *Group struct.
+//
+// https://fiber.wiki/application#group
 func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 	if len(handlers) > 0 {
 		app.registerMethod("USE", prefix, handlers...)
@@ -115,7 +120,9 @@ func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 	}
 }
 
-// Static represents settings for serving static files
+// Settings struct for serving static files
+//
+// https://fiber.wiki/application#static
 type Static struct {
 	// Transparently compresses responses if set to true
 	// This works differently than the github.com/gofiber/compression middleware
@@ -134,13 +141,22 @@ type Static struct {
 	Index string
 }
 
-// Static : https://fiber.wiki/application#static
+// Serve static files such as images, CSS and JavaScript files, you can use the Static method.
+//
+// https://fiber.wiki/application#static
 func (app *App) Static(prefix, root string, config ...Static) *App {
 	app.registerStatic(prefix, root, config...)
 	return app
 }
 
-// Use : https://fiber.wiki/application#http-methods
+// Use only match requests starting with the specified prefix
+// It's optional to provide a prefix, default: "/"
+// Example: Use("/product", handler)
+// will match 	/product
+// will match 	/product/cool
+// will match 	/product/foo
+//
+// https://fiber.wiki/application#http-methods
 func (app *App) Use(args ...interface{}) *App {
 	var path = ""
 	var handlers []func(*Ctx)
@@ -212,19 +228,28 @@ func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
 	return app
 }
 
-// All : https://fiber.wiki/application#http-methods
+// All matches all HTTP methods and complete paths
+// Example: All("/product", handler)
+// will match 	/product
+// won't match 	/product/cool   <-- important
+// won't match 	/product/foo    <-- important
+//
+// https://fiber.wiki/application#http-methods
 func (app *App) All(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod("ALL", path, handlers...)
 	return app
 }
 
-// WebSocket : https://fiber.wiki/application#websocket
+// This function is deprecated since v1.8.2!
+// Please us github.com/gofiber/websocket
 func (app *App) WebSocket(path string, handle func(*Ctx)) *App {
+	log.Println("Warning: app.WebSocket() is deprecated since v1.8.2, please use github.com/gofiber/websocket instead.")
 	app.registerWebSocket(http.MethodGet, path, handle)
 	return app
 }
 
-// Recover : https://fiber.wiki/application#recover
+// This function is deprecated since v1.8.2!
+// Please us github.com/gofiber/recover
 func (app *App) Recover(handler func(*Ctx)) {
 	log.Println("Warning: app.Recover() is deprecated since v1.8.2, please use github.com/gofiber/recover instead.")
 	app.recover = handler
