@@ -41,12 +41,12 @@ func groupPaths(prefix, path string) string {
 
 // BenchmarkDefault    322504144    18.6 ns/op // string == string
 // BenchmarkisEqual    353663168    17.0 ns/op // isEqual(string, string)
-func isEqual(a, b string) bool {
-	if len(a) == len(b) {
-		return a == b
-	}
-	return false
-}
+// func isEqual(a, b string) bool {
+// 	if len(a) == len(b) {
+// 		return a == b
+// 	}
+// 	return false
+// }
 
 func getParams(path string) (params []string) {
 	if len(path) < 1 {

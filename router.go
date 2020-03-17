@@ -83,7 +83,7 @@ func (r *Route) matchRoute(method, path string) (match bool, values []string) {
 	// non-middleware route, http method must match!
 	// the wildcard method is for .All() & .Use() methods
 	// If route is GET, also match HEAD requests
-	if r.Method == method || r.Method[0] == '*' || (r.isGet && isEqual(method, "HEAD")) {
+	if r.Method == method || r.Method[0] == '*' || (r.isGet && len(method) == 4 && method == "HEAD") {
 		// '*' means we match anything
 		if r.isStar {
 			return true, values
@@ -109,7 +109,7 @@ func (r *Route) matchRoute(method, path string) (match bool, values []string) {
 			return true, values
 		}
 		// last thing to do is to check for a simple path match
-		if isEqual(r.Path, path) {
+		if len(r.Path) == len(path) && r.Path == path {
 			return true, values
 		}
 	}
