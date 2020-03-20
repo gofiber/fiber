@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -176,55 +175,55 @@ func (app *App) Use(args ...interface{}) *App {
 
 // Connect : https://fiber.wiki/application#http-methods
 func (app *App) Connect(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodConnect, path, handlers...)
+	app.registerMethod(fasthttp.MethodConnect, path, handlers...)
 	return app
 }
 
 // Put : https://fiber.wiki/application#http-methods
 func (app *App) Put(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodPut, path, handlers...)
+	app.registerMethod(fasthttp.MethodPut, path, handlers...)
 	return app
 }
 
 // Post : https://fiber.wiki/application#http-methods
 func (app *App) Post(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodPost, path, handlers...)
+	app.registerMethod(fasthttp.MethodPost, path, handlers...)
 	return app
 }
 
 // Delete : https://fiber.wiki/application#http-methods
 func (app *App) Delete(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodDelete, path, handlers...)
+	app.registerMethod(fasthttp.MethodDelete, path, handlers...)
 	return app
 }
 
 // Head : https://fiber.wiki/application#http-methods
 func (app *App) Head(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodHead, path, handlers...)
+	app.registerMethod(fasthttp.MethodHead, path, handlers...)
 	return app
 }
 
 // Patch : https://fiber.wiki/application#http-methods
 func (app *App) Patch(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodPatch, path, handlers...)
+	app.registerMethod(fasthttp.MethodPatch, path, handlers...)
 	return app
 }
 
 // Options : https://fiber.wiki/application#http-methods
 func (app *App) Options(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodOptions, path, handlers...)
+	app.registerMethod(fasthttp.MethodOptions, path, handlers...)
 	return app
 }
 
 // Trace : https://fiber.wiki/application#http-methods
 func (app *App) Trace(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodTrace, path, handlers...)
+	app.registerMethod(fasthttp.MethodTrace, path, handlers...)
 	return app
 }
 
 // Get : https://fiber.wiki/application#http-methods
 func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(http.MethodGet, path, handlers...)
+	app.registerMethod(fasthttp.MethodGet, path, handlers...)
 	return app
 }
 
@@ -238,21 +237,6 @@ func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
 func (app *App) All(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod("ALL", path, handlers...)
 	return app
-}
-
-// This function is deprecated since v1.8.2!
-// Please us github.com/gofiber/websocket
-func (app *App) WebSocket(path string, handle func(*Ctx)) *App {
-	log.Println("Warning: app.WebSocket() is deprecated since v1.8.2, please use github.com/gofiber/websocket instead.")
-	app.registerWebSocket(http.MethodGet, path, handle)
-	return app
-}
-
-// This function is deprecated since v1.8.2!
-// Please us github.com/gofiber/recover
-func (app *App) Recover(handler func(*Ctx)) {
-	log.Println("Warning: app.Recover() is deprecated since v1.8.2, please use github.com/gofiber/recover instead.")
-	app.recover = handler
 }
 
 // Listen : https://fiber.wiki/application#listen
@@ -305,18 +289,17 @@ func (app *App) Shutdown() error {
 
 // Test : https://fiber.wiki/application#test
 func (app *App) Test(request *http.Request) (*http.Response, error) {
-	// Get raw http request
-	reqRaw, err := httputil.DumpRequest(request, true)
+	// Dump raw http request
+	dump, err := httputil.DumpRequest(request, true)
 	if err != nil {
 		return nil, err
 	}
-	// Setup a fiber server struct
+	// Setup server
 	app.server = app.newServer()
-	// Create fake connection
-	conn := &testConn{}
-	// Pass HTTP request to conn
-	_, err = conn.r.Write(reqRaw)
-	if err != nil {
+	// Create conn
+	conn := new(testConn)
+	// Write raw http request
+	if _, err = conn.r.Write(dump); err != nil {
 		return nil, err
 	}
 	// Serve conn to server
@@ -330,19 +313,12 @@ func (app *App) Test(request *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Throw timeout error after 200ms
 	case <-time.After(200 * time.Millisecond):
-		return nil, fmt.Errorf("timeout")
+		return nil, fmt.Errorf("Timeout error")
 	}
-	// Get raw HTTP response
-	respRaw, err := ioutil.ReadAll(&conn.w)
-	if err != nil {
-		return nil, err
-	}
-	// Create buffer
-	reader := strings.NewReader(getString(respRaw))
-	buffer := bufio.NewReader(reader)
-	// Convert raw HTTP response to http.Response
+	// Read response
+	buffer := bufio.NewReader(&conn.w)
+	// Convert raw http response to *http.Response
 	resp, err := http.ReadResponse(buffer, request)
 	if err != nil {
 		return nil, err
@@ -393,9 +369,9 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 	return ln, err
 }
 
-type disableLogger struct{}
+type customLogger struct{}
 
-func (dl *disableLogger) Printf(format string, args ...interface{}) {
+func (cl *customLogger) Printf(format string, args ...interface{}) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
@@ -405,7 +381,7 @@ func (app *App) newServer() *fasthttp.Server {
 		Name:                  app.Settings.ServerHeader,
 		MaxRequestBodySize:    app.Settings.BodyLimit,
 		NoDefaultServerHeader: app.Settings.ServerHeader == "",
-		Logger:                &disableLogger{},
+		Logger:                &customLogger{},
 		LogAllErrors:          false,
 		ErrorHandler: func(ctx *fasthttp.RequestCtx, err error) {
 			if err.Error() == "body size exceeds the given limit" {

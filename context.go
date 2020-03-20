@@ -57,6 +57,7 @@ type Cookie struct {
 	Expires  time.Time
 	Secure   bool
 	HTTPOnly bool
+	SameSite string
 }
 
 // Ctx pool
@@ -125,7 +126,7 @@ func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 
 	specs := strings.Split(h, ",")
 	for _, value := range offers {
-		mimetype := getType(value)
+		mimetype := getMIME(value)
 		// if mimetype != "" {
 		// 	mimetype = strings.Split(mimetype, ";")[0]
 		// } else {
@@ -343,16 +344,6 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 	})
 }
 
-// This function is deprecated since v1.8.2!
-// Please us github.com/gofiber/compression
-func (ctx *Ctx) Compress(enable ...bool) {
-	log.Println("Warning: c.Compress() is deprecated since v1.8.2, please use github.com/gofiber/compression instead.")
-	ctx.compress = true
-	if len(enable) > 0 {
-		ctx.compress = enable[0]
-	}
-}
-
 // Set cookie by passing a cookie struct
 //
 // https://fiber.wiki/context#cookie
@@ -364,7 +355,23 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetDomain(cookie.Domain)
 	fcookie.SetExpire(cookie.Expires)
 	fcookie.SetSecure(cookie.Secure)
+	if cookie.Secure {
+		// Secure must be paired with SameSite=None
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	}
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
+	switch strings.ToLower(cookie.SameSite) {
+	case "lax":
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	case "strict":
+		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	case "none":
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+		// Secure must be paired with SameSite=None
+		fcookie.SetSecure(true)
+	default:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
+	}
 	ctx.Fasthttp.Response.Header.SetCookie(fcookie)
 }
 
@@ -912,7 +919,7 @@ func (ctx *Ctx) Status(status int) *Ctx {
 //
 // https://fiber.wiki/context#type
 func (ctx *Ctx) Type(ext string) *Ctx {
-	ctx.Fasthttp.Response.Header.SetContentType(getType(ext))
+	ctx.Fasthttp.Response.Header.SetContentType(getMIME(ext))
 	return ctx
 }
 

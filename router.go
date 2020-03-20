@@ -206,57 +206,6 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	}
 }
 
-func (app *App) registerWebSocket(method, path string, handle func(*Ctx)) {
-	// Cannot have an empty path
-	if path == "" {
-		path = "/"
-	}
-	// Path always start with a '/' or '*'
-	if path[0] != '/' && path[0] != '*' {
-		path = "/" + path
-	}
-	// Store original path to strip case sensitive params
-	original := path
-	// Case sensitive routing, all to lowercase
-	if !app.Settings.CaseSensitive {
-		path = strings.ToLower(path)
-	}
-	// Strict routing, remove last `/`
-	if !app.Settings.StrictRouting && len(path) > 1 {
-		path = strings.TrimRight(path, "/")
-	}
-
-	var isWebSocket = true
-
-	var isStar = path == "*" || path == "/*"
-	var isSlash = path == "/"
-	var isRegex = false
-	// Route properties
-	var Params = getParams(original)
-	var Regexp *regexp.Regexp
-	// Params requires regex pattern
-	if len(Params) > 0 {
-		regex, err := getRegex(path)
-		if err != nil {
-			log.Fatal("Router: Invalid path pattern: " + path)
-		}
-		isRegex = true
-		Regexp = regex
-	}
-	app.routes = append(app.routes, &Route{
-		isWebSocket: isWebSocket,
-		isStar:      isStar,
-		isSlash:     isSlash,
-		isRegex:     isRegex,
-
-		Method:    method,
-		Path:      path,
-		Params:    Params,
-		Regexp:    Regexp,
-		HandleCtx: handle,
-	})
-}
-
 func (app *App) registerStatic(prefix, root string, config ...Static) {
 	// Cannot have an empty prefix
 	if prefix == "" {
