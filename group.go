@@ -6,8 +6,6 @@ package fiber
 
 import (
 	"log"
-
-	fasthttp "github.com/valyala/fasthttp"
 )
 
 // Group ...
@@ -62,55 +60,55 @@ func (grp *Group) Use(args ...interface{}) *Group {
 
 // Connect : https://fiber.wiki/application#http-methods
 func (grp *Group) Connect(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(fasthttp.MethodConnect, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodConnect, groupPaths(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Put : https://fiber.wiki/application#http-methods
 func (grp *Group) Put(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(fasthttp.MethodPut, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodPut, groupPaths(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Post : https://fiber.wiki/application#http-methods
 func (grp *Group) Post(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(fasthttp.MethodPost, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodPost, groupPaths(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Delete : https://fiber.wiki/application#http-methods
 func (grp *Group) Delete(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(fasthttp.MethodDelete, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodDelete, groupPaths(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Head : https://fiber.wiki/application#http-methods
 func (grp *Group) Head(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(fasthttp.MethodHead, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodHead, groupPaths(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Patch : https://fiber.wiki/application#http-methods
 func (grp *Group) Patch(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(fasthttp.MethodPatch, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodPatch, groupPaths(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Options : https://fiber.wiki/application#http-methods
 func (grp *Group) Options(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(fasthttp.MethodOptions, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodOptions, groupPaths(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Trace : https://fiber.wiki/application#http-methods
 func (grp *Group) Trace(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(fasthttp.MethodTrace, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodTrace, groupPaths(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Get : https://fiber.wiki/application#http-methods
 func (grp *Group) Get(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(fasthttp.MethodGet, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodGet, groupPaths(grp.prefix, path), handlers...)
 	return grp
 }
 

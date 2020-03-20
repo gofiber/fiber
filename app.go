@@ -175,55 +175,55 @@ func (app *App) Use(args ...interface{}) *App {
 
 // Connect : https://fiber.wiki/application#http-methods
 func (app *App) Connect(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(fasthttp.MethodConnect, path, handlers...)
+	app.registerMethod(MethodConnect, path, handlers...)
 	return app
 }
 
 // Put : https://fiber.wiki/application#http-methods
 func (app *App) Put(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(fasthttp.MethodPut, path, handlers...)
+	app.registerMethod(MethodPut, path, handlers...)
 	return app
 }
 
 // Post : https://fiber.wiki/application#http-methods
 func (app *App) Post(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(fasthttp.MethodPost, path, handlers...)
+	app.registerMethod(MethodPost, path, handlers...)
 	return app
 }
 
 // Delete : https://fiber.wiki/application#http-methods
 func (app *App) Delete(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(fasthttp.MethodDelete, path, handlers...)
+	app.registerMethod(MethodDelete, path, handlers...)
 	return app
 }
 
 // Head : https://fiber.wiki/application#http-methods
 func (app *App) Head(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(fasthttp.MethodHead, path, handlers...)
+	app.registerMethod(MethodHead, path, handlers...)
 	return app
 }
 
 // Patch : https://fiber.wiki/application#http-methods
 func (app *App) Patch(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(fasthttp.MethodPatch, path, handlers...)
+	app.registerMethod(MethodPatch, path, handlers...)
 	return app
 }
 
 // Options : https://fiber.wiki/application#http-methods
 func (app *App) Options(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(fasthttp.MethodOptions, path, handlers...)
+	app.registerMethod(MethodOptions, path, handlers...)
 	return app
 }
 
 // Trace : https://fiber.wiki/application#http-methods
 func (app *App) Trace(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(fasthttp.MethodTrace, path, handlers...)
+	app.registerMethod(MethodTrace, path, handlers...)
 	return app
 }
 
 // Get : https://fiber.wiki/application#http-methods
 func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(fasthttp.MethodGet, path, handlers...)
+	app.registerMethod(MethodGet, path, handlers...)
 	return app
 }
 
