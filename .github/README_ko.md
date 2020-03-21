@@ -96,7 +96,7 @@ go get -u github.com/gofiber/fiber/...
 
 ## 🤖 벤치마크
 
-이 테스트들은 [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)와 [Go Web](https://github.com/smallnest/go-web-framework-benchmark)을 통해 측정되었습니다. 만약 모든 결과를 보고 싶다면, [Wiki](https://fiber.wiki/benchmarks)를 확인해 주세요.
+이 테스트들은 [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)와 [Go Web](https://github.com/smallnest/go-web-framework-benchmark)을 통해 측정되었습니다. 만약 모든 결과를 보고 싶다면, [Wiki](https://fiber.wiki/benchmarks)를 확인해 주세요.
 
 <p float="left" align="middle">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
@@ -112,20 +112,30 @@ go get -u github.com/gofiber/fiber/...
 - [API 엔드포인트](https://fiber.wiki/context)
 - 미들웨어 & [Next](https://fiber.wiki/context#next) 지원
 - [빠른](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 서버 사이드 프로그래밍
-- [5개 언어](https://fiber.wiki/)로 번역됨
+- 10개 언어로 번역됨
 - 더 알고 싶다면, [Fiber 둘러보기](https://fiber.wiki/)
 
 ## 💡 철학
 
-[Node.js](https://nodejs.org/en/about/)에서 [Go](https://golang.org/doc/)로 전환하는 새로운 고퍼분들은 웹 어플리케이션이나 마이크로 서비스 개발을 시작할 수 있게 되기 전에 학습 곡선에 시달리고 있습니다. Fiber는 **web framework**로서, 새로운 고퍼분들이 따뜻하고 믿음직한 환영을 가지고 빠르게 Go의 세상에 진입할 수 있게 **미니멀리즘**의 개념과 **UNIX 방식**에 따라 개발되었습니다.
+[Node.js](https://nodejs.org/en/about/)에서 [Go](https://golang.org/doc/)로 전환하는 새로운 고퍼분들은 웹 어플리케이션이나 마이크로 서비스 개발을 시작할 수 있게 되기 전에 학습 곡선에 시달리고 있습니다. Fiber는 **웹 프레임워크**로서, 새로운 고퍼분들이 따뜻하고 믿음직한 환영을 가지고 빠르게 Go의 세상에 진입할 수 있게 **미니멀리즘**의 개념과 **UNIX 방식**에 따라 개발되었습니다.
 
-Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에서 **영감을 받았습니다.** 우리는 Express의 쉬운 사용과 Go의 성능을 결합하였습니다. 만약 당신이 Node.js (Express 또는 비슷한 것을 사용하여) 로 웹 어플리케이션을 개발한 경험이 있다면, 많은 메소드들과 원리들이 매우 비슷하게 느껴질 것 입니다.
+Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에서 **영감을 받았습니다.** 우리는 Express의 **쉬운** 사용과 Go의 **성능**을 결합하였습니다. 만약 당신이 Node.js (Express 또는 비슷한 것을 사용하여) 로 웹 어플리케이션을 개발한 경험이 있다면, 많은 메소드들과 원리들이 **매우 비슷하게** 느껴질 것 입니다.
+
+우리는 **어떤한** 작업, **마감일정**, 개발자의 **기술**이던간에 **빠르고**, **유연하고**, **익숙한** Go 웹 프레임워크를 만들기 위해 사용자들의 [이슈들](https://github.com/gofiber/fiber/issues)을(그리고 모든 인터넷을 통해) **듣고 있습니다**! Express가 자바스크립트 세계에서 하는 것 처럼요.
 
 ## 👀 예제
 
-다음은 일반적인 예제들 입니다. 더 많은 코드 예제를 보고 싶다면, [Recipes 저장소](https://github.com/gofiber/recipes) 또는 [API 문서](https://fiber.wiki)를 방문하세요.
+다음은 일반적인 예제들 입니다. 
+
+> 더 많은 코드 예제를 보고 싶다면, [Recipes 저장소](https://github.com/gofiber/recipes) 또는 [API 문서](https://fiber.wiki)를 방문하세요.
 
 ### Routing
+
+Docs:
+
+- 📖 https://fiber.wiki/#basic-routing
+
+Example:
 
 ```go
 func main() {
@@ -154,7 +164,12 @@ func main() {
 ```
 
 ### Serve static files
-https://fiber.wiki/application#static
+Docs:
+
+- 📖 https://fiber.wiki/application#static
+
+Example:
+
 ```go
 func main() {
   app := fiber.New()
@@ -175,8 +190,13 @@ func main() {
 ```
 
 ### Middleware & Next
-https://fiber.wiki/routing#middleware
-https://fiber.wiki/context#next
+Docs:
+
+- 📖 https://fiber.wiki/routing#middleware
+- 📖 https://fiber.wiki/context#next
+
+Example:
+
 ```go
 func main() {
   app := fiber.New()
@@ -207,7 +227,6 @@ func main() {
   <summary>📚 Show more code examples</summary>
 
 ### Template engines
-
 Docs:
 
 - 📖 https://fiber.wiki/application#settings
@@ -250,7 +269,6 @@ func main() {
 ```
 
 ### Grouping routes into chains
-
 Docs:
 
 - 📖 https://fiber.wiki/application#group
@@ -279,7 +297,6 @@ func main() {
 ```
 
 ### Middleware logger
-
 Docs:
 
 - 📖 https://fiber.wiki/middleware#logger
@@ -309,10 +326,10 @@ func main() {
 ```
 
 ### Cross-Origin Resource Sharing (CORS)
-
 Docs:
 
 - 📖 https://fiber.wiki/middleware#cors
+
 
 Example:
 
@@ -333,6 +350,7 @@ func main() {
 ```
 
 Check CORS by passing any domain in `Origin` header:
+`Origin` 헤더에 아무 도메인이나 넣어서 CORS를 확인해보세요:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -371,7 +389,6 @@ func main() {
 ```
 
 ### JSON Response
-
 Docs:
 
 - 📖 https://fiber.wiki/context#json
@@ -443,7 +460,6 @@ func main() {
 ```
 
 ### Recover middleware
-
 Docs:
 
 - 📖 https://fiber.wiki/middleware#recover
@@ -478,15 +494,17 @@ func main() {
 ## 💬 미디어
 
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
+- [Fiber release v1.7 is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
+- [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) (_by [Vic Shóstak](https://github.com/koddr), 03 Mar 2020_)
 
 ## 👍 기여
 
-`Fiber`의 활발한 개발을 지원하고 감사 인사를 하고 싶다면:
+`Fiber`의 활발한 개발을 지원하고 감사 인사를 하고 싶다면:
 
-1. 프로젝트에 [GitHub Star](https://github.com/gofiber/fiber/stargazers)를 추가하세요.
+1. 프로젝트에 [GitHub Star](https://github.com/gofiber/fiber/stargazers)를 추가하세요.
 2. [트위터에서](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) 프로젝트에 대해 트윗하세요.
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) 또는 개인 블로그에 리뷰 또는 튜토리얼을 작성하세요.
-4. `README` 와 [API 문서](https://fiber.wiki/)를 다른 언어로 번역하는 것을 도와주세요.
+4. 이 `README`를 다른 언어로 번역하는 것을 도와주세요.
 
 ## ☕ Supporters
 
@@ -535,3 +553,11 @@ func main() {
 ## ⚠️ 라이센스
 
 `Fiber` 는 [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE)에 따른 무료 오픈소스 소프트웨어 입니다.
+
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/0)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/0)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/1)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/1)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/2)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/2)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/3)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/3)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/4)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/4)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/5)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/5)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/6)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/6)
