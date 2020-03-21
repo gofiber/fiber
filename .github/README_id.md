@@ -206,18 +206,24 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Perlihatkan contoh lainnya</summary>
+  <summary>📚 Show more code examples</summary>
 
 ### Template engines
-https://fiber.wiki/application#settings
-https://fiber.wiki/context#render
 
-Mendukung:
+Docs:
+
+- 📖 https://fiber.wiki/application#settings
+- 📖 https://fiber.wiki/context#render
+
+Supported engines:
+
 - [html](https://golang.org/pkg/html/template/)
 - [amber](https://github.com/eknkc/amber)
 - [handlebars](https://github.com/aymerick/raymond)
 - [mustache](https://github.com/cbroglie/mustache)
 - [pug](https://github.com/Joker/jade)
+
+Example:
 
 ```go
 func main() {
@@ -245,8 +251,14 @@ func main() {
 }
 ```
 
-### Pengelompokan routes
-https://fiber.wiki/application#group
+### Grouping routes into chains
+
+Docs:
+
+- 📖 https://fiber.wiki/application#group
+
+Example:
+
 ```go
 func main() {
   app := fiber.New()
@@ -269,61 +281,72 @@ func main() {
 ```
 
 ### Middleware logger
-https://fiber.wiki/middleware#logger
+
+Docs:
+
+- 📖 https://fiber.wiki/middleware#logger
+
+Example:
+
 ```go
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+    "github.com/gofiber/logger"
 )
 
 func main() {
     app := fiber.New()
-    
-    // If you want to change default Logger config
-    loggerConfig := middleware.LoggerConfig{
+
+    // Optional logger config
+    config := logger.LoggerConfig{
       Format:     "${time} - ${method} ${path}\n",
       TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
     }
 
-    // Middleware for Logger with config
-    app.Use(middleware.Logger(loggerConfig))
-
-    // ...
-}
-```
-
-### Cross-Origin Resource Sharing (CORS)
-https://fiber.wiki/middleware#cors
-
-[CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) adalah mekanisme yang menggunakan HTTP headers tambahan untuk memberitahu browser bahwa aplikasi/data kita hanya bisa diakses dari sumber (origin) tertentu, atau bisa juga diakses dari sumber berbeda. Aplikasi web memproses cross-origin HTTP request ketika request-nya berasal dari sumber berbeda (domain, protokol dan port).
-
-```go
-import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
-)
-
-func main() {
-    app := fiber.New()
-
-    // Connect CORS for each route as middleware
-    app.Use(middleware.CORS())
-
-    app.Get("/", func(c *fiber.Ctx) {
-        c.Send("CORS is enabled!")
-    })
+    // Logger with config
+    app.Use(logger.New(config))
 
     app.Listen(3000)
 }
 ```
 
-Setelah diaktifkan, bisa dicoba dengan cara memberi sumber/domain berbeda di header `Origin`: 
+### Cross-Origin Resource Sharing (CORS)
+
+Docs:
+
+- 📖 https://fiber.wiki/middleware#cors
+
+Example:
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/cors"
+)
+
+func main() {
+    app := fiber.New()
+
+    // CORS with default config
+    app.Use(cors.New())
+
+    app.Listen(3000)
+}
+```
+
+Check CORS by passing any domain in `Origin` header:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
-### Respon 404
+### Custom 404 response
+
+Docs:
+
+- 📖 https://fiber.wiki/application#http-methods
+
+Example:
 
 ```go
 func main() {
@@ -341,15 +364,22 @@ func main() {
 
   // Last middleware to match anything
   app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404) // => 404 "Not Found"
+    c.SendStatus(404) 
+    // => 404 "Not Found"
   })
 
   app.Listen(3000)
 }
 ```
 
-### Respon JSON
-https://fiber.wiki/context#json
+### JSON Response
+
+Docs:
+
+- 📖 https://fiber.wiki/context#json
+
+Example:
+
 ```go
 type User struct {
   Name string `json:"name"`
@@ -361,71 +391,86 @@ func main() {
 
   app.Get("/user", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
-    // {"name":"John", "age":20}
+    // => {"name":"John", "age":20}
   })
 
   app.Get("/json", func(c *fiber.Ctx) {
-    c.JSON(&fiber.Map{
-			"success": true,
-			"message": "Hi John!",
+    c.JSON(fiber.Map{
+      "success": true,
+      "message": "Hi John!",
     })
-    // {"success":true, "message":"Hi John!"}
+    // => {"success":true, "message":"Hi John!"}
   })
 
   app.Listen(3000)
 }
 ```
 
-### Dukungan WebSocket
-https://fiber.wiki/application#websocket
+### WebSocket middleware
+
+Docs:
+
+- 📖 https://fiber.wiki/middleware#websocket
+
+Example:
+
 ```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/websocket"
+)
+
 func main() {
   app := fiber.New()
 
-  app.WebSocket("/ws", func(c *fiber.Conn) {
+  app.Get("/ws", websocket.New(func(c *websocket.Conn) {
     for {
       mt, msg, err := c.ReadMessage()
       if err != nil {
         log.Println("read:", err)
         break
       }
-
-      log.Printf("recovery: %s", msg)
-
+      log.Printf("recv: %s", msg)
       err = c.WriteMessage(mt, msg)
       if err != nil {
         log.Println("write:", err)
         break
       }
     }
-  })
+  }))
 
-  // Listen on ws://localhost:3000/ws
   app.Listen(3000)
+  // ws://localhost:3000/ws
 }
 ```
 
 ### Recover middleware
-https://fiber.wiki/middleware#recover
-```go
-package main
 
+Docs:
+
+- 📖 https://fiber.wiki/middleware#recover
+
+Example:
+
+```go
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+    "github.com/gofiber/recover"
 )
 
 func main() {
   app := fiber.New()
 
-  app.Use(middleware.Recover(func(c *fiber.Ctx, err error) {
-    log.Println(err)  // "Something went wrong!"
-    c.SendStatus(500) // Internal Server Error
-  })))
-  
-  app.Get("/", func(c *fiber.Ctx) {
-    panic("Something went wrong!")
-  })
+  // Optional recover config
+  config := recover.LoggerConfig{
+    Handler: func(c *fiber.Ctx, err error) {
+			c.SendString(err.Error())
+			c.SendStatus(500)
+		},
+  }
+
+  // Logger with custom config
+  app.Use(recover.New(config))
 
   app.Listen(3000)
 }

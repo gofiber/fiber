@@ -224,16 +224,16 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Показать больше примеров кода</summary>
+  <summary>📚 Show more code examples</summary>
 
-### Работа с шаблонами
+### Template engines
 
-Документация:
+Docs:
 
 - 📖 https://fiber.wiki/application#settings
 - 📖 https://fiber.wiki/context#render
 
-Поддерживаемые движки шаблонов:
+Supported engines:
 
 - [html](https://golang.org/pkg/html/template/)
 - [amber](https://github.com/eknkc/amber)
@@ -241,138 +241,130 @@ func main() {
 - [mustache](https://github.com/cbroglie/mustache)
 - [pug](https://github.com/Joker/jade)
 
-Пример:
+Example:
 
 ```go
 func main() {
-  // Вы можете настроить нужный движок для шаблонов 
-  // перед инициализацией приложения:
+  // You can setup template engine before initiation app:
   app := fiber.New(&fiber.Settings{
     TemplateEngine:    "mustache",
     TemplateFolder:    "./views",
     TemplateExtension: ".tmpl",
   })
 
-  // ИЛИ уже после инициализации приложения,
-  // в любом удобном месте:
+  // OR after initiation app at any convenient location:
   app.Settings.TemplateEngine = "mustache"
   app.Settings.TemplateFolder = "./views"
   app.Settings.TemplateExtension = ".tmpl"
 
-  // Теперь, вы сможете вызывать шаблон `./views/home.tmpl` вот так:
+  // And now, you can call template `./views/home.tmpl` like this:
   app.Get("/", func(c *fiber.Ctx) {
     c.Render("home", fiber.Map{
       "title": "Homepage",
       "year":  1999,
     })
   })
-  
+
   // ...
 }
 ```
 
-### Группировка роутов в цепочки
+### Grouping routes into chains
 
-Документация:
+Docs:
 
 - 📖 https://fiber.wiki/application#group
 
-Пример:
+Example:
 
 ```go
 func main() {
   app := fiber.New()
-  
-  // Корневой API роут
+
+  // Root API route
   api := app.Group("/api", cors())  // /api
-  
-  // Роуты для API v1
+
+  // API v1 routes
   v1 := api.Group("/v1", mysql())   // /api/v1
   v1.Get("/list", handler)          // /api/v1/list
   v1.Get("/user", handler)          // /api/v1/user
-  
-  // Роуты для API v2
+
+  // API v2 routes
   v2 := api.Group("/v2", mongodb()) // /api/v2
   v2.Get("/list", handler)          // /api/v2/list
   v2.Get("/user", handler)          // /api/v2/user
-  
+
   // ...
 }
 ```
 
-### Встроенный логгер
+### Middleware logger
 
-Документация:
+Docs:
 
 - 📖 https://fiber.wiki/middleware#logger
 
-Пример:
+Example:
 
 ```go
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+    "github.com/gofiber/logger"
 )
 
 func main() {
     app := fiber.New()
-    
-    // Если вы хотите изменить конфигурацию логгера по умолчанию
-    loggerConfig := middleware.LoggerConfig{
+
+    // Optional logger config
+    config := logger.LoggerConfig{
       Format:     "${time} - ${method} ${path}\n",
       TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
     }
 
-    // Middleware для логгера с кастомным конфигом
-    app.Use(middleware.Logger(loggerConfig))
-
-    // ...
-}
-```
-
-### Cross-Origin Resource Sharing (CORS)
-
-Документация:
-
-- 📖 https://fiber.wiki/middleware#cors
-
-> [CORS](https://developer.mozilla.org/ru/docs/Web/HTTP/CORS) — это механизм, использующий дополнительные HTTP-заголовки, чтобы дать возможность агенту пользователя получать разрешения на доступ к выбранным ресурсам с сервера на источнике (домене), отличном от того, что сайт использует в данный момент.
-
-Пример:
-
-```go
-import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
-)
-
-func main() {
-    app := fiber.New()
-
-    // Подключаем CORS для каждого роута в качестве middleware
-    app.Use(middleware.CORS())
-
-    app.Get("/", func(c *fiber.Ctx) {
-        c.Send("CORS is enabled!")
-    })
+    // Logger with config
+    app.Use(logger.New(config))
 
     app.Listen(3000)
 }
 ```
 
-Проверьте работу CORS, передав любой домен в заголовке `Origin`: 
+### Cross-Origin Resource Sharing (CORS)
+
+Docs:
+
+- 📖 https://fiber.wiki/middleware#cors
+
+Example:
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/cors"
+)
+
+func main() {
+    app := fiber.New()
+
+    // CORS with default config
+    app.Use(cors.New())
+
+    app.Listen(3000)
+}
+```
+
+Check CORS by passing any domain in `Origin` header:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
-### Обработка 404 ошибки
+### Custom 404 response
 
-Документация:
+Docs:
 
 - 📖 https://fiber.wiki/application#http-methods
 
-Пример:
+Example:
 
 ```go
 func main() {
@@ -390,102 +382,117 @@ func main() {
 
   // Last middleware to match anything
   app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404) // => 404 "Not Found"
+    c.SendStatus(404) 
+    // => 404 "Not Found"
   })
 
   app.Listen(3000)
 }
 ```
 
-### Ответ в формате JSON
+### JSON Response
 
-Документация:
+Docs:
 
 - 📖 https://fiber.wiki/context#json
 
-Пример:
+Example:
 
 ```go
+type User struct {
+  Name string `json:"name"`
+  Age  int    `json:"age"`
+}
+
 func main() {
   app := fiber.New()
 
-  type User struct {
-    Name string `json:"name"`
-    Age  int    `json:"age"`
-  }
-
-  // Serialize JSON
-  app.Get("/json", func(c *fiber.Ctx) {
+  app.Get("/user", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
     // => {"name":"John", "age":20}
   })
 
+  app.Get("/json", func(c *fiber.Ctx) {
+    c.JSON(fiber.Map{
+      "success": true,
+      "message": "Hi John!",
+    })
+    // => {"success":true, "message":"Hi John!"}
+  })
+
   app.Listen(3000)
 }
 ```
 
-### Поддержка WebSocket
+### WebSocket middleware
 
-Документация:
+Docs:
 
-- 📖 https://fiber.wiki/application#websocket
+- 📖 https://fiber.wiki/middleware#websocket
 
-Пример:
+Example:
 
 ```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/websocket"
+)
+
 func main() {
   app := fiber.New()
 
-  app.WebSocket("/ws/:name", func(c *fiber.Conn) {
-    log.Println(c.Params("name"))
-
+  app.Get("/ws", websocket.New(func(c *websocket.Conn) {
     for {
       mt, msg, err := c.ReadMessage()
       if err != nil {
         log.Println("read:", err)
         break
       }
-
-      log.Printf("recovery: %s", msg)
-
+      log.Printf("recv: %s", msg)
       err = c.WriteMessage(mt, msg)
       if err != nil {
         log.Println("write:", err)
         break
       }
     }
-  })
+  }))
 
-  // Слушаем вебсокет по адресу ws://localhost:3000/ws/john
   app.Listen(3000)
+  // ws://localhost:3000/ws
 }
 ```
 
-### Восстановление работы после `panic`
+### Recover middleware
 
-Документация:
+Docs:
 
 - 📖 https://fiber.wiki/middleware#recover
 
-Пример:
+Example:
 
 ```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/recover"
+)
+
 func main() {
   app := fiber.New()
 
-  app.Get("/", func(c *fiber.Ctx) {
-    panic("Something went wrong!")
-  })
+  // Optional recover config
+  config := recover.LoggerConfig{
+    Handler: func(c *fiber.Ctx, err error) {
+			c.SendString(err.Error())
+			c.SendStatus(500)
+		},
+  }
 
-  app.Recover(func(c *fiber.Ctx) {
-    c.Status(500).Send(c.Error())
-    // => 500 "Something went wrong!"
-  })
+  // Logger with custom config
+  app.Use(recover.New(config))
 
   app.Listen(3000)
 }
 ```
-
 </details>
 
 ## 💬 Медиа
