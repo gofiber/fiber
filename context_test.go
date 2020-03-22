@@ -28,7 +28,6 @@ func Test_Accepts(t *testing.T) {
 		}
 		expect = ".xml"
 		result = c.Accepts(expect)
-		t.Log(result)
 		if result != expect {
 			t.Fatalf(`Expecting %s, got %s`, expect, result)
 		}

@@ -1,18 +1,25 @@
 language: go
 sudo: false
-
+dist: bionic
 os:
   - linux
   - windows
   - osx
 go:
+  - 1.9.x
+  - 1.10.x
   - 1.11.x
   - 1.12.x
   - 1.13.x
   - 1.14.x
 env:
   - GO111MODULE=on
-install:
-  #- go get -v golang.org/x/lint/golint
 script:
-  - go test
+  # build test for supported platforms
+  - GOOS=linux go build
+  - GOOS=darwin go build
+  - GOOS=freebsd go build
+  - GOOS=windows go build
+  - GOARCH=386 go build
+  - go test -v
+  - go test -race -v

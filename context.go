@@ -18,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	websocket "github.com/fasthttp/websocket"
 	template "github.com/gofiber/template"
 	jsoniter "github.com/json-iterator/go"
 	fasthttp "github.com/valyala/fasthttp"
@@ -34,7 +33,6 @@ type Ctx struct {
 	method   string               // HTTP method
 	path     string               // HTTP path
 	values   []string             // Route parameter values
-	compress bool                 // If the response needs to be compressed
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	err      error                // Contains error if catched
 }
@@ -81,35 +79,9 @@ func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 func releaseCtx(ctx *Ctx) {
 	ctx.route = nil
 	ctx.values = nil
-	ctx.compress = false
 	ctx.Fasthttp = nil
 	ctx.err = nil
 	poolCtx.Put(ctx)
-}
-
-// Conn https://godoc.org/github.com/gorilla/websocket#pkg-index
-type Conn struct {
-	*websocket.Conn
-}
-
-// Conn pool
-var poolConn = sync.Pool{
-	New: func() interface{} {
-		return new(Conn)
-	},
-}
-
-// Acquire Conn from pool
-func acquireConn(fconn *websocket.Conn) *Conn {
-	conn := poolConn.Get().(*Conn)
-	conn.Conn = fconn
-	return conn
-}
-
-// Return Conn to pool
-func releaseConn(conn *Conn) {
-	conn.Conn = nil
-	poolConn.Put(conn)
 }
 
 // Checks, if the specified extensions or content types are acceptable.
