@@ -396,7 +396,11 @@ func (app *App) Shutdown() error {
 }
 
 // Test : https://fiber.wiki/application#test
-func (app *App) Test(request *http.Request) (*http.Response, error) {
+func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, error) {
+	timeout := 200
+	if len(msTimeout) > 0 {
+		timeout = msTimeout[0]
+	}
 	// Dump raw http request
 	dump, err := httputil.DumpRequest(request, true)
 	if err != nil {
@@ -421,7 +425,7 @@ func (app *App) Test(request *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, err
 		}
-	case <-time.After(200 * time.Millisecond):
+	case <-time.After(time.Duration(timeout) * time.Millisecond):
 		return nil, fmt.Errorf("Timeout error")
 	}
 	// Read response
