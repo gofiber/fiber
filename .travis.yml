@@ -1,6 +1,6 @@
 language: go
 sudo: false
-dist: bionic
+
 os:
   - linux
   - windows
