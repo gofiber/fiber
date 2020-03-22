@@ -91,7 +91,7 @@ func main() {
 Установка выполняется с помощью команды [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
-go get -u github.com/gofiber/fiber/...
+go get -u github.com/gofiber/fiber
 ```
 
 ## 🤖 Бенчмарки
@@ -110,7 +110,7 @@ go get -u github.com/gofiber/fiber/...
 - Экстремальная [производительность](https://fiber.wiki/benchmarks)
 - [Низкий объем потребления памяти](https://fiber.wiki/benchmarks)
 - [Эндпоинты](https://fiber.wiki/context), как в [API](https://fiber.wiki/context) Express
-- Middleware и поддержка [Next](https://fiber.wiki/context#next)
+- [Middleware](https://fiber.wiki/middleware) и поддержка [Next](https://fiber.wiki/context#next)
 - [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
 - Переведен на 9 других языков
 - И многое другое, [посетите наш Wiki](https://fiber.wiki/)
@@ -495,6 +495,25 @@ func main() {
 ```
 </details>
 
+## 🧬 Доступные Middleware
+
+Для более простой и прозрачной работы, мы вынесли [middleware](https://fiber.wiki/middleware) в отдельные репозитории:
+
+- [Basic Authentication](https://github.com/gofiber/basicauth)
+- [Key Authentication](https://github.com/gofiber/keyauth)
+- [Compression](https://github.com/gofiber/compression)
+- [Request ID](https://github.com/gofiber/requestid)
+- [WebSocket](https://github.com/gofiber/websocket)
+- [Rewrite](https://github.com/gofiber/rewrite)
+- [Recover](https://github.com/gofiber/recover)
+- [Limiter](https://github.com/gofiber/limiter)
+- [Session](https://github.com/gofiber/session)
+- [Logger](https://github.com/gofiber/logger)
+- [Helmet](https://github.com/gofiber/helmet)
+- [CORS](https://github.com/gofiber/cors)
+- [CSRF](https://github.com/gofiber/csrf)
+- [JWT](https://github.com/gofiber/jwt)
+
 ## 💬 Медиа
 
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) (_by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_)
@@ -556,4 +575,14 @@ func main() {
 
 ## ⚠️ Лицензия
 
-`Fiber` — это бесплатное программное обеспечение с открытым исходным кодом, лицензированное по [лицензии MIT](https://github.com/gofiber/fiber/blob/master/LICENSE).
+`Fiber` — это бесплатное программное обеспечение с открытым исходным кодом, лицензированное по [лицензии MIT](https://github.com/gofiber/fiber/blob/master/LICENSE). Официальный логотип был создан [Vic Shóstak](https://github.com/koddr) и распространяется по лицензии [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0 International).
+
+<br>
+
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/0)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/0)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/1)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/1)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/2)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/2)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/3)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/3)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/4)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/4)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/5)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/5)
+[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/6)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/6)

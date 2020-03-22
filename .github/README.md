@@ -91,7 +91,7 @@ First of all, [download](https://golang.org/dl/) and install Go. `1.11` or highe
 Installation is done using the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-go get -u github.com/gofiber/fiber/...
+go get -u github.com/gofiber/fiber
 ```
 
 ## 🤖 Benchmarks
@@ -110,7 +110,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 - Extreme [performance](https://fiber.wiki/benchmarks)
 - [Low memory](https://fiber.wiki/benchmarks) footprint
 - [API endpoints](https://fiber.wiki/context)
-- Middleware & [Next](https://fiber.wiki/context#next) support
+- [Middleware](https://fiber.wiki/middleware) & [Next](https://fiber.wiki/context#next) support
 - [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
 - Available in 10 other languages
 - And much more, [explore Fiber](https://fiber.wiki/)
@@ -497,6 +497,25 @@ func main() {
 ```
 </details>
 
+## 🧬 Available Middlewares
+
+For _easier_ and _more clear_ work, we've put [middleware](https://fiber.wiki/middleware) into separate repositories:
+
+- [Basic Authentication](https://github.com/gofiber/basicauth)
+- [Key Authentication](https://github.com/gofiber/keyauth)
+- [Compression](https://github.com/gofiber/compression)
+- [Request ID](https://github.com/gofiber/requestid)
+- [WebSocket](https://github.com/gofiber/websocket)
+- [Rewrite](https://github.com/gofiber/rewrite)
+- [Recover](https://github.com/gofiber/recover)
+- [Limiter](https://github.com/gofiber/limiter)
+- [Session](https://github.com/gofiber/session)
+- [Logger](https://github.com/gofiber/logger)
+- [Helmet](https://github.com/gofiber/helmet)
+- [CORS](https://github.com/gofiber/cors)
+- [CSRF](https://github.com/gofiber/csrf)
+- [JWT](https://github.com/gofiber/jwt)
+
 ## 💬 Media
 
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) (_by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_)
@@ -560,7 +579,9 @@ If you want to say **thank you** and/or support the active development of `Fiber
 
 ## ⚠️ License
 
-`Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE).
+`Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logotype was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+
+<br>
 
 [![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/0)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/0)
 [![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/1)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/1)
