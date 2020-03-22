@@ -419,14 +419,24 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	go func() {
 		channel <- app.server.ServeConn(conn)
 	}()
-	// Wait for callback
-	select {
-	case err := <-channel:
-		if err != nil {
-			return nil, err
+	if timeout == 0 || timeout == -1 {
+		// Wait for callback
+		select {
+		case err := <-channel:
+			if err != nil {
+				return nil, err
+			}
 		}
-	case <-time.After(time.Duration(timeout) * time.Millisecond):
-		return nil, fmt.Errorf("Timeout error")
+	} else {
+		// Wait for callback
+		select {
+		case err := <-channel:
+			if err != nil {
+				return nil, err
+			}
+		case <-time.After(time.Duration(timeout) * time.Millisecond):
+			return nil, fmt.Errorf("Timeout error")
+		}
 	}
 	// Read response
 	buffer := bufio.NewReader(&conn.w)
