@@ -717,14 +717,10 @@ func (ctx *Ctx) Redirect(path string, status ...int) {
 // We support the following engines: html, amber, handlebars, mustache, pug
 //
 // https://fiber.wiki/context#render
-func (ctx *Ctx) Render(file string, bind interface{}, engine ...string) error {
+func (ctx *Ctx) Render(file string, bind interface{}) error {
 	var err error
 	var raw []byte
 	var html string
-
-	if len(engine) > 0 {
-		log.Println("Warning: engine parameter is deprecated since v1.8.4, please use github.com/gofiber/template instead.")
-	}
 
 	if ctx.app.Settings.TemplateFolder != "" {
 		file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
@@ -758,49 +754,6 @@ func (ctx *Ctx) Render(file string, bind interface{}, engine ...string) error {
 	ctx.Set("Content-Type", "text/html")
 	ctx.SendString(html)
 	return err
-	// if len(engine) > 0 {
-	// 	log.Println("Deprectated")
-	// 	e = engine[0]
-	// } else if ctx.app.Settings.TemplateEngine != "" {
-	// 	e = ctx.app.Settings.TemplateEngine
-	// } else {
-	// 	e = filepath.Ext(file)[1:]
-	// }
-	// if ctx.app.Settings.TemplateFolder != "" {
-	// 	file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
-	// }
-	// if ctx.app.Settings.TemplateExtension != "" {
-	// 	file = file + ctx.app.Settings.TemplateExtension
-	// }
-	// if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
-	// 	return err
-	// }
-
-	// switch e {
-	// case "amber": // https://github.com/eknkc/amber
-	// 	if html, err = template.Amber(getString(raw), bind); err != nil {
-	// 		return err
-	// 	}
-	// case "handlebars": // https://github.com/aymerick/raymond
-	// 	if html, err = template.Handlebars(getString(raw), bind); err != nil {
-	// 		return err
-	// 	}
-	// case "mustache": // https://github.com/cbroglie/mustache
-	// 	if html, err = template.Mustache(getString(raw), bind); err != nil {
-	// 		return err
-	// 	}
-	// case "pug": // https://github.com/Joker/jade
-	// 	if html, err = template.Pug(getString(raw), bind); err != nil {
-	// 		return err
-	// 	}
-	// default: // https://golang.org/pkg/text/template/
-	// 	if html, err = template.HTML(getString(raw), bind); err != nil {
-	// 		return err
-	// 	}
-	// }
-	// ctx.Set("Content-Type", "text/html")
-	// ctx.SendString(html)
-	// return err
 }
 
 // Returns the matched Route struct.
