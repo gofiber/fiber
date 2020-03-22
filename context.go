@@ -5,8 +5,10 @@
 package fiber
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -18,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	template "github.com/gofiber/template"
 	jsoniter "github.com/json-iterator/go"
 	fasthttp "github.com/valyala/fasthttp"
 )
@@ -720,15 +721,11 @@ func (ctx *Ctx) Render(file string, bind interface{}, engine ...string) error {
 	var err error
 	var raw []byte
 	var html string
-	var e string
 
 	if len(engine) > 0 {
-		e = engine[0]
-	} else if ctx.app.Settings.TemplateEngine != "" {
-		e = ctx.app.Settings.TemplateEngine
-	} else {
-		e = filepath.Ext(file)[1:]
+		log.Println("Warning: engine parameter is deprecated since v1.8.4, please use github.com/gofiber/template instead.")
 	}
+
 	if ctx.app.Settings.TemplateFolder != "" {
 		file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
 	}
@@ -738,32 +735,72 @@ func (ctx *Ctx) Render(file string, bind interface{}, engine ...string) error {
 	if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
 		return err
 	}
+	if ctx.app.Settings.TemplateEngine != nil {
+		// Custom template engine
+		// https://github.com/gofiber/template
+		if html, err = ctx.app.Settings.TemplateEngine(getString(raw), bind); err != nil {
+			return err
+		}
+	} else {
+		// Default template engine
+		// https://golang.org/pkg/text/template/
+		var buf bytes.Buffer
+		var tmpl *template.Template
 
-	switch e {
-	case "amber": // https://github.com/eknkc/amber
-		if html, err = template.Amber(getString(raw), bind); err != nil {
+		if tmpl, err = template.New("").Parse(getString(raw)); err != nil {
 			return err
 		}
-	case "handlebars": // https://github.com/aymerick/raymond
-		if html, err = template.Handlebars(getString(raw), bind); err != nil {
+		if err = tmpl.Execute(&buf, bind); err != nil {
 			return err
 		}
-	case "mustache": // https://github.com/cbroglie/mustache
-		if html, err = template.Mustache(getString(raw), bind); err != nil {
-			return err
-		}
-	case "pug": // https://github.com/Joker/jade
-		if html, err = template.Pug(getString(raw), bind); err != nil {
-			return err
-		}
-	default: // https://golang.org/pkg/text/template/
-		if html, err = template.HTML(getString(raw), bind); err != nil {
-			return err
-		}
+		html = buf.String()
 	}
 	ctx.Set("Content-Type", "text/html")
 	ctx.SendString(html)
 	return err
+	// if len(engine) > 0 {
+	// 	log.Println("Deprectated")
+	// 	e = engine[0]
+	// } else if ctx.app.Settings.TemplateEngine != "" {
+	// 	e = ctx.app.Settings.TemplateEngine
+	// } else {
+	// 	e = filepath.Ext(file)[1:]
+	// }
+	// if ctx.app.Settings.TemplateFolder != "" {
+	// 	file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
+	// }
+	// if ctx.app.Settings.TemplateExtension != "" {
+	// 	file = file + ctx.app.Settings.TemplateExtension
+	// }
+	// if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
+	// 	return err
+	// }
+
+	// switch e {
+	// case "amber": // https://github.com/eknkc/amber
+	// 	if html, err = template.Amber(getString(raw), bind); err != nil {
+	// 		return err
+	// 	}
+	// case "handlebars": // https://github.com/aymerick/raymond
+	// 	if html, err = template.Handlebars(getString(raw), bind); err != nil {
+	// 		return err
+	// 	}
+	// case "mustache": // https://github.com/cbroglie/mustache
+	// 	if html, err = template.Mustache(getString(raw), bind); err != nil {
+	// 		return err
+	// 	}
+	// case "pug": // https://github.com/Joker/jade
+	// 	if html, err = template.Pug(getString(raw), bind); err != nil {
+	// 		return err
+	// 	}
+	// default: // https://golang.org/pkg/text/template/
+	// 	if html, err = template.HTML(getString(raw), bind); err != nil {
+	// 		return err
+	// 	}
+	// }
+	// ctx.Set("Content-Type", "text/html")
+	// ctx.SendString(html)
+	// return err
 }
 
 // Returns the matched Route struct.

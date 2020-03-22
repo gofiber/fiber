@@ -10,7 +10,8 @@ go:
   - 1.12.x
   - 1.13.x
   - 1.14.x
-
+env:
+  - GO111MODULE=on
 script:
   # build test for supported platforms
   - GOOS=linux go build
