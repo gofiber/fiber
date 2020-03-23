@@ -24,7 +24,7 @@ import (
 )
 
 // Version of Fiber
-const Version = "1.8.41"
+const Version = "1.8.42"
 
 type (
 	// App denotes the Fiber application.
