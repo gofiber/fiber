@@ -53,9 +53,21 @@ type (
 		// Folder containing template files
 		TemplateFolder string `default:""`
 		// Template engine: html, amber, handlebars , mustache or pug
-		TemplateEngine func(raw string, bind interface{}) (string, error) `default:""`
+		TemplateEngine func(raw string, bind interface{}) (string, error) `default:"nil"`
 		// Extension for the template files
 		TemplateExtension string `default:""`
+		// ReadTimeout is the amount of time allowed to read the full request including body.
+		// The connection's read deadline is reset when the connection opens, or for
+		// keep-alive connections after the first byte has been read.
+		// Default timeout is unlimited.
+		ReadTimeout time.Duration
+		// WriteTimeout is the maximum duration before timing out writes of the response.
+		// It is reset after the request handler has returned.
+		// Default timeout is unlimited.
+		WriteTimeout time.Duration
+		// The maximum amount of time to wait for the next request when keep-alive is enabled.
+		// If IdleTimeout is zero, the value of ReadTimeout is used.
+		IdleTimeout time.Duration
 	}
 )
 
@@ -503,6 +515,9 @@ func (app *App) newServer() *fasthttp.Server {
 		Name:                  app.Settings.ServerHeader,
 		MaxRequestBodySize:    app.Settings.BodyLimit,
 		NoDefaultServerHeader: app.Settings.ServerHeader == "",
+		ReadTimeout:           app.Settings.ReadTimeout,
+		WriteTimeout:          app.Settings.WriteTimeout,
+		IdleTimeout:           app.Settings.IdleTimeout,
 		Logger:                &customLogger{},
 		LogAllErrors:          false,
 		ErrorHandler: func(ctx *fasthttp.RequestCtx, err error) {
