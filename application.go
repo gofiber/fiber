@@ -24,7 +24,7 @@ import (
 )
 
 // Version of Fiber
-const Version = "1.8.4"
+const Version = "1.8.41"
 
 type (
 	// App denotes the Fiber application.
@@ -56,12 +56,12 @@ type (
 		TemplateEngine func(raw string, bind interface{}) (string, error) `default:"nil"`
 		// Extension for the template files
 		TemplateExtension string `default:""`
-		// ReadTimeout is the amount of time allowed to read the full request including body.
+		// The amount of time allowed to read the full request including body.
 		// The connection's read deadline is reset when the connection opens, or for
 		// keep-alive connections after the first byte has been read.
 		// Default timeout is unlimited.
 		ReadTimeout time.Duration
-		// WriteTimeout is the maximum duration before timing out writes of the response.
+		// The maximum duration before timing out writes of the response.
 		// It is reset after the request handler has returned.
 		// Default timeout is unlimited.
 		WriteTimeout time.Duration
