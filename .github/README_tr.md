@@ -112,7 +112,10 @@ Bu testler [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) ve 
 - [API uç noktaları](https://fiber.wiki/context)
 - Ara katman & [Sonraki](https://fiber.wiki/context#next) desteği
 - [Hızlı](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) sunucu taraflı programlama
-- [5 dilde](https://fiber.wiki/) mevcut
+- [Template engines](https://fiber.wiki/middleware#template)
+- [WebSocket support](https://fiber.wiki/middleware#websocket)
+- [Rate Limiter](https://fiber.wiki/middleware#limiter)
+- Available in [10 languages](https://fiber.wiki/)
 - Ve daha fazlası, [Fiber ı keşfet](https://fiber.wiki/)
 
 ## 💡 Felsefe

@@ -112,7 +112,10 @@ go get -u github.com/gofiber/fiber
 - [Эндпоинты](https://fiber.wiki/context), как в [API](https://fiber.wiki/context) Express
 - [Middleware](https://fiber.wiki/middleware) и поддержка [Next](https://fiber.wiki/context#next)
 - [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
-- Переведен на 9 других языков
+- [Template engines](https://fiber.wiki/middleware#template)
+- [WebSocket support](https://fiber.wiki/middleware#websocket)
+- [Rate Limiter](https://fiber.wiki/middleware#limiter)
+- Available in [10 languages](https://fiber.wiki/)
 - И многое другое, [посетите наш Wiki](https://fiber.wiki/)
 
 ## 💡 Философия

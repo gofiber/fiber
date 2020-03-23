@@ -112,7 +112,10 @@ Estas pruebas son realizadas por [TechEmpower](https://github.com/TechEmpower/Fr
 - [Puntos finales de API](https://fiber.wiki/context) Express
 - Middleware y [próximo](https://fiber.wiki/context#next) soporte
 - Programación [rápida](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) del lado del servidor
-- Available in [5 languages](https://fiber.wiki/)
+- [Template engines](https://fiber.wiki/middleware#template)
+- [WebSocket support](https://fiber.wiki/middleware#websocket)
+- [Rate Limiter](https://fiber.wiki/middleware#limiter)
+- Available in [10 languages](https://fiber.wiki/)
 - Y mucho más, [explore Fiber](https://fiber.wiki/)
 
 ## 💡 Filosofía

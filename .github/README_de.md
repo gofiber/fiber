@@ -112,7 +112,10 @@ Diese Tests wurden von [TechEmpower](https://github.com/TechEmpower/FrameworkBen
 - Express [API Endpunkte](https://fiber.wiki/context)
 - [Middleware](https://fiber.wiki/middleware) & [Next](https://fiber.wiki/context#next) Support
 - [Schnelle](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) serverseitige Programmierung
-- Übersetzt in [5 Sprachen](https://fiber.wiki/)
+- [Template engines](https://fiber.wiki/middleware#template)
+- [WebSocket support](https://fiber.wiki/middleware#websocket)
+- [Rate Limiter](https://fiber.wiki/middleware#limiter)
+- Available in [10 languages](https://fiber.wiki/)
 - Und vieles mehr - [erkunde Fiber](https://fiber.wiki/)
 
 ## 💡 Philosophie

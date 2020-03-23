@@ -112,6 +112,9 @@ go get -u github.com/gofiber/fiber
 - Express [API端点](https://fiber.wiki/context)
 - 中间件和[Next](https://fiber.wiki/context#next)支持
 - [快速的](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
+- [Template engines](https://fiber.wiki/middleware#template)
+- [WebSocket support](https://fiber.wiki/middleware#websocket)
+- [Rate Limiter](https://fiber.wiki/middleware#limiter)
 - Available in [10 languages](https://fiber.wiki/)
 - 以及更多[文档](https://fiber.wiki/)
 
