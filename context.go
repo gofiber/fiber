@@ -5,8 +5,10 @@
 package fiber
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -18,8 +20,6 @@ import (
 	"sync"
 	"time"
 
-	websocket "github.com/fasthttp/websocket"
-	template "github.com/gofiber/template"
 	jsoniter "github.com/json-iterator/go"
 	fasthttp "github.com/valyala/fasthttp"
 )
@@ -34,7 +34,6 @@ type Ctx struct {
 	method   string               // HTTP method
 	path     string               // HTTP path
 	values   []string             // Route parameter values
-	compress bool                 // If the response needs to be compressed
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	err      error                // Contains error if catched
 }
@@ -57,6 +56,7 @@ type Cookie struct {
 	Expires  time.Time
 	Secure   bool
 	HTTPOnly bool
+	SameSite string
 }
 
 // Ctx pool
@@ -80,35 +80,9 @@ func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 func releaseCtx(ctx *Ctx) {
 	ctx.route = nil
 	ctx.values = nil
-	ctx.compress = false
 	ctx.Fasthttp = nil
 	ctx.err = nil
 	poolCtx.Put(ctx)
-}
-
-// Conn https://godoc.org/github.com/gorilla/websocket#pkg-index
-type Conn struct {
-	*websocket.Conn
-}
-
-// Conn pool
-var poolConn = sync.Pool{
-	New: func() interface{} {
-		return new(Conn)
-	},
-}
-
-// Acquire Conn from pool
-func acquireConn(fconn *websocket.Conn) *Conn {
-	conn := poolConn.Get().(*Conn)
-	conn.Conn = fconn
-	return conn
-}
-
-// Return Conn to pool
-func releaseConn(conn *Conn) {
-	conn.Conn = nil
-	poolConn.Put(conn)
 }
 
 // Checks, if the specified extensions or content types are acceptable.
@@ -125,7 +99,7 @@ func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 
 	specs := strings.Split(h, ",")
 	for _, value := range offers {
-		mimetype := getType(value)
+		mimetype := getMIME(value)
 		// if mimetype != "" {
 		// 	mimetype = strings.Split(mimetype, ";")[0]
 		// } else {
@@ -343,16 +317,6 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 	})
 }
 
-// This function is deprecated since v1.8.2!
-// Please us github.com/gofiber/compression
-func (ctx *Ctx) Compress(enable ...bool) {
-	log.Println("Warning: c.Compress() is deprecated since v1.8.2, please use github.com/gofiber/compression instead.")
-	ctx.compress = true
-	if len(enable) > 0 {
-		ctx.compress = enable[0]
-	}
-}
-
 // Set cookie by passing a cookie struct
 //
 // https://fiber.wiki/context#cookie
@@ -364,7 +328,23 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetDomain(cookie.Domain)
 	fcookie.SetExpire(cookie.Expires)
 	fcookie.SetSecure(cookie.Secure)
+	if cookie.Secure {
+		// Secure must be paired with SameSite=None
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	}
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
+	switch strings.ToLower(cookie.SameSite) {
+	case "lax":
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+	case "strict":
+		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	case "none":
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+		// Secure must be paired with SameSite=None
+		fcookie.SetSecure(true)
+	default:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
+	}
 	ctx.Fasthttp.Response.Header.SetCookie(fcookie)
 }
 
@@ -737,19 +717,11 @@ func (ctx *Ctx) Redirect(path string, status ...int) {
 // We support the following engines: html, amber, handlebars, mustache, pug
 //
 // https://fiber.wiki/context#render
-func (ctx *Ctx) Render(file string, bind interface{}, engine ...string) error {
+func (ctx *Ctx) Render(file string, bind interface{}) error {
 	var err error
 	var raw []byte
 	var html string
-	var e string
 
-	if len(engine) > 0 {
-		e = engine[0]
-	} else if ctx.app.Settings.TemplateEngine != "" {
-		e = ctx.app.Settings.TemplateEngine
-	} else {
-		e = filepath.Ext(file)[1:]
-	}
 	if ctx.app.Settings.TemplateFolder != "" {
 		file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
 	}
@@ -759,28 +731,25 @@ func (ctx *Ctx) Render(file string, bind interface{}, engine ...string) error {
 	if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
 		return err
 	}
+	if ctx.app.Settings.TemplateEngine != nil {
+		// Custom template engine
+		// https://github.com/gofiber/template
+		if html, err = ctx.app.Settings.TemplateEngine(getString(raw), bind); err != nil {
+			return err
+		}
+	} else {
+		// Default template engine
+		// https://golang.org/pkg/text/template/
+		var buf bytes.Buffer
+		var tmpl *template.Template
 
-	switch e {
-	case "amber": // https://github.com/eknkc/amber
-		if html, err = template.Amber(getString(raw), bind); err != nil {
+		if tmpl, err = template.New("").Parse(getString(raw)); err != nil {
 			return err
 		}
-	case "handlebars": // https://github.com/aymerick/raymond
-		if html, err = template.Handlebars(getString(raw), bind); err != nil {
+		if err = tmpl.Execute(&buf, bind); err != nil {
 			return err
 		}
-	case "mustache": // https://github.com/cbroglie/mustache
-		if html, err = template.Mustache(getString(raw), bind); err != nil {
-			return err
-		}
-	case "pug": // https://github.com/Joker/jade
-		if html, err = template.Pug(getString(raw), bind); err != nil {
-			return err
-		}
-	default: // https://golang.org/pkg/text/template/
-		if html, err = template.HTML(getString(raw), bind); err != nil {
-			return err
-		}
+		html = buf.String()
 	}
 	ctx.Set("Content-Type", "text/html")
 	ctx.SendString(html)
@@ -912,7 +881,7 @@ func (ctx *Ctx) Status(status int) *Ctx {
 //
 // https://fiber.wiki/context#type
 func (ctx *Ctx) Type(ext string) *Ctx {
-	ctx.Fasthttp.Response.Header.SetContentType(getType(ext))
+	ctx.Fasthttp.Response.Header.SetContentType(getMIME(ext))
 	return ctx
 }
 

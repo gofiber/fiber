@@ -215,8 +215,8 @@ func main() {
     c.Next()
   })
 
-  // POST /api/register
-  app.Post("/api/register", func(c *fiber.Ctx) {
+  // GET /api/register
+  app.Get("/api/list", func(c *fiber.Ctx) {
     fmt.Println("Last middleware")
     c.Send("Hello, World!")
   })
@@ -311,22 +311,22 @@ Example:
 ```go
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+    "github.com/gofiber/logger"
 )
 
 func main() {
     app := fiber.New()
 
-    // If you want to change default Logger config
-    loggerConfig := middleware.LoggerConfig{
+    // Optional logger config
+    config := logger.LoggerConfig{
       Format:     "${time} - ${method} ${path}\n",
       TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
     }
 
-    // Middleware for Logger with config
-    app.Use(middleware.Logger(loggerConfig))
+    // Logger with config
+    app.Use(logger.New(config))
 
-    // ...
+    app.Listen(3000)
 }
 ```
 
@@ -336,25 +336,19 @@ Docs:
 
 - 📖 https://fiber.wiki/middleware#cors
 
-> [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) is a mechanism that uses additional HTTP headers to tell browsers to give a web application running at one origin, access to selected resources from a different origin. A web application executes a cross-origin HTTP request when it requests a resource that has a different origin (domain, protocol, or port) from its own.
-
 Example:
 
 ```go
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+    "github.com/gofiber/cors"
 )
 
 func main() {
     app := fiber.New()
 
-    // Connect CORS for each route as middleware
-    app.Use(middleware.CORS())
-
-    app.Get("/", func(c *fiber.Ctx) {
-      c.Send("CORS is enabled!")
-    })
+    // CORS with default config
+    app.Use(cors.New())
 
     app.Listen(3000)
 }
@@ -432,38 +426,41 @@ func main() {
 }
 ```
 
-### WebSocket support
+### WebSocket middleware
 
 Docs:
 
-- 📖 https://fiber.wiki/application#websocket
+- 📖 https://fiber.wiki/middleware#websocket
 
 Example:
 
 ```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/websocket"
+)
+
 func main() {
   app := fiber.New()
 
-  app.WebSocket("/ws", func(c *fiber.Conn) {
+  app.Get("/ws", websocket.New(func(c *websocket.Conn) {
     for {
       mt, msg, err := c.ReadMessage()
       if err != nil {
         log.Println("read:", err)
         break
       }
-
-      log.Printf("recovery: %s", msg)
-
+      log.Printf("recv: %s", msg)
       err = c.WriteMessage(mt, msg)
       if err != nil {
         log.Println("write:", err)
         break
       }
     }
-  })
+  }))
 
-  // Listen on ws://localhost:3000/ws
   app.Listen(3000)
+  // ws://localhost:3000/ws
 }
 ```
 
@@ -478,20 +475,22 @@ Example:
 ```go
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+    "github.com/gofiber/recover"
 )
 
 func main() {
   app := fiber.New()
 
-  app.Use(middleware.Recover(func(c *fiber.Ctx, err error) {
-    log.Println(err)  // "Something went wrong!"
-    c.SendStatus(500) // Internal Server Error
-  }))
+  // Optional recover config
+  config := recover.LoggerConfig{
+    Handler: func(c *fiber.Ctx, err error) {
+			c.SendString(err.Error())
+			c.SendStatus(500)
+		},
+  }
 
-  app.Get("/", func(c *fiber.Ctx) {
-    panic("Something went wrong!")
-  })
+  // Logger with custom config
+  app.Use(recover.New(config))
 
   app.Listen(3000)
 }

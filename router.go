@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	websocket "github.com/fasthttp/websocket"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -19,7 +18,6 @@ type Route struct {
 	isGet bool // allows HEAD requests if GET
 
 	isMiddleware bool // is middleware route
-	isWebSocket  bool // is websocket route
 
 	isStar  bool // path == '*'
 	isSlash bool // path == '/'
@@ -30,9 +28,7 @@ type Route struct {
 	Params []string       // path params
 	Regexp *regexp.Regexp // regexp matcher
 
-	HandleCtx  func(*Ctx)  // ctx handler
-	HandleConn func(*Conn) // conn handler
-
+	Handler func(*Ctx) // ctx handler
 }
 
 func (app *App) nextRoute(ctx *Ctx) {
@@ -45,19 +41,7 @@ func (app *App) nextRoute(ctx *Ctx) {
 		if match {
 			ctx.route = route
 			ctx.values = values
-			// Deprecated since v1.8.2
-			// github.com/gofiber/websocket
-			if route.isWebSocket {
-				if err := websocketUpgrader.Upgrade(ctx.Fasthttp, func(fconn *websocket.Conn) {
-					conn := acquireConn(fconn)
-					defer releaseConn(conn)
-					route.HandleConn(conn)
-				}); err != nil { // Upgrading failed
-					ctx.SendStatus(400)
-				}
-			} else {
-				route.HandleCtx(ctx)
-			}
+			route.Handler(ctx)
 			return
 		}
 	}
@@ -123,7 +107,6 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	defer releaseCtx(ctx)
 	// attach app poiner and compress settings
 	ctx.app = app
-	ctx.compress = app.Settings.Compression
 
 	// Case sensitive routing
 	if !app.Settings.CaseSensitive {
@@ -133,12 +116,8 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	if !app.Settings.StrictRouting && len(ctx.path) > 1 {
 		ctx.path = strings.TrimRight(ctx.path, "/")
 	}
-
+	// Find route
 	app.nextRoute(ctx)
-	// Deprecated since v1.8.2 https://github.com/gofiber/compress
-	if ctx.compress {
-		compressResponse(fctx)
-	}
 }
 
 func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
@@ -201,60 +180,9 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 			Path:         path,
 			Params:       Params,
 			Regexp:       Regexp,
-			HandleCtx:    handlers[i],
+			Handler:      handlers[i],
 		})
 	}
-}
-
-func (app *App) registerWebSocket(method, path string, handle func(*Ctx)) {
-	// Cannot have an empty path
-	if path == "" {
-		path = "/"
-	}
-	// Path always start with a '/' or '*'
-	if path[0] != '/' && path[0] != '*' {
-		path = "/" + path
-	}
-	// Store original path to strip case sensitive params
-	original := path
-	// Case sensitive routing, all to lowercase
-	if !app.Settings.CaseSensitive {
-		path = strings.ToLower(path)
-	}
-	// Strict routing, remove last `/`
-	if !app.Settings.StrictRouting && len(path) > 1 {
-		path = strings.TrimRight(path, "/")
-	}
-
-	var isWebSocket = true
-
-	var isStar = path == "*" || path == "/*"
-	var isSlash = path == "/"
-	var isRegex = false
-	// Route properties
-	var Params = getParams(original)
-	var Regexp *regexp.Regexp
-	// Params requires regex pattern
-	if len(Params) > 0 {
-		regex, err := getRegex(path)
-		if err != nil {
-			log.Fatal("Router: Invalid path pattern: " + path)
-		}
-		isRegex = true
-		Regexp = regex
-	}
-	app.routes = append(app.routes, &Route{
-		isWebSocket: isWebSocket,
-		isStar:      isStar,
-		isSlash:     isSlash,
-		isRegex:     isRegex,
-
-		Method:    method,
-		Path:      path,
-		Params:    Params,
-		Regexp:    Regexp,
-		HandleCtx: handle,
-	})
 }
 
 func (app *App) registerStatic(prefix, root string, config ...Static) {
@@ -324,7 +252,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		isSlash:      isSlash,
 		Method:       "*",
 		Path:         prefix,
-		HandleCtx: func(c *Ctx) {
+		Handler: func(c *Ctx) {
 			// Only handle GET & HEAD methods
 			if c.method == "GET" || c.method == "HEAD" {
 				// Do stuff
