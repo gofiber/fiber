@@ -39,7 +39,7 @@ type (
 	// Settings is a struct holding the server settings
 	Settings struct {
 		// This will spawn multiple Go processes listening on the same port
-		Prefork bool `default:"false"`
+		Prefork bool // Default: false / Spawns Multiple Go processes listening on the same port`default:"false"`
 		// Enable strict routing. When enabled, the router treats "/foo" and "/foo/" as different.
 		StrictRouting bool `default:"false"`
 		// Enable case sensitivity. When enabled, "/Foo" and "/foo" are different routes.
@@ -79,8 +79,6 @@ type Group struct {
 
 // This method creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
-//
-// https://fiber.wiki/application#new
 func New(settings ...*Settings) *App {
 	var prefork, child bool
 	// Loop trought args without using flag.Parse()
@@ -117,8 +115,6 @@ func New(settings ...*Settings) *App {
 }
 
 // You can group routes by creating a *Group struct.
-//
-// https://fiber.wiki/application#group
 func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 	if len(handlers) > 0 {
 		app.registerMethod("USE", prefix, handlers...)
@@ -130,8 +126,6 @@ func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 }
 
 // Settings struct for serving static files
-//
-// https://fiber.wiki/application#static
 type Static struct {
 	// Transparently compresses responses if set to true
 	// This works differently than the github.com/gofiber/compression middleware
@@ -151,8 +145,6 @@ type Static struct {
 }
 
 // Serve static files such as images, CSS and JavaScript files, you can use the Static method.
-//
-// https://fiber.wiki/application#static
 func (app *App) Static(prefix, root string, config ...Static) *App {
 	app.registerStatic(prefix, root, config...)
 	return app
@@ -160,12 +152,6 @@ func (app *App) Static(prefix, root string, config ...Static) *App {
 
 // Use only match requests starting with the specified prefix
 // It's optional to provide a prefix, default: "/"
-// Example: Use("/product", handler)
-// will match 	/product
-// will match 	/product/cool
-// will match 	/product/foo
-//
-// https://fiber.wiki/application#http-methods
 func (app *App) Use(args ...interface{}) *App {
 	var path = ""
 	var handlers []func(*Ctx)
@@ -238,12 +224,6 @@ func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
 }
 
 // All matches all HTTP methods and complete paths
-// Example: All("/product", handler)
-// will match 	/product
-// won't match 	/product/cool   <-- important
-// won't match 	/product/foo    <-- important
-//
-// https://fiber.wiki/application#http-methods
 func (app *App) All(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod("ALL", path, handlers...)
 	return app
@@ -270,12 +250,6 @@ func (grp *Group) Static(prefix, root string, config ...Static) *Group {
 
 // Use only match requests starting with the specified prefix
 // It's optional to provide a prefix, default: "/"
-// Example: Use("/product", handler)
-// will match 	/product
-// will match 	/product/cool
-// will match 	/product/foo
-//
-// https://fiber.wiki/application#http-methods
 func (grp *Group) Use(args ...interface{}) *Group {
 	var path = ""
 	var handlers []func(*Ctx)
@@ -348,12 +322,6 @@ func (grp *Group) Get(path string, handlers ...func(*Ctx)) *Group {
 }
 
 // All matches all HTTP methods and complete paths
-// Example: All("/product", handler)
-// will match 	/product
-// won't match 	/product/cool   <-- important
-// won't match 	/product/foo    <-- important
-//
-// https://fiber.wiki/application#http-methods
 func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 	grp.app.registerMethod("ALL", groupPaths(grp.prefix, path), handlers...)
 	return grp
@@ -413,6 +381,10 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	if len(msTimeout) > 0 {
 		timeout = msTimeout[0]
 	}
+	// if timeout equals -1 we extend the timeout to 10 minutes
+	if timeout < 0 {
+		timeout = 600000 // 10 minutes
+	}
 	// Dump raw http request
 	dump, err := httputil.DumpRequest(request, true)
 	if err != nil {
@@ -431,24 +403,14 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	go func() {
 		channel <- app.server.ServeConn(conn)
 	}()
-	if timeout < 0 {
-		// Wait for callback
-		select {
-		case err := <-channel:
-			if err != nil {
-				return nil, err
-			}
+	// Wait for callback
+	select {
+	case err := <-channel:
+		if err != nil {
+			return nil, err
 		}
-	} else {
-		// Wait for callback
-		select {
-		case err := <-channel:
-			if err != nil {
-				return nil, err
-			}
-		case <-time.After(time.Duration(timeout) * time.Millisecond):
-			return nil, fmt.Errorf("Timeout error")
-		}
+	case <-time.After(time.Duration(timeout) * time.Millisecond):
+		return nil, fmt.Errorf("Timeout error")
 	}
 	// Read response
 	buffer := bufio.NewReader(&conn.w)
