@@ -127,6 +127,9 @@ Listados abaixo estão alguns exemplos comuns. Se você quiser ver mais exemplos
 
 ### Routing
 
+📖 https://fiber.wiki/#basic-routing  
+
+
 ```go
 func main() {
   app := fiber.New()
@@ -154,7 +157,9 @@ func main() {
 ```
 
 ### Serve static files
-https://fiber.wiki/application#static
+
+📖 https://fiber.wiki/application#static  
+
 ```go
 func main() {
   app := fiber.New()
@@ -175,8 +180,10 @@ func main() {
 ```
 
 ### Middleware & Next
-https://fiber.wiki/routing#middleware
-https://fiber.wiki/context#next
+
+📖 https://fiber.wiki/routing#middleware  
+📖 https://fiber.wiki/context#next  
+
 ```go
 func main() {
   app := fiber.New()
@@ -193,8 +200,8 @@ func main() {
     c.Next()
   })
 
-  // POST /api/register
-  app.Post("/api/register", func(c *fiber.Ctx) {
+  // GET /api/register
+  app.Get("/api/list", func(c *fiber.Ctx) {
     fmt.Println("Last middleware")
     c.Send("Hello, World!")
   })
@@ -208,32 +215,34 @@ func main() {
 
 ### Template engines
 
-Docs:
+📖 https://fiber.wiki/application#settings  
+📖 https://fiber.wiki/context#render  
+📖 https://fiber.wiki/middleware#template  
 
-- 📖 https://fiber.wiki/application#settings
-- 📖 https://fiber.wiki/context#render
+Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
 
-Supported engines:
+But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
 
-- [html](https://golang.org/pkg/html/template/)
-- [amber](https://github.com/eknkc/amber)
-- [handlebars](https://github.com/aymerick/raymond)
-- [mustache](https://github.com/cbroglie/mustache)
-- [pug](https://github.com/Joker/jade)
-
-Example:
+You can use our [Template Middleware](https://fiber.wiki/middleware#template).
 
 ```go
+package main
+
+import (
+  "github.com/gofiber/fiber"
+  "github.com/gofiber/template"
+)
+
 func main() {
   // You can setup template engine before initiation app:
   app := fiber.New(&fiber.Settings{
-    TemplateEngine:    "mustache",
+    TemplateEngine:    template.Mustache(),
     TemplateFolder:    "./views",
     TemplateExtension: ".tmpl",
   })
 
   // OR after initiation app at any convenient location:
-  app.Settings.TemplateEngine = "mustache"
+  app.Settings.TemplateEngine = template.Mustache()
   app.Settings.TemplateFolder = "./views"
   app.Settings.TemplateExtension = ".tmpl"
 
@@ -251,11 +260,7 @@ func main() {
 
 ### Grouping routes into chains
 
-Docs:
-
-- 📖 https://fiber.wiki/application#group
-
-Example:
+📖 https://fiber.wiki/application#group  
 
 ```go
 func main() {
@@ -280,11 +285,7 @@ func main() {
 
 ### Middleware logger
 
-Docs:
-
-- 📖 https://fiber.wiki/middleware#logger
-
-Example:
+📖 https://fiber.wiki/middleware#logger  
 
 ```go
 import (
@@ -310,11 +311,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-Docs:
-
-- 📖 https://fiber.wiki/middleware#cors
-
-Example:
+📖 https://fiber.wiki/middleware#cors  
 
 ```go
 import (
@@ -340,11 +337,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Custom 404 response
 
-Docs:
-
-- 📖 https://fiber.wiki/application#http-methods
-
-Example:
+📖 https://fiber.wiki/application#http-methods  
 
 ```go
 func main() {
@@ -372,11 +365,7 @@ func main() {
 
 ### JSON Response
 
-Docs:
-
-- 📖 https://fiber.wiki/context#json
-
-Example:
+📖 https://fiber.wiki/context#json  
 
 ```go
 type User struct {
@@ -404,13 +393,9 @@ func main() {
 }
 ```
 
-### WebSocket middleware
+### WebSocket Upgrade
 
-Docs:
-
-- 📖 https://fiber.wiki/middleware#websocket
-
-Example:
+📖 https://fiber.wiki/middleware#websocket  
 
 ```go
 import (
@@ -444,11 +429,7 @@ func main() {
 
 ### Recover middleware
 
-Docs:
-
-- 📖 https://fiber.wiki/middleware#recover
-
-Example:
+📖 https://fiber.wiki/middleware#recover  
 
 ```go
 import (
@@ -488,11 +469,8 @@ Se você quer **agradecer** e/ou apoiar o desenvolvimento ativo do `Fiber`:
 3. Escreva um review ou tutorial no [Medium](https://medium.com/), [Dev.to](https://dev.to/) ou blog pessoal.
 4. Nos ajude a traduzir esses `README` e a [documentação da API](https://fiber.wiki/) para outros idiomas.
 
-## ☕ Supporters
+## ☕ Coffee Supporters
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
 <table>
   <tr>
     <td align="center">
@@ -539,6 +517,10 @@ Se você quer **agradecer** e/ou apoiar o desenvolvimento ativo do `Fiber`:
     </td>
   </tr>
 </table>
+
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 
 ## ⭐️ Estrelas
 
