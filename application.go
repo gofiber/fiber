@@ -53,7 +53,7 @@ type (
 		// Folder containing template files
 		TemplateFolder string `default:""`
 		// Template engine: html, amber, handlebars , mustache or pug
-		TemplateEngine func(raw string, bind interface{}) (out string, err error) `default:""`
+		TemplateEngine func(raw string, bind interface{}) (string, error) `default:""`
 		// Extension for the template files
 		TemplateExtension string `default:""`
 	}
