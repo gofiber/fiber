@@ -496,6 +496,18 @@ Si quiere **agradecer** y/o apoyar el desarrollo activo de la `Fiber`:
 <table>
   <tr>
     <td align="center">
+        <a href="https://github.com/melkorm">
+          <img src="https://avatars2.githubusercontent.com/u/619996?s=460&v=4" width="100px"></br>
+          <sub><b>melkorm</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/ekaputra07">
+          <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
+          <sub><b>ekaputra07</b></sub>
+        </a>
+    </td>
+    <td align="center">
         <a href="https://github.com/bihe">
           <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
           <sub><b>HenrikBinggl</b></sub>
