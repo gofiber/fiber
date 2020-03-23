@@ -112,7 +112,10 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://github.com/TechEmpower/Frame
 - Cocok untuk [API](https://fiber.wiki/context)
 - Mendukung Middleware & [Next](https://fiber.wiki/context#next) seperti Express
 - Kembangkan aplikasi dengan [Cepat](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
-- Tersedia di 10 bahasa lainnya
+- [Template engines](https://fiber.wiki/middleware#template)
+- [WebSocket support](https://fiber.wiki/middleware#websocket)
+- [Rate Limiter](https://fiber.wiki/middleware#limiter)
+- Available in [10 languages](https://fiber.wiki/)
 - Dan masih banyak lagi, [kunjungi Fiber](https://fiber.wiki/)
 
 ## 💡 Filosofi

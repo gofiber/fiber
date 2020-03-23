@@ -112,7 +112,10 @@ go get -u github.com/gofiber/fiber/...
 - [API 엔드포인트](https://fiber.wiki/context)
 - 미들웨어 & [Next](https://fiber.wiki/context#next) 지원
 - [빠른](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 서버 사이드 프로그래밍
-- 10개 언어로 번역됨
+- [Template engines](https://fiber.wiki/middleware#template)
+- [WebSocket support](https://fiber.wiki/middleware#websocket)
+- [Rate Limiter](https://fiber.wiki/middleware#limiter)
+- Available in [10 languages](https://fiber.wiki/)
 - 더 알고 싶다면, [Fiber 둘러보기](https://fiber.wiki/)
 
 ## 💡 철학

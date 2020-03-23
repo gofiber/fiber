@@ -113,7 +113,10 @@ go get -u github.com/gofiber/fiber/...
 - Express [APIエンドポイント](https://fiber.wiki/context)
 - Middlewareと[Next](https://fiber.wiki/context#next)のサポート
 - [迅速](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)なサーバーサイドプログラミング
-- [５ヶ国語](https://fiber.wiki/)に対応
+- [Template engines](https://fiber.wiki/middleware#template)
+- [WebSocket support](https://fiber.wiki/middleware#websocket)
+- [Rate Limiter](https://fiber.wiki/middleware#limiter)
+- Available in [10 languages](https://fiber.wiki/)
 - [Fiber](https://fiber.wiki/)をもっと知る
 
 ## 💡 哲学
