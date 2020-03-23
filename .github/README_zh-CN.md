@@ -472,11 +472,8 @@ func main() {
 3. 在[Medium](https://medium.com/)，[Dev.to](https://dev.to/)或个人博客上写评论或教程。
 4. 帮助我们将此`README文件`翻译成其它语言。
 
-## ☕ Supporters
+## ☕ Coffee  Supporters
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
 <table>
   <tr>
     <td align="center">
@@ -523,6 +520,10 @@ func main() {
     </td>
   </tr>
 </table>
+
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 
 ### ⭐️ 星星
 

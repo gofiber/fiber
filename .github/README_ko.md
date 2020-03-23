@@ -475,11 +475,8 @@ func main() {
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) 또는 개인 블로그에 리뷰 또는 튜토리얼을 작성하세요.
 4. 이 `README`를 다른 언어로 번역하는 것을 도와주세요.
 
-## ☕ Supporters
+## ☕ Coffee Supporters
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
 <table>
   <tr>
     <td align="center">
@@ -526,6 +523,10 @@ func main() {
     </td>
   </tr>
 </table>
+
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 
 ## ⭐️ Stars
 

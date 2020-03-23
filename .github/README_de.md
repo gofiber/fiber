@@ -490,11 +490,8 @@ Falls du **danke** sagen möchtest und/oder aktiv die Entwicklung von `fiber` f�
 3. Schreibe eine Rezension auf [Medium](https://medium.com/), [Dev.to](https://dev.to/) oder einem persönlichem Blog.
 4. Hilf uns diese `README` und die [API Docs](https://fiber.wiki/) in eine andere Sprache zu übersetzen.
 
-## ☕ Supporters
+## ☕ Coffee Supporters
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
 <table>
   <tr>
     <td align="center">
@@ -541,6 +538,10 @@ Falls du **danke** sagen möchtest und/oder aktiv die Entwicklung von `fiber` f�
     </td>
   </tr>
 </table>
+
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 
 ## ⭐️ Sterne
 

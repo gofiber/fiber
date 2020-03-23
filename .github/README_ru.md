@@ -492,11 +492,8 @@ func main() {
 3. Сделайте обзор фреймворка на [Medium](https://medium.com/), [Dev.to](https://dev.to/) или в личном блоге.
 4. Помогите нам перевести `README` и [API](https://fiber.wiki/) на другой язык.
 
-## ☕ Те, кто уже поддержал проект
+## ☕ Coffee Те, кто уже поддержал проект
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
 <table>
   <tr>
     <td align="center">
@@ -543,6 +540,10 @@ func main() {
     </td>
   </tr>
 </table>
+
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 
 ## ⭐️ Звезды
 

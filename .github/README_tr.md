@@ -470,11 +470,7 @@ Eğer  **teşekkür etmek** ve/veya `Fiber` ın aktif geliştirilmesini destekle
 4. Bu `BENİOKU` sayfasını başka bir dile tercüme etmek için bize yardım edin.
 
 
-## ☕ Destekleyenler
-
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Bir Kahve Ismarla" height="100" >
-</a>
+## ☕ Coffee Destekleyenler
 
 <table>
   <tr>
@@ -522,6 +518,10 @@ Eğer  **teşekkür etmek** ve/veya `Fiber` ın aktif geliştirilmesini destekle
     </td>
   </tr>
 </table>
+
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 
 ## ⭐️ Yıldızlar
 

@@ -473,11 +473,7 @@ Apabila anda ingin mengucapkan **terima kasih** dan/atau mendukung pengembangan 
 4. Bantu kami menerjemahkan `README` ini ke bahasa lainnya.
 
 
-## ☕ Para Pendukung
-
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
+## ☕ Coffee Para Pendukung
 
 <table>
   <tr>
@@ -525,6 +521,10 @@ Apabila anda ingin mengucapkan **terima kasih** dan/atau mendukung pengembangan 
     </td>
   </tr>
 </table>
+
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 
 ## ⭐️ Bintang
 

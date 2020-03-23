@@ -495,11 +495,7 @@ If you want to say **thank you** and/or support the active development of `Fiber
 4. Help us to translate this `README` to another language.
 
 
-## ☕ Supporters
-
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
+## ☕ Coffee Supporters
 
 <table>
   <tr>
@@ -547,6 +543,10 @@ If you want to say **thank you** and/or support the active development of `Fiber
     </td>
   </tr>
 </table>
+
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 
 ## ⭐️ Stars
 
