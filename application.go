@@ -419,7 +419,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	go func() {
 		channel <- app.server.ServeConn(conn)
 	}()
-	if timeout == 0 || timeout == -1 {
+	if timeout < 0 {
 		// Wait for callback
 		select {
 		case err := <-channel:
