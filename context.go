@@ -26,7 +26,6 @@ import (
 
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
-// For more information please visit our documentation: https://fiber.wiki/context
 type Ctx struct {
 	app      *Fiber               // Reference to *Fiber
 	route    *Route               // Reference to *Route
@@ -85,9 +84,7 @@ func releaseCtx(ctx *Ctx) {
 	poolCtx.Put(ctx)
 }
 
-// Checks, if the specified extensions or content types are acceptable.
-//
-// https://fiber.wiki/context#accepts
+// Accepts checks if the specified extensions or content types are acceptable.
 func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 	if len(offers) == 0 {
 		return ""
@@ -125,9 +122,7 @@ func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 	return ""
 }
 
-// Checks, if the specified charset is acceptable.
-//
-// https://fiber.wiki/context#accepts
+// AcceptsCharsets checks if the specified charset is acceptable.
 func (ctx *Ctx) AcceptsCharsets(offers ...string) (offer string) {
 	if len(offers) == 0 {
 		return ""
@@ -154,9 +149,7 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) (offer string) {
 	return ""
 }
 
-// Checks, if the specified encoding is acceptable.
-//
-// https://fiber.wiki/context#accepts
+// AcceptsEncodings checks if the specified encoding is acceptable.
 func (ctx *Ctx) AcceptsEncodings(offers ...string) (offer string) {
 	if len(offers) == 0 {
 		return ""
@@ -182,9 +175,7 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) (offer string) {
 	return ""
 }
 
-// Checks, if the specified language is acceptable.
-//
-// https://fiber.wiki/context#accepts
+// AcceptsLanguages checks if the specified language is acceptable.
 func (ctx *Ctx) AcceptsLanguages(offers ...string) (offer string) {
 	if len(offers) == 0 {
 		return ""
@@ -209,10 +200,8 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) (offer string) {
 	return ""
 }
 
-// Appends the specified value to the HTTP response header field.
+// Append the specified value to the HTTP response header field.
 // If the header is not already set, it creates the header with the specified value.
-//
-// https://fiber.wiki/context#append
 func (ctx *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
@@ -228,9 +217,7 @@ func (ctx *Ctx) Append(field string, values ...string) {
 	ctx.Set(field, h)
 }
 
-// Sets the HTTP response Content-Disposition header field to attachment.
-//
-// https://fiber.wiki/context#attachment
+// Attachment sets the HTTP response Content-Disposition header field to attachment.
 func (ctx *Ctx) Attachment(name ...string) {
 	if len(name) > 0 {
 		filename := filepath.Base(name[0])
@@ -241,17 +228,13 @@ func (ctx *Ctx) Attachment(name ...string) {
 	ctx.Set(HeaderContentDisposition, "attachment")
 }
 
-// Returns base URL (protocol + host) as a string.
-//
-// https://fiber.wiki/context#baseurl
+// BaseURL returns (protocol + host).
 func (ctx *Ctx) BaseURL() string {
 	return ctx.Protocol() + "://" + ctx.Hostname()
 }
 
-// Contains the raw body submitted in a POST request.
+// Body contains the raw body submitted in a POST request.
 // If a key is provided, it returns the form value
-//
-// https://fiber.wiki/context#body
 func (ctx *Ctx) Body(key ...string) string {
 	// Return request body
 	if len(key) == 0 {
@@ -264,11 +247,9 @@ func (ctx *Ctx) Body(key ...string) string {
 	return ""
 }
 
-// Binds the request body to a struct.
-// BodyParser supports decoding the following content types based on the Content-Type header:
+// BodyParser binds the request body to a struct.
+// It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
-//
-// https://fiber.wiki/context#bodyparser
 func (ctx *Ctx) BodyParser(out interface{}) error {
 	// TODO : Query Params
 	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
@@ -300,13 +281,11 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	return fmt.Errorf("BodyParser: cannot parse content-type: %v", ctype)
 }
 
-// Expire a client cookie (or all cookies if left empty)
-//
-// https://fiber.wiki/context#clearcookie
+// ClearCookie expires a specific cookie by key.
+// If no key is provided it expires all cookies.
 func (ctx *Ctx) ClearCookie(key ...string) {
 	if len(key) > 0 {
 		for i := range key {
-			//ctx.Fasthttp.Request.Header.DelAllCookies()
 			ctx.Fasthttp.Response.Header.DelClientCookie(key[i])
 		}
 		return
@@ -317,9 +296,7 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 	})
 }
 
-// Set cookie by passing a cookie struct
-//
-// https://fiber.wiki/context#cookie
+// Cookie sets a cookie by passing a cookie struct
 func (ctx *Ctx) Cookie(cookie *Cookie) {
 	fcookie := &fasthttp.Cookie{}
 	fcookie.SetKey(cookie.Name)
@@ -348,9 +325,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 	ctx.Fasthttp.Response.Header.SetCookie(fcookie)
 }
 
-// Get cookie value by key
-//
-// https://fiber.wiki/context#cookies
+// Cookies is used for getting a cookie value by key
 func (ctx *Ctx) Cookies(key ...string) (value string) {
 	if len(key) == 0 {
 		return ctx.Get(HeaderCookie)
@@ -358,12 +333,10 @@ func (ctx *Ctx) Cookies(key ...string) (value string) {
 	return getString(ctx.Fasthttp.Request.Header.Cookie(key[0]))
 }
 
-// Transfers the file from path as an attachment.
+// Download transfers the file from path as an attachment.
 // Typically, browsers will prompt the user for download.
 // By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
 // Override this default with the filename parameter.
-//
-// Download : https://fiber.wiki/context#download
 func (ctx *Ctx) Download(file string, name ...string) {
 	filename := filepath.Base(file)
 
@@ -375,17 +348,14 @@ func (ctx *Ctx) Download(file string, name ...string) {
 	ctx.SendFile(file)
 }
 
-// This contains the error information that thrown by a panic or passed via the Next(err) method.
-//
-// https://fiber.wiki/context#error
+// Error contains the error information passed via the Next(err) method.
 func (ctx *Ctx) Error() error {
 	return ctx.err
 }
 
-// Performs content-negotiation on the Accept HTTP header. It uses Accepts to select a proper format.
+// Format performs content-negotiation on the Accept HTTP header.
+// It uses Accepts to select a proper format.
 // If the header is not specified or there is no proper format, text/plain is used.
-//
-// https://fiber.wiki/context#format
 func (ctx *Ctx) Format(body interface{}) {
 	var b string
 	accept := ctx.Accepts("html", "json")
@@ -410,31 +380,23 @@ func (ctx *Ctx) Format(body interface{}) {
 	}
 }
 
-// MultipartForm files can be retrieved by name, the first file from the given key is returned.
-//
-// https://fiber.wiki/context#formfile
+// FormFile returns the first file by key from a MultipartForm.
 func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 	return ctx.Fasthttp.FormFile(key)
 }
 
-// MultipartForm values can be retrieved by name, the first value from the given key is returned.
-//
-// https://fiber.wiki/context#formvalue
+// FormValue returns the first value by key from a MultipartForm.
 func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
 
-// Not implemented yet, pull requests are welcome!
-//
-// https://fiber.wiki/context#fresh
+// Fresh is not implemented yet, pull requests are welcome!
 func (ctx *Ctx) Fresh() bool {
 	return false
 }
 
-// Returns the HTTP request header specified by field.
+// Get returns the HTTP request header specified by field.
 // Field names are case-insensitive
-//
-// https://fiber.wiki/context#get
 func (ctx *Ctx) Get(key string) (value string) {
 	if key == "referrer" {
 		key = "referer"
@@ -442,23 +404,17 @@ func (ctx *Ctx) Get(key string) (value string) {
 	return getString(ctx.Fasthttp.Request.Header.Peek(key))
 }
 
-// Contains the hostname derived from the Host HTTP header.
-//
-// https://fiber.wiki/context#hostname
+// Hostname contains the hostname derived from the Host HTTP header.
 func (ctx *Ctx) Hostname() string {
 	return getString(ctx.Fasthttp.URI().Host())
 }
 
-// Returns the remote IP address of the request.
-//
-// https://fiber.wiki/context#Ip
+// IP returns the remote IP address of the request.
 func (ctx *Ctx) IP() string {
 	return ctx.Fasthttp.RemoteIP().String()
 }
 
-// Returns an string slice of IP addresses specified in the X-Forwarded-For request header.
-//
-// https://fiber.wiki/context#ips
+// IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
 func (ctx *Ctx) IPs() []string {
 	ips := strings.Split(ctx.Get(HeaderXForwardedFor), ",")
 	for i := range ips {
@@ -467,10 +423,8 @@ func (ctx *Ctx) IPs() []string {
 	return ips
 }
 
-// Returns the matching content type,
-// if the incoming request’s Content-Type HTTP header field matches the MIME type specified by the type parameter.
-//
-// https://fiber.wiki/context#is
+// Is returns the matching content type,
+// if the incoming request’s Content-Type HTTP header field matches the MIME type specified by the type parameter
 func (ctx *Ctx) Is(extension string) (match bool) {
 	if extension[0] != '.' {
 		extension = "." + extension
@@ -487,10 +441,8 @@ func (ctx *Ctx) Is(extension string) (match bool) {
 	return
 }
 
-// Converts any interface or string to JSON using Jsoniter.
+// JSON converts any interface or string to JSON using Jsoniter.
 // This method also sets the content header to application/json.
-//
-// https://fiber.wiki/context#json
 func (ctx *Ctx) JSON(json interface{}) error {
 	// Get stream from pool
 	stream := jsonParser.BorrowStream(nil)
@@ -508,11 +460,9 @@ func (ctx *Ctx) JSON(json interface{}) error {
 	return nil
 }
 
-// Sends a JSON response with JSONP support.
+// JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
-//
-// https://fiber.wiki/context#jsonp
 func (ctx *Ctx) JSONP(json interface{}, callback ...string) error {
 	// Get stream from pool
 	stream := jsonParser.BorrowStream(nil)
@@ -537,9 +487,7 @@ func (ctx *Ctx) JSONP(json interface{}, callback ...string) error {
 	return nil
 }
 
-// Joins the links followed by the property to populate the response’s Link HTTP header field.
-//
-// https://fiber.wiki/context#links
+// Links joins the links followed by the property to populate the response’s Link HTTP header field.
 func (ctx *Ctx) Links(link ...string) {
 	h := ""
 	for i, l := range link {
@@ -556,10 +504,8 @@ func (ctx *Ctx) Links(link ...string) {
 	}
 }
 
-// You can pass interface{} values under string keys scoped to the request
-// and therefore available to all routes that match the request.
-//
-// https://fiber.wiki/context#locals
+// Locals makes it possible to pass interface{} values under string keys scoped to the request
+// and therefore available to all following routes that match the request.
 func (ctx *Ctx) Locals(key string, value ...interface{}) (val interface{}) {
 	if len(value) == 0 {
 		return ctx.Fasthttp.UserValue(key)
@@ -568,16 +514,12 @@ func (ctx *Ctx) Locals(key string, value ...interface{}) (val interface{}) {
 	return value[0]
 }
 
-// Sets the response Location HTTP header to the specified path parameter.
-//
-// https://fiber.wiki/context#location
+// Location sets the response Location HTTP header to the specified path parameter.
 func (ctx *Ctx) Location(path string) {
 	ctx.Set(HeaderLocation, path)
 }
 
-// Contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
-//
-// https://fiber.wiki/context#method
+// Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
 func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
 		ctx.method = override[0]
@@ -585,18 +527,14 @@ func (ctx *Ctx) Method(override ...string) string {
 	return ctx.method
 }
 
-// Access multipart form entries, you can parse the binary with MultipartForm().
+// MultipartForm parse form entries from binary.
 // This returns a map[string][]string, so given a key the value will be a string slice.
-//
-// https://fiber.wiki/context#multipartform
 func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 	return ctx.Fasthttp.MultipartForm()
 }
 
 // Next executes the next method in the stack that matches the current route.
 // You can pass an optional error for custom error handling.
-//
-// https://fiber.wiki/context#next
 func (ctx *Ctx) Next(err ...error) {
 	ctx.route = nil
 	ctx.values = nil
@@ -606,17 +544,13 @@ func (ctx *Ctx) Next(err ...error) {
 	ctx.app.nextRoute(ctx)
 }
 
-// Contains the original request URL.
-//
-// https://fiber.wiki/context#originalurl
+// OriginalURL contains the original request URL.
 func (ctx *Ctx) OriginalURL() string {
 	return getString(ctx.Fasthttp.Request.Header.RequestURI())
 }
 
-// Used to get the route parameters.
+// Params is used to get the route parameters.
 // Defaults to empty string "", if the param doesn't exist.
-//
-// https://fiber.wiki/context#params
 func (ctx *Ctx) Params(key string) (value string) {
 	if ctx.route.Params == nil {
 		return
@@ -629,10 +563,8 @@ func (ctx *Ctx) Params(key string) (value string) {
 	return
 }
 
-// Returns the path part of the request URL.
+// Path returns the path part of the request URL.
 // Optionally, you could override the path.
-//
-// https://fiber.wiki/context#path
 func (ctx *Ctx) Path(override ...string) string {
 	if len(override) > 0 {
 		// Non strict routing
@@ -648,9 +580,7 @@ func (ctx *Ctx) Path(override ...string) string {
 	return ctx.path
 }
 
-// Contains the request protocol string: http or https for TLS requests.
-//
-// https://fiber.wiki/context#protocol
+// Protocol contains the request protocol string: http or https for TLS requests.
 func (ctx *Ctx) Protocol() string {
 	if ctx.Fasthttp.IsTLS() {
 		return "https"
@@ -658,18 +588,14 @@ func (ctx *Ctx) Protocol() string {
 	return "http"
 }
 
-// Returns the query string parameter in the url.
-//
-// https://fiber.wiki/context#query
+// Query returns the query string parameter in the url.
 func (ctx *Ctx) Query(key string) (value string) {
 	return getString(ctx.Fasthttp.QueryArgs().Peek(key))
 }
 
-// An struct containing the type and a slice of ranges will be returned.
-//
-// https://fiber.wiki/context#range
+// Range returns a struct containing the type and a slice of ranges.
 func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
-	rangeStr := string(ctx.Fasthttp.Request.Header.Peek("range"))
+	rangeStr := string(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
 		return rangeData, fmt.Errorf("malformed range header string")
 	}
@@ -709,10 +635,8 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 	return rangeData, nil
 }
 
-// Redirects to the URL derived from the specified path, with specified status.
+// Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found
-//
-// https://fiber.wiki/context#redirect
 func (ctx *Ctx) Redirect(path string, status ...int) {
 	code := 302
 	if len(status) > 0 {
@@ -723,10 +647,8 @@ func (ctx *Ctx) Redirect(path string, status ...int) {
 	ctx.Fasthttp.Response.SetStatusCode(code)
 }
 
-// Renders a template with data and sends a text/html response.
+// Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-//
-// https://fiber.wiki/context#render
 func (ctx *Ctx) Render(file string, bind interface{}) error {
 	var err error
 	var raw []byte
@@ -766,30 +688,22 @@ func (ctx *Ctx) Render(file string, bind interface{}) error {
 	return err
 }
 
-// Returns the matched Route struct.
-//
-// https://fiber.wiki/context#route
+// Route returns the matched Route struct.
 func (ctx *Ctx) Route() *Route {
 	return ctx.route
 }
 
-// Save any multipart file to disk.
-//
-// https://fiber.wiki/context#secure
+// SaveFile saves any multipart file to disk.
 func (ctx *Ctx) SaveFile(fileheader *multipart.FileHeader, path string) error {
 	return fasthttp.SaveMultipartFile(fileheader, path)
 }
 
-// A boolean property, that is true, if a TLS connection is established.
-//
-// https://fiber.wiki/context#secure
+// Secure returns a boolean property, that is true, if a TLS connection is established.
 func (ctx *Ctx) Secure() bool {
 	return ctx.Fasthttp.IsTLS()
 }
 
-// Sets the HTTP response body. The Send body can be of any type.
-//
-// https://fiber.wiki/context#send
+// Send sets the HTTP response body. The Send body can be of any type.
 func (ctx *Ctx) Send(bodies ...interface{}) {
 	if len(bodies) > 0 {
 		ctx.Fasthttp.Response.SetBodyString("")
@@ -806,34 +720,26 @@ func (ctx *Ctx) Send(bodies ...interface{}) {
 	}
 }
 
-// Sets the HTTP response body for []byte types
+// SendBytes sets the HTTP response body for []byte types
 // This means no type assertion, recommended for faster performance
-//
-// https://fiber.wiki/context#send
 func (ctx *Ctx) SendBytes(body []byte) {
 	ctx.Fasthttp.Response.SetBodyString(getString(body))
 }
 
-// Transfers the file from the given path.
+// SendFile transfers the file from the given path.
+// The file is compressed by default
 // Sets the Content-Type response HTTP header field based on the filenames extension.
-//
-// https://fiber.wiki/context#sendfile
-func (ctx *Ctx) SendFile(file string, compress ...bool) {
+func (ctx *Ctx) SendFile(file string, noCompression ...bool) {
 	// Disable gzipping
-	if len(compress) > 0 && !compress[0] {
+	if len(noCompression) > 0 && noCompression[0] {
 		fasthttp.ServeFileUncompressed(ctx.Fasthttp, file)
 		return
 	}
 	fasthttp.ServeFile(ctx.Fasthttp, file)
-	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
-	//ctx.Type(filepath.Ext(path))
-	//ctx.Fasthttp.SendFile(path)
 }
 
-// Sets the HTTP status code and if the response body is empty,
+// SendStatus sets the HTTP status code and if the response body is empty,
 // it sets the correct status message in the body.
-//
-// https://fiber.wiki/context#sendstatus
 func (ctx *Ctx) SendStatus(status int) {
 	ctx.Fasthttp.Response.SetStatusCode(status)
 	// Only set status body when there is no response body
@@ -842,25 +748,19 @@ func (ctx *Ctx) SendStatus(status int) {
 	}
 }
 
-// Sets the HTTP response body for string types
+// SendString sets the HTTP response body for string types
 // This means no type assertion, recommended for faster performance
-//
-// https://fiber.wiki/context#send
 func (ctx *Ctx) SendString(body string) {
 	ctx.Fasthttp.Response.SetBodyString(body)
 }
 
-// Sets the response’s HTTP header field to the specified key, value.
-//
-// https://fiber.wiki/context#set
+// Set sets the response’s HTTP header field to the specified key, value.
 func (ctx *Ctx) Set(key string, val string) {
 	ctx.Fasthttp.Response.Header.Set(key, val)
 }
 
-// Returns a string slive of subdomains in the domain name of the request.
+// Subdomains returns a string slive of subdomains in the domain name of the request.
 // The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
-//
-// https://fiber.wiki/context#subdomains
 func (ctx *Ctx) Subdomains(offset ...int) []string {
 	o := 2
 	if len(offset) > 0 {
@@ -871,34 +771,26 @@ func (ctx *Ctx) Subdomains(offset ...int) []string {
 	return subdomains
 }
 
-// Not implemented yet, pull requests are welcome!
-//
-// https://fiber.wiki/context#stale
+// Stale is not implemented yet, pull requests are welcome!
 func (ctx *Ctx) Stale() bool {
 	return !ctx.Fresh()
 }
 
-// Sets the HTTP status for the response.
+// Status sets the HTTP status for the response.
 // This method is chainable.
-//
-// https://fiber.wiki/context#status
 func (ctx *Ctx) Status(status int) *Ctx {
 	ctx.Fasthttp.Response.SetStatusCode(status)
 	return ctx
 }
 
-// Sets the Content-Type HTTP header to the MIME type specified by the file extension.
-//
-// https://fiber.wiki/context#type
+// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 func (ctx *Ctx) Type(ext string) *Ctx {
 	ctx.Fasthttp.Response.Header.SetContentType(getMIME(ext))
 	return ctx
 }
 
-// Adds the given header field to the Vary response header.
+// Vary adds the given header field to the Vary response header.
 // This will append the header, if not already listed, otherwise leaves it listed in the current location.
-//
-// https://fiber.wiki/context#vary
 func (ctx *Ctx) Vary(fields ...string) {
 	if len(fields) == 0 {
 		return
@@ -916,9 +808,7 @@ func (ctx *Ctx) Vary(fields ...string) {
 	ctx.Set(HeaderVary, h)
 }
 
-// Appends any input to the HTTP body response.
-//
-// https://fiber.wiki/context#write
+// Write appends any input to the HTTP body response.
 func (ctx *Ctx) Write(bodies ...interface{}) {
 	for i := range bodies {
 		switch body := bodies[i].(type) {
@@ -932,10 +822,8 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 	}
 }
 
-// A Boolean property, that is true, if the request’s X-Requested-With header field is XMLHttpRequest,
+// XHR returns a Boolean property, that is true, if the request’s X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
-//
-// https://fiber.wiki/context#xhr
 func (ctx *Ctx) XHR() bool {
 	return ctx.Get(HeaderXRequestedWith) == "XMLHttpRequest"
 }
