@@ -411,7 +411,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		}
 	case <-time.After(time.Duration(timeout) * time.Millisecond):
 		return nil, fmt.Errorf("Timeout error")
-	}
+
 	// Read response
 	buffer := bufio.NewReader(&conn.w)
 	// Convert raw http response to *http.Response
@@ -475,8 +475,8 @@ func (app *App) newServer() *fasthttp.Server {
 	return &fasthttp.Server{
 		Handler:               app.handler,
 		Name:                  app.Settings.ServerHeader,
-		NoDefaultServerHeader: app.Settings.ServerHeader == "",
 		MaxRequestBodySize:    app.Settings.BodyLimit,
+		NoDefaultServerHeader: app.Settings.ServerHeader == "",
 		ReadTimeout:           app.Settings.ReadTimeout,
 		WriteTimeout:          app.Settings.WriteTimeout,
 		IdleTimeout:           app.Settings.IdleTimeout,
