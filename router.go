@@ -15,7 +15,7 @@ import (
 
 // Route struct
 type Route struct {
-	isGet bool // is GET method
+	isGet bool // allows HEAD requests if GET
 
 	isMiddleware bool // is middleware route
 
@@ -266,7 +266,6 @@ func (app *Fiber) registerStatic(prefix, root string, config ...Static) {
 					return
 				}
 			}
-			// Bye
 			c.Next()
 		},
 	})
