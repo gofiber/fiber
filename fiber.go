@@ -88,7 +88,7 @@ func New(settings ...*Settings) *Fiber {
 	// Set default settings
 	app.Settings.Prefork = isPrefork
 	app.Settings.BodyLimit = 4 * 1024 * 1024
-	// If settings exist, set some defaults
+	// If settings exist, set defaults
 	if len(settings) > 0 {
 		app.Settings = settings[0] // Set custom settings
 		if !app.Settings.Prefork { // Default to -prefork flag if false
