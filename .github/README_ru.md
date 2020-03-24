@@ -554,7 +554,7 @@ func main() {
 
 ## ⚠️ Лицензия
 
-`Fiber` — это бесплатное программное обеспечение с открытым исходным кодом, лицензированное по [лицензии MIT](https://github.com/gofiber/fiber/blob/master/LICENSE). Официальный логотип был создан [Vic Shóstak](https://github.com/koddr) и распространяется по лицензии [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0 International).
+`Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE) Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Fiber Contributors](https://github.com/gofiber/fiber/graphs/contributors). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
 
 <br>
 

@@ -16,8 +16,11 @@ import (
 	"unsafe"
 
 	schema "github.com/gorilla/schema"
+	jsoniter "github.com/json-iterator/go"
 )
 
+var isPrefork, isChild bool
+var jsonParser = jsoniter.ConfigCompatibleWithStandardLibrary
 var schemaDecoder = schema.NewDecoder()
 
 func groupPaths(prefix, path string) string {
@@ -105,12 +108,18 @@ func getMIME(extension string) (mime string) {
 var getString = func(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
+var getStringImmutable = func(b []byte) string {
+	return string(b)
+}
 
 // #nosec G103
 // getBytes converts string to a byte slice without memory allocation.
 // See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
 var getBytes = func(s string) (b []byte) {
 	return *(*[]byte)(unsafe.Pointer(&s))
+}
+var getBytesImmutable = func(s string) (b []byte) {
+	return []byte(s)
 }
 
 // https://golang.org/src/net/net.go#L113
