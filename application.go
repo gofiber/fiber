@@ -411,7 +411,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		}
 	case <-time.After(time.Duration(timeout) * time.Millisecond):
 		return nil, fmt.Errorf("Timeout error")
-
+	}
 	// Read response
 	buffer := bufio.NewReader(&conn.w)
 	// Convert raw http response to *http.Response
