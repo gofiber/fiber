@@ -492,17 +492,8 @@ func (ctx *Ctx) Is(extension string) (match bool) {
 //
 // https://fiber.wiki/context#json
 func (ctx *Ctx) JSON(json interface{}) error {
-	// raw, err := jsoniter.Marshal(&json)
-	// if err != nil {
-	// 	ctx.Fasthttp.Response.SetBodyString("")
-	// 	return err
-	// }
-	// ctx.Fasthttp.Response.SetBodyString(getString(raw))
-	// Set JSON content type
-	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
 	// Get stream from pool
 	stream := jsonParser.BorrowStream(nil)
-	// Return stream to pool when done
 	defer jsonParser.ReturnStream(stream)
 	// Write struct to stream
 	stream.WriteVal(&json)
@@ -510,9 +501,10 @@ func (ctx *Ctx) JSON(json interface{}) error {
 	if stream.Error != nil {
 		return stream.Error
 	}
-	// Set body from stream buffer
+	// Set http headers
+	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
 	ctx.Fasthttp.Response.SetBodyString(getString(stream.Buffer()))
-	// No errors
+	// Success!
 	return nil
 }
 
@@ -522,16 +514,21 @@ func (ctx *Ctx) JSON(json interface{}) error {
 //
 // https://fiber.wiki/context#jsonp
 func (ctx *Ctx) JSONP(json interface{}, callback ...string) error {
-	raw, err := jsoniter.Marshal(&json)
-	if err != nil {
-		return err
+	// Get stream from pool
+	stream := jsonParser.BorrowStream(nil)
+	defer jsonParser.ReturnStream(stream)
+	// Write struct to stream
+	stream.WriteVal(&json)
+	// Check for errors
+	if stream.Error != nil {
+		return stream.Error
 	}
 
 	str := "callback("
 	if len(callback) > 0 {
 		str = callback[0] + "("
 	}
-	str += getString(raw) + ");"
+	str += getString(stream.Buffer()) + ");"
 
 	ctx.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
