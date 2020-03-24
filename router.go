@@ -15,7 +15,7 @@ import (
 
 // Route struct
 type Route struct {
-	isGet bool // allows HEAD requests if GET
+	isGet bool // is GET method
 
 	isMiddleware bool // is middleware route
 
