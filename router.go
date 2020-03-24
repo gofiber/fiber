@@ -31,7 +31,7 @@ type Route struct {
 	Handler func(*Ctx) // ctx handler
 }
 
-func (app *App) nextRoute(ctx *Ctx) {
+func (app *Fiber) nextRoute(ctx *Ctx) {
 	// Keep track of head matches
 	lenr := len(app.routes) - 1
 	for ctx.index < lenr {
@@ -101,7 +101,7 @@ func (r *Route) matchRoute(method, path string) (match bool, values []string) {
 	return false, values
 }
 
-func (app *App) handler(fctx *fasthttp.RequestCtx) {
+func (app *Fiber) handler(fctx *fasthttp.RequestCtx) {
 	// get fiber context from sync pool
 	ctx := acquireCtx(fctx)
 	defer releaseCtx(ctx)
@@ -120,7 +120,7 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	app.nextRoute(ctx)
 }
 
-func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
+func (app *Fiber) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	// Route requires atleast one handler
 	if len(handlers) == 0 {
 		log.Fatalf("Missing handler in route")
@@ -185,7 +185,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	}
 }
 
-func (app *App) registerStatic(prefix, root string, config ...Static) {
+func (app *Fiber) registerStatic(prefix, root string, config ...Static) {
 	// Cannot have an empty prefix
 	if prefix == "" {
 		prefix = "/"

@@ -28,7 +28,7 @@ import (
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 // For more information please visit our documentation: https://fiber.wiki/context
 type Ctx struct {
-	app      *App                 // Reference to *App
+	app      *Fiber               // Reference to *Fiber
 	route    *Route               // Reference to *Route
 	index    int                  // Index of the current stack
 	method   string               // HTTP method
