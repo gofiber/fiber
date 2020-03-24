@@ -422,7 +422,7 @@ func (app *Fiber) Test(request *http.Request, msTimeout ...int) (*http.Response,
   return resp, nil
 }
 
-// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
+// Sharding: https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
 func (app *Fiber) prefork(address string) (ln net.Listener, err error) {
   // Master proc
   if !isChild {
