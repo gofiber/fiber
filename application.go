@@ -475,8 +475,8 @@ func (app *App) newServer() *fasthttp.Server {
 	return &fasthttp.Server{
 		Handler:               app.handler,
 		Name:                  app.Settings.ServerHeader,
-		MaxRequestBodySize:    app.Settings.BodyLimit,
 		NoDefaultServerHeader: app.Settings.ServerHeader == "",
+		MaxRequestBodySize:    app.Settings.BodyLimit,
 		ReadTimeout:           app.Settings.ReadTimeout,
 		WriteTimeout:          app.Settings.WriteTimeout,
 		IdleTimeout:           app.Settings.IdleTimeout,

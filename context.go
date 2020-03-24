@@ -492,14 +492,27 @@ func (ctx *Ctx) Is(extension string) (match bool) {
 //
 // https://fiber.wiki/context#json
 func (ctx *Ctx) JSON(json interface{}) error {
+	// raw, err := jsoniter.Marshal(&json)
+	// if err != nil {
+	// 	ctx.Fasthttp.Response.SetBodyString("")
+	// 	return err
+	// }
+	// ctx.Fasthttp.Response.SetBodyString(getString(raw))
+	// Set JSON content type
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-	raw, err := jsoniter.Marshal(&json)
-	if err != nil {
-		ctx.Fasthttp.Response.SetBodyString("")
-		return err
+	// Get stream from pool
+	stream := jsonParser.BorrowStream(nil)
+	// Return stream to pool when done
+	defer jsonParser.ReturnStream(stream)
+	// Write struct to stream
+	stream.WriteVal(&json)
+	// Check for errors
+	if stream.Error != nil {
+		return stream.Error
 	}
-	ctx.Fasthttp.Response.SetBodyString(getString(raw))
-
+	// Set body from stream buffer
+	ctx.Fasthttp.Response.SetBodyString(getString(stream.Buffer()))
+	// No errors
 	return nil
 }
 

@@ -12,6 +12,7 @@ import (
 var handler = func(c *Ctx) {}
 
 func is200(t *testing.T, app *App, url string, m ...string) {
+
 	method := "GET"
 	if len(m) > 0 {
 		method = m[0]

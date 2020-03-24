@@ -16,8 +16,10 @@ import (
 	"unsafe"
 
 	schema "github.com/gorilla/schema"
+	jsoniter "github.com/json-iterator/go"
 )
 
+var jsonParser = jsoniter.ConfigCompatibleWithStandardLibrary
 var schemaDecoder = schema.NewDecoder()
 
 func groupPaths(prefix, path string) string {
