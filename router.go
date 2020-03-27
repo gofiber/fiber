@@ -266,7 +266,6 @@ func (app *Fiber) registerStatic(prefix, root string, config ...Static) {
 					return
 				}
 			}
-			// Bye
 			c.Next()
 		},
 	})
