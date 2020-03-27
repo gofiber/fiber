@@ -70,6 +70,9 @@ type Group struct {
 	app    *Fiber
 }
 
+// Global variables
+var isPrefork, isChild bool
+
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
 func New(settings ...*Settings) *Fiber {
@@ -88,7 +91,7 @@ func New(settings ...*Settings) *Fiber {
 	// Set default settings
 	app.Settings.Prefork = isPrefork
 	app.Settings.BodyLimit = 4 * 1024 * 1024
-	// If settings exist, set some defaults
+	// If settings exist, set defaults
 	if len(settings) > 0 {
 		app.Settings = settings[0] // Set custom settings
 		if !app.Settings.Prefork { // Default to -prefork flag if false
@@ -422,7 +425,7 @@ func (app *Fiber) Test(request *http.Request, msTimeout ...int) (*http.Response,
 	return resp, nil
 }
 
-// https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
+// Sharding: https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
 func (app *Fiber) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
 	if !isChild {
@@ -458,6 +461,7 @@ func (app *Fiber) prefork(address string) (ln net.Listener, err error) {
 		}
 		os.Exit(0)
 	} else {
+		// 1 core per child
 		runtime.GOMAXPROCS(1)
 		ln, err = net.FileListener(os.NewFile(3, ""))
 	}
