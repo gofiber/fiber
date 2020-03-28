@@ -304,7 +304,7 @@ func main() {
     app := fiber.New()
 
     // Optional logger config
-    config := logger.LoggerConfig{
+    config := logger.Config{
       Format:     "${time} - ${method} ${path}\n",
       TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
     }
