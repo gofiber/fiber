@@ -448,7 +448,7 @@ func main() {
   app := fiber.New()
 
   // Optional recover config
-  config := recover.LoggerConfig{
+  config := recover.Config{
     Handler: func(c *fiber.Ctx, err error) {
 			c.SendString(err.Error())
 			c.SendStatus(500)
