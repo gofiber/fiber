@@ -304,7 +304,7 @@ func main() {
     app := fiber.New()
 
     // Optional logger config
-    config := logger.LoggerConfig{
+    config := logger.Config{
       Format:     "${time} - ${method} ${path}\n",
       TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
     }
@@ -448,7 +448,7 @@ func main() {
   app := fiber.New()
 
   // Optional recover config
-  config := recover.LoggerConfig{
+  config := recover.Config{
     Handler: func(c *fiber.Ctx, err error) {
 			c.SendString(err.Error())
 			c.SendStatus(500)
