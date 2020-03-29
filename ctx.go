@@ -378,6 +378,7 @@ func (ctx *Ctx) Format(body interface{}) {
 		ctx.SendString("<p>" + b + "</p>")
 	case "json":
 		if err := ctx.JSON(body); err != nil {
+			// Fix
 			log.Println("Format: error serializing json ", err)
 		}
 	default:

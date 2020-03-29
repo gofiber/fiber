@@ -468,6 +468,12 @@ func (app *Fiber) prefork(address string) (ln net.Listener, err error) {
 	return ln, err
 }
 
+type disableLogger struct{}
+
+func (dl *disableLogger) Printf(format string, args ...interface{}) {
+	// fmt.Println(fmt.Sprintf(format, args...))
+}
+
 func (app *Fiber) newServer() *fasthttp.Server {
 	return &fasthttp.Server{
 		Handler:               app.handler,
@@ -477,6 +483,7 @@ func (app *Fiber) newServer() *fasthttp.Server {
 		ReadTimeout:           app.Settings.ReadTimeout,
 		WriteTimeout:          app.Settings.WriteTimeout,
 		IdleTimeout:           app.Settings.IdleTimeout,
+		Logger:                &disableLogger{},
 		LogAllErrors:          false,
 		ErrorHandler: func(ctx *fasthttp.RequestCtx, err error) {
 			if err.Error() == "body size exceeds the given limit" {
