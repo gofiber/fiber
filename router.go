@@ -265,6 +265,8 @@ func (app *Fiber) registerStatic(prefix, root string, config ...Static) {
 				if c.Fasthttp.Response.StatusCode() != 404 {
 					return
 				}
+				// Reset response
+				c.Fasthttp.Response.Reset()
 			}
 			c.Next()
 		},

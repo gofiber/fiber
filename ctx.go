@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	schema "github.com/gorilla/schema"
 	jsoniter "github.com/json-iterator/go"
 	fasthttp "github.com/valyala/fasthttp"
 )
@@ -57,6 +58,10 @@ type Cookie struct {
 	HTTPOnly bool
 	SameSite string
 }
+
+// Global variables
+var jsonParser = jsoniter.ConfigCompatibleWithStandardLibrary
+var schemaDecoder = schema.NewDecoder()
 
 // Ctx pool
 var poolCtx = sync.Pool{
@@ -373,6 +378,7 @@ func (ctx *Ctx) Format(body interface{}) {
 		ctx.SendString("<p>" + b + "</p>")
 	case "json":
 		if err := ctx.JSON(body); err != nil {
+			// Fix
 			log.Println("Format: error serializing json ", err)
 		}
 	default:
