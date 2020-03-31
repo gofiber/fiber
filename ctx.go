@@ -28,7 +28,7 @@ import (
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	app      *Fiber               // Reference to *Fiber
+	app      *App                 // Reference to *App
 	route    *Route               // Reference to *Route
 	index    int                  // Index of the current stack
 	method   string               // HTTP method
@@ -831,5 +831,5 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 // XHR returns a Boolean property, that is true, if the request’s X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (ctx *Ctx) XHR() bool {
-	return ctx.Get(HeaderXRequestedWith) == "XMLHttpRequest"
+	return strings.ToLower(ctx.Get(HeaderXRequestedWith)) == "xmlhttprequest"
 }

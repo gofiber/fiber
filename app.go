@@ -29,8 +29,8 @@ const Version = "1.8.43"
 // Map is a shortcut for map[string]interface{}
 type Map map[string]interface{}
 
-// Fiber denotes the Fiber application.
-type Fiber struct {
+// App denotes the Fiber application.
+type App struct {
 	server   *fasthttp.Server // FastHTTP server
 	routes   []*Route         // Route stack
 	Settings *Settings        // Fiber settings
@@ -67,7 +67,7 @@ type Settings struct {
 // Group struct
 type Group struct {
 	prefix string
-	app    *Fiber
+	app    *App
 }
 
 // Global variables
@@ -75,7 +75,7 @@ var isPrefork, isChild bool
 
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
-func New(settings ...*Settings) *Fiber {
+func New(settings ...*Settings) *App {
 	// Parse arguments
 	for _, v := range os.Args[1:] {
 		if v == "-prefork" {
@@ -85,7 +85,7 @@ func New(settings ...*Settings) *Fiber {
 		}
 	}
 	// Create app
-	app := new(Fiber)
+	app := new(App)
 	// Create settings
 	app.Settings = new(Settings)
 	// Set default settings
@@ -109,7 +109,7 @@ func New(settings ...*Settings) *Fiber {
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-func (app *Fiber) Group(prefix string, handlers ...func(*Ctx)) *Group {
+func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 	if len(handlers) > 0 {
 		app.registerMethod("USE", prefix, handlers...)
 	}
@@ -139,7 +139,7 @@ type Static struct {
 }
 
 // Static registers a new route with path prefix to serve static files from the provided root directory.
-func (app *Fiber) Static(prefix, root string, config ...Static) *Fiber {
+func (app *App) Static(prefix, root string, config ...Static) *App {
 	app.registerStatic(prefix, root, config...)
 	return app
 }
@@ -147,7 +147,7 @@ func (app *Fiber) Static(prefix, root string, config ...Static) *Fiber {
 // Use registers a middleware route.
 // Middleware matches requests beginning with the provided prefix.
 // Providing a prefix is optional, it defaults to "/"
-func (app *Fiber) Use(args ...interface{}) *Fiber {
+func (app *App) Use(args ...interface{}) *App {
 	var path = ""
 	var handlers []func(*Ctx)
 	for i := 0; i < len(args); i++ {
@@ -165,61 +165,61 @@ func (app *Fiber) Use(args ...interface{}) *Fiber {
 }
 
 // Connect : https://fiber.wiki/application#http-methods
-func (app *Fiber) Connect(path string, handlers ...func(*Ctx)) *Fiber {
+func (app *App) Connect(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod(MethodConnect, path, handlers...)
 	return app
 }
 
 // Put : https://fiber.wiki/application#http-methods
-func (app *Fiber) Put(path string, handlers ...func(*Ctx)) *Fiber {
+func (app *App) Put(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod(MethodPut, path, handlers...)
 	return app
 }
 
 // Post : https://fiber.wiki/application#http-methods
-func (app *Fiber) Post(path string, handlers ...func(*Ctx)) *Fiber {
+func (app *App) Post(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod(MethodPost, path, handlers...)
 	return app
 }
 
 // Delete : https://fiber.wiki/application#http-methods
-func (app *Fiber) Delete(path string, handlers ...func(*Ctx)) *Fiber {
+func (app *App) Delete(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod(MethodDelete, path, handlers...)
 	return app
 }
 
 // Head : https://fiber.wiki/application#http-methods
-func (app *Fiber) Head(path string, handlers ...func(*Ctx)) *Fiber {
+func (app *App) Head(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod(MethodHead, path, handlers...)
 	return app
 }
 
 // Patch : https://fiber.wiki/application#http-methods
-func (app *Fiber) Patch(path string, handlers ...func(*Ctx)) *Fiber {
+func (app *App) Patch(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod(MethodPatch, path, handlers...)
 	return app
 }
 
 // Options : https://fiber.wiki/application#http-methods
-func (app *Fiber) Options(path string, handlers ...func(*Ctx)) *Fiber {
+func (app *App) Options(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod(MethodOptions, path, handlers...)
 	return app
 }
 
 // Trace : https://fiber.wiki/application#http-methods
-func (app *Fiber) Trace(path string, handlers ...func(*Ctx)) *Fiber {
+func (app *App) Trace(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod(MethodTrace, path, handlers...)
 	return app
 }
 
 // Get : https://fiber.wiki/application#http-methods
-func (app *Fiber) Get(path string, handlers ...func(*Ctx)) *Fiber {
+func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod(MethodGet, path, handlers...)
 	return app
 }
 
 // All matches all HTTP methods and complete paths
-func (app *Fiber) All(path string, handlers ...func(*Ctx)) *Fiber {
+func (app *App) All(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod("ALL", path, handlers...)
 	return app
 }
@@ -325,7 +325,7 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 
 // Listen serves HTTP requests from the given addr or port.
 // You can pass an optional *tls.Config to enable TLS.
-func (app *Fiber) Listen(address interface{}, tlsconfig ...*tls.Config) error {
+func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	addr, ok := address.(string)
 	if !ok {
 		port, ok := address.(int)
@@ -370,7 +370,7 @@ func (app *Fiber) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
-func (app *Fiber) Shutdown() error {
+func (app *App) Shutdown() error {
 	if app.server == nil {
 		return fmt.Errorf("Server is not running")
 	}
@@ -379,7 +379,7 @@ func (app *Fiber) Shutdown() error {
 
 // Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 200ms, -1 will disable it completely.
-func (app *Fiber) Test(request *http.Request, msTimeout ...int) (*http.Response, error) {
+func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, error) {
 	timeout := 200
 	if len(msTimeout) > 0 {
 		timeout = msTimeout[0]
@@ -426,7 +426,7 @@ func (app *Fiber) Test(request *http.Request, msTimeout ...int) (*http.Response,
 }
 
 // Sharding: https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
-func (app *Fiber) prefork(address string) (ln net.Listener, err error) {
+func (app *App) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
 	if !isChild {
 		addr, err := net.ResolveTCPAddr("tcp", address)
@@ -474,7 +474,7 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
-func (app *Fiber) newServer() *fasthttp.Server {
+func (app *App) newServer() *fasthttp.Server {
 	return &fasthttp.Server{
 		Handler:               app.handler,
 		Name:                  app.Settings.ServerHeader,
