@@ -462,9 +462,10 @@ func main() {
 
 ## 💬 媒体
 
-- [欢迎使用Fiber —用Go语言编写的Express.js风格的Web框架 ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) *作者[维克·肖斯塔克(VicShóstak)](https://github.com/koddr)，2020年2月3日*
-- [Fiber 1.7 已经发布! 🎉 他仍然快速、灵活且友善](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) *作者[维克·肖斯塔克(VicShóstak)](https://github.com/koddr), 2020年2月21日)
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) (_by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_)
+- [Fiber release v1.7 is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
 - [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) (_by [Vic Shóstak](https://github.com/koddr), 03 Mar 2020_)
+- [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) (_by [Vic Shóstak](https://github.com/koddr), 03 Mar 2020_)
 
 ## 👍 贡献
 
