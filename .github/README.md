@@ -41,7 +41,7 @@
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
   <a href="https://fiber.wiki">
-    <img src="https://img.shields.io/badge/api-documentation-blue?style=flat-square">
+    <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
   </a>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
     <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
@@ -57,9 +57,6 @@
   </a>
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
-  </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
   </a>
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
