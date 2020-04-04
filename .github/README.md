@@ -37,14 +37,14 @@
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/id.svg">
   </a>
   <br><br>
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
+    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
+  </a>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
   <a href="https://fiber.wiki">
-    <img src="https://img.shields.io/badge/api-documentation-blue?style=flat-square">
-  </a>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
-    <img src="https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square">
+    <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
   </a>
   <a href="#">
     <img src="https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square">
@@ -60,6 +60,9 @@
   </a>
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
+  </a>
+  <a href="https://t.me/gofiber">
+    <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
   </a>
 </p>
 <p align="center">
