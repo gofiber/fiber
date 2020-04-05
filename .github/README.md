@@ -490,7 +490,7 @@ For _easier_ and _more clear_ work, we've put [middleware](https://fiber.wiki/mi
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) - _03 Feb 2020_
 - [Fiber released v1.7! 🎉 What's new and is it still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) - _21 Feb 2020_
 - [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) - _03 Mar 2020_
-- [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) - _01 Apr 2020_)
+- [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) - _01 Apr 2020_
 
 ## 👍 Contribute
 
@@ -506,18 +506,6 @@ If you want to say **thank you** and/or support the active development of `Fiber
 
 <table>
   <tr>
-    <td align="center">
-        <a href="https://github.com/melkorm">
-          <img src="https://avatars2.githubusercontent.com/u/619996?s=460&v=4" width="100px"></br>
-          <sub><b>melkorm</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/ekaputra07">
-          <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
-          <sub><b>ekaputra07</b></sub>
-        </a>
-    </td>
     <td align="center">
         <a href="https://github.com/bihe">
           <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
@@ -548,6 +536,18 @@ If you want to say **thank you** and/or support the active development of `Fiber
           <sub><b>JustDave</b></sub>
         </a>
     </td>
+    <td align="center">
+        <a href="https://github.com/melkorm">
+          <img src="https://avatars2.githubusercontent.com/u/619996?s=460&v=4" width="100px"></br>
+          <sub><b>melkorm</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/ekaputra07">
+          <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
+          <sub><b>ekaputra07</b></sub>
+        </a>
+    </td>
   </tr>
 </table>
 
@@ -561,4 +561,4 @@ If you want to say **thank you** and/or support the active development of `Fiber
 
 ## ⚠️ License
 
-`Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE) Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Fiber Contributors](https://github.com/gofiber/fiber/graphs/contributors). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Fiber Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
