@@ -61,11 +61,11 @@
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
   </a>
-  <a href="https://t.me/gofiber">
-    <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
-  </a>
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
+  </a>
+  <a href="https://t.me/gofiber">
+    <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
   </a>
 </p>
 <p align="center">
