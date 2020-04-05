@@ -37,14 +37,14 @@
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/id.svg">
   </a>
   <br><br>
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
+    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
+  </a>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
   <a href="https://fiber.wiki">
-    <img src="https://img.shields.io/badge/api-documentation-blue?style=flat-square">
-  </a>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
-    <img src="https://img.shields.io/badge/go.dev-reference-007d9c?logo=go&logoColor=white&style=flat-square">
+    <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
   </a>
   <a href="#">
     <img src="https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square">
@@ -57,6 +57,12 @@
   </a>
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
+  </a>
+  <a href="https://travis-ci.org/gofiber/fiber">
+    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
+  </a>
+  <a href="https://t.me/gofiber">
+    <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
   </a>
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
@@ -112,7 +118,10 @@ go get -u github.com/gofiber/fiber/...
 - [API 엔드포인트](https://fiber.wiki/context)
 - 미들웨어 & [Next](https://fiber.wiki/context#next) 지원
 - [빠른](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 서버 사이드 프로그래밍
-- 10개 언어로 번역됨
+- [Template engines](https://fiber.wiki/middleware#template)
+- [WebSocket support](https://fiber.wiki/middleware#websocket)
+- [Rate Limiter](https://fiber.wiki/middleware#limiter)
+- Available in [10 languages](https://fiber.wiki/)
 - 더 알고 싶다면, [Fiber 둘러보기](https://fiber.wiki/)
 
 ## 💡 철학
@@ -131,11 +140,8 @@ Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에�
 
 ### Routing
 
-Docs:
+📖 https://fiber.wiki/#basic-routing  
 
-- 📖 https://fiber.wiki/#basic-routing
-
-Example:
 
 ```go
 func main() {
@@ -164,11 +170,8 @@ func main() {
 ```
 
 ### Serve static files
-Docs:
 
-- 📖 https://fiber.wiki/application#static
-
-Example:
+📖 https://fiber.wiki/application#static  
 
 ```go
 func main() {
@@ -190,12 +193,9 @@ func main() {
 ```
 
 ### Middleware & Next
-Docs:
 
-- 📖 https://fiber.wiki/routing#middleware
-- 📖 https://fiber.wiki/context#next
-
-Example:
+📖 https://fiber.wiki/routing#middleware  
+📖 https://fiber.wiki/context#next  
 
 ```go
 func main() {
@@ -213,8 +213,8 @@ func main() {
     c.Next()
   })
 
-  // POST /api/register
-  app.Post("/api/register", func(c *fiber.Ctx) {
+  // GET /api/register
+  app.Get("/api/list", func(c *fiber.Ctx) {
     fmt.Println("Last middleware")
     c.Send("Hello, World!")
   })
@@ -227,31 +227,35 @@ func main() {
   <summary>📚 Show more code examples</summary>
 
 ### Template engines
-Docs:
 
-- 📖 https://fiber.wiki/application#settings
-- 📖 https://fiber.wiki/context#render
+📖 https://fiber.wiki/application#settings  
+📖 https://fiber.wiki/context#render  
+📖 https://fiber.wiki/middleware#template  
 
-Supported engines:
-- [html](https://golang.org/pkg/html/template/)
-- [amber](https://github.com/eknkc/amber)
-- [handlebars](https://github.com/aymerick/raymond)
-- [mustache](https://github.com/cbroglie/mustache)
-- [pug](https://github.com/Joker/jade)
+Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
 
-Example:
+But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
+
+You can use our [Template Middleware](https://fiber.wiki/middleware#template).
 
 ```go
+package main
+
+import (
+  "github.com/gofiber/fiber"
+  "github.com/gofiber/template"
+)
+
 func main() {
   // You can setup template engine before initiation app:
   app := fiber.New(&fiber.Settings{
-    TemplateEngine:    "mustache",
+    TemplateEngine:    template.Mustache(),
     TemplateFolder:    "./views",
     TemplateExtension: ".tmpl",
   })
 
   // OR after initiation app at any convenient location:
-  app.Settings.TemplateEngine = "mustache"
+  app.Settings.TemplateEngine = template.Mustache()
   app.Settings.TemplateFolder = "./views"
   app.Settings.TemplateExtension = ".tmpl"
 
@@ -268,11 +272,8 @@ func main() {
 ```
 
 ### Grouping routes into chains
-Docs:
 
-- 📖 https://fiber.wiki/application#group
-
-Example:
+📖 https://fiber.wiki/application#group  
 
 ```go
 func main() {
@@ -296,64 +297,52 @@ func main() {
 ```
 
 ### Middleware logger
-Docs:
 
-- 📖 https://fiber.wiki/middleware#logger
-
-Example:
+📖 https://fiber.wiki/middleware#logger  
 
 ```go
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+    "github.com/gofiber/logger"
 )
 
 func main() {
     app := fiber.New()
-    
-    // If you want to change default Logger config
-    loggerConfig := middleware.LoggerConfig{
+
+    // Optional logger config
+    config := logger.Config{
       Format:     "${time} - ${method} ${path}\n",
       TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
     }
 
-    // Middleware for Logger with config
-    app.Use(middleware.Logger(loggerConfig))
-
-    // ...
-}
-```
-
-### Cross-Origin Resource Sharing (CORS)
-Docs:
-
-- 📖 https://fiber.wiki/middleware#cors
-
-> [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS)은 추가적인 HTTP 헤더를 이용해 브라우저들이 한 출처에서 실행되는 웹 어플리케이션에게 다른 출처의 선택된 자원으로의 접근을 주도록 말해줍니다. 웹 어플리케이션은 자체와 다른 출처에 속해있는 자원(도메인, 프로토콜, 또는 포트)을 요청할때 cross-origin HTTP 요청을 실행합니다.
-
-Example:
-
-```go
-import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
-)
-
-func main() {
-    app := fiber.New()
-
-    // Connect CORS for each route as middleware
-    app.Use(middleware.CORS())
-
-    app.Get("/", func(c *fiber.Ctx) {
-        c.Send("CORS is enabled!")
-    })
+    // Logger with config
+    app.Use(logger.New(config))
 
     app.Listen(3000)
 }
 ```
 
-`Origin` 헤더에 아무 도메인이나 넣어서 CORS를 확인해보세요:
+### Cross-Origin Resource Sharing (CORS)
+
+📖 https://fiber.wiki/middleware#cors  
+
+```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/cors"
+)
+
+func main() {
+    app := fiber.New()
+
+    // CORS with default config
+    app.Use(cors.New())
+
+    app.Listen(3000)
+}
+```
+
+Check CORS by passing any domain in `Origin` header:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -361,11 +350,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Custom 404 response
 
-Docs:
-
-- 📖 https://fiber.wiki/application#http-methods
-
-Example:
+📖 https://fiber.wiki/application#http-methods  
 
 ```go
 func main() {
@@ -383,7 +368,8 @@ func main() {
 
   // Last middleware to match anything
   app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404) // => 404 "Not Found"
+    c.SendStatus(404) 
+    // => 404 "Not Found"
   })
 
   app.Listen(3000)
@@ -391,11 +377,8 @@ func main() {
 ```
 
 ### JSON Response
-Docs:
 
-- 📖 https://fiber.wiki/context#json
-
-Example:
+📖 https://fiber.wiki/context#json  
 
 ```go
 type User struct {
@@ -408,81 +391,78 @@ func main() {
 
   app.Get("/user", func(c *fiber.Ctx) {
     c.JSON(&User{"John", 20})
-    // {"name":"John", "age":20}
+    // => {"name":"John", "age":20}
   })
 
   app.Get("/json", func(c *fiber.Ctx) {
-    c.JSON(&fiber.Map{
-			"success": true,
-			"message": "Hi John!",
+    c.JSON(fiber.Map{
+      "success": true,
+      "message": "Hi John!",
     })
-    // {"success":true, "message":"Hi John!"}
+    // => {"success":true, "message":"Hi John!"}
   })
 
   app.Listen(3000)
 }
 ```
 
-### WebSocket support
-Docs:
+### WebSocket Upgrade
 
-- 📖 https://fiber.wiki/application#websocket
-
-Example:
+📖 https://fiber.wiki/middleware#websocket  
 
 ```go
+import (
+    "github.com/gofiber/fiber"
+    "github.com/gofiber/websocket"
+)
+
 func main() {
   app := fiber.New()
 
-  app.WebSocket("/ws", func(c *fiber.Conn) {
+  app.Get("/ws", websocket.New(func(c *websocket.Conn) {
     for {
       mt, msg, err := c.ReadMessage()
       if err != nil {
         log.Println("read:", err)
         break
       }
-
-      log.Printf("recovery: %s", msg)
-
+      log.Printf("recv: %s", msg)
       err = c.WriteMessage(mt, msg)
       if err != nil {
         log.Println("write:", err)
         break
       }
     }
-  })
+  }))
 
-  // Listen on ws://localhost:3000/ws
   app.Listen(3000)
+  // ws://localhost:3000/ws
 }
 ```
 
 ### Recover middleware
-Docs:
 
-- 📖 https://fiber.wiki/middleware#recover
-
-Example:
+📖 https://fiber.wiki/middleware#recover  
 
 ```go
-package main
-
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+    "github.com/gofiber/recover"
 )
 
 func main() {
   app := fiber.New()
 
-  app.Use(middleware.Recover(func(c *fiber.Ctx, err error) {
-    log.Println(err)  // "Something went wrong!"
-    c.SendStatus(500) // Internal Server Error
-  })))
-  
-  app.Get("/", func(c *fiber.Ctx) {
-    panic("Something went wrong!")
-  })
+  // Optional recover config
+  config := recover.Config{
+    Handler: func(c *fiber.Ctx, err error) {
+			c.SendString(err.Error())
+			c.SendStatus(500)
+		},
+  }
+
+  // Logger with custom config
+  app.Use(recover.New(config))
 
   app.Listen(3000)
 }
@@ -491,9 +471,10 @@ func main() {
 
 ## 💬 미디어
 
-- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) _by [Vic Shóstak](https://github.com/koddr), 03 Feb 2020_
-- [Fiber release v1.7 is out now! 🎉 What's new and is he still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) (_by [Vic Shóstak](https://github.com/koddr), 21 Feb 2020_)
-- [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) (_by [Vic Shóstak](https://github.com/koddr), 03 Mar 2020_)
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) - _03 Feb 2020_
+- [Fiber released v1.7! 🎉 What's new and is it still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) - _21 Feb 2020_
+- [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) - _03 Mar 2020_
+- [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) - _01 Apr 2020_)
 
 ## 👍 기여
 
@@ -504,13 +485,22 @@ func main() {
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) 또는 개인 블로그에 리뷰 또는 튜토리얼을 작성하세요.
 4. 이 `README`를 다른 언어로 번역하는 것을 도와주세요.
 
-## ☕ Supporters
+## ☕ Coffee Supporters
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
 <table>
   <tr>
+    <td align="center">
+        <a href="https://github.com/melkorm">
+          <img src="https://avatars2.githubusercontent.com/u/619996?s=460&v=4" width="100px"></br>
+          <sub><b>melkorm</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/ekaputra07">
+          <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
+          <sub><b>ekaputra07</b></sub>
+        </a>
+    </td>
     <td align="center">
         <a href="https://github.com/bihe">
           <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
@@ -544,18 +534,14 @@ func main() {
   </tr>
 </table>
 
-## ⭐️ Stars
+<a href="https://www.buymeacoffee.com/fenny" target="_blank">
+  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
+</a>
 
-<a href="https://starchart.cc/gofiber/fiber" rel="nofollow"><img src="https://starchart.cc/gofiber/fiber.svg" alt="Stars over time" style="max-width:100%;"></a>
+## ‎‍💻 Code Contributors
 
-## ⚠️ 라이센스
+<img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
-`Fiber` 는 [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE)에 따른 무료 오픈소스 소프트웨어 입니다.
+## ⚠️ License
 
-[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/0)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/0)
-[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/1)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/1)
-[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/2)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/2)
-[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/3)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/3)
-[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/4)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/4)
-[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/5)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/5)
-[![](https://sourcerer.io/fame/Fenny/gofiber/fiber/images/6)](https://sourcerer.io/fame/Fenny/gofiber/fiber/links/6)
+`Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE) Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Fiber Contributors](https://github.com/gofiber/fiber/graphs/contributors). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
