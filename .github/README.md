@@ -157,8 +157,8 @@ func main() {
   })
 
   // GET /api/register
-  app.Get("/api*", func(c *fiber.Ctx) {
-    fmt.Printf("/api%s", c.Params("*"))
+  app.Get("/api/*", func(c *fiber.Ctx) {
+    fmt.Printf("/api/%s", c.Params("*"))
     // => /api/register
   })
 
