@@ -21,6 +21,7 @@ import (
 	"time"
 
 	fasthttp "github.com/valyala/fasthttp"
+	autocert "golang.org/x/crypto/acme/autocert"
 )
 
 // Version of current package
@@ -361,6 +362,27 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
 	return app.server.Serve(ln)
+}
+
+// ListenAutoTLS serves HTTP requests from the given addr or port, and obtains TLS certificates automatically from Let’s Encrypt.
+// Initialize the autocert.Manager m's Cache, HostPolicy, Prompt, and other desired options by yourself.
+// Note that since fasthttp currently has no support for HTTP/2, autocert's HTTP/2 supporting will not work.
+func (app *App) ListenAutoTLS(address interface{}, m *autocert.Manager) error {
+	if m == nil {
+		return fmt.Errorf("ListenAutoTLS: the autocert.Manager m must be non-nil")
+	}
+	// fasthttp currently has no support for HTTP/2:
+	// https://github.com/valyala/fasthttp/issues/144
+	tlsConfig := m.TLSConfig()
+	ps := tlsConfig.NextProtos
+	for i, p := range ps {
+		if p == "h2" {
+			ps = append(ps[:i], ps[i+1:]...)
+			tlsConfig.NextProtos = ps
+			break
+		}
+	}
+	return app.Listen(address, tlsConfig)
 }
 
 // Shutdown gracefully shuts down the server without interrupting any active connections.
