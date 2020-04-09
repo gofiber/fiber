@@ -339,10 +339,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Create fasthttp server
 	app.server = app.newServer()
-	// Print listening message
-	if !isChild {
-		fmt.Printf("Fiber v%s listening on %s\n", Version, addr)
-	}
+
 	var ln net.Listener
 	var err error
 	// Prefork enabled
@@ -359,6 +356,11 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	// TLS config
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
+	}
+
+	// Print listening message
+	if !isChild {
+		fmt.Printf("Fiber v%s listening on %s\n", Version, addr)
 	}
 	return app.server.Serve(ln)
 }
