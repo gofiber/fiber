@@ -24,7 +24,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.8.43"
+const Version = "1.9.0"
 
 // Map is a shortcut for map[string]interface{}
 type Map map[string]interface{}
@@ -70,32 +70,22 @@ type Group struct {
 	app    *App
 }
 
-// Global variables
-var isPrefork, isChild bool
-
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
 func New(settings ...*Settings) *App {
-	// Parse arguments
-	for _, v := range os.Args[1:] {
-		if v == "-prefork" {
-			isPrefork = true
-		} else if v == "-child" {
-			isChild = true
-		}
-	}
+
 	// Create app
 	app := new(App)
 	// Create settings
 	app.Settings = new(Settings)
 	// Set default settings
-	app.Settings.Prefork = isPrefork
+	app.Settings.Prefork = isPrefork()
 	app.Settings.BodyLimit = 4 * 1024 * 1024
 	// If settings exist, set defaults
 	if len(settings) > 0 {
 		app.Settings = settings[0] // Set custom settings
 		if !app.Settings.Prefork { // Default to -prefork flag if false
-			app.Settings.Prefork = isPrefork
+			app.Settings.Prefork = isPrefork()
 		}
 		if app.Settings.BodyLimit == 0 { // Default MaxRequestBodySize
 			app.Settings.BodyLimit = 4 * 1024 * 1024
@@ -323,6 +313,25 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 	return grp
 }
 
+// Serve can be used to pass a custom listener
+// This method does not support the Prefork feature
+// You can pass an optional *tls.Config to enable TLS.
+func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
+	// Create fasthttp server
+	app.server = app.newServer()
+	// TLS config
+	if len(tlsconfig) > 0 {
+		ln = tls.NewListener(ln, tlsconfig[0])
+	}
+	// Preforkin is not available using app.Serve(ln net.Listener)
+	if app.Settings.Prefork {
+		fmt.Println("Preforking is not available with 'Serve' please use 'Listen' to enable it.")
+	}
+	// Print listening message
+	fmt.Printf("Fiber v%s listening on %s\n", Version, ln.Addr().String())
+	return app.server.Serve(ln)
+}
+
 // Listen serves HTTP requests from the given addr or port.
 // You can pass an optional *tls.Config to enable TLS.
 func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
@@ -339,14 +348,11 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Create fasthttp server
 	app.server = app.newServer()
-	// Print listening message
-	if !isChild {
-		fmt.Printf("Fiber v%s listening on %s\n", Version, addr)
-	}
+
 	var ln net.Listener
 	var err error
 	// Prefork enabled
-	if app.Settings.Prefork && runtime.NumCPU() > 1 {
+	if app.Settings.Prefork && runtime.NumCPU() > 1 && runtime.GOOS != "windows" {
 		if ln, err = app.prefork(addr); err != nil {
 			return err
 		}
@@ -355,10 +361,13 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 			return err
 		}
 	}
-
 	// TLS config
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
+	}
+	// Print listening message
+	if !isChild() {
+		fmt.Printf("Fiber v%s listening on %s\n", Version, addr)
 	}
 	return app.server.Serve(ln)
 }
@@ -377,7 +386,7 @@ func (app *App) Shutdown() error {
 	return app.server.Shutdown()
 }
 
-// Test is used for internal debugging by passing a *http.Request.
+// Test is used for internal debugging by passing a *http.Request
 // Timeout is optional and defaults to 200ms, -1 will disable it completely.
 func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, error) {
 	timeout := 200
@@ -428,7 +437,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 // Sharding: https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
 func (app *App) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
-	if !isChild {
+	if !isChild() {
 		addr, err := net.ResolveTCPAddr("tcp", address)
 		if err != nil {
 			return ln, err
