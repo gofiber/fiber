@@ -61,7 +61,8 @@ type Cookie struct {
 
 // Global variables
 var jsonParser = jsoniter.ConfigCompatibleWithStandardLibrary
-var schemaDecoder = schema.NewDecoder()
+var schemaDecoderForm = schema.NewDecoder()
+var schemaDecoderQuery = schema.NewDecoder()
 
 // Ctx pool
 var poolCtx = sync.Pool{
@@ -256,7 +257,7 @@ func (ctx *Ctx) Body(key ...string) string {
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 func (ctx *Ctx) BodyParser(out interface{}) error {
-	// TODO : Query Params
+	// get content type
 	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
 	// application/json
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
@@ -272,7 +273,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 		if err != nil {
 			return err
 		}
-		return schemaDecoder.Decode(out, data)
+		return schemaDecoderForm.Decode(out, data)
 	}
 	// multipart/form-data
 	if strings.HasPrefix(ctype, MIMEMultipartForm) {
@@ -280,9 +281,17 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 		if err != nil {
 			return err
 		}
-		return schemaDecoder.Decode(out, data.Value)
-
+		return schemaDecoderForm.Decode(out, data.Value)
 	}
+	// query Params
+	if ctx.Fasthttp.QueryArgs().Len() > 0 {
+		data := make(map[string][]string)
+		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
+			data[getString(key)] = []string{getString(val)}
+		})
+		return schemaDecoderQuery.Decode(out, data)
+	}
+
 	return fmt.Errorf("BodyParser: cannot parse content-type: %v", ctype)
 }
 

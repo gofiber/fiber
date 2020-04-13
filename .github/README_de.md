@@ -156,8 +156,8 @@ func main() {
   })
 
   // GET /api/register
-  app.Get("/api*", func(c *fiber.Ctx) {
-    fmt.Printf("/api%s", c.Params("*"))
+  app.Get("/api/*", func(c *fiber.Ctx) {
+    fmt.Printf("/api/%s", c.Params("*"))
     // => /api/register
   })
 
@@ -506,9 +506,27 @@ Falls du **danke** sagen m√∂chtest und/oder aktiv die Entwicklung von `fiber` f√
 <table>
   <tr>
     <td align="center">
+        <a href="https://github.com/raymayemir">
+          <img src="https://avatars2.githubusercontent.com/u/5638101?s=460&v=4" width="100px"></br>
+          <sub><b>Ray Mayemir</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/melkorm">
+          <img src="https://avatars2.githubusercontent.com/u/619996?s=460&v=4" width="100px"></br>
+          <sub><b>melkorm</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/ekaputra07">
+          <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
+          <sub><b>Eka Putra</b></sub>
+        </a>
+    </td>
+    <td align="center">
         <a href="https://github.com/bihe">
           <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
-          <sub><b>HenrikBinggl</b></sub>
+          <sub><b>Henrik Binggl</b></sub>
         </a>
     </td>
     <td align="center">

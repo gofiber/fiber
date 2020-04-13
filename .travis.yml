@@ -23,4 +23,3 @@ script:
   - GOARCH=386 go build
 
   - go test -v
-  - go test -race -v

@@ -2,11 +2,17 @@
 // 📌 API Documentation: https://fiber.wiki
 // 📝 Github Repository: https://github.com/gofiber/fiber
 
+// go test -v -coverprofile cover.out .
+// go tool cover -html=cover.out -o cover.html
+// open cover.html
+
 package fiber
 
 import (
+	"net"
 	"net/http"
 	"testing"
+	"time"
 )
 
 var handler = func(c *Ctx) {}
@@ -65,6 +71,20 @@ func Test_Methods(t *testing.T) {
 	app.Use("/:john?/:doe?", handler)
 	is200(t, app, "/", "GET")
 
+}
+
+func Test_New(t *testing.T) {
+	app := New(&Settings{
+		Immutable: true,
+	})
+	app.Get("/", func(*Ctx) {
+
+	})
+}
+
+func Test_Shutdown(t *testing.T) {
+	app := New()
+	_ = app.Shutdown()
 }
 
 func Test_Static(t *testing.T) {
@@ -167,18 +187,31 @@ func Test_Group(t *testing.T) {
 	is200(t, app, "/test/v1/users", "GET")
 }
 
-// func Test_Listen(t *testing.T) {
-// t.Parallel()
-// 	app := New()
-// 	app.Banner = false
-// 	go func() {
-// 		time.Sleep(1 * time.Second)
-// 		_ = app.Shutdown()
-// 	}()
-// 	app.Listen(3002)
-// 	go func() {
-// 		time.Sleep(1 * time.Second)
-// 		_ = app.Shutdown()
-// 	}()
-// 	app.Listen("3002")
-// }
+func Test_Listen(t *testing.T) {
+	app := New()
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		_ = app.Shutdown()
+	}()
+	app.Listen(3002)
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		_ = app.Shutdown()
+	}()
+	app.Listen("3003")
+}
+
+func Test_Serve(t *testing.T) {
+	app := New(&Settings{
+		Prefork: true,
+	})
+	ln, err := net.Listen("tcp4", ":3004")
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		_ = app.Shutdown()
+	}()
+	app.Serve(ln)
+}
