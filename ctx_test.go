@@ -156,11 +156,11 @@ func Test_Body(t *testing.T) {
 func Test_BodyParser(t *testing.T) {
 	app := New()
 	type Demo struct {
-		Name string `json:"name"`
+		Name string `json:"name" xml:"name" form:"name" query:"name"`
 	}
 	app.Post("/test", func(c *Ctx) {
 		d := new(Demo)
-		err := c.BodyParser(&d)
+		err := c.BodyParser(d)
 		if err != nil {
 			t.Fatalf(`%s: BodyParser %v`, t.Name(), err)
 		}
@@ -176,6 +176,26 @@ func Test_BodyParser(t *testing.T) {
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
+
+	// data := url.Values{}
+	// data.Set("name", "john")
+	// req = httptest.NewRequest("POST", "/test", strings.NewReader(data.Encode()))
+	// req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	// req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+
+	// _, err = app.Test(req)
+	// if err != nil {
+	// 	t.Fatalf(`%s: %s`, t.Name(), err)
+	// }
+
+	// req = httptest.NewRequest("POST", "/test", bytes.NewBuffer([]byte(`<name>john</name>`)))
+	// req.Header.Set("Content-Type", "application/xml")
+	// req.Header.Set("Content-Length", strconv.Itoa(len([]byte(`<name>john</name>`))))
+
+	// _, err = app.Test(req)
+	// if err != nil {
+	// 	t.Fatalf(`%s: %s`, t.Name(), err)
+	// }
 }
 func Test_Cookies(t *testing.T) {
 	app := New()

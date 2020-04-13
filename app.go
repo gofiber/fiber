@@ -73,7 +73,8 @@ type Group struct {
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
 func New(settings ...*Settings) *App {
-
+	schemaDecoderForm.SetAliasTag("form")
+	schemaDecoderQuery.SetAliasTag("query")
 	// Create app
 	app := new(App)
 	// Create settings
