@@ -587,7 +587,7 @@ Become a financial contributor and help us sustain our community. [[Contribute](
 
 #### Individuals
 
-<a href="https://opencollective.com/XX"><img src="https://opencollective.com/fiber/individuals.svg?width=890"></a>
+<a href="https://opencollective.com/fiber"><img src="https://opencollective.com/fiber/individuals.svg?width=890"></a>
 
 #### Organizations
 
