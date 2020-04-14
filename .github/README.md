@@ -64,6 +64,9 @@
   <a href="https://t.me/gofiber">
     <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
   </a>
+  <a href="https://opencollective.com/fiber">
+    <img src="https://opencollective.com/fiber/all/badge.svg?label=financial+contributors&style=flat-square">
+  </a>
 </p>
 <p align="center">
   <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://golang.org/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
@@ -577,6 +580,21 @@ If you want to say **thank you** and/or support the active development of `Fiber
 ## ‎‍💻 Code Contributors
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
+
+### Financial Contributors
+
+Become a financial contributor and help us sustain our community. [[Contribute](https://opencollective.com/fiber/contribute)]
+
+#### Individuals
+
+<a href="https://opencollective.com/XX"><img src="https://opencollective.com/fiber/individuals.svg?width=890"></a>
+
+#### Organizations
+
+Support this project with your organization. Your logo will show up here with a link to your website. [[Contribute](https://opencollective.com/fiber/contribute)]
+
+<a href="https://opencollective.com/fiber/organization/0/website"><img src="https://opencollective.com/fiber/organization/0/avatar.svg"></a>
+
 
 ## ⚠️ License
 
