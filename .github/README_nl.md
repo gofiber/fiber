@@ -24,15 +24,15 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/de.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_nl.md">
+  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README_nl.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/nl.svg">
-  </a>
+  </a>-->
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ko.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ko.svg">
   </a>
-  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README_fr.md">
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fr.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/fr.svg">
-  </a>-->
+  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_tr.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/tr.svg">
   </a>
@@ -64,18 +64,15 @@
   <a href="https://travis-ci.org/gofiber/fiber">
     <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
   </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
-  </a>
   <a href="https://t.me/gofiber">
     <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b> est un framework web  inspiré d' <a href="https://github.com/expressjs/express">Express</a>. Il se base sur <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, l'implémentation HTTP de <a href="https://golang.org/doc/">Go</a> <b>la plus rapide</b>. Conçu pour <b>faciliter</b> les choses pour des développements <b>rapides</b>, Fiber garde à l'esprit <b>l'absence d'allocations mémoires</b>, ainsi que les <b>performances</b>.
+  <b>Fiber</b> is een <b>web framework</b> geïnspireerd door <a href="https://github.com/expressjs/express">Express</a> gebouwd bovenop <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, de <b>snelste</b> HTTP-engine voor <a href="https://golang.org/doc/">Go</a>. Ontworpen om <b>snelle</b> ontwikkeling <b>gemakkelijker</b> te maken <b>zonder geheugenallocatie</b> tezamen met <b>hoge prestaties</b>.
 </p>
 
-## ⚡️ Quickstart
+## ⚡️ Bliksemsnelle start
 
 ```go
 package main
@@ -86,26 +83,26 @@ func main() {
   app := fiber.New()
 
   app.Get("/", func(c *fiber.Ctx) {
-    c.Send("Hello, World!")
+    c.Send("Hallo, Wereld!")
   })
 
   app.Listen(3000)
 }
 ```
 
-## ⚙️ Installation
+## ⚙️ Installatie
 
-Premièrement, [téléchargez](https://golang.org/dl/) et installez Go. Version `1.11` ou supérieur requise.
+Allereerst, [download](https://golang.org/dl/) en installeer Go. `1.11` of hoger is vereist.
 
-L'installation est ensuite lancée via la commande  [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
+Installatie wordt gedaan met behulp van het [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) commando:
 
 ```bash
-go get -u github.com/gofiber/fiber/...
+go get -u github.com/gofiber/fiber
 ```
 
 ## 🤖 Benchmarks
 
-Ces tests sont effectués par [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) et [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Si vous voulez voir tous les résultats, n'hésitez pas à consulter notre [Wiki](https://fiber.wiki/benchmarks).
+Deze tests zijn uitgevoerd door [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) en [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Bezoek onze [Wiki](https://fiber.wiki/benchmarks) voor alle benchmark resultaten.
 
 <p float="left" align="middle">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
@@ -114,28 +111,32 @@ Ces tests sont effectués par [TechEmpower](https://github.com/TechEmpower/Frame
 
 ## 🎯 Features
 
--  [Routing](https://fiber.wiki/routing) robuste
-- Serve [static files](https://fiber.wiki/application#static)
-- [Performances](https://fiber.wiki/benchmarks) extrêmes
-- [Faible empreinte mémoire](https://fiber.wiki/benchmarks)
+- Robuuste [routing](https://fiber.wiki/routing)
+- Serveer [statische bestanden](https://fiber.wiki/application#static)
+- Extreme [prestaties](https://fiber.wiki/benchmarks)
+- [Weinig geheugenruimte](https://fiber.wiki/benchmarks)
 - [API endpoints](https://fiber.wiki/context)
-- Middleware & [Next](https://fiber.wiki/context#next) support
-- Programmation côté serveur [rapide](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
+- [Middleware](https://fiber.wiki/middleware) & [Next](https://fiber.wiki/context#next) ondersteuning
+- [Snelle](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programmering
 - [Template engines](https://fiber.wiki/middleware#template)
-- [WebSocket support](https://fiber.wiki/middleware#websocket)
+- [WebSocket ondersteuning](https://fiber.wiki/middleware#websocket)
 - [Rate Limiter](https://fiber.wiki/middleware#limiter)
-- Available in [11 languages](https://fiber.wiki/)
-- Et plus encore, [explorez Fiber](https://fiber.wiki/)
+- Vertaald in 11 andere talen
+- En nog veel meer, [ontdek Fiber](https://fiber.wiki/)
 
-## 💡 Philosophie
+## 💡 Filosofie
 
-Les nouveaux gophers qui passent de [Node.js](https://nodejs.org/en/about/) à [Go](https://golang.org/doc/) sont confrontés à une courbe d'apprentissage, avant de pouvoir construire leurs applications web et microservices. Fiber, en tant que **framework web**, a été mis au point avec en tête l'idée de **minimalisme**, tout en suivant l'**UNIX way**, afin que les nouveaux gophers puissent rapidement entrer dans le monde de Go, avec un accueil chaleureux, de confiance.
+Nieuwe gophers die de overstap maken van [Node.js](https://nodejs.org/en/about/) naar [Go](https://golang.org/doc/), hebben te maken met een leercurve voordat ze kunnen beginnen met het bouwen van hun webapplicaties of microservices. Fiber, als een **web framework**, is gebouwd met het idee van **minimalisme** en volgt de **UNIX-manier**, zodat nieuwe gophers snel de wereld van Go kunnen betreden met een warm en vertrouwd welkom.\
 
-Fiber est **inspiré** par Express, le framework web le plus populaire d'Internet. Nous avons combiné la **facilité** d'Express, et la **performance brute** de Go. Si vous avez déja développé une application web en Node.js (_en utilisant Express ou équivalent_), alors de nombreuses méthodes et principes vous sembleront **familiers**.
+Fiber is **geïnspireerd** door Express, het populairste webframework op internet. We hebben het **gemak** van Express gecombineerd met de **onbewerkte prestaties** van Go. Als je ooit een webapplicatie in Node.js hebt geïmplementeerd (_zoals Express of vergelijkbaar_), dan zullen veel methoden en principes **heel gewoon** voor je lijken.
 
-## 👀 Exemples
+We **luisteren** naar onze gebruikers in [issues](https://github.com/gofiber/fiber/issues) (_en overal op het internet_) om een **snelle**, **flexibele** en **vriendelijk** Go web framework te maken voor **elke** taak, **deadline** en ontwikkelaar **vaardigheid**! Net zoals Express dat doet in de JavaScript-wereld.
 
-Ci-dessous quelques exemples courants. Si vous voulez voir plus d'exemples, rendez-vous sur notre ["Recipes repository"](https://github.com/gofiber/recipes) ou visitez notre [documentation API](https://fiber.wiki).
+## 👀 Voorbeelden
+
+Hieronder staan enkele van de meest voorkomende voorbeelden.
+
+> Bekijk ons [Recepten repository](https://github.com/gofiber/recipes) voor meer voorbeelden met code of bezoek onze [API documentatie](https://fiber.wiki).
 
 ### Routing
 
@@ -147,28 +148,28 @@ func main() {
   app := fiber.New()
 
   // GET /john
-  app.Get("/:name", func(c *fiber.Ctx) {
-    fmt.Printf("Hello %s!", c.Params("name"))
-    // => Hello john!
+  app.Get("/:naam", func(c *fiber.Ctx) {
+    fmt.Printf("Hallo %s!", c.Params("naam"))
+    // => Hallo john!
   })
 
   // GET /john
-  app.Get("/:name/:age?", func(c *fiber.Ctx) {
-    fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
-    // => Name: john, Age:
+  app.Get("/:naam/:leeftijd?", func(c *fiber.Ctx) {
+    fmt.Printf("Naam: %s, Leeftijd: %s", c.Params("naam"), c.Params("leeftijd"))
+    // => Naam: john, Leeftijd:
   })
 
-  // GET /api/register
+  // GET /api/registreer
   app.Get("/api/*", func(c *fiber.Ctx) {
     fmt.Printf("/api/%s", c.Params("*"))
-    // => /api/register
+    // => /api/registreer
   })
 
   app.Listen(3000)
 }
 ```
 
-### Serve static files
+### Serveer statische bestanden
 
 📖 https://fiber.wiki/application#static  
 
@@ -193,29 +194,29 @@ func main() {
 
 ### Middleware & Next
 
-📖 https://fiber.wiki/routing#middleware  
-📖 https://fiber.wiki/context#next  
+📖 https://fiber.wiki/routing#middleware
+📖 https://fiber.wiki/context#next
 
 ```go
 func main() {
   app := fiber.New()
 
-  // Match any route
+  // Komt overeen met elke route
   app.Use(func(c *fiber.Ctx) {
-    fmt.Println("First middleware")
+    fmt.Println("Eerste middleware")
     c.Next()
   })
 
-  // Match all routes starting with /api
+  // Komt overeen met alle routes welke beginnen met /api
   app.Use("/api", func(c *fiber.Ctx) {
-    fmt.Println("Second middleware")
+    fmt.Println("Tweede middleware")
     c.Next()
   })
 
-  // GET /api/register
-  app.Get("/api/list", func(c *fiber.Ctx) {
-    fmt.Println("Last middleware")
-    c.Send("Hello, World!")
+  // GET /api/registreer
+  app.Get("/api/registreer", func(c *fiber.Ctx) {
+    fmt.Println("Laatste middleware")
+    c.Send("Hallo, Wereld!")
   })
 
   app.Listen(3000)
@@ -223,7 +224,7 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 Bekijk meer code voorbeelden</summary>
 
 ### Template engines
 
@@ -231,11 +232,11 @@ func main() {
 📖 https://fiber.wiki/context#render  
 📖 https://fiber.wiki/middleware#template  
 
-Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
+Fiber ondersteunt de standaard [Go template engine](https://golang.org/pkg/html/template/)
 
-But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
+Maar het is ook mogelijk om andere template engines te gebruiken zoals [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) of [pug](https://github.com/Joker/jade).
 
-You can use our [Template Middleware](https://fiber.wiki/middleware#template).
+Gebruik hiervoor onze [Template Middleware](https://fiber.wiki/middleware#template).
 
 ```go
 package main
@@ -246,23 +247,23 @@ import (
 )
 
 func main() {
-  // You can setup template engine before initiation app:
+  // Stel een template engine in tijdens de aanvang van de app:
   app := fiber.New(&fiber.Settings{
     TemplateEngine:    template.Mustache(),
     TemplateFolder:    "./views",
     TemplateExtension: ".tmpl",
   })
 
-  // OR after initiation app at any convenient location:
+  // OF na de aanvang van de app op elke geschikte locatie:
   app.Settings.TemplateEngine = template.Mustache()
   app.Settings.TemplateFolder = "./views"
   app.Settings.TemplateExtension = ".tmpl"
 
-  // And now, you can call template `./views/home.tmpl` like this:
+  // Het aanroepen van de template `./views/home.tmpl` kan als volgt:
   app.Get("/", func(c *fiber.Ctx) {
     c.Render("home", fiber.Map{
-      "title": "Homepage",
-      "year":  1999,
+      "title": "Home",
+      "year":  2020,
     })
   })
 
@@ -270,7 +271,7 @@ func main() {
 }
 ```
 
-### Grouping routes into chains
+### Routes groeperen in chains
 
 📖 https://fiber.wiki/application#group  
 
@@ -283,13 +284,13 @@ func main() {
 
   // API v1 routes
   v1 := api.Group("/v1", mysql())   // /api/v1
-  v1.Get("/list", handler)          // /api/v1/list
-  v1.Get("/user", handler)          // /api/v1/user
+  v1.Get("/lijst", handler)         // /api/v1/lijst
+  v1.Get("/gebruiker", handler)     // /api/v1/gebruiker
 
   // API v2 routes
   v2 := api.Group("/v2", mongodb()) // /api/v2
-  v2.Get("/list", handler)          // /api/v2/list
-  v2.Get("/user", handler)          // /api/v2/user
+  v2.Get("/lijst", handler)         // /api/v2/lijst
+  v2.Get("/gebruiker", handler)     // /api/v2/gebruiker
 
   // ...
 }
@@ -308,13 +309,13 @@ import (
 func main() {
     app := fiber.New()
 
-    // Optional logger config
+    // Optionele loggerconfiguratie
     config := logger.Config{
       Format:     "${time} - ${method} ${path}\n",
       TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
     }
 
-    // Logger with config
+    // Logger met configuratie
     app.Use(logger.New(config))
 
     app.Listen(3000)
@@ -334,17 +335,17 @@ import (
 func main() {
     app := fiber.New()
 
-    // CORS with default config
+    // CORS met standaardconfiguratie
     app.Use(cors.New())
 
     app.Listen(3000)
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+Controleer CORS door een willekeurig domein in de `Origin`-header door te geven:
 
 ```bash
-curl -H "Origin: http://example.com" --verbose http://localhost:3000
+curl -H "Origin: http://google.nl" --verbose http://localhost:3000
 ```
 
 ### Custom 404 response
@@ -358,14 +359,14 @@ func main() {
   app.Static("/public")
 
   app.Get("/demo", func(c *fiber.Ctx) {
-    c.Send("This is a demo!")
+    c.Send("Dit is een demo!")
   })
 
-  app.Post("/register", func(c *fiber.Ctx) {
-    c.Send("Welcome!")
+  app.Post("/registreer", func(c *fiber.Ctx) {
+    c.Send("Welkom!")
   })
 
-  // Last middleware to match anything
+  // Laatste middleware die bij alles past
   app.Use(func(c *fiber.Ctx) {
     c.SendStatus(404) 
     // => 404 "Not Found"
@@ -380,17 +381,17 @@ func main() {
 📖 https://fiber.wiki/context#json  
 
 ```go
-type User struct {
-  Name string `json:"name"`
-  Age  int    `json:"age"`
+type Gebruiker struct {
+  Naam      string  `json:"naam"`
+  Leeftijd  int     `json:"leeftijd"`
 }
 
 func main() {
   app := fiber.New()
 
-  app.Get("/user", func(c *fiber.Ctx) {
-    c.JSON(&User{"John", 20})
-    // => {"name":"John", "age":20}
+  app.Get("/gebruiker", func(c *fiber.Ctx) {
+    c.JSON(&Gebruiker{"John", 20})
+    // => {"naam":"John", "leeftijd":20}
   })
 
   app.Get("/json", func(c *fiber.Ctx) {
@@ -452,7 +453,7 @@ import (
 func main() {
   app := fiber.New()
 
-  // Optional recover config
+  // Optionele recover configuratie
   config := recover.Config{
     Handler: func(c *fiber.Ctx, err error) {
 			c.SendString(err.Error())
@@ -460,13 +461,32 @@ func main() {
 		},
   }
 
-  // Logger with custom config
+  // Logger met aangepaste configuratie
   app.Use(recover.New(config))
 
   app.Listen(3000)
 }
 ```
 </details>
+
+## 🧬 Beschikbare Middlewares
+
+Voor _eenvoudiger_ en _duidelijker_ werk hebben we de beschikbare [middleware](https://fiber.wiki/middleware) in afzonderlijke repositories geplaatst:
+
+- [Basic Authentication](https://github.com/gofiber/basicauth)
+- [Key Authentication](https://github.com/gofiber/keyauth)
+- [Compression](https://github.com/gofiber/compression)
+- [Request ID](https://github.com/gofiber/requestid)
+- [WebSocket](https://github.com/gofiber/websocket)
+- [Rewrite](https://github.com/gofiber/rewrite)
+- [Recover](https://github.com/gofiber/recover)
+- [Limiter](https://github.com/gofiber/limiter)
+- [Session](https://github.com/gofiber/session)
+- [Logger](https://github.com/gofiber/logger)
+- [Helmet](https://github.com/gofiber/helmet)
+- [CORS](https://github.com/gofiber/cors)
+- [CSRF](https://github.com/gofiber/csrf)
+- [JWT](https://github.com/gofiber/jwt)
 
 ## 💬 Media
 
@@ -476,14 +496,15 @@ func main() {
 - [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) — _01 Apr 2020_
 - [Creating Fast APIs In Go Using Fiber](https://dev.to/jozsefsallai/creating-fast-apis-in-go-using-fiber-59m9) — _07 Apr 2020_
 
-## 👍 Contribuer
+## 👍 Bijdragen
 
-Si vous voulez nous remercier et/ou soutenir le développement actif de `Fiber`:
+Om de actieve ontwikkelingen van `Fiber` te ondersteunen of om een **bedankje** te geven:
 
-1. Ajoutez une [GitHub Star](https://github.com/gofiber/fiber/stargazers) à ce projet.
-2. Twittez à propos de ce projet [sur votre Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Ecrivez un article (review, tutorial) sur [Medium](https://medium.com/), [Dev.to](https://dev.to/), ou encore un blog personnel.
-4. Aidez nous à traduire ce `README` dans d'autres langages.
+1. Voeg een [GitHub Star](https://github.com/gofiber/fiber/stargazers) toe aan het project.
+2. Tweet over het project [op je Twitter account](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+3. Schrijf een recensie of tutorial op [Medium](https://medium.com/), [Dev.to](https://dev.to/) of een persoonlijke blog.
+4. Help ons deze `README` naar een andere taal te vertalen.
+
 
 ## ☕ Coffee Supporters
 
