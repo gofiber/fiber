@@ -24,6 +24,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/de.svg">
   </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_nl.md">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/nl.svg">
+  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ko.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ko.svg">
   </a>
@@ -121,7 +124,7 @@ Estas pruebas son realizadas por [TechEmpower](https://github.com/TechEmpower/Fr
 - [Template engines](https://fiber.wiki/middleware#template)
 - [WebSocket support](https://fiber.wiki/middleware#websocket)
 - [Rate Limiter](https://fiber.wiki/middleware#limiter)
-- Available in [10 languages](https://fiber.wiki/)
+- Available in [11 languages](https://fiber.wiki/)
 - Y mucho más, [explore Fiber](https://fiber.wiki/)
 
 ## 💡 Filosofía
