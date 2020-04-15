@@ -115,6 +115,26 @@ var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
 }
 
+// Check if -prefork is in arguments
+func isPrefork() bool {
+	for _, v := range os.Args[1:] {
+		if v == "-prefork" {
+			return true
+		}
+	}
+	return false
+}
+
+// Check if -child is in arguments
+func isChild() bool {
+	for _, v := range os.Args[1:] {
+		if v == "-child" {
+			return true
+		}
+	}
+	return false
+}
+
 // https://golang.org/src/net/net.go#L113
 // Helper methods for application#test
 type testConn struct {
