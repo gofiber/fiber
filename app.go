@@ -36,6 +36,41 @@ type App struct {
 	Settings *Settings        // Fiber settings
 }
 
+// Logger is a interface to log fiber's infos, warnings and errors
+type Logger interface {
+	Info(v ...interface{})
+	Infof(format string, args ...interface{})
+	Warn(v ...interface{})
+	Warnf(format string, args ...interface{})
+	Fatal(v ...interface{})
+	Fatalf(format string, args ...interface{})
+}
+
+type basicLogger struct{}
+
+func (b *basicLogger) Info(v ...interface{}) {
+	log.Println(v...)
+}
+
+func (b *basicLogger) Infof(format string, args ...interface{}) {
+	log.Printf(format, args...)
+}
+
+func (b *basicLogger) Warn(v ...interface{}) {
+	log.Println(v...)
+}
+func (b *basicLogger) Warnf(format string, args ...interface{}) {
+	log.Printf(format, args...)
+}
+
+func (b *basicLogger) Fatal(v ...interface{}) {
+	log.Println(v...)
+}
+
+func (b *basicLogger) Fatalf(format string, args ...interface{}) {
+	log.Printf(format, args...)
+}
+
 // Settings holds is a struct holding the server settings
 type Settings struct {
 	// This will spawn multiple Go processes listening on the same port
@@ -62,6 +97,8 @@ type Settings struct {
 	WriteTimeout time.Duration // default: unlimited
 	// The maximum amount of time to wait for the next request when keep-alive is enabled.
 	IdleTimeout time.Duration // default: unlimited
+	// Logger to print infos, warnings and errors
+	Log Logger // default: basicLogger
 }
 
 // Group struct
@@ -82,6 +119,8 @@ func New(settings ...*Settings) *App {
 	// Set default settings
 	app.Settings.Prefork = isPrefork()
 	app.Settings.BodyLimit = 4 * 1024 * 1024
+	// Set default Logger
+	app.Settings.Log = &basicLogger{}
 	// If settings exist, set defaults
 	if len(settings) > 0 {
 		app.Settings = settings[0] // Set custom settings
@@ -94,6 +133,9 @@ func New(settings ...*Settings) *App {
 		if app.Settings.Immutable { // Replace unsafe conversion funcs
 			getString = getStringImmutable
 			getBytes = getBytesImmutable
+		}
+		if app.Settings.Log == nil {
+			app.Settings.Log = &basicLogger{}
 		}
 	}
 	return app
@@ -148,7 +190,7 @@ func (app *App) Use(args ...interface{}) *App {
 		case func(*Ctx):
 			handlers = append(handlers, arg)
 		default:
-			log.Fatalf("Invalid handler: %v", reflect.TypeOf(arg))
+			app.Settings.Log.Fatalf("Invalid handler: %v", reflect.TypeOf(arg))
 		}
 	}
 	app.registerMethod("USE", path, handlers...)
@@ -326,10 +368,10 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	}
 	// Preforkin is not available using app.Serve(ln net.Listener)
 	if app.Settings.Prefork {
-		fmt.Println("Preforking is not available with 'Serve' please use 'Listen' to enable it.")
+		app.Settings.Log.Warn("Preforking is not available with 'Serve' please use 'Listen' to enable it.")
 	}
 	// Print listening message
-	fmt.Printf("Fiber v%s listening on %s\n", Version, ln.Addr().String())
+	app.Settings.Log.Infof("Fiber v%s listening on %s\n", Version, ln.Addr().String())
 	return app.server.Serve(ln)
 }
 
@@ -368,7 +410,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Print listening message
 	if !isChild() {
-		fmt.Printf("Fiber v%s listening on %s\n", Version, addr)
+		app.Settings.Log.Infof("Fiber v%s listening on %s\n", Version, addr)
 	}
 	return app.server.Serve(ln)
 }
