@@ -9,6 +9,7 @@
 package fiber
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"testing"
@@ -214,4 +215,50 @@ func Test_Serve(t *testing.T) {
 		_ = app.Shutdown()
 	}()
 	app.Serve(ln)
+}
+
+
+type customLogger struct{
+	Output string
+}
+
+func (cl *customLogger) Info(v ...interface{}) {
+	cl.Output += fmt.Sprintln(v...)
+}
+
+func (cl *customLogger) Infof(format string, args ...interface{}) {
+	cl.Output += fmt.Sprintf(format, args...)
+}
+
+func (cl *customLogger) Warn(v ...interface{}) {
+	cl.Output += fmt.Sprintln(v...)
+}
+func (cl *customLogger) Warnf(format string, args ...interface{}) {
+	cl.Output += fmt.Sprintf(format, args...)
+}
+
+func (cl *customLogger) Fatal(v ...interface{}) {
+	cl.Output += fmt.Sprintln(v...)
+}
+
+func (cl *customLogger) Fatalf(format string, args ...interface{}) {
+	cl.Output += fmt.Sprintf(format, args...)
+}
+
+func Test_Log(t *testing.T) {
+	logger := &customLogger{}
+	app := New(&Settings{
+		Log: logger,
+	})
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		_ = app.Shutdown()
+	}()
+	err := app.Listen(3000)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if logger.Output == "" {
+		t.Fatalf(`%s: custom logger is empty`, t.Name())
+	}
 }
