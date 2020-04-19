@@ -215,8 +215,8 @@ func main() {
 
   routeMiddleware := func(c *fiber.Ctx) {
     fmt.Println("Requested URL", c.Route().Path)
-		c.Next()
-	}
+    c.Next()
+  }
 
   // GET /api/register
   app.Get("/api/list", routeMiddleware, func(c *fiber.Ctx) {
