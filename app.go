@@ -24,7 +24,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.9.0"
+const Version = "1.9.1"
 
 // Map is a shortcut for map[string]interface{}
 type Map map[string]interface{}
@@ -50,6 +50,14 @@ type Settings struct {
 	Immutable bool // default: false
 	// Max body size that the server accepts
 	BodyLimit int // default: 4 * 1024 * 1024
+	// Maximum number of concurrent connections.
+	Concurrency int // default: 256 * 1024
+	// Disable keep-alive connections, the server will close incoming connections after sending the first response to client
+	DisableKeepalive bool // default: false
+	// When set to true causes the default date header to be excluded from the response.
+	DisableDefaultDate bool // default: false
+	// When set to true, causes the default Content-Type header to be excluded from the Response.
+	DisableDefaultContentType bool // default: false
 	// Folder containing template files
 	TemplateFolder string // default: ""
 	// Template engine: html, amber, handlebars , mustache or pug
@@ -88,8 +96,11 @@ func New(settings ...*Settings) *App {
 		if !app.Settings.Prefork { // Default to -prefork flag if false
 			app.Settings.Prefork = isPrefork()
 		}
-		if app.Settings.BodyLimit == 0 { // Default MaxRequestBodySize
+		if app.Settings.BodyLimit <= 0 { // Default MaxRequestBodySize
 			app.Settings.BodyLimit = 4 * 1024 * 1024
+		}
+		if app.Settings.Concurrency <= 0 {
+			app.Settings.Concurrency = 256 * 1024
 		}
 		if app.Settings.Immutable { // Replace unsafe conversion funcs
 			getString = getStringImmutable
@@ -488,6 +499,10 @@ func (app *App) newServer() *fasthttp.Server {
 	return &fasthttp.Server{
 		Handler:               app.handler,
 		Name:                  app.Settings.ServerHeader,
+		Concurrency:           app.Settings.Concurrency,
+		NoDefaultDate:         app.Settings.DisableDefaultDate,
+		NoDefaultContentType:  app.Settings.DisableDefaultContentType,
+		DisableKeepalive:      app.Settings.DisableKeepalive,
 		MaxRequestBodySize:    app.Settings.BodyLimit,
 		NoDefaultServerHeader: app.Settings.ServerHeader == "",
 		ReadTimeout:           app.Settings.ReadTimeout,
