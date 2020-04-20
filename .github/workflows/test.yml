@@ -15,8 +15,8 @@ jobs:
         go-version: ${{ matrix.go-version }}
     - name: Checkout code
       uses: actions/checkout@v2
-    - name: Security
-      run: go get github.com/securego/gosec/cmd/gosec; `go env GOPATH`/bin/gosec ./...
+    #- name: Security
+     # run: go get github.com/securego/gosec/cmd/gosec; `go env GOPATH`/bin/gosec ./...
     - name: Test
       run: go test -v
       # is the syntax correct below?
