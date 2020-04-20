@@ -22,7 +22,7 @@ jobs:
       # is the syntax correct below?
       # https://github.com/marketplace/actions/telegram-notify
     - name: Notify
-      uses: appleboy/telegram-action@master
+      uses: appleboy/telegram-action@0.0.7
       with:
         to: ${{ secrets.TELEGRAM_TO }}
         token: ${{ secrets.TELEGRAM_TOKEN }}
