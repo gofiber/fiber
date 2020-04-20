@@ -28,7 +28,7 @@ import (
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	app      *App                 // Reference to *App
+	ap       *App                 // Reference to *App
 	route    *Route               // Reference to *Route
 	index    int                  // Index of the current stack
 	method   string               // HTTP method
