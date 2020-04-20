@@ -9,6 +9,12 @@ jobs:
         platform: [ubuntu-latest, windows-latest,  macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
+    - name: Notify
+    uses: appleboy/telegram-action@0.0.7
+    with:
+      to: ${{ secrets.TELEGRAM_TO }}
+      token: ${{ secrets.TELEGRAM_TOKEN }}
+      message: HELLO JOE
     - name: Install Go
       uses: actions/setup-go@v1
       with:
@@ -21,11 +27,3 @@ jobs:
       run: go test -v
       # is the syntax correct below?
       # https://github.com/marketplace/actions/telegram-notify
-    - name: Notify
-      uses: appleboy/telegram-action@0.0.7
-      with:
-        to: ${{ secrets.TELEGRAM_TO }}
-        token: ${{ secrets.TELEGRAM_TOKEN }}
-        message: |
-          The ${{ github.event_name }} event triggered final step.
-          echo This event is a pull request that had an assignee removed.
