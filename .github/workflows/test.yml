@@ -24,6 +24,6 @@ jobs:
     #- name: Security
      # run: go get github.com/securego/gosec/cmd/gosec; `go env GOPATH`/bin/gosec ./...
     - name: Test
-      run: go test -v
+      run: go test -vs
       # is the syntax correct below?
       # https://github.com/marketplace/actions/telegram-notify
