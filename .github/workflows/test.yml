@@ -16,3 +16,11 @@ jobs:
       uses: actions/checkout@v2
     - name: Test
       run: go test -v
+- name: send message 
+  uses: appleboy/telegram-action@master
+  with:
+    to: ${{ secrets.TELEGRAM_TO }}
+    token: ${{ secrets.TELEGRAM_TOKEN }}
+    message: |
+      The ${{ github.event_name }} event triggered final step.
+      echo This event is a pull request that had an assignee removed.
