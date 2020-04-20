@@ -4,7 +4,8 @@ jobs:
   test:
     strategy:
       matrix:
-        go-version: [1.11.x, 1.12.x, 1.13.x, 1.14.x]
+      	# go-version: [1.11.x, 1.12.x, 1.13.x, 1.14.x]
+        go-version: [1.14.x]
         platform: [ubuntu-latest, windows-latest,  macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
@@ -20,11 +21,11 @@ jobs:
       run: go test -v
       # is the syntax correct below?
       # https://github.com/marketplace/actions/telegram-notify
-  telegram:
-    uses: appleboy/telegram-action@master
-    with:
-      to: ${{ secrets.TELEGRAM_TO }}
-      token: ${{ secrets.TELEGRAM_TOKEN }}
-      message: |
-        The ${{ github.event_name }} event triggered final step.
-        echo This event is a pull request that had an assignee removed.
+    - name: Notify
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_TO }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        message: |
+          The ${{ github.event_name }} event triggered final step.
+          echo This event is a pull request that had an assignee removed.
