@@ -18,3 +18,13 @@ jobs:
       run: go get github.com/securego/gosec/cmd/gosec; `go env GOPATH`/bin/gosec ./...
     - name: Test
       run: go test -v
+      # is the syntax correct below?
+      # https://github.com/marketplace/actions/telegram-notify
+  telegram:
+    uses: appleboy/telegram-action@master
+    with:
+      to: ${{ secrets.TELEGRAM_TO }}
+      token: ${{ secrets.TELEGRAM_TOKEN }}
+      message: |
+        The ${{ github.event_name }} event triggered final step.
+        echo This event is a pull request that had an assignee removed.
