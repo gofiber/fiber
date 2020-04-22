@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://fiber.wiki">
+  <a href="https://gofiber.io">
     <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
   </a>
   <br>
@@ -43,7 +43,7 @@
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
-  <a href="https://fiber.wiki">
+  <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
   </a>
   <a href="#">
@@ -102,7 +102,7 @@ go get -u github.com/gofiber/fiber/...
 
 ## 🤖 벤치마크
 
-이 테스트들은 [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)와 [Go Web](https://github.com/smallnest/go-web-framework-benchmark)을 통해 측정되었습니다. 만약 모든 결과를 보고 싶다면, [Wiki](https://fiber.wiki/benchmarks)를 확인해 주세요.
+이 테스트들은 [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)와 [Go Web](https://github.com/smallnest/go-web-framework-benchmark)을 통해 측정되었습니다. 만약 모든 결과를 보고 싶다면, [Wiki](https://docs.gofiber.io/benchmarks)를 확인해 주세요.
 
 <p float="left" align="middle">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
@@ -111,18 +111,18 @@ go get -u github.com/gofiber/fiber/...
 
 ## 🎯 특징
 
-- 견고한 [라우팅](https://fiber.wiki/routing)
-- [정적 파일](https://fiber.wiki/application#static) 제공
-- 뛰어난 [성능](https://fiber.wiki/benchmarks)
-- [적은 메모리](https://fiber.wiki/benchmarks) 공간
-- [API 엔드포인트](https://fiber.wiki/context)
-- 미들웨어 & [Next](https://fiber.wiki/context#next) 지원
+- 견고한 [라우팅](https://docs.gofiber.io/routing)
+- [정적 파일](https://docs.gofiber.io/application#static) 제공
+- 뛰어난 [성능](https://docs.gofiber.io/benchmarks)
+- [적은 메모리](https://docs.gofiber.io/benchmarks) 공간
+- [API 엔드포인트](https://docs.gofiber.io/context)
+- 미들웨어 & [Next](https://docs.gofiber.io/context#next) 지원
 - [빠른](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 서버 사이드 프로그래밍
-- [Template engines](https://fiber.wiki/middleware#template)
-- [WebSocket support](https://fiber.wiki/middleware#websocket)
-- [Rate Limiter](https://fiber.wiki/middleware#limiter)
-- Available in [10 languages](https://fiber.wiki/)
-- 더 알고 싶다면, [Fiber 둘러보기](https://fiber.wiki/)
+- [Template engines](https://docs.gofiber.io/middleware#template)
+- [WebSocket support](https://docs.gofiber.io/middleware#websocket)
+- [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+- Available in [10 languages](https://docs.gofiber.io/)
+- 더 알고 싶다면, [Fiber 둘러보기](https://docs.gofiber.io/)
 
 ## 💡 철학
 
@@ -136,11 +136,11 @@ Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에�
 
 다음은 일반적인 예제들 입니다. 
 
-> 더 많은 코드 예제를 보고 싶다면, [Recipes 저장소](https://github.com/gofiber/recipes) 또는 [API 문서](https://fiber.wiki)를 방문하세요.
+> 더 많은 코드 예제를 보고 싶다면, [Recipes 저장소](https://github.com/gofiber/recipes) 또는 [API 문서](https://docs.gofiber.io)를 방문하세요.
 
 ### Routing
 
-📖 https://fiber.wiki/#basic-routing  
+📖 https://docs.gofiber.io/#basic-routing  
 
 
 ```go
@@ -171,7 +171,7 @@ func main() {
 
 ### Serve static files
 
-📖 https://fiber.wiki/application#static  
+📖 https://docs.gofiber.io/application#static  
 
 ```go
 func main() {
@@ -194,8 +194,8 @@ func main() {
 
 ### Middleware & Next
 
-📖 https://fiber.wiki/routing#middleware  
-📖 https://fiber.wiki/context#next  
+📖 https://docs.gofiber.io/routing#middleware  
+📖 https://docs.gofiber.io/context#next  
 
 ```go
 func main() {
@@ -228,15 +228,15 @@ func main() {
 
 ### Template engines
 
-📖 https://fiber.wiki/application#settings  
-📖 https://fiber.wiki/context#render  
-📖 https://fiber.wiki/middleware#template  
+📖 https://docs.gofiber.io/application#settings  
+📖 https://docs.gofiber.io/context#render  
+📖 https://docs.gofiber.io/middleware#template  
 
 Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
 
 But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
 
-You can use our [Template Middleware](https://fiber.wiki/middleware#template).
+You can use our [Template Middleware](https://docs.gofiber.io/middleware#template).
 
 ```go
 package main
@@ -273,7 +273,7 @@ func main() {
 
 ### Grouping routes into chains
 
-📖 https://fiber.wiki/application#group  
+📖 https://docs.gofiber.io/application#group  
 
 ```go
 func main() {
@@ -298,7 +298,7 @@ func main() {
 
 ### Middleware logger
 
-📖 https://fiber.wiki/middleware#logger  
+📖 https://docs.gofiber.io/middleware#logger  
 
 ```go
 import (
@@ -324,7 +324,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 https://fiber.wiki/middleware#cors  
+📖 https://docs.gofiber.io/middleware#cors  
 
 ```go
 import (
@@ -350,7 +350,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Custom 404 response
 
-📖 https://fiber.wiki/application#http-methods  
+📖 https://docs.gofiber.io/application#http-methods  
 
 ```go
 func main() {
@@ -378,7 +378,7 @@ func main() {
 
 ### JSON Response
 
-📖 https://fiber.wiki/context#json  
+📖 https://docs.gofiber.io/context#json  
 
 ```go
 type User struct {
@@ -408,7 +408,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 https://fiber.wiki/middleware#websocket  
+📖 https://docs.gofiber.io/middleware#websocket  
 
 ```go
 import (
@@ -442,7 +442,7 @@ func main() {
 
 ### Recover middleware
 
-📖 https://fiber.wiki/middleware#recover  
+📖 https://docs.gofiber.io/middleware#recover  
 
 ```go
 import (
@@ -490,6 +490,12 @@ func main() {
 
 <table>
   <tr>
+    <td align="center">
+        <a href="https://github.com/thomasvvugt">
+          <img src="https://avatars2.githubusercontent.com/u/56607882?s=460&v=4" width="100px"></br>
+          <sub><b>Thomas van Vugt</b></sub>
+        </a>
+    </td>
     <td align="center">
         <a href="https://github.com/raymayemir">
           <img src="https://avatars2.githubusercontent.com/u/5638101?s=460&v=4" width="100px"></br>

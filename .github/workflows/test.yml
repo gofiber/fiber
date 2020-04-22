@@ -4,8 +4,8 @@ jobs:
   test:
     strategy:
       matrix:
-      	# go-version: [1.11.x, 1.12.x, 1.13.x, 1.14.x]
-        go-version: [1.14.x]
+      	go-version: [1.11.x, 1.12.x, 1.13.x, 1.14.x]
+        # go-version: [1.14.x]
         platform: [ubuntu-latest, windows-latest,  macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
@@ -13,12 +13,12 @@ jobs:
       # uses: wei/curl@v1.1.1
       # with:
       # 	args: -X POST "https://api.telegram.org/bot"+${{ secrets.TELEGRAM_TOKEN }}+"/sendMessage" -d "chat_id="+${{ secrets.TELEGRAM_TO }}+"&text=HELLO JOE
-    # - name: Notify
-    #   uses: appleboy/telegram-action@0.0.7
-    #   with:
-    #     to: ${{ secrets.TELEGRAM_TO }}
-    #     token: ${{ secrets.TELEGRAM_TOKEN }}
-    #     message: HELLO JOE
+    - name: Notify
+      uses: appleboy/telegram-action@0.0.7
+      with:
+        to: ${{ secrets.TELEGRAM_TO }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        message: HELLO JOE
     - name: Install Go
       uses: actions/setup-go@v1
       with:

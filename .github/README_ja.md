@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://fiber.wiki">
+  <a href="https://gofiber.io">
     <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
   </a>
   <br>
@@ -43,7 +43,7 @@
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
-  <a href="https://fiber.wiki">
+  <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
   </a>
   <a href="#">
@@ -103,7 +103,7 @@ go get -u github.com/gofiber/fiber/...
 
 ## 🤖 ベンチマーク
 
-これらのテストは[TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)および[Go Web](https://github.com/smallnest/go-web-framework-benchmark)によって計測を行っています 。すべての結果を表示するには、 [Wiki](https://fiber.wiki/benchmarks)にアクセスしてください。
+これらのテストは[TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)および[Go Web](https://github.com/smallnest/go-web-framework-benchmark)によって計測を行っています 。すべての結果を表示するには、 [Wiki](https://docs.gofiber.io/benchmarks)にアクセスしてください。
 
 <p float="left" align="middle">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
@@ -112,18 +112,18 @@ go get -u github.com/gofiber/fiber/...
 
 ## 🎯 機能
 
-- 堅牢な[ルーティング](https://fiber.wiki/routing)
-- [静的ファイル](https://fiber.wiki/application#static)のサポート
-- 究極の[パフォーマンス](https://fiber.wiki/benchmarks)
-- [低メモリ](https://fiber.wiki/benchmarks)フットプリント
-- Express [APIエンドポイント](https://fiber.wiki/context)
-- Middlewareと[Next](https://fiber.wiki/context#next)のサポート
+- 堅牢な[ルーティング](https://docs.gofiber.io/routing)
+- [静的ファイル](https://docs.gofiber.io/application#static)のサポート
+- 究極の[パフォーマンス](https://docs.gofiber.io/benchmarks)
+- [低メモリ](https://docs.gofiber.io/benchmarks)フットプリント
+- Express [APIエンドポイント](https://docs.gofiber.io/context)
+- Middlewareと[Next](https://docs.gofiber.io/context#next)のサポート
 - [迅速](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)なサーバーサイドプログラミング
-- [Template engines](https://fiber.wiki/middleware#template)
-- [WebSocket support](https://fiber.wiki/middleware#websocket)
-- [Rate Limiter](https://fiber.wiki/middleware#limiter)
-- Available in [10 languages](https://fiber.wiki/)
-- [Fiber](https://fiber.wiki/)をもっと知る
+- [Template engines](https://docs.gofiber.io/middleware#template)
+- [WebSocket support](https://docs.gofiber.io/middleware#websocket)
+- [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+- Available in [10 languages](https://docs.gofiber.io/)
+- [Fiber](https://docs.gofiber.io/)をもっと知る
 
 ## 💡 哲学
 
@@ -136,11 +136,11 @@ Fiberは人気の高いWebフレームワークであるExpressjsに**インス�
 
 ## 👀 例
 
-以下に一般的な例をいくつか示します。他のコード例をご覧になりたい場合は、 [Recipesリポジトリ](https://github.com/gofiber/recipes)または[APIドキュメント](https://fiber.wiki)にアクセスしてください。
+以下に一般的な例をいくつか示します。他のコード例をご覧になりたい場合は、 [Recipesリポジトリ](https://github.com/gofiber/recipes)または[APIドキュメント](https://docs.gofiber.io)にアクセスしてください。
 
 ### Routing
 
-📖 https://fiber.wiki/#basic-routing  
+📖 https://docs.gofiber.io/#basic-routing  
 
 
 ```go
@@ -171,7 +171,7 @@ func main() {
 
 ### Serve static files
 
-📖 https://fiber.wiki/application#static  
+📖 https://docs.gofiber.io/application#static  
 
 ```go
 func main() {
@@ -194,8 +194,8 @@ func main() {
 
 ### Middleware & Next
 
-📖 https://fiber.wiki/routing#middleware  
-📖 https://fiber.wiki/context#next  
+📖 https://docs.gofiber.io/routing#middleware  
+📖 https://docs.gofiber.io/context#next  
 
 ```go
 func main() {
@@ -228,15 +228,15 @@ func main() {
 
 ### Template engines
 
-📖 https://fiber.wiki/application#settings  
-📖 https://fiber.wiki/context#render  
-📖 https://fiber.wiki/middleware#template  
+📖 https://docs.gofiber.io/application#settings  
+📖 https://docs.gofiber.io/context#render  
+📖 https://docs.gofiber.io/middleware#template  
 
 Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
 
 But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
 
-You can use our [Template Middleware](https://fiber.wiki/middleware#template).
+You can use our [Template Middleware](https://docs.gofiber.io/middleware#template).
 
 ```go
 package main
@@ -273,7 +273,7 @@ func main() {
 
 ### Grouping routes into chains
 
-📖 https://fiber.wiki/application#group  
+📖 https://docs.gofiber.io/application#group  
 
 ```go
 func main() {
@@ -298,7 +298,7 @@ func main() {
 
 ### Middleware logger
 
-📖 https://fiber.wiki/middleware#logger  
+📖 https://docs.gofiber.io/middleware#logger  
 
 ```go
 import (
@@ -324,7 +324,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 https://fiber.wiki/middleware#cors  
+📖 https://docs.gofiber.io/middleware#cors  
 
 ```go
 import (
@@ -350,7 +350,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Custom 404 response
 
-📖 https://fiber.wiki/application#http-methods  
+📖 https://docs.gofiber.io/application#http-methods  
 
 ```go
 func main() {
@@ -378,7 +378,7 @@ func main() {
 
 ### JSON Response
 
-📖 https://fiber.wiki/context#json  
+📖 https://docs.gofiber.io/context#json  
 
 ```go
 type User struct {
@@ -408,7 +408,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 https://fiber.wiki/middleware#websocket  
+📖 https://docs.gofiber.io/middleware#websocket  
 
 ```go
 import (
@@ -442,7 +442,7 @@ func main() {
 
 ### Recover middleware
 
-📖 https://fiber.wiki/middleware#recover  
+📖 https://docs.gofiber.io/middleware#recover  
 
 ```go
 import (
@@ -484,7 +484,7 @@ func main() {
 1. [GitHub Star](https://github.com/gofiber/fiber/stargazers)をつけてください 。
 2. [あなたのTwitterで](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)プロジェクトについてツイートしてください。
 3. [Medium](https://medium.com/) 、 [Dev.to、](https://dev.to/)または個人のブログでレビューまたはチュートリアルを書いてください。
-4. この`README`と[APIドキュメント](https://fiber.wiki/)を別の言語に翻訳するためにご協力ください。
+4. この`README`と[APIドキュメント](https://docs.gofiber.io/)を別の言語に翻訳するためにご協力ください。
 
 <a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" ></a>
 
@@ -492,6 +492,12 @@ func main() {
 
 <table>
   <tr>
+    <td align="center">
+        <a href="https://github.com/thomasvvugt">
+          <img src="https://avatars2.githubusercontent.com/u/56607882?s=460&v=4" width="100px"></br>
+          <sub><b>Thomas van Vugt</b></sub>
+        </a>
+    </td>
     <td align="center">
         <a href="https://github.com/raymayemir">
           <img src="https://avatars2.githubusercontent.com/u/5638101?s=460&v=4" width="100px"></br>
