@@ -1,5 +1,5 @@
 // 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://fiber.wiki
+// 📌 API Documentation: https://docs.gofiber.io
 // 📝 Github Repository: https://github.com/gofiber/fiber
 
 package fiber
@@ -327,6 +327,7 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 
 // Serve can be used to pass a custom listener
 // This method does not support the Prefork feature
+// Preforkin is not available using app.Serve(ln net.Listener)
 // You can pass an optional *tls.Config to enable TLS.
 func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// Create fasthttp server
@@ -334,10 +335,6 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// TLS config
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
-	}
-	// Preforkin is not available using app.Serve(ln net.Listener)
-	if app.Settings.Prefork {
-		fmt.Println("Preforking is not available with 'Serve' please use 'Listen' to enable it.")
 	}
 	// Print listening message
 	fmt.Printf("Fiber v%s listening on %s\n", Version, ln.Addr().String())

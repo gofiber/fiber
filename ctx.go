@@ -1,11 +1,13 @@
 // 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://fiber.wiki
+// 📌 API Documentation: https://docs.gofiber.io
 // 📝 Github Repository: https://github.com/gofiber/fiber
 
 package fiber
 
 import (
 	"bytes"
+
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"html/template"
@@ -21,7 +23,6 @@ import (
 	"time"
 
 	schema "github.com/gorilla/schema"
-	jsoniter "github.com/json-iterator/go"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -60,7 +61,6 @@ type Cookie struct {
 }
 
 // Global variables
-var jsonParser = jsoniter.ConfigCompatibleWithStandardLibrary
 var schemaDecoderForm = schema.NewDecoder()
 var schemaDecoderQuery = schema.NewDecoder()
 
@@ -261,7 +261,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
 	// application/json
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
-		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), out)
+		return json.Unmarshal(ctx.Fasthttp.Request.Body(), out)
 	}
 	// application/xml text/xml
 	if strings.HasPrefix(ctype, MIMEApplicationXML) || strings.HasPrefix(ctype, MIMETextXML) {
@@ -458,19 +458,15 @@ func (ctx *Ctx) Is(extension string) (match bool) {
 
 // JSON converts any interface or string to JSON using Jsoniter.
 // This method also sets the content header to application/json.
-func (ctx *Ctx) JSON(json interface{}) error {
-	// Get stream from pool
-	stream := jsonParser.BorrowStream(nil)
-	defer jsonParser.ReturnStream(stream)
-	// Write struct to stream
-	stream.WriteVal(&json)
+func (ctx *Ctx) JSON(data interface{}) error {
+	raw, err := json.Marshal(&data)
 	// Check for errors
-	if stream.Error != nil {
-		return stream.Error
+	if err != nil {
+		return err
 	}
 	// Set http headers
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-	ctx.Fasthttp.Response.SetBodyString(getString(stream.Buffer()))
+	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 	// Success!
 	return nil
 }
@@ -478,22 +474,18 @@ func (ctx *Ctx) JSON(json interface{}) error {
 // JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
-func (ctx *Ctx) JSONP(json interface{}, callback ...string) error {
-	// Get stream from pool
-	stream := jsonParser.BorrowStream(nil)
-	defer jsonParser.ReturnStream(stream)
-	// Write struct to stream
-	stream.WriteVal(&json)
+func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
+	raw, err := json.Marshal(&data)
 	// Check for errors
-	if stream.Error != nil {
-		return stream.Error
+	if err != nil {
+		return err
 	}
 
 	str := "callback("
 	if len(callback) > 0 {
 		str = callback[0] + "("
 	}
-	str += getString(stream.Buffer()) + ");"
+	str += getString(raw) + ");"
 
 	ctx.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)

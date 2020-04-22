@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://fiber.wiki">
+  <a href="https://gofiber.io">
     <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
   </a>
   <br>
@@ -24,9 +24,6 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/de.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_nl.md">
-    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/nl.svg">
-  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ko.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ko.svg">
   </a>
@@ -46,7 +43,7 @@
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
-  <a href="https://fiber.wiki">
+  <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
   </a>
   <a href="#">
@@ -105,7 +102,7 @@ go get -u github.com/gofiber/fiber
 
 ## 🤖 性能
 
-这些测试由[TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)和[Go Web执行](https://github.com/smallnest/go-web-framework-benchmark) 。如果要查看所有结果，请访问我们的[Wiki](https://fiber.wiki/benchmarks) 。
+这些测试由[TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)和[Go Web执行](https://github.com/smallnest/go-web-framework-benchmark) 。如果要查看所有结果，请访问我们的[Wiki](https://docs.gofiber.io/benchmarks) 。
 
 <p float="left" align="middle">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -114,18 +111,18 @@ go get -u github.com/gofiber/fiber
 
 ## 🎯 特点
 
-- 强大的[路由](https://fiber.wiki/routing)
-- [静态文件](https://fiber.wiki/application#static)服务
-- 极限[表现](https://fiber.wiki/benchmarks)
-- [内存占用低](https://fiber.wiki/benchmarks)
-- Express [API端点](https://fiber.wiki/context)
-- 中间件和[Next](https://fiber.wiki/context#next)支持
+- 强大的[路由](https://docs.gofiber.io/routing)
+- [静态文件](https://docs.gofiber.io/application#static)服务
+- 极限[表现](https://docs.gofiber.io/benchmarks)
+- [内存占用低](https://docs.gofiber.io/benchmarks)
+- Express [API端点](https://docs.gofiber.io/context)
+- 中间件和[Next](https://docs.gofiber.io/context#next)支持
 - [快速的](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
-- [Template engines](https://fiber.wiki/middleware#template)
-- [WebSocket support](https://fiber.wiki/middleware#websocket)
-- [Rate Limiter](https://fiber.wiki/middleware#limiter)
-- Available in [11 languages](https://fiber.wiki/)
-- 以及更多[文档](https://fiber.wiki/)
+- [Template engines](https://docs.gofiber.io/middleware#template)
+- [WebSocket support](https://docs.gofiber.io/middleware#websocket)
+- [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+- Available in [10 languages](https://docs.gofiber.io/)
+- 以及更多[文档](https://docs.gofiber.io/)
 
 ## 💡 哲学
 
@@ -135,11 +132,11 @@ Fiber **受** Internet上最流行的Web框架Expressjs的**启发** 。我们�
 
 ## 👀 示例
 
-下面列出了一些常见示例。如果您想查看更多代码示例，请访问我们的[Recipes存储库](https://github.com/gofiber/recipes)或访问我们的[API文档](https://fiber.wiki) 。
+下面列出了一些常见示例。如果您想查看更多代码示例，请访问我们的[Recipes存储库](https://github.com/gofiber/recipes)或访问我们的[API文档](https://docs.gofiber.io) 。
 
 ### Routing
 
-📖 https://fiber.wiki/#basic-routing  
+📖 https://docs.gofiber.io/#basic-routing  
 
 
 ```go
@@ -170,7 +167,7 @@ func main() {
 
 ### Serve static files
 
-📖 https://fiber.wiki/application#static  
+📖 https://docs.gofiber.io/application#static  
 
 ```go
 func main() {
@@ -193,8 +190,8 @@ func main() {
 
 ### Middleware & Next
 
-📖 https://fiber.wiki/routing#middleware  
-📖 https://fiber.wiki/context#next  
+📖 https://docs.gofiber.io/routing#middleware  
+📖 https://docs.gofiber.io/context#next  
 
 ```go
 func main() {
@@ -227,15 +224,15 @@ func main() {
 
 ### Template engines
 
-📖 https://fiber.wiki/application#settings  
-📖 https://fiber.wiki/context#render  
-📖 https://fiber.wiki/middleware#template  
+📖 https://docs.gofiber.io/application#settings  
+📖 https://docs.gofiber.io/context#render  
+📖 https://docs.gofiber.io/middleware#template  
 
 Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
 
 But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
 
-You can use our [Template Middleware](https://fiber.wiki/middleware#template).
+You can use our [Template Middleware](https://docs.gofiber.io/middleware#template).
 
 ```go
 package main
@@ -272,7 +269,7 @@ func main() {
 
 ### Grouping routes into chains
 
-📖 https://fiber.wiki/application#group  
+📖 https://docs.gofiber.io/application#group  
 
 ```go
 func main() {
@@ -297,7 +294,7 @@ func main() {
 
 ### Middleware logger
 
-📖 https://fiber.wiki/middleware#logger  
+📖 https://docs.gofiber.io/middleware#logger  
 
 ```go
 import (
@@ -323,7 +320,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 https://fiber.wiki/middleware#cors  
+📖 https://docs.gofiber.io/middleware#cors  
 
 ```go
 import (
@@ -349,7 +346,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Custom 404 response
 
-📖 https://fiber.wiki/application#http-methods  
+📖 https://docs.gofiber.io/application#http-methods  
 
 ```go
 func main() {
@@ -377,7 +374,7 @@ func main() {
 
 ### JSON Response
 
-📖 https://fiber.wiki/context#json  
+📖 https://docs.gofiber.io/context#json  
 
 ```go
 type User struct {
@@ -407,7 +404,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 https://fiber.wiki/middleware#websocket  
+📖 https://docs.gofiber.io/middleware#websocket  
 
 ```go
 import (
@@ -441,7 +438,7 @@ func main() {
 
 ### Recover middleware
 
-📖 https://fiber.wiki/middleware#recover  
+📖 https://docs.gofiber.io/middleware#recover  
 
 ```go
 import (
@@ -491,6 +488,30 @@ func main() {
 <table>
   <tr>
     <td align="center">
+        <a href="https://github.com/thomasvvugt">
+          <img src="https://avatars2.githubusercontent.com/u/56607882?s=460&v=4" width="100px"></br>
+          <sub><b>Thomas van Vugt</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/raymayemir">
+          <img src="https://avatars2.githubusercontent.com/u/5638101?s=460&v=4" width="100px"></br>
+          <sub><b>Ray Mayemir</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/melkorm">
+          <img src="https://avatars2.githubusercontent.com/u/619996?s=460&v=4" width="100px"></br>
+          <sub><b>melkorm</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/ekaputra07">
+          <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
+          <sub><b>Eka Putra</b></sub>
+        </a>
+    </td>
+    <td align="center">
         <a href="https://github.com/bihe">
           <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
           <sub><b>Henrik Binggl</b></sub>
@@ -530,12 +551,6 @@ func main() {
         <a href="https://github.com/ekaputra07">
           <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
           <sub><b>ekaputra07</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/raymayemir">
-          <img src="https://avatars2.githubusercontent.com/u/5638101?s=460&v=4" width="100px"></br>
-          <sub><b>Ray Mayemir</b></sub>
         </a>
     </td>
   </tr>

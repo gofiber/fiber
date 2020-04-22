@@ -1,10 +1,10 @@
-on: [push]
-name: Security
+on: [push, pull_request]
+name: Gosec
 jobs:
-  test:
+  Security:
     strategy:
       matrix:
-        go-version: [1.13.x]
+        go-version: [1.14.x]
         platform: [ubuntu-latest]
     runs-on: ${{ matrix.platform }}
     steps:

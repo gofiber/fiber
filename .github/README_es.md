@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://fiber.wiki">
+  <a href="https://gofiber.io">
     <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
   </a>
   <br>
@@ -24,9 +24,6 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/de.svg">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_nl.md">
-    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/nl.svg">
-  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ko.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ko.svg">
   </a>
@@ -46,7 +43,7 @@
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
-  <a href="https://fiber.wiki">
+  <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
   </a>
   <a href="#">
@@ -105,7 +102,7 @@ go get github.com/gofiber/fiber/...
 
 ## 🤖 Puntos de referencia
 
-Estas pruebas son realizadas por [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) y [Go Web](https://github.com/smallnest/go-web-framework-benchmark) . Si desea ver todos los resultados, visite nuestro [Wiki](https://fiber.wiki/benchmarks) .
+Estas pruebas son realizadas por [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) y [Go Web](https://github.com/smallnest/go-web-framework-benchmark) . Si desea ver todos los resultados, visite nuestro [Wiki](https://docs.gofiber.io/benchmarks) .
 
 <p float="left" align="middle">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
@@ -114,18 +111,18 @@ Estas pruebas son realizadas por [TechEmpower](https://github.com/TechEmpower/Fr
 
 ## 🎯 Características
 
-- [Enrutamiento](https://fiber.wiki/routing) robusto
-- Servir [archivos estáticos](https://fiber.wiki/application#static)
-- [Rendimiento](https://fiber.wiki/benchmarks) extremo
-- [Poca](https://fiber.wiki/benchmarks) huella de [memoria](https://fiber.wiki/benchmarks)
-- [Puntos finales de API](https://fiber.wiki/context) Express
-- Middleware y [próximo](https://fiber.wiki/context#next) soporte
+- [Enrutamiento](https://docs.gofiber.io/routing) robusto
+- Servir [archivos estáticos](https://docs.gofiber.io/application#static)
+- [Rendimiento](https://docs.gofiber.io/benchmarks) extremo
+- [Poca](https://docs.gofiber.io/benchmarks) huella de [memoria](https://docs.gofiber.io/benchmarks)
+- [Puntos finales de API](https://docs.gofiber.io/context) Express
+- Middleware y [próximo](https://docs.gofiber.io/context#next) soporte
 - Programación [rápida](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) del lado del servidor
-- [Template engines](https://fiber.wiki/middleware#template)
-- [WebSocket support](https://fiber.wiki/middleware#websocket)
-- [Rate Limiter](https://fiber.wiki/middleware#limiter)
-- Available in [11 languages](https://fiber.wiki/)
-- Y mucho más, [explore Fiber](https://fiber.wiki/)
+- [Template engines](https://docs.gofiber.io/middleware#template)
+- [WebSocket support](https://docs.gofiber.io/middleware#websocket)
+- [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+- Available in [10 languages](https://docs.gofiber.io/)
+- Y mucho más, [explore Fiber](https://docs.gofiber.io/)
 
 ## 💡 Filosofía
 
@@ -135,11 +132,11 @@ Fiber está **inspirado** en Expressjs, el framework web más popular en Interne
 
 ## 👀 Ejemplos
 
-A continuación se enumeran algunos de los ejemplos comunes. Si desea ver más ejemplos de código, visite nuestro [repositorio de Recetas](https://github.com/gofiber/recipes) o nuestra [documentación de API](https://fiber.wiki) .
+A continuación se enumeran algunos de los ejemplos comunes. Si desea ver más ejemplos de código, visite nuestro [repositorio de Recetas](https://github.com/gofiber/recipes) o nuestra [documentación de API](https://docs.gofiber.io) .
 
 ### Routing
 
-📖 https://fiber.wiki/#basic-routing  
+📖 https://docs.gofiber.io/#basic-routing  
 
 
 ```go
@@ -170,7 +167,7 @@ func main() {
 
 ### Serve static files
 
-📖 https://fiber.wiki/application#static  
+📖 https://docs.gofiber.io/application#static  
 
 ```go
 func main() {
@@ -193,8 +190,8 @@ func main() {
 
 ### Middleware & Next
 
-📖 https://fiber.wiki/routing#middleware  
-📖 https://fiber.wiki/context#next  
+📖 https://docs.gofiber.io/routing#middleware  
+📖 https://docs.gofiber.io/context#next  
 
 ```go
 func main() {
@@ -227,15 +224,15 @@ func main() {
 
 ### Template engines
 
-📖 https://fiber.wiki/application#settings  
-📖 https://fiber.wiki/context#render  
-📖 https://fiber.wiki/middleware#template  
+📖 https://docs.gofiber.io/application#settings  
+📖 https://docs.gofiber.io/context#render  
+📖 https://docs.gofiber.io/middleware#template  
 
 Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
 
 But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
 
-You can use our [Template Middleware](https://fiber.wiki/middleware#template).
+You can use our [Template Middleware](https://docs.gofiber.io/middleware#template).
 
 ```go
 package main
@@ -272,7 +269,7 @@ func main() {
 
 ### Grouping routes into chains
 
-📖 https://fiber.wiki/application#group  
+📖 https://docs.gofiber.io/application#group  
 
 ```go
 func main() {
@@ -297,7 +294,7 @@ func main() {
 
 ### Middleware logger
 
-📖 https://fiber.wiki/middleware#logger  
+📖 https://docs.gofiber.io/middleware#logger  
 
 ```go
 import (
@@ -323,7 +320,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 https://fiber.wiki/middleware#cors  
+📖 https://docs.gofiber.io/middleware#cors  
 
 ```go
 import (
@@ -349,7 +346,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Custom 404 response
 
-📖 https://fiber.wiki/application#http-methods  
+📖 https://docs.gofiber.io/application#http-methods  
 
 ```go
 func main() {
@@ -377,7 +374,7 @@ func main() {
 
 ### JSON Response
 
-📖 https://fiber.wiki/context#json  
+📖 https://docs.gofiber.io/context#json  
 
 ```go
 type User struct {
@@ -407,7 +404,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 https://fiber.wiki/middleware#websocket  
+📖 https://docs.gofiber.io/middleware#websocket  
 
 ```go
 import (
@@ -441,7 +438,7 @@ func main() {
 
 ### Recover middleware
 
-📖 https://fiber.wiki/middleware#recover  
+📖 https://docs.gofiber.io/middleware#recover  
 
 ```go
 import (
@@ -483,12 +480,36 @@ Si quiere **agradecer** y/o apoyar el desarrollo activo de la `Fiber`:
 1. Agregue una [estrella de GitHub](https://github.com/gofiber/fiber/stargazers) al proyecto.
 2. Tuitea sobre el proyecto [en tu Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Escriba una reseña o tutorial en [Medium](https://medium.com/) , [Dev.to](https://dev.to/) o blog personal.
-4. Ayúdanos a traducir este `README` y [API Docs](https://fiber.wiki/) a otro idioma.
+4. Ayúdanos a traducir este `README` y [API Docs](https://docs.gofiber.io/) a otro idioma.
 
 ## ☕ Coffee Supporters
 
 <table>
   <tr>
+    <td align="center">
+        <a href="https://github.com/thomasvvugt">
+          <img src="https://avatars2.githubusercontent.com/u/56607882?s=460&v=4" width="100px"></br>
+          <sub><b>Thomas van Vugt</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/raymayemir">
+          <img src="https://avatars2.githubusercontent.com/u/5638101?s=460&v=4" width="100px"></br>
+          <sub><b>Ray Mayemir</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/melkorm">
+          <img src="https://avatars2.githubusercontent.com/u/619996?s=460&v=4" width="100px"></br>
+          <sub><b>melkorm</b></sub>
+        </a>
+    </td>
+    <td align="center">
+        <a href="https://github.com/ekaputra07">
+          <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
+          <sub><b>Eka Putra</b></sub>
+        </a>
+    </td>
     <td align="center">
         <a href="https://github.com/bihe">
           <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
@@ -529,12 +550,6 @@ Si quiere **agradecer** y/o apoyar el desarrollo activo de la `Fiber`:
         <a href="https://github.com/ekaputra07">
           <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
           <sub><b>ekaputra07</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/raymayemir">
-          <img src="https://avatars2.githubusercontent.com/u/5638101?s=460&v=4" width="100px"></br>
-          <sub><b>Ray Mayemir</b></sub>
         </a>
     </td>
   </tr>
