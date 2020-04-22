@@ -1,5 +1,5 @@
 on: [push, pull_request]
-name: Gosec
+name: Security
 jobs:
   Security:
     strategy:
