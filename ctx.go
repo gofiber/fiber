@@ -342,6 +342,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 // Cookies is used for getting a cookie value by key
 func (ctx *Ctx) Cookies(key ...string) (value string) {
 	if len(key) == 0 {
+		fmt.Println("Deprecation Warning: c.Cookies() without an key is deprecated since v1.9.2, please use c.Get(\"Cookies\") instead to get the raw cookie header.")
 		return ctx.Get(HeaderCookie)
 	}
 	return getString(ctx.Fasthttp.Request.Header.Cookie(key[0]))
