@@ -603,7 +603,7 @@ func (ctx *Ctx) Query(key string) (value string) {
 // QueryMulti returns all values for the query string parameter in the url.
 func(ctx *Ctx) QueryMulti(key string) (values []string) {
 	valuesBytes := ctx.Fasthttp.QueryArgs().PeekMulti(key)
-	values := make([]string, len(valuesBytes))
+	values = make([]string, len(valuesBytes))
 	for i, v := range valuesBytes {
 		values[i] = getString(v)
 	}
