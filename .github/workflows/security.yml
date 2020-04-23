@@ -4,15 +4,14 @@ jobs:
   Security:
     strategy:
       matrix:
-        go-version: [1.14.x]
         platform: [ubuntu-latest]
     runs-on: ${{ matrix.platform }}
+    env:
+      GO111MODULE: on
     steps:
-    - name: Install Go
-      uses: actions/setup-go@v1
-      with:
-        go-version: ${{ matrix.go-version }}
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Security
-      run: go get github.com/securego/gosec/cmd/gosec; `go env GOPATH`/bin/gosec ./...
+      - name: Checkout Source 
+        uses: actions/checkout@v2
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: ./...
