@@ -600,6 +600,16 @@ func (ctx *Ctx) Query(key string) (value string) {
 	return getString(ctx.Fasthttp.QueryArgs().Peek(key))
 }
 
+// QueryMulti returns all values for the query string parameter in the url.
+func(ctx *Ctx) QueryMulti(key string) (values []string) {
+	valuesBytes := ctx.Fasthttp.QueryArgs().PeekMulti(key)
+	values := make([]string, len(valuesBytes))
+	for i, v := range valuesBytes {
+		values[i] = getString(v)
+	}
+	return values
+}
+
 // Range returns a struct containing the type and a slice of ranges.
 func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 	rangeStr := string(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
