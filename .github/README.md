@@ -40,11 +40,11 @@
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/id.svg">
   </a>
   <br><br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
-    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
-  </a>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
+  </a>
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
+    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
   </a>
   <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
@@ -55,14 +55,11 @@
   <a href="https://gocover.io/github.com/gofiber/fiber">
     <img src="https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square">
   </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square">
+  <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=tests&style=flat-square">
   </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
-  </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
+  <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Gosec?label=gosec&style=flat-square">
   </a>
   <a href="https://t.me/gofiber">
     <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
@@ -529,3 +526,7 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 ## ⚠️ License
 
 Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+
+**Third party libraries licenses**
+- [FastHTTP - MIT](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+- [Schema - BSD-3-Clause](https://github.com/gorilla/schema/blob/master/LICENSE)
