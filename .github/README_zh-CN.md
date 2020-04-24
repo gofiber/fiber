@@ -465,6 +465,26 @@ func main() {
 ```
 </details>
 
+## 🧬 Available Middlewares
+
+For _easier_ and _more clear_ work, we've put [middleware](https://docs.gofiber.io/middleware) into separate repositories:
+
+- [Basic Authentication](https://github.com/gofiber/basicauth)
+- [Key Authentication](https://github.com/gofiber/keyauth)
+- [Compression](https://github.com/gofiber/compression)
+- [Request ID](https://github.com/gofiber/requestid)
+- [WebSocket](https://github.com/gofiber/websocket)
+- [Rewrite](https://github.com/gofiber/rewrite)
+- [Recover](https://github.com/gofiber/recover)
+- [Limiter](https://github.com/gofiber/limiter)
+- [Session](https://github.com/gofiber/session)
+- [Logger](https://github.com/gofiber/logger)
+- [Helmet](https://github.com/gofiber/helmet)
+- [Embed](https://github.com/gofiber/embed)
+- [PPROF](https://github.com/gofiber/pprof)
+- [CORS](https://github.com/gofiber/cors)
+- [CSRF](https://github.com/gofiber/csrf)
+- [JWT](https://github.com/gofiber/jwt)
 
 ## 💬 媒体
 

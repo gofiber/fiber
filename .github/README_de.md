@@ -477,6 +477,8 @@ Für _eine leichtere_ und _übersichtlichere_ arbeit haben wir die [middleware](
 - [Session](https://github.com/gofiber/session)
 - [Logger](https://github.com/gofiber/logger)
 - [Helmet](https://github.com/gofiber/helmet)
+- [Embed](https://github.com/gofiber/embed)
+- [PPROF](https://github.com/gofiber/pprof)
 - [CORS](https://github.com/gofiber/cors)
 - [CSRF](https://github.com/gofiber/csrf)
 - [JWT](https://github.com/gofiber/jwt)
