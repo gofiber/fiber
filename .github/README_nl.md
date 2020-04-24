@@ -49,8 +49,8 @@
   <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
   </a>
-  <a href="#">
-    <img src="https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+    <img src="https://goreportcard.com/badge/github.com/gofiber/fiber?style=flat-square">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
     <img src="https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square">
@@ -137,7 +137,7 @@ Hieronder staan enkele van de meest voorkomende voorbeelden.
 
 ### Routing
 
-📖 https://fiber.wiki/#basic-routing  
+📖 [Routing](https://docs.gofiber.io/#basic-routing)  
 
 
 ```go
@@ -145,30 +145,30 @@ func main() {
   app := fiber.New()
 
   // GET /john
-  app.Get("/:naam", func(c *fiber.Ctx) {
-    fmt.Printf("Hallo %s!", c.Params("naam"))
-    // => Hallo john!
+  app.Get("/:name", func(c *fiber.Ctx) {
+    fmt.Printf("Hello %s!", c.Params("name"))
+    // => Hello john!
   })
 
   // GET /john
-  app.Get("/:naam/:leeftijd?", func(c *fiber.Ctx) {
-    fmt.Printf("Naam: %s, Leeftijd: %s", c.Params("naam"), c.Params("leeftijd"))
-    // => Naam: john, Leeftijd:
+  app.Get("/:name/:age?", func(c *fiber.Ctx) {
+    fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
+    // => Name: john, Age:
   })
 
-  // GET /api/registreer
+  // GET /api/register
   app.Get("/api/*", func(c *fiber.Ctx) {
     fmt.Printf("/api/%s", c.Params("*"))
-    // => /api/registreer
+    // => /api/register
   })
 
   app.Listen(3000)
 }
 ```
 
-### Serveer statische bestanden
+### Serve static files
 
-📖 https://fiber.wiki/application#static  
+📖 [Static](https://docs.gofiber.io/application#static)  
 
 ```go
 func main() {
@@ -191,29 +191,29 @@ func main() {
 
 ### Middleware & Next
 
-📖 https://fiber.wiki/routing#middleware
-📖 https://fiber.wiki/context#next
+📖 [Middleware](https://docs.gofiber.io/routing#middleware)  
+📖 [Next](https://docs.gofiber.io/context#next)  
 
 ```go
 func main() {
   app := fiber.New()
 
-  // Komt overeen met elke route
+  // Match any route
   app.Use(func(c *fiber.Ctx) {
-    fmt.Println("Eerste middleware")
+    fmt.Println("First middleware")
     c.Next()
   })
 
-  // Komt overeen met alle routes welke beginnen met /api
+  // Match all routes starting with /api
   app.Use("/api", func(c *fiber.Ctx) {
-    fmt.Println("Tweede middleware")
+    fmt.Println("Second middleware")
     c.Next()
   })
 
-  // GET /api/registreer
-  app.Get("/api/registreer", func(c *fiber.Ctx) {
-    fmt.Println("Laatste middleware")
-    c.Send("Hallo, Wereld!")
+  // GET /api/register
+  app.Get("/api/list", func(c *fiber.Ctx) {
+    fmt.Println("Last middleware")
+    c.Send("Hello, World!")
   })
 
   app.Listen(3000)
@@ -221,19 +221,19 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Bekijk meer code voorbeelden</summary>
+  <summary>📚 Show more code examples</summary>
 
 ### Template engines
 
-📖 https://fiber.wiki/application#settings  
-📖 https://fiber.wiki/context#render  
-📖 https://fiber.wiki/middleware#template  
+📖 [Settings](https://docs.gofiber.io/application#settings)  
+📖 [Render](https://docs.gofiber.io/context#render)  
+📖 [Template](https://docs.gofiber.io/middleware#template)  
 
-Fiber ondersteunt de standaard [Go template engine](https://golang.org/pkg/html/template/)
+Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
 
-Maar het is ook mogelijk om andere template engines te gebruiken zoals [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) of [pug](https://github.com/Joker/jade).
+But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
 
-Gebruik hiervoor onze [Template Middleware](https://fiber.wiki/middleware#template).
+You can use our [Template Middleware](https://docs.gofiber.io/middleware#template).
 
 ```go
 package main
@@ -244,23 +244,23 @@ import (
 )
 
 func main() {
-  // Stel een template engine in tijdens de aanvang van de app:
+  // You can setup template engine before initiation app:
   app := fiber.New(&fiber.Settings{
     TemplateEngine:    template.Mustache(),
     TemplateFolder:    "./views",
     TemplateExtension: ".tmpl",
   })
 
-  // OF na de aanvang van de app op elke geschikte locatie:
+  // OR after initiation app at any convenient location:
   app.Settings.TemplateEngine = template.Mustache()
   app.Settings.TemplateFolder = "./views"
   app.Settings.TemplateExtension = ".tmpl"
 
-  // Het aanroepen van de template `./views/home.tmpl` kan als volgt:
+  // And now, you can call template `./views/home.tmpl` like this:
   app.Get("/", func(c *fiber.Ctx) {
     c.Render("home", fiber.Map{
-      "title": "Home",
-      "year":  2020,
+      "title": "Homepage",
+      "year":  1999,
     })
   })
 
@@ -268,9 +268,9 @@ func main() {
 }
 ```
 
-### Routes groeperen in chains
+### Grouping routes into chains
 
-📖 https://fiber.wiki/application#group  
+📖 [Group](https://docs.gofiber.io/application#group)  
 
 ```go
 func main() {
@@ -281,13 +281,13 @@ func main() {
 
   // API v1 routes
   v1 := api.Group("/v1", mysql())   // /api/v1
-  v1.Get("/lijst", handler)         // /api/v1/lijst
-  v1.Get("/gebruiker", handler)     // /api/v1/gebruiker
+  v1.Get("/list", handler)          // /api/v1/list
+  v1.Get("/user", handler)          // /api/v1/user
 
   // API v2 routes
   v2 := api.Group("/v2", mongodb()) // /api/v2
-  v2.Get("/lijst", handler)         // /api/v2/lijst
-  v2.Get("/gebruiker", handler)     // /api/v2/gebruiker
+  v2.Get("/list", handler)          // /api/v2/list
+  v2.Get("/user", handler)          // /api/v2/user
 
   // ...
 }
@@ -295,7 +295,7 @@ func main() {
 
 ### Middleware logger
 
-📖 https://fiber.wiki/middleware#logger  
+📖 [Logger](https://docs.gofiber.io/middleware#logger)  
 
 ```go
 import (
@@ -306,13 +306,13 @@ import (
 func main() {
     app := fiber.New()
 
-    // Optionele loggerconfiguratie
+    // Optional logger config
     config := logger.Config{
       Format:     "${time} - ${method} ${path}\n",
       TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
     }
 
-    // Logger met configuratie
+    // Logger with config
     app.Use(logger.New(config))
 
     app.Listen(3000)
@@ -321,7 +321,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 https://fiber.wiki/middleware#cors  
+📖 [CORS](https://docs.gofiber.io/middleware#cors)  
 
 ```go
 import (
@@ -332,22 +332,22 @@ import (
 func main() {
     app := fiber.New()
 
-    // CORS met standaardconfiguratie
+    // CORS with default config
     app.Use(cors.New())
 
     app.Listen(3000)
 }
 ```
 
-Controleer CORS door een willekeurig domein in de `Origin`-header door te geven:
+Check CORS by passing any domain in `Origin` header:
 
 ```bash
-curl -H "Origin: http://google.nl" --verbose http://localhost:3000
+curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
 ### Custom 404 response
 
-📖 https://fiber.wiki/application#http-methods  
+📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)  
 
 ```go
 func main() {
@@ -356,14 +356,14 @@ func main() {
   app.Static("/public")
 
   app.Get("/demo", func(c *fiber.Ctx) {
-    c.Send("Dit is een demo!")
+    c.Send("This is a demo!")
   })
 
-  app.Post("/registreer", func(c *fiber.Ctx) {
-    c.Send("Welkom!")
+  app.Post("/register", func(c *fiber.Ctx) {
+    c.Send("Welcome!")
   })
 
-  // Laatste middleware die bij alles past
+  // Last middleware to match anything
   app.Use(func(c *fiber.Ctx) {
     c.SendStatus(404) 
     // => 404 "Not Found"
@@ -375,20 +375,20 @@ func main() {
 
 ### JSON Response
 
-📖 https://fiber.wiki/context#json  
+📖 [JSON](https://docs.gofiber.io/context#json)  
 
 ```go
-type Gebruiker struct {
-  Naam      string  `json:"naam"`
-  Leeftijd  int     `json:"leeftijd"`
+type User struct {
+  Name string `json:"name"`
+  Age  int    `json:"age"`
 }
 
 func main() {
   app := fiber.New()
 
-  app.Get("/gebruiker", func(c *fiber.Ctx) {
-    c.JSON(&Gebruiker{"John", 20})
-    // => {"naam":"John", "leeftijd":20}
+  app.Get("/user", func(c *fiber.Ctx) {
+    c.JSON(&User{"John", 20})
+    // => {"name":"John", "age":20}
   })
 
   app.Get("/json", func(c *fiber.Ctx) {
@@ -405,7 +405,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 https://fiber.wiki/middleware#websocket  
+📖 [Websocket](https://docs.gofiber.io/middleware#websocket)  
 
 ```go
 import (
@@ -439,7 +439,7 @@ func main() {
 
 ### Recover middleware
 
-📖 https://fiber.wiki/middleware#recover  
+📖 [Recover](https://docs.gofiber.io/middleware#recover)  
 
 ```go
 import (
@@ -450,7 +450,7 @@ import (
 func main() {
   app := fiber.New()
 
-  // Optionele recover configuratie
+  // Optional recover config
   config := recover.Config{
     Handler: func(c *fiber.Ctx, err error) {
 			c.SendString(err.Error())
@@ -458,7 +458,7 @@ func main() {
 		},
   }
 
-  // Logger met aangepaste configuratie
+  // Logger with custom config
   app.Use(recover.New(config))
 
   app.Listen(3000)
@@ -530,5 +530,5 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
 
 **Third-party library licenses**
-- [FastHTTP - MIT](https://github.com/valyala/fasthttp/blob/master/LICENSE)
-- [Schema - BSD-3-Clause](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [FastHTTP](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+- [Schema](https://github.com/gorilla/schema/blob/master/LICENSE)

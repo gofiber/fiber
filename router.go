@@ -24,7 +24,7 @@ type Route struct {
 	isRegex bool // needs regex parsing
 
 	Method string         // http method
-	Path   string         // orginal path
+	Path   string         // original path
 	Params []string       // path params
 	Regexp *regexp.Regexp // regexp matcher
 
