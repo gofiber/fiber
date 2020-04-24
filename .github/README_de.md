@@ -40,11 +40,11 @@
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/id.svg">
   </a>
   <br><br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
-    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
-  </a>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
+  </a>
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
+    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
   </a>
   <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
@@ -55,17 +55,11 @@
   <a href="https://gocover.io/github.com/gofiber/fiber">
     <img src="https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square">
   </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square">
+  <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=tests&style=flat-square">
   </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
-  </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
-  </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
+  <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Gosec?label=gosec&style=flat-square">
   </a>
   <a href="https://t.me/gofiber">
     <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
@@ -483,6 +477,8 @@ Für _eine leichtere_ und _übersichtlichere_ arbeit haben wir die [middleware](
 - [Session](https://github.com/gofiber/session)
 - [Logger](https://github.com/gofiber/logger)
 - [Helmet](https://github.com/gofiber/helmet)
+- [Embed](https://github.com/gofiber/embed)
+- [PPROF](https://github.com/gofiber/pprof)
 - [CORS](https://github.com/gofiber/cors)
 - [CSRF](https://github.com/gofiber/csrf)
 - [JWT](https://github.com/gofiber/jwt)
@@ -503,83 +499,23 @@ Falls du **danke** sagen möchtest und/oder aktiv die Entwicklung von `fiber` f�
 2. Twittere über das Projekt [auf deinem Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Schreibe eine Rezension auf [Medium](https://medium.com/), [Dev.to](https://dev.to/) oder einem persönlichem Blog.
 4. Hilf uns diese `README` und die [API Docs](https://docs.gofiber.io/) in eine andere Sprache zu übersetzen.
+5. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
 
-## ☕ Coffee Supporters
+## ☕ Supporters
 
-<table>
-  <tr>
-    <td align="center">
-        <a href="https://github.com/thomasvvugt">
-          <img src="https://avatars2.githubusercontent.com/u/56607882?s=460&v=4" width="100px"></br>
-          <sub><b>Thomas van Vugt</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/raymayemir">
-          <img src="https://avatars2.githubusercontent.com/u/5638101?s=460&v=4" width="100px"></br>
-          <sub><b>Ray Mayemir</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/melkorm">
-          <img src="https://avatars2.githubusercontent.com/u/619996?s=460&v=4" width="100px"></br>
-          <sub><b>melkorm</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/ekaputra07">
-          <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
-          <sub><b>Eka Putra</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/bihe">
-          <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
-          <sub><b>Henrik Binggl</b></sub>
-        </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/koddr">
-        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="100px"></br>
-        <sub><b>Vic&nbsp;Shóstak</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/MarvinJWendt">
-        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="100px"></br>
-        <sub><b>MarvinJWendt</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/toishy">
-        <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="100px"></br>
-        <sub><b>ToishY</b></sub>
-      </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/gofiber/fiber">
-          <img src="https://i.stack.imgur.com/frlIf.png" width="100px"></br>
-          <sub><b>JustDave</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/melkorm">
-          <img src="https://avatars2.githubusercontent.com/u/619996?s=460&v=4" width="100px"></br>
-          <sub><b>melkorm</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/ekaputra07">
-          <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
-          <sub><b>ekaputra07</b></sub>
-        </a>
-    </td>
-  </tr>
-</table>
+Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny)
 
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
+| | User | Donation |
+| :--- | :--- | :--- |
+![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt) | ☕ x 5
+![](https://avatars.githubusercontent.com/u/1094221?s=25 ) | [@ekaputra07](https://github.com/ekaputra07) | ☕ x 5
+![](https://avatars.githubusercontent.com/u/635852?s=25 ) | [@bihe](https://github.com/bihe) | ☕ x 3
+![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | @justdave | ☕ x 3
+![](https://avatars.githubusercontent.com/u/11155743?s=25 ) | [@koddr](https://github.com/koddr) | ☕ x 1
+![](https://avatars.githubusercontent.com/u/5638101?s=25 ) | [@raymayemir](https://github.com/raymayemir) | ☕ x 1
+![](https://avatars.githubusercontent.com/u/619996?s=25 ) | [@melkorm](https://github.com/melkorm) | ☕ x 1
+![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt) | ☕ x 1
+![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy) | ☕ x 1
 
 ## ‎‍💻 Code Contributors
 
@@ -587,4 +523,8 @@ Falls du **danke** sagen möchtest und/oder aktiv die Entwicklung von `fiber` f�
 
 ## ⚠️ License
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Fiber Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International). 
+
+**Third-party library licenses**
+- [FastHTTP - MIT](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+- [Schema - BSD-3-Clause](https://github.com/gorilla/schema/blob/master/LICENSE)
