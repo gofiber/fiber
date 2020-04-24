@@ -508,10 +508,10 @@ If you want to say **thank you** and/or support the active development of `Fiber
 
 ## ☕ Supporters
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to help the project, you can [☕ buy a coffee here](https://www.buymeacoffee.com/fenny)
+Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can [☕ buy a coffee here](buymeacoff.ee/fenny)
 
 | | User | Donation |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt) | ☕ x 5
 ![](https://avatars.githubusercontent.com/u/1094221?s=25 ) | [@ekaputra07](https://github.com/ekaputra07) | ☕ x 5
 ![](https://avatars.githubusercontent.com/u/635852?s=25 ) | [@bihe](https://github.com/bihe) | ☕ x 3
