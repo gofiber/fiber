@@ -527,6 +527,6 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 
 Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
 
-**Third party libraries licenses**
+**Third-party library licenses**
 - [FastHTTP - MIT](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 - [Schema - BSD-3-Clause](https://github.com/gorilla/schema/blob/master/LICENSE)
