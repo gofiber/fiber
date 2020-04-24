@@ -508,8 +508,7 @@ If you want to say **thank you** and/or support the active development of `Fiber
 
 ## ☕ Supporters
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. <a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" style="height: 25px !important;" ></a>
-
+Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting.
 
 | | User | Donation |
 | --- | --- | --- |
@@ -522,6 +521,10 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 ![](https://avatars.githubusercontent.com/u/619996?s=25 ) | [@melkorm](https://github.com/melkorm) | ☕ x 1
 ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt) | ☕ x 1
 ![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy) | ☕ x 1
+
+<a href="https://www.buymeacoffee.com/fenny" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" style="height: 51px !important;width: 217px !important;" ></a>
+
+
 
 ## ‎‍💻 Code Contributors
 
