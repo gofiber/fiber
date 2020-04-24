@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"bytes"
-
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -252,6 +251,14 @@ func (ctx *Ctx) Body(key ...string) string {
 		return getString(ctx.Fasthttp.Request.PostArgs().Peek(key[0]))
 	}
 	return ""
+}
+
+// Validate for structs and individual fields based on tags.
+func (ctx *Ctx) Validate(i interface{}) error {
+	if ctx.app.Validator == nil {
+		return fmt.Errorf("validator not registered")
+	}
+	return ctx.app.Validator.Validate(i)
 }
 
 // BodyParser binds the request body to a struct.

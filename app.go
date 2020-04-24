@@ -24,16 +24,22 @@ import (
 )
 
 // Version of current package
-const Version = "1.9.2"
+const Version = "1.9.3"
 
 // Map is a shortcut for map[string]interface{}
 type Map map[string]interface{}
 
+// Validator is the interface that wraps the Validate function.
+type Validator interface {
+	Validate(i interface{}) error
+}
+
 // App denotes the Fiber application.
 type App struct {
-	server   *fasthttp.Server // FastHTTP server
-	routes   []*Route         // Route stack
-	Settings *Settings        // Fiber settings
+	server    *fasthttp.Server // FastHTTP server
+	routes    []*Route         // Route stack
+	Settings  *Settings        // Fiber settings
+	Validator Validator        // Validator
 }
 
 // Settings holds is a struct holding the server settings

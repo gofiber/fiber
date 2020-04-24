@@ -18,6 +18,13 @@ import (
 	"time"
 )
 
+type validator struct {
+}
+
+func (v *validator) Validate(interface{}) error {
+	return nil
+}
+
 func Test_Accepts(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
@@ -151,6 +158,33 @@ func Test_Body(t *testing.T) {
 	}
 	if resp.StatusCode != 200 {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+}
+func Test_Validate(t *testing.T) {
+	app := New()
+	app.Validator = &validator{}
+
+	type Demo struct {
+		Name string `json:"name" xml:"name" form:"name" query:"name"`
+	}
+	app.Post("/test", func(ctx *Ctx) {
+		d := new(Demo)
+		if err := ctx.BodyParser(d); err != nil {
+			t.Fatalf(`%s: BodyParser %v`, t.Name(), err)
+		}
+
+		if err := ctx.Validate(d); err != nil {
+			t.Fatalf(`%s: Validate %v`, t.Name(), err)
+		}
+	})
+
+	data := []byte(`{"name":"john"}`)
+	req := httptest.NewRequest("POST", "/test", bytes.NewBuffer(data))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Length", strconv.Itoa(len(data)))
+
+	if _, err := app.Test(req); err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 }
 func Test_BodyParser(t *testing.T) {
