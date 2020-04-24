@@ -768,7 +768,7 @@ func (ctx *Ctx) Set(key string, val string) {
 	ctx.Fasthttp.Response.Header.Set(key, val)
 }
 
-// Subdomains returns a string slive of subdomains in the domain name of the request.
+// Subdomains returns a string slice of subdomains in the domain name of the request.
 // The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
 func (ctx *Ctx) Subdomains(offset ...int) []string {
 	o := 2
