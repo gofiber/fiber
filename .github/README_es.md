@@ -49,8 +49,8 @@
   <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
   </a>
-  <a href="#">
-    <img src="https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+    <img src="https://goreportcard.com/badge/github.com/gofiber/fiber?style=flat-square">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
     <img src="https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square">
@@ -133,7 +133,7 @@ A continuación se enumeran algunos de los ejemplos comunes. Si desea ver más e
 
 ### Routing
 
-📖 https://docs.gofiber.io/#basic-routing  
+📖 [Routing](https://docs.gofiber.io/#basic-routing)  
 
 
 ```go
@@ -164,7 +164,7 @@ func main() {
 
 ### Serve static files
 
-📖 https://docs.gofiber.io/application#static  
+📖 [Static](https://docs.gofiber.io/application#static)  
 
 ```go
 func main() {
@@ -187,8 +187,8 @@ func main() {
 
 ### Middleware & Next
 
-📖 https://docs.gofiber.io/routing#middleware  
-📖 https://docs.gofiber.io/context#next  
+📖 [Middleware](https://docs.gofiber.io/routing#middleware)  
+📖 [Next](https://docs.gofiber.io/context#next)  
 
 ```go
 func main() {
@@ -221,9 +221,9 @@ func main() {
 
 ### Template engines
 
-📖 https://docs.gofiber.io/application#settings  
-📖 https://docs.gofiber.io/context#render  
-📖 https://docs.gofiber.io/middleware#template  
+📖 [Settings](https://docs.gofiber.io/application#settings)  
+📖 [Render](https://docs.gofiber.io/context#render)  
+📖 [Template](https://docs.gofiber.io/middleware#template)  
 
 Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
 
@@ -266,7 +266,7 @@ func main() {
 
 ### Grouping routes into chains
 
-📖 https://docs.gofiber.io/application#group  
+📖 [Group](https://docs.gofiber.io/application#group)  
 
 ```go
 func main() {
@@ -291,7 +291,7 @@ func main() {
 
 ### Middleware logger
 
-📖 https://docs.gofiber.io/middleware#logger  
+📖 [Logger](https://docs.gofiber.io/middleware#logger)  
 
 ```go
 import (
@@ -317,7 +317,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 https://docs.gofiber.io/middleware#cors  
+📖 [CORS](https://docs.gofiber.io/middleware#cors)  
 
 ```go
 import (
@@ -343,7 +343,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Custom 404 response
 
-📖 https://docs.gofiber.io/application#http-methods  
+📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)  
 
 ```go
 func main() {
@@ -371,7 +371,7 @@ func main() {
 
 ### JSON Response
 
-📖 https://docs.gofiber.io/context#json  
+📖 [JSON](https://docs.gofiber.io/context#json)  
 
 ```go
 type User struct {
@@ -401,7 +401,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 https://docs.gofiber.io/middleware#websocket  
+📖 [Websocket](https://docs.gofiber.io/middleware#websocket)  
 
 ```go
 import (
@@ -435,7 +435,7 @@ func main() {
 
 ### Recover middleware
 
-📖 https://docs.gofiber.io/middleware#recover  
+📖 [Recover](https://docs.gofiber.io/middleware#recover)  
 
 ```go
 import (
