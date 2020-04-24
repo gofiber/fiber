@@ -248,6 +248,7 @@ func (ctx *Ctx) Body(key ...string) string {
 	}
 	// Return post value by key
 	if len(key) > 0 {
+		fmt.Println("DEPRECATED: c.Body(\"" + key[0] + "\") is deprecated, please use c.FormValue(\"" + key[0] + "\") instead.")
 		return getString(ctx.Fasthttp.Request.PostArgs().Peek(key[0]))
 	}
 	return ""
@@ -283,7 +284,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 		}
 		return schemaDecoderForm.Decode(out, data.Value)
 	}
-	// query Params
+	// query params
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
 		data := make(map[string][]string)
 		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
@@ -342,6 +343,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 // Cookies is used for getting a cookie value by key
 func (ctx *Ctx) Cookies(key ...string) (value string) {
 	if len(key) == 0 {
+		fmt.Println("DEPRECATED: c.Cookies() without a key is deprecated, please use c.Get(\"Cookies\") to get the cookie header instead.")
 		return ctx.Get(HeaderCookie)
 	}
 	return getString(ctx.Fasthttp.Request.Header.Cookie(key[0]))
