@@ -39,6 +39,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_id.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/id.svg">
   </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_he.md">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/il.svg">
+  </a>
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
@@ -118,7 +121,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 - [Template engines](https://docs.gofiber.io/middleware#template)
 - [WebSocket support](https://docs.gofiber.io/middleware#websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Translated in 10 other languages
+- Translated in 12 other languages
 - And much more, [explore Fiber](https://docs.gofiber.io/)
 
 ## 💡 Philosophy
@@ -510,17 +513,17 @@ If you want to say **thank you** and/or support the active development of `Fiber
 
 Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny)
 
-| | User | Donation |
-| :--- | :--- | :--- |
-![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt) | ☕ x 5
-![](https://avatars.githubusercontent.com/u/1094221?s=25 ) | [@ekaputra07](https://github.com/ekaputra07) | ☕ x 5
-![](https://avatars.githubusercontent.com/u/635852?s=25 ) | [@bihe](https://github.com/bihe) | ☕ x 3
-![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | @justdave | ☕ x 3
-![](https://avatars.githubusercontent.com/u/11155743?s=25 ) | [@koddr](https://github.com/koddr) | ☕ x 1
-![](https://avatars.githubusercontent.com/u/5638101?s=25 ) | [@raymayemir](https://github.com/raymayemir) | ☕ x 1
-![](https://avatars.githubusercontent.com/u/619996?s=25 ) | [@melkorm](https://github.com/melkorm) | ☕ x 1
-![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt) | ☕ x 1
-![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy) | ☕ x 1
+|                                                             | User                                            | Donation |
+| :---------------------------------------------------------- | :---------------------------------------------- | :------- |
+| ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt)  | ☕ x 5    |
+| ![](https://avatars.githubusercontent.com/u/1094221?s=25 )  | [@ekaputra07](https://github.com/ekaputra07)    | ☕ x 5    |
+| ![](https://avatars.githubusercontent.com/u/635852?s=25 )   | [@bihe](https://github.com/bihe)                | ☕ x 3    |
+| ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | @justdave                                       | ☕ x 3    |
+| ![](https://avatars.githubusercontent.com/u/11155743?s=25 ) | [@koddr](https://github.com/koddr)              | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/5638101?s=25 )  | [@raymayemir](https://github.com/raymayemir)    | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/619996?s=25 )   | [@melkorm](https://github.com/melkorm)          | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt) | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy)            | ☕ x 1    |
 
 ## ‎‍💻 Code Contributors
 
