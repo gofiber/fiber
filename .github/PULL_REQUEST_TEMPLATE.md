@@ -11,14 +11,13 @@ Wrap the body at 72 characters
 Use the body to explain what and why vs. how
 ```
 
-🔥 Feature, 🧹 Refactor, 🩹 Fix
+<!-- 🔥 Feature, 🧹 Refactor, 🩹 Fix -->
 
-e.g
+### e.g
 > title
-> ```
-🔥 Feat: Add context
-```
+> 🔥 Feat: Add context
+
+
 > description
-> ```
-Added a new context...
-```
+> Added a new context...
+
