@@ -14,10 +14,10 @@ Use the body to explain what and why vs. how
 <!-- 🔥 Feature, 🧹 Refactor, 🩹 Fix -->
 
 ### e.g
-> title
+title
 > 🔥 Feat: Add context
 
 
-> description
+description
 > Added a new context...
 
