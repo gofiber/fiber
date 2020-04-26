@@ -716,16 +716,7 @@ func (ctx *Ctx) Send(bodies ...interface{}) {
 	if len(bodies) > 0 {
 		ctx.Fasthttp.Response.SetBodyString("")
 	}
-	for i := range bodies {
-		switch body := bodies[i].(type) {
-		case string:
-			ctx.Fasthttp.Response.AppendBodyString(body)
-		case []byte:
-			ctx.Fasthttp.Response.AppendBodyString(getString(body))
-		default:
-			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
-		}
-	}
+	ctx.Write(bodies)
 }
 
 // SendBytes sets the HTTP response body for []byte types
