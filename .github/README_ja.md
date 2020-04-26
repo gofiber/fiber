@@ -64,6 +64,9 @@
   <a href="https://t.me/gofiber">
     <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
   </a>
+  <a href="https://crowdin.com/project/gofiber">
+    <img src="https://badges.crowdin.net/gofiber/localized.svg?style=flat-square">
+  </a>
 </p>
 <p align="center">
 <strong>FIber</strong>は、<a href="https://github.com/expressjs/express">Express</a>に触発された<strong>Webフレームワーク</strong>です。<a href="https://golang.org/doc/">Go</a><strong> 最速</strong>のHTTPエンジンである<a href="https://github.com/valyala/fasthttp">Fasthttp</a>で作られています。<strong>ゼロメモリアロケーション</strong>と<strong>パフォーマンス</strong>を念頭に置いて設計されており、<strong>迅速</strong>な開発をサポートします。
@@ -495,6 +498,7 @@ For _easier_ and _more clear_ work, we've put [middleware](https://docs.gofiber.
 - [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) — _01 Apr 2020_
 - [Creating Fast APIs In Go Using Fiber](https://dev.to/jozsefsallai/creating-fast-apis-in-go-using-fiber-59m9) — _07 Apr 2020_
 - [Building a Basic REST API in Go using Fiber](https://tutorialedge.net/golang/basic-rest-api-go-fiber/) - _23 Apr 2020_
+- [📺 Building a REST API using GORM and Fiber](https://youtu.be/Iq2qT0fRhAA) - _25 Apr 2020_
 
 ## 👍 貢献する
 
