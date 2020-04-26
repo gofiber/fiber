@@ -64,7 +64,8 @@
   <a href="https://t.me/gofiber">
     <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
   </a>
-  [![](https://badges.crowdin.net/gofiber/localized.svg?style=flat-square)](https://crowdin.com/project/gofiber)
+
+  [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
 </p>
 <p align="center">
 <strong>Fiber</strong> ist ein von <a href="https://github.com/expressjs/express">Expressjs</a> inspiriertes <strong>Web-Framework</strong>, aufgebaut auf <a href="https://github.com/valyala/fasthttp">Fasthttp</a> - die <strong>schnellste</strong> HTTP engine für <a href="https://golang.org/doc/">Go</a>. Kreiert um Dinge zu <strong>vereinfachen</strong>, für <strong>schnelle</strong> Entwicklung mit <strong>keinen Speicherzuweisungen</strong> und <strong>Performance</strong> im Hinterkopf.
