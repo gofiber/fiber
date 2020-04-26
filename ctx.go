@@ -716,7 +716,7 @@ func (ctx *Ctx) Send(bodies ...interface{}) {
 	if len(bodies) > 0 {
 		ctx.Fasthttp.Response.SetBodyString("")
 	}
-	ctx.Write(bodies)
+	ctx.Write(bodies...)
 }
 
 // SendBytes sets the HTTP response body for []byte types
