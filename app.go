@@ -378,7 +378,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	// Print listening message
 	if !isChild() {
 		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
-		fmt.Printf("Started listening on %s\n", ln.Addr().String())
+		fmt.Printf("Started listening on %s\n", addr)
 	}
 	return app.server.Serve(ln)
 }
