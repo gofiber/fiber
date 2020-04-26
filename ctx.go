@@ -603,7 +603,7 @@ func (ctx *Ctx) Query(key string) (value string) {
 
 // Range returns a struct containing the type and a slice of ranges.
 func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
-	rangeStr := string(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
+	rangeStr := getString(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
 		return rangeData, fmt.Errorf("malformed range header string")
 	}
