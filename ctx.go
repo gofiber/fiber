@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"bytes"
-
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -36,7 +35,7 @@ type Ctx struct {
 	path     string               // HTTP path
 	values   []string             // Route parameter values
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	err      error                // Contains error if catched
+	err      error                // Contains error if caught
 }
 
 // Range struct
