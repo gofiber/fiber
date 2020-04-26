@@ -64,6 +64,9 @@
   <a href="https://t.me/gofiber">
     <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
   </a>
+  <a href="https://crowdin.com/project/gofiber">
+    <img src="https://badges.crowdin.net/gofiber/localized.svg?style=flat-square">
+  </a>
 </p>
 <p align="center">
   <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://golang.org/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
