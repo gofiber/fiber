@@ -161,6 +161,7 @@ var statusMessages = map[int]string{
 	100: "Continue",
 	101: "Switching Protocols",
 	102: "Processing",
+	103: "Early Hints",
 	200: "OK",
 	201: "Created",
 	202: "Accepted",
@@ -199,6 +200,7 @@ var statusMessages = map[int]string{
 	416: "Requested Range Not Satisfiable",
 	417: "Expectation Failed",
 	418: "I'm a teapot",
+	421: "Misdirected Request",
 	422: "Unprocessable Entity",
 	423: "Locked",
 	424: "Failed Dependency",
@@ -635,6 +637,7 @@ const (
 	StatusContinue           = 100 // RFC 7231, 6.2.1
 	StatusSwitchingProtocols = 101 // RFC 7231, 6.2.2
 	StatusProcessing         = 102 // RFC 2518, 10.1
+	StatusEarlyHints         = 103 // RFC 8297
 
 	StatusOK                   = 200 // RFC 7231, 6.3.1
 	StatusCreated              = 201 // RFC 7231, 6.3.2
@@ -676,6 +679,7 @@ const (
 	StatusRequestedRangeNotSatisfiable = 416 // RFC 7233, 4.4
 	StatusExpectationFailed            = 417 // RFC 7231, 6.5.14
 	StatusTeapot                       = 418 // RFC 7168, 2.3.3
+	StatusMisdirectedRequest           = 421 // RFC 7540, 9.1.2
 	StatusUnprocessableEntity          = 422 // RFC 4918, 11.2
 	StatusLocked                       = 423 // RFC 4918, 11.3
 	StatusFailedDependency             = 424 // RFC 4918, 11.4
