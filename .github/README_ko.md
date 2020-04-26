@@ -64,9 +64,6 @@
   <a href="https://t.me/gofiber">
     <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
   </a>
-  <a href="https://crowdin.com/project/gofiber">
-    <img src="https://badges.crowdin.net/gofiber/localized.svg?style=flat-square">
-  </a>
 </p>
 <p align="center">
   <b>Fiber</b>는 <a href="https://github.com/expressjs/express">Express</a>에서 영감을 받고, <a href="https://golang.org/doc/">Go</a>를 위한 <b>가장 빠른</b> HTTP 엔진인 <a ref="https://github.com/valyala/fasthttp">Fasthttp</a>를 토대로 만들어진 <b>웹 프레임워크</b> 입니다. <b>비 메모리 할당</b>과 <b>성능</b>을 고려한 <b>빠른</b> 개발을 위해 <b>손쉽게</b> 사용되도록 설계되었습니다.
@@ -507,7 +504,7 @@ For _easier_ and _more clear_ work, we've put [middleware](https://docs.gofiber.
 1. 프로젝트에 [GitHub Star](https://github.com/gofiber/fiber/stargazers)를 추가하세요.
 2. [트위터에서](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) 프로젝트에 대해 트윗하세요.
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) 또는 개인 블로그에 리뷰 또는 튜토리얼을 작성하세요.
-4. 이 `README`를 다른 언어로 번역하는 것을 도와주세요.
+4. Help us to translate our API Documentation via [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
 5. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
 
 ## ☕ Supporters

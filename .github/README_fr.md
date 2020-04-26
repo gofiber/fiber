@@ -64,9 +64,6 @@
   <a href="https://t.me/gofiber">
     <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
   </a>
-  <a href="https://crowdin.com/project/gofiber">
-    <img src="https://badges.crowdin.net/gofiber/localized.svg?style=flat-square">
-  </a>
 </p>
 <p align="center">
   <b>Fiber</b> est un framework web  inspiré d' <a href="https://github.com/expressjs/express">Express</a>. Il se base sur <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, l'implémentation HTTP de <a href="https://golang.org/doc/">Go</a> <b>la plus rapide</b>. Conçu pour <b>faciliter</b> les choses pour des développements <b>rapides</b>, Fiber garde à l'esprit <b>l'absence d'allocations mémoires</b>, ainsi que les <b>performances</b>.
@@ -503,7 +500,7 @@ Si vous voulez nous remercier et/ou soutenir le développement actif de `Fiber`:
 1. Ajoutez une [GitHub Star](https://github.com/gofiber/fiber/stargazers) à ce projet.
 2. Twittez à propos de ce projet [sur votre Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Ecrivez un article (review, tutorial) sur [Medium](https://medium.com/), [Dev.to](https://dev.to/), ou encore un blog personnel.
-4. Aidez nous à traduire ce `README` dans d'autres langages.
+4. Help us to translate our API Documentation via [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
 5. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
 
 ## ☕ Supporters
