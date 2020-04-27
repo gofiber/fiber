@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -220,7 +221,57 @@ func Test_Cookies(t *testing.T) {
 	}
 }
 func Test_FormFile(t *testing.T) {
-	// TODO
+	app := New()
+	app.Post("/test", func(c *Ctx) {
+		expectFileName := "test"
+		expectFileContent := "hello world"
+		fh, err := c.FormFile("file")
+		if err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
+		if fh.Filename != expectFileName {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expectFileName, fh.Filename)
+		}
+		f, err := fh.Open()
+		if err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
+		b := new(bytes.Buffer)
+		_, err = io.Copy(b, f)
+		if err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
+		f.Close()
+		if b.String() != expectFileContent {
+			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expectFileContent, b.String())
+		}
+	})
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	ioWriter, err := writer.CreateFormFile("file", "test")
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+
+	_, err = ioWriter.Write([]byte("hello world"))
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	writer.Close()
+
+	req, _ := http.NewRequest("POST", "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
 }
 func Test_FormValue(t *testing.T) {
 	app := New()
