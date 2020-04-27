@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"bytes"
-
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -36,7 +35,7 @@ type Ctx struct {
 	path     string               // HTTP path
 	values   []string             // Route parameter values
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	err      error                // Contains error if catched
+	err      error                // Contains error if caught
 }
 
 // Range struct
@@ -604,7 +603,7 @@ func (ctx *Ctx) Query(key string) (value string) {
 
 // Range returns a struct containing the type and a slice of ranges.
 func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
-	rangeStr := string(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
+	rangeStr := getString(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
 		return rangeData, fmt.Errorf("malformed range header string")
 	}
@@ -717,16 +716,7 @@ func (ctx *Ctx) Send(bodies ...interface{}) {
 	if len(bodies) > 0 {
 		ctx.Fasthttp.Response.SetBodyString("")
 	}
-	for i := range bodies {
-		switch body := bodies[i].(type) {
-		case string:
-			ctx.Fasthttp.Response.AppendBodyString(body)
-		case []byte:
-			ctx.Fasthttp.Response.AppendBodyString(getString(body))
-		default:
-			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
-		}
-	}
+	ctx.Write(bodies...)
 }
 
 // SendBytes sets the HTTP response body for []byte types
