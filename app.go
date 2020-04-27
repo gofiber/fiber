@@ -58,7 +58,7 @@ type Settings struct {
 	DisableDefaultDate bool // default: false
 	// When set to true, causes the default Content-Type header to be excluded from the Response.
 	DisableDefaultContentType bool // default: false
-	// When set to true, it will not print out the fiber assci and "listening" on message
+	// When set to true, it will not print out the fiber ASCII and "listening" on message
 	DisableStartupMessage bool
 	// Folder containing template files
 	TemplateFolder string // default: ""
