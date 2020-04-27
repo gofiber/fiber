@@ -58,6 +58,8 @@ type Settings struct {
 	DisableDefaultDate bool // default: false
 	// When set to true, causes the default Content-Type header to be excluded from the Response.
 	DisableDefaultContentType bool // default: false
+	// When set to true, it will not print out the fiber ASCII and "listening" on message
+	DisableStartupMessage bool
 	// Folder containing template files
 	TemplateFolder string // default: ""
 	// Template engine: html, amber, handlebars , mustache or pug
@@ -339,8 +341,10 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
 	// Print listening message
-	fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
-	fmt.Printf("Started listening on %s\n", ln.Addr().String())
+	if !app.Settings.DisableStartupMessage {
+		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
+		fmt.Printf("Started listening on %s\n", ln.Addr().String())
+	}
 	return app.server.Serve(ln)
 }
 
@@ -378,7 +382,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
 	// Print listening message
-	if !isChild() {
+	if !app.Settings.DisableStartupMessage && !isChild() {
 		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
 		fmt.Printf("Started listening on %s\n", ln.Addr().String())
 	}
@@ -400,14 +404,11 @@ func (app *App) Shutdown() error {
 }
 
 // Test is used for internal debugging by passing a *http.Request
-// Timeout is optional and defaults to 200ms, -1 will disable it completely.
+// Timeout is optional and defaults to 1s, -1 will disable it completely.
 func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, error) {
-	timeout := 200
+	timeout := 1000 // 1 second default
 	if len(msTimeout) > 0 {
 		timeout = msTimeout[0]
-	}
-	if timeout < 0 {
-		timeout = 60000 // 1 minute
 	}
 	// Dump raw http request
 	dump, err := httputil.DumpRequest(request, true)
@@ -428,13 +429,22 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		channel <- app.server.ServeConn(conn)
 	}()
 	// Wait for callback
-	select {
-	case err := <-channel:
-		if err != nil {
-			return nil, err
+	if timeout >= 0 {
+		// With timeout
+		select {
+		case err = <-channel:
+		case <-time.After(time.Duration(timeout) * time.Millisecond):
+			return nil, fmt.Errorf("Timeout error %vms", timeout)
 		}
-	case <-time.After(time.Duration(timeout) * time.Millisecond):
-		return nil, fmt.Errorf("Timeout error")
+	} else {
+		// Without timeout
+		select {
+		case err = <-channel:
+		}
+	}
+	// Check for errors
+	if err != nil {
+		return nil, err
 	}
 	// Read response
 	buffer := bufio.NewReader(&conn.w)
