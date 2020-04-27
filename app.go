@@ -82,7 +82,9 @@ type Group struct {
 // You can pass optional settings when creating a new instance.
 func New(settings ...*Settings) *App {
 	schemaDecoderForm.SetAliasTag("form")
+	schemaDecoderForm.IgnoreUnknownKeys(true)
 	schemaDecoderQuery.SetAliasTag("query")
+	schemaDecoderQuery.IgnoreUnknownKeys(true)
 	// Create app
 	app := new(App)
 	// Create settings
