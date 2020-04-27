@@ -1,12 +1,28 @@
 # Contributing
 
-When contributing to this repository, please first discuss the change you wish to make via issue, [Gitter](https://gitter.im/gofiber/community) or any other method with the owners of this repository before making a change.
+When contributing to this repository, please first discuss the change you wish to make via our [Telegram](https://t.me/gofiber) group, by creating an [issue](https://github.com/gofiber/fiber/issues) or any other method with the owners of this repository before making a change.
 
-Please note: we have a code of conduct, please follow it in all your interactions with the `Fiber` project.
+Please note: we have a [code of conduct](https://github.com/gofiber/fiber/blob/master/.github/CODE_OF_CONDUCT.md), please follow it in all your interactions with the `Fiber` project.
 
-## Pull Request Process
+## Pull Requests or Comits
+Titles always we must use prefix according to below:
 
-1. Ensure any install or build dependencies are removed before the end of the layer when doing a build.
-2. Update the README.md with details of changes to the interface, this includes new environment variables, exposed ports, useful file locations and container parameters.
-3. Increase the version numbers in any examples files and the README.md to the new version that this Pull Request would represent. The versioning scheme we use is [SemVer](http://semver.org/).
-4. You may merge the Pull Request in once you have the sign-off of two other developers or if you do not have permission to do that, you may request the second reviewer to merge it for you.
+> 🔥 Feature, ♻️ Refactor, 🩹 Fix, 🚨 Test, 📚 Doc, 🎨 Style
+- 🔥 Feature: Add flow to add person
+- ♻️ Refactor: Rename file X to Y
+- 🩹 Fix: Improve flow
+- 🚨 Test: Validate to add a new person
+- 📚 Doc: Translate to Portuguese middleware redirect
+- 🎨 Style: Respected pattern Golint
+
+All pull request that contains a feature or fix is mandatory to have unit tests. Your PR is only to be merged if you respect this flow.
+
+# 👍 Contribute
+
+If you want to say **thank you** and/or support the active development of `Fiber`:
+
+1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to the project.
+2. Tweet about the project [on your Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
+4. Help us to translate our API Documentation via [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
+5. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).

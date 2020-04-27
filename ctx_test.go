@@ -134,11 +134,6 @@ func Test_Body(t *testing.T) {
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
-		expect = "doe"
-		result = c.Body("john")
-		if result != expect {
-			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
-		}
 	})
 	data := url.Values{}
 	data.Set("john", "doe")
@@ -200,13 +195,8 @@ func Test_BodyParser(t *testing.T) {
 func Test_Cookies(t *testing.T) {
 	app := New()
 	app.Get("/test", func(c *Ctx) {
-		expect := "john=doe"
-		result := c.Cookies()
-		if result != expect {
-			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
-		}
-		expect = "doe"
-		result = c.Cookies("john")
+		expect := "doe"
+		result := c.Cookies("john")
 		if result != expect {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
