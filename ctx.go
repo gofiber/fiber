@@ -287,7 +287,6 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
 		data := make(map[string][]string)
 		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
-			//data[getString(key)] = []string{getString(val)}
 			data[getString(key)] = append(data[getString(key)], getString(val))
 		})
 		return schemaDecoderQuery.Decode(out, data)
