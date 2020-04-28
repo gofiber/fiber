@@ -156,6 +156,34 @@ func (c *testConn) SetDeadline(t time.Time) error      { return nil }
 func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
 
+// Adapted from:
+// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
+func parseTokenList(noneMatchBytes []byte) []string {
+	var (
+		start int
+		end   int
+		list  []string
+	)
+	for i, v := range noneMatchBytes {
+		switch v {
+		case 0x20:
+			if start == end {
+				start = i + 1
+				end = i + 1
+			}
+		case 0x2c:
+			list = append(list, getString(noneMatchBytes[start:end]))
+			start = i + 1
+			end = i + 1
+		default:
+			end = i + 1
+		}
+	}
+
+	list = append(list, getString(noneMatchBytes[start:end]))
+	return list
+}
+
 // HTTP status codes were copied from net/http.
 var statusMessages = map[int]string{
 	100: "Continue",
