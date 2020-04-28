@@ -48,7 +48,8 @@ type Settings struct {
 	ServerHeader string // default: ""
 	// Enables handler values to be immutable even if you return from handler
 	Immutable bool // default: false
-	// Enable or disable ETag header generation
+	// Enable or disable ETag header generation, since both weak and strong etags are generated
+	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
 	// Optional. Default value false
 	ETag bool
 	// Max body size that the server accepts

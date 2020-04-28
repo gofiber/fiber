@@ -18,7 +18,7 @@ import (
 )
 
 // Document elke line gelijk even
-func getETag(ctx *Ctx, body []byte, weak bool) {
+func setETag(ctx *Ctx, body []byte, weak bool) {
 	// Skips ETag if no response body is present
 	if len(body) <= 0 {
 		return
@@ -32,7 +32,7 @@ func getETag(ctx *Ctx, body []byte, weak bool) {
 
 	// Enable weak tag
 	if weak {
-		etag = "W/" + etag
+		etag = "W/" + "\"" + etag + "\""
 	}
 
 	// Check if client's ETag is weak

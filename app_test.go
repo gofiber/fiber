@@ -96,7 +96,7 @@ func Test_Static(t *testing.T) {
 		DisableStartupMessage: true,
 	})
 	grp := app.Group("/v1")
-	grp.Static("/v2", ".travis.yml")
+	grp.Static("/v2", ".github/auth_assign.yml")
 	app.Static("/*", ".github/FUNDING.yml")
 	app.Static("/john", "./.github")
 	req, _ := http.NewRequest("GET", "/john/stale.yml", nil)
