@@ -663,6 +663,14 @@ func Test_SaveFile(t *testing.T) {
 		if err != nil {
 			t.Fatalf(`%s: %s`, t.Name(), err)
 		}
+		bs, err := ioutil.ReadFile(tempFile.Name())
+		if err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
+		expect := "hello world"
+		if string(bs) != expect {
+			t.Fatalf(`Expecting %s, got %s`, expect, string(bs))
+		}
 	})
 
 	body := &bytes.Buffer{}
