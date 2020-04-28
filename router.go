@@ -42,9 +42,14 @@ func (app *App) nextRoute(ctx *Ctx) {
 			ctx.route = route
 			ctx.values = values
 			route.Handler(ctx)
+			// Generate ETag if enabled / found
+			if app.Settings.ETag {
+				setETag(ctx, ctx.Fasthttp.Response.Body(), false)
+			}
 			return
 		}
 	}
+	// Send a 404
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
 		ctx.SendStatus(404)
 	}

@@ -21,7 +21,9 @@ import (
 )
 
 func Test_Accepts(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 	app.Get("/test", func(c *Ctx) {
 		expect := ""
 		result := c.Accepts(expect)
@@ -155,6 +157,11 @@ func Test_BodyParser(t *testing.T) {
 	type Demo struct {
 		Name string `json:"name" xml:"name" form:"name" query:"name"`
 	}
+	type Query struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
 	app.Post("/test", func(c *Ctx) {
 		d := new(Demo)
 		err := c.BodyParser(d)
@@ -162,9 +169,21 @@ func Test_BodyParser(t *testing.T) {
 			t.Fatalf(`%s: BodyParser %v`, t.Name(), err)
 		}
 		if d.Name != "john" {
-			t.Fatalf(`%s: Expect %s got %s`, t.Name(), "john", d)
+			t.Fatalf(`%s: Expect %s got %v`, t.Name(), "john", d)
 		}
 	})
+
+	app.Get("/query", func(c *Ctx) {
+		d := new(Query)
+		err := c.BodyParser(d)
+		if err != nil {
+			t.Fatalf(`%s: BodyParser %v`, t.Name(), err)
+		}
+		if len(d.Hobby) != 2 {
+			t.Fatalf(`%s: Expect length %d got %v`, t.Name(), 2, d)
+		}
+	})
+
 	req := httptest.NewRequest("POST", "/test", bytes.NewBuffer([]byte(`{"name":"john"}`)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Length", strconv.Itoa(len([]byte(`{"name":"john"}`))))
@@ -174,25 +193,12 @@ func Test_BodyParser(t *testing.T) {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 
-	// data := url.Values{}
-	// data.Set("name", "john")
-	// req = httptest.NewRequest("POST", "/test", strings.NewReader(data.Encode()))
-	// req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	// req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
+	req = httptest.NewRequest("GET", "/query?id=1&name=tom&hobby=basketball&hobby=football", nil)
 
-	// _, err = app.Test(req)
-	// if err != nil {
-	// 	t.Fatalf(`%s: %s`, t.Name(), err)
-	// }
-
-	// req = httptest.NewRequest("POST", "/test", bytes.NewBuffer([]byte(`<name>john</name>`)))
-	// req.Header.Set("Content-Type", "application/xml")
-	// req.Header.Set("Content-Length", strconv.Itoa(len([]byte(`<name>john</name>`))))
-
-	// _, err = app.Test(req)
-	// if err != nil {
-	// 	t.Fatalf(`%s: %s`, t.Name(), err)
-	// }
+	_, err = app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
 }
 func Test_Cookies(t *testing.T) {
 	app := New()

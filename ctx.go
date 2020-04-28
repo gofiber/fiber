@@ -409,7 +409,11 @@ func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
 
-// Fresh is not implemented yet, pull requests are welcome!
+// Fresh When the response is still “fresh” in the client’s cache true is returned,
+// otherwise false is returned to indicate that the client cache is now stale
+// and the full response should be sent.
+// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
+// reload request, this module will return false to make handling these requests transparent.
 // https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
 func (ctx *Ctx) Fresh() bool {
 	// fields
@@ -545,7 +549,6 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	ctx.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
 	ctx.Fasthttp.Response.SetBodyString(str)
-
 	return nil
 }
 
