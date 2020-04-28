@@ -143,13 +143,12 @@ func loadHTMLTemplates(folder, extension string, f loadHTMLTemplateFunc) error {
 				return werr
 			}
 
-			path = filepath.Clean(path)
-			content, werr := ioutil.ReadFile(path) // #nosec G304
+			content, werr := ioutil.ReadFile(filepath.Clean(path))
 			if werr != nil {
 				return werr
 			}
 
-			if werr := f(path, content); werr != nil {
+			if werr := f(strings.TrimSuffix(path[len(cleanRootPath)+1:], extension), content); werr != nil {
 				return werr
 			}
 		}

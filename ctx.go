@@ -663,20 +663,20 @@ func (ctx *Ctx) Render(file string, bind interface{}) error {
 	var html string
 	var tmpl *template.Template
 
-	if ctx.app.Settings.TemplateFolder != "" {
-		file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
-	}
-	if ctx.app.Settings.TemplateExtension != "" {
-		file = file + ctx.app.Settings.TemplateExtension
-	}
-	file = filepath.Clean(file)
 	if ctx.app.templates != nil {
 		tmpl = ctx.app.templates.Lookup(file)
 	}
 
 	if tmpl == nil {
-		// #nosec G304
-		if raw, err = ioutil.ReadFile(file); err != nil {
+		filePath := file
+
+		if ctx.app.Settings.TemplateFolder != "" {
+			filePath = filepath.Join(ctx.app.Settings.TemplateFolder, filePath)
+		}
+		if ctx.app.Settings.TemplateExtension != "" {
+			filePath = filePath + ctx.app.Settings.TemplateExtension
+		}
+		if raw, err = ioutil.ReadFile(filepath.Clean(filePath)); err != nil {
 			return err
 		}
 	}
