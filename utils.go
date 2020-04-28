@@ -73,7 +73,8 @@ func getParams(path string) (params []string) {
 	}
 	segments := strings.Split(path, "/")
 	replacer := strings.NewReplacer(":", "", "?", "")
-	for _, s := range segments {
+	for i := range segments {
+		s := segments[i]
 		if s == "" {
 			continue
 		} else if s[0] == ':' {
@@ -89,7 +90,8 @@ func getParams(path string) (params []string) {
 func getRegex(path string) (*regexp.Regexp, error) {
 	pattern := "^"
 	segments := strings.Split(path, "/")
-	for _, s := range segments {
+	for i := range segments {
+		s := segments[i]
 		if s == "" {
 			continue
 		}
@@ -159,8 +161,8 @@ var getBytesImmutable = func(s string) (b []byte) {
 
 // Check if -prefork is in arguments
 func isPrefork() bool {
-	for _, v := range os.Args[1:] {
-		if v == "-prefork" {
+	for i := range os.Args[1:] {
+		if os.Args[1:][i] == "-prefork" {
 			return true
 		}
 	}
@@ -169,8 +171,8 @@ func isPrefork() bool {
 
 // Check if -child is in arguments
 func isChild() bool {
-	for _, v := range os.Args[1:] {
-		if v == "-child" {
+	for i := range os.Args[1:] {
+		if os.Args[1:][i] == "-child" {
 			return true
 		}
 	}
@@ -206,8 +208,8 @@ func parseTokenList(noneMatchBytes []byte) []string {
 		end   int
 		list  []string
 	)
-	for i, v := range noneMatchBytes {
-		switch v {
+	for i := range noneMatchBytes {
+		switch noneMatchBytes[i] {
 		case 0x20:
 			if start == end {
 				start = i + 1
