@@ -24,7 +24,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.9.2"
+const Version = "1.9.3"
 
 // Map is a shortcut for map[string]interface{}
 type Map map[string]interface{}
@@ -48,6 +48,9 @@ type Settings struct {
 	ServerHeader string // default: ""
 	// Enables handler values to be immutable even if you return from handler
 	Immutable bool // default: false
+	// Enable or disable ETag header generation
+	// Optional. Default value false
+	ETag bool
 	// Max body size that the server accepts
 	BodyLimit int // default: 4 * 1024 * 1024
 	// Maximum number of concurrent connections.
@@ -78,6 +81,25 @@ type Settings struct {
 type Group struct {
 	prefix string
 	app    *App
+}
+
+// Static struct
+type Static struct {
+	// Transparently compresses responses if set to true
+	// This works differently than the github.com/gofiber/compression middleware
+	// The server tries minimizing CPU usage by caching compressed files.
+	// It adds ".fiber.gz" suffix to the original file name.
+	// Optional. Default value false
+	Compress bool
+	// Enables byte range requests if set to true.
+	// Optional. Default value false
+	ByteRange bool
+	// Enable directory browsing.
+	// Optional. Default value false.
+	Browse bool
+	// Index file for serving a directory.
+	// Optional. Default value "index.html".
+	Index string
 }
 
 // New creates a new Fiber named instance.
@@ -123,25 +145,6 @@ func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 		prefix: prefix,
 		app:    app,
 	}
-}
-
-// Static struct
-type Static struct {
-	// Transparently compresses responses if set to true
-	// This works differently than the github.com/gofiber/compression middleware
-	// The server tries minimizing CPU usage by caching compressed files.
-	// It adds ".fiber.gz" suffix to the original file name.
-	// Optional. Default value false
-	Compress bool
-	// Enables byte range requests if set to true.
-	// Optional. Default value false
-	ByteRange bool
-	// Enable directory browsing.
-	// Optional. Default value false.
-	Browse bool
-	// Index file for serving a directory.
-	// Optional. Default value "index.html".
-	Index string
 }
 
 // Static registers a new route with path prefix to serve static files from the provided root directory.

@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"fmt"
+	"hash/crc32"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,6 +16,47 @@ import (
 	"time"
 	"unsafe"
 )
+
+// Document elke line gelijk even
+func getETag(ctx *Ctx, body []byte, weak bool) {
+	// Skips ETag if no response body is present
+	if len(body) <= 0 {
+		return
+	}
+	// Get ETag header from request
+	clientEtag := ctx.Get("If-None-Match")
+
+	// Generate ETag for response
+	crc32q := crc32.MakeTable(0xD5828281)
+	etag := fmt.Sprintf("\"%d-%v\"", len(body), crc32.Checksum(body, crc32q))
+
+	// Enable weak tag
+	if weak {
+		etag = "W/" + etag
+	}
+
+	// Check if client's ETag is weak
+	if strings.HasPrefix(clientEtag, "W/") {
+		// Check if server's ETag is weak
+		if clientEtag[2:] == etag || clientEtag[2:] == etag[2:] {
+			// W/1 == 1 || W/1 == W/1
+			ctx.SendStatus(304)
+			ctx.Fasthttp.ResetBody()
+			return
+		}
+		// W/1 != W/2 || W/1 != 2
+		ctx.Set("ETag", etag)
+		return
+	}
+	if strings.Contains(clientEtag, etag) {
+		// 1 == 1
+		ctx.SendStatus(304)
+		ctx.Fasthttp.ResetBody()
+		return
+	}
+	// 1 != 2
+	ctx.Set("ETag", etag)
+}
 
 func groupPaths(prefix, path string) string {
 	if path == "/" {

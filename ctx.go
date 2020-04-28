@@ -491,7 +491,6 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	ctx.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
 	ctx.Fasthttp.Response.SetBodyString(str)
-
 	return nil
 }
 

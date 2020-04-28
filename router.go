@@ -42,9 +42,14 @@ func (app *App) nextRoute(ctx *Ctx) {
 			ctx.route = route
 			ctx.values = values
 			route.Handler(ctx)
+			// Generate ETag if enabled / found
+			if app.Settings.ETag {
+				getETag(ctx, ctx.Fasthttp.Response.Body(), false)
+			}
 			return
 		}
 	}
+	// Send a 404
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
 		ctx.SendStatus(404)
 	}
@@ -261,11 +266,13 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 				}
 				// Serve file
 				fileHandler(c.Fasthttp)
+
 				// End response when file is found
 				if c.Fasthttp.Response.StatusCode() != 404 {
 					return
 				}
 				// Reset response
+				//c.Fasthttp.ResetBody() // Dit is iets anders
 				c.Fasthttp.Response.Reset()
 			}
 			c.Next()

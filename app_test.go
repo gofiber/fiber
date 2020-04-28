@@ -213,7 +213,8 @@ func Test_Listen(t *testing.T) {
 
 func Test_Serve(t *testing.T) {
 	app := New(&Settings{
-		Prefork: true,
+		DisableStartupMessage: true,
+		Prefork:               true,
 	})
 	ln, err := net.Listen("tcp4", ":3004")
 	if err != nil {
