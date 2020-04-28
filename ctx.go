@@ -14,8 +14,10 @@ import (
 	"log"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,6 +64,7 @@ type Cookie struct {
 // Global variables
 var schemaDecoderForm = schema.NewDecoder()
 var schemaDecoderQuery = schema.NewDecoder()
+var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
 // Ctx pool
 var poolCtx = sync.Pool{
@@ -407,8 +410,59 @@ func (ctx *Ctx) FormValue(key string) (value string) {
 }
 
 // Fresh is not implemented yet, pull requests are welcome!
+// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
 func (ctx *Ctx) Fresh() bool {
-	return false
+	// fields
+	var modifiedSince = ctx.Get(HeaderIfModifiedSince)
+	var noneMatch = ctx.Get(HeaderIfNoneMatch)
+
+	// unconditional request
+	if modifiedSince == "" && noneMatch == "" {
+		return false
+	}
+
+	// Always return stale when Cache-Control: no-cache
+	// to support end-to-end reload requests
+	// https://tools.ietf.org/html/rfc2616#section-14.9.4
+	var cacheControl = ctx.Get(HeaderCacheControl)
+	if cacheControl != "" && cacheControlNoCacheRegexp.MatchString(cacheControl) {
+		return false
+	}
+
+	// if-none-match
+	if noneMatch != "" && noneMatch != "*" {
+		var etag = getString(ctx.Fasthttp.Response.Header.Peek(HeaderETag))
+		if etag == "" {
+			return false
+		}
+		var etagStal = true
+		var matches = parseTokenList(getBytes(noneMatch))
+		for _, match := range matches {
+			if match == etag || match == "W/"+etag || "W/"+match == etag {
+				etagStal = false
+				break
+			}
+		}
+		if etagStal {
+			return false
+		}
+
+		if modifiedSince != "" {
+			var lastModified = getString(ctx.Fasthttp.Response.Header.Peek(HeaderLastModified))
+			if lastModified != "" {
+				lastModifiedTime, err := http.ParseTime(lastModified)
+				if err != nil {
+					return false
+				}
+				modifiedSinceTime, err := http.ParseTime(modifiedSince)
+				if err != nil {
+					return false
+				}
+				return lastModifiedTime.Before(modifiedSinceTime)
+			}
+		}
+	}
+	return true
 }
 
 // Get returns the HTTP request header specified by field.
