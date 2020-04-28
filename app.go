@@ -7,13 +7,17 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
+	"errors"
 	"fmt"
+	"html/template"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -31,9 +35,10 @@ type Map map[string]interface{}
 
 // App denotes the Fiber application.
 type App struct {
-	server   *fasthttp.Server // FastHTTP server
-	routes   []*Route         // Route stack
-	Settings *Settings        // Fiber settings
+	server    *fasthttp.Server   // FastHTTP server
+	routes    []*Route           // Route stack
+	templates *template.Template // HTML templates
+	Settings  *Settings          // Fiber settings
 }
 
 // Settings holds is a struct holding the server settings
@@ -110,6 +115,62 @@ func New(settings ...*Settings) *App {
 		}
 	}
 	return app
+}
+
+// loadHTMLTemplateFunc is a func that takes a template path and content, parses it and
+// load it in its cache
+type loadHTMLTemplateFunc func(path string, content []byte) error
+
+// LoadHTMLTemplates asks the template engine to load in cache the HTML templates
+// defined with the settings TemplateFolder and TemplateExtension.
+//
+// This is currently working only for the default html/template engine
+func (app *App) LoadHTMLTemplates() error {
+	if app.Settings.TemplateExtension == "" || app.Settings.TemplateFolder == "" {
+		return errors.New("TemplateExtension and TemplateFolder settings are needed to parse templates")
+	}
+	return loadHTMLTemplates(app.Settings.TemplateFolder, app.Settings.TemplateExtension, app.parseAndLoadDefaultTemplate)
+}
+
+// loadHTMLTemplates walks a folder to find templates with the right extension, and then calls the loadHTMLTemplateFunc
+// with the file path and content
+func loadHTMLTemplates(folder, extension string, f loadHTMLTemplateFunc) error {
+	cleanRootPath := filepath.Clean(folder)
+
+	err := filepath.Walk(cleanRootPath, func(path string, info os.FileInfo, werr error) error {
+		if !info.IsDir() && strings.HasSuffix(path, extension) {
+			if werr != nil {
+				return werr
+			}
+
+			path = filepath.Clean(path)
+			content, werr := ioutil.ReadFile(path) // #nosec G304
+			if werr != nil {
+				return werr
+			}
+
+			if werr := f(path, content); werr != nil {
+				return werr
+			}
+		}
+
+		return nil
+	})
+	return err
+}
+
+// parseAndLoadDefaultTemplate is a loadHTMLTemplateFunc that loads the parsed templates in app.templates
+func (app *App) parseAndLoadDefaultTemplate(path string, content []byte) error {
+	var t *template.Template
+	if app.templates == nil {
+		app.templates = template.New(path)
+		t = app.templates
+	} else {
+		t = app.templates.New(path)
+	}
+
+	_, err := t.Parse(getString(content))
+	return err
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.

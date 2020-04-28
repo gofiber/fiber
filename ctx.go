@@ -661,6 +661,7 @@ func (ctx *Ctx) Render(file string, bind interface{}) error {
 	var err error
 	var raw []byte
 	var html string
+	var tmpl *template.Template
 
 	if ctx.app.Settings.TemplateFolder != "" {
 		file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
@@ -668,9 +669,18 @@ func (ctx *Ctx) Render(file string, bind interface{}) error {
 	if ctx.app.Settings.TemplateExtension != "" {
 		file = file + ctx.app.Settings.TemplateExtension
 	}
-	if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
-		return err
+	file = filepath.Clean(file)
+	if ctx.app.templates != nil {
+		tmpl = ctx.app.templates.Lookup(file)
 	}
+
+	if tmpl == nil {
+		// #nosec G304
+		if raw, err = ioutil.ReadFile(file); err != nil {
+			return err
+		}
+	}
+
 	if ctx.app.Settings.TemplateEngine != nil {
 		// Custom template engine
 		// https://github.com/gofiber/template
@@ -679,12 +689,12 @@ func (ctx *Ctx) Render(file string, bind interface{}) error {
 		}
 	} else {
 		// Default template engine
-		// https://golang.org/pkg/text/template/
+		// https://golang.org/pkg/html/template/
 		var buf bytes.Buffer
-		var tmpl *template.Template
-
-		if tmpl, err = template.New("").Parse(getString(raw)); err != nil {
-			return err
+		if tmpl == nil {
+			if tmpl, err = template.New(file).Parse(getString(raw)); err != nil {
+				return err
+			}
 		}
 		if err = tmpl.Execute(&buf, bind); err != nil {
 			return err
