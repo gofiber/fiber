@@ -33,7 +33,9 @@ func is200(t *testing.T, app *App, url string, m ...string) {
 	}
 }
 func Test_Methods(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 
 	app.Connect("/:john?/:doe?", handler)
 	is200(t, app, "/", "CONNECT")
@@ -83,12 +85,16 @@ func Test_New(t *testing.T) {
 }
 
 func Test_Shutdown(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 	_ = app.Shutdown()
 }
 
 func Test_Static(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 	grp := app.Group("/v1")
 	grp.Static("/v2", ".travis.yml")
 	app.Static("/*", ".github/FUNDING.yml")
@@ -140,7 +146,9 @@ func Test_Static(t *testing.T) {
 }
 
 func Test_Group(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 
 	grp := app.Group("/test")
 	grp.Get("/", handler)
@@ -188,7 +196,9 @@ func Test_Group(t *testing.T) {
 }
 
 func Test_Listen(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		_ = app.Shutdown()
