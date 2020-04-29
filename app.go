@@ -490,8 +490,8 @@ func (app *App) prefork(address string) (ln net.Listener, err error) {
 			}
 		}
 
-		for _, child := range childs {
-			if err := child.Wait(); err != nil {
+		for k := range childs {
+			if err := childs[k].Wait(); err != nil {
 				return ln, err
 			}
 		}

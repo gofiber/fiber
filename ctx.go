@@ -103,26 +103,26 @@ func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, value := range offers {
-		mimetype := getMIME(value)
+	for i := range offers {
+		mimetype := getMIME(offers[i])
 		// if mimetype != "" {
 		// 	mimetype = strings.Split(mimetype, ";")[0]
 		// } else {
 		// 	mimetype = offer
 		// }
-		for _, spec := range specs {
-			spec = strings.TrimSpace(spec)
+		for k := range specs {
+			spec := strings.TrimSpace(specs[k])
 			if strings.HasPrefix(spec, "*/*") {
-				return value
+				return offers[i]
 			}
 
 			if strings.HasPrefix(spec, mimetype) {
-				return value
+				return offers[i]
 			}
 
 			if strings.Contains(spec, "/*") {
 				if strings.HasPrefix(spec, strings.Split(mimetype, "/")[0]) {
-					return value
+					return offers[i]
 				}
 			}
 		}
@@ -142,15 +142,14 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) (offer string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, value := range offers {
-		for _, spec := range specs {
-
-			spec = strings.TrimSpace(spec)
+	for i := range offers {
+		for k := range specs {
+			spec := strings.TrimSpace(specs[k])
 			if strings.HasPrefix(spec, "*") {
-				return value
+				return offers[i]
 			}
-			if strings.HasPrefix(spec, value) {
-				return value
+			if strings.HasPrefix(spec, offers[i]) {
+				return offers[i]
 			}
 		}
 	}
@@ -169,14 +168,14 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) (offer string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, value := range offers {
-		for _, spec := range specs {
-			spec = strings.TrimSpace(spec)
+	for i := range offers {
+		for k := range specs {
+			spec := strings.TrimSpace(specs[k])
 			if strings.HasPrefix(spec, "*") {
-				return value
+				return offers[i]
 			}
-			if strings.HasPrefix(spec, value) {
-				return value
+			if strings.HasPrefix(spec, offers[i]) {
+				return offers[i]
 			}
 		}
 	}
@@ -194,14 +193,14 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) (offer string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, value := range offers {
-		for _, spec := range specs {
-			spec = strings.TrimSpace(spec)
+	for i := range offers {
+		for k := range specs {
+			spec := strings.TrimSpace(specs[k])
 			if strings.HasPrefix(spec, "*") {
-				return value
+				return offers[i]
 			}
-			if strings.HasPrefix(spec, value) {
-				return value
+			if strings.HasPrefix(spec, offers[i]) {
+				return offers[i]
 			}
 		}
 	}
@@ -441,7 +440,8 @@ func (ctx *Ctx) Fresh() bool {
 		}
 		var etagStal = true
 		var matches = parseTokenList(getBytes(noneMatch))
-		for _, match := range matches {
+		for i := range matches {
+			match := matches[i]
 			if match == etag || match == "W/"+etag || "W/"+match == etag {
 				etagStal = false
 				break
@@ -506,8 +506,8 @@ func (ctx *Ctx) Is(extension string) (match bool) {
 
 	exts, _ := mime.ExtensionsByType(ctx.Get(HeaderContentType))
 	if len(exts) > 0 {
-		for _, item := range exts {
-			if item == extension {
+		for i := range exts {
+			if exts[i] == extension {
 				return true
 			}
 		}
@@ -555,7 +555,8 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 // Links joins the links followed by the property to populate the response’s Link HTTP header field.
 func (ctx *Ctx) Links(link ...string) {
 	h := ""
-	for i, l := range link {
+	for i := range link {
+		l := link[i]
 		if i%2 == 0 {
 			h += "<" + l + ">"
 		} else {
