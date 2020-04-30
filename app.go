@@ -527,10 +527,10 @@ func (app *App) newServer() *fasthttp.Server {
 		LogAllErrors:          false,
 		ErrorHandler: func(ctx *fasthttp.RequestCtx, err error) {
 			if err.Error() == "body size exceeds the given limit" {
-				ctx.Response.SetStatusCode(413)
+				ctx.Response.SetStatusCode(StatusRequestEntityTooLarge)
 				ctx.Response.SetBodyString("Request Entity Too Large")
 			} else {
-				ctx.Response.SetStatusCode(400)
+				ctx.Response.SetStatusCode(StatusBadRequest)
 				ctx.Response.SetBodyString("Bad Request")
 			}
 		},
