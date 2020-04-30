@@ -266,8 +266,10 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 				}
 				// Serve file
 				fileHandler(c.Fasthttp)
-				// End response when file is found
-				if c.Fasthttp.Response.StatusCode() != 404 {
+
+				// Finish request if found and not forbidden
+				status := c.Fasthttp.Response.StatusCode()
+				if status != 404 && status != 403 {
 					return
 				}
 				// Reset response
