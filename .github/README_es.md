@@ -69,7 +69,7 @@
   </a>
 </p>
 <p align="center">
-<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Express</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, el motor HTTP <strong>más rápido</strong> para <a href="https://golang.org/doc/">Go</a>. Diseñado para <strong>facilitar las</strong> cosas para <strong>un</strong> desarrollo <strong>rápido</strong> con <strong>cero asignación de memoria</strong> y <strong>rendimiento</strong> en mente.
+<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Express</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, el motor HTTP <strong>más rápido</strong> para <a href="https://golang.org/doc/">Go</a>. Diseñado para <strong>facilitar</strong> las cosas para <strong>un</strong> desarrollo <strong>rápido</strong> con <strong>cero asignación de memoria</strong> y <strong>rendimiento</strong> en mente.
 </p>
 
 ## ⚡️ Inicio rápido
@@ -121,8 +121,8 @@ Estas pruebas son realizadas por [TechEmpower](https://github.com/TechEmpower/Fr
 - [Template engines](https://docs.gofiber.io/middleware#template)
 - [WebSocket support](https://docs.gofiber.io/middleware#websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Available in [12 languages](https://docs.gofiber.io/)
-- Y mucho más, [explore Fiber](https://docs.gofiber.io/)
+- Disponible en [12 idiomas](https://docs.gofiber.io/)
+- Y mucho más, [explora Fiber](https://docs.gofiber.io/)
 
 ## 💡 Filosofía
 
@@ -220,7 +220,7 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 Mostrar más ejemplos de código</summary>
 
 ### Template engines
 
@@ -228,11 +228,11 @@ func main() {
 📖 [Render](https://docs.gofiber.io/context#render)  
 📖 [Template](https://docs.gofiber.io/middleware#template)  
 
-Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
+Fiber soporta el [Go template engine](https://golang.org/pkg/html/template/) por default.
 
-But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
+Pero si deseas usar otro template engine como [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) o [pug](https://github.com/Joker/jade).
 
-You can use our [Template Middleware](https://docs.gofiber.io/middleware#template).
+Puedes usar nuestro [Template Middleware](https://docs.gofiber.io/middleware#template).
 
 ```go
 package main
@@ -267,7 +267,7 @@ func main() {
 }
 ```
 
-### Grouping routes into chains
+### Agrupando rutas en cadenas
 
 📖 [Group](https://docs.gofiber.io/application#group)  
 
@@ -344,7 +344,7 @@ Check CORS by passing any domain in `Origin` header:
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
-### Custom 404 response
+### Respuesta 404 personalizada
 
 📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)  
 
@@ -372,7 +372,7 @@ func main() {
 }
 ```
 
-### JSON Response
+### Respuesta JSON
 
 📖 [JSON](https://docs.gofiber.io/context#json)  
 
@@ -465,9 +465,9 @@ func main() {
 ```
 </details>
 
-## 🧬 Available Middlewares
+## 🧬 Middlewares disponibles
 
-For _easier_ and _more clear_ work, we've put [middleware](https://docs.gofiber.io/middleware) into separate repositories:
+Para un trabajo _más claro_ y _sencillo_, hemos puesto cada [middleware](https://docs.gofiber.io/middleware) en repositorios separados:
 
 - [Basic Authentication](https://github.com/gofiber/basicauth)
 - [Key Authentication](https://github.com/gofiber/keyauth)
@@ -498,17 +498,17 @@ For _easier_ and _more clear_ work, we've put [middleware](https://docs.gofiber.
 
 ## 👍 Contribuir
 
-Si quiere **agradecer** y/o apoyar el desarrollo activo de la `Fiber`:
+Si quiere **agradecer** y/o apoyar el desarrollo activo de `Fiber`:
 
-1. Agregue una [estrella de GitHub](https://github.com/gofiber/fiber/stargazers) al proyecto.
+1. Agrega una [estrella de GitHub](https://github.com/gofiber/fiber/stargazers) al proyecto.
 2. Tuitea sobre el proyecto [en tu Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Escriba una reseña o tutorial en [Medium](https://medium.com/) , [Dev.to](https://dev.to/) o blog personal.
-4. Help us to translate our API Documentation via [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
-5. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+3. Escribe una reseña o tutorial en [Medium](https://medium.com/) , [Dev.to](https://dev.to/) o blog personal.
+4. Ayúdanos a traducir la documentación de nuestra API a través de [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
+5. Apoya el proyecto donando una [tasa de café](https://buymeacoff.ee/fenny).
 
-## ☕ Supporters
+## ☕ Personas que han mostrado su apoyo
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny)
+Fiber es un proyecto open source que se mantiene a través de donaciones para pagar las cuentas e.g. nuestro nombre de dominio, gitbook, netlify y hosting serverless. Si quieres apoyar a Fiber, puedes ☕ [**comprar un café**](https://buymeacoff.ee/fenny)
 
 |                                                             | User                                            | Donation |
 | :---------------------------------------------------------- | :---------------------------------------------- | :------- |
@@ -522,13 +522,13 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt) | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy)            | ☕ x 1    |
 
-## ‎‍💻 Code Contributors
+## ‎‍💻 Contribuyentes de código
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
-## ⚠️ License
+## ⚠️ Licencia
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+Copyright (c) 2019-presente [Fenny](https://github.com/fenny) y [contribuyentes](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` es software libre y de código abierto bajo la licencia [MIT](https://github.com/gofiber/fiber/blob/master/LICENSE). El logo oficial fué creado por [Vic Shóstak](https://github.com/koddr) y distribuido bajo la licencia [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0 International).
 
 **Third-party library licenses**
 - [FastHTTP](https://github.com/valyala/fasthttp/blob/master/LICENSE)
