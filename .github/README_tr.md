@@ -363,7 +363,7 @@ func main() {
   // Herhangi bir şeyle eşleşen son ara katman
   app.Use(func(c *fiber.Ctx) {
     c.SendStatus(404)
-    // => 404 "Sayfa bulunamadı"
+    // => 404 "Not Found"
   })
 
   app.Listen(3000)
@@ -467,18 +467,18 @@ func main() {
 
 _Kolay_ ve _daha temiz_ çalışma için [ara katmanlarımızı](https://docs.gofiber.io/middleware) farklı depoların içine koyduk.
 
-- [Temel Kimlik Doğrulama](https://github.com/gofiber/basicauth)
-- [Anahtar Kimlik Doğrulama](https://github.com/gofiber/keyauth)
-- [Sıkıştırma](https://github.com/gofiber/compression)
-- [Kimlik İsteği](https://github.com/gofiber/requestid)
+- [Basic Authentication](https://github.com/gofiber/basicauth)
+- [Key Authentication](https://github.com/gofiber/keyauth)
+- [Compression](https://github.com/gofiber/compression)
+- [Request ID](https://github.com/gofiber/requestid)
 - [WebSocket](https://github.com/gofiber/websocket)
-- [Yeniden Yazma](https://github.com/gofiber/rewrite)
-- [Kurtarma](https://github.com/gofiber/recover)
-- [Limitleme](https://github.com/gofiber/limiter)
-- [Oturum](https://github.com/gofiber/session)
-- [Günlük](https://github.com/gofiber/logger)
-- [Kask](https://github.com/gofiber/helmet)
-- [Gömülü](https://github.com/gofiber/embed)
+- [Rewrite](https://github.com/gofiber/rewrite)
+- [Recover](https://github.com/gofiber/recover)
+- [Limiter](https://github.com/gofiber/limiter)
+- [Session](https://github.com/gofiber/session)
+- [Logger](https://github.com/gofiber/logger)
+- [Helmet](https://github.com/gofiber/helmet)
+- [Embed](https://github.com/gofiber/embed)
 - [PPROF](https://github.com/gofiber/pprof)
 - [CORS](https://github.com/gofiber/cors)
 - [CSRF](https://github.com/gofiber/csrf)
