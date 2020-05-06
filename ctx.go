@@ -1,6 +1,6 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://docs.gofiber.io
+// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
 // 📝 Github Repository: https://github.com/gofiber/fiber
+// 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
@@ -30,14 +30,17 @@ import (
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	app      *App                 // Reference to *App
-	route    *Route               // Reference to *Route
-	index    int                  // Index of the current stack
-	method   string               // HTTP method
-	path     string               // HTTP path
-	values   []string             // Route parameter values
+	// Internal fields
+	app    *App     // Reference to *App
+	route  *Route   // Reference to *Route
+	index  int      // Index of the current handler in the stack
+	method string   // HTTP method
+	path   string   // HTTP path
+	values []string // Route parameter values
+	err    error    // Contains error if caught
+
+	// External fields
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	err      error                // Contains error if caught
 }
 
 // Range struct

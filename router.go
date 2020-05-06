@@ -1,34 +1,34 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://docs.gofiber.io
+// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
 // 📝 Github Repository: https://github.com/gofiber/fiber
+// 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
 import (
+	"fmt"
 	"log"
-	"regexp"
 	"strings"
 	"time"
 
 	fasthttp "github.com/valyala/fasthttp"
 )
 
-// Route struct
+// Route metadata
 type Route struct {
-	isGet bool // allows HEAD requests if GET
+	// Internal fields
+	get    bool         // GET allows HEAD requests
+	all    bool         // ALL allows all HTTP methods
+	use    bool         // USE allows all HTTP methods and path prefixes
+	star   bool         // Path equals '*' or '/*'
+	root   bool         // Path equals '/'
+	params bool         // Path contains params: '/:p', '/:o?' or '/*'
+	parsed parsedParams // parsed contains parsed params segments
 
-	isMiddleware bool // is middleware route
-
-	isStar  bool // path == '*'
-	isSlash bool // path == '/'
-	isRegex bool // needs regex parsing
-
-	Method string         // http method
-	Path   string         // original path
-	Params []string       // path params
-	Regexp *regexp.Regexp // regexp matcher
-
-	Handler func(*Ctx) // ctx handler
+	// External fields
+	Path    string     // Registered route path
+	Method  string     // HTTP method
+	Params  []string   // Slice containing the params names
+	Handler func(*Ctx) // Ctx handler
 }
 
 func (app *App) nextRoute(ctx *Ctx) {
@@ -44,7 +44,7 @@ func (app *App) nextRoute(ctx *Ctx) {
 			route.Handler(ctx)
 			// Generate ETag if enabled / found
 			if app.Settings.ETag {
-				setETag(ctx, ctx.Fasthttp.Response.Body(), false)
+				setETag(ctx, false)
 			}
 			return
 		}
@@ -56,48 +56,42 @@ func (app *App) nextRoute(ctx *Ctx) {
 }
 
 func (r *Route) matchRoute(method, path string) (match bool, values []string) {
-	// is route middleware? matches all http methods
-	if r.isMiddleware {
-		// '*' or '/' means its a valid match
-		if r.isStar || r.isSlash {
+	// Middleware routes match all HTTP methods
+	if r.use {
+		// Match any path if route equals '*' or '/'
+		if r.star || r.root {
 			return true, values
 		}
-		// if midware path starts with req.path
+		// Middleware matches path prefixes only
 		if strings.HasPrefix(path, r.Path) {
 			return true, values
 		}
-		// middlewares dont support regex so bye!
+		// Middleware routes do not support params
 		return false, values
 	}
-	// non-middleware route, http method must match!
-	// the wildcard method is for .All() & .Use() methods
-	// If route is GET, also match HEAD requests
-	if r.Method == method || r.Method[0] == '*' || (r.isGet && len(method) == 4 && method == "HEAD") {
-		// '*' means we match anything
-		if r.isStar {
+	// All matches any HTTP method
+	// HTTP method is equal
+	// GET routes allow HEAD methods
+	if r.all || r.Method == method || (r.get && len(method) == 4 && method == "HEAD") {
+		// '*' wildcard matches any path
+		if r.star {
 			return true, values
 		}
-		// simple '/' bool, so you avoid unnecessary comparison for long paths
-		if r.isSlash && path == "/" {
+		// Check if a single '/' matches
+		if r.root && path == "/" {
 			return true, values
 		}
-		// does this route need regex matching?
-		// does req.path match regex pattern?
-		if r.isRegex && r.Regexp.MatchString(path) {
-			// do we have parameters
-			if len(r.Params) > 0 {
-				// get values for parameters
-				matches := r.Regexp.FindAllStringSubmatch(path, -1)
-				// did we get the values?
-				if len(matches) > 0 && len(matches[0]) > 1 {
-					values = matches[0][1:len(matches[0])]
-					return true, values
-				}
-				return false, values
+		// Does this route have parameters
+		if len(r.Params) > 0 {
+			// Do we have a match?
+			params, ok := r.parsed.matchParams(path)
+			fmt.Print(path, params, ok)
+			// We have a match!
+			if ok {
+				return true, params
 			}
-			return true, values
 		}
-		// last thing to do is to check for a simple path match
+		// Check for a simple path match
 		if len(r.Path) == len(path) && r.Path == path {
 			return true, values
 		}
@@ -150,42 +144,38 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	}
 	// Set route booleans
 	var isGet = method == "GET"
-	var isMiddleware = method == "USE"
+	var isAll = method == "ALL"
+	var isUse = method == "USE"
 	// Middleware / All allows all HTTP methods
-	if isMiddleware || method == "ALL" {
+	if isUse || isAll {
 		method = "*"
 	}
 	var isStar = path == "*" || path == "/*"
 	// Middleware containing only a `/` equals wildcard
-	if isMiddleware && path == "/" {
+	if isUse && path == "/" {
 		isStar = true
 	}
-	var isSlash = path == "/"
-	var isRegex = false
+	var isRoot = path == "/"
+	var isParams = false
 	// Route properties
-	var Params = getParams(original)
-	var Regexp *regexp.Regexp
-	// Params requires regex pattern
-	if len(Params) > 0 {
-		regex, err := getRegex(path)
-		if err != nil {
-			log.Fatal("Router: Invalid path pattern: " + path)
-		}
-		isRegex = true
-		Regexp = regex
+	var isParsed = parseParams(original)
+	if len(isParsed.Keys) > 0 {
+		isParams = true
 	}
 	for i := range handlers {
 		app.routes = append(app.routes, &Route{
-			isGet:        isGet,
-			isMiddleware: isMiddleware,
-			isStar:       isStar,
-			isSlash:      isSlash,
-			isRegex:      isRegex,
-			Method:       method,
-			Path:         path,
-			Params:       Params,
-			Regexp:       Regexp,
-			Handler:      handlers[i],
+			get:    isGet,
+			all:    isAll,
+			use:    isUse,
+			star:   isStar,
+			root:   isRoot,
+			params: isParams,
+			parsed: isParsed,
+
+			Path:    path,
+			Method:  method,
+			Params:  isParsed.Keys,
+			Handler: handlers[i],
 		})
 	}
 }
@@ -218,13 +208,13 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		root = root[:len(root)-1]
 	}
 	// isSlash ?
-	var isSlash = prefix == "/"
+	var isRoot = prefix == "/"
 	if strings.Contains(prefix, "*") {
 		wildcard = true
 		prefix = strings.Split(prefix, "*")[0]
 	}
 	var stripper = len(prefix)
-	if isSlash {
+	if isRoot {
 		stripper = 0
 	}
 	// Fileserver settings
@@ -253,10 +243,10 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 	}
 	fileHandler := fs.NewRequestHandler()
 	app.routes = append(app.routes, &Route{
-		isMiddleware: true,
-		isSlash:      isSlash,
-		Method:       "*",
-		Path:         prefix,
+		use:    true,
+		root:   isRoot,
+		Method: "*",
+		Path:   prefix,
 		Handler: func(c *Ctx) {
 			// Only handle GET & HEAD methods
 			if c.method == "GET" || c.method == "HEAD" {

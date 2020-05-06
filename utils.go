@@ -1,6 +1,6 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://docs.gofiber.io
+// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
 // 📝 Github Repository: https://github.com/gofiber/fiber
+// 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
@@ -11,14 +11,14 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 	"unsafe"
 )
 
 // Document elke line gelijk even
-func setETag(ctx *Ctx, body []byte, weak bool) {
+func setETag(ctx *Ctx, weak bool) {
+	body := ctx.Fasthttp.Response.Body()
 	// Skips ETag if no response body is present
 	if len(body) <= 0 {
 		return
@@ -65,51 +65,6 @@ func groupPaths(prefix, path string) string {
 	path = prefix + path
 	path = strings.Replace(path, "//", "/", -1)
 	return path
-}
-
-func getParams(path string) (params []string) {
-	if len(path) < 1 {
-		return
-	}
-	segments := strings.Split(path, "/")
-	replacer := strings.NewReplacer(":", "", "?", "")
-	for i := range segments {
-		s := segments[i]
-		if s == "" {
-			continue
-		} else if s[0] == ':' {
-			params = append(params, replacer.Replace(s))
-		}
-		if strings.Contains(s, "*") {
-			params = append(params, "*")
-		}
-	}
-	return
-}
-
-func getRegex(path string) (*regexp.Regexp, error) {
-	pattern := "^"
-	segments := strings.Split(path, "/")
-	for i := range segments {
-		s := segments[i]
-		if s == "" {
-			continue
-		}
-		if s[0] == ':' {
-			if strings.Contains(s, "?") {
-				pattern += "(?:/([^/]+?))?"
-			} else {
-				pattern += "/(?:([^/]+?))"
-			}
-		} else if s[0] == '*' {
-			pattern += "/(.*)"
-		} else {
-			pattern += "/" + s
-		}
-	}
-	pattern += "/?$"
-	regex, err := regexp.Compile(pattern)
-	return regex, err
 }
 
 func getFiles(root string) (files []string, dir bool, err error) {
