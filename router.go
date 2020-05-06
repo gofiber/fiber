@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -85,7 +84,6 @@ func (r *Route) matchRoute(method, path string) (match bool, values []string) {
 		if len(r.Params) > 0 {
 			// Do we have a match?
 			params, ok := r.parsed.matchParams(path)
-			fmt.Print(path, params, ok)
 			// We have a match!
 			if ok {
 				return true, params
