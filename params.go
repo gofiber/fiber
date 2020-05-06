@@ -106,7 +106,7 @@ func (p *parsedParams) matchParams(s string) ([]string, bool) {
 		} else {
 			// check const segment
 			i = len(segment.Const)
-			if partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const {
+			if partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const || (partLen > i && s[i] != '/') {
 				return nil, false
 			}
 		}
