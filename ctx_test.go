@@ -870,7 +870,35 @@ func Test_Cookie(t *testing.T) {
 	}
 }
 func Test_Download(t *testing.T) {
-	// TODO
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Download("ctx.go")
+	})
+
+	req, _ := http.NewRequest("GET", "http://example.com/test", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf(`%s: Error %s`, t.Name(), err)
+	}
+	f, err := os.Open("./ctx.go")
+	if err != nil {
+		t.Fatalf(`%s: Error %s`, t.Name(), err)
+	}
+	defer f.Close()
+	expect, err := ioutil.ReadAll(f)
+	if err != nil {
+		t.Fatalf(`%s: Error %s`, t.Name(), err)
+	}
+	if !bytes.Equal(expect, body) {
+		t.Fatalf(`%s: Expecting %q`, t.Name(), expect)
+	}
 }
 func Test_Format(t *testing.T) {
 	app := New()
