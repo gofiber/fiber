@@ -12,28 +12,7 @@ import (
 	"testing"
 )
 
-var app *App
-
-func init() {
-	app = New()
-	h := func(c *Ctx) {}
-	for _, r := range githubAPI {
-		switch r.method {
-		case "GET":
-			app.Get(r.path, h)
-		case "POST":
-			app.Post(r.path, h)
-		case "PUT":
-			app.Put(r.path, h)
-		case "PATCH":
-			app.Patch(r.path, h)
-		case "DELETE":
-			app.Delete(r.path, h)
-		default:
-			panic("Unknow HTTP method: " + r.method)
-		}
-	}
-}
+// params testing
 
 type testcase struct {
 	uri    string
@@ -262,6 +241,31 @@ func checkCases(tParent *testing.T, parser parsedParams, tcases []testcase) {
 				t.Errorf("Path.Match() got1 = %v, want %v", ok, tcase.ok)
 			}
 		})
+	}
+}
+
+// router benchmarks
+
+var app *App
+
+func init() {
+	app = New()
+	h := func(c *Ctx) {}
+	for _, r := range githubAPI {
+		switch r.method {
+		case "GET":
+			app.Get(r.path, h)
+		case "POST":
+			app.Post(r.path, h)
+		case "PUT":
+			app.Put(r.path, h)
+		case "PATCH":
+			app.Patch(r.path, h)
+		case "DELETE":
+			app.Delete(r.path, h)
+		default:
+			panic("Unknow HTTP method: " + r.method)
+		}
 	}
 }
 
