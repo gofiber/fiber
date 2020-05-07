@@ -31,14 +31,13 @@ import (
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
 	// Internal fields
-	app       *App     // Reference to *App
-	route     *Route   // Reference to *Route
-	index     int      // Index of the current handler in the stack
-	method    string   // HTTP method
-	methodINT int      // Unique INT for method
-	path      string   // HTTP path
-	values    []string // Route parameter values
-	err       error    // Contains error if caught
+	app    *App     // Reference to *App
+	route  *Route   // Reference to *Route
+	index  int      // Index of the current handler in the stack
+	method string   // HTTP method
+	path   string   // HTTP path
+	values []string // Route parameter values
+	err    error    // Contains error if caught
 
 	// External fields
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
