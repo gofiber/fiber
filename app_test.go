@@ -1,10 +1,6 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
-
-// go test -v -coverprofile cover.out .
-// go tool cover -html=cover.out -o cover.html
-// open cover.html
 
 package fiber
 
