@@ -113,7 +113,7 @@ func New(settings ...*Settings) *App {
 	// Create app
 	app := new(App)
 	// Create route stack
-	app.routes = make([][]*Route, len(httpMethods), len(httpMethods))
+	app.routes = make([][]*Route, len(methodINT), len(methodINT))
 	// Create settings
 	app.Settings = new(Settings)
 	// Set default settings

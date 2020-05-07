@@ -15,29 +15,6 @@ import (
 	"unsafe"
 )
 
-// Return an unique INT for a HTTP method
-func getMethodINT(method string) int {
-	switch method {
-	case MethodGet:
-		return 0
-	case MethodPost:
-		return 1
-	case MethodDelete:
-		return 2
-	case MethodHead:
-		return 3
-	case MethodPut:
-		return 4
-	case MethodPatch:
-		return 5
-	case MethodTrace:
-		return 6
-	case MethodConnect:
-		return 7
-	}
-	return 8
-}
-
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
 	body := ctx.Fasthttp.Response.Body()
@@ -189,8 +166,21 @@ func parseTokenList(noneMatchBytes []byte) []string {
 	return list
 }
 
+// HTTP methods and their unique INTs
+var methodINT = map[string]int{
+	MethodGet:     0,
+	MethodHead:    1,
+	MethodPost:    2,
+	MethodPut:     3,
+	MethodPatch:   4,
+	MethodDelete:  5,
+	MethodConnect: 6,
+	MethodOptions: 7,
+	MethodTrace:   8,
+}
+
 // HTTP status codes were copied from net/http.
-var statusMessages = map[int]string{
+var statusMessage = map[int]string{
 	100: "Continue",
 	101: "Switching Protocols",
 	102: "Processing",
@@ -485,18 +475,18 @@ var extensionMIME = map[string]string{
 	".avi":     "video/x-msvideo",
 }
 
-// Slice of HTTP methods
-var httpMethods = []string{
-	MethodGet,
-	MethodHead,
-	MethodPost,
-	MethodPut,
-	MethodPatch,
-	MethodDelete,
-	MethodConnect,
-	MethodOptions,
-	MethodTrace,
-}
+// // Slice of HTTP methods
+// var httpMethods = []string{
+// 	MethodGet,
+// 	MethodHead,
+// 	MethodPost,
+// 	MethodPut,
+// 	MethodPatch,
+// 	MethodDelete,
+// 	MethodConnect,
+// 	MethodOptions,
+// 	MethodTrace,
+// }
 
 // HTTP methods were copied from net/http.
 const (

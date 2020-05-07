@@ -31,13 +31,14 @@ import (
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
 	// Internal fields
-	app    *App     // Reference to *App
-	route  *Route   // Reference to *Route
-	index  int      // Index of the current handler in the stack
-	method string   // HTTP method
-	path   string   // HTTP path
-	values []string // Route parameter values
-	err    error    // Contains error if caught
+	app       *App     // Reference to *App
+	route     *Route   // Reference to *Route
+	index     int      // Index of the current handler in the stack
+	method    string   // HTTP method
+	methodINT int      // Unique INT for method
+	path      string   // HTTP path
+	values    []string // Route parameter values
+	err       error    // Contains error if caught
 
 	// External fields
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
@@ -804,7 +805,7 @@ func (ctx *Ctx) SendStatus(status int) {
 	ctx.Fasthttp.Response.SetStatusCode(status)
 	// Only set status body when there is no response body
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
-		ctx.Fasthttp.Response.SetBodyString(statusMessages[status])
+		ctx.Fasthttp.Response.SetBodyString(statusMessage[status])
 	}
 }
 

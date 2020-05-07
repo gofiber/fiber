@@ -28,15 +28,14 @@ type Route struct {
 }
 
 func (app *App) nextRoute(ctx *Ctx) {
-	m := getMethodINT(ctx.method)
 	// Get stack length
-	lenr := len(app.routes[m]) - 1
+	lenr := len(app.routes[ctx.methodINT]) - 1
 	// Loop over stack starting from previous index
 	for ctx.index < lenr {
 		// Increment stack index
 		ctx.index++
 		// Get *Route
-		route := app.routes[m][ctx.index]
+		route := app.routes[ctx.methodINT][ctx.index]
 		// Check if it matches the request path
 		match, values := route.matchRoute(ctx.path)
 		// No match, continue
@@ -115,6 +114,8 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	if !app.Settings.StrictRouting && len(ctx.path) > 1 {
 		ctx.path = strings.TrimRight(ctx.path, "/")
 	}
+	// Get method INT
+	ctx.methodINT = methodINT[ctx.method]
 	// Find route
 	app.nextRoute(ctx)
 }
@@ -170,8 +171,8 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		}
 		if method == "*" {
 			// Add handler to all HTTP methods
-			for i := range httpMethods {
-				app.addRoute(httpMethods[i], route)
+			for m := range methodINT {
+				app.addRoute(m, route)
 			}
 			continue
 		}
@@ -277,6 +278,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 }
 
 func (app *App) addRoute(method string, route *Route) {
-	m := getMethodINT(method)
+	m := methodINT[method]
 	app.routes[m] = append(app.routes[m], route)
 }
