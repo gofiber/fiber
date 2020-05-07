@@ -571,41 +571,52 @@ func main() {
 
 <div dir="rtl">
 
-## 🧬 Middlewares זמינים
+## 🧬 Official Middlewares
 </div>
 
 <div dir="rtl">
 
-למען עבודה _קלה וברורה יותר_, שמנו את ה-[middleware](https://docs.gofiber.io/middleware) תחת repositories נפרדים:
+For an more _maintainable_ middleware _ecosystem_, we've put official [middlewares](https://docs.gofiber.io/middleware) into separate repositories:
 </div>
 
 <div dir="rtl">
 
-- [Basic Authentication](https://github.com/gofiber/basicauth)
-- [Key Authentication](https://github.com/gofiber/keyauth)
-- [Compression](https://github.com/gofiber/compression)
-- [Request ID](https://github.com/gofiber/requestid)
-- [WebSocket](https://github.com/gofiber/websocket)
-- [Rewrite](https://github.com/gofiber/rewrite)
-- [Recover](https://github.com/gofiber/recover)
-- [Limiter](https://github.com/gofiber/limiter)
-- [Session](https://github.com/gofiber/session)
-- [Logger](https://github.com/gofiber/logger)
-- [Helmet](https://github.com/gofiber/helmet)
-- [Embed](https://github.com/gofiber/embed)
-- [PPROF](https://github.com/gofiber/pprof)
-- [CORS](https://github.com/gofiber/cors)
-- [CSRF](https://github.com/gofiber/csrf)
-- [JWT](https://github.com/gofiber/jwt)
+- [gofiber/basicauth](https://github.com/gofiber/basicauth)
+- [gofiber/keyauth](https://github.com/gofiber/keyauth)
+- [gofiber/compression](https://github.com/gofiber/compression)
+- [gofiber/requestid](https://github.com/gofiber/requestid)
+- [gofiber/websocket](https://github.com/gofiber/websocket)
+- [gofiber/rewrite](https://github.com/gofiber/rewrite)
+- [gofiber/recover](https://github.com/gofiber/recover)
+- [gofiber/limiter](https://github.com/gofiber/limiter)
+- [gofiber/session](https://github.com/gofiber/session)
+- [gofiber/logger](https://github.com/gofiber/logger)
+- [gofiber/helmet](https://github.com/gofiber/helmet)
+- [gofiber/embed](https://github.com/gofiber/embed)
+- [gofiber/pprof](https://github.com/gofiber/pprof)
+- [gofiber/cors](https://github.com/gofiber/cors)
+- [gofiber/csrf](https://github.com/gofiber/csrf)
+- [gofiber/jwt](https://github.com/gofiber/jwt)
+
+</div>
+
+<div dir="rtl">
 
 ## 🌱 Third Party Middlewares
+</div>
+
+<div dir="rtl">
 
 This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
-- https://github.com/arsmn/fiber-swagger
-- https://github.com/arsmn/fiber-casbin
-- https://github.com/arsmn/fiber-introspect
-- https://github.com/shareed2k/fiber_tracing
-- https://github.com/shareed2k/fiber_limiter
+</div>
+
+<div dir="rtl">
+
+- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
+- [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
+- [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
+- [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
+- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 </div>
 
 <div dir="rtl">
