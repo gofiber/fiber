@@ -10,10 +10,32 @@ import (
 	"hash/crc32"
 	"net"
 	"os"
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
+	"testing"
 	"time"
 	"unsafe"
 )
+
+// AssertEqual checks if values are equal
+func assertEqual(t testing.TB, a interface{}, b interface{}, message ...string) {
+	if reflect.DeepEqual(a, b) {
+		return
+	}
+	_, file, line, _ := runtime.Caller(1)
+	msg := fmt.Sprintf(`
+		Test: 	 	%s
+		Trace: 	 	%s:%d
+		Error: 	 	Not equal
+		Expect: 	%v [%s]
+		Result: 	%v [%s]`, t.Name(), filepath.Base(file), line, a, reflect.TypeOf(a).Name(), b, reflect.TypeOf(b).Name())
+	if len(message) > 0 {
+		msg += "\n		Message: 	" + message[0]
+	}
+	t.Fatal(msg)
+}
 
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
