@@ -51,15 +51,14 @@ func Benchmark_Last_Route(b *testing.B) {
 }
 
 func matchRoute(method, path string) (match bool, values []string) {
-	for _, m := range httpMethods {
-		mINT := getMethodINT(m)
-		for i := range app.routes[mINT] {
-			match, values = app.routes[mINT][i].matchRoute(path)
-			if match {
-				return
-			}
+	mINT := getMethodINT(method)
+	for i := range app.routes[mINT] {
+		match, values = app.routes[mINT][i].matchRoute(path)
+		if match {
+			return
 		}
 	}
+
 	return
 }
 
