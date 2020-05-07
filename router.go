@@ -12,19 +12,15 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
-// All HTTP methods
-var methods = []string{"CONNECT", "PUT", "POST", "DELETE", "HEAD", "PATCH", "OPTIONS", "TRACE", "GET"}
-
 // Route metadata
 type Route struct {
 	// Internal fields
 	use    bool         // USE matches path prefixes
 	star   bool         // Path equals '*' or '/*'
 	root   bool         // Path equals '/'
-	params bool         // Path contains params: '/:p', '/:o?' or '/*'
 	parsed parsedParams // parsed contains parsed params segments
 
-	// External fields
+	// External fields for ctx.Route() method
 	Path    string     // Registered route path
 	Method  string     // HTTP method
 	Params  []string   // Slice containing the params names
@@ -32,41 +28,50 @@ type Route struct {
 }
 
 func (app *App) nextRoute(ctx *Ctx) {
-	// Keep track of head matches
-	lenr := len(app.routes[ctx.method]) - 1
+	m := getMethodINT(ctx.method)
+	// Get stack length
+	lenr := len(app.routes[m]) - 1
+	// Loop over stack starting from previous index
 	for ctx.index < lenr {
+		// Increment stack index
 		ctx.index++
-		route := app.routes[ctx.method][ctx.index]
+		// Get *Route
+		route := app.routes[m][ctx.index]
+		// Check if it matches the request path
 		match, values := route.matchRoute(ctx.path)
-		if match {
-			ctx.route = route
-			ctx.values = values
-			route.Handler(ctx)
-			// Generate ETag if enabled / found
-			if app.Settings.ETag {
-				setETag(ctx, false)
-			}
-			return
+		// No match, continue
+		if !match {
+			continue
 		}
+		// Match! Set route and param values to Ctx
+		ctx.route = route
+		ctx.values = values
+		// Execute handler
+		route.Handler(ctx)
+		// Generate ETag if enabled
+		if app.Settings.ETag {
+			setETag(ctx, false)
+		}
+		return
 	}
-	// Send a 404
+	// Send a 404 by default if no route is matched
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
 		ctx.SendStatus(404)
 	}
 }
 
 func (r *Route) matchRoute(path string) (match bool, values []string) {
-	// Middleware routes match all HTTP methods
+	// Middleware routes allow prefix matches
 	if r.use {
 		// Match any path if route equals '*' or '/'
 		if r.star || r.root {
 			return true, values
 		}
-		// Middleware matches path prefixes only
+		// Middleware matches path prefix
 		if strings.HasPrefix(path, r.Path) {
 			return true, values
 		}
-		// Middleware routes do not support params
+		// No prefix match, and we do not allow params in app.use
 		return false, values
 	}
 	// '*' wildcard matches any path
@@ -99,7 +104,7 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	// get fiber context from sync pool
 	ctx := acquireCtx(fctx)
 	defer releaseCtx(ctx)
-	// attach app poiner and compress settings
+	// Attach app poiner to access the routes
 	ctx.app = app
 
 	// Case sensitive routing
@@ -149,18 +154,13 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		isStar = true
 	}
 	var isRoot = path == "/"
-	var isParams = false
 	// Route properties
 	var isParsed = parseParams(original)
-	if len(isParsed.Keys) > 0 {
-		isParams = true
-	}
 	for i := range handlers {
 		route := &Route{
 			use:    isUse,
 			star:   isStar,
 			root:   isRoot,
-			params: isParams,
 			parsed: isParsed,
 
 			Path:    path,
@@ -170,8 +170,8 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		}
 		if method == "*" {
 			// Add handler to all HTTP methods
-			for i := range methods {
-				app.addRoute(methods[i], route)
+			for i := range httpMethods {
+				app.addRoute(httpMethods[i], route)
 			}
 			continue
 		}
@@ -277,5 +277,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 }
 
 func (app *App) addRoute(method string, route *Route) {
-	app.routes[method] = append(app.routes[method], route)
+	m := getMethodINT(method)
+	app.routes[m] = append(app.routes[m], route)
 }
