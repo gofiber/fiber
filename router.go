@@ -65,7 +65,7 @@ func (r *Route) matchRoute(path string) (match bool, values []string) {
 	if r.use {
 		// Match any path if route equals '*' or '/'
 		if r.star || r.root {
-			return true, values
+			return true, []string{path}
 		}
 		// Middleware matches path prefix
 		if strings.HasPrefix(path, r.Path) {
@@ -76,7 +76,7 @@ func (r *Route) matchRoute(path string) (match bool, values []string) {
 	}
 	// '*' wildcard matches any path
 	if r.star {
-		return true, values
+		return true, []string{path}
 	}
 	// Check if a single '/' matches
 	if r.root && path == "/" {
@@ -191,7 +191,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		prefix = "/"
 	}
 	// Prefix always start with a '/' or '*'
-	if prefix[0] != '/' && prefix[0] != '*' {
+	if prefix[0] != '/' {
 		prefix = "/" + prefix
 	}
 	// Match anything
