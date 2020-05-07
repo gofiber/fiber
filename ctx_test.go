@@ -1,6 +1,6 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://docs.gofiber.io
+// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
 // 📝 Github Repository: https://github.com/gofiber/fiber
+// 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
@@ -549,7 +549,7 @@ func Test_Params(t *testing.T) {
 			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
 		}
 	})
-	req, _ := http.NewRequest("GET", "/test/john", nil)
+	req := httptest.NewRequest("GET", "/test/john", nil)
 	resp, err := app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
@@ -557,7 +557,8 @@ func Test_Params(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
-	req, _ = http.NewRequest("GET", "/test2/im/a/cookie", nil)
+	req = httptest.NewRequest("GET", "/test2/im/a/cookie", nil)
+	t.Log(req.URL)
 	resp, err = app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)

@@ -1,6 +1,6 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://docs.gofiber.io
+// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
 // 📝 Github Repository: https://github.com/gofiber/fiber
+// 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
@@ -10,15 +10,14 @@ import (
 	"hash/crc32"
 	"net"
 	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 	"unsafe"
 )
 
-// Document elke line gelijk even
-func setETag(ctx *Ctx, body []byte, weak bool) {
+// Generate and set ETag header to response
+func setETag(ctx *Ctx, weak bool) {
+	body := ctx.Fasthttp.Response.Body()
 	// Skips ETag if no response body is present
 	if len(body) <= 0 {
 		return
@@ -45,7 +44,7 @@ func setETag(ctx *Ctx, body []byte, weak bool) {
 			return
 		}
 		// W/1 != W/2 || W/1 != 2
-		ctx.Set("ETag", etag)
+		ctx.Set(HeaderETag, etag)
 		return
 	}
 	if strings.Contains(clientEtag, etag) {
@@ -55,77 +54,16 @@ func setETag(ctx *Ctx, body []byte, weak bool) {
 		return
 	}
 	// 1 != 2
-	ctx.Set("ETag", etag)
+	ctx.Set(HeaderETag, etag)
 }
 
-func groupPaths(prefix, path string) string {
+func getGroupPath(prefix, path string) string {
 	if path == "/" {
 		path = ""
 	}
 	path = prefix + path
 	path = strings.Replace(path, "//", "/", -1)
 	return path
-}
-
-func getParams(path string) (params []string) {
-	if len(path) < 1 {
-		return
-	}
-	segments := strings.Split(path, "/")
-	replacer := strings.NewReplacer(":", "", "?", "")
-	for i := range segments {
-		s := segments[i]
-		if s == "" {
-			continue
-		} else if s[0] == ':' {
-			params = append(params, replacer.Replace(s))
-		}
-		if strings.Contains(s, "*") {
-			params = append(params, "*")
-		}
-	}
-	return
-}
-
-func getRegex(path string) (*regexp.Regexp, error) {
-	pattern := "^"
-	segments := strings.Split(path, "/")
-	for i := range segments {
-		s := segments[i]
-		if s == "" {
-			continue
-		}
-		if s[0] == ':' {
-			if strings.Contains(s, "?") {
-				pattern += "(?:/([^/]+?))?"
-			} else {
-				pattern += "/(?:([^/]+?))"
-			}
-		} else if s[0] == '*' {
-			pattern += "/(.*)"
-		} else {
-			pattern += "/" + s
-		}
-	}
-	pattern += "/?$"
-	regex, err := regexp.Compile(pattern)
-	return regex, err
-}
-
-func getFiles(root string) (files []string, dir bool, err error) {
-	root = filepath.Clean(root)
-	if _, err := os.Lstat(root); err != nil {
-		return files, dir, fmt.Errorf("%s", err)
-	}
-	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if !info.IsDir() {
-			files = append(files, path)
-		} else {
-			dir = true
-		}
-		return err
-	})
-	return
 }
 
 func getMIME(extension string) (mime string) {
@@ -228,8 +166,21 @@ func parseTokenList(noneMatchBytes []byte) []string {
 	return list
 }
 
+// HTTP methods and their unique INTs
+var methodINT = map[string]int{
+	MethodGet:     0,
+	MethodHead:    1,
+	MethodPost:    2,
+	MethodPut:     3,
+	MethodPatch:   4,
+	MethodDelete:  5,
+	MethodConnect: 6,
+	MethodOptions: 7,
+	MethodTrace:   8,
+}
+
 // HTTP status codes were copied from net/http.
-var statusMessages = map[int]string{
+var statusMessage = map[int]string{
 	100: "Continue",
 	101: "Switching Protocols",
 	102: "Processing",
@@ -296,18 +247,15 @@ var statusMessages = map[int]string{
 
 // MIME types were copied from labstack/echo
 const (
-	MIMETextXML   = "text/xml"
-	MIMETextHTML  = "text/html"
-	MIMETextPlain = "text/plain"
-
+	MIMETextXML               = "text/xml"
+	MIMETextHTML              = "text/html"
+	MIMETextPlain             = "text/plain"
 	MIMEApplicationJSON       = "application/json"
 	MIMEApplicationJavaScript = "application/javascript"
 	MIMEApplicationXML        = "application/xml"
 	MIMEApplicationForm       = "application/x-www-form-urlencoded"
-
-	MIMEMultipartForm = "multipart/form-data"
-
-	MIMEOctetStream = "application/octet-stream"
+	MIMEMultipartForm         = "multipart/form-data"
+	MIMEOctetStream           = "application/octet-stream"
 )
 
 // MIME types were copied from nginx/mime.types.
@@ -542,110 +490,77 @@ const (
 
 // HTTP Headers were copied from net/http.
 const (
-	// Authentication
-	HeaderAuthorization      = "Authorization"
-	HeaderProxyAuthenticate  = "Proxy-Authenticate"
-	HeaderProxyAuthorization = "Proxy-Authorization"
-	HeaderWWWAuthenticate    = "WWW-Authenticate"
-
-	// Caching
-	HeaderAge           = "Age"
-	HeaderCacheControl  = "Cache-Control"
-	HeaderClearSiteData = "Clear-Site-Data"
-	HeaderExpires       = "Expires"
-	HeaderPragma        = "Pragma"
-	HeaderWarning       = "Warning"
-
-	// Client hints
-	HeaderAcceptCH         = "Accept-CH"
-	HeaderAcceptCHLifetime = "Accept-CH-Lifetime"
-	HeaderContentDPR       = "Content-DPR"
-	HeaderDPR              = "DPR"
-	HeaderEarlyData        = "Early-Data"
-	HeaderSaveData         = "Save-Data"
-	HeaderViewportWidth    = "Viewport-Width"
-	HeaderWidth            = "Width"
-
-	// Conditionals
-	HeaderETag              = "ETag"
-	HeaderIfMatch           = "If-Match"
-	HeaderIfModifiedSince   = "If-Modified-Since"
-	HeaderIfNoneMatch       = "If-None-Match"
-	HeaderIfUnmodifiedSince = "If-Unmodified-Since"
-	HeaderLastModified      = "Last-Modified"
-	HeaderVary              = "Vary"
-
-	// Connection management
-	HeaderConnection = "Connection"
-	HeaderKeepAlive  = "Keep-Alive"
-
-	// Content negotiation
-	HeaderAccept         = "Accept"
-	HeaderAcceptCharset  = "Accept-Charset"
-	HeaderAcceptEncoding = "Accept-Encoding"
-	HeaderAcceptLanguage = "Accept-Language"
-
-	// Controls
-	HeaderCookie      = "Cookie"
-	HeaderExpect      = "Expect"
-	HeaderMaxForwards = "Max-Forwards"
-	HeaderSetCookie   = "Set-Cookie"
-
-	// CORS
-	HeaderAccessControlAllowCredentials = "Access-Control-Allow-Credentials"
-	HeaderAccessControlAllowHeaders     = "Access-Control-Allow-Headers"
-	HeaderAccessControlAllowMethods     = "Access-Control-Allow-Methods"
-	HeaderAccessControlAllowOrigin      = "Access-Control-Allow-Origin"
-	HeaderAccessControlExposeHeaders    = "Access-Control-Expose-Headers"
-	HeaderAccessControlMaxAge           = "Access-Control-Max-Age"
-	HeaderAccessControlRequestHeaders   = "Access-Control-Request-Headers"
-	HeaderAccessControlRequestMethod    = "Access-Control-Request-Method"
-	HeaderOrigin                        = "Origin"
-	HeaderTimingAllowOrigin             = "Timing-Allow-Origin"
-	HeaderXPermittedCrossDomainPolicies = "X-Permitted-Cross-Domain-Policies"
-
-	// Do Not Track
-	HeaderDNT = "DNT"
-	HeaderTk  = "Tk"
-
-	// Downloads
-	HeaderContentDisposition = "Content-Disposition"
-
-	// Message body information
-	HeaderContentEncoding = "Content-Encoding"
-	HeaderContentLanguage = "Content-Language"
-	HeaderContentLength   = "Content-Length"
-	HeaderContentLocation = "Content-Location"
-	HeaderContentType     = "Content-Type"
-
-	// Proxies
-	HeaderForwarded       = "Forwarded"
-	HeaderVia             = "Via"
-	HeaderXForwardedFor   = "X-Forwarded-For"
-	HeaderXForwardedHost  = "X-Forwarded-Host"
-	HeaderXForwardedProto = "X-Forwarded-Proto"
-
-	// Redirects
-	HeaderLocation = "Location"
-
-	// Request context
-	HeaderFrom           = "From"
-	HeaderHost           = "Host"
-	HeaderReferer        = "Referer"
-	HeaderReferrerPolicy = "Referrer-Policy"
-	HeaderUserAgent      = "User-Agent"
-
-	// Response context
-	HeaderAllow  = "Allow"
-	HeaderServer = "Server"
-
-	// Range requests
-	HeaderAcceptRanges = "Accept-Ranges"
-	HeaderContentRange = "Content-Range"
-	HeaderIfRange      = "If-Range"
-	HeaderRange        = "Range"
-
-	// Security
+	HeaderAuthorization                   = "Authorization"
+	HeaderProxyAuthenticate               = "Proxy-Authenticate"
+	HeaderProxyAuthorization              = "Proxy-Authorization"
+	HeaderWWWAuthenticate                 = "WWW-Authenticate"
+	HeaderAge                             = "Age"
+	HeaderCacheControl                    = "Cache-Control"
+	HeaderClearSiteData                   = "Clear-Site-Data"
+	HeaderExpires                         = "Expires"
+	HeaderPragma                          = "Pragma"
+	HeaderWarning                         = "Warning"
+	HeaderAcceptCH                        = "Accept-CH"
+	HeaderAcceptCHLifetime                = "Accept-CH-Lifetime"
+	HeaderContentDPR                      = "Content-DPR"
+	HeaderDPR                             = "DPR"
+	HeaderEarlyData                       = "Early-Data"
+	HeaderSaveData                        = "Save-Data"
+	HeaderViewportWidth                   = "Viewport-Width"
+	HeaderWidth                           = "Width"
+	HeaderETag                            = "ETag"
+	HeaderIfMatch                         = "If-Match"
+	HeaderIfModifiedSince                 = "If-Modified-Since"
+	HeaderIfNoneMatch                     = "If-None-Match"
+	HeaderIfUnmodifiedSince               = "If-Unmodified-Since"
+	HeaderLastModified                    = "Last-Modified"
+	HeaderVary                            = "Vary"
+	HeaderConnection                      = "Connection"
+	HeaderKeepAlive                       = "Keep-Alive"
+	HeaderAccept                          = "Accept"
+	HeaderAcceptCharset                   = "Accept-Charset"
+	HeaderAcceptEncoding                  = "Accept-Encoding"
+	HeaderAcceptLanguage                  = "Accept-Language"
+	HeaderCookie                          = "Cookie"
+	HeaderExpect                          = "Expect"
+	HeaderMaxForwards                     = "Max-Forwards"
+	HeaderSetCookie                       = "Set-Cookie"
+	HeaderAccessControlAllowCredentials   = "Access-Control-Allow-Credentials"
+	HeaderAccessControlAllowHeaders       = "Access-Control-Allow-Headers"
+	HeaderAccessControlAllowMethods       = "Access-Control-Allow-Methods"
+	HeaderAccessControlAllowOrigin        = "Access-Control-Allow-Origin"
+	HeaderAccessControlExposeHeaders      = "Access-Control-Expose-Headers"
+	HeaderAccessControlMaxAge             = "Access-Control-Max-Age"
+	HeaderAccessControlRequestHeaders     = "Access-Control-Request-Headers"
+	HeaderAccessControlRequestMethod      = "Access-Control-Request-Method"
+	HeaderOrigin                          = "Origin"
+	HeaderTimingAllowOrigin               = "Timing-Allow-Origin"
+	HeaderXPermittedCrossDomainPolicies   = "X-Permitted-Cross-Domain-Policies"
+	HeaderDNT                             = "DNT"
+	HeaderTk                              = "Tk"
+	HeaderContentDisposition              = "Content-Disposition"
+	HeaderContentEncoding                 = "Content-Encoding"
+	HeaderContentLanguage                 = "Content-Language"
+	HeaderContentLength                   = "Content-Length"
+	HeaderContentLocation                 = "Content-Location"
+	HeaderContentType                     = "Content-Type"
+	HeaderForwarded                       = "Forwarded"
+	HeaderVia                             = "Via"
+	HeaderXForwardedFor                   = "X-Forwarded-For"
+	HeaderXForwardedHost                  = "X-Forwarded-Host"
+	HeaderXForwardedProto                 = "X-Forwarded-Proto"
+	HeaderLocation                        = "Location"
+	HeaderFrom                            = "From"
+	HeaderHost                            = "Host"
+	HeaderReferer                         = "Referer"
+	HeaderReferrerPolicy                  = "Referrer-Policy"
+	HeaderUserAgent                       = "User-Agent"
+	HeaderAllow                           = "Allow"
+	HeaderServer                          = "Server"
+	HeaderAcceptRanges                    = "Accept-Ranges"
+	HeaderContentRange                    = "Content-Range"
+	HeaderIfRange                         = "If-Range"
+	HeaderRange                           = "Range"
 	HeaderContentSecurityPolicy           = "Content-Security-Policy"
 	HeaderContentSecurityPolicyReportOnly = "Content-Security-Policy-Report-Only"
 	HeaderCrossOriginResourcePolicy       = "Cross-Origin-Resource-Policy"
@@ -660,107 +575,94 @@ const (
 	HeaderXFrameOptions                   = "X-Frame-Options"
 	HeaderXPoweredBy                      = "X-Powered-By"
 	HeaderXXSSProtection                  = "X-XSS-Protection"
-
-	// Server-sent event
-	HeaderLastEventID = "Last-Event-ID"
-	HeaderNEL         = "NEL"
-	HeaderPingFrom    = "Ping-From"
-	HeaderPingTo      = "Ping-To"
-	HeaderReportTo    = "Report-To"
-
-	// Transfer coding
-	HeaderTE               = "TE"
-	HeaderTrailer          = "Trailer"
-	HeaderTransferEncoding = "Transfer-Encoding"
-
-	// WebSockets
-	HeaderSecWebSocketAccept     = "Sec-WebSocket-Accept"
-	HeaderSecWebSocketExtensions = "Sec-WebSocket-Extensions"
-	HeaderSecWebSocketKey        = "Sec-WebSocket-Key"
-	HeaderSecWebSocketProtocol   = "Sec-WebSocket-Protocol"
-	HeaderSecWebSocketVersion    = "Sec-WebSocket-Version"
-
-	// Other
-	HeaderAcceptPatch         = "Accept-Patch"
-	HeaderAcceptPushPolicy    = "Accept-Push-Policy"
-	HeaderAcceptSignature     = "Accept-Signature"
-	HeaderAltSvc              = "Alt-Svc"
-	HeaderDate                = "Date"
-	HeaderIndex               = "Index"
-	HeaderLargeAllocation     = "Large-Allocation"
-	HeaderLink                = "Link"
-	HeaderPushPolicy          = "Push-Policy"
-	HeaderRetryAfter          = "Retry-After"
-	HeaderServerTiming        = "Server-Timing"
-	HeaderSignature           = "Signature"
-	HeaderSignedHeaders       = "Signed-Headers"
-	HeaderSourceMap           = "SourceMap"
-	HeaderUpgrade             = "Upgrade"
-	HeaderXDNSPrefetchControl = "X-DNS-Prefetch-Control"
-	HeaderXPingback           = "X-Pingback"
-	HeaderXRequestID          = "X-Request-ID"
-	HeaderXRequestedWith      = "X-Requested-With"
-	HeaderXRobotsTag          = "X-Robots-Tag"
-	HeaderXUACompatible       = "X-UA-Compatible"
+	HeaderLastEventID                     = "Last-Event-ID"
+	HeaderNEL                             = "NEL"
+	HeaderPingFrom                        = "Ping-From"
+	HeaderPingTo                          = "Ping-To"
+	HeaderReportTo                        = "Report-To"
+	HeaderTE                              = "TE"
+	HeaderTrailer                         = "Trailer"
+	HeaderTransferEncoding                = "Transfer-Encoding"
+	HeaderSecWebSocketAccept              = "Sec-WebSocket-Accept"
+	HeaderSecWebSocketExtensions          = "Sec-WebSocket-Extensions"
+	HeaderSecWebSocketKey                 = "Sec-WebSocket-Key"
+	HeaderSecWebSocketProtocol            = "Sec-WebSocket-Protocol"
+	HeaderSecWebSocketVersion             = "Sec-WebSocket-Version"
+	HeaderAcceptPatch                     = "Accept-Patch"
+	HeaderAcceptPushPolicy                = "Accept-Push-Policy"
+	HeaderAcceptSignature                 = "Accept-Signature"
+	HeaderAltSvc                          = "Alt-Svc"
+	HeaderDate                            = "Date"
+	HeaderIndex                           = "Index"
+	HeaderLargeAllocation                 = "Large-Allocation"
+	HeaderLink                            = "Link"
+	HeaderPushPolicy                      = "Push-Policy"
+	HeaderRetryAfter                      = "Retry-After"
+	HeaderServerTiming                    = "Server-Timing"
+	HeaderSignature                       = "Signature"
+	HeaderSignedHeaders                   = "Signed-Headers"
+	HeaderSourceMap                       = "SourceMap"
+	HeaderUpgrade                         = "Upgrade"
+	HeaderXDNSPrefetchControl             = "X-DNS-Prefetch-Control"
+	HeaderXPingback                       = "X-Pingback"
+	HeaderXRequestID                      = "X-Request-ID"
+	HeaderXRequestedWith                  = "X-Requested-With"
+	HeaderXRobotsTag                      = "X-Robots-Tag"
+	HeaderXUACompatible                   = "X-UA-Compatible"
 )
 
 // HTTP status codes were copied from net/http.
 const (
-	StatusContinue           = 100 // RFC 7231, 6.2.1
-	StatusSwitchingProtocols = 101 // RFC 7231, 6.2.2
-	StatusProcessing         = 102 // RFC 2518, 10.1
-	StatusEarlyHints         = 103 // RFC 8297
-
-	StatusOK                   = 200 // RFC 7231, 6.3.1
-	StatusCreated              = 201 // RFC 7231, 6.3.2
-	StatusAccepted             = 202 // RFC 7231, 6.3.3
-	StatusNonAuthoritativeInfo = 203 // RFC 7231, 6.3.4
-	StatusNoContent            = 204 // RFC 7231, 6.3.5
-	StatusResetContent         = 205 // RFC 7231, 6.3.6
-	StatusPartialContent       = 206 // RFC 7233, 4.1
-	StatusMultiStatus          = 207 // RFC 4918, 11.1
-	StatusAlreadyReported      = 208 // RFC 5842, 7.1
-	StatusIMUsed               = 226 // RFC 3229, 10.4.1
-
-	StatusMultipleChoices  = 300 // RFC 7231, 6.4.1
-	StatusMovedPermanently = 301 // RFC 7231, 6.4.2
-	StatusFound            = 302 // RFC 7231, 6.4.3
-	StatusSeeOther         = 303 // RFC 7231, 6.4.4
-	StatusNotModified      = 304 // RFC 7232, 4.1
-	StatusUseProxy         = 305 // RFC 7231, 6.4.5
-
-	StatusTemporaryRedirect = 307 // RFC 7231, 6.4.7
-	StatusPermanentRedirect = 308 // RFC 7538, 3
-
-	StatusBadRequest                   = 400 // RFC 7231, 6.5.1
-	StatusUnauthorized                 = 401 // RFC 7235, 3.1
-	StatusPaymentRequired              = 402 // RFC 7231, 6.5.2
-	StatusForbidden                    = 403 // RFC 7231, 6.5.3
-	StatusNotFound                     = 404 // RFC 7231, 6.5.4
-	StatusMethodNotAllowed             = 405 // RFC 7231, 6.5.5
-	StatusNotAcceptable                = 406 // RFC 7231, 6.5.6
-	StatusProxyAuthRequired            = 407 // RFC 7235, 3.2
-	StatusRequestTimeout               = 408 // RFC 7231, 6.5.7
-	StatusConflict                     = 409 // RFC 7231, 6.5.8
-	StatusGone                         = 410 // RFC 7231, 6.5.9
-	StatusLengthRequired               = 411 // RFC 7231, 6.5.10
-	StatusPreconditionFailed           = 412 // RFC 7232, 4.2
-	StatusRequestEntityTooLarge        = 413 // RFC 7231, 6.5.11
-	StatusRequestURITooLong            = 414 // RFC 7231, 6.5.12
-	StatusUnsupportedMediaType         = 415 // RFC 7231, 6.5.13
-	StatusRequestedRangeNotSatisfiable = 416 // RFC 7233, 4.4
-	StatusExpectationFailed            = 417 // RFC 7231, 6.5.14
-	StatusTeapot                       = 418 // RFC 7168, 2.3.3
-	StatusMisdirectedRequest           = 421 // RFC 7540, 9.1.2
-	StatusUnprocessableEntity          = 422 // RFC 4918, 11.2
-	StatusLocked                       = 423 // RFC 4918, 11.3
-	StatusFailedDependency             = 424 // RFC 4918, 11.4
-	StatusUpgradeRequired              = 426 // RFC 7231, 6.5.15
-	StatusPreconditionRequired         = 428 // RFC 6585, 3
-	StatusTooManyRequests              = 429 // RFC 6585, 4
-	StatusRequestHeaderFieldsTooLarge  = 431 // RFC 6585, 5
-	StatusUnavailableForLegalReasons   = 451 // RFC 7725, 3
-
+	StatusContinue                      = 100 // RFC 7231, 6.2.1
+	StatusSwitchingProtocols            = 101 // RFC 7231, 6.2.2
+	StatusProcessing                    = 102 // RFC 2518, 10.1
+	StatusEarlyHints                    = 103 // RFC 8297
+	StatusOK                            = 200 // RFC 7231, 6.3.1
+	StatusCreated                       = 201 // RFC 7231, 6.3.2
+	StatusAccepted                      = 202 // RFC 7231, 6.3.3
+	StatusNonAuthoritativeInfo          = 203 // RFC 7231, 6.3.4
+	StatusNoContent                     = 204 // RFC 7231, 6.3.5
+	StatusResetContent                  = 205 // RFC 7231, 6.3.6
+	StatusPartialContent                = 206 // RFC 7233, 4.1
+	StatusMultiStatus                   = 207 // RFC 4918, 11.1
+	StatusAlreadyReported               = 208 // RFC 5842, 7.1
+	StatusIMUsed                        = 226 // RFC 3229, 10.4.1
+	StatusMultipleChoices               = 300 // RFC 7231, 6.4.1
+	StatusMovedPermanently              = 301 // RFC 7231, 6.4.2
+	StatusFound                         = 302 // RFC 7231, 6.4.3
+	StatusSeeOther                      = 303 // RFC 7231, 6.4.4
+	StatusNotModified                   = 304 // RFC 7232, 4.1
+	StatusUseProxy                      = 305 // RFC 7231, 6.4.5
+	StatusTemporaryRedirect             = 307 // RFC 7231, 6.4.7
+	StatusPermanentRedirect             = 308 // RFC 7538, 3
+	StatusBadRequest                    = 400 // RFC 7231, 6.5.1
+	StatusUnauthorized                  = 401 // RFC 7235, 3.1
+	StatusPaymentRequired               = 402 // RFC 7231, 6.5.2
+	StatusForbidden                     = 403 // RFC 7231, 6.5.3
+	StatusNotFound                      = 404 // RFC 7231, 6.5.4
+	StatusMethodNotAllowed              = 405 // RFC 7231, 6.5.5
+	StatusNotAcceptable                 = 406 // RFC 7231, 6.5.6
+	StatusProxyAuthRequired             = 407 // RFC 7235, 3.2
+	StatusRequestTimeout                = 408 // RFC 7231, 6.5.7
+	StatusConflict                      = 409 // RFC 7231, 6.5.8
+	StatusGone                          = 410 // RFC 7231, 6.5.9
+	StatusLengthRequired                = 411 // RFC 7231, 6.5.10
+	StatusPreconditionFailed            = 412 // RFC 7232, 4.2
+	StatusRequestEntityTooLarge         = 413 // RFC 7231, 6.5.11
+	StatusRequestURITooLong             = 414 // RFC 7231, 6.5.12
+	StatusUnsupportedMediaType          = 415 // RFC 7231, 6.5.13
+	StatusRequestedRangeNotSatisfiable  = 416 // RFC 7233, 4.4
+	StatusExpectationFailed             = 417 // RFC 7231, 6.5.14
+	StatusTeapot                        = 418 // RFC 7168, 2.3.3
+	StatusMisdirectedRequest            = 421 // RFC 7540, 9.1.2
+	StatusUnprocessableEntity           = 422 // RFC 4918, 11.2
+	StatusLocked                        = 423 // RFC 4918, 11.3
+	StatusFailedDependency              = 424 // RFC 4918, 11.4
+	StatusUpgradeRequired               = 426 // RFC 7231, 6.5.15
+	StatusPreconditionRequired          = 428 // RFC 6585, 3
+	StatusTooManyRequests               = 429 // RFC 6585, 4
+	StatusRequestHeaderFieldsTooLarge   = 431 // RFC 6585, 5
+	StatusUnavailableForLegalReasons    = 451 // RFC 7725, 3
 	StatusInternalServerError           = 500 // RFC 7231, 6.6.1
 	StatusNotImplemented                = 501 // RFC 7231, 6.6.2
 	StatusBadGateway                    = 502 // RFC 7231, 6.6.3

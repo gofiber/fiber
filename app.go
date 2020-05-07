@@ -1,6 +1,6 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://docs.gofiber.io
+// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
 // 📝 Github Repository: https://github.com/gofiber/fiber
+// 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
@@ -24,7 +24,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.9.3"
+const Version = "1.9.4"
 
 // Map is a shortcut for map[string]interface{}
 type Map map[string]interface{}
@@ -32,7 +32,7 @@ type Map map[string]interface{}
 // App denotes the Fiber application.
 type App struct {
 	server   *fasthttp.Server // FastHTTP server
-	routes   []*Route         // Route stack
+	routes   [][]*Route       // Route stack
 	Settings *Settings        // Fiber settings
 }
 
@@ -112,6 +112,8 @@ func New(settings ...*Settings) *App {
 	schemaDecoderQuery.IgnoreUnknownKeys(true)
 	// Create app
 	app := new(App)
+	// Create route stack
+	app.routes = make([][]*Route, len(methodINT), len(methodINT))
 	// Create settings
 	app.Settings = new(Settings)
 	// Set default settings
@@ -236,7 +238,7 @@ func (app *App) All(path string, handlers ...func(*Ctx)) *App {
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
 func (grp *Group) Group(prefix string, handlers ...func(*Ctx)) *Group {
-	prefix = groupPaths(grp.prefix, prefix)
+	prefix = getGroupPath(grp.prefix, prefix)
 	if len(handlers) > 0 {
 		grp.app.registerMethod("USE", prefix, handlers...)
 	}
@@ -248,7 +250,7 @@ func (grp *Group) Group(prefix string, handlers ...func(*Ctx)) *Group {
 
 // Static : https://fiber.wiki/application#static
 func (grp *Group) Static(prefix, root string, config ...Static) *Group {
-	prefix = groupPaths(grp.prefix, prefix)
+	prefix = getGroupPath(grp.prefix, prefix)
 	grp.app.registerStatic(prefix, root, config...)
 	return grp
 }
@@ -269,67 +271,67 @@ func (grp *Group) Use(args ...interface{}) *Group {
 			log.Fatalf("Invalid Use() arguments, must be (prefix, handler) or (handler)")
 		}
 	}
-	grp.app.registerMethod("USE", groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod("USE", getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Connect : https://fiber.wiki/application#http-methods
 func (grp *Group) Connect(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodConnect, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodConnect, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Put : https://fiber.wiki/application#http-methods
 func (grp *Group) Put(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodPut, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodPut, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Post : https://fiber.wiki/application#http-methods
 func (grp *Group) Post(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodPost, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodPost, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Delete : https://fiber.wiki/application#http-methods
 func (grp *Group) Delete(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodDelete, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodDelete, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Head : https://fiber.wiki/application#http-methods
 func (grp *Group) Head(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodHead, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodHead, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Patch : https://fiber.wiki/application#http-methods
 func (grp *Group) Patch(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodPatch, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodPatch, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Options : https://fiber.wiki/application#http-methods
 func (grp *Group) Options(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodOptions, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodOptions, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Trace : https://fiber.wiki/application#http-methods
 func (grp *Group) Trace(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodTrace, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodTrace, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Get : https://fiber.wiki/application#http-methods
 func (grp *Group) Get(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodGet, groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod(MethodGet, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // All matches all HTTP methods and complete paths
 func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod("ALL", groupPaths(grp.prefix, path), handlers...)
+	grp.app.registerMethod("ALL", getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 

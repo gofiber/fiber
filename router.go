@@ -1,107 +1,101 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://docs.gofiber.io
+// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
 // 📝 Github Repository: https://github.com/gofiber/fiber
+// 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
 import (
 	"log"
-	"regexp"
 	"strings"
 	"time"
 
 	fasthttp "github.com/valyala/fasthttp"
 )
 
-// Route struct
+// Route metadata
 type Route struct {
-	isGet bool // allows HEAD requests if GET
+	// Internal fields
+	use    bool         // USE matches path prefixes
+	star   bool         // Path equals '*' or '/*'
+	root   bool         // Path equals '/'
+	parsed parsedParams // parsed contains parsed params segments
 
-	isMiddleware bool // is middleware route
-
-	isStar  bool // path == '*'
-	isSlash bool // path == '/'
-	isRegex bool // needs regex parsing
-
-	Method string         // http method
-	Path   string         // original path
-	Params []string       // path params
-	Regexp *regexp.Regexp // regexp matcher
-
-	Handler func(*Ctx) // ctx handler
+	// External fields for ctx.Route() method
+	Path    string     // Registered route path
+	Method  string     // HTTP method
+	Params  []string   // Slice containing the params names
+	Handler func(*Ctx) // Ctx handler
 }
 
 func (app *App) nextRoute(ctx *Ctx) {
-	// Keep track of head matches
-	lenr := len(app.routes) - 1
+	mINT := methodINT[ctx.method]
+	// Get stack length
+	lenr := len(app.routes[mINT]) - 1
+	// Loop over stack starting from previous index
 	for ctx.index < lenr {
+		// Increment stack index
 		ctx.index++
-		route := app.routes[ctx.index]
-		match, values := route.matchRoute(ctx.method, ctx.path)
-		if match {
-			ctx.route = route
-			ctx.values = values
-			route.Handler(ctx)
-			// Generate ETag if enabled / found
-			if app.Settings.ETag {
-				setETag(ctx, ctx.Fasthttp.Response.Body(), false)
-			}
-			return
+		// Get *Route
+		route := app.routes[mINT][ctx.index]
+		// Check if it matches the request path
+		match, values := route.matchRoute(ctx.path)
+		// No match, continue
+		if !match {
+			continue
 		}
+		// Match! Set route and param values to Ctx
+		ctx.route = route
+		ctx.values = values
+		// Execute handler
+		route.Handler(ctx)
+		// Generate ETag if enabled
+		if app.Settings.ETag {
+			setETag(ctx, false)
+		}
+		return
 	}
-	// Send a 404
+	// Send a 404 by default if no route is matched
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
 		ctx.SendStatus(404)
 	}
 }
 
-func (r *Route) matchRoute(method, path string) (match bool, values []string) {
-	// is route middleware? matches all http methods
-	if r.isMiddleware {
-		// '*' or '/' means its a valid match
-		if r.isStar || r.isSlash {
+func (r *Route) matchRoute(path string) (match bool, values []string) {
+	// Middleware routes allow prefix matches
+	if r.use {
+		// Match any path if route equals '*' or '/'
+		if r.star || r.root {
 			return true, values
 		}
-		// if midware path starts with req.path
+		// Middleware matches path prefix
 		if strings.HasPrefix(path, r.Path) {
 			return true, values
 		}
-		// middlewares dont support regex so bye!
+		// No prefix match, and we do not allow params in app.use
 		return false, values
 	}
-	// non-middleware route, http method must match!
-	// the wildcard method is for .All() & .Use() methods
-	// If route is GET, also match HEAD requests
-	if r.Method == method || r.Method[0] == '*' || (r.isGet && len(method) == 4 && method == "HEAD") {
-		// '*' means we match anything
-		if r.isStar {
-			return true, values
-		}
-		// simple '/' bool, so you avoid unnecessary comparison for long paths
-		if r.isSlash && path == "/" {
-			return true, values
-		}
-		// does this route need regex matching?
-		// does req.path match regex pattern?
-		if r.isRegex && r.Regexp.MatchString(path) {
-			// do we have parameters
-			if len(r.Params) > 0 {
-				// get values for parameters
-				matches := r.Regexp.FindAllStringSubmatch(path, -1)
-				// did we get the values?
-				if len(matches) > 0 && len(matches[0]) > 1 {
-					values = matches[0][1:len(matches[0])]
-					return true, values
-				}
-				return false, values
-			}
-			return true, values
-		}
-		// last thing to do is to check for a simple path match
-		if len(r.Path) == len(path) && r.Path == path {
-			return true, values
+	// '*' wildcard matches any path
+	if r.star {
+		return true, values
+	}
+	// Check if a single '/' matches
+	if r.root && path == "/" {
+		return true, values
+	}
+	// Does this route have parameters
+	if len(r.Params) > 0 {
+		// Do we have a match?
+		params, ok := r.parsed.matchParams(path)
+		// We have a match!
+		if ok {
+			return true, params
 		}
 	}
+	// Check for a simple path match
+	if len(r.Path) == len(path) && r.Path == path {
+		return true, values
+	}
+
 	// Nothing match
 	return false, values
 }
@@ -110,7 +104,7 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	// get fiber context from sync pool
 	ctx := acquireCtx(fctx)
 	defer releaseCtx(ctx)
-	// attach app poiner and compress settings
+	// Attach app poiner to access the routes
 	ctx.app = app
 
 	// Case sensitive routing
@@ -149,44 +143,45 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		path = strings.TrimRight(path, "/")
 	}
 	// Set route booleans
-	var isGet = method == "GET"
-	var isMiddleware = method == "USE"
+	var isUse = method == "USE"
 	// Middleware / All allows all HTTP methods
-	if isMiddleware || method == "ALL" {
+	if isUse || method == "ALL" {
 		method = "*"
 	}
 	var isStar = path == "*" || path == "/*"
 	// Middleware containing only a `/` equals wildcard
-	if isMiddleware && path == "/" {
+	if isUse && path == "/" {
 		isStar = true
 	}
-	var isSlash = path == "/"
-	var isRegex = false
+	var isRoot = path == "/"
 	// Route properties
-	var Params = getParams(original)
-	var Regexp *regexp.Regexp
-	// Params requires regex pattern
-	if len(Params) > 0 {
-		regex, err := getRegex(path)
-		if err != nil {
-			log.Fatal("Router: Invalid path pattern: " + path)
-		}
-		isRegex = true
-		Regexp = regex
-	}
+	var isParsed = parseParams(original)
 	for i := range handlers {
-		app.routes = append(app.routes, &Route{
-			isGet:        isGet,
-			isMiddleware: isMiddleware,
-			isStar:       isStar,
-			isSlash:      isSlash,
-			isRegex:      isRegex,
-			Method:       method,
-			Path:         path,
-			Params:       Params,
-			Regexp:       Regexp,
-			Handler:      handlers[i],
-		})
+		route := &Route{
+			use:    isUse,
+			star:   isStar,
+			root:   isRoot,
+			parsed: isParsed,
+
+			Path:    path,
+			Method:  method,
+			Params:  isParsed.Keys,
+			Handler: handlers[i],
+		}
+		if method == "*" {
+			// Add handler to all HTTP methods
+			for m := range methodINT {
+				app.addRoute(m, route)
+			}
+			continue
+		}
+		// Add route to stack
+		app.addRoute(method, route)
+		// Add route to HEAD method if GET
+		if method == MethodGet {
+			app.addRoute(MethodHead, route)
+		}
+
 	}
 }
 
@@ -218,13 +213,13 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		root = root[:len(root)-1]
 	}
 	// isSlash ?
-	var isSlash = prefix == "/"
+	var isRoot = prefix == "/"
 	if strings.Contains(prefix, "*") {
 		wildcard = true
 		prefix = strings.Split(prefix, "*")[0]
 	}
 	var stripper = len(prefix)
-	if isSlash {
+	if isRoot {
 		stripper = 0
 	}
 	// Fileserver settings
@@ -252,30 +247,36 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		}
 	}
 	fileHandler := fs.NewRequestHandler()
-	app.routes = append(app.routes, &Route{
-		isMiddleware: true,
-		isSlash:      isSlash,
-		Method:       "*",
-		Path:         prefix,
+	route := &Route{
+		use:    true,
+		root:   isRoot,
+		Method: "*",
+		Path:   prefix,
 		Handler: func(c *Ctx) {
-			// Only handle GET & HEAD methods
-			if c.method == "GET" || c.method == "HEAD" {
-				// Do stuff
-				if wildcard {
-					c.Fasthttp.Request.SetRequestURI(prefix)
-				}
-				// Serve file
-				fileHandler(c.Fasthttp)
-
-				// Finish request if found and not forbidden
-				status := c.Fasthttp.Response.StatusCode()
-				if status != 404 && status != 403 {
-					return
-				}
-				// Reset response
-				c.Fasthttp.Response.Reset()
+			// Do stuff
+			if wildcard {
+				c.Fasthttp.Request.SetRequestURI(prefix)
 			}
+			// Serve file
+			fileHandler(c.Fasthttp)
+
+			// Finish request if found and not forbidden
+			status := c.Fasthttp.Response.StatusCode()
+			if status != 404 && status != 403 {
+				return
+			}
+			// Reset response
+			c.Fasthttp.Response.Reset()
+			// Next middleware
 			c.Next()
 		},
-	})
+	}
+	// Add route to stack
+	app.addRoute(MethodGet, route)
+	app.addRoute(MethodHead, route)
+}
+
+func (app *App) addRoute(method string, route *Route) {
+	m := methodINT[method]
+	app.routes[m] = append(app.routes[m], route)
 }
