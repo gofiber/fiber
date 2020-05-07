@@ -21,10 +21,9 @@ type Route struct {
 	use    bool         // USE matches path prefixes
 	star   bool         // Path equals '*' or '/*'
 	root   bool         // Path equals '/'
-	params bool         // Path contains params: '/:p', '/:o?' or '/*'
 	parsed parsedParams // parsed contains parsed params segments
 
-	// External fields
+	// External fields for ctx.Route() method
 	Path    string     // Registered route path
 	Method  string     // HTTP method
 	Params  []string   // Slice containing the params names
@@ -64,17 +63,17 @@ func (app *App) nextRoute(ctx *Ctx) {
 }
 
 func (r *Route) matchRoute(path string) (match bool, values []string) {
-	// Middleware routes match all HTTP methods
+	// Middleware routes allow prefix matches
 	if r.use {
 		// Match any path if route equals '*' or '/'
 		if r.star || r.root {
 			return true, values
 		}
-		// Middleware matches path prefixes only
+		// Middleware matches path prefix
 		if strings.HasPrefix(path, r.Path) {
 			return true, values
 		}
-		// Middleware routes do not support params
+		// No prefix match, and we do not allow params in app.use
 		return false, values
 	}
 	// '*' wildcard matches any path
@@ -157,18 +156,13 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		isStar = true
 	}
 	var isRoot = path == "/"
-	var isParams = false
 	// Route properties
 	var isParsed = parseParams(original)
-	if len(isParsed.Keys) > 0 {
-		isParams = true
-	}
 	for i := range handlers {
 		route := &Route{
 			use:    isUse,
 			star:   isStar,
 			root:   isRoot,
-			params: isParams,
 			parsed: isParsed,
 
 			Path:    path,
