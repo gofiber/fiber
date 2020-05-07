@@ -488,6 +488,15 @@ For _easier_ and _more clear_ work, we've put [middleware](https://docs.gofiber.
 - [CSRF](https://github.com/gofiber/csrf)
 - [JWT](https://github.com/gofiber/jwt)
 
+## 🌱 Third Party Middlewares
+
+This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+- https://github.com/arsmn/fiber-swagger
+- https://github.com/arsmn/fiber-casbin
+- https://github.com/arsmn/fiber-introspect
+- https://github.com/shareed2k/fiber_tracing
+- https://github.com/shareed2k/fiber_limiter
+
 ## 💬 Media
 
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) — _03 Feb 2020_
@@ -517,9 +526,12 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 | :---------------------------------------------------------- | :---------------------------------------------- | :------- |
 | ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt)  | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/1094221?s=25 )  | [@ekaputra07](https://github.com/ekaputra07)    | ☕ x 5    |
+| ![](https://avatars.githubusercontent.com/u/186637?s=25 )   | [@candidosales](https://github.com/candidosales)| ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/635852?s=25 )   | [@bihe](https://github.com/bihe)                | ☕ x 3    |
-| ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | @justdave                                       | ☕ x 3    |
+| ![](https://avatars.githubusercontent.com/u/307334?s=25 )   | [@justdave](https://github.com/justdave)        | ☕ x 3    |
 | ![](https://avatars.githubusercontent.com/u/11155743?s=25 ) | [@koddr](https://github.com/koddr)              | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/2978730?s=25 )  | [@diegowifi](https://github.com/diegowifi)      | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/44171355?s=25 ) | [@ssimk0](https://github.com/ssimk0)            | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/5638101?s=25 )  | [@raymayemir](https://github.com/raymayemir)    | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/619996?s=25 )   | [@melkorm](https://github.com/melkorm)          | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt) | ☕ x 1    |
