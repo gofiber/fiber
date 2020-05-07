@@ -138,7 +138,7 @@ Fiber **вдохновлен** Express, самым популярным веб �
 
 ### Routing
 
-📖 [Routing](https://docs.gofiber.io/#basic-routing)  
+📖 [Routing](https://docs.gofiber.io/#basic-routing)
 
 
 ```go
@@ -169,7 +169,7 @@ func main() {
 
 ### Serve static files
 
-📖 [Static](https://docs.gofiber.io/application#static)  
+📖 [Static](https://docs.gofiber.io/application#static)
 
 ```go
 func main() {
@@ -192,8 +192,8 @@ func main() {
 
 ### Middleware & Next
 
-📖 [Middleware](https://docs.gofiber.io/routing#middleware)  
-📖 [Next](https://docs.gofiber.io/context#next)  
+📖 [Middleware](https://docs.gofiber.io/routing#middleware)
+📖 [Next](https://docs.gofiber.io/context#next)
 
 ```go
 func main() {
@@ -226,9 +226,9 @@ func main() {
 
 ### Template engines
 
-📖 [Settings](https://docs.gofiber.io/application#settings)  
-📖 [Render](https://docs.gofiber.io/context#render)  
-📖 [Template](https://docs.gofiber.io/middleware#template)  
+📖 [Settings](https://docs.gofiber.io/application#settings)
+📖 [Render](https://docs.gofiber.io/context#render)
+📖 [Template](https://docs.gofiber.io/middleware#template)
 
 Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
 
@@ -271,7 +271,7 @@ func main() {
 
 ### Grouping routes into chains
 
-📖 [Group](https://docs.gofiber.io/application#group)  
+📖 [Group](https://docs.gofiber.io/application#group)
 
 ```go
 func main() {
@@ -296,7 +296,7 @@ func main() {
 
 ### Middleware logger
 
-📖 [Logger](https://docs.gofiber.io/middleware#logger)  
+📖 [Logger](https://docs.gofiber.io/middleware#logger)
 
 ```go
 import (
@@ -322,7 +322,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 [CORS](https://docs.gofiber.io/middleware#cors)  
+📖 [CORS](https://docs.gofiber.io/middleware#cors)
 
 ```go
 import (
@@ -348,7 +348,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Custom 404 response
 
-📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)  
+📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)
 
 ```go
 func main() {
@@ -366,7 +366,7 @@ func main() {
 
   // Last middleware to match anything
   app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404) 
+    c.SendStatus(404)
     // => 404 "Not Found"
   })
 
@@ -376,7 +376,7 @@ func main() {
 
 ### JSON Response
 
-📖 [JSON](https://docs.gofiber.io/context#json)  
+📖 [JSON](https://docs.gofiber.io/context#json)
 
 ```go
 type User struct {
@@ -406,7 +406,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 [Websocket](https://docs.gofiber.io/middleware#websocket)  
+📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
 
 ```go
 import (
@@ -440,7 +440,7 @@ func main() {
 
 ### Recover middleware
 
-📖 [Recover](https://docs.gofiber.io/middleware#recover)  
+📖 [Recover](https://docs.gofiber.io/middleware#recover)
 
 ```go
 import (
@@ -497,6 +497,7 @@ func main() {
 - [Creating Fast APIs In Go Using Fiber](https://dev.to/jozsefsallai/creating-fast-apis-in-go-using-fiber-59m9) — _07 Apr 2020_
 - [Building a Basic REST API in Go using Fiber](https://tutorialedge.net/golang/basic-rest-api-go-fiber/) - _23 Apr 2020_
 - [📺 Building a REST API using GORM and Fiber](https://youtu.be/Iq2qT0fRhAA) - _25 Apr 2020_
+- [🌎 Create a travel list app with Go, Fiber, Angular, MongoDB and Google Cloud Secret Manager](https://blog.yongweilun.me/create-a-travel-list-app-with-go-fiber-angular-mongodb-and-google-cloud-secret-manager-ck9fgxy0p061pcss1xt1ubu8t) - _25 Apr 2020_
 
 ## 👍 Помощь проекту
 

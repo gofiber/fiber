@@ -73,8 +73,8 @@
 <p align="center">
   <div dir="rtl">
 
-  <b>Fiber</b> היא <b>web framework</b> בהשראת <a href="https://github.com/expressjs/express">Express</a> הבנויה על גבי <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, מנוע ה-HTTP <b>המהיר ביותר</b> עבור <a href="https://golang.org/doc/">Go</a>.  
-  נועדה <b>להקל</b> על העניינים למען פיתוח <b>מהיר</b>, <b>ללא הקצאות זכרון</b> ולוקחת <b>ביצועים</b> בחשבון.  
+  <b>Fiber</b> היא <b>web framework</b> בהשראת <a href="https://github.com/expressjs/express">Express</a> הבנויה על גבי <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, מנוע ה-HTTP <b>המהיר ביותר</b> עבור <a href="https://golang.org/doc/">Go</a>.
+  נועדה <b>להקל</b> על העניינים למען פיתוח <b>מהיר</b>, <b>ללא הקצאות זכרון</b> ולוקחת <b>ביצועים</b> בחשבון.
   </div>
 </p>
 
@@ -161,7 +161,7 @@ go get -u github.com/gofiber/fiber
 
 <div dir="rtl">
 
-gophers חדשים שעושים את המעבר מ-[Node.js](https://nodejs.org/en/about/) ל-[Go](https://golang.org/doc/) מתמודדים עם עקומת למידה לפני שהם יכולים להתחיל לבנות את יישומי האינטרנט או המיקרו-שירותים שלהם.  
+gophers חדשים שעושים את המעבר מ-[Node.js](https://nodejs.org/en/about/) ל-[Go](https://golang.org/doc/) מתמודדים עם עקומת למידה לפני שהם יכולים להתחיל לבנות את יישומי האינטרנט או המיקרו-שירותים שלהם.
 Fiber כ-**web framework**, נוצרה עם רעיון **המינימליזם** ועוקבת אחרי **הדרך של UNIX**, כך ש-gophers חדשים יוכלו להיכנס במהירות לעולם של Go עם קבלת פנים חמה ואמינה.
 </div>
 
@@ -198,7 +198,7 @@ Fiber נוצרה **בהשראת** Express, ה-web framework הפופולרית �
 
 <div dir="rtl">
 
-📖 [ניתוב](https://docs.gofiber.io/#basic-routing)  
+📖 [ניתוב](https://docs.gofiber.io/#basic-routing)
 </div>
 
 ```go
@@ -234,7 +234,7 @@ func main() {
 
 <div dir="rtl">
 
-📖 [קבצים סטטיים](https://docs.gofiber.io/application#static)  
+📖 [קבצים סטטיים](https://docs.gofiber.io/application#static)
 </div>
 
 ```go
@@ -263,8 +263,8 @@ func main() {
 
 <div dir="rtl">
 
-📖 [Middleware](https://docs.gofiber.io/routing#middleware)  
-📖 [Next](https://docs.gofiber.io/context#next)  
+📖 [Middleware](https://docs.gofiber.io/routing#middleware)
+📖 [Next](https://docs.gofiber.io/context#next)
 </div>
 
 ```go
@@ -296,13 +296,13 @@ func main() {
 <div dir="rtl">
 <details>
   <summary>📚 הצג דוגמאות קוד נוספות</summary>
-  
+
 
 ### מנועי תבניות
 
-📖 [הגדרות](https://docs.gofiber.io/application#settings)  
-📖 [רנדור](https://docs.gofiber.io/context#render)  
-📖 [תבניות](https://docs.gofiber.io/middleware#template)  
+📖 [הגדרות](https://docs.gofiber.io/application#settings)
+📖 [רנדור](https://docs.gofiber.io/context#render)
+📖 [תבניות](https://docs.gofiber.io/middleware#template)
 
 Fiber תומך כברירת מחדל ב[מנוע התבניות של Go](https://golang.org/pkg/html/template/).
 
@@ -348,7 +348,7 @@ func main() {
 
 ### קיבוץ routes ל-chains
 
-📖 [קבוצות](https://docs.gofiber.io/application#group)  
+📖 [קבוצות](https://docs.gofiber.io/application#group)
 
 <div dir="ltr">
 
@@ -376,7 +376,7 @@ func main() {
 
 ### Middleware של לוגים
 
-📖 [Logger](https://docs.gofiber.io/middleware#logger)  
+📖 [Logger](https://docs.gofiber.io/middleware#logger)
 
 <div dir="ltr">
 
@@ -405,7 +405,7 @@ func main() {
 
 ### שיתוף משאבים בין מקורות (CORS)
 
-📖 [CORS](https://docs.gofiber.io/middleware#cors)  
+📖 [CORS](https://docs.gofiber.io/middleware#cors)
 
 <div dir="ltr">
 
@@ -437,7 +437,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### תגובת 404 מותאמת אישית
 
-📖 [שיטות HTTP](https://docs.gofiber.io/application#http-methods)  
+📖 [שיטות HTTP](https://docs.gofiber.io/application#http-methods)
 
 <div dir="ltr">
 
@@ -457,7 +457,7 @@ func main() {
 
   // Last middleware to match anything
   app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404) 
+    c.SendStatus(404)
     // => 404 "Not Found"
   })
 
@@ -468,7 +468,7 @@ func main() {
 
 ### תגובת JSON
 
-📖 [JSON](https://docs.gofiber.io/context#json)  
+📖 [JSON](https://docs.gofiber.io/context#json)
 
 <div dir="ltr">
 
@@ -501,7 +501,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 [Websocket](https://docs.gofiber.io/middleware#websocket)  
+📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
 
 <div dir="ltr">
 
@@ -538,7 +538,7 @@ func main() {
 
 ### Middleware של התאוששות
 
-📖 [התאוששות](https://docs.gofiber.io/middleware#recover)  
+📖 [התאוששות](https://docs.gofiber.io/middleware#recover)
 
 <div dir="ltr">
 
@@ -612,6 +612,7 @@ func main() {
 - [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) — _01 Apr 2020_
 - [Creating Fast APIs In Go Using Fiber](https://dev.to/jozsefsallai/creating-fast-apis-in-go-using-fiber-59m9) — _07 Apr 2020_
 - [Building a Basic REST API in Go using Fiber](https://tutorialedge.net/golang/basic-rest-api-go-fiber/) - _23 Apr 2020_
+- [🌎 Create a travel list app with Go, Fiber, Angular, MongoDB and Google Cloud Secret Manager](https://blog.yongweilun.me/create-a-travel-list-app-with-go-fiber-angular-mongodb-and-google-cloud-secret-manager-ck9fgxy0p061pcss1xt1ubu8t) - _25 Apr 2020_
 </div>
 
 <div dir="rtl">
