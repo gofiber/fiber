@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -624,7 +624,7 @@ func (ctx *Ctx) Params(key string) (value string) {
 	if ctx.route.Params == nil {
 		return
 	}
-	for i := 0; i < len(ctx.route.Params); i++ {
+	for i := range ctx.route.Params {
 		if (ctx.route.Params)[i] == key {
 			return ctx.values[i]
 		}
