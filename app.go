@@ -24,7 +24,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.9.4"
+const Version = "1.9.5"
 
 // Map is a shortcut for map[string]interface{}
 type Map map[string]interface{}
