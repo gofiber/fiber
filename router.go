@@ -65,11 +65,7 @@ func (r *Route) matchRoute(path string) (match bool, values []string) {
 	if r.use {
 		// Match any path if route equals '*' or '/'
 		if r.star || r.root {
-<<<<<<< HEAD
 			return true, []string{path}
-=======
-			return true, values
->>>>>>> upstream/master
 		}
 		// Middleware matches path prefix
 		if strings.HasPrefix(path, r.Path) {
@@ -80,11 +76,7 @@ func (r *Route) matchRoute(path string) (match bool, values []string) {
 	}
 	// '*' wildcard matches any path
 	if r.star {
-<<<<<<< HEAD
 		return true, []string{path}
-=======
-		return true, values
->>>>>>> upstream/master
 	}
 	// Check if a single '/' matches
 	if r.root && path == "/" {
