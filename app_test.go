@@ -9,8 +9,10 @@
 package fiber
 
 import (
+	"io/ioutil"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -30,6 +32,39 @@ func is200(t *testing.T, app *App, url string, m ...string) {
 	}
 	if resp.StatusCode != 200 {
 		t.Fatalf("%s - %s - %v", method, url, resp.StatusCode)
+	}
+}
+
+func Test_Order(t *testing.T) {
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
+	app.Get("/", func(c *Ctx) {
+		c.Write("1")
+		c.Next()
+	})
+	app.All("/", func(c *Ctx) {
+		c.Write("2")
+		c.Next()
+	})
+	app.Use(func(c *Ctx) {
+		c.Write("3")
+		c.Next()
+	})
+	req := httptest.NewRequest("GET", "/", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf(`%s: Error %s`, t.Name(), err)
+	}
+	if string(body) != "123" {
+		t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), "123", string(body))
 	}
 }
 func Test_Methods(t *testing.T) {

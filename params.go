@@ -1,8 +1,9 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
 // 📝 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
-// ⚠️ This path parser was based on urlpath created by @ucarion (MIT License).
+// ⚠️ This path parser was based on urlpath by @ucarion (MIT License).
 // 💖 Modified for the Fiber router by @renanbastos93 & @renewerner87
+// 🤖 ucarion/urlpath - renanbastos93/fastpath - renewerner87/fastpath
 
 package fiber
 
@@ -24,6 +25,8 @@ type paramSeg struct {
 	IsOptional bool
 	IsLast     bool
 }
+
+var paramsDummy = make([]string, 100, 100)
 
 // New ...
 func parseParams(pattern string) (p parsedParams) {
@@ -75,7 +78,8 @@ func parseParams(pattern string) (p parsedParams) {
 
 // Match ...
 func (p *parsedParams) matchParams(s string) ([]string, bool) {
-	params := make([]string, len(p.Keys), cap(p.Keys))
+	lenKeys := len(p.Keys)
+	params := paramsDummy[0:lenKeys:lenKeys]
 	var i, j, paramsIterator, partLen int
 	if len(s) > 0 {
 		s = s[1:]

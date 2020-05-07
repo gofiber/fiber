@@ -31,9 +31,9 @@ type Map map[string]interface{}
 
 // App denotes the Fiber application.
 type App struct {
-	server   *fasthttp.Server // FastHTTP server
-	routes   []*Route         // Route stack
-	Settings *Settings        // Fiber settings
+	server   *fasthttp.Server    // FastHTTP server
+	routes   map[string][]*Route // Route stack
+	Settings *Settings           // Fiber settings
 }
 
 // Settings holds is a struct holding the server settings
@@ -112,6 +112,8 @@ func New(settings ...*Settings) *App {
 	schemaDecoderQuery.IgnoreUnknownKeys(true)
 	// Create app
 	app := new(App)
+	// Create route stack
+	app.routes = make(map[string][]*Route)
 	// Create settings
 	app.Settings = new(Settings)
 	// Set default settings
