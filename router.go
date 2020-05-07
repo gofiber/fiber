@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -63,9 +63,13 @@ func (app *App) nextRoute(ctx *Ctx) {
 func (r *Route) matchRoute(path string) (match bool, values []string) {
 	// Middleware routes allow prefix matches
 	if r.use {
-		// Match any path if route equals '*' or '/'
-		if r.star || r.root {
+		// Match any path if wildcard and pass path as param
+		if r.star {
 			return true, []string{path}
+		}
+		// Match any path if route equals '/'
+		if r.root {
+			return true, values
 		}
 		// Middleware matches path prefix
 		if strings.HasPrefix(path, r.Path) {
