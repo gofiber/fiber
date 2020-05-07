@@ -12,12 +12,13 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
+// All HTTP methods
+var methods = []string{"CONNECT", "PUT", "POST", "DELETE", "HEAD", "PATCH", "OPTIONS", "TRACE", "GET"}
+
 // Route metadata
 type Route struct {
 	// Internal fields
-	get    bool         // GET allows HEAD requests
-	all    bool         // ALL allows all HTTP methods
-	use    bool         // USE allows all HTTP methods and path prefixes
+	use    bool         // USE matches path prefixes
 	star   bool         // Path equals '*' or '/*'
 	root   bool         // Path equals '/'
 	params bool         // Path contains params: '/:p', '/:o?' or '/*'
@@ -32,11 +33,11 @@ type Route struct {
 
 func (app *App) nextRoute(ctx *Ctx) {
 	// Keep track of head matches
-	lenr := len(app.routes) - 1
+	lenr := len(app.routes[ctx.method]) - 1
 	for ctx.index < lenr {
 		ctx.index++
-		route := app.routes[ctx.index]
-		match, values := route.matchRoute(ctx.method, ctx.path)
+		route := app.routes[ctx.method][ctx.index]
+		match, values := route.matchRoute(ctx.path)
 		if match {
 			ctx.route = route
 			ctx.values = values
@@ -54,7 +55,7 @@ func (app *App) nextRoute(ctx *Ctx) {
 	}
 }
 
-func (r *Route) matchRoute(method, path string) (match bool, values []string) {
+func (r *Route) matchRoute(path string) (match bool, values []string) {
 	// Middleware routes match all HTTP methods
 	if r.use {
 		// Match any path if route equals '*' or '/'
@@ -68,32 +69,28 @@ func (r *Route) matchRoute(method, path string) (match bool, values []string) {
 		// Middleware routes do not support params
 		return false, values
 	}
-	// All matches any HTTP method
-	// HTTP method is equal
-	// GET routes allow HEAD methods
-	if r.all || r.Method == method || (r.get && len(method) == 4 && method == "HEAD") {
-		// '*' wildcard matches any path
-		if r.star {
-			return true, values
-		}
-		// Check if a single '/' matches
-		if r.root && path == "/" {
-			return true, values
-		}
-		// Does this route have parameters
-		if len(r.Params) > 0 {
-			// Do we have a match?
-			params, ok := r.parsed.matchParams(path)
-			// We have a match!
-			if ok {
-				return true, params
-			}
-		}
-		// Check for a simple path match
-		if len(r.Path) == len(path) && r.Path == path {
-			return true, values
+	// '*' wildcard matches any path
+	if r.star {
+		return true, values
+	}
+	// Check if a single '/' matches
+	if r.root && path == "/" {
+		return true, values
+	}
+	// Does this route have parameters
+	if len(r.Params) > 0 {
+		// Do we have a match?
+		params, ok := r.parsed.matchParams(path)
+		// We have a match!
+		if ok {
+			return true, params
 		}
 	}
+	// Check for a simple path match
+	if len(r.Path) == len(path) && r.Path == path {
+		return true, values
+	}
+
 	// Nothing match
 	return false, values
 }
@@ -141,11 +138,9 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		path = strings.TrimRight(path, "/")
 	}
 	// Set route booleans
-	var isGet = method == "GET"
-	var isAll = method == "ALL"
 	var isUse = method == "USE"
 	// Middleware / All allows all HTTP methods
-	if isUse || isAll {
+	if isUse || method == "ALL" {
 		method = "*"
 	}
 	var isStar = path == "*" || path == "/*"
@@ -161,9 +156,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		isParams = true
 	}
 	for i := range handlers {
-		app.routes = append(app.routes, &Route{
-			get:    isGet,
-			all:    isAll,
+		route := &Route{
 			use:    isUse,
 			star:   isStar,
 			root:   isRoot,
@@ -174,7 +167,20 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 			Method:  method,
 			Params:  isParsed.Keys,
 			Handler: handlers[i],
-		})
+		}
+		if method != "*" {
+			// Add ALL/USE handlers to all methods
+			for i := range methods {
+				app.addRoute(methods[i], route)
+			}
+		} else {
+			// Add route to stack
+			app.addRoute(method, route)
+			if method == MethodGet {
+				app.addRoute(MethodHead, route)
+			}
+		}
+
 	}
 }
 
@@ -240,30 +246,36 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		}
 	}
 	fileHandler := fs.NewRequestHandler()
-	app.routes = append(app.routes, &Route{
+	route := &Route{
 		use:    true,
 		root:   isRoot,
 		Method: "*",
 		Path:   prefix,
 		Handler: func(c *Ctx) {
-			// Only handle GET & HEAD methods
-			if c.method == "GET" || c.method == "HEAD" {
-				// Do stuff
-				if wildcard {
-					c.Fasthttp.Request.SetRequestURI(prefix)
-				}
-				// Serve file
-				fileHandler(c.Fasthttp)
-
-				// Finish request if found and not forbidden
-				status := c.Fasthttp.Response.StatusCode()
-				if status != 404 && status != 403 {
-					return
-				}
-				// Reset response
-				c.Fasthttp.Response.Reset()
+			// Do stuff
+			if wildcard {
+				c.Fasthttp.Request.SetRequestURI(prefix)
 			}
+			// Serve file
+			fileHandler(c.Fasthttp)
+
+			// Finish request if found and not forbidden
+			status := c.Fasthttp.Response.StatusCode()
+			if status != 404 && status != 403 {
+				return
+			}
+			// File was not found or we had an error, reset response
+			c.Fasthttp.Response.Reset()
+			// And continue to the next handler
 			c.Next()
 		},
-	})
+	}
+	// Add route to HEAD & GET stack
+	app.addRoute(MethodGet, route)
+	app.addRoute(MethodHead, route)
+}
+
+// Appends route to map[method]stack
+func (app *App) addRoute(method string, route *Route) {
+	app.routes[method] = append(app.routes[method], route)
 }
