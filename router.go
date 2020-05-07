@@ -32,34 +32,24 @@ type Route struct {
 }
 
 func (app *App) nextRoute(ctx *Ctx) {
-	// Get stack length
+	// Keep track of head matches
 	lenr := len(app.routes[ctx.method]) - 1
-	// Loop over stack
 	for ctx.index < lenr {
-		// Increment stack index
 		ctx.index++
-		// Get current *Route
 		route := app.routes[ctx.method][ctx.index]
-		// See if it's a match
 		match, values := route.matchRoute(ctx.path)
-		// No match, continue
-		if !match {
-			continue
+		if match {
+			ctx.route = route
+			ctx.values = values
+			route.Handler(ctx)
+			// Generate ETag if enabled / found
+			if app.Settings.ETag {
+				setETag(ctx, false)
+			}
+			return
 		}
-		// Store route pointer
-		ctx.route = route
-		// Store param values ( could be nil )
-		// Maybe we could ignore this by len(values) > 0
-		ctx.values = values
-		// Execute handler
-		route.Handler(ctx)
-		// Generate ETag if enabled
-		if app.Settings.ETag {
-			setETag(ctx, false)
-		}
-		return
 	}
-	// Send a default 404 if no match is found
+	// Send a 404
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
 		ctx.SendStatus(404)
 	}
@@ -178,17 +168,18 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 			Params:  isParsed.Keys,
 			Handler: handlers[i],
 		}
-		if method != "*" {
-			// Add ALL/USE handlers to all methods
+		if method == "*" {
+			// Add handler to all HTTP methods
 			for i := range methods {
 				app.addRoute(methods[i], route)
 			}
-		} else {
-			// Add route to stack
-			app.addRoute(method, route)
-			if method == MethodGet {
-				app.addRoute(MethodHead, route)
-			}
+			continue
+		}
+		// Add route to stack
+		app.addRoute(method, route)
+		// Add route to HEAD method if GET
+		if method == MethodGet {
+			app.addRoute(MethodHead, route)
 		}
 
 	}
@@ -274,18 +265,17 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 			if status != 404 && status != 403 {
 				return
 			}
-			// File was not found or we had an error, reset response
+			// Reset response
 			c.Fasthttp.Response.Reset()
-			// And continue to the next handler
+			// Next middleware
 			c.Next()
 		},
 	}
-	// Add route to HEAD & GET stack
+	// Add route to stack
 	app.addRoute(MethodGet, route)
 	app.addRoute(MethodHead, route)
 }
 
-// Appends route to map[method]stack
 func (app *App) addRoute(method string, route *Route) {
 	app.routes[method] = append(app.routes[method], route)
 }
