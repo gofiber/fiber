@@ -558,7 +558,6 @@ func Test_Params(t *testing.T) {
 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 	}
 	req = httptest.NewRequest("GET", "/test2/im/a/cookie", nil)
-	t.Log(req.URL)
 	resp, err = app.Test(req)
 	if err != nil {
 		t.Fatalf(`%s: %s`, t.Name(), err)
