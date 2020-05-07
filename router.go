@@ -168,17 +168,18 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 			Params:  isParsed.Keys,
 			Handler: handlers[i],
 		}
-		if method != "*" {
-			// Add ALL/USE handlers to all methods
+		if method == "*" {
+			// Add handler to all HTTP methods
 			for i := range methods {
 				app.addRoute(methods[i], route)
 			}
-		} else {
-			// Add route to stack
-			app.addRoute(method, route)
-			if method == MethodGet {
-				app.addRoute(MethodHead, route)
-			}
+			continue
+		}
+		// Add route to stack
+		app.addRoute(method, route)
+		// Add route to HEAD method if GET
+		if method == MethodGet {
+			app.addRoute(MethodHead, route)
 		}
 
 	}
@@ -264,18 +265,17 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 			if status != 404 && status != 403 {
 				return
 			}
-			// File was not found or we had an error, reset response
+			// Reset response
 			c.Fasthttp.Response.Reset()
-			// And continue to the next handler
+			// Next middleware
 			c.Next()
 		},
 	}
-	// Add route to HEAD & GET stack
+	// Add route to stack
 	app.addRoute(MethodGet, route)
 	app.addRoute(MethodHead, route)
 }
 
-// Appends route to map[method]stack
 func (app *App) addRoute(method string, route *Route) {
 	app.routes[method] = append(app.routes[method], route)
 }
