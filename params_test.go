@@ -21,6 +21,7 @@ type testCase struct {
 	ok     bool
 }
 
+<<<<<<< HEAD
 func Test_With_Starting_Wildcard(t *testing.T) {
 	checkCases(
 		t,
@@ -34,6 +35,8 @@ func Test_With_Starting_Wildcard(t *testing.T) {
 	)
 }
 
+=======
+>>>>>>> upstream/master
 func Test_With_Param_And_Wildcard(t *testing.T) {
 	checkCases(
 		t,
