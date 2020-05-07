@@ -25,6 +25,9 @@ type paramSeg struct {
 	IsLast     bool
 }
 
+// dummy slice with string, we use it to avoid the slice creation
+var paramsDummy = make([]string, 100, 100)
+
 // New ...
 func parseParams(pattern string) (p parsedParams) {
 	var patternCount int
@@ -75,7 +78,8 @@ func parseParams(pattern string) (p parsedParams) {
 
 // Match ...
 func (p *parsedParams) matchParams(s string) ([]string, bool) {
-	params := make([]string, len(p.Keys), cap(p.Keys))
+	lenKeys := len(p.Keys)
+	params := paramsDummy[0:lenKeys:lenKeys]
 	var i, j, paramsIterator, partLen int
 	if len(s) > 0 {
 		s = s[1:]
