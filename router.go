@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -28,15 +28,15 @@ type Route struct {
 }
 
 func (app *App) nextRoute(ctx *Ctx) {
-	m := getMethodINT(ctx.method)
+	mINT := methodINT[ctx.method]
 	// Get stack length
-	lenr := len(app.routes[m]) - 1
+	lenr := len(app.routes[mINT]) - 1
 	// Loop over stack starting from previous index
 	for ctx.index < lenr {
 		// Increment stack index
 		ctx.index++
 		// Get *Route
-		route := app.routes[m][ctx.index]
+		route := app.routes[mINT][ctx.index]
 		// Check if it matches the request path
 		match, values := route.matchRoute(ctx.path)
 		// No match, continue
@@ -63,8 +63,12 @@ func (app *App) nextRoute(ctx *Ctx) {
 func (r *Route) matchRoute(path string) (match bool, values []string) {
 	// Middleware routes allow prefix matches
 	if r.use {
-		// Match any path if route equals '*' or '/'
-		if r.star || r.root {
+		// Match any path if wildcard and pass path as param
+		if r.star {
+			return true, []string{path}
+		}
+		// Match any path if route equals '/'
+		if r.root {
 			return true, values
 		}
 		// Middleware matches path prefix
@@ -76,7 +80,7 @@ func (r *Route) matchRoute(path string) (match bool, values []string) {
 	}
 	// '*' wildcard matches any path
 	if r.star {
-		return true, values
+		return true, []string{path}
 	}
 	// Check if a single '/' matches
 	if r.root && path == "/" {
@@ -129,7 +133,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		path = "/"
 	}
 	// Path always start with a '/' or '*'
-	if path[0] != '/' && path[0] != '*' {
+	if path[0] != '/' {
 		path = "/" + path
 	}
 	// Store original path to strip case sensitive params
@@ -148,7 +152,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	if isUse || method == "ALL" {
 		method = "*"
 	}
-	var isStar = path == "*" || path == "/*"
+	var isStar = path == "/*"
 	// Middleware containing only a `/` equals wildcard
 	if isUse && path == "/" {
 		isStar = true
@@ -170,8 +174,8 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		}
 		if method == "*" {
 			// Add handler to all HTTP methods
-			for i := range httpMethods {
-				app.addRoute(httpMethods[i], route)
+			for m := range methodINT {
+				app.addRoute(m, route)
 			}
 			continue
 		}
@@ -191,7 +195,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		prefix = "/"
 	}
 	// Prefix always start with a '/' or '*'
-	if prefix[0] != '/' && prefix[0] != '*' {
+	if prefix[0] != '/' {
 		prefix = "/" + prefix
 	}
 	// Match anything
@@ -277,6 +281,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 }
 
 func (app *App) addRoute(method string, route *Route) {
-	m := getMethodINT(method)
+	m := methodINT[method]
 	app.routes[m] = append(app.routes[m], route)
 }

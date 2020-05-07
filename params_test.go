@@ -21,6 +21,19 @@ type testCase struct {
 	ok     bool
 }
 
+func Test_With_Starting_Wildcard(t *testing.T) {
+	checkCases(
+		t,
+		parseParams("/*"),
+		[]testCase{
+			{uri: "/api/v1/entity", params: []string{"api/v1/entity"}, ok: true},
+			{uri: "/api/v1/entity/", params: []string{"api/v1/entity/"}, ok: true},
+			{uri: "/api/v1/entity/1", params: []string{"api/v1/entity/1"}, ok: true},
+			{uri: "/", params: []string{""}, ok: true},
+		},
+	)
+}
+
 func Test_With_Param_And_Wildcard(t *testing.T) {
 	checkCases(
 		t,
@@ -174,17 +187,6 @@ func Test_With_With_Simple_Path(t *testing.T) {
 	checkCases(
 		t,
 		parseParams("/"),
-		[]testCase{
-			{uri: "/api", params: nil, ok: false},
-			{uri: "", params: []string{}, ok: true},
-			{uri: "/", params: []string{}, ok: true},
-		},
-	)
-}
-func Test_With_With_Empty_Path(t *testing.T) {
-	checkCases(
-		t,
-		parseParams(""),
 		[]testCase{
 			{uri: "/api", params: nil, ok: false},
 			{uri: "", params: []string{}, ok: true},

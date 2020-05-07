@@ -469,26 +469,35 @@ func main() {
 ```
 </details>
 
-## 🧬 Available Middlewares
+## 🧬 Official Middlewares
 
-For _easier_ and _more clear_ work, we've put [middleware](https://docs.gofiber.io/middleware) into separate repositories:
+For an more _maintainable_ middleware _ecosystem_, we've put official [middlewares](https://docs.gofiber.io/middleware) into separate repositories:
 
-- [Basic Authentication](https://github.com/gofiber/basicauth)
-- [Key Authentication](https://github.com/gofiber/keyauth)
-- [Compression](https://github.com/gofiber/compression)
-- [Request ID](https://github.com/gofiber/requestid)
-- [WebSocket](https://github.com/gofiber/websocket)
-- [Rewrite](https://github.com/gofiber/rewrite)
-- [Recover](https://github.com/gofiber/recover)
-- [Limiter](https://github.com/gofiber/limiter)
-- [Session](https://github.com/gofiber/session)
-- [Logger](https://github.com/gofiber/logger)
-- [Helmet](https://github.com/gofiber/helmet)
-- [Embed](https://github.com/gofiber/embed)
-- [PPROF](https://github.com/gofiber/pprof)
-- [CORS](https://github.com/gofiber/cors)
-- [CSRF](https://github.com/gofiber/csrf)
-- [JWT](https://github.com/gofiber/jwt)
+- [gofiber/basicauth](https://github.com/gofiber/basicauth)
+- [gofiber/keyauth](https://github.com/gofiber/keyauth)
+- [gofiber/compression](https://github.com/gofiber/compression)
+- [gofiber/requestid](https://github.com/gofiber/requestid)
+- [gofiber/websocket](https://github.com/gofiber/websocket)
+- [gofiber/rewrite](https://github.com/gofiber/rewrite)
+- [gofiber/recover](https://github.com/gofiber/recover)
+- [gofiber/limiter](https://github.com/gofiber/limiter)
+- [gofiber/session](https://github.com/gofiber/session)
+- [gofiber/logger](https://github.com/gofiber/logger)
+- [gofiber/helmet](https://github.com/gofiber/helmet)
+- [gofiber/embed](https://github.com/gofiber/embed)
+- [gofiber/pprof](https://github.com/gofiber/pprof)
+- [gofiber/cors](https://github.com/gofiber/cors)
+- [gofiber/csrf](https://github.com/gofiber/csrf)
+- [gofiber/jwt](https://github.com/gofiber/jwt)
+
+## 🌱 Third Party Middlewares
+
+This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
+- [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
+- [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
+- [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
+- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 
 ## 💬 Media
 
@@ -519,9 +528,12 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 | :---------------------------------------------------------- | :---------------------------------------------- | :------- |
 | ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt)  | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/1094221?s=25 )  | [@ekaputra07](https://github.com/ekaputra07)    | ☕ x 5    |
+| ![](https://avatars.githubusercontent.com/u/186637?s=25 )   | [@candidosales](https://github.com/candidosales)| ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/635852?s=25 )   | [@bihe](https://github.com/bihe)                | ☕ x 3    |
-| ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | @justdave                                       | ☕ x 3    |
+| ![](https://avatars.githubusercontent.com/u/307334?s=25 )   | [@justdave](https://github.com/justdave)        | ☕ x 3    |
 | ![](https://avatars.githubusercontent.com/u/11155743?s=25 ) | [@koddr](https://github.com/koddr)              | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/2978730?s=25 )  | [@diegowifi](https://github.com/diegowifi)      | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/44171355?s=25 ) | [@ssimk0](https://github.com/ssimk0)            | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/5638101?s=25 )  | [@raymayemir](https://github.com/raymayemir)    | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/619996?s=25 )   | [@melkorm](https://github.com/melkorm)          | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt) | ☕ x 1    |

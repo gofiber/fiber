@@ -30,6 +30,9 @@ var paramsDummy = make([]string, 100, 100)
 
 // New ...
 func parseParams(pattern string) (p parsedParams) {
+	if pattern[0] != '/' {
+		pattern = "/" + pattern
+	}
 	var patternCount int
 	aPattern := []string{""}
 	if pattern != "" {

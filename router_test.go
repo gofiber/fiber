@@ -1,11 +1,6 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
-// ⚠️ This path parser was based on urlpath by @ucarion (MIT License).
-// 💖 Modified for the Fiber router by @renanbastos93 & @renewerner87
-// 🤖 ucarion/urlpath - renanbastos93/fastpath - renewerner87/fastpath
-
-// router benchmarks
 
 package fiber
 
@@ -37,28 +32,53 @@ func init() {
 }
 
 func Benchmark_All_Routes(b *testing.B) {
+	var match bool
+	var params []string
 	for n := 0; n < b.N; n++ {
 		for _, r := range testRoutes {
-			_, _ = matchRoute(r.method, r.path)
+			match, params = matchRoute(r.method, r.path)
+		}
+		if match {
+			if len(params) > 0 {
+
+			}
 		}
 	}
 }
 
 func Benchmark_Last_Route(b *testing.B) {
+	var match bool
+	var params []string
 	for n := 0; n < b.N; n++ {
-		_, _ = matchRoute("DELETE", "/user/keys/1337")
+		match, params = matchRoute("DELETE", "/user/keys/1337")
+	}
+	if match {
+		if len(params) > 0 {
+
+		}
+	}
+}
+func Benchmark_First_Route(b *testing.B) {
+	var match bool
+	var params []string
+	for n := 0; n < b.N; n++ {
+		match, params = matchRoute("GET", "/authorizations")
+	}
+	if match {
+		if len(params) > 0 {
+
+		}
 	}
 }
 
 func matchRoute(method, path string) (match bool, values []string) {
-	mINT := getMethodINT(method)
+	mINT := methodINT[method]
 	for i := range app.routes[mINT] {
 		match, values = app.routes[mINT][i].matchRoute(path)
 		if match {
 			return
 		}
 	}
-
 	return
 }
 
