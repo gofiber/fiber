@@ -12,9 +12,6 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
-// All HTTP methods
-var methods = []string{"CONNECT", "PUT", "POST", "DELETE", "HEAD", "PATCH", "OPTIONS", "TRACE", "GET"}
-
 // Route metadata
 type Route struct {
 	// Internal fields
@@ -31,14 +28,15 @@ type Route struct {
 }
 
 func (app *App) nextRoute(ctx *Ctx) {
+	m := getMethodINT(ctx.method)
 	// Get stack length
-	lenr := len(app.routes[ctx.method]) - 1
+	lenr := len(app.routes[m]) - 1
 	// Loop over stack starting from previous index
 	for ctx.index < lenr {
 		// Increment stack index
 		ctx.index++
 		// Get *Route
-		route := app.routes[ctx.method][ctx.index]
+		route := app.routes[m][ctx.index]
 		// Check if it matches the request path
 		match, values := route.matchRoute(ctx.path)
 		// No match, continue
@@ -106,7 +104,7 @@ func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	// get fiber context from sync pool
 	ctx := acquireCtx(fctx)
 	defer releaseCtx(ctx)
-	// attach app poiner and compress settings
+	// Attach app poiner to access the routes
 	ctx.app = app
 
 	// Case sensitive routing
@@ -172,8 +170,8 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		}
 		if method == "*" {
 			// Add handler to all HTTP methods
-			for i := range methods {
-				app.addRoute(methods[i], route)
+			for i := range httpMethods {
+				app.addRoute(httpMethods[i], route)
 			}
 			continue
 		}
@@ -279,5 +277,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 }
 
 func (app *App) addRoute(method string, route *Route) {
-	app.routes[method] = append(app.routes[method], route)
+	m := getMethodINT(method)
+	app.routes[m] = append(app.routes[m], route)
 }

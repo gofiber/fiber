@@ -10,11 +10,33 @@ import (
 	"hash/crc32"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 	"unsafe"
 )
+
+// Return an unique INT for a HTTP method
+func getMethodINT(method string) int {
+	switch method {
+	case "GET":
+		return 0
+	case "POST":
+		return 1
+	case "DELETE":
+		return 2
+	case "HEAD":
+		return 3
+	case "PUT":
+		return 4
+	case "PATCH":
+		return 5
+	case "TRACE":
+		return 6
+	case "CONNECT":
+		return 7
+	}
+	return 8
+}
 
 // Document elke line gelijk even
 func setETag(ctx *Ctx, weak bool) {
@@ -65,22 +87,6 @@ func groupPaths(prefix, path string) string {
 	path = prefix + path
 	path = strings.Replace(path, "//", "/", -1)
 	return path
-}
-
-func getFiles(root string) (files []string, dir bool, err error) {
-	root = filepath.Clean(root)
-	if _, err := os.Lstat(root); err != nil {
-		return files, dir, fmt.Errorf("%s", err)
-	}
-	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if !info.IsDir() {
-			files = append(files, path)
-		} else {
-			dir = true
-		}
-		return err
-	})
-	return
 }
 
 func getMIME(extension string) (mime string) {
@@ -481,6 +487,9 @@ var extensionMIME = map[string]string{
 	".wmv":     "video/x-ms-wmv",
 	".avi":     "video/x-msvideo",
 }
+
+// All HTTP methods
+var httpMethods = []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "CONNECT", "OPTIONS", "TRACE"}
 
 // HTTP methods were copied from net/http.
 const (
