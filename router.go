@@ -32,24 +32,34 @@ type Route struct {
 }
 
 func (app *App) nextRoute(ctx *Ctx) {
-	// Keep track of head matches
+	// Get stack length
 	lenr := len(app.routes[ctx.method]) - 1
+	// Loop over stack
 	for ctx.index < lenr {
+		// Increment stack index
 		ctx.index++
+		// Get current *Route
 		route := app.routes[ctx.method][ctx.index]
+		// See if it's a match
 		match, values := route.matchRoute(ctx.path)
-		if match {
-			ctx.route = route
-			ctx.values = values
-			route.Handler(ctx)
-			// Generate ETag if enabled / found
-			if app.Settings.ETag {
-				setETag(ctx, false)
-			}
-			return
+		// No match, continue
+		if !match {
+			continue
 		}
+		// Store route pointer
+		ctx.route = route
+		// Store param values ( could be nil )
+		// Maybe we could ignore this by len(values) > 0
+		ctx.values = values
+		// Execute handler
+		route.Handler(ctx)
+		// Generate ETag if enabled
+		if app.Settings.ETag {
+			setETag(ctx, false)
+		}
+		return
 	}
-	// Send a 404
+	// Send a default 404 if no match is found
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
 		ctx.SendStatus(404)
 	}
