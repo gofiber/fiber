@@ -129,7 +129,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 		path = "/"
 	}
 	// Path always start with a '/' or '*'
-	if path[0] != '/' && path[0] != '*' {
+	if path[0] != '/' {
 		path = "/" + path
 	}
 	// Store original path to strip case sensitive params
@@ -148,7 +148,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	if isUse || method == "ALL" {
 		method = "*"
 	}
-	var isStar = path == "*" || path == "/*"
+	var isStar = path == "/*"
 	// Middleware containing only a `/` equals wildcard
 	if isUse && path == "/" {
 		isStar = true
