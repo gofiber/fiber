@@ -475,19 +475,6 @@ var extensionMIME = map[string]string{
 	".avi":     "video/x-msvideo",
 }
 
-// // Slice of HTTP methods
-// var httpMethods = []string{
-// 	MethodGet,
-// 	MethodHead,
-// 	MethodPost,
-// 	MethodPut,
-// 	MethodPatch,
-// 	MethodDelete,
-// 	MethodConnect,
-// 	MethodOptions,
-// 	MethodTrace,
-// }
-
 // HTTP methods were copied from net/http.
 const (
 	MethodGet     = "GET"     // RFC 7231, 4.3.1
