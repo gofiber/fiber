@@ -517,7 +517,7 @@ func main() {
 4. Помогите перевести нашу API документацию на платформе [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
 5. Поддержите проект, купив [чашку кофе](https://buymeacoff.ee/fenny).
 
-## ☕ Supporters
+## ☕ Поддержка проекта
 
 Fiber — это проект с открытым исходным кодом, который работает на пожертвования для оплаты счетов, например, нашего доменного имени, GitBook, Netlify и serverless-хостинга.
 
@@ -538,7 +538,7 @@ Fiber — это проект с открытым исходным кодом, �
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt) | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy)            | ☕ x 1    |
 
-## ‎‍💻 Code Contributors
+## ‎‍💻 Контрибьютеры
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
