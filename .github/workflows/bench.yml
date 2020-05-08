@@ -15,4 +15,4 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v2
     - name: Benchmark
-      run: go test -v ./... -run=^$ -bench=. -benchmem
+      run: go test -v -run=^$ -bench=. -benchmem
