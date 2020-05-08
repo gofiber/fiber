@@ -119,9 +119,9 @@ go get -u github.com/gofiber/fiber
 - [Middleware](https://docs.gofiber.io/middleware) и поддержка [Next](https://docs.gofiber.io/context#next)
 - [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
 - [Template engines](https://docs.gofiber.io/middleware#template)
-- [WebSocket support](https://docs.gofiber.io/middleware#websocket)
+- [Поддержка WebSocket](https://docs.gofiber.io/middleware#websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Available in [12 languages](https://docs.gofiber.io/)
+- Документация доступна на [12 языках](https://docs.gofiber.io/)
 - И многое другое, [посетите наш Wiki](https://docs.gofiber.io/)
 
 ## 💡 Философия
@@ -488,7 +488,7 @@ func main() {
 
 ## 🌱 Middlewares от сторонних разработчиков
 
-Это список middlewares, созданных сообществом Fiber. Пожалуйста, создайте PR, если хотите добавить в этой список свой или известный вам!
+Это список middlewares, созданных сообществом Fiber. Пожалуйста, [создайте PR](https://github.com/gofiber/fiber/pulls), если хотите добавить в этот список свой или известный вам middleware для веб фреймворка Fiber!
 
 - [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
