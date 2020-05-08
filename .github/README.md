@@ -46,11 +46,11 @@
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
-    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
-  </a>
   <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
+  </a>
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
+    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
   </a>
   <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
     <img src="https://goreportcard.com/badge/github.com/gofiber/fiber?style=flat-square">
@@ -64,8 +64,8 @@
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
     <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Gosec?label=gosec&style=flat-square">
   </a>
-  <a href="https://t.me/gofiber">
-    <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
+  <a href="https://gofiber.io/discord">
+    <img src="https://img.shields.io/badge/Discord-join%20channel-7289DA?style=flat-square">
   </a>
 </p>
 <p align="center">
@@ -121,7 +121,7 @@ These tests are performed by [TechEmpower](https://github.com/TechEmpower/Framew
 - [Template engines](https://docs.gofiber.io/middleware#template)
 - [WebSocket support](https://docs.gofiber.io/middleware#websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Translated in 12 other languages
+- Translated in [12 other languages](https://docs.gofiber.io/)
 - And much more, [explore Fiber](https://docs.gofiber.io/)
 
 ## 💡 Philosophy
@@ -130,7 +130,7 @@ New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to
 
 Fiber is **inspired** by Express, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application in Node.js (_using Express or similar_), then many methods and principles will seem **very common** to you.
 
-We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues) (_and all over the Internet_) to create a **fast**, **flexible** and **friendly** Go web framework for **any** task, **deadline** and developer **skill**! Just like Express does in the JavaScript world.
+We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues), Discord [channel](https://gofiber.io/discord) _and all over the Internet_ to create a **fast**, **flexible** and **friendly** Go web framework for **any** task, **deadline** and developer **skill**! Just like Express does in the JavaScript world.
 
 ## 👀 Examples
 
