@@ -516,7 +516,7 @@ Si quiere **agradecer** y/o apoyar el desarrollo activo de `Fiber`:
 
 ## ☕ Personas que han mostrado su apoyo
 
-Fiber es un proyecto open source que se mantiene a través de donaciones para pagar las cuentas e.g. nuestro nombre de dominio, gitbook, netlify y hosting serverless. Si quieres apoyar a Fiber, puedes ☕ [**comprar un café**](https://buymeacoff.ee/fenny)
+Fiber es un proyecto open source que se mantiene a través de donaciones para pagar las cuentas e.g. nuestro nombre de dominio, gitbook, netlify y hosting serverless. Si quieres apoyar a Fiber, puedes ☕ [**comprar un café**](https://buymeacoff.ee/fenny).
 
 |                                                             | User                                            | Donation |
 | :---------------------------------------------------------- | :---------------------------------------------- | :------- |
