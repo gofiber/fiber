@@ -15,4 +15,4 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v2
     - name: Test
-      run: go test -v
+      run: go test -v -race

@@ -1,0 +1,3 @@
+vendor
+*.fasthttp.gz
+.idea

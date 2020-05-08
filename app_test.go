@@ -231,12 +231,12 @@ func Test_Listen(t *testing.T) {
 		DisableStartupMessage: true,
 	})
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		_ = app.Shutdown()
 	}()
 	app.Listen(3002)
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		_ = app.Shutdown()
 	}()
 	app.Listen("3003")
@@ -252,7 +252,7 @@ func Test_Serve(t *testing.T) {
 		t.Fatalf(`%s: %s`, t.Name(), err)
 	}
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		_ = app.Shutdown()
 	}()
 	app.Serve(ln)

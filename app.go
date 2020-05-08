@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	fasthttp "github.com/valyala/fasthttp"
@@ -34,6 +35,7 @@ type App struct {
 	server   *fasthttp.Server // FastHTTP server
 	routes   [][]*Route       // Route stack
 	Settings *Settings        // Fiber settings
+	m        sync.Mutex       // mutual exclusion
 }
 
 // Settings holds is a struct holding the server settings
@@ -341,7 +343,7 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 // You can pass an optional *tls.Config to enable TLS.
 func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// Create fasthttp server
-	app.server = app.newServer()
+	app.setServer(app.newServer())
 	// TLS config
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
@@ -351,7 +353,7 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
 		fmt.Printf("Started listening on %s\n", ln.Addr().String())
 	}
-	return app.server.Serve(ln)
+	return app.getServer().Serve(ln)
 }
 
 // Listen serves HTTP requests from the given addr or port.
@@ -369,7 +371,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		addr = ":" + addr
 	}
 	// Create fasthttp server
-	app.server = app.newServer()
+	app.setServer(app.newServer())
 
 	var ln net.Listener
 	var err error
@@ -392,7 +394,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
 		fmt.Printf("Started listening on %s\n", ln.Addr().String())
 	}
-	return app.server.Serve(ln)
+	return app.getServer().Serve(ln)
 }
 
 // Shutdown gracefully shuts down the server without interrupting any active connections.
@@ -403,10 +405,11 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
-	if app.server == nil {
+	server := app.getServer()
+	if server == nil {
 		return fmt.Errorf("Server is not running")
 	}
-	return app.server.Shutdown()
+	return server.Shutdown()
 }
 
 // Test is used for internal debugging by passing a *http.Request
@@ -422,7 +425,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		return nil, err
 	}
 	// Setup server
-	app.server = app.newServer()
+	app.setServer(app.newServer())
 	// Create conn
 	conn := new(testConn)
 	// Write raw http request
@@ -432,7 +435,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
-		channel <- app.server.ServeConn(conn)
+		channel <- app.getServer().ServeConn(conn)
 	}()
 	// Wait for callback
 	if timeout >= 0 {
@@ -537,4 +540,18 @@ func (app *App) newServer() *fasthttp.Server {
 			}
 		},
 	}
+}
+
+// setter for the server with mutex
+func (app *App) setServer(server *fasthttp.Server) {
+	app.m.Lock()
+	defer app.m.Unlock()
+	app.server = server
+}
+
+// getter for the server with mutex
+func (app *App) getServer() *fasthttp.Server {
+	app.m.Lock()
+	defer app.m.Unlock()
+	return app.server
 }
