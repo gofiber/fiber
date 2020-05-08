@@ -1,16 +1,14 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://fiber.wiki
-// 📝 Github Repository: https://github.com/gofiber/fiber
-
-// go test -v -coverprofile cover.out .
-// go tool cover -html=cover.out -o cover.html
-// open cover.html
+// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
+// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
 import (
+	"io/ioutil"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -32,8 +30,43 @@ func is200(t *testing.T, app *App, url string, m ...string) {
 		t.Fatalf("%s - %s - %v", method, url, resp.StatusCode)
 	}
 }
+
+func Test_Order(t *testing.T) {
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
+	app.Get("/", func(c *Ctx) {
+		c.Write("1")
+		c.Next()
+	})
+	app.All("/", func(c *Ctx) {
+		c.Write("2")
+		c.Next()
+	})
+	app.Use(func(c *Ctx) {
+		c.Write("3")
+		c.Next()
+	})
+	req := httptest.NewRequest("GET", "/", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf(`%s: %s`, t.Name(), err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf(`%s: Error %s`, t.Name(), err)
+	}
+	if string(body) != "123" {
+		t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), "123", string(body))
+	}
+}
 func Test_Methods(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 
 	app.Connect("/:john?/:doe?", handler)
 	is200(t, app, "/", "CONNECT")
@@ -83,14 +116,18 @@ func Test_New(t *testing.T) {
 }
 
 func Test_Shutdown(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 	_ = app.Shutdown()
 }
 
 func Test_Static(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 	grp := app.Group("/v1")
-	grp.Static("/v2", ".travis.yml")
+	grp.Static("/v2", ".github/auth_assign.yml")
 	app.Static("/*", ".github/FUNDING.yml")
 	app.Static("/john", "./.github")
 	req, _ := http.NewRequest("GET", "/john/stale.yml", nil)
@@ -140,7 +177,9 @@ func Test_Static(t *testing.T) {
 }
 
 func Test_Group(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 
 	grp := app.Group("/test")
 	grp.Get("/", handler)
@@ -188,7 +227,9 @@ func Test_Group(t *testing.T) {
 }
 
 func Test_Listen(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		_ = app.Shutdown()
@@ -203,7 +244,8 @@ func Test_Listen(t *testing.T) {
 
 func Test_Serve(t *testing.T) {
 	app := New(&Settings{
-		Prefork: true,
+		DisableStartupMessage: true,
+		Prefork:               true,
 	})
 	ln, err := net.Listen("tcp4", ":3004")
 	if err != nil {

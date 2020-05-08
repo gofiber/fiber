@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://fiber.wiki">
+  <a href="https://gofiber.io">
     <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
   </a>
   <br>
@@ -24,6 +24,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/de.svg">
   </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_nl.md">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/nl.svg">
+  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ko.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ko.svg">
   </a>
@@ -36,33 +39,30 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_id.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/id.svg">
   </a>
-  <br><br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
-    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_he.md">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/il.svg">
   </a>
+  <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
-  <a href="https://fiber.wiki">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
+    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
+  </a>
+  <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
   </a>
-  <a href="#">
-    <img src="https://img.shields.io/badge/goreport-A%2B-brightgreen?style=flat-square">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+    <img src="https://goreportcard.com/badge/github.com/gofiber/fiber?style=flat-square">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
     <img src="https://img.shields.io/badge/coverage-91%25-brightgreen?style=flat-square">
   </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=linux&style=flat-square">
+  <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=tests&style=flat-square">
   </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=windows&style=flat-square">
-  </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
-  </a>
-  <a href="https://travis-ci.org/gofiber/fiber">
-    <img src="https://img.shields.io/travis/gofiber/fiber/master.svg?label=osx&style=flat-square">
+  <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Gosec?label=gosec&style=flat-square">
   </a>
   <a href="https://t.me/gofiber">
     <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
@@ -102,7 +102,7 @@ go get -u github.com/gofiber/fiber/...
 
 ## 🤖 Performans Ölçümleri
 
-Bu testler [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) ve [Go Web](https://github.com/smallnest/go-web-framework-benchmark) ile koşuldu. Bütün sonuçları görmek için lütfen [Wiki](https://fiber.wiki/benchmarks) sayfasını ziyaret ediniz.
+Bu testler [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) ve [Go Web](https://github.com/smallnest/go-web-framework-benchmark) ile koşuldu. Bütün sonuçları görmek için lütfen [Wiki](https://docs.gofiber.io/benchmarks) sayfasını ziyaret ediniz.
 
 <p float="left" align="middle">
   <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
@@ -111,18 +111,18 @@ Bu testler [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) ve 
 
 ## 🎯 Özellikler
 
-- Güçlü [rotalar](https://fiber.wiki/routing)
-- [Statik dosya](https://fiber.wiki/application#static) yönetimi
-- Olağanüstü [performans](https://fiber.wiki/benchmarks)
-- [Düşük bellek](https://fiber.wiki/benchmarks) tüketimi
-- [API uç noktaları](https://fiber.wiki/context)
-- Ara katman & [Sonraki](https://fiber.wiki/context#next) desteği
+- Güçlü [rotalar](https://docs.gofiber.io/routing)
+- [Statik dosya](https://docs.gofiber.io/application#static) yönetimi
+- Olağanüstü [performans](https://docs.gofiber.io/benchmarks)
+- [Düşük bellek](https://docs.gofiber.io/benchmarks) tüketimi
+- [API uç noktaları](https://docs.gofiber.io/context)
+- Ara katman & [Sonraki](https://docs.gofiber.io/context#next) desteği
 - [Hızlı](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) sunucu taraflı programlama
-- [Template engines](https://fiber.wiki/middleware#template)
-- [WebSocket support](https://fiber.wiki/middleware#websocket)
-- [Rate Limiter](https://fiber.wiki/middleware#limiter)
-- Available in [10 languages](https://fiber.wiki/)
-- Ve daha fazlası, [Fiber ı keşfet](https://fiber.wiki/)
+- [Template engines](https://docs.gofiber.io/middleware#template)
+- [WebSocket support](https://docs.gofiber.io/middleware#websocket)
+- [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+- Available in [12 languages](https://docs.gofiber.io/)
+- Ve daha fazlası, [Fiber ı keşfet](https://docs.gofiber.io/)
 
 ## 💡 Felsefe
 
@@ -132,30 +132,30 @@ Fiber internet üzerinde en popüler olan Express web çatısından **esinlenmi�
 
 ## 👀 Örnekler
 
-Aşağıda yaygın örneklerden bazıları listelenmiştir. Daha fazla kod örneği görmek için, lütfen [Kod depomuzu](https://github.com/gofiber/recipes) veya [API dökümantasyonunu](https://fiber.wiki) ziyaret ediniz.
+Aşağıda yaygın örneklerden bazıları listelenmiştir. Daha fazla kod örneği görmek için, lütfen [Kod deposunu](https://github.com/gofiber/recipes) veya [API dökümantasyonunu](https://docs.gofiber.io) ziyaret ediniz.
 
-### Routing
+### Rotalama
 
-📖 https://fiber.wiki/#basic-routing  
+📖 [Rotalama](https://docs.gofiber.io/#basic-routing)
 
 
 ```go
 func main() {
   app := fiber.New()
 
-  // GET /john
+  // GET /john http methodunu çağır
   app.Get("/:name", func(c *fiber.Ctx) {
     fmt.Printf("Hello %s!", c.Params("name"))
     // => Hello john!
   })
 
-  // GET /john
+  // GET /john http methodunu çağır
   app.Get("/:name/:age?", func(c *fiber.Ctx) {
     fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
     // => Name: john, Age:
   })
 
-  // GET /api/register
+  // GET /api/register http methodunu çağır
   app.Get("/api/*", func(c *fiber.Ctx) {
     fmt.Printf("/api/%s", c.Params("*"))
     // => /api/register
@@ -165,9 +165,9 @@ func main() {
 }
 ```
 
-### Serve static files
+### Statik Dosyaları Servis Etmek
 
-📖 https://fiber.wiki/application#static  
+📖 [Statik](https://docs.gofiber.io/application#static)
 
 ```go
 func main() {
@@ -188,28 +188,28 @@ func main() {
 }
 ```
 
-### Middleware & Next
+### Ara Katman ve İleri(Middleware & Next)
 
-📖 https://fiber.wiki/routing#middleware  
-📖 https://fiber.wiki/context#next  
+📖 [Ara Katman](https://docs.gofiber.io/routing#middleware)
+📖 [İleri](https://docs.gofiber.io/context#next)
 
 ```go
 func main() {
   app := fiber.New()
 
-  // Match any route
+  // Bütün rotalarla eşleş
   app.Use(func(c *fiber.Ctx) {
     fmt.Println("First middleware")
     c.Next()
   })
 
-  // Match all routes starting with /api
+  // /api ile başlayan tüm rotalarla eşleş
   app.Use("/api", func(c *fiber.Ctx) {
     fmt.Println("Second middleware")
     c.Next()
   })
 
-  // GET /api/register
+  // GET /api/register http methodunu çağır
   app.Get("/api/list", func(c *fiber.Ctx) {
     fmt.Println("Last middleware")
     c.Send("Hello, World!")
@@ -220,19 +220,17 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 Daha fazla kod örneği göster</summary>
 
-### Template engines
+### Şablon Motorları
 
-📖 https://fiber.wiki/application#settings  
-📖 https://fiber.wiki/context#render  
-📖 https://fiber.wiki/middleware#template  
+📖 [Ayarlar](https://docs.gofiber.io/application#settings)
+📖 [Tasvir et(Render)](https://docs.gofiber.io/context#render)
+📖 [Şablonlar](https://docs.gofiber.io/middleware#template)
 
-Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
+Fiber varsayılan olarak [Go şablon motoru](https://golang.org/pkg/html/template/)'nu destekler.
 
-But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
-
-You can use our [Template Middleware](https://fiber.wiki/middleware#template).
+Eğer başka bir şablon motoru kullanmak isterseniz, mesela [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) yada [pug](https://github.com/Joker/jade) gibi, bizim [Şablon Ara Katmanımızı](https://docs.gofiber.io/middleware#template) da kullanabilirsiniz.
 
 ```go
 package main
@@ -243,19 +241,19 @@ import (
 )
 
 func main() {
-  // You can setup template engine before initiation app:
+  //Uygulamayı başlatmadan önce şablon motorunu kurabilirsiniz:
   app := fiber.New(&fiber.Settings{
     TemplateEngine:    template.Mustache(),
     TemplateFolder:    "./views",
     TemplateExtension: ".tmpl",
   })
 
-  // OR after initiation app at any convenient location:
+  // YADA uygulamayı başlattıktan sonra uygun yere koyabilirsiniz:
   app.Settings.TemplateEngine = template.Mustache()
   app.Settings.TemplateFolder = "./views"
   app.Settings.TemplateExtension = ".tmpl"
 
-  // And now, you can call template `./views/home.tmpl` like this:
+  // Ve şimdi, bu şekide `./views/home.tmpl` şablonunu çağırabilirsiniz:
   app.Get("/", func(c *fiber.Ctx) {
     c.Render("home", fiber.Map{
       "title": "Homepage",
@@ -267,23 +265,23 @@ func main() {
 }
 ```
 
-### Grouping routes into chains
+### Rotaları Zincirlere Gruplama
 
-📖 https://fiber.wiki/application#group  
+📖 [Grup](https://docs.gofiber.io/application#group)
 
 ```go
 func main() {
   app := fiber.New()
 
-  // Root API route
+  // Kök API rotası
   api := app.Group("/api", cors())  // /api
 
-  // API v1 routes
+  // API v1 rotası
   v1 := api.Group("/v1", mysql())   // /api/v1
   v1.Get("/list", handler)          // /api/v1/list
   v1.Get("/user", handler)          // /api/v1/user
 
-  // API v2 routes
+  // API v2 rotası
   v2 := api.Group("/v2", mongodb()) // /api/v2
   v2.Get("/list", handler)          // /api/v2/list
   v2.Get("/user", handler)          // /api/v2/user
@@ -292,9 +290,9 @@ func main() {
 }
 ```
 
-### Middleware logger
+### Ara Katman Günlükcüsü(Logger)
 
-📖 https://fiber.wiki/middleware#logger  
+📖 [Günlükcü](https://docs.gofiber.io/middleware#logger)
 
 ```go
 import (
@@ -305,22 +303,22 @@ import (
 func main() {
     app := fiber.New()
 
-    // Optional logger config
+    // Tercihe bağlı günlük ayarları
     config := logger.Config{
       Format:     "${time} - ${method} ${path}\n",
       TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
     }
 
-    // Logger with config
+    // Günlükcüyü ayarla
     app.Use(logger.New(config))
 
     app.Listen(3000)
 }
 ```
 
-### Cross-Origin Resource Sharing (CORS)
+### Farklı Merkezler Arası Kaynak Paylaşımı (CORS)
 
-📖 https://fiber.wiki/middleware#cors  
+📖 [CORS](https://docs.gofiber.io/middleware#cors)
 
 ```go
 import (
@@ -331,22 +329,22 @@ import (
 func main() {
     app := fiber.New()
 
-    // CORS with default config
+    // Varsayılan ayarlarla CORS
     app.Use(cors.New())
 
     app.Listen(3000)
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+`Origin` başlığı içinde herhangı bir alan adı kullanarak CORS'u kontrol et:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
-### Custom 404 response
+### Özelleştirilebilir 404 yanıtları
 
-📖 https://fiber.wiki/application#http-methods  
+📖 [HTTP Methodlari](https://docs.gofiber.io/application#http-methods)
 
 ```go
 func main() {
@@ -362,9 +360,9 @@ func main() {
     c.Send("Welcome!")
   })
 
-  // Last middleware to match anything
+  // Herhangi bir şeyle eşleşen son ara katman
   app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404) 
+    c.SendStatus(404)
     // => 404 "Not Found"
   })
 
@@ -372,9 +370,9 @@ func main() {
 }
 ```
 
-### JSON Response
+### JSON Yanıtları
 
-📖 https://fiber.wiki/context#json  
+📖 [JSON](https://docs.gofiber.io/context#json)
 
 ```go
 type User struct {
@@ -402,9 +400,9 @@ func main() {
 }
 ```
 
-### WebSocket Upgrade
+### WebSocket Yükseltmesi
 
-📖 https://fiber.wiki/middleware#websocket  
+📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
 
 ```go
 import (
@@ -436,9 +434,9 @@ func main() {
 }
 ```
 
-### Recover middleware
+### Ara Katman'dan Kurtarma
 
-📖 https://fiber.wiki/middleware#recover  
+📖 [Kurtar](https://docs.gofiber.io/middleware#recover)
 
 ```go
 import (
@@ -449,7 +447,7 @@ import (
 func main() {
   app := fiber.New()
 
-  // Optional recover config
+  // Özelleştirilebilir kurtarma ayarı
   config := recover.Config{
     Handler: func(c *fiber.Ctx, err error) {
 			c.SendString(err.Error())
@@ -457,7 +455,7 @@ func main() {
 		},
   }
 
-  // Logger with custom config
+  // Özelleştrilebilir günlükleme
   app.Use(recover.New(config))
 
   app.Listen(3000)
@@ -465,87 +463,83 @@ func main() {
 ```
 </details>
 
+## 🧬 Official Middlewares
+
+For an more _maintainable_ middleware _ecosystem_, we've put official [middlewares](https://docs.gofiber.io/middleware) into separate repositories:
+
+- [gofiber/basicauth](https://github.com/gofiber/basicauth)
+- [gofiber/keyauth](https://github.com/gofiber/keyauth)
+- [gofiber/compression](https://github.com/gofiber/compression)
+- [gofiber/requestid](https://github.com/gofiber/requestid)
+- [gofiber/websocket](https://github.com/gofiber/websocket)
+- [gofiber/rewrite](https://github.com/gofiber/rewrite)
+- [gofiber/recover](https://github.com/gofiber/recover)
+- [gofiber/limiter](https://github.com/gofiber/limiter)
+- [gofiber/session](https://github.com/gofiber/session)
+- [gofiber/logger](https://github.com/gofiber/logger)
+- [gofiber/helmet](https://github.com/gofiber/helmet)
+- [gofiber/embed](https://github.com/gofiber/embed)
+- [gofiber/pprof](https://github.com/gofiber/pprof)
+- [gofiber/cors](https://github.com/gofiber/cors)
+- [gofiber/csrf](https://github.com/gofiber/csrf)
+- [gofiber/jwt](https://github.com/gofiber/jwt)
+
+## 🌱 Third Party Middlewares
+
+This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
+- [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
+- [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
+- [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
+- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
+
 ## 💬 Medya
 
-- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) — _03 Feb 2020_
-- [Fiber released v1.7! 🎉 What's new and is it still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) — _21 Feb 2020_
-- [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) — _03 Mar 2020_
-- [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) — _01 Apr 2020_
-- [Creating Fast APIs In Go Using Fiber](https://dev.to/jozsefsallai/creating-fast-apis-in-go-using-fiber-59m9) — _07 Apr 2020_
+- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) — _03 Şubat 2020_
+- [Fiber released v1.7! 🎉 What's new and is it still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) — _21 Şubat 2020_
+- [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) — _03 Mart 2020_
+- [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) — _01 Nisan 2020_
+- [Creating Fast APIs In Go Using Fiber](https://dev.to/jozsefsallai/creating-fast-apis-in-go-using-fiber-59m9) — _07 Nisan 2020_
+- [Building a Basic REST API in Go using Fiber](https://tutorialedge.net/golang/basic-rest-api-go-fiber/) - _23 Nisan 2020_
+- [📺 Building a REST API using GORM and Fiber](https://youtu.be/Iq2qT0fRhAA) - _25 Nisan 2020_
+- [🌎 Create a travel list app with Go, Fiber, Angular, MongoDB and Google Cloud Secret Manager](https://blog.yongweilun.me/create-a-travel-list-app-with-go-fiber-angular-mongodb-and-google-cloud-secret-manager-ck9fgxy0p061pcss1xt1ubu8t) - _25 Apr 2020_
 
 ## 👍 Destek
 
-Eğer  **teşekkür etmek** ve/veya `Fiber` ın aktif geliştirilmesini desteklemek istiyorsanız:
+Eğer  **teşekkür etmek** ve/veya `Fiber`'in aktif geliştirilmesini desteklemek istiyorsanız:
 
 1. Projeye [GitHub Yıldızı](https://github.com/gofiber/fiber/stargazers) verin.
 2. [Twitter hesabınızdan](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) proje hakkında tweet atın.
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) veya kişisel blog üzerinden bir inceleme veya eğitici yazı yazın.
-4. Bu `BENİOKU` sayfasını başka bir dile tercüme etmek için bize yardım edin.
+4. API dökümantasyonunu çevirerek destek olabilirsiniz [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
+5. Projeye [bir fincan kahve] ısmarlayarak projeye destek olabilirsiniz(https://buymeacoff.ee/fenny).
 
+## ☕ Destekçiler
+Fiber, alan adı, gitbook, netlify, serverless yer sağlayıcısı giderleri ve benzeri şeyleri ödemek için bağışlarla yaşayan bir açık kaynaklı projedir. Eğer Fiber'e destek olmak isterseniz, ☕ [**buradan kahve ısmarlayabilirsiniz.**](https://buymeacoff.ee/fenny)
 
-## ☕ Coffee Destekleyenler
+|                                                             | User                                            | Donation |
+| :---------------------------------------------------------- | :---------------------------------------------- | :------- |
+| ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt)  | ☕ x 5    |
+| ![](https://avatars.githubusercontent.com/u/1094221?s=25 )  | [@ekaputra07](https://github.com/ekaputra07)    | ☕ x 5    |
+| ![](https://avatars.githubusercontent.com/u/186637?s=25 )   | [@candidosales](https://github.com/candidosales)| ☕ x 5    |
+| ![](https://avatars.githubusercontent.com/u/635852?s=25 )   | [@bihe](https://github.com/bihe)                | ☕ x 3    |
+| ![](https://avatars.githubusercontent.com/u/307334?s=25 )   | [@justdave](https://github.com/justdave)        | ☕ x 3    |
+| ![](https://avatars.githubusercontent.com/u/11155743?s=25 ) | [@koddr](https://github.com/koddr)              | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/2978730?s=25 )  | [@diegowifi](https://github.com/diegowifi)      | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/44171355?s=25 ) | [@ssimk0](https://github.com/ssimk0)            | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/5638101?s=25 )  | [@raymayemir](https://github.com/raymayemir)    | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/619996?s=25 )   | [@melkorm](https://github.com/melkorm)          | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt) | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy)            | ☕ x 1    |
 
-<table>
-  <tr>
-    <td align="center">
-        <a href="https://github.com/bihe">
-          <img src="https://avatars1.githubusercontent.com/u/635852?s=460&v=4" width="100px"></br>
-          <sub><b>Henrik Binggl</b></sub>
-        </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/koddr">
-        <img src="https://avatars0.githubusercontent.com/u/11155743?s=460&v=4" width="100px"></br>
-        <sub><b>Vic&nbsp;Shóstak</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/MarvinJWendt">
-        <img src="https://avatars1.githubusercontent.com/u/31022056?s=460&v=4" width="100px"></br>
-        <sub><b>MarvinJWendt</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/toishy">
-        <img src="https://avatars1.githubusercontent.com/u/31921460?s=460&v=4" width="100px"></br>
-        <sub><b>ToishY</b></sub>
-      </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/gofiber/fiber">
-          <img src="https://i.stack.imgur.com/frlIf.png" width="100px"></br>
-          <sub><b>JustDave</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/melkorm">
-          <img src="https://avatars2.githubusercontent.com/u/619996?s=460&v=4" width="100px"></br>
-          <sub><b>melkorm</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/ekaputra07">
-          <img src="https://avatars3.githubusercontent.com/u/1094221?s=460&v=4" width="100px"></br>
-          <sub><b>ekaputra07</b></sub>
-        </a>
-    </td>
-    <td align="center">
-        <a href="https://github.com/raymayemir">
-          <img src="https://avatars2.githubusercontent.com/u/5638101?s=460&v=4" width="100px"></br>
-          <sub><b>Ray Mayemir</b></sub>
-        </a>
-    </td>
-  </tr>
-</table>
-
-<a href="https://www.buymeacoffee.com/fenny" target="_blank">
-  <img src="https://github.com/gofiber/docs/blob/master/static/buy-morning-coffee-3x.gif" alt="Buy Me A Coffee" height="100" >
-</a>
-
-## ‎‍💻 Code Contributors
+## ‎‍💻 Koda Katkı Sağlayanlar
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
-## ⚠️ License
+## ⚠️ Lisans
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Fiber Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+Telif (c) 2019-günümüz [Fenny](https://github.com/fenny) ve [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber`, [MIT Lisansı](https://github.com/gofiber/fiber/blob/master/LICENSE) altında özgür ve açık kaynaklı bir yazılımdır. Resmi logosu [Vic Shóstak](https://github.com/koddr) tarafında tasarlanmıştır ve [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) lisansı altında dağıtımı yapılır. (CC BY-SA 4.0 International).
+
+**3. Parti yazılım lisanları**
+- [FastHTTP](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+- [Schema](https://github.com/gorilla/schema/blob/master/LICENSE)

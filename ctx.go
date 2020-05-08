@@ -1,11 +1,12 @@
-// 🚀 Fiber is an Express inspired web framework written in Go with 💖
-// 📌 API Documentation: https://fiber.wiki
-// 📝 Github Repository: https://github.com/gofiber/fiber
+// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
+// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
 
 import (
 	"bytes"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"html/template"
@@ -13,29 +14,33 @@ import (
 	"log"
 	"mime"
 	"mime/multipart"
+	"net/http"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	schema "github.com/gorilla/schema"
-	jsoniter "github.com/json-iterator/go"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	app      *App                 // Reference to *App
-	route    *Route               // Reference to *Route
-	index    int                  // Index of the current stack
-	method   string               // HTTP method
-	path     string               // HTTP path
-	values   []string             // Route parameter values
+	// Internal fields
+	app    *App     // Reference to *App
+	route  *Route   // Reference to *Route
+	index  int      // Index of the current handler in the stack
+	method string   // HTTP method
+	path   string   // HTTP path
+	values []string // Route parameter values
+	err    error    // Contains error if caught
+
+	// External fields
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	err      error                // Contains error if catched
 }
 
 // Range struct
@@ -60,9 +65,9 @@ type Cookie struct {
 }
 
 // Global variables
-var jsonParser = jsoniter.ConfigCompatibleWithStandardLibrary
 var schemaDecoderForm = schema.NewDecoder()
 var schemaDecoderQuery = schema.NewDecoder()
+var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
 // Ctx pool
 var poolCtx = sync.Pool{
@@ -101,26 +106,26 @@ func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, value := range offers {
-		mimetype := getMIME(value)
+	for i := range offers {
+		mimetype := getMIME(offers[i])
 		// if mimetype != "" {
 		// 	mimetype = strings.Split(mimetype, ";")[0]
 		// } else {
 		// 	mimetype = offer
 		// }
-		for _, spec := range specs {
-			spec = strings.TrimSpace(spec)
+		for k := range specs {
+			spec := strings.TrimSpace(specs[k])
 			if strings.HasPrefix(spec, "*/*") {
-				return value
+				return offers[i]
 			}
 
 			if strings.HasPrefix(spec, mimetype) {
-				return value
+				return offers[i]
 			}
 
 			if strings.Contains(spec, "/*") {
 				if strings.HasPrefix(spec, strings.Split(mimetype, "/")[0]) {
-					return value
+					return offers[i]
 				}
 			}
 		}
@@ -140,15 +145,14 @@ func (ctx *Ctx) AcceptsCharsets(offers ...string) (offer string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, value := range offers {
-		for _, spec := range specs {
-
-			spec = strings.TrimSpace(spec)
+	for i := range offers {
+		for k := range specs {
+			spec := strings.TrimSpace(specs[k])
 			if strings.HasPrefix(spec, "*") {
-				return value
+				return offers[i]
 			}
-			if strings.HasPrefix(spec, value) {
-				return value
+			if strings.HasPrefix(spec, offers[i]) {
+				return offers[i]
 			}
 		}
 	}
@@ -167,14 +171,14 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) (offer string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, value := range offers {
-		for _, spec := range specs {
-			spec = strings.TrimSpace(spec)
+	for i := range offers {
+		for k := range specs {
+			spec := strings.TrimSpace(specs[k])
 			if strings.HasPrefix(spec, "*") {
-				return value
+				return offers[i]
 			}
-			if strings.HasPrefix(spec, value) {
-				return value
+			if strings.HasPrefix(spec, offers[i]) {
+				return offers[i]
 			}
 		}
 	}
@@ -192,14 +196,14 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) (offer string) {
 	}
 
 	specs := strings.Split(h, ",")
-	for _, value := range offers {
-		for _, spec := range specs {
-			spec = strings.TrimSpace(spec)
+	for i := range offers {
+		for k := range specs {
+			spec := strings.TrimSpace(specs[k])
 			if strings.HasPrefix(spec, "*") {
-				return value
+				return offers[i]
 			}
-			if strings.HasPrefix(spec, value) {
-				return value
+			if strings.HasPrefix(spec, offers[i]) {
+				return offers[i]
 			}
 		}
 	}
@@ -248,6 +252,7 @@ func (ctx *Ctx) Body(key ...string) string {
 	}
 	// Return post value by key
 	if len(key) > 0 {
+		fmt.Println("DEPRECATED: c.Body(\"" + key[0] + "\") is deprecated, please use c.FormValue(\"" + key[0] + "\") instead.")
 		return getString(ctx.Fasthttp.Request.PostArgs().Peek(key[0]))
 	}
 	return ""
@@ -261,7 +266,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
 	// application/json
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
-		return jsoniter.Unmarshal(ctx.Fasthttp.Request.Body(), out)
+		return json.Unmarshal(ctx.Fasthttp.Request.Body(), out)
 	}
 	// application/xml text/xml
 	if strings.HasPrefix(ctype, MIMEApplicationXML) || strings.HasPrefix(ctype, MIMETextXML) {
@@ -283,11 +288,11 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 		}
 		return schemaDecoderForm.Decode(out, data.Value)
 	}
-	// query Params
+	// query params
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
 		data := make(map[string][]string)
 		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
-			data[getString(key)] = []string{getString(val)}
+			data[getString(key)] = append(data[getString(key)], getString(val))
 		})
 		return schemaDecoderQuery.Decode(out, data)
 	}
@@ -342,6 +347,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 // Cookies is used for getting a cookie value by key
 func (ctx *Ctx) Cookies(key ...string) (value string) {
 	if len(key) == 0 {
+		fmt.Println("DEPRECATED: c.Cookies() without a key is deprecated, please use c.Get(\"Cookies\") to get the cookie header instead.")
 		return ctx.Get(HeaderCookie)
 	}
 	return getString(ctx.Fasthttp.Request.Header.Cookie(key[0]))
@@ -405,9 +411,65 @@ func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
 
-// Fresh is not implemented yet, pull requests are welcome!
+// Fresh When the response is still “fresh” in the client’s cache true is returned,
+// otherwise false is returned to indicate that the client cache is now stale
+// and the full response should be sent.
+// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
+// reload request, this module will return false to make handling these requests transparent.
+// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
 func (ctx *Ctx) Fresh() bool {
-	return false
+	// fields
+	var modifiedSince = ctx.Get(HeaderIfModifiedSince)
+	var noneMatch = ctx.Get(HeaderIfNoneMatch)
+
+	// unconditional request
+	if modifiedSince == "" && noneMatch == "" {
+		return false
+	}
+
+	// Always return stale when Cache-Control: no-cache
+	// to support end-to-end reload requests
+	// https://tools.ietf.org/html/rfc2616#section-14.9.4
+	var cacheControl = ctx.Get(HeaderCacheControl)
+	if cacheControl != "" && cacheControlNoCacheRegexp.MatchString(cacheControl) {
+		return false
+	}
+
+	// if-none-match
+	if noneMatch != "" && noneMatch != "*" {
+		var etag = getString(ctx.Fasthttp.Response.Header.Peek(HeaderETag))
+		if etag == "" {
+			return false
+		}
+		var etagStal = true
+		var matches = parseTokenList(getBytes(noneMatch))
+		for i := range matches {
+			match := matches[i]
+			if match == etag || match == "W/"+etag || "W/"+match == etag {
+				etagStal = false
+				break
+			}
+		}
+		if etagStal {
+			return false
+		}
+
+		if modifiedSince != "" {
+			var lastModified = getString(ctx.Fasthttp.Response.Header.Peek(HeaderLastModified))
+			if lastModified != "" {
+				lastModifiedTime, err := http.ParseTime(lastModified)
+				if err != nil {
+					return false
+				}
+				modifiedSinceTime, err := http.ParseTime(modifiedSince)
+				if err != nil {
+					return false
+				}
+				return lastModifiedTime.Before(modifiedSinceTime)
+			}
+		}
+	}
+	return true
 }
 
 // Get returns the HTTP request header specified by field.
@@ -447,8 +509,8 @@ func (ctx *Ctx) Is(extension string) (match bool) {
 
 	exts, _ := mime.ExtensionsByType(ctx.Get(HeaderContentType))
 	if len(exts) > 0 {
-		for _, item := range exts {
-			if item == extension {
+		for i := range exts {
+			if exts[i] == extension {
 				return true
 			}
 		}
@@ -458,19 +520,15 @@ func (ctx *Ctx) Is(extension string) (match bool) {
 
 // JSON converts any interface or string to JSON using Jsoniter.
 // This method also sets the content header to application/json.
-func (ctx *Ctx) JSON(json interface{}) error {
-	// Get stream from pool
-	stream := jsonParser.BorrowStream(nil)
-	defer jsonParser.ReturnStream(stream)
-	// Write struct to stream
-	stream.WriteVal(&json)
+func (ctx *Ctx) JSON(data interface{}) error {
+	raw, err := json.Marshal(&data)
 	// Check for errors
-	if stream.Error != nil {
-		return stream.Error
+	if err != nil {
+		return err
 	}
 	// Set http headers
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-	ctx.Fasthttp.Response.SetBodyString(getString(stream.Buffer()))
+	ctx.Fasthttp.Response.SetBodyString(getString(raw))
 	// Success!
 	return nil
 }
@@ -478,34 +536,30 @@ func (ctx *Ctx) JSON(json interface{}) error {
 // JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
-func (ctx *Ctx) JSONP(json interface{}, callback ...string) error {
-	// Get stream from pool
-	stream := jsonParser.BorrowStream(nil)
-	defer jsonParser.ReturnStream(stream)
-	// Write struct to stream
-	stream.WriteVal(&json)
+func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
+	raw, err := json.Marshal(&data)
 	// Check for errors
-	if stream.Error != nil {
-		return stream.Error
+	if err != nil {
+		return err
 	}
 
 	str := "callback("
 	if len(callback) > 0 {
 		str = callback[0] + "("
 	}
-	str += getString(stream.Buffer()) + ");"
+	str += getString(raw) + ");"
 
 	ctx.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
 	ctx.Fasthttp.Response.SetBodyString(str)
-
 	return nil
 }
 
 // Links joins the links followed by the property to populate the response’s Link HTTP header field.
 func (ctx *Ctx) Links(link ...string) {
 	h := ""
-	for i, l := range link {
+	for i := range link {
+		l := link[i]
 		if i%2 == 0 {
 			h += "<" + l + ">"
 		} else {
@@ -570,7 +624,7 @@ func (ctx *Ctx) Params(key string) (value string) {
 	if ctx.route.Params == nil {
 		return
 	}
-	for i := 0; i < len(ctx.route.Params); i++ {
+	for i := range ctx.route.Params {
 		if (ctx.route.Params)[i] == key {
 			return ctx.values[i]
 		}
@@ -610,7 +664,7 @@ func (ctx *Ctx) Query(key string) (value string) {
 
 // Range returns a struct containing the type and a slice of ranges.
 func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
-	rangeStr := string(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
+	rangeStr := getString(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
 		return rangeData, fmt.Errorf("malformed range header string")
 	}
@@ -723,16 +777,7 @@ func (ctx *Ctx) Send(bodies ...interface{}) {
 	if len(bodies) > 0 {
 		ctx.Fasthttp.Response.SetBodyString("")
 	}
-	for i := range bodies {
-		switch body := bodies[i].(type) {
-		case string:
-			ctx.Fasthttp.Response.AppendBodyString(body)
-		case []byte:
-			ctx.Fasthttp.Response.AppendBodyString(getString(body))
-		default:
-			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
-		}
-	}
+	ctx.Write(bodies...)
 }
 
 // SendBytes sets the HTTP response body for []byte types
@@ -759,7 +804,7 @@ func (ctx *Ctx) SendStatus(status int) {
 	ctx.Fasthttp.Response.SetStatusCode(status)
 	// Only set status body when there is no response body
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
-		ctx.Fasthttp.Response.SetBodyString(statusMessages[status])
+		ctx.Fasthttp.Response.SetBodyString(statusMessage[status])
 	}
 }
 
@@ -774,7 +819,7 @@ func (ctx *Ctx) Set(key string, val string) {
 	ctx.Fasthttp.Response.Header.Set(key, val)
 }
 
-// Subdomains returns a string slive of subdomains in the domain name of the request.
+// Subdomains returns a string slice of subdomains in the domain name of the request.
 // The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
 func (ctx *Ctx) Subdomains(offset ...int) []string {
 	o := 2
