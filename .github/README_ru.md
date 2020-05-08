@@ -222,7 +222,7 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 Показать больше примеров кода</summary>
 
 ### Template engines
 
@@ -230,11 +230,11 @@ func main() {
 📖 [Render](https://docs.gofiber.io/context#render)  
 📖 [Template](https://docs.gofiber.io/middleware#template)  
 
-Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
+Fiber поддерживает [Go template engine](https://golang.org/pkg/html/template/) по умолчанию.
 
-But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
+Но, вы можете использовать сторонний шаблонизатор. Например, [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) или [pug](https://github.com/Joker/jade).
 
-You can use our [Template Middleware](https://docs.gofiber.io/middleware#template).
+Вы можете использовать [Template Middleware](https://docs.gofiber.io/middleware#template).
 
 ```go
 import (
@@ -338,7 +338,7 @@ func main() {
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+Проверем CORS, присвоив домен в заголовок `Origin`, отличный от `localhost`:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -465,9 +465,9 @@ func main() {
 ```
 </details>
 
-## 🧬 Official Middlewares
+## 🧬 Официальные Middlewares
 
-For an more _maintainable_ middleware _ecosystem_, we've put official [middlewares](https://docs.gofiber.io/middleware) into separate repositories:
+Чтобы создать более _поддерживаемую_ middleware _экосистему_, мы вынесли [middlewares](https://docs.gofiber.io/middleware) в отдельные репозитории:
 
 - [gofiber/basicauth](https://github.com/gofiber/basicauth)
 - [gofiber/keyauth](https://github.com/gofiber/keyauth)
@@ -486,9 +486,10 @@ For an more _maintainable_ middleware _ecosystem_, we've put official [middlewar
 - [gofiber/csrf](https://github.com/gofiber/csrf)
 - [gofiber/jwt](https://github.com/gofiber/jwt)
 
-## 🌱 Third Party Middlewares
+## 🌱 Middlewares от сторонних разработчиков
 
-This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+Это список middlewares, созданных сообществом Fiber. Пожалуйста, создайте PR, если хотите добавить в этой список свой или известный вам!
+
 - [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
@@ -513,14 +514,16 @@ This is a list of middlewares that are created by the Fiber community, please cr
 1. Добавьте [GitHub Star](https://github.com/gofiber/fiber/stargazers) в проект.
 2. Напишите о проекте [в вашем Twitter](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Сделайте обзор фреймворка на [Medium](https://medium.com/), [Dev.to](https://dev.to/) или в личном блоге.
-4. Help us to translate our API Documentation via [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
-5. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+4. Помогите перевести нашу API документацию на платформе [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
+5. Поддержите проект, купив [чашку кофе](https://buymeacoff.ee/fenny).
 
 ## ☕ Supporters
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny)
+Fiber — это проект с открытым исходным кодом, который работает на пожертвования для оплаты счетов, например, нашего доменного имени, GitBook, Netlify и serverless-хостинга.
 
-|                                                             | User                                            | Donation |
+Если вы хотите поддержать, то ☕ [**купите чашку кофе**](https://buymeacoff.ee/fenny).
+
+|                                                             | Пользователи                                    | Пожертвования |
 | :---------------------------------------------------------- | :---------------------------------------------- | :------- |
 | ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt)  | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/1094221?s=25 )  | [@ekaputra07](https://github.com/ekaputra07)    | ☕ x 5    |
