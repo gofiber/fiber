@@ -661,7 +661,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 
 <div dir="rtl">
 
-Fiber היא פרויקט קוד פתוח שתשלום חשובונתיו מסתמך על תרומות, כגון שם ה-domain שלנו, gitbook, netlify ו-serverless hosting. אם אתם רוצים לתמוך ב-Fiber, אתם יכולים ☕ [**קנו קפה כאן**](https://buymeacoff.ee/fenny)
+Fiber היא פרויקט קוד פתוח שתשלום חשובונתיו מסתמך על תרומות, כגון שם ה-domain שלנו, gitbook, netlify ו-serverless hosting. אם אתם רוצים לתמוך ב-Fiber, אתם יכולים ☕ [**קנו קפה כאן**](https://buymeacoff.ee/fenny).
 </div>
 
 |                                                             | משתמש                                           | תרומה |
