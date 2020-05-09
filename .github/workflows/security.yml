@@ -1,7 +1,7 @@
 on: [push, pull_request]
-name: Gosec
+name: Security
 jobs:
-  Security:
+  Gosec:
     strategy:
       matrix:
         platform: [ubuntu-latest]
