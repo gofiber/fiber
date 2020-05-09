@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	fasthttp "github.com/valyala/fasthttp"
@@ -32,6 +33,7 @@ type Map map[string]interface{}
 // App denotes the Fiber application.
 type App struct {
 	// Internal fields
+	mutex    sync.Mutex       // Mutual exclusion
 	server   *fasthttp.Server // FastHTTP server
 	testconn *testConn        // Test connection
 	routes   [][]*Route       // Route stack
@@ -350,7 +352,9 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 // You can pass an optional *tls.Config to enable TLS.
 func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// Create fasthttp server
+	app.mutex.Lock()
 	app.server = app.newServer()
+	app.mutex.Unlock()
 	// TLS config
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
@@ -378,7 +382,9 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		addr = ":" + addr
 	}
 	// Create fasthttp server
+	app.mutex.Lock()
 	app.server = app.newServer()
+	app.mutex.Unlock()
 	// Setup listener
 	var ln net.Listener
 	var err error
@@ -412,6 +418,8 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
 	if app.server == nil {
 		return fmt.Errorf("Server is not running")
 	}

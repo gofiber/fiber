@@ -1,7 +1,7 @@
 on: [push, pull_request]
 name: Benchmark
 jobs:
-  test:
+  Compare:
     strategy:
       matrix:
         platform: [ubuntu-latest]
