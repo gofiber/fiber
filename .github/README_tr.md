@@ -46,11 +46,11 @@
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
-    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
-  </a>
   <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
+  </a>
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
+    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
   </a>
   <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
     <img src="https://goreportcard.com/badge/github.com/gofiber/fiber?style=flat-square">
@@ -64,8 +64,8 @@
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
     <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Gosec?label=gosec&style=flat-square">
   </a>
-  <a href="https://t.me/gofiber">
-    <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
+  <a href="https://gofiber.io/discord">
+    <img src="https://img.shields.io/badge/Discord-join%20channel-7289DA?style=flat-square">
   </a>
 </p>
 <p align="center">
@@ -233,8 +233,6 @@ Fiber varsayılan olarak [Go şablon motoru](https://golang.org/pkg/html/templat
 Eğer başka bir şablon motoru kullanmak isterseniz, mesela [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) yada [pug](https://github.com/Joker/jade) gibi, bizim [Şablon Ara Katmanımızı](https://docs.gofiber.io/middleware#template) da kullanabilirsiniz.
 
 ```go
-package main
-
 import (
   "github.com/gofiber/fiber"
   "github.com/gofiber/template"
@@ -509,7 +507,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 Eğer  **teşekkür etmek** ve/veya `Fiber`'in aktif geliştirilmesini desteklemek istiyorsanız:
 
 1. Projeye [GitHub Yıldızı](https://github.com/gofiber/fiber/stargazers) verin.
-2. [Twitter hesabınızdan](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) proje hakkında tweet atın.
+2. [Twitter hesabınızdan](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) proje hakkında tweet atın.
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) veya kişisel blog üzerinden bir inceleme veya eğitici yazı yazın.
 4. API dökümantasyonunu çevirerek destek olabilirsiniz [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
 5. Projeye [bir fincan kahve] ısmarlayarak projeye destek olabilirsiniz(https://buymeacoff.ee/fenny).

@@ -46,11 +46,11 @@
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
-    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
-  </a>
   <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
+  </a>
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
+    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
   </a>
   <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
     <img src="https://goreportcard.com/badge/github.com/gofiber/fiber?style=flat-square">
@@ -64,8 +64,8 @@
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
     <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Gosec?label=gosec&style=flat-square">
   </a>
-  <a href="https://t.me/gofiber">
-    <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
+  <a href="https://gofiber.io/discord">
+    <img src="https://img.shields.io/badge/Discord-join%20channel-7289DA?style=flat-square">
   </a>
 </p>
 <p align="center">
@@ -235,8 +235,6 @@ Pero si deseas usar otro template engine como [amber](https://github.com/eknkc/a
 Puedes usar nuestro [Template Middleware](https://docs.gofiber.io/middleware#template).
 
 ```go
-package main
-
 import (
   "github.com/gofiber/fiber"
   "github.com/gofiber/template"
@@ -511,14 +509,14 @@ This is a list of middlewares that are created by the Fiber community, please cr
 Si quiere **agradecer** y/o apoyar el desarrollo activo de `Fiber`:
 
 1. Agrega una [estrella de GitHub](https://github.com/gofiber/fiber/stargazers) al proyecto.
-2. Tuitea sobre el proyecto [en tu Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+2. Tuitea sobre el proyecto [en tu Twitter](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Escribe una reseña o tutorial en [Medium](https://medium.com/) , [Dev.to](https://dev.to/) o blog personal.
 4. Ayúdanos a traducir la documentación de nuestra API a través de [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
 5. Apoya el proyecto donando una [tasa de café](https://buymeacoff.ee/fenny).
 
 ## ☕ Personas que han mostrado su apoyo
 
-Fiber es un proyecto open source que se mantiene a través de donaciones para pagar las cuentas e.g. nuestro nombre de dominio, gitbook, netlify y hosting serverless. Si quieres apoyar a Fiber, puedes ☕ [**comprar un café**](https://buymeacoff.ee/fenny)
+Fiber es un proyecto open source que se mantiene a través de donaciones para pagar las cuentas e.g. nuestro nombre de dominio, gitbook, netlify y hosting serverless. Si quieres apoyar a Fiber, puedes ☕ [**comprar un café**](https://buymeacoff.ee/fenny).
 
 |                                                             | User                                            | Donation |
 | :---------------------------------------------------------- | :---------------------------------------------- | :------- |

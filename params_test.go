@@ -13,6 +13,24 @@ import (
 	"testing"
 )
 
+// func testParams(t *testing.T, app *App, url, params string) {
+// 	resp, err := app.Test(httptest.NewRequest("GET", url, nil))
+// 	assertEqual(t, nil, err, "app.Test(req)")
+// 	assertEqual(t, 200, resp.StatusCode, "Status code")
+// 	assertEqual(t, params, resp.Header.Get("X-Params"))
+// }
+// func Test_Params_Wildcard(t *testing.T) {
+// 	app := New()
+
+// 	app.Get("/*", func(c *Ctx) {
+// 		c.Set("X-Params", c.Params("*"))
+// 	})
+
+// 	testParams(t, app, "/api/v1/entity", "/api/v1/entity")
+// 	testParams(t, app, "/api/v1/entity/1", "/api/v1/entity/1")
+// 	testParams(t, app, "/", "/")
+// }
+
 // params testing
 
 type testCase struct {

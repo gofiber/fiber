@@ -46,11 +46,11 @@
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
   </a>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
-    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
-  </a>
   <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/api-docs-blue?style=flat-square">
+  </a>
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
+    <img src="https://img.shields.io/badge/go.dev-007d9c?logo=go&logoColor=white&style=flat-square">
   </a>
   <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
     <img src="https://goreportcard.com/badge/github.com/gofiber/fiber?style=flat-square">
@@ -64,8 +64,8 @@
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
     <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Gosec?label=gosec&style=flat-square">
   </a>
-  <a href="https://t.me/gofiber">
-    <img src="https://img.shields.io/badge/telegram-join%20chat-0088cc?style=flat-square">
+  <a href="https://gofiber.io/discord">
+    <img src="https://img.shields.io/badge/Discord-join%20channel-7289DA?style=flat-square">
   </a>
 </p>
 <p align="center">
@@ -119,9 +119,9 @@ go get -u github.com/gofiber/fiber
 - [Middleware](https://docs.gofiber.io/middleware) и поддержка [Next](https://docs.gofiber.io/context#next)
 - [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
 - [Template engines](https://docs.gofiber.io/middleware#template)
-- [WebSocket support](https://docs.gofiber.io/middleware#websocket)
+- [Поддержка WebSocket](https://docs.gofiber.io/middleware#websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Available in [12 languages](https://docs.gofiber.io/)
+- Документация доступна на [12 языках](https://docs.gofiber.io/)
 - И многое другое, [посетите наш Wiki](https://docs.gofiber.io/)
 
 ## 💡 Философия
@@ -130,7 +130,7 @@ go get -u github.com/gofiber/fiber
 
 Fiber **вдохновлен** Express, самым популярным веб фреймворком в Интернете. Мы объединили **простоту** Express и **чистую производительность** Go. Если вы когда-либо реализовывали веб-приложение на Node.js (*с использованием Express или аналогичного фреймворка*), то многие методы и принципы покажутся вам **очень знакомыми**.
 
-Мы **прислушиваемся** к нашим пользователям в [issues](https://github.com/gofiber/fiber/issues) (_и остальном Интернете_), чтобы создать **быстрый**, **гибкий** и **дружелюбный** веб фреймворк на Go для **любых** задач, **дедлайнов** и **уровней** разработчиков! Как это делает Express в мире JavaScript.
+Мы **прислушиваемся** к нашим пользователям в [issues](https://github.com/gofiber/fiber/issues), Discord [канале](https://gofiber.io/discord) _и в остальном Интернете_, чтобы создать **быстрый**, **гибкий** и **дружелюбный** веб фреймворк на Go для **любых** задач, **дедлайнов** и **уровней** разработчиков! Как это делает Express в мире JavaScript.
 
 ## 👀 Примеры
 
@@ -222,7 +222,7 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 Показать больше примеров кода</summary>
 
 ### Template engines
 
@@ -230,15 +230,13 @@ func main() {
 📖 [Render](https://docs.gofiber.io/context#render)  
 📖 [Template](https://docs.gofiber.io/middleware#template)  
 
-Fiber supports the default [Go template engine](https://golang.org/pkg/html/template/)
+Fiber поддерживает [Go template engine](https://golang.org/pkg/html/template/) по умолчанию.
 
-But if you want to use another template engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade).
+Но, вы можете использовать сторонний шаблонизатор. Например, [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) или [pug](https://github.com/Joker/jade).
 
-You can use our [Template Middleware](https://docs.gofiber.io/middleware#template).
+Вы можете использовать [Template Middleware](https://docs.gofiber.io/middleware#template).
 
 ```go
-package main
-
 import (
   "github.com/gofiber/fiber"
   "github.com/gofiber/template"
@@ -340,7 +338,7 @@ func main() {
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+Проверем CORS, присвоив домен в заголовок `Origin`, отличный от `localhost`:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -467,9 +465,9 @@ func main() {
 ```
 </details>
 
-## 🧬 Official Middlewares
+## 🧬 Официальные Middlewares
 
-For an more _maintainable_ middleware _ecosystem_, we've put official [middlewares](https://docs.gofiber.io/middleware) into separate repositories:
+Чтобы создать более _поддерживаемую_ middleware _экосистему_, мы вынесли [middlewares](https://docs.gofiber.io/middleware) в отдельные репозитории:
 
 - [gofiber/basicauth](https://github.com/gofiber/basicauth)
 - [gofiber/keyauth](https://github.com/gofiber/keyauth)
@@ -488,9 +486,10 @@ For an more _maintainable_ middleware _ecosystem_, we've put official [middlewar
 - [gofiber/csrf](https://github.com/gofiber/csrf)
 - [gofiber/jwt](https://github.com/gofiber/jwt)
 
-## 🌱 Third Party Middlewares
+## 🌱 Middlewares от сторонних разработчиков
 
-This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+Это список middlewares, созданных сообществом Fiber. Пожалуйста, [создайте PR](https://github.com/gofiber/fiber/pulls), если хотите добавить в этот список свой или известный вам middleware для веб фреймворка Fiber!
+
 - [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
@@ -513,16 +512,18 @@ This is a list of middlewares that are created by the Fiber community, please cr
 Если вы хотите сказать **спасибо** и/или поддержать активное развитие `Fiber`:
 
 1. Добавьте [GitHub Star](https://github.com/gofiber/fiber/stargazers) в проект.
-2. Напишите о проекте [в вашем Twitter](https://twitter.com/intent/tweet?text=%F0%9F%9A%80%20Fiber%20%E2%80%94%20is%20an%20Express.js%20inspired%20web%20framework%20build%20on%20Fasthttp%20for%20%23Go%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+2. Напишите о проекте [в вашем Twitter](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Сделайте обзор фреймворка на [Medium](https://medium.com/), [Dev.to](https://dev.to/) или в личном блоге.
-4. Help us to translate our API Documentation via [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
-5. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+4. Помогите перевести нашу API документацию на платформе [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
+5. Поддержите проект, купив [чашку кофе](https://buymeacoff.ee/fenny).
 
-## ☕ Supporters
+## ☕ Поддержка проекта
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny)
+Fiber — это проект с открытым исходным кодом, который работает на пожертвования для оплаты счетов, например, нашего доменного имени, GitBook, Netlify и serverless-хостинга.
 
-|                                                             | User                                            | Donation |
+Если вы хотите поддержать, то ☕ [**купите чашку кофе**](https://buymeacoff.ee/fenny).
+
+|                                                             | Пользователи                                    | Пожертвования |
 | :---------------------------------------------------------- | :---------------------------------------------- | :------- |
 | ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt)  | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/1094221?s=25 )  | [@ekaputra07](https://github.com/ekaputra07)    | ☕ x 5    |
@@ -537,7 +538,7 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt) | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy)            | ☕ x 1    |
 
-## ‎‍💻 Code Contributors
+## ‎‍💻 Контрибьютеры
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 

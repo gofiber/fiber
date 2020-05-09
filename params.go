@@ -76,6 +76,7 @@ func parseParams(pattern string) (p parsedParams) {
 	out[segIndex-1].IsLast = true
 
 	p = parsedParams{Segs: out[:segIndex:segIndex], Keys: params}
+	// fmt.Printf("%+v\n", p)
 	return
 }
 
