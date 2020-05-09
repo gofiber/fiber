@@ -35,8 +35,8 @@ func Benchmark_All_Routes(b *testing.B) {
 	var match bool
 	var params []string
 	for n := 0; n < b.N; n++ {
-		for _, r := range testRoutes {
-			match, params = matchRoute(r.method, r.path)
+		for i := range testRoutes {
+			match, params = matchRoute(testRoutes[i].method, testRoutes[i].path)
 		}
 		if match {
 			if len(params) > 0 {

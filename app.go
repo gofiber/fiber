@@ -31,9 +31,13 @@ type Map map[string]interface{}
 
 // App denotes the Fiber application.
 type App struct {
+	// Internal fields
 	server   *fasthttp.Server // FastHTTP server
+	testconn *testConn        // Test connection
 	routes   [][]*Route       // Route stack
-	Settings *Settings        // Fiber settings
+
+	// External fields
+	Settings *Settings // Fiber settings
 }
 
 // Settings holds is a struct holding the server settings
@@ -136,6 +140,11 @@ func New(settings ...*Settings) *App {
 			getBytes = getBytesImmutable
 		}
 	}
+	// Setup test connection
+	app.testconn = new(testConn)
+	// Setup server
+	app.server = app.newServer()
+	// Return application
 	return app
 }
 
@@ -370,10 +379,10 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Create fasthttp server
 	app.server = app.newServer()
-
+	// Setup listener
 	var ln net.Listener
 	var err error
-	// Prefork enabled
+	// Prefork enabled, not available on windows
 	if app.Settings.Prefork && runtime.NumCPU() > 1 && runtime.GOOS != "windows" {
 		if ln, err = app.prefork(addr); err != nil {
 			return err
@@ -409,6 +418,14 @@ func (app *App) Shutdown() error {
 	return app.server.Shutdown()
 }
 
+// TestRaw is like Test buf for raw HTTP strings: GET / HTTP/1.1\r\n\r\n
+func (app *App) TestRaw(request []byte) error {
+	if _, err := app.testconn.r.Write(request); err != nil {
+		return err
+	}
+	return app.server.ServeConn(app.testconn)
+}
+
 // Test is used for internal debugging by passing a *http.Request
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
 func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, error) {
@@ -421,18 +438,14 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	if err != nil {
 		return nil, err
 	}
-	// Setup server
-	app.server = app.newServer()
-	// Create conn
-	conn := new(testConn)
 	// Write raw http request
-	if _, err = conn.r.Write(dump); err != nil {
+	if _, err = app.testconn.r.Write(dump); err != nil {
 		return nil, err
 	}
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
-		channel <- app.server.ServeConn(conn)
+		channel <- app.server.ServeConn(app.testconn)
 	}()
 	// Wait for callback
 	if timeout >= 0 {
@@ -453,7 +466,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		return nil, err
 	}
 	// Read response
-	buffer := bufio.NewReader(&conn.w)
+	buffer := bufio.NewReader(&app.testconn.w)
 	// Convert raw http response to *http.Response
 	resp, err := http.ReadResponse(buffer, request)
 	if err != nil {
