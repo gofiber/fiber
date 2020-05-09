@@ -61,7 +61,6 @@ func (app *App) nextRoute(ctx *Ctx) {
 }
 
 func (r *Route) matchRoute(path string) (match bool, values []string) {
-	time.Sleep(10 * time.Millisecond)
 	// Middleware routes allow prefix matches
 	if r.use {
 		// Match any path if wildcard and pass path as param

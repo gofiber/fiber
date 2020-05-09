@@ -29,4 +29,3 @@ jobs:
         fail-on-alert: true
         github-token: ${{ secrets.GITHUB_TOKEN }}
         comment-on-alert: true
-        alert-comment-cc-users: '@fenny'
