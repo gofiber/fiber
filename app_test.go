@@ -26,7 +26,7 @@ func Test_Raw(t *testing.T) {
 		c.SendString("Hello, World!")
 	})
 
-	app.TestRaw([]byte("GET / HTTP/1.1\r\n\r\n"))
+	app.TestRaw("GET / HTTP/1.1\r\n\r\n")
 }
 
 func Test_Order(t *testing.T) {

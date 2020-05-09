@@ -427,8 +427,8 @@ func (app *App) Shutdown() error {
 }
 
 // TestRaw is like Test buf for raw HTTP strings: GET / HTTP/1.1\r\n\r\n
-func (app *App) TestRaw(request []byte) error {
-	if _, err := app.testconn.r.Write(request); err != nil {
+func (app *App) TestRaw(request string) error {
+	if _, err := app.testconn.r.WriteString(request); err != nil {
 		return err
 	}
 	return app.server.ServeConn(app.testconn)
