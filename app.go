@@ -18,6 +18,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	fasthttp "github.com/valyala/fasthttp"
@@ -31,9 +32,14 @@ type Map map[string]interface{}
 
 // App denotes the Fiber application.
 type App struct {
+	// Internal fields
+	mutex    sync.Mutex       // Mutual exclusion
 	server   *fasthttp.Server // FastHTTP server
+	testconn *testConn        // Test connection
 	routes   [][]*Route       // Route stack
-	Settings *Settings        // Fiber settings
+
+	// External fields
+	Settings *Settings // Fiber settings
 }
 
 // Settings holds is a struct holding the server settings
@@ -136,6 +142,11 @@ func New(settings ...*Settings) *App {
 			getBytes = getBytesImmutable
 		}
 	}
+	// Setup test connection
+	app.testconn = new(testConn)
+	// Setup server
+	app.server = app.newServer()
+	// Return application
 	return app
 }
 
@@ -341,7 +352,9 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 // You can pass an optional *tls.Config to enable TLS.
 func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// Create fasthttp server
+	app.mutex.Lock()
 	app.server = app.newServer()
+	app.mutex.Unlock()
 	// TLS config
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
@@ -369,11 +382,13 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		addr = ":" + addr
 	}
 	// Create fasthttp server
+	app.mutex.Lock()
 	app.server = app.newServer()
-
+	app.mutex.Unlock()
+	// Setup listener
 	var ln net.Listener
 	var err error
-	// Prefork enabled
+	// Prefork enabled, not available on windows
 	if app.Settings.Prefork && runtime.NumCPU() > 1 && runtime.GOOS != "windows" {
 		if ln, err = app.prefork(addr); err != nil {
 			return err
@@ -403,10 +418,20 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
 	if app.server == nil {
 		return fmt.Errorf("Server is not running")
 	}
 	return app.server.Shutdown()
+}
+
+// TestRaw is like Test buf for raw HTTP strings: GET / HTTP/1.1\r\n\r\n
+func (app *App) TestRaw(request string) error {
+	if _, err := app.testconn.r.WriteString(request); err != nil {
+		return err
+	}
+	return app.server.ServeConn(app.testconn)
 }
 
 // Test is used for internal debugging by passing a *http.Request
@@ -421,18 +446,14 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	if err != nil {
 		return nil, err
 	}
-	// Setup server
-	app.server = app.newServer()
-	// Create conn
-	conn := new(testConn)
 	// Write raw http request
-	if _, err = conn.r.Write(dump); err != nil {
+	if _, err = app.testconn.r.Write(dump); err != nil {
 		return nil, err
 	}
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
-		channel <- app.server.ServeConn(conn)
+		channel <- app.server.ServeConn(app.testconn)
 	}()
 	// Wait for callback
 	if timeout >= 0 {
@@ -453,7 +474,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		return nil, err
 	}
 	// Read response
-	buffer := bufio.NewReader(&conn.w)
+	buffer := bufio.NewReader(&app.testconn.w)
 	// Convert raw http response to *http.Response
 	resp, err := http.ReadResponse(buffer, request)
 	if err != nil {

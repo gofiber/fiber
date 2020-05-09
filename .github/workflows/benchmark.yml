@@ -1,0 +1,31 @@
+on: [push, pull_request]
+name: Benchmark
+jobs:
+  Compare:
+    strategy:
+      matrix:
+        platform: [ubuntu-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+    - name: Install Go
+      uses: actions/setup-go@v1
+      with:
+        go-version: ${{ matrix.go-version }}
+    - name: Checkout code
+      uses: actions/checkout@v2
+    - name: Run benchmark
+      run: go test -benchmem -run=^$ -bench . | tee output.txt
+    - name: Download previous benchmark data
+      uses: actions/cache@v1
+      with:
+        path: ./cache
+        key: ${{ runner.os }}-benchmark
+    - name: Store benchmark result
+      uses: rhysd/github-action-benchmark@v1
+      with:
+        tool: 'go'
+        output-file-path: output.txt
+        external-data-json-path: ./cache/benchmark-data.json
+        fail-on-alert: true
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        comment-on-alert: true

@@ -20,21 +20,22 @@ import (
 )
 
 // AssertEqual checks if values are equal
-func assertEqual(t testing.TB, a interface{}, b interface{}, message ...string) {
+func assertEqual(t testing.TB, a interface{}, b interface{}, information ...string) {
 	if reflect.DeepEqual(a, b) {
 		return
 	}
+	info := ""
+	if len(information) > 0 {
+		info = information[0]
+	}
 	_, file, line, _ := runtime.Caller(1)
-	msg := fmt.Sprintf(`
+	t.Fatalf(`
 		Test: 	 	%s
 		Trace: 	 	%s:%d
 		Error: 	 	Not equal
 		Expect: 	%v [%s]
-		Result: 	%v [%s]`, t.Name(), filepath.Base(file), line, a, reflect.TypeOf(a).Name(), b, reflect.TypeOf(b).Name())
-	if len(message) > 0 {
-		msg += "\n		Message: 	" + message[0]
-	}
-	t.Fatal(msg)
+		Result: 	%v [%s]
+		Message:  %s`, t.Name(), filepath.Base(file), line, a, reflect.TypeOf(a).Name(), b, reflect.TypeOf(b).Name(), info)
 }
 
 // Generate and set ETag header to response
