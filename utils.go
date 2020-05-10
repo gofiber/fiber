@@ -698,3 +698,58 @@ const (
 	StatusNotExtended                   = 510 // RFC 2774, 7
 	StatusNetworkAuthenticationRequired = 511 // RFC 6585, 6
 )
+
+type baseMethodView struct{}
+
+type methodView struct {
+	baseMethodView
+}
+
+type viewMethods interface {
+	GET() func(c *Ctx)
+	PUT() func(c *Ctx)
+	POST() func(c *Ctx)
+	DELETE() func(c *Ctx)
+	OPTIONS() func(c *Ctx)
+	TRACE() func(c *Ctx)
+	CONNECT() func(c *Ctx)
+}
+
+// StatusMethodNotAllowed
+func http405Ctx() func(c *Ctx) {
+	return func(c *Ctx) {
+		c.SendStatus(StatusMethodNotAllowed)
+	}
+}
+
+func (b *baseMethodView) GET() func(c *Ctx) {
+	return http405Ctx()
+}
+
+func (b *baseMethodView) POST() func(c *Ctx) {
+	return http405Ctx()
+}
+
+func (b *baseMethodView) PUT() func(c *Ctx) {
+	return http405Ctx()
+}
+
+func (b *baseMethodView) PATCH() func(c *Ctx) {
+	return http405Ctx()
+}
+
+func (b *baseMethodView) DELETE() func(c *Ctx) {
+	return http405Ctx()
+}
+
+func (b *baseMethodView) CONNECT() func(c *Ctx) {
+	return http405Ctx()
+}
+
+func (b *baseMethodView) OPTIONS() func(c *Ctx) {
+	return http405Ctx()
+}
+
+func (b *baseMethodView) TRACE() func(c *Ctx) {
+	return http405Ctx()
+}
