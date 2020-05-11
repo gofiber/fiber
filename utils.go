@@ -111,9 +111,9 @@ func getArgument(arg string) bool {
 }
 
 // return valid offer for header negotiation
-func getOffer(header string, offers ...string) (offer string) {
+func getOffer(header string, offers ...string) string {
 	if len(offers) == 0 {
-		return
+		return ""
 	}
 	if header == "" {
 		return offers[0]
@@ -131,7 +131,7 @@ func getOffer(header string, offers ...string) (offer string) {
 			}
 		}
 	}
-	return
+	return ""
 }
 
 // Adapted from:

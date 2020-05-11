@@ -101,7 +101,7 @@ func ReleaseCtx(ctx *Ctx) {
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
-func (ctx *Ctx) Accepts(offers ...string) (offer string) {
+func (ctx *Ctx) Accepts(offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -113,11 +113,6 @@ func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 	specs := strings.Split(h, ",")
 	for i := range offers {
 		mimetype := getMIME(offers[i])
-		// if mimetype != "" {
-		// 	mimetype = strings.Split(mimetype, ";")[0]
-		// } else {
-		// 	mimetype = offer
-		// }
 		for k := range specs {
 			spec := strings.TrimSpace(specs[k])
 			if strings.HasPrefix(spec, "*/*") {
