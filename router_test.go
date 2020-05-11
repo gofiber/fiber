@@ -233,7 +233,7 @@ func Test_Router_With_Simple_Path_And_NoMatch(t *testing.T) {
 func checkCases(tParent *testing.T, parser parsedParams, tcases []testcase) {
 	for _, tcase := range tcases {
 		tParent.Run(fmt.Sprintf("%+v", tcase), func(t *testing.T) {
-			params, ok := parser.matchParams(tcase.uri)
+			params, ok := parser.getMatch(tcase.uri)
 			if !reflect.DeepEqual(params, tcase.params) {
 				t.Errorf("Path.Match() got = %v, want %v", params, tcase.params)
 			}

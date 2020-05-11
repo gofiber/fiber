@@ -762,7 +762,7 @@ func getParams(pattern string) (p parsedParams) {
 }
 
 // Match ...
-func (p *parsedParams) matchParams(s string) ([]string, bool) {
+func (p *parsedParams) getMatch(s string) ([]string, bool) {
 	lenKeys := len(p.params)
 	params := paramsDummy[0:lenKeys:lenKeys]
 	var i, j, paramsIterator, partLen int

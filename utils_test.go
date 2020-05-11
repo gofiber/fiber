@@ -136,9 +136,15 @@ func Test_Utils_extensionMIME(t *testing.T) {
 // 	// TODO
 // }
 
-// func Test_Utils_matchParams(t *testing.T) {
-// 	// TODO
-// }
+func Test_Utils_matchParams(t *testing.T) {
+	testCase := func(r, u string, p []string, m bool) {
+		parser := getParams(r)
+		params, match := parser.getMatch(u)
+		assertEqual(t, p, params)
+		assertEqual(t, m, match)
+	}
+	testCase("/api/v1/:param/*", "/api/v1/entity", []string{"entity", ""}, true)
+}
 
 // func Test_Utils_getTrimmedParam(t *testing.T) {
 // 	// TODO
