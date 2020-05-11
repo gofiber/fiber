@@ -89,7 +89,7 @@ func (r *Route) matchRoute(path string) (match bool, values []string) {
 	// Does this route have parameters
 	if len(r.Params) > 0 {
 		// Do we have a match?
-		params, ok := r.parsed.matchParams(path)
+		params, ok := r.parsed.getMatch(path)
 		// We have a match!
 		if ok {
 			return true, params

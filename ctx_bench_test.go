@@ -63,7 +63,7 @@ func Benchmark_Ctx_AcceptsLanguages(b *testing.B) {
 
 	var res string
 	for n := 0; n < b.N; n++ {
-		res = c.AcceptsEncodings("fr")
+		res = c.AcceptsLanguages("fr")
 	}
 
 	assertEqual(b, "fr", res)
