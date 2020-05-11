@@ -139,80 +139,18 @@ func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
-func (ctx *Ctx) AcceptsCharsets(offers ...string) (offer string) {
-	if len(offers) == 0 {
-		return ""
-	}
-
-	h := ctx.Get(HeaderAcceptCharset)
-	if h == "" {
-		return offers[0]
-	}
-
-	specs := strings.Split(h, ",")
-	for i := range offers {
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
-			if strings.HasPrefix(spec, "*") {
-				return offers[i]
-			}
-			if strings.HasPrefix(spec, offers[i]) {
-				return offers[i]
-			}
-		}
-	}
-	return ""
+func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
+	return getOffer(ctx.Get(HeaderAcceptCharset), offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
-func (ctx *Ctx) AcceptsEncodings(offers ...string) (offer string) {
-	if len(offers) == 0 {
-		return ""
-	}
-
-	h := ctx.Get(HeaderAcceptEncoding)
-	if h == "" {
-		return offers[0]
-	}
-
-	specs := strings.Split(h, ",")
-	for i := range offers {
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
-			if strings.HasPrefix(spec, "*") {
-				return offers[i]
-			}
-			if strings.HasPrefix(spec, offers[i]) {
-				return offers[i]
-			}
-		}
-	}
-	return ""
+func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
+	return getOffer(ctx.Get(HeaderAcceptEncoding), offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable.
-func (ctx *Ctx) AcceptsLanguages(offers ...string) (offer string) {
-	if len(offers) == 0 {
-		return ""
-	}
-	h := ctx.Get(HeaderAcceptLanguage)
-	if h == "" {
-		return offers[0]
-	}
-
-	specs := strings.Split(h, ",")
-	for i := range offers {
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
-			if strings.HasPrefix(spec, "*") {
-				return offers[i]
-			}
-			if strings.HasPrefix(spec, offers[i]) {
-				return offers[i]
-			}
-		}
-	}
-	return ""
+func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
+	return getOffer(ctx.Get(HeaderAcceptLanguage), offers...)
 }
 
 // Append the specified value to the HTTP response header field.

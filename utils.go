@@ -110,6 +110,30 @@ func getArgument(arg string) bool {
 	return false
 }
 
+// return valid offer for header negotiation
+func getOffer(header string, offers ...string) (offer string) {
+	if len(offers) == 0 {
+		return
+	}
+	if header == "" {
+		return offers[0]
+	}
+
+	specs := strings.Split(header, ",")
+	for i := range offers {
+		for k := range specs {
+			spec := strings.TrimSpace(specs[k])
+			if strings.HasPrefix(spec, "*") {
+				return offers[i]
+			}
+			if strings.HasPrefix(spec, offers[i]) {
+				return offers[i]
+			}
+		}
+	}
+	return
+}
+
 // Adapted from:
 // https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
 func parseTokenList(noneMatchBytes []byte) []string {
