@@ -100,66 +100,15 @@ func getMIME(extension string) (mime string) {
 	return mime
 }
 
-// #nosec G103
-// getString converts byte slice to a string without memory allocation.
-// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-var getString = func(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
-var getStringImmutable = func(b []byte) string {
-	return string(b)
-}
-
-// #nosec G103
-// getBytes converts string to a byte slice without memory allocation.
-// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-var getBytes = func(s string) (b []byte) {
-	return *(*[]byte)(unsafe.Pointer(&s))
-}
-var getBytesImmutable = func(s string) (b []byte) {
-	return []byte(s)
-}
-
-// Check if -prefork is in arguments
-func isPrefork() bool {
+// Check if key is in arguments
+func getArgument(arg string) bool {
 	for i := range os.Args[1:] {
-		if os.Args[1:][i] == "-prefork" {
+		if os.Args[1:][i] == arg {
 			return true
 		}
 	}
 	return false
 }
-
-// Check if -child is in arguments
-func isChild() bool {
-	for i := range os.Args[1:] {
-		if os.Args[1:][i] == "-child" {
-			return true
-		}
-	}
-	return false
-}
-
-// https://golang.org/src/net/net.go#L113
-// Helper methods for application#test
-type testConn struct {
-	net.Conn
-	r bytes.Buffer
-	w bytes.Buffer
-}
-
-func (c *testConn) RemoteAddr() net.Addr {
-	return &net.TCPAddr{
-		IP: net.IPv4(0, 0, 0, 0),
-	}
-}
-func (c *testConn) LocalAddr() net.Addr                { return c.RemoteAddr() }
-func (c *testConn) Read(b []byte) (int, error)         { return c.r.Read(b) }
-func (c *testConn) Write(b []byte) (int, error)        { return c.w.Write(b) }
-func (c *testConn) Close() error                       { return nil }
-func (c *testConn) SetDeadline(t time.Time) error      { return nil }
-func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
-func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
 
 // Adapted from:
 // https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
@@ -187,6 +136,47 @@ func parseTokenList(noneMatchBytes []byte) []string {
 
 	list = append(list, getString(noneMatchBytes[start:end]))
 	return list
+}
+
+// https://golang.org/src/net/net.go#L113
+// Helper methods for application#test
+type testConn struct {
+	net.Conn
+	r bytes.Buffer
+	w bytes.Buffer
+}
+
+func (c *testConn) RemoteAddr() net.Addr {
+	return &net.TCPAddr{
+		IP: net.IPv4(0, 0, 0, 0),
+	}
+}
+func (c *testConn) LocalAddr() net.Addr                { return c.RemoteAddr() }
+func (c *testConn) Read(b []byte) (int, error)         { return c.r.Read(b) }
+func (c *testConn) Write(b []byte) (int, error)        { return c.w.Write(b) }
+func (c *testConn) Close() error                       { return nil }
+func (c *testConn) SetDeadline(t time.Time) error      { return nil }
+func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
+func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
+
+// #nosec G103
+// getString converts byte slice to a string without memory allocation.
+// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
+var getString = func(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
+var getStringImmutable = func(b []byte) string {
+	return string(b)
+}
+
+// #nosec G103
+// getBytes converts string to a byte slice without memory allocation.
+// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
+var getBytes = func(s string) (b []byte) {
+	return *(*[]byte)(unsafe.Pointer(&s))
+}
+var getBytesImmutable = func(s string) (b []byte) {
+	return []byte(s)
 }
 
 // HTTP methods and their unique INTs

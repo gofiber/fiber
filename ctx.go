@@ -69,30 +69,34 @@ var schemaDecoderForm = schema.NewDecoder()
 var schemaDecoderQuery = schema.NewDecoder()
 var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
-// Ctx pool
-var poolCtx = sync.Pool{
+var ctxPool = sync.Pool{
 	New: func() interface{} {
 		return new(Ctx)
 	},
 }
 
-// Acquire Ctx from pool
-func acquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
-	ctx := poolCtx.Get().(*Ctx)
+// AcquireCtx from pool
+func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
+	ctx := ctxPool.Get().(*Ctx)
+	// Set stack index
 	ctx.index = -1
+	// Set path
 	ctx.path = getString(fctx.URI().Path())
+	// Set method
 	ctx.method = getString(fctx.Request.Header.Method())
+	// Attach fasthttp request to ctx
 	ctx.Fasthttp = fctx
 	return ctx
 }
 
-// Return Ctx to pool
-func releaseCtx(ctx *Ctx) {
+// ReleaseCtx to pool
+func ReleaseCtx(ctx *Ctx) {
+	// Reset values
 	ctx.route = nil
 	ctx.values = nil
 	ctx.Fasthttp = nil
 	ctx.err = nil
-	poolCtx.Put(ctx)
+	ctxPool.Put(ctx)
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
@@ -605,6 +609,9 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 // Next executes the next method in the stack that matches the current route.
 // You can pass an optional error for custom error handling.
 func (ctx *Ctx) Next(err ...error) {
+	if ctx.app == nil {
+		return
+	}
 	ctx.route = nil
 	ctx.values = nil
 	if len(err) > 0 {
@@ -635,7 +642,7 @@ func (ctx *Ctx) Params(key string) (value string) {
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
 func (ctx *Ctx) Path(override ...string) string {
-	if len(override) > 0 {
+	if len(override) > 0 && ctx.app != nil {
 		// Non strict routing
 		if !ctx.app.Settings.StrictRouting && len(override[0]) > 1 {
 			override[0] = strings.TrimRight(override[0], "/")
@@ -722,17 +729,18 @@ func (ctx *Ctx) Render(file string, bind interface{}) error {
 	var err error
 	var raw []byte
 	var html string
-
-	if ctx.app.Settings.TemplateFolder != "" {
-		file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
+	if ctx.app != nil {
+		if ctx.app.Settings.TemplateFolder != "" {
+			file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
+		}
+		if ctx.app.Settings.TemplateExtension != "" {
+			file = file + ctx.app.Settings.TemplateExtension
+		}
+		if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
+			return err
+		}
 	}
-	if ctx.app.Settings.TemplateExtension != "" {
-		file = file + ctx.app.Settings.TemplateExtension
-	}
-	if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
-		return err
-	}
-	if ctx.app.Settings.TemplateEngine != nil {
+	if ctx.app != nil && ctx.app.Settings.TemplateEngine != nil {
 		// Custom template engine
 		// https://github.com/gofiber/template
 		if html, err = ctx.app.Settings.TemplateEngine(getString(raw), bind); err != nil {
@@ -855,16 +863,19 @@ func (ctx *Ctx) Vary(fields ...string) {
 	if len(fields) == 0 {
 		return
 	}
-
-	h := getString(ctx.Fasthttp.Response.Header.Peek(HeaderVary))
+	h := strings.ToLower(getString(ctx.Fasthttp.Response.Header.Peek(HeaderVary)))
 	for i := range fields {
-		if h == "" {
+		fields[i] = strings.ToLower(fields[i])
+		if len(h) == 0 {
 			h += fields[i]
-		} else {
+		} else if !strings.Contains(h, " "+fields[i]) && !strings.Contains(h, fields[i]+"") || !strings.Contains(h, fields[i]+",") {
+			// Next developer, it's your job to optimize the following problem
+			// Does the header value "Accept" exist in the following header value
+			// "Origin, User-Agent, Accept-Encoding"
+			// "Accept-Encoding" contains "Accept", false positive
 			h += ", " + fields[i]
 		}
 	}
-
 	ctx.Set(HeaderVary, h)
 }
 
