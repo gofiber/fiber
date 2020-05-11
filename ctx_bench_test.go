@@ -297,20 +297,28 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	defer ReleaseCtx(c)
 
 	c.Fasthttp.Request.Header.Set("Accept", "text/html")
-
 	for n := 0; n < b.N; n++ {
 		c.Format("Hello, World!")
 	}
-
 	assertEqual(b, "<p>Hello, World!</p>", string(c.Fasthttp.Response.Body()))
 
 	c.Fasthttp.Request.Header.Set("Accept", "application/json")
-
 	for n := 0; n < b.N; n++ {
 		c.Format("Hello, World!")
 	}
-
 	assertEqual(b, `"Hello, World!"`, string(c.Fasthttp.Response.Body()))
+
+	c.Fasthttp.Request.Header.Set("Accept", "text/plain")
+	for n := 0; n < b.N; n++ {
+		c.Format("Hello, World!")
+	}
+	assertEqual(b, `Hello, World!`, string(c.Fasthttp.Response.Body()))
+
+	c.Fasthttp.Request.Header.Set("Accept", "application/xml")
+	for n := 0; n < b.N; n++ {
+		c.Format("Hello, World!")
+	}
+	assertEqual(b, `<string>Hello, World!</string>`, string(c.Fasthttp.Response.Body()))
 }
 
 func Benchmark_Ctx_JSON(b *testing.B) {

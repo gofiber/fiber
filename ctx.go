@@ -24,7 +24,7 @@ import (
 	"time"
 
 	schema "github.com/gorilla/schema"
-	bytebufferpool "github.com/valyala/bytebufferpool"
+	"github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -318,9 +318,13 @@ func (ctx *Ctx) Error() error {
 // It uses Accepts to select a proper format.
 // If the header is not specified or there is no proper format, text/plain is used.
 func (ctx *Ctx) Format(body interface{}) {
-	var b string
-	accept := ctx.Accepts("html", "json")
+	// Get accepted content type
+	accept := ctx.Accepts("html", "json", "txt", "xml")
+	// Set accepted content type
+	ctx.Type(accept)
 
+	// Type convert provided body
+	var b string
 	switch val := body.(type) {
 	case string:
 		b = val
@@ -329,13 +333,25 @@ func (ctx *Ctx) Format(body interface{}) {
 	default:
 		b = fmt.Sprintf("%v", val)
 	}
+
+	// Format based on the accept content type
 	switch accept {
 	case "html":
 		ctx.SendString("<p>" + b + "</p>")
 	case "json":
 		if err := ctx.JSON(body); err != nil {
-			// Fix
+			ctx.Send(body) // Fallback
 			log.Println("Format: error serializing json ", err)
+		}
+	case "text":
+		ctx.SendString(b)
+	case "xml":
+		raw, err := xml.Marshal(body)
+		if err != nil {
+			ctx.Send(body) // Fallback
+			log.Println("Format: error serializing xml ", err)
+		} else {
+			ctx.SendString(getString(raw))
 		}
 	default:
 		ctx.SendString(b)
@@ -484,15 +500,15 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 		return err
 	}
 
-	var result, cbName string
+	var result, cb string
 
 	if len(callback) > 0 {
-		cbName = callback[0]
+		cb = callback[0]
 	} else {
-		cbName = "callback"
+		cb = "callback"
 	}
 
-	result = cbName + "(" + getString(raw) + ");"
+	result = cb + "(" + getString(raw) + ");"
 
 	ctx.Fasthttp.Response.Header.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
@@ -515,8 +531,7 @@ func (ctx *Ctx) Links(link ...string) {
 		} else {
 			bb.WriteString(`; rel="`)
 			bb.WriteString(link[i])
-			bb.WriteByte('"')
-			bb.WriteByte(',')
+			bb.WriteString(`",`)
 		}
 	}
 	ctx.Fasthttp.Response.Header.Set(HeaderLink, strings.TrimSuffix(bb.String(), ","))

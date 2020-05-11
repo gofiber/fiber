@@ -71,6 +71,15 @@ func (r *Route) matchRoute(path string) (match bool, values []string) {
 		if r.root {
 			return true, values
 		}
+		// Does this route have parameters
+		if len(r.Params) > 0 {
+			// Do we have a match?
+			params, ok := r.parsed.getMatch(path)
+			// We have a match!
+			if ok {
+				return true, params
+			}
+		}
 		// Middleware matches path prefix
 		if strings.HasPrefix(path, r.Path) {
 			return true, values
@@ -153,9 +162,9 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	}
 	var isStar = path == "/*"
 	// Middleware containing only a `/` equals wildcard
-	if isUse && path == "/" {
-		isStar = true
-	}
+	// if isUse && path == "/" {
+	// 	isStar = true
+	// }
 	var isRoot = path == "/"
 	// Route properties
 	var isParsed = getParams(original)

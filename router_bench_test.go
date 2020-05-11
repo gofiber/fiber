@@ -33,43 +33,35 @@ func init() {
 	}
 }
 
-func Benchmark_Router_Github_Routes(b *testing.B) {
-	var match bool
-	var params []string
+func Benchmark_Router_Github_API(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := range testRoutes {
-			match, params = matchRoute(testRoutes[i].method, testRoutes[i].path)
+			_, _ = matchRoute(testRoutes[i].method, testRoutes[i].path)
 		}
-		if match {
-			if len(params) > 0 {
+	}
+}
 
-			}
-		}
+func Benchmark_Router_Stacked_Route(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		_, _ = matchRoute("GET", "/orgs/gofiber/public_members/fenny")
 	}
 }
 
 func Benchmark_Router_Last_Route(b *testing.B) {
-	var match bool
-	var params []string
 	for n := 0; n < b.N; n++ {
-		match, params = matchRoute("DELETE", "/user/keys/1337")
-	}
-	if match {
-		if len(params) > 0 {
-
-		}
+		_, _ = matchRoute("DELETE", "/user/keys/1337")
 	}
 }
-func Benchmark_Router_First_Route(b *testing.B) {
-	var match bool
-	var params []string
-	for n := 0; n < b.N; n++ {
-		match, params = matchRoute("GET", "/authorizations")
-	}
-	if match {
-		if len(params) > 0 {
 
-		}
+func Benchmark_Router_Middle_Route(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		_, _ = matchRoute("GET", "/orgs/gofiber/public_members/fenny")
+	}
+}
+
+func Benchmark_Router_First_Route(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		_, _ = matchRoute("GET", "/authorizations")
 	}
 }
 
