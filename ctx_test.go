@@ -578,12 +578,12 @@ func Test_Append(t *testing.T) {
 		c.Append("X-Test", "World")
 		c.Append("X-Test", "Hello", "World")
 	})
-	req := httptest.NewRequest("GET", "/test", nil)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 	assertEqual(t, "Hello, World", resp.Header.Get("X-Test"))
+	t.Fatalf("%+v", resp.Header)
 }
 func Test_Attachment(t *testing.T) {
 	app := New()
