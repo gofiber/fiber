@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+// go test -v ./... -run=^$ -bench=Benchmark_Ctx_Acce -benchmem -count=3
+
 // func Benchmark_Utils_assertEqual(b *testing.B) {
 // 	// TODO
 // }

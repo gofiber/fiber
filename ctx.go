@@ -803,19 +803,7 @@ func (ctx *Ctx) Type(ext string) *Ctx {
 // Vary adds the given header field to the Vary response header.
 // This will append the header, if not already listed, otherwise leaves it listed in the current location.
 func (ctx *Ctx) Vary(fields ...string) {
-	if len(fields) == 0 {
-		return
-	}
-	h := strings.ToLower(getString(ctx.Fasthttp.Response.Header.Peek(HeaderVary)))
-	for i := range fields {
-		fields[i] = strings.ToLower(fields[i])
-		if len(h) == 0 {
-			h += fields[i]
-		} else if h != fields[i] && !strings.HasSuffix(h, " "+fields[i]) && !strings.Contains(h, fields[i]+",") {
-			h += ", " + fields[i]
-		}
-	}
-	ctx.Fasthttp.Response.Header.Set(HeaderVary, h)
+	ctx.Append(HeaderVary, fields...)
 }
 
 // Write appends any input to the HTTP body response.

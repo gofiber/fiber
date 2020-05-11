@@ -4,7 +4,10 @@
 
 package fiber
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // func Test_Utils_assertEqual(t *testing.T) {
 // 	// TODO
@@ -146,8 +149,8 @@ func Test_Utils_matchParams(t *testing.T) {
 		parser := getParams(r)
 		for _, c := range cases {
 			params, match := parser.getMatch(c.url)
-			assertEqual(t, c.params, params)
-			assertEqual(t, c.match, match)
+			assertEqual(t, c.params, params, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			assertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 		}
 	}
 	testCase("/api/v1/:param/*", []testparams{
@@ -156,7 +159,7 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/v1/entity/1", params: []string{"entity", "1"}, match: true},
 		{url: "/api/v", params: nil, match: false},
 		{url: "/api/v2", params: nil, match: false},
-		{url: "/api/v1/", params: nil, match: false},
+		{url: "/api/v1/", params: []string{}, match: false},
 	})
 	testCase("/api/v1/:param/*", []testparams{
 		{url: "/api/v1", params: []string{""}, match: true},

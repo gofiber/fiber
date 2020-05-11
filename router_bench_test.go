@@ -4,6 +4,8 @@
 
 package fiber
 
+// go test -v ./... -run=^$ -bench=Benchmark_Ctx_Acce -benchmem -count=3
+
 // import (
 // 	"testing"
 // )
