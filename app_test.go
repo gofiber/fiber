@@ -20,6 +20,33 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
+func Test_Nested_Params(t *testing.T) {
+	app := New()
+
+	app.Get("/test", func(c *Ctx) {
+		t.Log(c.Route().Path)
+		c.Status(400).Send("Should move on")
+	})
+	app.Get("/test/:param", func(c *Ctx) {
+		t.Log(c.Route().Path)
+		c.Status(400).Send("Should move on")
+	})
+	app.Get("/test/:param/test", func(c *Ctx) {
+		t.Log(c.Route().Path)
+		c.Status(400).Send("Should move on")
+	})
+	app.Get("/test/:param/test/:param2", func(c *Ctx) {
+		t.Log(c.Route().Path)
+		c.Status(200).Send("Good job")
+	})
+
+	req := httptest.NewRequest("GET", "/test/john/test/doe", nil)
+	resp, err := app.Test(req)
+
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, 200, resp.StatusCode, "Status code")
+}
+
 func Test_Raw(t *testing.T) {
 	app := New()
 	app.Get("/", func(c *Ctx) {
@@ -61,9 +88,6 @@ func Test_Methods(t *testing.T) {
 	var dummyHandler = func(c *Ctx) {}
 
 	app := New()
-
-	app.Connect("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", "CONNECT")
 
 	app.Connect("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", "CONNECT")

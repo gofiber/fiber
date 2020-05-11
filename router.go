@@ -168,7 +168,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 
 			Path:    path,
 			Method:  method,
-			Params:  isParsed.Keys,
+			Params:  isParsed.Params,
 			Handler: handlers[i],
 		}
 		if method == "*" {
