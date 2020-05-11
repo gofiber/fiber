@@ -42,6 +42,7 @@ func Test_Nested_Params(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/test/john/test/doe", nil)
 	resp, err := app.Test(req)
+
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
