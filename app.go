@@ -18,13 +18,14 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	fasthttp "github.com/valyala/fasthttp"
 )
 
 // Version of current package
-const Version = "1.9.5"
+const Version = "1.9.6"
 
 // Map is a shortcut for map[string]interface{}
 type Map map[string]interface{}
@@ -32,12 +33,15 @@ type Map map[string]interface{}
 // App denotes the Fiber application.
 type App struct {
 	// Internal fields
-	server   *fasthttp.Server // FastHTTP server
-	testconn *testConn        // Test connection
-	routes   [][]*Route       // Route stack
+	testconn *testConn  // Test connection
+	routes   [][]*Route // Route stack
 
 	// External fields
 	Settings *Settings // Fiber settings
+
+	// Fasthttp server
+	mutex  sync.Mutex       // Mutual exclusion
+	server *fasthttp.Server // FastHTTP server
 }
 
 // Settings holds is a struct holding the server settings
@@ -121,13 +125,13 @@ func New(settings ...*Settings) *App {
 	// Create settings
 	app.Settings = new(Settings)
 	// Set default settings
-	app.Settings.Prefork = isPrefork()
+	app.Settings.Prefork = getArgument("-prefork")
 	app.Settings.BodyLimit = 4 * 1024 * 1024
 	// If settings exist, set defaults
 	if len(settings) > 0 {
 		app.Settings = settings[0] // Set custom settings
 		if !app.Settings.Prefork { // Default to -prefork flag if false
-			app.Settings.Prefork = isPrefork()
+			app.Settings.Prefork = getArgument("-prefork")
 		}
 		if app.Settings.BodyLimit <= 0 { // Default MaxRequestBodySize
 			app.Settings.BodyLimit = 4 * 1024 * 1024
@@ -140,7 +144,7 @@ func New(settings ...*Settings) *App {
 			getBytes = getBytesImmutable
 		}
 	}
-	// Setup test connection
+	// Setup test listener
 	app.testconn = new(testConn)
 	// Setup server
 	app.server = app.newServer()
@@ -350,7 +354,9 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 // You can pass an optional *tls.Config to enable TLS.
 func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// Create fasthttp server
+	app.mutex.Lock()
 	app.server = app.newServer()
+	app.mutex.Unlock()
 	// TLS config
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
@@ -378,7 +384,9 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		addr = ":" + addr
 	}
 	// Create fasthttp server
+	app.mutex.Lock()
 	app.server = app.newServer()
+	app.mutex.Unlock()
 	// Setup listener
 	var ln net.Listener
 	var err error
@@ -397,7 +405,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
 	// Print listening message
-	if !app.Settings.DisableStartupMessage && !isChild() {
+	if !app.Settings.DisableStartupMessage && !getArgument("-child") {
 		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
 		fmt.Printf("Started listening on %s\n", ln.Addr().String())
 	}
@@ -412,6 +420,8 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
 	if app.server == nil {
 		return fmt.Errorf("Server is not running")
 	}
@@ -419,8 +429,8 @@ func (app *App) Shutdown() error {
 }
 
 // TestRaw is like Test buf for raw HTTP strings: GET / HTTP/1.1\r\n\r\n
-func (app *App) TestRaw(request []byte) error {
-	if _, err := app.testconn.r.Write(request); err != nil {
+func (app *App) TestRaw(request string) error {
+	if _, err := app.testconn.r.WriteString(request); err != nil {
 		return err
 	}
 	return app.server.ServeConn(app.testconn)
@@ -479,7 +489,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 // Sharding: https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
 func (app *App) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
-	if !isChild() {
+	if !getArgument("-child") {
 		addr, err := net.ResolveTCPAddr("tcp", address)
 		if err != nil {
 			return ln, err

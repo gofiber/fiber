@@ -20,15 +20,13 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
-func Test_Random(t *testing.T) {
+func Test_Raw(t *testing.T) {
 	app := New()
 	app.Get("/", func(c *Ctx) {
-
-		t.Log("/ Hello")
 		c.SendString("Hello, World!")
 	})
 
-	app.TestRaw([]byte("GET / HTTP/1.1\r\n\r\n"))
+	app.TestRaw("GET / HTTP/1.1\r\n\r\n")
 }
 
 func Test_Order(t *testing.T) {

@@ -61,7 +61,6 @@ func (app *App) nextRoute(ctx *Ctx) {
 }
 
 func (r *Route) matchRoute(path string) (match bool, values []string) {
-	time.Sleep(10 * time.Millisecond)
 	// Middleware routes allow prefix matches
 	if r.use {
 		// Match any path if wildcard and pass path as param
@@ -107,11 +106,10 @@ func (r *Route) matchRoute(path string) (match bool, values []string) {
 
 func (app *App) handler(fctx *fasthttp.RequestCtx) {
 	// get fiber context from sync pool
-	ctx := acquireCtx(fctx)
-	defer releaseCtx(ctx)
+	ctx := AcquireCtx(fctx)
+	defer ReleaseCtx(ctx)
 	// Attach app poiner to access the routes
 	ctx.app = app
-
 	// Case sensitive routing
 	if !app.Settings.CaseSensitive {
 		ctx.path = strings.ToLower(ctx.path)
@@ -264,7 +262,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 			}
 			// Serve file
 			fileHandler(c.Fasthttp)
-
 			// Finish request if found and not forbidden
 			status := c.Fasthttp.Response.StatusCode()
 			if status != 404 && status != 403 {
