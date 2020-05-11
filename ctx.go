@@ -24,6 +24,7 @@ import (
 	"time"
 
 	schema "github.com/gorilla/schema"
+	bytebufferpool "github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -220,15 +221,16 @@ func (ctx *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := getString(ctx.Fasthttp.Response.Header.Peek(field))
+	h := strings.ToLower(getString(ctx.Fasthttp.Response.Header.Peek(field)))
 	for i := range values {
-		if h == "" {
+		values[i] = strings.ToLower(values[i])
+		if len(h) == 0 {
 			h += values[i]
-		} else {
+		} else if h != values[i] && !strings.HasSuffix(h, " "+values[i]) && !strings.Contains(h, values[i]+",") {
 			h += ", " + values[i]
 		}
 	}
-	ctx.Set(field, h)
+	ctx.Fasthttp.Response.Header.Set(field, h)
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
@@ -542,39 +544,48 @@ func (ctx *Ctx) JSON(data interface{}) error {
 // By default, the callback name is simply callback.
 func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	raw, err := json.Marshal(&data)
-	// Check for errors
+
 	if err != nil {
 		return err
 	}
 
-	str := "callback("
-	if len(callback) > 0 {
-		str = callback[0] + "("
-	}
-	str += getString(raw) + ");"
+	var result, cbName string
 
-	ctx.Set(HeaderXContentTypeOptions, "nosniff")
+	if len(callback) > 0 {
+		cbName = callback[0]
+	} else {
+		cbName = "callback"
+	}
+
+	result = cbName + "(" + getString(raw) + ");"
+
+	ctx.Fasthttp.Response.Header.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
-	ctx.Fasthttp.Response.SetBodyString(str)
+	ctx.Fasthttp.Response.SetBodyString(result)
+
 	return nil
 }
 
 // Links joins the links followed by the property to populate the response’s Link HTTP header field.
 func (ctx *Ctx) Links(link ...string) {
-	h := ""
+	if len(link) == 0 {
+		return
+	}
+	bb := bytebufferpool.Get()
 	for i := range link {
-		l := link[i]
 		if i%2 == 0 {
-			h += "<" + l + ">"
+			bb.WriteByte('<')
+			bb.WriteString(link[i])
+			bb.WriteByte('>')
 		} else {
-			h += `; rel="` + l + `",`
+			bb.WriteString(`; rel="`)
+			bb.WriteString(link[i])
+			bb.WriteByte('"')
+			bb.WriteByte(',')
 		}
 	}
-
-	if len(link) > 0 {
-		h = strings.TrimSuffix(h, ",")
-		ctx.Set(HeaderLink, h)
-	}
+	ctx.Fasthttp.Response.Header.Set(HeaderLink, strings.TrimSuffix(bb.String(), ","))
+	bytebufferpool.Put(bb)
 }
 
 // Locals makes it possible to pass interface{} values under string keys scoped to the request
@@ -595,7 +606,7 @@ func (ctx *Ctx) Location(path string) {
 // Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
 func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
-		ctx.method = override[0]
+		ctx.method = strings.ToUpper(override[0])
 	}
 	return ctx.method
 }
@@ -714,13 +725,12 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found
 func (ctx *Ctx) Redirect(path string, status ...int) {
-	code := 302
+	ctx.Fasthttp.Response.Header.Set(HeaderLocation, path)
 	if len(status) > 0 {
-		code = status[0]
+		ctx.Fasthttp.Response.SetStatusCode(status[0])
+	} else {
+		ctx.Fasthttp.Response.SetStatusCode(StatusFound)
 	}
-
-	ctx.Set(HeaderLocation, path)
-	ctx.Fasthttp.Response.SetStatusCode(code)
 }
 
 // Render a template with data and sends a text/html response.
@@ -868,15 +878,11 @@ func (ctx *Ctx) Vary(fields ...string) {
 		fields[i] = strings.ToLower(fields[i])
 		if len(h) == 0 {
 			h += fields[i]
-		} else if !strings.Contains(h, " "+fields[i]) && !strings.Contains(h, fields[i]+"") || !strings.Contains(h, fields[i]+",") {
-			// Next developer, it's your job to optimize the following problem
-			// Does the header value "Accept" exist in the following header value
-			// "Origin, User-Agent, Accept-Encoding"
-			// "Accept-Encoding" contains "Accept", false positive
+		} else if h != fields[i] && !strings.HasSuffix(h, " "+fields[i]) && !strings.Contains(h, fields[i]+",") {
 			h += ", " + fields[i]
 		}
 	}
-	ctx.Set(HeaderVary, h)
+	ctx.Fasthttp.Response.Header.Set(HeaderVary, h)
 }
 
 // Write appends any input to the HTTP body response.
@@ -896,5 +902,5 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 // XHR returns a Boolean property, that is true, if the request’s X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (ctx *Ctx) XHR() bool {
-	return strings.ToLower(ctx.Get(HeaderXRequestedWith)) == "xmlhttprequest"
+	return strings.EqualFold(ctx.Get(HeaderXRequestedWith), "xmlhttprequest")
 }
