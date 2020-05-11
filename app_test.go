@@ -54,7 +54,15 @@ func Test_App_Use_Params(t *testing.T) {
 		assertEqual(t, "john", c.Params("param"))
 	})
 
+	app.Use("/:param/*", func(c *Ctx) {
+		assertEqual(t, "john", c.Params("*"))
+	})
+
 	resp, err := app.Test(httptest.NewRequest("GET", "/prefix/john", nil))
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/prefix/john", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
