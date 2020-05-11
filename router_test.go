@@ -19,7 +19,7 @@ type testcase struct {
 	ok     bool
 }
 
-func Test_With_Param_And_Wildcard(t *testing.T) {
+func Test_Router_Param_And_Wildcard(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/v1/:param/*"),
@@ -34,7 +34,7 @@ func Test_With_Param_And_Wildcard(t *testing.T) {
 	)
 }
 
-func Test_With_A_Param_Optional(t *testing.T) {
+func Test_Router_A_Param_Optional(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/v1/:param?"),
@@ -49,7 +49,7 @@ func Test_With_A_Param_Optional(t *testing.T) {
 	)
 }
 
-func Test_With_With_Wildcard(t *testing.T) {
+func Test_Router_With_Wildcard(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/v1/*"),
@@ -64,7 +64,7 @@ func Test_With_With_Wildcard(t *testing.T) {
 		},
 	)
 }
-func Test_With_With_Param(t *testing.T) {
+func Test_Router_With_Param(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/v1/:param"),
@@ -77,7 +77,7 @@ func Test_With_With_Param(t *testing.T) {
 	)
 }
 
-func Test_With_Without_A_Param_Or_Wildcard(t *testing.T) {
+func Test_Router_Without_A_Param_Or_Wildcard(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/v1/const"),
@@ -89,7 +89,7 @@ func Test_With_Without_A_Param_Or_Wildcard(t *testing.T) {
 		},
 	)
 }
-func Test_With_With_A_Param_And_Wildcard_Differents_Positions(t *testing.T) {
+func Test_Router_With_A_Param_And_Wildcard_Differents_Positions(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/v1/:param/abc/*"),
@@ -101,7 +101,7 @@ func Test_With_With_A_Param_And_Wildcard_Differents_Positions(t *testing.T) {
 		},
 	)
 }
-func Test_With_With_Params_And_Optional(t *testing.T) {
+func Test_Router_With_Params_And_Optional(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/:day/:month?/:year?"),
@@ -114,7 +114,7 @@ func Test_With_With_Params_And_Optional(t *testing.T) {
 		},
 	)
 }
-func Test_With_With_Simple_Wildcard(t *testing.T) {
+func Test_Router_With_Simple_Wildcard(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/*"),
@@ -128,7 +128,7 @@ func Test_With_With_Simple_Wildcard(t *testing.T) {
 		},
 	)
 }
-func Test_With_With_Wildcard_And_Optional(t *testing.T) {
+func Test_Router_With_Wildcard_And_Optional(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/*/:param?"),
@@ -142,7 +142,7 @@ func Test_With_With_Wildcard_And_Optional(t *testing.T) {
 		},
 	)
 }
-func Test_With_With_Wildcard_And_Param(t *testing.T) {
+func Test_Router_With_Wildcard_And_Param(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/*/:param"),
@@ -155,7 +155,7 @@ func Test_With_With_Wildcard_And_Param(t *testing.T) {
 		},
 	)
 }
-func Test_With_With_Wildcard_And_2Params(t *testing.T) {
+func Test_Router_With_Wildcard_And_2Params(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/api/*/:param/:param2"),
@@ -169,7 +169,7 @@ func Test_With_With_Wildcard_And_2Params(t *testing.T) {
 		},
 	)
 }
-func Test_With_With_Simple_Path(t *testing.T) {
+func Test_Router_With_Simple_Path(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/"),
@@ -180,7 +180,7 @@ func Test_With_With_Simple_Path(t *testing.T) {
 		},
 	)
 }
-func Test_With_With_Empty_Path(t *testing.T) {
+func Test_Router_With_Empty_Path(t *testing.T) {
 	checkCases(
 		t,
 		getParams(""),
@@ -192,7 +192,7 @@ func Test_With_With_Empty_Path(t *testing.T) {
 	)
 }
 
-func Test_With_With_FileName(t *testing.T) {
+func Test_Router_With_FileName(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/config/abc.json"),
@@ -205,7 +205,7 @@ func Test_With_With_FileName(t *testing.T) {
 	)
 }
 
-func Test_With_With_FileName_And_Wildcard(t *testing.T) {
+func Test_Router_With_FileName_And_Wildcard(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/config/*.json"),
@@ -219,7 +219,7 @@ func Test_With_With_FileName_And_Wildcard(t *testing.T) {
 	)
 }
 
-func Test_With_With_Simple_Path_And_NoMatch(t *testing.T) {
+func Test_Router_With_Simple_Path_And_NoMatch(t *testing.T) {
 	checkCases(
 		t,
 		getParams("/xyz"),
