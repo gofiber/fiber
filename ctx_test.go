@@ -569,20 +569,6 @@ func Test_Subdomains(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_XHR(t *testing.T) {
-	app := New()
-
-	app.Get("/test", func(c *Ctx) {
-		assertEqual(t, true, c.XHR())
-	})
-
-	req := httptest.NewRequest("GET", "/test", nil)
-	req.Header.Set("X-Requested-With", "XMLHttpRequest")
-
-	resp, err := app.Test(req)
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
-}
 
 func Test_Append(t *testing.T) {
 	app := New()
@@ -979,7 +965,7 @@ func Test_Vary(t *testing.T) {
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
-	assertEqual(t, "Origin, User-Agent, Accept-Encoding, Accept", resp.Header.Get("Vary"))
+	assertEqual(t, "origin, user-agent, accept-encoding, accept", resp.Header.Get("Vary"))
 }
 func Test_Write(t *testing.T) {
 	app := New()
@@ -999,4 +985,19 @@ func Test_Write(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	assertEqual(t, nil, err)
 	assertEqual(t, `Hello, World! 123`, string(body))
+}
+
+func Test_XHR(t *testing.T) {
+	app := New()
+
+	app.Get("/test", func(c *Ctx) {
+		assertEqual(t, true, c.XHR())
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+
+	resp, err := app.Test(req)
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
