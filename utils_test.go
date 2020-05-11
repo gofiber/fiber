@@ -137,13 +137,28 @@ func Test_Utils_extensionMIME(t *testing.T) {
 // }
 
 func Test_Utils_matchParams(t *testing.T) {
-	testCase := func(r, u string, p []string, m bool) {
-		parser := getParams(r)
-		params, match := parser.getMatch(u)
-		assertEqual(t, p, params)
-		assertEqual(t, m, match)
+	type testparams struct {
+		url    string
+		params []string
+		match  bool
 	}
-	testCase("/api/v1/:param/*", "/api/v1/entity", []string{"entity", ""}, true)
+	testCase := func(r string, cases []testparams) {
+		parser := getParams(r)
+		for _, c := range cases {
+			params, match := parser.getMatch(c.url)
+			assertEqual(t, c.params, params)
+			assertEqual(t, c.match, match)
+		}
+	}
+	testCase("/api/v1/:param/*", []testparams{
+		{"/api/v1/entity", []string{"entity", ""}, true},
+		{"/api/v1/entity/", []string{"entity", ""}, true},
+		{"/api/v1/entity/1", []string{"entity", "1"}, true},
+		{"/api/v1/entity/1", []string{"entity", "1"}, true},
+		{"/api/v", nil, false},
+		{"/api/v2", nil, false},
+		{"/api/v1/", nil, false},
+	})
 }
 
 // func Test_Utils_getTrimmedParam(t *testing.T) {
