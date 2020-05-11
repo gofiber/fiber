@@ -22,7 +22,7 @@ type testcase struct {
 func Test_With_Param_And_Wildcard(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/v1/:param/*"),
+		getParams("/api/v1/:param/*"),
 		[]testcase{
 			{uri: "/api/v1/entity", params: []string{"entity", ""}, ok: true},
 			{uri: "/api/v1/entity/", params: []string{"entity", ""}, ok: true},
@@ -37,7 +37,7 @@ func Test_With_Param_And_Wildcard(t *testing.T) {
 func Test_With_A_Param_Optional(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/v1/:param?"),
+		getParams("/api/v1/:param?"),
 		[]testcase{
 			{uri: "/api/v1", params: []string{""}, ok: true},
 			{uri: "/api/v1/", params: []string{""}, ok: true},
@@ -52,7 +52,7 @@ func Test_With_A_Param_Optional(t *testing.T) {
 func Test_With_With_Wildcard(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/v1/*"),
+		getParams("/api/v1/*"),
 		[]testcase{
 			{uri: "/api/v1", params: []string{""}, ok: true},
 			{uri: "/api/v1/", params: []string{""}, ok: true},
@@ -67,7 +67,7 @@ func Test_With_With_Wildcard(t *testing.T) {
 func Test_With_With_Param(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/v1/:param"),
+		getParams("/api/v1/:param"),
 		[]testcase{
 			{uri: "/api/v1/entity", params: []string{"entity"}, ok: true},
 			{uri: "/api/v1/entity/8728382", params: nil, ok: false},
@@ -80,7 +80,7 @@ func Test_With_With_Param(t *testing.T) {
 func Test_With_Without_A_Param_Or_Wildcard(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/v1/const"),
+		getParams("/api/v1/const"),
 		[]testcase{
 			{uri: "/api/v1/const", params: []string{}, ok: true},
 			{uri: "/api/v1", params: nil, ok: false},
@@ -92,7 +92,7 @@ func Test_With_Without_A_Param_Or_Wildcard(t *testing.T) {
 func Test_With_With_A_Param_And_Wildcard_Differents_Positions(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/v1/:param/abc/*"),
+		getParams("/api/v1/:param/abc/*"),
 		[]testcase{
 			{uri: "/api/v1/well/abc/wildcard", params: []string{"well", "wildcard"}, ok: true},
 			{uri: "/api/v1/well/abc/", params: []string{"well", ""}, ok: true},
@@ -104,7 +104,7 @@ func Test_With_With_A_Param_And_Wildcard_Differents_Positions(t *testing.T) {
 func Test_With_With_Params_And_Optional(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/:day/:month?/:year?"),
+		getParams("/api/:day/:month?/:year?"),
 		[]testcase{
 			{uri: "/api/1", params: []string{"1", "", ""}, ok: true},
 			{uri: "/api/1/", params: []string{"1", "", ""}, ok: true},
@@ -117,7 +117,7 @@ func Test_With_With_Params_And_Optional(t *testing.T) {
 func Test_With_With_Simple_Wildcard(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/*"),
+		getParams("/api/*"),
 		[]testcase{
 			{uri: "/api/", params: []string{""}, ok: true},
 			{uri: "/api/joker", params: []string{"joker"}, ok: true},
@@ -131,7 +131,7 @@ func Test_With_With_Simple_Wildcard(t *testing.T) {
 func Test_With_With_Wildcard_And_Optional(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/*/:param?"),
+		getParams("/api/*/:param?"),
 		[]testcase{
 			{uri: "/api/", params: []string{"", ""}, ok: true},
 			{uri: "/api/joker", params: []string{"joker", ""}, ok: true},
@@ -145,7 +145,7 @@ func Test_With_With_Wildcard_And_Optional(t *testing.T) {
 func Test_With_With_Wildcard_And_Param(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/*/:param"),
+		getParams("/api/*/:param"),
 		[]testcase{
 			{uri: "/api/test/abc", params: []string{"test", "abc"}, ok: true},
 			{uri: "/api/joker/batman", params: []string{"joker", "batman"}, ok: true},
@@ -158,7 +158,7 @@ func Test_With_With_Wildcard_And_Param(t *testing.T) {
 func Test_With_With_Wildcard_And_2Params(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/api/*/:param/:param2"),
+		getParams("/api/*/:param/:param2"),
 		[]testcase{
 			{uri: "/api/test/abc", params: nil, ok: false},
 			{uri: "/api/joker/batman", params: nil, ok: false},
@@ -172,7 +172,7 @@ func Test_With_With_Wildcard_And_2Params(t *testing.T) {
 func Test_With_With_Simple_Path(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/"),
+		getParams("/"),
 		[]testcase{
 			{uri: "/api", params: nil, ok: false},
 			{uri: "", params: []string{}, ok: true},
@@ -183,7 +183,7 @@ func Test_With_With_Simple_Path(t *testing.T) {
 func Test_With_With_Empty_Path(t *testing.T) {
 	checkCases(
 		t,
-		parseParams(""),
+		getParams(""),
 		[]testcase{
 			{uri: "/api", params: nil, ok: false},
 			{uri: "", params: []string{}, ok: true},
@@ -195,7 +195,7 @@ func Test_With_With_Empty_Path(t *testing.T) {
 func Test_With_With_FileName(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/config/abc.json"),
+		getParams("/config/abc.json"),
 		[]testcase{
 			{uri: "/config/abc.json", params: []string{}, ok: true},
 			{uri: "config/abc.json", params: nil, ok: false},
@@ -208,7 +208,7 @@ func Test_With_With_FileName(t *testing.T) {
 func Test_With_With_FileName_And_Wildcard(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/config/*.json"),
+		getParams("/config/*.json"),
 		[]testcase{
 			{uri: "/config/abc.json", params: []string{"abc.json"}, ok: true},
 			{uri: "/config/efg.json", params: []string{"efg.json"}, ok: true},
@@ -222,7 +222,7 @@ func Test_With_With_FileName_And_Wildcard(t *testing.T) {
 func Test_With_With_Simple_Path_And_NoMatch(t *testing.T) {
 	checkCases(
 		t,
-		parseParams("/xyz"),
+		getParams("/xyz"),
 		[]testcase{
 			{uri: "xyz", params: nil, ok: false},
 			{uri: "xyz/", params: nil, ok: false},

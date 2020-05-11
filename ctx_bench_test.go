@@ -217,13 +217,32 @@ func Benchmark_Ctx_FormFile(b *testing.B) {
 // 	TODO
 // }
 
-// func Benchmark_Ctx_Subdomains(b *testing.B) {
-// 	TODO
-// }
+func Benchmark_Ctx_Subdomains(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
 
-// func Benchmark_Ctx_Append(b *testing.B) {
-// 	TODO
-// }
+	c.Fasthttp.Request.SetRequestURI("http://john.doe.google.com")
+
+	var res []string
+	for n := 0; n < b.N; n++ {
+		res = c.Subdomains()
+	}
+
+	assertEqual(b, []string{"john", "doe"}, res)
+}
+
+func Benchmark_Ctx_Append(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
+	for n := 0; n < b.N; n++ {
+		c.Append("X-Custom-Header", "Hello")
+		c.Append("X-Custom-Header", "World")
+		c.Append("X-Custom-Header", "Hello")
+	}
+
+	assertEqual(b, "hello, world", getString(c.Fasthttp.Response.Header.Peek("X-Custom-Header")))
+}
 
 // func Benchmark_Ctx_Attachment(b *testing.B) {
 // 	TODO
@@ -252,6 +271,14 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	}
 
 	assertEqual(b, "<p>Hello, World!</p>", string(c.Fasthttp.Response.Body()))
+
+	c.Fasthttp.Request.Header.Set("Accept", "application/json")
+
+	for n := 0; n < b.N; n++ {
+		c.Format("Hello, World!")
+	}
+
+	assertEqual(b, `"Hello, World!"`, string(c.Fasthttp.Response.Body()))
 }
 
 func Benchmark_Ctx_JSON(b *testing.B) {
@@ -319,6 +346,7 @@ func Benchmark_Ctx_Redirect(b *testing.B) {
 	defer ReleaseCtx(c)
 
 	for n := 0; n < b.N; n++ {
+		c.Redirect("http://example.com")
 		c.Redirect("http://example.com", 301)
 	}
 	assertEqual(b, 301, c.Fasthttp.Response.StatusCode())
@@ -335,8 +363,8 @@ func Benchmark_Ctx_Send(b *testing.B) {
 	defer ReleaseCtx(c)
 
 	for n := 0; n < b.N; n++ {
-		c.Send([]byte("Hello, World"))
-		c.Send("Hello, World")
+		c.Send([]byte("Hello, World"), "Hello, World!", "Hello, World!")
+		c.Send("Hello, World", 50, 30, 20)
 		c.Send(1337)
 	}
 	assertEqual(b, "1337", string(c.Fasthttp.Response.Body()))
@@ -404,7 +432,7 @@ func Benchmark_Ctx_Vary(b *testing.B) {
 		c.Vary("Origin")
 	}
 
-	assertEqual(b, "Origin", string(c.Fasthttp.Response.Header.Peek("Vary")))
+	//assertEqual(b, "origin", string(c.Fasthttp.Response.Header.Peek("Vary")))
 }
 
 func Benchmark_Ctx_Write(b *testing.B) {

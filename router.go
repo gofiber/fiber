@@ -158,7 +158,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	}
 	var isRoot = path == "/"
 	// Route properties
-	var isParsed = parseParams(original)
+	var isParsed = getParams(original)
 	for i := range handlers {
 		route := &Route{
 			use:    isUse,
@@ -168,7 +168,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 
 			Path:    path,
 			Method:  method,
-			Params:  isParsed.Params,
+			Params:  isParsed.params,
 			Handler: handlers[i],
 		}
 		if method == "*" {

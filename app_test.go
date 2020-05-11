@@ -47,15 +47,6 @@ func Test_Nested_Params(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
-func Test_Raw(t *testing.T) {
-	app := New()
-	app.Get("/", func(c *Ctx) {
-		c.SendString("Hello, World!")
-	})
-
-	app.TestRaw("GET / HTTP/1.1\r\n\r\n")
-}
-
 func Test_Order(t *testing.T) {
 	app := New()
 
