@@ -13,8 +13,8 @@ import (
 
 // paramsParser holds the path segments and param names
 type parsedParams struct {
-	Segs []paramSeg
-	Keys []string
+	Segs   []paramSeg
+	Params []string
 }
 
 // paramsSeg holds the segment metadata
@@ -28,11 +28,10 @@ type paramSeg struct {
 
 var paramsDummy = make([]string, 100, 100)
 
+const wildcardParam string = "*"
+
 // New ...
 func parseParams(pattern string) (p parsedParams) {
-	if pattern[0] != '/' {
-		pattern = "/" + pattern
-	}
 	var patternCount int
 	aPattern := []string{""}
 	if pattern != "" {
@@ -53,7 +52,7 @@ func parseParams(pattern string) (p parsedParams) {
 			out[segIndex] = paramSeg{
 				Param:      paramTrimmer(aPattern[i]),
 				IsParam:    true,
-				IsOptional: aPattern[i] == "*" || aPattern[i][partLen-1] == '?',
+				IsOptional: aPattern[i] == wildcardParam || aPattern[i][partLen-1] == '?',
 			}
 			params = append(params, out[segIndex].Param)
 		} else {
@@ -75,14 +74,14 @@ func parseParams(pattern string) (p parsedParams) {
 	}
 	out[segIndex-1].IsLast = true
 
-	p = parsedParams{Segs: out[:segIndex:segIndex], Keys: params}
-	// fmt.Printf("%+v\n", p)
+	p = parsedParams{Segs: out[:segIndex:segIndex], Params: params}
+	//fmt.Printf("%+v\n", p)
 	return
 }
 
 // Match ...
 func (p *parsedParams) matchParams(s string) ([]string, bool) {
-	lenKeys := len(p.Keys)
+	lenKeys := len(p.Params)
 	params := paramsDummy[0:lenKeys:lenKeys]
 	var i, j, paramsIterator, partLen int
 	if len(s) > 0 {
@@ -93,11 +92,13 @@ func (p *parsedParams) matchParams(s string) ([]string, bool) {
 		// check parameter
 		if segment.IsParam {
 			// determine parameter length
-			if segment.IsLast {
-				i = partLen
-			} else if segment.Param == "*" {
-				// for the expressjs behavior -> "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
-				i = findCharPos(s, '/', strings.Count(s, "/")-(len(p.Segs)-(index+1))+1)
+			if segment.Param == wildcardParam {
+				if segment.IsLast {
+					i = partLen
+				} else {
+					// for the expressjs behavior -> "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
+					i = findCharPos(s, '/', strings.Count(s, "/")-(len(p.Segs)-(index+1))+1)
+				}
 			} else {
 				i = strings.IndexByte(s, '/')
 			}
@@ -129,10 +130,12 @@ func (p *parsedParams) matchParams(s string) ([]string, bool) {
 			s = s[j:]
 		}
 	}
+	if len(s) != 0 {
+		return nil, false
+	}
 
 	return params, true
 }
-
 func paramTrimmer(param string) string {
 	start := 0
 	end := len(param)
