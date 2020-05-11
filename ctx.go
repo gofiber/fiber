@@ -257,7 +257,7 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 
 // Cookie sets a cookie by passing a cookie struct
 func (ctx *Ctx) Cookie(cookie *Cookie) {
-	fcookie := &fasthttp.Cookie{}
+	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(cookie.Name)
 	fcookie.SetValue(cookie.Value)
 	fcookie.SetPath(cookie.Path)
@@ -282,6 +282,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
 	}
 	ctx.Fasthttp.Response.Header.SetCookie(fcookie)
+	fasthttp.ReleaseCookie(fcookie)
 }
 
 // Cookies is used for getting a cookie value by key
@@ -572,16 +573,16 @@ func (ctx *Ctx) OriginalURL() string {
 
 // Params is used to get the route parameters.
 // Defaults to empty string "", if the param doesn't exist.
-func (ctx *Ctx) Params(key string) (value string) {
-	if ctx.route.Params == nil {
-		return
-	}
+func (ctx *Ctx) Params(key string) string {
 	for i := range ctx.route.Params {
-		if (ctx.route.Params)[i] == key {
+		if len(key) != len(ctx.route.Params[i]) {
+			continue
+		}
+		if ctx.route.Params[i] == key {
 			return ctx.values[i]
 		}
 	}
-	return
+	return ""
 }
 
 // Path returns the path part of the request URL.

@@ -56,33 +56,21 @@ func Test_Utils_getMIME(t *testing.T) {
 func Test_Utils_getString(t *testing.T) {
 	res := getString([]byte("Hello, World!"))
 	assertEqual(t, "Hello, World!", res)
-
-	res = getString([]byte(""))
-	assertEqual(t, "", res)
 }
 
 func Test_Utils_getStringImmutable(t *testing.T) {
 	res := getStringImmutable([]byte("Hello, World!"))
 	assertEqual(t, "Hello, World!", res)
-
-	res = getStringImmutable([]byte(""))
-	assertEqual(t, "", res)
 }
 
 func Test_Utils_getBytes(t *testing.T) {
 	res := getBytes("Hello, World!")
 	assertEqual(t, []byte("Hello, World!"), res)
-
-	res = getBytes("")
-	assertEqual(t, []byte{}, res)
 }
 
 func Test_Utils_getBytesImmutable(t *testing.T) {
 	res := getBytesImmutable("Hello, World!")
 	assertEqual(t, []byte("Hello, World!"), res)
-
-	res = getBytesImmutable("")
-	assertEqual(t, []byte{}, res)
 }
 
 func Test_Utils_methodINT(t *testing.T) {

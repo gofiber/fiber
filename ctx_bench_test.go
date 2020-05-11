@@ -13,7 +13,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// go test -v ./... -run=^$ -bench=Benchmark_Ctx_Append -benchmem -count=3
+// go test -v ./... -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=3
 
 func Benchmark_Ctx_Accepts(b *testing.B) {
 	c := AcquireCtx(&fasthttp.RequestCtx{})
@@ -187,9 +187,29 @@ func Benchmark_Ctx_FormFile(b *testing.B) {
 // 	TODO
 // }
 
-// func Benchmark_Ctx_Params(b *testing.B) {
-// 	TODO
-// }
+func Benchmark_Ctx_Params(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
+	c.route = &Route{
+		Params: []string{
+			"param1", "param2", "param3", "param4",
+		},
+	}
+	c.values = []string{
+		"john", "doe", "is", "awesome",
+	}
+
+	var res string
+	for n := 0; n < b.N; n++ {
+		res = c.Params("param1")
+		res = c.Params("param2")
+		res = c.Params("param3")
+		res = c.Params("param4")
+	}
+
+	assertEqual(b, "awesome", res)
+}
 
 // func Benchmark_Ctx_Path(b *testing.B) {
 // 	TODO
@@ -254,9 +274,19 @@ func Benchmark_Ctx_Append(b *testing.B) {
 // 	TODO
 // }
 
-// func Benchmark_Ctx_Cookie(b *testing.B) {
-// 	TODO
-// }
+func Benchmark_Ctx_Cookie(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
+	for n := 0; n < b.N; n++ {
+		c.Cookie(&Cookie{
+			Name:  "John",
+			Value: "Doe",
+		})
+	}
+
+	assertEqual(b, "John=Doe; path=/", getString(c.Fasthttp.Response.Header.Peek("Set-Cookie")))
+}
 
 // func Benchmark_Ctx_Download(b *testing.B) {
 // 	TODO
