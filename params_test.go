@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"fmt"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 )
@@ -85,6 +86,7 @@ func Test_With_With_Param(t *testing.T) {
 		parseParams("/api/v1/:param"),
 		[]testCase{
 			{uri: "/api/v1/entity", params: []string{"entity"}, ok: true},
+			{uri: "/api/v1/entity/8728382", params: nil, ok: false},
 			{uri: "/api/v1", params: nil, ok: false},
 			{uri: "/api/v1/", params: nil, ok: false},
 		},
@@ -231,6 +233,28 @@ func Test_With_With_Simple_Path_And_NoMatch(t *testing.T) {
 			{uri: "xyz/", params: nil, ok: false},
 		},
 	)
+}
+
+// test with nested parameters
+func Test_Nested_Params(t *testing.T) {
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		c.Status(400).Send("Should move on")
+	})
+	app.Get("/test/:param", func(c *Ctx) {
+		c.Status(400).Send("Should move on")
+	})
+	app.Get("/test/:param/test", func(c *Ctx) {
+		c.Status(400).Send("Should move on")
+	})
+	app.Get("/test/:param/test/:param2", func(c *Ctx) {
+		c.Status(200).Send("Good job")
+	})
+
+	req := httptest.NewRequest("GET", "/test/john/test/doe", nil)
+	resp, err := app.Test(req)
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
 func checkCases(tParent *testing.T, parser parsedParams, tcases []testCase) {
