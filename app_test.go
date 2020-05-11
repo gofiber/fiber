@@ -20,7 +20,7 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
-func Test_Nested_Params(t *testing.T) {
+func Test_App_Nested_Params(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -47,7 +47,7 @@ func Test_Nested_Params(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
-func Test_Order(t *testing.T) {
+func Test_App_Order(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -74,7 +74,7 @@ func Test_Order(t *testing.T) {
 	assertEqual(t, nil, err)
 	assertEqual(t, "123", string(body))
 }
-func Test_Methods(t *testing.T) {
+func Test_App_Methods(t *testing.T) {
 
 	var dummyHandler = func(c *Ctx) {}
 
@@ -115,7 +115,7 @@ func Test_Methods(t *testing.T) {
 
 }
 
-func Test_New(t *testing.T) {
+func Test_App_New(t *testing.T) {
 	app := New()
 	app.Get("/", func(*Ctx) {
 
@@ -129,14 +129,14 @@ func Test_New(t *testing.T) {
 	})
 }
 
-func Test_Shutdown(t *testing.T) {
+func Test_App_Shutdown(t *testing.T) {
 	app := New(&Settings{
 		DisableStartupMessage: true,
 	})
 	_ = app.Shutdown()
 }
 
-func Test_Static(t *testing.T) {
+func Test_App_Static(t *testing.T) {
 	app := New()
 
 	grp := app.Group("/v1")
@@ -170,7 +170,7 @@ func Test_Static(t *testing.T) {
 	assertEqual(t, false, resp.Header.Get("Content-Length") == "")
 }
 
-func Test_Group(t *testing.T) {
+func Test_App_Group(t *testing.T) {
 	var dummyHandler = func(c *Ctx) {}
 
 	app := New()
@@ -220,7 +220,7 @@ func Test_Group(t *testing.T) {
 	testStatus200(t, app, "/test/v1/users", "GET")
 }
 
-func Test_Listen(t *testing.T) {
+func Test_App_Listen(t *testing.T) {
 	app := New(&Settings{
 		DisableStartupMessage: true,
 	})
@@ -236,7 +236,7 @@ func Test_Listen(t *testing.T) {
 	app.Listen("3003")
 }
 
-func Test_Serve(t *testing.T) {
+func Test_App_Serve(t *testing.T) {
 	app := New(&Settings{
 		DisableStartupMessage: true,
 		Prefork:               true,
