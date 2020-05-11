@@ -574,15 +574,16 @@ func Test_Append(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
-		c.Append("X-Test", "hel")
-		c.Append("X-Test", "lo", "world")
+		c.Append("X-Test", "Hello")
+		c.Append("X-Test", "World")
+		c.Append("X-Test", "Hello", "World")
 	})
 	req := httptest.NewRequest("GET", "/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
-	assertEqual(t, "hel, lo, world", resp.Header.Get("X-Test"))
+	assertEqual(t, "Hello, World", resp.Header.Get("X-Test"))
 }
 func Test_Attachment(t *testing.T) {
 	app := New()
@@ -965,7 +966,7 @@ func Test_Vary(t *testing.T) {
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
-	assertEqual(t, "origin, user-agent, accept-encoding, accept", resp.Header.Get("Vary"))
+	assertEqual(t, "Origin, User-Agent, Accept-Encoding, Accept", resp.Header.Get("Vary"))
 }
 func Test_Write(t *testing.T) {
 	app := New()

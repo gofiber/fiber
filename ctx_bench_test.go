@@ -13,7 +13,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// // go test -v ./... -run=^$ -bench=Benchmark_Ctx_Acce -benchmem -count=3
+// go test -v ./... -run=^$ -bench=Benchmark_Ctx_Append -benchmem -count=3
 
 func Benchmark_Ctx_Accepts(b *testing.B) {
 	c := AcquireCtx(&fasthttp.RequestCtx{})
@@ -243,7 +243,7 @@ func Benchmark_Ctx_Append(b *testing.B) {
 		c.Append("X-Custom-Header", "Hello")
 	}
 
-	assertEqual(b, "hello, world", getString(c.Fasthttp.Response.Header.Peek("X-Custom-Header")))
+	assertEqual(b, "Hello, World", getString(c.Fasthttp.Response.Header.Peek("X-Custom-Header")))
 }
 
 // func Benchmark_Ctx_Attachment(b *testing.B) {

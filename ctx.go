@@ -154,16 +154,17 @@ func (ctx *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := strings.ToLower(getString(ctx.Fasthttp.Response.Header.Peek(field)))
+	h := ctx.Fasthttp.Response.Header.Peek(field)
 	for i := range values {
-		values[i] = strings.ToLower(values[i])
+		var value = getBytes(values[i])
 		if len(h) == 0 {
-			h += values[i]
-		} else if h != values[i] && !strings.HasSuffix(h, " "+values[i]) && !strings.Contains(h, values[i]+",") {
-			h += ", " + values[i]
+			h = append(h, value...)
+		} else if 0 != bytes.Compare(h, value) && !bytes.HasSuffix(h, append([]byte{' '}, value...)) &&
+			!bytes.Contains(h, append(append([]byte{}, value...), ',')) {
+			h = append(append(h, ',', ' '), value...)
 		}
 	}
-	ctx.Fasthttp.Response.Header.Set(field, h)
+	ctx.Fasthttp.Response.Header.SetBytesV(field, h)
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
