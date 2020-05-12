@@ -296,29 +296,44 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	c := AcquireCtx(&fasthttp.RequestCtx{})
 	defer ReleaseCtx(c)
 
+	c.Fasthttp.Request.Header.Set("Accept", "text/plain")
+	for n := 0; n < b.N; n++ {
+		c.Format("Hello, World!")
+	}
+	assertEqual(b, `Hello, World!`, string(c.Fasthttp.Response.Body()))
+}
+
+func Benchmark_Ctx_Format_HTML(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
 	c.Fasthttp.Request.Header.Set("Accept", "text/html")
 	for n := 0; n < b.N; n++ {
 		c.Format("Hello, World!")
 	}
 	assertEqual(b, "<p>Hello, World!</p>", string(c.Fasthttp.Response.Body()))
+}
+
+func Benchmark_Ctx_Format_JSON(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
 
 	c.Fasthttp.Request.Header.Set("Accept", "application/json")
 	for n := 0; n < b.N; n++ {
 		c.Format("Hello, World!")
 	}
 	assertEqual(b, `"Hello, World!"`, string(c.Fasthttp.Response.Body()))
-
-	c.Fasthttp.Request.Header.Set("Accept", "text/plain")
-	for n := 0; n < b.N; n++ {
-		c.Format("Hello, World!")
-	}
-	assertEqual(b, `Hello, World!`, string(c.Fasthttp.Response.Body()))
+}
+func Benchmark_Ctx_Format_XML(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
 
 	c.Fasthttp.Request.Header.Set("Accept", "application/xml")
 	for n := 0; n < b.N; n++ {
 		c.Format("Hello, World!")
 	}
 	assertEqual(b, `<string>Hello, World!</string>`, string(c.Fasthttp.Response.Body()))
+
 }
 
 func Benchmark_Ctx_JSON(b *testing.B) {
@@ -406,10 +421,11 @@ func Benchmark_Ctx_Send(b *testing.B) {
 	var r = []byte("Hello, World")
 	var s = "Hello, World!"
 	var i = 1337
+
 	for n := 0; n < b.N; n++ {
 		c.Send(r, s, s)
 		c.Send(s, i, i, i)
-		c.Send(r)
+		c.Send(i)
 	}
 	assertEqual(b, "1337", string(c.Fasthttp.Response.Body()))
 }
