@@ -1,13 +1,1 @@
-root = false
 
-[*]
-indent_style = space
-indent_size = 2
-charset = utf-8
-max_line_length = 100
-trim_trailing_whitespace = true
-insert_final_newline = true
-
-[{*.mod,*.sum,*.go}]
-indent_style = tab
-indent_size = 4
