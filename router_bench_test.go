@@ -80,10 +80,7 @@ func Benchmark_Router_First_Route(b *testing.B) {
 func matchRoute(method, path string) (match bool, values []string) {
 	mINT := methodINT[method]
 	for i := range router_bench_app.routes[mINT] {
-		match, values = router_bench_app.routes[mINT][i].matchRoute(path)
-		if match {
-			return true, values
-		}
+		_, _ = router_bench_app.routes[mINT][i].matchRoute(path)
 	}
 	return
 }
