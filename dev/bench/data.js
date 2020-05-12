@@ -548,6 +548,7 @@ window.BENCHMARK_DATA = {
             "extra": "1000000000 times\n2 procs"
           }
         ]
+<<<<<<< HEAD
       },
       {
         "commit": {
@@ -1382,6 +1383,8 @@ window.BENCHMARK_DATA = {
             "extra": "1000000000 times\n2 procs"
           }
         ]
+=======
+>>>>>>> upstream/gh-pages
       }
     ]
   }

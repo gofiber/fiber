@@ -1,0 +1,28 @@
+on: [push, pull_request]
+name: Benchmark
+jobs:
+  Compare:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install Go
+      uses: actions/setup-go@v1
+      with:
+        go-version: ${{ matrix.go-version }}
+    - name: Fetch Repository
+      uses: actions/checkout@v2
+    - name: Run Benchmark
+      run: go test -benchmem -run=^$ -bench . | tee output.txt
+    - name: Get Previous Benchmark Results
+      uses: actions/cache@v1
+      with:
+        path: ./cache
+        key: ${{ runner.os }}-benchmark
+    - name: Save Benchmark Results
+      uses: rhysd/github-action-benchmark@v1
+      with:
+        tool: 'go'
+        auto-push: true
+        fail-on-alert: true
+        comment-on-alert: true
+        output-file-path: output.txt
+        github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
