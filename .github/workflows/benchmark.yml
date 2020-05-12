@@ -15,14 +15,15 @@ jobs:
     - name: Get Previous Benchmark Results
       uses: actions/cache@v1
       with:
-        path: ./.github/
+        path: ./cache
         key: ${{ runner.os }}-benchmark
     - name: Save New Benchmark Results
       uses: rhysd/github-action-benchmark@v1
       with:
         tool: 'go'
-        output-file-path: ./.github/output.txt
-        external-data-json-path: ./.github/benchmark-data.json
+        auto-push: true
         fail-on-alert: true
-        github-token: ${{ secrets.GITHUB_TOKEN }}
         comment-on-alert: true
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        output-file-path: output.txt
+        external-data-json-path: ./cache/benchmark-data.json
