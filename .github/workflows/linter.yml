@@ -1,13 +1,11 @@
 on: [push, pull_request]
-name: Linter
+name: Lint
 jobs:
-  Lint:
-    strategy:
-      matrix:
-        platform: [ubuntu-latest]
-    runs-on: ${{ matrix.platform }}
+  golangci-lint:
+    name: runner / golangci-lint
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout Source 
+      - name: Checkout Source
         uses: actions/checkout@v2
-      - name: Run golangci-lint
-        uses: actions-contrib/golangci-lint@v1
+      - name: golangci-lint
+        uses: reviewdog/action-golangci-lint@v1
