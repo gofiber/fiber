@@ -518,6 +518,7 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 }
 
 // Links joins the links followed by the property to populate the response’s Link HTTP header field.
+// #nosec G104
 func (ctx *Ctx) Links(link ...string) {
 	if len(link) == 0 {
 		return
