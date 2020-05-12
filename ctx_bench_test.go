@@ -418,16 +418,17 @@ func Benchmark_Ctx_Send(b *testing.B) {
 	c := AcquireCtx(&fasthttp.RequestCtx{})
 	defer ReleaseCtx(c)
 
-	var r = []byte("Hello, World")
-	var s = "Hello, World!"
-	var i = 1337
+	var str = "Hello, World!"
+	var byt = []byte("Hello, World!")
+	var nmb = 123
 
 	for n := 0; n < b.N; n++ {
-		c.Send(r, s, s)
-		c.Send(s, i, i, i)
-		c.Send(i)
+		c.Send(byt, str, str)
+		c.Send(str, nmb, nmb, nmb)
+		c.Send(nmb)
 	}
-	assertEqual(b, "1337", string(c.Fasthttp.Response.Body()))
+
+	assertEqual(b, "123", string(c.Fasthttp.Response.Body()))
 }
 
 func Benchmark_Ctx_SendBytes(b *testing.B) {
@@ -501,13 +502,19 @@ func Benchmark_Ctx_Write(b *testing.B) {
 	c := AcquireCtx(&fasthttp.RequestCtx{})
 	defer ReleaseCtx(c)
 
+	var str = "Hello, World!"
+	var byt = []byte("Hello, World!")
+	var nmb = 123
+
 	for n := 0; n < b.N; n++ {
-		c.Write("Hello, ")
-		c.Write([]byte("World! "))
-		c.Write(123)
+		c.Write(str)
+		c.Write(byt)
+		c.Write(nmb)
 	}
+
 	c.Send("") // empty body
-	c.Write("Hello, World!")
+	c.Write(str)
+
 	assertEqual(b, "Hello, World!", string(c.Fasthttp.Response.Body()))
 }
 
