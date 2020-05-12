@@ -11,5 +11,3 @@ jobs:
         uses: actions/checkout@v2
       - name: Run golangci-lint
         uses: actions-contrib/golangci-lint@v1
-        with:
-          args: ./...
