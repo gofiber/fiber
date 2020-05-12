@@ -24,6 +24,7 @@ import (
 	"time"
 
 	schema "github.com/gorilla/schema"
+	"github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -100,7 +101,7 @@ func ReleaseCtx(ctx *Ctx) {
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
-func (ctx *Ctx) Accepts(offers ...string) (offer string) {
+func (ctx *Ctx) Accepts(offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -112,11 +113,6 @@ func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 	specs := strings.Split(h, ",")
 	for i := range offers {
 		mimetype := getMIME(offers[i])
-		// if mimetype != "" {
-		// 	mimetype = strings.Split(mimetype, ";")[0]
-		// } else {
-		// 	mimetype = offer
-		// }
 		for k := range specs {
 			spec := strings.TrimSpace(specs[k])
 			if strings.HasPrefix(spec, "*/*") {
@@ -138,80 +134,18 @@ func (ctx *Ctx) Accepts(offers ...string) (offer string) {
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
-func (ctx *Ctx) AcceptsCharsets(offers ...string) (offer string) {
-	if len(offers) == 0 {
-		return ""
-	}
-
-	h := ctx.Get(HeaderAcceptCharset)
-	if h == "" {
-		return offers[0]
-	}
-
-	specs := strings.Split(h, ",")
-	for i := range offers {
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
-			if strings.HasPrefix(spec, "*") {
-				return offers[i]
-			}
-			if strings.HasPrefix(spec, offers[i]) {
-				return offers[i]
-			}
-		}
-	}
-	return ""
+func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
+	return getOffer(ctx.Get(HeaderAcceptCharset), offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
-func (ctx *Ctx) AcceptsEncodings(offers ...string) (offer string) {
-	if len(offers) == 0 {
-		return ""
-	}
-
-	h := ctx.Get(HeaderAcceptEncoding)
-	if h == "" {
-		return offers[0]
-	}
-
-	specs := strings.Split(h, ",")
-	for i := range offers {
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
-			if strings.HasPrefix(spec, "*") {
-				return offers[i]
-			}
-			if strings.HasPrefix(spec, offers[i]) {
-				return offers[i]
-			}
-		}
-	}
-	return ""
+func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
+	return getOffer(ctx.Get(HeaderAcceptEncoding), offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable.
-func (ctx *Ctx) AcceptsLanguages(offers ...string) (offer string) {
-	if len(offers) == 0 {
-		return ""
-	}
-	h := ctx.Get(HeaderAcceptLanguage)
-	if h == "" {
-		return offers[0]
-	}
-
-	specs := strings.Split(h, ",")
-	for i := range offers {
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
-			if strings.HasPrefix(spec, "*") {
-				return offers[i]
-			}
-			if strings.HasPrefix(spec, offers[i]) {
-				return offers[i]
-			}
-		}
-	}
-	return ""
+func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
+	return getOffer(ctx.Get(HeaderAcceptLanguage), offers...)
 }
 
 // Append the specified value to the HTTP response header field.
@@ -220,15 +154,17 @@ func (ctx *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := getString(ctx.Fasthttp.Response.Header.Peek(field))
+	h := ctx.Fasthttp.Response.Header.Peek(field)
 	for i := range values {
-		if h == "" {
-			h += values[i]
-		} else {
-			h += ", " + values[i]
+		var value = getBytes(values[i])
+		if len(h) == 0 {
+			h = append(h, value...)
+		} else if 0 != bytes.Compare(h, value) && !bytes.HasSuffix(h, append([]byte{' '}, value...)) &&
+			!bytes.Contains(h, append(append([]byte{}, value...), ',')) {
+			h = append(append(h, ',', ' '), value...)
 		}
 	}
-	ctx.Set(field, h)
+	ctx.Fasthttp.Response.Header.SetBytesV(field, h)
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
@@ -321,7 +257,7 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 
 // Cookie sets a cookie by passing a cookie struct
 func (ctx *Ctx) Cookie(cookie *Cookie) {
-	fcookie := &fasthttp.Cookie{}
+	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(cookie.Name)
 	fcookie.SetValue(cookie.Value)
 	fcookie.SetPath(cookie.Path)
@@ -346,6 +282,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
 	}
 	ctx.Fasthttp.Response.Header.SetCookie(fcookie)
+	fasthttp.ReleaseCookie(fcookie)
 }
 
 // Cookies is used for getting a cookie value by key
@@ -381,9 +318,13 @@ func (ctx *Ctx) Error() error {
 // It uses Accepts to select a proper format.
 // If the header is not specified or there is no proper format, text/plain is used.
 func (ctx *Ctx) Format(body interface{}) {
-	var b string
-	accept := ctx.Accepts("html", "json")
+	// Get accepted content type
+	accept := ctx.Accepts("html", "json", "txt", "xml")
+	// Set accepted content type
+	ctx.Type(accept)
 
+	// Type convert provided body
+	var b string
 	switch val := body.(type) {
 	case string:
 		b = val
@@ -392,13 +333,25 @@ func (ctx *Ctx) Format(body interface{}) {
 	default:
 		b = fmt.Sprintf("%v", val)
 	}
+
+	// Format based on the accept content type
 	switch accept {
 	case "html":
 		ctx.SendString("<p>" + b + "</p>")
 	case "json":
 		if err := ctx.JSON(body); err != nil {
-			// Fix
+			ctx.Send(body) // Fallback
 			log.Println("Format: error serializing json ", err)
+		}
+	case "text":
+		ctx.SendString(b)
+	case "xml":
+		raw, err := xml.Marshal(body)
+		if err != nil {
+			ctx.Send(body) // Fallback
+			log.Println("Format: error serializing xml ", err)
+		} else {
+			ctx.SendString(getString(raw))
 		}
 	default:
 		ctx.SendString(b)
@@ -542,39 +495,48 @@ func (ctx *Ctx) JSON(data interface{}) error {
 // By default, the callback name is simply callback.
 func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	raw, err := json.Marshal(&data)
-	// Check for errors
+
 	if err != nil {
 		return err
 	}
 
-	str := "callback("
-	if len(callback) > 0 {
-		str = callback[0] + "("
-	}
-	str += getString(raw) + ");"
+	var result, cb string
 
-	ctx.Set(HeaderXContentTypeOptions, "nosniff")
+	if len(callback) > 0 {
+		cb = callback[0]
+	} else {
+		cb = "callback"
+	}
+
+	result = cb + "(" + getString(raw) + ");"
+
+	ctx.Fasthttp.Response.Header.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
-	ctx.Fasthttp.Response.SetBodyString(str)
+	ctx.Fasthttp.Response.SetBodyString(result)
+
 	return nil
 }
 
 // Links joins the links followed by the property to populate the response’s Link HTTP header field.
+// #nosec G104
 func (ctx *Ctx) Links(link ...string) {
-	h := ""
+	if len(link) == 0 {
+		return
+	}
+	bb := bytebufferpool.Get()
 	for i := range link {
-		l := link[i]
 		if i%2 == 0 {
-			h += "<" + l + ">"
+			bb.WriteByte('<')
+			bb.WriteString(link[i])
+			bb.WriteByte('>')
 		} else {
-			h += `; rel="` + l + `",`
+			bb.WriteString(`; rel="`)
+			bb.WriteString(link[i])
+			bb.WriteString(`",`)
 		}
 	}
-
-	if len(link) > 0 {
-		h = strings.TrimSuffix(h, ",")
-		ctx.Set(HeaderLink, h)
-	}
+	ctx.Fasthttp.Response.Header.Set(HeaderLink, strings.TrimSuffix(bb.String(), ","))
+	bytebufferpool.Put(bb)
 }
 
 // Locals makes it possible to pass interface{} values under string keys scoped to the request
@@ -595,7 +557,7 @@ func (ctx *Ctx) Location(path string) {
 // Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
 func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
-		ctx.method = override[0]
+		ctx.method = strings.ToUpper(override[0])
 	}
 	return ctx.method
 }
@@ -627,16 +589,16 @@ func (ctx *Ctx) OriginalURL() string {
 
 // Params is used to get the route parameters.
 // Defaults to empty string "", if the param doesn't exist.
-func (ctx *Ctx) Params(key string) (value string) {
-	if ctx.route.Params == nil {
-		return
-	}
+func (ctx *Ctx) Params(key string) string {
 	for i := range ctx.route.Params {
-		if (ctx.route.Params)[i] == key {
+		if len(key) != len(ctx.route.Params[i]) {
+			continue
+		}
+		if ctx.route.Params[i] == key {
 			return ctx.values[i]
 		}
 	}
-	return
+	return ""
 }
 
 // Path returns the path part of the request URL.
@@ -714,13 +676,12 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found
 func (ctx *Ctx) Redirect(path string, status ...int) {
-	code := 302
+	ctx.Fasthttp.Response.Header.Set(HeaderLocation, path)
 	if len(status) > 0 {
-		code = status[0]
+		ctx.Fasthttp.Response.SetStatusCode(status[0])
+	} else {
+		ctx.Fasthttp.Response.SetStatusCode(StatusFound)
 	}
-
-	ctx.Set(HeaderLocation, path)
-	ctx.Fasthttp.Response.SetStatusCode(code)
 }
 
 // Render a template with data and sends a text/html response.
@@ -860,23 +821,7 @@ func (ctx *Ctx) Type(ext string) *Ctx {
 // Vary adds the given header field to the Vary response header.
 // This will append the header, if not already listed, otherwise leaves it listed in the current location.
 func (ctx *Ctx) Vary(fields ...string) {
-	if len(fields) == 0 {
-		return
-	}
-	h := strings.ToLower(getString(ctx.Fasthttp.Response.Header.Peek(HeaderVary)))
-	for i := range fields {
-		fields[i] = strings.ToLower(fields[i])
-		if len(h) == 0 {
-			h += fields[i]
-		} else if !strings.Contains(h, " "+fields[i]) && !strings.Contains(h, fields[i]+"") || !strings.Contains(h, fields[i]+",") {
-			// Next developer, it's your job to optimize the following problem
-			// Does the header value "Accept" exist in the following header value
-			// "Origin, User-Agent, Accept-Encoding"
-			// "Accept-Encoding" contains "Accept", false positive
-			h += ", " + fields[i]
-		}
-	}
-	ctx.Set(HeaderVary, h)
+	ctx.Append(HeaderVary, fields...)
 }
 
 // Write appends any input to the HTTP body response.
@@ -896,5 +841,5 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 // XHR returns a Boolean property, that is true, if the request’s X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (ctx *Ctx) XHR() bool {
-	return strings.ToLower(ctx.Get(HeaderXRequestedWith)) == "xmlhttprequest"
+	return strings.EqualFold(ctx.Get(HeaderXRequestedWith), "xmlhttprequest")
 }

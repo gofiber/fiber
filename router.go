@@ -61,46 +61,29 @@ func (app *App) nextRoute(ctx *Ctx) {
 }
 
 func (r *Route) matchRoute(path string) (match bool, values []string) {
-	// Middleware routes allow prefix matches
 	if r.use {
-		// Match any path if wildcard and pass path as param
-		if r.star {
-			return true, []string{path}
-		}
-		// Match any path if route equals '/'
-		if r.root {
+		if r.root == true || strings.HasPrefix(path, r.Path) {
 			return true, values
 		}
-		// Middleware matches path prefix
-		if strings.HasPrefix(path, r.Path) {
-			return true, values
-		}
-		// No prefix match, and we do not allow params in app.use
-		return false, values
+		// Check for a simple path match
+	} else if len(r.Path) == len(path) && r.Path == path {
+		return true, values
+		// Middleware routes allow prefix matches
+	} else if r.root == true && path == "/" {
+		return true, values
 	}
 	// '*' wildcard matches any path
-	if r.star {
+	if r.star == true {
 		return true, []string{path}
-	}
-	// Check if a single '/' matches
-	if r.root && path == "/" {
-		return true, values
 	}
 	// Does this route have parameters
 	if len(r.Params) > 0 {
-		// Do we have a match?
-		params, ok := r.parsed.matchParams(path)
-		// We have a match!
-		if ok {
-			return true, params
+		// Match params
+		if values, match = r.parsed.getMatch(path, r.use); match {
+			return
 		}
 	}
-	// Check for a simple path match
-	if len(r.Path) == len(path) && r.Path == path {
-		return true, values
-	}
-
-	// Nothing match
+	// No match
 	return false, values
 }
 
@@ -153,12 +136,12 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	}
 	var isStar = path == "/*"
 	// Middleware containing only a `/` equals wildcard
-	if isUse && path == "/" {
-		isStar = true
-	}
+	// if isUse && path == "/" {
+	// 	isStar = true
+	// }
 	var isRoot = path == "/"
 	// Route properties
-	var isParsed = parseParams(original)
+	var isParsed = getParams(original)
 	for i := range handlers {
 		route := &Route{
 			use:    isUse,
@@ -168,7 +151,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 
 			Path:    path,
 			Method:  method,
-			Params:  isParsed.Params,
+			Params:  isParsed.params,
 			Handler: handlers[i],
 		}
 		if method == "*" {

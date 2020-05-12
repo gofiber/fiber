@@ -25,7 +25,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.9.6"
+const Version = "1.9.7"
 
 // Map is a shortcut for map[string]interface{}
 type Map map[string]interface{}
@@ -33,8 +33,7 @@ type Map map[string]interface{}
 // App denotes the Fiber application.
 type App struct {
 	// Internal fields
-	testconn *testConn  // Test connection
-	routes   [][]*Route // Route stack
+	routes [][]*Route // Route stack
 
 	// External fields
 	Settings *Settings // Fiber settings
@@ -144,10 +143,8 @@ func New(settings ...*Settings) *App {
 			getBytes = getBytesImmutable
 		}
 	}
-	// Setup test listener
-	app.testconn = new(testConn)
-	// Setup server
-	app.server = app.newServer()
+	// Update fiber server settings with fasthttp server
+	app.updateSettings()
 	// Return application
 	return app
 }
@@ -353,10 +350,8 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 // Preforkin is not available using app.Serve(ln net.Listener)
 // You can pass an optional *tls.Config to enable TLS.
 func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
-	// Create fasthttp server
-	app.mutex.Lock()
-	app.server = app.newServer()
-	app.mutex.Unlock()
+	// Update fiber server settings
+	app.updateSettings()
 	// TLS config
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
@@ -383,10 +378,8 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	if !strings.Contains(addr, ":") {
 		addr = ":" + addr
 	}
-	// Create fasthttp server
-	app.mutex.Lock()
-	app.server = app.newServer()
-	app.mutex.Unlock()
+	// Update fiber server settings
+	app.updateSettings()
 	// Setup listener
 	var ln net.Listener
 	var err error
@@ -428,14 +421,6 @@ func (app *App) Shutdown() error {
 	return app.server.Shutdown()
 }
 
-// TestRaw is like Test buf for raw HTTP strings: GET / HTTP/1.1\r\n\r\n
-func (app *App) TestRaw(request string) error {
-	if _, err := app.testconn.r.WriteString(request); err != nil {
-		return err
-	}
-	return app.server.ServeConn(app.testconn)
-}
-
 // Test is used for internal debugging by passing a *http.Request
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
 func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, error) {
@@ -448,14 +433,18 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	if err != nil {
 		return nil, err
 	}
+	// Update server settings
+	app.updateSettings()
+	// Create test connection
+	conn := new(testConn)
 	// Write raw http request
-	if _, err = app.testconn.r.Write(dump); err != nil {
+	if _, err = conn.r.Write(dump); err != nil {
 		return nil, err
 	}
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
-		channel <- app.server.ServeConn(app.testconn)
+		channel <- app.server.ServeConn(conn)
 	}()
 	// Wait for callback
 	if timeout >= 0 {
@@ -476,7 +465,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		return nil, err
 	}
 	// Read response
-	buffer := bufio.NewReader(&app.testconn.w)
+	buffer := bufio.NewReader(&conn.w)
 	// Convert raw http response to *http.Response
 	resp, err := http.ReadResponse(buffer, request)
 	if err != nil {
@@ -535,8 +524,10 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
-func (app *App) newServer() *fasthttp.Server {
-	return &fasthttp.Server{
+func (app *App) updateSettings() {
+	// Create fasthttp server
+	app.mutex.Lock()
+	app.server = &fasthttp.Server{
 		Handler:               app.handler,
 		Name:                  app.Settings.ServerHeader,
 		Concurrency:           app.Settings.Concurrency,
@@ -560,4 +551,5 @@ func (app *App) newServer() *fasthttp.Server {
 			}
 		},
 	}
+	app.mutex.Unlock()
 }

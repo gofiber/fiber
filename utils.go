@@ -110,6 +110,30 @@ func getArgument(arg string) bool {
 	return false
 }
 
+// return valid offer for header negotiation
+func getOffer(header string, offers ...string) string {
+	if len(offers) == 0 {
+		return ""
+	}
+	if header == "" {
+		return offers[0]
+	}
+
+	specs := strings.Split(header, ",")
+	for i := range offers {
+		for k := range specs {
+			spec := strings.TrimSpace(specs[k])
+			if strings.HasPrefix(spec, "*") {
+				return offers[i]
+			}
+			if strings.HasPrefix(spec, offers[i]) {
+				return offers[i]
+			}
+		}
+	}
+	return ""
+}
+
 // Adapted from:
 // https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
 func parseTokenList(noneMatchBytes []byte) []string {
@@ -688,3 +712,163 @@ const (
 	StatusNotExtended                   = 510 // RFC 2774, 7
 	StatusNetworkAuthenticationRequired = 511 // RFC 6585, 6
 )
+
+// ⚠️ This path parser was based on urlpath by @ucarion (MIT License).
+// 💖 Modified for the Fiber router by @renanbastos93 & @renewerner87
+// 🤖 ucarion/urlpath - renanbastos93/fastpath - renewerner87/fastpath
+
+// paramsParser holds the path segments and param names
+type parsedParams struct {
+	segs   []paramSeg
+	params []string
+}
+
+// paramsSeg holds the segment metadata
+type paramSeg struct {
+	Param      string
+	Const      string
+	IsParam    bool
+	IsOptional bool
+	IsLast     bool
+}
+
+var paramsDummy = make([]string, 100, 100)
+
+const wildcardParam string = "*"
+
+// New ...
+func getParams(pattern string) (p parsedParams) {
+	var patternCount int
+	aPattern := []string{""}
+	if pattern != "" {
+		aPattern = strings.Split(pattern, "/")[1:] // every route starts with an "/"
+	}
+	patternCount = len(aPattern)
+
+	var out = make([]paramSeg, patternCount)
+	var params []string
+	var segIndex int
+	for i := 0; i < patternCount; i++ {
+		partLen := len(aPattern[i])
+		if partLen == 0 { // skip empty parts
+			continue
+		}
+		// is parameter ?
+		if aPattern[i][0] == '*' || aPattern[i][0] == ':' {
+			out[segIndex] = paramSeg{
+				Param:      getTrimmedParam(aPattern[i]),
+				IsParam:    true,
+				IsOptional: aPattern[i] == wildcardParam || aPattern[i][partLen-1] == '?',
+			}
+			params = append(params, out[segIndex].Param)
+		} else {
+			// combine const segments
+			if segIndex > 0 && out[segIndex-1].IsParam == false {
+				segIndex--
+				out[segIndex].Const += "/" + aPattern[i]
+				// create new const segment
+			} else {
+				out[segIndex] = paramSeg{
+					Const: aPattern[i],
+				}
+			}
+		}
+		segIndex++
+	}
+	if segIndex == 0 {
+		segIndex++
+	}
+	out[segIndex-1].IsLast = true
+
+	p = parsedParams{segs: out[:segIndex:segIndex], params: params}
+	//fmt.Printf("%+v\n", p)
+	return
+}
+
+// Match ...
+func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
+	lenKeys := len(p.params)
+	params := paramsDummy[0:lenKeys:lenKeys]
+	var i, j, paramsIterator, partLen int
+	if len(s) > 0 {
+		s = s[1:]
+	}
+	for index, segment := range p.segs {
+		partLen = len(s)
+		// check parameter
+		if segment.IsParam {
+			// determine parameter length
+			if segment.Param == wildcardParam {
+				if segment.IsLast {
+					i = partLen
+				} else {
+					// for the expressjs behavior -> "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
+					i = getCharPos(s, '/', strings.Count(s, "/")-(len(p.segs)-(index+1))+1)
+				}
+			} else {
+				i = strings.IndexByte(s, '/')
+			}
+			if i == -1 {
+				i = partLen
+			}
+
+			if false == segment.IsOptional && i == 0 {
+				return nil, false
+			}
+
+			params[paramsIterator] = s[:i]
+			paramsIterator++
+		} else {
+			// check const segment
+			i = len(segment.Const)
+			if partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const || (partLen > i && s[i] != '/') {
+				return nil, false
+			}
+		}
+
+		// reduce founded part from the string
+		if partLen > 0 {
+			j = i + 1
+			if segment.IsLast || partLen < j {
+				j = i
+			}
+
+			s = s[j:]
+		}
+	}
+	if len(s) != 0 && !partialCheck {
+		return nil, false
+	}
+
+	return params, true
+}
+func getTrimmedParam(param string) string {
+	start := 0
+	end := len(param)
+
+	if param[start] != ':' { // is not a param
+		return param
+	}
+	start++
+	if param[end-1] == '?' { // is ?
+		end--
+	}
+
+	return param[start:end]
+}
+func getCharPos(s string, char byte, matchCount int) int {
+	if matchCount == 0 {
+		matchCount = 1
+	}
+	endPos, pos := 0, 0
+	for matchCount > 0 && pos != -1 {
+		if pos > 0 {
+			s = s[pos+1:]
+			endPos++
+		}
+		pos = strings.IndexByte(s, char)
+		endPos += pos
+		matchCount--
+	}
+	return endPos
+}

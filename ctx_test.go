@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-func Test_Accepts(t *testing.T) {
+func Test_Ctx_Accepts(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -36,7 +36,7 @@ func Test_Accepts(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_AcceptsCharsets(t *testing.T) {
+func Test_Ctx_AcceptsCharsets(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -50,7 +50,7 @@ func Test_AcceptsCharsets(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_AcceptsEncodings(t *testing.T) {
+func Test_Ctx_AcceptsEncodings(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -64,7 +64,7 @@ func Test_AcceptsEncodings(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_AcceptsLanguages(t *testing.T) {
+func Test_Ctx_AcceptsLanguages(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -78,7 +78,7 @@ func Test_AcceptsLanguages(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_BaseURL(t *testing.T) {
+func Test_Ctx_BaseURL(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -91,7 +91,7 @@ func Test_BaseURL(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Body(t *testing.T) {
+func Test_Ctx_Body(t *testing.T) {
 	app := New()
 
 	app.Post("/test", func(c *Ctx) {
@@ -109,7 +109,7 @@ func Test_Body(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_BodyParser(t *testing.T) {
+func Test_Ctx_BodyParser(t *testing.T) {
 	app := New()
 
 	type Demo struct {
@@ -147,7 +147,7 @@ func Test_BodyParser(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Cookies(t *testing.T) {
+func Test_Ctx_Cookies(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -161,7 +161,7 @@ func Test_Cookies(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_FormFile(t *testing.T) {
+func Test_Ctx_FormFile(t *testing.T) {
 	app := New()
 
 	app.Post("/test", func(c *Ctx) {
@@ -199,7 +199,7 @@ func Test_FormFile(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_FormValue(t *testing.T) {
+func Test_Ctx_FormValue(t *testing.T) {
 	app := New()
 
 	app.Post("/test", func(c *Ctx) {
@@ -220,7 +220,7 @@ func Test_FormValue(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Fresh(t *testing.T) {
+func Test_Ctx_Fresh(t *testing.T) {
 	app := New()
 	// TODO
 	app.Get("/test", func(c *Ctx) {
@@ -233,7 +233,7 @@ func Test_Fresh(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Get(t *testing.T) {
+func Test_Ctx_Get(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -248,7 +248,7 @@ func Test_Get(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Hostname(t *testing.T) {
+func Test_Ctx_Hostname(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -261,7 +261,7 @@ func Test_Hostname(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_IP(t *testing.T) {
+func Test_Ctx_IP(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -274,7 +274,7 @@ func Test_IP(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_IPs(t *testing.T) {
+func Test_Ctx_IPs(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -289,7 +289,7 @@ func Test_IPs(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
-// func Test_Is(t *testing.T) {
+// func Test_Ctx_Is(t *testing.T) {
 // 	app := New()
 // 	app.Get("/test", func(c *Ctx) {
 // 		c.Is(".json")
@@ -309,26 +309,22 @@ func Test_IPs(t *testing.T) {
 // 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
 // 	}
 // }
-func Test_Locals(t *testing.T) {
+func Test_Ctx_Locals(t *testing.T) {
 	app := New()
+
 	app.Use(func(c *Ctx) {
 		c.Locals("john", "doe")
 		c.Next()
 	})
 	app.Get("/test", func(c *Ctx) {
-		expect := "doe"
-		result := c.Locals("john")
-		if result != expect {
-			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
-		}
+		assertEqual(t, "doe", c.Locals("john"))
 	})
-	req := httptest.NewRequest("GET", "/test", nil)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Method(t *testing.T) {
+func Test_Ctx_Method(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -340,25 +336,20 @@ func Test_Method(t *testing.T) {
 	app.Put("/test", func(c *Ctx) {
 		assertEqual(t, "PUT", c.Method())
 	})
-	req := httptest.NewRequest("GET", "/test", nil)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 
-	req = httptest.NewRequest("POST", "/test", nil)
-
-	resp, err = app.Test(req)
+	resp, err = app.Test(httptest.NewRequest("POST", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 
-	req = httptest.NewRequest("PUT", "/test", nil)
-
-	resp, err = app.Test(req)
+	resp, err = app.Test(httptest.NewRequest("PUT", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_MultipartForm(t *testing.T) {
+func Test_Ctx_MultipartForm(t *testing.T) {
 	app := New()
 
 	app.Post("/test", func(c *Ctx) {
@@ -381,20 +372,18 @@ func Test_MultipartForm(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_OriginalURL(t *testing.T) {
+func Test_Ctx_OriginalURL(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
 		assertEqual(t, "http://google.com/test?search=demo", c.OriginalURL())
 	})
 
-	req := httptest.NewRequest("GET", "http://google.com/test?search=demo", nil)
-
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "http://google.com/test?search=demo", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Params(t *testing.T) {
+func Test_Ctx_Params(t *testing.T) {
 	app := New()
 
 	app.Get("/test/:user", func(c *Ctx) {
@@ -408,25 +397,20 @@ func Test_Params(t *testing.T) {
 	app.Get("/test3/:optional?", func(c *Ctx) {
 		assertEqual(t, "", c.Params("optional"))
 	})
-	req := httptest.NewRequest("GET", "/test/john", nil)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/test/john", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 
-	req = httptest.NewRequest("GET", "/test2/im/a/cookie", nil)
-
-	resp, err = app.Test(req)
+	resp, err = app.Test(httptest.NewRequest("GET", "/test2/im/a/cookie", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 
-	req = httptest.NewRequest("GET", "/test3", nil)
-
-	resp, err = app.Test(req)
+	resp, err = app.Test(httptest.NewRequest("GET", "/test3", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Path(t *testing.T) {
+func Test_Ctx_Path(t *testing.T) {
 	app := New()
 
 	app.Get("/test/:user", func(c *Ctx) {
@@ -439,7 +423,7 @@ func Test_Path(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Query(t *testing.T) {
+func Test_Ctx_Query(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -452,7 +436,7 @@ func Test_Query(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Range(t *testing.T) {
+func Test_Ctx_Range(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -470,7 +454,7 @@ func Test_Range(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Route(t *testing.T) {
+func Test_Ctx_Route(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -483,7 +467,7 @@ func Test_Route(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_SaveFile(t *testing.T) {
+func Test_Ctx_SaveFile(t *testing.T) {
 	app := New()
 
 	app.Post("/test", func(c *Ctx) {
@@ -520,7 +504,7 @@ func Test_SaveFile(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Secure(t *testing.T) {
+func Test_Ctx_Secure(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -543,7 +527,7 @@ func Test_Secure(t *testing.T) {
 	// assertEqual(t, nil, err, "app.Test(req)")
 	// assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Stale(t *testing.T) {
+func Test_Ctx_Stale(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -556,7 +540,7 @@ func Test_Stale(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
-func Test_Subdomains(t *testing.T) {
+func Test_Ctx_Subdomains(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -570,21 +554,21 @@ func Test_Subdomains(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
-func Test_Append(t *testing.T) {
+func Test_Ctx_Append(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
-		c.Append("X-Test", "hel")
-		c.Append("X-Test", "lo", "world")
+		c.Append("X-Test", "Hello")
+		c.Append("X-Test", "World")
+		c.Append("X-Test", "Hello", "World")
 	})
-	req := httptest.NewRequest("GET", "/test", nil)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
-	assertEqual(t, "hel, lo, world", resp.Header.Get("X-Test"))
+	assertEqual(t, "Hello, World", resp.Header.Get("X-Test"))
 }
-func Test_Attachment(t *testing.T) {
+func Test_Ctx_Attachment(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -600,7 +584,7 @@ func Test_Attachment(t *testing.T) {
 	assertEqual(t, "image/png", resp.Header.Get("Content-Type"))
 }
 
-func Test_ClearCookie(t *testing.T) {
+func Test_Ctx_ClearCookie(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -627,7 +611,7 @@ func Test_ClearCookie(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 	assertEqual(t, true, strings.Contains(resp.Header.Get("Set-Cookie"), "expires="))
 }
-func Test_Cookie(t *testing.T) {
+func Test_Ctx_Cookie(t *testing.T) {
 	app := New()
 
 	expire := time.Now().Add(24 * time.Hour)
@@ -651,7 +635,7 @@ func Test_Cookie(t *testing.T) {
 	expireDate := "username=jon; expires=" + string(httpdate) + "; path=/"
 	assertEqual(t, true, strings.Contains(resp.Header.Get("Set-Cookie"), expireDate))
 }
-func Test_Download(t *testing.T) {
+func Test_Ctx_Download(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -676,7 +660,7 @@ func Test_Download(t *testing.T) {
 	assertEqual(t, nil, err)
 	assertEqual(t, true, bytes.Equal(expect, body))
 }
-func Test_Format(t *testing.T) {
+func Test_Ctx_Format(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -710,7 +694,7 @@ func Test_Format(t *testing.T) {
 	assertEqual(t, `"Hello, World!"`, string(body))
 }
 
-func Test_JSON(t *testing.T) {
+func Test_Ctx_JSON(t *testing.T) {
 	app := New()
 
 	type SomeStruct struct {
@@ -738,7 +722,7 @@ func Test_JSON(t *testing.T) {
 	assertEqual(t, nil, err)
 	assertEqual(t, `{"Name":"Grame","Age":20}`, string(body))
 }
-func Test_JSONP(t *testing.T) {
+func Test_Ctx_JSONP(t *testing.T) {
 	app := New()
 
 	type SomeStruct struct {
@@ -766,7 +750,7 @@ func Test_JSONP(t *testing.T) {
 	assertEqual(t, nil, err)
 	assertEqual(t, `john({"Name":"Grame","Age":20});`, string(body))
 }
-func Test_Links(t *testing.T) {
+func Test_Ctx_Links(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -783,7 +767,7 @@ func Test_Links(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 	assertEqual(t, `<http://api.example.com/users?page=2>; rel="next",<http://api.example.com/users?page=5>; rel="last"`, resp.Header.Get("Link"))
 }
-func Test_Location(t *testing.T) {
+func Test_Ctx_Location(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -797,7 +781,7 @@ func Test_Location(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 	assertEqual(t, "http://example.com", resp.Header.Get("Location"))
 }
-func Test_Next(t *testing.T) {
+func Test_Ctx_Next(t *testing.T) {
 	app := New()
 
 	app.Use("/", func(c *Ctx) {
@@ -815,7 +799,7 @@ func Test_Next(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 	assertEqual(t, "Works", resp.Header.Get("X-Next-Result"))
 }
-func Test_Redirect(t *testing.T) {
+func Test_Ctx_Redirect(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -828,10 +812,10 @@ func Test_Redirect(t *testing.T) {
 	assertEqual(t, 301, resp.StatusCode, "Status code")
 	assertEqual(t, "http://example.com", resp.Header.Get("Location"))
 }
-func Test_Render(t *testing.T) {
+func Test_Ctx_Render(t *testing.T) {
 	// TODO
 }
-func Test_Send(t *testing.T) {
+func Test_Ctx_Send(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -850,7 +834,7 @@ func Test_Send(t *testing.T) {
 	assertEqual(t, nil, err)
 	assertEqual(t, `1337`, string(body))
 }
-func Test_SendBytes(t *testing.T) {
+func Test_Ctx_SendBytes(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -867,7 +851,7 @@ func Test_SendBytes(t *testing.T) {
 	assertEqual(t, nil, err)
 	assertEqual(t, `Hello, World`, string(body))
 }
-func Test_SendStatus(t *testing.T) {
+func Test_Ctx_SendStatus(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -884,7 +868,7 @@ func Test_SendStatus(t *testing.T) {
 	assertEqual(t, nil, err)
 	assertEqual(t, `Unsupported Media Type`, string(body))
 }
-func Test_SendString(t *testing.T) {
+func Test_Ctx_SendString(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -901,7 +885,7 @@ func Test_SendString(t *testing.T) {
 	assertEqual(t, nil, err)
 	assertEqual(t, `Don't crash please`, string(body))
 }
-func Test_Set(t *testing.T) {
+func Test_Ctx_Set(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -920,7 +904,7 @@ func Test_Set(t *testing.T) {
 	assertEqual(t, "2", resp.Header.Get("X-2"))
 	assertEqual(t, "1337", resp.Header.Get("X-3"))
 }
-func Test_Status(t *testing.T) {
+func Test_Ctx_Status(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -937,7 +921,7 @@ func Test_Status(t *testing.T) {
 	assertEqual(t, nil, err)
 	assertEqual(t, `Hello, World`, string(body))
 }
-func Test_Type(t *testing.T) {
+func Test_Ctx_Type(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -951,7 +935,7 @@ func Test_Type(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 	assertEqual(t, "application/json", resp.Header.Get("Content-Type"))
 }
-func Test_Vary(t *testing.T) {
+func Test_Ctx_Vary(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -965,9 +949,9 @@ func Test_Vary(t *testing.T) {
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
-	assertEqual(t, "origin, user-agent, accept-encoding, accept", resp.Header.Get("Vary"))
+	assertEqual(t, "Origin, User-Agent, Accept-Encoding, Accept", resp.Header.Get("Vary"))
 }
-func Test_Write(t *testing.T) {
+func Test_Ctx_Write(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -987,7 +971,7 @@ func Test_Write(t *testing.T) {
 	assertEqual(t, `Hello, World! 123`, string(body))
 }
 
-func Test_XHR(t *testing.T) {
+func Test_Ctx_XHR(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
