@@ -120,7 +120,7 @@ func New(settings ...*Settings) *App {
 	// Create app
 	app := new(App)
 	// Create route stack
-	app.routes = make([][]*Route, len(methodINT), len(methodINT))
+	app.routes = make([][]*Route, len(methodINT))
 	// Create settings
 	app.Settings = new(Settings)
 	// Set default settings
@@ -456,9 +456,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		}
 	} else {
 		// Without timeout
-		select {
-		case err = <-channel:
-		}
+		err = <-channel
 	}
 	// Check for errors
 	if err != nil {

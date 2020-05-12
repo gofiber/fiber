@@ -334,11 +334,11 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 		Name: "Grame",
 		Age:  20,
 	}
-
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.JSON(data)
+		err = c.JSON(data)
 	}
-
+	assertEqual(b, nil, err)
 	assertEqual(b, `{"Name":"Grame","Age":20}`, string(c.Fasthttp.Response.Body()))
 }
 
@@ -355,11 +355,12 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 		Name: "Grame",
 		Age:  20,
 	}
-
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.JSONP(data, "john")
+		err = c.JSONP(data, "john")
 	}
 
+	assertEqual(b, nil, err)
 	assertEqual(b, `john({"Name":"Grame","Age":20});`, string(c.Fasthttp.Response.Body()))
 }
 
