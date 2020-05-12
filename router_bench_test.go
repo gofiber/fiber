@@ -10,29 +10,29 @@ import (
 	"testing"
 )
 
-var router_bench_app *App
+var routerBenchApp *App
 
 func init() {
-	router_bench_app = New()
+	routerBenchApp = New()
 	h := func(c *Ctx) {}
 	for _, r := range githubAPI {
 		switch r.method {
 		case "GET":
-			router_bench_app.Get(r.path, h)
+			routerBenchApp.Get(r.path, h)
 		case "POST":
-			router_bench_app.Post(r.path, h)
+			routerBenchApp.Post(r.path, h)
 		case "PUT":
-			router_bench_app.Put(r.path, h)
+			routerBenchApp.Put(r.path, h)
 		case "PATCH":
-			router_bench_app.Patch(r.path, h)
+			routerBenchApp.Patch(r.path, h)
 		case "DELETE":
-			router_bench_app.Delete(r.path, h)
+			routerBenchApp.Delete(r.path, h)
 		default:
 			panic("Unknow HTTP method: " + r.method)
 		}
 	}
 	for i := 0; i < 100; i++ {
-		router_bench_app.Use("/middleware", func(c *Ctx) {
+		routerBenchApp.Use("/middleware", func(c *Ctx) {
 			c.Next()
 		})
 	}
@@ -79,8 +79,8 @@ func Benchmark_Router_First_Route(b *testing.B) {
 
 func matchRoute(method, path string) (match bool, values []string) {
 	mINT := methodINT[method]
-	for i := range router_bench_app.routes[mINT] {
-		_, _ = router_bench_app.routes[mINT][i].matchRoute(path)
+	for i := range routerBenchApp.routes[mINT] {
+		_, _ = routerBenchApp.routes[mINT][i].matchRoute(path)
 	}
 	return
 }
