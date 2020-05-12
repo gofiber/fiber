@@ -17,7 +17,7 @@ jobs:
       with:
         path: ./cache
         key: ${{ runner.os }}-benchmark
-    - name: Save New Benchmark Results
+    - name: Save Benchmark Results
       uses: rhysd/github-action-benchmark@v1
       with:
         tool: 'go'
