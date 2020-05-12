@@ -1,11 +1,10 @@
-on: [push, pull_request]
-name: Lint
-jobs:
-  golangci-lint:
-    name: runner / golangci-lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Source
-        uses: actions/checkout@v2
-      - name: golangci-lint
-        uses: reviewdog/action-golangci-lint@v1
+# on: [push, pull_request]
+# name: Linter
+# jobs:
+#   Lint:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout Source 
+#         uses: actions/checkout@v2
+#       - name: Run golangci-lint
+#         uses: actions-contrib/golangci-lint@v1
