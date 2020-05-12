@@ -526,13 +526,13 @@ func (ctx *Ctx) Links(link ...string) {
 	bb := bytebufferpool.Get()
 	for i := range link {
 		if i%2 == 0 {
-			bb.WriteByte('<')
-			bb.WriteString(link[i])
-			bb.WriteByte('>')
+			_ = bb.WriteByte('<')
+			_, _ = bb.WriteString(link[i])
+			_ = bb.WriteByte('>')
 		} else {
-			bb.WriteString(`; rel="`)
-			bb.WriteString(link[i])
-			bb.WriteString(`",`)
+			_, _ = bb.WriteString(`; rel="`)
+			_, _ = bb.WriteString(link[i])
+			_, _ = bb.WriteString(`",`)
 		}
 	}
 	ctx.Fasthttp.Response.Header.Set(HeaderLink, strings.TrimSuffix(bb.String(), ","))
