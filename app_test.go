@@ -47,26 +47,6 @@ func Test_App_Nested_Params(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
-func Test_App_Use_Params(t *testing.T) {
-	app := New()
-
-	app.Use("/prefix/:param", func(c *Ctx) {
-		assertEqual(t, "john", c.Params("param"))
-	})
-
-	app.Use("/:param/*", func(c *Ctx) {
-		assertEqual(t, "john", c.Params("param"))
-		assertEqual(t, "doe", c.Params("*"))
-	})
-
-	resp, err := app.Test(httptest.NewRequest("GET", "/prefix/john", nil))
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest("GET", "/john/doe", nil))
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
-}
 func Test_App_Order(t *testing.T) {
 	app := New()
 

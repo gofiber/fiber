@@ -311,20 +311,16 @@ func Test_IPs(t *testing.T) {
 // }
 func Test_Locals(t *testing.T) {
 	app := New()
+
 	app.Use(func(c *Ctx) {
 		c.Locals("john", "doe")
 		c.Next()
 	})
 	app.Get("/test", func(c *Ctx) {
-		expect := "doe"
-		result := c.Locals("john")
-		if result != expect {
-			t.Fatalf(`%s: Expecting %s, got %s`, t.Name(), expect, result)
-		}
+		assertEqual(t, "doe", c.Locals("john"))
 	})
-	req := httptest.NewRequest("GET", "/test", nil)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
@@ -340,21 +336,16 @@ func Test_Method(t *testing.T) {
 	app.Put("/test", func(c *Ctx) {
 		assertEqual(t, "PUT", c.Method())
 	})
-	req := httptest.NewRequest("GET", "/test", nil)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 
-	req = httptest.NewRequest("POST", "/test", nil)
-
-	resp, err = app.Test(req)
+	resp, err = app.Test(httptest.NewRequest("POST", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 
-	req = httptest.NewRequest("PUT", "/test", nil)
-
-	resp, err = app.Test(req)
+	resp, err = app.Test(httptest.NewRequest("PUT", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
@@ -388,9 +379,7 @@ func Test_OriginalURL(t *testing.T) {
 		assertEqual(t, "http://google.com/test?search=demo", c.OriginalURL())
 	})
 
-	req := httptest.NewRequest("GET", "http://google.com/test?search=demo", nil)
-
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "http://google.com/test?search=demo", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
@@ -408,21 +397,16 @@ func Test_Params(t *testing.T) {
 	app.Get("/test3/:optional?", func(c *Ctx) {
 		assertEqual(t, "", c.Params("optional"))
 	})
-	req := httptest.NewRequest("GET", "/test/john", nil)
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/test/john", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 
-	req = httptest.NewRequest("GET", "/test2/im/a/cookie", nil)
-
-	resp, err = app.Test(req)
+	resp, err = app.Test(httptest.NewRequest("GET", "/test2/im/a/cookie", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 
-	req = httptest.NewRequest("GET", "/test3", nil)
-
-	resp, err = app.Test(req)
+	resp, err = app.Test(httptest.NewRequest("GET", "/test3", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
@@ -583,7 +567,6 @@ func Test_Append(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 	assertEqual(t, "Hello, World", resp.Header.Get("X-Test"))
-	t.Fatalf("%+v", resp.Header)
 }
 func Test_Attachment(t *testing.T) {
 	app := New()
