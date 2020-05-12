@@ -13,10 +13,10 @@ jobs:
     - name: Run Benchmark
       run: go test -benchmem -run=^$ -bench . | tee output.txt
     - name: Get Previous Benchmark Results
-      uses: actions/download-artifact@v2
+      uses: actions/cache@v1
       with:
-        path: .github
-        name: ${{ runner.os }}-benchmark
+        path: ./cache
+        key: ${{ runner.os }}-benchmark
     - name: Save New Benchmark Results
       uses: rhysd/github-action-benchmark@v1
       with:
@@ -26,4 +26,4 @@ jobs:
         comment-on-alert: true
         output-file-path: output.txt
         external-data-json-path: ./cache/benchmark-data.json
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
