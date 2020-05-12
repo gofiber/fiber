@@ -495,7 +495,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
 - [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
 - [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
-- [thomasvvugt/fiber-boilerpplate](https://github.com/thomasvvugt/fiber-boilerplate)
+- [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 - [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
 
 ## 💬 Media
