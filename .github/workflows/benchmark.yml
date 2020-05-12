@@ -25,5 +25,4 @@ jobs:
         fail-on-alert: true
         comment-on-alert: true
         output-file-path: output.txt
-        external-data-json-path: ./cache/benchmark-data.json
         github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
