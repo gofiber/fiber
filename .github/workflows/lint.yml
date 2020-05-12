@@ -1,12 +1,10 @@
 on: [push, pull_request]
-name: Security
+name: Linter
 jobs:
-  Gosec:
+  Golint:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
         uses: actions/checkout@v2
-      - name: Run Gosec
-        uses: securego/gosec@master
-        with:
-          args: ./...
+      - name: Run Golint
+        uses: actions-contrib/golangci-lint@v1

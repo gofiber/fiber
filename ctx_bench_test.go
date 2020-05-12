@@ -202,9 +202,9 @@ func Benchmark_Ctx_Params(b *testing.B) {
 
 	var res string
 	for n := 0; n < b.N; n++ {
-		res = c.Params("param1")
-		res = c.Params("param2")
-		res = c.Params("param3")
+		_ = c.Params("param1")
+		_ = c.Params("param2")
+		_ = c.Params("param3")
 		res = c.Params("param4")
 	}
 
