@@ -21,8 +21,9 @@ jobs:
       uses: rhysd/github-action-benchmark@v1
       with:
         tool: 'go'
-        auto-push: true
+        auto-push: false
         fail-on-alert: true
         comment-on-alert: true
         output-file-path: output.txt
-        github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+    - name: "Push bencmark result"
+      run: git push 'https://Fenny:${{ secrets.PERSONAL_GITHUB_TOKEN }}@github.com/gofiber/website.git' gh-pages:gh-pages
