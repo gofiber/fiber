@@ -1,7 +1,7 @@
 on: [push, pull_request]
-name: Security
+name: Linter
 jobs:
-  Gosec:
+  Lint:
     strategy:
       matrix:
         platform: [ubuntu-latest]
@@ -9,7 +9,7 @@ jobs:
     steps:
       - name: Checkout Source 
         uses: actions/checkout@v2
-      - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
+      - name: Run golangci-lint
+        uses: actions-contrib/golangci-lint@v1
         with:
           args: ./...
