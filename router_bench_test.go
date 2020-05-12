@@ -31,6 +31,18 @@ func init() {
 			panic("Unknow HTTP method: " + r.method)
 		}
 	}
+	for i := 0; i < 100; i++ {
+		router_bench_app.Use("/middleware", func(c *Ctx) {
+			c.Next()
+		})
+	}
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Stack -benchmem -count=3
+func Benchmark_Router_Next_Stack(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		_, _ = matchRoute("GET", "/middleware")
+	}
 }
 
 func Benchmark_Router_Github_API(b *testing.B) {
