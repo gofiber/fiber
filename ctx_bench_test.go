@@ -13,6 +13,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// go test -v ./... -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=3
+
 func Benchmark_Ctx_Accepts(b *testing.B) {
 	c := AcquireCtx(&fasthttp.RequestCtx{})
 	defer ReleaseCtx(c)
@@ -185,9 +187,29 @@ func Benchmark_Ctx_FormFile(b *testing.B) {
 // 	TODO
 // }
 
-// func Benchmark_Ctx_Params(b *testing.B) {
-// 	TODO
-// }
+func Benchmark_Ctx_Params(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
+	c.route = &Route{
+		Params: []string{
+			"param1", "param2", "param3", "param4",
+		},
+	}
+	c.values = []string{
+		"john", "doe", "is", "awesome",
+	}
+
+	var res string
+	for n := 0; n < b.N; n++ {
+		res = c.Params("param1")
+		res = c.Params("param2")
+		res = c.Params("param3")
+		res = c.Params("param4")
+	}
+
+	assertEqual(b, "awesome", res)
+}
 
 // func Benchmark_Ctx_Path(b *testing.B) {
 // 	TODO
@@ -241,7 +263,7 @@ func Benchmark_Ctx_Append(b *testing.B) {
 		c.Append("X-Custom-Header", "Hello")
 	}
 
-	assertEqual(b, "hello, world", getString(c.Fasthttp.Response.Header.Peek("X-Custom-Header")))
+	assertEqual(b, "Hello, World", getString(c.Fasthttp.Response.Header.Peek("X-Custom-Header")))
 }
 
 // func Benchmark_Ctx_Attachment(b *testing.B) {
@@ -252,9 +274,19 @@ func Benchmark_Ctx_Append(b *testing.B) {
 // 	TODO
 // }
 
-// func Benchmark_Ctx_Cookie(b *testing.B) {
-// 	TODO
-// }
+func Benchmark_Ctx_Cookie(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
+	for n := 0; n < b.N; n++ {
+		c.Cookie(&Cookie{
+			Name:  "John",
+			Value: "Doe",
+		})
+	}
+
+	assertEqual(b, "John=Doe; path=/", getString(c.Fasthttp.Response.Header.Peek("Set-Cookie")))
+}
 
 // func Benchmark_Ctx_Download(b *testing.B) {
 // 	TODO
@@ -265,20 +297,28 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	defer ReleaseCtx(c)
 
 	c.Fasthttp.Request.Header.Set("Accept", "text/html")
-
 	for n := 0; n < b.N; n++ {
 		c.Format("Hello, World!")
 	}
-
 	assertEqual(b, "<p>Hello, World!</p>", string(c.Fasthttp.Response.Body()))
 
 	c.Fasthttp.Request.Header.Set("Accept", "application/json")
-
 	for n := 0; n < b.N; n++ {
 		c.Format("Hello, World!")
 	}
-
 	assertEqual(b, `"Hello, World!"`, string(c.Fasthttp.Response.Body()))
+
+	c.Fasthttp.Request.Header.Set("Accept", "text/plain")
+	for n := 0; n < b.N; n++ {
+		c.Format("Hello, World!")
+	}
+	assertEqual(b, `Hello, World!`, string(c.Fasthttp.Response.Body()))
+
+	c.Fasthttp.Request.Header.Set("Accept", "application/xml")
+	for n := 0; n < b.N; n++ {
+		c.Format("Hello, World!")
+	}
+	assertEqual(b, `<string>Hello, World!</string>`, string(c.Fasthttp.Response.Body()))
 }
 
 func Benchmark_Ctx_JSON(b *testing.B) {

@@ -786,7 +786,7 @@ func getParams(pattern string) (p parsedParams) {
 }
 
 // Match ...
-func (p *parsedParams) getMatch(s string) ([]string, bool) {
+func (p *parsedParams) getMatch(s string, middleware bool) ([]string, bool) {
 	lenKeys := len(p.params)
 	params := paramsDummy[0:lenKeys:lenKeys]
 	var i, j, paramsIterator, partLen int
@@ -836,7 +836,7 @@ func (p *parsedParams) getMatch(s string) ([]string, bool) {
 			s = s[j:]
 		}
 	}
-	if len(s) != 0 {
+	if len(s) != 0 && !middleware {
 		return nil, false
 	}
 

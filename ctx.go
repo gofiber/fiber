@@ -24,7 +24,7 @@ import (
 	"time"
 
 	schema "github.com/gorilla/schema"
-	bytebufferpool "github.com/valyala/bytebufferpool"
+	"github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -154,16 +154,17 @@ func (ctx *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := strings.ToLower(getString(ctx.Fasthttp.Response.Header.Peek(field)))
+	h := ctx.Fasthttp.Response.Header.Peek(field)
 	for i := range values {
-		values[i] = strings.ToLower(values[i])
+		var value = getBytes(values[i])
 		if len(h) == 0 {
-			h += values[i]
-		} else if h != values[i] && !strings.HasSuffix(h, " "+values[i]) && !strings.Contains(h, values[i]+",") {
-			h += ", " + values[i]
+			h = append(h, value...)
+		} else if 0 != bytes.Compare(h, value) && !bytes.HasSuffix(h, append([]byte{' '}, value...)) &&
+			!bytes.Contains(h, append(append([]byte{}, value...), ',')) {
+			h = append(append(h, ',', ' '), value...)
 		}
 	}
-	ctx.Fasthttp.Response.Header.Set(field, h)
+	ctx.Fasthttp.Response.Header.SetBytesV(field, h)
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
@@ -256,7 +257,7 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 
 // Cookie sets a cookie by passing a cookie struct
 func (ctx *Ctx) Cookie(cookie *Cookie) {
-	fcookie := &fasthttp.Cookie{}
+	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(cookie.Name)
 	fcookie.SetValue(cookie.Value)
 	fcookie.SetPath(cookie.Path)
@@ -281,6 +282,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
 	}
 	ctx.Fasthttp.Response.Header.SetCookie(fcookie)
+	fasthttp.ReleaseCookie(fcookie)
 }
 
 // Cookies is used for getting a cookie value by key
@@ -316,9 +318,13 @@ func (ctx *Ctx) Error() error {
 // It uses Accepts to select a proper format.
 // If the header is not specified or there is no proper format, text/plain is used.
 func (ctx *Ctx) Format(body interface{}) {
-	var b string
-	accept := ctx.Accepts("html", "json")
+	// Get accepted content type
+	accept := ctx.Accepts("html", "json", "txt", "xml")
+	// Set accepted content type
+	ctx.Type(accept)
 
+	// Type convert provided body
+	var b string
 	switch val := body.(type) {
 	case string:
 		b = val
@@ -327,13 +333,25 @@ func (ctx *Ctx) Format(body interface{}) {
 	default:
 		b = fmt.Sprintf("%v", val)
 	}
+
+	// Format based on the accept content type
 	switch accept {
 	case "html":
 		ctx.SendString("<p>" + b + "</p>")
 	case "json":
 		if err := ctx.JSON(body); err != nil {
-			// Fix
+			ctx.Send(body) // Fallback
 			log.Println("Format: error serializing json ", err)
+		}
+	case "text":
+		ctx.SendString(b)
+	case "xml":
+		raw, err := xml.Marshal(body)
+		if err != nil {
+			ctx.Send(body) // Fallback
+			log.Println("Format: error serializing xml ", err)
+		} else {
+			ctx.SendString(getString(raw))
 		}
 	default:
 		ctx.SendString(b)
@@ -482,15 +500,15 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 		return err
 	}
 
-	var result, cbName string
+	var result, cb string
 
 	if len(callback) > 0 {
-		cbName = callback[0]
+		cb = callback[0]
 	} else {
-		cbName = "callback"
+		cb = "callback"
 	}
 
-	result = cbName + "(" + getString(raw) + ");"
+	result = cb + "(" + getString(raw) + ");"
 
 	ctx.Fasthttp.Response.Header.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
@@ -513,8 +531,7 @@ func (ctx *Ctx) Links(link ...string) {
 		} else {
 			bb.WriteString(`; rel="`)
 			bb.WriteString(link[i])
-			bb.WriteByte('"')
-			bb.WriteByte(',')
+			bb.WriteString(`",`)
 		}
 	}
 	ctx.Fasthttp.Response.Header.Set(HeaderLink, strings.TrimSuffix(bb.String(), ","))
@@ -571,16 +588,16 @@ func (ctx *Ctx) OriginalURL() string {
 
 // Params is used to get the route parameters.
 // Defaults to empty string "", if the param doesn't exist.
-func (ctx *Ctx) Params(key string) (value string) {
-	if ctx.route.Params == nil {
-		return
-	}
+func (ctx *Ctx) Params(key string) string {
 	for i := range ctx.route.Params {
-		if (ctx.route.Params)[i] == key {
+		if len(key) != len(ctx.route.Params[i]) {
+			continue
+		}
+		if ctx.route.Params[i] == key {
 			return ctx.values[i]
 		}
 	}
-	return
+	return ""
 }
 
 // Path returns the path part of the request URL.
@@ -803,19 +820,7 @@ func (ctx *Ctx) Type(ext string) *Ctx {
 // Vary adds the given header field to the Vary response header.
 // This will append the header, if not already listed, otherwise leaves it listed in the current location.
 func (ctx *Ctx) Vary(fields ...string) {
-	if len(fields) == 0 {
-		return
-	}
-	h := strings.ToLower(getString(ctx.Fasthttp.Response.Header.Peek(HeaderVary)))
-	for i := range fields {
-		fields[i] = strings.ToLower(fields[i])
-		if len(h) == 0 {
-			h += fields[i]
-		} else if h != fields[i] && !strings.HasSuffix(h, " "+fields[i]) && !strings.Contains(h, fields[i]+",") {
-			h += ", " + fields[i]
-		}
-	}
-	ctx.Fasthttp.Response.Header.Set(HeaderVary, h)
+	ctx.Append(HeaderVary, fields...)
 }
 
 // Write appends any input to the HTTP body response.

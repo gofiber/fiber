@@ -65,7 +65,7 @@
     <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Gosec?label=gosec&style=flat-square">
   </a>
   <a href="https://gofiber.io/discord">
-    <img src="https://img.shields.io/badge/Discord-join%20channel-7289DA?style=flat-square">
+    <img src="https://img.shields.io/badge/discord-join%20channel-7289DA?style=flat-square">
   </a>
 </p>
 <p align="center">
@@ -469,15 +469,16 @@ func main() {
 
 Чтобы создать более _поддерживаемую_ middleware _экосистему_, мы вынесли [middlewares](https://docs.gofiber.io/middleware) в отдельные репозитории:
 
-- [gofiber/basicauth](https://github.com/gofiber/basicauth)
-- [gofiber/keyauth](https://github.com/gofiber/keyauth)
 - [gofiber/compression](https://github.com/gofiber/compression)
+- [gofiber/basicauth](https://github.com/gofiber/basicauth)
 - [gofiber/requestid](https://github.com/gofiber/requestid)
 - [gofiber/websocket](https://github.com/gofiber/websocket)
+- [gofiber/keyauth](https://github.com/gofiber/keyauth)
 - [gofiber/rewrite](https://github.com/gofiber/rewrite)
 - [gofiber/recover](https://github.com/gofiber/recover)
 - [gofiber/limiter](https://github.com/gofiber/limiter)
 - [gofiber/session](https://github.com/gofiber/session)
+- [gofiber/adaptor](https://github.com/gofiber/adaptor)
 - [gofiber/logger](https://github.com/gofiber/logger)
 - [gofiber/helmet](https://github.com/gofiber/helmet)
 - [gofiber/embed](https://github.com/gofiber/embed)
@@ -495,6 +496,8 @@ func main() {
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
 - [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
 - [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
+- [thomasvvugt/fiber-boilerpplate](https://github.com/thomasvvugt/fiber-boilerplate)
+- [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
 
 ## 💬 Медиа
 
@@ -531,6 +534,7 @@ Fiber — это проект с открытым исходным кодом, �
 | ![](https://avatars.githubusercontent.com/u/635852?s=25 )   | [@bihe](https://github.com/bihe)                | ☕ x 3    |
 | ![](https://avatars.githubusercontent.com/u/307334?s=25 )   | [@justdave](https://github.com/justdave)        | ☕ x 3    |
 | ![](https://avatars.githubusercontent.com/u/11155743?s=25 ) | [@koddr](https://github.com/koddr)              | ☕ x 1    |
+| ![](https://avatars.githubusercontent.com/u/29042462?s=25 ) | [@lapolinar](https://github.com/lapolinar)      | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/2978730?s=25 )  | [@diegowifi](https://github.com/diegowifi)      | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/44171355?s=25 ) | [@ssimk0](https://github.com/ssimk0)            | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/5638101?s=25 )  | [@raymayemir](https://github.com/raymayemir)    | ☕ x 1    |
@@ -549,3 +553,4 @@ Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](
 **Third-party library licenses**
 - [FastHTTP](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 - [Schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
