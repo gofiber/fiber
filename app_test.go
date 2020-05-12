@@ -24,19 +24,15 @@ func Test_App_Nested_Params(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
-		t.Log(c.Route().Path)
 		c.Status(400).Send("Should move on")
 	})
 	app.Get("/test/:param", func(c *Ctx) {
-		t.Log(c.Route().Path)
 		c.Status(400).Send("Should move on")
 	})
 	app.Get("/test/:param/test", func(c *Ctx) {
-		t.Log(c.Route().Path)
 		c.Status(400).Send("Should move on")
 	})
 	app.Get("/test/:param/test/:param2", func(c *Ctx) {
-		t.Log(c.Route().Path)
 		c.Status(200).Send("Good job")
 	})
 

@@ -61,16 +61,16 @@ func (app *App) nextRoute(ctx *Ctx) {
 }
 
 func (r *Route) matchRoute(path string) (match bool, values []string) {
-	// Middleware routes allow prefix matches
+	//Middleware routes allow prefix matches
 	if r.use {
 		// Match any path if route equals '/'
 		if r.root {
 			return true, values
 		}
-		// Match any path if wildcard and pass path as param
-		// if r.star {
-		// 	return true, []string{path}
-		// }
+		// '*' wildcard matches any path
+		if r.star {
+			return true, []string{path}
+		}
 		// Does this route have parameters
 		if len(r.Params) > 0 {
 			// Do we have a match?
