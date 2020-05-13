@@ -186,6 +186,16 @@ func (app *App) Use(args ...interface{}) *App {
 	return app
 }
 
+// Add : https://fiber.wiki/application#http-methods
+func (app *App) Add(method, path string, handlers ...func(*Ctx)) *App {
+	method = strings.ToUpper(method)
+	if methodINT[method] == 0 && method != "GET" {
+		log.Fatalf("Add: Invalid HTTP method %s", method)
+	}
+	app.registerMethod(method, path, handlers...)
+	return app
+}
+
 // Connect : https://fiber.wiki/application#http-methods
 func (app *App) Connect(path string, handlers ...func(*Ctx)) *App {
 	app.registerMethod(MethodConnect, path, handlers...)
@@ -282,6 +292,16 @@ func (grp *Group) Use(args ...interface{}) *Group {
 		}
 	}
 	grp.app.registerMethod("USE", getGroupPath(grp.prefix, path), handlers...)
+	return grp
+}
+
+// Add : https://fiber.wiki/application#http-methods
+func (grp *Group) Add(method, path string, handlers ...func(*Ctx)) *Group {
+	method = strings.ToUpper(method)
+	if methodINT[method] == 0 && method != "GET" {
+		log.Fatalf("Add: Invalid HTTP method %s", method)
+	}
+	grp.app.registerMethod(method, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 

@@ -13,7 +13,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// go test -v ./... -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=3
+// go test -v ./... -run=^$ -bench=Benchmark_Ctx -benchmem -count=3
 
 func Benchmark_Ctx_Accepts(b *testing.B) {
 	c := AcquireCtx(&fasthttp.RequestCtx{})
