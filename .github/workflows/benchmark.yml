@@ -12,17 +12,24 @@ jobs:
       uses: actions/checkout@v2
     - name: Run Benchmark
       run: go test -benchmem -run=^$ -bench . | tee output.txt
-    - name: Get Previous Benchmark Results
-      uses: actions/cache@v1
+    - name: Get Previous Benchark Result
+      uses: actions/download-artifact@v2
       with:
-        path: ./cache
-        key: ${{ runner.os }}-benchmark
+        name: benchark output
+        path: previous_benchmark_output.text
     - name: Save Benchmark Results
       uses: rhysd/github-action-benchmark@v1
       with:
         tool: 'go'
-        output-file-path: output.txt
+        output-file-path: benchmark_output.txt
+        external-data-json-path: previous_benchmark_output.txt
         github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         fail-on-alert: true
         comment-on-alert: true
         auto-push: true
+    - name: Archive benchmark artifacts
+      if: ${{ success() }}
+      uses: actions/upload-artifact@v1
+      with:
+        name: benchark output
+        path: benchmark_output.txt
