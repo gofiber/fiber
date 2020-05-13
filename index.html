@@ -80,7 +80,17 @@
         width: 100%;
       }
       .benchmark-chart {
-        max-width: 1000px;
+        max-width: 33%;
+      }
+      @media only screen and (max-width: 900px) {
+        .benchmark-chart {
+          max-width: 50%;
+        }
+      }
+      @media only screen and (max-width: 700px) {
+        .benchmark-chart {
+          max-width: 100%;
+        }
       }
     </style>
     <title>Benchmarks</title>
