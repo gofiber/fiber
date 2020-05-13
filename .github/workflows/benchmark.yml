@@ -25,6 +25,4 @@ jobs:
         github-token: ${{ secrets.BENCHMARK_TOKEN }}
         fail-on-alert: true
         comment-on-alert: true
-        auto-push: false
-    - name: Push benchmark result
-      run: git push 'https://fenny:${{ secrets.BENCHMARK_TOKEN }}@github.com/gofiber/fiber.git' gh-pages:gh-pages
+        auto-push: true
