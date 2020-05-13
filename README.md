@@ -1,3 +1,5 @@
-## Benchmark Charts
+## Benchmark Results
 
-https://gofiber.github.io/fiber/dev/bench/index.html
+All benchmarks are stored for each commit, they can be viewed here:
+
+https://gofiber.github.io/fiber
