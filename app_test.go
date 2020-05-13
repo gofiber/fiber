@@ -259,14 +259,14 @@ func Test_App_Listen(t *testing.T) {
 		DisableStartupMessage: true,
 	})
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 		assertEqual(t, nil, app.Shutdown())
 	}()
 
 	assertEqual(t, nil, app.Listen(4003))
 
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 		assertEqual(t, nil, app.Shutdown())
 	}()
 
@@ -282,7 +282,7 @@ func Test_App_Serve(t *testing.T) {
 	assertEqual(t, nil, err)
 
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 		assertEqual(t, nil, app.Shutdown())
 	}()
 
