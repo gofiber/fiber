@@ -63,6 +63,24 @@ func Test_App_Use_Params(t *testing.T) {
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
+
+func Test_App_Use_Params_Group(t *testing.T) {
+	app := New()
+
+	group := app.Group("/prefix/:param/*")
+	group.Use("/", func(c *Ctx) {
+		c.Next()
+	})
+	group.Get("/test", func(c *Ctx) {
+		assertEqual(t, "john", c.Params("param"))
+		assertEqual(t, "doe", c.Params("*"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/prefix/john/doe/test", nil))
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, 200, resp.StatusCode, "Status code")
+}
+
 func Test_App_Order(t *testing.T) {
 	app := New()
 

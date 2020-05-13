@@ -7,7 +7,10 @@ package fiber
 // go test -v ./... -run=^$ -bench=Benchmark_Router -benchmem -count=3
 
 import (
+	"strings"
 	"testing"
+
+	fasthttp "github.com/valyala/fasthttp"
 )
 
 var routerBenchApp *App
@@ -36,6 +39,53 @@ func init() {
 			c.Next()
 		})
 	}
+}
+
+func Benchmark_Router_CaseSensitive(b *testing.B) {
+	var path = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
+	var res string
+
+	for n := 0; n < b.N; n++ {
+		res = strings.ToLower(path)
+	}
+
+	assertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
+}
+
+func Benchmark_Router_StrictRouting(b *testing.B) {
+	var path = "/repos/gofiber/fiber/issues/187643/comments/"
+	var res string
+
+	for n := 0; n < b.N; n++ {
+		res = strings.TrimRight(path, "/")
+	}
+
+	assertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
+}
+
+func Benchmark_Router_Handler(b *testing.B) {
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/user/keys/1337")
+
+	for n := 0; n < b.N; n++ {
+		routerBenchApp.handler(c)
+	}
+}
+
+func Benchmark_Router_NextRoute(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
+	c.Fasthttp.Request.Header.SetMethod("DELETE")
+	c.Fasthttp.URI().SetPath("/user/keys/1337")
+
+	for n := 0; n < b.N; n++ {
+		routerBenchApp.nextRoute(c)
+	}
+
+	assertEqual(b, len(githubAPI)+1, c.index-1)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Stack -benchmem -count=3
