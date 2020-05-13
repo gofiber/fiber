@@ -259,16 +259,18 @@ func Test_App_Listen(t *testing.T) {
 		DisableStartupMessage: true,
 	})
 	go func() {
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		assertEqual(t, nil, app.Shutdown())
 	}()
-	assertEqual(t, nil, app.Listen(3002))
+
+	assertEqual(t, nil, app.Listen(4003))
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		assertEqual(t, nil, app.Shutdown())
 	}()
-	assertEqual(t, nil, app.Listen("3003"))
+
+	assertEqual(t, nil, app.Listen("4010"))
 }
 
 func Test_App_Serve(t *testing.T) {
@@ -276,7 +278,7 @@ func Test_App_Serve(t *testing.T) {
 		DisableStartupMessage: true,
 		Prefork:               true,
 	})
-	ln, err := net.Listen("tcp4", ":3004")
+	ln, err := net.Listen("tcp4", ":4020")
 	assertEqual(t, nil, err)
 
 	go func() {
