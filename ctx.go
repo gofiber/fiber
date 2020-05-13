@@ -24,7 +24,7 @@ import (
 	"time"
 
 	schema "github.com/gorilla/schema"
-	"github.com/valyala/bytebufferpool"
+	bytebufferpool "github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
 

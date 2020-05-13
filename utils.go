@@ -209,11 +209,11 @@ var methodINT = map[string]int{
 	MethodHead:    1,
 	MethodPost:    2,
 	MethodPut:     3,
-	MethodPatch:   4,
-	MethodDelete:  5,
-	MethodConnect: 6,
-	MethodOptions: 7,
-	MethodTrace:   8,
+	MethodDelete:  4,
+	MethodConnect: 5,
+	MethodOptions: 6,
+	MethodTrace:   7,
+	MethodPatch:   8,
 }
 
 // HTTP status codes were copied from net/http.

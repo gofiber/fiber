@@ -82,15 +82,15 @@ func Test_Utils_methodINT(t *testing.T) {
 	assertEqual(t, 2, res)
 	res = methodINT[MethodPut]
 	assertEqual(t, 3, res)
-	res = methodINT[MethodPatch]
-	assertEqual(t, 4, res)
 	res = methodINT[MethodDelete]
-	assertEqual(t, 5, res)
+	assertEqual(t, 4, res)
 	res = methodINT[MethodConnect]
-	assertEqual(t, 6, res)
+	assertEqual(t, 5, res)
 	res = methodINT[MethodOptions]
-	assertEqual(t, 7, res)
+	assertEqual(t, 6, res)
 	res = methodINT[MethodTrace]
+	assertEqual(t, 7, res)
+	res = methodINT[MethodPatch]
 	assertEqual(t, 8, res)
 }
 
