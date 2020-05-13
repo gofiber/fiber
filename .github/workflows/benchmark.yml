@@ -1,4 +1,3 @@
-# on: [push, pull_request]
 name: Benchmark
 on:
   push:
