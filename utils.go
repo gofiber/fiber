@@ -732,7 +732,7 @@ type paramSeg struct {
 	IsLast     bool
 }
 
-var paramsDummy = make([]string, 100, 100)
+var paramsDummy = make([]string, 100)
 
 const wildcardParam string = "*"
 
@@ -763,7 +763,7 @@ func getParams(pattern string) (p parsedParams) {
 			params = append(params, out[segIndex].Param)
 		} else {
 			// combine const segments
-			if segIndex > 0 && out[segIndex-1].IsParam == false {
+			if segIndex > 0 && !out[segIndex-1].IsParam {
 				segIndex--
 				out[segIndex].Const += "/" + aPattern[i]
 				// create new const segment
@@ -812,7 +812,7 @@ func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
 				i = partLen
 			}
 
-			if false == segment.IsOptional && i == 0 {
+			if !segment.IsOptional && i == 0 {
 				return nil, false
 			}
 
