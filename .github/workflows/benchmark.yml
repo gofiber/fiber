@@ -22,7 +22,7 @@ jobs:
       with:
         tool: 'go'
         output-file-path: output.txt
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         fail-on-alert: true
         comment-on-alert: true
         auto-push: true
