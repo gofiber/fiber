@@ -12,11 +12,6 @@ jobs:
       uses: actions/checkout@v2
     - name: Run Benchmark
       run: go test -benchmem -run=^$ -bench . | tee output.txt
-    - name: Get Previous Benchmark Results
-      uses: actions/cache@v1
-      with:
-        path: ./cache
-        key: ${{ runner.os }}-benchmark
     - name: Get Previous Benchark Result
       uses: actions/download-artifact@v2
       with:
