@@ -26,4 +26,4 @@ jobs:
         external-data-json-path: ./cache/benchmark-data.json
         fail-on-alert: true
         comment-on-alert: true
-        auto-push: true
+        auto-push: false
