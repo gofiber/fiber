@@ -27,9 +27,9 @@ jobs:
         fail-on-alert: true
         comment-on-alert: true
         auto-push: true
-    - name: Archive benchmark artifacts
-      if: ${{ success() }}
-      uses: actions/upload-artifact@v1
-      with:
-        name: benchark output
-        path: benchmark_output.txt
+    # - name: Archive benchmark artifacts
+    #   if: ${{ success() }}
+    #   uses: actions/upload-artifact@v1
+    #   with:
+    #     name: benchark output
+    #     path: benchmark_output.txt
