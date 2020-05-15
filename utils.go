@@ -19,6 +19,14 @@ import (
 	"unsafe"
 )
 
+func trimRight(s string, cutset byte) string {
+	lenStr := len(s)
+	for lenStr > 0 && s[lenStr-1] == cutset {
+		lenStr--
+	}
+	return s[:lenStr]
+}
+
 // AssertEqual checks if values are equal
 func assertEqual(t testing.TB, a interface{}, b interface{}, information ...string) {
 	if reflect.DeepEqual(a, b) {
@@ -214,6 +222,19 @@ var methodINT = map[string]int{
 	MethodOptions: 6,
 	MethodTrace:   7,
 	MethodPatch:   8,
+}
+
+// HTTP methods and their unique INTs
+var intMethod = map[int]string{
+	0: MethodGet,
+	1: MethodHead,
+	2: MethodPost,
+	3: MethodPut,
+	4: MethodDelete,
+	5: MethodConnect,
+	6: MethodOptions,
+	7: MethodTrace,
+	8: MethodPatch,
 }
 
 // HTTP status codes were copied from net/http.

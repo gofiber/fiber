@@ -52,8 +52,8 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		ctx.path = strings.ToLower(ctx.path)
 	}
 	// Strict routing
-	if !app.Settings.StrictRouting && len(ctx.path) > 1 {
-		ctx.path = strings.TrimRight(ctx.path, "/")
+	if !app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
+		ctx.path = trimRight(ctx.path, '/')
 	}
 	// Find match in stack
 	match := app.next(ctx)

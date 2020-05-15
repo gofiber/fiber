@@ -559,8 +559,6 @@ func (ctx *Ctx) Next(err ...error) {
 	if ctx.app == nil {
 		return
 	}
-	ctx.layer = nil
-	ctx.values = nil
 	if len(err) > 0 {
 		ctx.err = err[0]
 	}
