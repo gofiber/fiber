@@ -9,6 +9,11 @@ import (
 	"testing"
 )
 
+func Test_Utils_toUpper(t *testing.T) {
+	res := toUpper("/my/name/is/:param/*")
+	assertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
+}
+
 func Test_Utils_toLower(t *testing.T) {
 	res := toLower("/My/NaMe/Is/:PaRam/*")
 	assertEqual(t, "/my/name/is/:param/*", res)

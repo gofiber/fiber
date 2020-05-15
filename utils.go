@@ -78,7 +78,7 @@ func setETag(ctx *Ctx, weak bool) {
 		return
 	}
 	// Get ETag header from request
-	clientEtag := ctx.Get("If-None-Match")
+	clientEtag := ctx.Get(HeaderIfNoneMatch)
 
 	// Generate ETag for response
 	crc32q := crc32.MakeTable(0xD5828281)
