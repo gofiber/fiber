@@ -27,7 +27,8 @@ const toUpperTable = "\x00\x01\x02\x03\x04\x05\x06\a\b\t\n\v\f\r\x0e\x0f\x10\x11
 // To lower without allocation, use it wisely!
 // The result will hold no reference if Immmutable is disabled
 func toLower(b string) string {
-	res := dummyString[0:len(b):len(b)]
+	var res = make([]byte, len(b))
+	copy(res, b)
 	for i := range b {
 		res[i] = toLowerTable[b[i]]
 	}
@@ -37,7 +38,8 @@ func toLower(b string) string {
 // To upper without allocation, use it wisely!
 // The result will hold no reference if Immmutable is disabled
 func toUpper(b string) string {
-	res := dummyString[0:len(b):len(b)]
+	var res = make([]byte, len(b))
+	copy(res, b)
 	for i := range b {
 		res[i] = toUpperTable[b[i]]
 	}
