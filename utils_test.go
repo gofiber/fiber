@@ -85,21 +85,25 @@ func Test_Utils_getString(t *testing.T) {
 }
 
 func Test_Utils_getStringImmutable(t *testing.T) {
+	t.Parallel()
 	res := getStringImmutable([]byte("Hello, World!"))
 	assertEqual(t, "Hello, World!", res)
 }
 
 func Test_Utils_getBytes(t *testing.T) {
+	t.Parallel()
 	res := getBytes("Hello, World!")
 	assertEqual(t, []byte("Hello, World!"), res)
 }
 
 func Test_Utils_getBytesImmutable(t *testing.T) {
+	t.Parallel()
 	res := getBytesImmutable("Hello, World!")
 	assertEqual(t, []byte("Hello, World!"), res)
 }
 
 func Test_Utils_methodINT(t *testing.T) {
+	t.Parallel()
 	res := methodINT[MethodGet]
 	assertEqual(t, 0, res)
 	res = methodINT[MethodHead]
@@ -121,6 +125,7 @@ func Test_Utils_methodINT(t *testing.T) {
 }
 
 func Test_Utils_statusMessage(t *testing.T) {
+	t.Parallel()
 	res := statusMessage[102]
 	assertEqual(t, "Processing", res)
 
@@ -136,6 +141,7 @@ func Test_Utils_statusMessage(t *testing.T) {
 }
 
 func Test_Utils_extensionMIME(t *testing.T) {
+	t.Parallel()
 	res := extensionMIME[".html"]
 	assertEqual(t, "text/html", res)
 
@@ -154,6 +160,7 @@ func Test_Utils_extensionMIME(t *testing.T) {
 // }
 
 func Test_Utils_matchParams(t *testing.T) {
+	t.Parallel()
 	type testparams struct {
 		url    string
 		params []string

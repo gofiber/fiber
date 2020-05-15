@@ -21,6 +21,7 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 }
 
 func Test_App_Nested_Params(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -44,6 +45,7 @@ func Test_App_Nested_Params(t *testing.T) {
 }
 
 func Test_App_Use_Params(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Use("/prefix/:param", func(c *Ctx) {
@@ -65,6 +67,7 @@ func Test_App_Use_Params(t *testing.T) {
 }
 
 func Test_App_Use_Params_Group(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	group := app.Group("/prefix/:param/*")
@@ -82,6 +85,7 @@ func Test_App_Use_Params_Group(t *testing.T) {
 }
 
 func Test_App_Order(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -109,6 +113,7 @@ func Test_App_Order(t *testing.T) {
 	assertEqual(t, "123", string(body))
 }
 func Test_App_Methods(t *testing.T) {
+	t.Parallel()
 
 	var dummyHandler = func(c *Ctx) {}
 
@@ -150,6 +155,7 @@ func Test_App_Methods(t *testing.T) {
 }
 
 func Test_App_New(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Get("/", func(*Ctx) {
 
@@ -164,6 +170,7 @@ func Test_App_New(t *testing.T) {
 }
 
 func Test_App_Shutdown(t *testing.T) {
+	t.Parallel()
 	app := New(&Settings{
 		DisableStartupMessage: true,
 	})
@@ -171,6 +178,7 @@ func Test_App_Shutdown(t *testing.T) {
 }
 
 func Test_App_Static(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	grp := app.Group("/v1")
@@ -205,6 +213,7 @@ func Test_App_Static(t *testing.T) {
 }
 
 func Test_App_Group(t *testing.T) {
+	t.Parallel()
 	var dummyHandler = func(c *Ctx) {}
 
 	app := New()
@@ -255,6 +264,7 @@ func Test_App_Group(t *testing.T) {
 }
 
 func Test_App_Listen(t *testing.T) {
+	t.Parallel()
 	app := New(&Settings{
 		DisableStartupMessage: true,
 	})
@@ -274,6 +284,7 @@ func Test_App_Listen(t *testing.T) {
 }
 
 func Test_App_Serve(t *testing.T) {
+	t.Parallel()
 	app := New(&Settings{
 		DisableStartupMessage: true,
 		Prefork:               true,
