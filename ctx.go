@@ -516,7 +516,7 @@ func (ctx *Ctx) Links(link ...string) {
 			_, _ = bb.WriteString(`",`)
 		}
 	}
-	ctx.Fasthttp.Response.Header.Set(HeaderLink, strings.TrimSuffix(bb.String(), ","))
+	ctx.Fasthttp.Response.Header.Set(HeaderLink, trimRight(bb.String(), ','))
 	bytebufferpool.Put(bb)
 }
 
