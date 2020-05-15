@@ -49,7 +49,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	ctx.Fasthttp = rctx
 	// Case sensitive routing
 	if !app.Settings.CaseSensitive {
-		ctx.path = strings.ToLower(ctx.path)
+		ctx.path = toLower(ctx.path)
 	}
 	// Strict routing
 	if !app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
