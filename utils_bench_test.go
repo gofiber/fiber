@@ -15,12 +15,14 @@ import (
 // }
 
 func Benchmark_Utils_getGroupPath(b *testing.B) {
+	var res string
 	for n := 0; n < b.N; n++ {
-		_ = getGroupPath("/v1", "/")
-		_ = getGroupPath("/v1", "/api")
-		_ = getGroupPath("/v1", "/api/register/:project")
-		_ = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
+		res = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
+		res = getGroupPath("/v1", "/")
+		res = getGroupPath("/v1", "/api")
+		res = getGroupPath("/v1", "/api/register/:project")
 	}
+	assertEqual(b, "/v1/api/register/:project", res)
 }
 
 func Benchmark_Utils_getMIME(b *testing.B) {
