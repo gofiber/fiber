@@ -24,12 +24,14 @@ func Benchmark_Utils_getGroupPath(b *testing.B) {
 }
 
 func Benchmark_Utils_getMIME(b *testing.B) {
+	var res string
 	for n := 0; n < b.N; n++ {
-		_ = getMIME(".json")
-		_ = getMIME(".xml")
-		_ = getMIME("xml")
-		_ = getMIME("json")
+		res = getMIME(".json")
+		res = getMIME(".xml")
+		res = getMIME("xml")
+		res = getMIME("json")
 	}
+	assertEqual(b, "application/json", res)
 }
 
 // func Benchmark_Utils_getArgument(b *testing.B) {
@@ -40,66 +42,28 @@ func Benchmark_Utils_getMIME(b *testing.B) {
 // 	// TODO
 // }
 
-func Benchmark_Utils_getString(b *testing.B) {
-	raw := []byte("Hello, World!")
-	for n := 0; n < b.N; n++ {
-		_ = getString(raw)
-	}
-}
-
-func Benchmark_Utils_getStringImmutable(b *testing.B) {
-	raw := []byte("Hello, World!")
-	for n := 0; n < b.N; n++ {
-		_ = getStringImmutable(raw)
-	}
-}
-
-func Benchmark_Utils_getBytes(b *testing.B) {
-	raw := "Hello, World!"
-	for n := 0; n < b.N; n++ {
-		_ = getBytes(raw)
-	}
-}
-
-func Benchmark_Utils_getBytesImmutable(b *testing.B) {
-	raw := "Hello, World!"
-	for n := 0; n < b.N; n++ {
-		_ = getBytesImmutable(raw)
-	}
-}
-
-func Benchmark_Utils_methodINT(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		_ = methodINT[MethodGet]
-		_ = methodINT[MethodHead]
-		_ = methodINT[MethodPost]
-		_ = methodINT[MethodPut]
-		_ = methodINT[MethodPatch]
-		_ = methodINT[MethodDelete]
-		_ = methodINT[MethodConnect]
-		_ = methodINT[MethodOptions]
-		_ = methodINT[MethodTrace]
-	}
-}
-
 func Benchmark_Utils_statusMessage(b *testing.B) {
+	var res string
 	for n := 0; n < b.N; n++ {
-		_ = statusMessage[100]
-		_ = statusMessage[304]
-		_ = statusMessage[423]
-		_ = statusMessage[507]
+		res = statusMessage[100]
+		res = statusMessage[304]
+		res = statusMessage[423]
+		res = statusMessage[507]
 	}
+	assertEqual(b, "Insufficient Storage", res)
 }
 
 func Benchmark_Utils_extensionMIME(b *testing.B) {
+	var res string
 	for n := 0; n < b.N; n++ {
-		_ = extensionMIME[".json"]
-		_ = extensionMIME["json"]
-		_ = extensionMIME["xspf"]
-		_ = extensionMIME[".xspf"]
-		_ = extensionMIME["avi"]
-		_ = extensionMIME[".avi"]
+		res = extensionMIME[".json"]
+		res = extensionMIME["json"]
+		res = extensionMIME["xspf"]
+		res = extensionMIME[".xspf"]
+		res = extensionMIME["avi"]
+		res = extensionMIME[".avi"]
 	}
+	assertEqual(b, "video/x-msvideo", res)
 }
 
 // func Benchmark_Utils_getParams(b *testing.B) {
@@ -111,10 +75,12 @@ func Benchmark_Utils_extensionMIME(b *testing.B) {
 // }
 
 func Benchmark_Utils_getTrimmedParam(b *testing.B) {
+	var res string
 	for n := 0; n < b.N; n++ {
-		_ = getTrimmedParam(":param")
-		_ = getTrimmedParam(":param?")
+		res = getTrimmedParam(":param")
+		res = getTrimmedParam(":param?")
 	}
+	assertEqual(b, "param", res)
 }
 
 // func Benchmark_Utils_getCharPos(b *testing.B) {
