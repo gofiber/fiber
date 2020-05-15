@@ -4,8 +4,7 @@ jobs:
   Compare:
     strategy:
       matrix:
-        go-version: [1.11.x, 1.14.x]
-        platform: [ubuntu-latest, windows-latest]
+        go-version: 1.14.x
     runs-on: ubuntu-latest
     steps:
     - name: Install Go
