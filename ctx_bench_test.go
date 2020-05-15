@@ -85,7 +85,8 @@ func Benchmark_Ctx_BaseURL(b *testing.B) {
 	c := AcquireCtx(&fasthttp.RequestCtx{})
 	defer ReleaseCtx(c)
 
-	c.Fasthttp.Request.SetHost("google.com:1337/haha/oke/lol")
+	c.Fasthttp.Request.SetHost("google.com:1337")
+	c.Fasthttp.Request.URI().SetPath("/haha/oke/lol")
 
 	var res string
 	for n := 0; n < b.N; n++ {
