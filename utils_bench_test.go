@@ -131,3 +131,13 @@ func Benchmark_Utils_toLower(b *testing.B) {
 
 	assertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
 }
+func Benchmark_Utils_toUpper(b *testing.B) {
+	var path = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
+	var res string
+
+	for n := 0; n < b.N; n++ {
+		res = toUpper(path)
+	}
+
+	assertEqual(b, "/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS", res)
+}

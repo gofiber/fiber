@@ -538,7 +538,7 @@ func (ctx *Ctx) Location(path string) {
 // Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
 func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
-		method := strings.ToUpper(override[0])
+		method := toUpper(override[0])
 		if methodINT[method] == 0 && method != MethodGet {
 			log.Fatalf("Method: Invalid HTTP method override %s", method)
 		}

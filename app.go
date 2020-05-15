@@ -229,7 +229,7 @@ func (app *App) Patch(path string, handlers ...func(*Ctx)) *App {
 
 // Add ...
 func (app *App) Add(method, path string, handlers ...func(*Ctx)) *App {
-	method = strings.ToUpper(method)
+	method = toUpper(method)
 	if methodINT[method] == 0 && method != MethodGet {
 		log.Fatalf("Add: Invalid HTTP method %s", method)
 	}
@@ -294,7 +294,7 @@ func (grp *Group) Use(args ...interface{}) *Group {
 
 // Add : https://fiber.wiki/application#http-methods
 func (grp *Group) Add(method, path string, handlers ...func(*Ctx)) *Group {
-	method = strings.ToUpper(method)
+	method = toUpper(method)
 	if methodINT[method] == 0 && method != MethodGet {
 		log.Fatalf("Add: Invalid HTTP method %s", method)
 	}
