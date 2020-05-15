@@ -35,7 +35,7 @@ func assertEqual(t testing.TB, a interface{}, b interface{}, information ...stri
 		Error: 	 	Not equal
 		Expect: 	%v [%s]
 		Result: 	%v [%s]
-		Message:  %s`, t.Name(), filepath.Base(file), line, a, reflect.TypeOf(a).Name(), b, reflect.TypeOf(b).Name(), info)
+		Message:  	%s`, t.Name(), filepath.Base(file), line, a, reflect.TypeOf(a).Name(), b, reflect.TypeOf(b).Name(), info)
 }
 
 // Generate and set ETag header to response

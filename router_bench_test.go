@@ -4,7 +4,7 @@
 
 package fiber
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router -benchmem -count=3
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=3
 
 import (
 	"strings"
@@ -82,7 +82,7 @@ func Benchmark_Router_NextRoute(b *testing.B) {
 	c.Fasthttp.URI().SetPath("/user/keys/1337")
 
 	for n := 0; n < b.N; n++ {
-		routerBenchApp.nextRoute(c)
+		routerBenchApp.next(c)
 	}
 
 	assertEqual(b, len(githubAPI)+1, c.index-1)
@@ -129,8 +129,8 @@ func Benchmark_Router_First_Route(b *testing.B) {
 
 func matchRoute(method, path string) (match bool, values []string) {
 	mINT := methodINT[method]
-	for i := range routerBenchApp.routes[mINT] {
-		_, _ = routerBenchApp.routes[mINT][i].matchRoute(path)
+	for i := range routerBenchApp.stack[mINT] {
+		_, _ = routerBenchApp.stack[mINT][i].match(path)
 	}
 	return
 }

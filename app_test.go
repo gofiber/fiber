@@ -118,7 +118,7 @@ func Test_App_Methods(t *testing.T) {
 	testStatus200(t, app, "/john/doe", "CONNECT")
 
 	app.Put("/:john?/:doe?", dummyHandler)
-	testStatus200(t, app, "/john/doe", "CONNECT")
+	testStatus200(t, app, "/john/doe", "PUT")
 
 	app.Post("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", "POST")

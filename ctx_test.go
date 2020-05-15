@@ -238,7 +238,7 @@ func Test_Ctx_Get(t *testing.T) {
 
 	app.Get("/test", func(c *Ctx) {
 		assertEqual(t, "utf-8, iso-8859-1;q=0.5", c.Get("Accept-Charset"))
-		assertEqual(t, "Monster", c.Get("referrer"))
+		assertEqual(t, "Monster", c.Get("referer"))
 	})
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
