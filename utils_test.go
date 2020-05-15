@@ -19,11 +19,16 @@ func Test_Utils_toUpper(t *testing.T) {
 
 func Test_Utils_toLower(t *testing.T) {
 	t.Parallel()
-	assertEqual(t, "/my/name/is/:param/*", toLower("/My/NaMe/Is/:PaRam/*"))
-	assertEqual(t, "/amy/name/is/:param/*", toLower("/aMy/NaMe/Is/:PaRam/*"))
-	assertEqual(t, "/bmy/name/is/:param/*", toLower("/bMy/NaMe/Is/:PaRam/*"))
-	assertEqual(t, "/cmy/name/is/:param/*", toLower("/cMy/NaMe/Is/:PaRam/*"))
-	assertEqual(t, "/dmy/name/is/:param/*", toLower("/dMy/NaMe/Is/:PaRam/*"))
+	res := toLower("/MY/NAME/IS/:PARAM/*")
+	assertEqual(t, "/my/name/is/:param/*", res)
+	res = toLower("/MY1/NAME/IS/:PARAM/*")
+	assertEqual(t, "/my1/name/is/:param/*", res)
+	res = toLower("/MY2/NAME/IS/:PARAM/*")
+	assertEqual(t, "/my2/name/is/:param/*", res)
+	res = toLower("/MY3/NAME/IS/:PARAM/*")
+	assertEqual(t, "/my3/name/is/:param/*", res)
+	res = toLower("/MY4/NAME/IS/:PARAM/*")
+	assertEqual(t, "/my4/name/is/:param/*", res)
 }
 
 func Test_Utils_trimRight(t *testing.T) {
