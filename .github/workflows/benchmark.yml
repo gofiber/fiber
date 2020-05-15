@@ -7,7 +7,7 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v1
       with:
-        go-version: 1.14.x
+        go-version: [1.14.x]
     - name: Fetch Repository
       uses: actions/checkout@v2
     - name: Run Benchmark
@@ -26,4 +26,3 @@ jobs:
         fail-on-alert: true
         comment-on-alert: true
         auto-push: true
-
