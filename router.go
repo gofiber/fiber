@@ -86,11 +86,11 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) *App {
 	original := path
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		path = strings.ToLower(path)
+		path = toLower(path)
 	}
 	// Strict routing, remove last `/`
 	if !app.Settings.StrictRouting && len(path) > 1 {
-		path = strings.TrimRight(path, "/")
+		path = trimRight(path, '/')
 	}
 	// Is layer a middleware?
 	var isUse = method == "USE"
@@ -151,7 +151,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 	}
 	// in case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		prefix = strings.ToLower(prefix)
+		prefix = toLower(prefix)
 	}
 	// For security we want to restrict to the current work directory.
 	if len(root) == 0 {

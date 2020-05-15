@@ -120,3 +120,14 @@ func Benchmark_Utils_getTrimmedParam(b *testing.B) {
 // func Benchmark_Utils_getCharPos(b *testing.B) {
 // 	// TODO
 // }
+
+func Benchmark_Utils_toLower(b *testing.B) {
+	var path = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
+	var res string
+
+	for n := 0; n < b.N; n++ {
+		res = toLower(path)
+	}
+
+	assertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
+}
