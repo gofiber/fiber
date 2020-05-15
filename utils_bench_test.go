@@ -17,9 +17,9 @@ import (
 func Benchmark_Utils_getGroupPath(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
-		_ = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
-		_ = getGroupPath("/v1", "/")
-		_ = getGroupPath("/v1", "/api")
+		res = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
+		res = getGroupPath("/v1", "/")
+		res = getGroupPath("/v1", "/api")
 		res = getGroupPath("/v1", "/api/register/:project")
 	}
 	assertEqual(b, "/v1/api/register/:project", res)
@@ -28,9 +28,9 @@ func Benchmark_Utils_getGroupPath(b *testing.B) {
 func Benchmark_Utils_getMIME(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
-		_ = getMIME(".json")
-		_ = getMIME(".xml")
-		_ = getMIME("xml")
+		res = getMIME(".json")
+		res = getMIME(".xml")
+		res = getMIME("xml")
 		res = getMIME("json")
 	}
 	assertEqual(b, "application/json", res)
@@ -47,9 +47,9 @@ func Benchmark_Utils_getMIME(b *testing.B) {
 func Benchmark_Utils_statusMessage(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
-		_ = statusMessage[100]
-		_ = statusMessage[304]
-		_ = statusMessage[423]
+		res = statusMessage[100]
+		res = statusMessage[304]
+		res = statusMessage[423]
 		res = statusMessage[507]
 	}
 	assertEqual(b, "Insufficient Storage", res)
@@ -58,11 +58,11 @@ func Benchmark_Utils_statusMessage(b *testing.B) {
 func Benchmark_Utils_extensionMIME(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
-		_ = extensionMIME[".json"]
-		_ = extensionMIME["json"]
-		_ = extensionMIME["xspf"]
-		_ = extensionMIME[".xspf"]
-		_ = extensionMIME["avi"]
+		res = extensionMIME[".json"]
+		res = extensionMIME["json"]
+		res = extensionMIME["xspf"]
+		res = extensionMIME[".xspf"]
+		res = extensionMIME["avi"]
 		res = extensionMIME[".avi"]
 	}
 	assertEqual(b, "video/x-msvideo", res)
@@ -79,7 +79,7 @@ func Benchmark_Utils_extensionMIME(b *testing.B) {
 func Benchmark_Utils_getTrimmedParam(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
-		_ = getTrimmedParam(":param")
+		res = getTrimmedParam(":param")
 		res = getTrimmedParam(":param?")
 	}
 	assertEqual(b, "param", res)
