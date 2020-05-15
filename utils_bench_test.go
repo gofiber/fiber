@@ -72,10 +72,6 @@ func Benchmark_Utils_extensionMIME(b *testing.B) {
 // 	// TODO
 // }
 
-// func Benchmark_Utils_matchParams(b *testing.B) {
-// 	// TODO
-// }
-
 func Benchmark_Utils_getTrimmedParam(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
