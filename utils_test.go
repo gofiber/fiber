@@ -9,17 +9,25 @@ import (
 	"testing"
 )
 
+// go test -v ./... -run=Test_Utils_toLower -count=3
+
 func Test_Utils_toUpper(t *testing.T) {
+	t.Parallel()
 	res := toUpper("/my/name/is/:param/*")
 	assertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
 }
 
 func Test_Utils_toLower(t *testing.T) {
-	res := toLower("/My/NaMe/Is/:PaRam/*")
-	assertEqual(t, "/my/name/is/:param/*", res)
+	t.Parallel()
+	assertEqual(t, "/my/name/is/:param/*", toLower("/My/NaMe/Is/:PaRam/*"))
+	assertEqual(t, "/amy/name/is/:param/*", toLower("/aMy/NaMe/Is/:PaRam/*"))
+	assertEqual(t, "/bmy/name/is/:param/*", toLower("/bMy/NaMe/Is/:PaRam/*"))
+	assertEqual(t, "/cmy/name/is/:param/*", toLower("/cMy/NaMe/Is/:PaRam/*"))
+	assertEqual(t, "/dmy/name/is/:param/*", toLower("/dMy/NaMe/Is/:PaRam/*"))
 }
 
 func Test_Utils_trimRight(t *testing.T) {
+	t.Parallel()
 	res := trimRight("/test//////", '/')
 	assertEqual(t, "/test", res)
 }
@@ -33,6 +41,7 @@ func Test_Utils_trimRight(t *testing.T) {
 // }
 
 func Test_Utils_getGroupPath(t *testing.T) {
+	t.Parallel()
 	res := getGroupPath("/v1", "/")
 	assertEqual(t, "/v1", res)
 
@@ -47,6 +56,7 @@ func Test_Utils_getGroupPath(t *testing.T) {
 }
 
 func Test_Utils_getMIME(t *testing.T) {
+	t.Parallel()
 	res := getMIME(".json")
 	assertEqual(t, "application/json", res)
 
@@ -69,6 +79,7 @@ func Test_Utils_getMIME(t *testing.T) {
 // }
 
 func Test_Utils_getString(t *testing.T) {
+	t.Parallel()
 	res := getString([]byte("Hello, World!"))
 	assertEqual(t, "Hello, World!", res)
 }
