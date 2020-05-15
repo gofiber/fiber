@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -100,28 +99,8 @@ func Benchmark_Utils_toLower(b *testing.B) {
 
 	assertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
 }
-func Benchmark_Utils_toLower_default(b *testing.B) {
-	var path = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
-	var res string
 
-	for n := 0; n < b.N; n++ {
-		res = strings.ToLower(path)
-	}
-
-	assertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
-}
 func Benchmark_Utils_toUpper(b *testing.B) {
-	var path = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
-	var res string
-
-	for n := 0; n < b.N; n++ {
-		res = strings.ToUpper(path)
-	}
-
-	assertEqual(b, "/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS", res)
-}
-
-func Benchmark_Utils_toUpper_default(b *testing.B) {
 	var path = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
 	var res string
 
