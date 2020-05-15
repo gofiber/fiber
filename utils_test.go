@@ -9,6 +9,16 @@ import (
 	"testing"
 )
 
+func Test_Utils_toLower(t *testing.T) {
+	res := toLower("/My/NaMe/Is/:PaRam/*")
+	assertEqual(t, "/my/name/is/:param/*", res)
+}
+
+func Test_Utils_trimRight(t *testing.T) {
+	res := trimRight("/test//////", '/')
+	assertEqual(t, "/test", res)
+}
+
 // func Test_Utils_assertEqual(t *testing.T) {
 // 	// TODO
 // }
