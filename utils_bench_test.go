@@ -40,10 +40,6 @@ func Benchmark_Utils_getMIME(b *testing.B) {
 // 	// TODO
 // }
 
-// func Benchmark_Utils_parseTokenList(b *testing.B) {
-// 	// TODO
-// }
-
 func Benchmark_Utils_statusMessage(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
