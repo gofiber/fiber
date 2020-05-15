@@ -86,7 +86,7 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) *App {
 	original := path
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		path = strings.ToLower(path)
+		path = toLower(path)
 	}
 	// Strict routing, remove last `/`
 	if !app.Settings.StrictRouting && len(path) > 1 {
