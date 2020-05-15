@@ -47,7 +47,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	ctx.app = app
 	// Attach fasthttp RequestCtx
 	ctx.Fasthttp = rctx
-	// Case sensitive routing
+	// In case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
 		ctx.path = toLower(ctx.path)
 	}
@@ -86,7 +86,7 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) *App {
 	original := path
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		path = strings.ToLower(path)
+		path = toLower(path)
 	}
 	// Strict routing, remove last `/`
 	if !app.Settings.StrictRouting && len(path) > 1 {
@@ -149,7 +149,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		wildcard = true
 		prefix = "/"
 	}
-	// Case sensitive routing, all to lowercase
+	// in case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
 		prefix = strings.ToLower(prefix)
 	}
