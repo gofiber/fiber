@@ -445,8 +445,8 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	if len(msTimeout) > 0 {
 		timeout = msTimeout[0]
 	}
-	// Add Content-Length if not provided
-	if request.Header.Get("Content-Length") == "" {
+	// Add Content-Length if not provided with body
+	if request.Body != http.NoBody && request.Header.Get("Content-Length") == "" {
 		request.Header.Add("Content-Length", strconv.FormatInt(request.ContentLength, 10))
 	}
 	// Dump raw http request
