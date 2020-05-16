@@ -25,6 +25,7 @@ func Test_Ctx_Accepts(t *testing.T) {
 
 	app.Get("/test", func(c *Ctx) {
 		assertEqual(t, "", c.Accepts(""))
+		assertEqual(t, "", c.Accepts())
 		assertEqual(t, ".xml", c.Accepts(".xml"))
 		assertEqual(t, "", c.Accepts(".john"))
 	})
@@ -33,6 +34,42 @@ func Test_Ctx_Accepts(t *testing.T) {
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9")
 
 	resp, err := app.Test(req)
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, 200, resp.StatusCode, "Status code")
+}
+func Test_Ctx_Accepts_EmptyAccept(t *testing.T) {
+	app := New()
+	app.Get("/testEmptyHeader", func(c *Ctx) {
+		assertEqual(t, ".forwarded", c.Accepts(".forwarded"))
+	})
+	req := httptest.NewRequest("GET", "/testEmptyHeader", nil)
+	resp, err := app.Test(req)
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, 200, resp.StatusCode, "Status code")
+}
+func Test_Ctx_Accepts_Wildcard(t *testing.T) {
+	app := New()
+
+	app.Get("/singleWildcard", func(c *Ctx) {
+		assertEqual(t, "xml", c.Accepts("xml"))
+	})
+	app.Get("/doubleWildcard", func(c *Ctx) {
+		assertEqual(t, "html", c.Accepts("html"))
+		assertEqual(t, "foo", c.Accepts("foo"))
+		assertEqual(t, ".bar", c.Accepts(".bar"))
+	})
+
+	req := httptest.NewRequest("GET", "/singleWildcard", nil)
+	req.Header.Set("Accept", "text/html,application/*;q=0.9")
+
+	resp, err := app.Test(req)
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, 200, resp.StatusCode, "Status code")
+
+	req = httptest.NewRequest("GET", "/doubleWildcard", nil)
+	req.Header.Set("Accept", "*/*;q=0.9")
+
+	resp, err = app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
@@ -562,12 +599,14 @@ func Test_Ctx_Append(t *testing.T) {
 		c.Append("X-Test", "Hello")
 		c.Append("X-Test", "World")
 		c.Append("X-Test", "Hello", "World")
+		c.Append("X-Custom-Header")
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 	assertEqual(t, "Hello, World", resp.Header.Get("X-Test"))
+	assertEqual(t, "", resp.Header.Get("X-Custom-Header"))
 }
 func Test_Ctx_Attachment(t *testing.T) {
 	app := New()

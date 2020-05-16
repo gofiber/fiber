@@ -111,21 +111,17 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 	}
 
 	specs := strings.Split(h, ",")
-	for i := range offers {
-		mimetype := getMIME(offers[i])
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
+	for _, offer := range offers {
+		mimetype := getMIME(offer)
+		for _, spec := range specs {
+			spec := strings.TrimSpace(spec)
 			if strings.HasPrefix(spec, "*/*") {
-				return offers[i]
-			}
-
-			if strings.HasPrefix(spec, mimetype) {
-				return offers[i]
-			}
-
-			if strings.Contains(spec, "/*") {
+				return offer
+			} else if strings.HasPrefix(spec, mimetype) {
+				return offer
+			} else if strings.Contains(spec, "/*") {
 				if strings.HasPrefix(spec, strings.Split(mimetype, "/")[0]) {
-					return offers[i]
+					return offer
 				}
 			}
 		}

@@ -155,14 +155,13 @@ func getOffer(header string, offers ...string) string {
 	}
 
 	specs := strings.Split(header, ",")
-	for i := range offers {
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
+	for _, offer := range offers {
+		for _, spec := range specs {
+			spec := strings.TrimSpace(spec)
 			if strings.HasPrefix(spec, "*") {
-				return offers[i]
-			}
-			if strings.HasPrefix(spec, offers[i]) {
-				return offers[i]
+				return offer
+			} else if strings.HasPrefix(spec, offer) {
+				return offer
 			}
 		}
 	}
