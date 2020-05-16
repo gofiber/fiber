@@ -50,6 +50,22 @@ func trimRight(s string, cutset byte) string {
 	return s[:lenStr]
 }
 
+func trimSpace(s string) string {
+	i, j := 0, len(s)-1
+	for ; i < j; i++ {
+		if s[i] != ' ' {
+			break
+		}
+	}
+	for ; i < j; j-- {
+		if s[j] != ' ' {
+			break
+		}
+	}
+
+	return s[i : j+1]
+}
+
 // AssertEqual checks if values are equal
 func assertEqual(t testing.TB, a interface{}, b interface{}, information ...string) {
 	if reflect.DeepEqual(a, b) {
@@ -149,23 +165,35 @@ func getArgument(arg string) bool {
 func getOffer(header string, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
-	}
-	if header == "" {
+	} else if header == "" {
 		return offers[0]
 	}
 
-	specs := strings.Split(header, ",")
-	for i := range offers {
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
-			if strings.HasPrefix(spec, "*") {
-				return offers[i]
-			}
-			if strings.HasPrefix(spec, offers[i]) {
-				return offers[i]
+	spec, commaPos := "", 0
+	for len(header) > 0 && commaPos != -1 {
+		commaPos = strings.IndexByte(header, ',')
+		if commaPos != -1 {
+			spec = trimSpace(header[:commaPos])
+		} else {
+			spec = header
+		}
+		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
+			spec = spec[:factorSign]
+		}
+
+		for _, offer := range offers {
+			// has star prefix
+			if len(spec) >= 1 && spec[len(spec)-1] == '*' {
+				return offer
+			} else if strings.HasPrefix(spec, offer) {
+				return offer
 			}
 		}
+		if commaPos != -1 {
+			header = header[commaPos+1:]
+		}
 	}
+
 	return ""
 }
 

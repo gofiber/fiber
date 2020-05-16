@@ -105,31 +105,40 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	}
-	h := ctx.Get(HeaderAccept)
-	if h == "" {
+	header := ctx.Get(HeaderAccept)
+	if header == "" {
 		return offers[0]
 	}
 
-	specs := strings.Split(h, ",")
-	for i := range offers {
-		mimetype := getMIME(offers[i])
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
-			if strings.HasPrefix(spec, "*/*") {
-				return offers[i]
-			}
+	spec, commaPos := "", 0
+	for len(header) > 0 && commaPos != -1 {
+		commaPos = strings.IndexByte(header, ',')
+		if commaPos != -1 {
+			spec = trimSpace(header[:commaPos])
+		} else {
+			spec = header
+		}
+		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
+			spec = spec[:factorSign]
+		}
 
-			if strings.HasPrefix(spec, mimetype) {
-				return offers[i]
-			}
-
-			if strings.Contains(spec, "/*") {
-				if strings.HasPrefix(spec, strings.Split(mimetype, "/")[0]) {
-					return offers[i]
+		for _, offer := range offers {
+			mimetype := getMIME(offer)
+			if len(spec) > 2 && spec[len(spec)-2:] == "/*" {
+				if strings.HasPrefix(spec[:len(spec)-2], strings.Split(mimetype, "/")[0]) {
+					return offer
+				} else if spec == "*/*" {
+					return offer
 				}
+			} else if strings.HasPrefix(spec, mimetype) {
+				return offer
 			}
 		}
+		if commaPos != -1 {
+			header = header[commaPos+1:]
+		}
 	}
+
 	return ""
 }
 
@@ -433,7 +442,7 @@ func (ctx *Ctx) IP() string {
 func (ctx *Ctx) IPs() []string {
 	ips := strings.Split(ctx.Get(HeaderXForwardedFor), ",")
 	for i := range ips {
-		ips[i] = strings.TrimSpace(ips[i])
+		ips[i] = trimSpace(ips[i])
 	}
 	return ips
 }
