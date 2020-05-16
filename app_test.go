@@ -109,7 +109,6 @@ func Test_App_Order(t *testing.T) {
 	assertEqual(t, "123", string(body))
 }
 func Test_App_Methods(t *testing.T) {
-
 	var dummyHandler = func(c *Ctx) {}
 
 	app := New()
