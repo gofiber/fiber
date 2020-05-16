@@ -12,101 +12,65 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
-// Route metadata
-type Route struct {
-	// Internal fields
-	use    bool         // USE matches path prefixes
-	star   bool         // Path equals '*' or '/*'
-	root   bool         // Path equals '/'
-	parsed parsedParams // parsed contains parsed params segments
-
-	// External fields for ctx.Route() method
-	Path    string     // Registered route path
-	Method  string     // HTTP method
-	Params  []string   // Slice containing the params names
-	Handler func(*Ctx) // Ctx handler
-}
-
-func (app *App) nextRoute(ctx *Ctx) {
-	mINT := methodINT[ctx.method]
+func (app *App) next(ctx *Ctx) bool {
+	// TODO set unique INT within handler(), not here over and over again
+	method := methodINT[ctx.method]
 	// Get stack length
-	lenr := len(app.routes[mINT]) - 1
-	// Loop over stack starting from previous index
+	lenr := len(app.stack[method]) - 1
+	// Loop over the layer stack starting from previous index
 	for ctx.index < lenr {
 		// Increment stack index
 		ctx.index++
 		// Get *Route
-		route := app.routes[mINT][ctx.index]
+		layer := app.stack[method][ctx.index]
 		// Check if it matches the request path
-		match, values := route.matchRoute(ctx.path)
+		match, values := layer.match(ctx.path)
 		// No match, continue
 		if !match {
 			continue
 		}
-		// Match! Set route and param values to Ctx
-		ctx.route = route
+		// Pass layer and param values to Ctx
+		ctx.layer = layer
 		ctx.values = values
-		// Execute handler
-		route.Handler(ctx)
-		// Generate ETag if enabled
-		if app.Settings.ETag {
-			setETag(ctx, false)
-		}
-		return
+		// Execute Ctx handler
+		layer.Handler(ctx)
+		// Stop looping the stack
+		return true
 	}
-	// Send a 404 by default if no route is matched
-	if len(ctx.Fasthttp.Response.Body()) == 0 {
-		ctx.SendStatus(404)
-	}
+	return false
 }
 
-func (r *Route) matchRoute(path string) (match bool, values []string) {
-	if r.use {
-		if r.root || strings.HasPrefix(path, r.Path) {
-			return true, values
-		}
-		// Check for a simple path match
-	} else if len(r.Path) == len(path) && r.Path == path {
-		return true, values
-		// Middleware routes allow prefix matches
-	} else if r.root && path == "/" {
-		return true, values
-	}
-	// '*' wildcard matches any path
-	if r.star {
-		return true, []string{path}
-	}
-	// Does this route have parameters
-	if len(r.Params) > 0 {
-		// Match params
-		if values, match = r.parsed.getMatch(path, r.use); match {
-			return
-		}
-	}
-	// No match
-	return false, values
-}
-
-func (app *App) handler(fctx *fasthttp.RequestCtx) {
-	// get fiber context from sync pool
-	ctx := AcquireCtx(fctx)
-	defer ReleaseCtx(ctx)
+func (app *App) handler(rctx *fasthttp.RequestCtx) {
+	// Acquire Ctx with fasthttp request from pool
+	ctx := AcquireCtx(rctx)
 	// Attach app poiner to access the routes
 	ctx.app = app
-	// Case sensitive routing
+	// Attach fasthttp RequestCtx
+	ctx.Fasthttp = rctx
+	// In case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		ctx.path = strings.ToLower(ctx.path)
+		ctx.path = toLower(ctx.path)
 	}
 	// Strict routing
-	if !app.Settings.StrictRouting && len(ctx.path) > 1 {
-		ctx.path = strings.TrimRight(ctx.path, "/")
+	if !app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
+		ctx.path = trimRight(ctx.path, '/')
 	}
-	// Find route
-	app.nextRoute(ctx)
+	// Find match in stack
+	match := app.next(ctx)
+	// Generate ETag if enabled
+	if app.Settings.ETag {
+		setETag(ctx, false)
+	}
+	// Send a 404 by default if no layer matched
+	if !match {
+		ctx.SendStatus(404)
+	}
+	// Release Ctx
+	ReleaseCtx(ctx)
 }
 
-func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
-	// Route requires atleast one handler
+func (app *App) register(method, path string, handlers ...func(*Ctx)) *App {
+	// A layer requires atleast one ctx handler
 	if len(handlers) == 0 {
 		log.Fatalf("Missing handler in route")
 	}
@@ -114,7 +78,7 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	if path == "" {
 		path = "/"
 	}
-	// Path always start with a '/' or '*'
+	// Path always start with a '/'
 	if path[0] != '/' {
 		path = "/" + path
 	}
@@ -122,53 +86,52 @@ func (app *App) registerMethod(method, path string, handlers ...func(*Ctx)) {
 	original := path
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		path = strings.ToLower(path)
+		path = toLower(path)
 	}
 	// Strict routing, remove last `/`
 	if !app.Settings.StrictRouting && len(path) > 1 {
-		path = strings.TrimRight(path, "/")
+		path = trimRight(path, '/')
 	}
-	// Set route booleans
+	// Is layer a middleware?
 	var isUse = method == "USE"
-	// Middleware / All allows all HTTP methods
-	if isUse || method == "ALL" {
-		method = "*"
-	}
+	// Is path a direct wildcard?
 	var isStar = path == "/*"
-	// Middleware containing only a `/` equals wildcard
-	// if isUse && path == "/" {
-	// 	isStar = true
-	// }
+	// Is path a root slash?
 	var isRoot = path == "/"
-	// Route properties
+	// Parse path parameters
 	var isParsed = getParams(original)
+	// Loop over handlers
 	for i := range handlers {
-		route := &Route{
+		// Set layer metadata
+		layer := &Layer{
+			// Internals
 			use:    isUse,
 			star:   isStar,
 			root:   isRoot,
 			parsed: isParsed,
-
+			// Externals
 			Path:    path,
 			Method:  method,
 			Params:  isParsed.params,
 			Handler: handlers[i],
 		}
-		if method == "*" {
-			// Add handler to all HTTP methods
+		// Middleware layer matches all HTTP methods
+		if isUse {
+			// Add layer to all HTTP methods stack
 			for m := range methodINT {
-				app.addRoute(m, route)
+				app.addLayer(m, layer)
 			}
+			// Skip to next handler
 			continue
 		}
-		// Add route to stack
-		app.addRoute(method, route)
-		// Add route to HEAD method if GET
+		// Add layer to stack
+		app.addLayer(method, layer)
+		// Also add GET layer to HEAD
 		if method == MethodGet {
-			app.addRoute(MethodHead, route)
+			app.addLayer(MethodHead, layer)
 		}
-
 	}
+	return app
 }
 
 func (app *App) registerStatic(prefix, root string, config ...Static) {
@@ -186,9 +149,9 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		wildcard = true
 		prefix = "/"
 	}
-	// Case sensitive routing, all to lowercase
+	// in case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		prefix = strings.ToLower(prefix)
+		prefix = toLower(prefix)
 	}
 	// For security we want to restrict to the current work directory.
 	if len(root) == 0 {
@@ -233,7 +196,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		}
 	}
 	fileHandler := fs.NewRequestHandler()
-	route := &Route{
+	layer := &Layer{
 		use:    true,
 		root:   isRoot,
 		Method: "*",
@@ -256,12 +219,14 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 			c.Next()
 		},
 	}
-	// Add route to stack
-	app.addRoute(MethodGet, route)
-	app.addRoute(MethodHead, route)
+	// Add layer to stack
+	app.addLayer(MethodGet, layer)
+	app.addLayer(MethodHead, layer)
 }
 
-func (app *App) addRoute(method string, route *Route) {
+func (app *App) addLayer(method string, layer *Layer) {
+	// Get unique HTTP method indentifier
 	m := methodINT[method]
-	app.routes[m] = append(app.routes[m], route)
+	// Add layer to the stack
+	app.stack[m] = append(app.stack[m], layer)
 }
