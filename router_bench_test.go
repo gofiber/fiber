@@ -4,10 +4,11 @@
 
 package fiber
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router -benchmem -count=3
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=3
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -coverprofile=data.prof
+// go tool pprof web C:\Users\Work\Documents\GitHub\fiber\data.mem
 
 import (
-	"strings"
 	"testing"
 
 	fasthttp "github.com/valyala/fasthttp"
@@ -46,28 +47,20 @@ func Benchmark_Router_CaseSensitive(b *testing.B) {
 	var res string
 
 	for n := 0; n < b.N; n++ {
-		res = strings.ToLower(path)
+		//res = strings.ToLower(path)
+		res = toLower(path)
 	}
 
 	assertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
 }
 
-func Benchmark_Router_StrictRouting(b *testing.B) {
-	var path = "/repos/gofiber/fiber/issues/187643/comments/"
-	var res string
-
-	for n := 0; n < b.N; n++ {
-		res = strings.TrimRight(path, "/")
-	}
-
-	assertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
-}
-
+// go test -v ./... -run=^$ -bench=Benchmark_Router_StrictRouting -benchmem -count 6
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count 6
 func Benchmark_Router_Handler(b *testing.B) {
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/user/keys/1337")
+	c.URI().SetPath("/UsEr/KeYs/1337")
 
 	for n := 0; n < b.N; n++ {
 		routerBenchApp.handler(c)
@@ -82,7 +75,7 @@ func Benchmark_Router_NextRoute(b *testing.B) {
 	c.Fasthttp.URI().SetPath("/user/keys/1337")
 
 	for n := 0; n < b.N; n++ {
-		routerBenchApp.nextRoute(c)
+		routerBenchApp.next(c)
 	}
 
 	assertEqual(b, len(githubAPI)+1, c.index-1)
@@ -129,8 +122,8 @@ func Benchmark_Router_First_Route(b *testing.B) {
 
 func matchRoute(method, path string) (match bool, values []string) {
 	mINT := methodINT[method]
-	for i := range routerBenchApp.routes[mINT] {
-		_, _ = routerBenchApp.routes[mINT][i].matchRoute(path)
+	for i := range routerBenchApp.stack[mINT] {
+		_, _ = routerBenchApp.stack[mINT][i].match(path)
 	}
 	return
 }

@@ -238,7 +238,7 @@ func Test_Ctx_Get(t *testing.T) {
 
 	app.Get("/test", func(c *Ctx) {
 		assertEqual(t, "utf-8, iso-8859-1;q=0.5", c.Get("Accept-Charset"))
-		assertEqual(t, "Monster", c.Get("referrer"))
+		assertEqual(t, "Monster", c.Get("referer"))
 	})
 	req := httptest.NewRequest("GET", "/test", nil)
 	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
@@ -290,6 +290,7 @@ func Test_Ctx_IPs(t *testing.T) {
 }
 
 // func Test_Ctx_Is(t *testing.T) {
+//	t.Parallel()
 // 	app := New()
 // 	app.Get("/test", func(c *Ctx) {
 // 		c.Is(".json")
@@ -812,9 +813,10 @@ func Test_Ctx_Redirect(t *testing.T) {
 	assertEqual(t, 301, resp.StatusCode, "Status code")
 	assertEqual(t, "http://example.com", resp.Header.Get("Location"))
 }
-func Test_Ctx_Render(t *testing.T) {
-	// TODO
-}
+
+// func Test_Ctx_Render(t *testing.T) {
+// 	// TODO
+// }
 func Test_Ctx_Send(t *testing.T) {
 	app := New()
 
