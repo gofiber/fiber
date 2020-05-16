@@ -32,6 +32,13 @@ func toLower(b string) string {
 	return getString(res)
 }
 
+func toLowerBytes(b []byte) []byte {
+	for i := 0; i < len(b); i++ {
+		b[i] = toLowerTable[b[i]]
+	}
+	return b
+}
+
 func toUpper(b string) string {
 	var res = make([]byte, len(b))
 	copy(res, b)
