@@ -25,22 +25,20 @@ import (
 )
 
 // Version of current package
-const Version = "1.9.7"
+const Version = "1.10.0"
 
-// Map is a shortcut for map[string]interface{}
+// Map is a shortcut for map[string]interface{}, usefull for JSON returns
 type Map map[string]interface{}
 
 // App denotes the Fiber application.
 type App struct {
-	// Internal fields
-	routes [][]*Route // Route stack
-
-	// External fields
-	Settings *Settings // Fiber settings
-
+	// Layer stack
+	stack [][]*Layer
 	// Fasthttp server
-	mutex  sync.Mutex       // Mutual exclusion
-	server *fasthttp.Server // FastHTTP server
+	server *fasthttp.Server
+	mutex  sync.Mutex
+	// App settings
+	Settings *Settings
 }
 
 // Settings holds is a struct holding the server settings
@@ -69,6 +67,7 @@ type Settings struct {
 	DisableDefaultDate bool // default: false
 	// When set to true, causes the default Content-Type header to be excluded from the Response.
 	DisableDefaultContentType bool // default: false
+	DisableHeaderNormalizing  bool // default: false
 	// When set to true, it will not print out the fiber ASCII and "listening" on message
 	DisableStartupMessage bool
 	// Folder containing template files
@@ -120,7 +119,7 @@ func New(settings ...*Settings) *App {
 	// Create app
 	app := new(App)
 	// Create route stack
-	app.routes = make([][]*Route, len(methodINT))
+	app.stack = make([][]*Layer, len(methodINT))
 	// Create settings
 	app.Settings = new(Settings)
 	// Set default settings
@@ -143,16 +142,102 @@ func New(settings ...*Settings) *App {
 			getBytes = getBytesImmutable
 		}
 	}
-	// Update fiber server settings with fasthttp server
-	app.updateSettings()
+	// Create server
+	app.init()
 	// Return application
 	return app
+}
+
+// Use registers a middleware route.
+// Middleware matches requests beginning with the provided prefix.
+// Providing a prefix is optional, it defaults to "/".
+//
+// - app.Use(handler)
+// - app.Use("/api", handler)
+// - app.Use("/api", handler, handler)
+func (app *App) Use(args ...interface{}) *App {
+	var prefix string
+	var handlers []func(*Ctx)
+
+	for i := 0; i < len(args); i++ {
+		switch arg := args[i].(type) {
+		case string:
+			prefix = arg
+		case func(*Ctx):
+			handlers = append(handlers, arg)
+		default:
+			log.Fatalf("Use: Invalid func(c *fiber.Ctx) handler %v", reflect.TypeOf(arg))
+		}
+	}
+	return app.register("USE", prefix, handlers...)
+}
+
+// All ...
+func (app *App) All(path string, handlers ...func(*Ctx)) *App {
+	for m := range methodINT {
+		app.register(m, path, handlers...)
+	}
+	return app
+}
+
+// Get ...
+func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
+	return app.register(MethodGet, path, handlers...)
+}
+
+// Head ...
+func (app *App) Head(path string, handlers ...func(*Ctx)) *App {
+	return app.register(MethodHead, path, handlers...)
+}
+
+// Post ...
+func (app *App) Post(path string, handlers ...func(*Ctx)) *App {
+	return app.register(MethodPost, path, handlers...)
+}
+
+// Put ...
+func (app *App) Put(path string, handlers ...func(*Ctx)) *App {
+	return app.register(MethodPut, path, handlers...)
+}
+
+// Delete ...
+func (app *App) Delete(path string, handlers ...func(*Ctx)) *App {
+	return app.register(MethodDelete, path, handlers...)
+}
+
+// Connect ...
+func (app *App) Connect(path string, handlers ...func(*Ctx)) *App {
+	return app.register(MethodConnect, path, handlers...)
+}
+
+// Options ...
+func (app *App) Options(path string, handlers ...func(*Ctx)) *App {
+	return app.register(MethodOptions, path, handlers...)
+}
+
+// Trace ...
+func (app *App) Trace(path string, handlers ...func(*Ctx)) *App {
+	return app.register(MethodTrace, path, handlers...)
+}
+
+// Patch ...
+func (app *App) Patch(path string, handlers ...func(*Ctx)) *App {
+	return app.register(MethodPatch, path, handlers...)
+}
+
+// Add ...
+func (app *App) Add(method, path string, handlers ...func(*Ctx)) *App {
+	method = toUpper(method)
+	if methodINT[method] == 0 && method != MethodGet {
+		log.Fatalf("Add: Invalid HTTP method %s", method)
+	}
+	return app.register(method, path, handlers...)
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
 func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 	if len(handlers) > 0 {
-		app.registerMethod("USE", prefix, handlers...)
+		app.register("USE", prefix, handlers...)
 	}
 	return &Group{
 		prefix: prefix,
@@ -166,101 +251,11 @@ func (app *App) Static(prefix, root string, config ...Static) *App {
 	return app
 }
 
-// Use registers a middleware route.
-// Middleware matches requests beginning with the provided prefix.
-// Providing a prefix is optional, it defaults to "/"
-func (app *App) Use(args ...interface{}) *App {
-	var path = ""
-	var handlers []func(*Ctx)
-	for i := 0; i < len(args); i++ {
-		switch arg := args[i].(type) {
-		case string:
-			path = arg
-		case func(*Ctx):
-			handlers = append(handlers, arg)
-		default:
-			log.Fatalf("Invalid handler: %v", reflect.TypeOf(arg))
-		}
-	}
-	app.registerMethod("USE", path, handlers...)
-	return app
-}
-
-// Add : https://fiber.wiki/application#http-methods
-func (app *App) Add(method, path string, handlers ...func(*Ctx)) *App {
-	method = strings.ToUpper(method)
-	if methodINT[method] == 0 && method != "GET" {
-		log.Fatalf("Add: Invalid HTTP method %s", method)
-	}
-	app.registerMethod(method, path, handlers...)
-	return app
-}
-
-// Connect : https://fiber.wiki/application#http-methods
-func (app *App) Connect(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(MethodConnect, path, handlers...)
-	return app
-}
-
-// Put : https://fiber.wiki/application#http-methods
-func (app *App) Put(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(MethodPut, path, handlers...)
-	return app
-}
-
-// Post : https://fiber.wiki/application#http-methods
-func (app *App) Post(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(MethodPost, path, handlers...)
-	return app
-}
-
-// Delete : https://fiber.wiki/application#http-methods
-func (app *App) Delete(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(MethodDelete, path, handlers...)
-	return app
-}
-
-// Head : https://fiber.wiki/application#http-methods
-func (app *App) Head(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(MethodHead, path, handlers...)
-	return app
-}
-
-// Patch : https://fiber.wiki/application#http-methods
-func (app *App) Patch(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(MethodPatch, path, handlers...)
-	return app
-}
-
-// Options : https://fiber.wiki/application#http-methods
-func (app *App) Options(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(MethodOptions, path, handlers...)
-	return app
-}
-
-// Trace : https://fiber.wiki/application#http-methods
-func (app *App) Trace(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(MethodTrace, path, handlers...)
-	return app
-}
-
-// Get : https://fiber.wiki/application#http-methods
-func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod(MethodGet, path, handlers...)
-	return app
-}
-
-// All matches all HTTP methods and complete paths
-func (app *App) All(path string, handlers ...func(*Ctx)) *App {
-	app.registerMethod("ALL", path, handlers...)
-	return app
-}
-
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
 func (grp *Group) Group(prefix string, handlers ...func(*Ctx)) *Group {
 	prefix = getGroupPath(grp.prefix, prefix)
 	if len(handlers) > 0 {
-		grp.app.registerMethod("USE", prefix, handlers...)
+		grp.app.register("USE", prefix, handlers...)
 	}
 	return &Group{
 		prefix: prefix,
@@ -288,80 +283,82 @@ func (grp *Group) Use(args ...interface{}) *Group {
 		case func(*Ctx):
 			handlers = append(handlers, arg)
 		default:
-			log.Fatalf("Invalid Use() arguments, must be (prefix, handler) or (handler)")
+			//log.Fatalf("Invalid Use() arguments, must be (prefix, handler) or (handler)")
 		}
 	}
-	grp.app.registerMethod("USE", getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register("USE", getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Add : https://fiber.wiki/application#http-methods
 func (grp *Group) Add(method, path string, handlers ...func(*Ctx)) *Group {
-	method = strings.ToUpper(method)
-	if methodINT[method] == 0 && method != "GET" {
+	method = toUpper(method)
+	if methodINT[method] == 0 && method != MethodGet {
 		log.Fatalf("Add: Invalid HTTP method %s", method)
 	}
-	grp.app.registerMethod(method, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Connect : https://fiber.wiki/application#http-methods
 func (grp *Group) Connect(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodConnect, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(MethodConnect, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Put : https://fiber.wiki/application#http-methods
 func (grp *Group) Put(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodPut, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(MethodPut, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Post : https://fiber.wiki/application#http-methods
 func (grp *Group) Post(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodPost, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(MethodPost, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Delete : https://fiber.wiki/application#http-methods
 func (grp *Group) Delete(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodDelete, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(MethodDelete, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Head : https://fiber.wiki/application#http-methods
 func (grp *Group) Head(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodHead, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(MethodHead, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Patch : https://fiber.wiki/application#http-methods
 func (grp *Group) Patch(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodPatch, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(MethodPatch, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Options : https://fiber.wiki/application#http-methods
 func (grp *Group) Options(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodOptions, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(MethodOptions, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Trace : https://fiber.wiki/application#http-methods
 func (grp *Group) Trace(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodTrace, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(MethodTrace, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Get : https://fiber.wiki/application#http-methods
 func (grp *Group) Get(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod(MethodGet, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(MethodGet, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // All matches all HTTP methods and complete paths
 func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
-	grp.app.registerMethod("ALL", getGroupPath(grp.prefix, path), handlers...)
+	for m := range methodINT {
+		grp.app.register(m, getGroupPath(grp.prefix, path), handlers...)
+	}
 	return grp
 }
 
@@ -371,7 +368,7 @@ func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
 // You can pass an optional *tls.Config to enable TLS.
 func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// Update fiber server settings
-	app.updateSettings()
+	app.init()
 	// TLS config
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
@@ -399,7 +396,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		addr = ":" + addr
 	}
 	// Update fiber server settings
-	app.updateSettings()
+	app.init()
 	// Setup listener
 	var ln net.Listener
 	var err error
@@ -454,7 +451,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		return nil, err
 	}
 	// Update server settings
-	app.updateSettings()
+	app.init()
 	// Create test connection
 	conn := new(testConn)
 	// Write raw http request
@@ -542,32 +539,42 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
-func (app *App) updateSettings() {
-	// Create fasthttp server
+func (app *App) init() {
 	app.mutex.Lock()
-	app.server = &fasthttp.Server{
-		Handler:               app.handler,
-		Name:                  app.Settings.ServerHeader,
-		Concurrency:           app.Settings.Concurrency,
-		NoDefaultDate:         app.Settings.DisableDefaultDate,
-		NoDefaultContentType:  app.Settings.DisableDefaultContentType,
-		DisableKeepalive:      app.Settings.DisableKeepalive,
-		MaxRequestBodySize:    app.Settings.BodyLimit,
-		NoDefaultServerHeader: app.Settings.ServerHeader == "",
-		ReadTimeout:           app.Settings.ReadTimeout,
-		WriteTimeout:          app.Settings.WriteTimeout,
-		IdleTimeout:           app.Settings.IdleTimeout,
-		Logger:                &disableLogger{},
-		LogAllErrors:          false,
-		ErrorHandler: func(ctx *fasthttp.RequestCtx, err error) {
-			if err.Error() == "body size exceeds the given limit" {
-				ctx.Response.SetStatusCode(StatusRequestEntityTooLarge)
-				ctx.Response.SetBodyString("Request Entity Too Large")
-			} else {
-				ctx.Response.SetStatusCode(StatusBadRequest)
-				ctx.Response.SetBodyString("Bad Request")
-			}
-		},
+	if app.server == nil {
+		app.server = &fasthttp.Server{
+			Logger:       &disableLogger{},
+			LogAllErrors: false,
+			ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
+				if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
+					fctx.Response.SetStatusCode(StatusRequestHeaderFieldsTooLarge)
+					fctx.Response.SetBodyString("Request Header Fields Too Large")
+				} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
+					fctx.Response.SetStatusCode(StatusRequestTimeout)
+					fctx.Response.SetBodyString("Request Timeout")
+				} else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
+					fctx.Response.SetStatusCode(StatusRequestEntityTooLarge)
+					fctx.Response.SetBodyString("Request Entity Too Large")
+				} else {
+					fctx.Response.SetStatusCode(StatusBadRequest)
+					fctx.Response.SetBodyString("Bad Request")
+				}
+			},
+		}
 	}
+	if app.server.Handler == nil {
+		app.server.Handler = app.handler
+	}
+	app.server.Name = app.Settings.ServerHeader
+	app.server.Concurrency = app.Settings.Concurrency
+	app.server.NoDefaultDate = app.Settings.DisableDefaultDate
+	app.server.NoDefaultContentType = app.Settings.DisableDefaultContentType
+	app.server.DisableHeaderNamesNormalizing = app.Settings.DisableHeaderNormalizing
+	app.server.DisableKeepalive = app.Settings.DisableKeepalive
+	app.server.MaxRequestBodySize = app.Settings.BodyLimit
+	app.server.NoDefaultServerHeader = app.Settings.ServerHeader == ""
+	app.server.ReadTimeout = app.Settings.ReadTimeout
+	app.server.WriteTimeout = app.Settings.WriteTimeout
+	app.server.IdleTimeout = app.Settings.IdleTimeout
 	app.mutex.Unlock()
 }
