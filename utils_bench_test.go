@@ -58,12 +58,12 @@ func Benchmark_Utils_statusMessage(b *testing.B) {
 func Benchmark_Utils_extensionMIME(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
-		res = extensionMIME[".json"]
-		res = extensionMIME["json"]
-		res = extensionMIME["xspf"]
-		res = extensionMIME[".xspf"]
-		res = extensionMIME["avi"]
-		res = extensionMIME[".avi"]
+		res = getMIME(".json")
+		res = getMIME("json")
+		res = getMIME("xspf")
+		res = getMIME(".xspf")
+		res = getMIME("avi")
+		res = getMIME(".avi")
 	}
 	assertEqual(b, "video/x-msvideo", res)
 }

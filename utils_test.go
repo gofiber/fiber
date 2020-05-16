@@ -147,16 +147,16 @@ func Test_Utils_statusMessage(t *testing.T) {
 
 func Test_Utils_extensionMIME(t *testing.T) {
 	t.Parallel()
-	res := extensionMIME[".html"]
+	res := getMIME(".html")
 	assertEqual(t, "text/html", res)
 
-	res = extensionMIME["html"]
+	res = getMIME("html")
 	assertEqual(t, "text/html", res)
 
-	res = extensionMIME[".msp"]
+	res = getMIME(".msp")
 	assertEqual(t, "application/octet-stream", res)
 
-	res = extensionMIME["msp"]
+	res = getMIME("msp")
 	assertEqual(t, "application/octet-stream", res)
 }
 

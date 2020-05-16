@@ -25,11 +25,9 @@ import (
 )
 
 // Version of current package
-const Version = "1.9.7-beta"
+const Version = "1.10.0"
 
 // Map is a shortcut for map[string]interface{}, usefull for JSON returns
-//
-// ctx.JSON(fiber.Map{"Status": 200}) -> {"Status":200}
 type Map map[string]interface{}
 
 // App denotes the Fiber application.
@@ -446,6 +444,10 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	timeout := 1000 // 1 second default
 	if len(msTimeout) > 0 {
 		timeout = msTimeout[0]
+	}
+	// Add Content-Length if not provided with body
+	if request.Body != http.NoBody && request.Header.Get("Content-Length") == "" {
+		request.Header.Add("Content-Length", strconv.FormatInt(request.ContentLength, 10))
 	}
 	// Dump raw http request
 	dump, err := httputil.DumpRequest(request, true)

@@ -499,7 +499,6 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 }
 
 // Links joins the links followed by the property to populate the response’s Link HTTP header field.
-// #nosec G104
 func (ctx *Ctx) Links(link ...string) {
 	if len(link) == 0 {
 		return
@@ -511,9 +510,7 @@ func (ctx *Ctx) Links(link ...string) {
 			_, _ = bb.WriteString(link[i])
 			_ = bb.WriteByte('>')
 		} else {
-			_, _ = bb.WriteString(`; rel="`)
-			_, _ = bb.WriteString(link[i])
-			_, _ = bb.WriteString(`",`)
+			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
 	ctx.Fasthttp.Response.Header.Set(HeaderLink, trimRight(bb.String(), ','))

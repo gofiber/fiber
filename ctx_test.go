@@ -21,7 +21,6 @@ import (
 )
 
 func Test_Ctx_Accepts(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -38,7 +37,6 @@ func Test_Ctx_Accepts(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_AcceptsCharsets(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -53,7 +51,6 @@ func Test_Ctx_AcceptsCharsets(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_AcceptsEncodings(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -68,7 +65,6 @@ func Test_Ctx_AcceptsEncodings(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_AcceptsLanguages(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -83,7 +79,6 @@ func Test_Ctx_AcceptsLanguages(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_BaseURL(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -97,7 +92,6 @@ func Test_Ctx_BaseURL(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Body(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Post("/test", func(c *Ctx) {
@@ -116,7 +110,6 @@ func Test_Ctx_Body(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_BodyParser(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	type Demo struct {
@@ -155,7 +148,6 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Cookies(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -170,7 +162,6 @@ func Test_Ctx_Cookies(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_FormFile(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Post("/test", func(c *Ctx) {
@@ -209,7 +200,6 @@ func Test_Ctx_FormFile(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_FormValue(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Post("/test", func(c *Ctx) {
@@ -231,7 +221,6 @@ func Test_Ctx_FormValue(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Fresh(t *testing.T) {
-	t.Parallel()
 	app := New()
 	// TODO
 	app.Get("/test", func(c *Ctx) {
@@ -245,7 +234,6 @@ func Test_Ctx_Fresh(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Get(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -261,7 +249,6 @@ func Test_Ctx_Get(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Hostname(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -275,7 +262,6 @@ func Test_Ctx_Hostname(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_IP(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -289,7 +275,6 @@ func Test_Ctx_IP(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_IPs(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -326,7 +311,6 @@ func Test_Ctx_IPs(t *testing.T) {
 // 	}
 // }
 func Test_Ctx_Locals(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Use(func(c *Ctx) {
@@ -342,7 +326,6 @@ func Test_Ctx_Locals(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Method(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -368,7 +351,6 @@ func Test_Ctx_Method(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_MultipartForm(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Post("/test", func(c *Ctx) {
@@ -392,7 +374,6 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_OriginalURL(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -404,7 +385,6 @@ func Test_Ctx_OriginalURL(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Params(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test/:user", func(c *Ctx) {
@@ -432,7 +412,6 @@ func Test_Ctx_Params(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Path(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test/:user", func(c *Ctx) {
@@ -446,7 +425,6 @@ func Test_Ctx_Path(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Query(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -460,7 +438,6 @@ func Test_Ctx_Query(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Range(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -479,7 +456,6 @@ func Test_Ctx_Range(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Route(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -493,7 +469,6 @@ func Test_Ctx_Route(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_SaveFile(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Post("/test", func(c *Ctx) {
@@ -531,7 +506,6 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Secure(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -555,7 +529,6 @@ func Test_Ctx_Secure(t *testing.T) {
 	// assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Stale(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -569,7 +542,6 @@ func Test_Ctx_Stale(t *testing.T) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Subdomains(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -584,7 +556,6 @@ func Test_Ctx_Subdomains(t *testing.T) {
 }
 
 func Test_Ctx_Append(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -599,7 +570,6 @@ func Test_Ctx_Append(t *testing.T) {
 	assertEqual(t, "Hello, World", resp.Header.Get("X-Test"))
 }
 func Test_Ctx_Attachment(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -616,7 +586,6 @@ func Test_Ctx_Attachment(t *testing.T) {
 }
 
 func Test_Ctx_ClearCookie(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -644,7 +613,6 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	assertEqual(t, true, strings.Contains(resp.Header.Get("Set-Cookie"), "expires="))
 }
 func Test_Ctx_Cookie(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	expire := time.Now().Add(24 * time.Hour)
@@ -669,7 +637,6 @@ func Test_Ctx_Cookie(t *testing.T) {
 	assertEqual(t, true, strings.Contains(resp.Header.Get("Set-Cookie"), expireDate))
 }
 func Test_Ctx_Download(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -695,7 +662,6 @@ func Test_Ctx_Download(t *testing.T) {
 	assertEqual(t, true, bytes.Equal(expect, body))
 }
 func Test_Ctx_Format(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -730,7 +696,6 @@ func Test_Ctx_Format(t *testing.T) {
 }
 
 func Test_Ctx_JSON(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	type SomeStruct struct {
@@ -759,7 +724,6 @@ func Test_Ctx_JSON(t *testing.T) {
 	assertEqual(t, `{"Name":"Grame","Age":20}`, string(body))
 }
 func Test_Ctx_JSONP(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	type SomeStruct struct {
@@ -788,7 +752,6 @@ func Test_Ctx_JSONP(t *testing.T) {
 	assertEqual(t, `john({"Name":"Grame","Age":20});`, string(body))
 }
 func Test_Ctx_Links(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -806,7 +769,6 @@ func Test_Ctx_Links(t *testing.T) {
 	assertEqual(t, `<http://api.example.com/users?page=2>; rel="next",<http://api.example.com/users?page=5>; rel="last"`, resp.Header.Get("Link"))
 }
 func Test_Ctx_Location(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -821,7 +783,6 @@ func Test_Ctx_Location(t *testing.T) {
 	assertEqual(t, "http://example.com", resp.Header.Get("Location"))
 }
 func Test_Ctx_Next(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Use("/", func(c *Ctx) {
@@ -840,7 +801,6 @@ func Test_Ctx_Next(t *testing.T) {
 	assertEqual(t, "Works", resp.Header.Get("X-Next-Result"))
 }
 func Test_Ctx_Redirect(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -853,12 +813,11 @@ func Test_Ctx_Redirect(t *testing.T) {
 	assertEqual(t, 301, resp.StatusCode, "Status code")
 	assertEqual(t, "http://example.com", resp.Header.Get("Location"))
 }
-func Test_Ctx_Render(t *testing.T) {
-	t.Parallel()
-	// TODO
-}
+
+// func Test_Ctx_Render(t *testing.T) {
+// 	// TODO
+// }
 func Test_Ctx_Send(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -878,7 +837,6 @@ func Test_Ctx_Send(t *testing.T) {
 	assertEqual(t, `1337`, string(body))
 }
 func Test_Ctx_SendBytes(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -896,7 +854,6 @@ func Test_Ctx_SendBytes(t *testing.T) {
 	assertEqual(t, `Hello, World`, string(body))
 }
 func Test_Ctx_SendStatus(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -914,7 +871,6 @@ func Test_Ctx_SendStatus(t *testing.T) {
 	assertEqual(t, `Unsupported Media Type`, string(body))
 }
 func Test_Ctx_SendString(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -932,7 +888,6 @@ func Test_Ctx_SendString(t *testing.T) {
 	assertEqual(t, `Don't crash please`, string(body))
 }
 func Test_Ctx_Set(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -952,7 +907,6 @@ func Test_Ctx_Set(t *testing.T) {
 	assertEqual(t, "1337", resp.Header.Get("X-3"))
 }
 func Test_Ctx_Status(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -970,7 +924,6 @@ func Test_Ctx_Status(t *testing.T) {
 	assertEqual(t, `Hello, World`, string(body))
 }
 func Test_Ctx_Type(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -985,7 +938,6 @@ func Test_Ctx_Type(t *testing.T) {
 	assertEqual(t, "application/json", resp.Header.Get("Content-Type"))
 }
 func Test_Ctx_Vary(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -1002,7 +954,6 @@ func Test_Ctx_Vary(t *testing.T) {
 	assertEqual(t, "Origin, User-Agent, Accept-Encoding, Accept", resp.Header.Get("Vary"))
 }
 func Test_Ctx_Write(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
@@ -1023,7 +974,6 @@ func Test_Ctx_Write(t *testing.T) {
 }
 
 func Test_Ctx_XHR(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
