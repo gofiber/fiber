@@ -25,8 +25,8 @@ const toUpperTable = "\x00\x01\x02\x03\x04\x05\x06\a\b\t\n\v\f\r\x0e\x0f\x10\x11
 func toLower(b string) string {
 	var res = make([]byte, len(b))
 	copy(res, b)
-	for i := range b {
-		res[i] = toLowerTable[b[i]]
+	for i := 0; i < len(res); i++ {
+		res[i] = toLowerTable[res[i]]
 	}
 
 	return getString(res)
@@ -35,8 +35,8 @@ func toLower(b string) string {
 func toUpper(b string) string {
 	var res = make([]byte, len(b))
 	copy(res, b)
-	for i := range b {
-		res[i] = toUpperTable[b[i]]
+	for i := 0; i < len(res); i++ {
+		res[i] = toUpperTable[res[i]]
 	}
 
 	return getString(res)
