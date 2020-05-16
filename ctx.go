@@ -843,3 +843,39 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 func (ctx *Ctx) XHR() bool {
 	return strings.EqualFold(ctx.Get(HeaderXRequestedWith), "xmlhttprequest")
 }
+
+// Deadline returns the time when work done on behalf of this context
+// should be canceled. Deadline returns ok==false when no deadline is
+// set. Successive calls to Deadline return the same results.
+//
+// This method always returns 0, false and is only present to make
+// RequestCtx implement the context interface.
+func (ctx *Ctx) Deadline() (deadline time.Time, ok bool) {
+	return ctx.Fasthttp.Deadline()
+}
+
+// Done returns a channel that's closed when work done on behalf of this
+// context should be canceled. Done may return nil if this context can
+// never be canceled. Successive calls to Done return the same value.
+func (ctx *Ctx) Done() <-chan struct{} {
+	return ctx.Fasthttp.Done()
+}
+
+// Err returns a non-nil error value after Done is closed,
+// successive calls to Err return the same error.
+// If Done is not yet closed, Err returns nil.
+// If Done is closed, Err returns a non-nil error explaining why:
+// Canceled if the context was canceled (via server Shutdown)
+// or DeadlineExceeded if the context's deadline passed.
+func (ctx *Ctx) Err() error {
+	return ctx.Fasthttp.Err()
+}
+
+// Value returns the value associated with this context for key, or nil
+// if no value is associated with key. Successive calls to Value with
+// the same key returns the same result.
+//
+// This method is present to make Ctx implement the context interface.
+func (ctx *Ctx) Value(key interface{}) interface{} {
+	return ctx.Fasthttp.Value(key)
+}
