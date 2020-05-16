@@ -33,7 +33,7 @@ import (
 type Ctx struct {
 	// Internal fields
 	app    *App     // Reference to *App
-	route  *Route   // Reference to *Route
+	layer  *Layer   // Reference to *Layer
 	index  int      // Index of the current handler in the stack
 	method string   // HTTP method
 	path   string   // HTTP path
@@ -93,7 +93,7 @@ func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 // ReleaseCtx to pool
 func ReleaseCtx(ctx *Ctx) {
 	// Reset values
-	ctx.route = nil
+	ctx.layer = nil
 	ctx.values = nil
 	ctx.Fasthttp = nil
 	ctx.err = nil
@@ -168,34 +168,25 @@ func (ctx *Ctx) Append(field string, values ...string) {
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
-func (ctx *Ctx) Attachment(name ...string) {
-	if len(name) > 0 {
-		filename := filepath.Base(name[0])
-		ctx.Type(filepath.Ext(filename))
-		ctx.Set(HeaderContentDisposition, `attachment; filename="`+filename+`"`)
+func (ctx *Ctx) Attachment(filename ...string) {
+	if len(filename) > 0 {
+		fname := filepath.Base(filename[0])
+		ctx.Type(filepath.Ext(fname))
+		ctx.Set(HeaderContentDisposition, `attachment; filename="`+fname+`"`)
 		return
 	}
 	ctx.Set(HeaderContentDisposition, "attachment")
 }
 
-// BaseURL returns (protocol + host).
+// BaseURL returns (protocol + host + base path).
 func (ctx *Ctx) BaseURL() string {
+	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
 	return ctx.Protocol() + "://" + ctx.Hostname()
 }
 
 // Body contains the raw body submitted in a POST request.
-// If a key is provided, it returns the form value
-func (ctx *Ctx) Body(key ...string) string {
-	// Return request body
-	if len(key) == 0 {
-		return getString(ctx.Fasthttp.Request.Body())
-	}
-	// Return post value by key
-	if len(key) > 0 {
-		fmt.Println("DEPRECATED: c.Body(\"" + key[0] + "\") is deprecated, please use c.FormValue(\"" + key[0] + "\") instead.")
-		return getString(ctx.Fasthttp.Request.PostArgs().Peek(key[0]))
-	}
-	return ""
+func (ctx *Ctx) Body() string {
+	return getString(ctx.Fasthttp.Request.Body())
 }
 
 // BodyParser binds the request body to a struct.
@@ -240,8 +231,8 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	return fmt.Errorf("BodyParser: cannot parse content-type: %v", ctype)
 }
 
-// ClearCookie expires a specific cookie by key.
-// If no key is provided it expires all cookies.
+// ClearCookie expires a specific cookie by key on the client side.
+// If no key is provided it expires all cookies that came with the request.
 func (ctx *Ctx) ClearCookie(key ...string) {
 	if len(key) > 0 {
 		for i := range key {
@@ -249,9 +240,8 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 		}
 		return
 	}
-	//ctx.Fasthttp.Response.Header.DelAllCookies()
 	ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-		ctx.Fasthttp.Response.Header.DelClientCookie(getString(k))
+		ctx.Fasthttp.Response.Header.DelClientCookieBytes(k)
 	})
 }
 
@@ -269,7 +259,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
 	}
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
-	switch strings.ToLower(cookie.SameSite) {
+	switch toLower(cookie.SameSite) {
 	case "lax":
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	case "strict":
@@ -286,26 +276,19 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 }
 
 // Cookies is used for getting a cookie value by key
-func (ctx *Ctx) Cookies(key ...string) (value string) {
-	if len(key) == 0 {
-		fmt.Println("DEPRECATED: c.Cookies() without a key is deprecated, please use c.Get(\"Cookies\") to get the cookie header instead.")
-		return ctx.Get(HeaderCookie)
-	}
-	return getString(ctx.Fasthttp.Request.Header.Cookie(key[0]))
+func (ctx *Ctx) Cookies(key string) (value string) {
+	return getString(ctx.Fasthttp.Request.Header.Cookie(key))
 }
 
 // Download transfers the file from path as an attachment.
 // Typically, browsers will prompt the user for download.
 // By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
 // Override this default with the filename parameter.
-func (ctx *Ctx) Download(file string, name ...string) {
-	filename := filepath.Base(file)
-
-	if len(name) > 0 {
-		filename = name[0]
+func (ctx *Ctx) Download(file string, filename ...string) {
+	if len(filename) > 0 {
+		fname = filename[0]
 	}
-
-	ctx.Set(HeaderContentDisposition, "attachment; filename="+filename)
+	ctx.Set(HeaderContentDisposition, "attachment; filename="+fname)
 	ctx.SendFile(file)
 }
 
@@ -432,9 +415,6 @@ func (ctx *Ctx) Fresh() bool {
 // Get returns the HTTP request header specified by field.
 // Field names are case-insensitive
 func (ctx *Ctx) Get(key string) (value string) {
-	if key == "referrer" {
-		key = "referer"
-	}
 	return getString(ctx.Fasthttp.Request.Header.Peek(key))
 }
 
@@ -526,16 +506,14 @@ func (ctx *Ctx) Links(link ...string) {
 	bb := bytebufferpool.Get()
 	for i := range link {
 		if i%2 == 0 {
-			_ = bb.WriteByte('<')
-			_, _ = bb.WriteString(link[i])
-			_ = bb.WriteByte('>')
+			bb.WriteByte('<')
+			bb.WriteString(link[i])
+			bb.WriteByte('>')
 		} else {
-			_, _ = bb.WriteString(`; rel="`)
-			_, _ = bb.WriteString(link[i])
-			_, _ = bb.WriteString(`",`)
+			bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	ctx.Fasthttp.Response.Header.Set(HeaderLink, strings.TrimSuffix(bb.String(), ","))
+	ctx.Fasthttp.Response.Header.Set(HeaderLink, trimRight(bb.String(), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -557,7 +535,11 @@ func (ctx *Ctx) Location(path string) {
 // Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
 func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
-		ctx.method = strings.ToUpper(override[0])
+		method := toUpper(override[0])
+		if methodINT[method] == 0 && method != MethodGet {
+			log.Fatalf("Method: Invalid HTTP method override %s", method)
+		}
+		ctx.method = method
 	}
 	return ctx.method
 }
@@ -574,12 +556,10 @@ func (ctx *Ctx) Next(err ...error) {
 	if ctx.app == nil {
 		return
 	}
-	ctx.route = nil
-	ctx.values = nil
 	if len(err) > 0 {
 		ctx.err = err[0]
 	}
-	ctx.app.nextRoute(ctx)
+	ctx.app.next(ctx)
 }
 
 // OriginalURL contains the original request URL.
@@ -590,11 +570,11 @@ func (ctx *Ctx) OriginalURL() string {
 // Params is used to get the route parameters.
 // Defaults to empty string "", if the param doesn't exist.
 func (ctx *Ctx) Params(key string) string {
-	for i := range ctx.route.Params {
-		if len(key) != len(ctx.route.Params[i]) {
+	for i := range ctx.layer.Params {
+		if len(key) != len(ctx.layer.Params[i]) {
 			continue
 		}
-		if ctx.route.Params[i] == key {
+		if ctx.layer.Params[i] == key {
 			return ctx.values[i]
 		}
 	}
@@ -607,11 +587,11 @@ func (ctx *Ctx) Path(override ...string) string {
 	if len(override) > 0 && ctx.app != nil {
 		// Non strict routing
 		if !ctx.app.Settings.StrictRouting && len(override[0]) > 1 {
-			override[0] = strings.TrimRight(override[0], "/")
+			override[0] = trimRight(override[0], '/')
 		}
 		// Not case sensitive
 		if !ctx.app.Settings.CaseSensitive {
-			override[0] = strings.ToLower(override[0])
+			override[0] = toLower(override[0])
 		}
 		ctx.path = override[0]
 	}
@@ -675,8 +655,8 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found
-func (ctx *Ctx) Redirect(path string, status ...int) {
-	ctx.Fasthttp.Response.Header.Set(HeaderLocation, path)
+func (ctx *Ctx) Redirect(location string, status ...int) {
+	ctx.Fasthttp.Response.Header.Set(HeaderLocation, location)
 	if len(status) > 0 {
 		ctx.Fasthttp.Response.SetStatusCode(status[0])
 	} else {
@@ -727,8 +707,8 @@ func (ctx *Ctx) Render(file string, bind interface{}) error {
 }
 
 // Route returns the matched Route struct.
-func (ctx *Ctx) Route() *Route {
-	return ctx.route
+func (ctx *Ctx) Route() *Layer {
+	return ctx.layer
 }
 
 // SaveFile saves any multipart file to disk.
@@ -756,11 +736,11 @@ func (ctx *Ctx) SendBytes(body []byte) {
 }
 
 // SendFile transfers the file from the given path.
-// The file is compressed by default
+// The file is compressed by default, disable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
-func (ctx *Ctx) SendFile(file string, noCompression ...bool) {
-	// Disable gzipping
-	if len(noCompression) > 0 && noCompression[0] {
+func (ctx *Ctx) SendFile(file string, uncompressed ...bool) {
+	// Disable gzip compression
+	if len(uncompressed) > 0 && uncompressed[0] {
 		fasthttp.ServeFileUncompressed(ctx.Fasthttp, file)
 		return
 	}
