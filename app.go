@@ -391,7 +391,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	if !ok {
 		port, ok := address.(int)
 		if !ok {
-			return fmt.Errorf("Listen: Host must be an INT port or STRING address")
+			return fmt.Errorf("fiber: Host must be an INT port or STRING address")
 		}
 		addr = strconv.Itoa(port)
 	}
@@ -436,7 +436,7 @@ func (app *App) Shutdown() error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 	if app.server == nil {
-		return fmt.Errorf("Server is not running")
+		return fmt.Errorf("fiber: server is not running")
 	}
 	return app.server.Shutdown()
 }
@@ -472,7 +472,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		select {
 		case err = <-channel:
 		case <-time.After(time.Duration(timeout) * time.Millisecond):
-			return nil, fmt.Errorf("Timeout error %vms", timeout)
+			return nil, fmt.Errorf("fiber: timeout error %vms", timeout)
 		}
 	} else {
 		// Without timeout

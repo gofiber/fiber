@@ -237,7 +237,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 		return schemaDecoderQuery.Decode(out, data)
 	}
 
-	return fmt.Errorf("BodyParser: cannot parse content-type: %v", ctype)
+	return fmt.Errorf("fiber: BodyParser could not parse content-type: %v", ctype)
 }
 
 // ClearCookie expires a specific cookie by key.
