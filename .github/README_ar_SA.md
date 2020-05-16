@@ -3,9 +3,9 @@
     <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
   </a>
   <br>
-  <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/en.svg">
-  </a>-->
+  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/ru.svg">
   </a>
@@ -42,9 +42,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_he.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/il.svg">
   </a>
-   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ar_SA.md">
-    <img height="20px" src="https://upload.wikimedia.org/wikipedia/commons/0/0d/Flag_of_Saudi_Arabia.svg">
-  </a>
+<!--   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ar_SA.md">
+    <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/sa.svg">
+  </a> -->
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
