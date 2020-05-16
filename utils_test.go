@@ -9,6 +9,34 @@ import (
 	"testing"
 )
 
+// go test -v ./... -run=Test_Utils_toLower -count=3
+
+func Test_Utils_toUpper(t *testing.T) {
+	t.Parallel()
+	res := toUpper("/my/name/is/:param/*")
+	assertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
+}
+
+func Test_Utils_toLower(t *testing.T) {
+	t.Parallel()
+	res := toLower("/MY/NAME/IS/:PARAM/*")
+	assertEqual(t, "/my/name/is/:param/*", res)
+	res = toLower("/MY1/NAME/IS/:PARAM/*")
+	assertEqual(t, "/my1/name/is/:param/*", res)
+	res = toLower("/MY2/NAME/IS/:PARAM/*")
+	assertEqual(t, "/my2/name/is/:param/*", res)
+	res = toLower("/MY3/NAME/IS/:PARAM/*")
+	assertEqual(t, "/my3/name/is/:param/*", res)
+	res = toLower("/MY4/NAME/IS/:PARAM/*")
+	assertEqual(t, "/my4/name/is/:param/*", res)
+}
+
+func Test_Utils_trimRight(t *testing.T) {
+	t.Parallel()
+	res := trimRight("/test//////", '/')
+	assertEqual(t, "/test", res)
+}
+
 // func Test_Utils_assertEqual(t *testing.T) {
 // 	// TODO
 // }
@@ -18,6 +46,7 @@ import (
 // }
 
 func Test_Utils_getGroupPath(t *testing.T) {
+	t.Parallel()
 	res := getGroupPath("/v1", "/")
 	assertEqual(t, "/v1", res)
 
@@ -32,6 +61,7 @@ func Test_Utils_getGroupPath(t *testing.T) {
 }
 
 func Test_Utils_getMIME(t *testing.T) {
+	t.Parallel()
 	res := getMIME(".json")
 	assertEqual(t, "application/json", res)
 
@@ -54,26 +84,31 @@ func Test_Utils_getMIME(t *testing.T) {
 // }
 
 func Test_Utils_getString(t *testing.T) {
+	t.Parallel()
 	res := getString([]byte("Hello, World!"))
 	assertEqual(t, "Hello, World!", res)
 }
 
 func Test_Utils_getStringImmutable(t *testing.T) {
+	t.Parallel()
 	res := getStringImmutable([]byte("Hello, World!"))
 	assertEqual(t, "Hello, World!", res)
 }
 
 func Test_Utils_getBytes(t *testing.T) {
+	t.Parallel()
 	res := getBytes("Hello, World!")
 	assertEqual(t, []byte("Hello, World!"), res)
 }
 
 func Test_Utils_getBytesImmutable(t *testing.T) {
+	t.Parallel()
 	res := getBytesImmutable("Hello, World!")
 	assertEqual(t, []byte("Hello, World!"), res)
 }
 
 func Test_Utils_methodINT(t *testing.T) {
+	t.Parallel()
 	res := methodINT[MethodGet]
 	assertEqual(t, 0, res)
 	res = methodINT[MethodHead]
@@ -95,6 +130,7 @@ func Test_Utils_methodINT(t *testing.T) {
 }
 
 func Test_Utils_statusMessage(t *testing.T) {
+	t.Parallel()
 	res := statusMessage[102]
 	assertEqual(t, "Processing", res)
 
@@ -110,16 +146,17 @@ func Test_Utils_statusMessage(t *testing.T) {
 }
 
 func Test_Utils_extensionMIME(t *testing.T) {
-	res := extensionMIME[".html"]
+	t.Parallel()
+	res := getMIME(".html")
 	assertEqual(t, "text/html", res)
 
-	res = extensionMIME["html"]
+	res = getMIME("html")
 	assertEqual(t, "text/html", res)
 
-	res = extensionMIME[".msp"]
+	res = getMIME(".msp")
 	assertEqual(t, "application/octet-stream", res)
 
-	res = extensionMIME["msp"]
+	res = getMIME("msp")
 	assertEqual(t, "application/octet-stream", res)
 }
 
@@ -128,6 +165,7 @@ func Test_Utils_extensionMIME(t *testing.T) {
 // }
 
 func Test_Utils_matchParams(t *testing.T) {
+	t.Parallel()
 	type testparams struct {
 		url    string
 		params []string
