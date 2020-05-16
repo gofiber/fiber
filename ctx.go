@@ -285,6 +285,7 @@ func (ctx *Ctx) Cookies(key string) (value string) {
 // By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
 // Override this default with the filename parameter.
 func (ctx *Ctx) Download(file string, filename ...string) {
+	fname := filepath.Base(file)
 	if len(filename) > 0 {
 		fname = filename[0]
 	}
