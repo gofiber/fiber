@@ -30,22 +30,22 @@ func Test_Ctx_Accepts(t *testing.T) {
 		assertEqual(t, "", c.Accepts(".john"))
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9")
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Accepts_EmptyAccept(t *testing.T) {
 	app := New()
 	app.Get("/testEmptyHeader", func(c *Ctx) {
 		assertEqual(t, ".forwarded", c.Accepts(".forwarded"))
 	})
-	req := httptest.NewRequest("GET", "/testEmptyHeader", nil)
+	req := httptest.NewRequest(MethodGet, "/testEmptyHeader", nil)
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Accepts_Wildcard(t *testing.T) {
 	app := New()
@@ -59,19 +59,19 @@ func Test_Ctx_Accepts_Wildcard(t *testing.T) {
 		assertEqual(t, ".bar", c.Accepts(".bar"))
 	})
 
-	req := httptest.NewRequest("GET", "/singleWildcard", nil)
+	req := httptest.NewRequest(MethodGet, "/singleWildcard", nil)
 	req.Header.Set("Accept", "text/html,application/*;q=0.9")
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	req = httptest.NewRequest("GET", "/doubleWildcard", nil)
+	req = httptest.NewRequest(MethodGet, "/doubleWildcard", nil)
 	req.Header.Set("Accept", "*/*;q=0.9")
 
 	resp, err = app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_AcceptsCharsets(t *testing.T) {
 	app := New()
@@ -80,12 +80,12 @@ func Test_Ctx_AcceptsCharsets(t *testing.T) {
 		assertEqual(t, "utf-8", c.AcceptsCharsets("utf-8"))
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_AcceptsEncodings(t *testing.T) {
 	app := New()
@@ -95,12 +95,12 @@ func Test_Ctx_AcceptsEncodings(t *testing.T) {
 		assertEqual(t, "abc", c.AcceptsEncodings("abc"))
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 	req.Header.Set("Accept-Encoding", "deflate, gzip;q=1.0, *;q=0.5")
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_AcceptsLanguages(t *testing.T) {
 	app := New()
@@ -109,12 +109,12 @@ func Test_Ctx_AcceptsLanguages(t *testing.T) {
 		assertEqual(t, "fr", c.AcceptsLanguages("fr"))
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 	req.Header.Set("Accept-Language", "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_BaseURL(t *testing.T) {
 	app := New()
@@ -123,11 +123,11 @@ func Test_Ctx_BaseURL(t *testing.T) {
 		assertEqual(t, "http://google.com", c.BaseURL())
 	})
 
-	req := httptest.NewRequest("GET", "http://google.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://google.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Body(t *testing.T) {
 	app := New()
@@ -139,13 +139,13 @@ func Test_Ctx_Body(t *testing.T) {
 	data := url.Values{}
 	data.Set("john", "doe")
 
-	req := httptest.NewRequest("POST", "/test", strings.NewReader(data.Encode()))
+	req := httptest.NewRequest(MethodPost, "/test", strings.NewReader(data.Encode()))
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_BodyParser(t *testing.T) {
 	app := New()
@@ -171,19 +171,19 @@ func Test_Ctx_BodyParser(t *testing.T) {
 		assertEqual(t, 2, len(d.Hobby))
 	})
 
-	req := httptest.NewRequest("POST", "/test", bytes.NewBuffer([]byte(`{"name":"john"}`)))
+	req := httptest.NewRequest(MethodPost, "/test", bytes.NewBuffer([]byte(`{"name":"john"}`)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Length", strconv.Itoa(len([]byte(`{"name":"john"}`))))
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	req = httptest.NewRequest("GET", "/query?id=1&name=tom&hobby=basketball&hobby=football", nil)
+	req = httptest.NewRequest(MethodGet, "/query?id=1&name=tom&hobby=basketball&hobby=football", nil)
 
 	resp, err = app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Cookies(t *testing.T) {
 	app := New()
@@ -192,12 +192,12 @@ func Test_Ctx_Cookies(t *testing.T) {
 		assertEqual(t, "doe", c.Cookies("john"))
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 	req.AddCookie(&http.Cookie{Name: "john", Value: "doe"})
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_FormFile(t *testing.T) {
 	app := New()
@@ -229,13 +229,13 @@ func Test_Ctx_FormFile(t *testing.T) {
 
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/test", body)
+	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_FormValue(t *testing.T) {
 	app := New()
@@ -250,13 +250,13 @@ func Test_Ctx_FormValue(t *testing.T) {
 	assertEqual(t, nil, writer.WriteField("name", "john"))
 
 	writer.Close()
-	req := httptest.NewRequest("POST", "/test", body)
+	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set("Content-Type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Fresh(t *testing.T) {
 	app := New()
@@ -265,11 +265,11 @@ func Test_Ctx_Fresh(t *testing.T) {
 		c.Fresh()
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Get(t *testing.T) {
 	app := New()
@@ -278,13 +278,13 @@ func Test_Ctx_Get(t *testing.T) {
 		assertEqual(t, "utf-8, iso-8859-1;q=0.5", c.Get("Accept-Charset"))
 		assertEqual(t, "Monster", c.Get("referer"))
 	})
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 	req.Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
 	req.Header.Set("Referer", "Monster")
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Hostname(t *testing.T) {
 	app := New()
@@ -293,11 +293,11 @@ func Test_Ctx_Hostname(t *testing.T) {
 		assertEqual(t, "google.com", c.Hostname())
 	})
 
-	req := httptest.NewRequest("GET", "http://google.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://google.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_IP(t *testing.T) {
 	app := New()
@@ -306,11 +306,11 @@ func Test_Ctx_IP(t *testing.T) {
 		assertEqual(t, "0.0.0.0", c.IP())
 	})
 
-	req := httptest.NewRequest("GET", "http://google.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://google.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_IPs(t *testing.T) {
 	app := New()
@@ -319,35 +319,31 @@ func Test_Ctx_IPs(t *testing.T) {
 		assertEqual(t, []string{"0.0.0.0", "1.1.1.1"}, c.IPs())
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 	req.Header.Set("X-Forwarded-For", "0.0.0.0, 1.1.1.1")
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 
-// func Test_Ctx_Is(t *testing.T) {
-//	t.Parallel()
-// 	app := New()
-// 	app.Get("/test", func(c *Ctx) {
-// 		c.Is(".json")
-// 		expect := true
-// 		result := c.Is("html")
-// 		if result != expect {
-// 			t.Fatalf(`%s: Expecting %v, got %v`, t.Name(), expect, result)
-// 		}
-// 	})
-// 	req := httptest.NewRequest("GET", "/test", nil)
-// 	req.Header.Set("Content-Type", "text/html")
-// 	resp, err := app.Test(req)
-// 	if err != nil {
-// 		t.Fatalf(`%s: %s`, t.Name(), err)
-// 	}
-// 	if resp.StatusCode != 200 {
-// 		t.Fatalf(`%s: StatusCode %v`, t.Name(), resp.StatusCode)
-// 	}
-// }
+func Test_Ctx_Is(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		assertEqual(t, true, c.Is(".html"))
+		assertEqual(t, true, c.Is("html"))
+		assertEqual(t, false, c.Is("json"))
+		assertEqual(t, false, c.Is(".json"))
+		assertEqual(t, false, c.Is(""))
+		assertEqual(t, false, c.Is("foooo"))
+	})
+	req := httptest.NewRequest(MethodGet, "/test", nil)
+	req.Header.Set(HeaderContentType, MIMETextHTML+"; boundary=something")
+	resp, err := app.Test(req)
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
+}
 func Test_Ctx_Locals(t *testing.T) {
 	app := New()
 
@@ -359,34 +355,34 @@ func Test_Ctx_Locals(t *testing.T) {
 		assertEqual(t, "doe", c.Locals("john"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Method(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) {
-		assertEqual(t, "GET", c.Method())
+		assertEqual(t, MethodGet, c.Method())
 	})
 	app.Post("/test", func(c *Ctx) {
-		assertEqual(t, "POST", c.Method())
+		assertEqual(t, MethodPost, c.Method())
 	})
 	app.Put("/test", func(c *Ctx) {
-		assertEqual(t, "PUT", c.Method())
+		assertEqual(t, MethodPut, c.Method())
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest("POST", "/test", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodPost, "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest("PUT", "/test", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodPut, "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_MultipartForm(t *testing.T) {
 	app := New()
@@ -403,13 +399,13 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	assertEqual(t, nil, writer.WriteField("name", "john"))
 
 	writer.Close()
-	req := httptest.NewRequest("POST", "/test", body)
-	req.Header.Set("Content-Type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
-	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+	req := httptest.NewRequest(MethodPost, "/test", body)
+	req.Header.Set(HeaderContentType, fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
+	req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_OriginalURL(t *testing.T) {
 	app := New()
@@ -418,9 +414,9 @@ func Test_Ctx_OriginalURL(t *testing.T) {
 		assertEqual(t, "http://google.com/test?search=demo", c.OriginalURL())
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "http://google.com/test?search=demo", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://google.com/test?search=demo", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Params(t *testing.T) {
 	app := New()
@@ -437,17 +433,17 @@ func Test_Ctx_Params(t *testing.T) {
 		assertEqual(t, "", c.Params("optional"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/test/john", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest("GET", "/test2/im/a/cookie", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest("GET", "/test3", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Path(t *testing.T) {
 	app := New()
@@ -459,11 +455,11 @@ func Test_Ctx_Path(t *testing.T) {
 		assertEqual(t, "/test/john", c.Path("/test/john"))
 	})
 
-	req := httptest.NewRequest("GET", "/test/john", nil)
+	req := httptest.NewRequest(MethodGet, "/test/john", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Query(t *testing.T) {
 	app := New()
@@ -472,11 +468,11 @@ func Test_Ctx_Query(t *testing.T) {
 		assertEqual(t, "john", c.Query("search"))
 		assertEqual(t, "20", c.Query("age"))
 	})
-	req := httptest.NewRequest("GET", "/test?search=john&age=20", nil)
+	req := httptest.NewRequest(MethodGet, "/test?search=john&age=20", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Range(t *testing.T) {
 	app := New()
@@ -489,12 +485,12 @@ func Test_Ctx_Range(t *testing.T) {
 		assertEqual(t, 700, result.Ranges[0].End)
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 	req.Header.Set("range", "bytes=500-700")
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Route(t *testing.T) {
 	app := New()
@@ -503,11 +499,11 @@ func Test_Ctx_Route(t *testing.T) {
 		assertEqual(t, "/test", c.Route().Path)
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_SaveFile(t *testing.T) {
 	app := New()
@@ -538,13 +534,13 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	assertEqual(t, nil, err)
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/test", body)
+	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Secure(t *testing.T) {
 	app := New()
@@ -557,17 +553,17 @@ func Test_Ctx_Secure(t *testing.T) {
 	// 	assertEqual(t, true, c.Secure())
 	// })
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	// req = httptest.NewRequest("GET", "https://google.com/secure", nil)
+	// req = httptest.NewRequest(MethodGet, "https://google.com/secure", nil)
 
 	// resp, err = app.Test(req)
 	// assertEqual(t, nil, err, "app.Test(req)")
-	// assertEqual(t, 200, resp.StatusCode, "Status code")
+	// assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Stale(t *testing.T) {
 	app := New()
@@ -576,11 +572,11 @@ func Test_Ctx_Stale(t *testing.T) {
 		c.Stale()
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 func Test_Ctx_Subdomains(t *testing.T) {
 	app := New()
@@ -589,11 +585,11 @@ func Test_Ctx_Subdomains(t *testing.T) {
 		assertEqual(t, []string{"john", "doe"}, c.Subdomains())
 	})
 
-	req := httptest.NewRequest("GET", "http://john.doe.google.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://john.doe.google.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 
 func Test_Ctx_Append(t *testing.T) {
@@ -606,9 +602,9 @@ func Test_Ctx_Append(t *testing.T) {
 		c.Append("X-Custom-Header")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/test", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, "Hello, World", resp.Header.Get("X-Test"))
 	assertEqual(t, "", resp.Header.Get("X-Custom-Header"))
 }
@@ -619,11 +615,11 @@ func Test_Ctx_Attachment(t *testing.T) {
 		c.Attachment()
 		c.Attachment("./static/img/logo.png")
 	})
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, `attachment; filename="logo.png"`, resp.Header.Get("Content-Disposition"))
 	assertEqual(t, "image/png", resp.Header.Get("Content-Type"))
 }
@@ -639,20 +635,20 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 		c.ClearCookie("john")
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 	req.AddCookie(&http.Cookie{Name: "john", Value: "doe"})
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, true, strings.Contains(resp.Header.Get("Set-Cookie"), "expires="))
 
-	req = httptest.NewRequest("GET", "/test2", nil)
+	req = httptest.NewRequest(MethodGet, "/test2", nil)
 	req.AddCookie(&http.Cookie{Name: "john", Value: "doe"})
 
 	resp, err = app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, true, strings.Contains(resp.Header.Get("Set-Cookie"), "expires="))
 }
 func Test_Ctx_Cookie(t *testing.T) {
@@ -670,11 +666,11 @@ func Test_Ctx_Cookie(t *testing.T) {
 		cookie.Expires = expire
 		c.Cookie(cookie)
 	})
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	expireDate := "username=jon; expires=" + string(httpdate) + "; path=/"
 	assertEqual(t, true, strings.Contains(resp.Header.Get("Set-Cookie"), expireDate))
@@ -686,11 +682,11 @@ func Test_Ctx_Download(t *testing.T) {
 		c.Download("ctx.go")
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err := ioutil.ReadAll(resp.Body)
 	assertEqual(t, nil, err)
@@ -715,23 +711,23 @@ func Test_Ctx_Format(t *testing.T) {
 		c.Format([]byte("Hello, World!"))
 		c.Format("Hello, World!")
 	})
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 	req.Header.Set("Accept", "text/html")
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err := ioutil.ReadAll(resp.Body)
 	assertEqual(t, nil, err)
 	assertEqual(t, "<p>Hello, World!</p>", string(body))
 
-	req = httptest.NewRequest("GET", "http://example.com/test2", nil)
+	req = httptest.NewRequest(MethodGet, "http://example.com/test2", nil)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err = app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err = ioutil.ReadAll(resp.Body)
 	assertEqual(t, nil, err)
@@ -755,11 +751,11 @@ func Test_Ctx_JSON(t *testing.T) {
 		}
 		assertEqual(t, nil, c.JSON(data))
 	})
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, "application/json", resp.Header.Get("Content-Type"))
 
 	body, err := ioutil.ReadAll(resp.Body)
@@ -783,11 +779,11 @@ func Test_Ctx_JSONP(t *testing.T) {
 		}
 		assertEqual(t, nil, c.JSONP(data, "john"))
 	})
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, "application/javascript", resp.Header.Get("Content-Type"))
 
 	body, err := ioutil.ReadAll(resp.Body)
@@ -804,11 +800,11 @@ func Test_Ctx_Links(t *testing.T) {
 		)
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, `<http://api.example.com/users?page=2>; rel="next",<http://api.example.com/users?page=5>; rel="last"`, resp.Header.Get("Link"))
 }
 func Test_Ctx_Location(t *testing.T) {
@@ -818,11 +814,11 @@ func Test_Ctx_Location(t *testing.T) {
 		c.Location("http://example.com")
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, "http://example.com", resp.Header.Get("Location"))
 }
 func Test_Ctx_Next(t *testing.T) {
@@ -836,11 +832,11 @@ func Test_Ctx_Next(t *testing.T) {
 		c.Set("X-Next-Result", "Works")
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, "Works", resp.Header.Get("X-Next-Result"))
 }
 func Test_Ctx_Redirect(t *testing.T) {
@@ -850,7 +846,7 @@ func Test_Ctx_Redirect(t *testing.T) {
 		c.Redirect("http://example.com", 301)
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 301, resp.StatusCode, "Status code")
@@ -869,11 +865,11 @@ func Test_Ctx_Send(t *testing.T) {
 		c.Send(1337)
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err := ioutil.ReadAll(resp.Body)
 	assertEqual(t, nil, err)
@@ -886,11 +882,11 @@ func Test_Ctx_SendBytes(t *testing.T) {
 		c.SendBytes([]byte("Hello, World"))
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err := ioutil.ReadAll(resp.Body)
 	assertEqual(t, nil, err)
@@ -903,7 +899,7 @@ func Test_Ctx_SendStatus(t *testing.T) {
 		c.SendStatus(415)
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
@@ -920,11 +916,11 @@ func Test_Ctx_SendString(t *testing.T) {
 		c.SendString("Don't crash please")
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err := ioutil.ReadAll(resp.Body)
 	assertEqual(t, nil, err)
@@ -940,11 +936,11 @@ func Test_Ctx_Set(t *testing.T) {
 		c.Set("X-3", "1337")
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, "1", resp.Header.Get("X-1"))
 	assertEqual(t, "2", resp.Header.Get("X-2"))
 	assertEqual(t, "1337", resp.Header.Get("X-3"))
@@ -957,7 +953,7 @@ func Test_Ctx_Status(t *testing.T) {
 		c.Status(415).Send("Hello, World")
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
 	assertEqual(t, 415, resp.StatusCode, "Status code")
@@ -973,11 +969,11 @@ func Test_Ctx_Type(t *testing.T) {
 		c.Type(".json")
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, "application/json", resp.Header.Get("Content-Type"))
 }
 func Test_Ctx_Vary(t *testing.T) {
@@ -989,11 +985,11 @@ func Test_Ctx_Vary(t *testing.T) {
 		c.Vary("Accept-Encoding", "Accept")
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	assertEqual(t, "Origin, User-Agent, Accept-Encoding, Accept", resp.Header.Get("Vary"))
 }
 func Test_Ctx_Write(t *testing.T) {
@@ -1005,11 +1001,11 @@ func Test_Ctx_Write(t *testing.T) {
 		c.Write(123)
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/test", nil)
+	req := httptest.NewRequest(MethodGet, "http://example.com/test", nil)
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err := ioutil.ReadAll(resp.Body)
 	assertEqual(t, nil, err)
@@ -1023,10 +1019,10 @@ func Test_Ctx_XHR(t *testing.T) {
 		assertEqual(t, true, c.XHR())
 	})
 
-	req := httptest.NewRequest("GET", "/test", nil)
+	req := httptest.NewRequest(MethodGet, "/test", nil)
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 
 	resp, err := app.Test(req)
 	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	assertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }

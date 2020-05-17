@@ -455,17 +455,17 @@ func (ctx *Ctx) IPs() []string {
 
 // Is returns the matching content type,
 // if the incoming request’s Content-Type HTTP header field matches the MIME type specified by the type parameter
-func (ctx *Ctx) Is(extension string) (match bool) {
-	extension = trimLeft(extension, '.')
+func (ctx *Ctx) Is(extension string) bool {
+	extensionHeader, ok := extMIME[trimLeft(extension, '.')]
+	if !ok {
+		return false
+	}
 	header := ctx.Get(HeaderContentType)
-
 	if factorSign := strings.IndexByte(header, ';'); factorSign != -1 {
 		header = header[:factorSign]
 	}
-	header = trim(header, ' ')
-	_, ok := extMIME[extension]
 
-	return ok
+	return trim(header, ' ') == extensionHeader
 }
 
 // JSON converts any interface or string to JSON using Jsoniter.
