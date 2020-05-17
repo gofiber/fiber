@@ -35,6 +35,26 @@ func Test_Utils_trimRight(t *testing.T) {
 	t.Parallel()
 	res := trimRight("/test//////", '/')
 	assertEqual(t, "/test", res)
+
+	res = trimRight("/test", '/')
+	assertEqual(t, "/test", res)
+}
+
+func Test_Utils_trimLeft(t *testing.T) {
+	t.Parallel()
+	res := trimLeft("////test/", '/')
+	assertEqual(t, "test/", res)
+
+	res = trimLeft("test/", '/')
+	assertEqual(t, "test/", res)
+}
+func Test_Utils_trim(t *testing.T) {
+	t.Parallel()
+	res := trim("   test  ", ' ')
+	assertEqual(t, "test", res)
+
+	res = trim("test", ' ')
+	assertEqual(t, "test", res)
 }
 
 // func Test_Utils_assertEqual(t *testing.T) {

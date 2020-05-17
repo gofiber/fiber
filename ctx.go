@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -119,7 +118,7 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 	for len(header) > 0 && commaPos != -1 {
 		commaPos = strings.IndexByte(header, ',')
 		if commaPos != -1 {
-			spec = trimSpace(header[:commaPos])
+			spec = trim(header[:commaPos], ' ')
 		} else {
 			spec = header
 		}
@@ -449,7 +448,7 @@ func (ctx *Ctx) IP() string {
 func (ctx *Ctx) IPs() []string {
 	ips := strings.Split(ctx.Get(HeaderXForwardedFor), ",")
 	for i := range ips {
-		ips[i] = trimSpace(ips[i])
+		ips[i] = trim(ips[i], ' ')
 	}
 	return ips
 }
@@ -457,19 +456,16 @@ func (ctx *Ctx) IPs() []string {
 // Is returns the matching content type,
 // if the incoming request’s Content-Type HTTP header field matches the MIME type specified by the type parameter
 func (ctx *Ctx) Is(extension string) (match bool) {
-	if extension[0] != '.' {
-		extension = "." + extension
-	}
+	extension = trimLeft(extension, '.')
+	header := ctx.Get(HeaderContentType)
 
-	exts, _ := mime.ExtensionsByType(ctx.Get(HeaderContentType))
-	if len(exts) > 0 {
-		for i := range exts {
-			if exts[i] == extension {
-				return true
-			}
-		}
+	if factorSign := strings.IndexByte(header, ';'); factorSign != -1 {
+		header = header[:factorSign]
 	}
-	return
+	header = trim(header, ' ')
+	_, ok := extMIME[extension]
+
+	return ok
 }
 
 // JSON converts any interface or string to JSON using Jsoniter.
