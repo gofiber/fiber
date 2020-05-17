@@ -44,19 +44,6 @@ func Benchmark_Utils_getMIME(b *testing.B) {
 // 	// TODO
 // }
 
-func Benchmark_Utils_extensionMIME(b *testing.B) {
-	var res string
-	for n := 0; n < b.N; n++ {
-		res = getMIME(".json")
-		res = getMIME("json")
-		res = getMIME("xspf")
-		res = getMIME(".xspf")
-		res = getMIME("avi")
-		res = getMIME(".avi")
-	}
-	assertEqual(b, "video/x-msvideo", res)
-}
-
 // func Benchmark_Utils_getParams(b *testing.B) {
 // 	// TODO
 // }

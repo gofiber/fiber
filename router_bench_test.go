@@ -12,60 +12,46 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
-var routerBenchApp *App
-
-func init() {
-	routerBenchApp = New()
+func registerDummyRoutes(app *App) {
 	h := func(c *Ctx) {}
 	for _, r := range githubAPI {
 		switch r.method {
 		case "GET":
-			routerBenchApp.Get(r.path, h)
+			app.Get(r.path, h)
 		case "POST":
-			routerBenchApp.Post(r.path, h)
+			app.Post(r.path, h)
 		case "PUT":
-			routerBenchApp.Put(r.path, h)
+			app.Put(r.path, h)
 		case "PATCH":
-			routerBenchApp.Patch(r.path, h)
+			app.Patch(r.path, h)
 		case "DELETE":
-			routerBenchApp.Delete(r.path, h)
+			app.Delete(r.path, h)
 		default:
 			panic("Unknow HTTP method: " + r.method)
 		}
 	}
-	for i := 0; i < 100; i++ {
-		routerBenchApp.Use("/middleware", func(c *Ctx) {
-			c.Next()
-		})
-	}
 }
 
-func Benchmark_Router_CaseSensitive(b *testing.B) {
-	var path = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
-	var res string
-
-	for n := 0; n < b.N; n++ {
-		//res = strings.ToLower(path)
-		res = toLower(path)
-	}
-
-	assertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
-}
-
-// go test -v ./... -run=^$ -bench=Benchmark_Router_StrictRouting -benchmem -count 6
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count 6
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=4
 func Benchmark_Router_Handler(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
-	c.URI().SetPath("/UsEr/KeYs/1337")
+	c.URI().SetPath("/user/keys/1337")
 
 	for n := 0; n < b.N; n++ {
-		routerBenchApp.handler(c)
+		app.handler(c)
 	}
 }
 
-func Benchmark_Router_NextRoute(b *testing.B) {
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Next -benchmem -count=4
+func Benchmark_Router_Next(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+
 	c := AcquireCtx(&fasthttp.RequestCtx{})
 	defer ReleaseCtx(c)
 
@@ -73,57 +59,91 @@ func Benchmark_Router_NextRoute(b *testing.B) {
 	c.Fasthttp.URI().SetPath("/user/keys/1337")
 
 	for n := 0; n < b.N; n++ {
-		routerBenchApp.next(c)
+		app.next(c)
 	}
-
 	assertEqual(b, len(githubAPI)+1, c.index-1)
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Next_Stack -benchmem -count=3
-func Benchmark_Router_Next_Stack(b *testing.B) {
+// go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
+func Benchmark_Route_Match(b *testing.B) {
+	var match bool
+	var params []string
+
+	parsed := getParams("/user/keys/:id")
+	route := &Route{
+		use:    false,
+		root:   false,
+		star:   false,
+		parsed: parsed,
+
+		Path:    "/user/keys/:id",
+		Method:  "DELETE",
+		Params:  parsed.params,
+		Handler: func(c *Ctx) {},
+	}
+
 	for n := 0; n < b.N; n++ {
-		_, _ = matchRoute("GET", "/middleware")
+		match, params = route.match("/user/keys/1337")
+	}
+
+	assertEqual(b, true, match)
+	assertEqual(b, []string{"1337"}, params)
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4
+func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
+	app := New()
+	app.Settings.CaseSensitive = true
+	registerDummyRoutes(app)
+
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/user/keys/1337")
+
+	for n := 0; n < b.N; n++ {
+		app.handler(c)
 	}
 }
 
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_StrictRouting -benchmem -count=4
+func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
+	app := New()
+	app.Settings.CaseSensitive = true
+	registerDummyRoutes(app)
+
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/user/keys/1337")
+
+	for n := 0; n < b.N; n++ {
+		app.handler(c)
+	}
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Github_API -benchmem -count=4
 func Benchmark_Router_Github_API(b *testing.B) {
+	app := New()
+	registerDummyRoutes(app)
+
+	var match bool
+	var params []string
+
 	for n := 0; n < b.N; n++ {
 		for i := range testRoutes {
-			_, _ = matchRoute(testRoutes[i].method, testRoutes[i].path)
+
+			mINT := methodINT[testRoutes[i].method]
+			path := testRoutes[i].path
+
+			for i := range app.stack[mINT] {
+				match, params = app.stack[mINT][i].match(path)
+			}
 		}
 	}
-}
 
-func Benchmark_Router_Stacked_Route(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		_, _ = matchRoute("GET", "/orgs/gofiber/public_members/fenny")
-	}
-}
-
-func Benchmark_Router_Last_Route(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		_, _ = matchRoute("DELETE", "/user/keys/1337")
-	}
-}
-
-func Benchmark_Router_Middle_Route(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		_, _ = matchRoute("GET", "/orgs/gofiber/public_members/fenny")
-	}
-}
-
-func Benchmark_Router_First_Route(b *testing.B) {
-	for n := 0; n < b.N; n++ {
-		_, _ = matchRoute("GET", "/authorizations")
-	}
-}
-
-func matchRoute(method, path string) (match bool, values []string) {
-	mINT := methodINT[method]
-	for i := range routerBenchApp.stack[mINT] {
-		_, _ = routerBenchApp.stack[mINT][i].match(path)
-	}
-	return
+	assertEqual(b, true, match)
+	assertEqual(b, true, params != nil)
 }
 
 type testRoute struct {
