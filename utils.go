@@ -265,7 +265,13 @@ var getStringImmutable = func(b []byte) string {
 // getBytes converts string to a byte slice without memory allocation.
 // See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
 var getBytes = func(s string) (b []byte) {
-	return *(*[]byte)(unsafe.Pointer(&s))
+	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
+	bh := reflect.SliceHeader{
+		Data: sh.Data,
+		Len:  sh.Len,
+		Cap:  sh.Len,
+	}
+	return *(*[]byte)(unsafe.Pointer(&bh))
 }
 var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
