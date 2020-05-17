@@ -158,6 +158,32 @@ func Benchmark_Ctx_Format_XML(b *testing.B) {
 	assertEqual(b, `<string>Hello, World!</string>`, string(c.Fasthttp.Response.Body()))
 
 }
+func Benchmark_Ctx_Path(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
+	var res string
+	c.app = New()
+	bench := func(bParent *testing.B, desc, override, expected string) {
+		bParent.Run(desc, func(b *testing.B) {
+			for n := 0; n < b.N; n++ {
+				c.path = "/test/john"
+				if "" == override {
+					res = c.Path()
+				} else {
+					res = c.Path(override)
+				}
+			}
+			assertEqual(b, expected, res)
+		})
+	}
+	bench(b, "simple", "", "/test/john")
+	bench(b, "override", "/abc", "/abc")
+	bench(b, "override_Case", "/ABC", "/abc")
+	bench(b, "override_Strict", "/abc/", "/abc")
+	bench(b, "override_Case&Strict", "/ABC/", "/abc")
+	bench(b, "override_noChange", "/test/john", "/test/john")
+}
 
 // func Benchmark_Ctx_Fresh(b *testing.B) {
 // 	TODO
