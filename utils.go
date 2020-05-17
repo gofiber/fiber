@@ -446,7 +446,7 @@ var methodINT = map[string]int{
 	MethodPatch:   8,
 }
 
-// HTTP methods and their unique INTs
+// unique INTs and the associated HTTP method
 var intMethod = map[int]string{
 	0: MethodGet,
 	1: MethodHead,
