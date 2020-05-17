@@ -32,8 +32,8 @@ type Map map[string]interface{}
 
 // App denotes the Fiber application.
 type App struct {
-	// Layer stack
-	stack [][]*Layer
+	// Route stack
+	stack [][]*Route
 	// Fasthttp server
 	server *fasthttp.Server
 	mutex  sync.Mutex
@@ -41,14 +41,16 @@ type App struct {
 	Settings *Settings
 }
 
+// Enables automatic redirection if the current route can't be matched but a handler for the path with (without) the trailing slash exists. For example if /foo/ is requested but a route only exists for /foo, the client is redirected to /foo with http status code 301 for GET requests and 308 for all other request methods.
+
 // Settings holds is a struct holding the server settings
 type Settings struct {
 	// This will spawn multiple Go processes listening on the same port
 	Prefork bool // default: false
 	// Enable strict routing. When enabled, the router treats "/foo" and "/foo/" as different.
-	StrictRouting bool // default: false
-	// Enable case sensitivity. When enabled, "/Foo" and "/foo" are different routes.
-	CaseSensitive bool // default: false
+	StrictRouting bool
+	// Enable case sensitive routing. When enabled, "/FoO" and "/foo" are different routes.
+	CaseSensitive bool
 	// Enables the "Server: value" HTTP header.
 	ServerHeader string // default: ""
 	// Enables handler values to be immutable even if you return from handler
@@ -67,15 +69,12 @@ type Settings struct {
 	DisableDefaultDate bool // default: false
 	// When set to true, causes the default Content-Type header to be excluded from the Response.
 	DisableDefaultContentType bool // default: false
-	DisableHeaderNormalizing  bool // default: false
+	// By default all header names are normalized: conteNT-tYPE -> Content-Type
+	DisableHeaderNormalizing bool // default: false
 	// When set to true, it will not print out the fiber ASCII and "listening" on message
 	DisableStartupMessage bool
-	// Folder containing template files
-	TemplateFolder string // default: ""
-	// Template engine: html, amber, handlebars , mustache or pug
-	TemplateEngine func(raw string, bind interface{}) (string, error) // default: nil
-	// Extension for the template files
-	TemplateExtension string // default: ""
+	// ViewEngine is the template engine interface
+	ViewEngine ViewEngine
 	// The amount of time allowed to read the full request including body.
 	ReadTimeout time.Duration // default: unlimited
 	// The maximum duration before timing out writes of the response.
@@ -109,6 +108,23 @@ type Static struct {
 	Index string
 }
 
+// Potential feature to get all registered routes
+// func (app *App) Stack(print ...bool) map[string][]string {
+// 	m := make(map[string][]string)
+// 	for i := range app.stack {
+// 		method := intMethod[i]
+// 		m[method] = []string{}
+// 		for k := range app.stack[i] {
+// 			m[method] = append(m[method], app.stack[i][k].Path)
+// 		}
+// 	}
+// 	if len(print) > 0 {
+// 		b, _ := json.MarshalIndent(m, "", "  ")
+// 		fmt.Print(string(b))
+// 	}
+// 	return m
+// }
+
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
 func New(settings ...*Settings) *App {
@@ -119,7 +135,7 @@ func New(settings ...*Settings) *App {
 	// Create app
 	app := new(App)
 	// Create route stack
-	app.stack = make([][]*Layer, len(methodINT))
+	app.stack = make([][]*Route, len(methodINT))
 	// Create settings
 	app.Settings = new(Settings)
 	// Set default settings

@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"html/template"
+	"io"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"text/template"
 	"time"
 
 	schema "github.com/gorilla/schema"
@@ -33,7 +34,7 @@ import (
 type Ctx struct {
 	// Internal fields
 	app    *App     // Reference to *App
-	layer  *Layer   // Reference to *Layer
+	route  *Route   // Reference to *Route
 	index  int      // Index of the current handler in the stack
 	method string   // HTTP method
 	path   string   // HTTP path
@@ -65,6 +66,11 @@ type Cookie struct {
 	SameSite string
 }
 
+// ViewEngine is an engine interface to render templates
+type ViewEngine interface {
+	Render(io.Writer, string, interface{}) error
+}
+
 // Global variables
 var schemaDecoderForm = schema.NewDecoder()
 var schemaDecoderQuery = schema.NewDecoder()
@@ -93,7 +99,7 @@ func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 // ReleaseCtx to pool
 func ReleaseCtx(ctx *Ctx) {
 	// Reset values
-	ctx.layer = nil
+	ctx.route = nil
 	ctx.values = nil
 	ctx.Fasthttp = nil
 	ctx.err = nil
@@ -579,11 +585,11 @@ func (ctx *Ctx) OriginalURL() string {
 // Params is used to get the route parameters.
 // Defaults to empty string "", if the param doesn't exist.
 func (ctx *Ctx) Params(key string) string {
-	for i := range ctx.layer.Params {
-		if len(key) != len(ctx.layer.Params[i]) {
+	for i := range ctx.route.Params {
+		if len(key) != len(ctx.route.Params[i]) {
 			continue
 		}
-		if ctx.layer.Params[i] == key {
+		if ctx.route.Params[i] == key {
 			return ctx.values[i]
 		}
 	}
@@ -675,49 +681,46 @@ func (ctx *Ctx) Redirect(location string, status ...int) {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-func (ctx *Ctx) Render(file string, bind interface{}) error {
-	var err error
-	var raw []byte
-	var html string
-	if ctx.app != nil {
-		if ctx.app.Settings.TemplateFolder != "" {
-			file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
-		}
-		if ctx.app.Settings.TemplateExtension != "" {
-			file = file + ctx.app.Settings.TemplateExtension
-		}
-		if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
-			return err
-		}
-	}
-	if ctx.app != nil && ctx.app.Settings.TemplateEngine != nil {
-		// Custom template engine
-		// https://github.com/gofiber/template
-		if html, err = ctx.app.Settings.TemplateEngine(getString(raw), bind); err != nil {
+func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
+	// Get new buffer from pool
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	// Use ViewEngine if exist
+	if ctx.app.Settings.ViewEngine != nil {
+		// Render template with engine
+		if err := ctx.app.Settings.ViewEngine.Render(buf, name, bind); err != nil {
 			return err
 		}
 	} else {
-		// Default template engine
-		// https://golang.org/pkg/text/template/
-		var buf bytes.Buffer
+		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
-
-		if tmpl, err = template.New("").Parse(getString(raw)); err != nil {
+		var raw []byte
+		// Read file
+		if raw, err = ioutil.ReadFile(filepath.Clean(name)); err != nil {
 			return err
 		}
-		if err = tmpl.Execute(&buf, bind); err != nil {
+		// Parse template
+		// tmpl, err := template.ParseGlob(name)
+		if tmpl, err = template.New("").ParseGlob(getString(raw)); err != nil {
 			return err
 		}
-		html = buf.String()
+		// Render template
+		if err = tmpl.Execute(buf, bind); err != nil {
+			return err
+		}
 	}
-	ctx.Set("Content-Type", "text/html")
-	ctx.SendString(html)
-	return err
+	// Set Contet-Type to text/html
+	ctx.Set(HeaderContentType, MIMETextHTML)
+	// Set rendered template to body
+	ctx.SendBytes(buf.Bytes())
+	// Return err if exist
+	return
 }
 
 // Route returns the matched Route struct.
-func (ctx *Ctx) Route() *Layer {
-	return ctx.layer
+func (ctx *Ctx) Route() *Route {
+	return ctx.route
 }
 
 // SaveFile saves any multipart file to disk.

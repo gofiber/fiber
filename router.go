@@ -12,28 +12,70 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
+// Route is a struct that holds all metadata for each registered handler
+type Route struct {
+	// Internal fields
+	use    bool         // USE matches path prefixes
+	star   bool         // Path equals '*' or '/*'
+	root   bool         // Path equals '/'
+	parsed parsedParams // parsed contains parsed params segments
+
+	// External fields for ctx.Route() method
+	Path    string     // Registered route path
+	Method  string     // HTTP method
+	Params  []string   // Slice containing the params names
+	Handler func(*Ctx) // Ctx handler
+}
+
+func (r *Route) match(path string) (match bool, values []string) {
+	if r.use {
+		if r.root || strings.HasPrefix(path, r.Path) {
+			return true, values
+		}
+		// Check for a simple path match
+	} else if len(r.Path) == len(path) && r.Path == path {
+		return true, values
+		// Middleware routes allow prefix matches
+	} else if r.root && path == "/" {
+		return true, values
+	}
+	// '*' wildcard matches any path
+	if r.star {
+		return true, []string{path}
+	}
+	// Does this route have parameters
+	if len(r.Params) > 0 {
+		// Match params
+		if values, match = r.parsed.getMatch(path, r.use); match {
+			return
+		}
+	}
+	// No match
+	return false, values
+}
+
 func (app *App) next(ctx *Ctx) bool {
 	// TODO set unique INT within handler(), not here over and over again
 	method := methodINT[ctx.method]
 	// Get stack length
 	lenr := len(app.stack[method]) - 1
-	// Loop over the layer stack starting from previous index
+	// Loop over the route stack starting from previous index
 	for ctx.index < lenr {
 		// Increment stack index
 		ctx.index++
 		// Get *Route
-		layer := app.stack[method][ctx.index]
+		route := app.stack[method][ctx.index]
 		// Check if it matches the request path
-		match, values := layer.match(ctx.path)
+		match, values := route.match(ctx.path)
 		// No match, continue
 		if !match {
 			continue
 		}
-		// Pass layer and param values to Ctx
-		ctx.layer = layer
+		// Pass route and param values to Ctx
+		ctx.route = route
 		ctx.values = values
 		// Execute Ctx handler
-		layer.Handler(ctx)
+		route.Handler(ctx)
 		// Stop looping the stack
 		return true
 	}
@@ -61,7 +103,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	if app.Settings.ETag {
 		setETag(ctx, false)
 	}
-	// Send a 404 by default if no layer matched
+	// Send a 404 by default if no route matched
 	if !match {
 		ctx.SendStatus(404)
 	}
@@ -70,7 +112,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 }
 
 func (app *App) register(method, path string, handlers ...func(*Ctx)) *App {
-	// A layer requires atleast one ctx handler
+	// A route requires atleast one ctx handler
 	if len(handlers) == 0 {
 		log.Fatalf("Missing handler in route")
 	}
@@ -102,8 +144,8 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) *App {
 	var isParsed = getParams(original)
 	// Loop over handlers
 	for i := range handlers {
-		// Set layer metadata
-		layer := &Layer{
+		// Set route metadata
+		route := &Route{
 			// Internals
 			use:    isUse,
 			star:   isStar,
@@ -115,20 +157,20 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) *App {
 			Params:  isParsed.params,
 			Handler: handlers[i],
 		}
-		// Middleware layer matches all HTTP methods
+		// Middleware route matches all HTTP methods
 		if isUse {
-			// Add layer to all HTTP methods stack
+			// Add route to all HTTP methods stack
 			for m := range methodINT {
-				app.addLayer(m, layer)
+				app.addRoute(m, route)
 			}
 			// Skip to next handler
 			continue
 		}
-		// Add layer to stack
-		app.addLayer(method, layer)
-		// Also add GET layer to HEAD
+		// Add route to stack
+		app.addRoute(method, route)
+		// Also add GET routes to HEAD stack
 		if method == MethodGet {
-			app.addLayer(MethodHead, layer)
+			app.addRoute(MethodHead, route)
 		}
 	}
 	return app
@@ -196,7 +238,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		}
 	}
 	fileHandler := fs.NewRequestHandler()
-	layer := &Layer{
+	route := &Route{
 		use:    true,
 		root:   isRoot,
 		Method: "*",
@@ -219,14 +261,14 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 			c.Next()
 		},
 	}
-	// Add layer to stack
-	app.addLayer(MethodGet, layer)
-	app.addLayer(MethodHead, layer)
+	// Add route to stack
+	app.addRoute(MethodGet, route)
+	app.addRoute(MethodHead, route)
 }
 
-func (app *App) addLayer(method string, layer *Layer) {
+func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method indentifier
 	m := methodINT[method]
-	// Add layer to the stack
-	app.stack[m] = append(app.stack[m], layer)
+	// Add route to the stack
+	app.stack[m] = append(app.stack[m], route)
 }
