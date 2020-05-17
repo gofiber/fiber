@@ -189,9 +189,20 @@ func Benchmark_Ctx_Path(b *testing.B) {
 // 	TODO
 // }
 
-// func Benchmark_Ctx_Is(b *testing.B) {
-// 	TODO
-// }
+func Benchmark_Ctx_Is(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
+	c.Fasthttp.Request.Header.Set(HeaderContentType, MIMEApplicationJSON)
+	var res bool
+	for n := 0; n < b.N; n++ {
+		res = c.Is(".json")
+		res = c.Is("json")
+	}
+
+	assertEqual(b, true, res)
+}
+
 // TODO
 // func Benchmark_Ctx_Next(b *testing.B) {
 
