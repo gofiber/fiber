@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// go test -v ./... -run=^$ -bench=Benchmark_Utils_toUpper -benchmem -count=3
+// go test -v ./... -run=^$ -bench=Benchmark_Utils_getGroupPath -benchmem -count=3
 
 // func Benchmark_Utils_assertEqual(b *testing.B) {
 // 	// TODO
