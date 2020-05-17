@@ -600,7 +600,7 @@ func (ctx *Ctx) Params(key string) string {
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
 func (ctx *Ctx) Path(override ...string) string {
-	if len(override) > 0 && ctx.app != nil && ctx.path != override[0] {
+	if len(override) != 0 && ctx.path != override[0] && ctx.app != nil {
 		ctx.path = override[0]
 		// Non strict routing
 		if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 {
