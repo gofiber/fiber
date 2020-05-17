@@ -136,11 +136,9 @@ func setETag(ctx *Ctx, weak bool) {
 
 func getGroupPath(prefix, path string) string {
 	if path == "/" {
-		path = ""
+		return prefix
 	}
-	path = prefix + path
-	path = strings.Replace(path, "//", "/", -1)
-	return path
+	return trimRight(prefix, '/') + path
 }
 
 func getMIME(extension string) (mime string) {
