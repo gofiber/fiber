@@ -5,8 +5,6 @@
 package fiber
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=3
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -coverprofile=data.prof
-// go tool pprof web C:\Users\Work\Documents\GitHub\fiber\data.mem
 
 import (
 	"testing"
