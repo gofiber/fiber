@@ -44,17 +44,6 @@ func Benchmark_Utils_getMIME(b *testing.B) {
 // 	// TODO
 // }
 
-func Benchmark_Utils_statusMessage(b *testing.B) {
-	var res string
-	for n := 0; n < b.N; n++ {
-		res = statusMessage[100]
-		res = statusMessage[304]
-		res = statusMessage[423]
-		res = statusMessage[507]
-	}
-	assertEqual(b, "Insufficient Storage", res)
-}
-
 func Benchmark_Utils_extensionMIME(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
@@ -76,37 +65,6 @@ func Benchmark_Utils_extensionMIME(b *testing.B) {
 // 	// TODO
 // }
 
-func Benchmark_Utils_getTrimmedParam(b *testing.B) {
-	var res string
-	for n := 0; n < b.N; n++ {
-		res = getTrimmedParam(":param")
-		res = getTrimmedParam(":param?")
-	}
-	assertEqual(b, "param", res)
-}
-
 // func Benchmark_Utils_getCharPos(b *testing.B) {
 // 	// TODO
 // }
-
-func Benchmark_Utils_toLower(b *testing.B) {
-	var path = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
-	var res string
-
-	for n := 0; n < b.N; n++ {
-		res = toLower(path)
-	}
-
-	assertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
-}
-
-func Benchmark_Utils_toUpper(b *testing.B) {
-	var path = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
-	var res string
-
-	for n := 0; n < b.N; n++ {
-		res = toUpper(path)
-	}
-
-	assertEqual(b, "/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS", res)
-}
