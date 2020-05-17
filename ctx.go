@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -169,17 +168,19 @@ func (ctx *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := ctx.Fasthttp.Response.Header.Peek(field)
-	for i := range values {
-		var value = getBytes(values[i])
+	h := getString(ctx.Fasthttp.Response.Header.Peek(field))
+	originalH := h
+	for _, value := range values {
 		if len(h) == 0 {
-			h = append(h, value...)
-		} else if 0 != bytes.Compare(h, value) && !bytes.HasSuffix(h, append([]byte{' '}, value...)) &&
-			!bytes.Contains(h, append(append([]byte{}, value...), ',')) {
-			h = append(append(h, ',', ' '), value...)
+			h = value
+		} else if h != value && !strings.HasSuffix(h, " "+value) &&
+			!strings.Contains(h, value+",") {
+			h += ", " + value
 		}
 	}
-	ctx.Fasthttp.Response.Header.SetBytesV(field, h)
+	if originalH != h {
+		ctx.Fasthttp.Response.Header.Set(field, h)
+	}
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
