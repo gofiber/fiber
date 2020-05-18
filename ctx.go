@@ -752,12 +752,15 @@ func (ctx *Ctx) SendBytes(body []byte) {
 // The file is compressed by default, disable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
 func (ctx *Ctx) SendFile(file string, uncompressed ...bool) {
+	// https://github.com/gofiber/fiber/issues/391
+	status := ctx.Fasthttp.Response.StatusCode()
 	// Disable gzip compression
 	if len(uncompressed) > 0 && uncompressed[0] {
 		fasthttp.ServeFileUncompressed(ctx.Fasthttp, file)
-		return
+	} else {
+		fasthttp.ServeFile(ctx.Fasthttp, file)
 	}
-	fasthttp.ServeFile(ctx.Fasthttp, file)
+	ctx.Fasthttp.Response.SetStatusCode(status)
 }
 
 // SendStatus sets the HTTP status code and if the response body is empty,
