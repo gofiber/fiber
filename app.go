@@ -7,6 +7,7 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -83,6 +84,24 @@ type Settings struct {
 	IdleTimeout time.Duration // default: unlimited
 }
 
+// Router interface, both App and Group should implement this interface
+type Router interface {
+	Use(args ...interface{}) Router
+	All(path string, handlers ...func(*Ctx)) Router
+	Connect(path string, handlers ...func(*Ctx)) Router
+	Put(path string, handlers ...func(*Ctx)) Router
+	Post(path string, handlers ...func(*Ctx)) Router
+	Delete(path string, handlers ...func(*Ctx)) Router
+	Head(path string, handlers ...func(*Ctx)) Router
+	Patch(path string, handlers ...func(*Ctx)) Router
+	Options(path string, handlers ...func(*Ctx)) Router
+	Trace(path string, handlers ...func(*Ctx)) Router
+	Get(path string, handlers ...func(*Ctx)) Router
+	Add(method, path string, handlers ...func(*Ctx)) Router
+	Static(prefix, root string, config ...Static) Router
+	Group(prefix string, handlers ...func(*Ctx)) Router
+}
+
 // Group struct
 type Group struct {
 	prefix string
@@ -109,21 +128,21 @@ type Static struct {
 }
 
 // Potential feature to get all registered routes
-// func (app *App) Stack(print ...bool) map[string][]string {
-// 	m := make(map[string][]string)
-// 	for i := range app.stack {
-// 		method := intMethod[i]
-// 		m[method] = []string{}
-// 		for k := range app.stack[i] {
-// 			m[method] = append(m[method], app.stack[i][k].Path)
-// 		}
-// 	}
-// 	if len(print) > 0 {
-// 		b, _ := json.MarshalIndent(m, "", "  ")
-// 		fmt.Print(string(b))
-// 	}
-// 	return m
-// }
+func (app *App) Stack(print ...bool) map[string][]string {
+	m := make(map[string][]string)
+	for i := range app.stack {
+		method := intMethod[i]
+		m[method] = []string{}
+		for k := range app.stack[i] {
+			m[method] = append(m[method], app.stack[i][k].Path)
+		}
+	}
+	if len(print) > 0 && print[0] {
+		b, _ := json.MarshalIndent(m, "", "  ")
+		fmt.Print(string(b))
+	}
+	return m
+}
 
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
@@ -171,7 +190,7 @@ func New(settings ...*Settings) *App {
 // - app.Use(handler)
 // - app.Use("/api", handler)
 // - app.Use("/api", handler, handler)
-func (app *App) Use(args ...interface{}) *App {
+func (app *App) Use(args ...interface{}) Router {
 	var prefix string
 	var handlers []func(*Ctx)
 
@@ -189,7 +208,7 @@ func (app *App) Use(args ...interface{}) *App {
 }
 
 // All ...
-func (app *App) All(path string, handlers ...func(*Ctx)) *App {
+func (app *App) All(path string, handlers ...func(*Ctx)) Router {
 	for m := range methodINT {
 		app.register(m, path, handlers...)
 	}
@@ -197,52 +216,52 @@ func (app *App) All(path string, handlers ...func(*Ctx)) *App {
 }
 
 // Get ...
-func (app *App) Get(path string, handlers ...func(*Ctx)) *App {
+func (app *App) Get(path string, handlers ...func(*Ctx)) Router {
 	return app.register(MethodGet, path, handlers...)
 }
 
 // Head ...
-func (app *App) Head(path string, handlers ...func(*Ctx)) *App {
+func (app *App) Head(path string, handlers ...func(*Ctx)) Router {
 	return app.register(MethodHead, path, handlers...)
 }
 
 // Post ...
-func (app *App) Post(path string, handlers ...func(*Ctx)) *App {
+func (app *App) Post(path string, handlers ...func(*Ctx)) Router {
 	return app.register(MethodPost, path, handlers...)
 }
 
 // Put ...
-func (app *App) Put(path string, handlers ...func(*Ctx)) *App {
+func (app *App) Put(path string, handlers ...func(*Ctx)) Router {
 	return app.register(MethodPut, path, handlers...)
 }
 
 // Delete ...
-func (app *App) Delete(path string, handlers ...func(*Ctx)) *App {
+func (app *App) Delete(path string, handlers ...func(*Ctx)) Router {
 	return app.register(MethodDelete, path, handlers...)
 }
 
 // Connect ...
-func (app *App) Connect(path string, handlers ...func(*Ctx)) *App {
+func (app *App) Connect(path string, handlers ...func(*Ctx)) Router {
 	return app.register(MethodConnect, path, handlers...)
 }
 
 // Options ...
-func (app *App) Options(path string, handlers ...func(*Ctx)) *App {
+func (app *App) Options(path string, handlers ...func(*Ctx)) Router {
 	return app.register(MethodOptions, path, handlers...)
 }
 
 // Trace ...
-func (app *App) Trace(path string, handlers ...func(*Ctx)) *App {
+func (app *App) Trace(path string, handlers ...func(*Ctx)) Router {
 	return app.register(MethodTrace, path, handlers...)
 }
 
 // Patch ...
-func (app *App) Patch(path string, handlers ...func(*Ctx)) *App {
+func (app *App) Patch(path string, handlers ...func(*Ctx)) Router {
 	return app.register(MethodPatch, path, handlers...)
 }
 
 // Add ...
-func (app *App) Add(method, path string, handlers ...func(*Ctx)) *App {
+func (app *App) Add(method, path string, handlers ...func(*Ctx)) Router {
 	method = toUpper(method)
 	if methodINT[method] == 0 && method != MethodGet {
 		log.Fatalf("Add: Invalid HTTP method %s", method)
@@ -251,7 +270,7 @@ func (app *App) Add(method, path string, handlers ...func(*Ctx)) *App {
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
+func (app *App) Group(prefix string, handlers ...func(*Ctx)) Router {
 	if len(handlers) > 0 {
 		app.register("USE", prefix, handlers...)
 	}
@@ -262,13 +281,13 @@ func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 }
 
 // Static registers a new route with path prefix to serve static files from the provided root directory.
-func (app *App) Static(prefix, root string, config ...Static) *App {
+func (app *App) Static(prefix, root string, config ...Static) Router {
 	app.registerStatic(prefix, root, config...)
 	return app
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-func (grp *Group) Group(prefix string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Group(prefix string, handlers ...func(*Ctx)) Router {
 	prefix = getGroupPath(grp.prefix, prefix)
 	if len(handlers) > 0 {
 		grp.app.register("USE", prefix, handlers...)
@@ -280,16 +299,15 @@ func (grp *Group) Group(prefix string, handlers ...func(*Ctx)) *Group {
 }
 
 // Static : https://fiber.wiki/application#static
-func (grp *Group) Static(prefix, root string, config ...Static) *Group {
-	prefix = getGroupPath(grp.prefix, prefix)
-	grp.app.registerStatic(prefix, root, config...)
+func (grp *Group) Static(prefix, root string, config ...Static) Router {
+	grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
 	return grp
 }
 
 // Use registers a middleware route.
 // Middleware matches requests beginning with the provided prefix.
 // Providing a prefix is optional, it defaults to "/"
-func (grp *Group) Use(args ...interface{}) *Group {
+func (grp *Group) Use(args ...interface{}) Router {
 	var path = ""
 	var handlers []func(*Ctx)
 	for i := 0; i < len(args); i++ {
@@ -299,7 +317,7 @@ func (grp *Group) Use(args ...interface{}) *Group {
 		case func(*Ctx):
 			handlers = append(handlers, arg)
 		default:
-			//log.Fatalf("Invalid Use() arguments, must be (prefix, handler) or (handler)")
+			log.Fatalf("Invalid Use() arguments, must be (prefix, handler) or (handler)")
 		}
 	}
 	grp.app.register("USE", getGroupPath(grp.prefix, path), handlers...)
@@ -307,7 +325,7 @@ func (grp *Group) Use(args ...interface{}) *Group {
 }
 
 // Add : https://fiber.wiki/application#http-methods
-func (grp *Group) Add(method, path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Add(method, path string, handlers ...func(*Ctx)) Router {
 	method = toUpper(method)
 	if methodINT[method] == 0 && method != MethodGet {
 		log.Fatalf("Add: Invalid HTTP method %s", method)
@@ -317,61 +335,61 @@ func (grp *Group) Add(method, path string, handlers ...func(*Ctx)) *Group {
 }
 
 // Connect : https://fiber.wiki/application#http-methods
-func (grp *Group) Connect(path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Connect(path string, handlers ...func(*Ctx)) Router {
 	grp.app.register(MethodConnect, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Put : https://fiber.wiki/application#http-methods
-func (grp *Group) Put(path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Put(path string, handlers ...func(*Ctx)) Router {
 	grp.app.register(MethodPut, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Post : https://fiber.wiki/application#http-methods
-func (grp *Group) Post(path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Post(path string, handlers ...func(*Ctx)) Router {
 	grp.app.register(MethodPost, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Delete : https://fiber.wiki/application#http-methods
-func (grp *Group) Delete(path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Delete(path string, handlers ...func(*Ctx)) Router {
 	grp.app.register(MethodDelete, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Head : https://fiber.wiki/application#http-methods
-func (grp *Group) Head(path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Head(path string, handlers ...func(*Ctx)) Router {
 	grp.app.register(MethodHead, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Patch : https://fiber.wiki/application#http-methods
-func (grp *Group) Patch(path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Patch(path string, handlers ...func(*Ctx)) Router {
 	grp.app.register(MethodPatch, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Options : https://fiber.wiki/application#http-methods
-func (grp *Group) Options(path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Options(path string, handlers ...func(*Ctx)) Router {
 	grp.app.register(MethodOptions, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Trace : https://fiber.wiki/application#http-methods
-func (grp *Group) Trace(path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Trace(path string, handlers ...func(*Ctx)) Router {
 	grp.app.register(MethodTrace, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Get : https://fiber.wiki/application#http-methods
-func (grp *Group) Get(path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) Get(path string, handlers ...func(*Ctx)) Router {
 	grp.app.register(MethodGet, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // All matches all HTTP methods and complete paths
-func (grp *Group) All(path string, handlers ...func(*Ctx)) *Group {
+func (grp *Group) All(path string, handlers ...func(*Ctx)) Router {
 	for m := range methodINT {
 		grp.app.register(m, getGroupPath(grp.prefix, path), handlers...)
 	}

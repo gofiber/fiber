@@ -111,7 +111,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	ReleaseCtx(ctx)
 }
 
-func (app *App) register(method, path string, handlers ...func(*Ctx)) *App {
+func (app *App) register(method, path string, handlers ...func(*Ctx)) Router {
 	// A route requires atleast one ctx handler
 	if len(handlers) == 0 {
 		log.Fatalf("Missing handler in route")
