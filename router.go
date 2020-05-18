@@ -225,7 +225,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		PathRewrite:          fasthttp.NewPathPrefixStripper(stripper),
 		PathNotFound: func(ctx *fasthttp.RequestCtx) {
 			ctx.Response.SetStatusCode(404)
-			ctx.Response.SetBodyString("Not Found")
 		},
 	}
 	// Set config if provided
@@ -250,15 +249,21 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 			}
 			// Serve file
 			fileHandler(c.Fasthttp)
-			// Finish request if found and not forbidden
+			// Return request if found and not forbidden
 			status := c.Fasthttp.Response.StatusCode()
 			if status != 404 && status != 403 {
 				return
 			}
-			// Reset response
-			c.Fasthttp.Response.Reset()
+			// Reset response to default
+			c.Fasthttp.Response.SetStatusCode(200)
+			c.Fasthttp.Response.SetBodyString("")
 			// Next middleware
-			c.Next()
+			match := c.app.next(c)
+			// If no other route is executed return 404 Not Found
+			if !match {
+				c.Fasthttp.Response.SetStatusCode(404)
+				c.Fasthttp.Response.SetBodyString("Not Found")
+			}
 		},
 	}
 	// Add route to stack

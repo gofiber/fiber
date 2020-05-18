@@ -33,11 +33,11 @@ type Map map[string]interface{}
 
 // App denotes the Fiber application.
 type App struct {
+	mutex sync.Mutex
 	// Route stack
 	stack [][]*Route
 	// Fasthttp server
 	server *fasthttp.Server
-	mutex  sync.Mutex
 	// App settings
 	Settings *Settings
 }
