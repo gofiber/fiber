@@ -95,7 +95,7 @@ func (app *App) nextRedirect(ctx *Ctx) bool {
 		// Get *Route
 		route := app.stack[method][ctx.index]
 		// Check if it matches the request path
-		match, values := route.match(ctx.path)
+		match, values := route.matchRedirect(ctx.path)
 		// No match, continue
 		if !match {
 			continue
@@ -181,7 +181,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 				ctx.SendStatus(404)
 			}
 		} else {
-			//No re-tries, bye!
+			// No re-tries needed, bye!
 			ctx.SendStatus(404)
 		}
 	}
