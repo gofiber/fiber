@@ -446,6 +446,8 @@ func (ctx *Ctx) IP() string {
 
 // IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
 func (ctx *Ctx) IPs() []string {
+	// TODO: improve with for iteration and string.Index -> like in Accepts
+	// TODO: add benchmark
 	ips := strings.Split(ctx.Get(HeaderXForwardedFor), ",")
 	for i := range ips {
 		ips[i] = trim(ips[i], ' ')
