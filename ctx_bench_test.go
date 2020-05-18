@@ -189,6 +189,7 @@ func Benchmark_Ctx_Path(b *testing.B) {
 // 	TODO
 // }
 
+// go test -v ./... -run=^$ -bench=Benchmark_Ctx_Is -benchmem -count=3
 func Benchmark_Ctx_Is(b *testing.B) {
 	c := AcquireCtx(&fasthttp.RequestCtx{})
 	defer ReleaseCtx(c)
