@@ -47,6 +47,23 @@ func Benchmark_Router_Handler(b *testing.B) {
 	}
 }
 
+func Benchmark_Router_Handler_Future(b *testing.B) {
+	app := New(&Settings{
+		StrictRouting: true,
+		CaseSensitive: true,
+	})
+	registerDummyRoutes(app)
+
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("DELETE")
+	c.URI().SetPath("/user/keys/1337")
+
+	for n := 0; n < b.N; n++ {
+		app.handler(c)
+	}
+}
+
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Next -benchmem -count=4
 func Benchmark_Router_Next(b *testing.B) {
 	app := New()
