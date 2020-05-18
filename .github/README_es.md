@@ -42,6 +42,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_he.md">
     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/il.svg">
   </a>
+   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ar_SA.md">
+     <img height="20px" src="https://github.com/gofiber/docs/blob/master/static/flags/sa.svg">
+   </a>
   <br><br>
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/release/gofiber/fiber?style=flat-square">
