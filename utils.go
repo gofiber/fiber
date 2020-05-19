@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"text/tabwriter"
 	"time"
 	"unsafe"
 )
@@ -81,23 +82,35 @@ func trim(s string, cutset byte) string {
 	return s[i : j+1]
 }
 
-// AssertEqual checks if values are equal
-func assertEqual(t testing.TB, a interface{}, b interface{}, information ...string) {
+func assertEqual(t testing.TB, a interface{}, b interface{}, description ...string) {
 	if reflect.DeepEqual(a, b) {
 		return
 	}
-	info := ""
-	if len(information) > 0 {
-		info = information[0]
+	var aType = "<nil>"
+	var bType = "<nil>"
+	if reflect.ValueOf(a).IsValid() {
+		aType = reflect.TypeOf(a).Name()
 	}
+	if reflect.ValueOf(b).IsValid() {
+		bType = reflect.TypeOf(b).Name()
+	}
+
 	_, file, line, _ := runtime.Caller(1)
-	t.Fatalf(`
-		Test: 	 	%s
-		Trace: 	 	%s:%d
-		Error: 	 	Not equal
-		Expect: 	%v [%s]
-		Result: 	%v [%s]
-		Message:  	%s`, t.Name(), filepath.Base(file), line, a, reflect.TypeOf(a).Name(), b, reflect.TypeOf(b).Name(), info)
+
+	var buf bytes.Buffer
+	w := tabwriter.NewWriter(&buf, 0, 0, 5, ' ', 0)
+	fmt.Fprintf(w, "\nTest:\t%s", t.Name())
+	fmt.Fprintf(w, "\nTrace:\t%s:%d", filepath.Base(file), line)
+	fmt.Fprintf(w, "\nError:\tNot equal")
+	fmt.Fprintf(w, "\nExpect:\t%v\t[%s]", a, aType)
+	fmt.Fprintf(w, "\nResult:\t%v\t[%s]", b, bType)
+
+	if len(description) > 0 {
+		fmt.Fprintf(w, "\nDescription:\t%s", description[0])
+	}
+
+	w.Flush()
+	t.Fatal(buf.String())
 }
 
 // Generate and set ETag header to response

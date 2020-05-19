@@ -10,14 +10,16 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	utils "github.com/gofiber/utils"
 )
 
 func testStatus200(t *testing.T, app *App, url string, method string) {
 	req := httptest.NewRequest(method, url, nil)
 
 	resp, err := app.Test(req)
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
 // func Test_App_Methods(t *testing.T) {
@@ -43,29 +45,29 @@ func Test_App_Nested_Params(t *testing.T) {
 	req := httptest.NewRequest("GET", "/test/john/test/doe", nil)
 	resp, err := app.Test(req)
 
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
 func Test_App_Use_Params(t *testing.T) {
 	app := New()
 
 	app.Use("/prefix/:param", func(c *Ctx) {
-		assertEqual(t, "john", c.Params("param"))
+		utils.AssertEqual(t, "john", c.Params("param"))
 	})
 
 	app.Use("/:param/*", func(c *Ctx) {
-		assertEqual(t, "john", c.Params("param"))
-		assertEqual(t, "doe", c.Params("*"))
+		utils.AssertEqual(t, "john", c.Params("param"))
+		utils.AssertEqual(t, "doe", c.Params("*"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/prefix/john", nil))
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/john/doe", nil))
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
 func Test_App_Use_Params_Group(t *testing.T) {
@@ -76,13 +78,13 @@ func Test_App_Use_Params_Group(t *testing.T) {
 		c.Next()
 	})
 	group.Get("/test", func(c *Ctx) {
-		assertEqual(t, "john", c.Params("param"))
-		assertEqual(t, "doe", c.Params("*"))
+		utils.AssertEqual(t, "john", c.Params("param"))
+		utils.AssertEqual(t, "doe", c.Params("*"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/prefix/john/doe/test", nil))
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
 func Test_App_Order(t *testing.T) {
@@ -105,12 +107,12 @@ func Test_App_Order(t *testing.T) {
 	req := httptest.NewRequest("GET", "/test", nil)
 
 	resp, err := app.Test(req)
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	body, err := ioutil.ReadAll(resp.Body)
-	assertEqual(t, nil, err)
-	assertEqual(t, "123", string(body))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "123", string(body))
 }
 func Test_App_Methods(t *testing.T) {
 	var dummyHandler = func(c *Ctx) {}
@@ -184,27 +186,27 @@ func Test_App_Static(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/john/stale.yml", nil)
 	resp, err := app.Test(req)
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
-	assertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
 
 	req = httptest.NewRequest("GET", "/yesyes/john/doe", nil)
 	resp, err = app.Test(req)
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
-	assertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
 
 	req = httptest.NewRequest("GET", "/john/stale.yml", nil)
 	resp, err = app.Test(req)
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
-	assertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
 
 	req = httptest.NewRequest("GET", "/v1/v2", nil)
 	resp, err = app.Test(req)
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
-	assertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
 }
 
 func Test_App_Group(t *testing.T) {
@@ -253,15 +255,15 @@ func Test_App_Group(t *testing.T) {
 	api.Post("/", dummyHandler)
 
 	resp, err := app.Test(httptest.NewRequest("POST", "/test/v1/", nil))
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
-	//assertEqual(t, "/test/v1", resp.Header.Get("Location"), "Location")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	//utils.AssertEqual(t, "/test/v1", resp.Header.Get("Location"), "Location")
 
 	api.Get("/users", dummyHandler)
 	resp, err = app.Test(httptest.NewRequest("GET", "/test/v1/UsErS", nil))
-	assertEqual(t, nil, err, "app.Test(req)")
-	assertEqual(t, 200, resp.StatusCode, "Status code")
-	//assertEqual(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	//utils.AssertEqual(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
 }
 
 func Test_App_Listen(t *testing.T) {
@@ -270,17 +272,17 @@ func Test_App_Listen(t *testing.T) {
 	})
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		assertEqual(t, nil, app.Shutdown())
+		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	assertEqual(t, nil, app.Listen(4003))
+	utils.AssertEqual(t, nil, app.Listen(4003))
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		assertEqual(t, nil, app.Shutdown())
+		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	assertEqual(t, nil, app.Listen("4010"))
+	utils.AssertEqual(t, nil, app.Listen("4010"))
 }
 
 func Test_App_Serve(t *testing.T) {
@@ -289,12 +291,12 @@ func Test_App_Serve(t *testing.T) {
 		Prefork:               true,
 	})
 	ln, err := net.Listen("tcp4", ":4020")
-	assertEqual(t, nil, err)
+	utils.AssertEqual(t, nil, err)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		assertEqual(t, nil, app.Shutdown())
+		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	assertEqual(t, nil, app.Serve(ln))
+	utils.AssertEqual(t, nil, app.Serve(ln))
 }

@@ -7,6 +7,8 @@ package fiber
 import (
 	"fmt"
 	"testing"
+
+	utils "github.com/gofiber/utils"
 )
 
 //////////////////////////////////////////////
@@ -17,50 +19,50 @@ import (
 func Test_Utils_toUpper(t *testing.T) {
 	t.Parallel()
 	res := toUpper("/my/name/is/:param/*")
-	assertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
+	utils.AssertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
 }
 
 func Test_Utils_toLower(t *testing.T) {
 	t.Parallel()
 	res := toLower("/MY/NAME/IS/:PARAM/*")
-	assertEqual(t, "/my/name/is/:param/*", res)
+	utils.AssertEqual(t, "/my/name/is/:param/*", res)
 	res = toLower("/MY1/NAME/IS/:PARAM/*")
-	assertEqual(t, "/my1/name/is/:param/*", res)
+	utils.AssertEqual(t, "/my1/name/is/:param/*", res)
 	res = toLower("/MY2/NAME/IS/:PARAM/*")
-	assertEqual(t, "/my2/name/is/:param/*", res)
+	utils.AssertEqual(t, "/my2/name/is/:param/*", res)
 	res = toLower("/MY3/NAME/IS/:PARAM/*")
-	assertEqual(t, "/my3/name/is/:param/*", res)
+	utils.AssertEqual(t, "/my3/name/is/:param/*", res)
 	res = toLower("/MY4/NAME/IS/:PARAM/*")
-	assertEqual(t, "/my4/name/is/:param/*", res)
+	utils.AssertEqual(t, "/my4/name/is/:param/*", res)
 }
 
 func Test_Utils_trimRight(t *testing.T) {
 	t.Parallel()
 	res := trimRight("/test//////", '/')
-	assertEqual(t, "/test", res)
+	utils.AssertEqual(t, "/test", res)
 
 	res = trimRight("/test", '/')
-	assertEqual(t, "/test", res)
+	utils.AssertEqual(t, "/test", res)
 }
 
 func Test_Utils_trimLeft(t *testing.T) {
 	t.Parallel()
 	res := trimLeft("////test/", '/')
-	assertEqual(t, "test/", res)
+	utils.AssertEqual(t, "test/", res)
 
 	res = trimLeft("test/", '/')
-	assertEqual(t, "test/", res)
+	utils.AssertEqual(t, "test/", res)
 }
 func Test_Utils_trim(t *testing.T) {
 	t.Parallel()
 	res := trim("   test  ", ' ')
-	assertEqual(t, "test", res)
+	utils.AssertEqual(t, "test", res)
 
 	res = trim("test", ' ')
-	assertEqual(t, "test", res)
+	utils.AssertEqual(t, "test", res)
 }
 
-// func Test_Utils_assertEqual(t *testing.T) {
+// func Test_Utils_utils.AssertEqual(t *testing.T) {
 // 	// TODO
 // }
 
@@ -71,31 +73,31 @@ func Test_Utils_trim(t *testing.T) {
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
 	res := getGroupPath("/v1", "/")
-	assertEqual(t, "/v1", res)
+	utils.AssertEqual(t, "/v1", res)
 
 	res = getGroupPath("/v1", "/")
-	assertEqual(t, "/v1", res)
+	utils.AssertEqual(t, "/v1", res)
 
 	res = getGroupPath("/", "/")
-	assertEqual(t, "/", res)
+	utils.AssertEqual(t, "/", res)
 
 	res = getGroupPath("/v1/api/", "/")
-	assertEqual(t, "/v1/api/", res)
+	utils.AssertEqual(t, "/v1/api/", res)
 }
 
 func Test_Utils_getMIME(t *testing.T) {
 	t.Parallel()
 	res := getMIME(".json")
-	assertEqual(t, "application/json", res)
+	utils.AssertEqual(t, "application/json", res)
 
 	res = getMIME(".xml")
-	assertEqual(t, "application/xml", res)
+	utils.AssertEqual(t, "application/xml", res)
 
 	res = getMIME("xml")
-	assertEqual(t, "application/xml", res)
+	utils.AssertEqual(t, "application/xml", res)
 
 	res = getMIME("json")
-	assertEqual(t, "application/json", res)
+	utils.AssertEqual(t, "application/json", res)
 }
 
 // func Test_Utils_getArgument(t *testing.T) {
@@ -109,16 +111,16 @@ func Test_Utils_getMIME(t *testing.T) {
 func Test_Utils_extensionMIME(t *testing.T) {
 	t.Parallel()
 	res := getMIME(".html")
-	assertEqual(t, "text/html", res)
+	utils.AssertEqual(t, "text/html", res)
 
 	res = getMIME("html")
-	assertEqual(t, "text/html", res)
+	utils.AssertEqual(t, "text/html", res)
 
 	res = getMIME(".msp")
-	assertEqual(t, "application/octet-stream", res)
+	utils.AssertEqual(t, "application/octet-stream", res)
 
 	res = getMIME("msp")
-	assertEqual(t, "application/octet-stream", res)
+	utils.AssertEqual(t, "application/octet-stream", res)
 }
 
 // func Test_Utils_getParams(t *testing.T) {
@@ -136,11 +138,11 @@ func Test_Utils_matchParams(t *testing.T) {
 		parser := getParams(r)
 		for _, c := range cases {
 			paramsPos, match := parser.getMatch(c.url, false)
-			assertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			if match && paramsPos != nil {
-				assertEqual(t, c.params, parser.paramsForPos(c.url, paramsPos), fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				utils.AssertEqual(t, c.params, parser.paramsForPos(c.url, paramsPos), fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			} else {
-				assertEqual(t, true, nil == paramsPos, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				utils.AssertEqual(t, true, nil == paramsPos, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			}
 		}
 	}
@@ -270,7 +272,7 @@ func Benchmark_Utils_getGroupPath(b *testing.B) {
 		res = getGroupPath("/v1", "/api")
 		res = getGroupPath("/v1", "/api/register/:project")
 	}
-	assertEqual(b, "/v1/api/register/:project", res)
+	utils.AssertEqual(b, "/v1/api/register/:project", res)
 }
 
 func Benchmark_Utils_getMIME(b *testing.B) {
@@ -281,7 +283,7 @@ func Benchmark_Utils_getMIME(b *testing.B) {
 		res = getMIME("xml")
 		res = getMIME("json")
 	}
-	assertEqual(b, "application/json", res)
+	utils.AssertEqual(b, "application/json", res)
 }
 
 // func Benchmark_Utils_getArgument(b *testing.B) {

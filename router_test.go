@@ -9,6 +9,7 @@ package fiber
 import (
 	"testing"
 
+	utils "github.com/gofiber/utils"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -78,7 +79,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		app.next(c)
 	}
-	assertEqual(b, len(githubAPI)+1, c.index-1)
+	utils.AssertEqual(b, len(githubAPI)+1, c.index-1)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
@@ -103,8 +104,8 @@ func Benchmark_Route_Match(b *testing.B) {
 		match, params = route.match("/user/keys/1337", "/user/keys/1337")
 	}
 
-	assertEqual(b, true, match)
-	assertEqual(b, []string{"1337"}, params)
+	utils.AssertEqual(b, true, match)
+	utils.AssertEqual(b, []string{"1337"}, params)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4
@@ -159,8 +160,8 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		}
 	}
 
-	assertEqual(b, true, match)
-	assertEqual(b, true, params != nil)
+	utils.AssertEqual(b, true, match)
+	utils.AssertEqual(b, true, params != nil)
 }
 
 type testRoute struct {
