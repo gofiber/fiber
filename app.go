@@ -49,9 +49,15 @@ type Settings struct {
 	// This will spawn multiple Go processes listening on the same port
 	Prefork bool // default: false
 	// Enable strict routing. When enabled, the router treats "/foo" and "/foo/" as different.
+	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
 	StrictRouting bool
 	// Enable case sensitive routing. When enabled, "/FoO" and "/foo" are different routes.
+	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
 	CaseSensitive bool
+	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
+	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
+	// Using the status code 301 for GET requests and 308 for all other request methods.
+	RedirectFixedPath bool
 	// Enables the "Server: value" HTTP header.
 	ServerHeader string // default: ""
 	// Enables handler values to be immutable even if you return from handler

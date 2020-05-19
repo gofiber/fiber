@@ -135,9 +135,13 @@ func Test_Utils_matchParams(t *testing.T) {
 	testCase := func(r string, cases []testparams) {
 		parser := getParams(r)
 		for _, c := range cases {
-			params, match := parser.getMatch(c.url, false)
-			assertEqual(t, c.params, params, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			paramsPos, match := parser.getMatch(c.url, false)
 			assertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			if match && paramsPos != nil {
+				assertEqual(t, c.params, parser.paramsForPos(c.url, paramsPos), fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			} else {
+				assertEqual(t, true, nil == paramsPos, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			}
 		}
 	}
 	testCase("/api/v1/:param/*", []testparams{

@@ -304,8 +304,6 @@ type paramSeg struct {
 	IsLast     bool
 }
 
-var paramsDummy = make([]string, 100)
-
 const wildcardParam string = "*"
 
 // New ...
@@ -357,13 +355,38 @@ func getParams(pattern string) (p parsedParams) {
 	return
 }
 
+// performance tricks
+var paramsDummy = make([]string, 10000000)
+var paramsPosDummy = make([][2]int, 10000000)
+var startParamList, startParamPosList = 0, 0
+
+func getAllocFreeParamsPos(allocLen int) [][2]int {
+	if (startParamPosList + allocLen) > len(paramsPosDummy) {
+		startParamPosList = 0
+	}
+	allocLen += startParamPosList
+	paramsPositions := paramsPosDummy[startParamPosList:allocLen:allocLen]
+	startParamPosList = allocLen
+	return paramsPositions
+}
+func getAllocFreeParams(allocLen int) []string {
+	if (startParamList + allocLen) > len(paramsPosDummy) {
+		startParamList = 0
+	}
+	allocLen += startParamList
+	params := paramsDummy[startParamList:allocLen:allocLen]
+	startParamList = allocLen
+	return params
+}
+
 // Match ...
-func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
+func (p *parsedParams) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 	lenKeys := len(p.params)
-	params := paramsDummy[0:lenKeys:lenKeys]
-	var i, j, paramsIterator, partLen int
+	paramsPositions := getAllocFreeParamsPos(lenKeys)
+	var i, j, paramsIterator, partLen, paramStart int
 	if len(s) > 0 {
 		s = s[1:]
+		paramStart++
 	}
 	for index, segment := range p.segs {
 		partLen = len(s)
@@ -388,7 +411,7 @@ func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
 				return nil, false
 			}
 
-			params[paramsIterator] = s[:i]
+			paramsPositions[paramsIterator][0], paramsPositions[paramsIterator][1] = paramStart, paramStart+i
 			paramsIterator++
 		} else {
 			// check const segment
@@ -404,6 +427,7 @@ func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
 			if segment.IsLast || partLen < j {
 				j = i
 			}
+			paramStart += j
 
 			s = s[j:]
 		}
@@ -412,8 +436,24 @@ func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
 		return nil, false
 	}
 
-	return params, true
+	return paramsPositions, true
 }
+
+// get parameters for the given positions from the given path
+func (p *parsedParams) paramsForPos(path string, paramsPositions [][2]int) []string {
+	size := len(paramsPositions)
+	params := getAllocFreeParams(size)
+	for i, positions := range paramsPositions {
+		if positions[0] != positions[1] && len(path) >= positions[1] {
+			params[i] = path[positions[0]:positions[1]]
+		} else {
+			params[i] = ""
+		}
+	}
+
+	return params
+}
+
 func getTrimmedParam(param string) string {
 	start := 0
 	end := len(param)

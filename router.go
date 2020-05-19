@@ -15,10 +15,11 @@ import (
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
 	// Private fields
-	use    bool         // USE matches path prefixes
-	star   bool         // Path equals '*'
-	root   bool         // Path equals '/'
-	parsed parsedParams // Contains parsed params segments
+	use            bool         // USE matches path prefixes
+	star           bool         // Path equals '*'
+	root           bool         // Path equals '/'
+	parsed         parsedParams // Contains parsed params segments from original
+	parsedStripped parsedParams // Contains parsed params segments from lower path
 
 	// Public fields
 	Path    string     // Original registered route path
@@ -46,8 +47,8 @@ func (r *Route) match(path string) (match bool, values []string) {
 	// Does this route have parameters
 	if len(r.Params) > 0 {
 		// Match params
-		if values, match = r.parsed.getMatch(path, r.use); match {
-			return
+		if paramPos, match := r.parsed.getMatch(path, r.use); match {
+			return match, r.parsed.paramsForPos(path, paramPos)
 		}
 	}
 	// No match
@@ -89,23 +90,28 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	ctx.app = app
 	// Attach fasthttp RequestCtx
 	ctx.Fasthttp = rctx
-	// In case sensitive routing, all to lowercase
+	// If CaseSensitive is disabled, we compare everything in lower
 	if !app.Settings.CaseSensitive {
 		ctx.path = getString(toLowerBytes(rctx.URI().Path()))
 	}
-	// Strict routing
+	// if StrictRouting is disabled, we strip all trailing slashes
 	if !app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
 		ctx.path = trimRight(ctx.path, '/')
 	}
 	// Find match in stack
 	match := app.next(ctx)
-	// Generate ETag if enabled
-	if app.Settings.ETag {
-		setETag(ctx, false)
-	}
+	// // If no match was found and RedirectFixedPath is enabled
+	// // we try one more time to find and redirect to the correct path
+	// if !match && app.Settings.RedirectFixedPath {
+	// 	// Brainfart
+	// }
 	// Send a 404 by default if no route matched
 	if !match {
 		ctx.SendStatus(404)
+	}
+	// Generate ETag if enabled and we have a match
+	if app.Settings.ETag && match {
+		setETag(ctx, false)
 	}
 	// Release Ctx
 	ReleaseCtx(ctx)
