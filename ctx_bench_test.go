@@ -204,6 +204,20 @@ func Benchmark_Ctx_Is(b *testing.B) {
 	assertEqual(b, true, res)
 }
 
+// go test -v ./... -run=^$ -bench=Benchmark_Ctx_IPs -benchmem -count=3
+func Benchmark_Ctx_IPs(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
+	c.Fasthttp.Request.Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.1, 127.0.0.1")
+	var res []string
+	for n := 0; n < b.N; n++ {
+		res = c.IPs()
+	}
+
+	assertEqual(b, []string{"127.0.0.1", "127.0.0.1", "127.0.0.1"}, res)
+}
+
 // TODO
 // func Benchmark_Ctx_Next(b *testing.B) {
 
