@@ -594,8 +594,8 @@ func Test_Ctx_Path(t *testing.T) {
 	app.Get("/test/:user", func(c *Ctx) {
 		assertEqual(t, "/test/john", c.Path())
 		// not strict && case insensitive
-		assertEqual(t, "/abc", c.Path("/ABC/"))
-		assertEqual(t, "/test/john", c.Path("/test/john/"))
+		assertEqual(t, "/ABC/", c.Path("/ABC/"))
+		assertEqual(t, "/test/john/", c.Path("/test/john/"))
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
 	assertEqual(t, nil, err, "app.Test(req)")

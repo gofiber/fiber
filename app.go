@@ -54,10 +54,13 @@ type Settings struct {
 	// Enable case sensitive routing. When enabled, "/FoO" and "/foo" are different routes.
 	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
 	CaseSensitive bool
+
+	// TODO for v1.11
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
-	RedirectFixedPath bool
+	// RedirectFixedPath bool
+
 	// Enables the "Server: value" HTTP header.
 	ServerHeader string // default: ""
 	// Enables handler values to be immutable even if you return from handler

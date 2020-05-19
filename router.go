@@ -14,12 +14,14 @@ import (
 
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
-	// Private fields
-	use            bool         // USE matches path prefixes
-	star           bool         // Path equals '*'
-	root           bool         // Path equals '/'
-	parsed         parsedParams // Contains parsed params segments from original
-	parsedStripped parsedParams // Contains parsed params segments from lower path
+	// Booleans for routing
+	use  bool // USE matches path prefixes
+	star bool // Path equals '*'
+	root bool // Path equals '/'
+
+	// Cleaned path data if enabled
+	path   string
+	params parsedParams
 
 	// Public fields
 	Path    string     // Original registered route path
@@ -28,13 +30,13 @@ type Route struct {
 	Handler func(*Ctx) // Ctx handler
 }
 
-func (r *Route) match(path string) (match bool, values []string) {
+func (r *Route) match(path, original string) (match bool, values []string) {
 	if r.use {
-		if r.root || strings.HasPrefix(path, r.Path) {
+		if r.root || strings.HasPrefix(path, r.path) {
 			return true, values
 		}
 		// Check for a simple path match
-	} else if len(r.Path) == len(path) && r.Path == path {
+	} else if len(r.path) == len(path) && r.path == path {
 		return true, values
 		// Middleware routes allow prefix matches
 	} else if r.root && path == "/" {
@@ -42,13 +44,13 @@ func (r *Route) match(path string) (match bool, values []string) {
 	}
 	// '*' wildcard matches any path
 	if r.star {
-		return true, []string{path}
+		return true, []string{original}
 	}
 	// Does this route have parameters
 	if len(r.Params) > 0 {
 		// Match params
-		if paramPos, match := r.parsed.getMatch(path, r.use); match {
-			return match, r.parsed.paramsForPos(path, paramPos)
+		if paramPos, match := r.params.getMatch(path, r.use); match {
+			return match, r.params.paramsForPos(original, paramPos)
 		}
 	}
 	// No match
@@ -67,7 +69,7 @@ func (app *App) next(ctx *Ctx) bool {
 		// Get *Route
 		route := app.stack[method][ctx.index]
 		// Check if it matches the request path
-		match, values := route.match(ctx.path)
+		match, values := route.match(ctx.path, getString(ctx.Fasthttp.URI().Path()))
 		// No match, continue
 		if !match {
 			continue
@@ -92,7 +94,9 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	ctx.Fasthttp = rctx
 	// If CaseSensitive is disabled, we compare everything in lower
 	if !app.Settings.CaseSensitive {
-		ctx.path = getString(toLowerBytes(rctx.URI().Path()))
+		// We are making a copy here to keep access to
+		// the original URI
+		ctx.path = toLower(getString(rctx.URI().Path()))
 	}
 	// if StrictRouting is disabled, we strip all trailing slashes
 	if !app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
@@ -100,17 +104,11 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 	// Find match in stack
 	match := app.next(ctx)
-	// // If no match was found and RedirectFixedPath is enabled
-	// // we try one more time to find and redirect to the correct path
-	// if !match && app.Settings.RedirectFixedPath {
-	// 	// Brainfart
-	// }
 	// Send a 404 by default if no route matched
 	if !match {
 		ctx.SendStatus(404)
-	}
-	// Generate ETag if enabled and we have a match
-	if app.Settings.ETag && match {
+	} else if app.Settings.ETag {
+		// Generate ETag if enabled and we have a match
 		setETag(ctx, false)
 	}
 	// Release Ctx
@@ -130,15 +128,15 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) Router {
 	if path[0] != '/' {
 		path = "/" + path
 	}
-	// Store original path to strip case sensitive params
-	original := path
+	// Create a stripped path in-case sensitive / trailing slashes
+	stripped := path
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		path = toLower(path)
+		stripped = toLower(stripped)
 	}
 	// Strict routing, remove trailing slashes
-	if !app.Settings.StrictRouting && len(path) > 1 {
-		path = trimRight(path, '/')
+	if !app.Settings.StrictRouting && len(stripped) > 1 {
+		stripped = trimRight(stripped, '/')
 	}
 	// Is layer a middleware?
 	var isUse = method == "USE"
@@ -147,20 +145,23 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) Router {
 	// Is path a root slash?
 	var isRoot = path == "/"
 	// Parse path parameters
-	var isParsed = getParams(original)
+	var strippedParsed = getParams(stripped)
+	var originalParsed = getParams(path)
 	// Loop over handlers
 	for i := range handlers {
 		// Set route metadata
 		route := &Route{
-			// Internals
-			use:    isUse,
-			star:   isStar,
-			root:   isRoot,
-			parsed: isParsed,
-			// Externals
+			// Router booleans
+			use:  isUse,
+			star: isStar,
+			root: isRoot,
+			// Path data
+			path:   stripped,
+			params: strippedParsed,
+			// Public data
 			Path:    path,
 			Method:  method,
-			Params:  isParsed.params,
+			Params:  originalParsed.params,
 			Handler: handlers[i],
 		}
 		// Middleware route matches all HTTP methods

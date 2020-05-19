@@ -91,7 +91,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		use:    false,
 		root:   false,
 		star:   false,
-		parsed: parsed,
+		params: parsed,
 
 		Path:    "/user/keys/:id",
 		Method:  "DELETE",
@@ -100,7 +100,7 @@ func Benchmark_Route_Match(b *testing.B) {
 	}
 
 	for n := 0; n < b.N; n++ {
-		match, params = route.match("/user/keys/1337")
+		match, params = route.match("/user/keys/1337", "/user/keys/1337")
 	}
 
 	assertEqual(b, true, match)
@@ -154,7 +154,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 			path := testRoutes[i].path
 
 			for i := range app.stack[mINT] {
-				match, params = app.stack[mINT][i].match(path)
+				match, params = app.stack[mINT][i].match(path, path)
 			}
 		}
 	}

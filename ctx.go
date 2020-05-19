@@ -35,7 +35,7 @@ type Ctx struct {
 	route  *Route   // Reference to *Route
 	index  int      // Index of the current handler in the stack
 	method string   // HTTP method
-	path   string   // HTTP path
+	path   string   // Original HTTP path
 	values []string // Route parameter values
 	err    error    // Contains error if caught
 
@@ -606,6 +606,9 @@ func (ctx *Ctx) Params(key string) string {
 // Optionally, you could override the path.
 func (ctx *Ctx) Path(override ...string) string {
 	if len(override) != 0 && ctx.path != override[0] && ctx.app != nil {
+		// Set new path to request
+		ctx.Fasthttp.Request.URI().SetPath(override[0])
+		// Set new path to context
 		ctx.path = override[0]
 		// Non strict routing
 		if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 {
@@ -615,8 +618,9 @@ func (ctx *Ctx) Path(override ...string) string {
 		if !ctx.app.Settings.CaseSensitive {
 			ctx.path = toLower(ctx.path)
 		}
+		return override[0]
 	}
-	return ctx.path
+	return getString(ctx.Fasthttp.URI().Path())
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
