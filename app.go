@@ -147,10 +147,6 @@ func (app *App) Stack(print ...bool) map[string][]string {
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
 func New(settings ...*Settings) *App {
-	schemaDecoderForm.SetAliasTag("form")
-	schemaDecoderForm.IgnoreUnknownKeys(true)
-	schemaDecoderQuery.SetAliasTag("query")
-	schemaDecoderQuery.IgnoreUnknownKeys(true)
 	// Create app
 	app := new(App)
 	// Create route stack

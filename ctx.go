@@ -22,7 +22,7 @@ import (
 	"text/template"
 	"time"
 
-	schema "github.com/gorilla/schema"
+	"github.com/gorilla/schema"
 	bytebufferpool "github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
@@ -70,8 +70,6 @@ type ViewEngine interface {
 }
 
 // Global variables
-var schemaDecoderForm = schema.NewDecoder()
-var schemaDecoderQuery = schema.NewDecoder()
 var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
 var ctxPool = sync.Pool{
@@ -209,6 +207,14 @@ func (ctx *Ctx) Body() string {
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 func (ctx *Ctx) BodyParser(out interface{}) error {
+	// TODO: Create benchmark ( Prolly need a sync pool )
+	var schemaDecoderForm = schema.NewDecoder()
+	var schemaDecoderQuery = schema.NewDecoder()
+	schemaDecoderForm.SetAliasTag("form")
+	schemaDecoderForm.IgnoreUnknownKeys(true)
+	schemaDecoderQuery.SetAliasTag("query")
+	schemaDecoderQuery.IgnoreUnknownKeys(true)
+
 	// get content type
 	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
 	// application/json
