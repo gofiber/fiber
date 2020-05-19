@@ -838,7 +838,7 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 }
 
 // XHR returns a Boolean property, that is true, if the request’s X-Requested-With header field is XMLHttpRequest,
-// indicating that the request was issued by a client library (such as jQuery).
+// indicating that the request was issued by a client library (such as jQuery)
 func (ctx *Ctx) XHR() bool {
 	return strings.EqualFold(ctx.Get(HeaderXRequestedWith), "xmlhttprequest")
 }
