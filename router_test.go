@@ -70,16 +70,21 @@ func Benchmark_Router_Next(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
 
-	c := AcquireCtx(&fasthttp.RequestCtx{})
+	request := &fasthttp.RequestCtx{}
+
+	request.Request.Header.SetMethod("DELETE")
+	request.URI().SetPath("/user/keys/1337")
+	var res bool
+
+	c := AcquireCtx(request)
 	defer ReleaseCtx(c)
 
-	c.Fasthttp.Request.Header.SetMethod("DELETE")
-	c.Fasthttp.URI().SetPath("/user/keys/1337")
-
 	for n := 0; n < b.N; n++ {
-		app.next(c)
+		c.index = -1
+		res = app.next(c)
 	}
-	utils.AssertEqual(b, len(githubAPI)+1, c.index-1)
+	utils.AssertEqual(b, true, res)
+	utils.AssertEqual(b, 31, c.index)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
