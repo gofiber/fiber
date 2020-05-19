@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	utils "github.com/gofiber/utils"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -163,13 +164,13 @@ func New(settings ...*Settings) *App {
 	// Create settings
 	app.Settings = new(Settings)
 	// Set default settings
-	app.Settings.Prefork = getArgument("-prefork")
+	app.Settings.Prefork = utils.GetArgument("-prefork")
 	app.Settings.BodyLimit = 4 * 1024 * 1024
 	// If settings exist, set defaults
 	if len(settings) > 0 {
 		app.Settings = settings[0] // Set custom settings
 		if !app.Settings.Prefork { // Default to -prefork flag if false
-			app.Settings.Prefork = getArgument("-prefork")
+			app.Settings.Prefork = utils.GetArgument("-prefork")
 		}
 		if app.Settings.BodyLimit <= 0 { // Default MaxRequestBodySize
 			app.Settings.BodyLimit = 4 * 1024 * 1024
@@ -267,7 +268,7 @@ func (app *App) Patch(path string, handlers ...func(*Ctx)) Router {
 
 // Add ...
 func (app *App) Add(method, path string, handlers ...func(*Ctx)) Router {
-	method = toUpper(method)
+	method = utils.ToUpper(method)
 	if methodINT[method] == 0 && method != MethodGet {
 		log.Fatalf("Add: Invalid HTTP method %s", method)
 	}
@@ -331,7 +332,7 @@ func (grp *Group) Use(args ...interface{}) Router {
 
 // Add : https://fiber.wiki/application#http-methods
 func (grp *Group) Add(method, path string, handlers ...func(*Ctx)) Router {
-	method = toUpper(method)
+	method = utils.ToUpper(method)
 	if methodINT[method] == 0 && method != MethodGet {
 		log.Fatalf("Add: Invalid HTTP method %s", method)
 	}
@@ -454,7 +455,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
 	// Print listening message
-	if !app.Settings.DisableStartupMessage && !getArgument("-child") {
+	if !app.Settings.DisableStartupMessage && !utils.GetArgument("-child") {
 		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
 		fmt.Printf("Started listening on %s\n", ln.Addr().String())
 	}
@@ -536,7 +537,7 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 // Sharding: https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
 func (app *App) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
-	if !getArgument("-child") {
+	if !utils.GetArgument("-child") {
 		addr, err := net.ResolveTCPAddr("tcp", address)
 		if err != nil {
 			return ln, err

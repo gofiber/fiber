@@ -22,7 +22,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gorilla/schema"
+	utils "github.com/gofiber/utils"
+	schema "github.com/gorilla/schema"
 	bytebufferpool "github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
@@ -116,7 +117,7 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 	for len(header) > 0 && commaPos != -1 {
 		commaPos = strings.IndexByte(header, ',')
 		if commaPos != -1 {
-			spec = trim(header[:commaPos], ' ')
+			spec = utils.Trim(header[:commaPos], ' ')
 		} else {
 			spec = header
 		}
@@ -125,7 +126,7 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 		}
 
 		for _, offer := range offers {
-			mimetype := getMIME(offer)
+			mimetype := utils.GetMIME(offer)
 			if len(spec) > 2 && spec[len(spec)-2:] == "/*" {
 				if strings.HasPrefix(spec[:len(spec)-2], strings.Split(mimetype, "/")[0]) {
 					return offer
@@ -281,7 +282,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
 	}
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
-	switch toLower(cookie.SameSite) {
+	switch utils.ToLower(cookie.SameSite) {
 	case "lax":
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	case "strict":
@@ -456,7 +457,7 @@ func (ctx *Ctx) IPs() []string {
 	// TODO: improve with for iteration and string.Index -> like in Accepts
 	ips := strings.Split(ctx.Get(HeaderXForwardedFor), ",")
 	for i := range ips {
-		ips[i] = trim(ips[i], ' ')
+		ips[i] = utils.Trim(ips[i], ' ')
 	}
 	return ips
 }
@@ -464,8 +465,8 @@ func (ctx *Ctx) IPs() []string {
 // Is returns the matching content type,
 // if the incoming request’s Content-Type HTTP header field matches the MIME type specified by the type parameter
 func (ctx *Ctx) Is(extension string) bool {
-	extensionHeader, ok := extMIME[trimLeft(extension, '.')]
-	if !ok {
+	extensionHeader := utils.GetMIME(extension)
+	if extensionHeader == "" {
 		return false
 	}
 	header := ctx.Get(HeaderContentType)
@@ -473,7 +474,7 @@ func (ctx *Ctx) Is(extension string) bool {
 		header = header[:factorSign]
 	}
 
-	return trim(header, ' ') == extensionHeader
+	return utils.Trim(header, ' ') == extensionHeader
 }
 
 // JSON converts any interface or string to JSON using Jsoniter.
@@ -533,7 +534,7 @@ func (ctx *Ctx) Links(link ...string) {
 			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	ctx.Fasthttp.Response.Header.Set(HeaderLink, trimRight(bb.String(), ','))
+	ctx.Fasthttp.Response.Header.Set(HeaderLink, utils.TrimRight(bb.String(), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -555,7 +556,7 @@ func (ctx *Ctx) Location(path string) {
 // Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
 func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
-		method := toUpper(override[0])
+		method := utils.ToUpper(override[0])
 		if methodINT[method] == 0 && method != MethodGet {
 			log.Fatalf("Method: Invalid HTTP method override %s", method)
 		}
@@ -611,11 +612,11 @@ func (ctx *Ctx) Path(override ...string) string {
 		ctx.path = override[0]
 		// Non strict routing
 		if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 {
-			ctx.path = trimRight(ctx.path, '/')
+			ctx.path = utils.TrimRight(ctx.path, '/')
 		}
 		// Not case sensitive
 		if !ctx.app.Settings.CaseSensitive {
-			ctx.path = toLower(ctx.path)
+			ctx.path = utils.ToLower(ctx.path)
 		}
 		return override[0]
 	}
@@ -818,7 +819,7 @@ func (ctx *Ctx) Status(status int) *Ctx {
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 func (ctx *Ctx) Type(extension string) *Ctx {
-	ctx.Fasthttp.Response.Header.SetContentType(getMIME(extension))
+	ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
 	return ctx
 }
 

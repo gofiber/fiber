@@ -16,52 +16,6 @@ import (
 //////////////////////////////////////////////
 // go test -v -run=Test_Utils_ -count=3
 
-func Test_Utils_toUpper(t *testing.T) {
-	t.Parallel()
-	res := toUpper("/my/name/is/:param/*")
-	utils.AssertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
-}
-
-func Test_Utils_toLower(t *testing.T) {
-	t.Parallel()
-	res := toLower("/MY/NAME/IS/:PARAM/*")
-	utils.AssertEqual(t, "/my/name/is/:param/*", res)
-	res = toLower("/MY1/NAME/IS/:PARAM/*")
-	utils.AssertEqual(t, "/my1/name/is/:param/*", res)
-	res = toLower("/MY2/NAME/IS/:PARAM/*")
-	utils.AssertEqual(t, "/my2/name/is/:param/*", res)
-	res = toLower("/MY3/NAME/IS/:PARAM/*")
-	utils.AssertEqual(t, "/my3/name/is/:param/*", res)
-	res = toLower("/MY4/NAME/IS/:PARAM/*")
-	utils.AssertEqual(t, "/my4/name/is/:param/*", res)
-}
-
-func Test_Utils_trimRight(t *testing.T) {
-	t.Parallel()
-	res := trimRight("/test//////", '/')
-	utils.AssertEqual(t, "/test", res)
-
-	res = trimRight("/test", '/')
-	utils.AssertEqual(t, "/test", res)
-}
-
-func Test_Utils_trimLeft(t *testing.T) {
-	t.Parallel()
-	res := trimLeft("////test/", '/')
-	utils.AssertEqual(t, "test/", res)
-
-	res = trimLeft("test/", '/')
-	utils.AssertEqual(t, "test/", res)
-}
-func Test_Utils_trim(t *testing.T) {
-	t.Parallel()
-	res := trim("   test  ", ' ')
-	utils.AssertEqual(t, "test", res)
-
-	res = trim("test", ' ')
-	utils.AssertEqual(t, "test", res)
-}
-
 // func Test_Utils_utils.AssertEqual(t *testing.T) {
 // 	// TODO
 // }
@@ -85,21 +39,6 @@ func Test_Utils_getGroupPath(t *testing.T) {
 	utils.AssertEqual(t, "/v1/api/", res)
 }
 
-func Test_Utils_getMIME(t *testing.T) {
-	t.Parallel()
-	res := getMIME(".json")
-	utils.AssertEqual(t, "application/json", res)
-
-	res = getMIME(".xml")
-	utils.AssertEqual(t, "application/xml", res)
-
-	res = getMIME("xml")
-	utils.AssertEqual(t, "application/xml", res)
-
-	res = getMIME("json")
-	utils.AssertEqual(t, "application/json", res)
-}
-
 // func Test_Utils_getArgument(t *testing.T) {
 // 	// TODO
 // }
@@ -107,21 +46,6 @@ func Test_Utils_getMIME(t *testing.T) {
 // func Test_Utils_parseTokenList(t *testing.T) {
 // 	// TODO
 // }
-
-func Test_Utils_extensionMIME(t *testing.T) {
-	t.Parallel()
-	res := getMIME(".html")
-	utils.AssertEqual(t, "text/html", res)
-
-	res = getMIME("html")
-	utils.AssertEqual(t, "text/html", res)
-
-	res = getMIME(".msp")
-	utils.AssertEqual(t, "application/octet-stream", res)
-
-	res = getMIME("msp")
-	utils.AssertEqual(t, "application/octet-stream", res)
-}
 
 // func Test_Utils_getParams(t *testing.T) {
 // 	// TODO
@@ -273,17 +197,6 @@ func Benchmark_Utils_getGroupPath(b *testing.B) {
 		res = getGroupPath("/v1", "/api/register/:project")
 	}
 	utils.AssertEqual(b, "/v1/api/register/:project", res)
-}
-
-func Benchmark_Utils_getMIME(b *testing.B) {
-	var res string
-	for n := 0; n < b.N; n++ {
-		res = getMIME(".json")
-		res = getMIME(".xml")
-		res = getMIME("xml")
-		res = getMIME("json")
-	}
-	utils.AssertEqual(b, "application/json", res)
 }
 
 // func Benchmark_Utils_getArgument(b *testing.B) {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	utils "github.com/gofiber/utils"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -96,11 +97,11 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	if !app.Settings.CaseSensitive {
 		// We are making a copy here to keep access to
 		// the original URI
-		ctx.path = toLower(getString(rctx.URI().Path()))
+		ctx.path = utils.ToLower(getString(rctx.URI().Path()))
 	}
 	// if StrictRouting is disabled, we strip all trailing slashes
 	if !app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
-		ctx.path = trimRight(ctx.path, '/')
+		ctx.path = utils.TrimRight(ctx.path, '/')
 	}
 	// Find match in stack
 	match := app.next(ctx)
@@ -132,11 +133,11 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) Router {
 	stripped := path
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		stripped = toLower(stripped)
+		stripped = utils.ToLower(stripped)
 	}
 	// Strict routing, remove trailing slashes
 	if !app.Settings.StrictRouting && len(stripped) > 1 {
-		stripped = trimRight(stripped, '/')
+		stripped = utils.TrimRight(stripped, '/')
 	}
 	// Is layer a middleware?
 	var isUse = method == "USE"
@@ -200,7 +201,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 	}
 	// in case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		prefix = toLower(prefix)
+		prefix = utils.ToLower(prefix)
 	}
 	// For security we want to restrict to the current work directory.
 	if len(root) == 0 {
