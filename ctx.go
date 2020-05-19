@@ -195,6 +195,7 @@ func (ctx *Ctx) Attachment(filename ...string) {
 
 // BaseURL returns (protocol + host + base path).
 func (ctx *Ctx) BaseURL() string {
+	// TODO: avoid allocation 53.8 ns/op  32 B/op  1 allocs/op
 	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
 	return ctx.Protocol() + "://" + ctx.Hostname()
 }
@@ -807,8 +808,8 @@ func (ctx *Ctx) Status(status int) *Ctx {
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-func (ctx *Ctx) Type(ext string) *Ctx {
-	ctx.Fasthttp.Response.Header.SetContentType(getMIME(ext))
+func (ctx *Ctx) Type(extension string) *Ctx {
+	ctx.Fasthttp.Response.Header.SetContentType(getMIME(extension))
 	return ctx
 }
 
@@ -826,6 +827,10 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 			ctx.Fasthttp.Response.AppendBodyString(body)
 		case []byte:
 			ctx.Fasthttp.Response.AppendBodyString(getString(body))
+		case int:
+			ctx.Fasthttp.Response.AppendBodyString(strconv.Itoa(body))
+		case bool:
+			ctx.Fasthttp.Response.AppendBodyString(strconv.FormatBool(body))
 		default:
 			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
 		}

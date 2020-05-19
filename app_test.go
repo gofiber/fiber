@@ -20,6 +20,10 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 	assertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
+// func Test_App_Methods(t *testing.T) {
+
+// }
+
 func Test_App_Nested_Params(t *testing.T) {
 	app := New()
 
@@ -247,10 +251,17 @@ func Test_App_Group(t *testing.T) {
 
 	api := grp.Group("/v1")
 	api.Post("/", dummyHandler)
-	testStatus200(t, app, "/test/v1/", "POST")
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/test/v1/", nil))
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, 200, resp.StatusCode, "Status code")
+	//assertEqual(t, "/test/v1", resp.Header.Get("Location"), "Location")
 
 	api.Get("/users", dummyHandler)
-	testStatus200(t, app, "/test/v1/users", "GET")
+	resp, err = app.Test(httptest.NewRequest("GET", "/test/v1/UsErS", nil))
+	assertEqual(t, nil, err, "app.Test(req)")
+	assertEqual(t, 200, resp.StatusCode, "Status code")
+	//assertEqual(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
 }
 
 func Test_App_Listen(t *testing.T) {

@@ -15,45 +15,16 @@ import (
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
 	// Private fields
-	use      bool         // USE matches path prefixes
-	star     bool         // Path equals '*'
-	root     bool         // Path equals '/'
-	stripped string       // Stripped down path
-	parsed   parsedParams // Contains parsed params segments
+	use    bool         // USE matches path prefixes
+	star   bool         // Path equals '*'
+	root   bool         // Path equals '/'
+	parsed parsedParams // Contains parsed params segments
 
 	// Public fields
 	Path    string     // Original registered route path
 	Method  string     // HTTP method
 	Params  []string   // Slice containing the params names
 	Handler func(*Ctx) // Ctx handler
-}
-
-// Same as r.match but using the stripped path for redirect matches
-func (r *Route) matchRedirect(path string) (match bool, values []string) {
-	if r.use {
-		if r.root || strings.HasPrefix(path, r.stripped) {
-			return true, values
-		}
-		// Check for a simple path match
-	} else if len(r.stripped) == len(path) && r.stripped == path {
-		return true, values
-		// Middleware routes allow prefix matches
-	} else if r.root && path == "/" {
-		return true, values
-	}
-	// '*' wildcard matches any path
-	if r.star {
-		return true, []string{path}
-	}
-	// Does this route have parameters
-	if len(r.Params) > 0 {
-		// Match params
-		if values, match = r.parsed.getMatch(path, r.use); match {
-			return
-		}
-	}
-	// No match
-	return false, values
 }
 
 func (r *Route) match(path string) (match bool, values []string) {
@@ -81,34 +52,6 @@ func (r *Route) match(path string) (match bool, values []string) {
 	}
 	// No match
 	return false, values
-}
-
-func (app *App) nextRedirect(ctx *Ctx) bool {
-	// TODO set unique INT within handler(), not here over and over again
-	method := methodINT[ctx.method]
-	// Get stack length
-	lenr := len(app.stack[method]) - 1
-	// Loop over the route stack starting from previous index
-	for ctx.index < lenr {
-		// Increment stack index
-		ctx.index++
-		// Get *Route
-		route := app.stack[method][ctx.index]
-		// Check if it matches the request path
-		match, values := route.matchRedirect(ctx.path)
-		// No match, continue
-		if !match {
-			continue
-		}
-		// Pass route and param values to Ctx
-		ctx.route = route
-		ctx.values = values
-		// Redirect to correct path
-		ctx.Redirect(route.Path, 301)
-		// Stop looping the stack
-		return true
-	}
-	return false
 }
 
 func (app *App) next(ctx *Ctx) bool {
@@ -146,14 +89,14 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	ctx.app = app
 	// Attach fasthttp RequestCtx
 	ctx.Fasthttp = rctx
-	// // In case sensitive routing, all to lowercase
-	// if !app.Settings.CaseSensitive {
-	// 	ctx.path = getString(toLowerBytes(rctx.URI().Path()))
-	// }
-	// // Strict routing
-	// if !app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
-	// 	ctx.path = trimRight(ctx.path, '/')
-	// }
+	// In case sensitive routing, all to lowercase
+	if !app.Settings.CaseSensitive {
+		ctx.path = getString(toLowerBytes(rctx.URI().Path()))
+	}
+	// Strict routing
+	if !app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
+		ctx.path = trimRight(ctx.path, '/')
+	}
 	// Find match in stack
 	match := app.next(ctx)
 	// Generate ETag if enabled
@@ -162,28 +105,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 	// Send a 404 by default if no route matched
 	if !match {
-		// Do we need to re-try? Check app settings
-		if !app.Settings.CaseSensitive || !app.Settings.StrictRouting {
-			// Set path to lowercase
-			if !app.Settings.CaseSensitive {
-				ctx.path = getString(toLowerBytes(rctx.URI().Path()))
-			}
-			// Remove trailing slash
-			if !app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
-				ctx.path = trimRight(ctx.path, '/')
-			}
-			// Reset stack index and search again
-			ctx.index = -1
-			// Now we need to match a "stripped" path and not original route.Path
-			match := app.nextRedirect(ctx)
-			// add new function route.matchRedirect()
-			if !match {
-				ctx.SendStatus(404)
-			}
-		} else {
-			// No re-tries needed, bye!
-			ctx.SendStatus(404)
-		}
+		ctx.SendStatus(404)
 	}
 	// Release Ctx
 	ReleaseCtx(ctx)
@@ -203,14 +125,14 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) Router {
 		path = "/" + path
 	}
 	// Store original path to strip case sensitive params
-	stripped := path
+	original := path
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		stripped = toLower(stripped)
+		path = toLower(path)
 	}
 	// Strict routing, remove trailing slashes
-	if !app.Settings.StrictRouting && len(stripped) > 1 {
-		stripped = trimRight(stripped, '/')
+	if !app.Settings.StrictRouting && len(path) > 1 {
+		path = trimRight(path, '/')
 	}
 	// Is layer a middleware?
 	var isUse = method == "USE"
@@ -219,17 +141,16 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) Router {
 	// Is path a root slash?
 	var isRoot = path == "/"
 	// Parse path parameters
-	var isParsed = getParams(path)
+	var isParsed = getParams(original)
 	// Loop over handlers
 	for i := range handlers {
 		// Set route metadata
 		route := &Route{
 			// Internals
-			use:      isUse,
-			star:     isStar,
-			root:     isRoot,
-			stripped: stripped,
-			parsed:   isParsed,
+			use:    isUse,
+			star:   isStar,
+			root:   isRoot,
+			parsed: isParsed,
 			// Externals
 			Path:    path,
 			Method:  method,
