@@ -31,16 +31,16 @@ import (
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	app      *App                 // Reference to *App
-	route    *Route               // Reference to *Route
-	index    int                  // Index of the current handler in the stack
-	next     bool                 // Bool to continue to the next handler
-	method   string               // HTTP method
-	path     string               // Beautified HTTP path
-	pathRaw  string               // Original HTTP path
-	values   []string             // Route parameter values
-	err      error                // Contains error if caught
-	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	app          *App                 // Reference to *App
+	route        *Route               // Reference to *Route
+	index        int                  // Index of the current handler in the stack
+	next         bool                 // Bool to continue to the next handler
+	method       string               // HTTP method
+	path         string               // Prettified HTTP path
+	pathOriginal string               // Original HTTP path
+	values       []string             // Route parameter values
+	err          error                // Contains error if caught
+	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 }
 
 // Range data for ctx.Range
@@ -85,7 +85,7 @@ func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx.index = -1
 	// Set paths
 	ctx.path = getString(fctx.URI().Path())
-	ctx.pathRaw = getString(fctx.URI().Path())
+	ctx.pathOriginal = ctx.path
 	// Set method
 	ctx.method = getString(fctx.Request.Header.Method())
 	// Attach *fasthttp.RequestCtx to ctx
@@ -611,13 +611,13 @@ func (ctx *Ctx) Path(override ...string) string {
 		ctx.Fasthttp.Request.URI().SetPath(override[0])
 		// Set new path to context
 		ctx.path = override[0]
-		ctx.pathRaw = ctx.path
+		ctx.pathOriginal = ctx.path
 		// Set new path to request context
-		ctx.Fasthttp.Request.URI().SetPath(ctx.pathRaw)
-		// Beautify path if enabled
-		ctx.beautifyPath()
+		ctx.Fasthttp.Request.URI().SetPath(ctx.pathOriginal)
+		// Prettify path
+		ctx.prettifyPath()
 	}
-	return ctx.pathRaw
+	return ctx.pathOriginal
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
@@ -850,14 +850,14 @@ func (ctx *Ctx) XHR() bool {
 	return strings.EqualFold(ctx.Get(HeaderXRequestedWith), "xmlhttprequest")
 }
 
-// beautifyPath ...
-func (ctx *Ctx) beautifyPath() {
-	// If CaseSensitive is disabled, we compare everything in lower
+// prettifyPath ...
+func (ctx *Ctx) prettifyPath() {
+	// If CaseSensitive is disabled, we lowercase the original path
 	if !ctx.app.Settings.CaseSensitive {
-		// We are making a copy here to keep access to the original URI
-		ctx.path = getString(utils.ToLowerBytes(ctx.Fasthttp.URI().Path()))
+		// We are making a copy here to keep access to the original path
+		ctx.path = utils.ToLower(ctx.pathOriginal)
 	}
-	// if StrictRouting is disabled, we strip all trailing slashes
+	// If StrictRouting is disabled, we strip all trailing slashes
 	if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
 		ctx.path = utils.TrimRight(ctx.path, '/')
 	}

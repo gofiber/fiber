@@ -15,14 +15,12 @@ import (
 
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
-	// Booleans for routing
-	use  bool // USE matches path prefixes
-	star bool // Path equals '*'
-	root bool // Path equals '/'
-
-	// Cleaned path data if enabled
-	path        string
-	routeParser routeParser
+	// Data for routing
+	use         bool        // USE matches path prefixes
+	star        bool        // Path equals '*'
+	root        bool        // Path equals '/'
+	path        string      // Prettified path
+	routeParser routeParser // Parameter parser
 
 	// Public fields
 	Path     string       // Original registered route path
@@ -32,7 +30,9 @@ type Route struct {
 }
 
 func (r *Route) match(path, original string) (match bool, values []string) {
+	// Is this route a Middleware?
 	if r.use {
+		// Single slash will match or path prefix
 		if r.root || strings.HasPrefix(path, r.path) {
 			return true, values
 		}
@@ -51,6 +51,7 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 	if len(r.Params) > 0 {
 		// Match params
 		if paramPos, match := r.routeParser.getMatch(path, r.use); match {
+			// Get params from the original path
 			return match, r.routeParser.paramsForPos(original, paramPos)
 		}
 	}
@@ -70,7 +71,7 @@ func (app *App) next(ctx *Ctx) bool {
 		// Get *Route
 		route := app.stack[method][ctx.index]
 		// Check if it matches the request path
-		match, values := route.match(ctx.path, ctx.pathRaw)
+		match, values := route.match(ctx.path, ctx.pathOriginal)
 		// No match, next route
 		if !match {
 			continue
@@ -86,7 +87,7 @@ func (app *App) next(ctx *Ctx) bool {
 			if !ctx.next {
 				break
 			}
-			// reset next bool
+			// Reset next bool
 			ctx.next = false
 		}
 		// Stop scanning the stack
@@ -102,15 +103,15 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	ctx.app = app
 	// Attach fasthttp RequestCtx
 	ctx.Fasthttp = rctx
-	// Beautify path if enabled
-	ctx.beautifyPath()
+	// Prettify path
+	ctx.prettifyPath()
 	// Find match in stack
 	match := app.next(ctx)
 	// Send a 404 by default if no route matched
 	if !match {
 		ctx.SendStatus(404)
 	} else if app.Settings.ETag {
-		// Generate ETag if enabled and we have a match
+		// Generate ETag if enabled
 		setETag(ctx, false)
 	}
 	// Release Ctx
