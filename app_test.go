@@ -12,6 +12,7 @@ import (
 	"time"
 
 	utils "github.com/gofiber/utils"
+	fasthttp "github.com/valyala/fasthttp"
 )
 
 func testStatus200(t *testing.T, app *App, url string, method string) {
@@ -299,4 +300,35 @@ func Test_App_Serve(t *testing.T) {
 	}()
 
 	utils.AssertEqual(t, nil, app.Serve(ln))
+}
+
+func Test_App_ETag(t *testing.T) {
+	app := New(&Settings{
+		ETag: true,
+	})
+
+	app.Get("/test", func(c *Ctx) {
+		c.Send("Hello, World!")
+	})
+
+	req := httptest.NewRequest("GET", "/test", nil)
+
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, `"13-1831710635"`, resp.Header.Get(HeaderETag), "ETag header")
+}
+
+// go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
+func Benchmark_App_ETag(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+
+	c.Send("Hello, World!")
+
+	for n := 0; n < b.N; n++ {
+		setETag(c, false)
+	}
+
+	utils.AssertEqual(b, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
 }
