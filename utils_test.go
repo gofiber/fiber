@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	utils "github.com/gofiber/utils"
+	fasthttp "github.com/valyala/fasthttp"
 )
 
 //////////////////////////////////////////////
@@ -16,13 +17,43 @@ import (
 //////////////////////////////////////////////
 // go test -v -run=Test_Utils_ -count=3
 
-// func Test_Utils_utils.AssertEqual(t *testing.T) {
-// 	// TODO
-// }
+func Test_Utils_ETag(t *testing.T) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+	c.Send("Hello, World!")
+	setETag(c, false)
+	utils.AssertEqual(t, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+}
 
-// func Test_Utils_setETag(t *testing.T) {
-// 	// TODO
-// }
+// go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
+func Benchmark_Utils_ETag(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+	c.Send("Hello, World!")
+	for n := 0; n < b.N; n++ {
+		setETag(c, false)
+	}
+	utils.AssertEqual(b, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+}
+
+func Test_Utils_ETag_Weak(t *testing.T) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+	c.Send("Hello, World!")
+	setETag(c, true)
+	utils.AssertEqual(t, `W/""13-1831710635""`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+}
+
+// go test -v -run=^$ -bench=Benchmark_App_ETag_Weak -benchmem -count=4
+func Benchmark_Utils_ETag_Weak(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+	c.Send("Hello, World!")
+	for n := 0; n < b.N; n++ {
+		setETag(c, true)
+	}
+	utils.AssertEqual(b, `W/""13-1831710635""`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+}
 
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
@@ -51,6 +82,7 @@ func Test_Utils_getGroupPath(t *testing.T) {
 // 	// TODO
 // }
 
+// go test -race -run Test_Utils_matchParams
 func Test_Utils_matchParams(t *testing.T) {
 	t.Parallel()
 	type testparams struct {
