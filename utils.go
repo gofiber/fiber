@@ -33,7 +33,7 @@ func setETag(ctx *Ctx, weak bool) {
 
 	// Enable weak tag
 	if weak {
-		etag = "W/" + "\"" + etag + "\""
+		etag = "W/" + etag
 	}
 
 	// Check if client's ETag is weak

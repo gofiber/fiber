@@ -542,7 +542,7 @@ func Test_Ctx_OriginalURL(t *testing.T) {
 	utils.AssertEqual(t, "http://google.com/test?search=demo", ctx.OriginalURL())
 }
 
-// go test -run Test_Ctx_Params
+// go test -race -run Test_Ctx_Params
 func Test_Ctx_Params(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -727,7 +727,7 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	utils.AssertEqual(t, true, strings.HasPrefix(string(ctx.Fasthttp.Response.Header.Peek(HeaderSetCookie)), "john=; expires="))
 }
 
-// go test -run Test_Ctx_Download
+// go test -race -run Test_Ctx_Download
 func Test_Ctx_Download(t *testing.T) {
 	t.Parallel()
 	ctx := AcquireCtx(&fasthttp.RequestCtx{})

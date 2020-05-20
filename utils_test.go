@@ -41,7 +41,7 @@ func Test_Utils_ETag_Weak(t *testing.T) {
 	defer ReleaseCtx(c)
 	c.Send("Hello, World!")
 	setETag(c, true)
-	utils.AssertEqual(t, `W/""13-1831710635""`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag_Weak -benchmem -count=4
@@ -52,7 +52,7 @@ func Benchmark_Utils_ETag_Weak(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		setETag(c, true)
 	}
-	utils.AssertEqual(b, `W/""13-1831710635""`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	utils.AssertEqual(b, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
 }
 
 func Test_Utils_getGroupPath(t *testing.T) {
