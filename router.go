@@ -21,8 +21,8 @@ type Route struct {
 	root bool // Path equals '/'
 
 	// Cleaned path data if enabled
-	path   string
-	params parsedParams
+	path        string
+	routeParser routeParser
 
 	// Public fields
 	Path     string       // Original registered route path
@@ -50,8 +50,8 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 	// Does this route have parameters
 	if len(r.Params) > 0 {
 		// Match params
-		if paramPos, match := r.params.getMatch(path, r.use); match {
-			return match, r.params.paramsForPos(original, paramPos)
+		if paramPos, match := r.routeParser.getMatch(path, r.use); match {
+			return match, r.routeParser.paramsForPos(original, paramPos)
 		}
 	}
 	// No match
@@ -70,7 +70,7 @@ func (app *App) next(ctx *Ctx) bool {
 		// Get *Route
 		route := app.stack[method][ctx.index]
 		// Check if it matches the request path
-		match, values := route.match(ctx.path, getString(ctx.Fasthttp.URI().Path()))
+		match, values := route.match(ctx.path, ctx.pathRaw)
 		// No match, next route
 		if !match {
 			continue
@@ -102,16 +102,8 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	ctx.app = app
 	// Attach fasthttp RequestCtx
 	ctx.Fasthttp = rctx
-	// If CaseSensitive is disabled, we compare everything in lower
-	if !app.Settings.CaseSensitive {
-		// We are making a copy here to keep access to
-		// the original URI
-		ctx.path = utils.ToLower(getString(rctx.URI().Path()))
-	}
-	// if StrictRouting is disabled, we strip all trailing slashes
-	if !app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
-		ctx.path = utils.TrimRight(ctx.path, '/')
-	}
+	// Beautify path if enabled
+	ctx.beautifyPath()
 	// Find match in stack
 	match := app.next(ctx)
 	// Send a 404 by default if no route matched
@@ -125,7 +117,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	ReleaseCtx(ctx)
 }
 
-func (app *App) register(method, path string, handlers ...func(*Ctx)) *Route {
+func (app *App) register(method, pathRaw string, handlers ...func(*Ctx)) *Route {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
@@ -137,32 +129,32 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) *Route {
 		log.Fatalf("Missing handler in route")
 	}
 	// Cannot have an empty path
-	if path == "" {
-		path = "/"
+	if pathRaw == "" {
+		pathRaw = "/"
 	}
 	// Path always start with a '/'
-	if path[0] != '/' {
-		path = "/" + path
+	if pathRaw[0] != '/' {
+		pathRaw = "/" + pathRaw
 	}
 	// Create a stripped path in-case sensitive / trailing slashes
-	stripped := path
+	pathPretty := pathRaw
 	// Case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
-		stripped = utils.ToLower(stripped)
+		pathPretty = utils.ToLower(pathPretty)
 	}
 	// Strict routing, remove trailing slashes
-	if !app.Settings.StrictRouting && len(stripped) > 1 {
-		stripped = utils.TrimRight(stripped, '/')
+	if !app.Settings.StrictRouting && len(pathPretty) > 1 {
+		pathPretty = utils.TrimRight(pathPretty, '/')
 	}
 	// Is layer a middleware?
 	var isUse = method == "USE"
 	// Is path a direct wildcard?
-	var isStar = path == "/*"
+	var isStar = pathPretty == "/*"
 	// Is path a root slash?
-	var isRoot = path == "/"
+	var isRoot = pathPretty == "/"
 	// Parse path parameters
-	var strippedParsed = getParams(stripped)
-	var originalParsed = getParams(path)
+	var parsedRaw = parseRoute(pathRaw)
+	var parsedPretty = parseRoute(pathPretty)
 
 	// Create route metadata
 	route := &Route{
@@ -171,15 +163,14 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) *Route {
 		star: isStar,
 		root: isRoot,
 		// Path data
-		path:   stripped,
-		params: strippedParsed,
+		path:        pathPretty,
+		routeParser: parsedPretty,
 		// Public data
-		Path:     path,
+		Path:     pathRaw,
 		Method:   method,
-		Params:   originalParsed.params,
+		Params:   parsedRaw.params,
 		Handlers: handlers,
 	}
-	// route.Handlers = make([]func(*Ctx), len(handlers))
 	// Middleware route matches all HTTP methods
 	if isUse {
 		// Add route to all HTTP methods stack
@@ -199,7 +190,7 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) *Route {
 	return route
 }
 
-func (app *App) registerStatic(prefix, root string, config ...Static) {
+func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 	// Cannot have an empty prefix
 	if prefix == "" {
 		prefix = "/"
@@ -265,33 +256,34 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		root:   isRoot,
 		Method: "*",
 		Path:   prefix,
+		Handlers: []func(*Ctx){func(c *Ctx) {
+			// Do stuff
+			if wildcard {
+				c.Fasthttp.Request.SetRequestURI(prefix)
+			}
+			// Serve file
+			fileHandler(c.Fasthttp)
+			// Return request if found and not forbidden
+			status := c.Fasthttp.Response.StatusCode()
+			if status != 404 && status != 403 {
+				return
+			}
+			// Reset response to default
+			c.Fasthttp.Response.SetStatusCode(200)
+			c.Fasthttp.Response.SetBodyString("")
+			// Next middleware
+			match := c.app.next(c)
+			// If no other route is executed return 404 Not Found
+			if !match {
+				c.Fasthttp.Response.SetStatusCode(404)
+				c.Fasthttp.Response.SetBodyString("Not Found")
+			}
+		}},
 	}
-	route.Handlers = append(route.Handlers, func(c *Ctx) {
-		// Do stuff
-		if wildcard {
-			c.Fasthttp.Request.SetRequestURI(prefix)
-		}
-		// Serve file
-		fileHandler(c.Fasthttp)
-		// Return request if found and not forbidden
-		status := c.Fasthttp.Response.StatusCode()
-		if status != 404 && status != 403 {
-			return
-		}
-		// Reset response to default
-		c.Fasthttp.Response.SetStatusCode(200)
-		c.Fasthttp.Response.SetBodyString("")
-		// Next middleware
-		match := c.app.next(c)
-		// If no other route is executed return 404 Not Found
-		if !match {
-			c.Fasthttp.Response.SetStatusCode(404)
-			c.Fasthttp.Response.SetBodyString("Not Found")
-		}
-	})
 	// Add route to stack
 	app.addRoute(MethodGet, route)
 	app.addRoute(MethodHead, route)
+	return route
 }
 
 func (app *App) addRoute(method string, route *Route) {

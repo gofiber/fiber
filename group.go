@@ -35,8 +35,7 @@ func (grp *Group) Use(args ...interface{}) *Route {
 			log.Fatalf("Use: Invalid func(c *fiber.Ctx) handler %v", reflect.TypeOf(arg))
 		}
 	}
-	grp.app.register("USE", getGroupPath(grp.prefix, path), handlers...)
-	return &Route{}
+	return grp.app.register("USE", getGroupPath(grp.prefix, path), handlers...)
 }
 
 // Get ...
@@ -97,11 +96,12 @@ func (grp *Group) Static(prefix, root string, config ...Static) *Route {
 }
 
 // All ...
-func (grp *Group) All(path string, handlers ...func(*Ctx)) *Route {
-	for method := range methodINT {
-		grp.Add(method, path, handlers...)
+func (grp *Group) All(path string, handlers ...func(*Ctx)) []*Route {
+	routes := make([]*Route, len(methodINT))
+	for method, i := range methodINT {
+		routes[i] = grp.Add(method, path, handlers...)
 	}
-	return &Route{}
+	return routes
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.

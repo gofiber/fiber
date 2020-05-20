@@ -36,7 +36,8 @@ type Ctx struct {
 	index    int                  // Index of the current handler in the stack
 	next     bool                 // Bool to continue to the next handler
 	method   string               // HTTP method
-	path     string               // Original HTTP path
+	path     string               // Beautified HTTP path
+	pathRaw  string               // Original HTTP path
 	values   []string             // Route parameter values
 	err      error                // Contains error if caught
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
@@ -82,8 +83,9 @@ func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx := ctxPool.Get().(*Ctx)
 	// Set stack index
 	ctx.index = -1
-	// Set path
+	// Set paths
 	ctx.path = getString(fctx.URI().Path())
+	ctx.pathRaw = getString(fctx.URI().Path())
 	// Set method
 	ctx.method = getString(fctx.Request.Header.Method())
 	// Attach *fasthttp.RequestCtx to ctx
@@ -609,17 +611,13 @@ func (ctx *Ctx) Path(override ...string) string {
 		ctx.Fasthttp.Request.URI().SetPath(override[0])
 		// Set new path to context
 		ctx.path = override[0]
-		// Non strict routing
-		if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 {
-			ctx.path = utils.TrimRight(ctx.path, '/')
-		}
-		// Not case sensitive
-		if !ctx.app.Settings.CaseSensitive {
-			ctx.path = utils.ToLower(ctx.path)
-		}
-		return override[0]
+		ctx.pathRaw = ctx.path
+		// Set new path to request context
+		ctx.Fasthttp.Request.URI().SetPath(ctx.pathRaw)
+		// Beautify path if enabled
+		ctx.beautifyPath()
 	}
-	return getString(ctx.Fasthttp.URI().Path())
+	return ctx.pathRaw
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
@@ -850,4 +848,17 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 // indicating that the request was issued by a client library (such as jQuery).
 func (ctx *Ctx) XHR() bool {
 	return strings.EqualFold(ctx.Get(HeaderXRequestedWith), "xmlhttprequest")
+}
+
+// beautifyPath ...
+func (ctx *Ctx) beautifyPath() {
+	// If CaseSensitive is disabled, we compare everything in lower
+	if !ctx.app.Settings.CaseSensitive {
+		// We are making a copy here to keep access to the original URI
+		ctx.path = getString(utils.ToLowerBytes(ctx.Fasthttp.URI().Path()))
+	}
+	// if StrictRouting is disabled, we strip all trailing slashes
+	if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
+		ctx.path = utils.TrimRight(ctx.path, '/')
+	}
 }

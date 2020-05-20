@@ -165,8 +165,8 @@ var getBytesImmutable = func(s string) (b []byte) {
 // 💖 Modified for the Fiber router by @renanbastos93 & @renewerner87
 // 🤖 ucarion/urlpath - renanbastos93/fastpath - renewerner87/fastpath
 
-// paramsParser holds the path segments and param names
-type parsedParams struct {
+// routeParser  holds the path segments and param names
+type routeParser struct {
 	segs   []paramSeg
 	params []string
 }
@@ -183,7 +183,7 @@ type paramSeg struct {
 const wildcardParam string = "*"
 
 // New ...
-func getParams(pattern string) (p parsedParams) {
+func parseRoute(pattern string) (p routeParser) {
 	var patternCount int
 	aPattern := []string{""}
 	if pattern != "" {
@@ -226,7 +226,7 @@ func getParams(pattern string) (p parsedParams) {
 	}
 	out[segIndex-1].IsLast = true
 
-	p = parsedParams{segs: out[:segIndex:segIndex], params: params}
+	p = routeParser{segs: out[:segIndex:segIndex], params: params}
 	//fmt.Printf("%+v\n", p)
 	return
 }
@@ -256,7 +256,7 @@ func getAllocFreeParams(allocLen int) []string {
 }
 
 // Match ...
-func (p *parsedParams) getMatch(s string, partialCheck bool) ([][2]int, bool) {
+func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 	lenKeys := len(p.params)
 	paramsPositions := getAllocFreeParamsPos(lenKeys)
 	var i, j, paramsIterator, partLen, paramStart int
@@ -316,7 +316,7 @@ func (p *parsedParams) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 }
 
 // get parameters for the given positions from the given path
-func (p *parsedParams) paramsForPos(path string, paramsPositions [][2]int) []string {
+func (p *routeParser) paramsForPos(path string, paramsPositions [][2]int) []string {
 	size := len(paramsPositions)
 	params := getAllocFreeParams(size)
 	for i, positions := range paramsPositions {

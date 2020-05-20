@@ -83,14 +83,15 @@ func Test_Utils_getGroupPath(t *testing.T) {
 func Test_Utils_matchParams(t *testing.T) {
 	t.Parallel()
 	type testparams struct {
-		url    string
-		params []string
-		match  bool
+		url          string
+		params       []string
+		match        bool
+		partialCheck bool
 	}
 	testCase := func(r string, cases []testparams) {
-		parser := getParams(r)
+		parser := parseRoute(r)
 		for _, c := range cases {
-			paramsPos, match := parser.getMatch(c.url, false)
+			paramsPos, match := parser.getMatch(c.url, c.partialCheck)
 			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			if match && paramsPos != nil {
 				utils.AssertEqual(t, c.params, parser.paramsForPos(c.url, paramsPos), fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
@@ -120,6 +121,7 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/v1/", params: []string{""}, match: true},
 		{url: "/api/v1/entity", params: []string{"entity"}, match: true},
 		{url: "/api/v1/entity/1/2", params: []string{"entity/1/2"}, match: true},
+		{url: "/api/v1/Entity/1/2", params: []string{"Entity/1/2"}, match: true},
 		{url: "/api/v", params: nil, match: false},
 		{url: "/api/v2", params: nil, match: false},
 		{url: "/api/abc", params: nil, match: false},
@@ -171,6 +173,12 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},
 		{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
 		{url: "/api", params: nil, match: false},
+	})
+	testCase("/partialCheck/foo/bar/:param", []testparams{
+		{url: "/partialCheck/foo/bar/test", params: []string{"test"}, match: true, partialCheck: true},
+		{url: "/partialCheck/foo/bar/test/test2", params: []string{"test"}, match: true, partialCheck: true},
+		{url: "/partialCheck/foo/bar", params: nil, match: false, partialCheck: true},
+		{url: "/partiaFoo", params: nil, match: false, partialCheck: true},
 	})
 	testCase("/api/*/:param/:param2", []testparams{
 		{url: "/api/test/abc", params: nil, match: false},

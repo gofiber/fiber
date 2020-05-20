@@ -7,6 +7,7 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -130,21 +131,21 @@ type Static struct {
 }
 
 // TODO: v1.11 Potential feature to get all registered routes
-// func (app *App) Stack(print ...bool) map[string][]string {
-// 	m := make(map[string][]string)
-// 	for i := range app.stack {
-// 		method := intMethod[i]
-// 		m[method] = []string{}
-// 		for k := range app.stack[i] {
-// 			m[method] = append(m[method], app.stack[i][k].Path)
-// 		}
-// 	}
-// 	if len(print) > 0 && print[0] {
-// 		b, _ := json.MarshalIndent(m, "", "  ")
-// 		fmt.Print(string(b))
-// 	}
-// 	return m
-// }
+func (app *App) Stack(print ...bool) map[string][]string {
+	m := make(map[string][]string)
+	for i := range app.stack {
+		method := intMethod[i]
+		m[method] = []string{}
+		for k := range app.stack[i] {
+			m[method] = append(m[method], app.stack[i][k].Path)
+		}
+	}
+	if len(print) > 0 && print[0] {
+		b, _ := json.MarshalIndent(m, "", "  ")
+		fmt.Print(string(b))
+	}
+	return m
+}
 
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
@@ -258,16 +259,16 @@ func (app *App) Add(method, path string, handlers ...func(*Ctx)) *Route {
 
 // Static ...
 func (app *App) Static(prefix, root string, config ...Static) *Route {
-	app.registerStatic(prefix, root, config...)
-	return &Route{}
+	return app.registerStatic(prefix, root, config...)
 }
 
 // All ...
-func (app *App) All(path string, handlers ...func(*Ctx)) *Route {
-	for method := range methodINT {
-		app.Add(method, path, handlers...)
+func (app *App) All(path string, handlers ...func(*Ctx)) []*Route {
+	routes := make([]*Route, len(methodINT))
+	for method, i := range methodINT {
+		routes[i] = app.Add(method, path, handlers...)
 	}
-	return &Route{}
+	return routes
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
