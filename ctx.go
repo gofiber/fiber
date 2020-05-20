@@ -31,20 +31,18 @@ import (
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	// Internal fields
-	app    *App     // Reference to *App
-	route  *Route   // Reference to *Route
-	index  int      // Index of the current handler in the stack
-	method string   // HTTP method
-	path   string   // Original HTTP path
-	values []string // Route parameter values
-	err    error    // Contains error if caught
-
-	// External fields
+	app      *App                 // Reference to *App
+	route    *Route               // Reference to *Route
+	index    int                  // Index of the current handler in the stack
+	next     bool                 // Bool to continue to the next handler
+	method   string               // HTTP method
+	path     string               // Original HTTP path
+	values   []string             // Route parameter values
+	err      error                // Contains error if caught
 	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 }
 
-// Range struct
+// Range data for ctx.Range
 type Range struct {
 	Type   string
 	Ranges []struct {
@@ -53,7 +51,7 @@ type Range struct {
 	}
 }
 
-// Cookie struct
+// Cookie data for ctx.Cookie
 type Cookie struct {
 	Name     string
 	Value    string
@@ -88,7 +86,7 @@ func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx.path = getString(fctx.URI().Path())
 	// Set method
 	ctx.method = getString(fctx.Request.Header.Method())
-	// Attach fasthttp request to ctx
+	// Attach *fasthttp.RequestCtx to ctx
 	ctx.Fasthttp = fctx
 	return ctx
 }
@@ -580,6 +578,7 @@ func (ctx *Ctx) Next(err ...error) {
 	if len(err) > 0 {
 		ctx.err = err[0]
 	}
+	ctx.next = true
 	ctx.app.next(ctx)
 }
 
@@ -778,7 +777,7 @@ func (ctx *Ctx) SendStatus(status int) {
 	ctx.Fasthttp.Response.SetStatusCode(status)
 	// Only set status body when there is no response body
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
-		ctx.Fasthttp.Response.SetBodyString(statusMessage[status])
+		ctx.Fasthttp.Response.SetBodyString(utils.StatusMessage(status))
 	}
 }
 

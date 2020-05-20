@@ -25,10 +25,10 @@ type Route struct {
 	params parsedParams
 
 	// Public fields
-	Path    string     // Original registered route path
-	Method  string     // HTTP method
-	Params  []string   // Slice containing the params names
-	Handler func(*Ctx) // Ctx handler
+	Path     string       // Original registered route path
+	Method   string       // HTTP method
+	Params   []string     // Slice containing the params names
+	Handlers []func(*Ctx) // Ctx handlers
 }
 
 func (r *Route) match(path, original string) (match bool, values []string) {
@@ -71,16 +71,25 @@ func (app *App) next(ctx *Ctx) bool {
 		route := app.stack[method][ctx.index]
 		// Check if it matches the request path
 		match, values := route.match(ctx.path, getString(ctx.Fasthttp.URI().Path()))
-		// No match, continue
+		// No match, next route
 		if !match {
 			continue
 		}
-		// Pass route and param values to Ctx
+		// Pass route reference and param values
 		ctx.route = route
 		ctx.values = values
-		// Execute Ctx handler
-		route.Handler(ctx)
-		// Stop looping the stack
+		// Loop trough all handlers
+		for i := range route.Handlers {
+			// Execute ctx handler
+			route.Handlers[i](ctx)
+			// Stop if c.Next() is not called
+			if !ctx.next {
+				break
+			}
+			// reset next bool
+			ctx.next = false
+		}
+		// Stop scanning the stack
 		return true
 	}
 	return false
@@ -116,7 +125,13 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	ReleaseCtx(ctx)
 }
 
-func (app *App) register(method, path string, handlers ...func(*Ctx)) Router {
+func (app *App) register(method, path string, handlers ...func(*Ctx)) *Route {
+	// Uppercase HTTP methods
+	method = utils.ToUpper(method)
+	// Check if the HTTP method is valid unless it's USE
+	if method != "USE" && methodINT[method] == 0 && method != MethodGet {
+		log.Fatalf("Add: Invalid HTTP method %s", method)
+	}
 	// A route requires atleast one ctx handler
 	if len(handlers) == 0 {
 		log.Fatalf("Missing handler in route")
@@ -148,40 +163,40 @@ func (app *App) register(method, path string, handlers ...func(*Ctx)) Router {
 	// Parse path parameters
 	var strippedParsed = getParams(stripped)
 	var originalParsed = getParams(path)
-	// Loop over handlers
-	for i := range handlers {
-		// Set route metadata
-		route := &Route{
-			// Router booleans
-			use:  isUse,
-			star: isStar,
-			root: isRoot,
-			// Path data
-			path:   stripped,
-			params: strippedParsed,
-			// Public data
-			Path:    path,
-			Method:  method,
-			Params:  originalParsed.params,
-			Handler: handlers[i],
-		}
-		// Middleware route matches all HTTP methods
-		if isUse {
-			// Add route to all HTTP methods stack
-			for m := range methodINT {
-				app.addRoute(m, route)
-			}
-			// Skip to next handler
-			continue
-		}
-		// Add route to stack
-		app.addRoute(method, route)
-		// Also add GET routes to HEAD stack
-		if method == MethodGet {
-			app.addRoute(MethodHead, route)
-		}
+
+	// Create route metadata
+	route := &Route{
+		// Router booleans
+		use:  isUse,
+		star: isStar,
+		root: isRoot,
+		// Path data
+		path:   stripped,
+		params: strippedParsed,
+		// Public data
+		Path:     path,
+		Method:   method,
+		Params:   originalParsed.params,
+		Handlers: handlers,
 	}
-	return app
+	// route.Handlers = make([]func(*Ctx), len(handlers))
+	// Middleware route matches all HTTP methods
+	if isUse {
+		// Add route to all HTTP methods stack
+		for m := range methodINT {
+			app.addRoute(m, route)
+		}
+		return route
+	}
+
+	// Add route to stack
+	app.addRoute(method, route)
+	// Also add GET routes to HEAD stack
+	if method == MethodGet {
+		app.addRoute(MethodHead, route)
+	}
+
+	return route
 }
 
 func (app *App) registerStatic(prefix, root string, config ...Static) {
@@ -250,30 +265,30 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		root:   isRoot,
 		Method: "*",
 		Path:   prefix,
-		Handler: func(c *Ctx) {
-			// Do stuff
-			if wildcard {
-				c.Fasthttp.Request.SetRequestURI(prefix)
-			}
-			// Serve file
-			fileHandler(c.Fasthttp)
-			// Return request if found and not forbidden
-			status := c.Fasthttp.Response.StatusCode()
-			if status != 404 && status != 403 {
-				return
-			}
-			// Reset response to default
-			c.Fasthttp.Response.SetStatusCode(200)
-			c.Fasthttp.Response.SetBodyString("")
-			// Next middleware
-			match := c.app.next(c)
-			// If no other route is executed return 404 Not Found
-			if !match {
-				c.Fasthttp.Response.SetStatusCode(404)
-				c.Fasthttp.Response.SetBodyString("Not Found")
-			}
-		},
 	}
+	route.Handlers = append(route.Handlers, func(c *Ctx) {
+		// Do stuff
+		if wildcard {
+			c.Fasthttp.Request.SetRequestURI(prefix)
+		}
+		// Serve file
+		fileHandler(c.Fasthttp)
+		// Return request if found and not forbidden
+		status := c.Fasthttp.Response.StatusCode()
+		if status != 404 && status != 403 {
+			return
+		}
+		// Reset response to default
+		c.Fasthttp.Response.SetStatusCode(200)
+		c.Fasthttp.Response.SetBodyString("")
+		// Next middleware
+		match := c.app.next(c)
+		// If no other route is executed return 404 Not Found
+		if !match {
+			c.Fasthttp.Response.SetStatusCode(404)
+			c.Fasthttp.Response.SetBodyString("Not Found")
+		}
+	})
 	// Add route to stack
 	app.addRoute(MethodGet, route)
 	app.addRoute(MethodHead, route)
