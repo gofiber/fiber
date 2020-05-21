@@ -65,6 +65,24 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 	}
 }
 
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Chain -benchmem -count=4
+func Benchmark_Router_Chain(b *testing.B) {
+	app := New()
+	handler := func(c *Ctx) {
+		c.Next()
+	}
+	app.Get("/", handler, handler, handler, handler, handler, handler)
+
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("GET")
+	c.URI().SetPath("/")
+
+	for n := 0; n < b.N; n++ {
+		app.handler(c)
+	}
+}
+
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Next -benchmem -count=4
 func Benchmark_Router_Next(b *testing.B) {
 	app := New()
@@ -92,19 +110,18 @@ func Benchmark_Route_Match(b *testing.B) {
 	var match bool
 	var params []string
 
-	parsed := getParams("/user/keys/:id")
+	parsed := parseRoute("/user/keys/:id")
 	route := &Route{
-		use:    false,
-		root:   false,
-		star:   false,
-		params: parsed,
+		use:         false,
+		root:        false,
+		star:        false,
+		routeParser: parsed,
 
-		Path:    "/user/keys/:id",
-		Method:  "DELETE",
-		Params:  parsed.params,
-		Handler: func(c *Ctx) {},
+		Path:   "/user/keys/:id",
+		Method: "DELETE",
+		Params: parsed.params,
 	}
-
+	route.Handlers = append(route.Handlers, func(c *Ctx) {})
 	for n := 0; n < b.N; n++ {
 		match, params = route.match("/user/keys/1337", "/user/keys/1337")
 	}

@@ -9,20 +9,48 @@ import (
 	"testing"
 
 	utils "github.com/gofiber/utils"
+	fasthttp "github.com/valyala/fasthttp"
 )
 
-//////////////////////////////////////////////
-///////////////// TEST CASES /////////////////
-//////////////////////////////////////////////
 // go test -v -run=Test_Utils_ -count=3
 
-// func Test_Utils_utils.AssertEqual(t *testing.T) {
-// 	// TODO
-// }
+func Test_Utils_ETag(t *testing.T) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+	c.Send("Hello, World!")
+	setETag(c, false)
+	utils.AssertEqual(t, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+}
 
-// func Test_Utils_setETag(t *testing.T) {
-// 	// TODO
-// }
+// go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
+func Benchmark_Utils_ETag(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+	c.Send("Hello, World!")
+	for n := 0; n < b.N; n++ {
+		setETag(c, false)
+	}
+	utils.AssertEqual(b, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+}
+
+func Test_Utils_ETag_Weak(t *testing.T) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+	c.Send("Hello, World!")
+	setETag(c, true)
+	utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+}
+
+// go test -v -run=^$ -bench=Benchmark_App_ETag_Weak -benchmem -count=4
+func Benchmark_Utils_ETag_Weak(b *testing.B) {
+	c := AcquireCtx(&fasthttp.RequestCtx{})
+	defer ReleaseCtx(c)
+	c.Send("Hello, World!")
+	for n := 0; n < b.N; n++ {
+		setETag(c, true)
+	}
+	utils.AssertEqual(b, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+}
 
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
@@ -51,17 +79,19 @@ func Test_Utils_getGroupPath(t *testing.T) {
 // 	// TODO
 // }
 
+// go test -race -run Test_Utils_matchParams
 func Test_Utils_matchParams(t *testing.T) {
 	t.Parallel()
 	type testparams struct {
-		url    string
-		params []string
-		match  bool
+		url          string
+		params       []string
+		match        bool
+		partialCheck bool
 	}
 	testCase := func(r string, cases []testparams) {
-		parser := getParams(r)
+		parser := parseRoute(r)
 		for _, c := range cases {
-			paramsPos, match := parser.getMatch(c.url, false)
+			paramsPos, match := parser.getMatch(c.url, c.partialCheck)
 			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			if match && paramsPos != nil {
 				utils.AssertEqual(t, c.params, parser.paramsForPos(c.url, paramsPos), fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
@@ -91,6 +121,7 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/v1/", params: []string{""}, match: true},
 		{url: "/api/v1/entity", params: []string{"entity"}, match: true},
 		{url: "/api/v1/entity/1/2", params: []string{"entity/1/2"}, match: true},
+		{url: "/api/v1/Entity/1/2", params: []string{"Entity/1/2"}, match: true},
 		{url: "/api/v", params: nil, match: false},
 		{url: "/api/v2", params: nil, match: false},
 		{url: "/api/abc", params: nil, match: false},
@@ -142,6 +173,12 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},
 		{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
 		{url: "/api", params: nil, match: false},
+	})
+	testCase("/partialCheck/foo/bar/:param", []testparams{
+		{url: "/partialCheck/foo/bar/test", params: []string{"test"}, match: true, partialCheck: true},
+		{url: "/partialCheck/foo/bar/test/test2", params: []string{"test"}, match: true, partialCheck: true},
+		{url: "/partialCheck/foo/bar", params: nil, match: false, partialCheck: true},
+		{url: "/partiaFoo", params: nil, match: false, partialCheck: true},
 	})
 	testCase("/api/*/:param/:param2", []testparams{
 		{url: "/api/test/abc", params: nil, match: false},

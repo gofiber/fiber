@@ -49,95 +49,88 @@ type App struct {
 type Settings struct {
 	// This will spawn multiple Go processes listening on the same port
 	Prefork bool // default: false
+
 	// Enable strict routing. When enabled, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
 	StrictRouting bool
+
 	// Enable case sensitive routing. When enabled, "/FoO" and "/foo" are different routes.
 	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
 	CaseSensitive bool
 
-	// TODO for v1.11
-	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
-	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
-	// Using the status code 301 for GET requests and 308 for all other request methods.
-	// RedirectFixedPath bool
-
 	// Enables the "Server: value" HTTP header.
 	ServerHeader string // default: ""
+
 	// Enables handler values to be immutable even if you return from handler
 	Immutable bool // default: false
+
 	// Enable or disable ETag header generation, since both weak and strong etags are generated
 	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
 	// Optional. Default value false
 	ETag bool
+
 	// Max body size that the server accepts
 	BodyLimit int // default: 4 * 1024 * 1024
+
 	// Maximum number of concurrent connections.
 	Concurrency int // default: 256 * 1024
+
 	// Disable keep-alive connections, the server will close incoming connections after sending the first response to client
 	DisableKeepalive bool // default: false
+
 	// When set to true causes the default date header to be excluded from the response.
 	DisableDefaultDate bool // default: false
+
 	// When set to true, causes the default Content-Type header to be excluded from the Response.
 	DisableDefaultContentType bool // default: false
+
 	// By default all header names are normalized: conteNT-tYPE -> Content-Type
 	DisableHeaderNormalizing bool // default: false
+
 	// When set to true, it will not print out the fiber ASCII and "listening" on message
 	DisableStartupMessage bool
+
 	// ViewEngine is the template engine interface
 	ViewEngine ViewEngine
+
 	// The amount of time allowed to read the full request including body.
 	ReadTimeout time.Duration // default: unlimited
+
 	// The maximum duration before timing out writes of the response.
 	WriteTimeout time.Duration // default: unlimited
+
 	// The maximum amount of time to wait for the next request when keep-alive is enabled.
 	IdleTimeout time.Duration // default: unlimited
-}
 
-// Router interface, both App and Group should implement this interface
-type Router interface {
-	Use(args ...interface{}) Router
-	All(path string, handlers ...func(*Ctx)) Router
-	Connect(path string, handlers ...func(*Ctx)) Router
-	Put(path string, handlers ...func(*Ctx)) Router
-	Post(path string, handlers ...func(*Ctx)) Router
-	Delete(path string, handlers ...func(*Ctx)) Router
-	Head(path string, handlers ...func(*Ctx)) Router
-	Patch(path string, handlers ...func(*Ctx)) Router
-	Options(path string, handlers ...func(*Ctx)) Router
-	Trace(path string, handlers ...func(*Ctx)) Router
-	Get(path string, handlers ...func(*Ctx)) Router
-	Add(method, path string, handlers ...func(*Ctx)) Router
-	Static(prefix, root string, config ...Static) Router
-	Group(prefix string, handlers ...func(*Ctx)) Router
-}
-
-// Group struct
-type Group struct {
-	prefix string
-	app    *App
+	// TODO: v1.11
+	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
+	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
+	// Using the status code 301 for GET requests and 308 for all other request methods.
+	// RedirectFixedPath bool
 }
 
 // Static struct
 type Static struct {
-	// Transparently compresses responses if set to true
 	// This works differently than the github.com/gofiber/compression middleware
 	// The server tries minimizing CPU usage by caching compressed files.
 	// It adds ".fiber.gz" suffix to the original file name.
 	// Optional. Default value false
 	Compress bool
+
 	// Enables byte range requests if set to true.
 	// Optional. Default value false
 	ByteRange bool
+
 	// Enable directory browsing.
 	// Optional. Default value false.
 	Browse bool
+
 	// Index file for serving a directory.
 	// Optional. Default value "index.html".
 	Index string
 }
 
-// Potential feature to get all registered routes
+// TODO: v1.11 Potential feature to get all registered routes
 func (app *App) Stack(print ...bool) map[string][]string {
 	m := make(map[string][]string)
 	for i := range app.stack {
@@ -157,36 +150,37 @@ func (app *App) Stack(print ...bool) map[string][]string {
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
 func New(settings ...*Settings) *App {
-	// Create app
-	app := new(App)
-	// Create route stack
-	app.stack = make([][]*Route, len(methodINT))
-	// Create settings
-	app.Settings = new(Settings)
-	// Set default settings
-	app.Settings.Prefork = utils.GetArgument("-prefork")
-	app.Settings.BodyLimit = 4 * 1024 * 1024
-	// If settings exist, set defaults
+	// Create a new app
+	app := &App{
+		// Create router stack
+		stack: make([][]*Route, len(methodINT)),
+		// Set default settings
+		Settings: &Settings{
+			Prefork:     utils.GetArgument("-prefork"),
+			BodyLimit:   4 * 1024 * 1024,
+			Concurrency: 256 * 1024,
+		},
+	}
+	// Overwrite settings if provided
 	if len(settings) > 0 {
-		app.Settings = settings[0] // Set custom settings
+		app.Settings = settings[0]
 		if !app.Settings.Prefork { // Default to -prefork flag if false
 			app.Settings.Prefork = utils.GetArgument("-prefork")
 		}
-		if app.Settings.BodyLimit <= 0 { // Default MaxRequestBodySize
+		if app.Settings.BodyLimit <= 0 {
 			app.Settings.BodyLimit = 4 * 1024 * 1024
 		}
 		if app.Settings.Concurrency <= 0 {
 			app.Settings.Concurrency = 256 * 1024
 		}
-		if app.Settings.Immutable { // Replace unsafe conversion funcs
-			getString = getStringImmutable
+		// Replace unsafe conversion functions
+		if app.Settings.Immutable {
 			getBytes = getBytesImmutable
+			getString = getStringImmutable
 		}
 	}
-	// Create server
-	app.init()
-	// Return application
-	return app
+	// Initialize app
+	return app.init()
 }
 
 // Use registers a middleware route.
@@ -196,7 +190,7 @@ func New(settings ...*Settings) *App {
 // - app.Use(handler)
 // - app.Use("/api", handler)
 // - app.Use("/api", handler, handler)
-func (app *App) Use(args ...interface{}) Router {
+func (app *App) Use(args ...interface{}) *Route {
 	var prefix string
 	var handlers []func(*Ctx)
 
@@ -213,193 +207,76 @@ func (app *App) Use(args ...interface{}) Router {
 	return app.register("USE", prefix, handlers...)
 }
 
-// All ...
-func (app *App) All(path string, handlers ...func(*Ctx)) Router {
-	for m := range methodINT {
-		app.register(m, path, handlers...)
-	}
-	return app
-}
-
 // Get ...
-func (app *App) Get(path string, handlers ...func(*Ctx)) Router {
-	return app.register(MethodGet, path, handlers...)
+func (app *App) Get(path string, handlers ...func(*Ctx)) *Route {
+	return app.Add(MethodGet, path, handlers...)
 }
 
 // Head ...
-func (app *App) Head(path string, handlers ...func(*Ctx)) Router {
-	return app.register(MethodHead, path, handlers...)
+func (app *App) Head(path string, handlers ...func(*Ctx)) *Route {
+	return app.Add(MethodHead, path, handlers...)
 }
 
 // Post ...
-func (app *App) Post(path string, handlers ...func(*Ctx)) Router {
-	return app.register(MethodPost, path, handlers...)
+func (app *App) Post(path string, handlers ...func(*Ctx)) *Route {
+	return app.Add(MethodPost, path, handlers...)
 }
 
 // Put ...
-func (app *App) Put(path string, handlers ...func(*Ctx)) Router {
-	return app.register(MethodPut, path, handlers...)
+func (app *App) Put(path string, handlers ...func(*Ctx)) *Route {
+	return app.Add(MethodPut, path, handlers...)
 }
 
 // Delete ...
-func (app *App) Delete(path string, handlers ...func(*Ctx)) Router {
-	return app.register(MethodDelete, path, handlers...)
+func (app *App) Delete(path string, handlers ...func(*Ctx)) *Route {
+	return app.Add(MethodDelete, path, handlers...)
 }
 
 // Connect ...
-func (app *App) Connect(path string, handlers ...func(*Ctx)) Router {
-	return app.register(MethodConnect, path, handlers...)
+func (app *App) Connect(path string, handlers ...func(*Ctx)) *Route {
+	return app.Add(MethodConnect, path, handlers...)
 }
 
 // Options ...
-func (app *App) Options(path string, handlers ...func(*Ctx)) Router {
-	return app.register(MethodOptions, path, handlers...)
+func (app *App) Options(path string, handlers ...func(*Ctx)) *Route {
+	return app.Add(MethodOptions, path, handlers...)
 }
 
 // Trace ...
-func (app *App) Trace(path string, handlers ...func(*Ctx)) Router {
-	return app.register(MethodTrace, path, handlers...)
+func (app *App) Trace(path string, handlers ...func(*Ctx)) *Route {
+	return app.Add(MethodTrace, path, handlers...)
 }
 
 // Patch ...
-func (app *App) Patch(path string, handlers ...func(*Ctx)) Router {
-	return app.register(MethodPatch, path, handlers...)
+func (app *App) Patch(path string, handlers ...func(*Ctx)) *Route {
+	return app.Add(MethodPatch, path, handlers...)
 }
 
 // Add ...
-func (app *App) Add(method, path string, handlers ...func(*Ctx)) Router {
-	method = utils.ToUpper(method)
-	if methodINT[method] == 0 && method != MethodGet {
-		log.Fatalf("Add: Invalid HTTP method %s", method)
-	}
+func (app *App) Add(method, path string, handlers ...func(*Ctx)) *Route {
 	return app.register(method, path, handlers...)
 }
 
+// Static ...
+func (app *App) Static(prefix, root string, config ...Static) *Route {
+	return app.registerStatic(prefix, root, config...)
+}
+
+// All ...
+func (app *App) All(path string, handlers ...func(*Ctx)) []*Route {
+	routes := make([]*Route, len(methodINT))
+	for method, i := range methodINT {
+		routes[i] = app.Add(method, path, handlers...)
+	}
+	return routes
+}
+
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-func (app *App) Group(prefix string, handlers ...func(*Ctx)) Router {
+func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
 	if len(handlers) > 0 {
 		app.register("USE", prefix, handlers...)
 	}
-	return &Group{
-		prefix: prefix,
-		app:    app,
-	}
-}
-
-// Static registers a new route with path prefix to serve static files from the provided root directory.
-func (app *App) Static(prefix, root string, config ...Static) Router {
-	app.registerStatic(prefix, root, config...)
-	return app
-}
-
-// Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-func (grp *Group) Group(prefix string, handlers ...func(*Ctx)) Router {
-	prefix = getGroupPath(grp.prefix, prefix)
-	if len(handlers) > 0 {
-		grp.app.register("USE", prefix, handlers...)
-	}
-	return &Group{
-		prefix: prefix,
-		app:    grp.app,
-	}
-}
-
-// Static : https://fiber.wiki/application#static
-func (grp *Group) Static(prefix, root string, config ...Static) Router {
-	grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
-	return grp
-}
-
-// Use registers a middleware route.
-// Middleware matches requests beginning with the provided prefix.
-// Providing a prefix is optional, it defaults to "/"
-func (grp *Group) Use(args ...interface{}) Router {
-	var path = ""
-	var handlers []func(*Ctx)
-	for i := 0; i < len(args); i++ {
-		switch arg := args[i].(type) {
-		case string:
-			path = arg
-		case func(*Ctx):
-			handlers = append(handlers, arg)
-		default:
-			log.Fatalf("Invalid Use() arguments, must be (prefix, handler) or (handler)")
-		}
-	}
-	grp.app.register("USE", getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// Add : https://fiber.wiki/application#http-methods
-func (grp *Group) Add(method, path string, handlers ...func(*Ctx)) Router {
-	method = utils.ToUpper(method)
-	if methodINT[method] == 0 && method != MethodGet {
-		log.Fatalf("Add: Invalid HTTP method %s", method)
-	}
-	grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// Connect : https://fiber.wiki/application#http-methods
-func (grp *Group) Connect(path string, handlers ...func(*Ctx)) Router {
-	grp.app.register(MethodConnect, getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// Put : https://fiber.wiki/application#http-methods
-func (grp *Group) Put(path string, handlers ...func(*Ctx)) Router {
-	grp.app.register(MethodPut, getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// Post : https://fiber.wiki/application#http-methods
-func (grp *Group) Post(path string, handlers ...func(*Ctx)) Router {
-	grp.app.register(MethodPost, getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// Delete : https://fiber.wiki/application#http-methods
-func (grp *Group) Delete(path string, handlers ...func(*Ctx)) Router {
-	grp.app.register(MethodDelete, getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// Head : https://fiber.wiki/application#http-methods
-func (grp *Group) Head(path string, handlers ...func(*Ctx)) Router {
-	grp.app.register(MethodHead, getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// Patch : https://fiber.wiki/application#http-methods
-func (grp *Group) Patch(path string, handlers ...func(*Ctx)) Router {
-	grp.app.register(MethodPatch, getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// Options : https://fiber.wiki/application#http-methods
-func (grp *Group) Options(path string, handlers ...func(*Ctx)) Router {
-	grp.app.register(MethodOptions, getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// Trace : https://fiber.wiki/application#http-methods
-func (grp *Group) Trace(path string, handlers ...func(*Ctx)) Router {
-	grp.app.register(MethodTrace, getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// Get : https://fiber.wiki/application#http-methods
-func (grp *Group) Get(path string, handlers ...func(*Ctx)) Router {
-	grp.app.register(MethodGet, getGroupPath(grp.prefix, path), handlers...)
-	return grp
-}
-
-// All matches all HTTP methods and complete paths
-func (grp *Group) All(path string, handlers ...func(*Ctx)) Router {
-	for m := range methodINT {
-		grp.app.register(m, getGroupPath(grp.prefix, path), handlers...)
-	}
-	return grp
+	return &Group{prefix: prefix, app: app}
 }
 
 // Serve can be used to pass a custom listener
@@ -583,7 +460,7 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
-func (app *App) init() {
+func (app *App) init() *App {
 	app.mutex.Lock()
 	if app.server == nil {
 		app.server = &fasthttp.Server{
@@ -621,4 +498,5 @@ func (app *App) init() {
 	app.server.WriteTimeout = app.Settings.WriteTimeout
 	app.server.IdleTimeout = app.Settings.IdleTimeout
 	app.mutex.Unlock()
+	return app
 }

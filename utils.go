@@ -9,11 +9,9 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
-	"unsafe"
 
 	utils "github.com/gofiber/utils"
 )
@@ -34,7 +32,7 @@ func setETag(ctx *Ctx, weak bool) {
 
 	// Enable weak tag
 	if weak {
-		etag = "W/" + "\"" + etag + "\""
+		etag = "W/" + etag
 	}
 
 	// Check if client's ETag is weak
@@ -152,28 +150,14 @@ func (c *testConn) SetDeadline(t time.Time) error      { return nil }
 func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
 
-// #nosec G103
 // getString converts byte slice to a string without memory allocation.
-// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-var getString = func(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
+var getString = utils.GetString
 var getStringImmutable = func(b []byte) string {
 	return string(b)
 }
 
-// #nosec G103
 // getBytes converts string to a byte slice without memory allocation.
-// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-var getBytes = func(s string) (b []byte) {
-	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	bh := reflect.SliceHeader{
-		Data: sh.Data,
-		Len:  sh.Len,
-		Cap:  sh.Len,
-	}
-	return *(*[]byte)(unsafe.Pointer(&bh))
-}
+var getBytes = utils.GetBytes
 var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
 }
@@ -182,8 +166,8 @@ var getBytesImmutable = func(s string) (b []byte) {
 // 💖 Modified for the Fiber router by @renanbastos93 & @renewerner87
 // 🤖 ucarion/urlpath - renanbastos93/fastpath - renewerner87/fastpath
 
-// paramsParser holds the path segments and param names
-type parsedParams struct {
+// routeParser  holds the path segments and param names
+type routeParser struct {
 	segs   []paramSeg
 	params []string
 }
@@ -200,7 +184,7 @@ type paramSeg struct {
 const wildcardParam string = "*"
 
 // New ...
-func getParams(pattern string) (p parsedParams) {
+func parseRoute(pattern string) (p routeParser) {
 	var patternCount int
 	aPattern := []string{""}
 	if pattern != "" {
@@ -243,7 +227,7 @@ func getParams(pattern string) (p parsedParams) {
 	}
 	out[segIndex-1].IsLast = true
 
-	p = parsedParams{segs: out[:segIndex:segIndex], params: params}
+	p = routeParser{segs: out[:segIndex:segIndex], params: params}
 	//fmt.Printf("%+v\n", p)
 	return
 }
@@ -278,7 +262,7 @@ func getAllocFreeParams(allocLen int) []string {
 }
 
 // Match ...
-func (p *parsedParams) getMatch(s string, partialCheck bool) ([][2]int, bool) {
+func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 	lenKeys := len(p.params)
 	paramsPositions := getAllocFreeParamsPos(lenKeys)
 	var i, j, paramsIterator, partLen, paramStart int
@@ -338,7 +322,7 @@ func (p *parsedParams) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 }
 
 // get parameters for the given positions from the given path
-func (p *parsedParams) paramsForPos(path string, paramsPositions [][2]int) []string {
+func (p *routeParser) paramsForPos(path string, paramsPositions [][2]int) []string {
 	size := len(paramsPositions)
 	params := getAllocFreeParams(size)
 	for i, positions := range paramsPositions {
@@ -592,69 +576,3 @@ const (
 	HeaderXRobotsTag                      = "X-Robots-Tag"
 	HeaderXUACompatible                   = "X-UA-Compatible"
 )
-
-// HTTP status codes were copied from net/http.
-var statusMessage = map[int]string{
-	100: "Continue",
-	101: "Switching Protocols",
-	102: "Processing",
-	103: "Early Hints",
-	200: "OK",
-	201: "Created",
-	202: "Accepted",
-	203: "Non-Authoritative Information",
-	204: "No Content",
-	205: "Reset Content",
-	206: "Partial Content",
-	207: "Multi-Status",
-	208: "Already Reported",
-	226: "IM Used",
-	300: "Multiple Choices",
-	301: "Moved Permanently",
-	302: "Found",
-	303: "See Other",
-	304: "Not Modified",
-	305: "Use Proxy",
-	306: "Switch Proxy",
-	307: "Temporary Redirect",
-	308: "Permanent Redirect",
-	400: "Bad Request",
-	401: "Unauthorized",
-	402: "Payment Required",
-	403: "Forbidden",
-	404: "Not Found",
-	405: "Method Not Allowed",
-	406: "Not Acceptable",
-	407: "Proxy Authentication Required",
-	408: "Request Timeout",
-	409: "Conflict",
-	410: "Gone",
-	411: "Length Required",
-	412: "Precondition Failed",
-	413: "Request Entity Too Large",
-	414: "Request URI Too Long",
-	415: "Unsupported Media Type",
-	416: "Requested Range Not Satisfiable",
-	417: "Expectation Failed",
-	418: "I'm a teapot",
-	421: "Misdirected Request",
-	422: "Unprocessable Entity",
-	423: "Locked",
-	424: "Failed Dependency",
-	426: "Upgrade Required",
-	428: "Precondition Required",
-	429: "Too Many Requests",
-	431: "Request Header Fields Too Large",
-	451: "Unavailable For Legal Reasons",
-	500: "Internal Server Error",
-	501: "Not Implemented",
-	502: "Bad Gateway",
-	503: "Service Unavailable",
-	504: "Gateway Timeout",
-	505: "HTTP Version Not Supported",
-	506: "Variant Also Negotiates",
-	507: "Insufficient Storage",
-	508: "Loop Detected",
-	510: "Not Extended",
-	511: "Network Authentication Required",
-}

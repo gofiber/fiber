@@ -1,5 +1,5 @@
-github.com/gofiber/utils v0.0.1 h1:SemHuJgYdSyEv9R+vFVcSPiNZnoyXVc7UukkER4jlFE=
-github.com/gofiber/utils v0.0.1/go.mod h1:pacRFtghAE3UoknMOUiXh2Io/nLWSUHtQCi/3QASsOc=
+github.com/gofiber/utils v0.0.2 h1:ohoQBfT1edo3w6UpPGDuz81xqMnWhNrKmzeAZ2VTHPg=
+github.com/gofiber/utils v0.0.2/go.mod h1:pacRFtghAE3UoknMOUiXh2Io/nLWSUHtQCi/3QASsOc=
 github.com/gorilla/schema v1.1.0 h1:CamqUDOFUBqzrvxuz2vEwo8+SUdwsluFh7IlzJh30LY=
 github.com/gorilla/schema v1.1.0/go.mod h1:kgLaKoK1FELgZqMAVxx/5cbj0kT+57qxUrAlIO2eleU=
 github.com/klauspost/compress v1.10.4 h1:jFzIFaf586tquEB5EhzQG0HwGNSlgAJpG53G6Ss11wc=

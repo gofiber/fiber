@@ -31,20 +31,19 @@ import (
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	// Internal fields
-	app    *App     // Reference to *App
-	route  *Route   // Reference to *Route
-	index  int      // Index of the current handler in the stack
-	method string   // HTTP method
-	path   string   // Original HTTP path
-	values []string // Route parameter values
-	err    error    // Contains error if caught
-
-	// External fields
-	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	app          *App                 // Reference to *App
+	route        *Route               // Reference to *Route
+	index        int                  // Index of the current handler in the stack
+	next         bool                 // Bool to continue to the next handler
+	method       string               // HTTP method
+	path         string               // Prettified HTTP path
+	pathOriginal string               // Original HTTP path
+	values       []string             // Route parameter values
+	err          error                // Contains error if caught
+	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 }
 
-// Range struct
+// Range data for ctx.Range
 type Range struct {
 	Type   string
 	Ranges []struct {
@@ -53,7 +52,7 @@ type Range struct {
 	}
 }
 
-// Cookie struct
+// Cookie data for ctx.Cookie
 type Cookie struct {
 	Name     string
 	Value    string
@@ -84,11 +83,12 @@ func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx := ctxPool.Get().(*Ctx)
 	// Set stack index
 	ctx.index = -1
-	// Set path
+	// Set paths
 	ctx.path = getString(fctx.URI().Path())
+	ctx.pathOriginal = ctx.path
 	// Set method
 	ctx.method = getString(fctx.Request.Header.Method())
-	// Attach fasthttp request to ctx
+	// Attach *fasthttp.RequestCtx to ctx
 	ctx.Fasthttp = fctx
 	return ctx
 }
@@ -580,6 +580,7 @@ func (ctx *Ctx) Next(err ...error) {
 	if len(err) > 0 {
 		ctx.err = err[0]
 	}
+	ctx.next = true
 	ctx.app.next(ctx)
 }
 
@@ -610,17 +611,13 @@ func (ctx *Ctx) Path(override ...string) string {
 		ctx.Fasthttp.Request.URI().SetPath(override[0])
 		// Set new path to context
 		ctx.path = override[0]
-		// Non strict routing
-		if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 {
-			ctx.path = utils.TrimRight(ctx.path, '/')
-		}
-		// Not case sensitive
-		if !ctx.app.Settings.CaseSensitive {
-			ctx.path = utils.ToLower(ctx.path)
-		}
-		return override[0]
+		ctx.pathOriginal = ctx.path
+		// Set new path to request context
+		ctx.Fasthttp.Request.URI().SetPath(ctx.pathOriginal)
+		// Prettify path
+		ctx.prettifyPath()
 	}
-	return getString(ctx.Fasthttp.URI().Path())
+	return ctx.pathOriginal
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
@@ -778,7 +775,7 @@ func (ctx *Ctx) SendStatus(status int) {
 	ctx.Fasthttp.Response.SetStatusCode(status)
 	// Only set status body when there is no response body
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
-		ctx.Fasthttp.Response.SetBodyString(statusMessage[status])
+		ctx.Fasthttp.Response.SetBodyString(utils.StatusMessage(status))
 	}
 }
 
@@ -851,4 +848,17 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 // indicating that the request was issued by a client library (such as jQuery).
 func (ctx *Ctx) XHR() bool {
 	return strings.EqualFold(ctx.Get(HeaderXRequestedWith), "xmlhttprequest")
+}
+
+// prettifyPath ...
+func (ctx *Ctx) prettifyPath() {
+	// If CaseSensitive is disabled, we lowercase the original path
+	if !ctx.app.Settings.CaseSensitive {
+		// We are making a copy here to keep access to the original path
+		ctx.path = utils.ToLower(ctx.pathOriginal)
+	}
+	// If StrictRouting is disabled, we strip all trailing slashes
+	if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
+		ctx.path = utils.TrimRight(ctx.path, '/')
+	}
 }
