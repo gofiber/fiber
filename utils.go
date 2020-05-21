@@ -11,6 +11,7 @@ import (
 	"net"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -248,26 +249,31 @@ func getParams(pattern string) (p parsedParams) {
 }
 
 // performance tricks
+var mutex sync.Mutex
 var paramsDummy = make([]string, 10000000)
 var paramsPosDummy = make([][2]int, 10000000)
 var startParamList, startParamPosList = 0, 0
 
 func getAllocFreeParamsPos(allocLen int) [][2]int {
+	mutex.Lock()
 	if (startParamPosList + allocLen) > len(paramsPosDummy) {
 		startParamPosList = 0
 	}
 	allocLen += startParamPosList
 	paramsPositions := paramsPosDummy[startParamPosList:allocLen:allocLen]
 	startParamPosList = allocLen
+	mutex.Unlock()
 	return paramsPositions
 }
 func getAllocFreeParams(allocLen int) []string {
+	mutex.Lock()
 	if (startParamList + allocLen) > len(paramsPosDummy) {
 		startParamList = 0
 	}
 	allocLen += startParamList
 	params := paramsDummy[startParamList:allocLen:allocLen]
 	startParamList = allocLen
+	mutex.Unlock()
 	return params
 }
 
