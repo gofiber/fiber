@@ -10,7 +10,7 @@ import (
 	"hash/crc32"
 	"net"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	utils "github.com/gofiber/utils"
@@ -228,36 +228,34 @@ func parseRoute(pattern string) (p routeParser) {
 	out[segIndex-1].IsLast = true
 
 	p = routeParser{segs: out[:segIndex:segIndex], params: params}
-	//fmt.Printf("%+v\n", p)
 	return
 }
 
 // performance tricks
-var mutex sync.Mutex
 var paramsDummy = make([]string, 10000000)
 var paramsPosDummy = make([][2]int, 10000000)
-var startParamList, startParamPosList = 0, 0
+var startParamList, startParamPosList uint32 = 0, 0
 
 func getAllocFreeParamsPos(allocLen int) [][2]int {
-	mutex.Lock()
-	if (startParamPosList + allocLen) > len(paramsPosDummy) {
-		startParamPosList = 0
+	size := uint32(allocLen)
+	start := atomic.AddUint32(&startParamPosList, size)
+	if (start + 100) >= uint32(len(paramsPosDummy)) {
+		atomic.StoreUint32(&startParamPosList, 0)
+		return getAllocFreeParamsPos(allocLen)
 	}
-	allocLen += startParamPosList
-	paramsPositions := paramsPosDummy[startParamPosList:allocLen:allocLen]
-	startParamPosList = allocLen
-	mutex.Unlock()
+	allocLen += int(start - size)
+	paramsPositions := paramsPosDummy[(start - size):allocLen:allocLen]
 	return paramsPositions
 }
 func getAllocFreeParams(allocLen int) []string {
-	mutex.Lock()
-	if (startParamList + allocLen) > len(paramsPosDummy) {
-		startParamList = 0
+	size := uint32(allocLen)
+	start := atomic.AddUint32(&startParamList, size)
+	if (start + 100) >= uint32(len(paramsPosDummy)) {
+		atomic.StoreUint32(&startParamList, 0)
+		return getAllocFreeParams(allocLen)
 	}
-	allocLen += startParamList
-	params := paramsDummy[startParamList:allocLen:allocLen]
-	startParamList = allocLen
-	mutex.Unlock()
+	allocLen += int(start - size)
+	params := paramsDummy[(start - size):allocLen:allocLen]
 	return params
 }
 
