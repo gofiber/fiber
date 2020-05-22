@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -616,23 +617,50 @@ func (ctx *Ctx) Path(override ...string) string {
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
+// func (ctx *Ctx) Protocol() string {
+// 	if ctx.Fasthttp.IsTLS() {
+// 		return "https"
+// 	}
+// 	if scheme := ctx.Get(HeaderXForwardedProto); scheme != "" {
+// 		return scheme
+// 	}
+// 	if scheme := ctx.Get(HeaderXForwardedProtocol); scheme != "" {
+// 		return scheme
+// 	}
+// 	if ssl := ctx.Get(HeaderXForwardedSsl); ssl == "on" {
+// 		return "https"
+// 	}
+// 	if scheme := ctx.Get(HeaderXUrlScheme); scheme != "" {
+// 		return scheme
+// 	}
+// 	return "http"
+// }
+
 func (ctx *Ctx) Protocol() string {
 	if ctx.Fasthttp.IsTLS() {
 		return "https"
 	}
-	if scheme := ctx.Get(HeaderXForwardedProto); scheme != "" {
-		return scheme
-	}
-	if scheme := ctx.Get(HeaderXForwardedProtocol); scheme != "" {
-		return scheme
-	}
-	if ssl := ctx.Get(HeaderXForwardedSsl); ssl == "on" {
-		return "https"
-	}
-	if scheme := ctx.Get(HeaderXUrlScheme); scheme != "" {
-		return scheme
-	}
-	return "http"
+	scheme := "http"
+	ctx.Fasthttp.Request.Header.VisitAll(func(key, val []byte) {
+		// X-Forwarded-
+		if len(key) < 12 {
+			return
+		}
+		if bytes.Compare(key, []byte(HeaderXForwardedProto)) == 0 {
+			scheme = getString(val)
+			return
+		} else if bytes.Compare(key, []byte(HeaderXForwardedProtocol)) == 0 {
+			scheme = getString(val)
+			return
+		} else if bytes.Compare(key, []byte(HeaderXForwardedSsl)) == 0 && bytes.Compare(val, []byte("on")) == 0 {
+			scheme = "https"
+			return
+		} else if bytes.Compare(key, []byte(HeaderXUrlScheme)) == 0 {
+			scheme = getString(val)
+			return
+		}
+	})
+	return scheme
 }
 
 // Query returns the query string parameter in the url.
