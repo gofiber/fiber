@@ -21,11 +21,11 @@ type Route struct {
 	root        bool        // Path equals '/'
 	path        string      // Prettified path
 	routeParser routeParser // Parameter parser
+	routeParams []string    // Path param keys
 
 	// Public fields
 	Path     string       // Original registered route path
 	Method   string       // HTTP method
-	Params   []string     // Slice containing the params names
 	Handlers []func(*Ctx) // Ctx handlers
 }
 
@@ -48,7 +48,7 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 		return true, []string{original}
 	}
 	// Does this route have parameters
-	if len(r.Params) > 0 {
+	if len(r.routeParser.params) > 0 {
 		// Match params
 		if paramPos, match := r.routeParser.getMatch(path, r.use); match {
 			// Get params from the original path
@@ -166,10 +166,11 @@ func (app *App) register(method, pathRaw string, handlers ...func(*Ctx)) *Route 
 		// Path data
 		path:        pathPretty,
 		routeParser: parsedPretty,
+		routeParams: parsedRaw.params,
+
 		// Public data
 		Path:     pathRaw,
 		Method:   method,
-		Params:   parsedRaw.params,
 		Handlers: handlers,
 	}
 	// Middleware route matches all HTTP methods

@@ -116,10 +116,10 @@ func Benchmark_Route_Match(b *testing.B) {
 		root:        false,
 		star:        false,
 		routeParser: parsed,
+		routeParams: parsed.params,
 
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
-		Params: parsed.params,
 	}
 	route.Handlers = append(route.Handlers, func(c *Ctx) {})
 	for n := 0; n < b.N; n++ {

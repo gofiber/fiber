@@ -7,7 +7,6 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -131,21 +130,21 @@ type Static struct {
 }
 
 // TODO: v1.11 Potential feature to get all registered routes
-func (app *App) Stack(print ...bool) map[string][]string {
-	m := make(map[string][]string)
-	for i := range app.stack {
-		method := intMethod[i]
-		m[method] = []string{}
-		for k := range app.stack[i] {
-			m[method] = append(m[method], app.stack[i][k].Path)
-		}
-	}
-	if len(print) > 0 && print[0] {
-		b, _ := json.MarshalIndent(m, "", "  ")
-		fmt.Print(string(b))
-	}
-	return m
-}
+// func (app *App) Routes(print ...bool) map[string][]string {
+// 	routes := make(map[string][]string)
+// 	for i := range app.stack {
+// 		method := intMethod[i]
+// 		routes[method] = []string{}
+// 		for k := range app.stack[i] {
+// 			routes[method] = append(routes[method], app.stack[i][k].Path)
+// 		}
+// 	}
+// 	if len(print) > 0 && print[0] {
+// 		b, _ := json.MarshalIndent(routes, "", "  ")
+// 		fmt.Print(string(b))
+// 	}
+// 	return routes
+// }
 
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.

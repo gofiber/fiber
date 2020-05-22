@@ -592,11 +592,11 @@ func (ctx *Ctx) OriginalURL() string {
 // Params is used to get the route parameters.
 // Defaults to empty string "", if the param doesn't exist.
 func (ctx *Ctx) Params(key string) string {
-	for i := range ctx.route.Params {
-		if len(key) != len(ctx.route.Params[i]) {
+	for i := range ctx.route.routeParams {
+		if len(key) != len(ctx.route.routeParams[i]) {
 			continue
 		}
-		if ctx.route.Params[i] == key {
+		if ctx.route.routeParams[i] == key {
 			return ctx.values[i]
 		}
 	}
