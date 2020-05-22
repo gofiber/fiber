@@ -243,8 +243,9 @@ func getAllocFreeParamsPos(allocLen int) [][2]int {
 		atomic.StoreUint32(&startParamPosList, 0)
 		return getAllocFreeParamsPos(allocLen)
 	}
-	allocLen += int(start - size)
-	paramsPositions := paramsPosDummy[(start - size):allocLen:allocLen]
+	start -= size
+	allocLen += int(start)
+	paramsPositions := paramsPosDummy[start:allocLen:allocLen]
 	return paramsPositions
 }
 func getAllocFreeParams(allocLen int) []string {
@@ -254,8 +255,9 @@ func getAllocFreeParams(allocLen int) []string {
 		atomic.StoreUint32(&startParamList, 0)
 		return getAllocFreeParams(allocLen)
 	}
-	allocLen += int(start - size)
-	params := paramsDummy[(start - size):allocLen:allocLen]
+	start -= size
+	allocLen += int(start)
+	params := paramsDummy[start:allocLen:allocLen]
 	return params
 }
 
