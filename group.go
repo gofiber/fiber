@@ -85,14 +85,12 @@ func (grp *Group) Patch(path string, handlers ...func(*Ctx)) *Route {
 
 // Add ...
 func (grp *Group) Add(method, path string, handlers ...func(*Ctx)) *Route {
-	path = getGroupPath(grp.prefix, path)
-	return grp.app.register(method, path, handlers...)
+	return grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
 }
 
 // Static ...
 func (grp *Group) Static(prefix, root string, config ...Static) *Route {
-	grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
-	return &Route{}
+	return grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
 }
 
 // All ...

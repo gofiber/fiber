@@ -21,7 +21,7 @@ type Route struct {
 	root        bool        // Path equals '/'
 	path        string      // Prettified path
 	routeParser routeParser // Parameter parser
-	routeParams []string    // Path param keys
+	routeParams []string    // Case sensitive param keys
 
 	// Public fields
 	Path     string       // Original registered route path
@@ -48,7 +48,7 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 		return true, []string{original}
 	}
 	// Does this route have parameters
-	if len(r.routeParser.params) > 0 {
+	if len(r.routeParams) > 0 {
 		// Match params
 		if paramPos, match := r.routeParser.getMatch(path, r.use); match {
 			// Get params from the original path
@@ -127,7 +127,7 @@ func (app *App) register(method, pathRaw string, handlers ...func(*Ctx)) *Route 
 	}
 	// A route requires atleast one ctx handler
 	if len(handlers) == 0 {
-		log.Fatalf("Missing handler in route")
+		log.Fatalf("Missing func(c *fiber.Ctx) handler in route: %s", pathRaw)
 	}
 	// Cannot have an empty path
 	if pathRaw == "" {
@@ -253,35 +253,36 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 		}
 	}
 	fileHandler := fs.NewRequestHandler()
+	handler := func(c *Ctx) {
+		// Do stuff
+		if wildcard {
+			c.Fasthttp.Request.SetRequestURI(prefix)
+		}
+		// Serve file
+		fileHandler(c.Fasthttp)
+		// Return request if found and not forbidden
+		status := c.Fasthttp.Response.StatusCode()
+		if status != 404 && status != 403 {
+			return
+		}
+		// Reset response to default
+		c.Fasthttp.Response.SetStatusCode(200)
+		c.Fasthttp.Response.SetBodyString("")
+		// Next middleware
+		match := c.app.next(c)
+		// If no other route is executed return 404 Not Found
+		if !match {
+			c.Fasthttp.Response.SetStatusCode(404)
+			c.Fasthttp.Response.SetBodyString("Not Found")
+		}
+	}
 	route := &Route{
 		use:    true,
 		root:   isRoot,
-		Method: "*",
+		Method: MethodGet,
 		Path:   prefix,
-		Handlers: []func(*Ctx){func(c *Ctx) {
-			// Do stuff
-			if wildcard {
-				c.Fasthttp.Request.SetRequestURI(prefix)
-			}
-			// Serve file
-			fileHandler(c.Fasthttp)
-			// Return request if found and not forbidden
-			status := c.Fasthttp.Response.StatusCode()
-			if status != 404 && status != 403 {
-				return
-			}
-			// Reset response to default
-			c.Fasthttp.Response.SetStatusCode(200)
-			c.Fasthttp.Response.SetBodyString("")
-			// Next middleware
-			match := c.app.next(c)
-			// If no other route is executed return 404 Not Found
-			if !match {
-				c.Fasthttp.Response.SetStatusCode(404)
-				c.Fasthttp.Response.SetBodyString("Not Found")
-			}
-		}},
 	}
+	route.Handlers = append(route.Handlers, handler)
 	// Add route to stack
 	app.addRoute(MethodGet, route)
 	app.addRoute(MethodHead, route)
