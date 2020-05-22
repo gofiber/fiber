@@ -667,6 +667,44 @@ func Test_Ctx_Path(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_Protocol
+func Test_Ctx_Protocol(t *testing.T) {
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Fasthttp.Request.Header.Set(HeaderXForwardedProto, "https")
+	utils.AssertEqual(t, "https", ctx.Protocol())
+	ctx.Fasthttp.Request.Header.Reset()
+
+	ctx.Fasthttp.Request.Header.Set(HeaderXForwardedProtocol, "https")
+	utils.AssertEqual(t, "https", ctx.Protocol())
+	ctx.Fasthttp.Request.Header.Reset()
+
+	ctx.Fasthttp.Request.Header.Set(HeaderXForwardedSsl, "on")
+	utils.AssertEqual(t, "https", ctx.Protocol())
+	ctx.Fasthttp.Request.Header.Reset()
+
+	ctx.Fasthttp.Request.Header.Set(HeaderXUrlScheme, "https")
+	utils.AssertEqual(t, "https", ctx.Protocol())
+	ctx.Fasthttp.Request.Header.Reset()
+
+	utils.AssertEqual(t, "http", ctx.Protocol())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Protocol -benchmem -count=4
+func Benchmark_Ctx_Protocol(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.Protocol()
+	}
+	utils.AssertEqual(b, "http", res)
+}
+
 // go test -run Test_Ctx_Query
 func Test_Ctx_Query(t *testing.T) {
 	t.Parallel()
