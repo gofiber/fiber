@@ -94,8 +94,8 @@ func Benchmark_Router_Next(b *testing.B) {
 	request.URI().SetPath("/user/keys/1337")
 	var res bool
 
-	c := AcquireCtx(request)
-	defer ReleaseCtx(c)
+	c := app.AcquireCtx(request)
+	defer app.ReleaseCtx(c)
 
 	for n := 0; n < b.N; n++ {
 		c.index = -1
@@ -116,10 +116,10 @@ func Benchmark_Route_Match(b *testing.B) {
 		root:        false,
 		star:        false,
 		routeParser: parsed,
+		routeParams: parsed.params,
 
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
-		Params: parsed.params,
 	}
 	route.Handlers = append(route.Handlers, func(c *Ctx) {})
 	for n := 0; n < b.N; n++ {

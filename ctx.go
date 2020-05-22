@@ -18,7 +18,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"text/template"
 	"time"
 
@@ -64,23 +63,19 @@ type Cookie struct {
 	SameSite string
 }
 
-// ViewEngine is an engine interface to render templates
-type ViewEngine interface {
+// Renderer is the interface that wraps the Render function.
+type Renderer interface {
 	Render(io.Writer, string, interface{}) error
 }
 
 // Global variables
 var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
-var ctxPool = sync.Pool{
-	New: func() interface{} {
-		return new(Ctx)
-	},
-}
-
 // AcquireCtx from pool
-func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
-	ctx := ctxPool.Get().(*Ctx)
+func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
+	ctx := app.pool.Get().(*Ctx)
+	// Set app reference
+	ctx.app = app
 	// Set stack index
 	ctx.index = -1
 	// Set paths
@@ -94,13 +89,13 @@ func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 }
 
 // ReleaseCtx to pool
-func ReleaseCtx(ctx *Ctx) {
+func (app *App) ReleaseCtx(ctx *Ctx) {
 	// Reset values
 	ctx.route = nil
 	ctx.values = nil
 	ctx.Fasthttp = nil
 	ctx.err = nil
-	ctxPool.Put(ctx)
+	app.pool.Put(ctx)
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
@@ -592,11 +587,11 @@ func (ctx *Ctx) OriginalURL() string {
 // Params is used to get the route parameters.
 // Defaults to empty string "", if the param doesn't exist.
 func (ctx *Ctx) Params(key string) string {
-	for i := range ctx.route.Params {
-		if len(key) != len(ctx.route.Params[i]) {
+	for i := range ctx.route.routeParams {
+		if len(key) != len(ctx.route.routeParams[i]) {
 			continue
 		}
-		if ctx.route.Params[i] == key {
+		if ctx.route.routeParams[i] == key {
 			return ctx.values[i]
 		}
 	}
@@ -624,6 +619,18 @@ func (ctx *Ctx) Path(override ...string) string {
 func (ctx *Ctx) Protocol() string {
 	if ctx.Fasthttp.IsTLS() {
 		return "https"
+	}
+	if scheme := ctx.Get(HeaderXForwardedProto); scheme != "" {
+		return scheme
+	}
+	if scheme := ctx.Get(HeaderXForwardedProtocol); scheme != "" {
+		return scheme
+	}
+	if ssl := ctx.Get(HeaderXForwardedSsl); ssl == "on" {
+		return "https"
+	}
+	if scheme := ctx.Get(HeaderXUrlScheme); scheme != "" {
+		return scheme
 	}
 	return "http"
 }
@@ -694,9 +701,9 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 	defer bytebufferpool.Put(buf)
 
 	// Use ViewEngine if exist
-	if ctx.app.Settings.ViewEngine != nil {
+	if ctx.app.Settings.Renderer != nil {
 		// Render template with engine
-		if err := ctx.app.Settings.ViewEngine.Render(buf, name, bind); err != nil {
+		if err := ctx.app.Settings.Renderer.Render(buf, name, bind); err != nil {
 			return err
 		}
 	} else {

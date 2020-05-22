@@ -7,7 +7,6 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -37,6 +36,8 @@ type App struct {
 	mutex sync.Mutex
 	// Route stack
 	stack [][]*Route
+	// Ctx pool
+	pool sync.Pool
 	// Fasthttp server
 	server *fasthttp.Server
 	// App settings
@@ -90,8 +91,8 @@ type Settings struct {
 	// When set to true, it will not print out the fiber ASCII and "listening" on message
 	DisableStartupMessage bool
 
-	// ViewEngine is the template engine interface
-	ViewEngine ViewEngine
+	// Renderer is the interface that wraps the Render function.
+	Renderer Renderer
 
 	// The amount of time allowed to read the full request including body.
 	ReadTimeout time.Duration // default: unlimited
@@ -131,21 +132,21 @@ type Static struct {
 }
 
 // TODO: v1.11 Potential feature to get all registered routes
-func (app *App) Stack(print ...bool) map[string][]string {
-	m := make(map[string][]string)
-	for i := range app.stack {
-		method := intMethod[i]
-		m[method] = []string{}
-		for k := range app.stack[i] {
-			m[method] = append(m[method], app.stack[i][k].Path)
-		}
-	}
-	if len(print) > 0 && print[0] {
-		b, _ := json.MarshalIndent(m, "", "  ")
-		fmt.Print(string(b))
-	}
-	return m
-}
+// func (app *App) Routes(print ...bool) map[string][]string {
+// 	routes := make(map[string][]string)
+// 	for i := range app.stack {
+// 		method := intMethod[i]
+// 		routes[method] = []string{}
+// 		for k := range app.stack[i] {
+// 			routes[method] = append(routes[method], app.stack[i][k].Path)
+// 		}
+// 	}
+// 	if len(print) > 0 && print[0] {
+// 		b, _ := json.MarshalIndent(routes, "", "  ")
+// 		fmt.Print(string(b))
+// 	}
+// 	return routes
+// }
 
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
@@ -154,6 +155,12 @@ func New(settings ...*Settings) *App {
 	app := &App{
 		// Create router stack
 		stack: make([][]*Route, len(methodINT)),
+		// Create Ctx pool
+		pool: sync.Pool{
+			New: func() interface{} {
+				return new(Ctx)
+			},
+		},
 		// Set default settings
 		Settings: &Settings{
 			Prefork:     utils.GetArgument("-prefork"),
