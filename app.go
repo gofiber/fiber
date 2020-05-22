@@ -89,8 +89,8 @@ type Settings struct {
 	// When set to true, it will not print out the fiber ASCII and "listening" on message
 	DisableStartupMessage bool
 
-	// ViewEngine is the template engine interface
-	ViewEngine ViewEngine
+	// Renderer is the interface that wraps the Render function.
+	Renderer Renderer
 
 	// The amount of time allowed to read the full request including body.
 	ReadTimeout time.Duration // default: unlimited

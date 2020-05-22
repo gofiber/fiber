@@ -64,8 +64,8 @@ type Cookie struct {
 	SameSite string
 }
 
-// ViewEngine is an engine interface to render templates
-type ViewEngine interface {
+// Renderer is the interface that wraps the Render function.
+type Renderer interface {
 	Render(io.Writer, string, interface{}) error
 }
 
@@ -625,6 +625,18 @@ func (ctx *Ctx) Protocol() string {
 	if ctx.Fasthttp.IsTLS() {
 		return "https"
 	}
+	if scheme := ctx.Get(HeaderXForwardedProto); scheme != "" {
+		return scheme
+	}
+	if scheme := ctx.Get(HeaderXForwardedProtocol); scheme != "" {
+		return scheme
+	}
+	if ssl := ctx.Get(HeaderXForwardedSsl); ssl == "on" {
+		return "https"
+	}
+	if scheme := ctx.Get(HeaderXUrlScheme); scheme != "" {
+		return scheme
+	}
 	return "http"
 }
 
@@ -694,9 +706,9 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 	defer bytebufferpool.Put(buf)
 
 	// Use ViewEngine if exist
-	if ctx.app.Settings.ViewEngine != nil {
+	if ctx.app.Settings.Renderer != nil {
 		// Render template with engine
-		if err := ctx.app.Settings.ViewEngine.Render(buf, name, bind); err != nil {
+		if err := ctx.app.Settings.Renderer.Render(buf, name, bind); err != nil {
 			return err
 		}
 	} else {
