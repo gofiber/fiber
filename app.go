@@ -36,6 +36,8 @@ type App struct {
 	mutex sync.Mutex
 	// Route stack
 	stack [][]*Route
+	// Ctx pool
+	pool sync.Pool
 	// Fasthttp server
 	server *fasthttp.Server
 	// App settings
@@ -153,6 +155,12 @@ func New(settings ...*Settings) *App {
 	app := &App{
 		// Create router stack
 		stack: make([][]*Route, len(methodINT)),
+		// Create Ctx pool
+		pool: sync.Pool{
+			New: func() interface{} {
+				return new(Ctx)
+			},
+		},
 		// Set default settings
 		Settings: &Settings{
 			Prefork:     utils.GetArgument("-prefork"),

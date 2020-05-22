@@ -15,8 +15,9 @@ import (
 // go test -v -run=Test_Utils_ -count=3
 
 func Test_Utils_ETag(t *testing.T) {
-	c := AcquireCtx(&fasthttp.RequestCtx{})
-	defer ReleaseCtx(c)
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 	c.Send("Hello, World!")
 	setETag(c, false)
 	utils.AssertEqual(t, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
@@ -24,8 +25,9 @@ func Test_Utils_ETag(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
 func Benchmark_Utils_ETag(b *testing.B) {
-	c := AcquireCtx(&fasthttp.RequestCtx{})
-	defer ReleaseCtx(c)
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 	c.Send("Hello, World!")
 	for n := 0; n < b.N; n++ {
 		setETag(c, false)
@@ -34,8 +36,9 @@ func Benchmark_Utils_ETag(b *testing.B) {
 }
 
 func Test_Utils_ETag_Weak(t *testing.T) {
-	c := AcquireCtx(&fasthttp.RequestCtx{})
-	defer ReleaseCtx(c)
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 	c.Send("Hello, World!")
 	setETag(c, true)
 	utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
@@ -43,8 +46,9 @@ func Test_Utils_ETag_Weak(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag_Weak -benchmem -count=4
 func Benchmark_Utils_ETag_Weak(b *testing.B) {
-	c := AcquireCtx(&fasthttp.RequestCtx{})
-	defer ReleaseCtx(c)
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 	c.Send("Hello, World!")
 	for n := 0; n < b.N; n++ {
 		setETag(c, true)

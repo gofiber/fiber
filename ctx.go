@@ -18,7 +18,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"text/template"
 	"time"
 
@@ -72,15 +71,11 @@ type Renderer interface {
 // Global variables
 var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
-var ctxPool = sync.Pool{
-	New: func() interface{} {
-		return new(Ctx)
-	},
-}
-
 // AcquireCtx from pool
-func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
-	ctx := ctxPool.Get().(*Ctx)
+func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
+	ctx := app.pool.Get().(*Ctx)
+	// Set app reference
+	ctx.app = app
 	// Set stack index
 	ctx.index = -1
 	// Set paths
@@ -94,13 +89,13 @@ func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 }
 
 // ReleaseCtx to pool
-func ReleaseCtx(ctx *Ctx) {
+func (app *App) ReleaseCtx(ctx *Ctx) {
 	// Reset values
 	ctx.route = nil
 	ctx.values = nil
 	ctx.Fasthttp = nil
 	ctx.err = nil
-	ctxPool.Put(ctx)
+	app.pool.Put(ctx)
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.

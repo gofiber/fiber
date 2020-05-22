@@ -94,8 +94,8 @@ func Benchmark_Router_Next(b *testing.B) {
 	request.URI().SetPath("/user/keys/1337")
 	var res bool
 
-	c := AcquireCtx(request)
-	defer ReleaseCtx(c)
+	c := app.AcquireCtx(request)
+	defer app.ReleaseCtx(c)
 
 	for n := 0; n < b.N; n++ {
 		c.index = -1

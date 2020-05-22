@@ -98,11 +98,7 @@ func (app *App) next(ctx *Ctx) bool {
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
-	ctx := AcquireCtx(rctx)
-	// Attach app poiner to access the routes
-	ctx.app = app
-	// Attach fasthttp RequestCtx
-	ctx.Fasthttp = rctx
+	ctx := app.AcquireCtx(rctx)
 	// Prettify path
 	ctx.prettifyPath()
 	// Find match in stack
@@ -115,7 +111,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		setETag(ctx, false)
 	}
 	// Release Ctx
-	ReleaseCtx(ctx)
+	app.ReleaseCtx(ctx)
 }
 
 func (app *App) register(method, pathRaw string, handlers ...func(*Ctx)) *Route {

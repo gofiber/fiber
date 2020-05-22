@@ -304,8 +304,9 @@ func Test_App_Serve(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
 func Benchmark_App_ETag(b *testing.B) {
-	c := AcquireCtx(&fasthttp.RequestCtx{})
-	defer ReleaseCtx(c)
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 	c.Send("Hello, World!")
 	for n := 0; n < b.N; n++ {
 		setETag(c, false)
@@ -315,8 +316,9 @@ func Benchmark_App_ETag(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag_Weak -benchmem -count=4
 func Benchmark_App_ETag_Weak(b *testing.B) {
-	c := AcquireCtx(&fasthttp.RequestCtx{})
-	defer ReleaseCtx(c)
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
 	c.Send("Hello, World!")
 	for n := 0; n < b.N; n++ {
 		setETag(c, true)
