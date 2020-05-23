@@ -1,7 +1,7 @@
 on:
   push:
     branches:
-      - *
+      - '*'
   release:
     types: [published]
 name: Build Docker-Image
