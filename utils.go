@@ -9,65 +9,12 @@ import (
 	"fmt"
 	"hash/crc32"
 	"net"
-	"os"
-	"path/filepath"
-	"reflect"
-	"runtime"
 	"strings"
-	"testing"
+	"sync/atomic"
 	"time"
-	"unsafe"
+
+	utils "github.com/gofiber/utils"
 )
-
-const toLowerTable = "\x00\x01\x02\x03\x04\x05\x06\a\b\t\n\v\f\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f !\"#$%&'()*+,-./0123456789:;<=>?@abcdefghijklmnopqrstuvwxyz[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\u007f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff"
-const toUpperTable = "\x00\x01\x02\x03\x04\x05\x06\a\b\t\n\v\f\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`ABCDEFGHIJKLMNOPQRSTUVWXYZ{|}~\u007f\x80\x81\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9\xca\xcb\xcc\xcd\xce\xcf\xd0\xd1\xd2\xd3\xd4\xd5\xd6\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf\xe0\xe1\xe2\xe3\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff"
-
-func toLower(b string) string {
-	var res = make([]byte, len(b))
-	copy(res, b)
-	for i := range b {
-		res[i] = toLowerTable[b[i]]
-	}
-
-	return getString(res)
-}
-
-func toUpper(b string) string {
-	var res = make([]byte, len(b))
-	copy(res, b)
-	for i := range b {
-		res[i] = toUpperTable[b[i]]
-	}
-
-	return getString(res)
-}
-
-func trimRight(s string, cutset byte) string {
-	lenStr := len(s)
-	for lenStr > 0 && s[lenStr-1] == cutset {
-		lenStr--
-	}
-	return s[:lenStr]
-}
-
-// AssertEqual checks if values are equal
-func assertEqual(t testing.TB, a interface{}, b interface{}, information ...string) {
-	if reflect.DeepEqual(a, b) {
-		return
-	}
-	info := ""
-	if len(information) > 0 {
-		info = information[0]
-	}
-	_, file, line, _ := runtime.Caller(1)
-	t.Fatalf(`
-		Test: 	 	%s
-		Trace: 	 	%s:%d
-		Error: 	 	Not equal
-		Expect: 	%v [%s]
-		Result: 	%v [%s]
-		Message:  	%s`, t.Name(), filepath.Base(file), line, a, reflect.TypeOf(a).Name(), b, reflect.TypeOf(b).Name(), info)
-}
 
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
@@ -85,7 +32,7 @@ func setETag(ctx *Ctx, weak bool) {
 
 	// Enable weak tag
 	if weak {
-		etag = "W/" + "\"" + etag + "\""
+		etag = "W/" + etag
 	}
 
 	// Check if client's ETag is weak
@@ -113,59 +60,44 @@ func setETag(ctx *Ctx, weak bool) {
 
 func getGroupPath(prefix, path string) string {
 	if path == "/" {
-		path = ""
+		return prefix
 	}
-	path = prefix + path
-	path = strings.Replace(path, "//", "/", -1)
-	return path
-}
-
-func getMIME(extension string) (mime string) {
-	if len(extension) == 0 {
-		return mime
-	}
-	if extension[0] == '.' {
-		mime = extMIME[extension[1:]]
-	} else {
-		mime = extMIME[extension]
-	}
-	if len(mime) == 0 {
-		return MIMEOctetStream
-	}
-	return mime
-}
-
-// Check if key is in arguments
-func getArgument(arg string) bool {
-	for i := range os.Args[1:] {
-		if os.Args[1:][i] == arg {
-			return true
-		}
-	}
-	return false
+	return utils.TrimRight(prefix, '/') + path
 }
 
 // return valid offer for header negotiation
 func getOffer(header string, offers ...string) string {
 	if len(offers) == 0 {
 		return ""
-	}
-	if header == "" {
+	} else if header == "" {
 		return offers[0]
 	}
 
-	specs := strings.Split(header, ",")
-	for i := range offers {
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
-			if strings.HasPrefix(spec, "*") {
-				return offers[i]
-			}
-			if strings.HasPrefix(spec, offers[i]) {
-				return offers[i]
+	spec, commaPos := "", 0
+	for len(header) > 0 && commaPos != -1 {
+		commaPos = strings.IndexByte(header, ',')
+		if commaPos != -1 {
+			spec = utils.Trim(header[:commaPos], ' ')
+		} else {
+			spec = header
+		}
+		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
+			spec = spec[:factorSign]
+		}
+
+		for _, offer := range offers {
+			// has star prefix
+			if len(spec) >= 1 && spec[len(spec)-1] == '*' {
+				return offer
+			} else if strings.HasPrefix(spec, offer) {
+				return offer
 			}
 		}
+		if commaPos != -1 {
+			header = header[commaPos+1:]
+		}
 	}
+
 	return ""
 }
 
@@ -218,22 +150,14 @@ func (c *testConn) SetDeadline(t time.Time) error      { return nil }
 func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
 
-// #nosec G103
 // getString converts byte slice to a string without memory allocation.
-// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-var getString = func(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
+var getString = utils.GetString
 var getStringImmutable = func(b []byte) string {
 	return string(b)
 }
 
-// #nosec G103
 // getBytes converts string to a byte slice without memory allocation.
-// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
-var getBytes = func(s string) (b []byte) {
-	return *(*[]byte)(unsafe.Pointer(&s))
-}
+var getBytes = utils.GetBytes
 var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
 }
@@ -242,8 +166,8 @@ var getBytesImmutable = func(s string) (b []byte) {
 // 💖 Modified for the Fiber router by @renanbastos93 & @renewerner87
 // 🤖 ucarion/urlpath - renanbastos93/fastpath - renewerner87/fastpath
 
-// paramsParser holds the path segments and param names
-type parsedParams struct {
+// routeParser  holds the path segments and param names
+type routeParser struct {
 	segs   []paramSeg
 	params []string
 }
@@ -257,12 +181,10 @@ type paramSeg struct {
 	IsLast     bool
 }
 
-var paramsDummy = make([]string, 100)
-
 const wildcardParam string = "*"
 
 // New ...
-func getParams(pattern string) (p parsedParams) {
+func parseRoute(pattern string) (p routeParser) {
 	var patternCount int
 	aPattern := []string{""}
 	if pattern != "" {
@@ -281,7 +203,7 @@ func getParams(pattern string) (p parsedParams) {
 		// is parameter ?
 		if aPattern[i][0] == '*' || aPattern[i][0] == ':' {
 			out[segIndex] = paramSeg{
-				Param:      getTrimmedParam(aPattern[i]),
+				Param:      utils.GetTrimmedParam(aPattern[i]),
 				IsParam:    true,
 				IsOptional: aPattern[i] == wildcardParam || aPattern[i][partLen-1] == '?',
 			}
@@ -305,18 +227,48 @@ func getParams(pattern string) (p parsedParams) {
 	}
 	out[segIndex-1].IsLast = true
 
-	p = parsedParams{segs: out[:segIndex:segIndex], params: params}
-	//fmt.Printf("%+v\n", p)
+	p = routeParser{segs: out[:segIndex:segIndex], params: params}
 	return
 }
 
+// performance tricks
+var paramsDummy = make([]string, 10000000)
+var paramsPosDummy = make([][2]int, 10000000)
+var startParamList, startParamPosList uint32 = 0, 0
+
+func getAllocFreeParamsPos(allocLen int) [][2]int {
+	size := uint32(allocLen)
+	start := atomic.AddUint32(&startParamPosList, size)
+	if (start + 100) >= uint32(len(paramsPosDummy)) {
+		atomic.StoreUint32(&startParamPosList, 0)
+		return getAllocFreeParamsPos(allocLen)
+	}
+	start -= size
+	allocLen += int(start)
+	paramsPositions := paramsPosDummy[start:allocLen:allocLen]
+	return paramsPositions
+}
+func getAllocFreeParams(allocLen int) []string {
+	size := uint32(allocLen)
+	start := atomic.AddUint32(&startParamList, size)
+	if (start + 100) >= uint32(len(paramsPosDummy)) {
+		atomic.StoreUint32(&startParamList, 0)
+		return getAllocFreeParams(allocLen)
+	}
+	start -= size
+	allocLen += int(start)
+	params := paramsDummy[start:allocLen:allocLen]
+	return params
+}
+
 // Match ...
-func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
+func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 	lenKeys := len(p.params)
-	params := paramsDummy[0:lenKeys:lenKeys]
-	var i, j, paramsIterator, partLen int
+	paramsPositions := getAllocFreeParamsPos(lenKeys)
+	var i, j, paramsIterator, partLen, paramStart int
 	if len(s) > 0 {
 		s = s[1:]
+		paramStart++
 	}
 	for index, segment := range p.segs {
 		partLen = len(s)
@@ -328,7 +280,7 @@ func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
 					i = partLen
 				} else {
 					// for the expressjs behavior -> "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
-					i = getCharPos(s, '/', strings.Count(s, "/")-(len(p.segs)-(index+1))+1)
+					i = utils.GetCharPos(s, '/', strings.Count(s, "/")-(len(p.segs)-(index+1))+1)
 				}
 			} else {
 				i = strings.IndexByte(s, '/')
@@ -341,7 +293,7 @@ func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
 				return nil, false
 			}
 
-			params[paramsIterator] = s[:i]
+			paramsPositions[paramsIterator][0], paramsPositions[paramsIterator][1] = paramStart, paramStart+i
 			paramsIterator++
 		} else {
 			// check const segment
@@ -357,6 +309,7 @@ func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
 			if segment.IsLast || partLen < j {
 				j = i
 			}
+			paramStart += j
 
 			s = s[j:]
 		}
@@ -365,37 +318,22 @@ func (p *parsedParams) getMatch(s string, partialCheck bool) ([]string, bool) {
 		return nil, false
 	}
 
-	return params, true
+	return paramsPositions, true
 }
-func getTrimmedParam(param string) string {
-	start := 0
-	end := len(param)
 
-	if param[start] != ':' { // is not a param
-		return param
-	}
-	start++
-	if param[end-1] == '?' { // is ?
-		end--
-	}
-
-	return param[start:end]
-}
-func getCharPos(s string, char byte, matchCount int) int {
-	if matchCount == 0 {
-		matchCount = 1
-	}
-	endPos, pos := 0, 0
-	for matchCount > 0 && pos != -1 {
-		if pos > 0 {
-			s = s[pos+1:]
-			endPos++
+// get parameters for the given positions from the given path
+func (p *routeParser) paramsForPos(path string, paramsPositions [][2]int) []string {
+	size := len(paramsPositions)
+	params := getAllocFreeParams(size)
+	for i, positions := range paramsPositions {
+		if positions[0] != positions[1] && len(path) >= positions[1] {
+			params[i] = path[positions[0]:positions[1]]
+		} else {
+			params[i] = ""
 		}
-		pos = strings.IndexByte(s, char)
-		endPos += pos
-		matchCount--
 	}
-	return endPos
+
+	return params
 }
 
 // HTTP methods and their unique INTs
@@ -409,6 +347,19 @@ var methodINT = map[string]int{
 	MethodOptions: 6,
 	MethodTrace:   7,
 	MethodPatch:   8,
+}
+
+// unique INTs and the associated HTTP method
+var intMethod = map[int]string{
+	0: MethodGet,
+	1: MethodHead,
+	2: MethodPost,
+	3: MethodPut,
+	4: MethodDelete,
+	5: MethodConnect,
+	6: MethodOptions,
+	7: MethodTrace,
+	8: MethodPatch,
 }
 
 // HTTP methods were copied from net/http.
@@ -564,6 +515,9 @@ const (
 	HeaderXForwardedFor                   = "X-Forwarded-For"
 	HeaderXForwardedHost                  = "X-Forwarded-Host"
 	HeaderXForwardedProto                 = "X-Forwarded-Proto"
+	HeaderXForwardedProtocol              = "X-Forwarded-Protocol"
+	HeaderXForwardedSsl                   = "X-Forwarded-Ssl"
+	HeaderXUrlScheme                      = "X-Url-Scheme"
 	HeaderLocation                        = "Location"
 	HeaderFrom                            = "From"
 	HeaderHost                            = "Host"
@@ -625,178 +579,3 @@ const (
 	HeaderXRobotsTag                      = "X-Robots-Tag"
 	HeaderXUACompatible                   = "X-UA-Compatible"
 )
-
-// HTTP status codes were copied from net/http.
-var statusMessage = map[int]string{
-	100: "Continue",
-	101: "Switching Protocols",
-	102: "Processing",
-	103: "Early Hints",
-	200: "OK",
-	201: "Created",
-	202: "Accepted",
-	203: "Non-Authoritative Information",
-	204: "No Content",
-	205: "Reset Content",
-	206: "Partial Content",
-	207: "Multi-Status",
-	208: "Already Reported",
-	226: "IM Used",
-	300: "Multiple Choices",
-	301: "Moved Permanently",
-	302: "Found",
-	303: "See Other",
-	304: "Not Modified",
-	305: "Use Proxy",
-	306: "Switch Proxy",
-	307: "Temporary Redirect",
-	308: "Permanent Redirect",
-	400: "Bad Request",
-	401: "Unauthorized",
-	402: "Payment Required",
-	403: "Forbidden",
-	404: "Not Found",
-	405: "Method Not Allowed",
-	406: "Not Acceptable",
-	407: "Proxy Authentication Required",
-	408: "Request Timeout",
-	409: "Conflict",
-	410: "Gone",
-	411: "Length Required",
-	412: "Precondition Failed",
-	413: "Request Entity Too Large",
-	414: "Request URI Too Long",
-	415: "Unsupported Media Type",
-	416: "Requested Range Not Satisfiable",
-	417: "Expectation Failed",
-	418: "I'm a teapot",
-	421: "Misdirected Request",
-	422: "Unprocessable Entity",
-	423: "Locked",
-	424: "Failed Dependency",
-	426: "Upgrade Required",
-	428: "Precondition Required",
-	429: "Too Many Requests",
-	431: "Request Header Fields Too Large",
-	451: "Unavailable For Legal Reasons",
-	500: "Internal Server Error",
-	501: "Not Implemented",
-	502: "Bad Gateway",
-	503: "Service Unavailable",
-	504: "Gateway Timeout",
-	505: "HTTP Version Not Supported",
-	506: "Variant Also Negotiates",
-	507: "Insufficient Storage",
-	508: "Loop Detected",
-	510: "Not Extended",
-	511: "Network Authentication Required",
-}
-
-// MIME types were copied from https://github.com/nginx/nginx/blob/master/conf/mime.types
-var extMIME = map[string]string{
-	"html":    "text/html",
-	"htm":     "text/html",
-	"shtml":   "text/html",
-	"css":     "text/css",
-	"gif":     "image/gif",
-	"jpeg":    "image/jpeg",
-	"jpg":     "image/jpeg",
-	"xml":     "application/xml",
-	"js":      "application/javascript",
-	"atom":    "application/atom+xml",
-	"rss":     "application/rss+xml",
-	"mml":     "text/mathml",
-	"txt":     "text/plain",
-	"jad":     "text/vnd.sun.j2me.app-descriptor",
-	"wml":     "text/vnd.wap.wml",
-	"htc":     "text/x-component",
-	"png":     "image/png",
-	"svg":     "image/svg+xml",
-	"svgz":    "image/svg+xml",
-	"tif":     "image/tiff",
-	"tiff":    "image/tiff",
-	"wbmp":    "image/vnd.wap.wbmp",
-	"webp":    "image/webp",
-	"ico":     "image/x-icon",
-	"jng":     "image/x-jng",
-	"bmp":     "image/x-ms-bmp",
-	"woff":    "font/woff",
-	"woff2":   "font/woff2",
-	"jar":     "application/java-archive",
-	"war":     "application/java-archive",
-	"ear":     "application/java-archive",
-	"json":    "application/json",
-	"hqx":     "application/mac-binhex40",
-	"doc":     "application/msword",
-	"pdf":     "application/pdf",
-	"ps":      "application/postscript",
-	"eps":     "application/postscript",
-	"ai":      "application/postscript",
-	"rtf":     "application/rtf",
-	"m3u8":    "application/vnd.apple.mpegurl",
-	"kml":     "application/vnd.google-earth.kml+xml",
-	"kmz":     "application/vnd.google-earth.kmz",
-	"xls":     "application/vnd.ms-excel",
-	"eot":     "application/vnd.ms-fontobject",
-	"ppt":     "application/vnd.ms-powerpoint",
-	"odg":     "application/vnd.oasis.opendocument.graphics",
-	"odp":     "application/vnd.oasis.opendocument.presentation",
-	"ods":     "application/vnd.oasis.opendocument.spreadsheet",
-	"odt":     "application/vnd.oasis.opendocument.text",
-	"wmlc":    "application/vnd.wap.wmlc",
-	"7z":      "application/x-7z-compressed",
-	"cco":     "application/x-cocoa",
-	"jardiff": "application/x-java-archive-diff",
-	"jnlp":    "application/x-java-jnlp-file",
-	"run":     "application/x-makeself",
-	"pl":      "application/x-perl",
-	"pm":      "application/x-perl",
-	"prc":     "application/x-pilot",
-	"pdb":     "application/x-pilot",
-	"rar":     "application/x-rar-compressed",
-	"rpm":     "application/x-redhat-package-manager",
-	"sea":     "application/x-sea",
-	"swf":     "application/x-shockwave-flash",
-	"sit":     "application/x-stuffit",
-	"tcl":     "application/x-tcl",
-	"tk":      "application/x-tcl",
-	"der":     "application/x-x509-ca-cert",
-	"pem":     "application/x-x509-ca-cert",
-	"crt":     "application/x-x509-ca-cert",
-	"xpi":     "application/x-xpinstall",
-	"xhtml":   "application/xhtml+xml",
-	"xspf":    "application/xspf+xml",
-	"zip":     "application/zip",
-	"bin":     "application/octet-stream",
-	"exe":     "application/octet-stream",
-	"dll":     "application/octet-stream",
-	"deb":     "application/octet-stream",
-	"dmg":     "application/octet-stream",
-	"iso":     "application/octet-stream",
-	"img":     "application/octet-stream",
-	"msi":     "application/octet-stream",
-	"msp":     "application/octet-stream",
-	"msm":     "application/octet-stream",
-	"mid":     "audio/midi",
-	"midi":    "audio/midi",
-	"kar":     "audio/midi",
-	"mp3":     "audio/mpeg",
-	"ogg":     "audio/ogg",
-	"m4a":     "audio/x-m4a",
-	"ra":      "audio/x-realaudio",
-	"3gpp":    "video/3gpp",
-	"3gp":     "video/3gpp",
-	"ts":      "video/mp2t",
-	"mp4":     "video/mp4",
-	"mpeg":    "video/mpeg",
-	"mpg":     "video/mpeg",
-	"mov":     "video/quicktime",
-	"webm":    "video/webm",
-	"flv":     "video/x-flv",
-	"m4v":     "video/x-m4v",
-	"mng":     "video/x-mng",
-	"asx":     "video/x-ms-asf",
-	"asf":     "video/x-ms-asf",
-	"wmv":     "video/x-ms-wmv",
-	"avi":     "video/x-msvideo",
-}
