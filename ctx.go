@@ -633,14 +633,14 @@ func (ctx *Ctx) Protocol() string {
 		if len(key) < 12 {
 			return // X-Forwarded-
 		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
-			if bytes.Compare(key, []byte(HeaderXForwardedProto)) == 0 {
+			if bytes.Equal(key, []byte(HeaderXForwardedProto)) {
 				scheme = getString(val)
-			} else if bytes.Compare(key, []byte(HeaderXForwardedProtocol)) == 0 {
+			} else if bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
 				scheme = getString(val)
-			} else if bytes.Compare(key, []byte(HeaderXForwardedSsl)) == 0 && bytes.Compare(val, []byte("on")) == 0 {
+			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
 				scheme = "https"
 			}
-		} else if bytes.Compare(key, []byte(HeaderXUrlScheme)) == 0 {
+		} else if bytes.Equal(key, []byte(HeaderXUrlScheme)) {
 			scheme = getString(val)
 		}
 	})
