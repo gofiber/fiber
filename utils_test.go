@@ -7,72 +7,68 @@ package fiber
 import (
 	"fmt"
 	"testing"
+
+	utils "github.com/gofiber/utils"
+	fasthttp "github.com/valyala/fasthttp"
 )
 
-// go test -v ./... -run=Test_Utils_toLower -count=3
+// go test -v -run=Test_Utils_ -count=3
 
-func Test_Utils_toUpper(t *testing.T) {
-	t.Parallel()
-	res := toUpper("/my/name/is/:param/*")
-	assertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
+func Test_Utils_ETag(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Send("Hello, World!")
+	setETag(c, false)
+	utils.AssertEqual(t, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
 }
 
-func Test_Utils_toLower(t *testing.T) {
-	t.Parallel()
-	res := toLower("/MY/NAME/IS/:PARAM/*")
-	assertEqual(t, "/my/name/is/:param/*", res)
-	res = toLower("/MY1/NAME/IS/:PARAM/*")
-	assertEqual(t, "/my1/name/is/:param/*", res)
-	res = toLower("/MY2/NAME/IS/:PARAM/*")
-	assertEqual(t, "/my2/name/is/:param/*", res)
-	res = toLower("/MY3/NAME/IS/:PARAM/*")
-	assertEqual(t, "/my3/name/is/:param/*", res)
-	res = toLower("/MY4/NAME/IS/:PARAM/*")
-	assertEqual(t, "/my4/name/is/:param/*", res)
+// go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
+func Benchmark_Utils_ETag(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Send("Hello, World!")
+	for n := 0; n < b.N; n++ {
+		setETag(c, false)
+	}
+	utils.AssertEqual(b, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
 }
 
-func Test_Utils_trimRight(t *testing.T) {
-	t.Parallel()
-	res := trimRight("/test//////", '/')
-	assertEqual(t, "/test", res)
+func Test_Utils_ETag_Weak(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Send("Hello, World!")
+	setETag(c, true)
+	utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
 }
 
-// func Test_Utils_assertEqual(t *testing.T) {
-// 	// TODO
-// }
-
-// func Test_Utils_setETag(t *testing.T) {
-// 	// TODO
-// }
+// go test -v -run=^$ -bench=Benchmark_App_ETag_Weak -benchmem -count=4
+func Benchmark_Utils_ETag_Weak(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Send("Hello, World!")
+	for n := 0; n < b.N; n++ {
+		setETag(c, true)
+	}
+	utils.AssertEqual(b, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+}
 
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
 	res := getGroupPath("/v1", "/")
-	assertEqual(t, "/v1", res)
+	utils.AssertEqual(t, "/v1", res)
 
 	res = getGroupPath("/v1", "/")
-	assertEqual(t, "/v1", res)
+	utils.AssertEqual(t, "/v1", res)
 
 	res = getGroupPath("/", "/")
-	assertEqual(t, "/", res)
+	utils.AssertEqual(t, "/", res)
 
 	res = getGroupPath("/v1/api/", "/")
-	assertEqual(t, "/v1/api/", res)
-}
-
-func Test_Utils_getMIME(t *testing.T) {
-	t.Parallel()
-	res := getMIME(".json")
-	assertEqual(t, "application/json", res)
-
-	res = getMIME(".xml")
-	assertEqual(t, "application/xml", res)
-
-	res = getMIME("xml")
-	assertEqual(t, "application/xml", res)
-
-	res = getMIME("json")
-	assertEqual(t, "application/json", res)
+	utils.AssertEqual(t, "/v1/api/", res)
 }
 
 // func Test_Utils_getArgument(t *testing.T) {
@@ -83,100 +79,29 @@ func Test_Utils_getMIME(t *testing.T) {
 // 	// TODO
 // }
 
-func Test_Utils_getString(t *testing.T) {
-	t.Parallel()
-	res := getString([]byte("Hello, World!"))
-	assertEqual(t, "Hello, World!", res)
-}
-
-func Test_Utils_getStringImmutable(t *testing.T) {
-	t.Parallel()
-	res := getStringImmutable([]byte("Hello, World!"))
-	assertEqual(t, "Hello, World!", res)
-}
-
-func Test_Utils_getBytes(t *testing.T) {
-	t.Parallel()
-	res := getBytes("Hello, World!")
-	assertEqual(t, []byte("Hello, World!"), res)
-}
-
-func Test_Utils_getBytesImmutable(t *testing.T) {
-	t.Parallel()
-	res := getBytesImmutable("Hello, World!")
-	assertEqual(t, []byte("Hello, World!"), res)
-}
-
-func Test_Utils_methodINT(t *testing.T) {
-	t.Parallel()
-	res := methodINT[MethodGet]
-	assertEqual(t, 0, res)
-	res = methodINT[MethodHead]
-	assertEqual(t, 1, res)
-	res = methodINT[MethodPost]
-	assertEqual(t, 2, res)
-	res = methodINT[MethodPut]
-	assertEqual(t, 3, res)
-	res = methodINT[MethodDelete]
-	assertEqual(t, 4, res)
-	res = methodINT[MethodConnect]
-	assertEqual(t, 5, res)
-	res = methodINT[MethodOptions]
-	assertEqual(t, 6, res)
-	res = methodINT[MethodTrace]
-	assertEqual(t, 7, res)
-	res = methodINT[MethodPatch]
-	assertEqual(t, 8, res)
-}
-
-func Test_Utils_statusMessage(t *testing.T) {
-	t.Parallel()
-	res := statusMessage[102]
-	assertEqual(t, "Processing", res)
-
-	res = statusMessage[303]
-	assertEqual(t, "See Other", res)
-
-	res = statusMessage[404]
-	assertEqual(t, "Not Found", res)
-
-	res = statusMessage[507]
-	assertEqual(t, "Insufficient Storage", res)
-
-}
-
-func Test_Utils_extensionMIME(t *testing.T) {
-	t.Parallel()
-	res := getMIME(".html")
-	assertEqual(t, "text/html", res)
-
-	res = getMIME("html")
-	assertEqual(t, "text/html", res)
-
-	res = getMIME(".msp")
-	assertEqual(t, "application/octet-stream", res)
-
-	res = getMIME("msp")
-	assertEqual(t, "application/octet-stream", res)
-}
-
 // func Test_Utils_getParams(t *testing.T) {
 // 	// TODO
 // }
 
+// go test -race -run Test_Utils_matchParams
 func Test_Utils_matchParams(t *testing.T) {
 	t.Parallel()
 	type testparams struct {
-		url    string
-		params []string
-		match  bool
+		url          string
+		params       []string
+		match        bool
+		partialCheck bool
 	}
 	testCase := func(r string, cases []testparams) {
-		parser := getParams(r)
+		parser := parseRoute(r)
 		for _, c := range cases {
-			params, match := parser.getMatch(c.url, false)
-			assertEqual(t, c.params, params, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-			assertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			paramsPos, match := parser.getMatch(c.url, c.partialCheck)
+			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			if match && paramsPos != nil {
+				utils.AssertEqual(t, c.params, parser.paramsForPos(c.url, paramsPos), fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			} else {
+				utils.AssertEqual(t, true, nil == paramsPos, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			}
 		}
 	}
 	testCase("/api/v1/:param/*", []testparams{
@@ -200,6 +125,7 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/v1/", params: []string{""}, match: true},
 		{url: "/api/v1/entity", params: []string{"entity"}, match: true},
 		{url: "/api/v1/entity/1/2", params: []string{"entity/1/2"}, match: true},
+		{url: "/api/v1/Entity/1/2", params: []string{"Entity/1/2"}, match: true},
 		{url: "/api/v", params: nil, match: false},
 		{url: "/api/v2", params: nil, match: false},
 		{url: "/api/abc", params: nil, match: false},
@@ -252,6 +178,12 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
 		{url: "/api", params: nil, match: false},
 	})
+	testCase("/partialCheck/foo/bar/:param", []testparams{
+		{url: "/partialCheck/foo/bar/test", params: []string{"test"}, match: true, partialCheck: true},
+		{url: "/partialCheck/foo/bar/test/test2", params: []string{"test"}, match: true, partialCheck: true},
+		{url: "/partialCheck/foo/bar", params: nil, match: false, partialCheck: true},
+		{url: "/partiaFoo", params: nil, match: false, partialCheck: true},
+	})
 	testCase("/api/*/:param/:param2", []testparams{
 		{url: "/api/test/abc", params: nil, match: false},
 		{url: "/api/joker/batman", params: nil, match: false},
@@ -289,5 +221,41 @@ func Test_Utils_matchParams(t *testing.T) {
 // }
 
 // func Test_Utils_getCharPos(t *testing.T) {
+// 	// TODO
+// }
+
+//////////////////////////////////////////////
+///////////////// BENCHMARKS /////////////////
+//////////////////////////////////////////////
+// go test -v -run=^$ -bench=Benchmark_Utils_ -benchmem -count=3
+
+func Benchmark_Utils_getGroupPath(b *testing.B) {
+	var res string
+	for n := 0; n < b.N; n++ {
+		res = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
+		res = getGroupPath("/v1", "/")
+		res = getGroupPath("/v1", "/api")
+		res = getGroupPath("/v1", "/api/register/:project")
+	}
+	utils.AssertEqual(b, "/v1/api/register/:project", res)
+}
+
+// func Benchmark_Utils_getArgument(b *testing.B) {
+// 	// TODO
+// }
+
+// func Benchmark_Utils_parseTokenList(b *testing.B) {
+// 	// TODO
+// }
+
+// func Benchmark_Utils_getParams(b *testing.B) {
+// 	// TODO
+// }
+
+// func Benchmark_Utils_matchParams(b *testing.B) {
+// 	// TODO
+// }
+
+// func Benchmark_Utils_getCharPos(b *testing.B) {
 // 	// TODO
 // }
