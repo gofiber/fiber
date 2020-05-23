@@ -6,13 +6,13 @@ package fiber
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
-	"html/template"
+	"io"
 	"io/ioutil"
 	"log"
-	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -20,9 +20,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
+	"text/template"
 	"time"
 
+	utils "github.com/gofiber/utils"
 	schema "github.com/gorilla/schema"
 	bytebufferpool "github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
@@ -31,20 +32,19 @@ import (
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	// Internal fields
-	app    *App     // Reference to *App
-	layer  *Layer   // Reference to *Layer
-	index  int      // Index of the current handler in the stack
-	method string   // HTTP method
-	path   string   // HTTP path
-	values []string // Route parameter values
-	err    error    // Contains error if caught
-
-	// External fields
-	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	app          *App                 // Reference to *App
+	route        *Route               // Reference to *Route
+	index        int                  // Index of the current handler in the stack
+	next         bool                 // Bool to continue to the next handler
+	method       string               // HTTP method
+	path         string               // Prettified HTTP path
+	pathOriginal string               // Original HTTP path
+	values       []string             // Route parameter values
+	err          error                // Contains error if caught
+	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 }
 
-// Range struct
+// Range data for ctx.Range
 type Range struct {
 	Type   string
 	Ranges []struct {
@@ -53,7 +53,7 @@ type Range struct {
 	}
 }
 
-// Cookie struct
+// Cookie data for ctx.Cookie
 type Cookie struct {
 	Name     string
 	Value    string
@@ -65,39 +65,39 @@ type Cookie struct {
 	SameSite string
 }
 
-// Global variables
-var schemaDecoderForm = schema.NewDecoder()
-var schemaDecoderQuery = schema.NewDecoder()
-var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
-
-var ctxPool = sync.Pool{
-	New: func() interface{} {
-		return new(Ctx)
-	},
+// RenderEngine is the interface that wraps the Render function.
+type RenderEngine interface {
+	Render(io.Writer, string, interface{}) error
 }
 
+// Global variables
+var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
+
 // AcquireCtx from pool
-func AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
-	ctx := ctxPool.Get().(*Ctx)
+func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
+	ctx := app.pool.Get().(*Ctx)
+	// Set app reference
+	ctx.app = app
 	// Set stack index
 	ctx.index = -1
-	// Set path
+	// Set paths
 	ctx.path = getString(fctx.URI().Path())
+	ctx.pathOriginal = ctx.path
 	// Set method
 	ctx.method = getString(fctx.Request.Header.Method())
-	// Attach fasthttp request to ctx
+	// Attach *fasthttp.RequestCtx to ctx
 	ctx.Fasthttp = fctx
 	return ctx
 }
 
 // ReleaseCtx to pool
-func ReleaseCtx(ctx *Ctx) {
+func (app *App) ReleaseCtx(ctx *Ctx) {
 	// Reset values
-	ctx.layer = nil
+	ctx.route = nil
 	ctx.values = nil
 	ctx.Fasthttp = nil
 	ctx.err = nil
-	ctxPool.Put(ctx)
+	app.pool.Put(ctx)
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
@@ -105,31 +105,40 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	}
-	h := ctx.Get(HeaderAccept)
-	if h == "" {
+	header := ctx.Get(HeaderAccept)
+	if header == "" {
 		return offers[0]
 	}
 
-	specs := strings.Split(h, ",")
-	for i := range offers {
-		mimetype := getMIME(offers[i])
-		for k := range specs {
-			spec := strings.TrimSpace(specs[k])
-			if strings.HasPrefix(spec, "*/*") {
-				return offers[i]
-			}
+	spec, commaPos := "", 0
+	for len(header) > 0 && commaPos != -1 {
+		commaPos = strings.IndexByte(header, ',')
+		if commaPos != -1 {
+			spec = utils.Trim(header[:commaPos], ' ')
+		} else {
+			spec = header
+		}
+		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
+			spec = spec[:factorSign]
+		}
 
-			if strings.HasPrefix(spec, mimetype) {
-				return offers[i]
-			}
-
-			if strings.Contains(spec, "/*") {
-				if strings.HasPrefix(spec, strings.Split(mimetype, "/")[0]) {
-					return offers[i]
+		for _, offer := range offers {
+			mimetype := utils.GetMIME(offer)
+			if len(spec) > 2 && spec[len(spec)-2:] == "/*" {
+				if strings.HasPrefix(spec[:len(spec)-2], strings.Split(mimetype, "/")[0]) {
+					return offer
+				} else if spec == "*/*" {
+					return offer
 				}
+			} else if strings.HasPrefix(spec, mimetype) {
+				return offer
 			}
 		}
+		if commaPos != -1 {
+			header = header[commaPos+1:]
+		}
 	}
+
 	return ""
 }
 
@@ -154,17 +163,19 @@ func (ctx *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := ctx.Fasthttp.Response.Header.Peek(field)
-	for i := range values {
-		var value = getBytes(values[i])
+	h := getString(ctx.Fasthttp.Response.Header.Peek(field))
+	originalH := h
+	for _, value := range values {
 		if len(h) == 0 {
-			h = append(h, value...)
-		} else if 0 != bytes.Compare(h, value) && !bytes.HasSuffix(h, append([]byte{' '}, value...)) &&
-			!bytes.Contains(h, append(append([]byte{}, value...), ',')) {
-			h = append(append(h, ',', ' '), value...)
+			h = value
+		} else if h != value && !strings.HasSuffix(h, " "+value) &&
+			!strings.Contains(h, value+",") {
+			h += ", " + value
 		}
 	}
-	ctx.Fasthttp.Response.Header.SetBytesV(field, h)
+	if originalH != h {
+		ctx.Fasthttp.Response.Header.Set(field, h)
+	}
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
@@ -180,6 +191,7 @@ func (ctx *Ctx) Attachment(filename ...string) {
 
 // BaseURL returns (protocol + host + base path).
 func (ctx *Ctx) BaseURL() string {
+	// TODO: avoid allocation 53.8 ns/op  32 B/op  1 allocs/op
 	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
 	return ctx.Protocol() + "://" + ctx.Hostname()
 }
@@ -193,6 +205,14 @@ func (ctx *Ctx) Body() string {
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 func (ctx *Ctx) BodyParser(out interface{}) error {
+	// TODO: Create benchmark ( Prolly need a sync pool )
+	var schemaDecoderForm = schema.NewDecoder()
+	var schemaDecoderQuery = schema.NewDecoder()
+	schemaDecoderForm.SetAliasTag("form")
+	schemaDecoderForm.IgnoreUnknownKeys(true)
+	schemaDecoderQuery.SetAliasTag("query")
+	schemaDecoderQuery.IgnoreUnknownKeys(true)
+
 	// get content type
 	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
 	// application/json
@@ -245,6 +265,12 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 	})
 }
 
+// Context returns context.Context that carries a deadline, a cancellation signal,
+// and other values across API boundaries.
+func (ctx *Ctx) Context() context.Context {
+	return ctx.Fasthttp
+}
+
 // Cookie sets a cookie by passing a cookie struct
 func (ctx *Ctx) Cookie(cookie *Cookie) {
 	fcookie := fasthttp.AcquireCookie()
@@ -259,7 +285,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
 	}
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
-	switch toLower(cookie.SameSite) {
+	switch utils.ToLower(cookie.SameSite) {
 	case "lax":
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	case "strict":
@@ -431,29 +457,27 @@ func (ctx *Ctx) IP() string {
 
 // IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
 func (ctx *Ctx) IPs() []string {
+	// TODO: improve with for iteration and string.Index -> like in Accepts
 	ips := strings.Split(ctx.Get(HeaderXForwardedFor), ",")
 	for i := range ips {
-		ips[i] = strings.TrimSpace(ips[i])
+		ips[i] = utils.Trim(ips[i], ' ')
 	}
 	return ips
 }
 
 // Is returns the matching content type,
 // if the incoming request’s Content-Type HTTP header field matches the MIME type specified by the type parameter
-func (ctx *Ctx) Is(extension string) (match bool) {
-	if extension[0] != '.' {
-		extension = "." + extension
+func (ctx *Ctx) Is(extension string) bool {
+	extensionHeader := utils.GetMIME(extension)
+	if extensionHeader == "" {
+		return false
+	}
+	header := ctx.Get(HeaderContentType)
+	if factorSign := strings.IndexByte(header, ';'); factorSign != -1 {
+		header = header[:factorSign]
 	}
 
-	exts, _ := mime.ExtensionsByType(ctx.Get(HeaderContentType))
-	if len(exts) > 0 {
-		for i := range exts {
-			if exts[i] == extension {
-				return true
-			}
-		}
-	}
-	return
+	return utils.Trim(header, ' ') == extensionHeader
 }
 
 // JSON converts any interface or string to JSON using Jsoniter.
@@ -513,7 +537,7 @@ func (ctx *Ctx) Links(link ...string) {
 			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	ctx.Fasthttp.Response.Header.Set(HeaderLink, trimRight(bb.String(), ','))
+	ctx.Fasthttp.Response.Header.Set(HeaderLink, utils.TrimRight(bb.String(), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -535,7 +559,7 @@ func (ctx *Ctx) Location(path string) {
 // Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
 func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
-		method := toUpper(override[0])
+		method := utils.ToUpper(override[0])
 		if methodINT[method] == 0 && method != MethodGet {
 			log.Fatalf("Method: Invalid HTTP method override %s", method)
 		}
@@ -559,6 +583,7 @@ func (ctx *Ctx) Next(err ...error) {
 	if len(err) > 0 {
 		ctx.err = err[0]
 	}
+	ctx.next = true
 	ctx.app.next(ctx)
 }
 
@@ -570,11 +595,11 @@ func (ctx *Ctx) OriginalURL() string {
 // Params is used to get the route parameters.
 // Defaults to empty string "", if the param doesn't exist.
 func (ctx *Ctx) Params(key string) string {
-	for i := range ctx.layer.Params {
-		if len(key) != len(ctx.layer.Params[i]) {
+	for i := range ctx.route.routeParams {
+		if len(key) != len(ctx.route.routeParams[i]) {
 			continue
 		}
-		if ctx.layer.Params[i] == key {
+		if ctx.route.routeParams[i] == key {
 			return ctx.values[i]
 		}
 	}
@@ -584,18 +609,18 @@ func (ctx *Ctx) Params(key string) string {
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
 func (ctx *Ctx) Path(override ...string) string {
-	if len(override) > 0 && ctx.app != nil {
-		// Non strict routing
-		if !ctx.app.Settings.StrictRouting && len(override[0]) > 1 {
-			override[0] = trimRight(override[0], '/')
-		}
-		// Not case sensitive
-		if !ctx.app.Settings.CaseSensitive {
-			override[0] = toLower(override[0])
-		}
+	if len(override) != 0 && ctx.path != override[0] && ctx.app != nil {
+		// Set new path to request
+		ctx.Fasthttp.Request.URI().SetPath(override[0])
+		// Set new path to context
 		ctx.path = override[0]
+		ctx.pathOriginal = ctx.path
+		// Set new path to request context
+		ctx.Fasthttp.Request.URI().SetPath(ctx.pathOriginal)
+		// Prettify path
+		ctx.prettifyPath()
 	}
-	return ctx.path
+	return ctx.pathOriginal
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
@@ -603,7 +628,23 @@ func (ctx *Ctx) Protocol() string {
 	if ctx.Fasthttp.IsTLS() {
 		return "https"
 	}
-	return "http"
+	scheme := "http"
+	ctx.Fasthttp.Request.Header.VisitAll(func(key, val []byte) {
+		if len(key) < 12 {
+			return // X-Forwarded-
+		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
+			if bytes.Compare(key, []byte(HeaderXForwardedProto)) == 0 {
+				scheme = getString(val)
+			} else if bytes.Compare(key, []byte(HeaderXForwardedProtocol)) == 0 {
+				scheme = getString(val)
+			} else if bytes.Compare(key, []byte(HeaderXForwardedSsl)) == 0 && bytes.Compare(val, []byte("on")) == 0 {
+				scheme = "https"
+			}
+		} else if bytes.Compare(key, []byte(HeaderXUrlScheme)) == 0 {
+			scheme = getString(val)
+		}
+	})
+	return scheme
 }
 
 // Query returns the query string parameter in the url.
@@ -666,49 +707,46 @@ func (ctx *Ctx) Redirect(location string, status ...int) {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-func (ctx *Ctx) Render(file string, bind interface{}) error {
-	var err error
-	var raw []byte
-	var html string
-	if ctx.app != nil {
-		if ctx.app.Settings.TemplateFolder != "" {
-			file = filepath.Join(ctx.app.Settings.TemplateFolder, file)
-		}
-		if ctx.app.Settings.TemplateExtension != "" {
-			file = file + ctx.app.Settings.TemplateExtension
-		}
-		if raw, err = ioutil.ReadFile(filepath.Clean(file)); err != nil {
-			return err
-		}
-	}
-	if ctx.app != nil && ctx.app.Settings.TemplateEngine != nil {
-		// Custom template engine
-		// https://github.com/gofiber/template
-		if html, err = ctx.app.Settings.TemplateEngine(getString(raw), bind); err != nil {
+func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
+	// Get new buffer from pool
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	// Use ViewEngine if exist
+	if ctx.app.Settings.RenderEngine != nil {
+		// Render template with engine
+		if err := ctx.app.Settings.RenderEngine.Render(buf, name, bind); err != nil {
 			return err
 		}
 	} else {
-		// Default template engine
-		// https://golang.org/pkg/text/template/
-		var buf bytes.Buffer
+		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
-
-		if tmpl, err = template.New("").Parse(getString(raw)); err != nil {
+		var raw []byte
+		// Read file
+		if raw, err = ioutil.ReadFile(filepath.Clean(name)); err != nil {
 			return err
 		}
-		if err = tmpl.Execute(&buf, bind); err != nil {
+		// Parse template
+		// tmpl, err := template.ParseGlob(name)
+		if tmpl, err = template.New("").ParseGlob(getString(raw)); err != nil {
 			return err
 		}
-		html = buf.String()
+		// Render template
+		if err = tmpl.Execute(buf, bind); err != nil {
+			return err
+		}
 	}
-	ctx.Set("Content-Type", "text/html")
-	ctx.SendString(html)
-	return err
+	// Set Contet-Type to text/html
+	ctx.Set(HeaderContentType, MIMETextHTML)
+	// Set rendered template to body
+	ctx.SendBytes(buf.Bytes())
+	// Return err if exist
+	return
 }
 
 // Route returns the matched Route struct.
-func (ctx *Ctx) Route() *Layer {
-	return ctx.layer
+func (ctx *Ctx) Route() *Route {
+	return ctx.route
 }
 
 // SaveFile saves any multipart file to disk.
@@ -739,12 +777,15 @@ func (ctx *Ctx) SendBytes(body []byte) {
 // The file is compressed by default, disable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
 func (ctx *Ctx) SendFile(file string, uncompressed ...bool) {
+	// https://github.com/gofiber/fiber/issues/391
+	status := ctx.Fasthttp.Response.StatusCode()
 	// Disable gzip compression
 	if len(uncompressed) > 0 && uncompressed[0] {
 		fasthttp.ServeFileUncompressed(ctx.Fasthttp, file)
-		return
+	} else {
+		fasthttp.ServeFile(ctx.Fasthttp, file)
 	}
-	fasthttp.ServeFile(ctx.Fasthttp, file)
+	ctx.Fasthttp.Response.SetStatusCode(status)
 }
 
 // SendStatus sets the HTTP status code and if the response body is empty,
@@ -753,7 +794,7 @@ func (ctx *Ctx) SendStatus(status int) {
 	ctx.Fasthttp.Response.SetStatusCode(status)
 	// Only set status body when there is no response body
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
-		ctx.Fasthttp.Response.SetBodyString(statusMessage[status])
+		ctx.Fasthttp.Response.SetBodyString(utils.StatusMessage(status))
 	}
 }
 
@@ -793,8 +834,8 @@ func (ctx *Ctx) Status(status int) *Ctx {
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-func (ctx *Ctx) Type(ext string) *Ctx {
-	ctx.Fasthttp.Response.Header.SetContentType(getMIME(ext))
+func (ctx *Ctx) Type(extension string) *Ctx {
+	ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
 	return ctx
 }
 
@@ -812,6 +853,10 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 			ctx.Fasthttp.Response.AppendBodyString(body)
 		case []byte:
 			ctx.Fasthttp.Response.AppendBodyString(getString(body))
+		case int:
+			ctx.Fasthttp.Response.AppendBodyString(strconv.Itoa(body))
+		case bool:
+			ctx.Fasthttp.Response.AppendBodyString(strconv.FormatBool(body))
 		default:
 			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
 		}
@@ -822,4 +867,17 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 // indicating that the request was issued by a client library (such as jQuery).
 func (ctx *Ctx) XHR() bool {
 	return strings.EqualFold(ctx.Get(HeaderXRequestedWith), "xmlhttprequest")
+}
+
+// prettifyPath ...
+func (ctx *Ctx) prettifyPath() {
+	// If CaseSensitive is disabled, we lowercase the original path
+	if !ctx.app.Settings.CaseSensitive {
+		// We are making a copy here to keep access to the original path
+		ctx.path = utils.ToLower(ctx.pathOriginal)
+	}
+	// If StrictRouting is disabled, we strip all trailing slashes
+	if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
+		ctx.path = utils.TrimRight(ctx.path, '/')
+	}
 }
