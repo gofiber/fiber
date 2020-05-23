@@ -232,14 +232,14 @@ func parseRoute(pattern string) (p routeParser) {
 }
 
 // performance tricks
-var paramsDummy = make([]string, 10000000)
-var paramsPosDummy = make([][2]int, 10000000)
+var paramsDummy = make([]string, 100000)
+var paramsPosDummy = make([][2]int, 100000)
 var startParamList, startParamPosList uint32 = 0, 0
 
 func getAllocFreeParamsPos(allocLen int) [][2]int {
 	size := uint32(allocLen)
 	start := atomic.AddUint32(&startParamPosList, size)
-	if (start + 100) >= uint32(len(paramsPosDummy)) {
+	if (start + 10) >= uint32(len(paramsPosDummy)) {
 		atomic.StoreUint32(&startParamPosList, 0)
 		return getAllocFreeParamsPos(allocLen)
 	}
@@ -251,7 +251,7 @@ func getAllocFreeParamsPos(allocLen int) [][2]int {
 func getAllocFreeParams(allocLen int) []string {
 	size := uint32(allocLen)
 	start := atomic.AddUint32(&startParamList, size)
-	if (start + 100) >= uint32(len(paramsPosDummy)) {
+	if (start + 10) >= uint32(len(paramsPosDummy)) {
 		atomic.StoreUint32(&startParamList, 0)
 		return getAllocFreeParams(allocLen)
 	}
