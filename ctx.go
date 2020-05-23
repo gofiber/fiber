@@ -21,48 +21,41 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
-	"time"
 
+	"github.com/gofiber/fiber/base"
 	utils "github.com/gofiber/utils"
 	schema "github.com/gorilla/schema"
 	bytebufferpool "github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
+type (
+	Cookie = base.Cookie // Cookie struct
+	Map    = base.Map    // A shortcut for map[string]interface{}
+	Range  = base.Range  // Range struct
+)
+
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	app          *App                 // Reference to *App
-	route        *Route               // Reference to *Route
-	index        int                  // Index of the current handler in the stack
-	next         bool                 // Bool to continue to the next handler
-	method       string               // HTTP method
-	path         string               // Prettified HTTP path
-	pathOriginal string               // Original HTTP path
-	values       []string             // Route parameter values
-	err          error                // Contains error if caught
-	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-}
+	app          *App     // Reference to *App
+	route        *Route   // Reference to *Route
+	index        int      // Index of the current handler in the stack
+	next         bool     // Bool to continue to the next handler
+	method       string   // HTTP method
+	path         string   // Prettified HTTP path
+	pathOriginal string   // Original HTTP path
+	values       []string // Route parameter values
+	err          error    // Contains error if caught
 
-// Range data for ctx.Range
-type Range struct {
-	Type   string
-	Ranges []struct {
-		Start int
-		End   int
-	}
-}
-
-// Cookie data for ctx.Cookie
-type Cookie struct {
-	Name     string
-	Value    string
-	Path     string
-	Domain   string
-	Expires  time.Time
-	Secure   bool
-	HTTPOnly bool
-	SameSite string
+	// Reference to *fasthttp.RequestCtx
+	Fasthttp *fasthttp.RequestCtx
+	// Interfaces we have
+	base.IBaseRequest
+	base.IBaseResponse
+	// Interfaces you need implement
+	base.ImplRequest  // Interface for Request
+	base.ImplResponse // Interface for Response
 }
 
 // RenderEngine is the interface that wraps the Render function.
@@ -75,7 +68,7 @@ var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|
 
 // AcquireCtx from pool
 func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
-	ctx := app.pool.Get().(*Ctx)
+	ctx := app.poolGetCtx()
 	// Set app reference
 	ctx.app = app
 	// Set stack index
@@ -97,7 +90,7 @@ func (app *App) ReleaseCtx(ctx *Ctx) {
 	ctx.values = nil
 	ctx.Fasthttp = nil
 	ctx.err = nil
-	app.pool.Put(ctx)
+	app.poolPutCtx(ctx)
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
@@ -206,8 +199,8 @@ func (ctx *Ctx) Body() string {
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 func (ctx *Ctx) BodyParser(out interface{}) error {
 	// TODO: Create benchmark ( Prolly need a sync pool )
-	var schemaDecoderForm = schema.NewDecoder()
-	var schemaDecoderQuery = schema.NewDecoder()
+	schemaDecoderForm := schema.NewDecoder()
+	schemaDecoderQuery := schema.NewDecoder()
 	schemaDecoderForm.SetAliasTag("form")
 	schemaDecoderForm.IgnoreUnknownKeys(true)
 	schemaDecoderQuery.SetAliasTag("query")
@@ -242,7 +235,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	// query params
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
 		data := make(map[string][]string)
-		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
+		ctx.Fasthttp.QueryArgs().VisitAll(func(key, val []byte) {
 			data[getString(key)] = append(data[getString(key)], getString(val))
 		})
 		return schemaDecoderQuery.Decode(out, data)
@@ -386,8 +379,8 @@ func (ctx *Ctx) FormValue(key string) (value string) {
 // https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
 func (ctx *Ctx) Fresh() bool {
 	// fields
-	var modifiedSince = ctx.Get(HeaderIfModifiedSince)
-	var noneMatch = ctx.Get(HeaderIfNoneMatch)
+	modifiedSince := ctx.Get(HeaderIfModifiedSince)
+	noneMatch := ctx.Get(HeaderIfNoneMatch)
 
 	// unconditional request
 	if modifiedSince == "" && noneMatch == "" {
@@ -397,19 +390,19 @@ func (ctx *Ctx) Fresh() bool {
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
 	// https://tools.ietf.org/html/rfc2616#section-14.9.4
-	var cacheControl = ctx.Get(HeaderCacheControl)
+	cacheControl := ctx.Get(HeaderCacheControl)
 	if cacheControl != "" && cacheControlNoCacheRegexp.MatchString(cacheControl) {
 		return false
 	}
 
 	// if-none-match
 	if noneMatch != "" && noneMatch != "*" {
-		var etag = getString(ctx.Fasthttp.Response.Header.Peek(HeaderETag))
+		etag := getString(ctx.Fasthttp.Response.Header.Peek(HeaderETag))
 		if etag == "" {
 			return false
 		}
-		var etagStal = true
-		var matches = parseTokenList(getBytes(noneMatch))
+		etagStal := true
+		matches := parseTokenList(getBytes(noneMatch))
 		for i := range matches {
 			match := matches[i]
 			if match == etag || match == "W/"+etag || "W/"+match == etag {
@@ -422,7 +415,7 @@ func (ctx *Ctx) Fresh() bool {
 		}
 
 		if modifiedSince != "" {
-			var lastModified = getString(ctx.Fasthttp.Response.Header.Peek(HeaderLastModified))
+			lastModified := getString(ctx.Fasthttp.Response.Header.Peek(HeaderLastModified))
 			if lastModified != "" {
 				lastModifiedTime, err := http.ParseTime(lastModified)
 				if err != nil {
@@ -500,7 +493,6 @@ func (ctx *Ctx) JSON(data interface{}) error {
 // By default, the callback name is simply callback.
 func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	raw, err := json.Marshal(&data)
-
 	if err != nil {
 		return err
 	}
@@ -805,7 +797,7 @@ func (ctx *Ctx) SendString(body string) {
 }
 
 // Set sets the response’s HTTP header field to the specified key, value.
-func (ctx *Ctx) Set(key string, val string) {
+func (ctx *Ctx) Set(key, val string) {
 	ctx.Fasthttp.Response.Header.Set(key, val)
 }
 
@@ -827,15 +819,26 @@ func (ctx *Ctx) Stale() bool {
 }
 
 // Status sets the HTTP status for the response.
+func (ctx *Ctx) SetStatus(status int) {
+	ctx.Fasthttp.Response.SetStatusCode(status)
+}
+
+// Status sets the HTTP status for the response.
 // This method is chainable.
 func (ctx *Ctx) Status(status int) *Ctx {
-	ctx.Fasthttp.Response.SetStatusCode(status)
+	ctx.SetStatus(status)
 	return ctx
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-func (ctx *Ctx) Type(extension string) *Ctx {
+func (ctx *Ctx) SetType(extension string) {
 	ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
+}
+
+// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
+// This method is chainable.
+func (ctx *Ctx) Type(extension string) *Ctx {
+	ctx.SetType(extension)
 	return ctx
 }
 

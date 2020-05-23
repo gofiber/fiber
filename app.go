@@ -28,9 +28,6 @@ import (
 // Version of current package
 const Version = "1.10.0"
 
-// Map is a shortcut for map[string]interface{}, usefull for JSON returns
-type Map map[string]interface{}
-
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
@@ -42,6 +39,8 @@ type App struct {
 	server *fasthttp.Server
 	// App settings
 	Settings *Settings
+	// Apply Ctx Wrapper
+	WrapCtx func(ctx *Ctx) *Ctx
 }
 
 // Enables automatic redirection if the current route can't be matched but a handler for the path with (without) the trailing slash exists. For example if /foo/ is requested but a route only exists for /foo, the client is redirected to /foo with http status code 301 for GET requests and 308 for all other request methods.
@@ -155,12 +154,8 @@ func New(settings ...*Settings) *App {
 	app := &App{
 		// Create router stack
 		stack: make([][]*Route, len(methodINT)),
-		// Create Ctx pool
-		pool: sync.Pool{
-			New: func() interface{} {
-				return new(Ctx)
-			},
-		},
+		// Create empty pool
+		pool: sync.Pool{},
 		// Set default settings
 		Settings: &Settings{
 			Prefork:     utils.GetArgument("-prefork"),
@@ -188,6 +183,23 @@ func New(settings ...*Settings) *App {
 	}
 	// Initialize app
 	return app.init()
+}
+
+func (app *App) poolGetCtx() *Ctx {
+	if app.pool.New == nil { // Init Ctx pool
+		app.pool.New = func() interface{} {
+			ctx := new(Ctx)
+			if app.WrapCtx != nil {
+				ctx = app.WrapCtx(ctx)
+			}
+			return ctx
+		}
+	}
+	return app.pool.Get().(*Ctx)
+}
+
+func (app *App) poolPutCtx(ctx *Ctx) {
+	app.pool.Put(ctx)
 }
 
 // Use registers a middleware route.
