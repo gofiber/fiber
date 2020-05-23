@@ -1,7 +1,9 @@
 on:
   push:
+    branches:
+      - *
   release:
-    - published
+    types: [published]
 name: Build Docker-Image
 jobs:
   Build:
