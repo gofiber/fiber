@@ -600,6 +600,11 @@ func (ctx *Ctx) Params(key string) string {
 			continue
 		}
 		if ctx.route.routeParams[i] == key {
+			// #https://github.com/gofiber/fiber/issues/405
+			// @ReneWerner87
+			if len(ctx.values) <= i {
+				return ""
+			}
 			return ctx.values[i]
 		}
 	}
