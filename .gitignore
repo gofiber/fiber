@@ -20,5 +20,5 @@
 *.fiber.gz
 *.pprof
 
-# golang depencies
+# dependencies
 vendor
