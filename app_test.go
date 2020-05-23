@@ -323,5 +323,5 @@ func Benchmark_App_ETag_Weak(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		setETag(c, true)
 	}
-	utils.AssertEqual(b, `W/""13-1831710635""`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	utils.AssertEqual(b, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
 }
