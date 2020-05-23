@@ -1,0 +1,34 @@
+on:
+  push:
+  release:
+    - published
+name: Build Docker-Image
+jobs:
+  Build:
+    runs-on: ubuntu:latest
+    steps:
+      - name: Fetch repository
+        uses: actions/checkout@v2
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v1.1.0
+        with:
+          # Username used to log in to a Docker registry. If not set then no login will occur
+          username: ${{ secrets.DOCKER_USERNAME }}
+          # Password or personal access token used to log in to a Docker registry. If not set then no login will occur
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          # Server address of Docker registry. If not set then will default to Docker Hub
+          registry: registry.hub.docker.com
+          # Docker repository to tag the image with
+          repository: ${{ secrets.DOCKER_REPO }}
+          # Path to the build context
+          path: .
+          # Path to the Dockerfile (Default is '{path}/Dockerfile')
+          dockerfile: ./main/Dockerfile
+          # Always attempt to pull a newer version of the image
+          always_pull: true
+          # Automatically tags the built image with the git reference as per the readme
+          tag_with_ref: true
+          # Whether to push the image
+          push: true
+      
