@@ -7,7 +7,7 @@ on:
 name: Build Docker-Image
 jobs:
   Build:
-    runs-on: ubuntu:latest
+    runs-on: ubuntu-latest
     steps:
       - name: Fetch repository
         uses: actions/checkout@v2
