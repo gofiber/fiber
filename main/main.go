@@ -1,11 +1,18 @@
 package main
 
-import "github.com/gofiber/fiber"
+import (
+	"fmt"
+
+	"github.com/gofiber/fiber"
+)
 
 func main() {
 	app := fiber.New()
 
 	app.Static("/", "./website")
 
-	app.Listen(80)
+	err := app.Listen(80)
+	if err != nil {
+		fmt.Printf("[Error] %s \n", err)
+	}
 }
