@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -64,8 +65,8 @@ type Cookie struct {
 	SameSite string
 }
 
-// Renderer is the interface that wraps the Render function.
-type Renderer interface {
+// RenderEngine is the interface that wraps the Render function.
+type RenderEngine interface {
 	Render(io.Writer, string, interface{}) error
 }
 
@@ -262,6 +263,12 @@ func (ctx *Ctx) ClearCookie(key ...string) {
 	ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
 		ctx.Fasthttp.Response.Header.DelClientCookieBytes(k)
 	})
+}
+
+// Context returns context.Context that carries a deadline, a cancellation signal,
+// and other values across API boundaries.
+func (ctx *Ctx) Context() context.Context {
+	return ctx.Fasthttp
 }
 
 // Cookie sets a cookie by passing a cookie struct
@@ -617,47 +624,24 @@ func (ctx *Ctx) Path(override ...string) string {
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
-// func (ctx *Ctx) Protocol() string {
-// 	if ctx.Fasthttp.IsTLS() {
-// 		return "https"
-// 	}
-// 	if scheme := ctx.Get(HeaderXForwardedProto); scheme != "" {
-// 		return scheme
-// 	}
-// 	if scheme := ctx.Get(HeaderXForwardedProtocol); scheme != "" {
-// 		return scheme
-// 	}
-// 	if ssl := ctx.Get(HeaderXForwardedSsl); ssl == "on" {
-// 		return "https"
-// 	}
-// 	if scheme := ctx.Get(HeaderXUrlScheme); scheme != "" {
-// 		return scheme
-// 	}
-// 	return "http"
-// }
-
 func (ctx *Ctx) Protocol() string {
 	if ctx.Fasthttp.IsTLS() {
 		return "https"
 	}
 	scheme := "http"
 	ctx.Fasthttp.Request.Header.VisitAll(func(key, val []byte) {
-		// X-Forwarded-
 		if len(key) < 12 {
-			return
-		}
-		if bytes.Compare(key, []byte(HeaderXForwardedProto)) == 0 {
+			return // X-Forwarded-
+		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
+			if bytes.Equal(key, []byte(HeaderXForwardedProto)) {
+				scheme = getString(val)
+			} else if bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+				scheme = getString(val)
+			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
+				scheme = "https"
+			}
+		} else if bytes.Equal(key, []byte(HeaderXUrlScheme)) {
 			scheme = getString(val)
-			return
-		} else if bytes.Compare(key, []byte(HeaderXForwardedProtocol)) == 0 {
-			scheme = getString(val)
-			return
-		} else if bytes.Compare(key, []byte(HeaderXForwardedSsl)) == 0 && bytes.Compare(val, []byte("on")) == 0 {
-			scheme = "https"
-			return
-		} else if bytes.Compare(key, []byte(HeaderXUrlScheme)) == 0 {
-			scheme = getString(val)
-			return
 		}
 	})
 	return scheme
@@ -729,9 +713,9 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 	defer bytebufferpool.Put(buf)
 
 	// Use ViewEngine if exist
-	if ctx.app.Settings.Renderer != nil {
+	if ctx.app.Settings.RenderEngine != nil {
 		// Render template with engine
-		if err := ctx.app.Settings.Renderer.Render(buf, name, bind); err != nil {
+		if err := ctx.app.Settings.RenderEngine.Render(buf, name, bind); err != nil {
 			return err
 		}
 	} else {

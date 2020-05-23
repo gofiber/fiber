@@ -91,8 +91,8 @@ type Settings struct {
 	// When set to true, it will not print out the fiber ASCII and "listening" on message
 	DisableStartupMessage bool
 
-	// Renderer is the interface that wraps the Render function.
-	Renderer Renderer
+	// RenderEngine is the interface that wraps the Render function.
+	RenderEngine RenderEngine
 
 	// The amount of time allowed to read the full request including body.
 	ReadTimeout time.Duration // default: unlimited
