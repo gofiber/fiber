@@ -350,17 +350,17 @@ var methodINT = map[string]int{
 }
 
 // unique INTs and the associated HTTP method
-var intMethod = map[int]string{
-	0: MethodGet,
-	1: MethodHead,
-	2: MethodPost,
-	3: MethodPut,
-	4: MethodDelete,
-	5: MethodConnect,
-	6: MethodOptions,
-	7: MethodTrace,
-	8: MethodPatch,
-}
+// var intMethod = map[int]string{
+// 	0: MethodGet,
+// 	1: MethodHead,
+// 	2: MethodPost,
+// 	3: MethodPut,
+// 	4: MethodDelete,
+// 	5: MethodConnect,
+// 	6: MethodOptions,
+// 	7: MethodTrace,
+// 	8: MethodPatch,
+// }
 
 // HTTP methods were copied from net/http.
 const (
