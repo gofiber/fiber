@@ -273,6 +273,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		star:        false,
 		routeParser: parsed,
 		routeParams: parsed.params,
+		path:        "/user/keys/:id",
 
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
@@ -284,6 +285,58 @@ func Benchmark_Route_Match(b *testing.B) {
 
 	utils.AssertEqual(b, true, match)
 	utils.AssertEqual(b, []string{"1337"}, params)
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Star -benchmem -count=4
+func Benchmark_Route_Match_Star(b *testing.B) {
+	var match bool
+	var params []string
+
+	parsed := parseRoute("/*")
+	route := &Route{
+		use:         false,
+		root:        false,
+		star:        true,
+		routeParser: parsed,
+		routeParams: parsed.params,
+		path:        "/user/keys/bla",
+
+		Path:   "/user/keys/bla",
+		Method: "DELETE",
+	}
+	route.Handlers = append(route.Handlers, func(c *Ctx) {})
+	for n := 0; n < b.N; n++ {
+		match, params = route.match("/user/keys/bla", "/user/keys/bla")
+	}
+
+	utils.AssertEqual(b, true, match)
+	utils.AssertEqual(b, []string{"user/keys/bla"}, params)
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Root -benchmem -count=4
+func Benchmark_Route_Match_Root(b *testing.B) {
+	var match bool
+	var params []string
+
+	parsed := parseRoute("/")
+	route := &Route{
+		use:         false,
+		root:        true,
+		star:        false,
+		path:        "/",
+		routeParser: parsed,
+		routeParams: parsed.params,
+
+		Path:   "/",
+		Method: "DELETE",
+	}
+	route.Handlers = append(route.Handlers, func(c *Ctx) {})
+	for n := 0; n < b.N; n++ {
+		match, params = route.match("/", "/")
+	}
+
+	utils.AssertEqual(b, true, match)
+	utils.AssertEqual(b, []string(nil), params)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4
