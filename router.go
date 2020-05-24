@@ -24,9 +24,9 @@ type Route struct {
 	routeParams []string    // Case sensitive param keys
 
 	// Public fields
-	Path     string       // Original registered route path
-	Method   string       // HTTP method
-	Handlers []func(*Ctx) // Ctx handlers
+	Path     string    // Original registered route path
+	Method   string    // HTTP method
+	Handlers []Handler // Ctx handlers
 }
 
 func (r *Route) match(path, original string) (match bool, values []string) {
@@ -116,7 +116,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	app.ReleaseCtx(ctx)
 }
 
-func (app *App) register(method, pathRaw string, handlers ...func(*Ctx)) *Route {
+func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
