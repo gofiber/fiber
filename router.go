@@ -30,22 +30,6 @@ type Route struct {
 }
 
 func (r *Route) match(path, original string) (match bool, values []string) {
-	// Is this route a Middleware?
-	if r.use {
-		// Single slash will match or path prefix
-		if r.root || strings.HasPrefix(path, r.path) {
-			return true, getAllocFreeParams(len(r.routeParser.params))
-		}
-		// Check for a simple path match
-	} else if len(r.path) == len(path) && r.path == path {
-		return true, getAllocFreeParams(len(r.routeParser.params))
-	} else if r.root && path == "/" {
-		return true, values
-	}
-	// '*' wildcard matches any path
-	if r.star {
-		return true, []string{utils.TrimLeft(original, '/')}
-	}
 	// Does this route have parameters
 	if len(r.routeParams) > 0 {
 		// Match params
@@ -53,6 +37,22 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 			// Get params from the original path
 			return match, r.routeParser.paramsForPos(original, paramPos)
 		}
+	}
+	// Is this route a Middleware?
+	if r.use {
+		// Single slash will match or path prefix
+		if r.root || strings.HasPrefix(path, r.path) {
+			return true, values
+		}
+		// Check for a simple path match
+	} else if len(r.path) == len(path) && r.path == path {
+		return true, values
+	} else if r.root && path == "/" {
+		return true, values
+	}
+	// '*' wildcard matches any path
+	if r.star {
+		return true, []string{utils.TrimLeft(original, '/')}
 	}
 	// No match
 	return false, values
