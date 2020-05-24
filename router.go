@@ -34,18 +34,17 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 	if r.use {
 		// Single slash will match or path prefix
 		if r.root || strings.HasPrefix(path, r.path) {
-			return true, values
+			return true, getAllocFreeParams(len(r.routeParser.params))
 		}
 		// Check for a simple path match
 	} else if len(r.path) == len(path) && r.path == path {
-		return true, values
-		// Middleware routes allow prefix matches
+		return true, getAllocFreeParams(len(r.routeParser.params))
 	} else if r.root && path == "/" {
 		return true, values
 	}
 	// '*' wildcard matches any path
 	if r.star {
-		return true, []string{original}
+		return true, []string{utils.TrimLeft(original, '/')}
 	}
 	// Does this route have parameters
 	if len(r.routeParams) > 0 {
