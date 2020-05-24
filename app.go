@@ -32,7 +32,7 @@ const Version = "1.10.0"
 type Map map[string]interface{}
 
 // Handler ...
-type Handler func(*Ctx)
+type Handler = func(*Ctx)
 
 // App denotes the Fiber application.
 type App struct {
@@ -205,7 +205,6 @@ func (app *App) Use(args ...interface{}) *Route {
 	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
-		fmt.Println()
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
