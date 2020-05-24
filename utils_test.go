@@ -61,6 +61,9 @@ func Test_Utils_getGroupPath(t *testing.T) {
 	res := getGroupPath("/v1", "/")
 	utils.AssertEqual(t, "/v1", res)
 
+	res = getGroupPath("/v1/", "/")
+	utils.AssertEqual(t, "/v1/", res)
+
 	res = getGroupPath("/v1", "/")
 	utils.AssertEqual(t, "/v1", res)
 
