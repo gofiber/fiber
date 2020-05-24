@@ -7,11 +7,167 @@ package fiber
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=3
 
 import (
+	"io/ioutil"
+	"net/http/httptest"
 	"testing"
 
 	utils "github.com/gofiber/utils"
 	fasthttp "github.com/valyala/fasthttp"
 )
+
+func Test_Route_Match_SameLength(t *testing.T) {
+	app := New()
+
+	app.Get("/:param", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("param"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/:param", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "", getString(body))
+
+	// with param
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "test", getString(body))
+}
+
+func Test_Route_Match_Star(t *testing.T) {
+	app := New()
+
+	app.Get("/*", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("*"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "", getString(body))
+
+	// with param
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "test", getString(body))
+}
+
+func Test_Route_Match_Root(t *testing.T) {
+	app := New()
+
+	app.Get("/", func(ctx *Ctx) {
+		ctx.Send("root")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "root", getString(body))
+}
+
+func Test_Route_Match_Parser(t *testing.T) {
+	app := New()
+
+	app.Get("/foo/:Param", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("Param"))
+	})
+	app.Get("/Foobar/*", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("*"))
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "bar", getString(body))
+
+	// with star
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "test", getString(body))
+}
+
+func Test_Route_Match_Middleware(t *testing.T) {
+	app := New()
+
+	app.Use("/foo/*", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("*"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/*", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "", getString(body))
+
+	// with param
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "bar/fasel", getString(body))
+}
+
+func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
+	app := New()
+
+	app.Use("/foo", func(ctx *Ctx) {
+		ctx.Send("middleware")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "middleware", getString(body))
+}
+
+func Test_Route_Match_Middleware_Root(t *testing.T) {
+	app := New()
+
+	app.Use("/", func(ctx *Ctx) {
+		ctx.Send("middleware")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/everything", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "middleware", getString(body))
+}
+
+//////////////////////////////////////////////
+///////////////// BENCHMARKS /////////////////
+//////////////////////////////////////////////
 
 func registerDummyRoutes(app *App) {
 	h := func(c *Ctx) {}
