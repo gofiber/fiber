@@ -287,7 +287,7 @@ func Benchmark_Route_Match(b *testing.B) {
 	utils.AssertEqual(b, []string{"1337"}, params)
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
+// go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Star -benchmem -count=4
 func Benchmark_Route_Match_Star(b *testing.B) {
 	var match bool
 	var params []string
@@ -313,7 +313,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	utils.AssertEqual(b, []string{"user/keys/bla"}, params)
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
+// go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Root -benchmem -count=4
 func Benchmark_Route_Match_Root(b *testing.B) {
 	var match bool
 	var params []string
