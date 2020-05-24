@@ -32,7 +32,7 @@ func (grp *Group) Use(args ...interface{}) *Route {
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
-			log.Fatalf("Use: Invalid func(c *fiber.Ctx) handler %v", reflect.TypeOf(arg))
+			log.Fatalf("Use: Invalid Handler %v", reflect.TypeOf(arg))
 		}
 	}
 	return grp.app.register("USE", getGroupPath(grp.prefix, path), handlers...)
