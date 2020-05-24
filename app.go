@@ -162,6 +162,7 @@ func New(settings ...*Settings) *App {
 			BodyLimit:   4 * 1024 * 1024,
 			Concurrency: 256 * 1024,
 		},
+		WrapCtx: EmbedMixins,
 	}
 	// Overwrite settings if provided
 	if len(settings) > 0 {

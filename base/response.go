@@ -32,4 +32,13 @@ type IBaseResponse interface {
 }
 
 type ImplResponse interface {
+	Jsonify(format string, args ...interface{}) error
+
+	Errorf(servCode int, format string, args ...interface{}) error
+
+	Abort(code int, data interface{}) error
+
+	Deny(msg string) error
+
+	Reply(data interface{}, metas ...int64) error
 }

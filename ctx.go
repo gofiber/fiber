@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"github.com/gofiber/fiber/contrib"
 	"io"
 	"io/ioutil"
 	"log"
@@ -34,6 +35,13 @@ type (
 	Map    = base.Map    // A shortcut for map[string]interface{}
 	Range  = base.Range  // Range struct
 )
+
+// Add the mixins to Ctx when poolGetCtx
+func EmbedMixins(ctx *Ctx) *Ctx {
+	ctx.ImplRequest = contrib.NewRequestMixin(ctx)
+	ctx.ImplResponse = contrib.NewResponseMixin(ctx)
+	return ctx
+}
 
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
@@ -91,6 +99,41 @@ func (app *App) ReleaseCtx(ctx *Ctx) {
 	ctx.Fasthttp = nil
 	ctx.err = nil
 	app.poolPutCtx(ctx)
+}
+
+// Common method read data of GET/POST/PARAM/HEADER/COOKIE
+func (ctx *Ctx) Read(key, val string, methods ...string) string {
+	for _, m := range methods {
+		switch strings.ToUpper(m) {
+		case "COOKIE", "COOKIES":
+			if v := ctx.Cookies(key); v != "" {
+				return v
+			}
+		case "GET":
+			if v := ctx.Query(key); v != "" {
+				return v
+			}
+		case "HEAD", "HEADER":
+			if v := ctx.Get(key); v != "" {
+				return v
+			}
+		case "PARAM", "PARAMS":
+			if v := ctx.Params(key); v != "" {
+				return v
+			}
+		case "POST", "PUT":
+			if v := ctx.FormValue(key); v != "" {
+				return v
+			}
+		}
+	}
+	return val
+}
+
+// Send formatted string
+func (ctx *Ctx) Printf(format string, args ...interface{}) error {
+	ctx.SendString(fmt.Sprintf(format, args...))
+	return nil
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
