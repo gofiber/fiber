@@ -205,13 +205,14 @@ func (app *App) Use(args ...interface{}) *Route {
 	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
+		fmt.Println()
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
-			log.Fatalf("Use: Invalid func(c *fiber.Ctx) handler %v", reflect.TypeOf(arg))
+			log.Fatalf("Use: Invalid Handler %v", reflect.TypeOf(arg))
 		}
 	}
 	return app.register("USE", prefix, handlers...)
