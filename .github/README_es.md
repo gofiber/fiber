@@ -121,7 +121,7 @@ Estas pruebas son realizadas por [TechEmpower](https://github.com/TechEmpower/Fr
 - [Puntos finales de API](https://docs.gofiber.io/context) Express
 - Middleware y [próximo](https://docs.gofiber.io/context#next) soporte
 - Programación [rápida](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) del lado del servidor
-- [Template engines](https://docs.gofiber.io/middleware#template)
+- [Template engines](https://github.com/gofiber/template)
 - [WebSocket support](https://docs.gofiber.io/middleware#websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
 - Disponible en [12 idiomas](https://docs.gofiber.io/)
@@ -176,11 +176,11 @@ func main() {
 func main() {
   app := fiber.New()
 
-  app.Static("/", "/public")
+  app.Static("/", "./public")
   // => http://localhost:3000/js/script.js
   // => http://localhost:3000/css/style.css
 
-  app.Static("/prefix", "/public")
+  app.Static("/prefix", "./public")
   // => http://localhost:3000/prefix/js/script.js
   // => http://localhost:3000/prefix/css/style.css
 
@@ -228,35 +228,31 @@ func main() {
 ### Template engines
 
 📖 [Settings](https://docs.gofiber.io/application#settings)  
+📖 [Template Engines](https://github.com/gofiber/template)  
 📖 [Render](https://docs.gofiber.io/context#render)  
-📖 [Template](https://docs.gofiber.io/middleware#template)  
 
-Fiber soporta el [Go template engine](https://golang.org/pkg/html/template/) por default.
+Fiber defaults to the [Go template engine](https://golang.org/pkg/html/template/) when no Template engine is set.
 
-Pero si deseas usar otro template engine como [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) o [pug](https://github.com/Joker/jade).
+If you want to template partials and a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
 
-Puedes usar nuestro [Template Middleware](https://docs.gofiber.io/middleware#template).
+You can use our [Template Middleware](https://github.com/gofiber/template).
 
 ```go
 import (
   "github.com/gofiber/fiber"
-  "github.com/gofiber/template"
+  "github.com/gofiber/template/pug"
 )
 
 func main() {
   // You can setup template engine before initiation app:
   app := fiber.New(&fiber.Settings{
-    TemplateEngine:    template.Mustache(),
-    TemplateFolder:    "./views",
-    TemplateExtension: ".tmpl",
+    Templates: pug.New("./views", ".pug"),
   })
 
   // OR after initiation app at any convenient location:
-  app.Settings.TemplateEngine = template.Mustache()
-  app.Settings.TemplateFolder = "./views"
-  app.Settings.TemplateExtension = ".tmpl"
+  app.Settings.Templates = pug.New("./views", ".pug"),
 
-  // And now, you can call template `./views/home.tmpl` like this:
+  // And now, you can call template `./views/home.pug` like this:
   app.Get("/", func(c *fiber.Ctx) {
     c.Render("home", fiber.Map{
       "title": "Homepage",
@@ -353,7 +349,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 func main() {
   app := fiber.New()
 
-  app.Static("/public")
+  app.Static("./public")
 
   app.Get("/demo", func(c *fiber.Ctx) {
     c.Send("This is a demo!")
