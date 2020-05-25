@@ -7,11 +7,167 @@ package fiber
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=3
 
 import (
+	"io/ioutil"
+	"net/http/httptest"
 	"testing"
 
 	utils "github.com/gofiber/utils"
 	fasthttp "github.com/valyala/fasthttp"
 )
+
+func Test_Route_Match_SameLength(t *testing.T) {
+	app := New()
+
+	app.Get("/:param", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("param"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/:param", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, ":param", getString(body))
+
+	// with param
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "test", getString(body))
+}
+
+func Test_Route_Match_Star(t *testing.T) {
+	app := New()
+
+	app.Get("/*", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("*"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "*", getString(body))
+
+	// with param
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "test", getString(body))
+}
+
+func Test_Route_Match_Root(t *testing.T) {
+	app := New()
+
+	app.Get("/", func(ctx *Ctx) {
+		ctx.Send("root")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "root", getString(body))
+}
+
+func Test_Route_Match_Parser(t *testing.T) {
+	app := New()
+
+	app.Get("/foo/:Param", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("Param"))
+	})
+	app.Get("/Foobar/*", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("*"))
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "bar", getString(body))
+
+	// with star
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "test", getString(body))
+}
+
+func Test_Route_Match_Middleware(t *testing.T) {
+	app := New()
+
+	app.Use("/foo/*", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("*"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/*", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "*", getString(body))
+
+	// with param
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "bar/fasel", getString(body))
+}
+
+func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
+	app := New()
+
+	app.Use("/foo", func(ctx *Ctx) {
+		ctx.Send("middleware")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "middleware", getString(body))
+}
+
+func Test_Route_Match_Middleware_Root(t *testing.T) {
+	app := New()
+
+	app.Use("/", func(ctx *Ctx) {
+		ctx.Send("middleware")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/everything", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "middleware", getString(body))
+}
+
+//////////////////////////////////////////////
+///////////////// BENCHMARKS /////////////////
+//////////////////////////////////////////////
 
 func registerDummyRoutes(app *App) {
 	h := func(c *Ctx) {}
@@ -117,6 +273,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		star:        false,
 		routeParser: parsed,
 		routeParams: parsed.params,
+		path:        "/user/keys/:id",
 
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
@@ -128,6 +285,58 @@ func Benchmark_Route_Match(b *testing.B) {
 
 	utils.AssertEqual(b, true, match)
 	utils.AssertEqual(b, []string{"1337"}, params)
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Star -benchmem -count=4
+func Benchmark_Route_Match_Star(b *testing.B) {
+	var match bool
+	var params []string
+
+	parsed := parseRoute("/*")
+	route := &Route{
+		use:         false,
+		root:        false,
+		star:        true,
+		routeParser: parsed,
+		routeParams: parsed.params,
+		path:        "/user/keys/bla",
+
+		Path:   "/user/keys/bla",
+		Method: "DELETE",
+	}
+	route.Handlers = append(route.Handlers, func(c *Ctx) {})
+	for n := 0; n < b.N; n++ {
+		match, params = route.match("/user/keys/bla", "/user/keys/bla")
+	}
+
+	utils.AssertEqual(b, true, match)
+	utils.AssertEqual(b, []string{"user/keys/bla"}, params)
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Root -benchmem -count=4
+func Benchmark_Route_Match_Root(b *testing.B) {
+	var match bool
+	var params []string
+
+	parsed := parseRoute("/")
+	route := &Route{
+		use:         false,
+		root:        true,
+		star:        false,
+		path:        "/",
+		routeParser: parsed,
+		routeParams: parsed.params,
+
+		Path:   "/",
+		Method: "DELETE",
+	}
+	route.Handlers = append(route.Handlers, func(c *Ctx) {})
+	for n := 0; n < b.N; n++ {
+		match, params = route.match("/", "/")
+	}
+
+	utils.AssertEqual(b, true, match)
+	utils.AssertEqual(b, []string(nil), params)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4

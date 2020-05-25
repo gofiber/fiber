@@ -28,6 +28,9 @@ import (
 // Version of current package
 const Version = "1.10.0"
 
+// Handler ...
+type Handler = func(*Ctx)
+
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
@@ -212,68 +215,68 @@ func (app *App) poolPutCtx(ctx *Ctx) {
 // - app.Use("/api", handler, handler)
 func (app *App) Use(args ...interface{}) *Route {
 	var prefix string
-	var handlers []func(*Ctx)
+	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
-		case func(*Ctx):
+		case Handler:
 			handlers = append(handlers, arg)
 		default:
-			log.Fatalf("Use: Invalid func(c *fiber.Ctx) handler %v", reflect.TypeOf(arg))
+			log.Fatalf("Use: Invalid Handler %v", reflect.TypeOf(arg))
 		}
 	}
 	return app.register("USE", prefix, handlers...)
 }
 
 // Get ...
-func (app *App) Get(path string, handlers ...func(*Ctx)) *Route {
+func (app *App) Get(path string, handlers ...Handler) *Route {
 	return app.Add(MethodGet, path, handlers...)
 }
 
 // Head ...
-func (app *App) Head(path string, handlers ...func(*Ctx)) *Route {
+func (app *App) Head(path string, handlers ...Handler) *Route {
 	return app.Add(MethodHead, path, handlers...)
 }
 
 // Post ...
-func (app *App) Post(path string, handlers ...func(*Ctx)) *Route {
+func (app *App) Post(path string, handlers ...Handler) *Route {
 	return app.Add(MethodPost, path, handlers...)
 }
 
 // Put ...
-func (app *App) Put(path string, handlers ...func(*Ctx)) *Route {
+func (app *App) Put(path string, handlers ...Handler) *Route {
 	return app.Add(MethodPut, path, handlers...)
 }
 
 // Delete ...
-func (app *App) Delete(path string, handlers ...func(*Ctx)) *Route {
+func (app *App) Delete(path string, handlers ...Handler) *Route {
 	return app.Add(MethodDelete, path, handlers...)
 }
 
 // Connect ...
-func (app *App) Connect(path string, handlers ...func(*Ctx)) *Route {
+func (app *App) Connect(path string, handlers ...Handler) *Route {
 	return app.Add(MethodConnect, path, handlers...)
 }
 
 // Options ...
-func (app *App) Options(path string, handlers ...func(*Ctx)) *Route {
+func (app *App) Options(path string, handlers ...Handler) *Route {
 	return app.Add(MethodOptions, path, handlers...)
 }
 
 // Trace ...
-func (app *App) Trace(path string, handlers ...func(*Ctx)) *Route {
+func (app *App) Trace(path string, handlers ...Handler) *Route {
 	return app.Add(MethodTrace, path, handlers...)
 }
 
 // Patch ...
-func (app *App) Patch(path string, handlers ...func(*Ctx)) *Route {
+func (app *App) Patch(path string, handlers ...Handler) *Route {
 	return app.Add(MethodPatch, path, handlers...)
 }
 
 // Add ...
-func (app *App) Add(method, path string, handlers ...func(*Ctx)) *Route {
+func (app *App) Add(method, path string, handlers ...Handler) *Route {
 	return app.register(method, path, handlers...)
 }
 
@@ -283,7 +286,7 @@ func (app *App) Static(prefix, root string, config ...Static) *Route {
 }
 
 // All ...
-func (app *App) All(path string, handlers ...func(*Ctx)) []*Route {
+func (app *App) All(path string, handlers ...Handler) []*Route {
 	routes := make([]*Route, len(methodINT))
 	for method, i := range methodINT {
 		routes[i] = app.Add(method, path, handlers...)
@@ -292,7 +295,7 @@ func (app *App) All(path string, handlers ...func(*Ctx)) []*Route {
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-func (app *App) Group(prefix string, handlers ...func(*Ctx)) *Group {
+func (app *App) Group(prefix string, handlers ...Handler) *Group {
 	if len(handlers) > 0 {
 		app.register("USE", prefix, handlers...)
 	}

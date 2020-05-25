@@ -24,12 +24,29 @@ type Route struct {
 	routeParams []string    // Case sensitive param keys
 
 	// Public fields
-	Path     string       // Original registered route path
-	Method   string       // HTTP method
-	Handlers []func(*Ctx) // Ctx handlers
+	Path     string    // Original registered route path
+	Method   string    // HTTP method
+	Handlers []Handler // Ctx handlers
 }
 
 func (r *Route) match(path, original string) (match bool, values []string) {
+	// root path check
+	if r.root && path == "/" {
+		return true, values
+		// '*' wildcard matches any path
+	} else if r.star {
+		values := getAllocFreeParams(1)
+		values[0] = original[1:]
+		return true, values
+	}
+	// Does this route have parameters
+	if len(r.routeParams) > 0 {
+		// Match params
+		if paramPos, match := r.routeParser.getMatch(path, r.use); match {
+			// Get params from the original path
+			return match, r.routeParser.paramsForPos(original, paramPos)
+		}
+	}
 	// Is this route a Middleware?
 	if r.use {
 		// Single slash will match or path prefix
@@ -39,21 +56,6 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 		// Check for a simple path match
 	} else if len(r.path) == len(path) && r.path == path {
 		return true, values
-		// Middleware routes allow prefix matches
-	} else if r.root && path == "/" {
-		return true, values
-	}
-	// '*' wildcard matches any path
-	if r.star {
-		return true, []string{original}
-	}
-	// Does this route have parameters
-	if len(r.routeParams) > 0 {
-		// Match params
-		if paramPos, match := r.routeParser.getMatch(path, r.use); match {
-			// Get params from the original path
-			return match, r.routeParser.paramsForPos(original, paramPos)
-		}
 	}
 	// No match
 	return false, values
@@ -114,7 +116,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	app.ReleaseCtx(ctx)
 }
 
-func (app *App) register(method, pathRaw string, handlers ...func(*Ctx)) *Route {
+func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
