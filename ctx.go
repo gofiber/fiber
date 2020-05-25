@@ -65,8 +65,8 @@ type Cookie struct {
 	SameSite string
 }
 
-// RenderEngine is the interface that wraps the Render function.
-type RenderEngine interface {
+// Templates is the interface that wraps the Render function.
+type Templates interface {
 	Render(io.Writer, string, interface{}) error
 }
 
@@ -717,9 +717,9 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 	defer bytebufferpool.Put(buf)
 
 	// Use ViewEngine if exist
-	if ctx.app.Settings.RenderEngine != nil {
-		// Render template with engine
-		if err := ctx.app.Settings.RenderEngine.Render(buf, name, bind); err != nil {
+	if ctx.app.Settings.Templates != nil {
+		// Render template from ViewEngine
+		if err := ctx.app.Settings.Templates.Render(buf, name, bind); err != nil {
 			return err
 		}
 	} else {
