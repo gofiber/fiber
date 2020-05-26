@@ -134,14 +134,13 @@ type Static struct {
 	Index string
 }
 
-// TODO: v1.11 Potential feature to get all registered routes
+// // TODO: v1.11 Potential feature to get all registered routes
 // func (app *App) Routes(print ...bool) map[string][]string {
 // 	routes := make(map[string][]string)
 // 	for i := range app.stack {
-// 		method := intMethod[i]
-// 		routes[method] = []string{}
+// 		routes["ZZ"] = []string{}
 // 		for k := range app.stack[i] {
-// 			routes[method] = append(routes[method], app.stack[i][k].Path)
+// 			routes["ZZ"] = append(routes["ZZ"], app.stack[i][k].Path)
 // 		}
 // 	}
 // 	if len(print) > 0 && print[0] {
