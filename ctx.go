@@ -283,14 +283,11 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
 
 	switch utils.ToLower(cookie.SameSite) {
-	case "lax":
-		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	case "strict":
 		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
 	case "none":
 		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
 	default:
-		// Defaults to Lax
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
 	// if cookie.Secure {
