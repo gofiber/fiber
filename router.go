@@ -27,8 +27,6 @@ type Route struct {
 	Path     string    // Original registered route path
 	Method   string    // HTTP method
 	Handlers []Handler // Ctx handlers
-
-	handlerCount int // Total amount of handlers
 }
 
 func (r *Route) match(path, original string) (match bool, values []string) {
@@ -90,10 +88,6 @@ func (app *App) next(ctx *Ctx) bool {
 		return true
 	}
 	return false
-}
-
-func (app *App) nextHandler(ctx *Ctx) {
-	ctx.route.Handlers[ctx.indexHandler](ctx)
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
@@ -168,8 +162,6 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 		Path:     pathRaw,
 		Method:   method,
 		Handlers: handlers,
-
-		handlerCount: len(handlers),
 	}
 	// Middleware route matches all HTTP methods
 	if isUse {

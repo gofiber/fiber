@@ -580,17 +580,14 @@ func (ctx *Ctx) Next(err ...error) {
 	}
 
 	// Increment handler index
-
 	ctx.indexHandler++
-	if ctx.indexHandler >= ctx.route.handlerCount {
-		fmt.Println("Continue stack ", ctx.indexHandler, " - ", len(ctx.route.Handlers))
+	// Did we executed all route handlers?
+	if ctx.indexHandler >= len(ctx.route.Handlers) {
 		// Continue stack
 		ctx.app.next(ctx)
 	} else {
-		fmt.Println("Continue stack ", ctx.indexHandler, " - ", len(ctx.route.Handlers))
 		// Continue route
-		ctx.app.nextHandler(ctx)
-
+		ctx.route.Handlers[ctx.indexHandler](ctx)
 	}
 }
 
