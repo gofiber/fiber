@@ -587,7 +587,7 @@ func (ctx *Ctx) Next(err ...error) {
 		// Continue stack
 		ctx.app.next(ctx)
 	} else {
-		fmt.Println("Continue stack ", ctx.indexHandler, " - ", len(ctx.route.Handlers))
+		fmt.Println("Continue route ", ctx.indexHandler, " - ", len(ctx.route.Handlers))
 		// Continue route
 		ctx.app.nextHandler(ctx)
 
