@@ -8,13 +8,11 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
 	"os/exec"
-	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -151,9 +149,16 @@ type Static struct {
 // 	return routes
 // }
 
-// New creates a new Fiber named instance.
+// New creates a new Fiber named instance, also it is the root Group.
 // You can pass optional settings when creating a new instance.
-func New(settings ...*Settings) *App {
+func New(settings ...*Settings) *Group {
+	app := NewApp(settings...)
+	// Initialize app
+	return &Group{App: app.init()}
+}
+
+// Create a new app
+func NewApp(settings ...*Settings) *App {
 	// Create a new app
 	app := &App{
 		// Create router stack
@@ -189,104 +194,7 @@ func New(settings ...*Settings) *App {
 			getString = getStringImmutable
 		}
 	}
-	// Initialize app
-	return app.init()
-}
-
-// Use registers a middleware route.
-// Middleware matches requests beginning with the provided prefix.
-// Providing a prefix is optional, it defaults to "/".
-//
-// - app.Use(handler)
-// - app.Use("/api", handler)
-// - app.Use("/api", handler, handler)
-func (app *App) Use(args ...interface{}) *Route {
-	var prefix string
-	var handlers []Handler
-
-	for i := 0; i < len(args); i++ {
-		switch arg := args[i].(type) {
-		case string:
-			prefix = arg
-		case Handler:
-			handlers = append(handlers, arg)
-		default:
-			log.Fatalf("Use: Invalid Handler %v", reflect.TypeOf(arg))
-		}
-	}
-	return app.register("USE", prefix, handlers...)
-}
-
-// Get ...
-func (app *App) Get(path string, handlers ...Handler) *Route {
-	return app.Add(MethodGet, path, handlers...)
-}
-
-// Head ...
-func (app *App) Head(path string, handlers ...Handler) *Route {
-	return app.Add(MethodHead, path, handlers...)
-}
-
-// Post ...
-func (app *App) Post(path string, handlers ...Handler) *Route {
-	return app.Add(MethodPost, path, handlers...)
-}
-
-// Put ...
-func (app *App) Put(path string, handlers ...Handler) *Route {
-	return app.Add(MethodPut, path, handlers...)
-}
-
-// Delete ...
-func (app *App) Delete(path string, handlers ...Handler) *Route {
-	return app.Add(MethodDelete, path, handlers...)
-}
-
-// Connect ...
-func (app *App) Connect(path string, handlers ...Handler) *Route {
-	return app.Add(MethodConnect, path, handlers...)
-}
-
-// Options ...
-func (app *App) Options(path string, handlers ...Handler) *Route {
-	return app.Add(MethodOptions, path, handlers...)
-}
-
-// Trace ...
-func (app *App) Trace(path string, handlers ...Handler) *Route {
-	return app.Add(MethodTrace, path, handlers...)
-}
-
-// Patch ...
-func (app *App) Patch(path string, handlers ...Handler) *Route {
-	return app.Add(MethodPatch, path, handlers...)
-}
-
-// Add ...
-func (app *App) Add(method, path string, handlers ...Handler) *Route {
-	return app.register(method, path, handlers...)
-}
-
-// Static ...
-func (app *App) Static(prefix, root string, config ...Static) *Route {
-	return app.registerStatic(prefix, root, config...)
-}
-
-// All ...
-func (app *App) All(path string, handlers ...Handler) []*Route {
-	routes := make([]*Route, len(methodINT))
-	for method, i := range methodINT {
-		routes[i] = app.Add(method, path, handlers...)
-	}
-	return routes
-}
-
-// Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-func (app *App) Group(prefix string, handlers ...Handler) *Group {
-	if len(handlers) > 0 {
-		app.register("USE", prefix, handlers...)
-	}
-	return &Group{prefix: prefix, app: app}
+	return app
 }
 
 // Serve can be used to pass a custom listener

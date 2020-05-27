@@ -169,7 +169,7 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 ///////////////// BENCHMARKS /////////////////
 //////////////////////////////////////////////
 
-func registerDummyRoutes(app *App) {
+func registerDummyRoutes(app *Group) {
 	h := func(c *Ctx) {}
 	for _, r := range githubAPI {
 		switch r.method {

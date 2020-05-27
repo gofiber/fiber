@@ -11,8 +11,17 @@ import (
 
 // Group struct
 type Group struct {
-	app    *App
 	prefix string
+	*App
+}
+
+// Group is used for Routes with common prefix to define a new sub-router with optional middleware.
+func (grp *Group) Group(prefix string, handlers ...Handler) *Group {
+	prefix = getGroupPath(grp.prefix, prefix)
+	if len(handlers) > 0 {
+		grp.App.register("USE", prefix, handlers...)
+	}
+	return &Group{prefix: prefix, App: grp.App}
 }
 
 // Use registers a middleware route.
@@ -23,19 +32,41 @@ type Group struct {
 // - group.Use("/api", handler)
 // - group.Use("/api", handler, handler)
 func (grp *Group) Use(args ...interface{}) *Route {
-	var path = ""
+	var prefix = ""
 	var handlers []Handler
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
-			path = arg
+			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
 			log.Fatalf("Use: Invalid Handler %v", reflect.TypeOf(arg))
 		}
 	}
-	return grp.app.register("USE", getGroupPath(grp.prefix, path), handlers...)
+	prefix = getGroupPath(grp.prefix, prefix)
+	return grp.App.register("USE", prefix, handlers...)
+}
+
+// Static ...
+func (grp *Group) Static(prefix, root string, config ...Static) *Route {
+	prefix = getGroupPath(grp.prefix, prefix)
+	return grp.App.registerStatic(prefix, root, config...)
+}
+
+// Add ...
+func (grp *Group) Add(method, path string, handlers ...Handler) *Route {
+	path = getGroupPath(grp.prefix, path)
+	return grp.App.register(method, path, handlers...)
+}
+
+// All ...
+func (grp *Group) All(path string, handlers ...Handler) []*Route {
+	routes := make([]*Route, len(methodINT))
+	for method, i := range methodINT {
+		routes[i] = grp.Add(method, path, handlers...)
+	}
+	return routes
 }
 
 // Get ...
@@ -81,32 +112,4 @@ func (grp *Group) Trace(path string, handlers ...Handler) *Route {
 // Patch ...
 func (grp *Group) Patch(path string, handlers ...Handler) *Route {
 	return grp.Add(MethodPatch, path, handlers...)
-}
-
-// Add ...
-func (grp *Group) Add(method, path string, handlers ...Handler) *Route {
-	return grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
-}
-
-// Static ...
-func (grp *Group) Static(prefix, root string, config ...Static) *Route {
-	return grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
-}
-
-// All ...
-func (grp *Group) All(path string, handlers ...Handler) []*Route {
-	routes := make([]*Route, len(methodINT))
-	for method, i := range methodINT {
-		routes[i] = grp.Add(method, path, handlers...)
-	}
-	return routes
-}
-
-// Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-func (grp *Group) Group(prefix string, handlers ...Handler) *Group {
-	prefix = getGroupPath(grp.prefix, prefix)
-	if len(handlers) > 0 {
-		grp.app.register("USE", prefix, handlers...)
-	}
-	return grp.app.Group(prefix, handlers...)
 }

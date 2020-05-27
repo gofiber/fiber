@@ -15,7 +15,7 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
-func testStatus200(t *testing.T, app *App, url string, method string) {
+func testStatus200(t *testing.T, app *Group, url string, method string) {
 	req := httptest.NewRequest(method, url, nil)
 
 	resp, err := app.Test(req)
