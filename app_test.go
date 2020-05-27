@@ -176,13 +176,35 @@ func Test_App_Shutdown(t *testing.T) {
 	_ = app.Shutdown()
 }
 
-func Test_App_Static(t *testing.T) {
+func Test_App_Static_Group(t *testing.T) {
 	app := New()
 
 	grp := app.Group("/v1")
 
 	grp.Static("/v2", ".github/auth_assign.yml")
+
+	req := httptest.NewRequest("GET", "/v1/v2", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+
+}
+
+func Test_App_Static_Wildcard(t *testing.T) {
+	app := New()
+
 	app.Static("/*", ".github/FUNDING.yml")
+
+	req := httptest.NewRequest("GET", "/yesyes/john/doe", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+}
+
+func Test_App_Static_Prefix(t *testing.T) {
+	app := New()
 	app.Static("/john", "./.github")
 
 	req := httptest.NewRequest("GET", "/john/stale.yml", nil)
@@ -191,19 +213,9 @@ func Test_App_Static(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
 
-	req = httptest.NewRequest("GET", "/yesyes/john/doe", nil)
-	resp, err = app.Test(req)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	app.Static("/prefix", "./.github/workflows")
 
-	req = httptest.NewRequest("GET", "/john/stale.yml", nil)
-	resp, err = app.Test(req)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
-
-	req = httptest.NewRequest("GET", "/v1/v2", nil)
+	req = httptest.NewRequest("GET", "/prefix/test.yml", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
