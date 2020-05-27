@@ -92,10 +92,6 @@ func (app *App) next(ctx *Ctx) bool {
 	return false
 }
 
-func (app *App) nextHandler(ctx *Ctx) {
-	ctx.route.Handlers[ctx.indexHandler](ctx)
-}
-
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
 	ctx := app.AcquireCtx(rctx)

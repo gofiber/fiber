@@ -589,8 +589,7 @@ func (ctx *Ctx) Next(err ...error) {
 	} else {
 		fmt.Println("Continue route ", ctx.indexHandler, " - ", len(ctx.route.Handlers))
 		// Continue route
-		ctx.app.nextHandler(ctx)
-
+		ctx.route.Handlers[ctx.indexHandler](ctx)
 	}
 }
 
