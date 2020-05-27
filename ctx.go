@@ -34,8 +34,8 @@ import (
 type Ctx struct {
 	app          *App                 // Reference to *App
 	route        *Route               // Reference to *Route
-	index        int                  // Index of the current handler in the stack
-	next         bool                 // Bool to continue to the next handler
+	indexRoute   int                  // Index of the current route
+	indexHandler int                  // Index of the current handler
 	method       string               // HTTP method
 	path         string               // Prettified HTTP path
 	pathOriginal string               // Original HTTP path
@@ -78,8 +78,9 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx := app.pool.Get().(*Ctx)
 	// Set app reference
 	ctx.app = app
-	// Set stack index
-	ctx.index = -1
+	// Reset route and handler index
+	ctx.indexRoute = -1
+	ctx.indexHandler = 0
 	// Set paths
 	ctx.path = getString(fctx.URI().Path())
 	ctx.pathOriginal = ctx.path
@@ -577,8 +578,17 @@ func (ctx *Ctx) Next(err ...error) {
 	if len(err) > 0 {
 		ctx.err = err[0]
 	}
-	ctx.next = true
-	ctx.app.next(ctx)
+
+	// Increment handler index
+	ctx.indexHandler++
+	// Did we executed all route handlers?
+	if ctx.indexHandler < len(ctx.route.Handlers) {
+		// Continue route stack
+		ctx.route.Handlers[ctx.indexHandler](ctx)
+	} else {
+		// Continue handler stack
+		ctx.app.next(ctx)
+	}
 }
 
 // OriginalURL contains the original request URL.
