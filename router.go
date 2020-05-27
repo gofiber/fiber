@@ -223,10 +223,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 		wildcard = true
 		prefix = strings.Split(prefix, "*")[0]
 	}
-	var stripper = len(prefix)
-	if isRoot {
-		stripper = 0
-	}
+	var stripper = len(prefix) - 1
 	// Fileserver settings
 	fs := &fasthttp.FS{
 		Root:                 root,

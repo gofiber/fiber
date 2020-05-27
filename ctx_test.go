@@ -272,7 +272,7 @@ func Benchmark_Ctx_Cookie(b *testing.B) {
 			Value: "Doe",
 		})
 	}
-	utils.AssertEqual(b, "John=Doe; path=/", getString(c.Fasthttp.Response.Header.Peek("Set-Cookie")))
+	utils.AssertEqual(b, "John=Doe; path=/; SameSite=Lax", getString(c.Fasthttp.Response.Header.Peek("Set-Cookie")))
 }
 
 // go test -run Test_Ctx_Cookie
@@ -290,7 +290,7 @@ func Test_Ctx_Cookie(t *testing.T) {
 		Value:   "john",
 		Expires: expire,
 	})
-	expect := "username=john; expires=" + string(httpdate) + "; path=/"
+	expect := "username=john; expires=" + httpdate + "; path=/; SameSite=Lax"
 	utils.AssertEqual(t, expect, string(ctx.Fasthttp.Response.Header.Peek(HeaderSetCookie)))
 }
 

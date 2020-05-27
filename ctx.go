@@ -280,23 +280,17 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetDomain(cookie.Domain)
 	fcookie.SetExpire(cookie.Expires)
 	fcookie.SetSecure(cookie.Secure)
-	if cookie.Secure {
-		// Secure must be paired with SameSite=None
-		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-	}
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
+
 	switch utils.ToLower(cookie.SameSite) {
-	case "lax":
-		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	case "strict":
 		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
 	case "none":
 		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-		// Secure must be paired with SameSite=None
-		fcookie.SetSecure(true)
 	default:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
+
 	ctx.Fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
 }

@@ -121,7 +121,7 @@ Bu testler [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) ve 
 - [API uç noktaları](https://docs.gofiber.io/context)
 - Ara katman & [Sonraki](https://docs.gofiber.io/context#next) desteği
 - [Hızlı](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) sunucu taraflı programlama
-- [Template engines](https://docs.gofiber.io/middleware#template)
+- [Template engines](https://github.com/gofiber/template)
 - [WebSocket support](https://docs.gofiber.io/middleware#websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
 - Available in [12 languages](https://docs.gofiber.io/)
@@ -176,11 +176,11 @@ func main() {
 func main() {
   app := fiber.New()
 
-  app.Static("/", "/public")
+  app.Static("/", "./public")
   // => http://localhost:3000/js/script.js
   // => http://localhost:3000/css/style.css
 
-  app.Static("/prefix", "/public")
+  app.Static("/prefix", "./public")
   // => http://localhost:3000/prefix/js/script.js
   // => http://localhost:3000/prefix/css/style.css
 
@@ -225,36 +225,34 @@ func main() {
 <details>
   <summary>📚 Daha fazla kod örneği göster</summary>
 
-### Şablon Motorları
+### Template engines
 
-📖 [Ayarlar](https://docs.gofiber.io/application#settings)
-📖 [Tasvir et(Render)](https://docs.gofiber.io/context#render)
-📖 [Şablonlar](https://docs.gofiber.io/middleware#template)
+📖 [Settings](https://docs.gofiber.io/application#settings)  
+📖 [Template Engines](https://github.com/gofiber/template)  
+📖 [Render](https://docs.gofiber.io/context#render)  
 
-Fiber varsayılan olarak [Go şablon motoru](https://golang.org/pkg/html/template/)'nu destekler.
+Fiber defaults to the [Go template engine](https://golang.org/pkg/html/template/) when no Template engine is set.
 
-Eğer başka bir şablon motoru kullanmak isterseniz, mesela [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) yada [pug](https://github.com/Joker/jade) gibi, bizim [Şablon Ara Katmanımızı](https://docs.gofiber.io/middleware#template) da kullanabilirsiniz.
+If you want to template partials and a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+
+You can use our [Template Middleware](https://github.com/gofiber/template).
 
 ```go
 import (
   "github.com/gofiber/fiber"
-  "github.com/gofiber/template"
+  "github.com/gofiber/template/pug"
 )
 
 func main() {
-  //Uygulamayı başlatmadan önce şablon motorunu kurabilirsiniz:
+  // You can setup template engine before initiation app:
   app := fiber.New(&fiber.Settings{
-    TemplateEngine:    template.Mustache(),
-    TemplateFolder:    "./views",
-    TemplateExtension: ".tmpl",
+    Templates: pug.New("./views", ".pug"),
   })
 
-  // YADA uygulamayı başlattıktan sonra uygun yere koyabilirsiniz:
-  app.Settings.TemplateEngine = template.Mustache()
-  app.Settings.TemplateFolder = "./views"
-  app.Settings.TemplateExtension = ".tmpl"
+  // OR after initiation app at any convenient location:
+  app.Settings.Templates = pug.New("./views", ".pug"),
 
-  // Ve şimdi, bu şekide `./views/home.tmpl` şablonunu çağırabilirsiniz:
+  // And now, you can call template `./views/home.pug` like this:
   app.Get("/", func(c *fiber.Ctx) {
     c.Render("home", fiber.Map{
       "title": "Homepage",
@@ -351,7 +349,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 func main() {
   app := fiber.New()
 
-  app.Static("/public")
+  app.Static("./public")
 
   app.Get("/demo", func(c *fiber.Ctx) {
     c.Send("This is a demo!")

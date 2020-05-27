@@ -244,11 +244,11 @@ func main() {
 func main() {
   app := fiber.New()
 
-  app.Static("/", "/public")
+  app.Static("/", "./public")
   // => http://localhost:3000/js/script.js
   // => http://localhost:3000/css/style.css
 
-  app.Static("/prefix", "/public")
+  app.Static("/prefix", "./public")
   // => http://localhost:3000/prefix/js/script.js
   // => http://localhost:3000/prefix/css/style.css
 
@@ -301,40 +301,36 @@ func main() {
   <summary>📚 הצג דוגמאות קוד נוספות</summary>
   
 
-### מנועי תבניות
+### Template engines
 
-📖 [הגדרות](https://docs.gofiber.io/application#settings)  
-📖 [רנדור](https://docs.gofiber.io/context#render)  
-📖 [תבניות](https://docs.gofiber.io/middleware#template)  
+📖 [Settings](https://docs.gofiber.io/application#settings)  
+📖 [Template Engines](https://github.com/gofiber/template)  
+📖 [Render](https://docs.gofiber.io/context#render)  
 
-Fiber תומך כברירת מחדל ב[מנוע התבניות של Go](https://golang.org/pkg/html/template/).
+Fiber defaults to the [Go template engine](https://golang.org/pkg/html/template/) when no Template engine is set.
 
-אבל אם ברצונכם להשתמש במנוע תבניות אחר כמו [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) או [pug](https://github.com/Joker/jade).
+If you want to template partials and a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
 
-אתם יכולים להשתמש ב[Middleware של התבניות](https://docs.gofiber.io/middleware#template) שלנו.
+You can use our [Template Middleware](https://github.com/gofiber/template).
 
 <div dir="ltr">
 
 ```go
 import (
   "github.com/gofiber/fiber"
-  "github.com/gofiber/template"
+  "github.com/gofiber/template/pug"
 )
 
 func main() {
   // You can setup template engine before initiation app:
   app := fiber.New(&fiber.Settings{
-    TemplateEngine:    template.Mustache(),
-    TemplateFolder:    "./views",
-    TemplateExtension: ".tmpl",
+    Templates: pug.New("./views", ".pug"),
   })
 
   // OR after initiation app at any convenient location:
-  app.Settings.TemplateEngine = template.Mustache()
-  app.Settings.TemplateFolder = "./views"
-  app.Settings.TemplateExtension = ".tmpl"
+  app.Settings.Templates = pug.New("./views", ".pug"),
 
-  // And now, you can call template `./views/home.tmpl` like this:
+  // And now, you can call template `./views/home.pug` like this:
   app.Get("/", func(c *fiber.Ctx) {
     c.Render("home", fiber.Map{
       "title": "Homepage",
@@ -446,7 +442,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 func main() {
   app := fiber.New()
 
-  app.Static("/public")
+  app.Static("./public")
 
   app.Get("/demo", func(c *fiber.Ctx) {
     c.Send("This is a demo!")
