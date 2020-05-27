@@ -207,7 +207,10 @@ func Test_App_Shutdown(t *testing.T) {
 func Test_App_Static_Group(t *testing.T) {
 	app := New()
 
-	grp := app.Group("/v1")
+	grp := app.Group("/v1", func(c *Ctx) {
+		c.Set("Test-Header", "123")
+		c.Next()
+	})
 
 	grp.Static("/v2", "./.github/FUNDING.yml")
 
@@ -217,6 +220,7 @@ func Test_App_Static_Group(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
 	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+	utils.AssertEqual(t, "123", resp.Header.Get("Test-Header"))
 
 	grp = app.Group("/v2")
 	grp.Static("/v3*", "./.github/FUNDING.yml")
