@@ -290,10 +290,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 	default:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
-	// if cookie.Secure {
-	// 	// Secure must be paired with SameSite=None
-	// 	fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-	// }
+
 	ctx.Fasthttp.Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
 }
