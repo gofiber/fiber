@@ -88,6 +88,33 @@ func Test_App_Use_Params_Group(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
+func Test_App_Chaining(t *testing.T) {
+	n := func(c *Ctx) {
+		c.Next()
+	}
+	app := New()
+	app.Use("/john", n, n, n, n, func(c *Ctx) {
+		c.Status(202)
+	})
+
+	req := httptest.NewRequest("POST", "/john", nil)
+
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 202, resp.StatusCode, "Status code")
+
+	app.Get("/test", n, n, n, n, func(c *Ctx) {
+		c.Status(203)
+	})
+
+	req = httptest.NewRequest("GET", "/test", nil)
+
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 203, resp.StatusCode, "Status code")
+
+}
+
 func Test_App_Order(t *testing.T) {
 	app := New()
 
@@ -176,13 +203,66 @@ func Test_App_Shutdown(t *testing.T) {
 	_ = app.Shutdown()
 }
 
-func Test_App_Static(t *testing.T) {
+// go test -run Test_App_Static
+func Test_App_Static_Group(t *testing.T) {
 	app := New()
 
-	grp := app.Group("/v1")
+	grp := app.Group("/v1", func(c *Ctx) {
+		c.Set("Test-Header", "123")
+		c.Next()
+	})
 
-	grp.Static("/v2", ".github/auth_assign.yml")
-	app.Static("/*", ".github/FUNDING.yml")
+	grp.Static("/v2", "./.github/FUNDING.yml")
+
+	req := httptest.NewRequest("GET", "/v1/v2", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+	utils.AssertEqual(t, "123", resp.Header.Get("Test-Header"))
+
+	grp = app.Group("/v2")
+	grp.Static("/v3*", "./.github/FUNDING.yml")
+
+	req = httptest.NewRequest("GET", "/v2/v3/john/doe", nil)
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+
+}
+
+func Test_App_Static_Wildcard(t *testing.T) {
+	app := New()
+
+	app.Static("*", "./.github/FUNDING.yml")
+
+	req := httptest.NewRequest("GET", "/yesyes/john/doe", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+
+}
+
+func Test_App_Static_Prefix_Wildcard(t *testing.T) {
+	app := New()
+
+	app.Static("/test/*", "./.github/FUNDING.yml")
+
+	req := httptest.NewRequest("GET", "/test/john/doe", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+}
+
+func Test_App_Static_Prefix(t *testing.T) {
+	app := New()
 	app.Static("/john", "./.github")
 
 	req := httptest.NewRequest("GET", "/john/stale.yml", nil)
@@ -190,24 +270,25 @@ func Test_App_Static(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 
-	req = httptest.NewRequest("GET", "/yesyes/john/doe", nil)
+	app.Static("/prefix", "./.github/workflows")
+
+	req = httptest.NewRequest("GET", "/prefix/test.yml", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 
-	req = httptest.NewRequest("GET", "/john/stale.yml", nil)
+	app.Static("/single", "./.github/workflows/test.yml")
+
+	req = httptest.NewRequest("GET", "/single", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
-
-	req = httptest.NewRequest("GET", "/v1/v2", nil)
-	resp, err = app.Test(req)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 }
 
 func Test_App_Group(t *testing.T) {
