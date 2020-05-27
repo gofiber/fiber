@@ -88,6 +88,33 @@ func Test_App_Use_Params_Group(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
+func Test_App_Chaining(t *testing.T) {
+	n := func(c *Ctx) {
+		c.Next()
+	}
+	app := New()
+	app.Use("/john", n, n, n, n, func(c *Ctx) {
+		c.Status(202)
+	})
+
+	req := httptest.NewRequest("POST", "/john", nil)
+
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 202, resp.StatusCode, "Status code")
+
+	app.Get("/test", n, n, n, n, func(c *Ctx) {
+		c.Status(203)
+	})
+
+	req = httptest.NewRequest("GET", "/test", nil)
+
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 203, resp.StatusCode, "Status code")
+
+}
+
 func Test_App_Order(t *testing.T) {
 	app := New()
 
