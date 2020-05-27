@@ -203,6 +203,18 @@ func Test_App_Static_Wildcard(t *testing.T) {
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
 }
 
+func Test_App_Static_Prefix_Wildcard(t *testing.T) {
+	app := New()
+
+	app.Static("/test/*", "./.github/FUNDING.yml")
+
+	req := httptest.NewRequest("GET", "/test/john/doe", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+}
+
 func Test_App_Static_Prefix(t *testing.T) {
 	app := New()
 	app.Static("/john", "./.github")
