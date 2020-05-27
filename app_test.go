@@ -181,7 +181,7 @@ func Test_App_Static_Group(t *testing.T) {
 
 	grp := app.Group("/v1")
 
-	grp.Static("/v2", ".github/FUNDING.yml")
+	grp.Static("/v2", "./.github/FUNDING.yml")
 
 	req := httptest.NewRequest("GET", "/v1/v2", nil)
 	resp, err := app.Test(req)
@@ -194,7 +194,7 @@ func Test_App_Static_Group(t *testing.T) {
 func Test_App_Static_Wildcard(t *testing.T) {
 	app := New()
 
-	app.Static("/*", ".github/FUNDING.yml")
+	app.Static("*", "./.github/FUNDING.yml")
 
 	req := httptest.NewRequest("GET", "/yesyes/john/doe", nil)
 	resp, err := app.Test(req)
