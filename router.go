@@ -67,11 +67,11 @@ func (app *App) next(ctx *Ctx) bool {
 	// Get stack length
 	lenr := len(app.stack[method]) - 1
 	// Loop over the route stack starting from previous index
-	for ctx.index < lenr {
-		// Increment stack index
-		ctx.index++
+	for ctx.indexRoute < lenr {
+		// Increment route index
+		ctx.indexRoute++
 		// Get *Route
-		route := app.stack[method][ctx.index]
+		route := app.stack[method][ctx.indexRoute]
 		// Check if it matches the request path
 		match, values := route.match(ctx.path, ctx.pathOriginal)
 		// No match, next route
@@ -81,17 +81,9 @@ func (app *App) next(ctx *Ctx) bool {
 		// Pass route reference and param values
 		ctx.route = route
 		ctx.values = values
-		// Loop trough all handlers
-		for i := range route.Handlers {
-			// Execute ctx handler
-			route.Handlers[i](ctx)
-			// Stop if c.Next() is not called
-			if !ctx.next {
-				break
-			}
-			// Reset next bool
-			ctx.next = false
-		}
+		// Execute first handler of route
+		ctx.indexHandler = 0
+		route.Handlers[0](ctx)
 		// Stop scanning the stack
 		return true
 	}
@@ -191,6 +183,10 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 }
 
 func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
+	// For security we want to restrict to the current work directory.
+	if len(root) == 0 {
+		root = "."
+	}
 	// Cannot have an empty prefix
 	if prefix == "" {
 		prefix = "/"
@@ -199,31 +195,26 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 	if prefix[0] != '/' {
 		prefix = "/" + prefix
 	}
-	// Match anything
-	var wildcard = false
-	if prefix == "*" || prefix == "/*" {
-		wildcard = true
-		prefix = "/"
-	}
 	// in case sensitive routing, all to lowercase
 	if !app.Settings.CaseSensitive {
 		prefix = utils.ToLower(prefix)
-	}
-	// For security we want to restrict to the current work directory.
-	if len(root) == 0 {
-		root = "."
 	}
 	// Strip trailing slashes from the root path
 	if len(root) > 0 && root[len(root)-1] == '/' {
 		root = root[:len(root)-1]
 	}
-	// isSlash ?
+	// Is prefix a direct wildcard?
+	var isStar = prefix == "/*"
+	// Is prefix a root slash?
 	var isRoot = prefix == "/"
+	// Is prefix a partial wildcard?
 	if strings.Contains(prefix, "*") {
-		wildcard = true
+		// /john* -> /john
+		isStar = true
 		prefix = strings.Split(prefix, "*")[0]
+		// Fix this later
 	}
-	var stripper = len(prefix) - 1
+	prefixLen := len(prefix)
 	// Fileserver settings
 	fs := &fasthttp.FS{
 		Root:                 root,
@@ -233,7 +224,17 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 		CompressedFileSuffix: ".fiber.gz",
 		CacheDuration:        10 * time.Second,
 		IndexNames:           []string{"index.html"},
-		PathRewrite:          fasthttp.NewPathPrefixStripper(stripper),
+		PathRewrite: func(ctx *fasthttp.RequestCtx) []byte {
+			path := ctx.Path()
+			if len(path) >= prefixLen {
+				if isStar && getString(path[0:prefixLen]) == prefix {
+					path = path[0:0]
+				} else {
+					path = path[prefixLen:]
+				}
+			}
+			return append(path, '/')
+		},
 		PathNotFound: func(ctx *fasthttp.RequestCtx) {
 			ctx.Response.SetStatusCode(404)
 		},
@@ -249,10 +250,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 	}
 	fileHandler := fs.NewRequestHandler()
 	handler := func(c *Ctx) {
-		// Do stuff
-		if wildcard {
-			c.Fasthttp.Request.SetRequestURI(prefix)
-		}
 		// Serve file
 		fileHandler(c.Fasthttp)
 		// Return request if found and not forbidden
@@ -283,7 +280,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 	app.addRoute(MethodHead, route)
 	return route
 }
-
 func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method indentifier
 	m := methodINT[method]

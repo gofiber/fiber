@@ -254,11 +254,11 @@ func Benchmark_Router_Next(b *testing.B) {
 	defer app.ReleaseCtx(c)
 
 	for n := 0; n < b.N; n++ {
-		c.index = -1
+		c.indexRoute = -1
 		res = app.next(c)
 	}
 	utils.AssertEqual(b, true, res)
-	utils.AssertEqual(b, 31, c.index)
+	utils.AssertEqual(b, 31, c.indexRoute)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
