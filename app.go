@@ -28,6 +28,8 @@ import (
 // Version of current package
 const Version = "1.10.1"
 
+var fiberASCIIBanner = fmt.Sprintf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
+
 // Map is a shortcut for map[string]interface{}, usefull for JSON returns
 type Map map[string]interface{}
 
@@ -91,8 +93,14 @@ type Settings struct {
 	// By default all header names are normalized: conteNT-tYPE -> Content-Type
 	DisableHeaderNormalizing bool // default: false
 
-	// When set to true, it will not print out the fiber ASCII and "listening" on message
-	DisableStartupMessage bool
+	// Startup banner
+	StartupBanner string // default: fiberASCIIBanner
+
+	// When set to true, it will hide the startup banner
+	HideStartupBanner bool // default: false
+
+	// When set to true, it will not print out the StartupBanner and "listening" on message
+	DisableStartupMessage bool // default: false
 
 	// Templates is the interface that wraps the Render function.
 	Templates Templates
@@ -166,9 +174,10 @@ func New(settings ...*Settings) *App {
 		},
 		// Set default settings
 		Settings: &Settings{
-			Prefork:     utils.GetArgument("-prefork"),
-			BodyLimit:   4 * 1024 * 1024,
-			Concurrency: 256 * 1024,
+			Prefork:       utils.GetArgument("-prefork"),
+			BodyLimit:     4 * 1024 * 1024,
+			Concurrency:   256 * 1024,
+			StartupBanner: fiberASCIIBanner,
 		},
 	}
 	// Overwrite settings if provided
@@ -187,6 +196,9 @@ func New(settings ...*Settings) *App {
 		if app.Settings.Immutable {
 			getBytes = getBytesImmutable
 			getString = getStringImmutable
+		}
+		if app.Settings.StartupBanner == "" {
+			app.Settings.StartupBanner = fiberASCIIBanner
 		}
 	}
 	// Initialize app
@@ -300,9 +312,11 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
-	// Print listening message
+	// Print startup message
 	if !app.Settings.DisableStartupMessage {
-		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
+		if !app.Settings.HideStartupBanner {
+			fmt.Print(app.Settings.StartupBanner)
+		}
 		fmt.Printf("Started listening on %s\n", ln.Addr().String())
 	}
 	return app.server.Serve(ln)
@@ -341,9 +355,13 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
-	// Print listening message
+	// Print startup message
 	if !app.Settings.DisableStartupMessage && !utils.GetArgument("-child") {
-		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
+		if !app.Settings.HideStartupBanner {
+			if !app.Settings.HideStartupBanner {
+				fmt.Print(app.Settings.StartupBanner)
+			}
+		}
 		fmt.Printf("Started listening on %s\n", ln.Addr().String())
 	}
 	return app.server.Serve(ln)
