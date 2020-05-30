@@ -198,6 +198,8 @@ func (ctx *Ctx) BaseURL() string {
 }
 
 // Body contains the raw body submitted in a POST request.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) Body() string {
 	return getString(ctx.Fasthttp.Request.Body())
 }
@@ -297,6 +299,8 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 }
 
 // Cookies is used for getting a cookie value by key
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) Cookies(key string) (value string) {
 	return getString(ctx.Fasthttp.Request.Header.Cookie(key))
 }
@@ -369,6 +373,8 @@ func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 }
 
 // FormValue returns the first value by key from a MultipartForm.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
@@ -436,11 +442,15 @@ func (ctx *Ctx) Fresh() bool {
 
 // Get returns the HTTP request header specified by field.
 // Field names are case-insensitive
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) Get(key string) (value string) {
 	return getString(ctx.Fasthttp.Request.Header.Peek(key))
 }
 
 // Hostname contains the hostname derived from the Host HTTP header.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) Hostname() string {
 	return getString(ctx.Fasthttp.URI().Host())
 }
@@ -592,6 +602,8 @@ func (ctx *Ctx) Next(err ...error) {
 }
 
 // OriginalURL contains the original request URL.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) OriginalURL() string {
 	return getString(ctx.Fasthttp.Request.Header.RequestURI())
 }
@@ -656,6 +668,8 @@ func (ctx *Ctx) Protocol() string {
 }
 
 // Query returns the query string parameter in the url.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) Query(key string) (value string) {
 	return getString(ctx.Fasthttp.QueryArgs().Peek(key))
 }
