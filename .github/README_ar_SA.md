@@ -68,7 +68,7 @@
     <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Gosec?label=gosec&style=flat-square">
   </a>
   <a href="https://gofiber.io/discord">
-    <img src="https://img.shields.io/badge/discord-join%20channel-7289DA?style=flat-square">
+    <img src="https://img.shields.io/discord/704680098577514527?style=flat-square&label=Discord&logo=discord&logoColor=white&color=7289DA">
   </a>
 </p>
 
