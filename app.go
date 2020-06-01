@@ -31,7 +31,7 @@ const Version = "1.10.2"
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
-// Handler ...
+// Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx)
 
 // App denotes the Fiber application.
