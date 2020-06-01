@@ -18,6 +18,10 @@ import (
 
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
+	// Don't generate ETags for invalid responses
+	if ctx.Fasthttp.Response.StatusCode() != 200 {
+		return
+	}
 	body := ctx.Fasthttp.Response.Body()
 	// Skips ETag if no response body is present
 	if len(body) <= 0 {
