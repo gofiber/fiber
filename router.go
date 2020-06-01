@@ -87,6 +87,8 @@ func (app *App) next(ctx *Ctx) bool {
 		// Stop scanning the stack
 		return true
 	}
+	ctx.SendStatus(404)
+	ctx.SendString("Cannot " + ctx.method + " " + ctx.pathOriginal)
 	return false
 }
 

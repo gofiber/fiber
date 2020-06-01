@@ -179,10 +179,10 @@ func registerDummyRoutes(app *App) {
 // go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
 func Benchmark_Router_NotFound(b *testing.B) {
 	app := New()
-	registerDummyRoutes(app)
 	app.Use(func(c *Ctx) {
-
+		c.Next()
 	})
+	registerDummyRoutes(app)
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
