@@ -172,20 +172,7 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 func registerDummyRoutes(app *App) {
 	h := func(c *Ctx) {}
 	for _, r := range githubAPI {
-		switch r.method {
-		case "GET":
-			app.Get(r.path, h)
-		case "POST":
-			app.Post(r.path, h)
-		case "PUT":
-			app.Put(r.path, h)
-		case "PATCH":
-			app.Patch(r.path, h)
-		case "DELETE":
-			app.Delete(r.path, h)
-		default:
-			panic("Unknow HTTP method: " + r.method)
-		}
+		app.Add(r.method, r.path, h)
 	}
 }
 
@@ -193,7 +180,9 @@ func registerDummyRoutes(app *App) {
 func Benchmark_Router_NotFound(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	app.Use(func(c *Ctx) {
 
+	})
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
@@ -202,7 +191,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
-
+	utils.AssertEqual(b, 404, c.Response.StatusCode())
 	utils.AssertEqual(b, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
 }
 
