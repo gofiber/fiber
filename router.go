@@ -98,7 +98,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Find match in stack
 	match := app.next(ctx)
 	// Send a 404 by default if no route matched
-	if !match || len(ctx.Fasthttp.Response.Body()) == 0 {
+	if !match || ctx.route.use && len(ctx.Fasthttp.Response.Body()) == 0 {
 		ctx.SendStatus(404)
 		ctx.SendString("Cannot " + ctx.method + " " + ctx.pathOriginal)
 	} else if app.Settings.ETag {
