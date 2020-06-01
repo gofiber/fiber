@@ -98,7 +98,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Find match in stack
 	match := app.next(ctx)
 	// Send a 404 by default if no route matched
-	if !match || ctx.route.use && len(ctx.Fasthttp.Response.Body()) == 0 {
+	if !match {
 		ctx.SendStatus(404)
 		ctx.SendString("Cannot " + ctx.method + " " + ctx.pathOriginal)
 	} else if app.Settings.ETag {
@@ -259,6 +259,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 			return
 		}
 		// Reset response to default
+		c.Fasthttp.SetContentType("") // Issue #420
 		c.Fasthttp.Response.SetStatusCode(200)
 		c.Fasthttp.Response.SetBodyString("")
 		// Next middleware
