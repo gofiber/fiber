@@ -1080,7 +1080,7 @@ func Test_Ctx_SendStream(t *testing.T) {
 	file, err := os.Open("./.github/index.html")
 	utils.AssertEqual(t, nil, err)
 	ctx.SendStream(bufio.NewReader(file))
-	utils.AssertEqual(t, "227", string(ctx.Fasthttp.Response.Header.Peek("Content-Length")))
+	utils.AssertEqual(t, true, (ctx.Fasthttp.Response.Header.ContentLength() > 200))
 }
 
 // go test -run Test_Ctx_Set

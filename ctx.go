@@ -781,7 +781,7 @@ func (ctx *Ctx) Secure() bool {
 	return ctx.Fasthttp.IsTLS()
 }
 
-// Send sets the HTTP response body. The Send body can be of any type.
+// Send sets the HTTP response body. The input can be of any type, io.Reader is also supported.
 func (ctx *Ctx) Send(bodies ...interface{}) {
 	if len(bodies) > 0 {
 		ctx.Fasthttp.Response.SetBodyString("")
@@ -877,7 +877,7 @@ func (ctx *Ctx) Vary(fields ...string) {
 	ctx.Append(HeaderVary, fields...)
 }
 
-// Write appends any input to the HTTP body response.
+// Write appends any input to the HTTP body response, io.Reader is also supported as input.
 func (ctx *Ctx) Write(bodies ...interface{}) {
 	for i := range bodies {
 		switch body := bodies[i].(type) {
