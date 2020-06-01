@@ -47,8 +47,6 @@ type App struct {
 	Settings *Settings
 }
 
-// Enables automatic redirection if the current route can't be matched but a handler for the path with (without) the trailing slash exists. For example if /foo/ is requested but a route only exists for /foo, the client is redirected to /foo with http status code 301 for GET requests and 308 for all other request methods.
-
 // Settings holds is a struct holding the server settings
 type Settings struct {
 	// This will spawn multiple Go processes listening on the same port
