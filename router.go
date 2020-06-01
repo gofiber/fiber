@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -98,8 +99,9 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Find match in stack
 	match := app.next(ctx)
 	// Send a 404 by default if no route matched
-	if !match {
+	if !match || len(ctx.Fasthttp.Response.Body()) == 0 {
 		ctx.SendStatus(404)
+		ctx.SendString(fmt.Sprintf("Cannot %s %s", ctx.method, ctx.pathOriginal))
 	} else if app.Settings.ETag {
 		// Generate ETag if enabled
 		setETag(ctx, false)
