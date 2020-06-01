@@ -781,7 +781,7 @@ func (ctx *Ctx) Secure() bool {
 	return ctx.Fasthttp.IsTLS()
 }
 
-// Send sets the HTTP response body. The Send body can be of any type.
+// Send sets the HTTP response body. The input can be of any type, io.Reader is also supported.
 func (ctx *Ctx) Send(bodies ...interface{}) {
 	if len(bodies) > 0 {
 		ctx.Fasthttp.Response.SetBodyString("")
@@ -826,6 +826,16 @@ func (ctx *Ctx) SendString(body string) {
 	ctx.Fasthttp.Response.SetBodyString(body)
 }
 
+// SendStream sets response body stream and optional body size
+func (ctx *Ctx) SendStream(stream io.Reader, size ...int) {
+	if len(size) > 0 && size[0] >= 0 {
+		ctx.Fasthttp.Response.SetBodyStream(stream, size[0])
+	} else {
+		ctx.Fasthttp.Response.SetBodyStream(stream, -1)
+		ctx.Set(HeaderContentLength, strconv.Itoa(len(ctx.Fasthttp.Response.Body())))
+	}
+}
+
 // Set sets the response’s HTTP header field to the specified key, value.
 func (ctx *Ctx) Set(key string, val string) {
 	ctx.Fasthttp.Response.Header.Set(key, val)
@@ -867,7 +877,7 @@ func (ctx *Ctx) Vary(fields ...string) {
 	ctx.Append(HeaderVary, fields...)
 }
 
-// Write appends any input to the HTTP body response.
+// Write appends any input to the HTTP body response, io.Reader is also supported as input.
 func (ctx *Ctx) Write(bodies ...interface{}) {
 	for i := range bodies {
 		switch body := bodies[i].(type) {
@@ -879,6 +889,9 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 			ctx.Fasthttp.Response.AppendBodyString(strconv.Itoa(body))
 		case bool:
 			ctx.Fasthttp.Response.AppendBodyString(strconv.FormatBool(body))
+		case io.Reader:
+			ctx.Fasthttp.Response.SetBodyStream(body, -1)
+			ctx.Set(HeaderContentLength, strconv.Itoa(len(ctx.Fasthttp.Response.Body())))
 		default:
 			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
 		}

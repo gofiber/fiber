@@ -26,12 +26,12 @@ import (
 )
 
 // Version of current package
-const Version = "1.10.1"
+const Version = "1.10.2"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
-// Handler ...
+// Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx)
 
 // App denotes the Fiber application.
@@ -46,8 +46,6 @@ type App struct {
 	// App settings
 	Settings *Settings
 }
-
-// Enables automatic redirection if the current route can't be matched but a handler for the path with (without) the trailing slash exists. For example if /foo/ is requested but a route only exists for /foo, the client is redirected to /foo with http status code 301 for GET requests and 308 for all other request methods.
 
 // Settings holds is a struct holding the server settings
 type Settings struct {

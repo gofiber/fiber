@@ -208,10 +208,10 @@ func Test_App_Shutdown(t *testing.T) {
 func Test_App_Static_Index(t *testing.T) {
 	app := New()
 
+	app.Static("/prefix", "./.github/workflows")
 	app.Static("/", "./.github")
 
-	req := httptest.NewRequest("GET", "/", nil)
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
@@ -220,6 +220,7 @@ func Test_App_Static_Index(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
+
 }
 func Test_App_Static_Group(t *testing.T) {
 	app := New()
