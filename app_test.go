@@ -308,6 +308,50 @@ func Test_App_Static_Prefix(t *testing.T) {
 	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 }
 
+// go test -run Test_App_Mixed_Routes_WithSameLen
+func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
+	app := New()
+
+	// middleware
+	app.Use(func(ctx *Ctx) {
+		ctx.Set("TestHeader", "TestValue")
+		ctx.Next()
+	})
+	// routes with the same length
+	app.Static("/tesbar", "./.github")
+	app.Get("/foobar", func(ctx *Ctx) {
+		ctx.Send("FOO_BAR")
+		ctx.Type("html")
+	})
+
+	// match get route
+	req := httptest.NewRequest("GET", "/foobar", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "TestValue", resp.Header.Get("TestHeader"))
+	utils.AssertEqual(t, "text/html", resp.Header.Get("Content-Type"))
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "FOO_BAR", string(body))
+
+	// match static route
+	req = httptest.NewRequest("GET", "/tesbar", nil)
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "TestValue", resp.Header.Get("TestHeader"))
+	utils.AssertEqual(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"), "Response: "+string(body))
+	utils.AssertEqual(t, true, strings.HasPrefix(string(body), "<!DOCTYPE html>"), "Response: "+string(body))
+}
+
 func Test_App_Group(t *testing.T) {
 	var dummyHandler = func(c *Ctx) {}
 
