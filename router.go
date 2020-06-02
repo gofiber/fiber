@@ -272,6 +272,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 	route := &Route{
 		use:    true,
 		root:   isRoot,
+		path:   prefix,
 		Method: MethodGet,
 		Path:   prefix,
 	}
