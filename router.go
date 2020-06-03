@@ -241,12 +241,14 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 			path := ctx.Path()
 			if len(path) >= prefixLen {
 				if isStar && getString(path[0:prefixLen]) == prefix {
-					path = path[0:0]
+					path = append(path[0:0], '/')
 				} else {
-					path = path[prefixLen:]
+					path = append(path[prefixLen:], '/')
 				}
 			}
-			path = append([]byte("/"), path...)
+			if len(path) > 0 && path[0] != '/' {
+				path = append([]byte("/"), path...)
+			}
 			return path
 		},
 		PathNotFound: func(ctx *fasthttp.RequestCtx) {
