@@ -320,6 +320,7 @@ func (ctx *Ctx) Download(file string, filename ...string) {
 
 // Error contains the error information passed via the Next(err) method.
 func (ctx *Ctx) Error() error {
+	fmt.Println("ctx.Error() is deprecated please use app.Settings.ErrorHandler")
 	return ctx.err
 }
 
@@ -587,6 +588,8 @@ func (ctx *Ctx) Next(err ...error) {
 	}
 	if len(err) > 0 {
 		ctx.err = err[0]
+		ctx.app.Settings.ErrorHandler(ctx, err[0])
+		return
 	}
 
 	// Increment handler index

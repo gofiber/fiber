@@ -49,6 +49,13 @@ type App struct {
 
 // Settings holds is a struct holding the server settings
 type Settings struct {
+	// ErrorHandler is executed when you pass an error in the Next(err) method
+	// This function is also executed when a panic occurs somewhere in the stack
+	// Default: func(err error, ctx *fiber.Ctx) {
+	// 		ctx.Status(500).Send(err.Error())
+	// }
+	ErrorHandler func(*Ctx, error)
+
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
 	ServerHeader string
@@ -181,6 +188,9 @@ func New(settings ...*Settings) *App {
 			Prefork:     utils.GetArgument("-prefork"),
 			BodyLimit:   4 * 1024 * 1024,
 			Concurrency: 256 * 1024,
+			ErrorHandler: func(ctx *Ctx, err error) {
+				ctx.Status(500).SendString(err.Error())
+			},
 		},
 	}
 	// Overwrite settings if provided
@@ -199,6 +209,11 @@ func New(settings ...*Settings) *App {
 		if app.Settings.Immutable {
 			getBytes = getBytesImmutable
 			getString = getStringImmutable
+		}
+		if app.Settings.ErrorHandler == nil {
+			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
+				ctx.Status(500).SendString(err.Error())
+			}
 		}
 	}
 	// Initialize app
