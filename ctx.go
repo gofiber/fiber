@@ -32,16 +32,17 @@ import (
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	app          *App                 // Reference to *App
-	route        *Route               // Reference to *Route
-	indexRoute   int                  // Index of the current route
-	indexHandler int                  // Index of the current handler
-	method       string               // HTTP method
-	path         string               // Prettified HTTP path
-	pathOriginal string               // Original HTTP path
-	values       []string             // Route parameter values
-	err          error                // Contains error if caught
-	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	app      *App                 // Reference to *App
+	route    *Route               // Reference to *Route
+	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+
+	indexRoute   int      // Index of the current route
+	indexHandler int      // Index of the current handler
+	method       string   // HTTP method
+	path         string   // Prettified HTTP path
+	pathOriginal string   // Original HTTP path
+	values       []string // Route parameter values
+	err          error    // Contains error if caught
 }
 
 // Range data for ctx.Range
@@ -156,6 +157,12 @@ func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
 // AcceptsLanguages checks if the specified language is acceptable.
 func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	return getOffer(ctx.Get(HeaderAcceptLanguage), offers...)
+}
+
+// Possible feature for v1.11
+// Returns the *App pointer
+func (ctx *Ctx) App() *App {
+	return ctx.app
 }
 
 // Append the specified value to the HTTP response header field.

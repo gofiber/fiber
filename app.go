@@ -50,12 +50,12 @@ type App struct {
 // Settings holds is a struct holding the server settings
 type Settings struct {
 	// Possible feature for v1.11.x
-	// // ErrorHandler is executed when you pass an error in the Next(err) method
-	// // This function is also executed when a panic occurs somewhere in the stack
-	// // Default: func(err error, ctx *fiber.Ctx) {
-	// // 		ctx.Status(500).Send(err.Error())
-	// // }
-	// ErrorHandler func(*Ctx, error)
+	// ErrorHandler is executed when you pass an error in the Next(err) method
+	// This function is also executed when a panic occurs somewhere in the stack
+	// Default: func(err error, ctx *fiber.Ctx) {
+	// 		ctx.Status(500).Send(err.Error())
+	// }
+	ErrorHandler func(*Ctx, error)
 
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
@@ -126,7 +126,7 @@ type Settings struct {
 	// Default: unlimited
 	IdleTimeout time.Duration
 
-	// TODO: v1.11
+	// Possible feature for v1.11
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
@@ -190,9 +190,9 @@ func New(settings ...*Settings) *App {
 			BodyLimit:   4 * 1024 * 1024,
 			Concurrency: 256 * 1024,
 			// Possible feature for v1.11.x
-			// ErrorHandler: func(ctx *Ctx, err error) {
-			// 	ctx.Status(500).SendString(err.Error())
-			// },
+			ErrorHandler: func(ctx *Ctx, err error) {
+				ctx.Status(500).SendString(err.Error())
+			},
 		},
 	}
 	// Overwrite settings if provided
@@ -213,11 +213,11 @@ func New(settings ...*Settings) *App {
 			getString = getStringImmutable
 		}
 		// Possible feature for v1.11.x
-		// if app.Settings.ErrorHandler == nil {
-		// 	app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
-		// 		ctx.Status(500).SendString(err.Error())
-		// 	}
-		// }
+		if app.Settings.ErrorHandler == nil {
+			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
+				ctx.Status(500).SendString(err.Error())
+			}
+		}
 	}
 	// Initialize app
 	return app.init()
@@ -509,23 +509,20 @@ func (app *App) init() *App {
 			Logger:       &disableLogger{},
 			LogAllErrors: false,
 			ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
+
 				// Possible feature for v1.11.x
-				// ctx := app.AcquireCtx(fctx)
-				// app.Settings.ErrorHandler(ctx, err)
-				// app.ReleaseCtx(ctx)
-				if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
-					fctx.Response.SetStatusCode(StatusRequestHeaderFieldsTooLarge)
-					fctx.Response.SetBodyString("Request Header Fields Too Large")
-				} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
-					fctx.Response.SetStatusCode(StatusRequestTimeout)
-					fctx.Response.SetBodyString("Request Timeout")
-				} else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
-					fctx.Response.SetStatusCode(StatusRequestEntityTooLarge)
-					fctx.Response.SetBodyString("Request Entity Too Large")
-				} else {
-					fctx.Response.SetStatusCode(StatusBadRequest)
-					fctx.Response.SetBodyString("Bad Request")
-				}
+				ctx := app.AcquireCtx(fctx)
+				app.Settings.ErrorHandler(ctx, err)
+				app.ReleaseCtx(ctx)
+				// if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
+				// 	fctx.Error("Request Header Fields Too Large", StatusRequestHeaderFieldsTooLarge)
+				// } else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
+				// 	fctx.Error("Request Timeout", StatusRequestTimeout)
+				// } else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
+				// 	fctx.Error("Request Entity Too Large", StatusRequestEntityTooLarge)
+				// } else {
+				// 	fctx.Error("Bad Request", StatusBadRequest)
+				// }
 			},
 		}
 	}
