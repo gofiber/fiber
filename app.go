@@ -26,7 +26,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.10.3"
+const Version = "1.10.4"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -49,8 +49,9 @@ type App struct {
 
 // Settings holds is a struct holding the server settings
 type Settings struct {
-	// This will spawn multiple Go processes listening on the same port
-	Prefork bool // default: false
+	// Enables the "Server: value" HTTP header.
+	// Default: ""
+	ServerHeader string
 
 	// Enable strict routing. When enabled, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
@@ -60,49 +61,62 @@ type Settings struct {
 	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
 	CaseSensitive bool
 
-	// Enables the "Server: value" HTTP header.
-	ServerHeader string // default: ""
-
 	// Enables handler values to be immutable even if you return from handler
-	Immutable bool // default: false
+	// Default: false
+	Immutable bool
 
 	// Enable or disable ETag header generation, since both weak and strong etags are generated
 	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
-	// Optional. Default value false
+	// Default value false
 	ETag bool
 
+	// This will spawn multiple Go processes listening on the same port
+	// Default: false
+	Prefork bool
+
 	// Max body size that the server accepts
-	BodyLimit int // default: 4 * 1024 * 1024
+	// Default: 4 * 1024 * 1024
+	BodyLimit int
 
 	// Maximum number of concurrent connections.
-	Concurrency int // default: 256 * 1024
+	// Default: 256 * 1024
+	Concurrency int
 
 	// Disable keep-alive connections, the server will close incoming connections after sending the first response to client
-	DisableKeepalive bool // default: false
+	// Default: false
+	DisableKeepalive bool
 
 	// When set to true causes the default date header to be excluded from the response.
-	DisableDefaultDate bool // default: false
+	// Default: false
+	DisableDefaultDate bool
 
 	// When set to true, causes the default Content-Type header to be excluded from the Response.
-	DisableDefaultContentType bool // default: false
+	// Default: false
+	DisableDefaultContentType bool
 
 	// By default all header names are normalized: conteNT-tYPE -> Content-Type
-	DisableHeaderNormalizing bool // default: false
+	// Default: false
+	DisableHeaderNormalizing bool
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address
-	DisableStartupMessage bool // default: false
+	// Default: false
+	DisableStartupMessage bool
 
 	// Templates is the interface that wraps the Render function.
+	// Default: nil
 	Templates Templates
 
 	// The amount of time allowed to read the full request including body.
-	ReadTimeout time.Duration // default: unlimited
+	// Default: unlimited
+	ReadTimeout time.Duration
 
 	// The maximum duration before timing out writes of the response.
-	WriteTimeout time.Duration // default: unlimited
+	// Default: unlimited
+	WriteTimeout time.Duration
 
 	// The maximum amount of time to wait for the next request when keep-alive is enabled.
-	IdleTimeout time.Duration // default: unlimited
+	// Default: unlimited
+	IdleTimeout time.Duration
 
 	// TODO: v1.11
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.

@@ -4,7 +4,7 @@
 
 package fiber
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler -benchmem -count=3
+// go test -v ./... -run=^$ -bench=Benchmark_Router -benchmem -count=2
 
 import (
 	"io/ioutil"
