@@ -26,7 +26,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.10.4"
+const Version = "1.10.5"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -49,12 +49,13 @@ type App struct {
 
 // Settings holds is a struct holding the server settings
 type Settings struct {
-	// ErrorHandler is executed when you pass an error in the Next(err) method
-	// This function is also executed when a panic occurs somewhere in the stack
-	// Default: func(err error, ctx *fiber.Ctx) {
-	// 		ctx.Status(500).Send(err.Error())
-	// }
-	ErrorHandler func(*Ctx, error)
+	// Possible feature for v1.11.x
+	// // ErrorHandler is executed when you pass an error in the Next(err) method
+	// // This function is also executed when a panic occurs somewhere in the stack
+	// // Default: func(err error, ctx *fiber.Ctx) {
+	// // 		ctx.Status(500).Send(err.Error())
+	// // }
+	// ErrorHandler func(*Ctx, error)
 
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
@@ -153,13 +154,14 @@ type Static struct {
 	Index string
 }
 
-// // TODO: v1.11 Potential feature to get all registered routes
+// TODO: v1.11 Potential feature to get all registered routes
 // func (app *App) Routes(print ...bool) map[string][]string {
 // 	routes := make(map[string][]string)
 // 	for i := range app.stack {
-// 		routes["ZZ"] = []string{}
+// 		method := intMethod[i]
+// 		routes[method] = []string{}
 // 		for k := range app.stack[i] {
-// 			routes["ZZ"] = append(routes["ZZ"], app.stack[i][k].Path)
+// 			routes[method] = append(routes[method], app.stack[i][k].Path)
 // 		}
 // 	}
 // 	if len(print) > 0 && print[0] {
@@ -187,9 +189,10 @@ func New(settings ...*Settings) *App {
 			Prefork:     utils.GetArgument("-prefork"),
 			BodyLimit:   4 * 1024 * 1024,
 			Concurrency: 256 * 1024,
-			ErrorHandler: func(ctx *Ctx, err error) {
-				ctx.Status(500).SendString(err.Error())
-			},
+			// Possible feature for v1.11.x
+			// ErrorHandler: func(ctx *Ctx, err error) {
+			// 	ctx.Status(500).SendString(err.Error())
+			// },
 		},
 	}
 	// Overwrite settings if provided
@@ -209,11 +212,12 @@ func New(settings ...*Settings) *App {
 			getBytes = getBytesImmutable
 			getString = getStringImmutable
 		}
-		if app.Settings.ErrorHandler == nil {
-			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
-				ctx.Status(500).SendString(err.Error())
-			}
-		}
+		// Possible feature for v1.11.x
+		// if app.Settings.ErrorHandler == nil {
+		// 	app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
+		// 		ctx.Status(500).SendString(err.Error())
+		// 	}
+		// }
 	}
 	// Initialize app
 	return app.init()
@@ -505,6 +509,10 @@ func (app *App) init() *App {
 			Logger:       &disableLogger{},
 			LogAllErrors: false,
 			ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
+				// Possible feature for v1.11.x
+				// ctx := app.AcquireCtx(fctx)
+				// app.Settings.ErrorHandler(ctx, err)
+				// app.ReleaseCtx(ctx)
 				if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
 					fctx.Response.SetStatusCode(StatusRequestHeaderFieldsTooLarge)
 					fctx.Response.SetBodyString("Request Header Fields Too Large")
