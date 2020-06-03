@@ -1,19 +1,15 @@
 ---
-name: Bug report
+name: "\U0001F41B Bug"
 about: Create a report to help us improve
-title: "\U0001F41E "
-labels: bug
+title: "\U0001F41B "
+labels: 'Type: Bug'
 assignees: ''
 
 ---
 
-**Fiber version/commit**
+**Fiber version**
 
 **Issue description**
-
-**Expected behavior**
-
-**Steps to reproduce**
 
 **Code snippet**
 
@@ -24,6 +20,9 @@ import "github.com/gofiber/fiber"
 
 func main() {
   app := fiber.New()
-  // ..
+
+  // Steps to reproduce
+
+  app.Listen(3000)
 }
 ```

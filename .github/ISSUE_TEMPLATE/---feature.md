@@ -1,8 +1,8 @@
 ---
-name: Feature request
+name: "\U0001F680 Feature"
 about: Suggest an idea for this project
-title: "\U0001F525 "
-labels: enhancement
+title: "\U0001F680 "
+labels: 'Type: Feature'
 assignees: ''
 
 ---
