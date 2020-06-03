@@ -96,6 +96,19 @@ func (app *App) next(ctx *Ctx) bool {
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
 	ctx := app.AcquireCtx(rctx)
+	// // Possible feature for v1.12
+	// // Add recover by default
+	// defer func() {
+	// 	if r := recover(); r != nil {
+	// 		err, ok := r.(error)
+	// 		if !ok {
+	// 			err = fmt.Errorf("%v", r)
+	// 		}
+	// 		app.Settings.ErrorHandler(ctx, err)
+	// 		app.ReleaseCtx(ctx)
+	// 		return
+	// 	}
+	// }()
 	// Prettify path
 	ctx.prettifyPath()
 	// Find match in stack
@@ -233,7 +246,8 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 					path = path[prefixLen:]
 				}
 			}
-			return append(path, '/')
+			path = append([]byte("/"), path...)
+			return path
 		},
 		PathNotFound: func(ctx *fasthttp.RequestCtx) {
 			ctx.Response.SetStatusCode(404)
@@ -262,12 +276,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 		c.Fasthttp.Response.SetStatusCode(200)
 		c.Fasthttp.Response.SetBodyString("")
 		// Next middleware
-		match := c.app.next(c)
-		// If no other route is executed return 404 Not Found
-		if !match {
-			c.Fasthttp.Response.SetStatusCode(404)
-			c.Fasthttp.Response.SetBodyString("Not Found")
-		}
+		c.Next()
 	}
 	route := &Route{
 		use:    true,
