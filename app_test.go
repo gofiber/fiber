@@ -28,6 +28,43 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 
 // }
 
+// func Test_App_ErrorHandler(t *testing.T) {
+// 	app := New()
+
+// 	app.Get("/", func(c *Ctx) {
+// 		c.Next(errors.New("Hi, I'm an error!"))
+// 	})
+
+// 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
+// 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+
+// 	body, err := ioutil.ReadAll(resp.Body)
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, "Hi, I'm an error!", string(body))
+
+// }
+
+// func Test_App_ErrorHandler_Custom(t *testing.T) {
+// 	app := New(&Settings{
+// 		ErrorHandler: func(ctx *Ctx, err error) {
+// 			ctx.Status(200).SendString("Hi, I'm an custom error!")
+// 		},
+// 	})
+
+// 	app.Get("/", func(c *Ctx) {
+// 		c.Next(errors.New("Hi, I'm an error!"))
+// 	})
+
+// 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
+// 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+// 	body, err := ioutil.ReadAll(resp.Body)
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, "Hi, I'm an custom error!", string(body))
+// }
+
 func Test_App_Nested_Params(t *testing.T) {
 	app := New()
 
@@ -204,8 +241,8 @@ func Test_App_Shutdown(t *testing.T) {
 	_ = app.Shutdown()
 }
 
-// go test -run Test_App_Static
-func Test_App_Static_Index(t *testing.T) {
+// go test -run Test_App_Static_Index_Default
+func Test_App_Static_Index_Default(t *testing.T) {
 	app := New()
 
 	app.Static("/prefix", "./.github/workflows")
@@ -221,6 +258,33 @@ func Test_App_Static_Index(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
 
+}
+
+// go test -run Test_App_Static_Index
+func Test_App_Static_Direct(t *testing.T) {
+	app := New()
+
+	app.Static("/", "./.github")
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/index.html", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/FUNDING.yml", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, strings.Contains(string(body), "buymeacoffee"))
 }
 func Test_App_Static_Group(t *testing.T) {
 	app := New()
@@ -264,6 +328,10 @@ func Test_App_Static_Wildcard(t *testing.T) {
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
 	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, strings.Contains(string(body), "buymeacoffee"))
+
 }
 
 func Test_App_Static_Prefix_Wildcard(t *testing.T) {
@@ -277,6 +345,18 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
 	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+
+	app.Static("/my/nameisjohn*", "./.github/FUNDING.yml")
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/my/nameisjohn/no/its/not", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, strings.Contains(string(body), "buymeacoffee"))
 }
 
 func Test_App_Static_Prefix(t *testing.T) {
