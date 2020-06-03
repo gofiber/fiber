@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -87,21 +88,33 @@ func (app *App) next(ctx *Ctx) bool {
 		// Stop scanning the stack
 		return true
 	}
+	// If c.Next() does not match, return 404
+	ctx.SendStatus(404)
+	ctx.SendString("Cannot " + ctx.method + " " + ctx.pathOriginal)
 	return false
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
 	ctx := app.AcquireCtx(rctx)
+	// Add recover by default
+	defer func() {
+		if r := recover(); r != nil {
+			err, ok := r.(error)
+			if !ok {
+				err = fmt.Errorf("%v", r)
+			}
+			app.Settings.ErrorHandler(ctx, err)
+			app.ReleaseCtx(ctx)
+			return
+		}
+	}()
 	// Prettify path
 	ctx.prettifyPath()
 	// Find match in stack
 	match := app.next(ctx)
-	// Send a 404 by default if no route matched
-	if !match {
-		ctx.SendStatus(404)
-	} else if app.Settings.ETag {
-		// Generate ETag if enabled
+	// Generate ETag if enabled
+	if match && app.Settings.ETag {
 		setETag(ctx, false)
 	}
 	// Release Ctx
@@ -258,6 +271,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 			return
 		}
 		// Reset response to default
+		c.Fasthttp.SetContentType("") // Issue #420
 		c.Fasthttp.Response.SetStatusCode(200)
 		c.Fasthttp.Response.SetBodyString("")
 		// Next middleware
@@ -271,6 +285,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 	route := &Route{
 		use:    true,
 		root:   isRoot,
+		path:   prefix,
 		Method: MethodGet,
 		Path:   prefix,
 	}

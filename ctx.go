@@ -198,6 +198,8 @@ func (ctx *Ctx) BaseURL() string {
 }
 
 // Body contains the raw body submitted in a POST request.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) Body() string {
 	return getString(ctx.Fasthttp.Request.Body())
 }
@@ -297,6 +299,8 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 }
 
 // Cookies is used for getting a cookie value by key
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) Cookies(key string) (value string) {
 	return getString(ctx.Fasthttp.Request.Header.Cookie(key))
 }
@@ -316,6 +320,7 @@ func (ctx *Ctx) Download(file string, filename ...string) {
 
 // Error contains the error information passed via the Next(err) method.
 func (ctx *Ctx) Error() error {
+	fmt.Println("ctx.Error() is deprecated please use app.Settings.ErrorHandler")
 	return ctx.err
 }
 
@@ -369,6 +374,8 @@ func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 }
 
 // FormValue returns the first value by key from a MultipartForm.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
@@ -436,11 +443,15 @@ func (ctx *Ctx) Fresh() bool {
 
 // Get returns the HTTP request header specified by field.
 // Field names are case-insensitive
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) Get(key string) (value string) {
 	return getString(ctx.Fasthttp.Request.Header.Peek(key))
 }
 
 // Hostname contains the hostname derived from the Host HTTP header.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) Hostname() string {
 	return getString(ctx.Fasthttp.URI().Host())
 }
@@ -577,6 +588,8 @@ func (ctx *Ctx) Next(err ...error) {
 	}
 	if len(err) > 0 {
 		ctx.err = err[0]
+		ctx.app.Settings.ErrorHandler(ctx, err[0])
+		return
 	}
 
 	// Increment handler index
@@ -592,6 +605,8 @@ func (ctx *Ctx) Next(err ...error) {
 }
 
 // OriginalURL contains the original request URL.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) OriginalURL() string {
 	return getString(ctx.Fasthttp.Request.Header.RequestURI())
 }
@@ -656,6 +671,8 @@ func (ctx *Ctx) Protocol() string {
 }
 
 // Query returns the query string parameter in the url.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
 func (ctx *Ctx) Query(key string) (value string) {
 	return getString(ctx.Fasthttp.QueryArgs().Peek(key))
 }
@@ -767,7 +784,7 @@ func (ctx *Ctx) Secure() bool {
 	return ctx.Fasthttp.IsTLS()
 }
 
-// Send sets the HTTP response body. The Send body can be of any type.
+// Send sets the HTTP response body. The input can be of any type, io.Reader is also supported.
 func (ctx *Ctx) Send(bodies ...interface{}) {
 	if len(bodies) > 0 {
 		ctx.Fasthttp.Response.SetBodyString("")
@@ -812,6 +829,16 @@ func (ctx *Ctx) SendString(body string) {
 	ctx.Fasthttp.Response.SetBodyString(body)
 }
 
+// SendStream sets response body stream and optional body size
+func (ctx *Ctx) SendStream(stream io.Reader, size ...int) {
+	if len(size) > 0 && size[0] >= 0 {
+		ctx.Fasthttp.Response.SetBodyStream(stream, size[0])
+	} else {
+		ctx.Fasthttp.Response.SetBodyStream(stream, -1)
+		ctx.Set(HeaderContentLength, strconv.Itoa(len(ctx.Fasthttp.Response.Body())))
+	}
+}
+
 // Set sets the response’s HTTP header field to the specified key, value.
 func (ctx *Ctx) Set(key string, val string) {
 	ctx.Fasthttp.Response.Header.Set(key, val)
@@ -853,7 +880,7 @@ func (ctx *Ctx) Vary(fields ...string) {
 	ctx.Append(HeaderVary, fields...)
 }
 
-// Write appends any input to the HTTP body response.
+// Write appends any input to the HTTP body response, io.Reader is also supported as input.
 func (ctx *Ctx) Write(bodies ...interface{}) {
 	for i := range bodies {
 		switch body := bodies[i].(type) {
@@ -865,6 +892,9 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 			ctx.Fasthttp.Response.AppendBodyString(strconv.Itoa(body))
 		case bool:
 			ctx.Fasthttp.Response.AppendBodyString(strconv.FormatBool(body))
+		case io.Reader:
+			ctx.Fasthttp.Response.SetBodyStream(body, -1)
+			ctx.Set(HeaderContentLength, strconv.Itoa(len(ctx.Fasthttp.Response.Body())))
 		default:
 			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
 		}

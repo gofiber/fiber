@@ -26,12 +26,12 @@ import (
 )
 
 // Version of current package
-const Version = "1.10.1"
+const Version = "1.10.4"
 
-// Map is a shortcut for map[string]interface{}, usefull for JSON returns
+// Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
-// Handler ...
+// Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx)
 
 // App denotes the Fiber application.
@@ -47,12 +47,18 @@ type App struct {
 	Settings *Settings
 }
 
-// Enables automatic redirection if the current route can't be matched but a handler for the path with (without) the trailing slash exists. For example if /foo/ is requested but a route only exists for /foo, the client is redirected to /foo with http status code 301 for GET requests and 308 for all other request methods.
-
 // Settings holds is a struct holding the server settings
 type Settings struct {
-	// This will spawn multiple Go processes listening on the same port
-	Prefork bool // default: false
+	// ErrorHandler is executed when you pass an error in the Next(err) method
+	// This function is also executed when a panic occurs somewhere in the stack
+	// Default: func(err error, ctx *fiber.Ctx) {
+	// 		ctx.Status(500).Send(err.Error())
+	// }
+	ErrorHandler func(*Ctx, error)
+
+	// Enables the "Server: value" HTTP header.
+	// Default: ""
+	ServerHeader string
 
 	// Enable strict routing. When enabled, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
@@ -62,49 +68,62 @@ type Settings struct {
 	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
 	CaseSensitive bool
 
-	// Enables the "Server: value" HTTP header.
-	ServerHeader string // default: ""
-
 	// Enables handler values to be immutable even if you return from handler
-	Immutable bool // default: false
+	// Default: false
+	Immutable bool
 
 	// Enable or disable ETag header generation, since both weak and strong etags are generated
 	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
-	// Optional. Default value false
+	// Default value false
 	ETag bool
 
+	// This will spawn multiple Go processes listening on the same port
+	// Default: false
+	Prefork bool
+
 	// Max body size that the server accepts
-	BodyLimit int // default: 4 * 1024 * 1024
+	// Default: 4 * 1024 * 1024
+	BodyLimit int
 
 	// Maximum number of concurrent connections.
-	Concurrency int // default: 256 * 1024
+	// Default: 256 * 1024
+	Concurrency int
 
 	// Disable keep-alive connections, the server will close incoming connections after sending the first response to client
-	DisableKeepalive bool // default: false
+	// Default: false
+	DisableKeepalive bool
 
 	// When set to true causes the default date header to be excluded from the response.
-	DisableDefaultDate bool // default: false
+	// Default: false
+	DisableDefaultDate bool
 
 	// When set to true, causes the default Content-Type header to be excluded from the Response.
-	DisableDefaultContentType bool // default: false
+	// Default: false
+	DisableDefaultContentType bool
 
 	// By default all header names are normalized: conteNT-tYPE -> Content-Type
-	DisableHeaderNormalizing bool // default: false
+	// Default: false
+	DisableHeaderNormalizing bool
 
-	// When set to true, it will not print out the fiber ASCII and "listening" on message
+	// When set to true, it will not print out the «Fiber» ASCII art and listening address
+	// Default: false
 	DisableStartupMessage bool
 
 	// Templates is the interface that wraps the Render function.
+	// Default: nil
 	Templates Templates
 
 	// The amount of time allowed to read the full request including body.
-	ReadTimeout time.Duration // default: unlimited
+	// Default: unlimited
+	ReadTimeout time.Duration
 
 	// The maximum duration before timing out writes of the response.
-	WriteTimeout time.Duration // default: unlimited
+	// Default: unlimited
+	WriteTimeout time.Duration
 
 	// The maximum amount of time to wait for the next request when keep-alive is enabled.
-	IdleTimeout time.Duration // default: unlimited
+	// Default: unlimited
+	IdleTimeout time.Duration
 
 	// TODO: v1.11
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
@@ -168,6 +187,9 @@ func New(settings ...*Settings) *App {
 			Prefork:     utils.GetArgument("-prefork"),
 			BodyLimit:   4 * 1024 * 1024,
 			Concurrency: 256 * 1024,
+			ErrorHandler: func(ctx *Ctx, err error) {
+				ctx.Status(500).SendString(err.Error())
+			},
 		},
 	}
 	// Overwrite settings if provided
@@ -186,6 +208,11 @@ func New(settings ...*Settings) *App {
 		if app.Settings.Immutable {
 			getBytes = getBytesImmutable
 			getString = getStringImmutable
+		}
+		if app.Settings.ErrorHandler == nil {
+			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
+				ctx.Status(500).SendString(err.Error())
+			}
 		}
 	}
 	// Initialize app
@@ -299,11 +326,12 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
-	// Print listening message
+	// Print startup message
 	if !app.Settings.DisableStartupMessage {
 		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
 		fmt.Printf("Started listening on %s\n", ln.Addr().String())
 	}
+
 	return app.server.Serve(ln)
 }
 
@@ -340,11 +368,12 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
-	// Print listening message
+	// Print startup message
 	if !app.Settings.DisableStartupMessage && !utils.GetArgument("-child") {
 		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
 		fmt.Printf("Started listening on %s\n", ln.Addr().String())
 	}
+
 	return app.server.Serve(ln)
 }
 

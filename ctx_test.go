@@ -8,6 +8,7 @@ package fiber
 // go test -run Test_Ctx
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -1061,6 +1062,25 @@ func Test_Ctx_SendString(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.SendString("Don't crash please")
 	utils.AssertEqual(t, "Don't crash please", string(ctx.Fasthttp.Response.Body()))
+}
+
+// go test -run Test_Ctx_SendStream
+func Test_Ctx_SendStream(t *testing.T) {
+	t.Parallel()
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	ctx.SendStream(bytes.NewReader([]byte("Don't crash please")))
+	utils.AssertEqual(t, "Don't crash please", string(ctx.Fasthttp.Response.Body()))
+
+	ctx.SendStream(bufio.NewReader(bytes.NewReader([]byte("Hello bufio"))))
+	utils.AssertEqual(t, "Hello bufio", string(ctx.Fasthttp.Response.Body()))
+
+	file, err := os.Open("./.github/index.html")
+	utils.AssertEqual(t, nil, err)
+	ctx.SendStream(bufio.NewReader(file))
+	utils.AssertEqual(t, true, (ctx.Fasthttp.Response.Header.ContentLength() > 200))
 }
 
 // go test -run Test_Ctx_Set

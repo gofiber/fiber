@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"errors"
 	"io/ioutil"
 	"net"
 	"net/http/httptest"
@@ -27,6 +28,43 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 // func Test_App_Methods(t *testing.T) {
 
 // }
+
+func Test_App_ErrorHandler(t *testing.T) {
+	app := New()
+
+	app.Get("/", func(c *Ctx) {
+		c.Next(errors.New("Hi, I'm an error!"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "Hi, I'm an error!", string(body))
+
+}
+
+func Test_App_ErrorHandler_Custom(t *testing.T) {
+	app := New(&Settings{
+		ErrorHandler: func(ctx *Ctx, err error) {
+			ctx.Status(200).SendString("Hi, I'm an custom error!")
+		},
+	})
+
+	app.Get("/", func(c *Ctx) {
+		c.Next(errors.New("Hi, I'm an error!"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "Hi, I'm an custom error!", string(body))
+}
 
 func Test_App_Nested_Params(t *testing.T) {
 	app := New()
@@ -208,10 +246,10 @@ func Test_App_Shutdown(t *testing.T) {
 func Test_App_Static_Index(t *testing.T) {
 	app := New()
 
+	app.Static("/prefix", "./.github/workflows")
 	app.Static("/", "./.github")
 
-	req := httptest.NewRequest("GET", "/", nil)
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
@@ -220,6 +258,7 @@ func Test_App_Static_Index(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
+
 }
 func Test_App_Static_Group(t *testing.T) {
 	app := New()
@@ -306,6 +345,50 @@ func Test_App_Static_Prefix(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
 	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+}
+
+// go test -run Test_App_Mixed_Routes_WithSameLen
+func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
+	app := New()
+
+	// middleware
+	app.Use(func(ctx *Ctx) {
+		ctx.Set("TestHeader", "TestValue")
+		ctx.Next()
+	})
+	// routes with the same length
+	app.Static("/tesbar", "./.github")
+	app.Get("/foobar", func(ctx *Ctx) {
+		ctx.Send("FOO_BAR")
+		ctx.Type("html")
+	})
+
+	// match get route
+	req := httptest.NewRequest("GET", "/foobar", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "TestValue", resp.Header.Get("TestHeader"))
+	utils.AssertEqual(t, "text/html", resp.Header.Get("Content-Type"))
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "FOO_BAR", string(body))
+
+	// match static route
+	req = httptest.NewRequest("GET", "/tesbar", nil)
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "TestValue", resp.Header.Get("TestHeader"))
+	utils.AssertEqual(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"), "Response: "+string(body))
+	utils.AssertEqual(t, true, strings.HasPrefix(string(body), "<!DOCTYPE html>"), "Response: "+string(body))
 }
 
 func Test_App_Group(t *testing.T) {
