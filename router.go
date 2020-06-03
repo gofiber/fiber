@@ -97,7 +97,7 @@ func (app *App) next(ctx *Ctx) bool {
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
 	ctx := app.AcquireCtx(rctx)
-	// Possible feature for v1.12
+	// Possible feature for v1.11
 	// Add recover by default
 	defer func() {
 		if r := recover(); r != nil {
