@@ -158,6 +158,11 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	return getOffer(ctx.Get(HeaderAcceptLanguage), offers...)
 }
 
+// App returns the *App reference to access Settings or ErrorHandler
+func (ctx *Ctx) App() *App {
+	return ctx.app
+}
+
 // Append the specified value to the HTTP response header field.
 // If the header is not already set, it creates the header with the specified value.
 func (ctx *Ctx) Append(field string, values ...string) {
