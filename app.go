@@ -191,7 +191,7 @@ func New(settings ...*Settings) *App {
 			Concurrency: 256 * 1024,
 			// Possible feature for v1.11.x
 			ErrorHandler: func(ctx *Ctx, err error) {
-				ctx.Status(StatusBadRequest).SendString(err.Error())
+				ctx.Status(StatusInternalServerError).SendString(err.Error())
 			},
 		},
 	}
@@ -215,7 +215,7 @@ func New(settings ...*Settings) *App {
 		// Possible feature for v1.11.x
 		if app.Settings.ErrorHandler == nil {
 			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
-				ctx.Status(StatusBadRequest).SendString(err.Error())
+				ctx.Status(StatusInternalServerError).SendString(err.Error())
 			}
 		}
 	}

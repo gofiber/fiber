@@ -14,8 +14,8 @@ import (
 	"github.com/valyala/fasttemplate"
 )
 
-// Config ...
-type LoggerCfg struct {
+// LoggerConfig ...
+type LoggerConfig struct {
 	// Filter defines a function to skip middleware.
 	// Optional. Default: nil
 	Filter func(*fiber.Ctx) bool
@@ -34,10 +34,45 @@ type LoggerCfg struct {
 	Output io.Writer
 }
 
-// Recover will recover from panics and calls the ErrorHandler
-func Logger(config ...LoggerCfg) fiber.Handler {
+// Filter variables
+const (
+	logTime          = "time"
+	logReferer       = "referer"
+	logProtocol      = "protocol"
+	logIp            = "ip"
+	logIps           = "ips"
+	logHost          = "host"
+	logMethod        = "method"
+	logPath          = "path"
+	logUrl           = "url"
+	logUa            = "ua"
+	logLatency       = "latency"
+	logStatus        = "status"
+	logBody          = "body"
+	logBytesSent     = "bytesSent"
+	logBytesReceived = "bytesReceived"
+	logRoute         = "route"
+	logError         = "error"
+	logHeader        = "header:"
+	logQuery         = "query:"
+	logForm          = "form:"
+	logCookie        = "cookie:"
+)
+
+// Logger ...
+func Logger(format ...string) fiber.Handler {
+	var cfg LoggerConfig
+	cfg.Format = "${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n"
+	if len(format) > 0 {
+		cfg.Format = format[0]
+	}
+	return LoggerWithConfig(cfg)
+}
+
+// LoggerWithConfig ...
+func LoggerWithConfig(config ...LoggerConfig) fiber.Handler {
 	// Init config
-	var cfg LoggerCfg
+	var cfg LoggerConfig
 	// Set config if provided
 	if len(config) > 0 {
 		cfg = config[0]
@@ -118,7 +153,9 @@ func Logger(config ...LoggerCfg) fiber.Handler {
 			case logRoute:
 				return buf.WriteString(ctx.Route().Path)
 			case logError:
-				return buf.WriteString(ctx.Error().Error())
+				if ctx.Error() != nil {
+					return buf.WriteString(ctx.Error().Error())
+				}
 			default:
 				switch {
 				case strings.HasPrefix(tag, logHeader):
@@ -142,28 +179,3 @@ func Logger(config ...LoggerCfg) fiber.Handler {
 		bytebufferpool.Put(buf)
 	}
 }
-
-// Filter variables
-const (
-	logTime          = "time"
-	logReferer       = "referer"
-	logProtocol      = "protocol"
-	logIp            = "ip"
-	logIps           = "ips"
-	logHost          = "host"
-	logMethod        = "method"
-	logPath          = "path"
-	logUrl           = "url"
-	logUa            = "ua"
-	logLatency       = "latency"
-	logStatus        = "status"
-	logBody          = "body"
-	logBytesSent     = "bytesSent"
-	logBytesReceived = "bytesReceived"
-	logRoute         = "route"
-	logError         = "error"
-	logHeader        = "header:"
-	logQuery         = "query:"
-	logForm          = "form:"
-	logCookie        = "cookie:"
-)

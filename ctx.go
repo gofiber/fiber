@@ -592,6 +592,9 @@ func (ctx *Ctx) Next(err ...error) {
 	}
 	if len(err) > 0 {
 		ctx.err = err[0]
+		ctx.Fasthttp.Response.Header.Reset()
+		ctx.app.Settings.ErrorHandler(ctx, err[0])
+		return
 	}
 
 	// Increment handler index
