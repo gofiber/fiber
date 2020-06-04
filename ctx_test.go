@@ -905,7 +905,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 		"Age":  20,
 	}, "john")
 	utils.AssertEqual(t, `john({"Age":20,"Name":"Grame"});`, string(ctx.Fasthttp.Response.Body()))
-	utils.AssertEqual(t, "application/javascript", string(ctx.Fasthttp.Response.Header.Peek("content-type")))
+	utils.AssertEqual(t, "application/javascript; charset=utf-8", string(ctx.Fasthttp.Response.Header.Peek("content-type")))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
