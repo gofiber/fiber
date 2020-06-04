@@ -96,19 +96,6 @@ func (app *App) next(ctx *Ctx) bool {
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
 	ctx := app.AcquireCtx(rctx)
-	// // Possible feature for v1.12
-	// // Add recover by default
-	// defer func() {
-	// 	if r := recover(); r != nil {
-	// 		err, ok := r.(error)
-	// 		if !ok {
-	// 			err = fmt.Errorf("%v", r)
-	// 		}
-	// 		app.Settings.ErrorHandler(ctx, err)
-	// 		app.ReleaseCtx(ctx)
-	// 		return
-	// 	}
-	// }()
 	// Prettify path
 	ctx.prettifyPath()
 	// Find match in stack

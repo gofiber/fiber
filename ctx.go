@@ -521,7 +521,7 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	result = cb + "(" + getString(raw) + ");"
 
 	ctx.Fasthttp.Response.Header.Set(HeaderXContentTypeOptions, "nosniff")
-	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
+	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
 	ctx.Fasthttp.Response.SetBodyString(result)
 
 	return nil
@@ -759,7 +759,7 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 		}
 	}
 	// Set Contet-Type to text/html
-	ctx.Set(HeaderContentType, MIMETextHTML)
+	ctx.Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
 	ctx.SendBytes(buf.Bytes())
 	// Return err if exist
@@ -866,8 +866,12 @@ func (ctx *Ctx) Status(status int) *Ctx {
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-func (ctx *Ctx) Type(extension string) *Ctx {
-	ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
+func (ctx *Ctx) Type(extension string, charset ...string) *Ctx {
+	if len(charset) > 0 {
+		ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
+	} else {
+		ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
+	}
 	return ctx
 }
 
