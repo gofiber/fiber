@@ -33,26 +33,6 @@ type (
 	BasicAuthAuthorizer func(*fiber.Ctx, string, string) bool
 )
 
-
-app := fiber.New()
-
-app.Post("/login", login)
-
-app.Post("/users", register)
-
-app.Get("/", accessible)
-
-app.Use(jwtware.New(jwtware.Config{
-	Filter: func(ctx *fiber.Ctx) bool {
-
-	},
-		SigningKey: []byte("secret"),
-}))
-
-app.Get("/restricted", restricted)
-
-app.Listen(4000)
-
 // Recover will recover from panics and calls the ErrorHandler
 func BasicAuth(fn BasicAuthAuthorizer) fiber.Handler {
 	var cfg = BasicAuthConfig{
