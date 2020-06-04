@@ -51,13 +51,13 @@
     <img src="https://img.shields.io/github/stars/gofiber/fiber?color=00ACD7&label=%E2%AD%90%20">
   </a>
   <a href="https://github.com/gofiber/fiber/releases">
-    <img src="https://img.shields.io/github/v/release/gofiber/fiber?color=00ACD7&label=%F0%9F%9A%80%20release">
+    <img src="https://img.shields.io/github/v/release/gofiber/fiber?color=00ACD7&label=%F0%9F%9A%80%20">
   </a>
     <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat">
   </a>
   <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
-    <img src="https://img.shields.io/badge/%F0%9F%93%9D%20report-A%2B-00ACD7">
+    <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-00ACD7">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
     <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-91%25-00ACD7.svg?style=flat">
