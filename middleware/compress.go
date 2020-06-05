@@ -63,7 +63,7 @@ func CompressWithConfig(config CompressConfig) fiber.Handler {
 	// Return handler
 	return func(c *fiber.Ctx) {
 		// Don't execute the middleware if Next returns false
-		if config.Next != nil && !config.Next(c) {
+		if config.Next != nil && config.Next(c) {
 			c.Next()
 			return
 		}
