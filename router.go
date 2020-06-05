@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -97,19 +96,6 @@ func (app *App) next(ctx *Ctx) bool {
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
 	ctx := app.AcquireCtx(rctx)
-	// Possible feature for v1.11
-	// Add recover by default
-	defer func() {
-		if r := recover(); r != nil {
-			err, ok := r.(error)
-			if !ok {
-				err = fmt.Errorf("%v", r)
-			}
-			app.Settings.ErrorHandler(ctx, err)
-			app.ReleaseCtx(ctx)
-			return
-		}
-	}()
 	// Prettify path
 	ctx.prettifyPath()
 	// Find match in stack
@@ -242,12 +228,14 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 			path := ctx.Path()
 			if len(path) >= prefixLen {
 				if isStar && getString(path[0:prefixLen]) == prefix {
-					path = path[0:0]
+					path = append(path[0:0], '/')
 				} else {
-					path = path[prefixLen:]
+					path = append(path[prefixLen:], '/')
 				}
 			}
-			path = append([]byte("/"), path...)
+			if len(path) > 0 && path[0] != '/' {
+				path = append([]byte("/"), path...)
+			}
 			return path
 		},
 		PathNotFound: func(ctx *fasthttp.RequestCtx) {

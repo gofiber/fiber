@@ -52,8 +52,8 @@ type Settings struct {
 	// Possible feature for v1.11.x
 	// ErrorHandler is executed when you pass an error in the Next(err) method
 	// This function is also executed when a panic occurs somewhere in the stack
-	// Default: func(err error, ctx *fiber.Ctx) {
-	// 		ctx.Status(500).Send(err.Error())
+	// Default: func(ctx *fiber.Ctx, err error) {
+	// 		ctx.Status(fiber.StatusBadRequest).SendString(err.Error())
 	// }
 	ErrorHandler func(*Ctx, error)
 
@@ -126,7 +126,7 @@ type Settings struct {
 	// Default: unlimited
 	IdleTimeout time.Duration
 
-	// Possible feature for v1.11
+	// TODO: v1.11
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
@@ -191,7 +191,7 @@ func New(settings ...*Settings) *App {
 			Concurrency: 256 * 1024,
 			// Possible feature for v1.11.x
 			ErrorHandler: func(ctx *Ctx, err error) {
-				ctx.Status(500).SendString(err.Error())
+				ctx.Status(StatusInternalServerError).SendString(err.Error())
 			},
 		},
 	}
@@ -215,7 +215,7 @@ func New(settings ...*Settings) *App {
 		// Possible feature for v1.11.x
 		if app.Settings.ErrorHandler == nil {
 			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
-				ctx.Status(500).SendString(err.Error())
+				ctx.Status(StatusInternalServerError).SendString(err.Error())
 			}
 		}
 	}
@@ -509,20 +509,23 @@ func (app *App) init() *App {
 			Logger:       &disableLogger{},
 			LogAllErrors: false,
 			ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
-
 				// Possible feature for v1.11.x
-				ctx := app.AcquireCtx(fctx)
-				app.Settings.ErrorHandler(ctx, err)
-				app.ReleaseCtx(ctx)
-				// if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
-				// 	fctx.Error("Request Header Fields Too Large", StatusRequestHeaderFieldsTooLarge)
-				// } else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
-				// 	fctx.Error("Request Timeout", StatusRequestTimeout)
-				// } else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
-				// 	fctx.Error("Request Entity Too Large", StatusRequestEntityTooLarge)
-				// } else {
-				// 	fctx.Error("Bad Request", StatusBadRequest)
-				// }
+				// ctx := app.AcquireCtx(fctx)
+				// app.Settings.ErrorHandler(ctx, err)
+				// app.ReleaseCtx(ctx)
+				if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
+					fctx.Response.SetStatusCode(StatusRequestHeaderFieldsTooLarge)
+					fctx.Response.SetBodyString("Request Header Fields Too Large")
+				} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
+					fctx.Response.SetStatusCode(StatusRequestTimeout)
+					fctx.Response.SetBodyString("Request Timeout")
+				} else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
+					fctx.Response.SetStatusCode(StatusRequestEntityTooLarge)
+					fctx.Response.SetBodyString("Request Entity Too Large")
+				} else {
+					fctx.Response.SetStatusCode(StatusBadRequest)
+					fctx.Response.SetBodyString("Bad Request")
+				}
 			},
 		}
 	}

@@ -32,17 +32,16 @@ import (
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	app      *App                 // Reference to *App
-	route    *Route               // Reference to *Route
-	Fasthttp *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-
-	indexRoute   int      // Index of the current route
-	indexHandler int      // Index of the current handler
-	method       string   // HTTP method
-	path         string   // Prettified HTTP path
-	pathOriginal string   // Original HTTP path
-	values       []string // Route parameter values
-	err          error    // Contains error if caught
+	app          *App                 // Reference to *App
+	route        *Route               // Reference to *Route
+	indexRoute   int                  // Index of the current route
+	indexHandler int                  // Index of the current handler
+	method       string               // HTTP method
+	path         string               // Prettified HTTP path
+	pathOriginal string               // Original HTTP path
+	values       []string             // Route parameter values
+	err          error                // Contains error if caught
+	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 }
 
 // Range data for ctx.Range
@@ -159,8 +158,7 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	return getOffer(ctx.Get(HeaderAcceptLanguage), offers...)
 }
 
-// Possible feature for v1.11
-// Returns the *App pointer
+// App returns the *App reference to access Settings or ErrorHandler
 func (ctx *Ctx) App() *App {
 	return ctx.app
 }
@@ -327,7 +325,6 @@ func (ctx *Ctx) Download(file string, filename ...string) {
 
 // Error contains the error information passed via the Next(err) method.
 func (ctx *Ctx) Error() error {
-	fmt.Println("ctx.Error() is deprecated please use app.Settings.ErrorHandler")
 	return ctx.err
 }
 
@@ -529,7 +526,7 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	result = cb + "(" + getString(raw) + ");"
 
 	ctx.Fasthttp.Response.Header.Set(HeaderXContentTypeOptions, "nosniff")
-	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
+	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
 	ctx.Fasthttp.Response.SetBodyString(result)
 
 	return nil
@@ -595,6 +592,7 @@ func (ctx *Ctx) Next(err ...error) {
 	}
 	if len(err) > 0 {
 		ctx.err = err[0]
+		ctx.Fasthttp.Response.Header.Reset()
 		ctx.app.Settings.ErrorHandler(ctx, err[0])
 		return
 	}
@@ -769,7 +767,7 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 		}
 	}
 	// Set Contet-Type to text/html
-	ctx.Set(HeaderContentType, MIMETextHTML)
+	ctx.Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
 	ctx.SendBytes(buf.Bytes())
 	// Return err if exist
@@ -876,8 +874,12 @@ func (ctx *Ctx) Status(status int) *Ctx {
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-func (ctx *Ctx) Type(extension string) *Ctx {
-	ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
+func (ctx *Ctx) Type(extension string, charset ...string) *Ctx {
+	if len(charset) > 0 {
+		ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
+	} else {
+		ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
+	}
 	return ctx
 }
 

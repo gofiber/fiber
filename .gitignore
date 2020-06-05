@@ -18,6 +18,7 @@
 
 # Misc
 *.fiber.gz
+*.fasthttp.gz
 *.pprof
 
 # dependencies

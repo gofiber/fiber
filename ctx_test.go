@@ -905,7 +905,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 		"Age":  20,
 	}, "john")
 	utils.AssertEqual(t, `john({"Age":20,"Name":"Grame"});`, string(ctx.Fasthttp.Response.Body()))
-	utils.AssertEqual(t, "application/javascript", string(ctx.Fasthttp.Response.Header.Peek("content-type")))
+	utils.AssertEqual(t, "application/javascript; charset=utf-8", string(ctx.Fasthttp.Response.Header.Peek("content-type")))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
@@ -1119,6 +1119,15 @@ func Test_Ctx_Type(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.Type(".json")
 	utils.AssertEqual(t, "application/json", string(ctx.Fasthttp.Response.Header.Peek("Content-Type")))
+
+	ctx.Type("json", "utf-8")
+	utils.AssertEqual(t, "application/json; charset=utf-8", string(ctx.Fasthttp.Response.Header.Peek("Content-Type")))
+
+	ctx.Type(".html")
+	utils.AssertEqual(t, "text/html", string(ctx.Fasthttp.Response.Header.Peek("Content-Type")))
+
+	ctx.Type("html", "utf-8")
+	utils.AssertEqual(t, "text/html; charset=utf-8", string(ctx.Fasthttp.Response.Header.Peek("Content-Type")))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Type -benchmem -count=4
@@ -1131,6 +1140,19 @@ func Benchmark_Ctx_Type(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		c.Type(".json")
 		c.Type("json")
+	}
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_Type_Charset -benchmem -count=4
+func Benchmark_Ctx_Type_Charset(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.Type(".json", "utf-8")
+		c.Type("json", "utf-8")
 	}
 }
 
