@@ -13,7 +13,7 @@ import (
 // go test -run Test_Middleware_Logger
 func Test_Middleware_Logger(t *testing.T) {
 	format := "${ip}-${ips}-${url}-${host}-${method}-${path}-${protocol}-${route}-${referer}-${ua}-${latency}-${status}-${body}-${error}-${bytesSent}-${bytesReceived}-${header:header}-${query:query}-${cookie:cookie}"
-	expect := "0.0.0.0--/?query=query-example.com-GET-/-http-/-ref-ua-0s-500--error-5-0-header-query-cookie"
+	expect := "0.0.0.0--/test?query=query-example.com-GET-/test-http-/test-ref-ua-0s-500--error-5-0-header-query-cookie"
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -25,11 +25,11 @@ func Test_Middleware_Logger(t *testing.T) {
 		Output: buf,
 	}))
 
-	app.Get("/", func(ctx *fiber.Ctx) {
+	app.Get("/test", func(ctx *fiber.Ctx) {
 		ctx.Next(errors.New("error"))
 	})
 
-	req := httptest.NewRequest("GET", "/?query=query", nil)
+	req := httptest.NewRequest("GET", "/test?query=query", nil)
 	req.Header.Set("header", "header")
 	req.Header.Set("Cookie", "cookie=cookie")
 	req.Header.Set("User-Agent", "ua")
