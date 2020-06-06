@@ -54,12 +54,12 @@ type App struct {
 type Settings struct {
 	// ErrorHandler is executed when you pass an error in the Next(err) method
 	// This function is also executed when middleware.Recover() catches a panic
-	// Default: func(ctx *Ctx, err error) {
+	// Default: func(ctx *Ctx) {
 	// 	code := StatusInternalServerError
-	// 	if e, ok := err.(*Error); ok {
+	// 	if e, ok := ctx.Error().(*Error); ok {
 	// 		code = e.Code
 	// 	}
-	// 	ctx.Status(code).SendString(err.Error())
+	// 	ctx.Status(code).SendString(ctx.Error().Error())
 	// }
 	ErrorHandler Handler
 
