@@ -366,17 +366,23 @@ const (
 	MethodTrace   = "TRACE"   // RFC 7231, 4.3.8
 )
 
-// MIME types that are commonly  used
+// MIME types that are commonly used
 const (
 	MIMETextXML               = "text/xml"
 	MIMETextHTML              = "text/html"
 	MIMETextPlain             = "text/plain"
+	MIMEApplicationXML        = "application/xml"
 	MIMEApplicationJSON       = "application/json"
 	MIMEApplicationJavaScript = "application/javascript"
-	MIMEApplicationXML        = "application/xml"
 	MIMEApplicationForm       = "application/x-www-form-urlencoded"
-	MIMEMultipartForm         = "multipart/form-data"
 	MIMEOctetStream           = "application/octet-stream"
+	MIMEMultipartForm         = "multipart/form-data"
+
+	MIMETextXMLCharsetUTF8               = "text/xml; charset=utf-8"
+	MIMETextHTMLCharsetUTF8              = "text/html; charset=utf-8"
+	MIMETextPlainCharsetUTF8             = "text/plain; charset=utf-8"
+	MIMEApplicationXMLCharsetUTF8        = "application/xml; charset=utf-8"
+	MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 
 // HTTP status codes were copied from net/http.
