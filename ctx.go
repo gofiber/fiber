@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -325,6 +326,9 @@ func (ctx *Ctx) Download(file string, filename ...string) {
 
 // Error contains the error information passed via the Next(err) method.
 func (ctx *Ctx) Error() error {
+	if ctx.err == nil {
+		return errors.New("")
+	}
 	return ctx.err
 }
 
@@ -592,8 +596,8 @@ func (ctx *Ctx) Next(err ...error) {
 	}
 	if len(err) > 0 {
 		ctx.Fasthttp.Response.Header.Reset()
-		ctx.app.Settings.ErrorHandler(ctx)
 		ctx.err = err[0]
+		ctx.app.Settings.ErrorHandler(ctx)
 		return
 	}
 
