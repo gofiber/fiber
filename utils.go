@@ -451,6 +451,72 @@ const (
 	StatusNetworkAuthenticationRequired = 511 // RFC 6585, 6
 )
 
+// Errors
+var (
+	ErrContinue                      = NewError(StatusContinue)                      // RFC 7231, 6.2.1
+	ErrSwitchingProtocols            = NewError(StatusSwitchingProtocols)            // RFC 7231, 6.2.2
+	ErrProcessing                    = NewError(StatusProcessing)                    // RFC 2518, 10.1
+	ErrEarlyHints                    = NewError(StatusEarlyHints)                    // RFC 8297
+	ErrOK                            = NewError(StatusOK)                            // RFC 7231, 6.3.1
+	ErrCreated                       = NewError(StatusCreated)                       // RFC 7231, 6.3.2
+	ErrAccepted                      = NewError(StatusAccepted)                      // RFC 7231, 6.3.3
+	ErrNonAuthoritativeInfo          = NewError(StatusNonAuthoritativeInfo)          // RFC 7231, 6.3.4
+	ErrNoContent                     = NewError(StatusNoContent)                     // RFC 7231, 6.3.5
+	ErrResetContent                  = NewError(StatusResetContent)                  // RFC 7231, 6.3.6
+	ErrPartialContent                = NewError(StatusPartialContent)                // RFC 7233, 4.1
+	ErrMultiStatus                   = NewError(StatusMultiStatus)                   // RFC 4918, 11.1
+	ErrAlreadyReported               = NewError(StatusAlreadyReported)               // RFC 5842, 7.1
+	ErrIMUsed                        = NewError(StatusIMUsed)                        // RFC 3229, 10.4.1
+	ErrMultipleChoices               = NewError(StatusMultipleChoices)               // RFC 7231, 6.4.1
+	ErrMovedPermanently              = NewError(StatusMovedPermanently)              // RFC 7231, 6.4.2
+	ErrFound                         = NewError(StatusFound)                         // RFC 7231, 6.4.3
+	ErrSeeOther                      = NewError(StatusSeeOther)                      // RFC 7231, 6.4.4
+	ErrNotModified                   = NewError(StatusNotModified)                   // RFC 7232, 4.1
+	ErrUseProxy                      = NewError(StatusUseProxy)                      // RFC 7231, 6.4.5
+	ErrTemporaryRedirect             = NewError(StatusTemporaryRedirect)             // RFC 7231, 6.4.7
+	ErrPermanentRedirect             = NewError(StatusPermanentRedirect)             // RFC 7538, 3
+	ErrBadRequest                    = NewError(StatusBadRequest)                    // RFC 7231, 6.5.1
+	ErrUnauthorized                  = NewError(StatusUnauthorized)                  // RFC 7235, 3.1
+	ErrPaymentRequired               = NewError(StatusPaymentRequired)               // RFC 7231, 6.5.2
+	ErrForbidden                     = NewError(StatusForbidden)                     // RFC 7231, 6.5.3
+	ErrNotFound                      = NewError(StatusNotFound)                      // RFC 7231, 6.5.4
+	ErrMethodNotAllowed              = NewError(StatusMethodNotAllowed)              // RFC 7231, 6.5.5
+	ErrNotAcceptable                 = NewError(StatusNotAcceptable)                 // RFC 7231, 6.5.6
+	ErrProxyAuthRequired             = NewError(StatusProxyAuthRequired)             // RFC 7235, 3.2
+	ErrRequestTimeout                = NewError(StatusRequestTimeout)                // RFC 7231, 6.5.7
+	ErrConflict                      = NewError(StatusConflict)                      // RFC 7231, 6.5.8
+	ErrGone                          = NewError(StatusGone)                          // RFC 7231, 6.5.9
+	ErrLengthRequired                = NewError(StatusLengthRequired)                // RFC 7231, 6.5.10
+	ErrPreconditionFailed            = NewError(StatusPreconditionFailed)            // RFC 7232, 4.2
+	ErrRequestEntityTooLarge         = NewError(StatusRequestEntityTooLarge)         // RFC 7231, 6.5.11
+	ErrRequestURITooLong             = NewError(StatusRequestURITooLong)             // RFC 7231, 6.5.12
+	ErrUnsupportedMediaType          = NewError(StatusUnsupportedMediaType)          // RFC 7231, 6.5.13
+	ErrRequestedRangeNotSatisfiable  = NewError(StatusRequestedRangeNotSatisfiable)  // RFC 7233, 4.4
+	ErrExpectationFailed             = NewError(StatusExpectationFailed)             // RFC 7231, 6.5.14
+	ErrTeapot                        = NewError(StatusTeapot)                        // RFC 7168, 2.3.3
+	ErrMisdirectedRequest            = NewError(StatusMisdirectedRequest)            // RFC 7540, 9.1.2
+	ErrUnprocessableEntity           = NewError(StatusUnprocessableEntity)           // RFC 4918, 11.2
+	ErrLocked                        = NewError(StatusLocked)                        // RFC 4918, 11.3
+	ErrFailedDependency              = NewError(StatusFailedDependency)              // RFC 4918, 11.4
+	ErrTooEarly                      = NewError(StatusTooEarly)                      // RFC 8470, 5.2.
+	ErrUpgradeRequired               = NewError(StatusUpgradeRequired)               // RFC 7231, 6.5.15
+	ErrPreconditionRequired          = NewError(StatusPreconditionRequired)          // RFC 6585, 3
+	ErrTooManyRequests               = NewError(StatusTooManyRequests)               // RFC 6585, 4
+	ErrRequestHeaderFieldsTooLarge   = NewError(StatusRequestHeaderFieldsTooLarge)   // RFC 6585, 5
+	ErrUnavailableForLegalReasons    = NewError(StatusUnavailableForLegalReasons)    // RFC 7725, 3
+	ErrInternalServerError           = NewError(StatusInternalServerError)           // RFC 7231, 6.6.1
+	ErrNotImplemented                = NewError(StatusNotImplemented)                // RFC 7231, 6.6.2
+	ErrBadGateway                    = NewError(StatusBadGateway)                    // RFC 7231, 6.6.3
+	ErrServiceUnavailable            = NewError(StatusServiceUnavailable)            // RFC 7231, 6.6.4
+	ErrGatewayTimeout                = NewError(StatusGatewayTimeout)                // RFC 7231, 6.6.5
+	ErrHTTPVersionNotSupported       = NewError(StatusHTTPVersionNotSupported)       // RFC 7231, 6.6.6
+	ErrVariantAlsoNegotiates         = NewError(StatusVariantAlsoNegotiates)         // RFC 2295, 8.1
+	ErrInsufficientStorage           = NewError(StatusInsufficientStorage)           // RFC 4918, 11.5
+	ErrLoopDetected                  = NewError(StatusLoopDetected)                  // RFC 5842, 7.2
+	ErrNotExtended                   = NewError(StatusNotExtended)                   // RFC 2774, 7
+	ErrNetworkAuthenticationRequired = NewError(StatusNetworkAuthenticationRequired) // RFC 6585, 6
+)
+
 // HTTP Headers were copied from net/http.
 const (
 	HeaderAuthorization                   = "Authorization"
