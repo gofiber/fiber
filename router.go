@@ -7,7 +7,6 @@ package fiber
 import (
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	utils "github.com/gofiber/utils"
@@ -30,9 +29,6 @@ type Route struct {
 	Method   string    // HTTP method
 	Handlers []Handler // Ctx handlers
 }
-
-var routePos int
-var routePosMutex sync.Mutex
 
 func (r *Route) match(path, original string) (match bool, values []string) {
 	// root path check
