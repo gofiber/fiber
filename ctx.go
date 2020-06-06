@@ -158,6 +158,11 @@ func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
 	return getOffer(ctx.Get(HeaderAcceptLanguage), offers...)
 }
 
+// App returns the *App reference to access Settings or ErrorHandler
+func (ctx *Ctx) App() *App {
+	return ctx.app
+}
+
 // Append the specified value to the HTTP response header field.
 // If the header is not already set, it creates the header with the specified value.
 func (ctx *Ctx) Append(field string, values ...string) {
@@ -521,7 +526,7 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	result = cb + "(" + getString(raw) + ");"
 
 	ctx.Fasthttp.Response.Header.Set(HeaderXContentTypeOptions, "nosniff")
-	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScript)
+	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
 	ctx.Fasthttp.Response.SetBodyString(result)
 
 	return nil
@@ -587,6 +592,9 @@ func (ctx *Ctx) Next(err ...error) {
 	}
 	if len(err) > 0 {
 		ctx.err = err[0]
+		ctx.Fasthttp.Response.Header.Reset()
+		ctx.app.Settings.ErrorHandler(ctx, err[0])
+		return
 	}
 
 	// Increment handler index
@@ -759,7 +767,7 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 		}
 	}
 	// Set Contet-Type to text/html
-	ctx.Set(HeaderContentType, MIMETextHTML)
+	ctx.Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
 	ctx.SendBytes(buf.Bytes())
 	// Return err if exist
@@ -795,18 +803,49 @@ func (ctx *Ctx) SendBytes(body []byte) {
 	ctx.Fasthttp.Response.SetBodyString(getString(body))
 }
 
+var sendFileFS *fasthttp.FS
+var sendFileHandler fasthttp.RequestHandler
+
 // SendFile transfers the file from the given path.
-// The file is compressed by default, disable this by passing a 'true' argument
+// The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
-func (ctx *Ctx) SendFile(file string, uncompressed ...bool) {
-	// https://github.com/gofiber/fiber/issues/391
-	status := ctx.Fasthttp.Response.StatusCode()
-	// Disable gzip compression
-	if len(uncompressed) > 0 && uncompressed[0] {
-		fasthttp.ServeFileUncompressed(ctx.Fasthttp, file)
-	} else {
-		fasthttp.ServeFile(ctx.Fasthttp, file)
+func (ctx *Ctx) SendFile(file string, compress ...bool) {
+	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
+	if sendFileFS == nil {
+		sendFileFS = &fasthttp.FS{
+			Root:                 "/",
+			GenerateIndexPages:   false,
+			AcceptByteRange:      true,
+			Compress:             true,
+			CompressedFileSuffix: ".fiber.gz",
+			CacheDuration:        10 * time.Second,
+			IndexNames:           []string{"index.html"},
+		}
+		sendFileHandler = sendFileFS.NewRequestHandler()
 	}
+	// Disable compression
+	if len(compress) <= 0 || !compress[0] {
+		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
+		ctx.Fasthttp.Request.Header.Del(HeaderAcceptEncoding)
+	}
+	// https://github.com/valyala/fasthttp/blob/master/fs.go#L85
+	if len(file) == 0 || file[0] != '/' {
+		hasTrailingSlash := len(file) > 0 && file[len(file)-1] == '/'
+		var err error
+		if file, err = filepath.Abs(file); err != nil {
+			ctx.app.Settings.ErrorHandler(ctx, err)
+			return
+		}
+		if hasTrailingSlash {
+			file += "/"
+		}
+	}
+	ctx.Fasthttp.Request.SetRequestURI(file)
+	// Save status code
+	status := ctx.Fasthttp.Response.StatusCode()
+	// Serve file
+	sendFileHandler(ctx.Fasthttp)
+	// Restore status code
 	ctx.Fasthttp.Response.SetStatusCode(status)
 }
 
@@ -866,8 +905,12 @@ func (ctx *Ctx) Status(status int) *Ctx {
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-func (ctx *Ctx) Type(extension string) *Ctx {
-	ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
+func (ctx *Ctx) Type(extension string, charset ...string) *Ctx {
+	if len(charset) > 0 {
+		ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
+	} else {
+		ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
+	}
 	return ctx
 }
 

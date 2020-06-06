@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"errors"
 	"io/ioutil"
 	"net"
 	"net/http/httptest"
@@ -24,46 +25,51 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
-// func Test_App_Methods(t *testing.T) {
+func Test_App_Routes(t *testing.T) {
+	app := New()
+	h := func(c *Ctx) {}
+	app.Get("/Get", h)
+	app.Head("/Head", h)
+	app.Post("/post", h)
+	utils.AssertEqual(t, 3, len(app.Routes()))
+}
 
-// }
+func Test_App_ErrorHandler(t *testing.T) {
+	app := New()
 
-// func Test_App_ErrorHandler(t *testing.T) {
-// 	app := New()
+	app.Get("/", func(c *Ctx) {
+		c.Next(errors.New("Hi, I'm an error!"))
+	})
 
-// 	app.Get("/", func(c *Ctx) {
-// 		c.Next(errors.New("Hi, I'm an error!"))
-// 	})
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
 
-// 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-// 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "Hi, I'm an error!", string(body))
 
-// 	body, err := ioutil.ReadAll(resp.Body)
-// 	utils.AssertEqual(t, nil, err)
-// 	utils.AssertEqual(t, "Hi, I'm an error!", string(body))
+}
 
-// }
+func Test_App_ErrorHandler_Custom(t *testing.T) {
+	app := New(&Settings{
+		ErrorHandler: func(ctx *Ctx, err error) {
+			ctx.Status(200).SendString("Hi, I'm an custom error!")
+		},
+	})
 
-// func Test_App_ErrorHandler_Custom(t *testing.T) {
-// 	app := New(&Settings{
-// 		ErrorHandler: func(ctx *Ctx, err error) {
-// 			ctx.Status(200).SendString("Hi, I'm an custom error!")
-// 		},
-// 	})
+	app.Get("/", func(c *Ctx) {
+		c.Next(errors.New("Hi, I'm an error!"))
+	})
 
-// 	app.Get("/", func(c *Ctx) {
-// 		c.Next(errors.New("Hi, I'm an error!"))
-// 	})
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-// 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-// 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-
-// 	body, err := ioutil.ReadAll(resp.Body)
-// 	utils.AssertEqual(t, nil, err)
-// 	utils.AssertEqual(t, "Hi, I'm an custom error!", string(body))
-// }
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "Hi, I'm an custom error!", string(body))
+}
 
 func Test_App_Nested_Params(t *testing.T) {
 	app := New()
