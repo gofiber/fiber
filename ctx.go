@@ -597,7 +597,7 @@ func (ctx *Ctx) Next(err ...error) {
 	if len(err) > 0 {
 		ctx.Fasthttp.Response.Header.Reset()
 		ctx.err = err[0]
-		ctx.app.Settings.ErrorHandler(ctx)
+		ctx.app.Settings.ErrorHandler(ctx, ctx.err)
 		return
 	}
 
@@ -838,7 +838,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 		var err error
 		if file, err = filepath.Abs(file); err != nil {
 			ctx.err = err
-			ctx.app.Settings.ErrorHandler(ctx)
+			ctx.app.Settings.ErrorHandler(ctx, ctx.err)
 			return
 		}
 		if hasTrailingSlash {

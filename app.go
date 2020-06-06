@@ -54,14 +54,14 @@ type App struct {
 type Settings struct {
 	// ErrorHandler is executed when you pass an error in the Next(err) method
 	// This function is also executed when middleware.Recover() catches a panic
-	// Default: func(ctx *Ctx) {
+	// Default: func(ctx *Ctx, err error) {
 	// 	code := StatusInternalServerError
-	// 	if e, ok := ctx.Error().(*Error); ok {
+	// 	if e, ok := err.(*Error); ok {
 	// 		code = e.Code
 	// 	}
-	// 	ctx.Status(code).SendString(ctx.Error().Error())
+	// 	ctx.Status(code).SendString(err.Error())
 	// }
-	ErrorHandler Handler
+	ErrorHandler func(*Ctx, error)
 
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
@@ -220,12 +220,12 @@ func New(settings ...*Settings) *App {
 			Prefork:     utils.GetArgument("-prefork"),
 			BodyLimit:   4 * 1024 * 1024,
 			Concurrency: 256 * 1024,
-			ErrorHandler: func(ctx *Ctx) {
+			ErrorHandler: func(ctx *Ctx, err error) {
 				code := StatusInternalServerError
-				if e, ok := ctx.Error().(*Error); ok {
+				if e, ok := err.(*Error); ok {
 					code = e.Code
 				}
-				ctx.Status(code).SendString(ctx.Error().Error())
+				ctx.Status(code).SendString(err.Error())
 			},
 		},
 	}
@@ -247,14 +247,14 @@ func New(settings ...*Settings) *App {
 			getBytes = getBytesImmutable
 			getString = getStringImmutable
 		}
-		// Set default error handler
+		// Set default error
 		if app.Settings.ErrorHandler == nil {
-			app.Settings.ErrorHandler = func(ctx *Ctx) {
+			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
 				code := StatusInternalServerError
-				if e, ok := ctx.Error().(*Error); ok {
+				if e, ok := err.(*Error); ok {
 					code = e.Code
 				}
-				ctx.Status(code).SendString(ctx.Error().Error())
+				ctx.Status(code).SendString(err.Error())
 			}
 		}
 	}
@@ -558,7 +558,7 @@ func (app *App) init() *App {
 				} else {
 					ctx.err = ErrBadRequest
 				}
-				app.Settings.ErrorHandler(ctx) // ctx.Route() not available
+				app.Settings.ErrorHandler(ctx, ctx.err) // ctx.Route() not available
 				app.ReleaseCtx(ctx)
 			},
 		}
