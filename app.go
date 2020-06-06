@@ -544,23 +544,18 @@ func (app *App) init() *App {
 			Logger:       &disableLogger{},
 			LogAllErrors: false,
 			ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
-				// Possible feature for v1.11.x
 				ctx := app.AcquireCtx(fctx)
-				app.Settings.ErrorHandler(ctx, err)
-				app.ReleaseCtx(ctx)
 				if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
-					fctx.Response.SetStatusCode(StatusRequestHeaderFieldsTooLarge)
-					fctx.Response.SetBodyString("Request Header Fields Too Large")
+					ctx.err = ErrRequestHeaderFieldsTooLarge
 				} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
-					fctx.Response.SetStatusCode(StatusRequestTimeout)
-					fctx.Response.SetBodyString("Request Timeout")
+					ctx.err = ErrRequestTimeout
 				} else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
-					fctx.Response.SetStatusCode(StatusRequestEntityTooLarge)
-					fctx.Response.SetBodyString("Request Entity Too Large")
+					ctx.err = ErrRequestEntityTooLarge
 				} else {
-					fctx.Response.SetStatusCode(StatusBadRequest)
-					fctx.Response.SetBodyString("Bad Request")
+					ctx.err = ErrBadRequest
 				}
+				app.Settings.ErrorHandler(ctx, ctx.err) // ctx.Route() not available
+				app.ReleaseCtx(ctx)
 			},
 		}
 	}
