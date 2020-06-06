@@ -156,6 +156,26 @@ type Static struct {
 	Index string
 }
 
+// Error represents an error that occurred while handling a request.
+type Error struct {
+	Code    int
+	Message string
+}
+
+// Error makes it compatible with `error` interface.
+func (e *Error) Error() string {
+	return e.Message
+}
+
+// NewError creates a new HTTPError instance.
+func NewError(code int, message ...string) *Error {
+	e := &Error{code, utils.StatusMessage(code)}
+	if len(message) > 0 {
+		e.Message = message[0]
+	}
+	return e
+}
+
 // Routes returns all registered routes
 //
 // for _, r := range app.Routes() {
@@ -197,9 +217,12 @@ func New(settings ...*Settings) *App {
 			Prefork:     utils.GetArgument("-prefork"),
 			BodyLimit:   4 * 1024 * 1024,
 			Concurrency: 256 * 1024,
-			// Possible feature for v1.11.x
 			ErrorHandler: func(ctx *Ctx, err error) {
-				ctx.Status(StatusInternalServerError).SendString(err.Error())
+				code := StatusInternalServerError
+				if e, ok := err.(*Error); ok {
+					code = e.Code
+				}
+				ctx.Status(code).SendString(err.Error())
 			},
 		},
 	}
@@ -223,7 +246,11 @@ func New(settings ...*Settings) *App {
 		// Possible feature for v1.11.x
 		if app.Settings.ErrorHandler == nil {
 			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
-				ctx.Status(StatusInternalServerError).SendString(err.Error())
+				code := StatusInternalServerError
+				if e, ok := err.(*Error); ok {
+					code = e.Code
+				}
+				ctx.Status(code).SendString(err.Error())
 			}
 		}
 	}
@@ -518,9 +545,9 @@ func (app *App) init() *App {
 			LogAllErrors: false,
 			ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
 				// Possible feature for v1.11.x
-				// ctx := app.AcquireCtx(fctx)
-				// app.Settings.ErrorHandler(ctx, err)
-				// app.ReleaseCtx(ctx)
+				ctx := app.AcquireCtx(fctx)
+				app.Settings.ErrorHandler(ctx, err)
+				app.ReleaseCtx(ctx)
 				if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
 					fctx.Response.SetStatusCode(StatusRequestHeaderFieldsTooLarge)
 					fctx.Response.SetBodyString("Request Header Fields Too Large")
