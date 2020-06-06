@@ -71,9 +71,6 @@ type Templates interface {
 	Render(io.Writer, string, interface{}) error
 }
 
-// Global variables
-var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
-
 // AcquireCtx from pool
 func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx := app.pool.Get().(*Ctx)
@@ -388,6 +385,9 @@ func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
 
+// Global variables
+var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
+
 // Fresh When the response is still “fresh” in the client’s cache true is returned,
 // otherwise false is returned to indicate that the client cache is now stale
 // and the full response should be sent.
@@ -591,9 +591,6 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 // Next executes the next method in the stack that matches the current route.
 // You can pass an optional error for custom error handling.
 func (ctx *Ctx) Next(err ...error) {
-	if ctx.app == nil {
-		return
-	}
 	if len(err) > 0 {
 		ctx.Fasthttp.Response.Header.Reset()
 		ctx.err = err[0]
@@ -641,7 +638,7 @@ func (ctx *Ctx) Params(key string) string {
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
 func (ctx *Ctx) Path(override ...string) string {
-	if len(override) != 0 && ctx.path != override[0] && ctx.app != nil {
+	if len(override) != 0 && ctx.path != override[0] {
 		// Set new path to request
 		ctx.Fasthttp.Request.URI().SetPath(override[0])
 		// Set new path to context
