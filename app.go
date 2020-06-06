@@ -52,13 +52,16 @@ type App struct {
 
 // Settings holds is a struct holding the server settings
 type Settings struct {
-	// Possible feature for v1.11.x
 	// ErrorHandler is executed when you pass an error in the Next(err) method
 	// This function is also executed when middleware.Recover() catches a panic
-	// Default: func(ctx *fiber.Ctx, err error) {
-	// 		ctx.Status(fiber.StatusBadRequest).SendString(err.Error())
+	// Default: func(ctx *Ctx, err error) {
+	// 	code := StatusInternalServerError
+	// 	if e, ok := err.(*Error); ok {
+	// 		code = e.Code
+	// 	}
+	// 	ctx.Status(code).SendString(err.Error())
 	// }
-	ErrorHandler func(*Ctx, error)
+	ErrorHandler Handler
 
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
@@ -217,15 +220,16 @@ func New(settings ...*Settings) *App {
 			Prefork:     utils.GetArgument("-prefork"),
 			BodyLimit:   4 * 1024 * 1024,
 			Concurrency: 256 * 1024,
-			ErrorHandler: func(ctx *Ctx, err error) {
+			ErrorHandler: func(ctx *Ctx) {
 				code := StatusInternalServerError
-				if e, ok := err.(*Error); ok {
+				if e, ok := ctx.Error().(*Error); ok {
 					code = e.Code
 				}
-				ctx.Status(code).SendString(err.Error())
+				ctx.Status(code).SendString(ctx.Error().Error())
 			},
 		},
 	}
+
 	// Overwrite settings if provided
 	if len(settings) > 0 {
 		app.Settings = settings[0]
@@ -243,14 +247,14 @@ func New(settings ...*Settings) *App {
 			getBytes = getBytesImmutable
 			getString = getStringImmutable
 		}
-		// Possible feature for v1.11.x
+		// Set default error handler
 		if app.Settings.ErrorHandler == nil {
-			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
+			app.Settings.ErrorHandler = func(ctx *Ctx) {
 				code := StatusInternalServerError
-				if e, ok := err.(*Error); ok {
+				if e, ok := ctx.Error().(*Error); ok {
 					code = e.Code
 				}
-				ctx.Status(code).SendString(err.Error())
+				ctx.Status(code).SendString(ctx.Error().Error())
 			}
 		}
 	}
@@ -554,7 +558,7 @@ func (app *App) init() *App {
 				} else {
 					ctx.err = ErrBadRequest
 				}
-				app.Settings.ErrorHandler(ctx, ctx.err) // ctx.Route() not available
+				app.Settings.ErrorHandler(ctx) // ctx.Route() not available
 				app.ReleaseCtx(ctx)
 			},
 		}

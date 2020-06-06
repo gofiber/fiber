@@ -40,7 +40,7 @@ type Ctx struct {
 	path         string               // Prettified HTTP path
 	pathOriginal string               // Original HTTP path
 	values       []string             // Route parameter values
-	err          error                // Contains error if caught
+	err          error                // Contains error if passed to Next
 	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 }
 
@@ -591,9 +591,9 @@ func (ctx *Ctx) Next(err ...error) {
 		return
 	}
 	if len(err) > 0 {
-		ctx.err = err[0]
 		ctx.Fasthttp.Response.Header.Reset()
-		ctx.app.Settings.ErrorHandler(ctx, err[0])
+		ctx.app.Settings.ErrorHandler(ctx)
+		ctx.err = err[0]
 		return
 	}
 
@@ -833,7 +833,8 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 		hasTrailingSlash := len(file) > 0 && file[len(file)-1] == '/'
 		var err error
 		if file, err = filepath.Abs(file); err != nil {
-			ctx.app.Settings.ErrorHandler(ctx, err)
+			ctx.err = err
+			ctx.app.Settings.ErrorHandler(ctx)
 			return
 		}
 		if hasTrailingSlash {

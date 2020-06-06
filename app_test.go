@@ -53,7 +53,7 @@ func Test_App_ErrorHandler(t *testing.T) {
 
 func Test_App_ErrorHandler_Custom(t *testing.T) {
 	app := New(&Settings{
-		ErrorHandler: func(ctx *Ctx, err error) {
+		ErrorHandler: func(ctx *Ctx) {
 			ctx.Status(200).SendString("Hi, I'm an custom error!")
 		},
 	})
