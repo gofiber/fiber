@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://gofiber.io">
-    <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/fiber_v2_logo.svg">
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
@@ -46,30 +46,30 @@
    <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ar_SA.md">
      <img height="20px" src="https://img.shields.io/badge/SA-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDEyIDYiIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4NCjxwYXRoIGZpbGw9IiNjZTExMjYiIGQ9Im0wLDBoM3Y2aC0zeiIvPg0KPHBhdGggZmlsbD0iIzAwOWEwMCIgZD0ibTMsMGg5djJoLTl6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMywyaDl2MmgtOXoiLz4NCjxwYXRoIGQ9Im0zLDRoOXYyaC05eiIvPg0KPC9zdmc+DQo=">
    </a>
-  <br><br>
+  <br>
   <a href="https://github.com/gofiber/fiber/stargazers">
     <img src="https://img.shields.io/github/stars/gofiber/fiber?color=00ACD7&label=%E2%AD%90%20">
   </a>
   <a href="https://github.com/gofiber/fiber/releases">
-    <img src="https://img.shields.io/github/v/release/gofiber/fiber?color=00ACD7&label=%F0%9F%9A%80%20release">
-  </a>
-    <a href="https://docs.gofiber.io">
-    <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat">
-  </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
-    <img src="https://img.shields.io/badge/%F0%9F%93%9D%20report-A%2B-00ACD7">
-  </a>
-  <a href="https://gocover.io/github.com/gofiber/fiber">
-    <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-91%25-00ACD7.svg?style=flat">
+    <img src="https://img.shields.io/github/v/release/gofiber/fiber?color=00ACD7&label=%F0%9F%9A%80%20">
   </a>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+    <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
+  </a>
+  <a href="https://gocover.io/github.com/gofiber/fiber">
+    <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-91%25-75C46B.svg?style=flat">
+  </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
-    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Security?label=%F0%9F%94%91%20gosec&style=flat&color=00ACD7">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Security?label=%F0%9F%94%91%20gosec&style=flat&color=75C46B">
   </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
-    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=%F0%9F%A7%AA%20tests&style=flat&color=00ACD7">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=%F0%9F%A7%AA%20tests&style=flat&color=75C46B">
+  </a>
+    <a href="https://docs.gofiber.io">
+    <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat">
   </a>
   <a href="https://gofiber.io/discord">
     <img src="https://img.shields.io/discord/704680098577514527?style=flat&label=%F0%9F%92%AC%20discord&color=00ACD7">
@@ -97,6 +97,15 @@ func main() {
 }
 ```
 
+## 🤖 Pengukuran Kinerja
+
+Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) dan [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Apabila anda ingin melihat hasil lengkapnya, silahkan kunjungi halaman [Wiki](https://docs.gofiber.io/benchmarks) kami.
+
+<p float="left" align="middle">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
+</p>
+
 ## ⚙️ Instalasi
 
 Pertama, [unduh](https://golang.org/dl/) dan instal Go di komputer anda. Versi `1.11` atau yang lebih tinggi diperlukan.
@@ -106,15 +115,6 @@ Instalasi dilakukkan dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-A
 ```bash
 go get -u github.com/gofiber/fiber/...
 ```
-
-## 🤖 Pengukuran Kinerja
-
-Pengukuran ini dilakukan oleh [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) dan [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Apabila anda ingin melihat hasil lengkapnya, silahkan kunjungi halaman [Wiki](https://docs.gofiber.io/benchmarks) kami.
-
-<p float="left" align="middle">
-  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
-  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark_alloc.png" width="49%">
-</p>
 
 ## 🎯 Fitur
 
@@ -128,7 +128,7 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://github.com/TechEmpower/Frame
 - [Template engines](https://github.com/gofiber/template)
 - [WebSocket support](https://docs.gofiber.io/middleware#websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Available in [12 languages](https://docs.gofiber.io/)
+- Available in [14 languages](https://docs.gofiber.io/)
 - Dan masih banyak lagi, [kunjungi Fiber](https://docs.gofiber.io/)
 
 ## 💡 Filosofi
@@ -531,8 +531,11 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 |                                                             | User                                            | Donation |
 | :---------------------------------------------------------- | :---------------------------------------------- | :------- |
 | ![](https://avatars.githubusercontent.com/u/56607882?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt)  | ☕ x 5    |
+| ![](https://avatars.githubusercontent.com/u/27820675?s=25 ) | [@hendratommy](https://github.com/hendratommy)  | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/1094221?s=25 )  | [@ekaputra07](https://github.com/ekaputra07)    | ☕ x 5    |
+| ![](https://avatars.githubusercontent.com/u/194590?s=25 )   | [@jorgefuertes](https://github.com/jorgefuertes)| ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/186637?s=25 )   | [@candidosales](https://github.com/candidosales)| ☕ x 5    |
+| ![](https://avatars.githubusercontent.com/u/29659953?s=25 ) | [@l0nax](https://github.com/l0nax)              | ☕ x 3    |
 | ![](https://avatars.githubusercontent.com/u/59947262?s=25 ) | [@ankush](https://github.com/ankush)            | ☕ x 3    |
 | ![](https://avatars.githubusercontent.com/u/635852?s=25 )   | [@bihe](https://github.com/bihe)                | ☕ x 3    |
 | ![](https://avatars.githubusercontent.com/u/307334?s=25 )   | [@justdave](https://github.com/justdave)        | ☕ x 3    |
@@ -554,6 +557,7 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
 
 **Third-party library licenses**
-- [FastHTTP](https://github.com/valyala/fasthttp/blob/master/LICENSE)
-- [Schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+- [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 - [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
