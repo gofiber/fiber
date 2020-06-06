@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"reflect"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,7 +26,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.11.0"
+const Version = "1.10.5"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -40,8 +39,6 @@ type App struct {
 	mutex sync.Mutex
 	// Route stack
 	stack [][]*Route
-	// Amount of registered routes
-	routes int
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -53,12 +50,12 @@ type App struct {
 // Settings holds is a struct holding the server settings
 type Settings struct {
 	// Possible feature for v1.11.x
-	// ErrorHandler is executed when you pass an error in the Next(err) method
-	// This function is also executed when middleware.Recover() catches a panic
-	// Default: func(ctx *fiber.Ctx, err error) {
-	// 		ctx.Status(fiber.StatusBadRequest).SendString(err.Error())
-	// }
-	ErrorHandler func(*Ctx, error)
+	// // ErrorHandler is executed when you pass an error in the Next(err) method
+	// // This function is also executed when a panic occurs somewhere in the stack
+	// // Default: func(err error, ctx *fiber.Ctx) {
+	// // 		ctx.Status(500).Send(err.Error())
+	// // }
+	// ErrorHandler func(*Ctx, error)
 
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
@@ -140,6 +137,7 @@ type Settings struct {
 type Static struct {
 	// This works differently than the github.com/gofiber/compression middleware
 	// The server tries minimizing CPU usage by caching compressed files.
+	// It adds ".fiber.gz" suffix to the original file name.
 	// Optional. Default value false
 	Compress bool
 
@@ -156,28 +154,22 @@ type Static struct {
 	Index string
 }
 
-// Routes returns all registered routes
-//
-// for _, r := range app.Routes() {
-// 	fmt.Printf("%s\t%s\n", r.Method, r.Path)
+// TODO: v1.11 Potential feature to get all registered routes
+// func (app *App) Routes(print ...bool) map[string][]string {
+// 	routes := make(map[string][]string)
+// 	for i := range app.stack {
+// 		method := intMethod[i]
+// 		routes[method] = []string{}
+// 		for k := range app.stack[i] {
+// 			routes[method] = append(routes[method], app.stack[i][k].Path)
+// 		}
+// 	}
+// 	if len(print) > 0 && print[0] {
+// 		b, _ := json.MarshalIndent(routes, "", "  ")
+// 		fmt.Print(string(b))
+// 	}
+// 	return routes
 // }
-func (app *App) Routes() []*Route {
-	routes := make([]*Route, 0)
-	for m := range app.stack {
-		for r := range app.stack[m] {
-			// Ignore HEAD routes handling GET routes
-			if m == 1 && app.stack[m][r].Method == MethodGet {
-				continue
-			}
-			routes = append(routes, app.stack[m][r])
-		}
-	}
-	// Sort routes by stack position
-	sort.Slice(routes, func(i, k int) bool {
-		return routes[i].pos < routes[k].pos
-	})
-	return routes
-}
 
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
@@ -198,9 +190,9 @@ func New(settings ...*Settings) *App {
 			BodyLimit:   4 * 1024 * 1024,
 			Concurrency: 256 * 1024,
 			// Possible feature for v1.11.x
-			ErrorHandler: func(ctx *Ctx, err error) {
-				ctx.Status(StatusInternalServerError).SendString(err.Error())
-			},
+			// ErrorHandler: func(ctx *Ctx, err error) {
+			// 	ctx.Status(500).SendString(err.Error())
+			// },
 		},
 	}
 	// Overwrite settings if provided
@@ -221,11 +213,11 @@ func New(settings ...*Settings) *App {
 			getString = getStringImmutable
 		}
 		// Possible feature for v1.11.x
-		if app.Settings.ErrorHandler == nil {
-			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
-				ctx.Status(StatusInternalServerError).SendString(err.Error())
-			}
-		}
+		// if app.Settings.ErrorHandler == nil {
+		// 	app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
+		// 		ctx.Status(500).SendString(err.Error())
+		// 	}
+		// }
 	}
 	// Initialize app
 	return app.init()
