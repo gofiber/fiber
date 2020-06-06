@@ -52,11 +52,14 @@ type App struct {
 
 // Settings holds is a struct holding the server settings
 type Settings struct {
-	// Possible feature for v1.11.x
 	// ErrorHandler is executed when you pass an error in the Next(err) method
 	// This function is also executed when middleware.Recover() catches a panic
-	// Default: func(ctx *fiber.Ctx, err error) {
-	// 		ctx.Status(fiber.StatusBadRequest).SendString(err.Error())
+	// Default: func(ctx *Ctx, err error) {
+	// 	code := StatusInternalServerError
+	// 	if e, ok := err.(*Error); ok {
+	// 		code = e.Code
+	// 	}
+	// 	ctx.Status(code).SendString(err.Error())
 	// }
 	ErrorHandler func(*Ctx, error)
 
@@ -156,6 +159,26 @@ type Static struct {
 	Index string
 }
 
+// Error represents an error that occurred while handling a request.
+type Error struct {
+	Code    int
+	Message string
+}
+
+// Error makes it compatible with `error` interface.
+func (e *Error) Error() string {
+	return e.Message
+}
+
+// NewError creates a new HTTPError instance.
+func NewError(code int, message ...string) *Error {
+	e := &Error{code, utils.StatusMessage(code)}
+	if len(message) > 0 {
+		e.Message = message[0]
+	}
+	return e
+}
+
 // Routes returns all registered routes
 //
 // for _, r := range app.Routes() {
@@ -197,12 +220,16 @@ func New(settings ...*Settings) *App {
 			Prefork:     utils.GetArgument("-prefork"),
 			BodyLimit:   4 * 1024 * 1024,
 			Concurrency: 256 * 1024,
-			// Possible feature for v1.11.x
 			ErrorHandler: func(ctx *Ctx, err error) {
-				ctx.Status(StatusInternalServerError).SendString(err.Error())
+				code := StatusInternalServerError
+				if e, ok := err.(*Error); ok {
+					code = e.Code
+				}
+				ctx.Status(code).SendString(err.Error())
 			},
 		},
 	}
+
 	// Overwrite settings if provided
 	if len(settings) > 0 {
 		app.Settings = settings[0]
@@ -220,10 +247,14 @@ func New(settings ...*Settings) *App {
 			getBytes = getBytesImmutable
 			getString = getStringImmutable
 		}
-		// Possible feature for v1.11.x
+		// Set default error
 		if app.Settings.ErrorHandler == nil {
 			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
-				ctx.Status(StatusInternalServerError).SendString(err.Error())
+				code := StatusInternalServerError
+				if e, ok := err.(*Error); ok {
+					code = e.Code
+				}
+				ctx.Status(code).SendString(err.Error())
 			}
 		}
 	}
@@ -517,23 +548,18 @@ func (app *App) init() *App {
 			Logger:       &disableLogger{},
 			LogAllErrors: false,
 			ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
-				// Possible feature for v1.11.x
-				// ctx := app.AcquireCtx(fctx)
-				// app.Settings.ErrorHandler(ctx, err)
-				// app.ReleaseCtx(ctx)
+				ctx := app.AcquireCtx(fctx)
 				if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
-					fctx.Response.SetStatusCode(StatusRequestHeaderFieldsTooLarge)
-					fctx.Response.SetBodyString("Request Header Fields Too Large")
+					ctx.err = ErrRequestHeaderFieldsTooLarge
 				} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
-					fctx.Response.SetStatusCode(StatusRequestTimeout)
-					fctx.Response.SetBodyString("Request Timeout")
+					ctx.err = ErrRequestTimeout
 				} else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
-					fctx.Response.SetStatusCode(StatusRequestEntityTooLarge)
-					fctx.Response.SetBodyString("Request Entity Too Large")
+					ctx.err = ErrRequestEntityTooLarge
 				} else {
-					fctx.Response.SetStatusCode(StatusBadRequest)
-					fctx.Response.SetBodyString("Bad Request")
+					ctx.err = ErrBadRequest
 				}
+				app.Settings.ErrorHandler(ctx, ctx.err) // ctx.Route() not available
+				app.ReleaseCtx(ctx)
 			},
 		}
 	}

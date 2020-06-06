@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -40,7 +41,7 @@ type Ctx struct {
 	path         string               // Prettified HTTP path
 	pathOriginal string               // Original HTTP path
 	values       []string             // Route parameter values
-	err          error                // Contains error if caught
+	err          error                // Contains error if passed to Next
 	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 }
 
@@ -69,9 +70,6 @@ type Cookie struct {
 type Templates interface {
 	Render(io.Writer, string, interface{}) error
 }
-
-// Global variables
-var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
 // AcquireCtx from pool
 func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
@@ -325,6 +323,9 @@ func (ctx *Ctx) Download(file string, filename ...string) {
 
 // Error contains the error information passed via the Next(err) method.
 func (ctx *Ctx) Error() error {
+	if ctx.err == nil {
+		return errors.New("")
+	}
 	return ctx.err
 }
 
@@ -383,6 +384,9 @@ func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
+
+// Global variables
+var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
 // Fresh When the response is still “fresh” in the client’s cache true is returned,
 // otherwise false is returned to indicate that the client cache is now stale
@@ -587,13 +591,10 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 // Next executes the next method in the stack that matches the current route.
 // You can pass an optional error for custom error handling.
 func (ctx *Ctx) Next(err ...error) {
-	if ctx.app == nil {
-		return
-	}
 	if len(err) > 0 {
-		ctx.err = err[0]
 		ctx.Fasthttp.Response.Header.Reset()
-		ctx.app.Settings.ErrorHandler(ctx, err[0])
+		ctx.err = err[0]
+		ctx.app.Settings.ErrorHandler(ctx, ctx.err)
 		return
 	}
 
@@ -637,7 +638,7 @@ func (ctx *Ctx) Params(key string) string {
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
 func (ctx *Ctx) Path(override ...string) string {
-	if len(override) != 0 && ctx.path != override[0] && ctx.app != nil {
+	if len(override) != 0 && ctx.path != override[0] {
 		// Set new path to request
 		ctx.Fasthttp.Request.URI().SetPath(override[0])
 		// Set new path to context
@@ -833,7 +834,8 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 		hasTrailingSlash := len(file) > 0 && file[len(file)-1] == '/'
 		var err error
 		if file, err = filepath.Abs(file); err != nil {
-			ctx.app.Settings.ErrorHandler(ctx, err)
+			ctx.err = err
+			ctx.app.Settings.ErrorHandler(ctx, ctx.err)
 			return
 		}
 		if hasTrailingSlash {

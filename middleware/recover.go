@@ -15,8 +15,7 @@ func Recover() fiber.Handler {
 				if !ok {
 					err = fmt.Errorf("%v", r)
 				}
-				ctx.Fasthttp.Response.Header.Reset()
-				ctx.App().Settings.ErrorHandler(ctx, err)
+				ctx.Next(err)
 				return
 			}
 		}()
