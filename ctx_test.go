@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"text/template"
 	"time"
 
 	utils "github.com/gofiber/utils"
@@ -1056,6 +1057,31 @@ func Test_Ctx_Render(t *testing.T) {
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	err := ctx.Render("./.github/index.tmpl", Map{
+		"Title": "Hello, World!",
+	})
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
+}
+
+type testTemplateEngine struct {
+	templates *template.Template
+}
+
+func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}) error {
+	return t.templates.ExecuteTemplate(w, name, bind)
+}
+
+// go test -run Test_Ctx_Render_Engine
+func Test_Ctx_Render_Engine(t *testing.T) {
+	t.Parallel()
+	engine := &testTemplateEngine{
+		templates: template.Must(template.ParseGlob("./.github/*.tmpl")),
+	}
+	app := New()
+	app.Settings.Templates = engine
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	err := ctx.Render("index.tmpl", Map{
 		"Title": "Hello, World!",
 	})
 	utils.AssertEqual(t, nil, err)
