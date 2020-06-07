@@ -8,7 +8,7 @@ package main
 
 import (
   "github.com/gofiber/fiber"
-  "github.com/gofiber/middleware"
+  "github.com/gofiber/fiber/middleware"
 )
 
 func main() {
