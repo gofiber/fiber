@@ -228,7 +228,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 		GenerateIndexPages:   false,
 		AcceptByteRange:      false,
 		Compress:             false,
-		CompressedFileSuffix: ".fiber.gz",
+		CompressedFileSuffix: app.Settings.CompressedFileSuffix,
 		CacheDuration:        10 * time.Second,
 		IndexNames:           []string{"index.html"},
 		PathRewrite: func(ctx *fasthttp.RequestCtx) []byte {

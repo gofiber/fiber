@@ -6,6 +6,20 @@ import (
 	"github.com/gofiber/fiber"
 )
 
+// Middleware types
+type (
+	// RecoverConfig defines the config for Logger middleware.
+	RecoverConfig struct {
+		// Next defines a function to skip this middleware.
+		Next func(ctx *fiber.Ctx) bool
+	}
+)
+
+// RecoverConfigDefault config
+var RecoverConfigDefault = RecoverConfig{
+	Next: nil,
+}
+
 // Recover will recover from panics and calls the ErrorHandler
 func Recover() fiber.Handler {
 	return func(ctx *fiber.Ctx) {

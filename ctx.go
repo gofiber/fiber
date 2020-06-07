@@ -777,6 +777,14 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 
 // Route returns the matched Route struct.
 func (ctx *Ctx) Route() *Route {
+	if ctx.route == nil {
+		// Fallback for fasthttp error handler
+		return &Route{
+			Path:     ctx.pathOriginal,
+			Method:   ctx.method,
+			Handlers: make([]Handler, 0),
+		}
+	}
 	return ctx.route
 }
 
@@ -818,7 +826,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 			GenerateIndexPages:   false,
 			AcceptByteRange:      true,
 			Compress:             true,
-			CompressedFileSuffix: ".fiber.gz",
+			CompressedFileSuffix: ctx.app.Settings.CompressedFileSuffix,
 			CacheDuration:        10 * time.Second,
 			IndexNames:           []string{"index.html"},
 		}

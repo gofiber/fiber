@@ -21,17 +21,41 @@ type (
 	LoggerConfig struct {
 		// Next defines a function to skip this middleware.
 		Next func(ctx *fiber.Ctx) bool
-		// Format defines the logging format with defined variables
-		// Optional. Default: "${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n"
-		// Possible values:
-		// time, ip, ips, url, host, method, path, protocol, route
-		// referer, ua, latency, status, body, error, bytesSent, bytesReceived
-		// header:<key>, query:<key>, form:<key>, cookie:<key>
+
+		// Format defines the logging tags
+		//
+		// - time
+		// - ip
+		// - ips
+		// - url
+		// - host
+		// - method
+		// - path
+		// - protocol
+		// - route
+		// - referer
+		// - ua
+		// - latency
+		// - status
+		// - body
+		// - error
+		// - bytesSent
+		// - bytesReceived
+		// - header:<key>
+		// - query:<key>
+		// - form:<key>
+		// - cookie:<key>
+		//
+		// Optional. Default: ${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n
 		Format string
+
 		// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
+		//
 		// Optional. Default: 15:04:05
 		TimeFormat string
+
 		// Output is a writter where logs are written
+		//
 		// Default: os.Stderr
 		Output io.Writer
 	}
@@ -104,7 +128,7 @@ func LoggerWithConfig(config LoggerConfig) fiber.Handler {
 	}
 	// Return handler
 	return func(c *fiber.Ctx) {
-		// Don't execute the middleware if Next returns false
+		// Don't execute the middleware if Next returns true
 		if config.Next != nil && config.Next(c) {
 			c.Next()
 			return

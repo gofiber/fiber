@@ -132,7 +132,12 @@ type Settings struct {
 	// Default: unlimited
 	IdleTimeout time.Duration
 
-	// TODO: v1.11
+	// CompressedFileSuffix adds suffix to the original file name and
+	// tries saving the resulting compressed file under the new file name.
+	// Default: ".fiber.gz"
+	CompressedFileSuffix string
+
+	// FEATURE: v1.12
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
@@ -217,9 +222,10 @@ func New(settings ...*Settings) *App {
 		},
 		// Set default settings
 		Settings: &Settings{
-			Prefork:     utils.GetArgument("-prefork"),
-			BodyLimit:   4 * 1024 * 1024,
-			Concurrency: 256 * 1024,
+			Prefork:              utils.GetArgument("-prefork"),
+			BodyLimit:            4 * 1024 * 1024,
+			Concurrency:          256 * 1024,
+			CompressedFileSuffix: ".fiber.gz",
 			ErrorHandler: func(ctx *Ctx, err error) {
 				code := StatusInternalServerError
 				if e, ok := err.(*Error); ok {
@@ -246,6 +252,10 @@ func New(settings ...*Settings) *App {
 		if app.Settings.Immutable {
 			getBytes = getBytesImmutable
 			getString = getStringImmutable
+		}
+		// Set default compressed file suffix
+		if app.Settings.CompressedFileSuffix == "" {
+			app.Settings.CompressedFileSuffix = ".fiber.gz"
 		}
 		// Set default error
 		if app.Settings.ErrorHandler == nil {
@@ -558,7 +568,7 @@ func (app *App) init() *App {
 				} else {
 					ctx.err = ErrBadRequest
 				}
-				app.Settings.ErrorHandler(ctx, ctx.err) // ctx.Route() not available
+				app.Settings.ErrorHandler(ctx, ctx.err)
 				app.ReleaseCtx(ctx)
 			},
 		}
