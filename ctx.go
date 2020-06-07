@@ -767,6 +767,7 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 		if tmpl, err = template.New("").Parse(buf.String()); err != nil {
 			return err
 		}
+		buf.Reset()
 		// Render template
 		if err = tmpl.Execute(buf, bind); err != nil {
 			return err

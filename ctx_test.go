@@ -1055,9 +1055,10 @@ func Test_Ctx_Render(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.Render("./.github/index.tmpl", Map{
+	err := ctx.Render("./.github/index.tmpl", Map{
 		"Title": "Hello, World!",
 	})
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
 }
 
