@@ -16,6 +16,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -750,8 +751,22 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 		}
 	} else {
 		// Render raw template using 'name' as filepath if no engine is set
-		tmpl, err := template.ParseFiles(filepath.Clean(name))
+		var tmpl *template.Template
+		raw := bytebufferpool.Get()
+		defer bytebufferpool.Put(raw)
+		// Read file
+		f, err := os.Open(filepath.Clean(name))
 		if err != nil {
+			return err
+		}
+		if _, err = raw.ReadFrom(f); err != nil {
+			return err
+		}
+		if err = f.Close(); err != nil {
+			return err
+		}
+		// Parse template
+		if tmpl, err = template.New("").Parse(raw.String()); err != nil {
 			return err
 		}
 		// Render template
