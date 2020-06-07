@@ -780,6 +780,7 @@ func (ctx *Ctx) Route() *Route {
 	if ctx.route == nil {
 		// Fallback for fasthttp error handler
 		return &Route{
+			path:     ctx.pathOriginal,
 			Path:     ctx.pathOriginal,
 			Method:   ctx.method,
 			Handlers: make([]Handler, 0),
