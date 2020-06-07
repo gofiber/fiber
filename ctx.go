@@ -826,7 +826,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 			GenerateIndexPages:   false,
 			AcceptByteRange:      true,
 			Compress:             true,
-			CompressedFileSuffix: ".fiber.gz",
+			CompressedFileSuffix: ctx.app.Settings.CompressedFileSuffix,
 			CacheDuration:        10 * time.Second,
 			IndexNames:           []string{"index.html"},
 		}
