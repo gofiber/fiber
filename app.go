@@ -35,6 +35,20 @@ type Map map[string]interface{}
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx)
 
+// default settings
+var (
+	defaultBodyLimit    = 4 * 1024 * 1024
+	defaultConcurrency  = 256 * 1024
+	defaultErrorHandler = func(ctx *Ctx, err error) {
+		code := StatusInternalServerError
+		if e, ok := err.(*Error); ok {
+			code = e.Code
+		}
+		ctx.Status(code).SendString(err.Error())
+	}
+	defaultCompressedFileSuffix = ".fiber.gz"
+)
+
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
@@ -220,54 +234,39 @@ func New(settings ...*Settings) *App {
 				return new(Ctx)
 			},
 		},
-		// Set default settings
-		Settings: &Settings{
-			Prefork:              utils.GetArgument("-prefork"),
-			BodyLimit:            4 * 1024 * 1024,
-			Concurrency:          256 * 1024,
-			CompressedFileSuffix: ".fiber.gz",
-			ErrorHandler: func(ctx *Ctx, err error) {
-				code := StatusInternalServerError
-				if e, ok := err.(*Error); ok {
-					code = e.Code
-				}
-				ctx.Status(code).SendString(err.Error())
-			},
-		},
+		// Set settings
+		Settings: &Settings{},
 	}
 
 	// Overwrite settings if provided
 	if len(settings) > 0 {
 		app.Settings = settings[0]
-		if !app.Settings.Prefork { // Default to -prefork flag if false
-			app.Settings.Prefork = utils.GetArgument("-prefork")
-		}
-		if app.Settings.BodyLimit <= 0 {
-			app.Settings.BodyLimit = 4 * 1024 * 1024
-		}
-		if app.Settings.Concurrency <= 0 {
-			app.Settings.Concurrency = 256 * 1024
-		}
-		// Replace unsafe conversion functions
-		if app.Settings.Immutable {
-			getBytes = getBytesImmutable
-			getString = getStringImmutable
-		}
-		// Set default compressed file suffix
-		if app.Settings.CompressedFileSuffix == "" {
-			app.Settings.CompressedFileSuffix = ".fiber.gz"
-		}
-		// Set default error
-		if app.Settings.ErrorHandler == nil {
-			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
-				code := StatusInternalServerError
-				if e, ok := err.(*Error); ok {
-					code = e.Code
-				}
-				ctx.Status(code).SendString(err.Error())
-			}
-		}
 	}
+
+	if app.Settings.BodyLimit <= 0 {
+		app.Settings.BodyLimit = defaultBodyLimit
+	}
+	if app.Settings.Concurrency <= 0 {
+		app.Settings.Concurrency = defaultConcurrency
+	}
+	// Set default compressed file suffix
+	if app.Settings.CompressedFileSuffix == "" {
+		app.Settings.CompressedFileSuffix = defaultCompressedFileSuffix
+	}
+	// Set default error
+	if app.Settings.ErrorHandler == nil {
+		app.Settings.ErrorHandler = defaultErrorHandler
+	}
+
+	if !app.Settings.Prefork { // Default to -prefork flag if false
+		app.Settings.Prefork = utils.GetArgument("-prefork")
+	}
+	// Replace unsafe conversion functions
+	if app.Settings.Immutable {
+		getBytes = getBytesImmutable
+		getString = getStringImmutable
+	}
+
 	// Initialize app
 	return app.init()
 }
