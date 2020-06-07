@@ -263,8 +263,7 @@ func New(settings ...*Settings) *App {
 	}
 	// Replace unsafe conversion functions
 	if app.Settings.Immutable {
-		getBytes = getBytesImmutable
-		getString = getStringImmutable
+		getBytes, getString = getBytesImmutable, getStringImmutable
 	}
 
 	// Initialize app
