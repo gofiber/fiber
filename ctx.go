@@ -12,11 +12,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -752,14 +752,21 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 	} else {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
-		var raw []byte
+		raw := bytebufferpool.Get()
+		defer bytebufferpool.Put(raw)
 		// Read file
-		if raw, err = ioutil.ReadFile(filepath.Clean(name)); err != nil {
+		f, err := os.Open(filepath.Clean(name))
+		if err != nil {
+			return err
+		}
+		if _, err = raw.ReadFrom(f); err != nil {
+			return err
+		}
+		if err = f.Close(); err != nil {
 			return err
 		}
 		// Parse template
-		// tmpl, err := template.ParseGlob(name)
-		if tmpl, err = template.New("").ParseGlob(getString(raw)); err != nil {
+		if tmpl, err = template.New("").Parse(raw.String()); err != nil {
 			return err
 		}
 		// Render template
