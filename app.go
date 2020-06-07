@@ -558,7 +558,7 @@ func (app *App) init() *App {
 				} else {
 					ctx.err = ErrBadRequest
 				}
-				app.Settings.ErrorHandler(ctx, ctx.err) // ctx.Route() not available
+				app.Settings.ErrorHandler(ctx, ctx.err)
 				app.ReleaseCtx(ctx)
 			},
 		}
