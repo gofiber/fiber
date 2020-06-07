@@ -893,7 +893,7 @@ func Test_Ctx_Download(t *testing.T) {
 
 	expect, err := ioutil.ReadAll(f)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, bytes.Equal(expect, ctx.Fasthttp.Response.Body()))
+	utils.AssertEqual(t, expect, ctx.Fasthttp.Response.Body())
 }
 
 // go test -run Test_Ctx_JSON

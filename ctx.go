@@ -743,9 +743,9 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// Use ViewEngine if exist
+	// Use Templates engine if exist
 	if ctx.app.Settings.Templates != nil {
-		// Render template from ViewEngine
+		// Render template from Engine
 		if err := ctx.app.Settings.Templates.Render(buf, name, bind); err != nil {
 			return err
 		}
