@@ -9,7 +9,7 @@ import (
 type (
 	// CompressConfig defines the config for Compress middleware.
 	CompressConfig struct {
-		// Next defines a function to call Next() before executing the middleware.
+		// Next defines a function to skip this middleware.
 		Next func(ctx *fiber.Ctx) bool
 		// Compression level for brotli, gzip and deflate
 		Level int

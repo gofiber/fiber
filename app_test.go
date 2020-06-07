@@ -25,6 +25,15 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
+func Test_App_Routes(t *testing.T) {
+	app := New()
+	h := func(c *Ctx) {}
+	app.Get("/Get", h)
+	app.Head("/Head", h)
+	app.Post("/post", h)
+	utils.AssertEqual(t, 3, len(app.Routes()))
+}
+
 func Test_App_ErrorHandler(t *testing.T) {
 	app := New()
 

@@ -16,6 +16,7 @@ import (
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
 	// Data for routing
+	pos         int         // Position in stack
 	use         bool        // USE matches path prefixes
 	star        bool        // Path equals '*'
 	root        bool        // Path equals '/'
@@ -147,9 +148,14 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 	var parsedRaw = parseRoute(pathRaw)
 	var parsedPretty = parseRoute(pathPretty)
 
+	// Increment global route position
+	app.mutex.Lock()
+	app.routes++
+	app.mutex.Unlock()
 	// Create route metadata
 	route := &Route{
 		// Router booleans
+		pos:  app.routes,
 		use:  isUse,
 		star: isStar,
 		root: isRoot,
@@ -172,12 +178,13 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 		return route
 	}
 
-	// Add route to stack
-	app.addRoute(method, route)
-	// Also add GET routes to HEAD stack
+	// Handle GET routes on HEAD requests
 	if method == MethodGet {
 		app.addRoute(MethodHead, route)
 	}
+
+	// Add route to stack
+	app.addRoute(method, route)
 
 	return route
 }
@@ -267,7 +274,12 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 		// Next middleware
 		c.Next()
 	}
+	// Increment global route position
+	app.mutex.Lock()
+	app.routes++
+	app.mutex.Unlock()
 	route := &Route{
+		pos:    app.routes,
 		use:    true,
 		root:   isRoot,
 		path:   prefix,

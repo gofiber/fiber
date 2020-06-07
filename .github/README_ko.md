@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://gofiber.io">
-    <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/fiber_v2_logo.svg">
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
@@ -53,23 +53,23 @@
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/v/release/gofiber/fiber?color=00ACD7&label=%F0%9F%9A%80%20">
   </a>
-    <a href="https://docs.gofiber.io">
-    <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat">
-  </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
-    <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-00ACD7">
-  </a>
-  <a href="https://gocover.io/github.com/gofiber/fiber">
-    <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-91%25-00ACD7.svg?style=flat">
-  </a>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+    <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
+  </a>
+  <a href="https://gocover.io/github.com/gofiber/fiber">
+    <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-91%25-75C46B.svg?style=flat">
+  </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
-    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Security?label=%F0%9F%94%91%20gosec&style=flat&color=00ACD7">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Security?label=%F0%9F%94%91%20gosec&style=flat&color=75C46B">
   </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
-    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=%F0%9F%A7%AA%20tests&style=flat&color=00ACD7">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=%F0%9F%A7%AA%20tests&style=flat&color=75C46B">
+  </a>
+    <a href="https://docs.gofiber.io">
+    <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat">
   </a>
   <a href="https://gofiber.io/discord">
     <img src="https://img.shields.io/discord/704680098577514527?style=flat&label=%F0%9F%92%AC%20discord&color=00ACD7">
@@ -97,6 +97,16 @@ func main() {
 }
 ```
 
+## 🤖 벤치마크
+
+이 테스트들은 [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)와 [Go Web](https://github.com/smallnest/go-web-framework-benchmark)을 통해 측정되었습니다. 만약 모든 결과를 보고 싶다면, [Wiki](https://docs.gofiber.io/benchmarks)를 확인해 주세요.
+
+<p float="left" align="middle">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
+</p>
+
+
 ## ⚙️ 설치
 
 우선, Go를 [다운로드](https://golang.org/dl/)하고 설치합니다. `1.11` 버전 이상이 요구됩니다.
@@ -106,15 +116,6 @@ func main() {
 ```bash
 go get -u github.com/gofiber/fiber/...
 ```
-
-## 🤖 벤치마크
-
-이 테스트들은 [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks)와 [Go Web](https://github.com/smallnest/go-web-framework-benchmark)을 통해 측정되었습니다. 만약 모든 결과를 보고 싶다면, [Wiki](https://docs.gofiber.io/benchmarks)를 확인해 주세요.
-
-<p float="left" align="middle">
-  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
-  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark_alloc.png" width="49%">
-</p>
 
 ## 🎯 특징
 
@@ -128,7 +129,7 @@ go get -u github.com/gofiber/fiber/...
 - [Template engines](https://github.com/gofiber/template)
 - [WebSocket support](https://docs.gofiber.io/middleware#websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Available in [12 languages](https://docs.gofiber.io/)
+- Available in [14 languages](https://docs.gofiber.io/)
 - 더 알고 싶다면, [Fiber 둘러보기](https://docs.gofiber.io/)
 
 ## 💡 철학
@@ -559,6 +560,7 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
 
 **Third-party library licenses**
-- [FastHTTP](https://github.com/valyala/fasthttp/blob/master/LICENSE)
-- [Schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+- [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 - [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)

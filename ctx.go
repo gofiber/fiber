@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -40,7 +41,7 @@ type Ctx struct {
 	path         string               // Prettified HTTP path
 	pathOriginal string               // Original HTTP path
 	values       []string             // Route parameter values
-	err          error                // Contains error if caught
+	err          error                // Contains error if passed to Next
 	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 }
 
@@ -69,9 +70,6 @@ type Cookie struct {
 type Templates interface {
 	Render(io.Writer, string, interface{}) error
 }
-
-// Global variables
-var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
 // AcquireCtx from pool
 func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
@@ -325,6 +323,9 @@ func (ctx *Ctx) Download(file string, filename ...string) {
 
 // Error contains the error information passed via the Next(err) method.
 func (ctx *Ctx) Error() error {
+	if ctx.err == nil {
+		return errors.New("")
+	}
 	return ctx.err
 }
 
@@ -383,6 +384,9 @@ func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
+
+// Global variables
+var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
 // Fresh When the response is still “fresh” in the client’s cache true is returned,
 // otherwise false is returned to indicate that the client cache is now stale
@@ -587,13 +591,10 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 // Next executes the next method in the stack that matches the current route.
 // You can pass an optional error for custom error handling.
 func (ctx *Ctx) Next(err ...error) {
-	if ctx.app == nil {
-		return
-	}
 	if len(err) > 0 {
-		ctx.err = err[0]
 		ctx.Fasthttp.Response.Header.Reset()
-		ctx.app.Settings.ErrorHandler(ctx, err[0])
+		ctx.err = err[0]
+		ctx.app.Settings.ErrorHandler(ctx, ctx.err)
 		return
 	}
 
@@ -637,7 +638,7 @@ func (ctx *Ctx) Params(key string) string {
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
 func (ctx *Ctx) Path(override ...string) string {
-	if len(override) != 0 && ctx.path != override[0] && ctx.app != nil {
+	if len(override) != 0 && ctx.path != override[0] {
 		// Set new path to request
 		ctx.Fasthttp.Request.URI().SetPath(override[0])
 		// Set new path to context
@@ -776,6 +777,14 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 
 // Route returns the matched Route struct.
 func (ctx *Ctx) Route() *Route {
+	if ctx.route == nil {
+		// Fallback for fasthttp error handler
+		return &Route{
+			Path:     ctx.pathOriginal,
+			Method:   ctx.method,
+			Handlers: make([]Handler, 0),
+		}
+	}
 	return ctx.route
 }
 
@@ -803,18 +812,50 @@ func (ctx *Ctx) SendBytes(body []byte) {
 	ctx.Fasthttp.Response.SetBodyString(getString(body))
 }
 
+var sendFileFS *fasthttp.FS
+var sendFileHandler fasthttp.RequestHandler
+
 // SendFile transfers the file from the given path.
-// The file is compressed by default, disable this by passing a 'true' argument
+// The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
-func (ctx *Ctx) SendFile(file string, uncompressed ...bool) {
-	// https://github.com/gofiber/fiber/issues/391
-	status := ctx.Fasthttp.Response.StatusCode()
-	// Disable gzip compression
-	if len(uncompressed) > 0 && uncompressed[0] {
-		fasthttp.ServeFileUncompressed(ctx.Fasthttp, file)
-	} else {
-		fasthttp.ServeFile(ctx.Fasthttp, file)
+func (ctx *Ctx) SendFile(file string, compress ...bool) {
+	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
+	if sendFileFS == nil {
+		sendFileFS = &fasthttp.FS{
+			Root:                 "/",
+			GenerateIndexPages:   false,
+			AcceptByteRange:      true,
+			Compress:             true,
+			CompressedFileSuffix: ".fiber.gz",
+			CacheDuration:        10 * time.Second,
+			IndexNames:           []string{"index.html"},
+		}
+		sendFileHandler = sendFileFS.NewRequestHandler()
 	}
+	// Disable compression
+	if len(compress) <= 0 || !compress[0] {
+		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
+		ctx.Fasthttp.Request.Header.Del(HeaderAcceptEncoding)
+	}
+	// https://github.com/valyala/fasthttp/blob/master/fs.go#L85
+	if len(file) == 0 || file[0] != '/' {
+		hasTrailingSlash := len(file) > 0 && file[len(file)-1] == '/'
+		var err error
+		if file, err = filepath.Abs(file); err != nil {
+			ctx.err = err
+			ctx.app.Settings.ErrorHandler(ctx, ctx.err)
+			return
+		}
+		if hasTrailingSlash {
+			file += "/"
+		}
+	}
+	ctx.Fasthttp.Request.SetRequestURI(file)
+	// Save status code
+	status := ctx.Fasthttp.Response.StatusCode()
+	// Serve file
+	sendFileHandler(ctx.Fasthttp)
+	// Restore status code
 	ctx.Fasthttp.Response.SetStatusCode(status)
 }
 

@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://gofiber.io">
-    <img alt="Fiber" height="125" src="https://github.com/gofiber/docs/blob/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/fiber_v2_logo.svg">
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
@@ -53,23 +53,23 @@
   <a href="https://github.com/gofiber/fiber/releases">
     <img src="https://img.shields.io/github/v/release/gofiber/fiber?color=00ACD7&label=%F0%9F%9A%80%20">
   </a>
-    <a href="https://docs.gofiber.io">
-    <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat">
-  </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
-    <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-00ACD7">
-  </a>
-  <a href="https://gocover.io/github.com/gofiber/fiber">
-    <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-91%25-00ACD7.svg?style=flat">
-  </a>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+    <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
+  </a>
+  <a href="https://gocover.io/github.com/gofiber/fiber">
+    <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-91%25-75C46B.svg?style=flat">
+  </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
-    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Security?label=%F0%9F%94%91%20gosec&style=flat&color=00ACD7">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Security?label=%F0%9F%94%91%20gosec&style=flat&color=75C46B">
   </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
-    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=%F0%9F%A7%AA%20tests&style=flat&color=00ACD7">
+    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=%F0%9F%A7%AA%20tests&style=flat&color=75C46B">
+  </a>
+    <a href="https://docs.gofiber.io">
+    <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat">
   </a>
   <a href="https://gofiber.io/discord">
     <img src="https://img.shields.io/discord/704680098577514527?style=flat&label=%F0%9F%92%AC%20discord&color=00ACD7">
@@ -106,6 +106,21 @@ func main() {
 
 <div dir="rtl">
 
+## 🤖 מדדים
+</div>
+
+<div dir="rtl">
+
+הבדיקות מבוצעות על ידי [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) ו-[Go Web](https://github.com/smallnest/go-web-framework-benchmark). אם אתם רוצים לראות את כל התוצאות, אנא בקרו ב-[Wiki](https://docs.gofiber.io/benchmarks) שלנו.
+</div>
+
+<p float="left" align="middle">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
+</p>
+
+<div dir="rtl">
+
 ## ⚙️ התקנה
 </div>
 
@@ -125,21 +140,6 @@ go get -u github.com/gofiber/fiber
 
 <div dir="rtl">
 
-## 🤖 מדדים
-</div>
-
-<div dir="rtl">
-
-הבדיקות מבוצעות על ידי [TechEmpower](https://github.com/TechEmpower/FrameworkBenchmarks) ו-[Go Web](https://github.com/smallnest/go-web-framework-benchmark). אם אתם רוצים לראות את כל התוצאות, אנא בקרו ב-[Wiki](https://docs.gofiber.io/benchmarks) שלנו.
-</div>
-
-<p float="left" align="middle">
-  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark-pipeline.png" width="49%">
-  <img src="https://github.com/gofiber/docs/blob/master/.gitbook/assets//benchmark_alloc.png" width="49%">
-</p>
-
-<div dir="rtl">
-
 ## 🎯 יכולות
 </div>
 
@@ -155,7 +155,7 @@ go get -u github.com/gofiber/fiber
 - [מנועי תבניות](https://docs.gofiber.io/middleware#template)
 - [תמיכה ב-WebSocket](https://docs.gofiber.io/middleware#websocket)
 - [הגבלת קצבים ובקשות](https://docs.gofiber.io/middleware#limiter)
-- תורגם ל-12 שפות אחרות
+- Available in [12 languages](https://docs.gofiber.io/)
 - והרבה יותר, [חקור את Fiber](https://docs.gofiber.io/)
 </div>
 
@@ -712,7 +712,8 @@ Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](
 <div dir="rtl">
 
 **רישיונות של ספריות צד שלישי**
-- [FastHTTP](https://github.com/valyala/fasthttp/blob/master/LICENSE)
-- [Schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+- [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 - [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
 </div>

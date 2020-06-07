@@ -152,6 +152,16 @@ func Benchmark_Ctx_AcceptsLanguages(b *testing.B) {
 	utils.AssertEqual(b, "fr", res)
 }
 
+// go test -run Test_Ctx_App
+func Test_Ctx_App(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Settings.BodyLimit = 1000
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	utils.AssertEqual(t, 1000, ctx.App().Settings.BodyLimit)
+}
+
 // go test -run Test_Ctx_Append
 func Test_Ctx_Append(t *testing.T) {
 	t.Parallel()
@@ -260,20 +270,14 @@ func Test_Ctx_BodyParser(t *testing.T) {
 
 // TODO Benchmark_Ctx_BodyParser
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
-func Benchmark_Ctx_Cookie(b *testing.B) {
+// go test -run Test_Ctx_Context
+func Test_Ctx_Context(t *testing.T) {
+	t.Parallel()
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		c.Cookie(&Cookie{
-			Name:  "John",
-			Value: "Doe",
-		})
-	}
-	utils.AssertEqual(b, "John=Doe; path=/; SameSite=Lax", getString(c.Fasthttp.Response.Header.Peek("Set-Cookie")))
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	utils.AssertEqual(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", ctx.Context()))
 }
 
 // go test -run Test_Ctx_Cookie
@@ -293,6 +297,25 @@ func Test_Ctx_Cookie(t *testing.T) {
 	})
 	expect := "username=john; expires=" + httpdate + "; path=/; SameSite=Lax"
 	utils.AssertEqual(t, expect, string(ctx.Fasthttp.Response.Header.Peek(HeaderSetCookie)))
+
+	ctx.Cookie(&Cookie{SameSite: "strict"})
+	ctx.Cookie(&Cookie{SameSite: "none"})
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
+func Benchmark_Ctx_Cookie(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.Cookie(&Cookie{
+			Name:  "John",
+			Value: "Doe",
+		})
+	}
+	utils.AssertEqual(b, "John=Doe; path=/; SameSite=Lax", getString(c.Fasthttp.Response.Header.Peek("Set-Cookie")))
 }
 
 // go test -run Test_Ctx_Cookies
@@ -311,6 +334,10 @@ func Test_Ctx_Format(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
+	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "plain/text")
+	ctx.Format([]byte("Hello, World!"))
+	utils.AssertEqual(t, "Hello, World!", string(ctx.Fasthttp.Response.Body()))
+
 	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "text/html")
 	ctx.Format("Hello, World!")
 	utils.AssertEqual(t, "<p>Hello, World!</p>", string(ctx.Fasthttp.Response.Body()))
@@ -322,6 +349,10 @@ func Test_Ctx_Format(t *testing.T) {
 	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "application/xml")
 	ctx.Format("Hello, World!")
 	utils.AssertEqual(t, `<string>Hello, World!</string>`, string(ctx.Fasthttp.Response.Body()))
+
+	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "broken/accept")
+	ctx.Format("Hello, World!")
+	utils.AssertEqual(t, `Hello, World!`, string(ctx.Fasthttp.Response.Body()))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Format -benchmem -count=4
@@ -414,8 +445,8 @@ func Test_Ctx_FormFile(t *testing.T) {
 	writer.Close()
 
 	req := httptest.NewRequest(MethodPost, "/test", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+	req.Header.Set(HeaderContentType, writer.FormDataContentType())
+	//req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -566,6 +597,8 @@ func Test_Ctx_Method(t *testing.T) {
 	ctx := app.AcquireCtx(fctx)
 	defer app.ReleaseCtx(ctx)
 	utils.AssertEqual(t, MethodGet, ctx.Method())
+	ctx.Method(MethodPost)
+	utils.AssertEqual(t, MethodPost, ctx.Method())
 }
 
 // go test -run Test_Ctx_MultipartForm
@@ -809,8 +842,8 @@ func Test_Ctx_Subdomains(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.Fasthttp.Request.URI().SetHost("john.doe.google.com")
-	utils.AssertEqual(t, []string{"john", "doe"}, ctx.Subdomains())
+	ctx.Fasthttp.Request.URI().SetHost("john.doe.is.awesome.google.com")
+	utils.AssertEqual(t, []string{"john", "doe"}, ctx.Subdomains(4))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Subdomains -benchmem -count=4
@@ -837,6 +870,12 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 	ctx.Fasthttp.Request.Header.Set(HeaderCookie, "john=doe")
 	ctx.ClearCookie("john")
 	utils.AssertEqual(t, true, strings.HasPrefix(string(ctx.Fasthttp.Response.Header.Peek(HeaderSetCookie)), "john=; expires="))
+
+	ctx.Fasthttp.Request.Header.Set(HeaderCookie, "test1=dummy")
+	ctx.Fasthttp.Request.Header.Set(HeaderCookie, "test2=dummy")
+	ctx.ClearCookie()
+	utils.AssertEqual(t, true, strings.Contains(string(ctx.Fasthttp.Response.Header.Peek(HeaderSetCookie)), "test1=; expires="))
+	utils.AssertEqual(t, true, strings.Contains(string(ctx.Fasthttp.Response.Header.Peek(HeaderSetCookie)), "test2=; expires="))
 }
 
 // go test -race -run Test_Ctx_Download
@@ -846,7 +885,7 @@ func Test_Ctx_Download(t *testing.T) {
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 
-	ctx.Download("ctx.go")
+	ctx.Download("ctx.go", "Awesome File!")
 
 	f, err := os.Open("./ctx.go")
 	utils.AssertEqual(t, nil, err)
@@ -985,6 +1024,20 @@ func Test_Ctx_Next(t *testing.T) {
 	utils.AssertEqual(t, "Works", resp.Header.Get("X-Next-Result"))
 }
 
+// go test -run Test_Ctx_Next_Error
+func Test_Ctx_Next_Error(t *testing.T) {
+	app := New()
+	app.Use("/", func(c *Ctx) {
+		c.Set("X-Next-Result", "Works")
+		c.Next(ErrNotFound)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "", resp.Header.Get("X-Next-Result"))
+}
+
 // go test -run Test_Ctx_Redirect
 func Test_Ctx_Redirect(t *testing.T) {
 	t.Parallel()
@@ -1072,6 +1125,9 @@ func Test_Ctx_SendStream(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 
 	ctx.SendStream(bytes.NewReader([]byte("Don't crash please")))
+	utils.AssertEqual(t, "Don't crash please", string(ctx.Fasthttp.Response.Body()))
+
+	ctx.SendStream(bytes.NewReader([]byte("Don't crash please")), len([]byte("Don't crash please")))
 	utils.AssertEqual(t, "Don't crash please", string(ctx.Fasthttp.Response.Body()))
 
 	ctx.SendStream(bufio.NewReader(bytes.NewReader([]byte("Hello bufio"))))
@@ -1189,7 +1245,9 @@ func Test_Ctx_Write(t *testing.T) {
 	ctx.Write("Hello, ")
 	ctx.Write([]byte("World! "))
 	ctx.Write(123)
-	utils.AssertEqual(t, "Hello, World! 123", string(ctx.Fasthttp.Response.Body()))
+	ctx.Write(true)
+	ctx.Write(bytes.NewReader([]byte("Don't crash please")))
+	utils.AssertEqual(t, "Don't crash please", string(ctx.Fasthttp.Response.Body()))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Write -benchmem -count=4
