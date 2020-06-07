@@ -752,21 +752,19 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 	} else {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
-		raw := bytebufferpool.Get()
-		defer bytebufferpool.Put(raw)
 		// Read file
 		f, err := os.Open(filepath.Clean(name))
 		if err != nil {
 			return err
 		}
-		if _, err = raw.ReadFrom(f); err != nil {
+		if _, err = buf.ReadFrom(f); err != nil {
 			return err
 		}
 		if err = f.Close(); err != nil {
 			return err
 		}
 		// Parse template
-		if tmpl, err = template.New("").Parse(raw.String()); err != nil {
+		if tmpl, err = template.New("").Parse(buf.String()); err != nil {
 			return err
 		}
 		// Render template

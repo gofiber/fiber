@@ -1049,10 +1049,17 @@ func Test_Ctx_Redirect(t *testing.T) {
 	utils.AssertEqual(t, "http://example.com", string(ctx.Fasthttp.Response.Header.Peek(HeaderLocation)))
 }
 
-// ViewEngine is coming in v1.10
-// func Test_Ctx_Render(t *testing.T) {
-// 	// TODO
-// }
+// go test -run Test_Ctx_Render
+func Test_Ctx_Render(t *testing.T) {
+	t.Parallel()
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Render("./.github/index.tmpl", Map{
+		"Title": "Hello, World!",
+	})
+	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
+}
 
 // go test -run Test_Ctx_Render_Go_Template
 func Test_Ctx_Render_Go_Template(t *testing.T) {
