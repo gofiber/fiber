@@ -446,7 +446,7 @@ func Test_Ctx_FormFile(t *testing.T) {
 
 	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set(HeaderContentType, writer.FormDataContentType())
-	//req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
+	req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -893,7 +893,7 @@ func Test_Ctx_Download(t *testing.T) {
 
 	expect, err := ioutil.ReadAll(f)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, bytes.Equal(expect, ctx.Fasthttp.Response.Body()))
+	utils.AssertEqual(t, expect, ctx.Fasthttp.Response.Body())
 }
 
 // go test -run Test_Ctx_JSON
@@ -1049,10 +1049,35 @@ func Test_Ctx_Redirect(t *testing.T) {
 	utils.AssertEqual(t, "http://example.com", string(ctx.Fasthttp.Response.Header.Peek(HeaderLocation)))
 }
 
-// ViewEngine is coming in v1.10
-// func Test_Ctx_Render(t *testing.T) {
-// 	// TODO
-// }
+// go test -run Test_Ctx_Render
+func Test_Ctx_Render(t *testing.T) {
+	t.Parallel()
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Render("./.github/index.tmpl", Map{
+		"Title": "Hello, World!",
+	})
+	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
+}
+
+// go test -run Test_Ctx_Render_Go_Template
+func Test_Ctx_Render_Go_Template(t *testing.T) {
+	t.Parallel()
+	file, err := ioutil.TempFile(os.TempDir(), "fiber")
+	utils.AssertEqual(t, nil, err)
+	defer os.Remove(file.Name())
+	_, err = file.Write([]byte("template"))
+	utils.AssertEqual(t, nil, err)
+	err = file.Close()
+	utils.AssertEqual(t, nil, err)
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	err = ctx.Render(file.Name(), nil)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "template", string(ctx.Fasthttp.Response.Body()))
+}
 
 // go test -run Test_Ctx_Send
 func Test_Ctx_Send(t *testing.T) {

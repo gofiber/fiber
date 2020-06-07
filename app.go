@@ -35,6 +35,20 @@ type Map map[string]interface{}
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx)
 
+// default settings
+var (
+	defaultBodyLimit    = 4 * 1024 * 1024
+	defaultConcurrency  = 256 * 1024
+	defaultErrorHandler = func(ctx *Ctx, err error) {
+		code := StatusInternalServerError
+		if e, ok := err.(*Error); ok {
+			code = e.Code
+		}
+		ctx.Status(code).SendString(err.Error())
+	}
+	defaultCompressedFileSuffix = ".fiber.gz"
+)
+
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
@@ -132,7 +146,12 @@ type Settings struct {
 	// Default: unlimited
 	IdleTimeout time.Duration
 
-	// TODO: v1.11
+	// CompressedFileSuffix adds suffix to the original file name and
+	// tries saving the resulting compressed file under the new file name.
+	// Default: ".fiber.gz"
+	CompressedFileSuffix string
+
+	// FEATURE: v1.12
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
@@ -215,49 +234,38 @@ func New(settings ...*Settings) *App {
 				return new(Ctx)
 			},
 		},
-		// Set default settings
-		Settings: &Settings{
-			Prefork:     utils.GetArgument("-prefork"),
-			BodyLimit:   4 * 1024 * 1024,
-			Concurrency: 256 * 1024,
-			ErrorHandler: func(ctx *Ctx, err error) {
-				code := StatusInternalServerError
-				if e, ok := err.(*Error); ok {
-					code = e.Code
-				}
-				ctx.Status(code).SendString(err.Error())
-			},
-		},
+		// Set settings
+		Settings: &Settings{},
 	}
 
 	// Overwrite settings if provided
 	if len(settings) > 0 {
 		app.Settings = settings[0]
-		if !app.Settings.Prefork { // Default to -prefork flag if false
-			app.Settings.Prefork = utils.GetArgument("-prefork")
-		}
-		if app.Settings.BodyLimit <= 0 {
-			app.Settings.BodyLimit = 4 * 1024 * 1024
-		}
-		if app.Settings.Concurrency <= 0 {
-			app.Settings.Concurrency = 256 * 1024
-		}
-		// Replace unsafe conversion functions
-		if app.Settings.Immutable {
-			getBytes = getBytesImmutable
-			getString = getStringImmutable
-		}
-		// Set default error
-		if app.Settings.ErrorHandler == nil {
-			app.Settings.ErrorHandler = func(ctx *Ctx, err error) {
-				code := StatusInternalServerError
-				if e, ok := err.(*Error); ok {
-					code = e.Code
-				}
-				ctx.Status(code).SendString(err.Error())
-			}
-		}
 	}
+
+	if app.Settings.BodyLimit <= 0 {
+		app.Settings.BodyLimit = defaultBodyLimit
+	}
+	if app.Settings.Concurrency <= 0 {
+		app.Settings.Concurrency = defaultConcurrency
+	}
+	// Set default compressed file suffix
+	if app.Settings.CompressedFileSuffix == "" {
+		app.Settings.CompressedFileSuffix = defaultCompressedFileSuffix
+	}
+	// Set default error
+	if app.Settings.ErrorHandler == nil {
+		app.Settings.ErrorHandler = defaultErrorHandler
+	}
+
+	if !app.Settings.Prefork { // Default to -prefork flag if false
+		app.Settings.Prefork = utils.GetArgument("-prefork")
+	}
+	// Replace unsafe conversion functions
+	if app.Settings.Immutable {
+		getBytes, getString = getBytesImmutable, getStringImmutable
+	}
+
 	// Initialize app
 	return app.init()
 }
@@ -371,8 +379,7 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	}
 	// Print startup message
 	if !app.Settings.DisableStartupMessage {
-		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
-		fmt.Printf("Started listening on %s\n", ln.Addr().String())
+		startupMessage(ln)
 	}
 
 	return app.server.Serve(ln)
@@ -413,8 +420,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Print startup message
 	if !app.Settings.DisableStartupMessage && !utils.GetArgument("-child") {
-		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
-		fmt.Printf("Started listening on %s\n", ln.Addr().String())
+		startupMessage(ln)
 	}
 
 	return app.server.Serve(ln)
@@ -579,4 +585,9 @@ func (app *App) init() *App {
 	app.server.IdleTimeout = app.Settings.IdleTimeout
 	app.mutex.Unlock()
 	return app
+}
+
+func startupMessage(ln net.Listener) {
+	fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
+	fmt.Printf("Started listening on %s\n", ln.Addr().String())
 }

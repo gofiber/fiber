@@ -12,11 +12,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -743,23 +743,28 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// Use ViewEngine if exist
+	// Use Templates engine if exist
 	if ctx.app.Settings.Templates != nil {
-		// Render template from ViewEngine
+		// Render template from Engine
 		if err := ctx.app.Settings.Templates.Render(buf, name, bind); err != nil {
 			return err
 		}
 	} else {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
-		var raw []byte
 		// Read file
-		if raw, err = ioutil.ReadFile(filepath.Clean(name)); err != nil {
+		f, err := os.Open(filepath.Clean(name))
+		if err != nil {
+			return err
+		}
+		if _, err = buf.ReadFrom(f); err != nil {
+			return err
+		}
+		if err = f.Close(); err != nil {
 			return err
 		}
 		// Parse template
-		// tmpl, err := template.ParseGlob(name)
-		if tmpl, err = template.New("").ParseGlob(getString(raw)); err != nil {
+		if tmpl, err = template.New("").Parse(buf.String()); err != nil {
 			return err
 		}
 		// Render template
@@ -780,6 +785,7 @@ func (ctx *Ctx) Route() *Route {
 	if ctx.route == nil {
 		// Fallback for fasthttp error handler
 		return &Route{
+			path:     ctx.pathOriginal,
 			Path:     ctx.pathOriginal,
 			Method:   ctx.method,
 			Handlers: make([]Handler, 0),
@@ -826,7 +832,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 			GenerateIndexPages:   false,
 			AcceptByteRange:      true,
 			Compress:             true,
-			CompressedFileSuffix: ".fiber.gz",
+			CompressedFileSuffix: ctx.app.Settings.CompressedFileSuffix,
 			CacheDuration:        10 * time.Second,
 			IndexNames:           []string{"index.html"},
 		}
