@@ -15,7 +15,7 @@ func Test_Middleware_Compress(t *testing.T) {
 	app.Use(Compress())
 
 	app.Get("/", func(c *fiber.Ctx) {
-		c.SendFile("../ctx.go")
+		c.SendFile("../ctx.go", true)
 	})
 
 	req := httptest.NewRequest("GET", "/", nil)
