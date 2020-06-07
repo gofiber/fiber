@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -751,15 +750,8 @@ func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
 		}
 	} else {
 		// Render raw template using 'name' as filepath if no engine is set
-		var tmpl *template.Template
-		var raw []byte
-		// Read file
-		if raw, err = ioutil.ReadFile(filepath.Clean(name)); err != nil {
-			return err
-		}
-		// Parse template
-		// tmpl, err := template.ParseGlob(name)
-		if tmpl, err = template.New("").ParseGlob(getString(raw)); err != nil {
+		tmpl, err := template.ParseFiles(filepath.Clean(name))
+		if err != nil {
 			return err
 		}
 		// Render template
