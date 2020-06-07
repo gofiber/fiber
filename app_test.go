@@ -6,9 +6,11 @@ package fiber
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +34,33 @@ func Test_App_Routes(t *testing.T) {
 	app.Head("/Head", h)
 	app.Post("/post", h)
 	utils.AssertEqual(t, 3, len(app.Routes()))
+}
+
+func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
+	expectedError := regexp.MustCompile(
+		`error when reading request headers: small read buffer\. Increase ReadBufferSize\. Buffer size=4096, contents: "GET / HTTP/1.1\\r\\nHost: example\.com\\r\\nVery-Long-Header: -+`,
+	)
+	app := New()
+
+	app.Get("/", func(c *Ctx) {
+		panic(errors.New("Should never called"))
+	})
+
+	request := httptest.NewRequest("GET", "/", nil)
+	logHeaderSlice := make([]string, 5000, 5000)
+	request.Header.Set("Very-Long-Header", strings.Join(logHeaderSlice, "-"))
+	_, err := app.Test(request)
+
+	if err == nil {
+		t.Error("Expect an error at app.Test(request)")
+	}
+
+	utils.AssertEqual(
+		t,
+		true,
+		expectedError.MatchString(err.Error()),
+		fmt.Sprintf("Has: %s, expected pattern: %s", err.Error(), expectedError.String()),
+	)
 }
 
 func Test_App_ErrorHandler(t *testing.T) {

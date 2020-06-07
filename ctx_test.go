@@ -446,7 +446,7 @@ func Test_Ctx_FormFile(t *testing.T) {
 
 	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set(HeaderContentType, writer.FormDataContentType())
-	//req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
+	req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
