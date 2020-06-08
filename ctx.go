@@ -312,13 +312,13 @@ func (ctx *Ctx) Cookies(key string) (value string) {
 // Typically, browsers will prompt the user for download.
 // By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
 // Override this default with the filename parameter.
-func (ctx *Ctx) Download(file string, filename ...string) {
+func (ctx *Ctx) Download(file string, filename ...string) error {
 	fname := filepath.Base(file)
 	if len(filename) > 0 {
 		fname = filename[0]
 	}
 	ctx.Set(HeaderContentDisposition, "attachment; filename="+fname)
-	ctx.SendFile(file)
+	return ctx.SendFile(file)
 }
 
 // Error contains the error information passed via the Next(err) method.
