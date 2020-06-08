@@ -86,7 +86,7 @@ const (
 	LoggerTagCookie        = "cookie:"
 )
 
-// Default config
+// LoggerConfigDefault is the default config
 var LoggerConfigDefault = LoggerConfig{
 	Next:       nil,
 	Format:     "${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n",
@@ -115,7 +115,7 @@ func LoggerWithConfig(config LoggerConfig) fiber.Handler {
 	tmpl.new(config.Format, "${", "}")
 
 	timestamp := time.Now().Format(config.TimeFormat)
-	// Update date/time every second in a seperate go routine
+	// Update date/time every second in a separate go routine
 	if strings.Contains(config.Format, "${time}") {
 		go func() {
 			for {
@@ -261,7 +261,7 @@ func (t *loggerTemplate) new(template, startTag, endTag string) {
 		s = s[n+len(a):]
 		n = bytes.Index(s, b)
 		if n < 0 {
-			panic(fmt.Errorf("Cannot find end tag=%q in the template=%q starting from %q", endTag, template, s))
+			panic(fmt.Errorf("cannot find end tag=%q in the template=%q starting from %q", endTag, template, s))
 		}
 
 		t.tags = append(t.tags, utils.GetString(s[:n]))

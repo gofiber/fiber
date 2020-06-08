@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"text/template"
 	"time"
 
 	utils "github.com/gofiber/utils"
@@ -567,7 +568,7 @@ func Benchmark_Ctx_Is(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		res = c.Is(".json")
+		_ = c.Is(".json")
 		res = c.Is("json")
 	}
 	utils.AssertEqual(b, true, res)
@@ -678,9 +679,9 @@ func Benchmark_Ctx_Params(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		res = c.Params("param1")
-		res = c.Params("param2")
-		res = c.Params("param3")
+		_ = c.Params("param1")
+		_ = c.Params("param2")
+		_ = c.Params("param3")
 		res = c.Params("param4")
 	}
 	utils.AssertEqual(b, "awesome", res)
@@ -1055,9 +1056,35 @@ func Test_Ctx_Render(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.Render("./.github/index.tmpl", Map{
+	err := ctx.Render("./.github/index.tmpl", Map{
 		"Title": "Hello, World!",
 	})
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
+}
+
+type testTemplateEngine struct {
+	templates *template.Template
+}
+
+func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}) error {
+	return t.templates.ExecuteTemplate(w, name, bind)
+}
+
+// go test -run Test_Ctx_Render_Engine
+func Test_Ctx_Render_Engine(t *testing.T) {
+	t.Parallel()
+	engine := &testTemplateEngine{
+		templates: template.Must(template.ParseGlob("./.github/*.tmpl")),
+	}
+	app := New()
+	app.Settings.Templates = engine
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	err := ctx.Render("index.tmpl", Map{
+		"Title": "Hello, World!",
+	})
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
 }
 

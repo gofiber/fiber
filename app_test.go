@@ -43,7 +43,7 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	app := New()
 
 	app.Get("/", func(c *Ctx) {
-		panic(errors.New("Should never called"))
+		panic(errors.New("should never called"))
 	})
 
 	request := httptest.NewRequest("GET", "/", nil)
@@ -67,7 +67,7 @@ func Test_App_ErrorHandler(t *testing.T) {
 	app := New()
 
 	app.Get("/", func(c *Ctx) {
-		c.Next(errors.New("Hi, I'm an error!"))
+		c.Next(errors.New("hi, i'm an error"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
@@ -76,19 +76,19 @@ func Test_App_ErrorHandler(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "Hi, I'm an error!", string(body))
+	utils.AssertEqual(t, "hi, i'm an error", string(body))
 
 }
 
 func Test_App_ErrorHandler_Custom(t *testing.T) {
 	app := New(&Settings{
 		ErrorHandler: func(ctx *Ctx, err error) {
-			ctx.Status(200).SendString("Hi, I'm an custom error!")
+			ctx.Status(200).SendString("hi, i'm an custom error")
 		},
 	})
 
 	app.Get("/", func(c *Ctx) {
-		c.Next(errors.New("Hi, I'm an error!"))
+		c.Next(errors.New("hi, i'm an error"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
@@ -97,7 +97,7 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "Hi, I'm an custom error!", string(body))
+	utils.AssertEqual(t, "hi, i'm an custom error", string(body))
 }
 
 func Test_App_Nested_Params(t *testing.T) {

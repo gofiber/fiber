@@ -24,7 +24,7 @@ type (
 	}
 )
 
-// Default config
+// RequestIDConfigDefault is the default config
 var RequestIDConfigDefault = RequestIDConfig{
 	Next:   nil,
 	Header: fiber.HeaderXRequestID,
@@ -45,7 +45,7 @@ func RequestID(header ...string) fiber.Handler {
 	return RequestIDWithConfig(config)
 }
 
-// RequestID adds an UUID indentifier to the request
+// RequestIDWithConfig allows you to pass a custom config
 func RequestIDWithConfig(config RequestIDConfig) fiber.Handler {
 	// Set default values
 	if config.Header == "" {

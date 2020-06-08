@@ -24,7 +24,7 @@ const (
 	CompressLevelBestCompression = 2
 )
 
-// Default config
+// CompressConfigDefault is the default config
 var CompressConfigDefault = CompressConfig{
 	Next:  nil,
 	Level: CompressLevelDefault,
