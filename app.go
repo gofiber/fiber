@@ -35,19 +35,11 @@ type Map map[string]interface{}
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx)
 
-// default settings
-var (
-	defaultBodyLimit    = 4 * 1024 * 1024
-	defaultConcurrency  = 256 * 1024
-	defaultErrorHandler = func(ctx *Ctx, err error) {
-		code := StatusInternalServerError
-		if e, ok := err.(*Error); ok {
-			code = e.Code
-		}
-		ctx.Status(code).SendString(err.Error())
-	}
-	defaultCompressedFileSuffix = ".fiber.gz"
-)
+// Error represents an error that occurred while handling a request.
+type Error struct {
+	Code    int
+	Message string
+}
 
 // App denotes the Fiber application.
 type App struct {
@@ -178,48 +170,20 @@ type Static struct {
 	Index string
 }
 
-// Error represents an error that occurred while handling a request.
-type Error struct {
-	Code    int
-	Message string
-}
-
-// Error makes it compatible with `error` interface.
-func (e *Error) Error() string {
-	return e.Message
-}
-
-// NewError creates a new HTTPError instance.
-func NewError(code int, message ...string) *Error {
-	e := &Error{code, utils.StatusMessage(code)}
-	if len(message) > 0 {
-		e.Message = message[0]
-	}
-	return e
-}
-
-// Routes returns all registered routes
-//
-// for _, r := range app.Routes() {
-// 	fmt.Printf("%s\t%s\n", r.Method, r.Path)
-// }
-func (app *App) Routes() []*Route {
-	routes := make([]*Route, 0)
-	for m := range app.stack {
-		for r := range app.stack[m] {
-			// Ignore HEAD routes handling GET routes
-			if m == 1 && app.stack[m][r].Method == MethodGet {
-				continue
-			}
-			routes = append(routes, app.stack[m][r])
+// default settings
+var (
+	defaultBodyLimit    = 4 * 1024 * 1024
+	defaultConcurrency  = 256 * 1024
+	defaultErrorHandler = func(ctx *Ctx, err error) {
+		code := StatusInternalServerError
+		if e, ok := err.(*Error); ok {
+			code = e.Code
 		}
+		ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+		ctx.Status(code).SendString(err.Error())
 	}
-	// Sort routes by stack position
-	sort.Slice(routes, func(i, k int) bool {
-		return routes[i].pos < routes[k].pos
-	})
-	return routes
-}
+	defaultCompressedFileSuffix = ".fiber.gz"
+)
 
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
@@ -496,6 +460,43 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	}
 	// Return *http.Response
 	return resp, nil
+}
+
+// Error makes it compatible with `error` interface.
+func (e *Error) Error() string {
+	return e.Message
+}
+
+// NewError creates a new HTTPError instance.
+func NewError(code int, message ...string) *Error {
+	e := &Error{code, utils.StatusMessage(code)}
+	if len(message) > 0 {
+		e.Message = message[0]
+	}
+	return e
+}
+
+// Routes returns all registered routes
+//
+// for _, r := range app.Routes() {
+// 	fmt.Printf("%s\t%s\n", r.Method, r.Path)
+// }
+func (app *App) Routes() []*Route {
+	routes := make([]*Route, 0)
+	for m := range app.stack {
+		for r := range app.stack[m] {
+			// Ignore HEAD routes handling GET routes
+			if m == 1 && app.stack[m][r].Method == MethodGet {
+				continue
+			}
+			routes = append(routes, app.stack[m][r])
+		}
+	}
+	// Sort routes by stack position
+	sort.Slice(routes, func(i, k int) bool {
+		return routes[i].pos < routes[k].pos
+	})
+	return routes
 }
 
 // Sharding: https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
