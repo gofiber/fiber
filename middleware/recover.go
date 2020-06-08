@@ -15,7 +15,7 @@ type (
 	}
 )
 
-// RecoverConfigDefault config
+// RecoverConfigDefault is the default config
 var RecoverConfigDefault = RecoverConfig{
 	Next: nil,
 }

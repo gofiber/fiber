@@ -254,7 +254,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 		return schemaDecoderQuery.Decode(out, data)
 	}
 
-	return fmt.Errorf("BodyParser: cannot parse content-type: %v", ctype)
+	return fmt.Errorf("bodyparser: cannot parse content-type: %v", ctype)
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
@@ -687,7 +687,7 @@ func (ctx *Ctx) Query(key string) (value string) {
 func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 	rangeStr := getString(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
-		return rangeData, fmt.Errorf("malformed range header string")
+		return rangeData, fmt.Errorf("range: malformed range header string")
 	}
 	data := strings.Split(rangeStr, "=")
 	rangeData.Type = data[0]
@@ -695,7 +695,7 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 	for i := 0; i < len(arr); i++ {
 		item := strings.Split(arr[i], "-")
 		if len(item) == 1 {
-			return rangeData, fmt.Errorf("malformed range header string")
+			return rangeData, fmt.Errorf("range: malformed range header string")
 		}
 		start, startErr := strconv.Atoi(item[0])
 		end, endErr := strconv.Atoi(item[1])
@@ -720,7 +720,7 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		return rangeData, fmt.Errorf("unsatisfiable range")
+		return rangeData, fmt.Errorf("range: unsatisfiable range")
 	}
 	return rangeData, nil
 }
@@ -865,7 +865,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 	sendFileHandler(ctx.Fasthttp)
 	// Check for error
 	if status != 404 && ctx.Fasthttp.Response.StatusCode() == 404 {
-		return fmt.Errorf("file %s not found", file)
+		return fmt.Errorf("sendfile: file %s not found", file)
 	}
 	// Restore status code
 	ctx.Fasthttp.Response.SetStatusCode(status)
