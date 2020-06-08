@@ -568,7 +568,7 @@ func Benchmark_Ctx_Is(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		res = c.Is(".json")
+		_ = c.Is(".json")
 		res = c.Is("json")
 	}
 	utils.AssertEqual(b, true, res)
@@ -679,9 +679,9 @@ func Benchmark_Ctx_Params(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		res = c.Params("param1")
-		res = c.Params("param2")
-		res = c.Params("param3")
+		_ = c.Params("param1")
+		_ = c.Params("param2")
+		_ = c.Params("param3")
 		res = c.Params("param4")
 	}
 	utils.AssertEqual(b, "awesome", res)

@@ -16,7 +16,7 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
-var routesFixture = routeJson{}
+var routesFixture = routeJSON{}
 
 func init() {
 	dat, err := ioutil.ReadFile("./.github/fixture/testRoutes.json")
@@ -418,7 +418,7 @@ type testRoute struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
 }
-type routeJson struct {
+type routeJSON struct {
 	TestRoutes []testRoute `json:"testRoutes"`
 	GithubAPI  []testRoute `json:"githubAPI"`
 }

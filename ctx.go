@@ -254,7 +254,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 		return schemaDecoderQuery.Decode(out, data)
 	}
 
-	return fmt.Errorf("BodyParser: cannot parse content-type: %v", ctype)
+	return fmt.Errorf("bodyparser: cannot parse content-type: %v", ctype)
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
@@ -312,13 +312,13 @@ func (ctx *Ctx) Cookies(key string) (value string) {
 // Typically, browsers will prompt the user for download.
 // By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
 // Override this default with the filename parameter.
-func (ctx *Ctx) Download(file string, filename ...string) {
+func (ctx *Ctx) Download(file string, filename ...string) error {
 	fname := filepath.Base(file)
 	if len(filename) > 0 {
 		fname = filename[0]
 	}
 	ctx.Set(HeaderContentDisposition, "attachment; filename="+fname)
-	ctx.SendFile(file)
+	return ctx.SendFile(file)
 }
 
 // Error contains the error information passed via the Next(err) method.
@@ -687,7 +687,7 @@ func (ctx *Ctx) Query(key string) (value string) {
 func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 	rangeStr := getString(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
-		return rangeData, fmt.Errorf("malformed range header string")
+		return rangeData, fmt.Errorf("range: malformed range header string")
 	}
 	data := strings.Split(rangeStr, "=")
 	rangeData.Type = data[0]
@@ -695,7 +695,7 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 	for i := 0; i < len(arr); i++ {
 		item := strings.Split(arr[i], "-")
 		if len(item) == 1 {
-			return rangeData, fmt.Errorf("malformed range header string")
+			return rangeData, fmt.Errorf("range: malformed range header string")
 		}
 		start, startErr := strconv.Atoi(item[0])
 		end, endErr := strconv.Atoi(item[1])
@@ -720,7 +720,7 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		return rangeData, fmt.Errorf("unsatisfiable range")
+		return rangeData, fmt.Errorf("range: unsatisfiable range")
 	}
 	return rangeData, nil
 }
@@ -825,7 +825,7 @@ var sendFileHandler fasthttp.RequestHandler
 // SendFile transfers the file from the given path.
 // The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
-func (ctx *Ctx) SendFile(file string, compress ...bool) {
+func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
 	if sendFileFS == nil {
 		sendFileFS = &fasthttp.FS{
@@ -836,6 +836,9 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 			CompressedFileSuffix: ctx.app.Settings.CompressedFileSuffix,
 			CacheDuration:        10 * time.Second,
 			IndexNames:           []string{"index.html"},
+			PathNotFound: func(ctx *fasthttp.RequestCtx) {
+				ctx.Response.SetStatusCode(404)
+			},
 		}
 		sendFileHandler = sendFileFS.NewRequestHandler()
 	}
@@ -849,9 +852,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 		hasTrailingSlash := len(file) > 0 && file[len(file)-1] == '/'
 		var err error
 		if file, err = filepath.Abs(file); err != nil {
-			ctx.err = err
-			ctx.app.Settings.ErrorHandler(ctx, ctx.err)
-			return
+			return err
 		}
 		if hasTrailingSlash {
 			file += "/"
@@ -862,8 +863,13 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 	status := ctx.Fasthttp.Response.StatusCode()
 	// Serve file
 	sendFileHandler(ctx.Fasthttp)
+	// Check for error
+	if status != 404 && ctx.Fasthttp.Response.StatusCode() == 404 {
+		return fmt.Errorf("sendfile: file %s not found", file)
+	}
 	// Restore status code
 	ctx.Fasthttp.Response.SetStatusCode(status)
+	return nil
 }
 
 // SendStatus sets the HTTP status code and if the response body is empty,
