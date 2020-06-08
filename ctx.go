@@ -825,7 +825,7 @@ var sendFileHandler fasthttp.RequestHandler
 // SendFile transfers the file from the given path.
 // The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
-func (ctx *Ctx) SendFile(file string, compress ...bool) {
+func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
 	if sendFileFS == nil {
 		sendFileFS = &fasthttp.FS{
@@ -836,6 +836,9 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 			CompressedFileSuffix: ctx.app.Settings.CompressedFileSuffix,
 			CacheDuration:        10 * time.Second,
 			IndexNames:           []string{"index.html"},
+			PathNotFound: func(ctx *fasthttp.RequestCtx) {
+				ctx.Response.SetStatusCode(404)
+			},
 		}
 		sendFileHandler = sendFileFS.NewRequestHandler()
 	}
@@ -849,9 +852,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 		hasTrailingSlash := len(file) > 0 && file[len(file)-1] == '/'
 		var err error
 		if file, err = filepath.Abs(file); err != nil {
-			ctx.err = err
-			ctx.app.Settings.ErrorHandler(ctx, ctx.err)
-			return
+			return err
 		}
 		if hasTrailingSlash {
 			file += "/"
@@ -862,8 +863,13 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) {
 	status := ctx.Fasthttp.Response.StatusCode()
 	// Serve file
 	sendFileHandler(ctx.Fasthttp)
+	// Check for error
+	if status != 404 && ctx.Fasthttp.Response.StatusCode() == 404 {
+		return fmt.Errorf("file %s not found", file)
+	}
 	// Restore status code
 	ctx.Fasthttp.Response.SetStatusCode(status)
+	return nil
 }
 
 // SendStatus sets the HTTP status code and if the response body is empty,
