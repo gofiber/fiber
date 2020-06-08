@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gofiber/fiber"
@@ -26,6 +27,5 @@ func Test_Middleware_Compress(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 	utils.AssertEqual(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-	// time.Sleep(1 * time.Second)
-	// os.Remove("./compress.go.fasthttp.gz")
+	os.Remove("../ctx.go.fiber.gz")
 }
