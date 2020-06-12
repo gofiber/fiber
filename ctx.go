@@ -66,7 +66,7 @@ type Cookie struct {
 	SameSite string
 }
 
-// Templates is deprecated, please use Views
+// Templates is deprecated since v1.11.1, please use Views
 type Templates interface {
 	Render(io.Writer, string, interface{}) error
 }
@@ -752,7 +752,7 @@ func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err er
 	// Use Templates engine if exist
 	if ctx.app.Settings.Templates != nil {
 		// Render template from Templates
-		fmt.Println("`Templates` are deprecated since v1.12.x, please us `Views` instead")
+		fmt.Println("`Templates` are deprecated since v1.11.1, please us `Views` instead")
 		if err := ctx.app.Settings.Templates.Render(buf, name, bind); err != nil {
 			return err
 		}
