@@ -139,6 +139,29 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/v1", params: nil, match: false},
 		{url: "/api/v1/", params: nil, match: false},
 	})
+	testCase("/api/v1/:param-:param2", []testparams{
+		{url: "/api/v1/entity-entity2", params: []string{"entity", "entity2"}, match: true},
+		{url: "/api/v1/entity/8728382", params: nil, match: false},
+		{url: "/api/v1/entity-8728382", params: []string{"entity", "8728382"}, match: true},
+		{url: "/api/v1", params: nil, match: false},
+		{url: "/api/v1/", params: nil, match: false},
+	})
+	testCase("/api/v1/:filename.:extension", []testparams{
+		{url: "/api/v1/test.pdf", params: []string{"test", "pdf"}, match: true},
+		{url: "/api/v1/test/pdf", params: nil, match: false},
+		{url: "/api/v1/test-pdf", params: nil, match: false},
+		{url: "/api/v1/test_pdf", params: nil, match: false},
+		{url: "/api/v1", params: nil, match: false},
+		{url: "/api/v1/", params: nil, match: false},
+	})
+	testCase("/api/v1/:param_:param2", []testparams{
+		{url: "/api/v1/entity_value", params: []string{"entity", "value"}, match: true},
+		{url: "/api/v1/entity/value", params: nil, match: false},
+		{url: "/api/v1/entity-value", params: nil, match: false},
+		{url: "/api/v1/entity.value", params: nil, match: false},
+		{url: "/api/v1", params: nil, match: false},
+		{url: "/api/v1/", params: nil, match: false},
+	})
 	testCase("/api/v1/const", []testparams{
 		{url: "/api/v1/const", params: []string{}, match: true},
 		{url: "/api/v1", params: nil, match: false},
@@ -156,6 +179,20 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/1/", params: []string{"1", "", ""}, match: true},
 		{url: "/api/1/2", params: []string{"1", "2", ""}, match: true},
 		{url: "/api/1/2/3", params: []string{"1", "2", "3"}, match: true},
+		{url: "/api/", params: nil, match: false},
+	})
+	testCase("/api/:day.:month?.:year?", []testparams{
+		{url: "/api/1", params: []string{"1", "", ""}, match: true},
+		//{url: "/api/1/", params: []string{"1", "", ""}, match: true}, // TODO: check it
+		{url: "/api/1.2", params: []string{"1", "2", ""}, match: true},
+		{url: "/api/1.2.3", params: []string{"1", "2", "3"}, match: true},
+		{url: "/api/", params: nil, match: false},
+	})
+	testCase("/api/:day-:month?-:year?", []testparams{
+		{url: "/api/1", params: []string{"1", "", ""}, match: true},
+		//{url: "/api/1/", params: []string{"1", "", ""}, match: true}, // TODO: check it
+		{url: "/api/1-2", params: []string{"1", "2", ""}, match: true},
+		{url: "/api/1-2-3", params: []string{"1", "2", "3"}, match: true},
 		{url: "/api/", params: nil, match: false},
 	})
 	testCase("/api/*", []testparams{
@@ -207,8 +244,8 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/config", params: nil, match: false},
 	})
 	testCase("/config/*.json", []testparams{
-		{url: "/config/abc.json", params: []string{"abc.json"}, match: true},
-		{url: "/config/efg.json", params: []string{"efg.json"}, match: true},
+		{url: "/config/abc.json", params: []string{"abc"}, match: true},
+		{url: "/config/efg.json", params: []string{"efg"}, match: true},
 		//{url: "/config/efg.csv", params: nil, match: false},// doesn`t work, current: params: "efg.csv", true
 		{url: "config/abc.json", params: nil, match: false},
 		{url: "/config", params: nil, match: false},

@@ -183,86 +183,80 @@ type paramSeg struct {
 	IsParam    bool
 	IsOptional bool
 	IsLast     bool
+	EndChar    byte
 }
 
 const wildcardParam string = "*"
 
 // New ...
 func parseRoute(pattern string) (p routeParser) {
-	var patternCount int
-	aPattern := []string{""}
-	if pattern != "" {
-		aPattern = strings.Split(pattern, "/")[1:] // every route starts with an "/"
-	}
-	patternCount = len(aPattern)
-
-	var out = make([]paramSeg, patternCount)
+	var out []paramSeg
 	var params []string
-	var segIndex int
-	for i := 0; i < patternCount; i++ {
-		partLen := len(aPattern[i])
+
+	part, delimiterPos := "", 0
+	for len(pattern) > 0 && delimiterPos != -1 {
+		delimiterPos = findNextRouteDelimiterPosition(pattern)
+		if delimiterPos != -1 {
+			part = pattern[:delimiterPos]
+		} else {
+			part = pattern
+		}
+
+		partLen, lastSeg := len(part), len(out)-1
 		if partLen == 0 { // skip empty parts
+			if len(pattern) > 0 {
+				// remove first char
+				pattern = pattern[1:]
+			}
 			continue
 		}
 		// is parameter ?
-		if aPattern[i][0] == '*' || aPattern[i][0] == ':' {
-			out[segIndex] = paramSeg{
-				Param:      utils.GetTrimmedParam(aPattern[i]),
+		if part[0] == '*' || part[0] == ':' {
+			out = append(out, paramSeg{
+				Param:      utils.GetTrimmedParam(part),
 				IsParam:    true,
-				IsOptional: aPattern[i] == wildcardParam || aPattern[i][partLen-1] == '?',
-			}
-			params = append(params, out[segIndex].Param)
-		} else {
+				IsOptional: part == wildcardParam || part[partLen-1] == '?',
+			})
+			lastSeg = len(out) - 1
+			params = append(params, out[lastSeg].Param)
 			// combine const segments
-			if segIndex > 0 && !out[segIndex-1].IsParam {
-				segIndex--
-				out[segIndex].Const += "/" + aPattern[i]
-				// create new const segment
-			} else {
-				out[segIndex] = paramSeg{
-					Const: aPattern[i],
-				}
-			}
+		} else if lastSeg >= 0 && !out[lastSeg].IsParam {
+			out[lastSeg].Const += string(out[lastSeg].EndChar) + part
+			// create new const segment
+		} else {
+			out = append(out, paramSeg{
+				Const: part,
+			})
+			lastSeg = len(out) - 1
 		}
-		segIndex++
-	}
-	if segIndex == 0 {
-		segIndex++
-	}
-	out[segIndex-1].IsLast = true
 
-	p = routeParser{segs: out[:segIndex:segIndex], params: params}
+		if delimiterPos != -1 && len(pattern) >= delimiterPos+1 {
+			out[lastSeg].EndChar = pattern[delimiterPos]
+			pattern = pattern[delimiterPos+1:]
+		} else {
+			// last default char
+			out[lastSeg].EndChar = '/'
+		}
+	}
+	if len(out) > 0 {
+		out[len(out)-1].IsLast = true
+	}
+
+	p = routeParser{segs: out, params: params}
 	return
 }
 
-// performance tricks
-var paramsDummy = make([]string, 100000)
-var paramsPosDummy = make([][2]int, 100000)
-var startParamList, startParamPosList uint32 = 0, 0
+var routeDelimiter = []byte{'/', '-', '_', '.'}
 
-func getAllocFreeParamsPos(allocLen int) [][2]int {
-	size := uint32(allocLen)
-	start := atomic.AddUint32(&startParamPosList, size)
-	if (start + 10) >= uint32(len(paramsPosDummy)) {
-		atomic.StoreUint32(&startParamPosList, 0)
-		return getAllocFreeParamsPos(allocLen)
+func findNextRouteDelimiterPosition(search string) int {
+	nextPosition := -1
+	for _, delimiter := range routeDelimiter {
+		if pos := strings.IndexByte(search, delimiter); pos != -1 && (pos < nextPosition || nextPosition == -1) {
+			nextPosition = pos
+		}
 	}
-	start -= size
-	allocLen += int(start)
-	paramsPositions := paramsPosDummy[start:allocLen:allocLen]
-	return paramsPositions
-}
-func getAllocFreeParams(allocLen int) []string {
-	size := uint32(allocLen)
-	start := atomic.AddUint32(&startParamList, size)
-	if (start + 10) >= uint32(len(paramsPosDummy)) {
-		atomic.StoreUint32(&startParamList, 0)
-		return getAllocFreeParams(allocLen)
-	}
-	start -= size
-	allocLen += int(start)
-	params := paramsDummy[start:allocLen:allocLen]
-	return params
+
+	return nextPosition
 }
 
 // Match ...
@@ -284,10 +278,10 @@ func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 					i = partLen
 				} else {
 					// for the expressjs behavior -> "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
-					i = utils.GetCharPos(s, '/', strings.Count(s, "/")-(len(p.segs)-(index+1))+1)
+					i = utils.GetCharPos(s, segment.EndChar, strings.Count(s, string(segment.EndChar))-(len(p.segs)-(index+1))+1)
 				}
 			} else {
-				i = strings.IndexByte(s, '/')
+				i = strings.IndexByte(s, segment.EndChar)
 			}
 			if i == -1 {
 				i = partLen
@@ -302,7 +296,7 @@ func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 		} else {
 			// check const segment
 			i = len(segment.Const)
-			if partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const || (partLen > i && s[i] != '/') {
+			if partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const || (partLen > i && s[i] != segment.EndChar) {
 				return nil, false
 			}
 		}
@@ -337,6 +331,36 @@ func (p *routeParser) paramsForPos(path string, paramsPositions [][2]int) []stri
 		}
 	}
 
+	return params
+}
+
+// performance tricks
+var paramsDummy = make([]string, 100000)
+var paramsPosDummy = make([][2]int, 100000)
+var startParamList, startParamPosList uint32 = 0, 0
+
+func getAllocFreeParamsPos(allocLen int) [][2]int {
+	size := uint32(allocLen)
+	start := atomic.AddUint32(&startParamPosList, size)
+	if (start + 10) >= uint32(len(paramsPosDummy)) {
+		atomic.StoreUint32(&startParamPosList, 0)
+		return getAllocFreeParamsPos(allocLen)
+	}
+	start -= size
+	allocLen += int(start)
+	paramsPositions := paramsPosDummy[start:allocLen:allocLen]
+	return paramsPositions
+}
+func getAllocFreeParams(allocLen int) []string {
+	size := uint32(allocLen)
+	start := atomic.AddUint32(&startParamList, size)
+	if (start + 10) >= uint32(len(paramsPosDummy)) {
+		atomic.StoreUint32(&startParamList, 0)
+		return getAllocFreeParams(allocLen)
+	}
+	start -= size
+	allocLen += int(start)
+	params := paramsDummy[start:allocLen:allocLen]
 	return params
 }
 
