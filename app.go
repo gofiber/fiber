@@ -27,7 +27,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.11.0"
+const Version = "1.11.1"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -65,6 +65,7 @@ type Settings struct {
 	// 	if e, ok := err.(*Error); ok {
 	// 		code = e.Code
 	// 	}
+	// 	ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	// 	ctx.Status(code).SendString(err.Error())
 	// }
 	ErrorHandler func(*Ctx, error)
@@ -122,9 +123,13 @@ type Settings struct {
 	// Default: false
 	DisableStartupMessage bool
 
-	// Templates is the interface that wraps the Render function.
+	// Templates is deprecated please use Views
 	// Default: nil
 	Templates Templates
+
+	// Views is the interface that wraps the Render function.
+	// Default: nil
+	Views Views
 
 	// The amount of time allowed to read the full request including body.
 	// Default: unlimited
@@ -230,8 +235,8 @@ func New(settings ...*Settings) *App {
 		getBytes, getString = getBytesImmutable, getStringImmutable
 	}
 
-	// Initialize app
-	return app.init()
+	// Return app
+	return app
 }
 
 // Use registers a middleware route.
@@ -550,6 +555,19 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 
 func (app *App) init() *App {
 	app.mutex.Lock()
+	// Load view engine if provided
+	if app.Settings != nil {
+		// Templates is replaced by Views with layout support
+		if app.Settings.Templates != nil {
+			fmt.Println("`Templates` are deprecated since v1.12.x, please us `Views` instead")
+		}
+		// Only load templates if an view engine is specified
+		if app.Settings.Views != nil {
+			if err := app.Settings.Views.Load(); err != nil {
+				fmt.Printf("views: %v\n", err)
+			}
+		}
+	}
 	if app.server == nil {
 		app.server = &fasthttp.Server{
 			Logger:       &disableLogger{},
