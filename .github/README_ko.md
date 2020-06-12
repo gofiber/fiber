@@ -234,17 +234,17 @@ func main() {
 <details>
   <summary>📚 Show more code examples</summary>
 
-### Template engines
+### Views engines
 
 📖 [Settings](https://docs.gofiber.io/application#settings)  
-📖 [Template Engines](https://github.com/gofiber/template)  
+📖 [Engines](https://github.com/gofiber/template)  
 📖 [Render](https://docs.gofiber.io/context#render)  
 
-Fiber defaults to the [Go template engine](https://golang.org/pkg/html/template/) when no Template engine is set.
+Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
 
-If you want to template partials and a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
 
-You can use our [Template Middleware](https://github.com/gofiber/template).
+Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
 
 ```go
 import (
@@ -253,13 +253,13 @@ import (
 )
 
 func main() {
-  // You can setup template engine before initiation app:
+  // You can setup Views engine before initiation app:
   app := fiber.New(&fiber.Settings{
-    Templates: pug.New("./views", ".pug"),
+    Views: pug.New("./views", ".pug"),
   })
 
   // OR after initiation app at any convenient location:
-  app.Settings.Templates = pug.New("./views", ".pug"),
+  app.Settings.Views = pug.New("./views", ".pug"),
 
   // And now, you can call template `./views/home.pug` like this:
   app.Get("/", func(c *fiber.Ctx) {

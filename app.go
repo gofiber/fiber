@@ -27,7 +27,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.11.0"
+const Version = "1.11.1"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -35,19 +35,11 @@ type Map map[string]interface{}
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx)
 
-// default settings
-var (
-	defaultBodyLimit    = 4 * 1024 * 1024
-	defaultConcurrency  = 256 * 1024
-	defaultErrorHandler = func(ctx *Ctx, err error) {
-		code := StatusInternalServerError
-		if e, ok := err.(*Error); ok {
-			code = e.Code
-		}
-		ctx.Status(code).SendString(err.Error())
-	}
-	defaultCompressedFileSuffix = ".fiber.gz"
-)
+// Error represents an error that occurred while handling a request.
+type Error struct {
+	Code    int
+	Message string
+}
 
 // App denotes the Fiber application.
 type App struct {
@@ -73,6 +65,7 @@ type Settings struct {
 	// 	if e, ok := err.(*Error); ok {
 	// 		code = e.Code
 	// 	}
+	// 	ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	// 	ctx.Status(code).SendString(err.Error())
 	// }
 	ErrorHandler func(*Ctx, error)
@@ -130,9 +123,13 @@ type Settings struct {
 	// Default: false
 	DisableStartupMessage bool
 
-	// Templates is the interface that wraps the Render function.
+	// Templates is deprecated please use Views
 	// Default: nil
 	Templates Templates
+
+	// Views is the interface that wraps the Render function.
+	// Default: nil
+	Views Views
 
 	// The amount of time allowed to read the full request including body.
 	// Default: unlimited
@@ -178,48 +175,20 @@ type Static struct {
 	Index string
 }
 
-// Error represents an error that occurred while handling a request.
-type Error struct {
-	Code    int
-	Message string
-}
-
-// Error makes it compatible with `error` interface.
-func (e *Error) Error() string {
-	return e.Message
-}
-
-// NewError creates a new HTTPError instance.
-func NewError(code int, message ...string) *Error {
-	e := &Error{code, utils.StatusMessage(code)}
-	if len(message) > 0 {
-		e.Message = message[0]
-	}
-	return e
-}
-
-// Routes returns all registered routes
-//
-// for _, r := range app.Routes() {
-// 	fmt.Printf("%s\t%s\n", r.Method, r.Path)
-// }
-func (app *App) Routes() []*Route {
-	routes := make([]*Route, 0)
-	for m := range app.stack {
-		for r := range app.stack[m] {
-			// Ignore HEAD routes handling GET routes
-			if m == 1 && app.stack[m][r].Method == MethodGet {
-				continue
-			}
-			routes = append(routes, app.stack[m][r])
+// default settings
+var (
+	defaultBodyLimit    = 4 * 1024 * 1024
+	defaultConcurrency  = 256 * 1024
+	defaultErrorHandler = func(ctx *Ctx, err error) {
+		code := StatusInternalServerError
+		if e, ok := err.(*Error); ok {
+			code = e.Code
 		}
+		ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+		ctx.Status(code).SendString(err.Error())
 	}
-	// Sort routes by stack position
-	sort.Slice(routes, func(i, k int) bool {
-		return routes[i].pos < routes[k].pos
-	})
-	return routes
-}
+	defaultCompressedFileSuffix = ".fiber.gz"
+)
 
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
@@ -266,8 +235,8 @@ func New(settings ...*Settings) *App {
 		getBytes, getString = getBytesImmutable, getStringImmutable
 	}
 
-	// Initialize app
-	return app.init()
+	// Return app
+	return app
 }
 
 // Use registers a middleware route.
@@ -498,6 +467,43 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	return resp, nil
 }
 
+// Error makes it compatible with `error` interface.
+func (e *Error) Error() string {
+	return e.Message
+}
+
+// NewError creates a new HTTPError instance.
+func NewError(code int, message ...string) *Error {
+	e := &Error{code, utils.StatusMessage(code)}
+	if len(message) > 0 {
+		e.Message = message[0]
+	}
+	return e
+}
+
+// Routes returns all registered routes
+//
+// for _, r := range app.Routes() {
+// 	fmt.Printf("%s\t%s\n", r.Method, r.Path)
+// }
+func (app *App) Routes() []*Route {
+	routes := make([]*Route, 0)
+	for m := range app.stack {
+		for r := range app.stack[m] {
+			// Ignore HEAD routes handling GET routes
+			if m == 1 && app.stack[m][r].Method == MethodGet {
+				continue
+			}
+			routes = append(routes, app.stack[m][r])
+		}
+	}
+	// Sort routes by stack position
+	sort.Slice(routes, func(i, k int) bool {
+		return routes[i].pos < routes[k].pos
+	})
+	return routes
+}
+
 // Sharding: https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
 func (app *App) prefork(address string) (ln net.Listener, err error) {
 	// Master proc
@@ -549,6 +555,19 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 
 func (app *App) init() *App {
 	app.mutex.Lock()
+	// Load view engine if provided
+	if app.Settings != nil {
+		// Templates is replaced by Views with layout support
+		if app.Settings.Templates != nil {
+			fmt.Println("`Templates` are deprecated since v1.12.x, please us `Views` instead")
+		}
+		// Only load templates if an view engine is specified
+		if app.Settings.Views != nil {
+			if err := app.Settings.Views.Load(); err != nil {
+				fmt.Printf("views: %v\n", err)
+			}
+		}
+	}
 	if app.server == nil {
 		app.server = &fasthttp.Server{
 			Logger:       &disableLogger{},
