@@ -106,11 +106,11 @@ func Logger(format ...string) fiber.Handler {
 	return LoggerWithConfig(config)
 }
 
-// Middleware settings
-var mutex sync.RWMutex
-
 // LoggerWithConfig allows you to pass an CompressConfig
 func LoggerWithConfig(config LoggerConfig) fiber.Handler {
+	// Middleware settings
+	var mutex sync.RWMutex
+
 	var tmpl loggerTemplate
 	tmpl.new(config.Format, "${", "}")
 
@@ -141,7 +141,60 @@ func LoggerWithConfig(config LoggerConfig) fiber.Handler {
 		stop := time.Now()
 		// Get new buffer
 		buf := bytebufferpool.Get()
-		_, err := tmpl.executeFunc(buf, tmplFn(buf, c, timestamp, start, stop))
+		_, err := tmpl.executeFunc(buf, func(w io.Writer, tag string) (int, error) {
+			switch tag {
+			case LoggerTagTime:
+				mutex.RLock()
+				defer mutex.RUnlock()
+				return buf.WriteString(timestamp)
+			case LoggerTagReferer:
+				return buf.WriteString(c.Get(fiber.HeaderReferer))
+			case LoggerTagProtocol:
+				return buf.WriteString(c.Protocol())
+			case LoggerTagIP:
+				return buf.WriteString(c.IP())
+			case LoggerTagIPs:
+				return buf.WriteString(c.Get(fiber.HeaderXForwardedFor))
+			case LoggerTagHost:
+				return buf.WriteString(c.Hostname())
+			case LoggerTagMethod:
+				return buf.WriteString(c.Method())
+			case LoggerTagPath:
+				return buf.WriteString(c.Path())
+			case LoggerTagURL:
+				return buf.WriteString(c.OriginalURL())
+			case LoggerTagUA:
+				return buf.WriteString(c.Get(fiber.HeaderUserAgent))
+			case LoggerTagLatency:
+				return buf.WriteString(stop.Sub(start).String())
+			case LoggerTagStatus:
+				return buf.WriteString(strconv.Itoa(c.Fasthttp.Response.StatusCode()))
+			case LoggerTagBody:
+				return buf.WriteString(c.Body())
+			case LoggerTagBytesReceived:
+				return buf.WriteString(strconv.Itoa(len(c.Fasthttp.Request.Body())))
+			case LoggerTagBytesSent:
+				return buf.WriteString(strconv.Itoa(len(c.Fasthttp.Response.Body())))
+			case LoggerTagRoute:
+				return buf.WriteString(c.Route().Path)
+			case LoggerTagError:
+				if c.Error() != nil {
+					return buf.WriteString(c.Error().Error())
+				}
+			default:
+				switch {
+				case strings.HasPrefix(tag, LoggerTagHeader):
+					return buf.WriteString(c.Get(tag[7:]))
+				case strings.HasPrefix(tag, LoggerTagQuery):
+					return buf.WriteString(c.Query(tag[6:]))
+				case strings.HasPrefix(tag, LoggerTagForm):
+					return buf.WriteString(c.FormValue(tag[5:]))
+				case strings.HasPrefix(tag, LoggerTagCookie):
+					return buf.WriteString(c.Cookies(tag[7:]))
+				}
+			}
+			return 0, nil
+		})
 		if err != nil {
 			_, _ = buf.WriteString(err.Error())
 		}
@@ -150,84 +203,6 @@ func LoggerWithConfig(config LoggerConfig) fiber.Handler {
 		}
 		bytebufferpool.Put(buf)
 	}
-}
-
-type tmplRenderer = func(w io.Writer, tag string) (int, error)
-
-func tmplFn(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, timestamp string, start, stop time.Time) tmplRenderer {
-	return func(w io.Writer, tag string) (int, error) {
-		switch tag {
-		case LoggerTagTime:
-			mutex.RLock()
-			defer mutex.RUnlock()
-			return buf.WriteString(timestamp)
-		case LoggerTagIP:
-			return buf.WriteString(c.IP())
-		case LoggerTagIPs:
-			return buf.WriteString(c.Get(fiber.HeaderXForwardedFor))
-		case LoggerTagUA:
-			return buf.WriteString(c.Get(fiber.HeaderUserAgent))
-		case LoggerTagLatency:
-			return buf.WriteString(stop.Sub(start).String())
-		case LoggerTagStatus:
-			return buf.WriteString(strconv.Itoa(c.Fasthttp.Response.StatusCode()))
-		case LoggerTagBody:
-			return buf.WriteString(c.Body())
-		case LoggerTagBytesReceived:
-			return buf.WriteString(strconv.Itoa(len(c.Fasthttp.Request.Body())))
-		case LoggerTagBytesSent:
-			return buf.WriteString(strconv.Itoa(len(c.Fasthttp.Response.Body())))
-		case LoggerTagError:
-			return writeErrorTag(buf, c)
-		}
-
-		if writeCount, err := writeLocationInformation(buf, c, tag); writeCount != 0 || err != nil {
-			return writeCount, err
-		}
-
-		return writeTagPrefix(buf, c, tag)
-	}
-}
-
-func writeLocationInformation(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, tag string) (int, error) {
-	switch tag {
-	case LoggerTagReferer:
-		return buf.WriteString(c.Get(fiber.HeaderReferer))
-	case LoggerTagProtocol:
-		return buf.WriteString(c.Protocol())
-	case LoggerTagHost:
-		return buf.WriteString(c.Hostname())
-	case LoggerTagMethod:
-		return buf.WriteString(c.Method())
-	case LoggerTagPath:
-		return buf.WriteString(c.Path())
-	case LoggerTagURL:
-		return buf.WriteString(c.OriginalURL())
-	case LoggerTagRoute:
-		return buf.WriteString(c.Route().Path)
-	}
-	return 0, nil
-}
-
-func writeErrorTag(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx) (int, error) {
-	if c.Error() == nil {
-		return 0, nil
-	}
-	return buf.WriteString(c.Error().Error())
-}
-
-func writeTagPrefix(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, tag string) (int, error) {
-	switch {
-	case strings.HasPrefix(tag, LoggerTagHeader):
-		return buf.WriteString(c.Get(tag[7:]))
-	case strings.HasPrefix(tag, LoggerTagQuery):
-		return buf.WriteString(c.Query(tag[6:]))
-	case strings.HasPrefix(tag, LoggerTagForm):
-		return buf.WriteString(c.FormValue(tag[5:]))
-	case strings.HasPrefix(tag, LoggerTagCookie):
-		return buf.WriteString(c.Cookies(tag[7:]))
-	}
-	return 0, nil
 }
 
 // MIT License fasttemplate
