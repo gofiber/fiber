@@ -278,6 +278,7 @@ func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 					i = partLen
 				} else {
 					// for the expressjs behavior -> "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
+					// TODO: write own function to cover this
 					i = utils.GetCharPos(s, segment.EndChar, strings.Count(s, string(segment.EndChar))-(len(p.segs)-(index+1))+1)
 				}
 			} else {

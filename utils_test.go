@@ -246,7 +246,7 @@ func Test_Utils_matchParams(t *testing.T) {
 	testCase("/config/*.json", []testparams{
 		{url: "/config/abc.json", params: []string{"abc"}, match: true},
 		{url: "/config/efg.json", params: []string{"efg"}, match: true},
-		//{url: "/config/efg.csv", params: nil, match: false},// doesn`t work, current: params: "efg.csv", true
+		{url: "/config/efg.csv", params: nil, match: false},
 		{url: "config/abc.json", params: nil, match: false},
 		{url: "/config", params: nil, match: false},
 	})
