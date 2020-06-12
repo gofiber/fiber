@@ -66,9 +66,15 @@ type Cookie struct {
 	SameSite string
 }
 
-// Templates is the interface that wraps the Render function.
+// Templates is deprecated, please use Views
 type Templates interface {
 	Render(io.Writer, string, interface{}) error
+}
+
+// Views is the interface that wraps the Render function.
+type Views interface {
+	Load() error
+	Render(io.Writer, string, interface{}, ...string) error
 }
 
 // AcquireCtx from pool
@@ -738,15 +744,21 @@ func (ctx *Ctx) Redirect(location string, status ...int) {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-func (ctx *Ctx) Render(name string, bind interface{}) (err error) {
+func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err error) {
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
 	// Use Templates engine if exist
 	if ctx.app.Settings.Templates != nil {
-		// Render template from Engine
+		// Render template from Templates
+		fmt.Println("`Templates` are deprecated since v1.12.x, please us `Views` instead")
 		if err := ctx.app.Settings.Templates.Render(buf, name, bind); err != nil {
+			return err
+		}
+	} else if ctx.app.Settings.Views != nil {
+		// Render template from Views
+		if err := ctx.app.Settings.Views.Render(buf, name, bind, layouts...); err != nil {
 			return err
 		}
 	} else {
