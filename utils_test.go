@@ -169,6 +169,7 @@ func Test_Utils_matchParams(t *testing.T) {
 	testCase("/api/:day/:month?/:year?", []testparams{
 		{url: "/api/1", params: []string{"1", "", ""}, match: true},
 		{url: "/api/1/", params: []string{"1", "", ""}, match: true},
+		{url: "/api/1-", params: []string{"1-", "", ""}, match: true},
 		{url: "/api/1/2", params: []string{"1", "2", ""}, match: true},
 		{url: "/api/1/2/3", params: []string{"1", "2", "3"}, match: true},
 		{url: "/api/", params: nil, match: false},
