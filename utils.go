@@ -277,9 +277,7 @@ func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 				if segment.IsLast {
 					i = partLen
 				} else {
-					// for the expressjs behavior -> "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
-					// TODO: write own function to cover this
-					i = utils.GetCharPos(s, segment.EndChar, strings.Count(s, string(segment.EndChar))-(len(p.segs)-(index+1))+1)
+					i = findWildcardParamEnd(s, p.segs, index)
 				}
 			} else {
 				i = strings.IndexByte(s, segment.EndChar)
@@ -333,6 +331,37 @@ func (p *routeParser) paramsForPos(path string, paramsPositions [][2]int) []stri
 	}
 
 	return params
+}
+
+func findWildcardParamEnd(s string, segments []paramSeg, currIndex int) int {
+	// for the expressjs wildcard behavior (right to left greedy)
+	// "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
+	// "/api/*/:param" - "/api/joker/batman"         -> "joker", "batman"
+	// "/api/*/:param" - "/api/joker/batman/robin"   -> "joker/batman", "robin"
+	// "/api/*/:param" - "/api/joker-batman-robin/1" -> "joker-batman-robin", "1"
+	endChar := segments[currIndex].EndChar
+	segCount := len(segments)
+	neededEndChars := 0
+
+	for i := currIndex + 1; i < segCount; i++ {
+		if segments[i].EndChar == endChar {
+			neededEndChars++
+		}
+	}
+
+	for {
+		if pos := strings.LastIndexByte(s, endChar); pos != -1 {
+			s = s[:pos]
+		} else {
+			break
+		}
+		neededEndChars--
+		if neededEndChars <= 0 {
+			break
+		}
+	}
+
+	return len(s)
 }
 
 // performance tricks
