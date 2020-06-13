@@ -246,7 +246,7 @@ func parseRoute(pattern string) (p routeParser) {
 	return
 }
 
-var routeDelimiter = []byte{'/', '-', '_', '.'}
+var routeDelimiter = []byte{'/', '-', '.'}
 
 func findNextRouteDelimiterPosition(search string) int {
 	nextPosition := -1

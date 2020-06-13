@@ -154,14 +154,6 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/v1", params: nil, match: false},
 		{url: "/api/v1/", params: nil, match: false},
 	})
-	testCase("/api/v1/:param_:param2", []testparams{
-		{url: "/api/v1/entity_value", params: []string{"entity", "value"}, match: true},
-		{url: "/api/v1/entity/value", params: nil, match: false},
-		{url: "/api/v1/entity-value", params: nil, match: false},
-		{url: "/api/v1/entity.value", params: nil, match: false},
-		{url: "/api/v1", params: nil, match: false},
-		{url: "/api/v1/", params: nil, match: false},
-	})
 	testCase("/api/v1/const", []testparams{
 		{url: "/api/v1/const", params: []string{}, match: true},
 		{url: "/api/v1", params: nil, match: false},
