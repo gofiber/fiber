@@ -277,7 +277,7 @@ func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 				if segment.IsLast {
 					i = partLen
 				} else {
-					i = findWildcardParamEnd(s, p.segs, index)
+					i = findWildcardParamLen(s, p.segs, index)
 				}
 			} else {
 				i = strings.IndexByte(s, segment.EndChar)
@@ -333,30 +333,29 @@ func (p *routeParser) paramsForPos(path string, paramsPositions [][2]int) []stri
 	return params
 }
 
-func findWildcardParamEnd(s string, segments []paramSeg, currIndex int) int {
-	// for the expressjs wildcard behavior (right to left greedy)
+// findWildcardParamLen for the expressjs wildcard behavior (right to left greedy)
+// look at the other segments and take what is left for the wildcard from right to left
+func findWildcardParamLen(s string, segments []paramSeg, currIndex int) int {
 	// "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
 	// "/api/*/:param" - "/api/joker/batman"         -> "joker", "batman"
 	// "/api/*/:param" - "/api/joker/batman/robin"   -> "joker/batman", "robin"
 	// "/api/*/:param" - "/api/joker-batman-robin/1" -> "joker-batman-robin", "1"
 	endChar := segments[currIndex].EndChar
-	segCount := len(segments)
 	neededEndChars := 0
-
-	for i := currIndex + 1; i < segCount; i++ {
+	// count the needed chars for the other segments
+	for i := currIndex + 1; i < len(segments); i++ {
 		if segments[i].EndChar == endChar {
 			neededEndChars++
 		}
 	}
-
+	// remove the part the other segments still need
 	for {
-		if pos := strings.LastIndexByte(s, endChar); pos != -1 {
+		pos := strings.LastIndexByte(s, endChar)
+		if pos != -1 {
 			s = s[:pos]
-		} else {
-			break
 		}
 		neededEndChars--
-		if neededEndChars <= 0 {
+		if neededEndChars <= 0 || pos == -1 {
 			break
 		}
 	}
