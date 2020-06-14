@@ -166,6 +166,8 @@ var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
 }
 
+//region route registration and matching #-#-#-#-#-#-#-#-#-#-#-#-#-#
+
 // ⚠️ This path parser was based on urlpath by @ucarion (MIT License).
 // 💖 Modified for the Fiber router by @renanbastos93 & @renewerner87
 // 🤖 ucarion/urlpath - renanbastos93/fastpath - renewerner87/fastpath
@@ -186,16 +188,21 @@ type paramSeg struct {
 	EndChar    byte
 }
 
+// list of possible parameter and segment delimiter
+// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
+var routeDelimiter = []byte{'/', '-', '.'}
+
 const wildcardParam string = "*"
 
-// New ...
+// parseRoute analyzes the route and divides it into segments for constant areas and parameters,
+// this information is needed later when assigning the requests to the declared routes
 func parseRoute(pattern string) (p routeParser) {
 	var out []paramSeg
 	var params []string
 
 	part, delimiterPos := "", 0
 	for len(pattern) > 0 && delimiterPos != -1 {
-		delimiterPos = findNextRouteDelimiterPosition(pattern)
+		delimiterPos = findNextRouteSegmentEnd(pattern)
 		if delimiterPos != -1 {
 			part = pattern[:delimiterPos]
 		} else {
@@ -246,9 +253,8 @@ func parseRoute(pattern string) (p routeParser) {
 	return
 }
 
-var routeDelimiter = []byte{'/', '-', '.'}
-
-func findNextRouteDelimiterPosition(search string) int {
+// findNextRouteSegmentEnd searches in the route for the next end position for a segment
+func findNextRouteSegmentEnd(search string) int {
 	nextPosition := -1
 	for _, delimiter := range routeDelimiter {
 		if pos := strings.IndexByte(search, delimiter); pos != -1 && (pos < nextPosition || nextPosition == -1) {
@@ -259,7 +265,7 @@ func findNextRouteDelimiterPosition(search string) int {
 	return nextPosition
 }
 
-// Match ...
+// getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 	lenKeys := len(p.params)
 	paramsPositions := getAllocFreeParamsPos(lenKeys)
@@ -287,6 +293,9 @@ func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 			}
 
 			if !segment.IsOptional && i == 0 {
+				return nil, false
+				// special case for not slash end character
+			} else if i > 0 && partLen >= i && segment.EndChar != '/' && s[i-1] == '/' {
 				return nil, false
 			}
 
@@ -318,7 +327,7 @@ func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 	return paramsPositions, true
 }
 
-// get parameters for the given positions from the given path
+// paramsForPos get parameters for the given positions from the given path
 func (p *routeParser) paramsForPos(path string, paramsPositions [][2]int) []string {
 	size := len(paramsPositions)
 	params := getAllocFreeParams(size)
@@ -338,7 +347,6 @@ func (p *routeParser) paramsForPos(path string, paramsPositions [][2]int) []stri
 func findWildcardParamLen(s string, segments []paramSeg, currIndex int) int {
 	// "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
 	// "/api/*/:param" - "/api/joker/batman"         -> "joker", "batman"
-	// "/api/*/:param" - "/api/joker/batman/robin"   -> "joker/batman", "robin"
 	// "/api/*/:param" - "/api/joker-batman-robin/1" -> "joker-batman-robin", "1"
 	endChar := segments[currIndex].EndChar
 	neededEndChars := 0
@@ -364,10 +372,14 @@ func findWildcardParamLen(s string, segments []paramSeg, currIndex int) int {
 }
 
 // performance tricks
-var paramsDummy = make([]string, 100000)
-var paramsPosDummy = make([][2]int, 100000)
+// creates predefined arrays that are used to match the request routes so that no allocations need to be made
+var paramsDummy, paramsPosDummy = make([]string, 100000), make([][2]int, 100000)
+
+// positions parameter that moves further and further to the right and remains atomic over all simultaneous requests
+// to assign a separate range to each request
 var startParamList, startParamPosList uint32 = 0, 0
 
+// getAllocFreeParamsPos fetches a slice area from the predefined slice, which is currently not in use
 func getAllocFreeParamsPos(allocLen int) [][2]int {
 	size := uint32(allocLen)
 	start := atomic.AddUint32(&startParamPosList, size)
@@ -380,6 +392,8 @@ func getAllocFreeParamsPos(allocLen int) [][2]int {
 	paramsPositions := paramsPosDummy[start:allocLen:allocLen]
 	return paramsPositions
 }
+
+// getAllocFreeParams fetches a slice area from the predefined slice, which is currently not in use
 func getAllocFreeParams(allocLen int) []string {
 	size := uint32(allocLen)
 	start := atomic.AddUint32(&startParamList, size)
@@ -392,6 +406,8 @@ func getAllocFreeParams(allocLen int) []string {
 	params := paramsDummy[start:allocLen:allocLen]
 	return params
 }
+
+//endregion #-#-#-#-#-#-#-#-#-#-#-#-#-#
 
 // HTTP methods and their unique INTs
 var methodINT = map[string]int{

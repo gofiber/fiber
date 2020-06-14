@@ -169,14 +169,17 @@ func Test_Utils_matchParams(t *testing.T) {
 	testCase("/api/:day/:month?/:year?", []testparams{
 		{url: "/api/1", params: []string{"1", "", ""}, match: true},
 		{url: "/api/1/", params: []string{"1", "", ""}, match: true},
+		{url: "/api/1//", params: []string{"1", "", ""}, match: true},
+		{url: "/api/1/-/", params: []string{"1", "-", ""}, match: true},
 		{url: "/api/1-", params: []string{"1-", "", ""}, match: true},
+		{url: "/api/1.", params: []string{"1.", "", ""}, match: true},
 		{url: "/api/1/2", params: []string{"1", "2", ""}, match: true},
 		{url: "/api/1/2/3", params: []string{"1", "2", "3"}, match: true},
 		{url: "/api/", params: nil, match: false},
 	})
 	testCase("/api/:day.:month?.:year?", []testparams{
 		{url: "/api/1", params: []string{"1", "", ""}, match: true},
-		//{url: "/api/1/", params: nil, match: false},// TODO: check it later
+		{url: "/api/1/", params: nil, match: false},
 		{url: "/api/1.", params: []string{"1", "", ""}, match: true},
 		{url: "/api/1.2", params: []string{"1", "2", ""}, match: true},
 		{url: "/api/1.2.3", params: []string{"1", "2", "3"}, match: true},
@@ -184,8 +187,10 @@ func Test_Utils_matchParams(t *testing.T) {
 	})
 	testCase("/api/:day-:month?-:year?", []testparams{
 		{url: "/api/1", params: []string{"1", "", ""}, match: true},
-		//{url: "/api/1/", params: nil, match: false},// TODO: check it later
+		{url: "/api/1/", params: nil, match: false},
 		{url: "/api/1-", params: []string{"1", "", ""}, match: true},
+		{url: "/api/1-/", params: nil, match: false},
+		{url: "/api/1-/-", params: nil, match: false},
 		{url: "/api/1-2", params: []string{"1", "2", ""}, match: true},
 		{url: "/api/1-2-3", params: []string{"1", "2", "3"}, match: true},
 		{url: "/api/", params: nil, match: false},
@@ -202,6 +207,7 @@ func Test_Utils_matchParams(t *testing.T) {
 		{url: "/api/", params: []string{"", ""}, match: true},
 		{url: "/api/joker", params: []string{"joker", ""}, match: true},
 		{url: "/api/joker/batman", params: []string{"joker", "batman"}, match: true},
+		{url: "/api/joker//batman", params: []string{"joker/", "batman"}, match: true},
 		{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},
 		{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
 		{url: "/api/joker/batman/robin/1/", params: []string{"joker/batman/robin/1", ""}, match: true},
