@@ -27,7 +27,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.11.1"
+const Version = "1.12.0"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -143,6 +143,17 @@ type Settings struct {
 	// Default: unlimited
 	IdleTimeout time.Duration
 
+	// Per-connection buffer size for requests' reading.
+	// This also limits the maximum header size.
+	// Increase this buffer if your clients send multi-KB RequestURIs
+	// and/or multi-KB headers (for example, BIG cookies).
+	// Default 4096
+	ReadBufferSize int
+
+	// Per-connection buffer size for responses' writing.
+	// Default 4096
+	WriteBufferSize int
+
 	// CompressedFileSuffix adds suffix to the original file name and
 	// tries saving the resulting compressed file under the new file name.
 	// Default: ".fiber.gz"
@@ -177,9 +188,11 @@ type Static struct {
 
 // default settings
 var (
-	defaultBodyLimit    = 4 * 1024 * 1024
-	defaultConcurrency  = 256 * 1024
-	defaultErrorHandler = func(ctx *Ctx, err error) {
+	defaultBodyLimit       = 4 * 1024 * 1024
+	defaultConcurrency     = 256 * 1024
+	defaultReadBufferSize  = 4096
+	defaultWriteBufferSize = 4096
+	defaultErrorHandler    = func(ctx *Ctx, err error) {
 		code := StatusInternalServerError
 		if e, ok := err.(*Error); ok {
 			code = e.Code
@@ -217,6 +230,12 @@ func New(settings ...*Settings) *App {
 	}
 	if app.Settings.Concurrency <= 0 {
 		app.Settings.Concurrency = defaultConcurrency
+	}
+	if app.Settings.ReadBufferSize <= 0 {
+		app.Settings.ReadBufferSize = defaultReadBufferSize
+	}
+	if app.Settings.WriteBufferSize <= 0 {
+		app.Settings.WriteBufferSize = defaultWriteBufferSize
 	}
 	// Set default compressed file suffix
 	if app.Settings.CompressedFileSuffix == "" {
@@ -602,6 +621,8 @@ func (app *App) init() *App {
 	app.server.ReadTimeout = app.Settings.ReadTimeout
 	app.server.WriteTimeout = app.Settings.WriteTimeout
 	app.server.IdleTimeout = app.Settings.IdleTimeout
+	app.server.ReadBufferSize = app.Settings.ReadBufferSize
+	app.server.WriteBufferSize = app.Settings.WriteBufferSize
 	app.mutex.Unlock()
 	return app
 }
