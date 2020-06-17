@@ -27,6 +27,9 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
+// Ensure App implement Router interface
+var _ Router = &App{}
+
 // Version of current package
 const Version = "1.12.0-alpha"
 
