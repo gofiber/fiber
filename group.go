@@ -10,7 +10,7 @@ import (
 )
 
 // Ensure Group implement Router interface
-var _ Router = &Group{}
+var _ Router = (*Group)(nil)
 
 // Group struct
 type Group struct {
