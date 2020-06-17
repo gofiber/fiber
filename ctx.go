@@ -923,7 +923,12 @@ func (ctx *Ctx) Subdomains(offset ...int) []string {
 		o = offset[0]
 	}
 	subdomains := strings.Split(ctx.Hostname(), ".")
-	subdomains = subdomains[:len(subdomains)-o]
+	l := len(subdomains) - o
+	// Check index to avoid slice bounds out of range panic
+	if l < 0 {
+		l = len(subdomains)
+	}
+	subdomains = subdomains[:l]
 	return subdomains
 }
 
