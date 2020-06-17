@@ -160,7 +160,7 @@ type Settings struct {
 	// Default: ".fiber.gz"
 	CompressedFileSuffix string
 
-	// FEATURE: v1.12
+	// FEATURE: v1.13
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
