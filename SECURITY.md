@@ -1,8 +1,9 @@
 # Security Policy
 
-1. [Reporting security problems to Fiber](#reporting)
-2. [Security Point of Contact](#contact)
-3. [Incident Response Process](#process)
+1. [Supported Versions](#versions)
+2. [Reporting security problems to Fiber](#reporting)
+3. [Security Point of Contact](#contact)
+4. [Incident Response Process](#process)
 
 <a name="versions"></a>
 ## Supported Versions
