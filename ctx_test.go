@@ -1337,3 +1337,21 @@ func Test_Ctx_XHR(t *testing.T) {
 	ctx.Fasthttp.Request.Header.Set(HeaderXRequestedWith, "XMLHttpRequest")
 	utils.AssertEqual(t, true, ctx.XHR())
 }
+
+// go test -run Test_Ctx_Session
+func Test_Ctx_Session(t *testing.T) {
+	type session struct {
+		Session
+	}
+	sess := session{}
+	t.Parallel()
+	app := New()
+	for i := 0; i < 3; i++ {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		utils.AssertEqual(t, nil, ctx.Session())
+		ctx.SetSession(sess)
+		utils.AssertEqual(t, session{}, ctx.Session())
+		app.ReleaseCtx(ctx)
+	}
+}
+

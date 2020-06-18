@@ -43,6 +43,7 @@ type Ctx struct {
 	values       []string             // Route parameter values
 	err          error                // Contains error if passed to Next
 	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	session      Session              // Reference to Session, default nil. Use `SetSession` to provide concrete Session struct
 }
 
 // Range data for ctx.Range
@@ -77,6 +78,15 @@ type Views interface {
 	Render(io.Writer, string, interface{}, ...string) error
 }
 
+// Session interface
+type Session interface {
+	ID() string
+	Get(key string) interface{}
+	Set(key string, value interface{})
+	Destroy()
+	Regenerate() error
+}
+
 // AcquireCtx from pool
 func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx := app.pool.Get().(*Ctx)
@@ -102,6 +112,7 @@ func (app *App) ReleaseCtx(ctx *Ctx) {
 	ctx.values = nil
 	ctx.Fasthttp = nil
 	ctx.err = nil
+	ctx.session = nil
 	app.pool.Put(ctx)
 }
 
@@ -998,4 +1009,12 @@ func (ctx *Ctx) prettifyPath() {
 	if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
 		ctx.path = utils.TrimRight(ctx.path, '/')
 	}
+}
+
+func (ctx *Ctx) SetSession(session Session) {
+	ctx.session = session
+}
+
+func (ctx *Ctx) Session() Session {
+	return ctx.session
 }
