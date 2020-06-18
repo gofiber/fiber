@@ -9,9 +9,6 @@ import (
 	"reflect"
 )
 
-// Ensure Group implement Router interface
-var _ Router = (*Group)(nil)
-
 // Group struct
 type Group struct {
 	app    *App
