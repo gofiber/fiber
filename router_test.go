@@ -178,6 +178,16 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 	utils.AssertEqual(t, "middleware", getString(body))
 }
 
+func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
+	var app interface{} = (*App)(nil)
+	_, ok := app.(Router)
+	utils.AssertEqual(t, true, ok)
+
+	var group interface{} = (*Group)(nil)
+	_, ok = group.(Router)
+	utils.AssertEqual(t, true, ok)
+}
+
 //////////////////////////////////////////////
 ///////////////// BENCHMARKS /////////////////
 //////////////////////////////////////////////
