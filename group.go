@@ -108,5 +108,5 @@ func (grp *Group) Group(prefix string, handlers ...Handler) *Group {
 	if len(handlers) > 0 {
 		grp.app.register("USE", prefix, handlers...)
 	}
-	return grp.app.Group(prefix, handlers...)
+	return grp.app.Group(prefix)
 }
