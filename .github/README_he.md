@@ -215,6 +215,18 @@ func main() {
     fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
     // => Name: john, Age:
   })
+  
+  // GET /plantae/prunus.persica
+  app.Get("/plantae/:genus.:species", func(c *fiber.Ctx) {
+    fmt.Printf("Genius: %s, Species: %s", c.Params("genus"), c.Params("species"))
+    // => Genius: prunus, Species: persica
+  })
+
+  // GET /flights/LAX-SFO
+  app.Get("/flights/:from-:to", func(c *fiber.Ctx) {
+    fmt.Printf("From: %s, To: %s", c.Params("from"), c.Params("to"))
+    // => From: LAX, To: SFO
+  })
 
   // GET /api/register
   app.Get("/api/*", func(c *fiber.Ctx) {
