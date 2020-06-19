@@ -162,14 +162,14 @@ func main() {
   
   // GET /plantae/prunus.persica
   app.Get("/plantae/:genus.:species", func(c *fiber.Ctx) {
-    c.Params("genus")   // => prunus
-    c.Params("species") // => persica
+    fmt.Printf("Genius: %s, Species: %s", c.Params("genus"), c.Params("species"))
+    // => Genius: prunus, Species: persica
   })
 
   // GET /flights/LAX-SFO
   app.Get("/flights/:from-:to", func(c *fiber.Ctx) {
-    c.Params("from") // => LAX
-    c.Params("to")   // => SFO
+    fmt.Printf("From: %s, To: %s", c.Params("from"), c.Params("to"))
+    // => From: LAX, To: SFO
   })
   
   // GET /api/register
