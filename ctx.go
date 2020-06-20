@@ -581,7 +581,7 @@ func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
 		method := utils.ToUpper(override[0])
 		if methodINT[method] == 0 && method != MethodGet {
-			log.Fatalf("Method: Invalid HTTP method override %s", method)
+			return ctx.method
 		}
 		ctx.method = method
 	}
