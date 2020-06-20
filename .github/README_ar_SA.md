@@ -573,6 +573,7 @@ func main() {
 - [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 - [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 - [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
+- [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
 
 ## 💬 وسائل الإعلام
 
