@@ -15,6 +15,36 @@ import (
 	utils "github.com/gofiber/utils"
 )
 
+// Scan stack if other methods match
+func setMethodNotAllowed(ctx *Ctx) {
+	original := getString(ctx.Fasthttp.Request.Header.Method())
+	for m := range methodINT {
+		// Skip original method
+		if m == original {
+			continue
+		}
+		// Reset stack index
+		ctx.indexRoute = -1
+		// Set new method
+		ctx.method = m
+		// Get stack length
+		lenr := len(ctx.app.stack[9]) - 1
+		// Loop over the route stack starting from previous index
+		for ctx.indexRoute < lenr {
+			// Get *Route
+			route := ctx.app.stack[9][ctx.indexRoute]
+			// Check if it matches the request path
+			match, _ := route.match(ctx.path, ctx.pathOriginal)
+			// No match, next route
+			if match {
+				ctx.SendStatus(StatusMethodNotAllowed)
+				ctx.Vary(HeaderAllow, m)
+				break
+			}
+		}
+	}
+}
+
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses

@@ -45,7 +45,7 @@ type Error struct {
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
-	// Route stack
+	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// Amount of registered routes
 	routes int
@@ -222,7 +222,7 @@ func New(settings ...*Settings) *App {
 	// Create a new app
 	app := &App{
 		// Create router stack
-		stack: make([][]*Route, len(methodINT)),
+		stack: make([][]*Route, len(methodINT)+1),
 		// Create Ctx pool
 		pool: sync.Pool{
 			New: func() interface{} {

@@ -37,13 +37,14 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
 	// Data for routing
-	pos         int         // Position in stack
-	use         bool        // USE matches path prefixes
-	star        bool        // Path equals '*'
-	root        bool        // Path equals '/'
-	path        string      // Prettified path
-	routeParser routeParser // Parameter parser
-	routeParams []string    // Case sensitive param keys
+	pos            int         // Position in stack
+	use            bool        // USE matches path prefixes
+	star           bool        // Path equals '*'
+	root           bool        // Path equals '/'
+	path           string      // Prettified path
+	allowedMethods string      // Methods that are allowed on this route
+	routeParser    routeParser // Parameter parser
+	routeParams    []string    // Case sensitive param keys
 
 	// Public fields
 	Path     string    // Original registered route path
@@ -125,6 +126,10 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Generate ETag if enabled
 	if match && app.Settings.ETag {
 		setETag(ctx, false)
+	}
+	// Scan stack for other methods
+	if !match {
+		setMethodNotAllowed(ctx)
 	}
 	// Release Ctx
 	app.ReleaseCtx(ctx)
@@ -313,9 +318,13 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 	app.addRoute(MethodHead, route)
 	return route
 }
+
 func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method indentifier
 	m := methodINT[method]
 	// Add route to the stack
 	app.stack[m] = append(app.stack[m], route)
+
+	// Add route to method allowed slice
+	app.stack[9] = append(app.stack[9], route)
 }
