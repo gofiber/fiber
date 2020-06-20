@@ -86,7 +86,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx.indexRoute = -1
 	ctx.indexHandler = 0
 	// Set paths
-	ctx.path = getString(fctx.URI().Path())
+	ctx.path = getString(fctx.URI().PathOriginal())
 	ctx.pathOriginal = ctx.path
 	// Set method
 	ctx.method = getString(fctx.Request.Header.Method())
