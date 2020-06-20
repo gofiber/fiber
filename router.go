@@ -37,14 +37,13 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
 	// Data for routing
-	pos            int         // Position in stack
-	use            bool        // USE matches path prefixes
-	star           bool        // Path equals '*'
-	root           bool        // Path equals '/'
-	path           string      // Prettified path
-	allowedMethods string      // Methods that are allowed on this route
-	routeParser    routeParser // Parameter parser
-	routeParams    []string    // Case sensitive param keys
+	pos         int         // Position in stack
+	use         bool        // USE matches path prefixes
+	star        bool        // Path equals '*'
+	root        bool        // Path equals '/'
+	path        string      // Prettified path
+	routeParser routeParser // Parameter parser
+	routeParams []string    // Case sensitive param keys
 
 	// Public fields
 	Path     string    // Original registered route path
