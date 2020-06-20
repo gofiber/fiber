@@ -9,9 +9,6 @@ import (
 	"reflect"
 )
 
-// Ensure Group implement Router interface
-var _ Router = (*Group)(nil)
-
 // Group struct
 type Group struct {
 	app    *App
@@ -111,5 +108,5 @@ func (grp *Group) Group(prefix string, handlers ...Handler) *Group {
 	if len(handlers) > 0 {
 		grp.app.register("USE", prefix, handlers...)
 	}
-	return grp.app.Group(prefix, handlers...)
+	return grp.app.Group(prefix)
 }
