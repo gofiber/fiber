@@ -1,9 +1,7 @@
-# Timeout wrapper
+# Timeout
+Wrapper function which provides a handler with a timeout.
 
-Why use this middleware?
-
-...
-
+If the handler takes longer than the given duration, the timeout error is set and forwarded to the next method.
 ### Example
 ```go
 package main
