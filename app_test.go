@@ -27,6 +27,44 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
+func Test_App_MethodNotAllowed(t *testing.T) {
+	app := New()
+
+	app.Post("/", func(c *Ctx) {})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 405, resp.StatusCode)
+	utils.AssertEqual(t, "POST", resp.Header.Get(HeaderAllow))
+
+	resp, err = app.Test(httptest.NewRequest("PATCH", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 405, resp.StatusCode)
+	utils.AssertEqual(t, "POST", resp.Header.Get(HeaderAllow))
+
+	resp, err = app.Test(httptest.NewRequest("PUT", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 405, resp.StatusCode)
+	utils.AssertEqual(t, "POST", resp.Header.Get(HeaderAllow))
+
+	app.Get("/", func(c *Ctx) {})
+
+	resp, err = app.Test(httptest.NewRequest("TRACE", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 405, resp.StatusCode)
+	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+
+	resp, err = app.Test(httptest.NewRequest("PATCH", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 405, resp.StatusCode)
+	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+
+	resp, err = app.Test(httptest.NewRequest("PUT", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 405, resp.StatusCode)
+	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+}
+
 func Test_App_Routes(t *testing.T) {
 	app := New()
 	h := func(c *Ctx) {}
