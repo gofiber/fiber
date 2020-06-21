@@ -211,7 +211,7 @@ var methodINT = map[string]int{
 	MethodPatch:   8,
 }
 
-// HTTP methods and their unique INTs
+// HTTP methods slice
 var intMethod = []string{
 	MethodGet,
 	MethodHead,
