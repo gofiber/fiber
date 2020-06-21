@@ -15,46 +15,6 @@ import (
 	utils "github.com/gofiber/utils"
 )
 
-func HandlerWithTimeout(handler Handler, timeout time.Duration) Handler {
-	if timeout <= 0 {
-		return handler
-	}
-	var concurrencyCh chan struct{}
-
-	return func(ctx *Ctx) {
-		if concurrencyCh == nil {
-			concurrencyCh = make(chan struct{}, ctx.app.server.Concurrency)
-		}
-		select {
-		case concurrencyCh <- struct{}{}:
-		default:
-			ctx.Next(ErrTooManyRequests)
-			return
-		}
-		ch := make(chan struct{}, 1)
-
-		go func() {
-			handler(ctx)
-			ch <- struct{}{}
-			<-concurrencyCh
-		}()
-		timeoutTimer := time.NewTimer(timeout)
-		select {
-		case <-ch:
-		case <-timeoutTimer.C:
-			ctx.Next(ErrRequestTimeout)
-		}
-		if !timeoutTimer.Stop() {
-			// Collect possibly added time from the channel
-			// if timer has been stopped and nobody collected its' value.
-			select {
-			case <-timeoutTimer.C:
-			default:
-			}
-		}
-	}
-}
-
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses

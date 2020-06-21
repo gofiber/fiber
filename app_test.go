@@ -36,43 +36,6 @@ func Test_App_Routes(t *testing.T) {
 	utils.AssertEqual(t, 3, len(app.Routes()))
 }
 
-func Test_App_Handler_WithTimeout(t *testing.T) {
-	app := New()
-	h := HandlerWithTimeout(
-		func(c *Ctx) {
-			sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-			time.Sleep(sleepTime)
-			c.SendString("After " + c.Params("sleepTime") + "ms sleeping")
-		},
-		5*time.Millisecond,
-	)
-	app.Get("/test/:sleepTime", h)
-
-	testTimeout := func(timeoutStr string) {
-		resp, err := app.Test(httptest.NewRequest("GET", "/test/"+timeoutStr, nil))
-		utils.AssertEqual(t, nil, err, "app.Test(req)")
-		utils.AssertEqual(t, StatusRequestTimeout, resp.StatusCode, "Status code")
-
-		body, err := ioutil.ReadAll(resp.Body)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "Request Timeout", string(body))
-	}
-	testSucces := func(timeoutStr string) {
-		resp, err := app.Test(httptest.NewRequest("GET", "/test/"+timeoutStr, nil))
-		utils.AssertEqual(t, nil, err, "app.Test(req)")
-		utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
-
-		body, err := ioutil.ReadAll(resp.Body)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "After "+timeoutStr+"ms sleeping", string(body))
-	}
-
-	testTimeout("15")
-	testSucces("2")
-	testTimeout("30")
-	testSucces("3")
-}
-
 func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	expectedError := regexp.MustCompile(
 		`error when reading request headers: small read buffer\. Increase ReadBufferSize\. Buffer size=4096, contents: "GET / HTTP/1.1\\r\\nHost: example\.com\\r\\nVery-Long-Header: -+`,
