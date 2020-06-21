@@ -46,6 +46,23 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
 	utils.AssertEqual(t, "POST", resp.Header.Get(HeaderAllow))
+
+	app.Get("/", func(c *Ctx) {})
+
+	resp, err = app.Test(httptest.NewRequest("TRACE", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 405, resp.StatusCode)
+	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+
+	resp, err = app.Test(httptest.NewRequest("PATCH", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 405, resp.StatusCode)
+	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+
+	resp, err = app.Test(httptest.NewRequest("PUT", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 405, resp.StatusCode)
+	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
 }
 
 func Test_App_Routes(t *testing.T) {
