@@ -17,11 +17,10 @@ import (
 
 // Scan stack if other methods match
 func setMethodNotAllowed(ctx *Ctx) {
-	original := getString(ctx.Fasthttp.Request.Header.Method())
-	var match bool
+	original := methodINT[utils.GetString(ctx.Fasthttp.Request.Header.Method())]
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
-		if intMethod[i] == original {
+		if original == i {
 			continue
 		}
 		// Reset stack index
@@ -37,7 +36,7 @@ func setMethodNotAllowed(ctx *Ctx) {
 			// Get *Route
 			route := ctx.app.stack[i][ctx.indexRoute]
 			// Check if it matches the request path
-			match, _ = route.match(ctx.path, ctx.pathOriginal)
+			match, _ := route.match(ctx.path, ctx.pathOriginal)
 			// No match, next route
 			if match {
 				ctx.SendStatus(StatusMethodNotAllowed)
