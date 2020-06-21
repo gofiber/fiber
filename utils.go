@@ -42,12 +42,9 @@ func setMethodNotAllowed(ctx *Ctx) {
 			if match {
 				ctx.SendStatus(StatusMethodNotAllowed)
 				ctx.Append(HeaderAllow, intMethod[i])
+				// Break stack loop
 				break
 			}
-		}
-		if match {
-			match = false
-			continue
 		}
 	}
 }
