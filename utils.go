@@ -17,7 +17,8 @@ import (
 
 // Scan stack if other methods match
 func setMethodNotAllowed(ctx *Ctx) {
-	original := methodINT[utils.GetString(ctx.Fasthttp.Request.Header.Method())]
+	var allow bool
+	original := methodINT[ctx.method]
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
 		if original == i {
@@ -39,12 +40,18 @@ func setMethodNotAllowed(ctx *Ctx) {
 			match, _ := route.match(ctx.path, ctx.pathOriginal)
 			// No match, next route
 			if match {
-				ctx.SendStatus(StatusMethodNotAllowed)
+				// Update allow bool
+				allow = true
+				// Add method to Allow header
 				ctx.Append(HeaderAllow, intMethod[i])
 				// Break stack loop
 				break
 			}
 		}
+	}
+	// Update response status
+	if allow {
+		ctx.Status(StatusMethodNotAllowed)
 	}
 }
 
