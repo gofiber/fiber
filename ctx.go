@@ -86,7 +86,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx.indexRoute = -1
 	ctx.indexHandler = 0
 	// Set paths
-	ctx.path = getString(fctx.URI().Path())
+	ctx.path = getString(fctx.URI().PathOriginal())
 	ctx.pathOriginal = ctx.path
 	// Set method
 	ctx.method = getString(fctx.Request.Header.Method())
@@ -581,7 +581,7 @@ func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
 		method := utils.ToUpper(override[0])
 		if methodINT[method] == 0 && method != MethodGet {
-			log.Fatalf("Method: Invalid HTTP method override %s", method)
+			return ctx.method
 		}
 		ctx.method = method
 	}
@@ -645,8 +645,6 @@ func (ctx *Ctx) Params(key string) string {
 // Optionally, you could override the path.
 func (ctx *Ctx) Path(override ...string) string {
 	if len(override) != 0 && ctx.path != override[0] {
-		// Set new path to request
-		ctx.Fasthttp.Request.URI().SetPath(override[0])
 		// Set new path to context
 		ctx.path = override[0]
 		ctx.pathOriginal = ctx.path
@@ -923,7 +921,12 @@ func (ctx *Ctx) Subdomains(offset ...int) []string {
 		o = offset[0]
 	}
 	subdomains := strings.Split(ctx.Hostname(), ".")
-	subdomains = subdomains[:len(subdomains)-o]
+	l := len(subdomains) - o
+	// Check index to avoid slice bounds out of range panic
+	if l < 0 {
+		l = len(subdomains)
+	}
+	subdomains = subdomains[:l]
 	return subdomains
 }
 

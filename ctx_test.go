@@ -777,6 +777,18 @@ func Test_Ctx_Route(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_Ctx_RouteNormalized
+func Test_Ctx_RouteNormalized(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test", func(c *Ctx) {
+		utils.AssertEqual(t, "/test", c.Route().Path)
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
 // go test -run Test_Ctx_SaveFile
 func Test_Ctx_SaveFile(t *testing.T) {
 	// TODO CLEAN THIS UP
@@ -845,6 +857,9 @@ func Test_Ctx_Subdomains(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.Fasthttp.Request.URI().SetHost("john.doe.is.awesome.google.com")
 	utils.AssertEqual(t, []string{"john", "doe"}, ctx.Subdomains(4))
+
+	ctx.Fasthttp.Request.URI().SetHost("localhost:3000")
+	utils.AssertEqual(t, []string{"localhost:3000"}, ctx.Subdomains())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Subdomains -benchmem -count=4

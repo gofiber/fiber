@@ -525,6 +525,25 @@ func Test_App_Group(t *testing.T) {
 	//utils.AssertEqual(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
 }
 
+func Test_App_Deep_Group(t *testing.T) {
+	runThroughCount := 0
+	var dummyHandler = func(c *Ctx) {
+		runThroughCount++
+		c.Next()
+	}
+
+	app := New()
+	gApi := app.Group("/api", dummyHandler)
+	gV1 := gApi.Group("/v1", dummyHandler)
+	gUser := gV1.Group("/user", dummyHandler)
+	gUser.Get("/authenticate", func(ctx *Ctx) {
+		runThroughCount++
+		ctx.SendStatus(200)
+	})
+	testStatus200(t, app, "/api/v1/user/authenticate", "GET")
+	utils.AssertEqual(t, 4, runThroughCount, "Loop count")
+}
+
 func Test_App_Listen(t *testing.T) {
 	app := New(&Settings{
 		DisableStartupMessage: true,

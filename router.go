@@ -13,6 +13,27 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
+// Router defines all router handle interface includes app and group router.
+type Router interface {
+	Use(args ...interface{}) *Route
+
+	Get(path string, handlers ...Handler) *Route
+	Head(path string, handlers ...Handler) *Route
+	Post(path string, handlers ...Handler) *Route
+	Put(path string, handlers ...Handler) *Route
+	Delete(path string, handlers ...Handler) *Route
+	Connect(path string, handlers ...Handler) *Route
+	Options(path string, handlers ...Handler) *Route
+	Trace(path string, handlers ...Handler) *Route
+	Patch(path string, handlers ...Handler) *Route
+
+	Add(method, path string, handlers ...Handler) *Route
+	Static(prefix, root string, config ...Static) *Route
+	All(path string, handlers ...Handler) []*Route
+
+	Group(prefix string, handlers ...Handler) *Group
+}
+
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
 	// Data for routing

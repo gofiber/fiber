@@ -47,12 +47,6 @@
      <img height="20px" src="https://img.shields.io/badge/SA-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDEyIDYiIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4NCjxwYXRoIGZpbGw9IiNjZTExMjYiIGQ9Im0wLDBoM3Y2aC0zeiIvPg0KPHBhdGggZmlsbD0iIzAwOWEwMCIgZD0ibTMsMGg5djJoLTl6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMywyaDl2MmgtOXoiLz4NCjxwYXRoIGQ9Im0zLDRoOXYyaC05eiIvPg0KPC9zdmc+DQo=">
    </a>
   <br>
-  <a href="https://github.com/gofiber/fiber/stargazers">
-    <img src="https://img.shields.io/github/stars/gofiber/fiber?color=00ACD7&label=%E2%AD%90%20">
-  </a>
-  <a href="https://github.com/gofiber/fiber/releases">
-    <img src="https://img.shields.io/github/v/release/gofiber/fiber?color=00ACD7&label=%F0%9F%9A%80%20">
-  </a>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber?tab=doc">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
@@ -165,7 +159,19 @@ func main() {
     fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
     // => Name: john, Age:
   })
+  
+  // GET /plantae/prunus.persica
+  app.Get("/plantae/:genus.:species", func(c *fiber.Ctx) {
+    fmt.Printf("Genius: %s, Species: %s", c.Params("genus"), c.Params("species"))
+    // => Genius: prunus, Species: persica
+  })
 
+  // GET /flights/LAX-SFO
+  app.Get("/flights/:from-:to", func(c *fiber.Ctx) {
+    fmt.Printf("From: %s, To: %s", c.Params("from"), c.Params("to"))
+    // => From: LAX, To: SFO
+  })
+  
   // GET /api/register
   app.Get("/api/*", func(c *fiber.Ctx) {
     fmt.Printf("/api/%s", c.Params("*"))
@@ -502,6 +508,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 - [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 - [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
+- [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
 
 ## 💬 Media
 
@@ -515,6 +522,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [🌎 Create a travel list app with Go, Fiber, Angular, MongoDB and Google Cloud Secret Manager](https://blog.yongweilun.me/create-a-travel-list-app-with-go-fiber-angular-mongodb-and-google-cloud-secret-manager-ck9fgxy0p061pcss1xt1ubu8t) - _25 Apr 2020_
 - [Fiber v1.9.6 🔥 How to improve performance by 817% and stay fast, flexible and friendly?](https://dev.to/koddr/fiber-v1-9-5-how-to-improve-performance-by-817-and-stay-fast-flexible-and-friendly-2dp6) - _12 May 2020_
 - [The road to web-based authentication with Fiber ⚡](https://vugt.me/the-road-to-web-based-authentication-with-fiber/) - _20 May 2020_
+- [Building an Express-style API in Go with Fiber](https://blog.logrocket.com/express-style-api-go-fiber/) - _10 June 2020_
 
 ## 👍 Contribute
 
