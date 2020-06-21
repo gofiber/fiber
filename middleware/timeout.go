@@ -15,6 +15,7 @@ func Timeout(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 		return handler
 	}
 
+	// logic is from fasthttp.TimeoutWithCodeHandler https://github.com/valyala/fasthttp/blob/master/server.go#L418
 	return func(ctx *fiber.Ctx) {
 		select {
 		case concurrencyCh <- struct{}{}:
