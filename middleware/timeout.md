@@ -31,6 +31,5 @@ func main() {
 
 ### Signatures
 ```go
-func Timeout(app *fiber.App) *timeoutWrapper {}
-func (wrapper *timeoutWrapper) WrapHandler(handler fiber.Handler, timeout time.Duration) fiber.Handler {}
+func Timeout(handler fiber.Handler, timeout time.Duration) fiber.Handler {}
 ```
