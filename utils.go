@@ -15,18 +15,20 @@ import (
 	utils "github.com/gofiber/utils"
 )
 
-func HandlerWithTimeout(handler Handler, timeout time.Duration, msg string) Handler {
+func HandlerWithTimeout(handler Handler, timeout time.Duration) Handler {
 	if timeout <= 0 {
 		return handler
 	}
+	var concurrencyCh chan struct{}
 
 	return func(ctx *Ctx) {
-		concurrencyCh := make(chan struct{}, ctx.app.server.Concurrency)
+		if concurrencyCh == nil {
+			concurrencyCh = make(chan struct{}, ctx.app.server.Concurrency)
+		}
 		select {
 		case concurrencyCh <- struct{}{}:
 		default:
-			ctx.SendStatus(StatusTooManyRequests)
-			ctx.SendString(msg)
+			ctx.Next(ErrTooManyRequests)
 			return
 		}
 		ch := make(chan struct{}, 1)
@@ -40,8 +42,7 @@ func HandlerWithTimeout(handler Handler, timeout time.Duration, msg string) Hand
 		select {
 		case <-ch:
 		case <-timeoutTimer.C:
-			ctx.SendStatus(StatusRequestTimeout)
-			ctx.SendString(msg)
+			ctx.Next(ErrRequestTimeout)
 		}
 		if !timeoutTimer.Stop() {
 			// Collect possibly added time from the channel

@@ -45,7 +45,6 @@ func Test_App_Handler_WithTimeout(t *testing.T) {
 			c.SendString("After " + c.Params("sleepTime") + "ms sleeping")
 		},
 		5*time.Millisecond,
-		"timeout",
 	)
 	app.Get("/test/:sleepTime", h)
 
@@ -56,7 +55,7 @@ func Test_App_Handler_WithTimeout(t *testing.T) {
 
 		body, err := ioutil.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "timeout", string(body))
+		utils.AssertEqual(t, "Request Timeout", string(body))
 	}
 	testSucces := func(timeoutStr string) {
 		resp, err := app.Test(httptest.NewRequest("GET", "/test/"+timeoutStr, nil))
