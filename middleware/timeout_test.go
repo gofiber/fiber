@@ -13,8 +13,8 @@ import (
 // go test -run Test_Middleware_Timeout
 func Test_Middleware_Timeout(t *testing.T) {
 	app := fiber.New(&fiber.Settings{DisableStartupMessage: true})
-	timeout := Timeout(app)
-	h := timeout.WrapHandler(
+
+	h := Timeout(
 		func(c *fiber.Ctx) {
 			sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
 			time.Sleep(sleepTime)

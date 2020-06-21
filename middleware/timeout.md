@@ -17,11 +17,8 @@ import (
 func main() {
   app := fiber.New()
 
-  // Default ignore favicon
-  timeout := middleware.Timeout(app)
-
-  // Pass favicon
-  app.Get("/foo", timeout.WrapHandler(
+  // wrap the handler with a timeout
+  app.Get("/foo", middleware.Timeout(
     func(ctx fiber.Ctx) {
         // do somthing
     },
