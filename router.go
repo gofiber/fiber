@@ -323,7 +323,4 @@ func (app *App) addRoute(method string, route *Route) {
 	m := methodINT[method]
 	// Add route to the stack
 	app.stack[m] = append(app.stack[m], route)
-
-	// Add route to method allowed slice
-	app.stack[9] = append(app.stack[9], route)
 }
