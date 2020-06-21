@@ -222,7 +222,7 @@ func New(settings ...*Settings) *App {
 	// Create a new app
 	app := &App{
 		// Create router stack
-		stack: make([][]*Route, len(methodINT)+1),
+		stack: make([][]*Route, len(methodINT)),
 		// Create Ctx pool
 		pool: sync.Pool{
 			New: func() interface{} {
