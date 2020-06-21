@@ -45,7 +45,7 @@ type Error struct {
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
-	// Route stack
+	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// Amount of registered routes
 	routes int

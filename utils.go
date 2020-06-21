@@ -15,6 +15,46 @@ import (
 	utils "github.com/gofiber/utils"
 )
 
+// Scan stack if other methods match
+func setMethodNotAllowed(ctx *Ctx) {
+	var allow bool
+	original := methodINT[ctx.method]
+	for i := 0; i < len(intMethod); i++ {
+		// Skip original method
+		if original == i {
+			continue
+		}
+		// Reset stack index
+		ctx.indexRoute = -1
+		// Set new method
+		ctx.method = intMethod[i]
+		// Get stack length
+		lenr := len(ctx.app.stack[i]) - 1
+		//Loop over the route stack starting from previous index
+		for ctx.indexRoute < lenr {
+			// Increment route index
+			ctx.indexRoute++
+			// Get *Route
+			route := ctx.app.stack[i][ctx.indexRoute]
+			// Check if it matches the request path
+			match, _ := route.match(ctx.path, ctx.pathOriginal)
+			// No match, next route
+			if match {
+				// Update allow bool
+				allow = true
+				// Add method to Allow header
+				ctx.Append(HeaderAllow, intMethod[i])
+				// Break stack loop
+				break
+			}
+		}
+	}
+	// Update response status
+	if allow {
+		ctx.Status(StatusMethodNotAllowed)
+	}
+}
+
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses
@@ -176,6 +216,19 @@ var methodINT = map[string]int{
 	MethodOptions: 6,
 	MethodTrace:   7,
 	MethodPatch:   8,
+}
+
+// HTTP methods slice
+var intMethod = []string{
+	MethodGet,
+	MethodHead,
+	MethodPost,
+	MethodPut,
+	MethodDelete,
+	MethodConnect,
+	MethodOptions,
+	MethodTrace,
+	MethodPatch,
 }
 
 // HTTP methods were copied from net/http.

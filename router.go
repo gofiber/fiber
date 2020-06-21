@@ -126,6 +126,10 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	if match && app.Settings.ETag {
 		setETag(ctx, false)
 	}
+	// Scan stack for other methods
+	if !match {
+		setMethodNotAllowed(ctx)
+	}
 	// Release Ctx
 	app.ReleaseCtx(ctx)
 }
@@ -313,6 +317,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 	app.addRoute(MethodHead, route)
 	return route
 }
+
 func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method indentifier
 	m := methodINT[method]
