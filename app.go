@@ -133,14 +133,18 @@ type Settings struct {
 	Views Views
 
 	// The amount of time allowed to read the full request including body.
+	// It is reset after the request handler has returned.
+	// The connection's read deadline is reset when the connection opens.
 	// Default: unlimited
 	ReadTimeout time.Duration
 
 	// The maximum duration before timing out writes of the response.
+	// It is reset after the request handler has returned.
 	// Default: unlimited
 	WriteTimeout time.Duration
 
 	// The maximum amount of time to wait for the next request when keep-alive is enabled.
+	// If IdleTimeout is zero, the value of ReadTimeout is used.
 	// Default: unlimited
 	IdleTimeout time.Duration
 
