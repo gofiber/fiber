@@ -13,8 +13,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"os"
 	"reflect"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -215,8 +215,7 @@ var (
 func init() { //nolint:gochecknoinits
 	// Definition flag to not break the program when the user adds their own flags
 	// and runs `flag.Parse()`
-	flag.BoolVar(&prefork, childFlag[1:], false, "Is a child process")
-	flag.BoolVar(&child, preforkFlag[1:], false, "use prefork")
+	flag.BoolVar(&prefork, preforkFlag[1:], false, "use prefork")
 }
 
 // New creates a new Fiber named instance.
@@ -444,17 +443,17 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	// Update fiber server settings
 	app.init()
 	// Start prefork
-	if app.Settings.Prefork && runtime.NumCPU() > 1 {
+	if app.Settings.Prefork {
+		// Print startup message
+		if !app.Settings.DisableStartupMessage {
+			startupMessage(addr)
+		}
 		pf := fprefork.New(app.server) // fasthttp/prefork
 		pf.Reuseport = true
 		pf.Network = "tcp4"
 		pf.ServeFunc = func(lnn net.Listener) error {
 			if len(tlsconfig) > 0 {
 				lnn = tls.NewListener(lnn, tlsconfig[0])
-			}
-			// Print startup message
-			if !app.Settings.DisableStartupMessage && !utils.GetArgument(childFlag) {
-				startupMessage(lnn.Addr().String())
 			}
 			return app.server.Serve(lnn)
 		}
@@ -470,7 +469,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
 	// Print startup message
-	if !app.Settings.DisableStartupMessage && !utils.GetArgument(childFlag) {
+	if !app.Settings.DisableStartupMessage {
 		startupMessage(ln.Addr().String())
 	}
 	// Start listening
@@ -611,6 +610,10 @@ func (app *App) init() *App {
 }
 
 func startupMessage(addr string) {
-	fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
-	fmt.Printf("Started listening on %s\n", addr)
+	if fprefork.IsChild() {
+		fmt.Printf("Launched child proc #%v\n", os.Getpid())
+	} else {
+		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
+		fmt.Printf("Started listening on %s\n", addr)
+	}
 }
