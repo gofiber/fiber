@@ -14,9 +14,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
-	"os/exec"
 	"reflect"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +23,7 @@ import (
 
 	utils "github.com/gofiber/utils"
 	fasthttp "github.com/valyala/fasthttp"
+	fprefork "github.com/valyala/fasthttp/prefork"
 )
 
 // Version of current package
@@ -209,15 +208,14 @@ var (
 )
 
 var (
-	preforkFlag, childFlag = "-prefork", "-child"
-	prefork, child         bool
+	preforkFlag    = "-prefork"
+	preforkEnabled bool
 )
 
 func init() { //nolint:gochecknoinits
 	// Definition flag to not break the program when the user adds their own flags
 	// and runs `flag.Parse()`
-	flag.BoolVar(&prefork, childFlag[1:], false, "Is a child process")
-	flag.BoolVar(&child, preforkFlag[1:], false, "use prefork")
+	flag.BoolVar(&preforkEnabled, preforkFlag[1:], false, "use prefork")
 }
 
 // New creates a new Fiber named instance.
@@ -371,9 +369,46 @@ func (app *App) Group(prefix string, handlers ...Handler) *Group {
 	return &Group{prefix: prefix, app: app}
 }
 
+// Error makes it compatible with `error` interface.
+func (e *Error) Error() string {
+	return e.Message
+}
+
+// NewError creates a new HTTPError instance.
+func NewError(code int, message ...string) *Error {
+	e := &Error{code, utils.StatusMessage(code)}
+	if len(message) > 0 {
+		e.Message = message[0]
+	}
+	return e
+}
+
+// Routes returns all registered routes
+//
+// for _, r := range app.Routes() {
+// 	fmt.Printf("%s\t%s\n", r.Method, r.Path)
+// }
+func (app *App) Routes() []*Route {
+	routes := make([]*Route, 0)
+	for m := range app.stack {
+		for r := range app.stack[m] {
+			// Ignore HEAD routes handling GET routes
+			if m == 1 && app.stack[m][r].Method == MethodGet {
+				continue
+			}
+			routes = append(routes, app.stack[m][r])
+		}
+	}
+	// Sort routes by stack position
+	sort.Slice(routes, func(i, k int) bool {
+		return routes[i].pos < routes[k].pos
+	})
+	return routes
+}
+
 // Serve can be used to pass a custom listener
 // This method does not support the Prefork feature
-// Preforkin is not available using app.Serve(ln net.Listener)
+// Prefork is not supported using app.Serve(ln net.Listener)
 // You can pass an optional *tls.Config to enable TLS.
 func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// Update fiber server settings
@@ -384,7 +419,7 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	}
 	// Print startup message
 	if !app.Settings.DisableStartupMessage {
-		startupMessage(ln)
+		startupMessage(ln.Addr().String())
 	}
 
 	return app.server.Serve(ln)
@@ -393,6 +428,7 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 // Listen serves HTTP requests from the given addr or port.
 // You can pass an optional *tls.Config to enable TLS.
 func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
+	// Convert address to string
 	addr, ok := address.(string)
 	if !ok {
 		port, ok := address.(int)
@@ -406,28 +442,37 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Update fiber server settings
 	app.init()
-	// Setup listener
-	var ln net.Listener
-	var err error
-	// Prefork enabled, not available on windows
-	if app.Settings.Prefork && runtime.NumCPU() > 1 && runtime.GOOS != "windows" {
-		if ln, err = app.prefork(addr); err != nil {
-			return err
+	// Start prefork
+	if app.Settings.Prefork {
+		// Print startup message
+		if !app.Settings.DisableStartupMessage {
+			startupMessage(addr)
 		}
-	} else {
-		if ln, err = net.Listen("tcp4", addr); err != nil {
-			return err
+		pf := fprefork.New(app.server) // fasthttp/prefork
+		pf.Reuseport = true
+		pf.Network = "tcp4"
+		pf.ServeFunc = func(lnn net.Listener) error {
+			if len(tlsconfig) > 0 {
+				lnn = tls.NewListener(lnn, tlsconfig[0])
+			}
+			return app.server.Serve(lnn)
 		}
+		return pf.ListenAndServe(addr)
 	}
-	// TLS config
+	// Setup listener
+	ln, err := net.Listen("tcp4", addr)
+	if err != nil {
+		return err
+	}
+	// Add TLS config if provided
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
 	}
 	// Print startup message
-	if !app.Settings.DisableStartupMessage && !utils.GetArgument(childFlag) {
-		startupMessage(ln)
+	if !app.Settings.DisableStartupMessage {
+		startupMessage(ln.Addr().String())
 	}
-
+	// Start listening
 	return app.server.Serve(ln)
 }
 
@@ -503,86 +548,6 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	return resp, nil
 }
 
-// Error makes it compatible with `error` interface.
-func (e *Error) Error() string {
-	return e.Message
-}
-
-// NewError creates a new HTTPError instance.
-func NewError(code int, message ...string) *Error {
-	e := &Error{code, utils.StatusMessage(code)}
-	if len(message) > 0 {
-		e.Message = message[0]
-	}
-	return e
-}
-
-// Routes returns all registered routes
-//
-// for _, r := range app.Routes() {
-// 	fmt.Printf("%s\t%s\n", r.Method, r.Path)
-// }
-func (app *App) Routes() []*Route {
-	routes := make([]*Route, 0)
-	for m := range app.stack {
-		for r := range app.stack[m] {
-			// Ignore HEAD routes handling GET routes
-			if m == 1 && app.stack[m][r].Method == MethodGet {
-				continue
-			}
-			routes = append(routes, app.stack[m][r])
-		}
-	}
-	// Sort routes by stack position
-	sort.Slice(routes, func(i, k int) bool {
-		return routes[i].pos < routes[k].pos
-	})
-	return routes
-}
-
-// Sharding: https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/
-func (app *App) prefork(address string) (ln net.Listener, err error) {
-	// Master proc
-	if !utils.GetArgument(childFlag) {
-		addr, err := net.ResolveTCPAddr("tcp", address)
-		if err != nil {
-			return ln, err
-		}
-		tcplistener, err := net.ListenTCP("tcp", addr)
-		if err != nil {
-			return ln, err
-		}
-		fl, err := tcplistener.File()
-		if err != nil {
-			return ln, err
-		}
-		files := []*os.File{fl}
-		childs := make([]*exec.Cmd, runtime.NumCPU()/2)
-		// #nosec G204
-		for i := range childs {
-			childs[i] = exec.Command(os.Args[0], append(os.Args[1:], preforkFlag, childFlag)...)
-			childs[i].Stdout = os.Stdout
-			childs[i].Stderr = os.Stderr
-			childs[i].ExtraFiles = files
-			if err := childs[i].Start(); err != nil {
-				return ln, err
-			}
-		}
-
-		for k := range childs {
-			if err := childs[k].Wait(); err != nil {
-				return ln, err
-			}
-		}
-		os.Exit(0)
-	} else {
-		// 1 core per child
-		runtime.GOMAXPROCS(1)
-		ln, err = net.FileListener(os.NewFile(3, ""))
-	}
-	return ln, err
-}
-
 type disableLogger struct{}
 
 func (dl *disableLogger) Printf(format string, args ...interface{}) {
@@ -644,7 +609,11 @@ func (app *App) init() *App {
 	return app
 }
 
-func startupMessage(ln net.Listener) {
-	fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
-	fmt.Printf("Started listening on %s\n", ln.Addr().String())
+func startupMessage(addr string) {
+	if fprefork.IsChild() {
+		fmt.Printf("Launched child proc #%v\n", os.Getpid())
+	} else {
+		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
+		fmt.Printf("Started listening on %s\n", addr)
+	}
 }
