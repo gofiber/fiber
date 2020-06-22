@@ -208,14 +208,14 @@ var (
 )
 
 var (
-	preforkFlag, childFlag = "-prefork", "-child"
-	prefork, child         bool
+	preforkFlag    = "-prefork"
+	preforkEnabled bool
 )
 
 func init() { //nolint:gochecknoinits
 	// Definition flag to not break the program when the user adds their own flags
 	// and runs `flag.Parse()`
-	flag.BoolVar(&prefork, preforkFlag[1:], false, "use prefork")
+	flag.BoolVar(&preforkEnabled, preforkFlag[1:], false, "use prefork")
 }
 
 // New creates a new Fiber named instance.
