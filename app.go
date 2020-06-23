@@ -625,6 +625,8 @@ const (
 )
 
 func (app *App) startupMessage(port string) {
+	// tabwriter makes sure the spacing are consistant across different values
+	// colorable handles the escape sequence for stdout using ascii color codes
 	out := tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 8, 0, ' ', 0)
 	if fprefork.IsChild() {
 		fmt.Fprintf(out, "%sChild PID: %s#%v%s\n", cBlack, cGreen, os.Getpid(), cReset)
