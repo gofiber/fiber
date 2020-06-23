@@ -627,16 +627,13 @@ const (
 func (app *App) startupMessage(port string) {
 	out := tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 8, 0, ' ', 0)
 	if fprefork.IsChild() {
-		// rand.Seed(time.Now().UnixNano())
-		// r := rand.Intn(100)
-		// time.Sleep(time.Duration(r) * time.Millisecond)
 		fmt.Fprintf(out, "%sChild PID: %s#%v%s\n", cBlack, cGreen, os.Getpid(), cReset)
 	} else {
 		fmt.Fprintf(out, "%s ___    __   ___  __  \n|__  | |__) |__  |__)\n|    | |__) |___ |  \\", cGreen)
 		fmt.Fprintf(out, "%sv%s\n", cBlack, Version)
-		fmt.Fprintf(out, "PORT: %s%s%s \tROUTES:  %s%v%s\n", cGreen, port, cBlack, cGreen, len(app.Routes()), cBlack)
+		fmt.Fprintf(out, "Port: %s%s%s \tRoutes:  %s%v%s\n", cGreen, port, cBlack, cGreen, len(app.Routes()), cBlack)
 		fmt.Fprintf(out, "PPID: %s%v%s \tPREFORK: %s%v%s\n", cGreen, os.Getppid(), cBlack, cGreen, app.Settings.Prefork, cBlack)
-		fmt.Fprintf(out, "OS:   %s%v %v %v cores%s\n\n", cGreen, runtime.GOOS, runtime.GOARCH, runtime.NumCPU(), cReset)
+		fmt.Fprintf(out, "OS:   %s%v%s \tARCH:    %s%v%s\n\n", cGreen, runtime.GOOS, cBlack, cGreen, runtime.GOARCH, cReset)
 		//fmt.Fprintf(out, "\n%sFiber v%s listening on %s%s", cGreen, Version, addr, cReset)
 		//fmt.Fprintf(out, "\n%sMain process #%v%s", cBlack, os.Getppid(), cReset)
 		//fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
