@@ -199,12 +199,14 @@ func registerDummyRoutes(app *App) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_App_Benchmark_App_MethodNotAllowed -benchmem -count=4
+// go test -v -run=^$ -bench=Benchmark_App_MethodNotAllowed -benchmem -count=4
 func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	app := New()
-	app.Get("/this/is/a/dummy/route/oke", func(c *Ctx) {
+	h := func(c *Ctx) {
 		c.Send("Hello World!")
-	})
+	}
+	app.All("/this/is/a/", h)
+	app.Get("/this/is/a/dummy/route/oke", h)
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
@@ -215,6 +217,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	}
 	utils.AssertEqual(b, 405, c.Response.StatusCode())
 	utils.AssertEqual(b, "GET, HEAD", string(c.Response.Header.Peek("Allow")))
+	utils.AssertEqual(b, "Cannot DELETE /this/is/a/dummy/route/oke", string(c.Response.Body()))
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
