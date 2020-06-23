@@ -631,7 +631,7 @@ func (app *App) startupMessage(port string) {
 	} else {
 		fmt.Fprintf(out, "%s ___    __   ___  __  \n|__  | |__) |__  |__)\n|    | |__) |___ |  \\", cGreen)
 		fmt.Fprintf(out, "%sv%s\n", cBlack, Version)
-		fmt.Fprintf(out, "Port: %s%s%s \tRoutes:  %s%v%s\n", cGreen, port, cBlack, cGreen, len(app.Routes()), cBlack)
+		fmt.Fprintf(out, "PORT: %s%s%s \tRoutes:  %s%v%s\n", cGreen, port, cBlack, cGreen, len(app.Routes()), cBlack)
 		fmt.Fprintf(out, "PPID: %s%v%s \tPREFORK: %s%v%s\n", cGreen, os.Getppid(), cBlack, cGreen, app.Settings.Prefork, cBlack)
 		fmt.Fprintf(out, "OS:   %s%v%s \tARCH:    %s%v%s\n\n", cGreen, runtime.GOOS, cBlack, cGreen, runtime.GOARCH, cReset)
 		//fmt.Fprintf(out, "\n%sFiber v%s listening on %s%s", cGreen, Version, addr, cReset)
