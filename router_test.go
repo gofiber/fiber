@@ -160,6 +160,10 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "test", getString(body))
+	// without special chars
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	// check deactivated behavior
 	app.Settings.UnescapePath = false
@@ -421,6 +425,23 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
+
+	for n := 0; n < b.N; n++ {
+		app.handler(c)
+	}
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_Unescape -benchmem -count=4
+func Benchmark_Router_Handler_Unescape(b *testing.B) {
+	app := New()
+	app.Settings.UnescapePath = true
+	registerDummyRoutes(app)
+	app.Delete("/créer", func(c *Ctx) {})
+
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod(MethodDelete)
+	c.URI().SetPath("/cr%C3%A9er")
 
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
