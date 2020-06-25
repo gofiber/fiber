@@ -480,7 +480,7 @@ The Fiber middleware modules listed here are maintained by the [Fiber team](http
 | :--- | :--- | :--- |
 | [adaptor](https://github.com/gofiber/adaptor) | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn! | - |
 | [basicauth](https://github.com/gofiber/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. | - |
-| [compression](https://github.com/Fenny/fiber/blob/master/middleware/compress.md) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. | `middleware.Compress()` |
+| [compress](https://github.com/gofiber/fiber/blob/master/middleware/compress.md) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. | `middleware.Compress()` |
 | [cors](https://github.com/gofiber/cors) | Enable cross-origin resource sharing \(CORS\) with various options. | - |
 | [csrf](https://github.com/gofiber/csrf) | Protect from CSRF exploits. | - |
 | [embed](https://github.com/gofiber/embed) | FileServer middleware for Fiber, special thanks and credits to Alireza Salary | - |
@@ -493,7 +493,7 @@ The Fiber middleware modules listed here are maintained by the [Fiber team](http
 | [pprof](https://github.com/gofiber/pprof) | Special thanks to Matthew Lee \(@mthli\) | - |
 | [recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md) | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md). | `middleware.Recover()` |
 | [rewrite](https://github.com/gofiber/rewrite) | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. | - |
-| [requestid](https://github.com/Fenny/fiber/blob/master/middleware/request_id.md) | Request ID middleware generates a unique id for a request. | `middleware.RequestID()` |
+| [requestid](https://github.com/gofiber/fiber/blob/master/middleware/request_id.md) | Request ID middleware generates a unique id for a request. | `middleware.RequestID()` |
 | [session](https://github.com/gofiber/session) | This session middleware is build on top of fasthttp/session by @savsgio MIT. Special thanks to @thomasvvugt for helping with this middleware. | - |
 | [template](https://github.com/gofiber/template) | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required. | - |
 | [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support! | - |
