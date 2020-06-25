@@ -386,7 +386,20 @@ func (app *App) Routes() []*Route {
 			if m == 1 && app.stack[m][r].Method == MethodGet {
 				continue
 			}
-			routes = append(routes, app.stack[m][r])
+			// Don't duplicate USE routes
+			if app.stack[m][r].Method == "USE" {
+				duplicate := false
+				for i := range routes {
+					if routes[i].Method == "USE" && routes[i].Name == app.stack[m][r].Name {
+						duplicate = true
+					}
+				}
+				if !duplicate {
+					routes = append(routes, app.stack[m][r])
+				}
+			} else {
+				routes = append(routes, app.stack[m][r])
+			}
 		}
 	}
 	// Sort routes by stack position
