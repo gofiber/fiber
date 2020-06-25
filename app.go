@@ -427,9 +427,8 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	}
 	// Print startup message
 	if !app.Settings.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String())
+		app.startupMessage(ln.Addr().String(), len(tlsconfig) > 0)
 	}
-
 	return app.server.Serve(ln)
 }
 
@@ -450,10 +449,6 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Update fiber server settings
 	app.init()
-	// Print startup message
-	if !app.Settings.DisableStartupMessage {
-		app.startupMessage(addr)
-	}
 	// Start prefork
 	if app.Settings.Prefork {
 		return app.prefork(addr, tlsconfig...)
@@ -466,6 +461,10 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	// Add TLS config if provided
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
+	}
+	// Print startup message
+	if !app.Settings.DisableStartupMessage {
+		app.startupMessage(ln.Addr().String(), len(tlsconfig) > 0)
 	}
 	// Start listening
 	return app.server.Serve(ln)
@@ -616,21 +615,36 @@ const (
 	// cYellow  = "\u001b[93m"
 	// cBlue    = "\u001b[94m"
 	// cMagenta = "\u001b[95m"
-	// cCyan    = "\u001b[96m"
+	cCyan = "\u001b[96m"
 	// cWhite   = "\u001b[97m"
 	cReset = "\u001b[0m"
 )
 
-func (app *App) startupMessage(port string) {
+func (app *App) startupMessage(addr string, tls bool, pids ...[]string) {
+	childs := ""
+	if len(pids) > 0 {
+		childs = "," + strings.Join(pids[0], ",")
+	}
+	logo := `        %s_______ __      
+  %s____%s / ____(_) /_  ___  _____  %s
+%s_____%s / /_  / / __ \/ _ \/ ___/  %s
+  %s__%s / __/ / / /_/ /  __/ /      %s
+    /_/   /_/_.___/\___/_/%s %s`
+	host := strings.Split(addr, ":")[0]
+	port := strings.Split(addr, ":")[1]
+	if host == "" {
+		host = "0.0.0.0"
+	}
 	// tabwriter makes sure the spacing are consistant across different values
 	// colorable handles the escape sequence for stdout using ascii color codes
 	out := tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 8, 4, ' ', 0)
 	if !utils.GetArgument(flagChild) {
-		fmt.Fprintf(out, "%s        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/", cGreen)
-		fmt.Fprintf(out, "%s v%s\n\n", cBlack, Version)
-		fmt.Fprintf(out, "PORT: %s%s%s \tROUTES:  %s%v%s\n", cGreen, port, cBlack, cGreen, len(app.Routes()), cBlack)
-		fmt.Fprintf(out, "PPID: %s%v%s \tPREFORK: %s%v%s\n", cGreen, os.Getppid(), cBlack, cGreen, app.Settings.Prefork, cBlack)
-		fmt.Fprintf(out, "OS:   %s%v%s \tARCH:    %s%v%s\n\n", cGreen, runtime.GOOS, cBlack, cGreen, runtime.GOARCH, cReset)
+		fmt.Fprintf(out, logo, cBlack,
+			cCyan, cBlack, fmt.Sprintf(" HOST:    %s%s%s \tPORT: %s%v%s", cCyan, host, cBlack, cCyan, port, cBlack),
+			cCyan, cBlack, fmt.Sprintf(" ROUTES:  %s%v%s \tTLS:  %s%v%s", cCyan, len(app.Routes()), cBlack, cCyan, tls, cBlack),
+			cCyan, cBlack, fmt.Sprintf(" PREFORK: %s%v%s \tPPID: %s%v%s%s", cCyan, app.Settings.Prefork, cBlack, cCyan, os.Getppid(), cBlack, childs),
+			fmt.Sprintf("%s%s%s", cCyan, Version, cBlack),
+			fmt.Sprintf(" OS:      %s%v%s \tARCH: %s%v%s\n", cCyan, runtime.GOOS, cBlack, cCyan, runtime.GOARCH, cReset))
 	}
 	_ = out.Flush()
 }
