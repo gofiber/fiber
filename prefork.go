@@ -8,10 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"text/tabwriter"
+	"strconv"
 
 	utils "github.com/gofiber/utils"
-	colorable "github.com/segrey/go-colorable"
 	reuseport "github.com/valyala/fasthttp/reuseport"
 )
 
@@ -56,7 +55,7 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	var max = runtime.GOMAXPROCS(0)
 	var childs = make(map[int]*exec.Cmd)
 	var channel = make(chan child, max)
-	var stdout = tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 8, 0, ' ', 0)
+	//var stdout = tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 8, 0, ' ', 0)
 
 	// kill child procs when master exits
 	defer func() {
@@ -64,7 +63,7 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 			_ = proc.Process.Kill()
 		}
 	}()
-
+	pids := []string{}
 	// launch child procs
 	for i := 0; i < max; i++ {
 		/* #nosec G204 */
@@ -76,14 +75,21 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		}
 		// store child process
 		childs[cmd.Process.Pid] = cmd
+		pids = append(pids, strconv.Itoa(cmd.Process.Pid))
 		// notify stdout
-		fmt.Fprintf(stdout, "%sChild PID: %s#%v%s\n", cBlack, cGreen, cmd.Process.Pid, cReset)
-		_ = stdout.Flush()
+		// fmt.Fprintf(stdout, "%sChild PID: %s#%v%s\n", cBlack, cGreen, cmd.Process.Pid, cReset)
+		// _ = stdout.Flush()
 		// notify master if child crashes
 		go func() {
 			channel <- child{cmd.Process.Pid, cmd.Wait()}
 		}()
 	}
+
+	// Print startup message
+	if !app.Settings.DisableStartupMessage {
+		app.startupMessage(addr, len(tlsconfig) > 0, pids)
+	}
+
 	// return error if child crashes
 	for sig := range channel {
 		return sig.err
