@@ -116,3 +116,17 @@ func Benchmark_Utils_getGroupPath(b *testing.B) {
 // func Benchmark_Utils_parseTokenList(b *testing.B) {
 // 	// TODO
 // }
+
+func Benchmark_Utils_Unescape(b *testing.B) {
+	unescaped := ""
+	dst := make([]byte, 0)
+
+	for n := 0; n < b.N; n++ {
+		source := "/cr%C3%A9er"
+		pathBytes := getBytes(source)
+		pathBytes = fasthttp.AppendUnquotedArg(dst[:0], pathBytes)
+		unescaped = getString(pathBytes)
+	}
+
+	utils.AssertEqual(b, "/créer", unescaped)
+}

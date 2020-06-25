@@ -987,10 +987,16 @@ func (ctx *Ctx) XHR() bool {
 
 // prettifyPath ...
 func (ctx *Ctx) prettifyPath() {
+	// If UnescapePath enabled, we decode the path
+	if ctx.app.Settings.UnescapePath {
+		pathBytes := getBytes(ctx.path)
+		pathBytes = fasthttp.AppendUnquotedArg(pathBytes[:0], pathBytes)
+		ctx.path = getString(pathBytes)
+	}
 	// If CaseSensitive is disabled, we lowercase the original path
 	if !ctx.app.Settings.CaseSensitive {
 		// We are making a copy here to keep access to the original path
-		ctx.path = utils.ToLower(ctx.pathOriginal)
+		ctx.path = utils.ToLower(ctx.path)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
