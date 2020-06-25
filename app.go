@@ -476,6 +476,11 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	return app.server.Serve(ln)
 }
 
+// Handler returns the server handler
+func (app *App) Handler() fasthttp.RequestHandler {
+	return app.handler
+}
+
 // Shutdown gracefully shuts down the server without interrupting any active connections.
 // Shutdown works by first closing all open listeners and then waiting indefinitely for all connections to return to idle and then shut down.
 //
