@@ -541,7 +541,8 @@ Apabila anda ingin mengucapkan **terima kasih** dan/atau mendukung pengembangan 
 Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny).
 
 |                                                             | User                                             | Donation |
-| :---------------------------------------------------------- | :----------------------------------------------- | :------- |
+| :---------------------------------------------------------- | :----------------------------------------------- | :-------- |
+| ![](https://avatars.githubusercontent.com/u/204341?s=25 )   | [@destari](https://github.com/destari)           | ☕ x 10   |
 | ![](https://avatars.githubusercontent.com/u/56607882?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/27820675?s=25 ) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/1094221?s=25 )  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5    |
