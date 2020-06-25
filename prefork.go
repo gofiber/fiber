@@ -78,7 +78,7 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		childs[cmd.Process.Pid] = cmd
 		// notify stdout
 		fmt.Fprintf(stdout, "%sChild PID: %s#%v%s\n", cBlack, cGreen, cmd.Process.Pid, cReset)
-		stdout.Flush()
+		_ = stdout.Flush()
 		// notify master if child crashes
 		go func() {
 			channel <- child{cmd.Process.Pid, cmd.Wait()}

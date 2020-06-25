@@ -609,5 +609,5 @@ func (app *App) startupMessage(port string) {
 		fmt.Fprintf(out, "PPID: %s%v%s \tPREFORK: %s%v%s\n", cGreen, os.Getppid(), cBlack, cGreen, app.Settings.Prefork, cBlack)
 		fmt.Fprintf(out, "OS:   %s%v%s \tARCH:    %s%v%s\n\n", cGreen, runtime.GOOS, cBlack, cGreen, runtime.GOARCH, cReset)
 	}
-	out.Flush()
+	_ = out.Flush()
 }
