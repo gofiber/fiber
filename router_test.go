@@ -146,6 +146,28 @@ func Test_Route_Match_Middleware(t *testing.T) {
 	utils.AssertEqual(t, "bar/fasel", getString(body))
 }
 
+func Test_Route_Match_UnescapedPath(t *testing.T) {
+	app := New(&Settings{UnescapePath: true})
+
+	app.Use("/créer", func(ctx *Ctx) {
+		ctx.Send("test")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "test", getString(body))
+
+	// check deactivated behavior
+	app.Settings.UnescapePath = false
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 	app := New()
 

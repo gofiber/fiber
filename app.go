@@ -86,6 +86,11 @@ type Settings struct {
 	// Default: false
 	Immutable bool
 
+	// Converts all encoded characters in the route back before setting the path for the context,
+	// so that the routing can also work with urlencoded special characters
+	// Default: false
+	UnescapePath bool
+
 	// Enable or disable ETag header generation, since both weak and strong etags are generated
 	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
 	// Default value false
