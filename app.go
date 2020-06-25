@@ -7,7 +7,6 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -15,19 +14,21 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	utils "github.com/gofiber/utils"
+	colorable "github.com/segrey/go-colorable"
 	fasthttp "github.com/valyala/fasthttp"
-	fprefork "github.com/valyala/fasthttp/prefork"
 )
 
 // Version of current package
-const Version = "1.12.0"
+const Version = "1.12.1"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -212,17 +213,6 @@ var (
 	defaultCompressedFileSuffix = ".fiber.gz"
 )
 
-var (
-	preforkFlag    = "-prefork"
-	preforkEnabled bool
-)
-
-func init() { //nolint:gochecknoinits
-	// Definition flag to not break the program when the user adds their own flags
-	// and runs `flag.Parse()`
-	flag.BoolVar(&preforkEnabled, preforkFlag[1:], false, "use prefork")
-}
-
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
 func New(settings ...*Settings) *App {
@@ -267,7 +257,7 @@ func New(settings ...*Settings) *App {
 	}
 
 	if !app.Settings.Prefork { // Default to -prefork flag if false
-		app.Settings.Prefork = utils.GetArgument(preforkFlag)
+		app.Settings.Prefork = utils.GetArgument(flagPrefork)
 	}
 	// Replace unsafe conversion functions
 	if app.Settings.Immutable {
@@ -424,7 +414,7 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	}
 	// Print startup message
 	if !app.Settings.DisableStartupMessage {
-		startupMessage(ln.Addr().String())
+		app.startupMessage(ln.Addr().String())
 	}
 
 	return app.server.Serve(ln)
@@ -447,22 +437,13 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Update fiber server settings
 	app.init()
+	// Print startup message
+	if !app.Settings.DisableStartupMessage {
+		app.startupMessage(addr)
+	}
 	// Start prefork
 	if app.Settings.Prefork {
-		// Print startup message
-		if !app.Settings.DisableStartupMessage {
-			startupMessage(addr)
-		}
-		pf := fprefork.New(app.server) // fasthttp/prefork
-		pf.Reuseport = true
-		pf.Network = "tcp4"
-		pf.ServeFunc = func(lnn net.Listener) error {
-			if len(tlsconfig) > 0 {
-				lnn = tls.NewListener(lnn, tlsconfig[0])
-			}
-			return app.server.Serve(lnn)
-		}
-		return pf.ListenAndServe(addr)
+		return app.prefork(addr, tlsconfig...)
 	}
 	// Setup listener
 	ln, err := net.Listen("tcp4", addr)
@@ -472,10 +453,6 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	// Add TLS config if provided
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
-	}
-	// Print startup message
-	if !app.Settings.DisableStartupMessage {
-		startupMessage(ln.Addr().String())
 	}
 	// Start listening
 	return app.server.Serve(ln)
@@ -619,11 +596,28 @@ func (app *App) init() *App {
 	return app
 }
 
-func startupMessage(addr string) {
-	if fprefork.IsChild() {
-		fmt.Printf("Launched child proc #%v\n", os.Getpid())
-	} else {
-		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
-		fmt.Printf("Started listening on %s\n", addr)
+const (
+	cBlack = "\u001b[90m"
+	// cRed     = "\u001b[91m"
+	cGreen = "\u001b[92m"
+	// cYellow  = "\u001b[93m"
+	// cBlue    = "\u001b[94m"
+	// cMagenta = "\u001b[95m"
+	// cCyan    = "\u001b[96m"
+	// cWhite   = "\u001b[97m"
+	cReset = "\u001b[0m"
+)
+
+func (app *App) startupMessage(port string) {
+	// tabwriter makes sure the spacing are consistant across different values
+	// colorable handles the escape sequence for stdout using ascii color codes
+	out := tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 8, 4, ' ', 0)
+	if !utils.GetArgument(flagChild) {
+		fmt.Fprintf(out, "%s        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/", cGreen)
+		fmt.Fprintf(out, "%s v%s\n\n", cBlack, Version)
+		fmt.Fprintf(out, "PORT: %s%s%s \tROUTES:  %s%v%s\n", cGreen, port, cBlack, cGreen, len(app.Routes()), cBlack)
+		fmt.Fprintf(out, "PPID: %s%v%s \tPREFORK: %s%v%s\n", cGreen, os.Getppid(), cBlack, cGreen, app.Settings.Prefork, cBlack)
+		fmt.Fprintf(out, "OS:   %s%v%s \tARCH:    %s%v%s\n\n", cGreen, runtime.GOOS, cBlack, cGreen, runtime.GOARCH, cReset)
 	}
+	_ = out.Flush()
 }

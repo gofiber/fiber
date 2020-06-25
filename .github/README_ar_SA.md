@@ -341,29 +341,35 @@ func main() {
 
 ### Middleware logger
 
-📖 [Logger](https://docs.gofiber.io/middleware#logger)  
+📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)  
 
 <div dir="ltr" >
 
 ```go
 import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/logger"
+  "github.com/gofiber/fiber"
+  "github.com/gofiber/fiber/middleware"
 )
 
 func main() {
-    app := fiber.New()
+  app := fiber.New()
 
-    // Optional logger config
-    config := logger.Config{
-      Format:     "${time} - ${method} ${path}\n",
-      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
-    }
+  // Default
+  app.Use(middleware.Logger())
 
-    // Logger with config
-    app.Use(logger.New(config))
+  // Custom logging format
+  app.Use(middleware.Logger("${method} - ${path}"))
 
-    app.Listen(3000)
+  // Custom Config
+  app.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+    Next: func(ctx *fiber.Ctx) bool {
+      return ctx.Path() != "/private"
+    },
+    Format: "${method} - ${path}",
+    Output: io.Writer,
+  }))
+
+  app.Listen(3000)
 }
 ```
 
@@ -510,58 +516,57 @@ func main() {
 
 ### Recover middleware
 
-📖 [Recover](https://docs.gofiber.io/middleware#recover)  
+📖 [Recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)  
 
 <div dir="ltr" >
 
 ```go
 import (
     "github.com/gofiber/fiber"
-    "github.com/gofiber/recover"
+    "github.com/gofiber/fiber/middleware"
 )
 
 func main() {
   app := fiber.New()
 
-  // Optional recover config
-  config := recover.Config{
-    Handler: func(c *fiber.Ctx, err error) {
-			c.SendString(err.Error())
-			c.SendStatus(500)
-		},
-  }
+  app.Use(middleware.Recover())
 
-  // Logger with custom config
-  app.Use(recover.New(config))
+  app.Get("/", func(c *fiber.Ctx) {
+    panic("normally this would crash your app")
+  })
 
   app.Listen(3000)
 }
 ```
-
 </div>
 </details>
 
-## 🧬 الرسمية Middlewares
+## 🧬 Fiber Middleware
 
-والمزيد _قابلة للصيانة_ middleware _ecosystem_, لقد وضعنا رسمية [middlewares](https://docs.gofiber.io/middleware) في مستودعات منفصلة:
+The Fiber middleware modules listed here are maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
 
-- [gofiber/compression](https://github.com/gofiber/compression)
-- [gofiber/basicauth](https://github.com/gofiber/basicauth)
-- [gofiber/requestid](https://github.com/gofiber/requestid)
-- [gofiber/websocket](https://github.com/gofiber/websocket)
-- [gofiber/keyauth](https://github.com/gofiber/keyauth)
-- [gofiber/rewrite](https://github.com/gofiber/rewrite)
-- [gofiber/recover](https://github.com/gofiber/recover)
-- [gofiber/limiter](https://github.com/gofiber/limiter)
-- [gofiber/session](https://github.com/gofiber/session)
-- [gofiber/adaptor](https://github.com/gofiber/adaptor)
-- [gofiber/logger](https://github.com/gofiber/logger)
-- [gofiber/helmet](https://github.com/gofiber/helmet)
-- [gofiber/embed](https://github.com/gofiber/embed)
-- [gofiber/pprof](https://github.com/gofiber/pprof)
-- [gofiber/cors](https://github.com/gofiber/cors)
-- [gofiber/csrf](https://github.com/gofiber/csrf)
-- [gofiber/jwt](https://github.com/gofiber/jwt)
+
+| Middleware | Description | Built-in middleware |
+| :--- | :--- | :--- |
+| [adaptor](https://github.com/gofiber/adaptor) | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn! | - |
+| [basicauth](https://github.com/gofiber/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. | - |
+| [compress](https://github.com/gofiber/fiber/blob/master/middleware/compress.md) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. | `middleware.Compress()` |
+| [cors](https://github.com/gofiber/cors) | Enable cross-origin resource sharing \(CORS\) with various options. | - |
+| [csrf](https://github.com/gofiber/csrf) | Protect from CSRF exploits. | - |
+| [embed](https://github.com/gofiber/embed) | FileServer middleware for Fiber, special thanks and credits to Alireza Salary | - |
+| [favicon](https://github.com/gofiber/fiber/blob/master/middleware/favicon.md) | Ignore favicon from logs or serve from memory if a file path is provided. | `middleware.Favicon()` |
+| [helmet](https://github.com/gofiber/helmet) | Helps secure your apps by setting various HTTP headers. | - |
+| [jwt](https://github.com/gofiber/jwt) | JWT returns a JSON Web Token \(JWT\) auth middleware. | - |
+| [keyauth](https://github.com/gofiber/keyauth) | Key auth middleware provides a key based authentication. | - |
+| [limiter](https://github.com/gofiber/limiter) | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset. | - |
+| [logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md) | HTTP request/response logger. | `middleware.Logger()` |
+| [pprof](https://github.com/gofiber/pprof) | Special thanks to Matthew Lee \(@mthli\) | - |
+| [recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md) | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md). | `middleware.Recover()` |
+| [rewrite](https://github.com/gofiber/rewrite) | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. | - |
+| [requestid](https://github.com/gofiber/fiber/blob/master/middleware/request_id.md) | Request ID middleware generates a unique id for a request. | `middleware.RequestID()` |
+| [session](https://github.com/gofiber/session) | This session middleware is build on top of fasthttp/session by @savsgio MIT. Special thanks to @thomasvvugt for helping with this middleware. | - |
+| [template](https://github.com/gofiber/template) | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required. | - |
+| [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support! | - |
 
 ## 🌱 Third Party Middlewares
 
