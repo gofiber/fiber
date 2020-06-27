@@ -357,7 +357,7 @@ func Test_App_Static_Direct(t *testing.T) {
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), "buymeacoffee"))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
 }
 func Test_App_Static_Group(t *testing.T) {
 	app := New()
@@ -403,7 +403,7 @@ func Test_App_Static_Wildcard(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), "buymeacoffee"))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
 
 }
 
@@ -429,7 +429,7 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), "buymeacoffee"))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
 }
 
 func Test_App_Static_Prefix(t *testing.T) {
