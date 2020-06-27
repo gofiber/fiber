@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"runtime"
 	"strconv"
+	"strings"
+	"time"
 
 	utils "github.com/gofiber/utils"
 	reuseport "github.com/valyala/fasthttp/reuseport"
@@ -36,7 +38,10 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		var ln net.Listener
 		// get an SO_REUSEPORT listener or SO_REUSEADDR for windows
 		if ln, err = reuseport.Listen("tcp4", addr); err != nil {
-			return err
+			if !app.Settings.DisableStartupMessage {
+				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
+			}
+			return fmt.Errorf("prefork %v", err)
 		}
 		// wrap a tls config around the listener if provided
 		if len(tlsconfig) > 0 {
@@ -55,7 +60,6 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	var max = runtime.GOMAXPROCS(0)
 	var childs = make(map[int]*exec.Cmd)
 	var channel = make(chan child, max)
-	//var stdout = tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 8, 0, ' ', 0)
 
 	// kill child procs when master exits
 	defer func() {
@@ -63,6 +67,7 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 			_ = proc.Process.Kill()
 		}
 	}()
+	// collect child pids
 	pids := []string{}
 	// launch child procs
 	for i := 0; i < max; i++ {
@@ -76,9 +81,6 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		// store child process
 		childs[cmd.Process.Pid] = cmd
 		pids = append(pids, strconv.Itoa(cmd.Process.Pid))
-		// notify stdout
-		// fmt.Fprintf(stdout, "%sChild PID: %s#%v%s\n", cBlack, cGreen, cmd.Process.Pid, cReset)
-		// _ = stdout.Flush()
 		// notify master if child crashes
 		go func() {
 			channel <- child{cmd.Process.Pid, cmd.Wait()}
@@ -87,7 +89,7 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 
 	// Print startup message
 	if !app.Settings.DisableStartupMessage {
-		app.startupMessage(addr, len(tlsconfig) > 0, pids)
+		app.startupMessage(addr, len(tlsconfig) > 0, ","+strings.Join(pids, ","))
 	}
 
 	// return error if child crashes

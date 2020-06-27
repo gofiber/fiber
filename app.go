@@ -23,7 +23,7 @@ import (
 	"time"
 
 	utils "github.com/gofiber/utils"
-	colorable "github.com/segrey/go-colorable"
+	colorable "github.com/mattn/go-colorable"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -427,7 +427,7 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	}
 	// Print startup message
 	if !app.Settings.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), len(tlsconfig) > 0)
+		app.startupMessage(ln.Addr().String(), len(tlsconfig) > 0, "")
 	}
 	return app.server.Serve(ln)
 }
@@ -464,7 +464,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Print startup message
 	if !app.Settings.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), len(tlsconfig) > 0)
+		app.startupMessage(ln.Addr().String(), len(tlsconfig) > 0, "")
 	}
 	// Start listening
 	return app.server.Serve(ln)
@@ -611,7 +611,7 @@ func (app *App) init() *App {
 const (
 	cBlack = "\u001b[90m"
 	// cRed     = "\u001b[91m"
-	cGreen = "\u001b[92m"
+	// cGreen = "\u001b[92m"
 	// cYellow  = "\u001b[93m"
 	// cBlue    = "\u001b[94m"
 	// cMagenta = "\u001b[95m"
@@ -620,31 +620,58 @@ const (
 	cReset = "\u001b[0m"
 )
 
-func (app *App) startupMessage(addr string, tls bool, pids ...[]string) {
-	childs := ""
-	if len(pids) > 0 {
-		childs = "," + strings.Join(pids[0], ",")
+type colors struct {
+	base string
+}
+
+func (c *colors) Cyan(v interface{}) string {
+	return fmt.Sprintf("%s%v%s", cCyan, v, c.base)
+}
+
+func (app *App) startupMessage(addr string, tls bool, pids string) {
+	// ignore child processes
+	if utils.GetArgument(flagChild) {
+		return
 	}
-	logo := `        %s_______ __      
-  %s____%s / ____(_) /_  ___  _____  %s
-%s_____%s / /_  / / __ \/ _ \/ ___/  %s
-  %s__%s / __/ / / /_/ /  __/ /      %s
-    /_/   /_/_.___/\___/_/%s %s`
-	host := strings.Split(addr, ":")[0]
-	port := strings.Split(addr, ":")[1]
+	//
+	var logo string
+	logo += `%s        _______ __                 %s` + "\n"
+	logo += `%s  ____%s / ____(_) /_  ___  _____  %s` + "\n"
+	logo += `%s_____%s / /_  / / __ \/ _ \/ ___/  %s` + "\n"
+	logo += `%s  __%s / __/ / / /_/ /  __/ /      %s` + "\n"
+	logo += `%s    /_/   /_/_.___/\___/_/%s %s` + "\n"
+
+	// statup details
+	var (
+		host      = strings.Split(addr, ":")[0]
+		port      = strings.Split(addr, ":")[1]
+		tlsStr    = "FALSE"
+		routesLen = len(app.Routes())
+		osName    = utils.ToUpper(runtime.GOOS)
+		memTotal  = utils.ByteSize(utils.MemoryTotal())
+		cpuCores  = runtime.NumCPU()
+		ppid      = os.Getppid()
+	)
 	if host == "" {
 		host = "0.0.0.0"
 	}
+	if tls {
+		tlsStr = "TRUE"
+	}
 	// tabwriter makes sure the spacing are consistant across different values
 	// colorable handles the escape sequence for stdout using ascii color codes
-	out := tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 8, 4, ' ', 0)
-	if !utils.GetArgument(flagChild) {
-		fmt.Fprintf(out, logo, cBlack,
-			cCyan, cBlack, fmt.Sprintf(" HOST:    %s%s%s \tPORT: %s%v%s", cCyan, host, cBlack, cCyan, port, cBlack),
-			cCyan, cBlack, fmt.Sprintf(" ROUTES:  %s%v%s \tTLS:  %s%v%s", cCyan, len(app.Routes()), cBlack, cCyan, tls, cBlack),
-			cCyan, cBlack, fmt.Sprintf(" PREFORK: %s%v%s \tPPID: %s%v%s%s", cCyan, app.Settings.Prefork, cBlack, cCyan, os.Getppid(), cBlack, childs),
-			fmt.Sprintf("%s%s%s", cCyan, Version, cBlack),
-			fmt.Sprintf(" OS:      %s%v%s \tARCH: %s%v%s\n", cCyan, runtime.GOOS, cBlack, cCyan, runtime.GOARCH, cReset))
+	out := tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 0, 2, ' ', 0)
+	// simple Sprintf function that defaults back to black
+	cyan := func(v interface{}) string {
+		return fmt.Sprintf("%s%v%s", cCyan, v, cBlack)
 	}
+	// Build startup banner
+	fmt.Fprintf(out, logo, cBlack, cBlack,
+		cCyan, cBlack, fmt.Sprintf(" HOST   %s\tOS    %s", cyan(host), cyan(osName)),
+		cCyan, cBlack, fmt.Sprintf(" PORT   %s\tCORES %s", cyan(port), cyan(cpuCores)),
+		cCyan, cBlack, fmt.Sprintf(" TLS    %s\tMEM   %s", cyan(tlsStr), cyan(memTotal)),
+		cBlack, cyan(Version), fmt.Sprintf(" ROUTES %s\t\t\t PPID  %s%s%s\n", cyan(routesLen), cyan(ppid), pids, cReset),
+	)
+	// Write to io.write
 	_ = out.Flush()
 }
