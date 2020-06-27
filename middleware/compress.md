@@ -21,7 +21,7 @@ func main() {
   app.Use(middleware.Compress(middleware.CompressLevelBestSpeed))
 
   // Custom Config
-  app.Use(middleware.CompressWithConfig(middleware.LoggerConfig{
+  app.Use(middleware.CompressWithConfig(middleware.CompressConfig{
     Next: func(ctx *fiber.Ctx) bool {
       return strings.HasPrefix(ctx.Path(), "/static")
     },
