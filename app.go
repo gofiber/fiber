@@ -620,14 +620,6 @@ const (
 	cReset = "\u001b[0m"
 )
 
-type colors struct {
-	base string
-}
-
-func (c *colors) Cyan(v interface{}) string {
-	return fmt.Sprintf("%s%v%s", cCyan, v, c.base)
-}
-
 func (app *App) startupMessage(addr string, tls bool, pids string) {
 	// ignore child processes
 	if utils.GetArgument(flagChild) {
