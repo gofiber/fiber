@@ -46,6 +46,7 @@ type Route struct {
 	routeParams []string    // Case sensitive param keys
 
 	// Public fields
+	Name     string    // Name of first handler used in route
 	Path     string    // Original registered route path
 	Method   string    // HTTP method
 	Handlers []Handler // Ctx handlers
@@ -319,6 +320,10 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 }
 
 func (app *App) addRoute(method string, route *Route) {
+	// Give name to route if not defined
+	if route.Name == "" && len(route.Handlers) > 0 {
+		route.Name = utils.FunctionName(route.Handlers[0])
+	}
 	// Get unique HTTP method indentifier
 	m := methodINT[method]
 	// Add route to the stack

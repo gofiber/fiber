@@ -7,7 +7,6 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -15,19 +14,21 @@ import (
 	"net/http/httputil"
 	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	utils "github.com/gofiber/utils"
+	colorable "github.com/mattn/go-colorable"
 	fasthttp "github.com/valyala/fasthttp"
-	fprefork "github.com/valyala/fasthttp/prefork"
 )
 
 // Version of current package
-const Version = "1.12.0"
+const Version = "1.12.1"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -85,6 +86,11 @@ type Settings struct {
 	// Enables handler values to be immutable even if you return from handler
 	// Default: false
 	Immutable bool
+
+	// Converts all encoded characters in the route back before setting the path for the context,
+	// so that the routing can also work with urlencoded special characters
+	// Default: false
+	UnescapePath bool
 
 	// Enable or disable ETag header generation, since both weak and strong etags are generated
 	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
@@ -207,17 +213,6 @@ var (
 	defaultCompressedFileSuffix = ".fiber.gz"
 )
 
-var (
-	preforkFlag    = "-prefork"
-	preforkEnabled bool
-)
-
-func init() { //nolint:gochecknoinits
-	// Definition flag to not break the program when the user adds their own flags
-	// and runs `flag.Parse()`
-	flag.BoolVar(&preforkEnabled, preforkFlag[1:], false, "use prefork")
-}
-
 // New creates a new Fiber named instance.
 // You can pass optional settings when creating a new instance.
 func New(settings ...*Settings) *App {
@@ -262,7 +257,7 @@ func New(settings ...*Settings) *App {
 	}
 
 	if !app.Settings.Prefork { // Default to -prefork flag if false
-		app.Settings.Prefork = utils.GetArgument(preforkFlag)
+		app.Settings.Prefork = utils.GetArgument(flagPrefork)
 	}
 	// Replace unsafe conversion functions
 	if app.Settings.Immutable {
@@ -396,7 +391,20 @@ func (app *App) Routes() []*Route {
 			if m == 1 && app.stack[m][r].Method == MethodGet {
 				continue
 			}
-			routes = append(routes, app.stack[m][r])
+			// Don't duplicate USE routes
+			if app.stack[m][r].Method == "USE" {
+				duplicate := false
+				for i := range routes {
+					if routes[i].Method == "USE" && routes[i].Name == app.stack[m][r].Name {
+						duplicate = true
+					}
+				}
+				if !duplicate {
+					routes = append(routes, app.stack[m][r])
+				}
+			} else {
+				routes = append(routes, app.stack[m][r])
+			}
 		}
 	}
 	// Sort routes by stack position
@@ -419,9 +427,8 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	}
 	// Print startup message
 	if !app.Settings.DisableStartupMessage {
-		startupMessage(ln.Addr().String())
+		app.startupMessage(ln.Addr().String(), len(tlsconfig) > 0, "")
 	}
-
 	return app.server.Serve(ln)
 }
 
@@ -444,20 +451,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	app.init()
 	// Start prefork
 	if app.Settings.Prefork {
-		// Print startup message
-		if !app.Settings.DisableStartupMessage {
-			startupMessage(addr)
-		}
-		pf := fprefork.New(app.server) // fasthttp/prefork
-		pf.Reuseport = true
-		pf.Network = "tcp4"
-		pf.ServeFunc = func(lnn net.Listener) error {
-			if len(tlsconfig) > 0 {
-				lnn = tls.NewListener(lnn, tlsconfig[0])
-			}
-			return app.server.Serve(lnn)
-		}
-		return pf.ListenAndServe(addr)
+		return app.prefork(addr, tlsconfig...)
 	}
 	// Setup listener
 	ln, err := net.Listen("tcp4", addr)
@@ -470,10 +464,15 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Print startup message
 	if !app.Settings.DisableStartupMessage {
-		startupMessage(ln.Addr().String())
+		app.startupMessage(ln.Addr().String(), len(tlsconfig) > 0, "")
 	}
 	// Start listening
 	return app.server.Serve(ln)
+}
+
+// Handler returns the server handler
+func (app *App) Handler() fasthttp.RequestHandler {
+	return app.handler
 }
 
 // Shutdown gracefully shuts down the server without interrupting any active connections.
@@ -609,11 +608,62 @@ func (app *App) init() *App {
 	return app
 }
 
-func startupMessage(addr string) {
-	if fprefork.IsChild() {
-		fmt.Printf("Launched child proc #%v\n", os.Getpid())
-	} else {
-		fmt.Printf("        _______ __\n  ____ / ____(_) /_  ___  _____\n_____ / /_  / / __ \\/ _ \\/ ___/\n  __ / __/ / / /_/ /  __/ /\n    /_/   /_/_.___/\\___/_/ v%s\n", Version)
-		fmt.Printf("Started listening on %s\n", addr)
+const (
+	cBlack = "\u001b[90m"
+	// cRed     = "\u001b[91m"
+	// cGreen = "\u001b[92m"
+	// cYellow  = "\u001b[93m"
+	// cBlue    = "\u001b[94m"
+	// cMagenta = "\u001b[95m"
+	cCyan = "\u001b[96m"
+	// cWhite   = "\u001b[97m"
+	cReset = "\u001b[0m"
+)
+
+func (app *App) startupMessage(addr string, tls bool, pids string) {
+	// ignore child processes
+	if utils.GetArgument(flagChild) {
+		return
 	}
+	//
+	var logo string
+	logo += `%s        _______ __                 %s` + "\n"
+	logo += `%s  ____%s / ____(_) /_  ___  _____  %s` + "\n"
+	logo += `%s_____%s / /_  / / __ \/ _ \/ ___/  %s` + "\n"
+	logo += `%s  __%s / __/ / / /_/ /  __/ /      %s` + "\n"
+	logo += `%s    /_/   /_/_.___/\___/_/%s %s` + "\n"
+
+	// statup details
+	var (
+		host      = strings.Split(addr, ":")[0]
+		port      = strings.Split(addr, ":")[1]
+		tlsStr    = "FALSE"
+		routesLen = len(app.Routes())
+		osName    = utils.ToUpper(runtime.GOOS)
+		memTotal  = utils.ByteSize(utils.MemoryTotal())
+		cpuCores  = runtime.NumCPU()
+		ppid      = os.Getppid()
+	)
+	if host == "" {
+		host = "0.0.0.0"
+	}
+	if tls {
+		tlsStr = "TRUE"
+	}
+	// tabwriter makes sure the spacing are consistant across different values
+	// colorable handles the escape sequence for stdout using ascii color codes
+	out := tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 0, 2, ' ', 0)
+	// simple Sprintf function that defaults back to black
+	cyan := func(v interface{}) string {
+		return fmt.Sprintf("%s%v%s", cCyan, v, cBlack)
+	}
+	// Build startup banner
+	fmt.Fprintf(out, logo, cBlack, cBlack,
+		cCyan, cBlack, fmt.Sprintf(" HOST   %s\tOS    %s", cyan(host), cyan(osName)),
+		cCyan, cBlack, fmt.Sprintf(" PORT   %s\tCORES %s", cyan(port), cyan(cpuCores)),
+		cCyan, cBlack, fmt.Sprintf(" TLS    %s\tMEM   %s", cyan(tlsStr), cyan(memTotal)),
+		cBlack, cyan(Version), fmt.Sprintf(" ROUTES %s\t\t\t PPID  %s%s%s\n", cyan(routesLen), cyan(ppid), pids, cReset),
+	)
+	// Write to io.write
+	_ = out.Flush()
 }
