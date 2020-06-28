@@ -22,6 +22,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
     <img height="20px" src="https://img.shields.io/badge/CN-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAwIDgwMCIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPg0KPHBhdGggZmlsbD0iI2RlMjkxMCIgZD0ibTAsMGgxMjAwdjgwMGgtMTIwMHoiLz4NCjxwYXRoIGZpbGw9IiNmZmRlMDAiIGQ9Im0tMTYuNTc5Niw5OS42MDA3bDIuMzY4Ni04LjEwMzItNi45NTMtNC43ODgzIDguNDM4Ni0uMjUxNCAyLjQwNTMtOC4wOTI0IDIuODQ2Nyw3Ljk0NzkgOC40Mzk2LS4yMTMxLTYuNjc5Miw1LjE2MzQgMi44MTA2LDcuOTYwNy02Ljk3NDctNC43NTY3LTYuNzAyNSw1LjEzMzF6IiB0cmFuc2Zvcm09Im1hdHJpeCg5LjkzMzUyIC4yNzc0NyAtLjI3NzQ3IDkuOTMzNTIgMzI0LjI5MjUgLTY5NS4yNDE1KSIvPg0KPHBhdGggZmlsbD0iI2ZmZGUwMCIgaWQ9InN0YXIiIGQ9Im0zNjUuODU1MiwzMzIuNjg5NWwyOC4zMDY4LDExLjM3NTcgMTkuNjcyMi0yMy4zMTcxLTIuMDcxNiwzMC40MzY3IDI4LjI1NDksMTEuNTA0LTI5LjU4NzIsNy40MzUyLTIuMjA5NywzMC40MjY5LTE2LjIxNDItMjUuODQxNS0yOS42MjA2LDcuMzAwOSAxOS41NjYyLTIzLjQwNjEtMTYuMDk2OC0yNS45MTQ4eiIvPg0KPGcgZmlsbD0iI2ZmZGUwMCI+DQo8cGF0aCBkPSJtNTE5LjA3NzksMTc5LjMxMjlsLTMwLjA1MzQtNS4yNDE4LTE0LjM5NDUsMjYuODk3Ni00LjMwMTctMzAuMjAyMy0zMC4wMjkzLTUuMzc4MSAyNy4zOTQ4LTEzLjQyNDItNC4xNjQ3LTMwLjIyMTUgMjEuMjMyNiwyMS45MDU3IDI3LjQ1NTQtMTMuMjk5OC0xNC4yNzIzLDI2Ljk2MjcgMjEuMTMzMSwyMi4wMDE3eiIvPg0KPHBhdGggZD0ibTQ1NS4yNTkyLDMxNS45Nzk1bDkuMzczNC0yOS4wMzE0LTI0LjYzMjUtMTcuOTk3OCAzMC41MDctLjA1NjYgOS41MDUtMjguOTg4NiA5LjQ4MSwyOC45OTY0IDMwLjUwNywuMDgxOC0yNC42NDc0LDE3Ljk3NzQgOS4zNDkzLDI5LjAzOTItMjQuNzE0LTE3Ljg4NTgtMjQuNzI4OCwxNy44NjUzeiIvPg0KPC9nPg0KPHVzZSB4bGluazpocmVmPSIjc3RhciIgdHJhbnNmb3JtPSJtYXRyaXgoLjk5ODYzIC4wNTIzNCAtLjA1MjM0IC45OTg2MyAxOS40MDAwNSAtMzAwLjUzNjgxKSIvPg0KPC9zdmc+DQo=">
   </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-TW.md">
+    <img height="20px" src="https://img.shields.io/badge/TW-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4NCjwhRE9DVFlQRSBzdmc+DQo8c3ZnIHdpZHRoPSI5MDAiIGhlaWdodD0iNjAwIiB2aWV3Qm94PSItNjAgLTQwIDI0MCAxNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPg0KICAgPHJlY3QgeD0iLTYwIiB5PSItNDAiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmZTAwMDAiLz4NCiAgIDxyZWN0IHg9Ii02MCIgeT0iLTQwIiB3aWR0aD0iNTAlIiBoZWlnaHQ9IjUwJSIgZmlsbD0iIzAwMDA5NSIvPg0KICAgPHBhdGggaWQ9ImZvdXJfcmF5cyIgZD0iTSA4LDAgTCAwLDMwIEwgLTgsMCBMIDAsLTMwIE0gMCw4IEwgMzAsMCBMIDAsLTggTCAtMzAsMCIgZmlsbD0iI2ZmZiIvPg0KICAgPHVzZSB4bGluazpocmVmPSIjZm91cl9yYXlzIiB0cmFuc2Zvcm09InJvdGF0ZSgzMCkiLz4NCiAgIDx1c2UgeGxpbms6aHJlZj0iI2ZvdXJfcmF5cyIgdHJhbnNmb3JtPSJyb3RhdGUoNjApIi8+DQogICA8Y2lyY2xlIHI9IjE3IiBmaWxsPSIjMDAwMDk1Ii8+DQogICA8Y2lyY2xlIHI9IjE1IiBmaWxsPSIjZmZmIi8+DQo8L3N2Zz4=">
+  </a>
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
     <img height="20px" src="https://img.shields.io/badge/DE-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDUgMyI+DQo8cGF0aCBkPSJtMCwwaDV2M2gtNXoiLz4NCjxwYXRoIGZpbGw9IiNkMDAiIGQ9Im0wLDFoNXYyaC01eiIvPg0KPHBhdGggZmlsbD0iI2ZmY2UwMCIgZD0ibTAsMmg1djFoLTV6Ii8+DQo8L3N2Zz4NCg==">
   </a>
@@ -72,8 +75,8 @@
 <p align="center">
   <div dir="rtl">
 
-  <b>Fiber</b> היא <b>web framework</b> בהשראת <a href="https://github.com/expressjs/express">Express</a> הבנויה על גבי <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, מנוע ה-HTTP <b>המהיר ביותר</b> עבור <a href="https://golang.org/doc/">Go</a>.  
-  נועדה <b>להקל</b> על העניינים למען פיתוח <b>מהיר</b>, <b>ללא הקצאות זכרון</b> ולוקחת <b>ביצועים</b> בחשבון.  
+  <b>Fiber</b> היא <b>web framework</b> בהשראת <a href="https://github.com/expressjs/express">Express</a> הבנויה על גבי <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, מנוע ה-HTTP <b>המהיר ביותר</b> עבור <a href="https://golang.org/doc/">Go</a>.
+  נועדה <b>להקל</b> על העניינים למען פיתוח <b>מהיר</b>, <b>ללא הקצאות זכרון</b> ולוקחת <b>ביצועים</b> בחשבון.
   </div>
 </p>
 
@@ -160,7 +163,7 @@ go get -u github.com/gofiber/fiber
 
 <div dir="rtl">
 
-gophers חדשים שעושים את המעבר מ-[Node.js](https://nodejs.org/en/about/) ל-[Go](https://golang.org/doc/) מתמודדים עם עקומת למידה לפני שהם יכולים להתחיל לבנות את יישומי האינטרנט או המיקרו-שירותים שלהם.  
+gophers חדשים שעושים את המעבר מ-[Node.js](https://nodejs.org/en/about/) ל-[Go](https://golang.org/doc/) מתמודדים עם עקומת למידה לפני שהם יכולים להתחיל לבנות את יישומי האינטרנט או המיקרו-שירותים שלהם.
 Fiber כ-**web framework**, נוצרה עם רעיון **המינימליזם** ועוקבת אחרי **הדרך של UNIX**, כך ש-gophers חדשים יוכלו להיכנס במהירות לעולם של Go עם קבלת פנים חמה ואמינה.
 </div>
 
@@ -197,7 +200,7 @@ Fiber נוצרה **בהשראת** Express, ה-web framework הפופולרית �
 
 <div dir="rtl">
 
-📖 [ניתוב](https://docs.gofiber.io/#basic-routing)  
+📖 [ניתוב](https://docs.gofiber.io/#basic-routing)
 </div>
 
 ```go
@@ -215,7 +218,7 @@ func main() {
     fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
     // => Name: john, Age:
   })
-  
+
   // GET /plantae/prunus.persica
   app.Get("/plantae/:genus.:species", func(c *fiber.Ctx) {
     fmt.Printf("Genius: %s, Species: %s", c.Params("genus"), c.Params("species"))
@@ -245,7 +248,7 @@ func main() {
 
 <div dir="rtl">
 
-📖 [קבצים סטטיים](https://docs.gofiber.io/application#static)  
+📖 [קבצים סטטיים](https://docs.gofiber.io/application#static)
 </div>
 
 ```go
@@ -274,8 +277,8 @@ func main() {
 
 <div dir="rtl">
 
-📖 [Middleware](https://docs.gofiber.io/routing#middleware)  
-📖 [Next](https://docs.gofiber.io/context#next)  
+📖 [Middleware](https://docs.gofiber.io/routing#middleware)
+📖 [Next](https://docs.gofiber.io/context#next)
 </div>
 
 ```go
@@ -307,13 +310,13 @@ func main() {
 <div dir="rtl">
 <details>
   <summary>📚 הצג דוגמאות קוד נוספות</summary>
-  
+
 
 ### Views engines
 
-📖 [Settings](https://docs.gofiber.io/application#settings)  
-📖 [Engines](https://github.com/gofiber/template)  
-📖 [Render](https://docs.gofiber.io/context#render)  
+📖 [Settings](https://docs.gofiber.io/application#settings)
+📖 [Engines](https://github.com/gofiber/template)
+📖 [Render](https://docs.gofiber.io/context#render)
 
 Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
 
@@ -353,7 +356,7 @@ func main() {
 
 ### קיבוץ routes ל-chains
 
-📖 [קבוצות](https://docs.gofiber.io/application#group)  
+📖 [קבוצות](https://docs.gofiber.io/application#group)
 
 <div dir="ltr">
 
@@ -381,7 +384,7 @@ func main() {
 
 ### Middleware של לוגים
 
-📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)  
+📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
 
 <div dir="ltr">
 
@@ -415,7 +418,7 @@ func main() {
 
 ### שיתוף משאבים בין מקורות (CORS)
 
-📖 [CORS](https://docs.gofiber.io/middleware#cors)  
+📖 [CORS](https://docs.gofiber.io/middleware#cors)
 
 <div dir="ltr">
 
@@ -447,7 +450,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### תגובת 404 מותאמת אישית
 
-📖 [שיטות HTTP](https://docs.gofiber.io/application#http-methods)  
+📖 [שיטות HTTP](https://docs.gofiber.io/application#http-methods)
 
 <div dir="ltr">
 
@@ -467,7 +470,7 @@ func main() {
 
   // Last middleware to match anything
   app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404) 
+    c.SendStatus(404)
     // => 404 "Not Found"
   })
 
@@ -478,7 +481,7 @@ func main() {
 
 ### תגובת JSON
 
-📖 [JSON](https://docs.gofiber.io/context#json)  
+📖 [JSON](https://docs.gofiber.io/context#json)
 
 <div dir="ltr">
 
@@ -511,7 +514,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 [Websocket](https://docs.gofiber.io/middleware#websocket)  
+📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
 
 <div dir="ltr">
 
@@ -548,7 +551,7 @@ func main() {
 
 ### Middleware של התאוששות
 
-📖 [התאוששות](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)  
+📖 [התאוששות](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)
 
 <div dir="ltr">
 
