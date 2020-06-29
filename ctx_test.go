@@ -914,7 +914,7 @@ func Test_Ctx_Download(t *testing.T) {
 
 // go test -race -run Test_Ctx_SendFile
 func Test_Ctx_SendFile(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 	app := New()
 
 	// fetch file content
