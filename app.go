@@ -219,7 +219,7 @@ func New(settings ...*Settings) *App {
 	// Create a new app
 	app := &App{
 		// Create router stack
-		stack: make([][]*Route, len(methodINT)),
+		stack: make([][]*Route, len(intMethod)),
 		// Create Ctx pool
 		pool: sync.Pool{
 			New: func() interface{} {
@@ -349,8 +349,8 @@ func (app *App) Static(prefix, root string, config ...Static) *Route {
 
 // All ...
 func (app *App) All(path string, handlers ...Handler) []*Route {
-	routes := make([]*Route, len(methodINT))
-	for method, i := range methodINT {
+	routes := make([]*Route, len(intMethod))
+	for i, method := range intMethod {
 		routes[i] = app.Add(method, path, handlers...)
 	}
 	return routes

@@ -580,7 +580,7 @@ func (ctx *Ctx) Location(path string) {
 func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
 		method := utils.ToUpper(override[0])
-		if methodINT[method] == 0 && method != MethodGet {
+		if methodInt(method) == 0 && method != MethodGet {
 			return ctx.method
 		}
 		ctx.method = method

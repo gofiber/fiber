@@ -18,7 +18,7 @@ import (
 // Scan stack if other methods match
 func setMethodNotAllowed(ctx *Ctx) {
 	var allow bool
-	original := methodINT[ctx.method]
+	original := methodInt(ctx.method)
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
 		if original == i {
@@ -206,16 +206,29 @@ var getBytesImmutable = func(s string) (b []byte) {
 }
 
 // HTTP methods and their unique INTs
-var methodINT = map[string]int{
-	MethodGet:     0,
-	MethodHead:    1,
-	MethodPost:    2,
-	MethodPut:     3,
-	MethodDelete:  4,
-	MethodConnect: 5,
-	MethodOptions: 6,
-	MethodTrace:   7,
-	MethodPatch:   8,
+func methodInt(s string) int {
+	switch s {
+	case MethodGet:
+		return 0
+	case MethodHead:
+		return 1
+	case MethodPost:
+		return 2
+	case MethodPut:
+		return 3
+	case MethodDelete:
+		return 4
+	case MethodConnect:
+		return 5
+	case MethodOptions:
+		return 6
+	case MethodTrace:
+		return 7
+	case MethodPatch:
+		return 8
+	default:
+		return 0
+	}
 }
 
 // HTTP methods slice
