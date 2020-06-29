@@ -85,16 +85,14 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 }
 
 func (app *App) next(ctx *Ctx) bool {
-	// TODO set unique INT within handler(), not here over and over again
-	method := methodInt(ctx.method)
 	// Get stack length
-	lenr := len(app.stack[method]) - 1
+	lenr := len(app.stack[ctx.methodINT]) - 1
 	// Loop over the route stack starting from previous index
 	for ctx.indexRoute < lenr {
 		// Increment route index
 		ctx.indexRoute++
 		// Get *Route
-		route := app.stack[method][ctx.indexRoute]
+		route := app.stack[ctx.methodINT][ctx.indexRoute]
 		// Check if it matches the request path
 		match, values := route.match(ctx.path, ctx.pathOriginal)
 		// No match, next route
