@@ -475,7 +475,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := range routesFixture.TestRoutes {
 
-			mINT := methodINT[routesFixture.TestRoutes[i].Method]
+			mINT := methodInt(routesFixture.TestRoutes[i].Method)
 			path := routesFixture.TestRoutes[i].Path
 
 			for i := range app.stack[mINT] {
