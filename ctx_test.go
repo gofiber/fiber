@@ -912,6 +912,50 @@ func Test_Ctx_Download(t *testing.T) {
 	utils.AssertEqual(t, expect, ctx.Fasthttp.Response.Body())
 }
 
+// go test -race -run Test_Ctx_SendFile
+func Test_Ctx_SendFile(t *testing.T) {
+	//t.Parallel()
+	app := New()
+
+	// fetch file content
+	f, err := os.Open("./ctx.go")
+	utils.AssertEqual(t, nil, err)
+	defer f.Close()
+	expectFileContent, err := ioutil.ReadAll(f)
+	utils.AssertEqual(t, nil, err)
+	// fetch file info for the not modified test case
+	fI, err := os.Stat("./ctx.go")
+	utils.AssertEqual(t, nil, err)
+
+	// simple test case
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = ctx.SendFile("ctx.go")
+	// check expectation
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, expectFileContent, ctx.Fasthttp.Response.Body())
+	utils.AssertEqual(t, StatusOK, ctx.Fasthttp.Response.StatusCode())
+	app.ReleaseCtx(ctx)
+
+	// test with custom error code
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = ctx.Status(StatusInternalServerError).SendFile("ctx.go")
+	// check expectation
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, expectFileContent, ctx.Fasthttp.Response.Body())
+	utils.AssertEqual(t, StatusInternalServerError, ctx.Fasthttp.Response.StatusCode())
+	app.ReleaseCtx(ctx)
+
+	// test not modified
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Fasthttp.Request.Header.Set(HeaderIfModifiedSince, fI.ModTime().Format(time.RFC1123))
+	err = ctx.SendFile("ctx.go")
+	// check expectation
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusNotModified, ctx.Fasthttp.Response.StatusCode())
+	utils.AssertEqual(t, []byte(nil), ctx.Fasthttp.Response.Body())
+	app.ReleaseCtx(ctx)
+}
+
 // go test -run Test_Ctx_JSON
 func Test_Ctx_JSON(t *testing.T) {
 	t.Parallel()

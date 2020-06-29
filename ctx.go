@@ -847,7 +847,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 			CacheDuration:        10 * time.Second,
 			IndexNames:           []string{"index.html"},
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
-				ctx.Response.SetStatusCode(404)
+				ctx.Response.SetStatusCode(StatusNotFound)
 			},
 		}
 		sendFileHandler = sendFileFS.NewRequestHandler()
@@ -873,12 +873,16 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 	status := ctx.Fasthttp.Response.StatusCode()
 	// Serve file
 	sendFileHandler(ctx.Fasthttp)
+	// Get the status code which is set by fasthttp
+	fsStatus := ctx.Fasthttp.Response.StatusCode()
+	// Set the status code set by the user if it is different from the fasthttp status code and 200
+	if status != fsStatus && status != StatusOK {
+		ctx.Fasthttp.Response.SetStatusCode(status)
+	}
 	// Check for error
-	if status != 404 && ctx.Fasthttp.Response.StatusCode() == 404 {
+	if status != StatusNotFound && fsStatus == StatusNotFound {
 		return fmt.Errorf("sendfile: file %s not found", file)
 	}
-	// Restore status code
-	ctx.Fasthttp.Response.SetStatusCode(status)
 	return nil
 }
 
