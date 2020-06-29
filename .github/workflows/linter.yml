@@ -10,3 +10,4 @@ jobs:
         uses: reviewdog/action-golangci-lint@v1
         with:
           golangci_lint_flags: "--tests=false"
+          workdir: ./...
