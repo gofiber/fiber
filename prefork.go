@@ -25,8 +25,8 @@ var (
 
 func init() { //nolint:gochecknoinits
 	// Avoid panic when the user adds their own flags and runs `flag.Parse()`
-	flag.BoolVar(&isPrefork, flagChild[1:], false, "use prefork")
-	flag.BoolVar(&isChild, flagPrefork[1:], false, "is child proc")
+	flag.BoolVar(&isPrefork, flagPrefork[1:], false, "Prefork")
+	flag.BoolVar(&isChild, flagChild[1:], false, "Child Process")
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
