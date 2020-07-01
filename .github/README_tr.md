@@ -142,39 +142,39 @@ Aşağıda yaygın örneklerden bazıları listelenmiştir. Daha fazla kod örne
 
 ```go
 func main() {
-	app := fiber.New()
+  app := fiber.New()
 
-	// GET /john
-	app.Get("/:name", func(c *fiber.Ctx) {
-		msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
-		c.Send(msg) // => Hello john 👋!
-	})
+  // GET /john
+  app.Get("/:name", func(c *fiber.Ctx) {
+    msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
+    c.Send(msg) // => Hello john 👋!
+  })
 
-	// GET /john/75
-	app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) {
-		msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
-		c.Send(msg) // => 👴 john is 75 years old
-	})
+  // GET /john/75
+  app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) {
+    msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
+    c.Send(msg) // => 👴 john is 75 years old
+  })
 
-	// GET /dictionary.txt
-	app.Get("/:file.:ext", func(c *fiber.Ctx) {
-		msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
-		c.Send(msg) // => 📃 dictionary.txt
-	})
+  // GET /dictionary.txt
+  app.Get("/:file.:ext", func(c *fiber.Ctx) {
+    msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
+    c.Send(msg) // => 📃 dictionary.txt
+  })
 
-	// GET /flights/LAX-SFO
-	app.Get("/flights/:from-:to", func(c *fiber.Ctx) {
-		msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
-		c.Send(msg) // => 💸 From: LAX, To: SFO
-	})
+  // GET /flights/LAX-SFO
+  app.Get("/flights/:from-:to", func(c *fiber.Ctx) {
+    msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
+    c.Send(msg) // => 💸 From: LAX, To: SFO
+  })
 
-	// GET /api/register
-	app.Get("/api/*", func(c *fiber.Ctx) {
-		msg := fmt.Sprintf("✋ %s", c.Params("*"))
-		c.Send(msg) // => ✋ /api/register
-	})
+  // GET /api/register
+  app.Get("/api/*", func(c *fiber.Ctx) {
+    msg := fmt.Sprintf("✋ %s", c.Params("*"))
+    c.Send(msg) // => ✋ /api/register
+  })
 
-	app.Listen(3000)
+  app.Listen(3000)
 }
 ```
 
