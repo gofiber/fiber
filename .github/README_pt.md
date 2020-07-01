@@ -138,10 +138,9 @@ O Fiber é **inspirado** no Express, o framework web mais popular da Internet. C
 
 Listados abaixo estão alguns exemplos comuns. Se você quiser ver mais exemplos de código, visite nosso [repositório de receitas](https://github.com/gofiber/recipes) ou a [documentação da API](https://docs.gofiber.io).
 
-### Routing
+Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
 
-📖 [Routing](https://docs.gofiber.io/#basic-routing)
-
+#### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
 
 ```go
 func main() {
@@ -149,41 +148,39 @@ func main() {
 
   // GET /john
   app.Get("/:name", func(c *fiber.Ctx) {
-    fmt.Printf("Hello %s!", c.Params("name"))
-    // => Hello john!
+    c.Send("Hello, ", c.Params("name"), " 👋!") 
+    // => Hello john 👋!
   })
 
-  // GET /john
-  app.Get("/:name/:age?", func(c *fiber.Ctx) {
-    fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
-    // => Name: john, Age:
+  // GET /john/75
+  app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) {
+    c.Send(c.Params("name"), " is ", c.Params("age"), " years old 👴")
+    // => john is 75 years old 👴
   })
 
-  // GET /plantae/prunus.persica
-  app.Get("/plantae/:genus.:species", func(c *fiber.Ctx) {
-    fmt.Printf("Genius: %s, Species: %s", c.Params("genus"), c.Params("species"))
-    // => Genius: prunus, Species: persica
+  // GET /dictionary.txt
+  app.Get("/:file.:ext", func(c *fiber.Ctx) {
+    c.Send("📃 ", c.Params("file"), ".", c.Params("ext"))
+    // => 📃 dictionary.txt
   })
 
   // GET /flights/LAX-SFO
   app.Get("/flights/:from-:to", func(c *fiber.Ctx) {
-    fmt.Printf("From: %s, To: %s", c.Params("from"), c.Params("to"))
-    // => From: LAX, To: SFO
+    c.Send("✈ From ", c.Params("from"), ", To: ", c.Params("to"))
+    // => ✈ From: LAX, To: SFO
   })
 
   // GET /api/register
   app.Get("/api/*", func(c *fiber.Ctx) {
-    fmt.Printf("/api/%s", c.Params("*"))
-    // => /api/register
+    c.Send("✋ ", c.Params("*"))
+    // => ✋ /api/register
   })
 
   app.Listen(3000)
 }
 ```
 
-### Serve static files
-
-📖 [Static](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
 
 ```go
 func main() {
@@ -204,10 +201,7 @@ func main() {
 }
 ```
 
-### Middleware & Next
-
-📖 [Middleware](https://docs.gofiber.io/routing#middleware)
-📖 [Next](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
 
 ```go
 func main() {
@@ -215,20 +209,20 @@ func main() {
 
   // Match any route
   app.Use(func(c *fiber.Ctx) {
-    fmt.Println("First middleware")
+    fmt.Println("🥇 First handler")
     c.Next()
   })
 
   // Match all routes starting with /api
   app.Use("/api", func(c *fiber.Ctx) {
-    fmt.Println("Second middleware")
+    fmt.Println("🥈 Second handler")
     c.Next()
   })
 
   // GET /api/register
   app.Get("/api/list", func(c *fiber.Ctx) {
-    fmt.Println("Last middleware")
-    c.Send("Hello, World!")
+    fmt.Println("🥉 Last handler")
+    c.Send("Hello, World 👋!")
   })
 
   app.Listen(3000)
