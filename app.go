@@ -444,7 +444,6 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		}
 		addr = strconv.Itoa(port)
 	}
-	fmt.Println("aha")
 	if !strings.Contains(addr, ":") {
 		addr = "127.0.0.1:" + addr
 	}
