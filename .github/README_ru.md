@@ -87,7 +87,7 @@ func main() {
   app := fiber.New()
 
   app.Get("/", func(c *fiber.Ctx) {
-    c.Send("Hello, World!")
+    c.Send("Hello, World 👋!")
   })
 
   app.Listen(3000)
@@ -140,10 +140,9 @@ Fiber **вдохновлен** Express, самым популярным веб �
 
 Ниже перечислены некоторые из распространенных примеров. Если вы хотите увидеть больше примеров кода, пожалуйста, посетите наш [репозиторий рецептов](https://github.com/gofiber/recipes) или [документацию по API](https://docs.gofiber.io).
 
-### Routing
+Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
 
-📖 [Routing](https://docs.gofiber.io/#basic-routing)
-
+#### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
 
 ```go
 func main() {
@@ -151,41 +150,39 @@ func main() {
 
   // GET /john
   app.Get("/:name", func(c *fiber.Ctx) {
-    fmt.Printf("Hello %s!", c.Params("name"))
-    // => Hello john!
+    msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
+    c.Send(msg) // => Hello john 👋!
   })
 
-  // GET /john
-  app.Get("/:name/:age?", func(c *fiber.Ctx) {
-    fmt.Printf("Name: %s, Age: %s", c.Params("name"), c.Params("age"))
-    // => Name: john, Age:
+  // GET /john/75
+  app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) {
+    msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
+    c.Send(msg) // => 👴 john is 75 years old
   })
 
-  // GET /plantae/prunus.persica
-  app.Get("/plantae/:genus.:species", func(c *fiber.Ctx) {
-    fmt.Printf("Genius: %s, Species: %s", c.Params("genus"), c.Params("species"))
-    // => Genius: prunus, Species: persica
+  // GET /dictionary.txt
+  app.Get("/:file.:ext", func(c *fiber.Ctx) {
+    msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
+    c.Send(msg) // => 📃 dictionary.txt
   })
 
   // GET /flights/LAX-SFO
   app.Get("/flights/:from-:to", func(c *fiber.Ctx) {
-    fmt.Printf("From: %s, To: %s", c.Params("from"), c.Params("to"))
-    // => From: LAX, To: SFO
+    msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
+    c.Send(msg) // => 💸 From: LAX, To: SFO
   })
 
   // GET /api/register
   app.Get("/api/*", func(c *fiber.Ctx) {
-    fmt.Printf("/api/%s", c.Params("*"))
-    // => /api/register
+    msg := fmt.Sprintf("✋ %s", c.Params("*"))
+    c.Send(msg) // => ✋ /api/register
   })
 
   app.Listen(3000)
 }
 ```
 
-### Serve static files
-
-📖 [Static](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
 
 ```go
 func main() {
@@ -206,10 +203,7 @@ func main() {
 }
 ```
 
-### Middleware & Next
-
-📖 [Middleware](https://docs.gofiber.io/routing#middleware)
-📖 [Next](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
 
 ```go
 func main() {
@@ -217,20 +211,20 @@ func main() {
 
   // Match any route
   app.Use(func(c *fiber.Ctx) {
-    fmt.Println("First middleware")
+    fmt.Println("🥇 First handler")
     c.Next()
   })
 
   // Match all routes starting with /api
   app.Use("/api", func(c *fiber.Ctx) {
-    fmt.Println("Second middleware")
+    fmt.Println("🥈 Second handler")
     c.Next()
   })
 
   // GET /api/register
   app.Get("/api/list", func(c *fiber.Ctx) {
-    fmt.Println("Last middleware")
-    c.Send("Hello, World!")
+    fmt.Println("🥉 Last handler")
+    c.Send("Hello, World 👋!")
   })
 
   app.Listen(3000)
@@ -518,6 +512,11 @@ The Fiber middleware modules listed here are maintained by the [Fiber team](http
 
 ## 💬 Медиа
 
+<p float="left" align="middle">
+  <a href="https://www.youtube.com/watch?v=Iq2qT0fRhAA"><img src="https://img.youtube.com/vi/Iq2qT0fRhAA/mqdefault.jpg" width="49%" style="border-radius:4px"></a>
+   <a href="https://www.youtube.com/watch?v=kvwsPeWDLM8"><img src="https://img.youtube.com/vi/kvwsPeWDLM8/mqdefault.jpg" width="49%" style="border-radius:4px"></a>
+</p>
+
 - [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) — _03 Feb 2020_
 - [Fiber released v1.7! 🎉 What's new and is it still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) — _21 Feb 2020_
 - [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) — _03 Mar 2020_
@@ -530,6 +529,7 @@ The Fiber middleware modules listed here are maintained by the [Fiber team](http
 - [The road to web-based authentication with Fiber ⚡](https://vugt.me/the-road-to-web-based-authentication-with-fiber/) - _20 May 2020_
 - [Building an Express-style API in Go with Fiber](https://blog.logrocket.com/express-style-api-go-fiber/) - _10 June 2020_
 - [Construir una API en Golang con Fiber 🇪🇸](https://enbonnet.me/article/53/construir-api-golang-con-fiber) - _28 June 2020_
+- [📺Why Go Fiber Is THE New Framework To Learn](https://www.youtube.com/watch?v=kvwsPeWDLM8) - _29 June 2020_
 
 ## 👍 Помощь проекту
 
