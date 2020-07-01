@@ -186,7 +186,7 @@ func (ctx *Ctx) Append(field string, values ...string) {
 		}
 	}
 	if originalH != h {
-		ctx.Fasthttp.Response.Header.Set(field, h)
+		ctx.Set(field, h)
 	}
 }
 
@@ -512,7 +512,7 @@ func (ctx *Ctx) JSON(data interface{}) error {
 	}
 	// Set http headers
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-	ctx.Fasthttp.Response.SetBodyString(getString(raw))
+	ctx.SendString(getString(raw))
 	// Success!
 	return nil
 }
@@ -537,9 +537,9 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 
 	result = cb + "(" + getString(raw) + ");"
 
-	ctx.Fasthttp.Response.Header.Set(HeaderXContentTypeOptions, "nosniff")
+	ctx.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
-	ctx.Fasthttp.Response.SetBodyString(result)
+	ctx.SendString(result)
 
 	return nil
 }
@@ -559,7 +559,7 @@ func (ctx *Ctx) Links(link ...string) {
 			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	ctx.Fasthttp.Response.Header.Set(HeaderLink, utils.TrimRight(bb.String(), ','))
+	ctx.Set(HeaderLink, utils.TrimRight(bb.String(), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -693,7 +693,7 @@ func (ctx *Ctx) Query(key string) (value string) {
 
 // Range returns a struct containing the type and a slice of ranges.
 func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
-	rangeStr := getString(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
+	rangeStr := ctx.Get(HeaderRange)
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
 		return rangeData, fmt.Errorf("range: malformed range header string")
 	}
@@ -736,11 +736,11 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found
 func (ctx *Ctx) Redirect(location string, status ...int) {
-	ctx.Fasthttp.Response.Header.Set(HeaderLocation, location)
+	ctx.Set(HeaderLocation, location)
 	if len(status) > 0 {
-		ctx.Fasthttp.Response.SetStatusCode(status[0])
+		ctx.Status(status[0])
 	} else {
-		ctx.Fasthttp.Response.SetStatusCode(StatusFound)
+		ctx.Status(StatusFound)
 	}
 }
 
@@ -822,7 +822,7 @@ func (ctx *Ctx) Secure() bool {
 // Send sets the HTTP response body. The input can be of any type, io.Reader is also supported.
 func (ctx *Ctx) Send(bodies ...interface{}) {
 	if len(bodies) > 0 {
-		ctx.Fasthttp.Response.SetBodyString("")
+		ctx.SendString("")
 	}
 	ctx.Write(bodies...)
 }
@@ -830,7 +830,7 @@ func (ctx *Ctx) Send(bodies ...interface{}) {
 // SendBytes sets the HTTP response body for []byte types
 // This means no type assertion, recommended for faster performance
 func (ctx *Ctx) SendBytes(body []byte) {
-	ctx.Fasthttp.Response.SetBodyString(getString(body))
+	ctx.SendString(getString(body))
 }
 
 var sendFileFS *fasthttp.FS
@@ -881,7 +881,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 	fsStatus := ctx.Fasthttp.Response.StatusCode()
 	// Set the status code set by the user if it is different from the fasthttp status code and 200
 	if status != fsStatus && status != StatusOK {
-		ctx.Fasthttp.Response.SetStatusCode(status)
+		ctx.Status(status)
 	}
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
@@ -893,10 +893,10 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 // SendStatus sets the HTTP status code and if the response body is empty,
 // it sets the correct status message in the body.
 func (ctx *Ctx) SendStatus(status int) {
-	ctx.Fasthttp.Response.SetStatusCode(status)
+	ctx.Status(status)
 	// Only set status body when there is no response body
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
-		ctx.Fasthttp.Response.SetBodyString(utils.StatusMessage(status))
+		ctx.SendString(utils.StatusMessage(status))
 	}
 }
 
