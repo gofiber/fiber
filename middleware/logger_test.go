@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber"
 	"github.com/gofiber/utils"
 	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp"
 )
 
 // go test -run Test_Middleware_Logger
@@ -69,4 +70,28 @@ $`)
 		expectedOutputPattern.MatchString(buf.String()),
 		fmt.Sprintf("Has: %s, expected pattern: %s", buf.String(), expectedOutputPattern.String()),
 	)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Middleware_Logger -benchmem -count=4
+func Benchmark_Middleware_Logger(b *testing.B) {
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(LoggerWithConfig(LoggerConfig{
+		Output: buf,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) {})
+	handler := app.Handler()
+
+	c := &fasthttp.RequestCtx{}
+	c.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		handler(c)
+	}
 }

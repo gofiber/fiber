@@ -7,6 +7,7 @@ import (
 
 	"github.com/gofiber/fiber"
 	"github.com/gofiber/utils"
+	"github.com/valyala/fasthttp"
 )
 
 // go test -run Test_Middleware_Recover
@@ -28,4 +29,23 @@ func Test_Middleware_Recover(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Hi, I'm an error!", string(body))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Middleware_Recover -benchmem -count=4
+func Benchmark_Middleware_Recover(b *testing.B) {
+
+	app := fiber.New()
+	app.Use(Recover())
+
+	app.Get("/", func(c *fiber.Ctx) {})
+	handler := app.Handler()
+
+	c := &fasthttp.RequestCtx{}
+	c.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		handler(c)
+	}
 }

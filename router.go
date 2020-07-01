@@ -85,16 +85,14 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 }
 
 func (app *App) next(ctx *Ctx) bool {
-	// TODO set unique INT within handler(), not here over and over again
-	method := methodINT[ctx.method]
 	// Get stack length
-	lenr := len(app.stack[method]) - 1
+	lenr := len(app.stack[ctx.methodINT]) - 1
 	// Loop over the route stack starting from previous index
 	for ctx.indexRoute < lenr {
 		// Increment route index
 		ctx.indexRoute++
 		// Get *Route
-		route := app.stack[method][ctx.indexRoute]
+		route := app.stack[ctx.methodINT][ctx.indexRoute]
 		// Check if it matches the request path
 		match, values := route.match(ctx.path, ctx.pathOriginal)
 		// No match, next route
@@ -139,7 +137,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
-	if method != "USE" && methodINT[method] == 0 && method != MethodGet {
+	if method != "USE" && methodInt(method) == 0 && method != MethodGet {
 		log.Fatalf("Add: Invalid HTTP method %s", method)
 	}
 	// A route requires atleast one ctx handler
@@ -198,7 +196,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 	// Middleware route matches all HTTP methods
 	if isUse {
 		// Add route to all HTTP methods stack
-		for m := range methodINT {
+		for _, m := range intMethod {
 			app.addRoute(m, route)
 		}
 		return route
@@ -325,7 +323,7 @@ func (app *App) addRoute(method string, route *Route) {
 		route.Name = utils.FunctionName(route.Handlers[0])
 	}
 	// Get unique HTTP method indentifier
-	m := methodINT[method]
+	m := methodInt(method)
 	// Add route to the stack
 	app.stack[m] = append(app.stack[m], route)
 }
