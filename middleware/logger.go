@@ -108,6 +108,19 @@ func Logger(format ...string) fiber.Handler {
 
 // LoggerWithConfig allows you to pass an CompressConfig
 func LoggerWithConfig(config LoggerConfig) fiber.Handler {
+	// Set config default values
+	if config.Format == "" {
+		config.Format = LoggerConfigDefault.Format
+	}
+
+	if config.TimeFormat == "" {
+		config.TimeFormat = LoggerConfigDefault.TimeFormat
+	}
+
+	if config.Output == nil {
+		config.Output = LoggerConfigDefault.Output
+	}
+
 	// Middleware settings
 	var mutex sync.RWMutex
 

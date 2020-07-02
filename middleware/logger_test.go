@@ -46,7 +46,7 @@ func Test_Middleware_Logger(t *testing.T) {
 
 }
 
-func Test_Middleware_Logger_WithDefaulFormat(t *testing.T) {
+func Test_Middleware_Logger_WithDefaultFormat(t *testing.T) {
 	expectedOutputPattern := regexp.MustCompile(`^\d{2}:\d{2}:\d{2} GET / - 0\.0\.0\.0 - 200 - \d+(\.\d+)?.{1,3}
 $`)
 	// fake output
