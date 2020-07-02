@@ -1,6 +1,6 @@
 # Compress
 
-Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default.
+Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli`.
 
 ### Example
 ```go
