@@ -956,6 +956,28 @@ func Test_Ctx_SendFile(t *testing.T) {
 	app.ReleaseCtx(ctx)
 }
 
+// go test -race -run Test_Ctx_SendFile_Immutable
+func Test_Ctx_SendFile_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/:file", func(c *Ctx) {
+		file := c.Params("file")
+		if err := c.SendFile("./.github/" + file + ".html"); err != nil {
+			utils.AssertEqual(t, nil, err)
+		}
+		utils.AssertEqual(t, "index", fmt.Sprintf("%s", file))
+		c.Send(file)
+	})
+	// 1st try
+	resp, err := app.Test(httptest.NewRequest("GET", "/index", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode)
+	// 2nd try
+	resp, err = app.Test(httptest.NewRequest("GET", "/index", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode)
+}
+
 // go test -run Test_Ctx_JSON
 func Test_Ctx_JSON(t *testing.T) {
 	t.Parallel()

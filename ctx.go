@@ -57,14 +57,14 @@ type Range struct {
 
 // Cookie data for ctx.Cookie
 type Cookie struct {
-	Name     string
-	Value    string
-	Path     string
-	Domain   string
-	Expires  time.Time
-	Secure   bool
-	HTTPOnly bool
-	SameSite string
+	Name     string    `json:"name"`
+	Value    string    `json:"value"`
+	Path     string    `json:"path"`
+	Domain   string    `json:"domain"`
+	Expires  time.Time `json:"expires"`
+	Secure   bool      `json:"secure"`
+	HTTPOnly bool      `json:"http_only"`
+	SameSite string    `json:"same_site"`
 }
 
 // Templates is deprecated since v1.11.1, please use Views
@@ -872,6 +872,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 			file += "/"
 		}
 	}
+	// Set new URI for filehandler
 	ctx.Fasthttp.Request.SetRequestURI(file)
 	// Save status code
 	status := ctx.Fasthttp.Response.StatusCode()
