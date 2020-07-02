@@ -12,30 +12,36 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-// Default Logger
-app.Use(middleware.Logger())
+func main() {
+  app := fiber.New()
+    
+  // Default Logger
+  app.Use(middleware.Logger())
 
-// Pass a custom output
-app.Use(middleware.Logger(os.Stdout))
+  // Pass a custom output
+  app.Use(middleware.Logger(os.Stdout))
 
-// Pass a custom timeformat
-app.Use(middleware.Logger("15:04:05"))
+  // Pass a custom timeformat
+  app.Use(middleware.Logger("15:04:05"))
 
-// Pass a custom format
-app.Use(middleware.Logger("${time} ${method} ${path}"))
+  // Pass a custom format
+  app.Use(middleware.Logger("${time} ${method} ${path}"))
 
-// Pass a custom timeformat + output + format
-app.Use(middleware.Logger(os.Stdout, "15:04:05", "${time} ${method} ${path}"))
+  // Pass a custom timeformat + output + format
+  app.Use(middleware.Logger(os.Stdout, "15:04:05", "${time} ${method} ${path}"))
 
-// Order does not matter
-app.Use(middleware.Logger("${time} ${method} ${path}", os.Stdout, "15:04:05"))
+  // Order does not matter
+  app.Use(middleware.Logger("${time} ${method} ${path}", os.Stdout, "15:04:05"))
 
-// Pass a custom config
-app.Use(middleware.Logger(middleware.LoggerConfig{
-    Format:     "${method} ${path}",
-    TimeFormat: "15:04:05",
-    Output:     os.Stdout,
-}))
+  // Pass a custom config
+  app.Use(middleware.Logger(middleware.LoggerConfig{
+      Format:     "${method} ${path}",
+      TimeFormat: "15:04:05",
+      Output:     os.Stdout,
+  }))
+
+  // ...
+}
 ```
 
 ### Signatures

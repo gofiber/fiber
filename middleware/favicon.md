@@ -14,11 +14,17 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-// Default ignore favicon
-app.Use(middleware.Favicon())
+func main() {
+  app := fiber.New()
+      
+  // Default ignore favicon
+  app.Use(middleware.Favicon())
 
-// Pass a favicon file that will be cached in memory
-app.Use(middleware.Favicon("./favicon.ico"))
+  // Pass a favicon file that will be cached in memory
+  app.Use(middleware.Favicon("./favicon.ico"))
+
+  // ...
+}
 ```
 
 ### Signatures
