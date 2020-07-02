@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"log"
+
 	"github.com/gofiber/fiber"
 	"github.com/gofiber/utils"
 )
@@ -34,19 +36,36 @@ var RequestIDConfigDefault = RequestIDConfig{
 }
 
 // RequestID adds an UUID indentifier to the request
-func RequestID(header ...string) fiber.Handler {
+/*
+RequestID adds an UUID indentifier to the request, the following config arguments in any order:
+	- RequestID()
+	- RequestID(next func(*fiber.Ctx) bool)
+	- RequestID(header string)
+	- RequestID(generator func() string)
+*/
+func RequestID(options ...interface{}) fiber.Handler {
 	// Create default config
 	var config = RequestIDConfigDefault
-	// Set lookup if provided
-	if len(header) > 0 {
-		config.Header = header[0]
+	// Assert options if provided to adjust the config
+	if len(options) > 0 {
+		for i := range options {
+			switch opt := options[i].(type) {
+			case func(*fiber.Ctx) bool:
+				config.Next = opt
+			case string:
+				config.Header = opt
+			case func() string:
+				config.Generator = opt
+			default:
+				log.Fatal("RequestID: the following option types are allowed: `string`, `func() string`")
+			}
+		}
 	}
-	// Return LoggerWithConfig
-	return RequestIDWithConfig(config)
+	// Return requestID
+	return requestID(config)
 }
 
-// RequestIDWithConfig allows you to pass a custom config
-func RequestIDWithConfig(config RequestIDConfig) fiber.Handler {
+func requestID(config RequestIDConfig) fiber.Handler {
 	// Set default values
 	if config.Header == "" {
 		config.Header = RequestIDConfigDefault.Header

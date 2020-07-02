@@ -96,10 +96,12 @@ var LoggerConfigDefault = LoggerConfig{
 }
 
 /*
-Logger allows the following config arguments:
+Logger allows the following config arguments in any order:
 	- Logger()
+	- Logger(next func(*fiber.Ctx) bool)
 	- Logger(output io.Writer)
 	- Logger(format string)
+	- Logger(timeformat string)
 	- Logger(config LoggerConfig)
 */
 func Logger(options ...interface{}) fiber.Handler {
@@ -109,6 +111,8 @@ func Logger(options ...interface{}) fiber.Handler {
 	if len(options) > 0 {
 		for i := range options {
 			switch opt := options[i].(type) {
+			case func(*fiber.Ctx) bool:
+				config.Next = opt
 			case string:
 				if strings.Contains(opt, "${") {
 					config.Format = opt
@@ -120,16 +124,15 @@ func Logger(options ...interface{}) fiber.Handler {
 			case LoggerConfig:
 				config = opt
 			default:
-				log.Fatal("middleware.Logger: the following option types are allowed: string, io.Writer, LoggerConfig")
+				log.Fatal("Logger: the following option types are allowed: string, io.Writer, LoggerConfig")
 			}
 		}
 	}
-	// Return LoggerWithConfig
-	return LoggerWithConfig(config)
+	// Return logger
+	return logger(config)
 }
 
-// LoggerWithConfig allows you to pass an LoggerConfig
-func LoggerWithConfig(config LoggerConfig) fiber.Handler {
+func logger(config LoggerConfig) fiber.Handler {
 	// Set config default values
 	if config.Format == "" {
 		config.Format = LoggerConfigDefault.Format

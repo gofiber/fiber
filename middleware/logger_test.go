@@ -24,7 +24,7 @@ func Test_Middleware_Logger(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(LoggerWithConfig(LoggerConfig{
+	app.Use(Logger(LoggerConfig{
 		Format: format,
 		Output: buf,
 	}))
@@ -56,7 +56,7 @@ $`)
 	config := LoggerConfigDefault
 	config.Output = buf
 	app := fiber.New(&fiber.Settings{DisableStartupMessage: true})
-	app.Use(LoggerWithConfig(config))
+	app.Use(Logger(config))
 
 	app.Get("/", func(ctx *fiber.Ctx) {
 		ctx.SendStatus(200)
@@ -79,7 +79,7 @@ func Benchmark_Middleware_Logger(b *testing.B) {
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
-	app.Use(LoggerWithConfig(LoggerConfig{
+	app.Use(Logger(LoggerConfig{
 		Output: buf,
 	}))
 

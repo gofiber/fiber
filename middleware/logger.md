@@ -1,42 +1,46 @@
 # Logger
-
 HTTP request/response logger for Fiber
 
 ### Example
+Import the middleware package that is part of the Fiber web framework
 ```go
-package main
-
 import (
   "github.com/gofiber/fiber"
   "github.com/gofiber/fiber/middleware"
 )
+```
 
-func main() {
-  app := fiber.New()
+After you initiate your Fiber app, you can use the following possibilities:
+```go
+// Default Logger
+app.Use(middleware.Logger())
 
-  // Default
-  app.Use(middleware.Logger())
+// Pass a custom output
+app.Use(middleware.Logger(os.Stdout))
 
-  // Custom logging format
-  app.Use(middleware.Logger("${method} - ${path}"))
+// Pass a custom timeformat
+app.Use(middleware.Logger("15:04:05"))
 
-  // Custom Config
-  app.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-    Next: func(ctx *fiber.Ctx) bool {
-      return ctx.Path() != "/private"
-    },
-    Format: "${method} - ${path}",
-    Output: io.Writer,
-  }))
+// Pass a custom format
+app.Use(middleware.Logger("${time} ${method} ${path}"))
 
-  app.Listen(3000)
-}
+// Pass a custom timeformat + output + format
+app.Use(middleware.Logger(os.Stdout, "15:04:05", "${time} ${method} ${path}"))
+
+// Order does not matter
+app.Use(middleware.Logger("${time} ${method} ${path}", os.Stdout, "15:04:05"))
+
+// Pass a custom config
+app.Use(middleware.Logger(middleware.LoggerConfig{
+    Format:     "${method} ${path}",
+    TimeFormat: "15:04:05",
+    Output:     os.Stdout,
+}))
 ```
 
 ### Signatures
 ```go
-func Logger(format ...string) fiber.Handler {}
-func LoggerWithConfig(config LoggerConfig) fiber.Handler {}
+func Logger(Options ...interface{}) fiber.Handler {}
 ```
 
 ### Config
@@ -81,14 +85,5 @@ type LoggerConfig struct {
   //
   // Default: os.Stderr
   Output io.Writer
-}
-```
-### Default Config
-```go
-var LoggerConfigDefault = LoggerConfig{
-	Next:       nil,
-	Format:     "${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n",
-	TimeFormat: "15:04:05",
-	Output:     os.Stderr,
 }
 ```
