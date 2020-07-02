@@ -5,7 +5,7 @@ Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli`.
 - [middleware/favicon](favicon.md)
 This middleware caches the favicon in memory to improve performance
 - [middleware/filesystem](filesystem.md)
-FileServer middleware to allow embedded filesystems
+FileServer middleware to allow embedded http.FileSystem
 - [middleware/logger](logger.md)
 HTTP request/response logger for Fiber
 - [middleware/recover](recover.md)
