@@ -203,7 +203,7 @@ func (ctx *Ctx) Attachment(filename ...string) {
 
 // BaseURL returns (protocol + host + base path).
 func (ctx *Ctx) BaseURL() string {
-	// TODO: avoid allocation 53.8 ns/op  32 B/op  1 allocs/op
+	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
 	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
 	return ctx.Protocol() + "://" + ctx.Hostname()
 }
@@ -219,7 +219,7 @@ func (ctx *Ctx) Body() string {
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 func (ctx *Ctx) BodyParser(out interface{}) error {
-	// TODO: Create benchmark ( Prolly need a sync pool )
+	// TODO: Create benchmark ( Probably need a sync pool )
 	var schemaDecoderForm = schema.NewDecoder()
 	var schemaDecoderQuery = schema.NewDecoder()
 	schemaDecoderForm.SetAliasTag("form")

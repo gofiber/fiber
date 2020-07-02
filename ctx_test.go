@@ -414,7 +414,7 @@ func Benchmark_Ctx_Format_XML(b *testing.B) {
 
 // go test -run Test_Ctx_FormFile
 func Test_Ctx_FormFile(t *testing.T) {
-	// TODO: CLEAN THIS UP
+	// TODO: We should clean this up
 	t.Parallel()
 	app := New()
 
@@ -791,7 +791,7 @@ func Test_Ctx_RouteNormalized(t *testing.T) {
 
 // go test -run Test_Ctx_SaveFile
 func Test_Ctx_SaveFile(t *testing.T) {
-	// TODO CLEAN THIS UP
+	// TODO We should clean this up
 	t.Parallel()
 	app := New()
 
