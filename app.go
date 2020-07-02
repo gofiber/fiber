@@ -24,6 +24,7 @@ import (
 
 	utils "github.com/gofiber/utils"
 	colorable "github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
 	fasthttp "github.com/valyala/fasthttp"
 )
 
@@ -652,7 +653,14 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 	// tabwriter makes sure the spacing are consistant across different values
 	// colorable handles the escape sequence for stdout using ascii color codes
-	out := tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 0, 2, ' ', 0)
+	var out *tabwriter.Writer
+	// Check if colors are supported
+	if os.Getenv("TERM") == "dumb" ||
+		(!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+		out = tabwriter.NewWriter(colorable.NewNonColorable(os.Stdout), 0, 0, 2, ' ', 0)
+	} else {
+		out = tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 0, 2, ' ', 0)
+	}
 	// simple Sprintf function that defaults back to black
 	cyan := func(v interface{}) string {
 		return fmt.Sprintf("%s%v%s", cCyan, v, cBlack)
