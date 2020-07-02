@@ -43,18 +43,40 @@ var FileSystemConfigDefault = FileSystemConfig{
 	Browse: false,
 }
 
-// FileSystem is the default initiator allowing to pass a http.FileSystem
-func FileSystem(root http.FileSystem) fiber.Handler {
+/*
+FileSystem allows the following config arguments in any order:
+	- FileSystem(root http.FileSystem)
+	- FileSystem(index string)
+	- FileSystem(browse bool)
+	- FileSystem(config FileSystem)
+	- FileSystem(next func(*fiber.Ctx) bool)
+*/
+func FileSystem(options interface{}) fiber.Handler {
 	// Create default config
 	var config = FileSystemConfigDefault
-	// Set root
-	config.Root = root
-	// Return FileSystemWithConfig
-	return FileSystemWithConfig(config)
+	// Assert options if provided to adjust the config
+	for i := range options {
+		switch opt := options[i].(type) {
+		case func(*fiber.Ctx) bool:
+			config.Next = opt
+		case http.FileSystem:
+			config.Root = opt
+		case string:
+			config.Index = opt
+		case bool:
+			config.Browse = opt
+		case FileSystemConfig:
+			config = opt
+		default:
+			log.Fatal("FileSystem: the following option types are allowed: string, bool, http.FileSystem, FileSystemConfig")
+		}
+	}
+	// Return fileSystem
+	return fileSystem(config)
 }
 
-// FileSystemWithConfig allows you to pass an FileSystemConfig
-func FileSystemWithConfig(config FileSystemConfig) fiber.Handler {
+// fileSystemWithConfig allows you to pass an FileSystemConfig
+func fileSystem(config FileSystemConfig) fiber.Handler {
 	// Set config default values
 	if config.Index == "" {
 		config.Index = FileSystemConfigDefault.Index

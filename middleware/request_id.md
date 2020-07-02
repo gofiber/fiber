@@ -1,44 +1,43 @@
 # RequestID
-
 Adds an indentifier to the response using the `X-Request-ID` header
 
 ### Example
+Import the middleware package that is part of the Fiber web framework
 ```go
-package main
-
 import (
   "github.com/gofiber/fiber"
   "github.com/gofiber/fiber/middleware"
 )
+```
 
-func main() {
-  app := fiber.New()
+After you initiate your Fiber app, you can use the following possibilities:
+```go
+// Default RequestID
+app.Use(middleware.RequestID())
 
-  // Default
-  app.Use(middleware.RequestID())
+// Custom Header
+app.Use(middleware.RequestID("X-Custom-Header"))
 
-  // Custom Header
-  app.Use(middleware.RequestID("X-Custom-Header"))
-  
-  // Custom Config
-  app.Use(middleware.RequestID(middleware.RequestIDConfig{
-    Next: func(ctx *fiber.Ctx) bool {
-      return ctx.Method() != fiber.MethodPost
-    },
-    Header: "X-Custom-Header",
-    Generator: func() string {
-      return "1234567890"
-    }
-  }))
+// Custom ID generator
+app.Use(middleware.RequestID(func() string {
+  return "1234567890"
+}))
 
-  app.Listen(3000)
-}
+// Custom Config
+app.Use(middleware.RequestID(middleware.RequestIDConfig{
+  Next: func(ctx *fiber.Ctx) bool {
+    return ctx.Method() != fiber.MethodPost
+  },
+  Header: "X-Custom-Header",
+  Generator: func() string {
+    return "1234567890"
+  },
+}))
 ```
 
 ### Signatures
 ```go
-func RequestID(header ...string) fiber.Handler {}
-func RequestIDWithConfig(config RequestIDConfig) fiber.Handler {}
+func RequestID(options ...interface{}) fiber.Handler {}
 ```
 
 ### Config
@@ -57,15 +56,4 @@ type RequestIDConfig struct {
   // }
   Generator func() string
 }
-```
-### Default Config
-```go
-var RequestIDConfigDefault = RequestIDConfig{
-	Next:   nil,
-	Header: fiber.HeaderXRequestID,
-	Generator: func() string {
-		return utils.UUID()
-	},
-}
-
 ```
