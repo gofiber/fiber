@@ -15,7 +15,7 @@ import (
 
 // Middleware types
 type (
-	// FileSystemConfig defines the config for Logger middleware.
+	// FileSystemConfig defines the config for FileSystem middleware.
 	FileSystemConfig struct {
 		// Next defines a function to skip this middleware if returned true.
 		Next func(ctx *fiber.Ctx) bool
