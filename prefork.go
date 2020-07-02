@@ -36,12 +36,12 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		// use 1 cpu core per child process
 		runtime.GOMAXPROCS(1)
 		var ln net.Listener
-		// get an SO_REUSEPORT listener or SO_REUSEADDR for windows
+		// SO_REUSEPORT is not supported on Windows, use SO_REUSEADDR instead
 		if ln, err = reuseport.Listen("tcp4", addr); err != nil {
 			if !app.Settings.DisableStartupMessage {
 				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
-			return fmt.Errorf("prefork %v", err)
+			return fmt.Errorf("prefork: %v", err)
 		}
 		// wrap a tls config around the listener if provided
 		if len(tlsconfig) > 0 {
