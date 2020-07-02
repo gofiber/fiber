@@ -53,7 +53,7 @@ func FileSystem(root http.FileSystem) fiber.Handler {
 	return FileSystemWithConfig(config)
 }
 
-// LoggerWithConfig allows you to pass an CompressConfig
+// FileSystemWithConfig allows you to pass an FileSystemConfig
 func FileSystemWithConfig(config FileSystemConfig) fiber.Handler {
 	// Set config default values
 	if config.Index == "" {
