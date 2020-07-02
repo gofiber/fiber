@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -20,7 +21,7 @@ type (
 	// LoggerConfig defines the config for Logger middleware.
 	LoggerConfig struct {
 		// Next defines a function to skip this middleware if returned true.
-		Next func(ctx *fiber.Ctx) bool
+		Next func(*fiber.Ctx) bool
 
 		// Format defines the logging tags
 		//
@@ -91,16 +92,37 @@ var LoggerConfigDefault = LoggerConfig{
 	Next:       nil,
 	Format:     "${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n",
 	TimeFormat: "15:04:05",
-	Output:     os.Stderr,
+	Output:     os.Stdout,
 }
 
-// Logger is the default initiator allowing to pass a log format
-func Logger(format ...string) fiber.Handler {
+/*
+Logger allows the following config arguments:
+	- Logger()
+	- Logger(output io.Writer)
+	- Logger(format string)
+	- Logger(config LoggerConfig)
+*/
+func Logger(options ...interface{}) fiber.Handler {
 	// Create default config
 	var config = LoggerConfigDefault
-	// Set format if provided
-	if len(format) > 0 {
-		config.Format = format[0]
+	// Assert options if provided to adjust the config
+	if len(options) > 0 {
+		for i := range options {
+			switch opt := options[i].(type) {
+			case string:
+				if strings.Contains(opt, "${") {
+					config.Format = opt
+				} else {
+					config.TimeFormat = opt
+				}
+			case io.Writer:
+				config.Output = opt
+			case LoggerConfig:
+				config = opt
+			default:
+				log.Fatal("middleware.Logger: the following option types are allowed: string, io.Writer, LoggerConfig")
+			}
+		}
 	}
 	// Return LoggerWithConfig
 	return LoggerWithConfig(config)
@@ -112,15 +134,12 @@ func LoggerWithConfig(config LoggerConfig) fiber.Handler {
 	if config.Format == "" {
 		config.Format = LoggerConfigDefault.Format
 	}
-
 	if config.TimeFormat == "" {
 		config.TimeFormat = LoggerConfigDefault.TimeFormat
 	}
-
 	if config.Output == nil {
 		config.Output = LoggerConfigDefault.Output
 	}
-
 	// Middleware settings
 	var mutex sync.RWMutex
 
@@ -135,7 +154,7 @@ func LoggerWithConfig(config LoggerConfig) fiber.Handler {
 				mutex.Lock()
 				timestamp = time.Now().Format(config.TimeFormat)
 				mutex.Unlock()
-				time.Sleep(250 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 			}
 		}()
 	}
