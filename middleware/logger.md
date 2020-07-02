@@ -27,7 +27,7 @@ func main() {
   // Pass a custom format
   app.Use(middleware.Logger("${time} ${method} ${path}"))
 
-  // Pass a custom timeformat + output + format
+  // Pass a custom  output + timeformat + format
   app.Use(middleware.Logger(os.Stdout, "15:04:05", "${time} ${method} ${path}"))
 
   // Order does not matter
@@ -46,7 +46,7 @@ func main() {
 
 ### Signatures
 ```go
-func Logger(Options ...interface{}) fiber.Handler {}
+func Logger(options ...interface{}) fiber.Handler {}
 ```
 
 ### Config
