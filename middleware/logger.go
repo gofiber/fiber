@@ -19,7 +19,7 @@ import (
 type (
 	// LoggerConfig defines the config for Logger middleware.
 	LoggerConfig struct {
-		// Next defines a function to skip this middleware.
+		// Next defines a function to skip this middleware if returned true.
 		Next func(ctx *fiber.Ctx) bool
 
 		// Format defines the logging tags
@@ -106,7 +106,7 @@ func Logger(format ...string) fiber.Handler {
 	return LoggerWithConfig(config)
 }
 
-// LoggerWithConfig allows you to pass an CompressConfig
+// LoggerWithConfig allows you to pass an LoggerConfig
 func LoggerWithConfig(config LoggerConfig) fiber.Handler {
 	// Set config default values
 	if config.Format == "" {
