@@ -43,7 +43,7 @@ var FileSystemConfigDefault = FileSystemConfig{
 	Browse: false,
 }
 
-// FileSystem is the default initiator allowing to pass a log format
+// FileSystem is the default initiator allowing to pass a http.FileSystem
 func FileSystem(root http.FileSystem) fiber.Handler {
 	// Create default config
 	var config = FileSystemConfigDefault
