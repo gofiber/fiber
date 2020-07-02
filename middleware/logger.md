@@ -2,19 +2,16 @@
 HTTP request/response logger for Fiber
 
 ### Example
-Import the middleware package that is part of the Fiber web framework
+The middleware packages comes with the official Fiber framework.
 ```go
 import (
   "github.com/gofiber/fiber"
   "github.com/gofiber/fiber/middleware"
 )
-```
 
-After you initiate your Fiber app, you can use the following possibilities:
-```go
 func main() {
-  app := fiber.New()
-    
+  // ...
+
   // Default Logger
   app.Use(middleware.Logger())
 
@@ -44,7 +41,7 @@ func main() {
 }
 ```
 
-### Signatures
+### Signature
 ```go
 func Logger(options ...interface{}) fiber.Handler {}
 ```
