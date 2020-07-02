@@ -35,7 +35,7 @@ func main() {
 
   // Pass a custom config
   app.Use(middleware.Logger(middleware.LoggerConfig{
-      Format:     "${method} ${path}",
+      Format:     "${time} ${method} ${path}",
       TimeFormat: "15:04:05",
       Output:     os.Stdout,
   }))
