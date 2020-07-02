@@ -12,27 +12,33 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-// Default RequestID
-app.Use(middleware.RequestID())
+func main() {
+  app := fiber.New()
+      
+  // Default RequestID
+  app.Use(middleware.RequestID())
 
-// Custom Header
-app.Use(middleware.RequestID("X-Custom-Header"))
+  // Custom Header
+  app.Use(middleware.RequestID("X-Custom-Header"))
 
-// Custom ID generator
-app.Use(middleware.RequestID(func() string {
-  return "1234567890"
-}))
-
-// Custom Config
-app.Use(middleware.RequestID(middleware.RequestIDConfig{
-  Next: func(ctx *fiber.Ctx) bool {
-    return ctx.Method() != fiber.MethodPost
-  },
-  Header: "X-Custom-Header",
-  Generator: func() string {
+  // Custom ID generator
+  app.Use(middleware.RequestID(func() string {
     return "1234567890"
-  },
-}))
+  }))
+
+  // Custom Config
+  app.Use(middleware.RequestID(middleware.RequestIDConfig{
+    Next: func(ctx *fiber.Ctx) bool {
+      return ctx.Method() != fiber.MethodPost
+    },
+    Header: "X-Custom-Header",
+    Generator: func() string {
+      return "1234567890"
+    },
+  }))
+
+  // ...
+}
 ```
 
 ### Signatures

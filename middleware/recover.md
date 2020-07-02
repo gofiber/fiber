@@ -12,8 +12,14 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-// Default recover
-app.Use(middleware.Recover())
+func main() {
+  app := fiber.New()
+    
+  // Default recover
+  app.Use(middleware.Recover())
+
+  // ...
+}
 ```
 
 ### Signatures

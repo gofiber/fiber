@@ -197,16 +197,3 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "xyz/", params: nil, match: false},
 	})
 }
-
-//////////////////////////////////////////////
-///////////////// BENCHMARKS /////////////////
-//////////////////////////////////////////////
-// go test -v -run=^$ -bench=Benchmark_Path_ -benchmem -count=3
-
-// func Benchmark_Path_paramsForPos(b *testing.B) {
-// 	// TODO
-// }
-
-// func Benchmark_Path_matchParams(b *testing.B) {
-// 	// TODO
-// }
