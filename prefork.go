@@ -1,7 +1,6 @@
 package fiber
 
 import (
-	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -11,12 +10,10 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	utils "github.com/gofiber/utils"
-	"github.com/valyala/fasthttp/reuseport"
-	"golang.org/x/sys/windows"
+	reuseport "github.com/valyala/fasthttp/reuseport"
 )
 
 var (
@@ -32,15 +29,6 @@ func init() { //nolint:gochecknoinits
 	flag.BoolVar(&isChild, flagChild[1:], false, "Child Process")
 }
 
-// Windows machines do not support REUSEPORT, so we use REUSEADDR instead
-var reuseaddr = net.ListenConfig{
-	Control: func(network, address string, c syscall.RawConn) (err error) {
-		return c.Control(func(fd uintptr) {
-			err = windows.SetsockoptInt(windows.Handle(fd), windows.SOL_SOCKET, windows.SO_REUSEADDR, 1)
-		})
-	},
-}
-
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
 func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	// 👶 child process 👶
@@ -48,13 +36,8 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		// use 1 cpu core per child process
 		runtime.GOMAXPROCS(1)
 		var ln net.Listener
-		// Use SO_REUSEADDR for windows and SO_REUSEPORT for other systems
-		if runtime.GOOS == "windows" {
-			ln, err = reuseaddr.Listen(context.Background(), "tcp4", addr)
-		} else {
-			ln, err = reuseport.Listen("tcp4", addr)
-		}
-		if err != nil {
+		// SO_REUSEPORT is not supported on Windows, use SO_REUSEADDR instead
+		if ln, err = reuseport.Listen("tcp4", addr); err != nil {
 			if !app.Settings.DisableStartupMessage {
 				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
