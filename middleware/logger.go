@@ -133,9 +133,6 @@ func Logger(options ...interface{}) fiber.Handler {
 }
 
 func logger(config LoggerConfig) fiber.Handler {
-	if loggerDeprecated {
-		fmt.Println("middleware.LoggerWithConfig is deprecated, please use middleware.Logger")
-	}
 	// Set config default values
 	if config.Format == "" {
 		config.Format = LoggerConfigDefault.Format

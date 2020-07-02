@@ -51,7 +51,7 @@ FileSystem allows the following config arguments in any order:
 	- FileSystem(config FileSystem)
 	- FileSystem(next func(*fiber.Ctx) bool)
 */
-func FileSystem(options interface{}) fiber.Handler {
+func FileSystem(options ...interface{}) fiber.Handler {
 	// Create default config
 	var config = FileSystemConfigDefault
 	// Assert options if provided to adjust the config
@@ -75,7 +75,6 @@ func FileSystem(options interface{}) fiber.Handler {
 	return fileSystem(config)
 }
 
-// fileSystemWithConfig allows you to pass an FileSystemConfig
 func fileSystem(config FileSystemConfig) fiber.Handler {
 	// Set config default values
 	if config.Index == "" {
