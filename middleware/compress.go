@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/gofiber/fiber"
@@ -52,13 +53,16 @@ func Compress(options ...interface{}) fiber.Handler {
 		}
 	}
 	// Return CompressWithConfig
-	return CompressWithConfig(config)
+	return compress(config)
 }
 
-// CompressWithConfig allows you to pass an CompressConfig
-// It supports brotli, gzip and deflate compression
-// The same order is used to check against the Accept-Encoding header
+// CompressWithConfig is deprecated, please use Compress instead
 func CompressWithConfig(config CompressConfig) fiber.Handler {
+	fmt.Println("compress: `CompressWithConfig()` is deprecated since v1.12.3, please use `Compress()`")
+	return compress(config)
+}
+
+func compress(config CompressConfig) fiber.Handler {
 	// Init middleware settings
 	var compress fasthttp.RequestHandler
 	switch config.Level {

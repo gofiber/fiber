@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/gofiber/fiber"
@@ -62,6 +63,12 @@ func RequestID(options ...interface{}) fiber.Handler {
 		}
 	}
 	// Return requestID
+	return requestID(config)
+}
+
+// RequestIDWithConfig is deprecated, please use RequestID instead
+func RequestIDWithConfig(config RequestIDConfig) fiber.Handler {
+	fmt.Println("compress: `RequestIDWithConfig()` is deprecated since v1.12.3, please use `RequestID()`")
 	return requestID(config)
 }
 
