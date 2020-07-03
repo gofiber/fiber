@@ -650,7 +650,7 @@ func (ctx *Ctx) Params(key string, defaultValue ...string) (value string) {
 			return ctx.values[i]
 		}
 	}
-	if len(defaultValue) > 0 {
+	if len(defaultValue) > 0 && len(value) == 0 {
 		return defaultValue[0]
 	}
 	return
