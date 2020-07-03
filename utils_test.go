@@ -73,26 +73,6 @@ func Test_Utils_getGroupPath(t *testing.T) {
 	utils.AssertEqual(t, "/v1/api/", res)
 }
 
-// func Test_Utils_getArgument(t *testing.T) {
-// 	// TODO
-// }
-
-// func Test_Utils_parseTokenList(t *testing.T) {
-// 	// TODO
-// }
-
-// func Test_Utils_getParams(t *testing.T) {
-// 	// TODO
-// }
-
-// func Test_Utils_getTrimmedParam(t *testing.T) {
-// 	// TODO
-// }
-
-// func Test_Utils_getCharPos(t *testing.T) {
-// 	// TODO
-// }
-
 //////////////////////////////////////////////
 ///////////////// BENCHMARKS /////////////////
 //////////////////////////////////////////////
@@ -109,10 +89,16 @@ func Benchmark_Utils_getGroupPath(b *testing.B) {
 	utils.AssertEqual(b, "/v1/api/register/:project", res)
 }
 
-// func Benchmark_Utils_getArgument(b *testing.B) {
-// 	// TODO
-// }
+func Benchmark_Utils_Unescape(b *testing.B) {
+	unescaped := ""
+	dst := make([]byte, 0)
 
-// func Benchmark_Utils_parseTokenList(b *testing.B) {
-// 	// TODO
-// }
+	for n := 0; n < b.N; n++ {
+		source := "/cr%C3%A9er"
+		pathBytes := getBytes(source)
+		pathBytes = fasthttp.AppendUnquotedArg(dst[:0], pathBytes)
+		unescaped = getString(pathBytes)
+	}
+
+	utils.AssertEqual(b, "/créer", unescaped)
+}

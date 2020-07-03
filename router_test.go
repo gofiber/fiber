@@ -146,6 +146,32 @@ func Test_Route_Match_Middleware(t *testing.T) {
 	utils.AssertEqual(t, "bar/fasel", getString(body))
 }
 
+func Test_Route_Match_UnescapedPath(t *testing.T) {
+	app := New(&Settings{UnescapePath: true})
+
+	app.Use("/créer", func(ctx *Ctx) {
+		ctx.Send("test")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "test", getString(body))
+	// without special chars
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	// check deactivated behavior
+	app.Settings.UnescapePath = false
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 	app := New()
 
@@ -405,6 +431,23 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	}
 }
 
+// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_Unescape -benchmem -count=4
+func Benchmark_Router_Handler_Unescape(b *testing.B) {
+	app := New()
+	app.Settings.UnescapePath = true
+	registerDummyRoutes(app)
+	app.Delete("/créer", func(c *Ctx) {})
+
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod(MethodDelete)
+	c.URI().SetPath("/cr%C3%A9er")
+
+	for n := 0; n < b.N; n++ {
+		app.handler(c)
+	}
+}
+
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_StrictRouting -benchmem -count=4
 func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	app := New()
@@ -432,7 +475,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for i := range routesFixture.TestRoutes {
 
-			mINT := methodINT[routesFixture.TestRoutes[i].Method]
+			mINT := methodInt(routesFixture.TestRoutes[i].Method)
 			path := routesFixture.TestRoutes[i].Path
 
 			for i := range app.stack[mINT] {

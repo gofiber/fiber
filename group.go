@@ -95,8 +95,8 @@ func (grp *Group) Static(prefix, root string, config ...Static) *Route {
 
 // All ...
 func (grp *Group) All(path string, handlers ...Handler) []*Route {
-	routes := make([]*Route, len(methodINT))
-	for method, i := range methodINT {
+	routes := make([]*Route, len(intMethod))
+	for i, method := range intMethod {
 		routes[i] = grp.Add(method, path, handlers...)
 	}
 	return routes

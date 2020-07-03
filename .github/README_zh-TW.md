@@ -22,9 +22,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-CN.md">
     <img height="20px" src="https://img.shields.io/badge/CN-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAwIDgwMCIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPg0KPHBhdGggZmlsbD0iI2RlMjkxMCIgZD0ibTAsMGgxMjAwdjgwMGgtMTIwMHoiLz4NCjxwYXRoIGZpbGw9IiNmZmRlMDAiIGQ9Im0tMTYuNTc5Niw5OS42MDA3bDIuMzY4Ni04LjEwMzItNi45NTMtNC43ODgzIDguNDM4Ni0uMjUxNCAyLjQwNTMtOC4wOTI0IDIuODQ2Nyw3Ljk0NzkgOC40Mzk2LS4yMTMxLTYuNjc5Miw1LjE2MzQgMi44MTA2LDcuOTYwNy02Ljk3NDctNC43NTY3LTYuNzAyNSw1LjEzMzF6IiB0cmFuc2Zvcm09Im1hdHJpeCg5LjkzMzUyIC4yNzc0NyAtLjI3NzQ3IDkuOTMzNTIgMzI0LjI5MjUgLTY5NS4yNDE1KSIvPg0KPHBhdGggZmlsbD0iI2ZmZGUwMCIgaWQ9InN0YXIiIGQ9Im0zNjUuODU1MiwzMzIuNjg5NWwyOC4zMDY4LDExLjM3NTcgMTkuNjcyMi0yMy4zMTcxLTIuMDcxNiwzMC40MzY3IDI4LjI1NDksMTEuNTA0LTI5LjU4NzIsNy40MzUyLTIuMjA5NywzMC40MjY5LTE2LjIxNDItMjUuODQxNS0yOS42MjA2LDcuMzAwOSAxOS41NjYyLTIzLjQwNjEtMTYuMDk2OC0yNS45MTQ4eiIvPg0KPGcgZmlsbD0iI2ZmZGUwMCI+DQo8cGF0aCBkPSJtNTE5LjA3NzksMTc5LjMxMjlsLTMwLjA1MzQtNS4yNDE4LTE0LjM5NDUsMjYuODk3Ni00LjMwMTctMzAuMjAyMy0zMC4wMjkzLTUuMzc4MSAyNy4zOTQ4LTEzLjQyNDItNC4xNjQ3LTMwLjIyMTUgMjEuMjMyNiwyMS45MDU3IDI3LjQ1NTQtMTMuMjk5OC0xNC4yNzIzLDI2Ljk2MjcgMjEuMTMzMSwyMi4wMDE3eiIvPg0KPHBhdGggZD0ibTQ1NS4yNTkyLDMxNS45Nzk1bDkuMzczNC0yOS4wMzE0LTI0LjYzMjUtMTcuOTk3OCAzMC41MDctLjA1NjYgOS41MDUtMjguOTg4NiA5LjQ4MSwyOC45OTY0IDMwLjUwNywuMDgxOC0yNC42NDc0LDE3Ljk3NzQgOS4zNDkzLDI5LjAzOTItMjQuNzE0LTE3Ljg4NTgtMjQuNzI4OCwxNy44NjUzeiIvPg0KPC9nPg0KPHVzZSB4bGluazpocmVmPSIjc3RhciIgdHJhbnNmb3JtPSJtYXRyaXgoLjk5ODYzIC4wNTIzNCAtLjA1MjM0IC45OTg2MyAxOS40MDAwNSAtMzAwLjUzNjgxKSIvPg0KPC9zdmc+DQo=">
   </a>
-  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-TW.md">
+  <!-- <a href="https://github.com/gofiber/fiber/blob/master/.github/README_zh-TW.md">
     <img height="20px" src="https://img.shields.io/badge/TW-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4NCjwhRE9DVFlQRSBzdmc+DQo8c3ZnIHdpZHRoPSI5MDAiIGhlaWdodD0iNjAwIiB2aWV3Qm94PSItNjAgLTQwIDI0MCAxNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPg0KICAgPHJlY3QgeD0iLTYwIiB5PSItNDAiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmZTAwMDAiLz4NCiAgIDxyZWN0IHg9Ii02MCIgeT0iLTQwIiB3aWR0aD0iNTAlIiBoZWlnaHQ9IjUwJSIgZmlsbD0iIzAwMDA5NSIvPg0KICAgPHBhdGggaWQ9ImZvdXJfcmF5cyIgZD0iTSA4LDAgTCAwLDMwIEwgLTgsMCBMIDAsLTMwIE0gMCw4IEwgMzAsMCBMIDAsLTggTCAtMzAsMCIgZmlsbD0iI2ZmZiIvPg0KICAgPHVzZSB4bGluazpocmVmPSIjZm91cl9yYXlzIiB0cmFuc2Zvcm09InJvdGF0ZSgzMCkiLz4NCiAgIDx1c2UgeGxpbms6aHJlZj0iI2ZvdXJfcmF5cyIgdHJhbnNmb3JtPSJyb3RhdGUoNjApIi8+DQogICA8Y2lyY2xlIHI9IjE3IiBmaWxsPSIjMDAwMDk1Ii8+DQogICA8Y2lyY2xlIHI9IjE1IiBmaWxsPSIjZmZmIi8+DQo8L3N2Zz4=">
-  </a>
+  </a> -->
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_de.md">
     <img height="20px" src="https://img.shields.io/badge/DE-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDUgMyI+DQo8cGF0aCBkPSJtMCwwaDV2M2gtNXoiLz4NCjxwYXRoIGZpbGw9IiNkMDAiIGQ9Im0wLDFoNXYyaC01eiIvPg0KPHBhdGggZmlsbD0iI2ZmY2UwMCIgZD0ibTAsMmg1djFoLTV6Ii8+DQo8L3N2Zz4NCg==">
   </a>
@@ -43,9 +43,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_id.md">
     <img height="20px" src="https://img.shields.io/badge/ID-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MDAgNDAwIj4NCjxwYXRoIGZpbGw9IiNjZTExMjYiIGQ9Im0wLDBoNjAwdjIwMGgtNjAweiIvPg0KPHBhdGggZmlsbD0iI2ZmZiIgZD0ibTAsMjAwaDYwMHYyMDBoLTYwMHoiLz4NCjwvc3ZnPg0K">
   </a>
-  <!-- <a href="https://github.com/gofiber/fiber/blob/master/.github/README_he.md">
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_he.md">
     <img height="20px" src="https://img.shields.io/badge/HE-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjYwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iNDgwIiB2aWV3Qm94PSIwIDAgMjIwIDE2MCIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPg0KPGRlZnM+DQo8cGF0aCBzdHJva2U9IiMwMDM4YjgiIGZpbGwtb3BhY2l0eT0iMCIgaWQ9InRyaWFuZ2xlIiBzdHJva2Utd2lkdGg9IjUuNSIgZD0ibTAtMjkuMTQxLTI1LjIzNjksNDMuNzExNSA1MC40NzM4LTB6Ii8+DQo8L2RlZnM+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMCwwaDIyMHYxNjBoLTIyMHoiLz4NCjxnIGZpbGw9IiMwMDM4YjgiPg0KPHBhdGggZD0ibTAsMTVoMjIwdjI1aC0yMjB6Ii8+DQo8cGF0aCBkPSJtMCwxMjBoMjIwdjI1aC0yMjB6Ii8+DQo8L2c+DQo8dXNlIHhsaW5rOmhyZWY9IiN0cmlhbmdsZSIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTEwIDgwKSIvPg0KPHVzZSB4bGluazpocmVmPSIjdHJpYW5nbGUiIHRyYW5zZm9ybT0ibWF0cml4KC0xIDAgLTAgLTEgMTEwIDgwKSIvPg0KPC9zdmc+DQo=">
-  </a> -->
+  </a>
    <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ar_SA.md">
      <img height="20px" src="https://img.shields.io/badge/SA-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDEyIDYiIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4NCjxwYXRoIGZpbGw9IiNjZTExMjYiIGQ9Im0wLDBoM3Y2aC0zeiIvPg0KPHBhdGggZmlsbD0iIzAwOWEwMCIgZD0ibTMsMGg5djJoLTl6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMywyaDl2MmgtOXoiLz4NCjxwYXRoIGQ9Im0zLDRoOXYyaC05eiIvPg0KPC9zdmc+DQo=">
    </a>
@@ -73,17 +73,10 @@
   </a>
 </p>
 <p align="center">
-  <div dir="rtl">
-
-  <b>Fiber</b> היא <b>web framework</b> בהשראת <a href="https://github.com/expressjs/express">Express</a> הבנויה על גבי <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, מנוע ה-HTTP <b>המהיר ביותר</b> עבור <a href="https://golang.org/doc/">Go</a>.
-  נועדה <b>להקל</b> על העניינים למען פיתוח <b>מהיר</b>, <b>ללא הקצאות זכרון</b> ולוקחת <b>ביצועים</b> בחשבון.
-  </div>
+  <b>Fiber</b>是移植NodeJS的<a href="https://github.com/expressjs/express">Express</a><b>框架</b>改以<a href="https://golang.org/doc/">Go</a>語言編寫。<b>本套件基於</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>，Fasthttp有<b>不分配記憶體空間</b>和<b>Request Pool</b>的特性，在網路效能方面有著顯著的效能。
 </p>
 
-<div dir="rtl">
-
-## ⚡️ התחלה מהירה
-</div>
+## ⚡️ 快速入門
 
 ```go
 package main
@@ -101,97 +94,55 @@ func main() {
 }
 ```
 
-<div dir="rtl">
+## 🤖 效能
 
-## 🤖 מדדים
-</div>
-
-<div dir="rtl">
-
-הבדיקות מבוצעות על ידי [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) ו-[Go Web](https://github.com/smallnest/go-web-framework-benchmark). אם אתם רוצים לראות את כל התוצאות, אנא בקרו ב-[Wiki](https://docs.gofiber.io/benchmarks) שלנו.
-</div>
+本測試使用[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)和[Go Web框架效能測試](https://github.com/smallnest/go-web-framework-benchmark)。如果要看全部的執行結果，請到[Wiki](https://docs.gofiber.io/benchmarks) 。
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
 </p>
 
-<div dir="rtl">
+## ⚙️ 安裝
 
-## ⚙️ התקנה
-</div>
+第一步， [下載](https://golang.org/dl/)並安裝Go。 請使用`1.11`以上版本。
 
-<div dir="rtl">
-
-קודם כל, [הורידו](https://golang.org/dl/) והתקינו את Go. נדרשת גרסה <span dir="ltr">`1.11`</span> ומעלה.
-</div>
-
-<div dir="rtl">
-
-ההתקנה מתבצעת באמצעות הפקודה <span dir="ltr">[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)</span>:
-</div>
+下指令[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)下載套件：
 
 ```bash
 go get -u github.com/gofiber/fiber
 ```
 
-<div dir="rtl">
+## 🎯 功能
 
-## 🎯 יכולות
-</div>
+- 強大的[路由](https://docs.gofiber.io/routing)
+- [靜態檔案](https://docs.gofiber.io/application#static)服務
+- [超快速](https://docs.gofiber.io/benchmarks)
+- [佔用很少記憶體](https://docs.gofiber.io/benchmarks)
+- 支援Express的[API](https://docs.gofiber.io/context)
+- 支援中介器和[下一步](https://docs.gofiber.io/context#next)
+- [立即上手](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
+- [樣板引擎](https://github.com/gofiber/template)
+- 支援[WebSocket](https://docs.gofiber.io/middleware#websocket)
+- 支援[限速](https://docs.gofiber.io/middleware#limiter)
+- 被翻譯成[15]國語言(https://docs.gofiber.io/)
+- 豐富的[文件](https://docs.gofiber.io/)
 
-<div dir="rtl">
+## 💡 理念
 
-- [ניתוב](https://docs.gofiber.io/routing) רובסטי
-- הנגשת [קבצים סטטיים](https://docs.gofiber.io/application#static)
-- [ביצועים](https://docs.gofiber.io/benchmarks) גבוהים במיוחד
-- צורך כמות [זכרון קטנה](https://docs.gofiber.io/benchmarks)
-- [נקודות קצה עבור API](https://docs.gofiber.io/context)
-- תמיכה ב-[Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/context#next)
-- תכנות [מהיר](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) של צד שרת
-- [מנועי תבניות](https://docs.gofiber.io/middleware#template)
-- [תמיכה ב-WebSocket](https://docs.gofiber.io/middleware#websocket)
-- [הגבלת קצבים ובקשות](https://docs.gofiber.io/middleware#limiter)
-- Available in [12 languages](https://docs.gofiber.io/)
-- והרבה יותר, [חקור את Fiber](https://docs.gofiber.io/)
-</div>
+不少[Node.js](https://nodejs.org/en/about/)的工程師跳到[Go](https://golang.org/doc/)必須學習一些知識，因此做了一個跟Express一樣的Fiber省這些麻煩。設計還是照原本的**極簡主義**還有遵循**UNIX慣例**，因此新手們可以**無痛**迅速進入Go的世界。
 
-<div dir="rtl">
+Fiber **受到** 網路上最流行的Web框架ExpressJS**啟發**，結合Express的**易用性**和Go的**高效能**。若你之前用過Node.js寫Web應用(*使用ExpressJS/Koa或類似工具*)，那你已經**上手**了。
 
-## 💡 פילוסופיה
-</div>
+有什麼問題請發[issues](https://github.com/gofiber/fiber/issues)或加入Discord [channel](https://gofiber.io/discord)討論，我們想要創造**快速**、**彈性**、**友善**的社群給**任何人**使用！就像Express那樣。
 
-<div dir="rtl">
+## 👀 範例
 
-gophers חדשים שעושים את המעבר מ-[Node.js](https://nodejs.org/en/about/) ל-[Go](https://golang.org/doc/) מתמודדים עם עקומת למידה לפני שהם יכולים להתחיל לבנות את יישומי האינטרנט או המיקרו-שירותים שלהם.
-Fiber כ-**web framework**, נוצרה עם רעיון **המינימליזם** ועוקבת אחרי **הדרך של UNIX**, כך ש-gophers חדשים יוכלו להיכנס במהירות לעולם של Go עם קבלת פנים חמה ואמינה.
-</div>
+以下是一些常見範例。
 
-<div dir="rtl">
-
-Fiber נוצרה **בהשראת** Express, ה-web framework הפופולרית ביותר ברחבי האינטרנט. שילבנו את **הקלות** של Express ו**הביצועים הגולמיים** של Go. אם אי-פעם מימשתם יישום web ב-Node.js (_באמצעות Express או דומיו_), אז הרבה מהפונקציות והעקרונות ייראו לכם **מאוד מוכרים**.
-</div>
-
-<div dir="rtl">
-
-אנחנו **מקשיבים** למשתמשים שלנו ב-[issues](https://github.com/gofiber/fiber/issues) (_ובכל רחבי האינטרנט_) כדי ליצור web framework **מהירה**, **גמישה**, ו**ידידותית** בשפת Go עבור **כל** משימה, **תאריך יעד** ו**כישורי** מפתח! בדיוק כמו ש-Express מבצע בעולם של JavaScript.
-</div>
-
-<div dir="rtl">
-
-## 👀 דוגמאות
-</div>
-
-<div dir="rtl">
-
-להלן כמה מהדוגמאות הנפוצות. אם ברצונכם לראות דוגמאות קוד נוספות, אנא בקרו ב[מאגר המתכונים](https://github.com/gofiber/recipes) שלנו או בקרו ב[תיעוד ה-API](https://docs.gofiber.io) שלנו.
-</div>
-
-
-<div dir="rtl">
+> 更多程式碼在[範例專案](https://github.com/gofiber/recipes)中或直接看[API文件](https://docs.gofiber.io)。
 
 #### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
-</div>
 
 ```go
 func main() {
@@ -231,10 +182,7 @@ func main() {
 }
 ```
 
-<div dir="rtl">
-
 #### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
-</div>
 
 ```go
 func main() {
@@ -255,10 +203,7 @@ func main() {
 }
 ```
 
-<div dir="rtl">
-
 #### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
-</div>
 
 ```go
 func main() {
@@ -286,24 +231,18 @@ func main() {
 }
 ```
 
-<div dir="rtl">
 <details>
-  <summary>📚 הצג דוגמאות קוד נוספות</summary>
+  <summary>📚 顯示更多範例</summary>
 
+### 界面引擎
 
-### Views engines
+📖 [設定](https://docs.gofiber.io/application#settings)
+📖 [引擎](https://github.com/gofiber/template)
+📖 [渲染](https://docs.gofiber.io/context#render)
 
-📖 [Settings](https://docs.gofiber.io/application#settings)
-📖 [Engines](https://github.com/gofiber/template)
-📖 [Render](https://docs.gofiber.io/context#render)
+當不指定樣板引擎時Fiber預設用[html/template](https://golang.org/pkg/html/template/)。
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
-
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
-
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
-
-<div dir="ltr">
+如果你想要執行部份或用別的樣板引擎[amber](https://github.com/eknkc/amber)、[handlebars](https://github.com/aymerick/raymond)、[mustache](https://github.com/cbroglie/mustache)、[pug](https://github.com/Joker/jade)之類…請參考符合多樣板引擎的[樣板](https://github.com/gofiber/template)套件。
 
 ```go
 import (
@@ -312,18 +251,18 @@ import (
 )
 
 func main() {
-  // You can setup Views engine before initiation app:
+  // 你可以在初始化前套用樣板引擎
   app := fiber.New(&fiber.Settings{
     Views: pug.New("./views", ".pug"),
   })
 
-  // OR after initiation app at any convenient location:
+  // 或在初始化後任意時間套用:
   app.Settings.Views = pug.New("./views", ".pug"),
 
-  // And now, you can call template `./views/home.pug` like this:
+  // 現在，你可以像這樣呼叫樣板 `./views/home.pug`:
   app.Get("/", func(c *fiber.Ctx) {
     c.Render("home", fiber.Map{
-      "title": "Homepage",
+      "title": "首頁",
       "year":  1999,
     })
   })
@@ -331,13 +270,10 @@ func main() {
   // ...
 }
 ```
-</div>
 
-### קיבוץ routes ל-chains
+### Grouping routes into chains
 
-📖 [קבוצות](https://docs.gofiber.io/application#group)
-
-<div dir="ltr">
+📖 [Group](https://docs.gofiber.io/application#group)
 
 ```go
 func main() {
@@ -359,13 +295,10 @@ func main() {
   // ...
 }
 ```
-</div>
 
-### Middleware של לוגים
+### 中介器logger
 
 📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
-
-<div dir="ltr">
 
 ```go
 import (
@@ -376,13 +309,13 @@ import (
 func main() {
   app := fiber.New()
 
-  // Default
+  // 預設
   app.Use(middleware.Logger())
 
-  // Custom logging format
+  // 客制格式
   app.Use(middleware.Logger("${method} - ${path}"))
 
-  // Custom Config
+  // 客制設定
   app.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
     Next: func(ctx *fiber.Ctx) bool {
       return ctx.Path() != "/private"
@@ -393,13 +326,10 @@ func main() {
 
   app.Listen(3000)
 }
-</div>
 
-### שיתוף משאבים בין מקורות (CORS)
+### 跨網域資源共享 (CORS)
 
 📖 [CORS](https://docs.gofiber.io/middleware#cors)
-
-<div dir="ltr">
 
 ```go
 import (
@@ -410,28 +340,22 @@ import (
 func main() {
     app := fiber.New()
 
-    // CORS with default config
+    // 預設的CORS
     app.Use(cors.New())
 
     app.Listen(3000)
 }
 ```
-</div>
 
-בדוק את ה-CORS על ידי העברת כל domain ב-header של <span dir="ltr">`Origin`</span>:
-
-<div dir="ltr">
+在`Origin` header中放網域來檢查CORS:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
-</div>
 
-### תגובת 404 מותאמת אישית
+### 客制404回應
 
-📖 [שיטות HTTP](https://docs.gofiber.io/application#http-methods)
-
-<div dir="ltr">
+📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)
 
 ```go
 func main() {
@@ -447,7 +371,7 @@ func main() {
     c.Send("Welcome!")
   })
 
-  // Last middleware to match anything
+  // 用最後一個中介器攔截剩餘的case
   app.Use(func(c *fiber.Ctx) {
     c.SendStatus(404)
     // => 404 "Not Found"
@@ -456,13 +380,10 @@ func main() {
   app.Listen(3000)
 }
 ```
-</div>
 
-### תגובת JSON
+### JSON 回應
 
 📖 [JSON](https://docs.gofiber.io/context#json)
-
-<div dir="ltr">
 
 ```go
 type User struct {
@@ -489,13 +410,10 @@ func main() {
   app.Listen(3000)
 }
 ```
-</div>
 
-### WebSocket Upgrade
+### WebSocket 升級
 
 📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
-
-<div dir="ltr">
 
 ```go
 import (
@@ -526,13 +444,10 @@ func main() {
   // ws://localhost:3000/ws
 }
 ```
-</div>
 
-### Middleware של התאוששות
+### Recover 中介器
 
-📖 [התאוששות](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)
-
-<div dir="ltr">
+📖 [Recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)
 
 ```go
 import (
@@ -552,23 +467,13 @@ func main() {
   app.Listen(3000)
 }
 ```
-</div>
 </details>
-</div>
 
-<div dir="rtl">
+## 🧬 Fiber中介器
 
-## 🧬 Fiber Middleware
-</div>
+官方[團隊](https://github.com/orgs/gofiber/people)維護的中介器。
 
-<div dir="rtl">
-
-The Fiber middleware modules listed here are maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
-</div>
-
-<div dir="rtl">
-
-| Middleware | Description | Built-in middleware |
+| 中介器 | 敘述 | 是否內建 |
 | :--- | :--- | :--- |
 | [adaptor](https://github.com/gofiber/adaptor) | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn! | - |
 | [basicauth](https://github.com/gofiber/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. | - |
@@ -590,19 +495,9 @@ The Fiber middleware modules listed here are maintained by the [Fiber team](http
 | [template](https://github.com/gofiber/template) | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required. | - |
 | [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support! | - |
 
-</div>
+## 🌱 第三方中介器
 
-<div dir="rtl">
-
-## 🌱 Third Party Middlewares
-</div>
-
-<div dir="rtl">
-
-This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
-</div>
-
-<div dir="rtl">
+由社群建立的中介器列表，要新增請發PR!
 
 - [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
@@ -613,14 +508,8 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
 - [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
 - [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
-</div>
 
-<div dir="rtl">
-
-## 💬 מדיה
-</div>
-
-<div dir="ltr">
+## 💬 新聞
 
 <p float="left" align="middle">
   <a href="https://www.youtube.com/watch?v=Iq2qT0fRhAA"><img src="https://img.youtube.com/vi/Iq2qT0fRhAA/mqdefault.jpg" width="49%" style="border-radius:4px"></a>
@@ -640,40 +529,22 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [Building an Express-style API in Go with Fiber](https://blog.logrocket.com/express-style-api-go-fiber/) - _10 June 2020_
 - [Construir una API en Golang con Fiber 🇪🇸](https://enbonnet.me/article/53/construir-api-golang-con-fiber) - _28 June 2020_
 - [📺Why Go Fiber Is THE New Framework To Learn](https://www.youtube.com/watch?v=kvwsPeWDLM8) - _29 June 2020_
-</div>
 
-<div dir="rtl">
+## 👍 貢獻
 
-## 👍 לתרום
-</div>
+如果您要說聲**謝謝**或支援`Fiber`的積極發展：
 
-<div dir="rtl">
+1. 點擊[GitHub Star](https://github.com/gofiber/fiber/stargazers)關注本專案。
+2. 在[Twitter](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)轉[推](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)。
+3. 在[Medium](https://medium.com/)、[Dev.to](https://dev.to/)、部落格上發表意見或教學。
+4. 在[Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)幫我們翻譯API文件
+5. 贊助我們[一杯咖啡](https://buymeacoff.ee/fenny)。
 
-אם אתם רוצים לומר **תודה** או/ו לתמוך בפיתוח הפעיל של <span dir="ltr">`Fiber`</span>:
+## ☕ 支持者
 
-</div>
+Fiber是一個以贊助維生的開源專案，像是: 網域、gitbook、netlify、serverless伺服器。如果你想贊助也可以☕ [**買杯咖啡**](https://buymeacoff.ee/fenny)
 
-<div dir="rtl">
-
-1. תוסיפו [GitHub Star](https://github.com/gofiber/fiber/stargazers) לפרויקט.
-2. צייצו לגבי הפרויקט [בטוויטר שלכם](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. כתבו ביקורת או מדריך ב-[Medium](https://medium.com/), [Dev.to](https://dev.to/) או בבלוג האישי שלכם.
-4. עזרו לנו לתרגם את ה-<span dir="ltr">`README`</span> הזה לשפה אחרת.
-5. תמכו בפרויקט על ידי תרומת [כוס קפה](https://buymeacoff.ee/fenny).
-</div>
-
-
-<div dir="rtl">
-
-## ☕ תומכים
-</div>
-
-<div dir="rtl">
-
-Fiber היא פרויקט קוד פתוח שתשלום חשובונתיו מסתמך על תרומות, כגון שם ה-domain שלנו, gitbook, netlify ו-serverless hosting. אם אתם רוצים לתמוך ב-Fiber, אתם יכולים ☕ [**קנו קפה כאן**](https://buymeacoff.ee/fenny).
-</div>
-
-|                                                             | משתמש                                            | תרומה |
+|                                                             | User                                             | Donation |
 | :---------------------------------------------------------- | :----------------------------------------------- | :-------- |
 | ![](https://avatars.githubusercontent.com/u/204341?s=25 )   | [@destari](https://github.com/destari)           | ☕ x 10   |
 | ![](https://avatars.githubusercontent.com/u/56607882?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5    |
@@ -694,36 +565,20 @@ Fiber היא פרויקט קוד פתוח שתשלום חשובונתיו מסת
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt)  | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy)             | ☕ x 1    |
 
-
-<div dir="rtl">
-
-## ‎‍💻 תורמי קוד
-</div>
+## ‎‍💻 貢獻者
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
-<div dir="rtl">
-
 ## ⭐️ Stargazers
-</div>
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
-<div dir="rtl">
-
-## ⚠️ רישיון
-</div>
-
-<div dir="ltr">
+## ⚠️ 授權
 
 Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
-</div>
 
-<div dir="rtl">
-
-**רישיונות של ספריות צד שלישי**
+**Third-party library licenses**
 - [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 - [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 - [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 - [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
-</div>

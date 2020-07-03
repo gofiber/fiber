@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber"
 	"github.com/gofiber/utils"
 	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp"
 )
 
 // go test -run Test_Middleware_Logger
@@ -23,7 +24,7 @@ func Test_Middleware_Logger(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(LoggerWithConfig(LoggerConfig{
+	app.Use(Logger(LoggerConfig{
 		Format: format,
 		Output: buf,
 	}))
@@ -45,7 +46,7 @@ func Test_Middleware_Logger(t *testing.T) {
 
 }
 
-func Test_Middleware_Logger_WithDefaulFormat(t *testing.T) {
+func Test_Middleware_Logger_WithDefaultFormat(t *testing.T) {
 	expectedOutputPattern := regexp.MustCompile(`^\d{2}:\d{2}:\d{2} GET / - 0\.0\.0\.0 - 200 - \d+(\.\d+)?.{1,3}
 $`)
 	// fake output
@@ -55,7 +56,7 @@ $`)
 	config := LoggerConfigDefault
 	config.Output = buf
 	app := fiber.New(&fiber.Settings{DisableStartupMessage: true})
-	app.Use(LoggerWithConfig(config))
+	app.Use(Logger(config))
 
 	app.Get("/", func(ctx *fiber.Ctx) {
 		ctx.SendStatus(200)
@@ -69,4 +70,28 @@ $`)
 		expectedOutputPattern.MatchString(buf.String()),
 		fmt.Sprintf("Has: %s, expected pattern: %s", buf.String(), expectedOutputPattern.String()),
 	)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Middleware_Logger -benchmem -count=4
+func Benchmark_Middleware_Logger(b *testing.B) {
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(Logger(LoggerConfig{
+		Output: buf,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) {})
+	handler := app.Handler()
+
+	c := &fasthttp.RequestCtx{}
+	c.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		handler(c)
+	}
 }

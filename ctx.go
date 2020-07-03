@@ -38,6 +38,7 @@ type Ctx struct {
 	indexRoute   int                  // Index of the current route
 	indexHandler int                  // Index of the current handler
 	method       string               // HTTP method
+	methodINT    int                  // HTTP method INT equivalent
 	path         string               // Prettified HTTP path
 	pathOriginal string               // Original HTTP path
 	values       []string             // Route parameter values
@@ -56,14 +57,14 @@ type Range struct {
 
 // Cookie data for ctx.Cookie
 type Cookie struct {
-	Name     string
-	Value    string
-	Path     string
-	Domain   string
-	Expires  time.Time
-	Secure   bool
-	HTTPOnly bool
-	SameSite string
+	Name     string    `json:"name"`
+	Value    string    `json:"value"`
+	Path     string    `json:"path"`
+	Domain   string    `json:"domain"`
+	Expires  time.Time `json:"expires"`
+	Secure   bool      `json:"secure"`
+	HTTPOnly bool      `json:"http_only"`
+	SameSite string    `json:"same_site"`
 }
 
 // Templates is deprecated since v1.11.1, please use Views
@@ -90,6 +91,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx.pathOriginal = ctx.path
 	// Set method
 	ctx.method = getString(fctx.Request.Header.Method())
+	ctx.methodINT = methodInt(ctx.method)
 	// Attach *fasthttp.RequestCtx to ctx
 	ctx.Fasthttp = fctx
 	return ctx
@@ -184,7 +186,7 @@ func (ctx *Ctx) Append(field string, values ...string) {
 		}
 	}
 	if originalH != h {
-		ctx.Fasthttp.Response.Header.Set(field, h)
+		ctx.Set(field, h)
 	}
 }
 
@@ -201,7 +203,7 @@ func (ctx *Ctx) Attachment(filename ...string) {
 
 // BaseURL returns (protocol + host + base path).
 func (ctx *Ctx) BaseURL() string {
-	// TODO: avoid allocation 53.8 ns/op  32 B/op  1 allocs/op
+	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
 	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
 	return ctx.Protocol() + "://" + ctx.Hostname()
 }
@@ -217,7 +219,7 @@ func (ctx *Ctx) Body() string {
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 func (ctx *Ctx) BodyParser(out interface{}) error {
-	// TODO: Create benchmark ( Prolly need a sync pool )
+	// TODO: Create benchmark ( Probably need a sync pool )
 	var schemaDecoderForm = schema.NewDecoder()
 	var schemaDecoderQuery = schema.NewDecoder()
 	schemaDecoderForm.SetAliasTag("form")
@@ -510,7 +512,7 @@ func (ctx *Ctx) JSON(data interface{}) error {
 	}
 	// Set http headers
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-	ctx.Fasthttp.Response.SetBodyString(getString(raw))
+	ctx.SendString(getString(raw))
 	// Success!
 	return nil
 }
@@ -535,9 +537,9 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 
 	result = cb + "(" + getString(raw) + ");"
 
-	ctx.Fasthttp.Response.Header.Set(HeaderXContentTypeOptions, "nosniff")
+	ctx.Set(HeaderXContentTypeOptions, "nosniff")
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
-	ctx.Fasthttp.Response.SetBodyString(result)
+	ctx.SendString(result)
 
 	return nil
 }
@@ -557,7 +559,7 @@ func (ctx *Ctx) Links(link ...string) {
 			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	ctx.Fasthttp.Response.Header.Set(HeaderLink, utils.TrimRight(bb.String(), ','))
+	ctx.Set(HeaderLink, utils.TrimRight(bb.String(), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -580,10 +582,12 @@ func (ctx *Ctx) Location(path string) {
 func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
 		method := utils.ToUpper(override[0])
-		if methodINT[method] == 0 && method != MethodGet {
+		mINT := methodInt(method)
+		if mINT == 0 && method != MethodGet {
 			return ctx.method
 		}
 		ctx.method = method
+		ctx.methodINT = mINT
 	}
 	return ctx.method
 }
@@ -689,7 +693,7 @@ func (ctx *Ctx) Query(key string) (value string) {
 
 // Range returns a struct containing the type and a slice of ranges.
 func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
-	rangeStr := getString(ctx.Fasthttp.Request.Header.Peek(HeaderRange))
+	rangeStr := ctx.Get(HeaderRange)
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
 		return rangeData, fmt.Errorf("range: malformed range header string")
 	}
@@ -732,11 +736,11 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found
 func (ctx *Ctx) Redirect(location string, status ...int) {
-	ctx.Fasthttp.Response.Header.Set(HeaderLocation, location)
+	ctx.Set(HeaderLocation, location)
 	if len(status) > 0 {
-		ctx.Fasthttp.Response.SetStatusCode(status[0])
+		ctx.Status(status[0])
 	} else {
-		ctx.Fasthttp.Response.SetStatusCode(StatusFound)
+		ctx.Status(StatusFound)
 	}
 }
 
@@ -818,7 +822,7 @@ func (ctx *Ctx) Secure() bool {
 // Send sets the HTTP response body. The input can be of any type, io.Reader is also supported.
 func (ctx *Ctx) Send(bodies ...interface{}) {
 	if len(bodies) > 0 {
-		ctx.Fasthttp.Response.SetBodyString("")
+		ctx.SendString("")
 	}
 	ctx.Write(bodies...)
 }
@@ -826,7 +830,7 @@ func (ctx *Ctx) Send(bodies ...interface{}) {
 // SendBytes sets the HTTP response body for []byte types
 // This means no type assertion, recommended for faster performance
 func (ctx *Ctx) SendBytes(body []byte) {
-	ctx.Fasthttp.Response.SetBodyString(getString(body))
+	ctx.SendString(getString(body))
 }
 
 var sendFileFS *fasthttp.FS
@@ -847,11 +851,13 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 			CacheDuration:        10 * time.Second,
 			IndexNames:           []string{"index.html"},
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
-				ctx.Response.SetStatusCode(404)
+				ctx.Response.SetStatusCode(StatusNotFound)
 			},
 		}
 		sendFileHandler = sendFileFS.NewRequestHandler()
 	}
+	// Keep original path for mutable params
+	ctx.pathOriginal = utils.ImmutableString(ctx.pathOriginal)
 	// Disable compression
 	if len(compress) <= 0 || !compress[0] {
 		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
@@ -868,27 +874,32 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 			file += "/"
 		}
 	}
+	// Set new URI for filehandler
 	ctx.Fasthttp.Request.SetRequestURI(file)
 	// Save status code
 	status := ctx.Fasthttp.Response.StatusCode()
 	// Serve file
 	sendFileHandler(ctx.Fasthttp)
+	// Get the status code which is set by fasthttp
+	fsStatus := ctx.Fasthttp.Response.StatusCode()
+	// Set the status code set by the user if it is different from the fasthttp status code and 200
+	if status != fsStatus && status != StatusOK {
+		ctx.Status(status)
+	}
 	// Check for error
-	if status != 404 && ctx.Fasthttp.Response.StatusCode() == 404 {
+	if status != StatusNotFound && fsStatus == StatusNotFound {
 		return fmt.Errorf("sendfile: file %s not found", file)
 	}
-	// Restore status code
-	ctx.Fasthttp.Response.SetStatusCode(status)
 	return nil
 }
 
 // SendStatus sets the HTTP status code and if the response body is empty,
 // it sets the correct status message in the body.
 func (ctx *Ctx) SendStatus(status int) {
-	ctx.Fasthttp.Response.SetStatusCode(status)
+	ctx.Status(status)
 	// Only set status body when there is no response body
 	if len(ctx.Fasthttp.Response.Body()) == 0 {
-		ctx.Fasthttp.Response.SetBodyString(utils.StatusMessage(status))
+		ctx.SendString(utils.StatusMessage(status))
 	}
 }
 
@@ -987,10 +998,16 @@ func (ctx *Ctx) XHR() bool {
 
 // prettifyPath ...
 func (ctx *Ctx) prettifyPath() {
+	// If UnescapePath enabled, we decode the path
+	if ctx.app.Settings.UnescapePath {
+		pathBytes := getBytes(ctx.path)
+		pathBytes = fasthttp.AppendUnquotedArg(pathBytes[:0], pathBytes)
+		ctx.path = getString(pathBytes)
+	}
 	// If CaseSensitive is disabled, we lowercase the original path
 	if !ctx.app.Settings.CaseSensitive {
 		// We are making a copy here to keep access to the original path
-		ctx.path = utils.ToLower(ctx.pathOriginal)
+		ctx.path = utils.ToLower(ctx.path)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {

@@ -414,7 +414,7 @@ func Benchmark_Ctx_Format_XML(b *testing.B) {
 
 // go test -run Test_Ctx_FormFile
 func Test_Ctx_FormFile(t *testing.T) {
-	// TODO: CLEAN THIS UP
+	// TODO: We should clean this up
 	t.Parallel()
 	app := New()
 
@@ -791,7 +791,7 @@ func Test_Ctx_RouteNormalized(t *testing.T) {
 
 // go test -run Test_Ctx_SaveFile
 func Test_Ctx_SaveFile(t *testing.T) {
-	// TODO CLEAN THIS UP
+	// TODO We should clean this up
 	t.Parallel()
 	app := New()
 
@@ -910,6 +910,72 @@ func Test_Ctx_Download(t *testing.T) {
 	expect, err := ioutil.ReadAll(f)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, expect, ctx.Fasthttp.Response.Body())
+}
+
+// go test -race -run Test_Ctx_SendFile
+func Test_Ctx_SendFile(t *testing.T) {
+	//t.Parallel()
+	app := New()
+
+	// fetch file content
+	f, err := os.Open("./ctx.go")
+	utils.AssertEqual(t, nil, err)
+	defer f.Close()
+	expectFileContent, err := ioutil.ReadAll(f)
+	utils.AssertEqual(t, nil, err)
+	// fetch file info for the not modified test case
+	fI, err := os.Stat("./ctx.go")
+	utils.AssertEqual(t, nil, err)
+
+	// simple test case
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = ctx.SendFile("ctx.go")
+	// check expectation
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, expectFileContent, ctx.Fasthttp.Response.Body())
+	utils.AssertEqual(t, StatusOK, ctx.Fasthttp.Response.StatusCode())
+	app.ReleaseCtx(ctx)
+
+	// test with custom error code
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = ctx.Status(StatusInternalServerError).SendFile("ctx.go")
+	// check expectation
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, expectFileContent, ctx.Fasthttp.Response.Body())
+	utils.AssertEqual(t, StatusInternalServerError, ctx.Fasthttp.Response.StatusCode())
+	app.ReleaseCtx(ctx)
+
+	// test not modified
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	ctx.Fasthttp.Request.Header.Set(HeaderIfModifiedSince, fI.ModTime().Format(time.RFC1123))
+	err = ctx.SendFile("ctx.go")
+	// check expectation
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusNotModified, ctx.Fasthttp.Response.StatusCode())
+	utils.AssertEqual(t, []byte(nil), ctx.Fasthttp.Response.Body())
+	app.ReleaseCtx(ctx)
+}
+
+// go test -race -run Test_Ctx_SendFile_Immutable
+func Test_Ctx_SendFile_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/:file", func(c *Ctx) {
+		file := c.Params("file")
+		if err := c.SendFile("./.github/" + file + ".html"); err != nil {
+			utils.AssertEqual(t, nil, err)
+		}
+		utils.AssertEqual(t, "index", fmt.Sprintf("%s", file))
+		c.Send(file)
+	})
+	// 1st try
+	resp, err := app.Test(httptest.NewRequest("GET", "/index", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode)
+	// 2nd try
+	resp, err = app.Test(httptest.NewRequest("GET", "/index", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode)
 }
 
 // go test -run Test_Ctx_JSON
