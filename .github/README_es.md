@@ -480,7 +480,7 @@ The Fiber middleware modules listed here are maintained by the [Fiber team](http
 | [compress](https://github.com/gofiber/fiber/blob/master/middleware/compress.md) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. | `middleware.Compress()` |
 | [cors](https://github.com/gofiber/cors) | Enable cross-origin resource sharing \(CORS\) with various options. | - |
 | [csrf](https://github.com/gofiber/csrf) | Protect from CSRF exploits. | - |
-| [embed](https://github.com/gofiber/embed) | FileServer middleware for Fiber, special thanks and credits to Alireza Salary | - |
+| [filesystem](https://github.com/gofiber/fiber/blob/master/middleware/filesystem.md) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary | - |
 | [favicon](https://github.com/gofiber/fiber/blob/master/middleware/favicon.md) | Ignore favicon from logs or serve from memory if a file path is provided. | `middleware.Favicon()` |
 | [helmet](https://github.com/gofiber/helmet) | Helps secure your apps by setting various HTTP headers. | - |
 | [jwt](https://github.com/gofiber/jwt) | JWT returns a JSON Web Token \(JWT\) auth middleware. | - |
@@ -506,6 +506,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 - [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
 - [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
+- [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
 
 ## 💬 Medios
 

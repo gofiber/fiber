@@ -46,10 +46,10 @@ type Route struct {
 	routeParams []string    // Case sensitive param keys
 
 	// Public fields
-	Name     string    // Name of first handler used in route
-	Path     string    // Original registered route path
-	Method   string    // HTTP method
-	Handlers []Handler // Ctx handlers
+	Method   string    `json:"method"` // HTTP method
+	Path     string    `json:"path"`   // Original registered route path
+	Name     string    `json:"name"`   // Name of first handler used in route
+	Handlers []Handler `json:"-"`      // Ctx handlers
 }
 
 func (r *Route) match(path, original string) (match bool, values []string) {

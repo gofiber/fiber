@@ -39,8 +39,8 @@ type Handler = func(*Ctx)
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
-	Code    int
-	Message string
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 // App denotes the Fiber application.
@@ -55,7 +55,7 @@ type App struct {
 	// Fasthttp server
 	server *fasthttp.Server
 	// App settings
-	Settings *Settings
+	Settings *Settings `json:"settings"`
 }
 
 // Settings holds is a struct holding the server settings
@@ -70,105 +70,105 @@ type Settings struct {
 	// 	ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	// 	ctx.Status(code).SendString(err.Error())
 	// }
-	ErrorHandler func(*Ctx, error)
+	ErrorHandler func(*Ctx, error) `json:"-"`
 
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
-	ServerHeader string
+	ServerHeader string `json:"server_header"`
 
 	// Enable strict routing. When enabled, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
-	StrictRouting bool
+	StrictRouting bool `json:"strict_routing"`
 
 	// Enable case sensitive routing. When enabled, "/FoO" and "/foo" are different routes.
 	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
-	CaseSensitive bool
+	CaseSensitive bool `json:"case_sensitive"`
 
 	// Enables handler values to be immutable even if you return from handler
 	// Default: false
-	Immutable bool
+	Immutable bool `json:"immutable"`
 
 	// Converts all encoded characters in the route back before setting the path for the context,
 	// so that the routing can also work with urlencoded special characters
 	// Default: false
-	UnescapePath bool
+	UnescapePath bool `json:"unescape_path"`
 
 	// Enable or disable ETag header generation, since both weak and strong etags are generated
 	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
 	// Default value false
-	ETag bool
+	ETag bool `json:"etag"`
 
 	// This will spawn multiple Go processes listening on the same port
 	// Default: false
-	Prefork bool
+	Prefork bool `json:"prefork"`
 
 	// Max body size that the server accepts
 	// Default: 4 * 1024 * 1024
-	BodyLimit int
+	BodyLimit int `json:"body_limit"`
 
 	// Maximum number of concurrent connections.
 	// Default: 256 * 1024
-	Concurrency int
+	Concurrency int `json:"concurrency"`
 
 	// Disable keep-alive connections, the server will close incoming connections after sending the first response to client
 	// Default: false
-	DisableKeepalive bool
+	DisableKeepalive bool `json:"disable_keep_alive"`
 
 	// When set to true causes the default date header to be excluded from the response.
 	// Default: false
-	DisableDefaultDate bool
+	DisableDefaultDate bool `json:"disable_default_date"`
 
 	// When set to true, causes the default Content-Type header to be excluded from the Response.
 	// Default: false
-	DisableDefaultContentType bool
+	DisableDefaultContentType bool `json:"disable_default_content_type"`
 
 	// By default all header names are normalized: conteNT-tYPE -> Content-Type
 	// Default: false
-	DisableHeaderNormalizing bool
+	DisableHeaderNormalizing bool `json:"disable_header_normalizing"`
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address
 	// Default: false
-	DisableStartupMessage bool
+	DisableStartupMessage bool `json:"disable_startup_message"`
 
 	// Templates is deprecated please use Views
 	// Default: nil
-	Templates Templates
+	Templates Templates `json:"-"`
 
 	// Views is the interface that wraps the Render function.
 	// Default: nil
-	Views Views
+	Views Views `json:"-"`
 
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
 	// The connection's read deadline is reset when the connection opens.
 	// Default: unlimited
-	ReadTimeout time.Duration
+	ReadTimeout time.Duration `json:"read_timeout"`
 
 	// The maximum duration before timing out writes of the response.
 	// It is reset after the request handler has returned.
 	// Default: unlimited
-	WriteTimeout time.Duration
+	WriteTimeout time.Duration `json:"write_timeout"`
 
 	// The maximum amount of time to wait for the next request when keep-alive is enabled.
 	// If IdleTimeout is zero, the value of ReadTimeout is used.
 	// Default: unlimited
-	IdleTimeout time.Duration
+	IdleTimeout time.Duration `json:"idle_timeout"`
 
 	// Per-connection buffer size for requests' reading.
 	// This also limits the maximum header size.
 	// Increase this buffer if your clients send multi-KB RequestURIs
 	// and/or multi-KB headers (for example, BIG cookies).
 	// Default 4096
-	ReadBufferSize int
+	ReadBufferSize int `json:"read_buffer_size"`
 
 	// Per-connection buffer size for responses' writing.
 	// Default 4096
-	WriteBufferSize int
+	WriteBufferSize int `json:"write_buffer_size"`
 
 	// CompressedFileSuffix adds suffix to the original file name and
 	// tries saving the resulting compressed file under the new file name.
 	// Default: ".fiber.gz"
-	CompressedFileSuffix string
+	CompressedFileSuffix string `json:"compressed_file_suffix"`
 
 	// FEATURE: v1.13
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
@@ -655,8 +655,6 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	// colorable handles the escape sequence for stdout using ascii color codes
 	var out *tabwriter.Writer
 	// Check if colors are supported
-	fmt.Println(isatty.IsTerminal(os.Stdout.Fd()))
-	fmt.Println(isatty.IsCygwinTerminal(os.Stdout.Fd()))
 	if os.Getenv("TERM") == "dumb" ||
 		(!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
 		out = tabwriter.NewWriter(colorable.NewNonColorable(os.Stdout), 0, 0, 2, ' ', 0)
