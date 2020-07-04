@@ -312,12 +312,8 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 // Cookies is used for getting a cookie value by key
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (ctx *Ctx) Cookies(key string, defaultValue ...string) (value string) {
-	value = getString(ctx.Fasthttp.Request.Header.Cookie(key))
-	if len(defaultValue) > 0 && len(value) == 0 {
-		return defaultValue[0]
-	}
-	return
+func (ctx *Ctx) Cookies(key string, defaultValue ...string) string {
+	return defaultString(getString(ctx.Fasthttp.Request.Header.Cookie(key)), defaultValue)
 }
 
 // Download transfers the file from path as an attachment.
@@ -465,12 +461,8 @@ func (ctx *Ctx) Fresh() bool {
 // Field names are case-insensitive
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (ctx *Ctx) Get(key string, defaultValue ...string) (value string) {
-	value = getString(ctx.Fasthttp.Request.Header.Peek(key))
-	if len(defaultValue) > 0 && len(value) == 0 {
-		return defaultValue[0]
-	}
-	return
+func (ctx *Ctx) Get(key string, defaultValue ...string) string {
+	return defaultString(getString(ctx.Fasthttp.Request.Header.Peek(key)), defaultValue)
 }
 
 // Hostname contains the hostname derived from the Host HTTP header.
@@ -637,23 +629,20 @@ func (ctx *Ctx) OriginalURL() string {
 
 // Params is used to get the route parameters.
 // Defaults to empty string "", if the param doesn't exist.
-func (ctx *Ctx) Params(key string, defaultValue ...string) (value string) {
+func (ctx *Ctx) Params(key string, defaultValue ...string) string {
 	for i := range ctx.route.routeParams {
 		if len(key) != len(ctx.route.routeParams[i]) {
 			continue
 		}
 		if ctx.route.routeParams[i] == key {
 			// in case values are not here
-			if len(ctx.values) <= i {
+			if len(ctx.values) <= i || len(ctx.values[i]) == 0 {
 				break
 			}
 			return ctx.values[i]
 		}
 	}
-	if len(defaultValue) > 0 && len(value) == 0 {
-		return defaultValue[0]
-	}
-	return
+	return defaultString("", defaultValue)
 }
 
 // Path returns the path part of the request URL.
@@ -698,12 +687,8 @@ func (ctx *Ctx) Protocol() string {
 // Query returns the query string parameter in the url.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (ctx *Ctx) Query(key string, defaultValue ...string) (value string) {
-	value = getString(ctx.Fasthttp.QueryArgs().Peek(key))
-	if len(defaultValue) > 0 && len(value) == 0 {
-		return defaultValue[0]
-	}
-	return
+func (ctx *Ctx) Query(key string, defaultValue ...string) string {
+	return defaultString(getString(ctx.Fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
 
 // Range returns a struct containing the type and a slice of ranges.

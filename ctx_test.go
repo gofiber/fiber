@@ -327,6 +327,7 @@ func Test_Ctx_Cookies(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.Fasthttp.Request.Header.Set("Cookie", "john=doe")
 	utils.AssertEqual(t, "doe", ctx.Cookies("john"))
+	utils.AssertEqual(t, "default", ctx.Cookies("unknown", "default"))
 }
 
 // go test -run Test_Ctx_Format
@@ -497,6 +498,7 @@ func Test_Ctx_Get(t *testing.T) {
 	ctx.Fasthttp.Request.Header.Set(HeaderReferer, "Monster")
 	utils.AssertEqual(t, "utf-8, iso-8859-1;q=0.5", ctx.Get(HeaderAcceptCharset))
 	utils.AssertEqual(t, "Monster", ctx.Get(HeaderReferer))
+	utils.AssertEqual(t, "default", ctx.Get("unknown", "default"))
 }
 
 // go test -run Test_Ctx_Hostname
@@ -749,6 +751,7 @@ func Test_Ctx_Query(t *testing.T) {
 	ctx.Fasthttp.Request.URI().SetQueryString("search=john&age=20")
 	utils.AssertEqual(t, "john", ctx.Query("search"))
 	utils.AssertEqual(t, "20", ctx.Query("age"))
+	utils.AssertEqual(t, "default", ctx.Query("unknown", "default"))
 }
 
 // go test -run Test_Ctx_Range

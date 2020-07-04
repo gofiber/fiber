@@ -168,6 +168,10 @@ func Test_App_Use_Params(t *testing.T) {
 		utils.AssertEqual(t, "john", c.Params("param"))
 	})
 
+	app.Use("/foo/:bar?", func(c *Ctx) {
+		utils.AssertEqual(t, "foobar", c.Params("bar", "foobar"))
+	})
+
 	app.Use("/:param/*", func(c *Ctx) {
 		utils.AssertEqual(t, "john", c.Params("param"))
 		utils.AssertEqual(t, "doe", c.Params("*"))
@@ -178,6 +182,10 @@ func Test_App_Use_Params(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/john/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/foo", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
