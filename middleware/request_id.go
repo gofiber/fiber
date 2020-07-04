@@ -43,6 +43,7 @@ RequestID adds an UUID indentifier to the request, the following config argument
 	- RequestID(next func(*fiber.Ctx) bool)
 	- RequestID(header string)
 	- RequestID(generator func() string)
+	- RequestID(config RequestIDConfig)
 */
 func RequestID(options ...interface{}) fiber.Handler {
 	// Create default config
@@ -57,8 +58,10 @@ func RequestID(options ...interface{}) fiber.Handler {
 				config.Header = opt
 			case func() string:
 				config.Generator = opt
+			case RequestIDConfig:
+				config = opt
 			default:
-				log.Fatal("RequestID: the following option types are allowed: `string`, `func() string`")
+				log.Fatal("RequestID: the following option types are allowed: `string`, `func() string`, `func(*fiber.Ctx) bool`, `RequestIDConfig`")
 			}
 		}
 	}
