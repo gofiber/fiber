@@ -67,7 +67,7 @@ func Test_Middleware_Compress_Level(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set(fiber.HeaderAcceptEncoding, "br")
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, 3000)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
