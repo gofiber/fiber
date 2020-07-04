@@ -446,7 +446,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 		addr = strconv.Itoa(port)
 	}
 	if !strings.Contains(addr, ":") {
-		addr = "127.0.0.1:" + addr
+		addr = ":" + addr
 	}
 	// Update fiber server settings
 	app.init()
@@ -646,7 +646,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		ppid      = os.Getppid()
 	)
 	if host == "" {
-		host = "127.0.0.1"
+		host = "0.0.0.0"
 	}
 	if tls {
 		tlsStr = "TRUE"
