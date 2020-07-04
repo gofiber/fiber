@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/gofiber/fiber"
-	"github.com/valyala/fasthttp"
+	fiber "github.com/gofiber/fiber"
+	fasthttp "github.com/valyala/fasthttp"
 )
 
 // CompressConfig defines the config for Compress middleware.
@@ -67,16 +67,16 @@ func CompressWithConfig(config CompressConfig) fiber.Handler {
 
 func compress(config CompressConfig) fiber.Handler {
 	// Init middleware settings
-	var compress fasthttp.RequestHandler
+	var compressHandler fasthttp.RequestHandler
 	switch config.Level {
 	case -1: // Disabled
-		compress = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliNoCompression, fasthttp.CompressNoCompression)
+		compressHandler = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliNoCompression, fasthttp.CompressNoCompression)
 	case 1: // Best speed
-		compress = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliBestSpeed, fasthttp.CompressBestSpeed)
+		compressHandler = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliBestSpeed, fasthttp.CompressBestSpeed)
 	case 2: // Best compression
-		compress = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliBestCompression, fasthttp.CompressBestCompression)
+		compressHandler = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliBestCompression, fasthttp.CompressBestCompression)
 	default: // Default
-		compress = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression)
+		compressHandler = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression)
 	}
 	// Return handler
 	return func(c *fiber.Ctx) {
@@ -88,6 +88,6 @@ func compress(config CompressConfig) fiber.Handler {
 		// Middleware logic...
 		c.Next()
 		// Compress response
-		compress(c.Fasthttp)
+		compressHandler(c.Fasthttp)
 	}
 }
