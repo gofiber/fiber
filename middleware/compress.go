@@ -47,6 +47,8 @@ func Compress(options ...interface{}) fiber.Handler {
 				config.Next = opt
 			case int:
 				config.Level = opt
+			case CompressConfig:
+				config = opt
 			default:
 				log.Fatal("Compress: the following option types are allowed: int")
 			}
