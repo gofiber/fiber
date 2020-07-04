@@ -35,6 +35,7 @@ Compress allows the following config arguments in any order:
 	- Compress()
 	- Compress(next func(*fiber.Ctx) bool)
 	- Compress(level int)
+	- Compress(config CompressConfig)
 */
 func Compress(options ...interface{}) fiber.Handler {
 	// Create default config
@@ -47,8 +48,10 @@ func Compress(options ...interface{}) fiber.Handler {
 				config.Next = opt
 			case int:
 				config.Level = opt
+			case CompressConfig:
+				config = opt
 			default:
-				log.Fatal("Compress: the following option types are allowed: int")
+				log.Fatal("Compress: the following option types are allowed: int, func(*fiber.Ctx) bool, CompressConfig")
 			}
 		}
 	}
