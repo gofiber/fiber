@@ -4,10 +4,7 @@ import (
 	"time"
 
 	fiber "github.com/gofiber/fiber"
-	fasthttp "github.com/valyala/fasthttp"
 )
-
-var concurrencyCh = make(chan struct{}, fasthttp.DefaultConcurrency)
 
 // Timeout wraps a handler and aborts the process of the handler if the timeout is reached
 func Timeout(handler fiber.Handler, timeout time.Duration) fiber.Handler {
