@@ -55,6 +55,14 @@ func setMethodNotAllowed(ctx *Ctx) {
 	}
 }
 
+// defaultString returns the value or a default value if it is set
+func defaultString(value string, defaultValue []string) string {
+	if len(value) == 0 && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return value
+}
+
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses

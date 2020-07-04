@@ -134,7 +134,7 @@ func Logger(options ...interface{}) fiber.Handler {
 
 // LoggerWithConfig is deprecated, please use Logger instead
 func LoggerWithConfig(config LoggerConfig) fiber.Handler {
-	fmt.Println("logger: `LoggerWithConfig()` is deprecated since v1.12.3, please use `Logger()`")
+	fmt.Println("logger: `LoggerWithConfig()` is deprecated since v1.12.4, please use `Logger()`")
 	return logger(config)
 }
 

@@ -38,3 +38,26 @@ package middleware
 // 	testTimeout("30")
 // 	testSucces("3")
 // }
+
+// go test -run Test_Middleware_Timeout_Panic
+// func Test_Middleware_Timeout_Panic(t *testing.T) {
+// 	app := fiber.New(&fiber.Settings{DisableStartupMessage: true})
+
+// 	h := Timeout(
+// 		func(c *fiber.Ctx) {
+// 			c.Set("dummy", "this should not be here")
+// 			panic("panic in timeout handler")
+// 		},
+// 		5*time.Millisecond,
+// 	)
+// 	app.Get("/panic", Recover(), h)
+
+// 	resp, err := app.Test(httptest.NewRequest("GET", "/panic", nil))
+// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
+// 	utils.AssertEqual(t, fiber.StatusRequestTimeout, resp.StatusCode, "Status code")
+// 	utils.AssertEqual(t, "", resp.Header.Get("dummy"))
+
+// 	body, err := ioutil.ReadAll(resp.Body)
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, "Request Timeout", string(body))
+// }
