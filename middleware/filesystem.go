@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gofiber/fiber"
+	fiber "github.com/gofiber/fiber"
 )
 
 // Middleware types

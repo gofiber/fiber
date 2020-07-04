@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber"
-	"github.com/gofiber/utils"
-	"github.com/valyala/bytebufferpool"
+	fiber "github.com/gofiber/fiber"
+	utils "github.com/gofiber/utils"
+	bytebufferpool "github.com/valyala/bytebufferpool"
 )
 
 // Middleware types

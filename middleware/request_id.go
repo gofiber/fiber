@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/gofiber/fiber"
-	"github.com/gofiber/utils"
+	fiber "github.com/gofiber/fiber"
+	utils "github.com/gofiber/utils"
 )
 
 // Middleware types
