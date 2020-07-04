@@ -836,9 +836,8 @@ func (ctx *Ctx) Secure() bool {
 
 // Send sets the HTTP response body. The input can be of any type, io.Reader is also supported.
 func (ctx *Ctx) Send(bodies ...interface{}) {
-	if len(bodies) > 0 {
-		ctx.SendString("")
-	}
+	// Reset response body
+	ctx.SendString("")
 	ctx.Write(bodies...)
 }
 
