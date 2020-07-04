@@ -141,7 +141,7 @@ func usage() {
 			// for both 4- and 8-space tab stops.
 			s += "\n    \t"
 		}
-		s += strings.ReplaceAll(usage, "\n", "\n    \t")
+		s += strings.Replace(usage, "\n", "\n    \t", -1)
 
 		if !isZeroValue(f, f.DefValue) {
 			if _, ok := f.Value.(*stringValue); ok {
