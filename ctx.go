@@ -650,6 +650,15 @@ func (ctx *Ctx) Params(key string, defaultValue ...string) string {
 	return defaultString("", defaultValue)
 }
 
+// ParamList returns a list of all the parameter names for the current context
+func (ctx *Ctx) ParamList() []string {
+	paramList := make([]string, len(ctx.route.routeParams))
+
+	copy(paramList, ctx.route.routeParams)
+
+	return paramList
+}
+
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
 func (ctx *Ctx) Path(override ...string) string {
