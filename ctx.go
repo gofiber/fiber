@@ -838,6 +838,7 @@ func (ctx *Ctx) Secure() bool {
 func (ctx *Ctx) Send(bodies ...interface{}) {
 	// Reset response body
 	ctx.SendString("")
+	// Write response body
 	ctx.Write(bodies...)
 }
 
