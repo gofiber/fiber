@@ -71,7 +71,7 @@ func RequestID(options ...interface{}) fiber.Handler {
 
 // RequestIDWithConfig is deprecated, please use RequestID instead
 func RequestIDWithConfig(config RequestIDConfig) fiber.Handler {
-	fmt.Println("compress: `RequestIDWithConfig()` is deprecated since v1.12.3, please use `RequestID()`")
+	fmt.Println("compress: `RequestIDWithConfig()` is deprecated since v1.12.4, please use `RequestID()`")
 	return requestID(config)
 }
 

@@ -61,7 +61,7 @@ func Compress(options ...interface{}) fiber.Handler {
 
 // CompressWithConfig is deprecated, please use Compress instead
 func CompressWithConfig(config CompressConfig) fiber.Handler {
-	fmt.Println("compress: `CompressWithConfig()` is deprecated since v1.12.3, please use `Compress()`")
+	fmt.Println("compress: `CompressWithConfig()` is deprecated since v1.12.4, please use `Compress()`")
 	return compress(config)
 }
 
