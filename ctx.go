@@ -310,8 +310,10 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 }
 
 // Cookies is used for getting a cookie value by key
+// Defaults to empty string "" if the cookie doesn't exist.
+// If a default value is given, it will return that value if the cookie doesn't exist.
 // Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
+// Make copies or use the Immutable setting to use the value outside the Handler.
 func (ctx *Ctx) Cookies(key string, defaultValue ...string) string {
 	return defaultString(getString(ctx.Fasthttp.Request.Header.Cookie(key)), defaultValue)
 }
@@ -628,7 +630,10 @@ func (ctx *Ctx) OriginalURL() string {
 }
 
 // Params is used to get the route parameters.
-// Defaults to empty string "", if the param doesn't exist.
+// Defaults to empty string "" if the param doesn't exist.
+// If a default value is given, it will return that value if the param doesn't exist.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting to use the value outside the Handler.
 func (ctx *Ctx) Params(key string, defaultValue ...string) string {
 	for i := range ctx.route.routeParams {
 		if len(key) != len(ctx.route.routeParams[i]) {
@@ -685,8 +690,10 @@ func (ctx *Ctx) Protocol() string {
 }
 
 // Query returns the query string parameter in the url.
+// Defaults to empty string "" if the query doesn't exist.
+// If a default value is given, it will return that value if the query doesn't exist.
 // Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
+// Make copies or use the Immutable setting to use the value outside the Handler.
 func (ctx *Ctx) Query(key string, defaultValue ...string) string {
 	return defaultString(getString(ctx.Fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
