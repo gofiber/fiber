@@ -95,10 +95,10 @@ func requestID(config RequestIDConfig) fiber.Handler {
 		rid := ctx.Get(config.Header)
 		// Create new UUID if empty
 		if len(rid) <= 0 {
-			rid = utils.UUID()
+			rid = config.Generator()
 		}
 		// Set new id to response header
-		ctx.Set(fiber.HeaderXRequestID, rid)
+		ctx.Set(config.Header, rid)
 		// Continue stack
 		ctx.Next()
 	}
