@@ -256,10 +256,6 @@ func New(settings ...*Settings) *App {
 	if app.Settings.ErrorHandler == nil {
 		app.Settings.ErrorHandler = defaultErrorHandler
 	}
-
-	if !app.Settings.Prefork { // Default to -prefork flag if false
-		app.Settings.Prefork = utils.GetArgument(flagPrefork)
-	}
 	// Replace unsafe conversion functions
 	if app.Settings.Immutable {
 		getBytes, getString = getBytesImmutable, getStringImmutable
