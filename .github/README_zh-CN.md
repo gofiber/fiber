@@ -329,7 +329,7 @@ func main() {
 
   app.Listen(3000)
 }
-
+```
 ### Cross-Origin Resource Sharing (CORS)
 
 📖 [CORS](https://docs.gofiber.io/middleware#cors)
