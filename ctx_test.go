@@ -670,7 +670,7 @@ func Benchmark_Ctx_Params(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	c.route = &Route{
-		routeParams: []string{
+		Params: []string{
 			"param1", "param2", "param3", "param4",
 		},
 	}

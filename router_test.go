@@ -348,7 +348,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		root:        false,
 		star:        false,
 		routeParser: parsed,
-		routeParams: parsed.params,
+		Params:      parsed.params,
 		path:        "/user/keys/:id",
 
 		Path:   "/user/keys/:id",
@@ -374,7 +374,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		root:        false,
 		star:        true,
 		routeParser: parsed,
-		routeParams: parsed.params,
+		Params:      parsed.params,
 		path:        "/user/keys/bla",
 
 		Path:   "/user/keys/bla",
@@ -401,7 +401,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		star:        false,
 		path:        "/",
 		routeParser: parsed,
-		routeParams: parsed.params,
+		Params:      parsed.params,
 
 		Path:   "/",
 		Method: "DELETE",

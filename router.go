@@ -43,11 +43,11 @@ type Route struct {
 	root        bool        // Path equals '/'
 	path        string      // Prettified path
 	routeParser routeParser // Parameter parser
-	routeParams []string    // Case sensitive param keys
 
 	// Public fields
 	Method   string    `json:"method"` // HTTP method
 	Path     string    `json:"path"`   // Original registered route path
+	Params   []string  `json:"params"` // Case sensitive param keys
 	Name     string    `json:"name"`   // Name of first handler used in route
 	Handlers []Handler `json:"-"`      // Ctx handlers
 }
@@ -63,7 +63,7 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 		return true, values
 	}
 	// Does this route have parameters
-	if len(r.routeParams) > 0 {
+	if len(r.Params) > 0 {
 		// Match params
 		if paramPos, match := r.routeParser.getMatch(path, r.use); match {
 			// Get params from the original path
@@ -186,7 +186,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 		// Path data
 		path:        pathPretty,
 		routeParser: parsedPretty,
-		routeParams: parsedRaw.params,
+		Params:      parsedRaw.params,
 
 		// Public data
 		Path:     pathRaw,

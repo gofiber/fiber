@@ -635,11 +635,11 @@ func (ctx *Ctx) OriginalURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (ctx *Ctx) Params(key string, defaultValue ...string) string {
-	for i := range ctx.route.routeParams {
-		if len(key) != len(ctx.route.routeParams[i]) {
+	for i := range ctx.route.Params {
+		if len(key) != len(ctx.route.Params[i]) {
 			continue
 		}
-		if ctx.route.routeParams[i] == key {
+		if ctx.route.Params[i] == key {
 			// in case values are not here
 			if len(ctx.values) <= i || len(ctx.values[i]) == 0 {
 				break
