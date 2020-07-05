@@ -29,7 +29,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.12.4"
+const Version = "1.12.5"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -256,10 +256,6 @@ func New(settings ...*Settings) *App {
 	if app.Settings.ErrorHandler == nil {
 		app.Settings.ErrorHandler = defaultErrorHandler
 	}
-
-	if !app.Settings.Prefork { // Default to -prefork flag if false
-		app.Settings.Prefork = utils.GetArgument(flagPrefork)
-	}
 	// Replace unsafe conversion functions
 	if app.Settings.Immutable {
 		getBytes, getString = getBytesImmutable, getStringImmutable
@@ -415,11 +411,17 @@ func (app *App) Routes() []*Route {
 	return routes
 }
 
-// Serve can be used to pass a custom listener
+// Serve is deprecated, please use app.Listener()
+func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
+	fmt.Println("serve: app.Serve() is deprecated since v1.12.5, please use app.Listener()")
+	return app.Listener(ln, tlsconfig...)
+}
+
+// Listener can be used to pass a custom listener
 // This method does not support the Prefork feature
 // Prefork is not supported using app.Serve(ln net.Listener)
 // You can pass an optional *tls.Config to enable TLS.
-func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
+func (app *App) Listener(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// Update fiber server settings
 	app.init()
 	// TLS config

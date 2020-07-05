@@ -182,21 +182,27 @@ func parseTokenList(noneMatchBytes []byte) []string {
 
 // https://golang.org/src/net/net.go#L113
 // Helper methods for application#test
+type testAddr string
+
+func (a testAddr) Network() string {
+	return string(a)
+}
+func (a testAddr) String() string {
+	return string(a)
+}
+
 type testConn struct {
 	net.Conn
 	r bytes.Buffer
 	w bytes.Buffer
 }
 
-func (c *testConn) RemoteAddr() net.Addr {
-	return &net.TCPAddr{
-		IP: net.IPv4(0, 0, 0, 0),
-	}
-}
-func (c *testConn) LocalAddr() net.Addr                { return c.RemoteAddr() }
-func (c *testConn) Read(b []byte) (int, error)         { return c.r.Read(b) }
-func (c *testConn) Write(b []byte) (int, error)        { return c.w.Write(b) }
-func (c *testConn) Close() error                       { return nil }
+func (c *testConn) Read(b []byte) (int, error)  { return c.r.Read(b) }
+func (c *testConn) Write(b []byte) (int, error) { return c.w.Write(b) }
+func (c *testConn) Close() error                { return nil }
+
+func (c *testConn) LocalAddr() net.Addr                { return testAddr("local-addr") }
+func (c *testConn) RemoteAddr() net.Addr               { return testAddr("remote-addr") }
 func (c *testConn) SetDeadline(t time.Time) error      { return nil }
 func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
