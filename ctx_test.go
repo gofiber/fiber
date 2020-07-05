@@ -670,7 +670,7 @@ func Benchmark_Ctx_Params(b *testing.B) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	c.route = &Route{
-		routeParams: []string{
+		Params: []string{
 			"param1", "param2", "param3", "param4",
 		},
 	}
@@ -687,54 +687,6 @@ func Benchmark_Ctx_Params(b *testing.B) {
 		res = c.Params("param4")
 	}
 	utils.AssertEqual(b, "awesome", res)
-}
-
-// go test -race run Test_Ctx_ParamList
-func Test_Ctx_ParamList(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/test/:user", func(c *Ctx) {
-		utils.AssertEqual(t, []string{"user"}, c.ParamList())
-	})
-	app.Get("/test2/*", func(c *Ctx) {
-		utils.AssertEqual(t, []string{"*"}, c.ParamList())
-	})
-	app.Get("/test3/:optional?", func(c *Ctx) {
-		utils.AssertEqual(t, []string{"optional"}, c.ParamList())
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_ParamList -benchmem -count=4
-func Benchmark_Ctx_ParamList(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	routeParams := []string{
-		"param1", "param2", "param3", "param4",
-	}
-	c.route = &Route{
-		routeParams: routeParams,
-	}
-	c.values = []string{
-		"john", "doe", "is", "awesome",
-	}
-	var res []string
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = c.ParamList()
-	}
-	utils.AssertEqual(b, routeParams, res)
 }
 
 // go test -run Test_Ctx_Path
