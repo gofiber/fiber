@@ -329,6 +329,7 @@ func main() {
 
   app.Listen(3000)
 }
+```
 
 ### Cross-Origin Resource Sharing (CORS)
 

@@ -300,23 +300,29 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/logger"
+  "github.com/gofiber/fiber"
+  "github.com/gofiber/fiber/middleware"
 )
 
 func main() {
-    app := fiber.New()
+  app := fiber.New()
 
-    // Tercihe bağlı günlük ayarları
-    config := logger.Config{
-      Format:     "${time} - ${method} ${path}\n",
-      TimeFormat: "Mon, 2 Jan 2006 15:04:05 MST",
-    }
+  // Default
+  app.Use(middleware.Logger())
 
-    // Günlükcüyü ayarla
-    app.Use(logger.New(config))
+  // Custom logging format
+  app.Use(middleware.Logger("${method} - ${path}"))
 
-    app.Listen(3000)
+  // Custom Config
+  app.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+    Next: func(ctx *fiber.Ctx) bool {
+      return ctx.Path() != "/private"
+    },
+    Format: "${method} - ${path}",
+    Output: io.Writer,
+  }))
+
+  app.Listen(3000)
 }
 ```
 
