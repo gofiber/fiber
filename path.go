@@ -31,6 +31,7 @@ type paramSeg struct {
 
 // list of possible parameter and segment delimiter
 // slash has a special role, unlike the other parameters it must not be interpreted as a parameter
+// TODO '(' ')' delimiters for regex patterns
 var routeDelimiter = []byte{'/', '-', '.'}
 
 const wildcardParam string = "*"
