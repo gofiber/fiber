@@ -126,7 +126,6 @@ func usage() {
 		if f.Name == flagChild[1:] {
 			return
 		}
-
 		s := fmt.Sprintf("  -%s", f.Name) // Two spaces before -; see next two comments.
 		name, usage := flag.UnquoteUsage(f)
 		if len(name) > 0 {

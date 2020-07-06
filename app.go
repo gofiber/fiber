@@ -2,6 +2,11 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
+// Package fiber
+// Fiber is an Express inspired web framework built on top of Fasthttp,
+// the fastest HTTP engine for Go. Designed to ease things up for fast
+// development with zero memory allocation and performance in mind.
+
 package fiber
 
 import (
@@ -418,9 +423,9 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 }
 
 // Listener can be used to pass a custom listener
-// This method does not support the Prefork feature
-// Prefork is not supported using app.Serve(ln net.Listener)
 // You can pass an optional *tls.Config to enable TLS.
+// This method does not support the Prefork feature
+// To use Prefork, please use app.Listen()
 func (app *App) Listener(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// Update fiber server settings
 	app.init()
