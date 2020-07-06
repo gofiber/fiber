@@ -74,4 +74,3 @@ We learn about critical software updates and security threats from these sources
 
 1. GitHub Security Alerts
 2. GitHub: https://status.github.com/ & [@githubstatus](https://twitter.com/githubstatus)
-3. Travis (CI/CD): https://www.traviscistatus.com/ & [@traviscistatus](https://twitter.com/traviscistatus)
