@@ -16,7 +16,7 @@ type CompressConfig struct {
 	Level int
 }
 
-// Compression levels
+// Compression levels determine the compression complexity
 const (
 	CompressLevelDisabled        = -1
 	CompressLevelDefault         = 0
