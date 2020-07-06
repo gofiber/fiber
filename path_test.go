@@ -173,6 +173,7 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/joker/batman/robin/1", params: []string{"joker/batman", "robin", "1"}, match: true},
 		{url: "/api/joker/batman/robin/1/2", params: []string{"joker/batman/robin", "1", "2"}, match: true},
 		{url: "/api", params: nil, match: false},
+		{url: "/api/:test", params: nil, match: false},
 	})
 	testCase("/", []testparams{
 		{url: "/api", params: nil, match: false},
