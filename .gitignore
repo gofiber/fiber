@@ -20,6 +20,7 @@
 *.fiber.gz
 *.fasthttp.gz
 *.pprof
+*.workspace
 
 # Dependencies
 vendor
