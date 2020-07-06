@@ -294,47 +294,55 @@ func (app *App) Use(args ...interface{}) *Route {
 	return app.register("USE", prefix, handlers...)
 }
 
-// Get ...
+// Get registers a route for GET methods that requests a representation
+// of the specified resource. Requests using GET should only retrieve data.
 func (app *App) Get(path string, handlers ...Handler) *Route {
 	return app.Add(MethodGet, path, handlers...)
 }
 
-// Head ...
+// Head registers a route for HEAD methods that asks for a response identical
+// to that of a GET request, but without the response body.
 func (app *App) Head(path string, handlers ...Handler) *Route {
 	return app.Add(MethodHead, path, handlers...)
 }
 
-// Post ...
+// Post registers a route for POST methods that is used to submit an entity to the
+// specified resource, often causing a change in state or side effects on the server.
 func (app *App) Post(path string, handlers ...Handler) *Route {
 	return app.Add(MethodPost, path, handlers...)
 }
 
-// Put ...
+// Put registers a route for PUT methods that replaces all current representations
+// of the target resource with the request payload.
 func (app *App) Put(path string, handlers ...Handler) *Route {
 	return app.Add(MethodPut, path, handlers...)
 }
 
-// Delete ...
+// Delete registers a route for DELETE methods that deletes the specified resource.
 func (app *App) Delete(path string, handlers ...Handler) *Route {
 	return app.Add(MethodDelete, path, handlers...)
 }
 
-// Connect ...
+// Connect registers a route for CONNECT methods that establishes a tunnel to the
+// server identified by the target resource.
 func (app *App) Connect(path string, handlers ...Handler) *Route {
 	return app.Add(MethodConnect, path, handlers...)
 }
 
-// Options ...
+// Options registers a route for OPTIONS methods that is used to describe the
+// communication options for the target resource.
 func (app *App) Options(path string, handlers ...Handler) *Route {
 	return app.Add(MethodOptions, path, handlers...)
 }
 
-// Trace ...
+// Trace registers a route for TRACE methods that performs a message loop-back
+// test along the path to the target resource.
 func (app *App) Trace(path string, handlers ...Handler) *Route {
 	return app.Add(MethodTrace, path, handlers...)
 }
 
-// Patch ...
+// Patch registers a route for PATCH methods that is used to apply partial
+// modifications to a resource.
 func (app *App) Patch(path string, handlers ...Handler) *Route {
 	return app.Add(MethodPatch, path, handlers...)
 }

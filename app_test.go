@@ -319,7 +319,11 @@ func Test_App_Shutdown(t *testing.T) {
 	app := New(&Settings{
 		DisableStartupMessage: true,
 	})
-	_ = app.Shutdown()
+	if err := app.Shutdown(); err != nil {
+		if err.Error() != "shutdown: server is not running" {
+			t.Fatal()
+		}
+	}
 }
 
 // go test -run Test_App_Static_Index_Default
