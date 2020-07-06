@@ -418,9 +418,9 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 }
 
 // Listener can be used to pass a custom listener
-// This method does not support the Prefork feature
-// Prefork is not supported using app.Serve(ln net.Listener)
 // You can pass an optional *tls.Config to enable TLS.
+// This method does not support the Prefork feature
+// To use Prefork, please use app.Listen()
 func (app *App) Listener(ln net.Listener, tlsconfig ...*tls.Config) error {
 	// Update fiber server settings
 	app.init()
