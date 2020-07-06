@@ -8,7 +8,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Listen returns TCP listener with SO_REUSEADDR option set, SO_REUSEPORT is not supported on Windows, so it uses
+// reuseport returns TCP listener with SO_REUSEADDR option set, SO_REUSEPORT is not supported on Windows, so it uses
 // SO_REUSEADDR as an alternative to achieve the same effect.
 func reuseport(network, addr string) (net.Listener, error) {
 	cfg := net.ListenConfig{
