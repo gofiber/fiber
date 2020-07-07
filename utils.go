@@ -36,6 +36,10 @@ func setMethodNotAllowed(ctx *Ctx) {
 			ctx.indexRoute++
 			// Get *Route
 			route := ctx.app.stack[i][ctx.indexRoute]
+			// Skip use routes
+			if route.use {
+				continue
+			}
 			// Check if it matches the request path
 			match, _ := route.match(ctx.path, ctx.pathOriginal)
 			// No match, next route

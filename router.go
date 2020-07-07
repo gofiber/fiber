@@ -126,7 +126,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		setETag(ctx, false)
 	}
 	// Scan stack for other methods
-	if !match {
+	if ctx.Fasthttp.Response.StatusCode() == StatusNotFound {
 		setMethodNotAllowed(ctx)
 	}
 	// Release Ctx
