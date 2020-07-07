@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber"
@@ -16,8 +17,8 @@ import (
 
 // go test -run Test_Middleware_Logger
 func Test_Middleware_Logger(t *testing.T) {
-	format := "${ip}-${ips}-${url}-${host}-${method}-${path}-${protocol}-${route}-${referer}-${ua}-${status}-${body}-${error}-${bytesSent}-${bytesReceived}-${header:header}-${query:query}-${cookie:cookie}"
-	expect := "0.0.0.0--/test?query=query-example.com-GET-/test-http-/test-ref-ua-500--error-5-0-header-query-cookie"
+	format := "${ip}-${ips}-${url}-${host}-${method}-${path}-${protocol}-${route}-${referer}-${ua}-${status}-${body}-${error}-${bytesSent}-${bytesReceived}-${header:header}-${query:query}-${form:form}-${cookie:cookie}"
+	expect := "0.0.0.0--/test?query=query-example.com-POST-/test-http-/test-ref-ua-500-form=form-error-5-9-header-query-form-cookie"
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -29,19 +30,20 @@ func Test_Middleware_Logger(t *testing.T) {
 		Output: buf,
 	}))
 
-	app.Get("/test", func(ctx *fiber.Ctx) {
+	app.Post("/test", func(ctx *fiber.Ctx) {
 		ctx.Next(errors.New("error"))
 	})
 
-	req := httptest.NewRequest("GET", "/test?query=query", nil)
+	req := httptest.NewRequest("POST", "/test?query=query", strings.NewReader("form=form"))
 	req.Header.Set("header", "header")
 	req.Header.Set("Cookie", "cookie=cookie")
 	req.Header.Set("User-Agent", "ua")
 	req.Header.Set("Referer", "ref")
+	req.Header.Set("Content-type", "application/x-www-form-urlencoded")
 
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, expect, buf.String())
 
 }
@@ -53,13 +55,15 @@ $`)
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
+	LoggerConfigDefault.Output = buf
 	config := LoggerConfigDefault
-	config.Output = buf
+	config.Output = nil
+
 	app := fiber.New(&fiber.Settings{DisableStartupMessage: true})
 	app.Use(Logger(config))
 
 	app.Get("/", func(ctx *fiber.Ctx) {
-		ctx.SendStatus(200)
+		ctx.SendStatus(fiber.StatusOK)
 	})
 
 	_, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
@@ -70,6 +74,68 @@ $`)
 		expectedOutputPattern.MatchString(buf.String()),
 		fmt.Sprintf("Has: %s, expected pattern: %s", buf.String(), expectedOutputPattern.String()),
 	)
+}
+
+// go test -run Test_Middleware_Logger_Skip
+func Test_Middleware_Logger_Skip(t *testing.T) {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	LoggerConfigDefault.Output = buf
+
+	app := fiber.New()
+
+	app.Use(Logger(func(_ *fiber.Ctx) bool {
+		return true
+	}))
+
+	app.Get("/", func(_ *fiber.Ctx) {})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, 0, buf.Len(), "buf.Len()")
+}
+
+// go test -run Test_Middleware_Logger_Options_And_WithConfig
+func Test_Middleware_Logger_Options_And_WithConfig(t *testing.T) {
+	t.Parallel()
+
+	expectedOutputPattern := regexp.MustCompile(`^\d{2}:\d{2}:\d{2} GET / - 0\.0\.0\.0 - 200 - \d+(\.\d+)?.{1,3}
+$`)
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	LoggerConfigDefault.Output = buf
+
+	loggers := []fiber.Handler{
+		Logger(buf),
+		Logger("15:04:05"),
+		Logger("${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n"),
+		Logger(LoggerConfig{Output: buf}),
+		LoggerWithConfig(LoggerConfig{Output: buf}),
+	}
+
+	for _, logger := range loggers {
+		buf.Reset()
+
+		app := fiber.New()
+
+		app.Use(logger)
+
+		app.Get("/", func(_ *fiber.Ctx) {})
+
+		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
+		utils.AssertEqual(
+			t,
+			true,
+			expectedOutputPattern.MatchString(buf.String()),
+			fmt.Sprintf("Has: %s, expected pattern: %s", buf.String(), expectedOutputPattern.String()),
+		)
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_Logger -benchmem -count=4
