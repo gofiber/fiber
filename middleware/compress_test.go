@@ -131,9 +131,6 @@ func Test_Middleware_Compress_Skip(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 	utils.AssertEqual(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	_, err = os.Open(compressFilePath(CompressLevelDefault, true))
-	utils.AssertEqual(t, true, os.IsNotExist(err), "gz file")
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_Compress -benchmem -count=4
