@@ -30,6 +30,10 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 func Test_App_MethodNotAllowed(t *testing.T) {
 	app := New()
 
+	// https://github.com/gofiber/fiber/issues/556
+	// Middleware handler matched will effect setMethodNotAllowed
+	app.Use(func(ctx *Ctx) { ctx.Next() })
+
 	app.Post("/", func(c *Ctx) {})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))

@@ -101,6 +101,11 @@ func (app *App) next(ctx *Ctx) bool {
 		}
 		// Pass route reference and param values
 		ctx.route = route
+		// Non use handler matched
+		if !ctx.matched && !route.use {
+			ctx.matched = true
+		}
+
 		ctx.values = values
 		// Execute first handler of route
 		ctx.indexHandler = 0
@@ -111,6 +116,11 @@ func (app *App) next(ctx *Ctx) bool {
 	// If c.Next() does not match, return 404
 	ctx.SendStatus(404)
 	ctx.SendString("Cannot " + ctx.method + " " + ctx.pathOriginal)
+	// Scan stack for other methods
+	// Moved from app.handler
+	if !ctx.matched {
+		setMethodNotAllowed(ctx)
+	}
 	return false
 }
 
@@ -124,10 +134,6 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Generate ETag if enabled
 	if match && app.Settings.ETag {
 		setETag(ctx, false)
-	}
-	// Scan stack for other methods
-	if !match {
-		setMethodNotAllowed(ctx)
 	}
 	// Release Ctx
 	app.ReleaseCtx(ctx)
