@@ -101,7 +101,7 @@ Logger allows the following config arguments in any order:
 	- Logger(next func(*fiber.Ctx) bool)
 	- Logger(output io.Writer)
 	- Logger(format string)
-	- Logger(timeformat string)
+	- Logger(timeFormat string)
 	- Logger(config LoggerConfig)
 */
 func Logger(options ...interface{}) fiber.Handler {
