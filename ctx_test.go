@@ -1120,7 +1120,7 @@ func Test_Ctx_Next_Error(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "", resp.Header.Get("X-Next-Result"))
+	utils.AssertEqual(t, "Works", resp.Header.Get("X-Next-Result"))
 }
 
 // go test -run Test_Ctx_Redirect
