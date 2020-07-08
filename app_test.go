@@ -69,6 +69,31 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
 }
 
+func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T) {
+	app := New()
+
+	app.Use(func(ctx *Ctx) {
+		ctx.Status(404)
+	})
+
+	app.Post("/", func(c *Ctx) {})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 404, resp.StatusCode)
+
+	g := app.Group("/with-next", func(ctx *Ctx) {
+		ctx.Status(404)
+		ctx.Next()
+	})
+
+	g.Post("/", func(c *Ctx) {})
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/with-next", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 404, resp.StatusCode)
+}
+
 func Test_App_Routes(t *testing.T) {
 	app := New()
 	h := func(c *Ctx) {}
