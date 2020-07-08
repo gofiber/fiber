@@ -604,7 +604,6 @@ func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
 // You can pass an optional error for custom error handling.
 func (ctx *Ctx) Next(err ...error) {
 	if len(err) > 0 {
-		ctx.Fasthttp.Response.Header.Reset()
 		ctx.err = err[0]
 		ctx.app.Settings.ErrorHandler(ctx, ctx.err)
 		return
