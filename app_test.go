@@ -617,7 +617,7 @@ func Test_App_Listen(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen("4010"))
 }
 
-func Test_App_Serve(t *testing.T) {
+func Test_App_Listener(t *testing.T) {
 	app := New(&Settings{
 		DisableStartupMessage: true,
 		Prefork:               true,
@@ -630,7 +630,7 @@ func Test_App_Serve(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Serve(ln))
+	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
