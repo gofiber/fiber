@@ -44,6 +44,7 @@ type Ctx struct {
 	values       []string             // Route parameter values
 	err          error                // Contains error if passed to Next
 	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	matched      bool                 // Non use route matched
 }
 
 // Range data for ctx.Range
