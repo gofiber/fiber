@@ -450,6 +450,11 @@ func (app *App) Listener(ln net.Listener, tlsconfig ...*tls.Config) error {
 
 // Listen serves HTTP requests from the given addr or port.
 // You can pass an optional *tls.Config to enable TLS.
+//
+// - app.Listen(8080)
+// - app.Listen("8080")
+// - app.Listen(":8080")
+// - app.Listen("127.0.0.1:8080")
 func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	// Convert address to string
 	addr, ok := address.(string)
