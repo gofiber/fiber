@@ -60,7 +60,7 @@ func Test_Middleware_Compress_Config(t *testing.T) {
 func Test_Middleware_Compress_With_Config(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(CompressWithConfig(CompressConfig{}))
+	app.Use(Compress(CompressConfig{}))
 
 	app.Get("/", func(c *fiber.Ctx) {
 		c.SendFile(compressFilePath(CompressLevelDefault), true)

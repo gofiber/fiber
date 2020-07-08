@@ -114,7 +114,6 @@ $`)
 		Logger("15:04:05"),
 		Logger("${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n"),
 		Logger(LoggerConfig{Output: buf}),
-		LoggerWithConfig(LoggerConfig{Output: buf}),
 	}
 
 	for _, logger := range loggers {

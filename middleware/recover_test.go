@@ -17,14 +17,14 @@ func Test_Middleware_Recover(t *testing.T) {
 	app.Use(Recover())
 
 	app.Get("/panic", func(ctx *fiber.Ctx) {
-		ctx.Set("dummy", "this should not be here")
+		ctx.Set("dummy", "this should be here")
 		panic("Hi, I'm an error!")
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/panic", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "", resp.Header.Get("dummy"))
+	utils.AssertEqual(t, "this should be here", resp.Header.Get("dummy"))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
