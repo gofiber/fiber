@@ -829,15 +829,15 @@ func (ctx *Ctx) Secure() bool {
 // Send sets the HTTP response body. The input can be of any type, io.Reader is also supported.
 func (ctx *Ctx) Send(bodies ...interface{}) {
 	// Reset response body
-	ctx.SendString("")
+	ctx.Fasthttp.Response.ResetBody()
 	// Write response body
 	ctx.Write(bodies...)
 }
 
-// SendBytes sets the HTTP response body for []byte types
-// This means no type assertion, recommended for faster performance
+// SendBytes sets the HTTP response body for []byte types without copying it.
+// From this point onward the body argument must not be changed.
 func (ctx *Ctx) SendBytes(body []byte) {
-	ctx.SendString(getString(body))
+	ctx.Fasthttp.Response.SetBodyRaw(body)
 }
 
 var sendFileFS *fasthttp.FS
