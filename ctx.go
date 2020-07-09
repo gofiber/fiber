@@ -829,7 +829,7 @@ func (ctx *Ctx) Secure() bool {
 // Send sets the HTTP response body. The input can be of any type, io.Reader is also supported.
 func (ctx *Ctx) Send(bodies ...interface{}) {
 	// Reset response body
-	ctx.SendString("")
+	ctx.Fasthttp.Response.ResetBody()
 	// Write response body
 	ctx.Write(bodies...)
 }
