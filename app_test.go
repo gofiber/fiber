@@ -31,7 +31,6 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	app := New()
 
 	// https://github.com/gofiber/fiber/issues/556
-	// Middleware handler matched will effect setMethodNotAllowed
 	app.Use(func(ctx *Ctx) { ctx.Next() })
 
 	app.Post("/", func(c *Ctx) {})
