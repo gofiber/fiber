@@ -239,7 +239,7 @@ func getAllocFreeParamsPos(allocLen int) [][2]int {
 func getAllocFreeParams(allocLen int) []string {
 	size := uint32(allocLen)
 	start := atomic.AddUint32(&startParamList, size)
-	if (start + 10) >= uint32(len(paramsPosDummy)) {
+	if (start + 10) >= uint32(len(paramsDummy)) {
 		atomic.StoreUint32(&startParamList, 0)
 		return getAllocFreeParams(allocLen)
 	}
