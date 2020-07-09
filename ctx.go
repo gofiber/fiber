@@ -834,7 +834,8 @@ func (ctx *Ctx) Send(bodies ...interface{}) {
 	ctx.Write(bodies...)
 }
 
-// SendBytes sets the HTTP response body for []byte types
+// SendBytes sets the HTTP response body for []byte types without copying it.
+// From this point onward the body argument must not be changed.
 func (ctx *Ctx) SendBytes(body []byte) {
 	ctx.Fasthttp.Response.SetBodyRaw(body)
 }
