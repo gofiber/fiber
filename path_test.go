@@ -198,3 +198,25 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "xyz/", params: nil, match: false},
 	})
 }
+
+// go test -race -run Test_Reset_StartParamPosList
+func Test_Reset_StartParamPosList(t *testing.T) {
+	t.Parallel()
+
+	startParamPosList = uint32(len(paramsPosDummy)) - 10
+
+	getAllocFreeParamsPos(5)
+
+	utils.AssertEqual(t, uint32(5), startParamPosList)
+}
+
+// go test -race -run Test_Reset_startParamList
+func Test_Reset_startParamList(t *testing.T) {
+	t.Parallel()
+
+	startParamList = uint32(len(paramsDummy)) - 10
+
+	getAllocFreeParams(5)
+
+	utils.AssertEqual(t, uint32(5), startParamList)
+}
