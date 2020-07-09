@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"sync/atomic"
 	"testing"
 
 	utils "github.com/gofiber/utils"
@@ -201,9 +202,7 @@ func Test_Path_matchParams(t *testing.T) {
 
 // go test -race -run Test_Reset_StartParamPosList
 func Test_Reset_StartParamPosList(t *testing.T) {
-	t.Parallel()
-
-	startParamPosList = uint32(len(paramsPosDummy)) - 10
+	atomic.StoreUint32(&startParamPosList, uint32(len(paramsPosDummy))-10)
 
 	getAllocFreeParamsPos(5)
 
@@ -212,9 +211,7 @@ func Test_Reset_StartParamPosList(t *testing.T) {
 
 // go test -race -run Test_Reset_startParamList
 func Test_Reset_startParamList(t *testing.T) {
-	t.Parallel()
-
-	startParamList = uint32(len(paramsDummy)) - 10
+	atomic.StoreUint32(&startParamList, uint32(len(paramsDummy))-10)
 
 	getAllocFreeParams(5)
 
