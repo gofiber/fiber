@@ -220,7 +220,13 @@ var (
 )
 
 // New creates a new Fiber named instance.
-// You can pass optional settings when creating a new instance.
+// You can pass an optional settings by passing a *Settings struct.
+//
+// - app.New()
+// - app.New(&fiber.Settings{
+//     Prefork: true,
+//     ServerHeader: "Fiber",
+//   })
 func New(settings ...*Settings) *App {
 	// Create a new app
 	app := &App{
