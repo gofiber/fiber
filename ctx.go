@@ -835,9 +835,8 @@ func (ctx *Ctx) Send(bodies ...interface{}) {
 }
 
 // SendBytes sets the HTTP response body for []byte types
-// This means no type assertion, recommended for faster performance
 func (ctx *Ctx) SendBytes(body []byte) {
-	ctx.SendString(getString(body))
+	ctx.Fasthttp.Response.SetBodyRaw(body)
 }
 
 var sendFileFS *fasthttp.FS
