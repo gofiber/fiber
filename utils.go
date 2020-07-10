@@ -17,7 +17,7 @@ import (
 
 // Scan stack if other methods match
 func setMethodNotAllowed(ctx *Ctx) {
-	var match bool
+	var matched bool
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
 		if ctx.methodINT == i {
@@ -38,9 +38,11 @@ func setMethodNotAllowed(ctx *Ctx) {
 				continue
 			}
 			// Check if it matches the request path
-			match, _ = route.match(ctx.path, ctx.pathOriginal)
+			match, _ := route.match(ctx.path, ctx.pathOriginal)
 			// No match, next route
 			if match {
+				// We matched
+				matched = true
 				// Add method to Allow header
 				ctx.Append(HeaderAllow, intMethod[i])
 				// Break stack loop
@@ -49,7 +51,7 @@ func setMethodNotAllowed(ctx *Ctx) {
 		}
 	}
 	// Update response status
-	if match {
+	if matched {
 		ctx.Status(StatusMethodNotAllowed)
 	}
 }
