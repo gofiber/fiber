@@ -198,7 +198,7 @@ func main() {
   // => http://localhost:3000/prefix/js/script.js
   // => http://localhost:3000/prefix/css/style.css
 
-  app.Static("*", "/public/index.html")
+  app.Static("*", "./public/index.html")
   // => http://localhost:3000/any/path/shows/index/html
 
   app.Listen(3000)
