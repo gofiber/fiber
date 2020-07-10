@@ -17,17 +17,14 @@ import (
 
 // Scan stack if other methods match
 func setMethodNotAllowed(ctx *Ctx) {
-	var allow bool
-	original := methodInt(ctx.method)
+	var matched bool
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
-		if original == i {
+		if ctx.methodINT == i {
 			continue
 		}
 		// Reset stack index
 		ctx.indexRoute = -1
-		// Set new method
-		ctx.method = intMethod[i]
 		// Get stack length
 		lenr := len(ctx.app.stack[i]) - 1
 		//Loop over the route stack starting from previous index
@@ -44,8 +41,8 @@ func setMethodNotAllowed(ctx *Ctx) {
 			match, _ := route.match(ctx.path, ctx.pathOriginal)
 			// No match, next route
 			if match {
-				// Update allow bool
-				allow = true
+				// We matched
+				matched = true
 				// Add method to Allow header
 				ctx.Append(HeaderAllow, intMethod[i])
 				// Break stack loop
@@ -54,7 +51,7 @@ func setMethodNotAllowed(ctx *Ctx) {
 		}
 	}
 	// Update response status
-	if allow {
+	if matched {
 		ctx.Status(StatusMethodNotAllowed)
 	}
 }

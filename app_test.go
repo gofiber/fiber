@@ -30,42 +30,43 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 func Test_App_MethodNotAllowed(t *testing.T) {
 	app := New()
 
-	// https://github.com/gofiber/fiber/issues/556
 	app.Use(func(ctx *Ctx) { ctx.Next() })
 
 	app.Post("/", func(c *Ctx) {})
 
+	app.Options("/", func(c *Ctx) {})
+
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest("PATCH", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest("PUT", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	app.Get("/", func(c *Ctx) {})
 
 	resp, err = app.Test(httptest.NewRequest("TRACE", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest("PATCH", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest("PUT", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 }
 
 func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T) {
@@ -620,6 +621,22 @@ func Test_App_Deep_Group(t *testing.T) {
 	})
 	testStatus200(t, app, "/api/v1/user/authenticate", "GET")
 	utils.AssertEqual(t, 4, runThroughCount, "Loop count")
+}
+
+// go test -run Test_App_Next_Method
+func Test_App_Next_Method(t *testing.T) {
+	app := New()
+	app.Settings.DisableStartupMessage = true
+
+	app.Use(func(c *Ctx) {
+		utils.AssertEqual(t, "GET", c.Method())
+		c.Next()
+		utils.AssertEqual(t, "GET", c.Method())
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 }
 
 func Test_App_Listen(t *testing.T) {
