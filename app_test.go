@@ -35,37 +35,39 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 
 	app.Post("/", func(c *Ctx) {})
 
+	app.Options("/", func(c *Ctx) {})
+
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest("PATCH", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest("PUT", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	app.Get("/", func(c *Ctx) {})
 
 	resp, err = app.Test(httptest.NewRequest("TRACE", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest("PATCH", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest("PUT", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
-	utils.AssertEqual(t, "GET, HEAD, POST", resp.Header.Get(HeaderAllow))
+	utils.AssertEqual(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 }
 
 func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T) {
