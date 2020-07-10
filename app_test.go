@@ -622,6 +622,22 @@ func Test_App_Deep_Group(t *testing.T) {
 	utils.AssertEqual(t, 4, runThroughCount, "Loop count")
 }
 
+// go test -run Test_App_Next_Method
+func Test_App_Next_Method(t *testing.T) {
+	app := New()
+	app.Settings.DisableStartupMessage = true
+
+	app.Use(func(c *Ctx) {
+		utils.AssertEqual(t, "GET", c.Method())
+		c.Next()
+		utils.AssertEqual(t, "GET", c.Method())
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+}
+
 func Test_App_Listen(t *testing.T) {
 	app := New(&Settings{
 		DisableStartupMessage: true,
