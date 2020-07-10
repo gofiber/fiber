@@ -29,16 +29,15 @@ func init() { //nolint:gochecknoinits
 	flag.Usage = usage
 }
 
-// Child determines if the current environment is a child process
-// This method can be usefull when Prefork is enabled.
-func (app *App) Child() bool {
+// IsChild determines if the current process is a result of Prefork
+func (app *App) IsChild() bool {
 	return utils.GetArgument(flagChild)
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
 func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	// 👶 child process 👶
-	if app.Child() {
+	if app.IsChild() {
 		// use 1 cpu core per child process
 		runtime.GOMAXPROCS(1)
 		var ln net.Listener
