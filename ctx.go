@@ -505,10 +505,10 @@ func (ctx *Ctx) Is(extension string) bool {
 	return utils.Trim(header, ' ') == extensionHeader
 }
 
-// JSON converts any interface or string to JSON using Jsoniter.
+// JSON converts any interface or string to JSON.
 // This method also sets the content header to application/json.
 func (ctx *Ctx) JSON(data interface{}) error {
-	raw, err := json.Marshal(&data)
+	raw, err := json.Marshal(data)
 	// Check for errors
 	if err != nil {
 		return err
@@ -524,7 +524,7 @@ func (ctx *Ctx) JSON(data interface{}) error {
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
 func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
-	raw, err := json.Marshal(&data)
+	raw, err := json.Marshal(data)
 
 	if err != nil {
 		return err
