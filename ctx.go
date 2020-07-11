@@ -377,7 +377,7 @@ func (ctx *Ctx) Format(body interface{}) {
 			ctx.Send(body) // Fallback
 			log.Println("Format: error serializing xml ", err)
 		} else {
-			ctx.SendString(getString(raw))
+			ctx.Fasthttp.Response.SetBodyRaw(raw)
 		}
 	default:
 		ctx.SendString(b)
@@ -515,9 +515,8 @@ func (ctx *Ctx) JSON(data interface{}) error {
 	}
 	// Set http headers
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-	// For TFB !!!
 	ctx.Fasthttp.Response.SetBodyRaw(raw)
-	// Success!
+
 	return nil
 }
 

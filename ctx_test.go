@@ -1483,3 +1483,31 @@ func Benchmark_Ctx_SendBytes_With_SetBodyRaw(b *testing.B) {
 	}
 	utils.AssertEqual(b, body, c.Fasthttp.Response.Body())
 }
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_SendString_B -benchmem -count=4
+func Benchmark_Ctx_SendString_B(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	body := "Hello, world!"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.SendString(body)
+	}
+	utils.AssertEqual(b, []byte("Hello, world!"), c.Fasthttp.Response.Body())
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_SendBytes_B -benchmem -count=4
+func Benchmark_Ctx_SendBytes_B(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	body := []byte("Hello, world!")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.SendBytes(body)
+	}
+	utils.AssertEqual(b, []byte("Hello, world!"), c.Fasthttp.Response.Body())
+}
