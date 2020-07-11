@@ -257,6 +257,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	}
 	// query params
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
+		log.Println("Converting querystring using BodyParser will be deprecated, please use ctx.QueryParser")
 		data := make(map[string][]string)
 		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
 			data[getString(key)] = append(data[getString(key)], getString(val))
@@ -265,6 +266,23 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	}
 
 	return fmt.Errorf("bodyparser: cannot parse content-type: %v", ctype)
+}
+
+// QueryParser binds the query string to a struct.
+func (ctx *Ctx) QueryParser(out interface{}) error {
+	if ctx.Fasthttp.QueryArgs().Len() > 0 {
+		var schemaDecoderQuery = schema.NewDecoder()
+		schemaDecoderQuery.SetAliasTag("query")
+		schemaDecoderQuery.IgnoreUnknownKeys(true)
+
+		data := make(map[string][]string)
+		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
+			data[getString(key)] = append(data[getString(key)], getString(val))
+		})
+
+		return schemaDecoderQuery.Decode(out, data)
+	}
+	return nil
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
