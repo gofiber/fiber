@@ -196,7 +196,8 @@ func (ctx *Ctx) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
 		ctx.Type(filepath.Ext(fname))
-		ctx.Set(HeaderContentDisposition, `attachment; filename="`+url.QueryEscape(fname)+`"`)
+		b := fasthttp.AppendQuotedArg(getBytes(utils.ImmutableString(fname))[:0], getBytes(fname))
+		ctx.Set(HeaderContentDisposition, `attachment; filename="`+getString(b)+`"`)
 		return
 	}
 	ctx.Set(HeaderContentDisposition, "attachment")
