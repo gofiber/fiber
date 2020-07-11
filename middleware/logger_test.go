@@ -17,8 +17,8 @@ import (
 
 // go test -run Test_Middleware_Logger
 func Test_Middleware_Logger(t *testing.T) {
-	format := "${ip}-${ips}-${url}-${host}-${method}-${path}-${protocol}-${route}-${referer}-${ua}-${status}-${body}-${error}-${bytesSent}-${bytesReceived}-${header:header}-${query:query}-${form:form}-${cookie:cookie}"
-	expect := "0.0.0.0--/test?query=query-example.com-POST-/test-http-/test-ref-ua-500-form=form-error-5-9-header-query-form-cookie"
+	format := "${ip}-${ips}-${url}-${host}-${method}-${methodColored}-${path}-${protocol}-${route}-${referer}-${ua}-${status}-${statusColored}-${body}-${error}-${bytesSent}-${bytesReceived}-${header:header}-${query:query}-${form:form}-${cookie:cookie}"
+	expect := "0.0.0.0--/test?query=query-example.com-POST-\u001b[96mPOST\u001b[0m-/test-http-/test-ref-ua-500-\u001b[91m500\u001b[0m-form=form-error-5-9-header-query-form-cookie"
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)

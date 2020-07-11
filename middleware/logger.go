@@ -31,6 +31,7 @@ type (
 		// - url
 		// - host
 		// - method
+		// - methodColored
 		// - path
 		// - protocol
 		// - route
@@ -38,6 +39,7 @@ type (
 		// - ua
 		// - latency
 		// - status
+		// - statusColored
 		// - body
 		// - error
 		// - bytesSent
@@ -85,6 +87,29 @@ const (
 	LoggerTagQuery         = "query:"
 	LoggerTagForm          = "form:"
 	LoggerTagCookie        = "cookie:"
+	LoggerTagStatusColored = "statusColored"
+	LoggerTagMethodColored = "methodColored"
+)
+
+// NEW : Color variables
+const (
+	cBlack   = "\u001b[90m"
+	cRed     = "\u001b[91m"
+	cGreen   = "\u001b[92m"
+	cYellow  = "\u001b[93m"
+	cBlue    = "\u001b[94m"
+	cMagenta = "\u001b[95m"
+	cCyan    = "\u001b[96m"
+	cWhite   = "\u001b[97m"
+	cReset   = "\u001b[0m"
+)
+
+// for colorizing response status and request method
+var (
+	statusColor    string
+	responseStatus int
+	methodColor    string
+	requestMethod  string
 )
 
 // LoggerConfigDefault is the default config
@@ -222,6 +247,40 @@ func logger(config LoggerConfig) fiber.Handler {
 				if c.Error() != nil {
 					return buf.WriteString(c.Error().Error())
 				}
+			case LoggerTagStatusColored:
+				responseStatus = c.Fasthttp.Response.StatusCode()
+				switch {
+				case responseStatus >= 200 && responseStatus < 300:
+					statusColor = cGreen
+				case responseStatus >= 300 && responseStatus < 400:
+					statusColor = cWhite
+				case responseStatus >= 400 && responseStatus < 500:
+					statusColor = cYellow
+				default:
+					statusColor = cRed
+				}
+				return buf.WriteString(statusColor + strconv.Itoa(responseStatus) + cReset)
+			case LoggerTagMethodColored:
+				requestMethod = c.Method()
+				switch requestMethod {
+				case "GET":
+					methodColor = cBlue
+				case "POST":
+					methodColor = cCyan
+				case "PUT":
+					methodColor = cYellow
+				case "DELETE":
+					methodColor = cRed
+				case "PATCH":
+					methodColor = cGreen
+				case "HEAD":
+					methodColor = cMagenta
+				case "OPTIONS":
+					methodColor = cWhite
+				default:
+					methodColor = cReset
+				}
+				return buf.WriteString(methodColor + requestMethod + cReset)
 			default:
 				switch {
 				case strings.HasPrefix(tag, LoggerTagHeader):

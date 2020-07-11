@@ -60,6 +60,7 @@ type LoggerConfig struct {
   // - url
   // - host
   // - method
+  // - methodColored
   // - path
   // - protocol
   // - route
@@ -67,6 +68,7 @@ type LoggerConfig struct {
   // - ua
   // - latency
   // - status
+  // - statusColored
   // - body
   // - error
   // - bytesSent
