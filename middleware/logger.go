@@ -251,7 +251,7 @@ func logger(config LoggerConfig) fiber.Handler {
 				responseStatus = c.Fasthttp.Response.StatusCode()
 				switch {
 				case responseStatus >= 200 && responseStatus < 300:
-					statusColor = cGreen
+					statusColor = cBlue
 				case responseStatus >= 300 && responseStatus < 400:
 					statusColor = cWhite
 				case responseStatus >= 400 && responseStatus < 500:
