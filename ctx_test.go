@@ -346,7 +346,7 @@ func Test_Ctx_Format(t *testing.T) {
 
 	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "application/json")
 	ctx.Format("Hello, World!")
-	utils.AssertEqual(t, "\"Hello, World!\"\n", string(ctx.Fasthttp.Response.Body()))
+	utils.AssertEqual(t, `"Hello, World!"`, string(ctx.Fasthttp.Response.Body()))
 
 	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "application/xml")
 	ctx.Format("Hello, World!")
@@ -991,8 +991,17 @@ func Test_Ctx_JSON(t *testing.T) {
 		"Name": "Grame",
 		"Age":  20,
 	})
-	utils.AssertEqual(t, "{\"Age\":20,\"Name\":\"Grame\"}\n", string(ctx.Fasthttp.Response.Body()))
+	utils.AssertEqual(t, `{"Age":20,"Name":"Grame"}`, string(ctx.Fasthttp.Response.Body()))
 	utils.AssertEqual(t, "application/json", string(ctx.Fasthttp.Response.Header.Peek("content-type")))
+
+	ctx.JSON(nil)
+	utils.AssertEqual(t, "null", string(ctx.Fasthttp.Response.Body()))
+
+	ctx.JSON("")
+	utils.AssertEqual(t, `""`, string(ctx.Fasthttp.Response.Body()))
+
+	ctx.JSON(0)
+	utils.AssertEqual(t, "0", string(ctx.Fasthttp.Response.Body()))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSON -benchmem -count=4
@@ -1015,7 +1024,7 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 		err = c.JSON(data)
 	}
 	utils.AssertEqual(b, nil, err)
-	utils.AssertEqual(b, "{\"Name\":\"Grame\",\"Age\":20}\n", string(c.Fasthttp.Response.Body()))
+	utils.AssertEqual(b, `{"Name":"Grame","Age":20}`, string(c.Fasthttp.Response.Body()))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONOld -benchmem -count=4

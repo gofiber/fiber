@@ -519,6 +519,12 @@ func (ctx *Ctx) JSON(data interface{}) error {
 	}
 	// Set http headers
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+
+	b := ctx.Fasthttp.Response.Body()
+	if end := len(b) - 1; end >= 0 && b[end] == '\n' {
+		// remove extra '\n' added by encoder.Encode
+		ctx.Fasthttp.Response.SetBodyRaw(b[:end])
+	}
 	// Success!
 	return nil
 }
