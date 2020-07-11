@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-var (
+const (
 	envPreforkChildKey = "FIBER_PREFORK_CHILD"
 	envPreforkChildVal = "1"
 )
