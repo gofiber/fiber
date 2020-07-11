@@ -1023,30 +1023,7 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		err = c.JSON(data)
-	}
-	utils.AssertEqual(b, nil, err)
-	utils.AssertEqual(b, `{"Name":"Grame","Age":20}`, string(c.Fasthttp.Response.Body()))
-}
-
-// go test -v  -run=^$ -bench=Benchmark_Ctx_JSONOld -benchmem -count=4
-func Benchmark_Ctx_JSONOld(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	type SomeStruct struct {
-		Name string
-		Age  uint8
-	}
-	data := SomeStruct{
-		Name: "Grame",
-		Age:  20,
-	}
-	var err error
-	b.ReportAllocs()
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		err = c.JSONOld(data)
+		err = c.JSON(&data)
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, `{"Name":"Grame","Age":20}`, string(c.Fasthttp.Response.Body()))
@@ -1084,7 +1061,7 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		err = c.JSONP(data, callback)
+		err = c.JSONP(&data, callback)
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, `emit({"Name":"Grame","Age":20});`, string(c.Fasthttp.Response.Body()))

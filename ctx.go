@@ -508,38 +508,15 @@ func (ctx *Ctx) Is(extension string) bool {
 // JSON converts any interface or string to JSON.
 // This method also sets the content header to application/json.
 func (ctx *Ctx) JSON(data interface{}) error {
-	// Reset response body
-	ctx.Fasthttp.Response.ResetBody()
-
-	encoder := json.NewEncoder(ctx.Fasthttp.Response.BodyWriter())
-	encoder.SetEscapeHTML(true)
-	// Write data to response body writer directly
-	if err := encoder.Encode(data); err != nil {
-		return err
-	}
-	// Set http headers
-	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-
-	b := ctx.Fasthttp.Response.Body()
-	if end := len(b) - 1; end >= 0 && b[end] == '\n' {
-		// remove extra '\n' added by encoder.Encode
-		ctx.Fasthttp.Response.SetBodyRaw(b[:end])
-	}
-	// Success!
-	return nil
-}
-
-// JSON converts any interface or string to JSON using Jsoniter.
-// This method also sets the content header to application/json.
-func (ctx *Ctx) JSONOld(data interface{}) error {
-	raw, err := json.Marshal(&data)
+	raw, err := json.Marshal(data)
 	// Check for errors
 	if err != nil {
 		return err
 	}
 	// Set http headers
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-	ctx.SendString(getString(raw))
+	// For TFB !!!
+	ctx.Fasthttp.Response.SetBodyRaw(raw)
 	// Success!
 	return nil
 }
@@ -548,7 +525,7 @@ func (ctx *Ctx) JSONOld(data interface{}) error {
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
 func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
-	raw, err := json.Marshal(&data)
+	raw, err := json.Marshal(data)
 
 	if err != nil {
 		return err
