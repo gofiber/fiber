@@ -669,7 +669,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		osName    = utils.ToUpper(runtime.GOOS)
 		memTotal  = utils.ByteSize(utils.MemoryTotal())
 		cpuCores  = runtime.NumCPU()
-		ppid      = os.Getppid()
+		pid       = os.Getpid()
 	)
 	if host == "" {
 		host = "0.0.0.0"
@@ -696,7 +696,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		cCyan, cBlack, fmt.Sprintf(" HOST   %s\tOS    %s", cyan(host), cyan(osName)),
 		cCyan, cBlack, fmt.Sprintf(" PORT   %s\tCORES %s", cyan(port), cyan(cpuCores)),
 		cCyan, cBlack, fmt.Sprintf(" TLS    %s\tMEM   %s", cyan(tlsStr), cyan(memTotal)),
-		cBlack, cyan(Version), fmt.Sprintf(" ROUTES %s\t\t\t PPID  %s%s%s\n", cyan(routesLen), cyan(ppid), pids, cReset),
+		cBlack, cyan(Version), fmt.Sprintf(" ROUTES %s\t\t\t PID  %s%s%s\n", cyan(routesLen), cyan(pid), pids, cReset),
 	)
 	// Write to io.write
 	_ = out.Flush()
