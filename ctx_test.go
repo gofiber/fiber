@@ -994,14 +994,16 @@ func Test_Ctx_JSON(t *testing.T) {
 	utils.AssertEqual(t, `{"Age":20,"Name":"Grame"}`, string(ctx.Fasthttp.Response.Body()))
 	utils.AssertEqual(t, "application/json", string(ctx.Fasthttp.Response.Header.Peek("content-type")))
 
-	ctx.JSON(nil)
-	utils.AssertEqual(t, "null", string(ctx.Fasthttp.Response.Body()))
+	testEmpty := func(v interface{}, r string) {
+		err := ctx.JSON(v)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, r, string(ctx.Fasthttp.Response.Body()))
+	}
 
-	ctx.JSON("")
-	utils.AssertEqual(t, `""`, string(ctx.Fasthttp.Response.Body()))
-
-	ctx.JSON(0)
-	utils.AssertEqual(t, "0", string(ctx.Fasthttp.Response.Body()))
+	testEmpty(nil, "null")
+	testEmpty("", `""`)
+	testEmpty(0, "0")
+	testEmpty([]int{}, "[]")
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSON -benchmem -count=4
