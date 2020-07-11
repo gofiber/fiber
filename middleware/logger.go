@@ -93,7 +93,7 @@ const (
 
 // NEW : Color variables
 const (
-	cBlack   = "\u001b[90m"
+	// cBlack   = "\u001b[90m"
 	cRed     = "\u001b[91m"
 	cGreen   = "\u001b[92m"
 	cYellow  = "\u001b[93m"
