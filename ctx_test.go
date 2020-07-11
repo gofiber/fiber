@@ -198,10 +198,30 @@ func Test_Ctx_Attachment(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
+	// empty
 	ctx.Attachment()
+	utils.AssertEqual(t, `attachment`, string(ctx.Fasthttp.Response.Header.Peek(HeaderContentDisposition)))
+	// real filename
 	ctx.Attachment("./static/img/logo.png")
 	utils.AssertEqual(t, `attachment; filename="logo.png"`, string(ctx.Fasthttp.Response.Header.Peek(HeaderContentDisposition)))
 	utils.AssertEqual(t, "image/png", string(ctx.Fasthttp.Response.Header.Peek(HeaderContentType)))
+	// check quoting
+	ctx.Attachment("another document.pdf\"\r\nBla: \"fasel")
+	utils.AssertEqual(t, `attachment; filename="another+document.pdf%22%0D%0ABla%3A+%22fasel"`, string(ctx.Fasthttp.Response.Header.Peek(HeaderContentDisposition)))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Attachment -benchmem -count=4
+func Benchmark_Ctx_Attachment(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		// example with quote params
+		c.Attachment("another document.pdf\"\r\nBla: \"fasel")
+	}
+	utils.AssertEqual(b, `attachment; filename="another+document.pdf%22%0D%0ABla%3A+%22fasel"`, string(c.Fasthttp.Response.Header.Peek(HeaderContentDisposition)))
 }
 
 // go test -run Test_Ctx_BaseURL
