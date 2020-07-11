@@ -1023,7 +1023,7 @@ func Benchmark_Ctx_JSON(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		err = c.JSON(&data)
+		err = c.JSON(data)
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, `{"Name":"Grame","Age":20}`, string(c.Fasthttp.Response.Body()))
@@ -1061,7 +1061,7 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		err = c.JSONP(&data, callback)
+		err = c.JSONP(data, callback)
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, `emit({"Name":"Grame","Age":20});`, string(c.Fasthttp.Response.Body()))
