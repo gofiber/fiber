@@ -2,36 +2,24 @@ package fiber
 
 import (
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
-	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
-
-	utils "github.com/gofiber/utils"
 )
 
 var (
-	flagChild = "-prefork-child"
-	isChild   bool
+	envPreforkChildKey = "FIBER_PREFORK_CHILD"
+	envPreforkChildVal = "1"
 )
-
-func init() { //nolint:gochecknoinits
-	// Prevent users from defining the same flag on their own.
-	flag.BoolVar(&isChild, flagChild[1:], false, "Child Process")
-	// Change the default usage message so the child flag isn't exposed to users of the app
-	// when for example running `app -help`.
-	flag.Usage = usage
-}
 
 // IsChild determines if the current process is a result of Prefork
 func (app *App) IsChild() bool {
-	return utils.GetArgument(flagChild)
+	return os.Getenv(envPreforkChildKey) == envPreforkChildVal
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
@@ -77,9 +65,13 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	// launch child procs
 	for i := 0; i < max; i++ {
 		/* #nosec G204 */
-		cmd := exec.Command(os.Args[0], append(os.Args[1:], flagChild)...)
+		cmd := exec.Command(os.Args[0], os.Args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+		// add fiber prefork child flag into child proc env
+		cmd.Env = append(os.Environ(),
+			fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
+		)
 		if err = cmd.Start(); err != nil {
 			return fmt.Errorf("failed to start a child prefork process, error: %v\n", err)
 		}
@@ -103,75 +95,4 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	}
 
 	return
-}
-
-// -- string Value
-// This code is copied from the stdlib.
-type stringValue string
-
-// This code is copied from the stdlib.
-func (s *stringValue) Set(val string) error {
-	*s = stringValue(val)
-	return nil
-}
-
-// This code is copied from the stdlib.
-func (s *stringValue) Get() interface{} { return string(*s) }
-
-// This code is copied from the stdlib.
-func (s *stringValue) String() string { return string(*s) }
-
-// usage prints a usage message documenting all defined command-line flags,
-// but skips printing our `-prefork-child` flag as it shouldn't be exposed.
-// This code is based on the stdlib with the only change to skip that flag.
-func usage() {
-	fmt.Fprintf(flag.CommandLine.Output(), "Usage of %s:\n", os.Args[0])
-	flag.CommandLine.VisitAll(func(f *flag.Flag) {
-		// Skip printing usage info for our `-prefork-child` flag
-		if f.Name == flagChild[1:] {
-			return
-		}
-		s := fmt.Sprintf("  -%s", f.Name) // Two spaces before -; see next two comments.
-		name, usage := flag.UnquoteUsage(f)
-		if len(name) > 0 {
-			s += " " + name
-		}
-		// Boolean flags of one ASCII letter are so common we
-		// treat them specially, putting their usage on the same line.
-		if len(s) <= 4 { // space, space, '-', 'x'.
-			s += "\t"
-		} else {
-			// Four spaces before the tab triggers good alignment
-			// for both 4- and 8-space tab stops.
-			s += "\n    \t"
-		}
-		s += strings.Replace(usage, "\n", "\n    \t", -1)
-
-		if !isZeroValue(f, f.DefValue) {
-			if _, ok := f.Value.(*stringValue); ok {
-				// put quotes on the value
-				s += fmt.Sprintf(" (default %q)", f.DefValue)
-			} else {
-				s += fmt.Sprintf(" (default %v)", f.DefValue)
-			}
-		}
-		fmt.Fprint(flag.CommandLine.Output(), s, "\n")
-	})
-}
-
-// isZeroValue determines whether the string represents the zero
-// value for a flag.
-// This code is copied from the stdlib.
-func isZeroValue(f *flag.Flag, value string) bool {
-	// Build a zero value of the flag's Value type, and see if the
-	// result of calling its String method equals the value passed in.
-	// This works unless the Value type is itself an interface type.
-	typ := reflect.TypeOf(f.Value)
-	var z reflect.Value
-	if typ.Kind() == reflect.Ptr {
-		z = reflect.New(typ.Elem())
-	} else {
-		z = reflect.Zero(typ)
-	}
-	return value == z.Interface().(flag.Value).String()
 }

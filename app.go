@@ -649,7 +649,7 @@ const (
 
 func (app *App) startupMessage(addr string, tls bool, pids string) {
 	// ignore child processes
-	if utils.GetArgument(flagChild) {
+	if app.IsChild() {
 		return
 	}
 	//
