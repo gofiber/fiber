@@ -516,7 +516,7 @@ func (ctx *Ctx) JSON(data interface{}) error {
 	// Set http headers
 	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
 	ctx.Fasthttp.Response.SetBodyRaw(raw)
-	// Success!
+
 	return nil
 }
 
