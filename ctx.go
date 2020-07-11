@@ -196,7 +196,7 @@ func (ctx *Ctx) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
 		ctx.Type(filepath.Ext(fname))
-		ctx.Set(HeaderContentDisposition, `attachment; filename="`+fname+`"`)
+		ctx.Set(HeaderContentDisposition, `attachment; filename="`+url.QueryEscape(fname)+`"`)
 		return
 	}
 	ctx.Set(HeaderContentDisposition, "attachment")
