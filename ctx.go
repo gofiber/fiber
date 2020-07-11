@@ -505,9 +505,27 @@ func (ctx *Ctx) Is(extension string) bool {
 	return utils.Trim(header, ' ') == extensionHeader
 }
 
-// JSON converts any interface or string to JSON using Jsoniter.
+// JSON converts any interface or string to JSON.
 // This method also sets the content header to application/json.
 func (ctx *Ctx) JSON(data interface{}) error {
+	// Reset response body
+	ctx.Fasthttp.Response.ResetBody()
+
+	encoder := json.NewEncoder(ctx.Fasthttp.Response.BodyWriter())
+	encoder.SetEscapeHTML(true)
+	// Write data to response body writer directly
+	if err := encoder.Encode(data); err != nil {
+		return err
+	}
+	// Set http headers
+	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	// Success!
+	return nil
+}
+
+// JSON converts any interface or string to JSON using Jsoniter.
+// This method also sets the content header to application/json.
+func (ctx *Ctx) JSONOld(data interface{}) error {
 	raw, err := json.Marshal(&data)
 	// Check for errors
 	if err != nil {
