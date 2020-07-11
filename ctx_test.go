@@ -1531,3 +1531,42 @@ func Benchmark_Ctx_SendBytes_B(b *testing.B) {
 	}
 	utils.AssertEqual(b, []byte("Hello, world!"), c.Fasthttp.Response.Body())
 }
+
+func Test_Ctx_QueryParser(t *testing.T) {
+	t.Parallel()
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	type Query struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	ctx.Fasthttp.Request.SetBody([]byte(``))
+	ctx.Fasthttp.Request.Header.SetContentType("")
+	ctx.Fasthttp.Request.URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	q := new(Query)
+	utils.AssertEqual(t, nil, ctx.QueryParser(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
+}
+
+func Benchmark_Ctx_QueryParser(b *testing.B) {
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	type Query struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	ctx.Fasthttp.Request.SetBody([]byte(``))
+	ctx.Fasthttp.Request.Header.SetContentType("")
+	ctx.Fasthttp.Request.URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	q := new(Query)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		ctx.QueryParser(q)
+	}
+	utils.AssertEqual(b, nil, ctx.QueryParser(q))
+}
