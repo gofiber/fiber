@@ -87,13 +87,22 @@ const (
 	LoggerTagQuery         = "query:"
 	LoggerTagForm          = "form:"
 	LoggerTagCookie        = "cookie:"
-	LoggerTagStatusColored = "statusColored"
-	LoggerTagMethodColored = "methodColored"
+	LoggerTagColorBlack    = "black"
+	LoggerTagColorRed      = "red"
+	LoggerTagColorGreen    = "green"
+	LoggerTagColorYellow   = "yellow"
+	LoggerTagColorBlue     = "blue"
+	LoggerTagColorMagenta  = "magenta"
+	LoggerTagColorCyan     = "cyan"
+	LoggerTagColorWhite    = "white"
+	LoggerTagColorReset    = "resetColor"
+	LoggerTagStatusColor   = "statusColor"
+	LoggerTagMethodColor   = "methodColor"
 )
 
 // NEW : Color variables
 const (
-	// cBlack   = "\u001b[90m"
+	cBlack   = "\u001b[90m"
 	cRed     = "\u001b[91m"
 	cGreen   = "\u001b[92m"
 	cYellow  = "\u001b[93m"
@@ -247,7 +256,25 @@ func logger(config LoggerConfig) fiber.Handler {
 				if c.Error() != nil {
 					return buf.WriteString(c.Error().Error())
 				}
-			case LoggerTagStatusColored:
+			case LoggerTagColorBlack:
+				return buf.WriteString(cBlack)
+			case LoggerTagColorRed:
+				return buf.WriteString(cRed)
+			case LoggerTagColorGreen:
+				return buf.WriteString(cGreen)
+			case LoggerTagColorYellow:
+				return buf.WriteString(cYellow)
+			case LoggerTagColorBlue:
+				return buf.WriteString(cBlue)
+			case LoggerTagColorMagenta:
+				return buf.WriteString(cMagenta)
+			case LoggerTagColorCyan:
+				return buf.WriteString(cCyan)
+			case LoggerTagColorWhite:
+				return buf.WriteString(cWhite)
+			case LoggerTagColorReset:
+				return buf.WriteString(cReset)
+			case LoggerTagStatusColor:
 				responseStatus = c.Fasthttp.Response.StatusCode()
 				switch {
 				case responseStatus >= 200 && responseStatus < 300:
@@ -259,8 +286,8 @@ func logger(config LoggerConfig) fiber.Handler {
 				default:
 					statusColor = cRed
 				}
-				return buf.WriteString(statusColor + strconv.Itoa(responseStatus) + cReset)
-			case LoggerTagMethodColored:
+				return buf.WriteString(statusColor)
+			case LoggerTagMethodColor:
 				requestMethod = c.Method()
 				switch requestMethod {
 				case "GET":
@@ -280,7 +307,7 @@ func logger(config LoggerConfig) fiber.Handler {
 				default:
 					methodColor = cReset
 				}
-				return buf.WriteString(methodColor + requestMethod + cReset)
+				return buf.WriteString(methodColor)
 			default:
 				switch {
 				case strings.HasPrefix(tag, LoggerTagHeader):

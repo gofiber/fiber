@@ -60,7 +60,7 @@ type LoggerConfig struct {
   // - url
   // - host
   // - method
-  // - methodColored
+  // - methodColor
   // - path
   // - protocol
   // - route
@@ -68,7 +68,7 @@ type LoggerConfig struct {
   // - ua
   // - latency
   // - status
-  // - statusColored
+  // - statusColor
   // - body
   // - error
   // - bytesSent
@@ -77,6 +77,7 @@ type LoggerConfig struct {
   // - query:<key>
   // - form:<key>
   // - cookie:<key>
+  // - <color> - e.g. black, red, blue, yellow, cyan, magenta, white, resetColor
   //
   // Optional. Default: ${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n
   Format string
