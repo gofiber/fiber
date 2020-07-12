@@ -210,21 +210,22 @@ type Static struct {
 }
 
 // default settings
-var (
-	defaultBodyLimit       = 4 * 1024 * 1024
-	defaultConcurrency     = 256 * 1024
-	defaultReadBufferSize  = 4096
-	defaultWriteBufferSize = 4096
-	defaultErrorHandler    = func(ctx *Ctx, err error) {
-		code := StatusInternalServerError
-		if e, ok := err.(*Error); ok {
-			code = e.Code
-		}
-		ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-		ctx.Status(code).SendString(err.Error())
-	}
+const (
+	defaultBodyLimit            = 4 * 1024 * 1024
+	defaultConcurrency          = 256 * 1024
+	defaultReadBufferSize       = 4096
+	defaultWriteBufferSize      = 4096
 	defaultCompressedFileSuffix = ".fiber.gz"
 )
+
+var defaultErrorHandler = func(ctx *Ctx, err error) {
+	code := StatusInternalServerError
+	if e, ok := err.(*Error); ok {
+		code = e.Code
+	}
+	ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+	ctx.Status(code).SendString(err.Error())
+}
 
 // New creates a new Fiber named instance.
 // You can pass an optional settings by passing a *Settings struct.
