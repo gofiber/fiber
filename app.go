@@ -189,22 +189,22 @@ type Settings struct {
 	// RedirectFixedPath bool
 }
 
-// Static struct
+// Static defines configuration options when defining static assets.
 type Static struct {
-	// This works differently than the github.com/gofiber/compression middleware
-	// The server tries minimizing CPU usage by caching compressed files.
+	// When set to true, the server tries minimizing CPU usage by caching compressed files.
+	// This works differently than the github.com/gofiber/compression middleware.
 	// Optional. Default value false
 	Compress bool
 
-	// Enables byte range requests if set to true.
+	// When set to true, enables byte range requests.
 	// Optional. Default value false
 	ByteRange bool
 
-	// Enable directory browsing.
+	// When set to true, enables directory browsing.
 	// Optional. Default value false.
 	Browse bool
 
-	// Index file for serving a directory.
+	// The name of the index file for serving a directory.
 	// Optional. Default value "index.html".
 	Index string
 }
