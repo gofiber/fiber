@@ -612,8 +612,8 @@ func Test_App_Deep_Group(t *testing.T) {
 	}
 
 	app := New()
-	gApi := app.Group("/api", dummyHandler)
-	gV1 := gApi.Group("/v1", dummyHandler)
+	gAPI := app.Group("/api", dummyHandler)
+	gV1 := gAPI.Group("/v1", dummyHandler)
 	gUser := gV1.Group("/user", dummyHandler)
 	gUser.Get("/authenticate", func(ctx *Ctx) {
 		runThroughCount++

@@ -73,7 +73,7 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 			fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
 		)
 		if err = cmd.Start(); err != nil {
-			return fmt.Errorf("failed to start a child prefork process, error: %v\n", err)
+			return fmt.Errorf("failed to start a child prefork process, error: %v", err)
 		}
 		// store child process
 		childs[cmd.Process.Pid] = cmd
