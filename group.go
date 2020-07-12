@@ -35,7 +35,7 @@ func (grp *Group) Use(args ...interface{}) *Route {
 			log.Fatalf("Use: Invalid Handler %v", reflect.TypeOf(arg))
 		}
 	}
-	return grp.app.register("USE", getGroupPath(grp.prefix, path), handlers...)
+	return grp.app.register(methodUse, getGroupPath(grp.prefix, path), handlers...)
 }
 
 // Get registers a route for GET methods that requests a representation
@@ -114,7 +114,7 @@ func (grp *Group) All(path string, handlers ...Handler) []*Route {
 func (grp *Group) Group(prefix string, handlers ...Handler) *Group {
 	prefix = getGroupPath(grp.prefix, prefix)
 	if len(handlers) > 0 {
-		grp.app.register("USE", prefix, handlers...)
+		grp.app.register(methodUse, prefix, handlers...)
 	}
 	return grp.app.Group(prefix)
 }
