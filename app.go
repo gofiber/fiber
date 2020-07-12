@@ -297,7 +297,8 @@ func (app *App) Use(args ...interface{}) *Route {
 			log.Fatalf("Use: Invalid Handler %v", reflect.TypeOf(arg))
 		}
 	}
-	return app.register("USE", prefix, handlers...)
+
+	return app.Add("USE", prefix, handlers...)
 }
 
 // Get registers a route for GET methods that requests a representation
