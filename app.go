@@ -304,7 +304,7 @@ func (app *App) Use(args ...interface{}) *Route {
 			log.Fatalf("Use: Invalid Handler %v", reflect.TypeOf(arg))
 		}
 	}
-	return app.register("USE", prefix, handlers...)
+	return app.register(methodUse, prefix, handlers...)
 }
 
 // Get registers a route for GET methods that requests a representation
@@ -382,7 +382,7 @@ func (app *App) All(path string, handlers ...Handler) []*Route {
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
 func (app *App) Group(prefix string, handlers ...Handler) *Group {
 	if len(handlers) > 0 {
-		app.register("USE", prefix, handlers...)
+		app.register(methodUse, prefix, handlers...)
 	}
 	return &Group{prefix: prefix, app: app}
 }
@@ -414,10 +414,10 @@ func (app *App) Routes() []*Route {
 				continue
 			}
 			// Don't duplicate USE routes
-			if app.stack[m][r].Method == "USE" {
+			if app.stack[m][r].Method == methodUse {
 				duplicate := false
 				for i := range routes {
-					if routes[i].Method == "USE" && routes[i].Name == app.stack[m][r].Name {
+					if routes[i].Method == methodUse && routes[i].Name == app.stack[m][r].Name {
 						duplicate = true
 					}
 				}

@@ -241,8 +241,10 @@ func methodInt(s string) int {
 		return 7
 	case MethodPatch:
 		return 8
+	case methodUse:
+		return 9
 	default:
-		return 0
+		return -1
 	}
 }
 
@@ -270,6 +272,7 @@ const (
 	MethodConnect = "CONNECT" // RFC 7231, 4.3.6
 	MethodOptions = "OPTIONS" // RFC 7231, 4.3.7
 	MethodTrace   = "TRACE"   // RFC 7231, 4.3.8
+	methodUse     = "USE"
 )
 
 // MIME types that are commonly used

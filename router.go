@@ -146,7 +146,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
-	if method != "USE" && methodInt(method) == 0 && method != MethodGet {
+	if methodInt(method) == -1 {
 		log.Fatalf("Add: Invalid HTTP method %s", method)
 	}
 	// A route requires atleast one ctx handler
@@ -172,7 +172,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 		pathPretty = utils.TrimRight(pathPretty, '/')
 	}
 	// Is layer a middleware?
-	var isUse = method == "USE"
+	var isUse = method == methodUse
 	// Is path a direct wildcard?
 	var isStar = pathPretty == "/*"
 	// Is path a root slash?
