@@ -89,7 +89,10 @@ type Settings struct {
 	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
 	CaseSensitive bool `json:"case_sensitive"`
 
-	// Enables handler values to be immutable even if you return from handler
+	// When enabled, this relinquishes the 0-allocation promise in certain
+	// cases in order to access the handler values (e.g. request bodies) in an
+	// immutable fashion so that these values are available even if you return
+	// from handler.
 	// Default: false
 	Immutable bool `json:"immutable"`
 
