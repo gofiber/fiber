@@ -79,7 +79,7 @@ type Views interface {
 	Render(io.Writer, string, interface{}, ...string) error
 }
 
-// AcquireCtx from pool
+// AcquireCtx retrieves a new Ctx from the pool.
 func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx := app.pool.Get().(*Ctx)
 	// Set app reference
@@ -98,7 +98,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	return ctx
 }
 
-// ReleaseCtx to pool
+// ReleaseCtx releases the ctx back into the pool.
 func (app *App) ReleaseCtx(ctx *Ctx) {
 	// Reset values
 	ctx.route = nil
@@ -310,7 +310,7 @@ func (ctx *Ctx) Context() context.Context {
 	return ctx.Fasthttp
 }
 
-// Cookie sets a cookie by passing a cookie struct
+// Cookie sets a cookie by passing a cookie struct.
 func (ctx *Ctx) Cookie(cookie *Cookie) {
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(cookie.Name)
@@ -334,10 +334,10 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 	fasthttp.ReleaseCookie(fcookie)
 }
 
-// Cookies is used for getting a cookie value by key
-// Defaults to empty string "" if the cookie doesn't exist.
+// Cookies is used for getting a cookie value by key.
+// Defaults to the empty string "" if the cookie doesn't exist.
 // If a default value is given, it will return that value if the cookie doesn't exist.
-// Returned value is only valid within the handler. Do not store any references.
+// The returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (ctx *Ctx) Cookies(key string, defaultValue ...string) string {
 	return defaultString(getString(ctx.Fasthttp.Request.Header.Cookie(key)), defaultValue)
@@ -420,10 +420,9 @@ func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
 
-// Global variables
 var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
 
-// Fresh When the response is still “fresh” in the client’s cache true is returned,
+// Fresh returns true when the response is still “fresh” in the client's cache,
 // otherwise false is returned to indicate that the client cache is now stale
 // and the full response should be sent.
 // When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
@@ -515,7 +514,7 @@ func (ctx *Ctx) IPs() []string {
 }
 
 // Is returns the matching content type,
-// if the incoming request’s Content-Type HTTP header field matches the MIME type specified by the type parameter
+// if the incoming request's Content-Type HTTP header field matches the MIME type specified by the type parameter
 func (ctx *Ctx) Is(extension string) bool {
 	extensionHeader := utils.GetMIME(extension)
 	if extensionHeader == "" {
@@ -571,7 +570,7 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	return nil
 }
 
-// Links joins the links followed by the property to populate the response’s Link HTTP header field.
+// Links joins the links followed by the property to populate the response's Link HTTP header field.
 func (ctx *Ctx) Links(link ...string) {
 	if len(link) == 0 {
 		return
@@ -765,7 +764,7 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 }
 
 // Redirect to the URL derived from the specified path, with specified status.
-// If status is not specified, status defaults to 302 Found
+// If status is not specified, status defaults to 302 Found.
 func (ctx *Ctx) Redirect(location string, status ...int) {
 	ctx.Set(HeaderLocation, location)
 	if len(status) > 0 {
@@ -934,13 +933,13 @@ func (ctx *Ctx) SendStatus(status int) {
 	}
 }
 
-// SendString sets the HTTP response body for string types
+// SendString sets the HTTP response body for string types.
 // This means no type assertion, recommended for faster performance
 func (ctx *Ctx) SendString(body string) {
 	ctx.Fasthttp.Response.SetBodyString(body)
 }
 
-// SendStream sets response body stream and optional body size
+// SendStream sets response body stream and optional body size.
 func (ctx *Ctx) SendStream(stream io.Reader, size ...int) {
 	if len(size) > 0 && size[0] >= 0 {
 		ctx.Fasthttp.Response.SetBodyStream(stream, size[0])
@@ -950,7 +949,7 @@ func (ctx *Ctx) SendStream(stream io.Reader, size ...int) {
 	}
 }
 
-// Set sets the response’s HTTP header field to the specified key, value.
+// Set sets the response's HTTP header field to the specified key, value.
 func (ctx *Ctx) Set(key string, val string) {
 	ctx.Fasthttp.Response.Header.Set(key, val)
 }
@@ -1021,7 +1020,7 @@ func (ctx *Ctx) Write(bodies ...interface{}) {
 	}
 }
 
-// XHR returns a Boolean property, that is true, if the request’s X-Requested-With header field is XMLHttpRequest,
+// XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (ctx *Ctx) XHR() bool {
 	return strings.EqualFold(ctx.Get(HeaderXRequestedWith), "xmlhttprequest")
