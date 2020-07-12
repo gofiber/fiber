@@ -228,13 +228,12 @@ var defaultErrorHandler = func(ctx *Ctx, err error) {
 }
 
 // New creates a new Fiber named instance.
-// You can pass an optional settings by passing a *Settings struct.
-//
-// - app.New()
-// - app.New(&fiber.Settings{
-//     Prefork: true,
-//     ServerHeader: "Fiber",
-//   })
+//  myApp := app.New()
+// You can pass an optional settings by passing a *Settings struct:
+//  myApp := app.New(&fiber.Settings{
+//      Prefork: true,
+//      ServerHeader: "Fiber",
+//  })
 func New(settings ...*Settings) *App {
 	// Create a new app
 	app := &App{
@@ -288,9 +287,9 @@ func New(settings ...*Settings) *App {
 // Middleware matches requests beginning with the provided prefix.
 // Providing a prefix is optional, it defaults to "/".
 //
-// - app.Use(handler)
-// - app.Use("/api", handler)
-// - app.Use("/api", handler, handler)
+//  app.Use(handler)
+//  app.Use("/api", handler)
+//  app.Use("/api", handler, handler)
 func (app *App) Use(args ...interface{}) *Route {
 	var prefix string
 	var handlers []Handler
@@ -403,10 +402,9 @@ func NewError(code int, message ...string) *Error {
 }
 
 // Routes returns all registered routes
-//
-// for _, r := range app.Routes() {
-// 	fmt.Printf("%s\t%s\n", r.Method, r.Path)
-// }
+//  for _, r := range app.Routes() {
+//  	fmt.Printf("%s\t%s\n", r.Method, r.Path)
+//  }
 func (app *App) Routes() []*Route {
 	routes := make([]*Route, 0)
 	for m := range app.stack {
@@ -444,7 +442,7 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 	return app.Listener(ln, tlsconfig...)
 }
 
-// Listener can be used to pass a custom listener
+// Listener can be used to pass a custom listener.
 // You can pass an optional *tls.Config to enable TLS.
 // This method does not support the Prefork feature
 // To use Prefork, please use app.Listen()
@@ -465,10 +463,10 @@ func (app *App) Listener(ln net.Listener, tlsconfig ...*tls.Config) error {
 // Listen serves HTTP requests from the given addr or port.
 // You can pass an optional *tls.Config to enable TLS.
 //
-// - app.Listen(8080)
-// - app.Listen("8080")
-// - app.Listen(":8080")
-// - app.Listen("127.0.0.1:8080")
+//  app.Listen(8080)
+//  app.Listen("8080")
+//  app.Listen(":8080")
+//  app.Listen("127.0.0.1:8080")
 func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	// Convert address to string
 	addr, ok := address.(string)
@@ -505,7 +503,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	return app.server.Serve(ln)
 }
 
-// Handler returns the server handler
+// Handler returns the server handler.
 func (app *App) Handler() fasthttp.RequestHandler {
 	return app.handler
 }
@@ -526,7 +524,7 @@ func (app *App) Shutdown() error {
 	return app.server.Shutdown()
 }
 
-// Test is used for internal debugging by passing a *http.Request
+// Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
 func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, error) {
 	timeout := 1000 // 1 second default
