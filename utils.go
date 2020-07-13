@@ -13,7 +13,16 @@ import (
 	"time"
 
 	utils "github.com/gofiber/utils"
+	bytebufferpool "github.com/valyala/bytebufferpool"
+	fasthttp "github.com/valyala/fasthttp"
 )
+
+func quoteString(raw string) string {
+	bb := bytebufferpool.Get()
+	quoted := string(fasthttp.AppendQuotedArg(bb.B, getBytes(raw)))
+	bytebufferpool.Put(bb)
+	return quoted
+}
 
 // Scan stack if other methods match
 func setMethodNotAllowed(ctx *Ctx) {

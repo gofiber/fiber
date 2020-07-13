@@ -197,12 +197,7 @@ func (ctx *Ctx) Attachment(filename ...string) {
 		fname := filepath.Base(filename[0])
 		ctx.Type(filepath.Ext(fname))
 
-		bb := bytebufferpool.Get()
-		bb.SetString(`attachment; filename="`)
-		b := fasthttp.AppendQuotedArg(bb.B, getBytes(fname))
-		b = append(b, '"')
-		ctx.Set(HeaderContentDisposition, string(b))
-		bytebufferpool.Put(bb)
+		ctx.Set(HeaderContentDisposition, `attachment; filename="`+quoteString(fname)+`"`)
 		return
 	}
 	ctx.Set(HeaderContentDisposition, "attachment")
@@ -352,7 +347,7 @@ func (ctx *Ctx) Download(file string, filename ...string) error {
 	if len(filename) > 0 {
 		fname = filename[0]
 	}
-	ctx.Set(HeaderContentDisposition, "attachment; filename="+fname)
+	ctx.Set(HeaderContentDisposition, `attachment; filename="`+quoteString(fname)+`"`)
 	return ctx.SendFile(file)
 }
 
