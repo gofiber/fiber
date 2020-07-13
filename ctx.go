@@ -257,7 +257,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	}
 	// query params
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
-		log.Println("Converting querystring using BodyParser will be deprecated, please use ctx.QueryParser")
+		fmt.Println("Parsing query strings using `BodyParser` is deprecated since v1.12.7, please us `ctx.QueryParser` instead")
 		data := make(map[string][]string)
 		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
 			data[getString(key)] = append(data[getString(key)], getString(val))
