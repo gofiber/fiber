@@ -73,7 +73,7 @@
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b>是一个基于<a href="https://github.com/expressjs/express">Express的</a> <b>Web框架</b>，建立在<a href="https://golang.org/doc/">Go</a>语言写的 <b>最快的</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>HTTP引擎的基础上。皆在</b>简化</b> <b>零内存分配</b>和<b>提高性能</b>，以便<b>快速</b>开发。
+  <b>Fiber</b>是一个受到<a href="https://github.com/expressjs/express">Express</a>启发的<b>Web框架</b>，建立在<a href="https://golang.org/doc/">Go</a>语言写的<b>最快的</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>HTTP引擎的基础上。旨在<b>简化</b> <b>零内存分配</b>和<b>提高性能</b>，以便<b>快速</b>开发。
 </p>
 
 ## ⚡️ 快速入门
@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 性能
 
-这些测试由[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)和[Go Web执行](https://github.com/smallnest/go-web-framework-benchmark) 。如果要查看所有结果，请访问我们的[Wiki](https://docs.gofiber.io/benchmarks) 。
+这些测试由[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)和[Go Web](https://github.com/smallnest/go-web-framework-benchmark) 执行。如果要查看所有结果，请访问我们的[Wiki](https://docs.gofiber.io/benchmarks) 。
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -105,7 +105,7 @@ func main() {
 
 ## ⚙️ 安装
 
-首先， [下载](https://golang.org/dl/)并安装Go。 `1.11`或更高。
+首先， [下载](https://golang.org/dl/)并安装Go。 需要`1.11`或更高版本。
 
 使用[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)命令完成安装：
 
@@ -122,28 +122,28 @@ go get -u github.com/gofiber/fiber
 - [静态文件](https://docs.gofiber.io/application#static)服务
 - 极限[表现](https://docs.gofiber.io/benchmarks)
 - [内存占用低](https://docs.gofiber.io/benchmarks)
-- Express [API端点](https://docs.gofiber.io/context)
-- 中间件和[Next](https://docs.gofiber.io/context#next)支持
+- [API接口](https://docs.gofiber.io/context)
+- [中间件](https://docs.gofiber.io/middleware)和[Next](https://docs.gofiber.io/context#next)支持
 - [快速的](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
-- [Template engines](https://github.com/gofiber/template)
-- [WebSocket support](https://docs.gofiber.io/middleware#websocket)
-- [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Available in [15 languages](https://docs.gofiber.io/)
-- 以及更多[文档](https://docs.gofiber.io/)
+- [模版引擎](https://github.com/gofiber/template)
+- [WebSocket支持](https://docs.gofiber.io/middleware#websocket)
+- [频率限制器](https://docs.gofiber.io/middleware#limiter)
+- [15国语言](https://docs.gofiber.io/)
+- 以及更多请[探索文档](https://docs.gofiber.io/)
 
 ## 💡 哲学
 
-从[Node.js](https://nodejs.org/en/about/)切换到[Go的](https://golang.org/doc/)新gopher在开始构建Web应用程序或微服务之前正在应对学习过程。 Fiber作为一个**Web框架** ，是按照**极简主义**的思想并遵循**UNIX方式创建的**，因此新的gopher可以以热烈和可信赖的欢迎**方式**迅速进入Go的世界。
+从[Node.js](https://nodejs.org/en/about/)切换到[Go](https://golang.org/doc/)的新`gopher`在开始构建`Web`应用程序或微服务之前正在应对学习曲线。 `Fiber`作为一个**Web框架** ，是按照**极简主义**的思想并遵循**UNIX方式**创建的，因此新的`gopher`可以在热烈和可信赖的欢迎中迅速进入`Go`的世界。
 
-Fiber **受** Internet上最流行的Web框架Expressjs的**启发** 。我们结合了Express的**易用**性和Go的**原始性能** 。如果您曾经在Node.js上实现过Web应用程序(*使用Express.js或类似工具*)，那么许多方法和原理对您来说似乎**非常易懂**。
+`Fiber`受到了互联网上最流行的`Web`框架`Express`的**启发** 。我们结合了`Express`的**易用性**和`Go`的**原始性能** 。如果您曾经在`Node.js`上实现过`Web`应用程序(*使用Express.js或类似工具*)，那么许多方法和原理对您来说应该**非常易懂**。
+
+我们**关注** _整个互联网_ 用户在[issues](https://github.com/gofiber/fiber/issues)和Discord [channel](https://gofiber.io/discord)的消息，为了创建一个**迅速**，**灵活**以及**友好**的`Go web`框架，满足**任何**任务，**最后期限**和开发者**技能**。就像`Express`在`JavaScript`世界中一样。
 
 ## 👀 示例
 
-下面列出了一些常见示例。如果您想查看更多代码示例，请访问我们的[Recipes存储库](https://github.com/gofiber/recipes)或访问我们的[API文档](https://docs.gofiber.io) 。
+下面列出了一些常见示例。如果您想查看更多代码示例，请访问我们的[Recipes](https://github.com/gofiber/recipes)代码库或[API文档](https://docs.gofiber.io) 。
 
-Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
-
-#### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
+#### 📖 [**基础路由**](https://docs.gofiber.io/#basic-routing)
 
 ```go
 func main() {
@@ -183,7 +183,7 @@ func main() {
 }
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**静态文件**](https://docs.gofiber.io/application#static)服务
 
 ```go
 func main() {
@@ -204,7 +204,7 @@ func main() {
 }
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**中间件**](https://docs.gofiber.io/middleware)和[**Next**](https://docs.gofiber.io/context#next)
 
 ```go
 func main() {
@@ -233,19 +233,19 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 展示更多代码示例</summary>
 
-### Views engines
+### 模版引擎
 
-📖 [Settings](https://docs.gofiber.io/application#settings)
-📖 [Engines](https://github.com/gofiber/template)
-📖 [Render](https://docs.gofiber.io/context#render)
+📖 [配置](https://docs.gofiber.io/application#settings)
+📖 [模版引擎](https://github.com/gofiber/template)
+📖 [渲染](https://docs.gofiber.io/context#render)
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
+如果未设置模版引擎，则`Fiber`默认使用[html/template](https://golang.org/pkg/html/template/)。
 
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+如果您要执行部分模版或使用其他引擎，例如[amber](https://github.com/eknkc/amber)，[handlebars](https://github.com/aymerick/raymond)，[mustache](https://github.com/cbroglie/mustache)或者[pug](https://github.com/Joker/jade)等等
 
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
+查看我们的[Template](https://github.com/gofiber/template)包，该包支持多个模版引擎。
 
 ```go
 import (
@@ -274,9 +274,9 @@ func main() {
 }
 ```
 
-### Grouping routes into chains
+### 组合路由链
 
-📖 [Group](https://docs.gofiber.io/application#group)
+📖 [路由分组](https://docs.gofiber.io/application#group)
 
 ```go
 func main() {
@@ -299,7 +299,7 @@ func main() {
 }
 ```
 
-### Middleware logger
+### 访问日志中间件
 
 📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
 
@@ -330,7 +330,7 @@ func main() {
   app.Listen(3000)
 }
 ```
-### Cross-Origin Resource Sharing (CORS)
+### 跨域资源共享(CORS)
 
 📖 [CORS](https://docs.gofiber.io/middleware#cors)
 
@@ -350,13 +350,13 @@ func main() {
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+通过在请求头中设置`Origin`传递任何域来检查CORS：
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
-### Custom 404 response
+### 自定义404相应
 
 📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)
 
@@ -384,7 +384,7 @@ func main() {
 }
 ```
 
-### JSON Response
+### JSON响应
 
 📖 [JSON](https://docs.gofiber.io/context#json)
 
@@ -414,7 +414,7 @@ func main() {
 }
 ```
 
-### WebSocket Upgrade
+### WebSocket支持
 
 📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
 
@@ -448,7 +448,7 @@ func main() {
 }
 ```
 
-### Recover middleware
+### 恢复(panic)中间件
 
 📖 [Recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)
 
@@ -472,35 +472,35 @@ func main() {
 ```
 </details>
 
-## 🧬 Fiber Middleware
+## 🧬 Fiber中间件
 
-The Fiber middleware modules listed here are maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+此处列出的`Fiber`中间件模块由[Fiber团队](https://github.com/orgs/gofiber/people)维护。
 
-| Middleware | Description | Built-in middleware |
+| 中间件 | 描述 | 内置中间件 |
 | :--- | :--- | :--- |
-| [adaptor](https://github.com/gofiber/adaptor) | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn! | - |
-| [basicauth](https://github.com/gofiber/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. | - |
-| [compress](https://github.com/gofiber/fiber/blob/master/middleware/compress.md) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. | `middleware.Compress()` |
-| [cors](https://github.com/gofiber/cors) | Enable cross-origin resource sharing \(CORS\) with various options. | - |
-| [csrf](https://github.com/gofiber/csrf) | Protect from CSRF exploits. | - |
-| [filesystem](https://github.com/gofiber/fiber/blob/master/middleware/filesystem.md) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary | - |
-| [favicon](https://github.com/gofiber/fiber/blob/master/middleware/favicon.md) | Ignore favicon from logs or serve from memory if a file path is provided. | `middleware.Favicon()` |
-| [helmet](https://github.com/gofiber/helmet) | Helps secure your apps by setting various HTTP headers. | - |
-| [jwt](https://github.com/gofiber/jwt) | JWT returns a JSON Web Token \(JWT\) auth middleware. | - |
-| [keyauth](https://github.com/gofiber/keyauth) | Key auth middleware provides a key based authentication. | - |
-| [limiter](https://github.com/gofiber/limiter) | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset. | - |
-| [logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md) | HTTP request/response logger. | `middleware.Logger()` |
-| [pprof](https://github.com/gofiber/pprof) | Special thanks to Matthew Lee \(@mthli\) | - |
-| [recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md) | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md). | `middleware.Recover()` |
-| [rewrite](https://github.com/gofiber/rewrite) | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. | - |
-| [requestid](https://github.com/gofiber/fiber/blob/master/middleware/request_id.md) | Request ID middleware generates a unique id for a request. | `middleware.RequestID()` |
-| [session](https://github.com/gofiber/session) | This session middleware is build on top of fasthttp/session by @savsgio MIT. Special thanks to @thomasvvugt for helping with this middleware. | - |
-| [template](https://github.com/gofiber/template) | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required. | - |
-| [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support! | - |
+| [adaptor](https://github.com/gofiber/adaptor) | `net/http`处理程序与`Fiber`处理程序之间的适配器，特别感谢 @arsmn! | - |
+| [basicauth](https://github.com/gofiber/basicauth) | 基本身份验证中间件提供HTTP基本身份验证。验证有效时，它调用下一个处理程序，否则返回`401 Unauthorized`响应。 | - |
+| [compress](https://github.com/gofiber/fiber/blob/master/middleware/compress.md) | `Fiber`的压缩中间件，默认情况下支持`deflate`，`gzip`和`brotli`。 | `middleware.Compress()` |
+| [cors](https://github.com/gofiber/cors) | 使用各种选项启用跨域资源共享（CORS）。 | - |
+| [csrf](https://github.com/gofiber/csrf) | 保护免受CSRF攻击。 | - |
+| [filesystem](https://github.com/gofiber/fiber/blob/master/middleware/filesystem.md) | `Fiber`的FileSystem中间件，特别感谢 Alireza Salary | - |
+| [favicon](https://github.com/gofiber/fiber/blob/master/middleware/favicon.md) | 如果提供了`favicon`文件路径，则忽略日志中的图标或从内存中提供图标。 | `middleware.Favicon()` |
+| [helmet](https://github.com/gofiber/helmet) | 通过设置各种HTTP标头来保护您的应用程序。 | - |
+| [jwt](https://github.com/gofiber/jwt) | JWT是返回JSON Web令牌（JWT）的身份验证中间件。 | - |
+| [keyauth](https://github.com/gofiber/keyauth) | 密钥身份验证中间件提供基于密钥的身份验证。 | - |
+| [limiter](https://github.com/gofiber/limiter) | `Fiber`的频率限制中间件。用于限制对公共API的重复请求，例如密码重置。 | - |
+| [logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md) | HTTP 访问日志中间件。 | `middleware.Logger()` |
+| [pprof](https://github.com/gofiber/pprof) | 特别感谢 Matthew Lee （@mthli） | - |
+| [recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md) | 恢复中间件可从堆栈链中任何地方的`panic`中恢复，并将控制权交给集中式[错误处理器](error-handling.md). | `middleware.Recover()` |
+| [rewrite](https://github.com/gofiber/rewrite) | `Rewrite`中间件根据提供的规则重写`URL`路径。它对于向后兼容或创建更简洁，更具描述性的链接很有帮助。 | - |
+| [requestid](https://github.com/gofiber/fiber/blob/master/middleware/request_id.md) | Request ID中间件为请求生成唯一的ID。 | `middleware.RequestID()` |
+| [session](https://github.com/gofiber/session) | `session`中间件通过了 @savsgio MIT 许可，建立在`fasthttp/session`之上。特别感谢 @thomasvvugt 帮助完成此中间件。 | - |
+| [template](https://github.com/gofiber/template) | 该软件包包含8个模板引擎，需要配合Fiber`v1.10.x`以及Go`1.13`或更高版本使用。 | - |
+| [websocket](https://github.com/gofiber/websocket) | `Fiber`基于`Fasthttp WebSocket`的中间件，支持`Locals`功能！ | - |
 
-## 🌱 Third Party Middlewares
+## 🌱 第三方中间件
 
-This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+这是由`Fiber`社区创建的中间件的列表，如果您想看到自己的中间件，请创建`PR`。
 - [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
@@ -529,22 +529,25 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [Fiber v1.9.6 🔥 How to improve performance by 817% and stay fast, flexible and friendly?](https://dev.to/koddr/fiber-v1-9-5-how-to-improve-performance-by-817-and-stay-fast-flexible-and-friendly-2dp6) - _12 May 2020_
 - [The road to web-based authentication with Fiber ⚡](https://vugt.me/the-road-to-web-based-authentication-with-fiber/) - _20 May 2020_
 - [Building an Express-style API in Go with Fiber](https://blog.logrocket.com/express-style-api-go-fiber/) - _10 June 2020_
+- [基于golang fiber和angular开发web](https://zhuanlan.zhihu.com/p/148925642) - _19 June 2020_
+- [基于延迟计算令牌桶的gofiber频率限制中间件实现](https://zhuanlan.zhihu.com/p/149308936) - _20 June 2020_
 - [Construir una API en Golang con Fiber 🇪🇸](https://enbonnet.me/article/53/construir-api-golang-con-fiber) - _28 June 2020_
 - [📺Why Go Fiber Is THE New Framework To Learn](https://www.youtube.com/watch?v=kvwsPeWDLM8) - _29 June 2020_
+- [解析Gofiber路由管理](https://zhuanlan.zhihu.com/p/152494502) - _08 July 2020_
 
 ## 👍 贡献
 
 如果您要说声**谢谢**或支持`Fiber`的积极发展：
 
-1. 将[GitHub Star](https://github.com/gofiber/fiber/stargazers)添加到项目中。
-2. [在Twitter上](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)发布有关项目[的推文](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)。
+1. 为`Fiber`[GitHub Star](https://github.com/gofiber/fiber/stargazers)点个⭐星星。
+2. 在[Twitter](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)上发布有关项目的[推文](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)。
 3. 在[Medium](https://medium.com/)，[Dev.to](https://dev.to/)或个人博客上写评论或教程。
-4. Help us to translate our API Documentation via [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
-5. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+4. 帮助我们通过[Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)翻译我们的API文档
+5. 通过捐赠[一杯咖啡](https://buymeacoff.ee/fenny)来支持本项目。
 
-## ☕ Supporters
+## ☕ 支持者
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny)
+`Fibre`是一个开源项目，依靠捐赠来支付账单，例如我们的域名，`gitbook`，`netlify`和无服务器托管。如果要支持`Fiber`，可以 ☕ [**在这里买一杯咖啡**](https://buymeacoff.ee/fenny)
 
 |                                                             | User                                             | Donation |
 | :---------------------------------------------------------- | :----------------------------------------------- | :-------- |
