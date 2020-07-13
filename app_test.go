@@ -639,6 +639,7 @@ func Test_App_Next_Method(t *testing.T) {
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 }
 
+// go test -run Test_App_Listen
 func Test_App_Listen(t *testing.T) {
 	app := New(&Settings{
 		DisableStartupMessage: true,
@@ -658,6 +659,7 @@ func Test_App_Listen(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen("4010"))
 }
 
+// go test -run Test_App_Listener
 func Test_App_Listener(t *testing.T) {
 	app := New(&Settings{
 		DisableStartupMessage: true,

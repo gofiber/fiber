@@ -658,7 +658,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	if app.IsChild() {
 		return
 	}
-	//
+	// ascii logo
 	var logo string
 	logo += `%s        _______ __                 %s` + "\n"
 	logo += `%s  ____%s / ____(_) /_  ___  _____  %s` + "\n"

@@ -60,14 +60,17 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 			_ = proc.Process.Kill()
 		}
 	}()
+
 	// collect child pids
 	pids := []string{}
+
 	// launch child procs
 	for i := 0; i < max; i++ {
 		/* #nosec G204 */
 		cmd := exec.Command(os.Args[0], os.Args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+
 		// add fiber prefork child flag into child proc env
 		cmd.Env = append(os.Environ(),
 			fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
@@ -75,9 +78,11 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		if err = cmd.Start(); err != nil {
 			return fmt.Errorf("failed to start a child prefork process, error: %v", err)
 		}
+
 		// store child process
 		childs[cmd.Process.Pid] = cmd
 		pids = append(pids, strconv.Itoa(cmd.Process.Pid))
+
 		// notify master if child crashes
 		go func() {
 			channel <- child{cmd.Process.Pid, cmd.Wait()}
