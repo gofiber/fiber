@@ -604,7 +604,7 @@ func (ctx *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
 		method := utils.ToUpper(override[0])
 		mINT := methodInt(method)
-		if mINT == 0 && method != MethodGet {
+		if mINT == -1 {
 			return ctx.method
 		}
 		ctx.method = method

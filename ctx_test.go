@@ -622,6 +622,9 @@ func Test_Ctx_Method(t *testing.T) {
 	utils.AssertEqual(t, MethodGet, ctx.Method())
 	ctx.Method(MethodPost)
 	utils.AssertEqual(t, MethodPost, ctx.Method())
+
+	ctx.Method("MethodInvalid")
+	utils.AssertEqual(t, MethodPost, ctx.Method())
 }
 
 // go test -run Test_Ctx_MultipartForm
