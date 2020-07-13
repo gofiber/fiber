@@ -241,7 +241,7 @@ func main() {
 📖 [模版引擎](https://github.com/gofiber/template)
 📖 [渲染](https://docs.gofiber.io/context#render)
 
-如果未设置模版引擎，则Fiber默认使用[html/template](https://golang.org/pkg/html/template/)。
+如果未设置模版引擎，则`Fiber`默认使用[html/template](https://golang.org/pkg/html/template/)。
 
 如果您要执行部分模版或使用其他引擎，例如[amber](https://github.com/eknkc/amber)，[handlebars](https://github.com/aymerick/raymond)，[mustache](https://github.com/cbroglie/mustache)或者[pug](https://github.com/Joker/jade)等等
 
@@ -474,12 +474,12 @@ func main() {
 
 ## 🧬 Fiber中间件
 
-此处列出的Fiber中间件模块由[Fiber团队](https://github.com/orgs/gofiber/people)维护。
+此处列出的`Fiber`中间件模块由[Fiber团队](https://github.com/orgs/gofiber/people)维护。
 
 | 中间件 | 描述 | 内置中间件 |
 | :--- | :--- | :--- |
-| [adaptor](https://github.com/gofiber/adaptor) | `net/http`处理程序与`Fiber`请求处理程序之间的适配器，特别感谢 @arsmn! | - |
-| [basicauth](https://github.com/gofiber/basicauth) | 基本身份验证中间件提供HTTP基本身份验证。验证有效时，它调用下一个处理程序，否则调用`401 Unauthorized`。 | - |
+| [adaptor](https://github.com/gofiber/adaptor) | `net/http`处理程序与`Fiber`处理程序之间的适配器，特别感谢 @arsmn! | - |
+| [basicauth](https://github.com/gofiber/basicauth) | 基本身份验证中间件提供HTTP基本身份验证。验证有效时，它调用下一个处理程序，否则返回`401 Unauthorized`响应。 | - |
 | [compress](https://github.com/gofiber/fiber/blob/master/middleware/compress.md) | `Fiber`的压缩中间件，默认情况下支持`deflate`，`gzip`和`brotli`。 | `middleware.Compress()` |
 | [cors](https://github.com/gofiber/cors) | 使用各种选项启用跨域资源共享（CORS）。 | - |
 | [csrf](https://github.com/gofiber/csrf) | 保护免受CSRF攻击。 | - |
