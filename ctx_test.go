@@ -933,6 +933,7 @@ func Test_Ctx_Download(t *testing.T) {
 	expect, err := ioutil.ReadAll(f)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, expect, ctx.Fasthttp.Response.Body())
+	utils.AssertEqual(t, `attachment; filename="Awesome+File%21"`, string(ctx.Fasthttp.Response.Header.Peek(HeaderContentDisposition)))
 }
 
 // go test -race -run Test_Ctx_SendFile

@@ -7,6 +7,8 @@ package fiber
 import (
 	"bytes"
 	"fmt"
+	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp"
 	"hash/crc32"
 	"net"
 	"strings"
@@ -14,6 +16,13 @@ import (
 
 	utils "github.com/gofiber/utils"
 )
+
+func quoteString(raw string) string {
+	bb := bytebufferpool.Get()
+	quoted := string(fasthttp.AppendQuotedArg(bb.B, getBytes(raw)))
+	bytebufferpool.Put(bb)
+	return quoted
+}
 
 // Scan stack if other methods match
 func setMethodNotAllowed(ctx *Ctx) {
