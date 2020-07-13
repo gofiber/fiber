@@ -1536,6 +1536,7 @@ func Benchmark_Ctx_SendBytes_B(b *testing.B) {
 	utils.AssertEqual(b, []byte("Hello, world!"), c.Fasthttp.Response.Body())
 }
 
+// go test -run Benchmark_Ctx_QueryParser
 func Test_Ctx_QueryParser(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1554,6 +1555,7 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, 2, len(q.Hobby))
 }
 
+// go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
 func Benchmark_Ctx_QueryParser(b *testing.B) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
