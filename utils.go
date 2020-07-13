@@ -7,14 +7,14 @@ package fiber
 import (
 	"bytes"
 	"fmt"
-	"github.com/valyala/bytebufferpool"
-	"github.com/valyala/fasthttp"
 	"hash/crc32"
 	"net"
 	"strings"
 	"time"
 
 	utils "github.com/gofiber/utils"
+	bytebufferpool "github.com/valyala/bytebufferpool"
+	fasthttp "github.com/valyala/fasthttp"
 )
 
 func quoteString(raw string) string {
