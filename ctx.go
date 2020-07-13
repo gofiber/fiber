@@ -647,7 +647,7 @@ func (ctx *Ctx) Next(err ...error) {
 
 // OriginalURL contains the original request URL.
 // Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
+// Make copies or use the Immutable setting to use the value outside the Handler.
 func (ctx *Ctx) OriginalURL() string {
 	return getString(ctx.Fasthttp.Request.Header.RequestURI())
 }
