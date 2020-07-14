@@ -34,7 +34,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.12.6"
+const Version = "1.12.7"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -107,6 +107,11 @@ type Settings struct {
 	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
 	// Default: false
 	ETag bool `json:"etag"`
+
+	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
+	// Prefork does not support the IPv6 network
+	// Default: "tcp"
+	Network string
 
 	// When set to true, this will spawn multiple Go processes listening on the same port.
 	// Default: false
@@ -216,6 +221,7 @@ const (
 	defaultReadBufferSize       = 4096
 	defaultWriteBufferSize      = 4096
 	defaultCompressedFileSuffix = ".fiber.gz"
+	defaultNetwork              = "tcp"
 )
 
 var defaultErrorHandler = func(ctx *Ctx, err error) {
@@ -266,15 +272,15 @@ func New(settings ...*Settings) *App {
 	if app.Settings.WriteBufferSize <= 0 {
 		app.Settings.WriteBufferSize = defaultWriteBufferSize
 	}
-	// Set default compressed file suffix
 	if app.Settings.CompressedFileSuffix == "" {
 		app.Settings.CompressedFileSuffix = defaultCompressedFileSuffix
 	}
-	// Set default error
 	if app.Settings.ErrorHandler == nil {
 		app.Settings.ErrorHandler = defaultErrorHandler
 	}
-	// Replace unsafe conversion functions
+	if app.Settings.Network == "" {
+		app.Settings.Network = defaultNetwork
+	}
 	if app.Settings.Immutable {
 		getBytes, getString = getBytesImmutable, getStringImmutable
 	}
@@ -485,10 +491,13 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	app.init()
 	// Start prefork
 	if app.Settings.Prefork {
+		if app.Settings.Network == "tcp6" || isIPv6(addr) {
+			log.Fatal("prefork does not support tcp6 networking")
+		}
 		return app.prefork(addr, tlsconfig...)
 	}
 	// Setup listener
-	ln, err := net.Listen("tcp4", addr)
+	ln, err := net.Listen(app.Settings.Network, addr)
 	if err != nil {
 		return err
 	}
@@ -601,6 +610,8 @@ func (app *App) init() *App {
 				fmt.Printf("views: %v\n", err)
 			}
 		}
+		// TCP4 -> tcp4
+		app.Settings.Network = utils.ToLower(app.Settings.Network)
 	}
 	if app.server == nil {
 		app.server = &fasthttp.Server{
@@ -667,10 +678,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	logo += `%s  __%s / __/ / / /_/ /  __/ /      %s` + "\n"
 	logo += `%s    /_/   /_/_.___/\___/_/%s %s` + "\n"
 
-	// statup details
+	host, port := parseAddr(addr)
 	var (
-		host      = strings.Split(addr, ":")[0]
-		port      = strings.Split(addr, ":")[1]
 		tlsStr    = "FALSE"
 		routesLen = len(app.Routes())
 		osName    = utils.ToUpper(runtime.GOOS)
@@ -703,7 +712,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		cCyan, cBlack, fmt.Sprintf(" HOST   %s\tOS    %s", cyan(host), cyan(osName)),
 		cCyan, cBlack, fmt.Sprintf(" PORT   %s\tCORES %s", cyan(port), cyan(cpuCores)),
 		cCyan, cBlack, fmt.Sprintf(" TLS    %s\tMEM   %s", cyan(tlsStr), cyan(memTotal)),
-		cBlack, cyan(Version), fmt.Sprintf(" ROUTES %s\t\t\t PID  %s%s%s\n", cyan(routesLen), cyan(pid), pids, cReset),
+		cBlack, cyan(Version), fmt.Sprintf(" ROUTES %s\t\t\t PID   %s%s%s\n", cyan(routesLen), cyan(pid), pids, cReset),
 	)
 	// Write to io.write
 	_ = out.Flush()

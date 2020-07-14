@@ -40,6 +40,15 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		if len(tlsconfig) > 0 {
 			ln = tls.NewListener(ln, tlsconfig[0])
 		}
+
+		// kill child proc when master exits
+		go func() {
+			ppid, err := os.FindProcess(os.Getppid())
+			if err == nil {
+				_, _ = ppid.Wait()
+			}
+			os.Exit(1)
+		}()
 		// listen for incoming connections
 		return app.server.Serve(ln)
 	}
