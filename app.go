@@ -609,6 +609,8 @@ func (app *App) init() *App {
 				fmt.Printf("views: %v\n", err)
 			}
 		}
+		// TCP4 -> tcp4
+		app.Settings.Network = utils.ToLower(app.Settings.Network)
 	}
 	if app.server == nil {
 		app.server = &fasthttp.Server{
