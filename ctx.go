@@ -181,8 +181,8 @@ func (ctx *Ctx) Append(field string, values ...string) {
 	for _, value := range values {
 		if len(h) == 0 {
 			h = value
-		} else if h != value && !strings.HasSuffix(h, " "+value) &&
-			!strings.Contains(h, value+",") {
+		} else if h != value && !strings.HasPrefix(h, value+",") && !strings.HasSuffix(h, " "+value) &&
+			!strings.Contains(h, " "+value+",") {
 			h += ", " + value
 		}
 	}
