@@ -108,6 +108,10 @@ type Settings struct {
 	// Default: false
 	ETag bool `json:"etag"`
 
+	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
+	// Default: "tcp"
+	Network string
+
 	// When set to true, this will spawn multiple Go processes listening on the same port.
 	// Default: false
 	Prefork bool `json:"prefork"`
@@ -216,6 +220,7 @@ const (
 	defaultReadBufferSize       = 4096
 	defaultWriteBufferSize      = 4096
 	defaultCompressedFileSuffix = ".fiber.gz"
+	defaultNetwork              = "tcp"
 )
 
 var defaultErrorHandler = func(ctx *Ctx, err error) {
@@ -266,15 +271,15 @@ func New(settings ...*Settings) *App {
 	if app.Settings.WriteBufferSize <= 0 {
 		app.Settings.WriteBufferSize = defaultWriteBufferSize
 	}
-	// Set default compressed file suffix
 	if app.Settings.CompressedFileSuffix == "" {
 		app.Settings.CompressedFileSuffix = defaultCompressedFileSuffix
 	}
-	// Set default error
 	if app.Settings.ErrorHandler == nil {
 		app.Settings.ErrorHandler = defaultErrorHandler
 	}
-	// Replace unsafe conversion functions
+	if app.Settings.Network == "" {
+		app.Settings.Network = defaultNetwork
+	}
 	if app.Settings.Immutable {
 		getBytes, getString = getBytesImmutable, getStringImmutable
 	}
@@ -486,8 +491,12 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	if app.Settings.Prefork {
 		return app.prefork(addr, tlsconfig...)
 	}
+	// tcp4 is the default network
+	if isIPv6(addr) {
+		// do some better parsing
+	}
 	// Setup listener
-	ln, err := net.Listen("tcp4", addr)
+	ln, err := net.Listen(app.Settings.Network, addr)
 	if err != nil {
 		return err
 	}

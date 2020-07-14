@@ -32,7 +32,7 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		runtime.GOMAXPROCS(1)
 		var ln net.Listener
 		// SO_REUSEPORT is not supported on Windows, use SO_REUSEADDR instead
-		if ln, err = reuseport("tcp4", addr); err != nil {
+		if ln, err = reuseport(app.Settings.Network, addr); err != nil {
 			if !app.Settings.DisableStartupMessage {
 				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
