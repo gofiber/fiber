@@ -109,7 +109,7 @@ type Settings struct {
 	ETag bool `json:"etag"`
 
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
-	// Prefork is not support for IPv6 addresses
+	// Prefork does not support the IPv6 network
 	// Default: "tcp"
 	Network string
 
@@ -491,7 +491,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	// Start prefork
 	if app.Settings.Prefork {
 		if app.Settings.Network == "ipv6" || isIPv6(addr) {
-			log.Fatal("prefork does not support ipv6 networking")
+			log.Fatal("prefork does not support the ipv6 network")
 		}
 		return app.prefork(addr, tlsconfig...)
 	}
