@@ -124,7 +124,7 @@ var (
 // LoggerConfigDefault is the default config
 var LoggerConfigDefault = LoggerConfig{
 	Next:       nil,
-	Format:     "${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n",
+	Format:     "${time} ${methodColor} ${path} - ${ip} - ${statusColor} - ${latency}\n",
 	TimeFormat: "15:04:05",
 	Output:     os.Stdout,
 }
@@ -286,28 +286,28 @@ func logger(config LoggerConfig) fiber.Handler {
 				default:
 					statusColor = cRed
 				}
-				return buf.WriteString(statusColor)
+				return buf.WriteString(statusColor + strconv.Itoa(responseStatus) + cReset)
 			case LoggerTagMethodColor:
 				requestMethod = c.Method()
 				switch requestMethod {
-				case "GET":
+				case fiber.MethodGet:
 					methodColor = cBlue
-				case "POST":
+				case fiber.MethodPost:
 					methodColor = cCyan
-				case "PUT":
+				case fiber.MethodPut:
 					methodColor = cYellow
-				case "DELETE":
+				case fiber.MethodDelete:
 					methodColor = cRed
-				case "PATCH":
+				case fiber.MethodPatch:
 					methodColor = cGreen
-				case "HEAD":
+				case fiber.MethodHead:
 					methodColor = cMagenta
-				case "OPTIONS":
+				case fiber.MethodOptions:
 					methodColor = cWhite
 				default:
 					methodColor = cReset
 				}
-				return buf.WriteString(methodColor)
+				return buf.WriteString(methodColor + requestMethod + cReset)
 			default:
 				switch {
 				case strings.HasPrefix(tag, LoggerTagHeader):
