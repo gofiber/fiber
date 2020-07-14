@@ -76,7 +76,7 @@ func defaultString(value string, defaultValue []string) string {
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses
-	if ctx.Fasthttp.Response.StatusCode() != 200 {
+	if ctx.Fasthttp.Response.StatusCode() != StatusOK {
 		return
 	}
 	body := ctx.Fasthttp.Response.Body()
@@ -101,7 +101,7 @@ func setETag(ctx *Ctx, weak bool) {
 		// Check if server's ETag is weak
 		if clientEtag[2:] == etag || clientEtag[2:] == etag[2:] {
 			// W/1 == 1 || W/1 == W/1
-			ctx.SendStatus(304)
+			ctx.SendStatus(StatusNotModified)
 			ctx.Fasthttp.ResetBody()
 			return
 		}
@@ -111,7 +111,7 @@ func setETag(ctx *Ctx, weak bool) {
 	}
 	if strings.Contains(clientEtag, etag) {
 		// 1 == 1
-		ctx.SendStatus(304)
+		ctx.SendStatus(StatusNotModified)
 		ctx.Fasthttp.ResetBody()
 		return
 	}
