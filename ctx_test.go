@@ -172,8 +172,30 @@ func Test_Ctx_Append(t *testing.T) {
 	ctx.Append("X-Test", "Hello")
 	ctx.Append("X-Test", "World")
 	ctx.Append("X-Test", "Hello", "World")
+	// similar value in the middle
+	ctx.Append("X2-Test", "World")
+	ctx.Append("X2-Test", "XHello")
+	ctx.Append("X2-Test", "Hello", "World")
+	// similar value at the start
+	ctx.Append("X3-Test", "XHello")
+	ctx.Append("X3-Test", "World")
+	ctx.Append("X3-Test", "Hello", "World")
+	// try it with multiple similar values
+	ctx.Append("X4-Test", "XHello")
+	ctx.Append("X4-Test", "Hello")
+	ctx.Append("X4-Test", "HelloZ")
+	ctx.Append("X4-Test", "YHello")
+	ctx.Append("X4-Test", "Hello")
+	ctx.Append("X4-Test", "YHello")
+	ctx.Append("X4-Test", "HelloZ")
+	ctx.Append("X4-Test", "XHello")
+	// without append value
 	ctx.Append("X-Custom-Header")
+
 	utils.AssertEqual(t, "Hello, World", string(ctx.Fasthttp.Response.Header.Peek("X-Test")))
+	utils.AssertEqual(t, "World, XHello, Hello", string(ctx.Fasthttp.Response.Header.Peek("X2-Test")))
+	utils.AssertEqual(t, "XHello, World, Hello", string(ctx.Fasthttp.Response.Header.Peek("X3-Test")))
+	utils.AssertEqual(t, "XHello, Hello, HelloZ, YHello", string(ctx.Fasthttp.Response.Header.Peek("X4-Test")))
 	utils.AssertEqual(t, "", string(ctx.Fasthttp.Response.Header.Peek("x-custom-header")))
 }
 
