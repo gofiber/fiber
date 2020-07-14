@@ -82,6 +82,11 @@ func Test_Middleware_RequestID_Options_And_WithConfig(t *testing.T) {
 			header:  RequestIDConfigDefault.Header,
 			handler: RequestID(func() string { return "fake-id" }),
 		},
+		{
+			idLen:   UUIDLen,
+			header:  RequestIDConfigDefault.Header,
+			handler: RequestID(RequestIDConfig{}),
+		},
 	}
 
 	for _, testCase := range testCases {

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"net/http/httptest"
 	"regexp"
 	"strings"
@@ -17,6 +16,7 @@ import (
 
 	utils "github.com/gofiber/utils"
 	fasthttp "github.com/valyala/fasthttp"
+	fasthttputil "github.com/valyala/fasthttp/fasthttputil"
 )
 
 func testStatus200(t *testing.T, app *App, url string, method string) {
@@ -97,10 +97,11 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 func Test_App_Routes(t *testing.T) {
 	app := New()
 	h := func(c *Ctx) {}
+	app.Use("/", h)
 	app.Get("/Get", h)
 	app.Head("/Head", h)
 	app.Post("/post", h)
-	utils.AssertEqual(t, 3, len(app.Routes()))
+	utils.AssertEqual(t, 4, len(app.Routes()))
 }
 
 func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
@@ -360,18 +361,28 @@ func Test_App_Static_Index_Default(t *testing.T) {
 	app := New()
 
 	app.Static("/prefix", "./.github/workflows")
-	app.Static("/", "./.github")
+	app.Static("", "./.github/")
+	app.Static("test", "", Static{Index: "index.html"})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
-	utils.AssertEqual(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
 
+	resp, err = app.Test(httptest.NewRequest("GET", "/not-found", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "Cannot GET /not-found", string(body))
 }
 
 // go test -run Test_App_Static_Index
@@ -649,14 +660,14 @@ func Test_App_Listen(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen(4003))
+	utils.AssertEqual(t, nil, app.Listen("127.0.0.1:"))
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen("4010"))
+	utils.AssertEqual(t, nil, app.Listen("127.0.0.1:"))
 }
 
 // go test -run Test_App_Listener
@@ -665,14 +676,13 @@ func Test_App_Listener(t *testing.T) {
 		DisableStartupMessage: true,
 		Prefork:               true,
 	})
-	ln, err := net.Listen("tcp4", ":4020")
-	utils.AssertEqual(t, nil, err)
 
 	go func() {
-		time.Sleep(1000 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
+	ln := fasthttputil.NewInmemoryListener()
 	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
@@ -698,4 +708,11 @@ func Benchmark_App_ETag_Weak(b *testing.B) {
 		setETag(c, true)
 	}
 	utils.AssertEqual(b, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+}
+
+// go test -run Test_NewError
+func Test_NewError(t *testing.T) {
+	e := NewError(StatusForbidden, "permission denied")
+	utils.AssertEqual(t, StatusForbidden, e.Code)
+	utils.AssertEqual(t, "permission denied", e.Message)
 }

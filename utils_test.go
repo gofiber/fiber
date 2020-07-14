@@ -15,11 +15,40 @@ import (
 
 func Test_Utils_ETag(t *testing.T) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	c.Send("Hello, World!")
-	setETag(c, false)
-	utils.AssertEqual(t, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	t.Run("Not Status OK", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Send("Hello, World!")
+		c.Status(201)
+		setETag(c, false)
+		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	})
+
+	t.Run("No Body", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		setETag(c, false)
+		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	})
+
+	t.Run("Has HeaderIfNoneMatch", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Send("Hello, World!")
+		c.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, `"13-1831710635"`)
+		setETag(c, false)
+		utils.AssertEqual(t, 304, c.Fasthttp.Response.StatusCode())
+		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Body()))
+	})
+
+	t.Run("No HeaderIfNoneMatch", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Send("Hello, World!")
+		setETag(c, false)
+		utils.AssertEqual(t, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
@@ -36,11 +65,33 @@ func Benchmark_Utils_ETag(b *testing.B) {
 
 func Test_Utils_ETag_Weak(t *testing.T) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	c.Send("Hello, World!")
-	setETag(c, true)
-	utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	t.Run("Set Weak", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Send("Hello, World!")
+		setETag(c, true)
+		utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	})
+
+	t.Run("Match Weak ETag", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Send("Hello, World!")
+		c.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, `W/"13-1831710635"`)
+		setETag(c, true)
+		utils.AssertEqual(t, 304, c.Fasthttp.Response.StatusCode())
+		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Body()))
+	})
+
+	t.Run("Not Match Weak ETag", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.Send("Hello, World!")
+		c.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, `W/"13-1831710635xx"`)
+		setETag(c, true)
+		utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag_Weak -benchmem -count=4

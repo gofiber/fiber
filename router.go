@@ -114,7 +114,7 @@ func (app *App) next(ctx *Ctx) bool {
 		return true
 	}
 	// If c.Next() does not match, return 404
-	ctx.SendStatus(404)
+	ctx.SendStatus(StatusNotFound)
 	ctx.SendString("Cannot " + ctx.method + " " + ctx.pathOriginal)
 
 	// Scan stack for other methods
@@ -279,7 +279,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 			return path
 		},
 		PathNotFound: func(ctx *fasthttp.RequestCtx) {
-			ctx.Response.SetStatusCode(404)
+			ctx.Response.SetStatusCode(StatusNotFound)
 		},
 	}
 	// Set config if provided
@@ -297,12 +297,12 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 		fileHandler(c.Fasthttp)
 		// Return request if found and not forbidden
 		status := c.Fasthttp.Response.StatusCode()
-		if status != 404 && status != 403 {
+		if status != StatusNotFound && status != StatusForbidden {
 			return
 		}
 		// Reset response to default
 		c.Fasthttp.SetContentType("") // Issue #420
-		c.Fasthttp.Response.SetStatusCode(200)
+		c.Fasthttp.Response.SetStatusCode(StatusOK)
 		c.Fasthttp.Response.SetBodyString("")
 		// Next middleware
 		c.Next()

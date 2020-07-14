@@ -172,8 +172,30 @@ func Test_Ctx_Append(t *testing.T) {
 	ctx.Append("X-Test", "Hello")
 	ctx.Append("X-Test", "World")
 	ctx.Append("X-Test", "Hello", "World")
+	// similar value in the middle
+	ctx.Append("X2-Test", "World")
+	ctx.Append("X2-Test", "XHello")
+	ctx.Append("X2-Test", "Hello", "World")
+	// similar value at the start
+	ctx.Append("X3-Test", "XHello")
+	ctx.Append("X3-Test", "World")
+	ctx.Append("X3-Test", "Hello", "World")
+	// try it with multiple similar values
+	ctx.Append("X4-Test", "XHello")
+	ctx.Append("X4-Test", "Hello")
+	ctx.Append("X4-Test", "HelloZ")
+	ctx.Append("X4-Test", "YHello")
+	ctx.Append("X4-Test", "Hello")
+	ctx.Append("X4-Test", "YHello")
+	ctx.Append("X4-Test", "HelloZ")
+	ctx.Append("X4-Test", "XHello")
+	// without append value
 	ctx.Append("X-Custom-Header")
+
 	utils.AssertEqual(t, "Hello, World", string(ctx.Fasthttp.Response.Header.Peek("X-Test")))
+	utils.AssertEqual(t, "World, XHello, Hello", string(ctx.Fasthttp.Response.Header.Peek("X2-Test")))
+	utils.AssertEqual(t, "XHello, World, Hello", string(ctx.Fasthttp.Response.Header.Peek("X3-Test")))
+	utils.AssertEqual(t, "XHello, Hello, HelloZ, YHello", string(ctx.Fasthttp.Response.Header.Peek("X4-Test")))
 	utils.AssertEqual(t, "", string(ctx.Fasthttp.Response.Header.Peek("x-custom-header")))
 }
 
@@ -356,24 +378,29 @@ func Test_Ctx_Format(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "plain/text")
+	ctx.Fasthttp.Request.Header.Set(HeaderAccept, MIMETextPlain)
 	ctx.Format([]byte("Hello, World!"))
 	utils.AssertEqual(t, "Hello, World!", string(ctx.Fasthttp.Response.Body()))
 
-	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "text/html")
+	ctx.Fasthttp.Request.Header.Set(HeaderAccept, MIMETextHTML)
 	ctx.Format("Hello, World!")
 	utils.AssertEqual(t, "<p>Hello, World!</p>", string(ctx.Fasthttp.Response.Body()))
 
-	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "application/json")
+	ctx.Fasthttp.Request.Header.Set(HeaderAccept, MIMEApplicationJSON)
 	ctx.Format("Hello, World!")
 	utils.AssertEqual(t, `"Hello, World!"`, string(ctx.Fasthttp.Response.Body()))
+	ctx.Format(complex(1, 1))
+	utils.AssertEqual(t, "(1+1i)", string(ctx.Fasthttp.Response.Body()))
 
-	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "application/xml")
+	ctx.Fasthttp.Request.Header.Set(HeaderAccept, MIMEApplicationXML)
 	ctx.Format("Hello, World!")
 	utils.AssertEqual(t, `<string>Hello, World!</string>`, string(ctx.Fasthttp.Response.Body()))
+	ctx.Format(Map{})
+	utils.AssertEqual(t, "map[]", string(ctx.Fasthttp.Response.Body()))
 
+	type broken string
 	ctx.Fasthttp.Request.Header.Set(HeaderAccept, "broken/accept")
-	ctx.Format("Hello, World!")
+	ctx.Format(broken("Hello, World!"))
 	utils.AssertEqual(t, `Hello, World!`, string(ctx.Fasthttp.Response.Body()))
 }
 
@@ -505,6 +532,31 @@ func Test_Ctx_Fresh(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
+	utils.AssertEqual(t, false, ctx.Fresh())
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "*")
+	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "no-cache")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "675af34563dc-tr34")
+	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "public")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "a, b")
+	ctx.Fasthttp.Response.Header.Set(HeaderETag, "c")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
+	ctx.Fasthttp.Response.Header.Set(HeaderETag, "a")
+	utils.AssertEqual(t, true, ctx.Fresh())
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfModifiedSince, "xxWed, 21 Oct 2015 07:28:00 GMT")
+	ctx.Fasthttp.Response.Header.Set(HeaderLastModified, "xxWed, 21 Oct 2015 07:28:00 GMT")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
+	ctx.Fasthttp.Response.Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
 	utils.AssertEqual(t, false, ctx.Fresh())
 }
 
@@ -783,12 +835,40 @@ func Test_Ctx_Range(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.Fasthttp.Request.Header.Set(HeaderRange, "bytes=500-700")
-	result, err := ctx.Range(1000)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "bytes", result.Type)
-	utils.AssertEqual(t, 500, result.Ranges[0].Start)
-	utils.AssertEqual(t, 700, result.Ranges[0].End)
+
+	var (
+		result Range
+		err    error
+	)
+
+	result, err = ctx.Range(1000)
+	utils.AssertEqual(t, true, err != nil)
+
+	ctx.Fasthttp.Request.Header.Set(HeaderRange, "bytes=500")
+	result, err = ctx.Range(1000)
+	utils.AssertEqual(t, true, err != nil)
+
+	ctx.Fasthttp.Request.Header.Set(HeaderRange, "bytes=500=")
+	result, err = ctx.Range(1000)
+	utils.AssertEqual(t, true, err != nil)
+
+	ctx.Fasthttp.Request.Header.Set(HeaderRange, "bytes=500-300")
+	result, err = ctx.Range(1000)
+	utils.AssertEqual(t, true, err != nil)
+
+	testRange := func(header string, start, end int) {
+		ctx.Fasthttp.Request.Header.Set(HeaderRange, header)
+		result, err = ctx.Range(1000)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "bytes", result.Type)
+		utils.AssertEqual(t, start, result.Ranges[0].Start)
+		utils.AssertEqual(t, end, result.Ranges[0].End)
+	}
+
+	testRange("bytes=a-700", 300, 999)
+	testRange("bytes=500-b", 500, 999)
+	testRange("bytes=500-1000", 500, 999)
+	testRange("bytes=500-700", 500, 700)
 }
 
 // go test -run Test_Ctx_Route
@@ -801,6 +881,13 @@ func Test_Ctx_Route(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	utils.AssertEqual(t, "/", ctx.Route().Path)
+	utils.AssertEqual(t, MethodGet, ctx.Route().Method)
+	utils.AssertEqual(t, 0, len(ctx.Route().Handlers))
 }
 
 // go test -run Test_Ctx_RouteNormalized
@@ -1011,6 +1098,9 @@ func Test_Ctx_JSON(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
+
+	utils.AssertEqual(t, true, ctx.JSON(complex(1, 1)) != nil)
+
 	ctx.JSON(Map{ // map has no order
 		"Name": "Grame",
 		"Age":  20,
@@ -1059,7 +1149,17 @@ func Test_Ctx_JSONP(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.JSONP(Map{ // map has no order
+
+	utils.AssertEqual(t, true, ctx.JSONP(complex(1, 1)) != nil)
+
+	ctx.JSONP(Map{
+		"Name": "Grame",
+		"Age":  20,
+	})
+	utils.AssertEqual(t, `callback({"Age":20,"Name":"Grame"});`, string(ctx.Fasthttp.Response.Body()))
+	utils.AssertEqual(t, "application/javascript; charset=utf-8", string(ctx.Fasthttp.Response.Header.Peek("content-type")))
+
+	ctx.JSONP(Map{
 		"Name": "Grame",
 		"Age":  20,
 	}, "john")
@@ -1097,6 +1197,10 @@ func Test_Ctx_Links(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
+
+	ctx.Links()
+	utils.AssertEqual(t, "", string(ctx.Fasthttp.Response.Header.Peek(HeaderLink)))
+
 	ctx.Links(
 		"http://api.example.com/users?page=2", "next",
 		"http://api.example.com/users?page=5", "last",
@@ -1164,6 +1268,11 @@ func Test_Ctx_Redirect(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
+
+	ctx.Redirect("http://default.com")
+	utils.AssertEqual(t, 302, ctx.Fasthttp.Response.StatusCode())
+	utils.AssertEqual(t, "http://default.com", string(ctx.Fasthttp.Response.Header.Peek(HeaderLocation)))
+
 	ctx.Redirect("http://example.com", 301)
 	utils.AssertEqual(t, 301, ctx.Fasthttp.Response.StatusCode())
 	utils.AssertEqual(t, "http://example.com", string(ctx.Fasthttp.Response.Header.Peek(HeaderLocation)))
@@ -1420,6 +1529,7 @@ func Test_Ctx_Write(t *testing.T) {
 	ctx.Write("Hello, ")
 	ctx.Write([]byte("World! "))
 	ctx.Write(123)
+	ctx.Write(123.321)
 	ctx.Write(true)
 	ctx.Write(bytes.NewReader([]byte("Don't crash please")))
 	utils.AssertEqual(t, "Don't crash please", string(ctx.Fasthttp.Response.Body()))
@@ -1553,6 +1663,11 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	q := new(Query)
 	utils.AssertEqual(t, nil, ctx.QueryParser(q))
 	utils.AssertEqual(t, 2, len(q.Hobby))
+
+	empty := new(Query)
+	ctx.Fasthttp.Request.URI().SetQueryString("")
+	utils.AssertEqual(t, nil, ctx.QueryParser(empty))
+	utils.AssertEqual(t, 0, len(empty.Hobby))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
