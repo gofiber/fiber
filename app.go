@@ -419,6 +419,7 @@ func (app *App) Routes() []*Route {
 				for i := range routes {
 					if routes[i].Method == methodUse && routes[i].Name == app.stack[m][r].Name {
 						duplicate = true
+						break
 					}
 				}
 				if !duplicate {
