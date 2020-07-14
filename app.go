@@ -490,8 +490,8 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	app.init()
 	// Start prefork
 	if app.Settings.Prefork {
-		if app.Settings.Network == "ipv6" || isIPv6(addr) {
-			log.Fatal("prefork does not support the ipv6 network")
+		if app.Settings.Network == "tcp6" || isIPv6(addr) {
+			log.Fatal("prefork does not support tcp6 networking")
 		}
 		return app.prefork(addr, tlsconfig...)
 	}
