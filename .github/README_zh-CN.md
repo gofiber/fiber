@@ -124,18 +124,18 @@ go get -u github.com/gofiber/fiber
 - [内存占用低](https://docs.gofiber.io/benchmarks)
 - [API接口](https://docs.gofiber.io/context)
 - [中间件](https://docs.gofiber.io/middleware)和[Next](https://docs.gofiber.io/context#next)支持
-- [快速的](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
+- [快速](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
 - [模版引擎](https://github.com/gofiber/template)
 - [WebSocket支持](https://docs.gofiber.io/middleware#websocket)
 - [频率限制器](https://docs.gofiber.io/middleware#limiter)
-- [15国语言](https://docs.gofiber.io/)
+- [15种语言](https://docs.gofiber.io/)
 - 以及更多请[探索文档](https://docs.gofiber.io/)
 
 ## 💡 哲学
 
 从[Node.js](https://nodejs.org/en/about/)切换到[Go](https://golang.org/doc/)的新`gopher`在开始构建`Web`应用程序或微服务之前正在应对学习曲线。 `Fiber`作为一个**Web框架** ，是按照**极简主义**的思想并遵循**UNIX方式**创建的，因此新的`gopher`可以在热烈和可信赖的欢迎中迅速进入`Go`的世界。
 
-`Fiber`受到了互联网上最流行的`Web`框架`Express`的**启发** 。我们结合了`Express`的**易用性**和`Go`的**原始性能** 。如果您曾经在`Node.js`上实现过`Web`应用程序(*使用Express.js或类似工具*)，那么许多方法和原理对您来说应该**非常易懂**。
+`Fiber`受到了互联网上最流行的`Web`框架`Express`的**启发** 。我们结合了`Express`的**易用性**和`Go`的**原始性能** 。如果您曾经在`Node.js`上实现过`Web`应用程序(*使用Express或类似工具*)，那么许多方法和原理对您来说应该**非常易懂**。
 
 我们**关注** _整个互联网_ 用户在[issues](https://github.com/gofiber/fiber/issues)和Discord [channel](https://gofiber.io/discord)的消息，为了创建一个**迅速**，**灵活**以及**友好**的`Go web`框架，满足**任何**任务，**最后期限**和开发者**技能**。就像`Express`在`JavaScript`世界中一样。
 
@@ -243,9 +243,9 @@ func main() {
 
 如果未设置模版引擎，则`Fiber`默认使用[html/template](https://golang.org/pkg/html/template/)。
 
-如果您要执行部分模版或使用其他引擎，例如[amber](https://github.com/eknkc/amber)，[handlebars](https://github.com/aymerick/raymond)，[mustache](https://github.com/cbroglie/mustache)或者[pug](https://github.com/Joker/jade)等等
+如果您要执行部分模版或使用其他引擎，例如[amber](https://github.com/eknkc/amber)，[handlebars](https://github.com/aymerick/raymond)，[mustache](https://github.com/cbroglie/mustache)或者[pug](https://github.com/Joker/jade)等等...
 
-查看我们的[Template](https://github.com/gofiber/template)包，该包支持多个模版引擎。
+请查看我们的[Template](https://github.com/gofiber/template)包，该包支持多个模版引擎。
 
 ```go
 import (
@@ -299,7 +299,7 @@ func main() {
 }
 ```
 
-### 访问日志中间件
+### 日志中间件
 
 📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
 
@@ -330,7 +330,7 @@ func main() {
   app.Listen(3000)
 }
 ```
-### 跨域资源共享(CORS)
+### 跨域资源共享(CORS)中间件
 
 📖 [CORS](https://docs.gofiber.io/middleware#cors)
 
@@ -356,7 +356,7 @@ func main() {
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
-### 自定义404相应
+### 自定义404响应
 
 📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)
 
@@ -414,7 +414,7 @@ func main() {
 }
 ```
 
-### WebSocket支持
+### 升级到WebSocket
 
 📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
 
@@ -500,7 +500,7 @@ func main() {
 
 ## 🌱 第三方中间件
 
-这是由`Fiber`社区创建的中间件的列表，如果您想看到自己的中间件，请创建`PR`。
+这是由`Fiber`社区创建的中间件列表，如果您想看到自己的中间件，请创建`PR`。
 - [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
