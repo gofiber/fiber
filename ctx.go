@@ -388,7 +388,7 @@ func (ctx *Ctx) Format(body interface{}) {
 			ctx.Send(body) // Fallback
 			log.Println("Format: error serializing json ", err)
 		}
-	case "text":
+	case "txt":
 		ctx.SendString(b)
 	case "xml":
 		raw, err := xml.Marshal(body)
@@ -415,7 +415,7 @@ func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
 
-var cacheControlNoCacheRegexp, _ = regexp.Compile(`/(?:^|,)\s*?no-cache\s*?(?:,|$)/`)
+var cacheControlNoCacheRegexp, _ = regexp.Compile(`(?:^|,)\s*?no-cache\s*?(?:,|$)`)
 
 // Fresh returns true when the response is still “fresh” in the client's cache,
 // otherwise false is returned to indicate that the client cache is now stale
@@ -436,7 +436,7 @@ func (ctx *Ctx) Fresh() bool {
 	// Always return stale when Cache-Control: no-cache
 	// to support end-to-end reload requests
 	// https://tools.ietf.org/html/rfc2616#section-14.9.4
-	var cacheControl = ctx.Get(HeaderCacheControl)
+	cacheControl := ctx.Get(HeaderCacheControl)
 	if cacheControl != "" && cacheControlNoCacheRegexp.MatchString(cacheControl) {
 		return false
 	}
@@ -447,16 +447,15 @@ func (ctx *Ctx) Fresh() bool {
 		if etag == "" {
 			return false
 		}
-		var etagStal = true
+		var etagStale = true
 		var matches = parseTokenList(getBytes(noneMatch))
-		for i := range matches {
-			match := matches[i]
+		for _, match := range matches {
 			if match == etag || match == "W/"+etag || "W/"+match == etag {
-				etagStal = false
+				etagStale = false
 				break
 			}
 		}
-		if etagStal {
+		if etagStale {
 			return false
 		}
 
@@ -716,19 +715,30 @@ func (ctx *Ctx) Query(key string, defaultValue ...string) string {
 	return defaultString(getString(ctx.Fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
 
+var (
+	ErrRangeMalformed     = errors.New("range: malformed range header string")
+	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
+)
+
 // Range returns a struct containing the type and a slice of ranges.
 func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 	rangeStr := ctx.Get(HeaderRange)
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
-		return rangeData, fmt.Errorf("range: malformed range header string")
+		err = ErrRangeMalformed
+		return
 	}
 	data := strings.Split(rangeStr, "=")
+	if len(data) != 2 {
+		err = ErrRangeMalformed
+		return
+	}
 	rangeData.Type = data[0]
 	arr := strings.Split(data[1], ",")
 	for i := 0; i < len(arr); i++ {
 		item := strings.Split(arr[i], "-")
 		if len(item) == 1 {
-			return rangeData, fmt.Errorf("range: malformed range header string")
+			err = ErrRangeMalformed
+			return
 		}
 		start, startErr := strconv.Atoi(item[0])
 		end, endErr := strconv.Atoi(item[1])
@@ -753,9 +763,11 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		return rangeData, fmt.Errorf("range: unsatisfiable range")
+		err = ErrRangeUnsatisfiable
+		return
 	}
-	return rangeData, nil
+
+	return
 }
 
 // Redirect to the URL derived from the specified path, with specified status.
