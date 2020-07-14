@@ -91,11 +91,6 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		}()
 	}
 
-	// Print startup message
-	if !app.Settings.DisableStartupMessage {
-		app.startupMessage(addr, len(tlsconfig) > 0, ","+strings.Join(pids, ","))
-	}
-
 	// kill child procs when master exits
 	c := make(chan os.Signal)
 	signal.Notify(c, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGINT)
@@ -106,6 +101,11 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		}
 		os.Exit(1)
 	}()
+
+	// Print startup message
+	if !app.Settings.DisableStartupMessage {
+		app.startupMessage(addr, len(tlsconfig) > 0, ","+strings.Join(pids, ","))
+	}
 
 	// return error if child crashes
 	for sig := range channel {
