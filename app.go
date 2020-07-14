@@ -109,6 +109,7 @@ type Settings struct {
 	ETag bool `json:"etag"`
 
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
+	// Prefork is not support for IPv6 addresses
 	// Default: "tcp"
 	Network string
 
@@ -489,11 +490,10 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	app.init()
 	// Start prefork
 	if app.Settings.Prefork {
+		if app.Settings.Network == "ipv6" || isIPv6(addr) {
+			log.Fatal("prefork does not support ipv6 networking")
+		}
 		return app.prefork(addr, tlsconfig...)
-	}
-	// tcp4 is the default network
-	if isIPv6(addr) {
-		// do some better parsing
 	}
 	// Setup listener
 	ln, err := net.Listen(app.Settings.Network, addr)
@@ -675,10 +675,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	logo += `%s  __%s / __/ / / /_/ /  __/ /      %s` + "\n"
 	logo += `%s    /_/   /_/_.___/\___/_/%s %s` + "\n"
 
-	// statup details
+	host, port := parseAddr(addr)
 	var (
-		host      = strings.Split(addr, ":")[0]
-		port      = strings.Split(addr, ":")[1]
 		tlsStr    = "FALSE"
 		routesLen = len(app.Routes())
 		osName    = utils.ToUpper(runtime.GOOS)
