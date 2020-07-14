@@ -6,9 +6,11 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -93,6 +95,17 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	if !app.Settings.DisableStartupMessage {
 		app.startupMessage(addr, len(tlsconfig) > 0, ","+strings.Join(pids, ","))
 	}
+
+	// kill child procs when master exits
+	c := make(chan os.Signal)
+	signal.Notify(c, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGINT)
+	go func() {
+		<-c
+		for _, proc := range childs {
+			_ = proc.Process.Kill()
+		}
+		os.Exit(1)
+	}()
 
 	// return error if child crashes
 	for sig := range channel {
