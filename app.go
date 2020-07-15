@@ -13,7 +13,6 @@ import (
 	"bufio"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -307,7 +306,7 @@ func (app *App) Use(args ...interface{}) *Route {
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
-			log.Fatalf("Use: Invalid Handler %v", reflect.TypeOf(arg))
+			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
 	return app.register(methodUse, prefix, handlers...)
@@ -492,7 +491,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	// Start prefork
 	if app.Settings.Prefork {
 		if app.Settings.Network == "tcp6" || isIPv6(addr) {
-			log.Fatal("prefork does not support tcp6 networking")
+			return fmt.Errorf("listen: tcp6 is not supported when prefork is enabled")
 		}
 		return app.prefork(addr, tlsconfig...)
 	}

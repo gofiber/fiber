@@ -225,6 +225,28 @@ func Test_App_Use_Params(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest("GET", "/foo", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "use: invalid handler func()\n", fmt.Sprintf("%v", err))
+		}
+	}()
+
+	app.Use("/:param/*", func() {
+		// this should panic
+	})
+}
+
+func Test_App_Add_Method_Test(t *testing.T) {
+	app := New()
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "add: invalid http method JOHN\n", fmt.Sprintf("%v", err))
+		}
+	}()
+	app.Add("JOHN", "/doe", func(c *Ctx) {
+
+	})
 }
 
 func Test_App_Use_Params_Group(t *testing.T) {
@@ -659,9 +681,7 @@ func Test_App_Next_Method(t *testing.T) {
 
 // go test -run Test_App_Listen
 func Test_App_Listen(t *testing.T) {
-	app := New(&Settings{
-		DisableStartupMessage: true,
-	})
+	app := New()
 
 	utils.AssertEqual(t, false, app.Listen(1.23) == nil)
 
