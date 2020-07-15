@@ -1396,10 +1396,11 @@ func Test_Ctx_Redirect(t *testing.T) {
 
 // go test -run Test_Ctx_Render
 func Test_Ctx_Render(t *testing.T) {
+	t.Parallel()
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	err := ctx.Render("./.github/index.tmpl", Map{
+	err := ctx.Render("./.github/template.html", Map{
 		"Title": "Hello, World!",
 	})
 	utils.AssertEqual(t, nil, err)
@@ -1416,8 +1417,6 @@ func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, 
 }
 
 func (t *testTemplateEngine) Load() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.templates = template.Must(template.ParseGlob("./.github/*.tmpl"))
 	return nil
 }
@@ -1514,6 +1513,20 @@ func Test_Ctx_SendBytes(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.SendBytes([]byte("Hello, World!"))
 	utils.AssertEqual(t, "Hello, World!", string(ctx.Fasthttp.Response.Body()))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_Benchmark_Ctx_SendBytes -benchmem -count=4
+func Benchmark_Ctx_SendBytes(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	var byt = []byte("Hello, World!")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.SendBytes(byt)
+	}
+	utils.AssertEqual(b, "Hello, World!", string(c.Fasthttp.Response.Body()))
 }
 
 // go test -run Test_Ctx_SendStatus

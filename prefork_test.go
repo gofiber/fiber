@@ -13,6 +13,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	defer os.Setenv(envPreforkChildKey, "")
 
 	app := New()
+	app.Settings.DisableStartupMessage = true
 	app.init()
 
 	err := app.prefork("invalid")
@@ -30,6 +31,7 @@ func Test_App_Prefork_Main_Process(t *testing.T) {
 	testPreforkMaster = true
 
 	app := New()
+	app.Settings.DisableStartupMessage = true
 	app.init()
 
 	go func() {

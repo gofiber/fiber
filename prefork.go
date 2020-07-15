@@ -21,7 +21,7 @@ const (
 
 var (
 	testPreforkMaster = false
-	dummyChildCmd     = "date"
+	dummyChildCmd     = "go"
 )
 
 // IsChild determines if the current process is a result of Prefork
@@ -89,7 +89,11 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 			// When test prefork master,
 			// just start the child process
 			// a cmd on all os is best
-			cmd = exec.Command(dummyChildCmd)
+			if runtime.GOOS == "windows" {
+				cmd = exec.Command("cmd", "/C", dummyChildCmd, "version")
+			} else {
+				cmd = exec.Command(dummyChildCmd, "version")
+			}
 		}
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
