@@ -4,7 +4,6 @@ package fiber
 
 import (
 	"net"
-	"strings"
 
 	tcplisten "github.com/valyala/tcplisten"
 )
@@ -38,9 +37,5 @@ func reuseport(network, addr string) (net.Listener, error) {
 		DeferAccept: true,
 		FastOpen:    true,
 	}
-	ln, err := cfg.NewListener(network, addr)
-	if err != nil && strings.Contains(err.Error(), "SO_REUSEPORT") {
-		return nil, err
-	}
-	return ln, err
+	return cfg.NewListener(network, addr)
 }

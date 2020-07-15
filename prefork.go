@@ -17,7 +17,10 @@ const (
 	envPreforkChildVal = "1"
 )
 
-var testPreforkMaster = false
+var (
+	testPreforkMaster = false
+	dummyChildCmd     = "date"
+)
 
 // IsChild determines if the current process is a result of Prefork
 func (app *App) IsChild() bool {
@@ -84,7 +87,7 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 			// When test prefork master,
 			// just start the child process
 			// a cmd on all os is best
-			cmd = exec.Command("date")
+			cmd = exec.Command(dummyChildCmd)
 		}
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -114,9 +117,5 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	}
 
 	// return error if child crashes
-	for sig := range channel {
-		return sig.err
-	}
-
-	return
+	return (<-channel).err
 }
