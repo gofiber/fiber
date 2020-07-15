@@ -15,7 +15,6 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -235,10 +234,10 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), out)
 	case MIMEApplicationForm: // application/x-www-form-urlencoded
 		schemaDecoder.SetAliasTag("form")
-		data, err := url.ParseQuery(getString(ctx.Fasthttp.PostBody()))
-		if err != nil {
-			return err
-		}
+		data := make(map[string][]string)
+		ctx.Fasthttp.PostArgs().VisitAll(func(key []byte, val []byte) {
+			data[getString(key)] = append(data[getString(key)], getString(val))
+		})
 		return schemaDecoder.Decode(out, data)
 	}
 

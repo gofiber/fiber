@@ -288,15 +288,35 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
+
 	type Demo struct {
 		Name string `json:"name" xml:"name" form:"name" query:"name"`
 	}
-	ctx.Fasthttp.Request.SetBody([]byte(`{"name":"john"}`))
-	ctx.Fasthttp.Request.Header.SetContentType(MIMEApplicationJSON)
-	ctx.Fasthttp.Request.Header.SetContentLength(len([]byte(`{"name":"john"}`)))
-	d := new(Demo)
-	utils.AssertEqual(t, nil, ctx.BodyParser(d))
-	utils.AssertEqual(t, "john", d.Name)
+
+	testDecodeParser := func(contentType, body string) {
+		ctx.Fasthttp.Request.Header.SetContentType(contentType)
+		ctx.Fasthttp.Request.SetBody([]byte(body))
+		ctx.Fasthttp.Request.Header.SetContentLength(len(body))
+		d := new(Demo)
+		utils.AssertEqual(t, nil, ctx.BodyParser(d))
+		utils.AssertEqual(t, "john", d.Name)
+	}
+
+	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
+	testDecodeParser(MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
+	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
+	testDecodeParser(MIMEApplicationForm, "name=john")
+	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+
+	testDecodeParserError := func(contentType, body string) {
+		ctx.Fasthttp.Request.Header.SetContentType(contentType)
+		ctx.Fasthttp.Request.SetBody([]byte(body))
+		ctx.Fasthttp.Request.Header.SetContentLength(len(body))
+		utils.AssertEqual(t, false, ctx.BodyParser(nil) == nil)
+	}
+
+	testDecodeParserError("invalid-content-type", "")
+	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
 
 	type Query struct {
 		ID    int
