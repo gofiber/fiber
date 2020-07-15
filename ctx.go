@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -266,19 +267,26 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	return fmt.Errorf("bodyparser: cannot parse content-type: %v", ctype)
 }
 
+// queryDecoderPool helps to improve QueryParser's performance
+var queryDecoderPool = &sync.Pool{New: func() interface{} {
+	var decoder = schema.NewDecoder()
+	decoder.SetAliasTag("query")
+	decoder.IgnoreUnknownKeys(true)
+	return decoder
+}}
+
 // QueryParser binds the query string to a struct.
 func (ctx *Ctx) QueryParser(out interface{}) error {
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
-		var schemaDecoderQuery = schema.NewDecoder()
-		schemaDecoderQuery.SetAliasTag("query")
-		schemaDecoderQuery.IgnoreUnknownKeys(true)
+		var decoder = queryDecoderPool.Get().(*schema.Decoder)
+		defer queryDecoderPool.Put(decoder)
 
 		data := make(map[string][]string)
 		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
 			data[getString(key)] = append(data[getString(key)], getString(val))
 		})
 
-		return schemaDecoderQuery.Decode(out, data)
+		return decoder.Decode(out, data)
 	}
 	return nil
 }
