@@ -18,6 +18,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"text/template"
 	"time"
@@ -1406,6 +1407,7 @@ func Test_Ctx_Render(t *testing.T) {
 }
 
 type testTemplateEngine struct {
+	mu        sync.Mutex
 	templates *template.Template
 }
 
@@ -1414,6 +1416,8 @@ func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, 
 }
 
 func (t *testTemplateEngine) Load() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.templates = template.Must(template.ParseGlob("./.github/*.tmpl"))
 	return nil
 }
