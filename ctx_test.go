@@ -1400,7 +1400,7 @@ func Test_Ctx_Render(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	err := ctx.Render("./.github/single.tmpl", Map{
+	err := ctx.Render("./.github/template.html", Map{
 		"Title": "Hello, World!",
 	})
 	utils.AssertEqual(t, nil, err)
