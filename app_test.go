@@ -5,9 +5,11 @@
 package fiber
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http/httptest"
 	"reflect"
 	"regexp"
@@ -249,6 +251,45 @@ func Test_App_Add_Method_Test(t *testing.T) {
 	})
 }
 
+func Test_App_Listen_TLS(t *testing.T) {
+	app := New()
+	app.Settings.Prefork = true
+
+	// Create tls certificate
+	cer, err := tls.LoadX509KeyPair("./.github/TEST_DATA/ssl.pem", "./.github/TEST_DATA/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+
+	go func() {
+		time.Sleep(1 * time.Second)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.Listen(3078, config))
+}
+
+func Test_App_Listener_TLS(t *testing.T) {
+	app := New()
+
+	// Create tls certificate
+	cer, err := tls.LoadX509KeyPair("./.github/TEST_DATA/ssl.pem", "./.github/TEST_DATA/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+
+	ln, err := net.Listen("tcp4", ":3055")
+	utils.AssertEqual(t, nil, err)
+
+	go func() {
+		time.Sleep(1 * time.Second)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.Listener(ln, config))
+}
 func Test_App_Use_Params_Group(t *testing.T) {
 	app := New()
 

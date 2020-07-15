@@ -20,7 +20,7 @@ import (
 var routesFixture = routeJSON{}
 
 func init() {
-	dat, err := ioutil.ReadFile("./.github/fixture/testRoutes.json")
+	dat, err := ioutil.ReadFile("./.github/TEST_DATA/testRoutes.json")
 	if err != nil {
 		panic(err)
 	}

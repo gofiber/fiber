@@ -1411,7 +1411,7 @@ func Test_Ctx_Render(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	err := ctx.Render("./.github/template.html", Map{
+	err := ctx.Render("./.github/TEST_DATA/template.html", Map{
 		"Title": "Hello, World!",
 	})
 	utils.AssertEqual(t, nil, err)
@@ -1428,7 +1428,7 @@ func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, 
 }
 
 func (t *testTemplateEngine) Load() error {
-	t.templates = template.Must(template.ParseGlob("./.github/*.tmpl"))
+	t.templates = template.Must(template.ParseGlob("./.github/TEST_DATA/*.tmpl"))
 	return nil
 }
 
