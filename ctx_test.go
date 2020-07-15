@@ -1435,6 +1435,25 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
 }
 
+func Benchmark_Ctx_Render_Engine(b *testing.B) {
+	engine := &testTemplateEngine{}
+	err := engine.Load()
+	utils.AssertEqual(b, nil, err)
+	app := New()
+	app.Settings.Views = engine
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		err = ctx.Render("index.tmpl", Map{
+			"Title": "Hello, World!",
+		})
+	}
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
+}
+
 // go test -run Test_Ctx_Render_Go_Template
 func Test_Ctx_Render_Go_Template(t *testing.T) {
 	t.Parallel()
