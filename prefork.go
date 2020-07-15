@@ -90,9 +90,9 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 			// just start the child process
 			// a cmd on all os is best
 			if runtime.GOOS == "windows" {
-				cmd = exec.Command("cmd", "/C", dummyChildCmd)
+				cmd = exec.Command("cmd", "/C", "go version")
 			} else {
-				cmd = exec.Command(dummyChildCmd)
+				cmd = exec.Command("date")
 			}
 		}
 		cmd.Stdout = os.Stdout
