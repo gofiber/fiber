@@ -1515,6 +1515,20 @@ func Test_Ctx_SendBytes(t *testing.T) {
 	utils.AssertEqual(t, "Hello, World!", string(ctx.Fasthttp.Response.Body()))
 }
 
+// go test -v  -run=^$ -bench=Benchmark_Ctx_Benchmark_Ctx_SendBytes -benchmem -count=4
+func Benchmark_Ctx_SendBytes(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	var byt = []byte("Hello, World!")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.SendBytes(byt)
+	}
+	utils.AssertEqual(b, "Hello, World!", string(c.Fasthttp.Response.Body()))
+}
+
 // go test -run Test_Ctx_SendStatus
 func Test_Ctx_SendStatus(t *testing.T) {
 	t.Parallel()
