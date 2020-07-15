@@ -288,15 +288,35 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
+
 	type Demo struct {
 		Name string `json:"name" xml:"name" form:"name" query:"name"`
 	}
-	ctx.Fasthttp.Request.SetBody([]byte(`{"name":"john"}`))
-	ctx.Fasthttp.Request.Header.SetContentType(MIMEApplicationJSON)
-	ctx.Fasthttp.Request.Header.SetContentLength(len([]byte(`{"name":"john"}`)))
-	d := new(Demo)
-	utils.AssertEqual(t, nil, ctx.BodyParser(d))
-	utils.AssertEqual(t, "john", d.Name)
+
+	testDecodeParser := func(contentType, body string) {
+		ctx.Fasthttp.Request.Header.SetContentType(contentType)
+		ctx.Fasthttp.Request.SetBody([]byte(body))
+		ctx.Fasthttp.Request.Header.SetContentLength(len(body))
+		d := new(Demo)
+		utils.AssertEqual(t, nil, ctx.BodyParser(d))
+		utils.AssertEqual(t, "john", d.Name)
+	}
+
+	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
+	testDecodeParser(MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
+	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
+	testDecodeParser(MIMEApplicationForm, "name=john")
+	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+
+	testDecodeParserError := func(contentType, body string) {
+		ctx.Fasthttp.Request.Header.SetContentType(contentType)
+		ctx.Fasthttp.Request.SetBody([]byte(body))
+		ctx.Fasthttp.Request.Header.SetContentLength(len(body))
+		utils.AssertEqual(t, false, ctx.BodyParser(nil) == nil)
+	}
+
+	testDecodeParserError("invalid-content-type", "")
+	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
 
 	type Query struct {
 		ID    int
@@ -311,7 +331,102 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	utils.AssertEqual(t, 2, len(q.Hobby))
 }
 
-// TODO Benchmark_Ctx_BodyParser
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_JSON -benchmem -count=4
+func Benchmark_Ctx_BodyParser_JSON(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	body := []byte(`{"name":"john"}`)
+	c.Fasthttp.Request.SetBody(body)
+	c.Fasthttp.Request.Header.SetContentType(MIMEApplicationJSON)
+	c.Fasthttp.Request.Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = c.BodyParser(d)
+	}
+	utils.AssertEqual(b, nil, c.BodyParser(d))
+	utils.AssertEqual(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_XML -benchmem -count=4
+func Benchmark_Ctx_BodyParser_XML(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Demo struct {
+		Name string `xml:"name"`
+	}
+	body := []byte("<Demo><name>john</name></Demo>")
+	c.Fasthttp.Request.SetBody(body)
+	c.Fasthttp.Request.Header.SetContentType(MIMEApplicationXML)
+	c.Fasthttp.Request.Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = c.BodyParser(d)
+	}
+	utils.AssertEqual(b, nil, c.BodyParser(d))
+	utils.AssertEqual(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_Form -benchmem -count=4
+func Benchmark_Ctx_BodyParser_Form(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Demo struct {
+		Name string `form:"name"`
+	}
+	body := []byte("name=john")
+	c.Fasthttp.Request.SetBody(body)
+	c.Fasthttp.Request.Header.SetContentType(MIMEApplicationForm)
+	c.Fasthttp.Request.Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = c.BodyParser(d)
+	}
+	utils.AssertEqual(b, nil, c.BodyParser(d))
+	utils.AssertEqual(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_MultipartForm -benchmem -count=4
+func Benchmark_Ctx_BodyParser_MultipartForm(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Demo struct {
+		Name string `form:"name"`
+	}
+
+	body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+	c.Fasthttp.Request.SetBody(body)
+	c.Fasthttp.Request.Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+	c.Fasthttp.Request.Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = c.BodyParser(d)
+	}
+	utils.AssertEqual(b, nil, c.BodyParser(d))
+	utils.AssertEqual(b, "john", d.Name)
+}
 
 // go test -run Test_Ctx_Context
 func Test_Ctx_Context(t *testing.T) {
@@ -1318,6 +1433,25 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 	})
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
+}
+
+func Benchmark_Ctx_Render_Engine(b *testing.B) {
+	engine := &testTemplateEngine{}
+	err := engine.Load()
+	utils.AssertEqual(b, nil, err)
+	app := New()
+	app.Settings.Views = engine
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		err = ctx.Render("index.tmpl", Map{
+			"Title": "Hello, World!",
+		})
+	}
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
 }
 
 // go test -run Test_Ctx_Render_Go_Template

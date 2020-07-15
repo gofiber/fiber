@@ -15,12 +15,12 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -235,10 +235,10 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), out)
 	case MIMEApplicationForm: // application/x-www-form-urlencoded
 		schemaDecoder.SetAliasTag("form")
-		data, err := url.ParseQuery(getString(ctx.Fasthttp.PostBody()))
-		if err != nil {
-			return err
-		}
+		data := make(map[string][]string)
+		ctx.Fasthttp.PostArgs().VisitAll(func(key []byte, val []byte) {
+			data[getString(key)] = append(data[getString(key)], getString(val))
+		})
 		return schemaDecoder.Decode(out, data)
 	}
 
@@ -266,19 +266,26 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	return fmt.Errorf("bodyparser: cannot parse content-type: %v", ctype)
 }
 
+// queryDecoderPool helps to improve QueryParser's performance
+var queryDecoderPool = &sync.Pool{New: func() interface{} {
+	var decoder = schema.NewDecoder()
+	decoder.SetAliasTag("query")
+	decoder.IgnoreUnknownKeys(true)
+	return decoder
+}}
+
 // QueryParser binds the query string to a struct.
 func (ctx *Ctx) QueryParser(out interface{}) error {
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
-		var schemaDecoderQuery = schema.NewDecoder()
-		schemaDecoderQuery.SetAliasTag("query")
-		schemaDecoderQuery.IgnoreUnknownKeys(true)
+		var decoder = queryDecoderPool.Get().(*schema.Decoder)
+		defer queryDecoderPool.Put(decoder)
 
 		data := make(map[string][]string)
 		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
 			data[getString(key)] = append(data[getString(key)], getString(val))
 		})
 
-		return schemaDecoderQuery.Decode(out, data)
+		return decoder.Decode(out, data)
 	}
 	return nil
 }
@@ -496,13 +503,20 @@ func (ctx *Ctx) IP() string {
 }
 
 // IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
-func (ctx *Ctx) IPs() []string {
-	// TODO: improve with for iteration and string.Index -> like in Accepts
-	ips := strings.Split(ctx.Get(HeaderXForwardedFor), ",")
-	for i := range ips {
-		ips[i] = utils.Trim(ips[i], ' ')
+func (ctx *Ctx) IPs() (ips []string) {
+	header := ctx.Fasthttp.Request.Header.Peek(HeaderXForwardedFor)
+	ips = make([]string, bytes.Count(header, []byte(","))+1)
+	var commaPos, i int
+	for {
+		commaPos = bytes.IndexByte(header, ',')
+		if commaPos != -1 {
+			ips[i] = getString(header[:commaPos])
+			header, i = header[commaPos+2:], i+1
+		} else {
+			ips[i] = getString(header)
+			return
+		}
 	}
-	return ips
 }
 
 // Is returns the matching content type,
@@ -822,7 +836,7 @@ func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err er
 			return err
 		}
 	}
-	// Set Contet-Type to text/html
+	// Set Content-Type to text/html
 	ctx.Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
 	ctx.SendBytes(buf.Bytes())
@@ -909,7 +923,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 			file += "/"
 		}
 	}
-	// Set new URI for filehandler
+	// Set new URI for fileHandler
 	ctx.Fasthttp.Request.SetRequestURI(file)
 	// Save status code
 	status := ctx.Fasthttp.Response.StatusCode()
