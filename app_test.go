@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -132,7 +133,9 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 }
 
 func Test_App_ErrorHandler(t *testing.T) {
-	app := New()
+	app := New(&Settings{
+		BodyLimit: 4,
+	})
 
 	app.Get("/", func(c *Ctx) {
 		c.Next(errors.New("hi, i'm an error"))
@@ -146,6 +149,10 @@ func Test_App_ErrorHandler(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "hi, i'm an error", string(body))
 
+	_, err = app.Test(httptest.NewRequest("GET", "/", strings.NewReader("big body")))
+	if err != nil {
+		utils.AssertEqual(t, "body size exceeds the given limit", err.Error(), "app.Test(req)")
+	}
 }
 
 func Test_App_ErrorHandler_Custom(t *testing.T) {
@@ -655,26 +662,28 @@ func Test_App_Listen(t *testing.T) {
 	app := New(&Settings{
 		DisableStartupMessage: true,
 	})
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
 
-	utils.AssertEqual(t, nil, app.Listen("127.0.0.1:"))
+	utils.AssertEqual(t, false, app.Listen(1.23) == nil)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen("127.0.0.1:"))
+	utils.AssertEqual(t, nil, app.Listen(4003))
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.Listen("4010"))
 }
 
 // go test -run Test_App_Listener
 func Test_App_Listener(t *testing.T) {
 	app := New(&Settings{
-		DisableStartupMessage: true,
-		Prefork:               true,
+		Prefork: true,
 	})
 
 	go func() {
@@ -715,4 +724,27 @@ func Test_NewError(t *testing.T) {
 	e := NewError(StatusForbidden, "permission denied")
 	utils.AssertEqual(t, StatusForbidden, e.Code)
 	utils.AssertEqual(t, "permission denied", e.Message)
+}
+
+func Test_Test_Timeout(t *testing.T) {
+	app := New()
+	app.Settings.DisableStartupMessage = true
+
+	app.Get("/", func(_ *Ctx) {})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), -1)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	app.Get("timeout", func(c *Ctx) {
+		time.Sleep(55 * time.Millisecond)
+	})
+
+	_, err = app.Test(httptest.NewRequest("GET", "/timeout", nil), 50)
+	utils.AssertEqual(t, true, err != nil, "app.Test(req)")
+}
+
+func Test_App_Handler(t *testing.T) {
+	h := New().Handler()
+	utils.AssertEqual(t, "fasthttp.RequestHandler", reflect.TypeOf(h).String())
 }

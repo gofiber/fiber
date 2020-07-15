@@ -222,47 +222,45 @@ func (ctx *Ctx) Body() string {
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 func (ctx *Ctx) BodyParser(out interface{}) error {
 	// TODO: Create benchmark ( Probably need a sync pool )
-	var schemaDecoderForm = schema.NewDecoder()
-	var schemaDecoderQuery = schema.NewDecoder()
-	schemaDecoderForm.SetAliasTag("form")
-	schemaDecoderForm.IgnoreUnknownKeys(true)
-	schemaDecoderQuery.SetAliasTag("query")
-	schemaDecoderQuery.IgnoreUnknownKeys(true)
+	var (
+		schemaDecoder = schema.NewDecoder()
+		ctype         = getString(ctx.Fasthttp.Request.Header.ContentType())
+	)
+	schemaDecoder.IgnoreUnknownKeys(true)
 
-	// get content type
-	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
-	// application/json
-	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
+	switch ctype {
+	case MIMEApplicationJSON, MIMEApplicationJSONCharsetUTF8:
 		return json.Unmarshal(ctx.Fasthttp.Request.Body(), out)
-	}
-	// application/xml text/xml
-	if strings.HasPrefix(ctype, MIMEApplicationXML) || strings.HasPrefix(ctype, MIMETextXML) {
+	case MIMETextXML, MIMETextXMLCharsetUTF8, MIMEApplicationXML, MIMEApplicationXMLCharsetUTF8:
 		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), out)
-	}
-	// application/x-www-form-urlencoded
-	if strings.HasPrefix(ctype, MIMEApplicationForm) {
+	case MIMEApplicationForm: // application/x-www-form-urlencoded
+		schemaDecoder.SetAliasTag("form")
 		data, err := url.ParseQuery(getString(ctx.Fasthttp.PostBody()))
 		if err != nil {
 			return err
 		}
-		return schemaDecoderForm.Decode(out, data)
+		return schemaDecoder.Decode(out, data)
 	}
-	// multipart/form-data
+
+	// this case is outside switch case because it can have info additional as `boundary=something` in content-type
 	if strings.HasPrefix(ctype, MIMEMultipartForm) {
+		schemaDecoder.SetAliasTag("form")
 		data, err := ctx.Fasthttp.MultipartForm()
 		if err != nil {
 			return err
 		}
-		return schemaDecoderForm.Decode(out, data.Value)
+		return schemaDecoder.Decode(out, data.Value)
 	}
+
 	// query params
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
+		schemaDecoder.SetAliasTag("query")
 		fmt.Println("Parsing query strings using `BodyParser` is deprecated since v1.12.7, please us `ctx.QueryParser` instead")
 		data := make(map[string][]string)
 		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
 			data[getString(key)] = append(data[getString(key)], getString(val))
 		})
-		return schemaDecoderQuery.Decode(out, data)
+		return schemaDecoder.Decode(out, data)
 	}
 
 	return fmt.Errorf("bodyparser: cannot parse content-type: %v", ctype)
