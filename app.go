@@ -693,7 +693,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	if tls {
 		tlsStr = "TRUE"
 	}
-	// tabwriter makes sure the spacing are consistant across different values
+	// tabwriter makes sure the spacing are consistent across different values
 	// colorable handles the escape sequence for stdout using ascii color codes
 	var out *tabwriter.Writer
 	// Check if colors are supported
