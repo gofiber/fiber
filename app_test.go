@@ -253,7 +253,6 @@ func Test_App_Add_Method_Test(t *testing.T) {
 
 func Test_App_Listen_TLS(t *testing.T) {
 	app := New()
-	app.Settings.Prefork = true
 
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/TEST_DATA/ssl.pem", "./.github/TEST_DATA/ssl.key")
@@ -263,7 +262,7 @@ func Test_App_Listen_TLS(t *testing.T) {
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 	go func() {
-		time.Sleep(1 * time.Second)
+		time.Sleep(1000 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
@@ -280,13 +279,13 @@ func Test_App_Listener_TLS(t *testing.T) {
 	}
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
-	ln, err := net.Listen("tcp4", ":3055")
-	utils.AssertEqual(t, nil, err)
-
 	go func() {
-		time.Sleep(1 * time.Second)
+		time.Sleep(1000 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
+
+	ln, err := net.Listen("tcp4", ":3055")
+	utils.AssertEqual(t, nil, err)
 
 	utils.AssertEqual(t, nil, app.Listener(ln, config))
 }
