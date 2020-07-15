@@ -1395,7 +1395,6 @@ func Test_Ctx_Redirect(t *testing.T) {
 
 // go test -run Test_Ctx_Render
 func Test_Ctx_Render(t *testing.T) {
-	t.Parallel()
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
