@@ -66,7 +66,7 @@ func Test_Middleware_Logger_WithDefaultFormat(t *testing.T) {
 	_, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	res := buf.String()
-	utils.AssertEqual(t, 70, len(res), fmt.Sprintf("Has length: %v, expected: %v", len(res), 70))
+	utils.AssertEqual(t, 70, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 70, res))
 }
 
 // go test -run Test_Middleware_Logger_Skip
@@ -120,13 +120,13 @@ func Test_Middleware_Logger_Options_And_WithConfig(t *testing.T) {
 		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 		res := buf.String()
 		if i == 0 {
-			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v", len(res), 48))
+			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 48, res))
 		} else if i == 1 {
-			utils.AssertEqual(t, 59, len(res), fmt.Sprintf("Has length: %v, expected: %v", len(res), 59))
+			utils.AssertEqual(t, 59, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 59, res))
 		} else if i == 2 {
-			utils.AssertEqual(t, 73, len(res), fmt.Sprintf("Has length: %v, expected: %v", len(res), 73))
+			utils.AssertEqual(t, 73, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 73, res))
 		} else if i == 3 {
-			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v", len(res), 48))
+			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 48, res))
 		}
 	}
 }
