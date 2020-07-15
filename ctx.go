@@ -496,13 +496,20 @@ func (ctx *Ctx) IP() string {
 }
 
 // IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
-func (ctx *Ctx) IPs() []string {
-	// TODO: improve with for iteration and string.Index -> like in Accepts
-	ips := strings.Split(ctx.Get(HeaderXForwardedFor), ",")
-	for i := range ips {
-		ips[i] = utils.Trim(ips[i], ' ')
+func (ctx *Ctx) IPs() (ips []string) {
+	header := ctx.Fasthttp.Request.Header.Peek(HeaderXForwardedFor)
+	ips = make([]string, bytes.Count(header, []byte(","))+1)
+	var commaPos, i int
+	for {
+		commaPos = bytes.IndexByte(header, ',')
+		if commaPos != -1 {
+			ips[i] = getString(header[:commaPos])
+			header, i = header[commaPos+2:], i+1
+		} else {
+			ips[i] = getString(header)
+			return
+		}
 	}
-	return ips
 }
 
 // Is returns the matching content type,
