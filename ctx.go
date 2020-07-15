@@ -822,7 +822,7 @@ func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err er
 			return err
 		}
 	}
-	// Set Contet-Type to text/html
+	// Set Content-Type to text/html
 	ctx.Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
 	ctx.SendBytes(buf.Bytes())
@@ -909,7 +909,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 			file += "/"
 		}
 	}
-	// Set new URI for filehandler
+	// Set new URI for fileHandler
 	ctx.Fasthttp.Request.SetRequestURI(file)
 	// Save status code
 	status := ctx.Fasthttp.Response.StatusCode()
