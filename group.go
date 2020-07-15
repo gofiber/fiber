@@ -5,7 +5,7 @@
 package fiber
 
 import (
-	"log"
+	"fmt"
 	"reflect"
 )
 
@@ -32,7 +32,7 @@ func (grp *Group) Use(args ...interface{}) *Route {
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
-			log.Fatalf("Use: Invalid Handler %v", reflect.TypeOf(arg))
+			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
 	return grp.app.register(methodUse, getGroupPath(grp.prefix, path), handlers...)

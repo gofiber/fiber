@@ -13,7 +13,6 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	defer os.Setenv(envPreforkChildKey, "")
 
 	app := New()
-	app.Settings.DisableStartupMessage = true
 	app.init()
 
 	err := app.prefork("invalid")
@@ -31,7 +30,6 @@ func Test_App_Prefork_Main_Process(t *testing.T) {
 	testPreforkMaster = true
 
 	app := New()
-	app.Settings.DisableStartupMessage = true
 	app.init()
 
 	go func() {
@@ -45,4 +43,17 @@ func Test_App_Prefork_Main_Process(t *testing.T) {
 
 	err := app.prefork("127.0.0.1:")
 	utils.AssertEqual(t, false, err == nil)
+}
+
+func Test_App_Prefork_TCP6_Addr(t *testing.T) {
+	app := New()
+	app.Settings.Prefork = true
+	app.Settings.DisableStartupMessage = true
+
+	app.init()
+	utils.AssertEqual(t, "listen: tcp6 is not supported when prefork is enabled", app.Listen("[::1]:3000").Error())
+
+	app.Settings.Network = "tcp6"
+	app.init()
+	utils.AssertEqual(t, "listen: tcp6 is not supported when prefork is enabled", app.Listen(":3000").Error())
 }

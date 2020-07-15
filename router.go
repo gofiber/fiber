@@ -5,7 +5,7 @@
 package fiber
 
 import (
-	"log"
+	"fmt"
 	"strings"
 	"time"
 
@@ -147,11 +147,11 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
 	if methodInt(method) == -1 {
-		log.Fatalf("Add: Invalid HTTP method %s", method)
+		panic(fmt.Sprintf("add: invalid http method %s\n", method))
 	}
 	// A route requires atleast one ctx handler
 	if len(handlers) == 0 {
-		log.Fatalf("Missing func(c *fiber.Ctx) handler in route: %s", pathRaw)
+		panic(fmt.Sprintf("missing handler in route: %s\n", pathRaw))
 	}
 	// Cannot have an empty path
 	if pathRaw == "" {

@@ -8,6 +8,7 @@ package fiber
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
 	"testing"
@@ -202,6 +203,16 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "middleware", getString(body))
+}
+
+func Test_Router_Register_Missing_Handler(t *testing.T) {
+	app := New()
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "missing handler in route: /doe\n", fmt.Sprintf("%v", err))
+		}
+	}()
+	app.register("USE", "/doe")
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
