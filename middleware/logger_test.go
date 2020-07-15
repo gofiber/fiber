@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -17,8 +16,8 @@ import (
 
 // go test -run Test_Middleware_Logger
 func Test_Middleware_Logger(t *testing.T) {
-	format := "${ip}-${ips}-${url}-${host}-${method}-${methodColor}${method}${resetColor}-${path}-${protocol}-${route}-${referer}-${ua}-${status}-${statusColor}${status}${resetColor}-${body}-${error}-${bytesSent}-${bytesReceived}-${header:header}-${query:query}-${form:form}-${cookie:cookie}-${black}-${red}-${green}-${yellow}-${blue}-${magenta}-${cyan}-${white}-${resetColor}"
-	expect := "0.0.0.0--/test?query=query-example.com-POST-\u001b[96mPOST\u001b[0m-/test-http-/test-ref-ua-500-\u001b[91m500\u001b[0m-form=form-error-5-9-header-query-form-cookie-\u001b[90m-\u001b[91m-\u001b[92m-\u001b[93m-\u001b[94m-\u001b[95m-\u001b[96m-\u001b[97m-\u001b[0m"
+	format := "${ip}-${ips}-${url}-${host}-${method}-${path}-${protocol}-${route}-${referer}-${ua}-${status}-${body}-${error}-${bytesSent}-${bytesReceived}-${header:header}-${query:query}-${form:form}-${cookie:cookie}-${black}-${red}-${green}-${yellow}-${blue}-${magenta}-${cyan}-${white}-${resetColor}"
+	expect := "0.0.0.0--/test?query=query-example.com-POST-/test-http-/test-ref-ua-500-form=form-error-5-9-header-query-form-cookie-\u001b[90m-\u001b[91m-\u001b[92m-\u001b[93m-\u001b[94m-\u001b[95m-\u001b[96m-\u001b[97m-\u001b[0m"
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -49,8 +48,6 @@ func Test_Middleware_Logger(t *testing.T) {
 }
 
 func Test_Middleware_Logger_WithDefaultFormat(t *testing.T) {
-	expectedOutputPattern := regexp.MustCompile(`^\d{2}:\d{2}:\d{2} GET / - 0\.0\.0\.0 - 200 - \d+(\.\d+)?.{1,3}
-$`)
 	// fake output
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -68,12 +65,8 @@ $`)
 
 	_, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(
-		t,
-		true,
-		expectedOutputPattern.MatchString(buf.String()),
-		fmt.Sprintf("Has: %s, expected pattern: %s", buf.String(), expectedOutputPattern.String()),
-	)
+	res := buf.String()
+	utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 48, res))
 }
 
 // go test -run Test_Middleware_Logger_Skip
@@ -101,9 +94,6 @@ func Test_Middleware_Logger_Skip(t *testing.T) {
 func Test_Middleware_Logger_Options_And_WithConfig(t *testing.T) {
 	t.Parallel()
 
-	expectedOutputPattern := regexp.MustCompile(`^\d{2}:\d{2}:\d{2} GET / - 0\.0\.0\.0 - 200 - \d+(\.\d+)?.{1,3}
-$`)
-
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
@@ -116,7 +106,7 @@ $`)
 		Logger(LoggerConfig{Output: buf}),
 	}
 
-	for _, logger := range loggers {
+	for i, logger := range loggers {
 		buf.Reset()
 
 		app := fiber.New()
@@ -128,12 +118,17 @@ $`)
 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 		utils.AssertEqual(t, nil, err, "app.Test(req)")
 		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
-		utils.AssertEqual(
-			t,
-			true,
-			expectedOutputPattern.MatchString(buf.String()),
-			fmt.Sprintf("Has: %s, expected pattern: %s", buf.String(), expectedOutputPattern.String()),
-		)
+		res := buf.String()
+
+		if i == 0 {
+			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 48, res))
+		} else if i == 1 {
+			utils.AssertEqual(t, 37, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 37, res))
+		} else if i == 2 {
+			utils.AssertEqual(t, 51, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 51, res))
+		} else if i == 3 {
+			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 48, res))
+		}
 	}
 }
 

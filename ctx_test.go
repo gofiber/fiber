@@ -18,6 +18,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"text/template"
 	"time"
@@ -1395,7 +1396,6 @@ func Test_Ctx_Redirect(t *testing.T) {
 
 // go test -run Test_Ctx_Render
 func Test_Ctx_Render(t *testing.T) {
-	t.Parallel()
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
@@ -1407,6 +1407,7 @@ func Test_Ctx_Render(t *testing.T) {
 }
 
 type testTemplateEngine struct {
+	mu        sync.Mutex
 	templates *template.Template
 }
 
@@ -1415,13 +1416,14 @@ func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, 
 }
 
 func (t *testTemplateEngine) Load() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.templates = template.Must(template.ParseGlob("./.github/*.tmpl"))
 	return nil
 }
 
 // go test -run Test_Ctx_Render_Engine
 func Test_Ctx_Render_Engine(t *testing.T) {
-	t.Parallel()
 	engine := &testTemplateEngine{}
 	engine.Load()
 	app := New()

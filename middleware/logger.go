@@ -13,6 +13,7 @@ import (
 
 	fiber "github.com/gofiber/fiber"
 	utils "github.com/gofiber/utils"
+	"github.com/mattn/go-isatty"
 	bytebufferpool "github.com/valyala/bytebufferpool"
 )
 
@@ -25,6 +26,7 @@ type (
 
 		// Format defines the logging tags
 		//
+		// - pid
 		// - time
 		// - ip
 		// - ips
@@ -49,7 +51,7 @@ type (
 		// - form:<key>
 		// - cookie:<key>
 		//
-		// Optional. Default: ${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n
+		// Optional. Default: ${time} - ${ip} - ${status} - ${latency} - ${method} ${path}\n
 		Format string
 
 		// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
@@ -61,11 +63,15 @@ type (
 		//
 		// Default: os.Stderr
 		Output io.Writer
+
+		// Colors are only supported if no custom Output is given
+		enableColors bool
 	}
 )
 
 // Logger variables
 const (
+	LoggerTagPid           = "pid"
 	LoggerTagTime          = "time"
 	LoggerTagReferer       = "referer"
 	LoggerTagProtocol      = "protocol"
@@ -96,8 +102,8 @@ const (
 	LoggerTagColorCyan     = "cyan"
 	LoggerTagColorWhite    = "white"
 	LoggerTagColorReset    = "resetColor"
-	LoggerTagStatusColor   = "statusColor"
-	LoggerTagMethodColor   = "methodColor"
+	// LoggerTagStatusColor   = "statusColor"
+	// LoggerTagMethodColor   = "methodColor"
 )
 
 // NEW : Color variables
@@ -124,9 +130,9 @@ var (
 // LoggerConfigDefault is the default config
 var LoggerConfigDefault = LoggerConfig{
 	Next:       nil,
-	Format:     "${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n",
-	TimeFormat: "15:04:05",
-	Output:     os.Stdout,
+	Format:     "#${pid} - ${time} ${status} - ${latency} ${method} ${path}\n",
+	TimeFormat: "2006/01/02 15:04:05",
+	Output:     os.Stderr,
 }
 
 /*
@@ -140,7 +146,7 @@ Logger allows the following config arguments in any order:
 */
 func Logger(options ...interface{}) fiber.Handler {
 	// Create default config
-	var config = LoggerConfigDefault
+	var config = LoggerConfig{}
 	// Assert options if provided to adjust the config
 	if len(options) > 0 {
 		for i := range options {
@@ -181,6 +187,10 @@ func logger(config LoggerConfig) fiber.Handler {
 		config.TimeFormat = LoggerConfigDefault.TimeFormat
 	}
 	if config.Output == nil {
+		// Check if colors are supported if no Output is given
+		if os.Getenv("TERM") != "dumb" && (isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+			config.enableColors = true
+		}
 		config.Output = LoggerConfigDefault.Output
 	}
 	// Middleware settings
@@ -201,6 +211,7 @@ func logger(config LoggerConfig) fiber.Handler {
 			}
 		}()
 	}
+	pid := fmt.Sprintf("%-5s", strconv.Itoa(os.Getpid()))
 	// Return handler
 	return func(c *fiber.Ctx) {
 		// Don't execute the middleware if Next returns true
@@ -226,14 +237,14 @@ func logger(config LoggerConfig) fiber.Handler {
 				return buf.WriteString(c.Get(fiber.HeaderReferer))
 			case LoggerTagProtocol:
 				return buf.WriteString(c.Protocol())
+			case LoggerTagPid:
+				return buf.WriteString(pid)
 			case LoggerTagIP:
 				return buf.WriteString(c.IP())
 			case LoggerTagIPs:
 				return buf.WriteString(c.Get(fiber.HeaderXForwardedFor))
 			case LoggerTagHost:
 				return buf.WriteString(c.Hostname())
-			case LoggerTagMethod:
-				return buf.WriteString(c.Method())
 			case LoggerTagPath:
 				return buf.WriteString(c.Path())
 			case LoggerTagURL:
@@ -241,9 +252,8 @@ func logger(config LoggerConfig) fiber.Handler {
 			case LoggerTagUA:
 				return buf.WriteString(c.Get(fiber.HeaderUserAgent))
 			case LoggerTagLatency:
-				return buf.WriteString(stop.Sub(start).String())
-			case LoggerTagStatus:
-				return buf.WriteString(strconv.Itoa(c.Fasthttp.Response.StatusCode()))
+				return buf.WriteString(fmt.Sprintf("%-6s", stop.Sub(start).Round(1*time.Millisecond)))
+				// return buf.WriteString(stop.Sub(start).String())
 			case LoggerTagBody:
 				return buf.WriteString(c.Body())
 			case LoggerTagBytesReceived:
@@ -274,40 +284,47 @@ func logger(config LoggerConfig) fiber.Handler {
 				return buf.WriteString(cWhite)
 			case LoggerTagColorReset:
 				return buf.WriteString(cReset)
-			case LoggerTagStatusColor:
+			case LoggerTagStatus:
 				responseStatus = c.Fasthttp.Response.StatusCode()
+				if !config.enableColors {
+					return buf.WriteString(strconv.Itoa(responseStatus))
+				}
 				switch {
 				case responseStatus >= 200 && responseStatus < 300:
-					statusColor = cBlue
+					statusColor = cGreen
 				case responseStatus >= 300 && responseStatus < 400:
-					statusColor = cWhite
+					statusColor = cBlue
 				case responseStatus >= 400 && responseStatus < 500:
 					statusColor = cYellow
 				default:
 					statusColor = cRed
 				}
-				return buf.WriteString(statusColor)
-			case LoggerTagMethodColor:
+				return buf.WriteString(statusColor + strconv.Itoa(responseStatus) + cReset)
+			case LoggerTagMethod:
 				requestMethod = c.Method()
+				if !config.enableColors {
+					return buf.WriteString(requestMethod)
+				}
 				switch requestMethod {
-				case "GET":
-					methodColor = cBlue
-				case "POST":
-					methodColor = cCyan
-				case "PUT":
-					methodColor = cYellow
-				case "DELETE":
-					methodColor = cRed
-				case "PATCH":
+				case fiber.MethodGet:
 					methodColor = cGreen
-				case "HEAD":
+				case fiber.MethodPost:
+					methodColor = cCyan
+				case fiber.MethodPut:
+					methodColor = cYellow
+				case fiber.MethodDelete:
+					methodColor = cRed
+				case fiber.MethodPatch:
+					methodColor = cBlue
+				case fiber.MethodHead:
 					methodColor = cMagenta
-				case "OPTIONS":
-					methodColor = cWhite
+				case fiber.MethodOptions:
+					methodColor = cBlack
 				default:
 					methodColor = cReset
 				}
-				return buf.WriteString(methodColor)
+				return buf.WriteString(fmt.Sprintf("%s%7s%s", methodColor, requestMethod, cReset))
+				//return buf.WriteString(methodColor + requestMethod + cReset)
 			default:
 				switch {
 				case strings.HasPrefix(tag, LoggerTagHeader):
