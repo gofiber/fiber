@@ -898,7 +898,11 @@ func Test_Ctx_Path(t *testing.T) {
 // go test -run Test_Ctx_Protocol
 func Test_Ctx_Protocol(t *testing.T) {
 	app := New()
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	freq := &fasthttp.RequestCtx{}
+	freq.Request.Header.Set("X-Forwarded", "invalid")
+
+	ctx := app.AcquireCtx(freq)
 	defer app.ReleaseCtx(ctx)
 	ctx.Fasthttp.Request.Header.Set(HeaderXForwardedProto, "https")
 	utils.AssertEqual(t, "https", ctx.Protocol())
@@ -1144,7 +1148,7 @@ func Test_Ctx_Download(t *testing.T) {
 
 // go test -race -run Test_Ctx_SendFile
 func Test_Ctx_SendFile(t *testing.T) {
-	//t.Parallel()
+	t.Parallel()
 	app := New()
 
 	// fetch file content
@@ -1184,6 +1188,13 @@ func Test_Ctx_SendFile(t *testing.T) {
 	utils.AssertEqual(t, StatusNotModified, ctx.Fasthttp.Response.StatusCode())
 	utils.AssertEqual(t, []byte(nil), ctx.Fasthttp.Response.Body())
 	app.ReleaseCtx(ctx)
+
+	// test 404
+	// ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	// err = ctx.SendFile("./john_doe.go")
+	// // check expectation
+	// utils.AssertEqual(t, StatusNotFound, ctx.Fasthttp.Response.StatusCode())
+	// app.ReleaseCtx(ctx)
 }
 
 // go test -race -run Test_Ctx_SendFile_Immutable
@@ -1400,7 +1411,7 @@ func Test_Ctx_Render(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	err := ctx.Render("./.github/template.html", Map{
+	err := ctx.Render("./.github/TEST_DATA/template.html", Map{
 		"Title": "Hello, World!",
 	})
 	utils.AssertEqual(t, nil, err)
@@ -1417,7 +1428,7 @@ func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, 
 }
 
 func (t *testTemplateEngine) Load() error {
-	t.templates = template.Must(template.ParseGlob("./.github/*.tmpl"))
+	t.templates = template.Must(template.ParseGlob("./.github/TEST_DATA/*.tmpl"))
 	return nil
 }
 
@@ -1785,4 +1796,14 @@ func Benchmark_Ctx_QueryParser(b *testing.B) {
 		ctx.QueryParser(q)
 	}
 	utils.AssertEqual(b, nil, ctx.QueryParser(q))
+}
+
+// go test -run Test_Ctx_Error
+func Test_Ctx_Error(t *testing.T) {
+	t.Parallel()
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	ctx.Next(fmt.Errorf("Hi I'm an error!"))
+	utils.AssertEqual(t, "Hi I'm an error!", ctx.Error().Error())
 }
