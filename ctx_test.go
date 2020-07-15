@@ -308,8 +308,15 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	testDecodeParser(MIMEApplicationForm, "name=john")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
 
-	ctx.Fasthttp.Request.Header.SetContentType("invalid-content-type")
-	utils.AssertEqual(t, false, ctx.BodyParser(nil) == nil)
+	testDecodeParserError := func(contentType, body string) {
+		ctx.Fasthttp.Request.Header.SetContentType(contentType)
+		ctx.Fasthttp.Request.SetBody([]byte(body))
+		ctx.Fasthttp.Request.Header.SetContentLength(len(body))
+		utils.AssertEqual(t, false, ctx.BodyParser(nil) == nil)
+	}
+
+	testDecodeParserError("invalid-content-type", "")
+	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
 
 	type Query struct {
 		ID    int
