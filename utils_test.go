@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"testing"
+	"time"
 
 	utils "github.com/gofiber/utils"
 	fasthttp "github.com/valyala/fasthttp"
@@ -149,4 +150,62 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 	}
 
 	utils.AssertEqual(b, "/créer", unescaped)
+}
+
+func Test_Utils_IPv6(t *testing.T) {
+	testCases := []struct {
+		string
+		bool
+	}{
+		{"::FFFF:C0A8:1:3000", true},
+		{"::FFFF:C0A8:0001:3000", true},
+		{"0000:0000:0000:0000:0000:FFFF:C0A8:1:3000", true},
+		{"::FFFF:C0A8:1%1:3000", true},
+		{"::FFFF:192.168.0.1:3000", true},
+		{"[::FFFF:C0A8:1]:3000", true},
+		{"[::FFFF:C0A8:1%1]:3000", true},
+		{":3000", false},
+		{"127.0.0.1:3000", false},
+		{"127.0.0.1:", false},
+		{"0.0.0.0:3000", false},
+		{"", false},
+	}
+
+	for _, c := range testCases {
+		utils.AssertEqual(t, c.bool, isIPv6(c.string))
+	}
+}
+
+func Test_Utils_Parse_Address(t *testing.T) {
+	testCases := []struct {
+		addr, host, port string
+	}{
+		{"[::]:3000", "[::]", "3000"},
+		{"127.0.0.1:3000", "127.0.0.1", "3000"},
+		{"/path/to/unix/socket", "/path/to/unix/socket", ""},
+	}
+
+	for _, c := range testCases {
+		host, port := parseAddr(c.addr)
+		utils.AssertEqual(t, c.host, host, "addr host")
+		utils.AssertEqual(t, c.port, port, "addr port")
+	}
+}
+
+func Test_Utils_GetOffset(t *testing.T) {
+	utils.AssertEqual(t, "", getOffer("hello"))
+	utils.AssertEqual(t, "1", getOffer("", "1"))
+	utils.AssertEqual(t, "", getOffer("2", "1"))
+}
+
+func Test_Utils_TestAddr_Network(t *testing.T) {
+	var addr testAddr = "addr"
+	utils.AssertEqual(t, "addr", addr.Network())
+}
+
+func Test_Utils_TestConn_Deadline(t *testing.T) {
+	conn := &testConn{}
+	utils.AssertEqual(t, nil, conn.SetDeadline(time.Time{}))
+	utils.AssertEqual(t, nil, conn.SetReadDeadline(time.Time{}))
+	utils.AssertEqual(t, nil, conn.SetWriteDeadline(time.Time{}))
 }

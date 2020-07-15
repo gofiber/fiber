@@ -17,6 +17,8 @@ const (
 	envPreforkChildVal = "1"
 )
 
+var testPreforkMaster = false
+
 // IsChild determines if the current process is a result of Prefork
 func (app *App) IsChild() bool {
 	return os.Getenv(envPreforkChildKey) == envPreforkChildVal
@@ -43,11 +45,12 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 
 		// kill child proc when master exits
 		go func() {
-			ppid, err := os.FindProcess(os.Getppid())
+			p, err := os.FindProcess(os.Getppid())
 			if err == nil {
-				_, _ = ppid.Wait()
+				_, _ = p.Wait()
+			} else {
+				os.Exit(1)
 			}
-			os.Exit(1)
 		}()
 		// listen for incoming connections
 		return app.server.Serve(ln)
@@ -71,12 +74,18 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	}()
 
 	// collect child pids
-	pids := []string{}
+	var pids []string
 
 	// launch child procs
 	for i := 0; i < max; i++ {
 		/* #nosec G204 */
 		cmd := exec.Command(os.Args[0], os.Args[1:]...)
+		if testPreforkMaster {
+			// When test prefork master,
+			// just start the child process
+			// a cmd on all os is best
+			cmd = exec.Command("date")
+		}
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 
@@ -89,12 +98,13 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		}
 
 		// store child process
-		childs[cmd.Process.Pid] = cmd
-		pids = append(pids, strconv.Itoa(cmd.Process.Pid))
+		pid := cmd.Process.Pid
+		childs[pid] = cmd
+		pids = append(pids, strconv.Itoa(pid))
 
 		// notify master if child crashes
 		go func() {
-			channel <- child{cmd.Process.Pid, cmd.Wait()}
+			channel <- child{pid, cmd.Wait()}
 		}()
 	}
 
