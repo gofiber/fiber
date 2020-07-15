@@ -1,40 +1,48 @@
 package fiber
 
-// func Test_App_Prefork_Child_Process(t *testing.T) {
-// 	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
-// 	defer os.Setenv(envPreforkChildKey, "")
+import (
+	"os"
+	"testing"
+	"time"
 
-// 	app := New()
-// 	app.Settings.DisableStartupMessage = true
-// 	app.init()
+	utils "github.com/gofiber/utils"
+)
 
-// 	err := app.prefork("invalid")
-// 	utils.AssertEqual(t, false, err == nil)
+func Test_App_Prefork_Child_Process(t *testing.T) {
+	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
+	defer os.Setenv(envPreforkChildKey, "")
 
-// 	go func() {
-// 		time.Sleep(1000 * time.Millisecond)
-// 		utils.AssertEqual(t, nil, app.Shutdown())
-// 	}()
+	app := New()
+	app.Settings.DisableStartupMessage = true
+	app.init()
 
-// 	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:"))
-// }
+	err := app.prefork("invalid")
+	utils.AssertEqual(t, false, err == nil)
 
-// func Test_App_Prefork_Main_Process(t *testing.T) {
-// 	testPreforkMaster = true
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
 
-// 	app := New()
-// 	app.Settings.DisableStartupMessage = true
-// 	app.init()
+	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:"))
+}
 
-// 	go func() {
-// 		time.Sleep(1000 * time.Millisecond)
-// 		utils.AssertEqual(t, nil, app.Shutdown())
-// 	}()
+func Test_App_Prefork_Main_Process(t *testing.T) {
+	testPreforkMaster = true
 
-// 	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:"))
+	app := New()
+	app.Settings.DisableStartupMessage = true
+	app.init()
 
-// 	dummyChildCmd = "invalid"
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
 
-// 	err := app.prefork("127.0.0.1:")
-// 	utils.AssertEqual(t, false, err == nil)
-// }
+	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:"))
+
+	dummyChildCmd = "invalid"
+
+	err := app.prefork("127.0.0.1:")
+	utils.AssertEqual(t, false, err == nil)
+}
