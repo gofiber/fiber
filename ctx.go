@@ -217,16 +217,20 @@ func (ctx *Ctx) Body() string {
 	return getString(ctx.Fasthttp.Request.Body())
 }
 
+// decoderPool helps to improve BodyParser's and QueryParser's performance
+var decoderPool = &sync.Pool{New: func() interface{} {
+	var decoder = schema.NewDecoder()
+	decoder.IgnoreUnknownKeys(true)
+	return decoder
+}}
+
 // BodyParser binds the request body to a struct.
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 func (ctx *Ctx) BodyParser(out interface{}) error {
-	// TODO: Create benchmark ( Probably need a sync pool )
-	var (
-		schemaDecoder = schema.NewDecoder()
-		ctype         = getString(ctx.Fasthttp.Request.Header.ContentType())
-	)
-	schemaDecoder.IgnoreUnknownKeys(true)
+	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
+	schemaDecoder := decoderPool.Get().(*schema.Decoder)
+	defer decoderPool.Put(schemaDecoder)
 
 	switch ctype {
 	case MIMEApplicationJSON, MIMEApplicationJSONCharsetUTF8:
@@ -266,19 +270,12 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	return fmt.Errorf("bodyparser: cannot parse content-type: %v", ctype)
 }
 
-// queryDecoderPool helps to improve QueryParser's performance
-var queryDecoderPool = &sync.Pool{New: func() interface{} {
-	var decoder = schema.NewDecoder()
-	decoder.SetAliasTag("query")
-	decoder.IgnoreUnknownKeys(true)
-	return decoder
-}}
-
 // QueryParser binds the query string to a struct.
 func (ctx *Ctx) QueryParser(out interface{}) error {
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
-		var decoder = queryDecoderPool.Get().(*schema.Decoder)
-		defer queryDecoderPool.Put(decoder)
+		var decoder = decoderPool.Get().(*schema.Decoder)
+		defer decoderPool.Put(decoder)
+		decoder.SetAliasTag("query")
 
 		data := make(map[string][]string)
 		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
