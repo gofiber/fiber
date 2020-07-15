@@ -1423,7 +1423,6 @@ func (t *testTemplateEngine) Load() error {
 
 // go test -run Test_Ctx_Render_Engine
 func Test_Ctx_Render_Engine(t *testing.T) {
-	t.Parallel()
 	engine := &testTemplateEngine{}
 	engine.Load()
 	app := New()
