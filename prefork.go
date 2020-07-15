@@ -81,7 +81,10 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		/* #nosec G204 */
 		cmd := exec.Command(os.Args[0], os.Args[1:]...)
 		if testPreforkMaster {
-			cmd = exec.Command("cd")
+			// When test prefork master,
+			// just start the child process
+			// a cmd on all os is best
+			cmd = exec.Command("date")
 		}
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
