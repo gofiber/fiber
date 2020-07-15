@@ -358,9 +358,6 @@ func (ctx *Ctx) Download(file string, filename ...string) error {
 
 // Error contains the error information passed via the Next(err) method.
 func (ctx *Ctx) Error() error {
-	if ctx.err == nil {
-		return errors.New("")
-	}
 	return ctx.err
 }
 
