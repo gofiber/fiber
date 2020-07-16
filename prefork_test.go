@@ -1,6 +1,8 @@
 package fiber
 
 import (
+	"crypto/tls"
+	"io/ioutil"
 	"os"
 	"testing"
 	"time"
@@ -24,6 +26,20 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	}()
 
 	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:"))
+
+	// Create tls certificate
+	cer, err := tls.LoadX509KeyPair("./.github/TEST_DATA/ssl.pem", "./.github/TEST_DATA/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:", config))
 }
 
 func Test_App_Prefork_Main_Process(t *testing.T) {
@@ -56,4 +72,25 @@ func Test_App_Prefork_TCP6_Addr(t *testing.T) {
 	app.Settings.Network = "tcp6"
 	app.init()
 	utils.AssertEqual(t, "listen: tcp6 is not supported when prefork is enabled", app.Listen(":3000").Error())
+}
+
+func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
+	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
+	defer os.Setenv(envPreforkChildKey, "")
+
+	rescueStdout := os.Stdout
+	defer func() { os.Stdout = rescueStdout }()
+
+	r, w, err := os.Pipe()
+	utils.AssertEqual(t, nil, err)
+
+	os.Stdout = w
+
+	New().startupMessage(":3000", false, "")
+
+	utils.AssertEqual(t, nil, w.Close())
+
+	out, err := ioutil.ReadAll(r)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 0, len(out))
 }

@@ -1416,6 +1416,9 @@ func Test_Ctx_Render(t *testing.T) {
 	})
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
+
+	err = ctx.Render("./.github/TEST_DATA/invalid.html", nil)
+	utils.AssertEqual(t, false, err == nil)
 }
 
 type testTemplateEngine struct {
