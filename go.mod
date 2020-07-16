@@ -8,5 +8,5 @@ require (
 	github.com/mattn/go-colorable v0.1.7
 	github.com/mattn/go-isatty v0.0.12
 	github.com/valyala/bytebufferpool v1.0.0
-	github.com/valyala/fasthttp v1.15.0
+	github.com/valyala/fasthttp v1.15.1
 )
