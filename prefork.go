@@ -47,15 +47,9 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 			ln = tls.NewListener(ln, tlsconfig[0])
 		}
 
-		// kill child proc when master exits
-		go func() {
-			p, err := os.FindProcess(os.Getppid())
-			if err == nil {
-				_, _ = p.Wait()
-			} else {
-				os.Exit(1)
-			}
-		}()
+		// kill current child proc when master exits
+		go watchMaster()
+
 		// listen for incoming connections
 		return app.server.Serve(ln)
 	}
