@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http/httptest"
@@ -627,6 +628,15 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	utils.AssertEqual(t, true, strings.HasPrefix(string(body), "<!DOCTYPE html>"), "Response: "+string(body))
 }
 
+func Test_App_Group_Invalid(t *testing.T) {
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "use: invalid handler int\n", fmt.Sprintf("%v", err))
+		}
+	}()
+	New().Group("/").Use(1)
+}
+
 func Test_App_Group(t *testing.T) {
 	var dummyHandler = func(c *Ctx) {}
 
@@ -725,6 +735,8 @@ func Test_App_Listen(t *testing.T) {
 
 	utils.AssertEqual(t, false, app.Listen(1.23) == nil)
 
+	utils.AssertEqual(t, false, app.Listen(":1.23") == nil)
+
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
@@ -807,4 +819,22 @@ func Test_Test_Timeout(t *testing.T) {
 func Test_App_Handler(t *testing.T) {
 	h := New().Handler()
 	utils.AssertEqual(t, "fasthttp.RequestHandler", reflect.TypeOf(h).String())
+}
+
+type invalidView struct{}
+
+func (invalidView) Load() error { return errors.New("invalid view") }
+
+func (i invalidView) Render(io.Writer, string, interface{}, ...string) error { panic("implement me") }
+
+func Test_App_Init_Error_View(t *testing.T) {
+	app := New(&Settings{Views: invalidView{}})
+	app.init()
+
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "implement me", fmt.Sprintf("%v", err))
+		}
+	}()
+	_ = app.Settings.Views.Render(nil, "", nil)
 }
