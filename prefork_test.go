@@ -42,7 +42,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:", config))
 }
 
-func Test_App_Prefork_Main_Process(t *testing.T) {
+func Test_App_Prefork_Master_Process(t *testing.T) {
 	testPreforkMaster = true
 
 	app := New()
