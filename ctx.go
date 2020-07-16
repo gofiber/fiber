@@ -585,7 +585,7 @@ func (ctx *Ctx) Links(link ...string) {
 			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	ctx.Set(HeaderLink, utils.TrimRight(bb.String(), ','))
+	ctx.Set(HeaderLink, utils.TrimRight(getString(bb.Bytes()), ','))
 	bytebufferpool.Put(bb)
 }
 
