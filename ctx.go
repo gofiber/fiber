@@ -876,6 +876,7 @@ func (ctx *Ctx) SendBytes(body []byte) {
 	ctx.Fasthttp.Response.SetBodyRaw(body)
 }
 
+var fsOnce sync.Once
 var sendFileFS *fasthttp.FS
 var sendFileHandler fasthttp.RequestHandler
 
@@ -884,7 +885,7 @@ var sendFileHandler fasthttp.RequestHandler
 // Sets the Content-Type response HTTP header field based on the filenames extension.
 func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
-	if sendFileFS == nil {
+	fsOnce.Do(func() {
 		sendFileFS = &fasthttp.FS{
 			Root:                 "/",
 			GenerateIndexPages:   false,
@@ -898,7 +899,8 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 			},
 		}
 		sendFileHandler = sendFileFS.NewRequestHandler()
-	}
+	})
+
 	// Keep original path for mutable params
 	ctx.pathOriginal = utils.ImmutableString(ctx.pathOriginal)
 	// Disable compression
