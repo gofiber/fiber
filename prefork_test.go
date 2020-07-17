@@ -75,7 +75,7 @@ func Test_App_Prefork_TCP6_Addr(t *testing.T) {
 	}()
 
 	err := app.Listen("[::1]:3200")
-	utils.AssertEqual(t, true, strings.Contains(err.Error(), "exit status"))
+	utils.AssertEqual(t, true, strings.Contains(err.Error(), "exit status"), err.Error())
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
