@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -67,11 +68,14 @@ func Test_App_Prefork_TCP6_Addr(t *testing.T) {
 	app.Settings.DisableStartupMessage = true
 
 	app.init()
-	utils.AssertEqual(t, "listen: tcp6 is not supported when prefork is enabled", app.Listen("[::1]:3000").Error())
 
-	app.Settings.Network = "tcp6"
-	app.init()
-	utils.AssertEqual(t, "listen: tcp6 is not supported when prefork is enabled", app.Listen(":3000").Error())
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	err := app.Listen("[::1]:3200")
+	utils.AssertEqual(t, true, strings.Contains(err.Error(), "exit status"))
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
