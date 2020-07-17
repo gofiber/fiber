@@ -81,7 +81,7 @@ func Test_App_Prefork_TCP6_Addr(t *testing.T) {
 	}()
 
 	err := app.Listen("[::1]:3200")
-	utils.AssertEqual(t, true, err == nil)
+	utils.AssertEqual(t, true, err != nil)
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
