@@ -29,16 +29,12 @@ func (app *App) IsChild() bool {
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
-func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
+func (app *App) prefork(network, addr string, tlsconfig ...*tls.Config) (err error) {
 	// 👶 child process 👶
 	if app.IsChild() {
 		// use 1 cpu core per child process
 		runtime.GOMAXPROCS(1)
 		var ln net.Listener
-		network := "tcp4"
-		if app.Settings.Network == "tcp6" {
-			network = app.Settings.Network
-		}
 		// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
 		// Only tcp4 or tcp6 is supported when preforking, both are not supported
 		if ln, err = reuseport.Listen(network, addr); err != nil {
