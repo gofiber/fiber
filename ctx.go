@@ -833,7 +833,7 @@ func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err er
 	// Set Content-Type to text/html
 	ctx.Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
-	ctx.SendBytes(buf.Bytes())
+	ctx.Fasthttp.Response.SetBody(buf.Bytes())
 	// Return err if exist
 	return
 }
