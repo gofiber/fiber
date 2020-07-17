@@ -40,7 +40,12 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 
 	app.Options("/", func(c *Ctx) {})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest("POST", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+	utils.AssertEqual(t, "", resp.Header.Get(HeaderAllow))
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 405, resp.StatusCode)
 	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
