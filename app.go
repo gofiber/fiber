@@ -479,14 +479,14 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	}
 	// Update fiber server settings
 	app.init()
+	// Start prefork
+	if app.Settings.Prefork {
+		return app.prefork(addr, tlsconfig...)
+	}
 	// Set correct network protocol
 	network := "tcp4"
 	if isIPv6(addr) {
 		network = "tcp6"
-	}
-	// Start prefork
-	if app.Settings.Prefork {
-		return app.prefork(network, addr, tlsconfig...)
 	}
 	// Setup listener
 	ln, err := net.Listen(network, addr)
