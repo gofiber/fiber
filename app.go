@@ -490,6 +490,10 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	app.init()
 	// Start prefork
 	if app.Settings.Prefork {
+		// Prefork only supports tcp4 or tcp6, but not both
+		if isIPv6(addr) {
+			app.Settings.Network = "tcp6"
+		}
 		return app.prefork(addr, tlsconfig...)
 	}
 	// Setup listener
