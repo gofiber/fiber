@@ -679,12 +679,12 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 
 	host, port := parseAddr(addr)
 	var (
-		tlsStr    = "FALSE"
-		routesLen = len(app.Routes())
-		osName    = utils.ToUpper(runtime.GOOS)
-		memTotal  = utils.ByteSize(utils.MemoryTotal())
-		cpuCores  = runtime.NumCPU()
-		pid       = os.Getpid()
+		tlsStr     = "FALSE"
+		routesLen  = len(app.Routes())
+		osName     = utils.ToUpper(runtime.GOOS)
+		memTotal   = utils.ByteSize(utils.MemoryTotal())
+		cpuThreads = runtime.NumCPU()
+		pid        = os.Getpid()
 	)
 	if host == "" {
 		host = "0.0.0.0"
@@ -708,10 +708,10 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 	// Build startup banner
 	fmt.Fprintf(out, logo, cBlack, cBlack,
-		cCyan, cBlack, fmt.Sprintf(" HOST   %s\tOS    %s", cyan(host), cyan(osName)),
-		cCyan, cBlack, fmt.Sprintf(" PORT   %s\tCORES %s", cyan(port), cyan(cpuCores)),
-		cCyan, cBlack, fmt.Sprintf(" TLS    %s\tMEM   %s", cyan(tlsStr), cyan(memTotal)),
-		cBlack, cyan(Version), fmt.Sprintf(" ROUTES %s\t\t\t PID   %s%s%s\n", cyan(routesLen), cyan(pid), pids, cReset),
+		cCyan, cBlack, fmt.Sprintf(" HOST   %s\tOS      %s", cyan(host), cyan(osName)),
+		cCyan, cBlack, fmt.Sprintf(" PORT   %s\tTHREADS %s", cyan(port), cyan(cpuThreads)),
+		cCyan, cBlack, fmt.Sprintf(" TLS    %s\tMEM     %s", cyan(tlsStr), cyan(memTotal)),
+		cBlack, cyan(Version), fmt.Sprintf(" ROUTES %s\t\t\t PID     %s%s%s\n", cyan(routesLen), cyan(pid), pids, cReset),
 	)
 	// Write to io.write
 	_ = out.Flush()
