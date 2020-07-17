@@ -12,7 +12,8 @@ import (
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
-	testPreforkMaster = false
+	// Reset test var
+	testPreforkMaster = true
 
 	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
 	defer os.Setenv(envPreforkChildKey, "")
@@ -46,6 +47,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
+	// Reset test var
 	testPreforkMaster = true
 
 	app := New()
@@ -65,7 +67,8 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 }
 
 func Test_App_Prefork_TCP6_Addr(t *testing.T) {
-	testPreforkMaster = false
+	// Reset test var
+	testPreforkMaster = true
 
 	app := New()
 	app.Settings.Prefork = true
