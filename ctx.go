@@ -87,6 +87,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	// Reset route and handler index
 	ctx.indexRoute = -1
 	ctx.indexHandler = 0
+	// Reset matched flag
+	ctx.matched = false
 	// Set paths
 	ctx.path = getString(fctx.URI().PathOriginal())
 	ctx.pathOriginal = ctx.path
