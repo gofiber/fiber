@@ -28,7 +28,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:"))
+	utils.AssertEqual(t, nil, app.prefork("[::]:"))
 
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/TEST_DATA/ssl.pem", "./.github/TEST_DATA/ssl.key")
@@ -57,7 +57,7 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:"))
+	utils.AssertEqual(t, nil, app.prefork(":3000"))
 
 	dummyChildCmd = "invalid"
 
