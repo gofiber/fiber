@@ -35,8 +35,14 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 		// use 1 cpu core per child process
 		runtime.GOMAXPROCS(1)
 		var ln net.Listener
-		// SO_REUSEPORT is not supported on Windows, use SO_REUSEADDR instead
-		if ln, err = reuseport.Listen("tcp4", addr); err != nil {
+		// Set correct network protocol
+		network := "tcp4"
+		if isIPv6(addr) {
+			network = "tcp6"
+		}
+		// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
+		// Only tcp4 or tcp6 is supported when preforking, both are not supported
+		if ln, err = reuseport.Listen(network, addr); err != nil {
 			if !app.Settings.DisableStartupMessage {
 				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
