@@ -754,7 +754,7 @@ func Test_App_Listen(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen("4010"))
+	utils.AssertEqual(t, nil, app.Listen("[::]:4010"))
 }
 
 // go test -run Test_App_Listener
