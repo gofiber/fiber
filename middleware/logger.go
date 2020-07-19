@@ -13,7 +13,8 @@ import (
 
 	fiber "github.com/gofiber/fiber"
 	utils "github.com/gofiber/utils"
-	"github.com/mattn/go-isatty"
+	colorable "github.com/mattn/go-colorable"
+	isatty "github.com/mattn/go-isatty"
 	bytebufferpool "github.com/valyala/bytebufferpool"
 )
 
@@ -187,11 +188,15 @@ func logger(config LoggerConfig) fiber.Handler {
 		config.TimeFormat = LoggerConfigDefault.TimeFormat
 	}
 	if config.Output == nil {
-		// Check if colors are supported if no Output is given
-		if os.Getenv("TERM") != "dumb" && (isatty.IsTerminal(os.Stdout.Fd()) || isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+		// Check if colors should be disabled
+		if os.Getenv("TERM") == "dumb" ||
+			(!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+			config.Output = LoggerConfigDefault.Output
+		} else {
 			config.enableColors = true
+			config.Output = colorable.NewColorableStderr()
+
 		}
-		config.Output = LoggerConfigDefault.Output
 	}
 	// Middleware settings
 	var mutex sync.RWMutex
