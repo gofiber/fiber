@@ -86,6 +86,65 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/", params: nil, match: false},
 		{url: "/api/v1/something", params: nil, match: false},
 	})
+	testCase("/shop/product/::filter/color::color/size::size", []testparams{
+		{url: "/shop/product/:test/color:blue/size:xs", params: []string{"test", "blue", "xs"}, match: true},
+		{url: "/shop/product/test/color:blue/size:xs", params: nil, match: false},
+	})
+	testCase("/::param?", []testparams{
+		{url: "/:hello", params: []string{"hello"}, match: true},
+		{url: "/:", params: []string{""}, match: true},
+		{url: "/", params: nil, match: false},
+	})
+	// successive parameters, each take one character and the last parameter gets everything
+	testCase("/test:sign:param", []testparams{
+		{url: "/test-abc", params: []string{"-", "abc"}, match: true},
+		{url: "/test", params: nil, match: false},
+	})
+	// optional parameters are not greedy
+	testCase("/:param1:param2?:param3", []testparams{
+		{url: "/abbbc", params: []string{"a", "b", "bbc"}, match: true},
+		{url: "/ac", params: []string{"a", "", "c"}, match: true},
+		{url: "/test", params: nil, match: false},
+	})
+	testCase("/test:optional?:mandatory/", []testparams{
+		{url: "/testo", params: []string{"", "o"}, match: true},
+		{url: "/testoaaa", params: []string{"o", "aaa"}, match: true},
+		{url: "/test", params: nil, match: false},
+	})
+	testCase("/test:optional?:optional2?/", []testparams{
+		{url: "/testo", params: []string{"o", ""}, match: true},
+		{url: "/testoaaa", params: []string{"o", "aaa"}, match: true},
+		{url: "/test", params: []string{"", ""}, match: true},
+		{url: "/tes", params: nil, match: false},
+	})
+	testCase("/foo:param?bar", []testparams{
+		{url: "/foofaselbar", params: []string{"fasel"}, match: true},
+		{url: "/foobar", params: []string{""}, match: true},
+		{url: "/fooba", params: nil, match: false},
+		{url: "/fobar", params: nil, match: false},
+	})
+	testCase("/foo*bar", []testparams{
+		{url: "/foofaselbar", params: []string{"fasel"}, match: true},
+		{url: "/foobar", params: []string{""}, match: true},
+		{url: "/", params: []string{""}, match: false},
+	})
+	testCase("/a*cde*g/", []testparams{
+		{url: "/abbbcdefffg", params: []string{"bbb", "fff"}, match: true},
+		{url: "/acdeg", params: []string{"", ""}, match: true},
+		{url: "/", params: nil, match: false},
+	})
+	testCase("/*v1*/proxy", []testparams{
+		{url: "/customer/v1/cart/proxy", params: []string{"customer/", "/cart"}, match: true},
+		{url: "/v1/proxy", params: []string{"", ""}, match: true},
+		{url: "/v1/", params: nil, match: false},
+	})
+	// successive wildcard -> first wildcard is greedy
+	testCase("/foo***bar", []testparams{
+		{url: "/foo*abar", params: []string{"*a", "", ""}, match: true},
+		{url: "/foo*bar", params: []string{"*", "", ""}, match: true},
+		{url: "/foobar", params: []string{"", "", ""}, match: true},
+		{url: "/fooba", params: nil, match: false},
+	})
 	testCase("/api/v1/:param/abc/*", []testparams{
 		{url: "/api/v1/well/abc/wildcard", params: []string{"well", "wildcard"}, match: true},
 		{url: "/api/v1/well/abc/", params: []string{"well", ""}, match: true},
