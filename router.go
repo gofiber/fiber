@@ -15,23 +15,23 @@ import (
 
 // Router defines all router handle interface includes app and group router.
 type Router interface {
-	Use(args ...interface{}) *Route
+	Use(args ...interface{}) Router
 
-	Get(path string, handlers ...Handler) *Route
-	Head(path string, handlers ...Handler) *Route
-	Post(path string, handlers ...Handler) *Route
-	Put(path string, handlers ...Handler) *Route
-	Delete(path string, handlers ...Handler) *Route
-	Connect(path string, handlers ...Handler) *Route
-	Options(path string, handlers ...Handler) *Route
-	Trace(path string, handlers ...Handler) *Route
-	Patch(path string, handlers ...Handler) *Route
+	Get(path string, handlers ...Handler) Router
+	Head(path string, handlers ...Handler) Router
+	Post(path string, handlers ...Handler) Router
+	Put(path string, handlers ...Handler) Router
+	Delete(path string, handlers ...Handler) Router
+	Connect(path string, handlers ...Handler) Router
+	Options(path string, handlers ...Handler) Router
+	Trace(path string, handlers ...Handler) Router
+	Patch(path string, handlers ...Handler) Router
 
-	Add(method, path string, handlers ...Handler) *Route
-	Static(prefix, root string, config ...Static) *Route
-	All(path string, handlers ...Handler) []*Route
+	Add(method, path string, handlers ...Handler) Router
+	Static(prefix, root string, config ...Static) Router
+	All(path string, handlers ...Handler) Router
 
-	Group(prefix string, handlers ...Handler) *Group
+	Group(prefix string, handlers ...Handler) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler
