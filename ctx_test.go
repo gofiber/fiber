@@ -23,6 +23,8 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/valyala/bytebufferpool"
+
 	utils "github.com/gofiber/utils"
 	fasthttp "github.com/valyala/fasthttp"
 )
@@ -1414,6 +1416,11 @@ func Test_Ctx_Render(t *testing.T) {
 	err := ctx.Render("./.github/TEST_DATA/template.html", Map{
 		"Title": "Hello, World!",
 	})
+
+	buf := bytebufferpool.Get()
+	_, _ = buf.WriteString("overwrite")
+	defer bytebufferpool.Put(buf)
+
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
 

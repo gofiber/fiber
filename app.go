@@ -594,7 +594,7 @@ func (app *App) init() *App {
 	if app.Settings != nil {
 		// Templates is replaced by Views with layout support
 		if app.Settings.Templates != nil {
-			fmt.Println("`Templates` are deprecated since v1.12.x, please us `Views` instead")
+			fmt.Println("`Templates` are deprecated since v1.12.x, please use `Views` instead")
 		}
 		// Only load templates if an view engine is specified
 		if app.Settings.Views != nil {
