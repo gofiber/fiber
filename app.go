@@ -286,7 +286,7 @@ func New(settings ...*Settings) *App {
 //  app.Use(handler)
 //  app.Use("/api", handler)
 //  app.Use("/api", handler, handler)
-func (app *App) Use(args ...interface{}) *Route {
+func (app *App) Use(args ...interface{}) Router {
 	var prefix string
 	var handlers []Handler
 
@@ -300,83 +300,85 @@ func (app *App) Use(args ...interface{}) *Route {
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	return app.register(methodUse, prefix, handlers...)
+	_ = app.register(methodUse, prefix, handlers...)
+	return app
 }
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App) Get(path string, handlers ...Handler) *Route {
+func (app *App) Get(path string, handlers ...Handler) Router {
 	return app.Add(MethodGet, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App) Head(path string, handlers ...Handler) *Route {
+func (app *App) Head(path string, handlers ...Handler) Router {
 	return app.Add(MethodHead, path, handlers...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App) Post(path string, handlers ...Handler) *Route {
+func (app *App) Post(path string, handlers ...Handler) Router {
 	return app.Add(MethodPost, path, handlers...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App) Put(path string, handlers ...Handler) *Route {
+func (app *App) Put(path string, handlers ...Handler) Router {
 	return app.Add(MethodPut, path, handlers...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App) Delete(path string, handlers ...Handler) *Route {
+func (app *App) Delete(path string, handlers ...Handler) Router {
 	return app.Add(MethodDelete, path, handlers...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App) Connect(path string, handlers ...Handler) *Route {
+func (app *App) Connect(path string, handlers ...Handler) Router {
 	return app.Add(MethodConnect, path, handlers...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App) Options(path string, handlers ...Handler) *Route {
+func (app *App) Options(path string, handlers ...Handler) Router {
 	return app.Add(MethodOptions, path, handlers...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App) Trace(path string, handlers ...Handler) *Route {
+func (app *App) Trace(path string, handlers ...Handler) Router {
 	return app.Add(MethodTrace, path, handlers...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App) Patch(path string, handlers ...Handler) *Route {
+func (app *App) Patch(path string, handlers ...Handler) Router {
 	return app.Add(MethodPatch, path, handlers...)
 }
 
 // Add ...
-func (app *App) Add(method, path string, handlers ...Handler) *Route {
-	return app.register(method, path, handlers...)
+func (app *App) Add(method, path string, handlers ...Handler) Router {
+	_ = app.register(method, path, handlers...)
+	return app
 }
 
 // Static ...
-func (app *App) Static(prefix, root string, config ...Static) *Route {
-	return app.registerStatic(prefix, root, config...)
+func (app *App) Static(prefix, root string, config ...Static) Router {
+	_ = app.registerStatic(prefix, root, config...)
+	return app
 }
 
 // All ...
-func (app *App) All(path string, handlers ...Handler) []*Route {
-	routes := make([]*Route, len(intMethod))
-	for i, method := range intMethod {
-		routes[i] = app.Add(method, path, handlers...)
+func (app *App) All(path string, handlers ...Handler) Router {
+	for _, method := range intMethod {
+		_ = app.Add(method, path, handlers...)
 	}
-	return routes
+	return app
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-func (app *App) Group(prefix string, handlers ...Handler) *Group {
+func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
 		app.register(methodUse, prefix, handlers...)
 	}
