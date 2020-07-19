@@ -35,7 +35,7 @@ func (grp *Group) Use(args ...interface{}) Router {
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	_ = grp.app.register(methodUse, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(methodUse, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
@@ -94,13 +94,13 @@ func (grp *Group) Patch(path string, handlers ...Handler) Router {
 
 // Add ...
 func (grp *Group) Add(method, path string, handlers ...Handler) Router {
-	_ = grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
 	return grp
 }
 
 // Static ...
 func (grp *Group) Static(prefix, root string, config ...Static) Router {
-	_ = grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
+	grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
 	return grp
 }
 
@@ -116,7 +116,7 @@ func (grp *Group) All(path string, handlers ...Handler) Router {
 func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 	prefix = getGroupPath(grp.prefix, prefix)
 	if len(handlers) > 0 {
-		_ = grp.app.register(methodUse, prefix, handlers...)
+		grp.app.register(methodUse, prefix, handlers...)
 	}
 	return grp.app.Group(prefix)
 }

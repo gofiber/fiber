@@ -142,7 +142,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	app.ReleaseCtx(ctx)
 }
 
-func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
+func (app *App) register(method, pathRaw string, handlers ...Handler) {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
@@ -208,7 +208,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 		for _, m := range intMethod {
 			app.addRoute(m, route)
 		}
-		return route
+		return
 	}
 
 	// Handle GET routes on HEAD requests
@@ -218,11 +218,9 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 
 	// Add route to stack
 	app.addRoute(method, route)
-
-	return route
 }
 
-func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
+func (app *App) registerStatic(prefix, root string, config ...Static) {
 	// For security we want to restrict to the current work directory.
 	if len(root) == 0 {
 		root = "."
@@ -323,7 +321,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 	// Add route to stack
 	app.addRoute(MethodGet, route)
 	app.addRoute(MethodHead, route)
-	return route
 }
 
 func (app *App) addRoute(method string, route *Route) {
