@@ -300,7 +300,7 @@ func (app *App) Use(args ...interface{}) Router {
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	_ = app.register(methodUse, prefix, handlers...)
+	app.register(methodUse, prefix, handlers...)
 	return app
 }
 
@@ -359,13 +359,13 @@ func (app *App) Patch(path string, handlers ...Handler) Router {
 
 // Add ...
 func (app *App) Add(method, path string, handlers ...Handler) Router {
-	_ = app.register(method, path, handlers...)
+	app.register(method, path, handlers...)
 	return app
 }
 
 // Static ...
 func (app *App) Static(prefix, root string, config ...Static) Router {
-	_ = app.registerStatic(prefix, root, config...)
+	app.registerStatic(prefix, root, config...)
 	return app
 }
 
