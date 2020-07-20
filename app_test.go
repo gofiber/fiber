@@ -352,6 +352,8 @@ func Test_App_Chaining(t *testing.T) {
 	app.Use("/john", n, n, n, n, func(c *Ctx) {
 		c.Status(202)
 	})
+	// check handler count for registered HEAD route
+	utils.AssertEqual(t, 5, len(app.stack[methodInt(MethodHead)][0].Handlers), "app.Test(req)")
 
 	req := httptest.NewRequest("POST", "/john", nil)
 
@@ -436,6 +438,63 @@ func Test_App_Methods(t *testing.T) {
 	app.Use("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", "GET")
 
+}
+
+func Test_App_RegisteredRouteCount(t *testing.T) {
+	var dummyHandler = func(c *Ctx) {}
+	checkRouteCount := func(app *App, expectedCount int) {
+		realStackCount := 0
+		for _, routes := range app.stack {
+			for range routes {
+				realStackCount++
+			}
+		}
+
+		utils.AssertEqual(t, expectedCount, app.routesCount)
+		utils.AssertEqual(t, expectedCount, realStackCount)
+	}
+
+	app := New()
+	app.All("/:john?/:doe?", dummyHandler)
+	testStatus200(t, app, "/john/doe", MethodGet)
+	checkRouteCount(app, len(intMethod))
+
+	app = New()
+	app.Get("/:john?/:doe?", dummyHandler)
+	app.Head("/:john?/:doe?", dummyHandler)
+	testStatus200(t, app, "/john/doe", MethodGet)
+	checkRouteCount(app, 2)
+
+	app = New()
+	app.Head("/:john?/:doe?", dummyHandler)
+	app.Get("/:john?/:doe?", dummyHandler)
+	testStatus200(t, app, "/john/doe", MethodGet)
+	checkRouteCount(app, 2)
+
+	app = New()
+	app.Get("/:john?/:doe?", dummyHandler)
+	testStatus200(t, app, "/john/doe", MethodGet)
+	checkRouteCount(app, 2)
+
+	app = New()
+	app.Head("/:john?/:doe?", dummyHandler)
+	testStatus200(t, app, "/john/doe", MethodHead)
+	checkRouteCount(app, 1)
+
+	app = New()
+	app.Delete("/:john?/:doe?", dummyHandler)
+	testStatus200(t, app, "/john/doe", MethodDelete)
+	checkRouteCount(app, 1)
+	// with use
+	app = New()
+	app.Use("/:john?/:doe?", dummyHandler)
+	testStatus200(t, app, "/john/doe", MethodPut)
+	checkRouteCount(app, len(intMethod))
+	// with group
+	app = New()
+	app.Group("/:john?/:doe?", dummyHandler).Put("/wtf", dummyHandler)
+	testStatus200(t, app, "/john/doe/wtf", MethodPut)
+	checkRouteCount(app, len(intMethod)+1)
 }
 
 func Test_App_New(t *testing.T) {

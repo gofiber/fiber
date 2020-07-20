@@ -19,6 +19,7 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,8 +52,8 @@ type App struct {
 	mutex sync.Mutex
 	// Route stack divided by HTTP methods
 	stack [][]*Route
-	// A sorted route slice for app.Routes()
-	routes []*Route
+	// Amount of registered routes
+	routesCount int
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -306,7 +307,12 @@ func (app *App) Use(args ...interface{}) Router {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (app *App) Get(path string, handlers ...Handler) Router {
-	return app.Add(MethodGet, path, handlers...)
+	route := app.register(MethodGet, path, handlers...)
+	// Add HEAD route
+	headRoute := route
+	app.addRoute(MethodHead, &headRoute)
+
+	return app
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -371,10 +377,7 @@ func (app *App) Static(prefix, root string, config ...Static) Router {
 // All ...
 func (app *App) All(path string, handlers ...Handler) Router {
 	for _, method := range intMethod {
-		// MethodHead will be added by MethodGet
-		if method != MethodHead {
-			_ = app.Add(method, path, handlers...)
-		}
+		app.Add(method, path, handlers...)
 	}
 	return app
 }
@@ -406,7 +409,30 @@ func NewError(code int, message ...string) *Error {
 //  	fmt.Printf("%s\t%s\n", r.Method, r.Path)
 //  }
 func (app *App) Routes() []*Route {
-	return app.routes
+	routes := make([]*Route, 0)
+	for m := range app.stack {
+	stackLoop:
+		for r := range app.stack[m] {
+
+			// Don't duplicate USE routesCount
+			if app.stack[m][r].Method == methodUse {
+				for i := range routes {
+					if routes[i].Method == methodUse && routes[i].Name == app.stack[m][r].Name {
+						continue stackLoop
+					}
+				}
+				// Ignore HEAD routesCount handling GET routesCount
+			} else if m != methodInt(app.stack[m][r].Method) {
+				continue
+			}
+			routes = append(routes, app.stack[m][r])
+		}
+	}
+	// Sort routesCount by stack position
+	sort.Slice(routes, func(i, k int) bool {
+		return routes[i].pos < routes[k].pos
+	})
+	return routes
 }
 
 // Serve is deprecated, please use app.Listener()

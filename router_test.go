@@ -329,6 +329,24 @@ func Benchmark_Router_Chain(b *testing.B) {
 	handler := func(c *Ctx) {
 		c.Next()
 	}
+	app.Get("/", handler, handler, handler, handler, handler, handler)
+
+	c := &fasthttp.RequestCtx{}
+
+	c.Request.Header.SetMethod("GET")
+	c.URI().SetPath("/")
+
+	for n := 0; n < b.N; n++ {
+		app.handler(c)
+	}
+}
+
+// go test -v ./... -run=^$ -bench=Benchmark_Router_WithCompression -benchmem -count=4
+func Benchmark_Router_WithCompression(b *testing.B) {
+	app := New()
+	handler := func(c *Ctx) {
+		c.Next()
+	}
 	app.Get("/", handler)
 	app.Get("/", handler)
 	app.Get("/", handler)
