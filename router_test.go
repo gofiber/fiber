@@ -329,7 +329,12 @@ func Benchmark_Router_Chain(b *testing.B) {
 	handler := func(c *Ctx) {
 		c.Next()
 	}
-	app.Get("/", handler, handler, handler, handler, handler, handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
+	app.Get("/", handler)
 
 	c := &fasthttp.RequestCtx{}
 
