@@ -19,7 +19,6 @@ import (
 	"os"
 	"reflect"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,8 +51,8 @@ type App struct {
 	mutex sync.Mutex
 	// Route stack divided by HTTP methods
 	stack [][]*Route
-	// Amount of registered routes
-	routes int
+	// A sorted route slice for app.Routes()
+	routes []*Route
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -372,7 +371,10 @@ func (app *App) Static(prefix, root string, config ...Static) Router {
 // All ...
 func (app *App) All(path string, handlers ...Handler) Router {
 	for _, method := range intMethod {
-		_ = app.Add(method, path, handlers...)
+		// MethodHead will be added by MethodGet
+		if method != MethodHead {
+			_ = app.Add(method, path, handlers...)
+		}
 	}
 	return app
 }
@@ -404,35 +406,7 @@ func NewError(code int, message ...string) *Error {
 //  	fmt.Printf("%s\t%s\n", r.Method, r.Path)
 //  }
 func (app *App) Routes() []*Route {
-	routes := make([]*Route, 0)
-	for m := range app.stack {
-		for r := range app.stack[m] {
-			// Ignore HEAD routes handling GET routes
-			if m == 1 && app.stack[m][r].Method == MethodGet {
-				continue
-			}
-			// Don't duplicate USE routes
-			if app.stack[m][r].Method == methodUse {
-				duplicate := false
-				for i := range routes {
-					if routes[i].Method == methodUse && routes[i].Name == app.stack[m][r].Name {
-						duplicate = true
-						break
-					}
-				}
-				if !duplicate {
-					routes = append(routes, app.stack[m][r])
-				}
-			} else {
-				routes = append(routes, app.stack[m][r])
-			}
-		}
-	}
-	// Sort routes by stack position
-	sort.Slice(routes, func(i, k int) bool {
-		return routes[i].pos < routes[k].pos
-	})
-	return routes
+	return app.routes
 }
 
 // Serve is deprecated, please use app.Listener()

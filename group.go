@@ -107,7 +107,10 @@ func (grp *Group) Static(prefix, root string, config ...Static) Router {
 // All ...
 func (grp *Group) All(path string, handlers ...Handler) Router {
 	for _, method := range intMethod {
-		_ = grp.Add(method, path, handlers...)
+		// MethodHead will be added by MethodGet
+		if method != MethodHead {
+			_ = grp.Add(method, path, handlers...)
+		}
 	}
 	return grp
 }

@@ -113,6 +113,38 @@ func Test_App_Routes(t *testing.T) {
 	utils.AssertEqual(t, 4, len(app.Routes()))
 }
 
+// go test -v -run=^$ -bench=Benchmark_App_Routes -benchmem -count=4
+func Benchmark_App_Routes(b *testing.B) {
+	app := New()
+	h := func(c *Ctx) {}
+	app.Use("/", h)
+	app.Use("/", h)
+	app.Get("/Get", h)
+	app.Head("/Head", h)
+	app.Post("/post", h)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		app.Routes()
+	}
+	utils.AssertEqual(b, 5, len(app.Routes()))
+}
+
+func Test_App_Router_Compress(t *testing.T) {
+	app := New()
+	h := func(c *Ctx) { c.Next() }
+	app.Use("/", h)
+	app.Use("/", h)
+	app.Use("/", h)
+	app.Get("/:a/:b/:c", h)
+	app.Get("/:a/:b/:c", h)
+	app.Get("/:a/:b/:c", h)
+
+	utils.AssertEqual(t, 2, len(app.stack[methodInt(MethodGet)]))
+}
+
 func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	expectedError := regexp.MustCompile(
 		`error when reading request headers: small read buffer\. Increase ReadBufferSize\. Buffer size=4096, contents: "GET / HTTP/1.1\\r\\nHost: example\.com\\r\\nVery-Long-Header: -+`,
