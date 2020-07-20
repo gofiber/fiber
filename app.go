@@ -421,14 +421,14 @@ func (app *App) Routes() []*Route {
 						continue stackLoop
 					}
 				}
-				// Ignore HEAD routesCount handling GET routesCount
+				// Ignore HEAD routes handling GET routesCount
 			} else if m != methodInt(app.stack[m][r].Method) {
 				continue
 			}
 			routes = append(routes, app.stack[m][r])
 		}
 	}
-	// Sort routesCount by stack position
+	// Sort routes by stack position
 	sort.Slice(routes, func(i, k int) bool {
 		return routes[i].pos < routes[k].pos
 	})

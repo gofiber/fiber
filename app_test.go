@@ -31,6 +31,18 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
+func checkRouteCount(t *testing.T, app *App, expectedCount int) {
+	realStackCount := 0
+	for _, routes := range app.stack {
+		for range routes {
+			realStackCount++
+		}
+	}
+
+	utils.AssertEqual(t, expectedCount, app.routesCount)
+	utils.AssertEqual(t, expectedCount, realStackCount)
+}
+
 func Test_App_MethodNotAllowed(t *testing.T) {
 	app := New()
 
@@ -442,59 +454,81 @@ func Test_App_Methods(t *testing.T) {
 
 func Test_App_RegisteredRouteCount(t *testing.T) {
 	var dummyHandler = func(c *Ctx) {}
-	checkRouteCount := func(app *App, expectedCount int) {
-		realStackCount := 0
-		for _, routes := range app.stack {
-			for range routes {
-				realStackCount++
-			}
-		}
-
-		utils.AssertEqual(t, expectedCount, app.routesCount)
-		utils.AssertEqual(t, expectedCount, realStackCount)
-	}
 
 	app := New()
 	app.All("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodGet)
-	checkRouteCount(app, len(intMethod))
+	checkRouteCount(t, app, len(intMethod))
 
 	app = New()
 	app.Get("/:john?/:doe?", dummyHandler)
 	app.Head("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodGet)
-	checkRouteCount(app, 2)
+	checkRouteCount(t, app, 2)
 
 	app = New()
 	app.Head("/:john?/:doe?", dummyHandler)
 	app.Get("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodGet)
-	checkRouteCount(app, 2)
+	checkRouteCount(t, app, 2)
 
 	app = New()
 	app.Get("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodGet)
-	checkRouteCount(app, 2)
+	checkRouteCount(t, app, 2)
 
 	app = New()
 	app.Head("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodHead)
-	checkRouteCount(app, 1)
+	checkRouteCount(t, app, 1)
 
 	app = New()
 	app.Delete("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodDelete)
-	checkRouteCount(app, 1)
+	checkRouteCount(t, app, 1)
 	// with use
 	app = New()
 	app.Use("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodPut)
-	checkRouteCount(app, len(intMethod))
+	checkRouteCount(t, app, len(intMethod))
 	// with group
 	app = New()
 	app.Group("/:john?/:doe?", dummyHandler).Put("/wtf", dummyHandler)
 	testStatus200(t, app, "/john/doe/wtf", MethodPut)
-	checkRouteCount(app, len(intMethod)+1)
+	checkRouteCount(t, app, len(intMethod)+1)
+
+	app = New()
+	app.Use("/", dummyHandler)
+	app.All("/bar", dummyHandler)
+	app.Get("/foo", dummyHandler)
+	app.Head("/foo", dummyHandler)
+	checkRouteCount(t, app, len(intMethod)*2+2)
+}
+
+func Test_App_RoutePositions(t *testing.T) {
+	var dummyHandler = func(c *Ctx) {}
+
+	app := New()
+	app.Use("/", dummyHandler)
+	app.All("/bar", dummyHandler)
+	app.Get("/foo", dummyHandler)
+	app.Head("/foo", dummyHandler)
+	testStatus200(t, app, "/foo", MethodGet)
+
+	expectedPos := 1
+	// check USE routes
+	for p := range intMethod {
+		utils.AssertEqual(t, expectedPos, app.stack[p][0].pos)
+		expectedPos++
+	}
+	// check ALL routes
+	for p := range intMethod {
+		utils.AssertEqual(t, expectedPos, app.stack[p][1].pos)
+		expectedPos++
+	}
+	// check GET and HEAD route
+	utils.AssertEqual(t, expectedPos, app.stack[methodInt(MethodGet)][2].pos)
+	utils.AssertEqual(t, expectedPos+1, app.stack[methodInt(MethodHead)][2].pos)
 }
 
 func Test_App_New(t *testing.T) {
