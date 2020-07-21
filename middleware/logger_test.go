@@ -177,9 +177,7 @@ func Test_isTimeZone(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isTimeZone(tt.args.name); got != tt.want {
-				t.Errorf("isTimeZone() = %v, want %v", got, tt.want)
-			}
+			utils.AssertEqual(t, getTimeZoneLocation(tt.args.name) != nil, tt.want)
 		})
 	}
 }
