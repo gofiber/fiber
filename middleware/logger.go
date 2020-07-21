@@ -60,6 +60,11 @@ type (
 		// Optional. Default: 15:04:05
 		TimeFormat string
 
+		// TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc
+		//
+		// Optional. Default: Local
+		TimeZone string
+
 		// Output is a writter where logs are written
 		//
 		// Default: os.Stderr
@@ -133,6 +138,7 @@ var LoggerConfigDefault = LoggerConfig{
 	Next:       nil,
 	Format:     "#${pid} - ${time} ${status} - ${latency} ${method} ${path}\n",
 	TimeFormat: "2006/01/02 15:04:05",
+	TimeZone:   "Local",
 	Output:     os.Stderr,
 }
 
@@ -142,6 +148,7 @@ Logger allows the following config arguments in any order:
 	- Logger(next func(*fiber.Ctx) bool)
 	- Logger(output io.Writer)
 	- Logger(format string)
+	- Logger(timeZone string)
 	- Logger(timeFormat string)
 	- Logger(config LoggerConfig)
 */
@@ -157,6 +164,8 @@ func Logger(options ...interface{}) fiber.Handler {
 			case string:
 				if strings.Contains(opt, "${") {
 					config.Format = opt
+				} else if isTimeZone(opt) {
+					config.TimeZone = opt
 				} else {
 					config.TimeFormat = opt
 				}
@@ -184,6 +193,9 @@ func logger(config LoggerConfig) fiber.Handler {
 	if config.Format == "" {
 		config.Format = LoggerConfigDefault.Format
 	}
+	if config.TimeZone == "" {
+		config.TimeZone = LoggerConfigDefault.TimeZone
+	}
 	if config.TimeFormat == "" {
 		config.TimeFormat = LoggerConfigDefault.TimeFormat
 	}
@@ -203,14 +215,13 @@ func logger(config LoggerConfig) fiber.Handler {
 
 	var tmpl loggerTemplate
 	tmpl.new(config.Format, "${", "}")
-
-	timestamp := time.Now().Format(config.TimeFormat)
+	timestamp := nowTimeString(config.TimeZone, config.TimeFormat)
 	// Update date/time every second in a separate go routine
 	if strings.Contains(config.Format, "${time}") {
 		go func() {
 			for {
 				mutex.Lock()
-				timestamp = time.Now().Format(config.TimeFormat)
+				timestamp = nowTimeString(config.TimeZone, config.TimeFormat)
 				mutex.Unlock()
 				time.Sleep(500 * time.Millisecond)
 			}
@@ -352,6 +363,24 @@ func logger(config LoggerConfig) fiber.Handler {
 		}
 		bytebufferpool.Put(buf)
 	}
+}
+
+func nowTimeString(timeZone, layout string) string {
+	// This is different from Golang's time package which returns UTC, and Local is better than it
+	if timeZone == "" {
+		timeZone = "UTC"
+	}
+	location, err := time.LoadLocation(timeZone)
+	if err != nil {
+		log.Fatalf("Logger: failed to load time zone: %e\n", err)
+	}
+	return time.Now().In(location).Format(layout)
+}
+
+// Use Golang's time package to determine whether the TimeZone is available
+func isTimeZone(name string) bool {
+	_, err := time.LoadLocation(name)
+	return err == nil
 }
 
 // MIT License fasttemplate

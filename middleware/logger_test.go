@@ -104,6 +104,7 @@ func Test_Middleware_Logger_Options_And_WithConfig(t *testing.T) {
 		Logger("15:04:05"),
 		Logger("${time} ${method} ${path} - ${ip} - ${status} - ${latency}\n"),
 		Logger(LoggerConfig{Output: buf}),
+		Logger("UTC"),
 	}
 
 	for i, logger := range loggers {
@@ -128,7 +129,58 @@ func Test_Middleware_Logger_Options_And_WithConfig(t *testing.T) {
 			utils.AssertEqual(t, 51, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 51, res))
 		} else if i == 3 {
 			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 48, res))
+		} else if i == 4 {
+			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 48, res))
 		}
+	}
+}
+
+func Test_isTimeZone(t *testing.T) {
+	type args struct {
+		name string
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			"Empty",
+			args{""},
+			true,
+		},
+		{
+			"Local",
+			args{name: "Local"},
+			true,
+		},
+		{
+			"UTC",
+			args{name: "UTC"},
+			true,
+		},
+		{
+			"America/New_York",
+			args{name: "America/New_York"},
+			true,
+		},
+		{
+			"Asia/Chongqing",
+			args{"Asia/Chongqing"},
+			true,
+		},
+		{
+			"Time format",
+			args{name: "2006-01-02 15:04:05"},
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isTimeZone(tt.args.name); got != tt.want {
+				t.Errorf("isTimeZone() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
