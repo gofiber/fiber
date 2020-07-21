@@ -142,7 +142,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	app.ReleaseCtx(ctx)
 }
 
-func (app *App) register(method, pathRaw string, handlers ...Handler) {
+func (app *App) register(method, pathRaw string, handlers ...Handler) Route {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
@@ -181,14 +181,9 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) {
 	var parsedRaw = parseRoute(pathRaw)
 	var parsedPretty = parseRoute(pathPretty)
 
-	// Increment global route position
-	app.mutex.Lock()
-	app.routes++
-	app.mutex.Unlock()
-	// Create route metadata
-	route := &Route{
+	// Create route metadata without pointer
+	route := Route{
 		// Router booleans
-		pos:  app.routes,
 		use:  isUse,
 		star: isStar,
 		root: isRoot,
@@ -206,21 +201,19 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) {
 	if isUse {
 		// Add route to all HTTP methods stack
 		for _, m := range intMethod {
-			app.addRoute(m, route)
+			// create a route copy
+			r := route
+			app.addRoute(m, &r)
 		}
-		return
-	}
-
-	// Handle GET routes on HEAD requests
-	if method == MethodGet {
-		app.addRoute(MethodHead, route)
+		return route
 	}
 
 	// Add route to stack
-	app.addRoute(method, route)
+	app.addRoute(method, &route)
+	return route
 }
 
-func (app *App) registerStatic(prefix, root string, config ...Static) {
+func (app *App) registerStatic(prefix, root string, config ...Static) Route {
 	// For security we want to restrict to the current work directory.
 	if len(root) == 0 {
 		root = "."
@@ -305,22 +298,24 @@ func (app *App) registerStatic(prefix, root string, config ...Static) {
 		// Next middleware
 		c.Next()
 	}
-	// Increment global route position
-	app.mutex.Lock()
-	app.routes++
-	app.mutex.Unlock()
-	route := &Route{
-		pos:    app.routes,
-		use:    true,
-		root:   isRoot,
-		path:   prefix,
-		Method: MethodGet,
-		Path:   prefix,
+
+	// Create route metadata without pointer
+	route := Route{
+		// Router booleans
+		use:  true,
+		root: isRoot,
+		path: prefix,
+		// Public data
+		Method:   MethodGet,
+		Path:     prefix,
+		Handlers: []Handler{handler},
 	}
-	route.Handlers = append(route.Handlers, handler)
 	// Add route to stack
-	app.addRoute(MethodGet, route)
-	app.addRoute(MethodHead, route)
+	app.addRoute(MethodGet, &route)
+	// Add HEAD route
+	headRoute := route
+	app.addRoute(MethodHead, &headRoute)
+	return route
 }
 
 func (app *App) addRoute(method string, route *Route) {
@@ -330,6 +325,19 @@ func (app *App) addRoute(method string, route *Route) {
 	}
 	// Get unique HTTP method indentifier
 	m := methodInt(method)
-	// Add route to the stack
-	app.stack[m] = append(app.stack[m], route)
+
+	// prevent identically route registration
+	l := len(app.stack[m])
+	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use {
+		preRoute := app.stack[m][l-1]
+		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
+	} else {
+		// Increment global route position
+		app.mutex.Lock()
+		app.routesCount++
+		app.mutex.Unlock()
+		route.pos = app.routesCount
+		// Add route to the stack
+		app.stack[m] = append(app.stack[m], route)
+	}
 }

@@ -42,7 +42,11 @@ func (grp *Group) Use(args ...interface{}) Router {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (grp *Group) Get(path string, handlers ...Handler) Router {
-	return grp.Add(MethodGet, path, handlers...)
+	route := grp.app.register(MethodGet, getGroupPath(grp.prefix, path), handlers...)
+	// Add head route
+	headRoute := route
+	grp.app.addRoute(MethodHead, &headRoute)
+	return grp
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -107,7 +111,7 @@ func (grp *Group) Static(prefix, root string, config ...Static) Router {
 // All ...
 func (grp *Group) All(path string, handlers ...Handler) Router {
 	for _, method := range intMethod {
-		_ = grp.Add(method, path, handlers...)
+		grp.Add(method, path, handlers...)
 	}
 	return grp
 }

@@ -53,7 +53,7 @@ type App struct {
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// Amount of registered routes
-	routes int
+	routesCount int
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -307,7 +307,12 @@ func (app *App) Use(args ...interface{}) Router {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (app *App) Get(path string, handlers ...Handler) Router {
-	return app.Add(MethodGet, path, handlers...)
+	route := app.register(MethodGet, path, handlers...)
+	// Add HEAD route
+	headRoute := route
+	app.addRoute(MethodHead, &headRoute)
+
+	return app
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -372,7 +377,7 @@ func (app *App) Static(prefix, root string, config ...Static) Router {
 // All ...
 func (app *App) All(path string, handlers ...Handler) Router {
 	for _, method := range intMethod {
-		_ = app.Add(method, path, handlers...)
+		app.Add(method, path, handlers...)
 	}
 	return app
 }
@@ -406,26 +411,21 @@ func NewError(code int, message ...string) *Error {
 func (app *App) Routes() []*Route {
 	routes := make([]*Route, 0)
 	for m := range app.stack {
+	stackLoop:
 		for r := range app.stack[m] {
-			// Ignore HEAD routes handling GET routes
-			if m == 1 && app.stack[m][r].Method == MethodGet {
-				continue
-			}
-			// Don't duplicate USE routes
+
+			// Don't duplicate USE routesCount
 			if app.stack[m][r].Method == methodUse {
-				duplicate := false
 				for i := range routes {
 					if routes[i].Method == methodUse && routes[i].Name == app.stack[m][r].Name {
-						duplicate = true
-						break
+						continue stackLoop
 					}
 				}
-				if !duplicate {
-					routes = append(routes, app.stack[m][r])
-				}
-			} else {
-				routes = append(routes, app.stack[m][r])
+				// Ignore HEAD routes handling GET routesCount
+			} else if m != methodInt(app.stack[m][r].Method) {
+				continue
 			}
+			routes = append(routes, app.stack[m][r])
 		}
 	}
 	// Sort routes by stack position
