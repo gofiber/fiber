@@ -262,8 +262,6 @@ func methodInt(s string) int {
 		return 7
 	case MethodPatch:
 		return 8
-	case methodUse:
-		return 9
 	default:
 		return -1
 	}

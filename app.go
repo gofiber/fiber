@@ -415,15 +415,12 @@ func (app *App) Routes() []*Route {
 	stackLoop:
 		for r := range app.stack[m] {
 			// Don't duplicate USE routesCount
-			if app.stack[m][r].Method == methodUse {
+			if app.stack[m][r].use {
 				for i := range routes {
-					if routes[i].Method == methodUse && routes[i].Path == app.stack[m][r].Path {
+					if routes[i].use && routes[i].Path == app.stack[m][r].Path {
 						continue stackLoop
 					}
 				}
-				// Ignore HEAD routes handling GET routesCount
-			} else if m != methodInt(app.stack[m][r].Method) {
-				continue
 			}
 			routes = append(routes, app.stack[m][r])
 		}
