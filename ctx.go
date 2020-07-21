@@ -262,7 +262,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 
 	// Query params in BodyParser is deprecated
 	if ctx.Fasthttp.QueryArgs().Len() > 0 {
-		fmt.Println("Parsing query strings using `BodyParser` is deprecated since v1.12.7, please use `ctx.QueryParser` instead")
+		fmt.Println("bodyparser: parsing query strings is deprecated since v1.12.7, please use `ctx.QueryParser` instead")
 		return ctx.QueryParser(out)
 	}
 
@@ -272,19 +272,19 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 
 // QueryParser binds the query string to a struct.
 func (ctx *Ctx) QueryParser(out interface{}) error {
-	if ctx.Fasthttp.QueryArgs().Len() > 0 {
-		var decoder = decoderPool.Get().(*schema.Decoder)
-		defer decoderPool.Put(decoder)
-		decoder.SetAliasTag("query")
-
-		data := make(map[string][]string)
-		ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
-			data[getString(key)] = append(data[getString(key)], getString(val))
-		})
-
-		return decoder.Decode(out, data)
+	if ctx.Fasthttp.QueryArgs().Len() <= 0 {
+		return nil
 	}
-	return nil
+	var decoder = decoderPool.Get().(*schema.Decoder)
+	defer decoderPool.Put(decoder)
+	decoder.SetAliasTag("query")
+
+	data := make(map[string][]string)
+	ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
+		data[getString(key)] = append(data[getString(key)], getString(val))
+	})
+
+	return decoder.Decode(out, data)
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
