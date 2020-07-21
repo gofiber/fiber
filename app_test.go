@@ -119,6 +119,7 @@ func Test_App_Routes(t *testing.T) {
 	app := New()
 	h := func(c *Ctx) {}
 	app.Use("/", h)
+	app.Use("/", h)
 	app.Get("/Get", h)
 	app.Head("/Head", h)
 	app.Post("/post", h)
@@ -141,20 +142,7 @@ func Benchmark_App_Routes(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		app.Routes()
 	}
-	utils.AssertEqual(b, 5, len(app.Routes()))
-}
-
-func Test_App_Router_Compress(t *testing.T) {
-	app := New()
-	h := func(c *Ctx) { c.Next() }
-	app.Use("/", h)
-	app.Use("/", h)
-	app.Use("/", h)
-	app.Get("/:a/:b/:c", h)
-	app.Get("/:a/:b/:c", h)
-	app.Get("/:a/:b/:c", h)
-
-	utils.AssertEqual(t, 2, len(app.stack[methodInt(MethodGet)]))
+	utils.AssertEqual(b, 4, len(app.Routes()))
 }
 
 func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
@@ -486,11 +474,13 @@ func Test_App_RegisteredRouteCount(t *testing.T) {
 	app.Delete("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodDelete)
 	checkRouteCount(t, app, 1)
+
 	// with use
 	app = New()
 	app.Use("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodPut)
 	checkRouteCount(t, app, len(intMethod))
+
 	// with group
 	app = New()
 	app.Group("/:john?/:doe?", dummyHandler).Put("/wtf", dummyHandler)
