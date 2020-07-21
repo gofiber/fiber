@@ -235,7 +235,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	defer decoderPool.Put(schemaDecoder)
 
 	// Get content-type
-	ctype := utils.ToLower(getString(ctx.Fasthttp.Request.Header.ContentType()))
+	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
 
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
@@ -799,7 +799,7 @@ func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err er
 	// Use Templates engine if exist
 	if ctx.app.Settings.Templates != nil {
 		// Render template from Templates
-		fmt.Println("`Templates` are deprecated since v1.11.1, please us `Views` instead")
+		fmt.Println("render: `Templates` are deprecated since v1.11.1, please us `Views` instead")
 		if err := ctx.app.Settings.Templates.Render(buf, name, bind); err != nil {
 			return err
 		}
