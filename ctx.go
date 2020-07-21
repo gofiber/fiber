@@ -235,7 +235,7 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 	defer decoderPool.Put(schemaDecoder)
 
 	// Get content-type
-	ctype := utils.ToLower(getString(ctx.Fasthttp.Request.Header.ContentType()))
+	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
 
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
