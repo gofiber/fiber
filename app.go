@@ -409,15 +409,15 @@ func NewError(code int, message ...string) *Error {
 //  	fmt.Printf("%s\t%s\n", r.Method, r.Path)
 //  }
 func (app *App) Routes() []*Route {
+	fmt.Println("routes is deprecated since v1.13.2, please use `app.Stack()` to access the raw router stack")
 	routes := make([]*Route, 0)
 	for m := range app.stack {
 	stackLoop:
 		for r := range app.stack[m] {
-
 			// Don't duplicate USE routesCount
 			if app.stack[m][r].Method == methodUse {
 				for i := range routes {
-					if routes[i].Method == methodUse && routes[i].Name == app.stack[m][r].Name {
+					if routes[i].Method == methodUse && routes[i].Path == app.stack[m][r].Path {
 						continue stackLoop
 					}
 				}
@@ -510,6 +510,11 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 // Handler returns the server handler.
 func (app *App) Handler() fasthttp.RequestHandler {
 	return app.handler
+}
+
+// Handler returns the server handler.
+func (app *App) Stack() [][]*Route {
+	return app.stack
 }
 
 // Shutdown gracefully shuts down the server without interrupting any active connections.
