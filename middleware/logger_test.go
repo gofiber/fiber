@@ -130,7 +130,7 @@ func Test_Middleware_Logger_Options_And_WithConfig(t *testing.T) {
 		} else if i == 3 {
 			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 48, res))
 		} else if i == 4 {
-			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 51, res))
+			utils.AssertEqual(t, 48, len(res), fmt.Sprintf("Has length: %v, expected: %v, raw: %s", len(res), 48, res))
 		}
 	}
 }
