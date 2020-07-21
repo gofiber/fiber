@@ -18,6 +18,9 @@ func main() {
   // Pass a custom output
   app.Use(middleware.Logger(os.Stdout))
 
+  // Pass a custom time zone
+  app.Use(middleware.Logger("UTC"))
+
   // Pass a custom timeformat
   app.Use(middleware.Logger("15:04:05"))
 
