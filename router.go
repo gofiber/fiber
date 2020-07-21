@@ -145,7 +145,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Route {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
-	if methodInt(method) == -1 {
+	if method != methodUse && methodInt(method) == -1 {
 		panic(fmt.Sprintf("add: invalid http method %s\n", method))
 	}
 	// A route requires atleast one ctx handler
@@ -332,6 +332,7 @@ func (app *App) addRoute(method string, route *Route) {
 		app.routesCount++
 		app.mutex.Unlock()
 		route.pos = app.routesCount
+		route.Method = method
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)
 	}

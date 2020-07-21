@@ -123,7 +123,7 @@ func Test_App_Routes(t *testing.T) {
 	app.Get("/Get", h)
 	app.Head("/Head", h)
 	app.Post("/post", h)
-	utils.AssertEqual(t, 4, len(app.Routes()))
+	utils.AssertEqual(t, 5, len(app.Routes()))
 }
 
 // go test -v -run=^$ -bench=Benchmark_App_Routes -benchmem -count=4
