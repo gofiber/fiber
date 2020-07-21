@@ -148,6 +148,7 @@ Logger allows the following config arguments in any order:
 	- Logger(next func(*fiber.Ctx) bool)
 	- Logger(output io.Writer)
 	- Logger(format string)
+	- Logger(timeZone string)
 	- Logger(timeFormat string)
 	- Logger(config LoggerConfig)
 */
@@ -163,6 +164,8 @@ func Logger(options ...interface{}) fiber.Handler {
 			case string:
 				if strings.Contains(opt, "${") {
 					config.Format = opt
+				} else if isTimeZone(opt) {
+					config.TimeZone = opt
 				} else {
 					config.TimeFormat = opt
 				}
@@ -361,6 +364,12 @@ func logger(config LoggerConfig) fiber.Handler {
 		}
 		bytebufferpool.Put(buf)
 	}
+}
+
+// Use Golang's time package to determine whether the TimeZone is available
+func isTimeZone(name string) bool {
+	_, err := time.LoadLocation(name)
+	return err == nil
 }
 
 // MIT License fasttemplate
