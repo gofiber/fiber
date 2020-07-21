@@ -72,6 +72,9 @@ type (
 
 		// Colors are only supported if no custom Output is given
 		enableColors bool
+
+		// timeZoneLocation holds the compiled timezone
+		timeZoneLocation *time.Location
 	}
 )
 
@@ -164,8 +167,9 @@ func Logger(options ...interface{}) fiber.Handler {
 			case string:
 				if strings.Contains(opt, "${") {
 					config.Format = opt
-				} else if isTimeZone(opt) {
+				} else if tzl := getTimeZoneLocation(opt); tzl != nil {
 					config.TimeZone = opt
+					config.timeZoneLocation = tzl
 				} else {
 					config.TimeFormat = opt
 				}
@@ -215,13 +219,13 @@ func logger(config LoggerConfig) fiber.Handler {
 
 	var tmpl loggerTemplate
 	tmpl.new(config.Format, "${", "}")
-	timestamp := nowTimeString(config.TimeZone, config.TimeFormat)
+	timestamp := nowTimeString(config.timeZoneLocation, config.TimeFormat)
 	// Update date/time every second in a separate go routine
 	if strings.Contains(config.Format, "${time}") {
 		go func() {
 			for {
 				mutex.Lock()
-				timestamp = nowTimeString(config.TimeZone, config.TimeFormat)
+				timestamp = nowTimeString(config.timeZoneLocation, config.TimeFormat)
 				mutex.Unlock()
 				time.Sleep(500 * time.Millisecond)
 			}
@@ -365,22 +369,18 @@ func logger(config LoggerConfig) fiber.Handler {
 	}
 }
 
-func nowTimeString(timeZone, layout string) string {
+func nowTimeString(tzl *time.Location, layout string) string {
 	// This is different from Golang's time package which returns UTC, and Local is better than it
-	if timeZone == "" {
-		timeZone = "UTC"
+	if tzl == nil {
+		return time.Now().Format(layout)
 	}
-	location, err := time.LoadLocation(timeZone)
-	if err != nil {
-		log.Fatalf("Logger: failed to load time zone: %e\n", err)
-	}
-	return time.Now().In(location).Format(layout)
+	return time.Now().In(tzl).Format(layout)
 }
 
 // Use Golang's time package to determine whether the TimeZone is available
-func isTimeZone(name string) bool {
-	_, err := time.LoadLocation(name)
-	return err == nil
+func getTimeZoneLocation(name string) *time.Location {
+	tz, _ := time.LoadLocation(name)
+	return tz
 }
 
 // MIT License fasttemplate
