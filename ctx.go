@@ -272,11 +272,14 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 
 // QueryParser binds the query string to a struct.
 func (ctx *Ctx) QueryParser(out interface{}) error {
-	if ctx.Fasthttp.QueryArgs().Len() <= 0 {
+	if ctx.Fasthttp.QueryArgs().Len() < 1 {
 		return nil
 	}
+	// Get decoder from pool
 	var decoder = decoderPool.Get().(*schema.Decoder)
 	defer decoderPool.Put(decoder)
+
+	// Set correct alias tag
 	decoder.SetAliasTag("query")
 
 	data := make(map[string][]string)
