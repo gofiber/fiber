@@ -34,6 +34,7 @@ func main() {
   app.Use(middleware.Logger(middleware.LoggerConfig{
       Format:     "${time} ${method} ${path}",
       TimeFormat: "15:04:05",
+      TimeZone:   "Asia/Chongqing",
       Output:     os.Stdout,
   }))
 
@@ -86,6 +87,11 @@ type LoggerConfig struct {
   //
   // Optional. Default: 15:04:05
   TimeFormat string
+
+  // TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc
+  //
+  // Optional. Default: Local
+  TimeZone string
 
   // Output is a writter where logs are written
   //

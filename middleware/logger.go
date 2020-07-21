@@ -60,6 +60,11 @@ type (
 		// Optional. Default: 15:04:05
 		TimeFormat string
 
+		// TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc
+		//
+		// Optional. Default: Local
+		TimeZone string
+
 		// Output is a writter where logs are written
 		//
 		// Default: os.Stderr
@@ -133,6 +138,7 @@ var LoggerConfigDefault = LoggerConfig{
 	Next:       nil,
 	Format:     "#${pid} - ${time} ${status} - ${latency} ${method} ${path}\n",
 	TimeFormat: "2006/01/02 15:04:05",
+	TimeZone:   "Local",
 	Output:     os.Stderr,
 }
 
@@ -203,14 +209,17 @@ func logger(config LoggerConfig) fiber.Handler {
 
 	var tmpl loggerTemplate
 	tmpl.new(config.Format, "${", "}")
-
-	timestamp := time.Now().Format(config.TimeFormat)
+	var location, err = time.LoadLocation(config.TimeZone)
+	if err != nil {
+		log.Fatalf("Logger: failed to load time zone: %e\n", err)
+	}
+	timestamp := time.Now().In(location).Format(config.TimeFormat)
 	// Update date/time every second in a separate go routine
 	if strings.Contains(config.Format, "${time}") {
 		go func() {
 			for {
 				mutex.Lock()
-				timestamp = time.Now().Format(config.TimeFormat)
+				timestamp = time.Now().In(location).Format(config.TimeFormat)
 				mutex.Unlock()
 				time.Sleep(500 * time.Millisecond)
 			}
