@@ -524,7 +524,7 @@ func (ctx *Ctx) Is(extension string) bool {
 	}
 
 	return strings.HasPrefix(
-		utils.TrimLeft(utils.GetString(utils.ToLowerBytes(ctx.Fasthttp.Request.Header.ContentType())), ' '),
+		utils.TrimLeft(utils.GetString(ctx.Fasthttp.Request.Header.ContentType()), ' '),
 		extensionHeader,
 	)
 }
