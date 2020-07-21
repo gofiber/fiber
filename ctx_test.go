@@ -748,6 +748,26 @@ func Test_Ctx_Is(t *testing.T) {
 	utils.AssertEqual(t, false, ctx.Is(".json"))
 	utils.AssertEqual(t, false, ctx.Is(""))
 	utils.AssertEqual(t, false, ctx.Is(".foooo"))
+
+	ctx.Fasthttp.Request.Header.Set(HeaderContentType, MIMEApplicationJSONCharsetUTF8)
+	utils.AssertEqual(t, false, ctx.Is("html"))
+	utils.AssertEqual(t, true, ctx.Is("json"))
+	utils.AssertEqual(t, true, ctx.Is(".json"))
+
+	ctx.Fasthttp.Request.Header.Set(HeaderContentType, " application/json;charset=UTF-8")
+	utils.AssertEqual(t, false, ctx.Is("html"))
+	utils.AssertEqual(t, true, ctx.Is("json"))
+	utils.AssertEqual(t, true, ctx.Is(".json"))
+
+	ctx.Fasthttp.Request.Header.Set(HeaderContentType, MIMEApplicationXMLCharsetUTF8)
+	utils.AssertEqual(t, false, ctx.Is("html"))
+	utils.AssertEqual(t, true, ctx.Is("xml"))
+	utils.AssertEqual(t, true, ctx.Is(".xml"))
+
+	ctx.Fasthttp.Request.Header.Set(HeaderContentType, MIMETextPlain)
+	utils.AssertEqual(t, false, ctx.Is("html"))
+	utils.AssertEqual(t, true, ctx.Is("txt"))
+	utils.AssertEqual(t, true, ctx.Is(".txt"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Is -benchmem -count=4

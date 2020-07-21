@@ -523,12 +523,11 @@ func (ctx *Ctx) Is(extension string) bool {
 	if extensionHeader == "" {
 		return false
 	}
-	header := ctx.Get(HeaderContentType)
-	if factorSign := strings.IndexByte(header, ';'); factorSign != -1 {
-		header = header[:factorSign]
-	}
 
-	return utils.Trim(header, ' ') == extensionHeader
+	return strings.HasPrefix(
+		utils.TrimLeft(utils.GetString(ctx.Fasthttp.Request.Header.ContentType()), ' '),
+		extensionHeader,
+	)
 }
 
 // JSON converts any interface or string to JSON.
