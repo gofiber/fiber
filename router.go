@@ -37,7 +37,6 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
 	// Data for routing
-	pos         int         // Position in stack
 	use         bool        // USE matches path prefixes
 	star        bool        // Path equals '*'
 	root        bool        // Path equals '/'
@@ -196,6 +195,10 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Route {
 		Method:   method,
 		Handlers: handlers,
 	}
+	// Increment global handler count
+	app.mutex.Lock()
+	app.handlerCount += len(handlers)
+	app.mutex.Unlock()
 	// Middleware route matches all HTTP methods
 	if isUse {
 		// Add route to all HTTP methods stack
@@ -309,6 +312,10 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Route {
 		Path:     prefix,
 		Handlers: []Handler{handler},
 	}
+	// Increment global handler count
+	app.mutex.Lock()
+	app.handlerCount++
+	app.mutex.Unlock()
 	// Add route to stack
 	app.addRoute(MethodGet, &route)
 	// Add HEAD route
@@ -327,11 +334,6 @@ func (app *App) addRoute(method string, route *Route) {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
 	} else {
-		// Increment global route position
-		app.mutex.Lock()
-		app.routesCount++
-		app.mutex.Unlock()
-		route.pos = app.routesCount
 		route.Method = method
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)

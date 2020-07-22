@@ -120,3 +120,33 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	// return error if child crashes
 	return (<-channel).err
 }
+
+// watchMaster watches child procs
+func watchMaster() {
+	if runtime.GOOS == "windows" {
+		// finds parent process,
+		// and waits for it to exit
+		p, err := os.FindProcess(os.Getppid())
+		if err == nil {
+			_, _ = p.Wait()
+		}
+		os.Exit(1)
+	}
+	// if it is equal to 1 (init process ID),
+	// it indicates that the master process has exited
+	for range time.NewTicker(time.Millisecond * 500).C {
+		if os.Getppid() == 1 {
+			os.Exit(1)
+		}
+	}
+}
+
+var dummyChildCmd = "go"
+
+// dummyCmd is for internal prefork testing
+func dummyCmd() *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.Command("cmd", "/C", dummyChildCmd, "version")
+	}
+	return exec.Command(dummyChildCmd, "version")
+}

@@ -320,18 +320,6 @@ func Test_Ctx_BodyParser(t *testing.T) {
 
 	testDecodeParserError("invalid-content-type", "")
 	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
-
-	type Query struct {
-		ID    int
-		Name  string
-		Hobby []string
-	}
-	ctx.Fasthttp.Request.SetBody([]byte(``))
-	ctx.Fasthttp.Request.Header.SetContentType("")
-	ctx.Fasthttp.Request.URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
-	q := new(Query)
-	utils.AssertEqual(t, nil, ctx.BodyParser(q))
-	utils.AssertEqual(t, 2, len(q.Hobby))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_JSON -benchmem -count=4
