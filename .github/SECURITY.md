@@ -10,18 +10,18 @@
 
 The table below shows the supported versions for Fiber which include security updates.
 
-| Version  | Supported          |
-| -------- | ------------------ |
-| >= 1.9.x | :white_check_mark: |
-| < 1.9.0  | :x: |
+| Version   | Supported          |
+| --------- | ------------------ |
+| >= 1.12.6 | :white_check_mark: |
+| < 1.12.6  | :x:                |
 
 <a name="reporting"></a>
 ## Reporting security problems to Fiber
 
 **DO NOT CREATE AN ISSUE** to report a security problem. Instead, please
-join our discord server via [this invite link](https://discord.gg/bSnH7db)
-and create a new ticket in our `#support` channel by typing
-`!new Security problem`.
+send us an e-mail at `team@gofiber.io` or join our discord server via
+[this invite link](https://discord.gg/bSnH7db) and send a private message
+to Fenny or any of the maintainers.
 
 <a name="contact"></a>
 ## Security Point of Contact
@@ -32,7 +32,7 @@ latest.
 
 In case Fenny does not respond within a reasonable time, the secondary point
 of contact are any of the [@maintainers](https://github.com/orgs/gofiber/teams/maintainers).
-The maintainers only other persons with administrative access to Fiber's source code.
+The maintainers are the only other persons with administrative access to Fiber's source code.
 
 <a name="process"></a>
 ## Incident Response Process
