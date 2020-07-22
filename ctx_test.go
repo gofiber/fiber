@@ -10,6 +10,7 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -1824,4 +1825,42 @@ func Test_Ctx_Error(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.Next(fmt.Errorf("Hi I'm an error!"))
 	utils.AssertEqual(t, "Hi I'm an error!", ctx.Error().Error())
+}
+
+// go test -run Test_Ctx_Error
+func Test_Ctx_Clone(t *testing.T) {
+	t.Parallel()
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	ctx.err = errors.New("")
+
+	c := ctx.Clone()
+
+	utils.AssertEqual(t, ctx.app, c.app)
+	utils.AssertEqual(t, ctx.route, c.route)
+	utils.AssertEqual(t, ctx.indexRoute, c.indexRoute)
+	utils.AssertEqual(t, ctx.indexHandler, c.indexHandler)
+	utils.AssertEqual(t, ctx.method, c.method)
+	utils.AssertEqual(t, ctx.methodINT, c.methodINT)
+	utils.AssertEqual(t, ctx.path, c.path)
+	utils.AssertEqual(t, ctx.pathOriginal, c.pathOriginal)
+	utils.AssertEqual(t, ctx.values, c.values)
+	utils.AssertEqual(t, ctx.err, c.err)
+	utils.AssertEqual(t, ctx.matched, c.matched)
+	utils.AssertEqual(t, false, ctx.Fasthttp == c.Fasthttp)
+	utils.AssertEqual(t, true, c.cloned)
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_Clone -benchmem -count=4
+func Benchmark_Ctx_Clone(b *testing.B) {
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		app.ReleaseCtx(ctx.Clone())
+	}
 }

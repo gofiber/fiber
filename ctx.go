@@ -45,6 +45,7 @@ type Ctx struct {
 	err          error                // Contains error if passed to Next
 	Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched      bool                 // Non use route matched
+	cloned       bool                 // Determine if it cloned from other ctx
 }
 
 // Range data for ctx.Range
@@ -105,8 +106,14 @@ func (app *App) ReleaseCtx(ctx *Ctx) {
 	// Reset values
 	ctx.route = nil
 	ctx.values = nil
-	ctx.Fasthttp = nil
 	ctx.err = nil
+
+	// Release cloned ctx's fasthttp ctx
+	if ctx.cloned {
+		fastCtxPool.Put(ctx.Fasthttp)
+	}
+	ctx.Fasthttp = nil
+
 	app.pool.Put(ctx)
 }
 
@@ -647,9 +654,15 @@ func (ctx *Ctx) Next(err ...error) {
 	}
 }
 
+var fastCtxPool = sync.Pool{
+	New: func() interface{} {
+		return &fasthttp.RequestCtx{}
+	},
+}
+
 // Clone a ctx copy
 func (ctx *Ctx) Clone() *Ctx {
-	fastCtx := &fasthttp.RequestCtx{}
+	fastCtx := fastCtxPool.Get().(*fasthttp.RequestCtx)
 	ctx.Fasthttp.Request.CopyTo(&fastCtx.Request)
 	ctx.Fasthttp.Response.CopyTo(&fastCtx.Response)
 
@@ -659,7 +672,10 @@ func (ctx *Ctx) Clone() *Ctx {
 	c.values = ctx.values
 	c.indexRoute = ctx.indexRoute
 	c.indexHandler = ctx.indexHandler
+	c.err = ctx.err
 	c.matched = ctx.matched
+
+	c.cloned = true
 
 	return c
 }
