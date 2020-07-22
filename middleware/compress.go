@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"fmt"
-	"log"
 
 	fiber "github.com/gofiber/fiber"
 	fasthttp "github.com/valyala/fasthttp"
@@ -51,7 +50,7 @@ func Compress(options ...interface{}) fiber.Handler {
 			case CompressConfig:
 				config = opt
 			default:
-				log.Fatal("Compress: the following option types are allowed: int, func(*fiber.Ctx) bool, CompressConfig")
+				panic("Compress: the following option types are allowed: int, func(*fiber.Ctx) bool, CompressConfig")
 			}
 		}
 	}
