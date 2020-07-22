@@ -14,18 +14,26 @@ func Timeout(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 
 	// logic is from fasthttp.TimeoutWithCodeHandler https://github.com/valyala/fasthttp/blob/master/server.go#L418
 	return func(ctx *fiber.Ctx) {
-		ch := make(chan struct{}, 1)
+		ch := make(chan interface{}, 1)
+		c := ctx.Clone()
+		// Get cloned ctx's response reference
+		resp := &c.Fasthttp.Response
 
 		go func() {
 			defer func() {
-				_ = recover()
+				c.App().ReleaseCtx(c)
+				ch <- recover()
 			}()
-			handler(ctx)
-			ch <- struct{}{}
+			handler(c)
 		}()
 
 		select {
-		case <-ch:
+		case r := <-ch:
+			if r != nil {
+				// Pass internal panic
+				panic(r)
+			}
+			resp.CopyTo(&ctx.Fasthttp.Response)
 		case <-time.After(timeout):
 			ctx.Next(fiber.ErrRequestTimeout)
 		}

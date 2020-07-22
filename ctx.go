@@ -647,6 +647,23 @@ func (ctx *Ctx) Next(err ...error) {
 	}
 }
 
+// Clone a ctx copy
+func (ctx *Ctx) Clone() *Ctx {
+	fastCtx := &fasthttp.RequestCtx{}
+	ctx.Fasthttp.Request.CopyTo(&fastCtx.Request)
+	ctx.Fasthttp.Response.CopyTo(&fastCtx.Response)
+
+	c := ctx.app.AcquireCtx(fastCtx)
+
+	c.route = ctx.route
+	c.values = ctx.values
+	c.indexRoute = ctx.indexRoute
+	c.indexHandler = ctx.indexHandler
+	c.matched = ctx.matched
+
+	return c
+}
+
 // OriginalURL contains the original request URL.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
