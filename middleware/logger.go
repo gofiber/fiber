@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -178,7 +177,7 @@ func Logger(options ...interface{}) fiber.Handler {
 			case LoggerConfig:
 				config = opt
 			default:
-				log.Fatal("Logger: the following option types are allowed: string, io.Writer, LoggerConfig")
+				panic("Logger: the following option types are allowed: string, io.Writer, LoggerConfig")
 			}
 		}
 	}

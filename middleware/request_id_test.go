@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -150,6 +151,17 @@ func Test_Middleware_RequestID_Skip(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "", resp.Header.Get(RequestIDConfigDefault.Header), RequestIDConfigDefault.Header)
+}
+
+// go test -run Test_Middleware_RequestID_Panic
+func Test_Middleware_RequestID_Panic(t *testing.T) {
+	defer func() {
+		utils.AssertEqual(t,
+			"RequestID: the following option types are allowed: string, func() string, func(*fiber.Ctx) bool, RequestIDConfig",
+			fmt.Sprintf("%s", recover()))
+	}()
+
+	RequestID(0)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_RequestID -benchmem -count=4
