@@ -1,8 +1,6 @@
 package middleware
 
 import (
-	"log"
-
 	fiber "github.com/gofiber/fiber"
 	utils "github.com/gofiber/utils"
 )
@@ -60,7 +58,7 @@ func RequestID(options ...interface{}) fiber.Handler {
 			case RequestIDConfig:
 				config = opt
 			default:
-				log.Fatal("RequestID: the following option types are allowed: `string`, `func() string`, `func(*fiber.Ctx) bool`, `RequestIDConfig`")
+				panic("RequestID: the following option types are allowed: `string`, `func() string`, `func(*fiber.Ctx) bool`, `RequestIDConfig`")
 			}
 		}
 	}
