@@ -23,6 +23,7 @@ var (
 	pprofThreadcreate = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("threadcreate").ServeHTTP)
 )
 
+// Pprof will enabling profiling
 func Pprof() fiber.Handler {
 	// Return handler
 	return func(c *fiber.Ctx) {
