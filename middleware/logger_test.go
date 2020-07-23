@@ -135,6 +135,17 @@ func Test_Middleware_Logger_Options_And_WithConfig(t *testing.T) {
 	}
 }
 
+// go test -run Test_Middleware_Logger_Panic
+func Test_Middleware_Logger_Panic(t *testing.T) {
+	defer func() {
+		utils.AssertEqual(t,
+			"Logger: the following option types are allowed: string, io.Writer, LoggerConfig",
+			fmt.Sprintf("%s", recover()))
+	}()
+
+	Logger(0)
+}
+
 func Test_isTimeZone(t *testing.T) {
 	type args struct {
 		name string
