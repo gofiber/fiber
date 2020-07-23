@@ -1,8 +1,6 @@
 package middleware
 
 import (
-	"fmt"
-
 	fiber "github.com/gofiber/fiber"
 	utils "github.com/gofiber/utils"
 )
@@ -60,17 +58,11 @@ func RequestID(options ...interface{}) fiber.Handler {
 			case RequestIDConfig:
 				config = opt
 			default:
-				panic("RequestID: the following option types are allowed: string, func() string, func(*fiber.Ctx) bool, RequestIDConfig")
+				panic("RequestID: the following option types are allowed: `string`, `func() string`, `func(*fiber.Ctx) bool`, `RequestIDConfig`")
 			}
 		}
 	}
 	// Return requestID
-	return requestID(config)
-}
-
-// RequestIDWithConfig is deprecated, please use RequestID instead
-func RequestIDWithConfig(config RequestIDConfig) fiber.Handler {
-	fmt.Println("compress: `RequestIDWithConfig()` is deprecated since v1.12.4, please use `RequestID()`")
 	return requestID(config)
 }
 

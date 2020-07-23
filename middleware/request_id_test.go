@@ -157,7 +157,7 @@ func Test_Middleware_RequestID_Skip(t *testing.T) {
 func Test_Middleware_RequestID_Panic(t *testing.T) {
 	defer func() {
 		utils.AssertEqual(t,
-			"RequestID: the following option types are allowed: string, func() string, func(*fiber.Ctx) bool, RequestIDConfig",
+			"RequestID: the following option types are allowed: `string`, `func() string`, `func(*fiber.Ctx) bool`, `RequestIDConfig`",
 			fmt.Sprintf("%s", recover()))
 	}()
 

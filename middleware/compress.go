@@ -1,8 +1,6 @@
 package middleware
 
 import (
-	"fmt"
-
 	fiber "github.com/gofiber/fiber"
 	fasthttp "github.com/valyala/fasthttp"
 )
@@ -55,12 +53,6 @@ func Compress(options ...interface{}) fiber.Handler {
 		}
 	}
 	// Return CompressWithConfig
-	return compress(config)
-}
-
-// CompressWithConfig is deprecated, please use Compress instead
-func CompressWithConfig(config CompressConfig) fiber.Handler {
-	fmt.Println("compress: `CompressWithConfig()` is deprecated since v1.12.4, please use `Compress()`")
 	return compress(config)
 }
 
