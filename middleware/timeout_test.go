@@ -92,6 +92,31 @@ func Test_Middleware_Timeout_Panic(t *testing.T) {
 	utils.AssertEqual(t, "panic in timeout handler", string(body))
 }
 
+// go test -run Test_Middleware_Timeout_Use_Locals -race
+func Test_Middleware_Timeout_Use_Locals(t *testing.T) {
+	app := fiber.New(&fiber.Settings{DisableStartupMessage: true})
+
+	app.Use(func(c *fiber.Ctx) {
+		c.Locals("use", "value from use handler")
+		c.Next()
+	})
+
+	app.Get("/", Timeout(
+		func(c *fiber.Ctx) {
+			c.Status(fiber.StatusCreated).Send(c.Locals("use"))
+		},
+		5*time.Millisecond,
+	))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, fiber.StatusCreated, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "value from use handler", string(body))
+}
+
 // go test -v -run=^$ -bench=Benchmark_Middleware_Timeout -benchmem -count=4
 func Benchmark_Middleware_Timeout(b *testing.B) {
 	app := fiber.New()

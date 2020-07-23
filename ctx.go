@@ -110,6 +110,13 @@ func (app *App) ReleaseCtx(ctx *Ctx) {
 
 	// Release cloned ctx's fasthttp ctx
 	if ctx.cloned {
+		// Reset user values
+		ctx.Fasthttp.VisitUserValues(func(k []byte, v interface{}) {
+			if vc, ok := v.(io.Closer); ok {
+				_ = vc.Close()
+			}
+			ctx.Fasthttp.SetUserValueBytes(k, nil)
+		})
 		fastCtxPool.Put(ctx.Fasthttp)
 	}
 	ctx.Fasthttp = nil
@@ -660,11 +667,16 @@ var fastCtxPool = sync.Pool{
 	},
 }
 
-// Clone a ctx copy
+// Clone a ctx copy with out network connection.
+// Any functions related to connection won't work
 func (ctx *Ctx) Clone() *Ctx {
 	fastCtx := fastCtxPool.Get().(*fasthttp.RequestCtx)
 	ctx.Fasthttp.Request.CopyTo(&fastCtx.Request)
 	ctx.Fasthttp.Response.CopyTo(&fastCtx.Response)
+	// Copy user values
+	ctx.Fasthttp.VisitUserValues(func(k []byte, v interface{}) {
+		fastCtx.SetUserValueBytes(k, v)
+	})
 
 	c := ctx.app.AcquireCtx(fastCtx)
 

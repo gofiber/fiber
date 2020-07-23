@@ -1827,7 +1827,11 @@ func Test_Ctx_Error(t *testing.T) {
 	utils.AssertEqual(t, "Hi I'm an error!", ctx.Error().Error())
 }
 
-// go test -run Test_Ctx_Error
+type dummyCloser struct{}
+
+func (dummyCloser) Close() error { return nil }
+
+// go test -run Test_Ctx_Clone
 func Test_Ctx_Clone(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1836,7 +1840,10 @@ func Test_Ctx_Clone(t *testing.T) {
 
 	ctx.err = errors.New("")
 
+	ctx.Locals("closer", dummyCloser{})
+
 	c := ctx.Clone()
+	defer app.ReleaseCtx(c)
 
 	utils.AssertEqual(t, ctx.app, c.app)
 	utils.AssertEqual(t, ctx.route, c.route)
@@ -1851,6 +1858,12 @@ func Test_Ctx_Clone(t *testing.T) {
 	utils.AssertEqual(t, ctx.matched, c.matched)
 	utils.AssertEqual(t, false, ctx.Fasthttp == c.Fasthttp)
 	utils.AssertEqual(t, true, c.cloned)
+
+	c.Fasthttp.VisitUserValues(func(k []byte, v interface{}) {
+		utils.AssertEqual(t, "closer", string(k))
+		_, ok := v.(io.Closer)
+		utils.AssertEqual(t, true, ok)
+	})
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Clone -benchmem -count=4
