@@ -133,6 +133,17 @@ func Test_Middleware_Compress_Skip(t *testing.T) {
 	utils.AssertEqual(t, fiber.MIMETextPlainCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 }
 
+// go test -run Test_Middleware_Compress_Panic
+func Test_Middleware_Compress_Panic(t *testing.T) {
+	defer func() {
+		utils.AssertEqual(t,
+			"Compress: the following option types are allowed: int, func(*fiber.Ctx) bool, CompressConfig",
+			fmt.Sprintf("%s", recover()))
+	}()
+
+	Compress("invalid")
+}
+
 // go test -v -run=^$ -bench=Benchmark_Middleware_Compress -benchmem -count=4
 func Benchmark_Middleware_Compress(b *testing.B) {
 	app := fiber.New()
