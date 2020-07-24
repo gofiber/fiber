@@ -128,6 +128,14 @@ func (app *App) next(ctx *Ctx) bool {
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
 	ctx := app.AcquireCtx(rctx)
+
+	// handle invalid http method directly
+	if ctx.methodINT == -1 {
+		ctx.Status(StatusBadRequest).SendString("Invalid http method")
+		app.ReleaseCtx(ctx)
+		return
+	}
+
 	// Prettify path
 	ctx.prettifyPath()
 	// Find match in stack

@@ -805,6 +805,22 @@ func Test_Ctx_Method(t *testing.T) {
 	utils.AssertEqual(t, MethodPost, ctx.Method())
 }
 
+// go test -run Test_Ctx_InvalidMethod
+func Test_Ctx_InvalidMethod(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c *Ctx) {})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("InvalidMethod")
+	fctx.Request.SetRequestURI("/")
+
+	app.handler(fctx)
+
+	utils.AssertEqual(t, 400, fctx.Response.StatusCode())
+	utils.AssertEqual(t, []byte("Invalid http method"), fctx.Response.Body())
+}
+
 // go test -run Test_Ctx_MultipartForm
 func Test_Ctx_MultipartForm(t *testing.T) {
 	t.Parallel()
