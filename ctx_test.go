@@ -706,6 +706,9 @@ func Test_Ctx_IPs(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.Fasthttp.Request.Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.1, 127.0.0.1")
 	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.1", "127.0.0.1"}, ctx.IPs())
+
+	ctx.Fasthttp.Request.Header.Set(HeaderXForwardedFor, "")
+	utils.AssertEqual(t, 0, len(ctx.IPs()))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_IPs -benchmem -count=4

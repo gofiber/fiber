@@ -502,6 +502,9 @@ func (ctx *Ctx) IP() string {
 // IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
 func (ctx *Ctx) IPs() (ips []string) {
 	header := ctx.Fasthttp.Request.Header.Peek(HeaderXForwardedFor)
+	if len(header) == 0 {
+		return
+	}
 	ips = make([]string, bytes.Count(header, []byte(","))+1)
 	var commaPos, i int
 	for {
