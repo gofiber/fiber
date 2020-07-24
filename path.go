@@ -7,6 +7,7 @@
 package fiber
 
 import (
+	"regexp"
 	"strings"
 	"sync/atomic"
 
@@ -32,7 +33,7 @@ type paramSeg struct {
 // list of possible parameter and segment delimiter
 // slash has a special role, unlike the other parameters it must not be interpreted as a parameter
 // TODO '(' ')' delimiters for regex patterns
-var routeDelimiter = []byte{'/', '-', '.'}
+var routeDelimiterRegexp = regexp.MustCompile(`[\/\-\.]`)
 
 const wildcardParam string = "*"
 
@@ -97,14 +98,14 @@ func parseRoute(pattern string) (p routeParser) {
 
 // findNextRouteSegmentEnd searches in the route for the next end position for a segment
 func findNextRouteSegmentEnd(search string) int {
-	nextPosition := -1
-	for _, delimiter := range routeDelimiter {
-		if pos := strings.IndexByte(search, delimiter); pos != -1 && (pos < nextPosition || nextPosition == -1) {
-			nextPosition = pos
-		}
+	loc := routeDelimiterRegexp.FindStringIndex(search)
+
+	if loc == nil {
+		return -1
 	}
 
-	return nextPosition
+	// The match is at s[loc[0]:loc[1]], so `loc[1] - 1` is the index of the delimiter.
+	return loc[1] - 1
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
