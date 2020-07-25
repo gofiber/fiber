@@ -146,7 +146,7 @@ func isSegRegexp(seg string) bool {
 func buildSegRegexp(seg string) (*regexp.Regexp, error) {
 	// `\A` is added because we need the match from the beginning
 	//  `*` is replaced with `.*` because we need to turn the wildcard to a regular expression.
-	return regexp.Compile("\\A" + strings.ReplaceAll(seg, "*", ".*"))
+	return regexp.Compile("\\A" + strings.Replace(seg, "*", ".*", -1))
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
