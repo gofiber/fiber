@@ -75,28 +75,31 @@ func parseRoute(pattern string) (p routeParser) {
 			// combine const segments
 		} else if lastSeg >= 0 && !out[lastSeg].IsParam {
 			out[lastSeg].Const += string(out[lastSeg].EndChar) + part
+			if !out[lastSeg].IsRegexp && isSegRegexp(part) {
+				out[lastSeg].IsRegexp = true
+			}
 			// create new const segment
 		} else {
 			out = append(out, paramSeg{
 				Const: part,
 			})
+			if isSegRegexp(part) {
+				out[lastSeg].IsRegexp = true
+			}
 			lastSeg = len(out) - 1
 		}
 
 		// only check if the segment is regexp for non param segments
-		if !out[lastSeg].IsParam && !out[lastSeg].IsRegexp {
-			if isSegRegexp(out[lastSeg].Const) {
-				re, err := buildSegRegexp(out[lastSeg].Const)
-				if err != nil {
-					// If there is an error when compiling the regexp, we log an
-					// error and treat it like a normal Const segment instead of
-					// panicing.
-					fmt.Printf("invalid regexp route path: %v, %v\n", out[lastSeg].Const, err)
-				} else {
-					out[lastSeg].IsRegexp = true
-					out[lastSeg].CompiledRegexp = re
-				}
-
+		if !out[lastSeg].IsParam && out[lastSeg].IsRegexp {
+			re, err := buildSegRegexp(out[lastSeg].Const)
+			if err != nil {
+				out[lastSeg].IsRegexp = false
+				// If there is an error when compiling the regexp, we log an
+				// error and treat it like a normal Const segment instead of
+				// panicing.
+				fmt.Printf("invalid regexp route path: %v, %v\n", out[lastSeg].Const, err)
+			} else {
+				out[lastSeg].CompiledRegexp = re
 			}
 		}
 
