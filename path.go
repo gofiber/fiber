@@ -7,6 +7,8 @@
 package fiber
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 	"sync/atomic"
 
@@ -21,18 +23,20 @@ type routeParser struct {
 
 // paramsSeg holds the segment metadata
 type paramSeg struct {
-	Param      string
-	Const      string
-	IsParam    bool
-	IsOptional bool
-	IsLast     bool
-	EndChar    byte
+	Param          string
+	Const          string
+	IsParam        bool
+	IsOptional     bool
+	IsLast         bool
+	IsRegexp       bool           // for `Const` segment, it might be a regular expression
+	CompiledRegexp *regexp.Regexp // compiled regular expression if `IsRegexp = true`
+	EndChar        byte
 }
 
 // list of possible parameter and segment delimiter
 // slash has a special role, unlike the other parameters it must not be interpreted as a parameter
-// TODO '(' ')' delimiters for regex patterns
 var routeDelimiter = []byte{'/', '-', '.'}
+var regexpCharacters = []byte{'?', '+', '*', '(', ')'}
 
 const wildcardParam string = "*"
 
@@ -79,6 +83,23 @@ func parseRoute(pattern string) (p routeParser) {
 			lastSeg = len(out) - 1
 		}
 
+		// only check if the segment is regexp for non param segments
+		if !out[lastSeg].IsParam && !out[lastSeg].IsRegexp {
+			if isSegRegexp(out[lastSeg].Const) {
+				re, err := buildSegRegexp(out[lastSeg].Const)
+				if err != nil {
+					// If there is an error when compiling the regexp, we log an
+					// error and treat it like a normal Const segment instead of
+					// panicing.
+					fmt.Printf("invalid regexp route path: %v, %v\n", out[lastSeg].Const, err)
+				} else {
+					out[lastSeg].IsRegexp = true
+					out[lastSeg].CompiledRegexp = re
+				}
+
+			}
+		}
+
 		if delimiterPos != -1 && len(pattern) >= delimiterPos+1 {
 			out[lastSeg].EndChar = pattern[delimiterPos]
 			pattern = pattern[delimiterPos+1:]
@@ -105,6 +126,27 @@ func findNextRouteSegmentEnd(search string) int {
 	}
 
 	return nextPosition
+}
+
+// isSegRegexp checks if the segment contains regexp chars in `regexpCharacters`.
+// Note that `regexpCharacters` also includes `wildcardParam`, but only `Constant`
+// segment (isParam != true) uses this method. So as long as it has `*`, it will
+// always be part of the regular expression but not the wildcard.
+func isSegRegexp(seg string) bool {
+	for _, regexpChar := range regexpCharacters {
+		if pos := strings.IndexByte(seg, regexpChar); pos != -1 {
+			return true
+		}
+	}
+
+	return false
+}
+
+/// buildSegRegexp builds the Regexp based on the segment string.
+func buildSegRegexp(seg string) (*regexp.Regexp, error) {
+	// `\A` is added because we need the match from the beginning
+	//  `*` is replaced with `.*` because we need to turn the wildcard to a regular expression.
+	return regexp.Compile("\\A" + strings.ReplaceAll(seg, "*", ".*"))
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
@@ -145,9 +187,30 @@ func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 			paramsIterator++
 		} else {
 			// check const segment
-			i = len(segment.Const)
-			if partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const || (partLen > i && s[i] != segment.EndChar) {
-				return nil, false
+			if !segment.IsRegexp {
+				i = len(segment.Const)
+				if partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const || (partLen > i && s[i] != segment.EndChar) {
+					return nil, false
+				}
+			} else {
+				loc := segment.CompiledRegexp.FindStringIndex(s)
+				if loc == nil || loc[0] != 0 {
+					return nil, false
+				}
+
+				if partLen == loc[1] {
+					// If segment is not last, or the end char isn't `/`, it's
+					// not actually a match for the route.
+					if !segment.IsLast || segment.EndChar != '/' {
+						return nil, false
+					}
+				} else {
+					if s[loc[1]] != segment.EndChar {
+						return nil, false
+					}
+				}
+
+				i = loc[1]
 			}
 		}
 

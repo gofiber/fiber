@@ -167,6 +167,46 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/partialCheck/foo/bar", params: nil, match: false, partialCheck: true},
 		{url: "/partiaFoo", params: nil, match: false, partialCheck: true},
 	})
+	testCase("/api/ab?cd/:param", []testparams{
+		{url: "/api/acd/foo", params: []string{"foo"}, match: true},
+		{url: "/api/abcd/foo", params: []string{"foo"}, match: true},
+		{url: "/api/abbcd/foo", params: nil, match: false},
+		{url: "/api/ab-cd/foo", params: nil, match: false},
+		{url: "/api/abcd", params: nil, match: false},
+		{url: "/api/acd", params: nil, match: false},
+	})
+	testCase("/api/ab?cd-:param", []testparams{
+		{url: "/api/abcd-foo", params: []string{"foo"}, match: true},
+		{url: "/api/acd-foo", params: []string{"foo"}, match: true},
+		{url: "/api/abccd/foo", params: nil, match: false},
+		{url: "/api/abcd", params: nil, match: false},
+	})
+	testCase("/api/ab+cd/:param", []testparams{
+		{url: "/api/abcd/foo", params: []string{"foo"}, match: true},
+		{url: "/api/abbcd/foo", params: []string{"foo"}, match: true},
+		{url: "/api/abbbcd/foo", params: []string{"foo"}, match: true},
+		{url: "/api/abccd/foo", params: nil, match: false},
+		{url: "/api/ab-cd/foo", params: nil, match: false},
+		{url: "/api/abcd", params: nil, match: false},
+		{url: "/api/abbcd", params: nil, match: false},
+	})
+	testCase("/api/ab*cd/:param", []testparams{
+		{url: "/api/abcd/foo", params: []string{"foo"}, match: true},
+		{url: "/api/abxcd/foo", params: []string{"foo"}, match: true},
+		{url: "/api/abRANDOMcd/foo", params: []string{"foo"}, match: true},
+		{url: "/api/ab123cd/foo", params: []string{"foo"}, match: true},
+		{url: "/api/a123cd/foo", params: nil, match: false},
+		{url: "/api/abcd", params: nil, match: false},
+		{url: "/api/abbcd", params: nil, match: false},
+	})
+	testCase("/api/ab(cd)?e/:param", []testparams{
+		{url: "/api/abe/foo", params: []string{"foo"}, match: true},
+		{url: "/api/abcde/foo", params: []string{"foo"}, match: true},
+		{url: "/api/abce/foo", params: nil, match: false},
+		{url: "/api/abcd/foo", params: nil, match: false},
+		{url: "/api/abe", params: nil, match: false},
+		{url: "/api/abcde", params: nil, match: false},
+	})
 	testCase("/api/*/:param/:param2", []testparams{
 		{url: "/api/test/abc", params: nil, match: false},
 		{url: "/api/joker/batman", params: nil, match: false},
