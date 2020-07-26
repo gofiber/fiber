@@ -678,6 +678,19 @@ func Test_Ctx_Fresh(t *testing.T) {
 	utils.AssertEqual(t, false, ctx.Fresh())
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_WithNoCache -benchmem -count=4
+func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "*")
+	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "no-cache")
+	for n := 0; n < b.N; n++ {
+		ctx.Fresh()
+	}
+}
+
 // go test -run Test_Ctx_Get
 func Test_Ctx_Get(t *testing.T) {
 	t.Parallel()
