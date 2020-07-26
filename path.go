@@ -83,10 +83,10 @@ func parseRoute(pattern string) (p routeParser) {
 			out = append(out, paramSeg{
 				Const: part,
 			})
+			lastSeg = len(out) - 1
 			if isSegRegexp(part) {
 				out[lastSeg].IsRegexp = true
 			}
-			lastSeg = len(out) - 1
 		}
 
 		// only check if the segment is regexp for non param segments
@@ -201,19 +201,32 @@ func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 					return nil, false
 				}
 
-				if partLen == loc[1] {
-					// If segment is not last, or the end char isn't `/`, it's
-					// not actually a match for the route.
-					if !segment.IsLast || segment.EndChar != '/' {
+				if partLen >= loc[1] {
+					if segment.IsLast {
+						// remaining of `s` after regexp match has to be `/` when
+						// the current segment is the last one.
+						if segment.EndChar != '/' || (partLen > loc[1] && s[loc[1]:] != "/") {
+							return nil, false
+						}
+
+						i = partLen
+						// segment is not the last, but there is no `s` left.
+					} else if partLen == loc[1] {
 						return nil, false
+						// partLen > loc[1] and the current segment is not last
+					} else {
+						if s[loc[1]] != segment.EndChar {
+							return nil, false
+						}
+						i = loc[1]
 					}
 				} else {
 					if s[loc[1]] != segment.EndChar {
 						return nil, false
 					}
-				}
 
-				i = loc[1]
+					i = loc[1]
+				}
 			}
 		}
 
