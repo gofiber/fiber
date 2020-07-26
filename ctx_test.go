@@ -644,6 +644,18 @@ func Test_Ctx_Fresh(t *testing.T) {
 	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "no-cache")
 	utils.AssertEqual(t, false, ctx.Fresh())
 
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "*")
+	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, ",no-cache,")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "*")
+	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "aa,no-cache,")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "*")
+	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, ",no-cache,bb")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
 	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "675af34563dc-tr34")
 	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "public")
 	utils.AssertEqual(t, false, ctx.Fresh())

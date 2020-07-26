@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -417,8 +416,6 @@ func (ctx *Ctx) FormValue(key string) (value string) {
 	return getString(ctx.Fasthttp.FormValue(key))
 }
 
-var cacheControlNoCacheRegexp, _ = regexp.Compile(`(?:^|,)\s*?no-cache\s*?(?:,|$)`)
-
 // Fresh returns true when the response is still “fresh” in the client's cache,
 // otherwise false is returned to indicate that the client cache is now stale
 // and the full response should be sent.
@@ -439,7 +436,7 @@ func (ctx *Ctx) Fresh() bool {
 	// to support end-to-end reload requests
 	// https://tools.ietf.org/html/rfc2616#section-14.9.4
 	cacheControl := ctx.Get(HeaderCacheControl)
-	if cacheControl != "" && cacheControlNoCacheRegexp.MatchString(cacheControl) {
+	if cacheControl != "" && isNoCache(cacheControl) {
 		return false
 	}
 
@@ -476,6 +473,38 @@ func (ctx *Ctx) Fresh() bool {
 			}
 		}
 	}
+	return true
+}
+
+// isNoCache checks if the cacheControl header value is a `no-cache`.
+func isNoCache(cacheControl string) bool {
+	noCacheStrIdx := strings.Index(cacheControl, HeaderCacheControlNoCacheValue)
+	if noCacheStrIdx == -1 {
+		return false
+	}
+
+	for i := noCacheStrIdx - 1; i >= 0; i-- {
+		if cacheControl[i] != ' ' {
+			// before `no-cache`, if the first non space character is `,`, then
+			// it's a valid no-cache value.
+			if cacheControl[i] != ',' {
+				return false
+			}
+			break
+		}
+	}
+
+	for i := noCacheStrIdx + len(HeaderCacheControlNoCacheValue); i < len(cacheControl); i++ {
+		if cacheControl[i] != ' ' {
+			// after `no-cache`, if the first non space character is `,`, then
+			// it's a valid no-cache value.
+			if cacheControl[i] != ',' {
+				return false
+			}
+			break
+		}
+	}
+
 	return true
 }
 
