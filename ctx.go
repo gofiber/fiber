@@ -449,15 +449,7 @@ func (ctx *Ctx) Fresh() bool {
 		if etag == "" {
 			return false
 		}
-		var etagStale = true
-		var matches = parseTokenList(getBytes(noneMatch))
-		for _, match := range matches {
-			if match == etag || match == "W/"+etag || "W/"+match == etag {
-				etagStale = false
-				break
-			}
-		}
-		if etagStale {
+		if isEtagStale(etag, getBytes(noneMatch)) {
 			return false
 		}
 
