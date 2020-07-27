@@ -632,6 +632,23 @@ func Test_Ctx_FormValue(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_StaleEtag -benchmem -count=4
+func Benchmark_Ctx_Fresh_StaleEtag(b *testing.B) {
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	for n := 0; n < b.N; n++ {
+		ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "a, b, c, d")
+		ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "c")
+		ctx.Fresh()
+
+		ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "a, b, c, d")
+		ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "e")
+		ctx.Fresh()
+	}
+}
+
 // go test -run Test_Ctx_Fresh
 func Test_Ctx_Fresh(t *testing.T) {
 	t.Parallel()

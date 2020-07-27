@@ -163,14 +163,19 @@ func getOffer(header string, offers ...string) string {
 	return ""
 }
 
-// Adapted from:
-// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
-func parseTokenList(noneMatchBytes []byte) []string {
-	var (
-		start int
-		end   int
-		list  []string
-	)
+func matchEtag(s string, etag string) bool {
+	if s == etag || s == "W/"+etag || "W/"+s == etag {
+		return true
+	}
+
+	return false
+}
+
+func isEtagStale(etag string, noneMatchBytes []byte) bool {
+	var start, end int
+
+	// Adapted from:
+	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
 	for i := range noneMatchBytes {
 		switch noneMatchBytes[i] {
 		case 0x20:
@@ -179,7 +184,9 @@ func parseTokenList(noneMatchBytes []byte) []string {
 				end = i + 1
 			}
 		case 0x2c:
-			list = append(list, getString(noneMatchBytes[start:end]))
+			if matchEtag(getString(noneMatchBytes[start:end]), etag) {
+				return false
+			}
 			start = i + 1
 			end = i + 1
 		default:
@@ -187,8 +194,7 @@ func parseTokenList(noneMatchBytes []byte) []string {
 		}
 	}
 
-	list = append(list, getString(noneMatchBytes[start:end]))
-	return list
+	return !matchEtag(getString(noneMatchBytes[start:end]), etag)
 }
 
 func isIPv6(address string) bool {
