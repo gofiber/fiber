@@ -661,6 +661,18 @@ func Test_Ctx_Fresh(t *testing.T) {
 	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "no-cache")
 	utils.AssertEqual(t, false, ctx.Fresh())
 
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "*")
+	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, ",no-cache,")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "*")
+	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "aa,no-cache,")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "*")
+	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, ",no-cache,bb")
+	utils.AssertEqual(t, false, ctx.Fresh())
+
 	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "675af34563dc-tr34")
 	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "public")
 	utils.AssertEqual(t, false, ctx.Fresh())
@@ -681,6 +693,19 @@ func Test_Ctx_Fresh(t *testing.T) {
 
 	ctx.Fasthttp.Request.Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
 	utils.AssertEqual(t, false, ctx.Fresh())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_WithNoCache -benchmem -count=4
+func Benchmark_Ctx_Fresh_WithNoCache(b *testing.B) {
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	ctx.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, "*")
+	ctx.Fasthttp.Request.Header.Set(HeaderCacheControl, "no-cache")
+	for n := 0; n < b.N; n++ {
+		ctx.Fresh()
+	}
 }
 
 // go test -run Test_Ctx_Get

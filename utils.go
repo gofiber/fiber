@@ -460,6 +460,7 @@ const (
 	HeaderWWWAuthenticate                 = "WWW-Authenticate"
 	HeaderAge                             = "Age"
 	HeaderCacheControl                    = "Cache-Control"
+	HeaderCacheControlNoCacheValue        = "no-cache"
 	HeaderClearSiteData                   = "Clear-Site-Data"
 	HeaderExpires                         = "Expires"
 	HeaderPragma                          = "Pragma"
