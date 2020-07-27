@@ -194,11 +194,7 @@ func isEtagStale(etag string, noneMatchBytes []byte) bool {
 		}
 	}
 
-	if matchEtag(getString(noneMatchBytes[start:end]), etag) {
-		return false
-	}
-
-	return true
+	return !matchEtag(getString(noneMatchBytes[start:end]), etag)
 }
 
 func isIPv6(address string) bool {
