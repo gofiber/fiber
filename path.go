@@ -36,7 +36,7 @@ type paramSeg struct {
 // list of possible parameter and segment delimiter
 // slash has a special role, unlike the other parameters it must not be interpreted as a parameter
 var routeDelimiter = []byte{'/', '-', '.'}
-var regexpCharacters = []byte{'?', '+', '*', '(', ')'}
+var regexpCharacters string = "?+*()"
 
 const wildcardParam string = "*"
 
@@ -136,13 +136,7 @@ func findNextRouteSegmentEnd(search string) int {
 // segment (isParam != true) uses this method. So as long as it has `*`, it will
 // always be part of the regular expression but not the wildcard.
 func isSegRegexp(seg string) bool {
-	for _, regexpChar := range regexpCharacters {
-		if pos := strings.IndexByte(seg, regexpChar); pos != -1 {
-			return true
-		}
-	}
-
-	return false
+	return strings.ContainsAny(seg, regexpCharacters)
 }
 
 /// buildSegRegexp builds the Regexp based on the segment string.
