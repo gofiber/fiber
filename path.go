@@ -35,7 +35,7 @@ type paramSeg struct {
 
 // list of possible parameter and segment delimiter
 // slash has a special role, unlike the other parameters it must not be interpreted as a parameter
-var routeDelimiter = []byte{'/', '-', '.'}
+var routeDelimiters string = "/-."
 var regexpCharacters string = "?+*()"
 
 const wildcardParam string = "*"
@@ -121,14 +121,7 @@ func parseRoute(pattern string) (p routeParser) {
 
 // findNextRouteSegmentEnd searches in the route for the next end position for a segment
 func findNextRouteSegmentEnd(search string) int {
-	nextPosition := -1
-	for _, delimiter := range routeDelimiter {
-		if pos := strings.IndexByte(search, delimiter); pos != -1 && (pos < nextPosition || nextPosition == -1) {
-			nextPosition = pos
-		}
-	}
-
-	return nextPosition
+	return strings.IndexAny(search, routeDelimiters)
 }
 
 // isSegRegexp checks if the segment contains regexp chars in `regexpCharacters`.
