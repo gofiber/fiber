@@ -163,12 +163,17 @@ func getOffer(header string, offers ...string) string {
 	return ""
 }
 
+func matchEtag(s string, etag string) bool {
+	if s == etag || s == "W/"+etag || "W/"+s == etag {
+		return true
+	}
+
+	return false
+}
+
 func isEtagStale(etag string, noneMatchBytes []byte) bool {
-	var (
-		start   int
-		end     int
-		matches []string
-	)
+	var start, end int
+
 	// Adapted from:
 	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
 	for i := range noneMatchBytes {
@@ -179,7 +184,9 @@ func isEtagStale(etag string, noneMatchBytes []byte) bool {
 				end = i + 1
 			}
 		case 0x2c:
-			matches = append(matches, getString(noneMatchBytes[start:end]))
+			if matchEtag(getString(noneMatchBytes[start:end]), etag) {
+				return false
+			}
 			start = i + 1
 			end = i + 1
 		default:
@@ -187,12 +194,8 @@ func isEtagStale(etag string, noneMatchBytes []byte) bool {
 		}
 	}
 
-	matches = append(matches, getString(noneMatchBytes[start:end]))
-
-	for _, match := range matches {
-		if match == etag || match == "W/"+etag || "W/"+match == etag {
-			return false
-		}
+	if matchEtag(getString(noneMatchBytes[start:end]), etag) {
+		return false
 	}
 
 	return true
