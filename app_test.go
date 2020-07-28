@@ -835,3 +835,24 @@ func Test_App_Init_Error_View(t *testing.T) {
 	}()
 	_ = app.Settings.Views.Render(nil, "", nil)
 }
+
+func Test_App_Stack(t *testing.T) {
+	app := New()
+
+	app.Use("/path0", func(_ *Ctx) {})
+	app.Get("/path1", func(_ *Ctx) {})
+	app.Get("/path2", func(_ *Ctx) {})
+	app.Post("/path3", func(_ *Ctx) {})
+
+	stack := app.Stack()
+	utils.AssertEqual(t, 9, len(stack))
+	utils.AssertEqual(t, 3, len(stack[methodInt(MethodGet)]))
+	utils.AssertEqual(t, 3, len(stack[methodInt(MethodHead)]))
+	utils.AssertEqual(t, 2, len(stack[methodInt(MethodPost)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodPut)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodPatch)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodDelete)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodConnect)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodOptions)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodTrace)]))
+}
