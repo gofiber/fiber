@@ -140,10 +140,6 @@ type Settings struct {
 	// Default: false
 	DisableStartupMessage bool `json:"disable_startup_message"`
 
-	// Deprecated: Templates is deprecated please use Views.
-	// Default: nil
-	Templates Templates `json:"-"`
-
 	// Views is the interface that wraps the Render function.
 	// Default: nil
 	Views Views `json:"-"`
@@ -591,10 +587,6 @@ func (app *App) init() *App {
 	app.mutex.Lock()
 	// Load view engine if provided
 	if app.Settings != nil {
-		// Templates is replaced by Views with layout support
-		if app.Settings.Templates != nil {
-			fmt.Println("`Templates` are deprecated since v1.12.x, please use `Views` instead")
-		}
 		// Only load templates if an view engine is specified
 		if app.Settings.Views != nil {
 			if err := app.Settings.Views.Load(); err != nil {

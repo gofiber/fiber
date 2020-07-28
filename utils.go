@@ -208,6 +208,40 @@ func parseAddr(raw string) (host, port string) {
 	return raw, ""
 }
 
+const noCacheValue = "no-cache"
+
+// isNoCache checks if the cacheControl header value is a `no-cache`.
+func isNoCache(cacheControl string) bool {
+	noCacheStrIdx := strings.Index(cacheControl, noCacheValue)
+	if noCacheStrIdx == -1 {
+		return false
+	}
+
+	for i := noCacheStrIdx - 1; i >= 0; i-- {
+		if cacheControl[i] != ' ' {
+			// before `no-cache`, if the first non space character is `,`, then
+			// it's a valid no-cache value.
+			if cacheControl[i] != ',' {
+				return false
+			}
+			break
+		}
+	}
+
+	for i := noCacheStrIdx + len(noCacheValue); i < len(cacheControl); i++ {
+		if cacheControl[i] != ' ' {
+			// after `no-cache`, if the first non space character is `,`, then
+			// it's a valid no-cache value.
+			if cacheControl[i] != ',' {
+				return false
+			}
+			break
+		}
+	}
+
+	return true
+}
+
 // https://golang.org/src/net/net.go#L113
 // Helper methods for application#test
 type testAddr string
@@ -460,7 +494,6 @@ const (
 	HeaderWWWAuthenticate                 = "WWW-Authenticate"
 	HeaderAge                             = "Age"
 	HeaderCacheControl                    = "Cache-Control"
-	HeaderCacheControlNoCacheValue        = "no-cache"
 	HeaderClearSiteData                   = "Clear-Site-Data"
 	HeaderExpires                         = "Expires"
 	HeaderPragma                          = "Pragma"

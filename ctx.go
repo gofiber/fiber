@@ -67,11 +67,6 @@ type Cookie struct {
 	SameSite string    `json:"same_site"`
 }
 
-// Templates is deprecated since v1.11.1, please use Views
-type Templates interface {
-	Render(io.Writer, string, interface{}) error
-}
-
 // Views is the interface that wraps the Render function.
 type Views interface {
 	Load() error
@@ -468,38 +463,6 @@ func (ctx *Ctx) Fresh() bool {
 	return true
 }
 
-// isNoCache checks if the cacheControl header value is a `no-cache`.
-func isNoCache(cacheControl string) bool {
-	noCacheStrIdx := strings.Index(cacheControl, HeaderCacheControlNoCacheValue)
-	if noCacheStrIdx == -1 {
-		return false
-	}
-
-	for i := noCacheStrIdx - 1; i >= 0; i-- {
-		if cacheControl[i] != ' ' {
-			// before `no-cache`, if the first non space character is `,`, then
-			// it's a valid no-cache value.
-			if cacheControl[i] != ',' {
-				return false
-			}
-			break
-		}
-	}
-
-	for i := noCacheStrIdx + len(HeaderCacheControlNoCacheValue); i < len(cacheControl); i++ {
-		if cacheControl[i] != ' ' {
-			// after `no-cache`, if the first non space character is `,`, then
-			// it's a valid no-cache value.
-			if cacheControl[i] != ',' {
-				return false
-			}
-			break
-		}
-	}
-
-	return true
-}
-
 // Get returns the HTTP request header specified by field.
 // Field names are case-insensitive
 // Returned value is only valid within the handler. Do not store any references.
@@ -820,14 +783,7 @@ func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err er
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// Use Templates engine if exist
-	if ctx.app.Settings.Templates != nil {
-		// Render template from Templates
-		fmt.Println("render: `Templates` are deprecated since v1.11.1, please us `Views` instead")
-		if err := ctx.app.Settings.Templates.Render(buf, name, bind); err != nil {
-			return err
-		}
-	} else if ctx.app.Settings.Views != nil {
+	if ctx.app.Settings.Views != nil {
 		// Render template from Views
 		if err := ctx.app.Settings.Views.Render(buf, name, bind, layouts...); err != nil {
 			return err
