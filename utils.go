@@ -212,33 +212,27 @@ const noCacheValue = "no-cache"
 
 // isNoCache checks if the cacheControl header value is a `no-cache`.
 func isNoCache(cacheControl string) bool {
-	noCacheStrIdx := strings.Index(cacheControl, noCacheValue)
-	if noCacheStrIdx == -1 {
+	i := strings.Index(cacheControl, noCacheValue)
+	if i == -1 {
 		return false
 	}
 
-	for i := noCacheStrIdx - 1; i >= 0; i-- {
-		if cacheControl[i] != ' ' {
-			// before `no-cache`, if the first non space character is `,`, then
-			// it's a valid no-cache value.
-			if cacheControl[i] != ',' {
-				return false
-			}
-			break
-		}
+	// Xno-cache
+	if i > 0 && !(cacheControl[i-1] == ' ' || cacheControl[i-1] == ',') {
+		return false
 	}
 
-	for i := noCacheStrIdx + len(noCacheValue); i < len(cacheControl); i++ {
-		if cacheControl[i] != ' ' {
-			// after `no-cache`, if the first non space character is `,`, then
-			// it's a valid no-cache value.
-			if cacheControl[i] != ',' {
-				return false
-			}
-			break
-		}
+	// bla bla, no-cache
+	if i+len(noCacheValue) == len(cacheControl) {
+		return true
 	}
 
+	// bla bla, no-cacheX
+	if cacheControl[i+len(noCacheValue)] != ',' {
+		return false
+	}
+
+	// OK
 	return true
 }
 

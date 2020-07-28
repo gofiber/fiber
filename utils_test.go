@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -208,4 +209,40 @@ func Test_Utils_TestConn_Deadline(t *testing.T) {
 	utils.AssertEqual(t, nil, conn.SetDeadline(time.Time{}))
 	utils.AssertEqual(t, nil, conn.SetReadDeadline(time.Time{}))
 	utils.AssertEqual(t, nil, conn.SetWriteDeadline(time.Time{}))
+}
+
+func Test_Utils_IsNoCache(t *testing.T) {
+	testCases := []struct {
+		string
+		bool
+	}{
+		{"public", false},
+		{"no-cache", true},
+		{"public, no-cache, max-age=30", true},
+		{"public,no-cache", true},
+		{"public,no-cacheX", false},
+		{"no-cache, public", true},
+		{"Xno-cache, public", false},
+		{"max-age=30, no-cache,public", true},
+	}
+
+	for _, c := range testCases {
+		ok := isNoCache(c.string)
+		utils.AssertEqual(t, c.bool, ok,
+			fmt.Sprintf("want %t, got isNoCache(%s)=%t", c.bool, c.string, ok))
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Utils_IsNoCache -benchmem -count=4
+func Benchmark_Utils_IsNoCache(b *testing.B) {
+	var ok bool
+	for i := 0; i < b.N; i++ {
+		ok = isNoCache("public")
+		ok = isNoCache("no-cache")
+		ok = isNoCache("public, no-cache, max-age=30")
+		ok = isNoCache("public,no-cache")
+		ok = isNoCache("no-cache, public")
+		ok = isNoCache("max-age=30, no-cache,public")
+	}
+	utils.AssertEqual(b, true, ok)
 }
