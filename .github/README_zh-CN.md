@@ -534,6 +534,7 @@ func main() {
 - [Construir una API en Golang con Fiber 🇪🇸](https://enbonnet.me/article/53/construir-api-golang-con-fiber) - _28 June 2020_
 - [📺Why Go Fiber Is THE New Framework To Learn](https://www.youtube.com/watch?v=kvwsPeWDLM8) - _29 June 2020_
 - [解析Gofiber路由管理](https://zhuanlan.zhihu.com/p/152494502) - _08 July 2020_
+- [📺 Introduction to Fiber - An Express-inspired web framework](https://youtu.be/MfFi4Gt-tos) - _25 July 2020_
 
 ## 👍 贡献
 
