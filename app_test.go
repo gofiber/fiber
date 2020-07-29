@@ -815,6 +815,23 @@ func Test_Test_Timeout(t *testing.T) {
 	utils.AssertEqual(t, true, err != nil, "app.Test(req)")
 }
 
+type errorReader int
+
+func (errorReader) Read([]byte) (int, error) {
+	return 0, errors.New("errorReader")
+}
+
+func Test_Test_DumpError(t *testing.T) {
+	app := New()
+	app.Settings.DisableStartupMessage = true
+
+	app.Get("/", func(_ *Ctx) {})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", errorReader(0)))
+	utils.AssertEqual(t, true, resp == nil)
+	utils.AssertEqual(t, "errorReader", err.Error())
+}
+
 func Test_App_Handler(t *testing.T) {
 	h := New().Handler()
 	utils.AssertEqual(t, "fasthttp.RequestHandler", reflect.TypeOf(h).String())

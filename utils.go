@@ -248,7 +248,6 @@ func (a testAddr) String() string {
 }
 
 type testConn struct {
-	net.Conn
 	r bytes.Buffer
 	w bytes.Buffer
 }
