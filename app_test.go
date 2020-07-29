@@ -877,40 +877,40 @@ func Test_App_Stack(t *testing.T) {
 }
 
 // go test -run Test_App_ReadTimeout
-func Test_App_ReadTimeout(t *testing.T) {
-	app := New(&Settings{
-		ReadTimeout:           time.Nanosecond,
-		IdleTimeout:           time.Minute,
-		DisableStartupMessage: true,
-		DisableKeepalive:      true,
-	})
-
-	app.Get("/read-timeout", func(c *Ctx) {
-		c.SendString("I should not be sent")
-	})
-
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-
-		conn, err := net.Dial("tcp4", "127.0.0.1:4004")
-		utils.AssertEqual(t, nil, err)
-		defer conn.Close()
-
-		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
-		utils.AssertEqual(t, nil, err)
-
-		buf := make([]byte, 1024)
-		var n int
-		n, err = conn.Read(buf)
-
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, true, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
-
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	utils.AssertEqual(t, nil, app.Listen(4004))
-}
+//func Test_App_ReadTimeout(t *testing.T) {
+//	app := New(&Settings{
+//		ReadTimeout:           time.Nanosecond,
+//		IdleTimeout:           time.Minute,
+//		DisableStartupMessage: true,
+//		DisableKeepalive:      true,
+//	})
+//
+//	app.Get("/read-timeout", func(c *Ctx) {
+//		c.SendString("I should not be sent")
+//	})
+//
+//	go func() {
+//		time.Sleep(500 * time.Millisecond)
+//
+//		conn, err := net.Dial("tcp4", "127.0.0.1:4004")
+//		utils.AssertEqual(t, nil, err)
+//		defer conn.Close()
+//
+//		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
+//		utils.AssertEqual(t, nil, err)
+//
+//		buf := make([]byte, 1024)
+//		var n int
+//		n, err = conn.Read(buf)
+//
+//		utils.AssertEqual(t, nil, err)
+//		utils.AssertEqual(t, true, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
+//
+//		utils.AssertEqual(t, nil, app.Shutdown())
+//	}()
+//
+//	utils.AssertEqual(t, nil, app.Listen(4004))
+//}
 
 // go test -run Test_App_BadRequest
 func Test_App_BadRequest(t *testing.T) {
