@@ -10,6 +10,7 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -1259,13 +1260,20 @@ func Test_Ctx_SendFile(t *testing.T) {
 	utils.AssertEqual(t, StatusNotModified, ctx.Fasthttp.Response.StatusCode())
 	utils.AssertEqual(t, []byte(nil), ctx.Fasthttp.Response.Body())
 	app.ReleaseCtx(ctx)
+}
 
-	// test 404
-	// ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-	// err = ctx.SendFile("./john_doe.go")
-	// // check expectation
-	// utils.AssertEqual(t, StatusNotFound, ctx.Fasthttp.Response.StatusCode())
-	// app.ReleaseCtx(ctx)
+// go test -race -run Test_Ctx_SendFile_404
+func Test_Ctx_SendFile_404(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(ctx *Ctx) {
+		err := ctx.SendFile("./john_dow.go/")
+		utils.AssertEqual(t, false, err == nil)
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode)
 }
 
 // go test -race -run Test_Ctx_SendFile_Immutable
@@ -1493,7 +1501,10 @@ func Test_Ctx_Render(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
 
-	err = ctx.Render("./.github/TEST_DATA/invalid.html", nil)
+	err = ctx.Render("./.github/TEST_DATA/template-non-exists.html", nil)
+	utils.AssertEqual(t, false, err == nil)
+
+	err = ctx.Render("./.github/TEST_DATA/template-invalid.html", nil)
 	utils.AssertEqual(t, false, err == nil)
 }
 
@@ -1526,6 +1537,7 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Render_Engine -benchmem -count=4
 func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
@@ -1545,19 +1557,43 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(ctx.Fasthttp.Response.Body()))
 }
 
+type errorTemplateEngine struct{}
+
+func (t errorTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
+	return errors.New("errorTemplateEngine")
+}
+
+func (t errorTemplateEngine) Load() error { return nil }
+
+// go test -run Test_Ctx_Render_Engine_Error
+func Test_Ctx_Render_Engine_Error(t *testing.T) {
+	app := New()
+	app.Settings.Views = errorTemplateEngine{}
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	err := ctx.Render("index.tmpl", nil)
+	utils.AssertEqual(t, false, err == nil)
+}
+
 // go test -run Test_Ctx_Render_Go_Template
 func Test_Ctx_Render_Go_Template(t *testing.T) {
 	t.Parallel()
+
 	file, err := ioutil.TempFile(os.TempDir(), "fiber")
 	utils.AssertEqual(t, nil, err)
 	defer os.Remove(file.Name())
+
 	_, err = file.Write([]byte("template"))
 	utils.AssertEqual(t, nil, err)
+
 	err = file.Close()
 	utils.AssertEqual(t, nil, err)
+
 	app := New()
+
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
+
 	err = ctx.Render(file.Name(), nil)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "template", string(ctx.Fasthttp.Response.Body()))

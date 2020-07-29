@@ -5,12 +5,14 @@
 package fiber
 
 import (
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"regexp"
@@ -813,6 +815,23 @@ func Test_Test_Timeout(t *testing.T) {
 	utils.AssertEqual(t, true, err != nil, "app.Test(req)")
 }
 
+type errorReader int
+
+func (errorReader) Read([]byte) (int, error) {
+	return 0, errors.New("errorReader")
+}
+
+func Test_Test_DumpError(t *testing.T) {
+	app := New()
+	app.Settings.DisableStartupMessage = true
+
+	app.Get("/", func(_ *Ctx) {})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", errorReader(0)))
+	utils.AssertEqual(t, true, resp == nil)
+	utils.AssertEqual(t, "errorReader", err.Error())
+}
+
 func Test_App_Handler(t *testing.T) {
 	h := New().Handler()
 	utils.AssertEqual(t, "fasthttp.RequestHandler", reflect.TypeOf(h).String())
@@ -834,4 +853,117 @@ func Test_App_Init_Error_View(t *testing.T) {
 		}
 	}()
 	_ = app.Settings.Views.Render(nil, "", nil)
+}
+
+func Test_App_Stack(t *testing.T) {
+	app := New()
+
+	app.Use("/path0", func(_ *Ctx) {})
+	app.Get("/path1", func(_ *Ctx) {})
+	app.Get("/path2", func(_ *Ctx) {})
+	app.Post("/path3", func(_ *Ctx) {})
+
+	stack := app.Stack()
+	utils.AssertEqual(t, 9, len(stack))
+	utils.AssertEqual(t, 3, len(stack[methodInt(MethodGet)]))
+	utils.AssertEqual(t, 3, len(stack[methodInt(MethodHead)]))
+	utils.AssertEqual(t, 2, len(stack[methodInt(MethodPost)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodPut)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodPatch)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodDelete)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodConnect)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodOptions)]))
+	utils.AssertEqual(t, 1, len(stack[methodInt(MethodTrace)]))
+}
+
+// go test -run Test_App_ReadTimeout
+//func Test_App_ReadTimeout(t *testing.T) {
+//	app := New(&Settings{
+//		ReadTimeout:           time.Nanosecond,
+//		IdleTimeout:           time.Minute,
+//		DisableStartupMessage: true,
+//		DisableKeepalive:      true,
+//	})
+//
+//	app.Get("/read-timeout", func(c *Ctx) {
+//		c.SendString("I should not be sent")
+//	})
+//
+//	go func() {
+//		time.Sleep(500 * time.Millisecond)
+//
+//		conn, err := net.Dial("tcp4", "127.0.0.1:4004")
+//		utils.AssertEqual(t, nil, err)
+//		defer conn.Close()
+//
+//		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
+//		utils.AssertEqual(t, nil, err)
+//
+//		buf := make([]byte, 1024)
+//		var n int
+//		n, err = conn.Read(buf)
+//
+//		utils.AssertEqual(t, nil, err)
+//		utils.AssertEqual(t, true, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
+//
+//		utils.AssertEqual(t, nil, app.Shutdown())
+//	}()
+//
+//	utils.AssertEqual(t, nil, app.Listen(4004))
+//}
+
+// go test -run Test_App_BadRequest
+func Test_App_BadRequest(t *testing.T) {
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
+
+	app.Get("/bad-request", func(c *Ctx) {
+		c.SendString("I should not be sent")
+	})
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		conn, err := net.Dial("tcp4", "127.0.0.1:4005")
+		utils.AssertEqual(t, nil, err)
+		defer conn.Close()
+
+		_, err = conn.Write([]byte("BadRequest\r\n"))
+		utils.AssertEqual(t, nil, err)
+
+		buf := make([]byte, 1024)
+		var n int
+		n, err = conn.Read(buf)
+		utils.AssertEqual(t, nil, err)
+
+		utils.AssertEqual(t, true, bytes.Contains(buf[:n], []byte("400 Bad Request")))
+
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.Listen(4005))
+}
+
+// go test -run Test_App_SmallReadBuffer
+func Test_App_SmallReadBuffer(t *testing.T) {
+	app := New(&Settings{
+		ReadBufferSize:        1,
+		DisableStartupMessage: true,
+	})
+
+	app.Get("/small-read-buffer", func(c *Ctx) {
+		c.SendString("I should not be sent")
+	})
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		resp, err := http.Get("http://127.0.0.1:4006/small-read-buffer")
+		if resp != nil {
+			utils.AssertEqual(t, 431, resp.StatusCode)
+		}
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.Listen(4006))
 }
