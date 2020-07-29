@@ -1259,13 +1259,20 @@ func Test_Ctx_SendFile(t *testing.T) {
 	utils.AssertEqual(t, StatusNotModified, ctx.Fasthttp.Response.StatusCode())
 	utils.AssertEqual(t, []byte(nil), ctx.Fasthttp.Response.Body())
 	app.ReleaseCtx(ctx)
+}
 
-	// test 404
-	// ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
-	// err = ctx.SendFile("./john_doe.go")
-	// // check expectation
-	// utils.AssertEqual(t, StatusNotFound, ctx.Fasthttp.Response.StatusCode())
-	// app.ReleaseCtx(ctx)
+// go test -race -run Test_Ctx_SendFile_404
+func Test_Ctx_SendFile_404(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(ctx *Ctx) {
+		err := ctx.SendFile("./john_dow.go/")
+		utils.AssertEqual(t, false, err == nil)
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode)
 }
 
 // go test -race -run Test_Ctx_SendFile_Immutable
