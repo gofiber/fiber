@@ -7,7 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	fiber "github.com/gofiber/fiber"
@@ -207,20 +207,18 @@ func logger(config LoggerConfig) fiber.Handler {
 
 		}
 	}
-	// Middleware settings
-	var mutex sync.RWMutex
 
 	var tmpl loggerTemplate
 	tmpl.new(config.Format, "${", "}")
-	timestamp := nowTimeString(config.timeZoneLocation, config.TimeFormat)
-	// Update date/time every second in a separate go routine
+
+	var timestamp atomic.Value
+	timestamp.Store(nowTimeString(config.timeZoneLocation, config.TimeFormat))
+	// Update date/time every millisecond in a separate go routine
 	if strings.Contains(config.Format, "${time}") {
 		go func() {
 			for {
-				mutex.Lock()
-				timestamp = nowTimeString(config.timeZoneLocation, config.TimeFormat)
-				mutex.Unlock()
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(time.Millisecond)
+				timestamp.Store(nowTimeString(config.timeZoneLocation, config.TimeFormat))
 			}
 		}()
 	}
@@ -243,9 +241,7 @@ func logger(config LoggerConfig) fiber.Handler {
 		_, err := tmpl.executeFunc(buf, func(w io.Writer, tag string) (int, error) {
 			switch tag {
 			case LoggerTagTime:
-				mutex.RLock()
-				defer mutex.RUnlock()
-				return buf.WriteString(timestamp)
+				return buf.WriteString(timestamp.Load().(string))
 			case LoggerTagReferer:
 				return buf.WriteString(c.Get(fiber.HeaderReferer))
 			case LoggerTagProtocol:
