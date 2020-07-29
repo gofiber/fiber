@@ -21,13 +21,15 @@ import (
 )
 
 // readContent opens a named file and read content from it
-func readContent(rf io.ReaderFrom, name string) (int64, error) {
+func readContent(rf io.ReaderFrom, name string) (n int64, err error) {
 	// Read file
 	f, err := os.Open(filepath.Clean(name))
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() {
+		err = f.Close()
+	}()
 	return rf.ReadFrom(f)
 }
 
