@@ -15,7 +15,6 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -791,15 +790,7 @@ func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err er
 	} else {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
-		// Read file
-		f, err := os.Open(filepath.Clean(name))
-		if err != nil {
-			return err
-		}
-		if _, err = buf.ReadFrom(f); err != nil {
-			return err
-		}
-		if err = f.Close(); err != nil {
+		if _, err = readContent(buf, name); err != nil {
 			return err
 		}
 		// Parse template

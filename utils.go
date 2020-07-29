@@ -8,7 +8,10 @@ import (
 	"bytes"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,6 +19,17 @@ import (
 	bytebufferpool "github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
+
+// readContent opens a named file and read content from it
+func readContent(rf io.ReaderFrom, name string) (int64, error) {
+	// Read file
+	f, err := os.Open(filepath.Clean(name))
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	return rf.ReadFrom(f)
+}
 
 // quoteString escape special characters in a given string
 func quoteString(raw string) string {
