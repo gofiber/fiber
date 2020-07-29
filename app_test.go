@@ -5,12 +5,14 @@
 package fiber
 
 import (
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"regexp"
@@ -855,4 +857,84 @@ func Test_App_Stack(t *testing.T) {
 	utils.AssertEqual(t, 1, len(stack[methodInt(MethodConnect)]))
 	utils.AssertEqual(t, 1, len(stack[methodInt(MethodOptions)]))
 	utils.AssertEqual(t, 1, len(stack[methodInt(MethodTrace)]))
+}
+
+// go test -run Test_App_ReadTimeout
+func Test_App_ReadTimeout(t *testing.T) {
+	app := New(&Settings{
+		ReadTimeout:           time.Nanosecond,
+		DisableStartupMessage: true,
+	})
+
+	app.Get("/read-timeout", func(c *Ctx) {
+		c.SendString("I should not be sent")
+	})
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		resp, err := http.Get("http://127.0.0.1:4004/read-timeout")
+		if resp != nil {
+			utils.AssertEqual(t, 408, resp.StatusCode)
+		}
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.Listen(4004))
+}
+
+// go test -run Test_App_BadRequest
+func Test_App_BadRequest(t *testing.T) {
+	app := New(&Settings{
+		DisableStartupMessage: true,
+	})
+
+	app.Get("/bad-request", func(c *Ctx) {
+		c.SendString("I should not be sent")
+	})
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		conn, err := net.Dial("tcp4", "127.0.0.1:4004")
+		utils.AssertEqual(t, nil, err)
+		defer conn.Close()
+
+		_, err = conn.Write([]byte("BadRequest\r\n"))
+		utils.AssertEqual(t, nil, err)
+
+		buf := make([]byte, 1024)
+		var n int
+		n, err = conn.Read(buf)
+		utils.AssertEqual(t, nil, err)
+
+		utils.AssertEqual(t, true, bytes.Contains(buf[:n], []byte("400 Bad Request")))
+
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.Listen(4004))
+}
+
+// go test -run Test_App_SmallReadBuffer
+func Test_App_SmallReadBuffer(t *testing.T) {
+	app := New(&Settings{
+		ReadBufferSize:        1,
+		DisableStartupMessage: true,
+	})
+
+	app.Get("/small-read-buffer", func(c *Ctx) {
+		c.SendString("I should not be sent")
+	})
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		resp, err := http.Get("http://127.0.0.1:4004/small-read-buffer")
+		if resp != nil {
+			utils.AssertEqual(t, 431, resp.StatusCode)
+		}
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.Listen(4004))
 }
