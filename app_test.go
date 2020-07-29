@@ -880,7 +880,9 @@ func Test_App_Stack(t *testing.T) {
 func Test_App_ReadTimeout(t *testing.T) {
 	app := New(&Settings{
 		ReadTimeout:           time.Nanosecond,
+		IdleTimeout:           time.Minute,
 		DisableStartupMessage: true,
+		DisableKeepalive:      true,
 	})
 
 	app.Get("/read-timeout", func(c *Ctx) {
@@ -889,11 +891,21 @@ func Test_App_ReadTimeout(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		resp, err := http.Get("http://127.0.0.1:4004/read-timeout")
-		if resp != nil {
-			utils.AssertEqual(t, 408, resp.StatusCode)
-		}
+
+		conn, err := net.Dial("tcp4", "127.0.0.1:4004")
 		utils.AssertEqual(t, nil, err)
+		defer conn.Close()
+
+		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
+		utils.AssertEqual(t, nil, err)
+
+		buf := make([]byte, 1024)
+		var n int
+		n, err = conn.Read(buf)
+
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, true, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
+
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
