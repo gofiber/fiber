@@ -527,8 +527,12 @@ func main() {
 - [Fiber v1.9.6 🔥 How to improve performance by 817% and stay fast, flexible and friendly?](https://dev.to/koddr/fiber-v1-9-5-how-to-improve-performance-by-817-and-stay-fast-flexible-and-friendly-2dp6) - _12 May 2020_
 - [The road to web-based authentication with Fiber ⚡](https://vugt.me/the-road-to-web-based-authentication-with-fiber/) - _20 May 2020_
 - [Building an Express-style API in Go with Fiber](https://blog.logrocket.com/express-style-api-go-fiber/) - _10 June 2020_
+- [基于golang fiber和angular开发web](https://zhuanlan.zhihu.com/p/148925642) - _19 June 2020_
+- [基于延迟计算令牌桶的gofiber频率限制中间件实现](https://zhuanlan.zhihu.com/p/149308936) - _20 June 2020_
 - [Construir una API en Golang con Fiber 🇪🇸](https://enbonnet.me/article/53/construir-api-golang-con-fiber) - _28 June 2020_
 - [📺Why Go Fiber Is THE New Framework To Learn](https://www.youtube.com/watch?v=kvwsPeWDLM8) - _29 June 2020_
+- [解析Gofiber路由管理](https://zhuanlan.zhihu.com/p/152494502) - _08 July 2020_
+- [📺 Introduction to Fiber - An Express-inspired web framework](https://youtu.be/MfFi4Gt-tos) - _25 July 2020_
 
 ## 👍 貢獻
 
