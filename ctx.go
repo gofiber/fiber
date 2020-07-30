@@ -558,6 +558,26 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	return nil
 }
 
+// PureJSON converts any interface or string to JSON without escaped HTML.
+// This method also sets the content header to application/json.
+func (ctx *Ctx) PureJSON(data interface{}) error {
+	encoder := json.NewEncoder(ctx.Fasthttp.Response.BodyWriter())
+	encoder.SetEscapeHTML(false)
+
+	if err := encoder.Encode(data); err != nil {
+		return err
+	}
+
+	// remove extra '\n' added by encoder.Encode
+	b := ctx.Fasthttp.Response.Body()
+	if end := len(b) - 1; end >= 0 && b[end] == '\n' {
+		ctx.Fasthttp.Response.SetBodyRaw(b[:end])
+	}
+
+	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	return nil
+}
+
 // Links joins the links followed by the property to populate the response's Link HTTP header field.
 func (ctx *Ctx) Links(link ...string) {
 	if len(link) == 0 {

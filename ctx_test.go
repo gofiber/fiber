@@ -1397,6 +1397,58 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 	utils.AssertEqual(b, `emit({"Name":"Grame","Age":20});`, string(c.Fasthttp.Response.Body()))
 }
 
+// go test -run Test_Ctx_PureJSON
+func Test_Ctx_PureJSON(t *testing.T) {
+	t.Parallel()
+	app := New()
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	utils.AssertEqual(t, true, ctx.PureJSON(complex(1, 1)) != nil)
+
+	err := ctx.PureJSON(Map{ // map has no order
+		"Name": "<Grame>",
+		"Age":  20,
+	})
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, `{"Age":20,"Name":"<Grame>"}`, string(ctx.Fasthttp.Response.Body()))
+	utils.AssertEqual(t, "application/json", string(ctx.Fasthttp.Response.Header.Peek("content-type")))
+
+	testEmpty := func(v interface{}, r string) {
+		err := ctx.PureJSON(v)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, r, string(ctx.Fasthttp.Response.Body()))
+	}
+
+	testEmpty(nil, "null")
+	testEmpty("", `""`)
+	testEmpty(0, "0")
+	testEmpty([]int{}, "[]")
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_PureJSON -benchmem -count=4
+func Benchmark_Ctx_PureJSON(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type SomeStruct struct {
+		Name string
+		Age  uint8
+	}
+	data := SomeStruct{
+		Name: "<Grame>",
+		Age:  20,
+	}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		err = c.PureJSON(data)
+	}
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, `{"Name":"<Grame>","Age":20}`, string(c.Fasthttp.Response.Body()))
+}
+
 // go test -run Test_Ctx_Links
 func Test_Ctx_Links(t *testing.T) {
 	t.Parallel()
