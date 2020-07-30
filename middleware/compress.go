@@ -8,7 +8,7 @@ import (
 // CompressConfig defines the config for Compress middleware.
 type CompressConfig struct {
 	// Next defines a function to skip this middleware if returned true.
-	Next func(ctx *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 	// Compression level for brotli, gzip and deflate
 	Level int
 }
@@ -41,7 +41,7 @@ func Compress(options ...interface{}) fiber.Handler {
 	if len(options) > 0 {
 		for i := range options {
 			switch opt := options[i].(type) {
-			case func(*fiber.Ctx) bool:
+			case func(fiber.Ctx) bool:
 				config.Next = opt
 			case int:
 				config.Level = opt
@@ -70,7 +70,7 @@ func compress(config CompressConfig) fiber.Handler {
 		compressHandler = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression)
 	}
 	// Return handler
-	return func(c *fiber.Ctx) {
+	return func(c fiber.Ctx) {
 		// Don't execute the middleware if Next returns false
 		if config.Next != nil && config.Next(c) {
 			c.Next()
@@ -79,6 +79,6 @@ func compress(config CompressConfig) fiber.Handler {
 		// Middleware logic...
 		c.Next()
 		// Compress response
-		compressHandler(c.Fasthttp)
+		compressHandler(c.Fasthttp())
 	}
 }

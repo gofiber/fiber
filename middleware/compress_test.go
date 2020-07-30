@@ -18,7 +18,7 @@ func Test_Middleware_Compress(t *testing.T) {
 
 	app.Use(Compress())
 
-	app.Get("/", func(c *fiber.Ctx) {
+	app.Get("/", func(c fiber.Ctx) {
 		c.SendFile(compressFilePath(CompressLevelDefault), true)
 	})
 
@@ -41,7 +41,7 @@ func Test_Middleware_Compress_Config(t *testing.T) {
 		Level: CompressLevelDefault,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) {
+	app.Get("/", func(c fiber.Ctx) {
 		c.SendFile(compressFilePath(CompressLevelDefault), true)
 	})
 
@@ -62,7 +62,7 @@ func Test_Middleware_Compress_With_Config(t *testing.T) {
 
 	app.Use(Compress(CompressConfig{}))
 
-	app.Get("/", func(c *fiber.Ctx) {
+	app.Get("/", func(c fiber.Ctx) {
 		c.SendFile(compressFilePath(CompressLevelDefault), true)
 	})
 
@@ -90,7 +90,7 @@ func Test_Middleware_Compress_Level(t *testing.T) {
 
 	app := fiber.New()
 	for _, level := range levels {
-		app.Get("/:level", Compress(level), func(c *fiber.Ctx) {
+		app.Get("/:level", Compress(level), func(c fiber.Ctx) {
 			c.SendFile(compressFilePath(c.Params("level")), true)
 		})
 	}
@@ -117,9 +117,9 @@ func Test_Middleware_Compress_Level(t *testing.T) {
 func Test_Middleware_Compress_Skip(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(Compress(func(c *fiber.Ctx) bool { return true }))
+	app.Use(Compress(func(c fiber.Ctx) bool { return true }))
 
-	app.Get("/", func(c *fiber.Ctx) {
+	app.Get("/", func(c fiber.Ctx) {
 		c.SendFile(compressFilePath(CompressLevelDefault), true)
 	})
 
@@ -148,7 +148,7 @@ func Test_Middleware_Compress_Panic(t *testing.T) {
 func Benchmark_Middleware_Compress(b *testing.B) {
 	app := fiber.New()
 	app.Use(Compress())
-	app.Get("/", func(c *fiber.Ctx) {
+	app.Get("/", func(c fiber.Ctx) {
 		c.SendFile(compressFilePath(CompressLevelDefault), true)
 	})
 	handler := app.Handler()

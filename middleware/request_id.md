@@ -50,7 +50,7 @@ func RequestID(options ...interface{}) fiber.Handler {}
 ```go
 type RequestIDConfig struct {		
   // Next defines a function to skip this middleware.
-  Next func(ctx *fiber.Ctx) bool
+  Next func(ctx fiber.Ctx) bool
 
   // Header is the header key where to get/set the unique ID
   // Optiona. Defaults: X-Request-ID

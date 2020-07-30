@@ -26,7 +26,7 @@ var (
 // Pprof will enabling profiling
 func Pprof() fiber.Handler {
 	// Return handler
-	return func(c *fiber.Ctx) {
+	return func(c fiber.Ctx) {
 		path := c.Path()
 		// We are only interested in /debug/pprof routes
 		if len(path) < 12 || !strings.HasPrefix(path, "/debug/pprof") {
@@ -36,28 +36,28 @@ func Pprof() fiber.Handler {
 		// Switch to original path without stripped slashes
 		switch path {
 		case "/debug/pprof/":
-			c.Fasthttp.SetContentType(fiber.MIMETextHTML)
-			pprofIndex(c.Fasthttp)
+			c.Fasthttp().SetContentType(fiber.MIMETextHTML)
+			pprofIndex(c.Fasthttp())
 		case "/debug/pprof/cmdline":
-			pprofCmdline(c.Fasthttp)
+			pprofCmdline(c.Fasthttp())
 		case "/debug/pprof/profile":
-			pprofProfile(c.Fasthttp)
+			pprofProfile(c.Fasthttp())
 		case "/debug/pprof/symbol":
-			pprofSymbol(c.Fasthttp)
+			pprofSymbol(c.Fasthttp())
 		case "/debug/pprof/trace":
-			pprofTrace(c.Fasthttp)
+			pprofTrace(c.Fasthttp())
 		case "/debug/pprof/allocs":
-			pprofAllocs(c.Fasthttp)
+			pprofAllocs(c.Fasthttp())
 		case "/debug/pprof/block":
-			pprofBlock(c.Fasthttp)
+			pprofBlock(c.Fasthttp())
 		case "/debug/pprof/goroutine":
-			pprofGoroutine(c.Fasthttp)
+			pprofGoroutine(c.Fasthttp())
 		case "/debug/pprof/heap":
-			pprofHeap(c.Fasthttp)
+			pprofHeap(c.Fasthttp())
 		case "/debug/pprof/mutex":
-			pprofMutex(c.Fasthttp)
+			pprofMutex(c.Fasthttp())
 		case "/debug/pprof/threadcreate":
-			pprofThreadcreate(c.Fasthttp)
+			pprofThreadcreate(c.Fasthttp())
 		default:
 			// pprof index only works with trailing slash
 			c.Redirect("/debug/pprof/", 302)

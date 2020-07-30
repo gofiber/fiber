@@ -23,25 +23,25 @@ func Test_Utils_ETag(t *testing.T) {
 		c.Send("Hello, World!")
 		c.Status(201)
 		setETag(c, false)
-		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, "", string(c.Fasthttp().Response.Header.Peek(HeaderETag)))
 	})
 
 	t.Run("No Body", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
 		setETag(c, false)
-		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, "", string(c.Fasthttp().Response.Header.Peek(HeaderETag)))
 	})
 
 	t.Run("Has HeaderIfNoneMatch", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
 		c.Send("Hello, World!")
-		c.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, `"13-1831710635"`)
+		c.Fasthttp().Request.Header.Set(HeaderIfNoneMatch, `"13-1831710635"`)
 		setETag(c, false)
-		utils.AssertEqual(t, 304, c.Fasthttp.Response.StatusCode())
-		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
-		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Body()))
+		utils.AssertEqual(t, 304, c.Fasthttp().Response.StatusCode())
+		utils.AssertEqual(t, "", string(c.Fasthttp().Response.Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, "", string(c.Fasthttp().Response.Body()))
 	})
 
 	t.Run("No HeaderIfNoneMatch", func(t *testing.T) {
@@ -49,7 +49,7 @@ func Test_Utils_ETag(t *testing.T) {
 		defer app.ReleaseCtx(c)
 		c.Send("Hello, World!")
 		setETag(c, false)
-		utils.AssertEqual(t, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, `"13-1831710635"`, string(c.Fasthttp().Response.Header.Peek(HeaderETag)))
 	})
 }
 
@@ -62,7 +62,7 @@ func Benchmark_Utils_ETag(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		setETag(c, false)
 	}
-	utils.AssertEqual(b, `"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	utils.AssertEqual(b, `"13-1831710635"`, string(c.Fasthttp().Response.Header.Peek(HeaderETag)))
 }
 
 func Test_Utils_ETag_Weak(t *testing.T) {
@@ -72,27 +72,27 @@ func Test_Utils_ETag_Weak(t *testing.T) {
 		defer app.ReleaseCtx(c)
 		c.Send("Hello, World!")
 		setETag(c, true)
-		utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp().Response.Header.Peek(HeaderETag)))
 	})
 
 	t.Run("Match Weak ETag", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
 		c.Send("Hello, World!")
-		c.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, `W/"13-1831710635"`)
+		c.Fasthttp().Request.Header.Set(HeaderIfNoneMatch, `W/"13-1831710635"`)
 		setETag(c, true)
-		utils.AssertEqual(t, 304, c.Fasthttp.Response.StatusCode())
-		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
-		utils.AssertEqual(t, "", string(c.Fasthttp.Response.Body()))
+		utils.AssertEqual(t, 304, c.Fasthttp().Response.StatusCode())
+		utils.AssertEqual(t, "", string(c.Fasthttp().Response.Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, "", string(c.Fasthttp().Response.Body()))
 	})
 
 	t.Run("Not Match Weak ETag", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
 		c.Send("Hello, World!")
-		c.Fasthttp.Request.Header.Set(HeaderIfNoneMatch, `W/"13-1831710635xx"`)
+		c.Fasthttp().Request.Header.Set(HeaderIfNoneMatch, `W/"13-1831710635xx"`)
 		setETag(c, true)
-		utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Fasthttp().Response.Header.Peek(HeaderETag)))
 	})
 }
 
@@ -105,7 +105,7 @@ func Benchmark_Utils_ETag_Weak(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		setETag(c, true)
 	}
-	utils.AssertEqual(b, `W/"13-1831710635"`, string(c.Fasthttp.Response.Header.Peek(HeaderETag)))
+	utils.AssertEqual(b, `W/"13-1831710635"`, string(c.Fasthttp().Response.Header.Peek(HeaderETag)))
 }
 
 func Test_Utils_getGroupPath(t *testing.T) {

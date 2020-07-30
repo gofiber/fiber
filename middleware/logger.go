@@ -22,7 +22,7 @@ type (
 	// LoggerConfig defines the config for Logger middleware.
 	LoggerConfig struct {
 		// Next defines a function to skip this middleware if returned true.
-		Next func(*fiber.Ctx) bool
+		Next func(ctx fiber.Ctx) bool
 
 		// Format defines the logging tags
 		//
@@ -161,7 +161,7 @@ func Logger(options ...interface{}) fiber.Handler {
 	if len(options) > 0 {
 		for i := range options {
 			switch opt := options[i].(type) {
-			case func(*fiber.Ctx) bool:
+			case func(fiber.Ctx) bool:
 				config.Next = opt
 			case string:
 				if strings.Contains(opt, "${") {
@@ -224,7 +224,7 @@ func logger(config LoggerConfig) fiber.Handler {
 	}
 	pid := fmt.Sprintf("%-5s", strconv.Itoa(os.Getpid()))
 	// Return handler
-	return func(c *fiber.Ctx) {
+	return func(c fiber.Ctx) {
 		// Don't execute the middleware if Next returns true
 		if config.Next != nil && config.Next(c) {
 			c.Next()
@@ -266,9 +266,9 @@ func logger(config LoggerConfig) fiber.Handler {
 			case LoggerTagBody:
 				return buf.WriteString(c.Body())
 			case LoggerTagBytesReceived:
-				return buf.WriteString(strconv.Itoa(len(c.Fasthttp.Request.Body())))
+				return buf.WriteString(strconv.Itoa(len(c.Fasthttp().Request.Body())))
 			case LoggerTagBytesSent:
-				return buf.WriteString(strconv.Itoa(len(c.Fasthttp.Response.Body())))
+				return buf.WriteString(strconv.Itoa(len(c.Fasthttp().Response.Body())))
 			case LoggerTagRoute:
 				return buf.WriteString(c.Route().Path)
 			case LoggerTagError:
@@ -294,7 +294,7 @@ func logger(config LoggerConfig) fiber.Handler {
 			case LoggerTagColorReset:
 				return buf.WriteString(cReset)
 			case LoggerTagStatus:
-				responseStatus = c.Fasthttp.Response.StatusCode()
+				responseStatus = c.Fasthttp().Response.StatusCode()
 				if !config.enableColors {
 					return buf.WriteString(strconv.Itoa(responseStatus))
 				}

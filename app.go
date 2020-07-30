@@ -38,7 +38,7 @@ const Version = "1.13.3"
 type Map map[string]interface{}
 
 // Handler defines a function to serve HTTP requests.
-type Handler = func(*Ctx)
+type Handler = func(Ctx)
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
@@ -73,7 +73,7 @@ type Settings struct {
 	// 	ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	// 	ctx.Status(code).SendString(err.Error())
 	// }
-	ErrorHandler func(*Ctx, error) `json:"-"`
+	ErrorHandler func(Ctx, error) `json:"-"`
 
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
@@ -212,13 +212,14 @@ const (
 	defaultCompressedFileSuffix = ".fiber.gz"
 )
 
-var defaultErrorHandler = func(ctx *Ctx, err error) {
+var defaultErrorHandler = func(ctx Ctx, err error) {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {
 		code = e.Code
 	}
 	ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-	ctx.Status(code).SendString(err.Error())
+	ctx.Status(code)
+	ctx.SendString(err.Error())
 }
 
 // New creates a new Fiber named instance.
@@ -236,7 +237,7 @@ func New(settings ...*Settings) *App {
 		// Create Ctx pool
 		pool: sync.Pool{
 			New: func() interface{} {
-				return new(Ctx)
+				return new(Context)
 			},
 		},
 		// Set settings

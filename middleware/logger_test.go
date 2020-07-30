@@ -29,7 +29,7 @@ func Test_Middleware_Logger(t *testing.T) {
 		Output: buf,
 	}))
 
-	app.Post("/test", func(ctx *fiber.Ctx) {
+	app.Post("/test", func(ctx fiber.Ctx) {
 		ctx.Next(errors.New("error"))
 	})
 
@@ -59,7 +59,7 @@ func Test_Middleware_Logger_WithDefaultFormat(t *testing.T) {
 	app := fiber.New(&fiber.Settings{DisableStartupMessage: true})
 	app.Use(Logger(config))
 
-	app.Get("/", func(ctx *fiber.Ctx) {
+	app.Get("/", func(ctx fiber.Ctx) {
 		ctx.SendStatus(fiber.StatusOK)
 	})
 
@@ -78,11 +78,11 @@ func Test_Middleware_Logger_Skip(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(Logger(func(_ *fiber.Ctx) bool {
+	app.Use(Logger(func(_ fiber.Ctx) bool {
 		return true
 	}))
 
-	app.Get("/", func(_ *fiber.Ctx) {})
+	app.Get("/", func(_ fiber.Ctx) {})
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -114,7 +114,7 @@ func Test_Middleware_Logger_Options_And_WithConfig(t *testing.T) {
 
 		app.Use(logger)
 
-		app.Get("/", func(_ *fiber.Ctx) {})
+		app.Get("/", func(_ fiber.Ctx) {})
 
 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 		utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -204,7 +204,7 @@ func Benchmark_Middleware_Logger(b *testing.B) {
 		Output: buf,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) {})
+	app.Get("/", func(c fiber.Ctx) {})
 	handler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}

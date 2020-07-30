@@ -29,8 +29,8 @@ import (
 )
 
 type (
-	// ICtx represents the interface for the Context
-	ICtx interface {
+	// Ctx represents the interface for the Context
+	Ctx interface {
 		// Accepts checks if the specified extensions or content types are acceptable.
 		Accepts(offers ...string) string
 
@@ -95,6 +95,9 @@ type (
 
 		// Error contains the error information passed via the Next(err) method.
 		Error() error
+
+		// Fasthttp return the Fasthttp Request Context
+		Fasthttp() *fasthttp.RequestCtx
 
 		// Format performs content-negotiation on the Accept HTTP header.
 		// It uses Accepts to select a proper format.
@@ -248,11 +251,10 @@ type (
 		Stale() bool
 
 		// Status sets the HTTP status for the response.
-		// This method is chainable.
-		Status(status int) *Ctx
+		Status(status int)
 
 		// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-		Type(extension string, charset ...string) *Ctx
+		Type(extension string, charset ...string)
 
 		// Vary adds the given header field to the Vary response header.
 		// This will append the header, if not already listed, otherwise leaves it listed in the current location.
@@ -266,9 +268,9 @@ type (
 		XHR() bool
 	}
 
-	// Ctx represents the Context which hold the HTTP request and response.
+	// Context represents the Context which hold the HTTP request and response.
 	// It has methods for the request query string, parameters, body, HTTP headers and so on.
-	Ctx struct {
+	Context struct {
 		app          *App                 // Reference to *App
 		route        *Route               // Reference to *Route
 		indexRoute   int                  // Index of the current route
@@ -279,7 +281,7 @@ type (
 		pathOriginal string               // Original HTTP path
 		values       []string             // Route parameter values
 		err          error                // Contains error if passed to Next
-		Fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+		fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 		matched      bool                 // Non use route matched
 	}
 )
@@ -312,8 +314,8 @@ type Views interface {
 }
 
 // AcquireCtx retrieves a new Ctx from the pool.
-func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
-	ctx := app.pool.Get().(*Ctx)
+func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Context {
+	ctx := app.pool.Get().(*Context)
 	// Set app reference
 	ctx.app = app
 	// Reset route and handler index
@@ -328,22 +330,22 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx.method = getString(fctx.Request.Header.Method())
 	ctx.methodINT = methodInt(ctx.method)
 	// Attach *fasthttp.RequestCtx to ctx
-	ctx.Fasthttp = fctx
+	ctx.setFasthttp(fctx)
 	return ctx
 }
 
 // ReleaseCtx releases the ctx back into the pool.
-func (app *App) ReleaseCtx(ctx *Ctx) {
+func (app *App) ReleaseCtx(ctx *Context) {
 	// Reset values
 	ctx.route = nil
 	ctx.values = nil
-	ctx.Fasthttp = nil
+	ctx.setFasthttp(nil)
 	ctx.err = nil
 	app.pool.Put(ctx)
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
-func (ctx *Ctx) Accepts(offers ...string) string {
+func (ctx *Context) Accepts(offers ...string) string {
 	if len(offers) == 0 {
 		return ""
 	}
@@ -385,32 +387,32 @@ func (ctx *Ctx) Accepts(offers ...string) string {
 }
 
 // AcceptsCharsets checks if the specified charset is acceptable.
-func (ctx *Ctx) AcceptsCharsets(offers ...string) string {
+func (ctx *Context) AcceptsCharsets(offers ...string) string {
 	return getOffer(ctx.Get(HeaderAcceptCharset), offers...)
 }
 
 // AcceptsEncodings checks if the specified encoding is acceptable.
-func (ctx *Ctx) AcceptsEncodings(offers ...string) string {
+func (ctx *Context) AcceptsEncodings(offers ...string) string {
 	return getOffer(ctx.Get(HeaderAcceptEncoding), offers...)
 }
 
 // AcceptsLanguages checks if the specified language is acceptable.
-func (ctx *Ctx) AcceptsLanguages(offers ...string) string {
+func (ctx *Context) AcceptsLanguages(offers ...string) string {
 	return getOffer(ctx.Get(HeaderAcceptLanguage), offers...)
 }
 
 // App returns the *App reference to access Settings or ErrorHandler
-func (ctx *Ctx) App() *App {
+func (ctx *Context) App() *App {
 	return ctx.app
 }
 
 // Append the specified value to the HTTP response header field.
 // If the header is not already set, it creates the header with the specified value.
-func (ctx *Ctx) Append(field string, values ...string) {
+func (ctx *Context) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := getString(ctx.Fasthttp.Response.Header.Peek(field))
+	h := getString(ctx.Fasthttp().Response.Header.Peek(field))
 	originalH := h
 	for _, value := range values {
 		if len(h) == 0 {
@@ -426,7 +428,7 @@ func (ctx *Ctx) Append(field string, values ...string) {
 }
 
 // Attachment sets the HTTP response Content-Disposition header field to attachment.
-func (ctx *Ctx) Attachment(filename ...string) {
+func (ctx *Context) Attachment(filename ...string) {
 	if len(filename) > 0 {
 		fname := filepath.Base(filename[0])
 		ctx.Type(filepath.Ext(fname))
@@ -438,7 +440,7 @@ func (ctx *Ctx) Attachment(filename ...string) {
 }
 
 // BaseURL returns (protocol + host + base path).
-func (ctx *Ctx) BaseURL() string {
+func (ctx *Context) BaseURL() string {
 	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
 	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
 	return ctx.Protocol() + "://" + ctx.Hostname()
@@ -447,8 +449,8 @@ func (ctx *Ctx) BaseURL() string {
 // Body contains the raw body submitted in a POST request.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (ctx *Ctx) Body() string {
-	return getString(ctx.Fasthttp.Request.Body())
+func (ctx *Context) Body() string {
+	return getString(ctx.Fasthttp().Request.Body())
 }
 
 // decoderPool helps to improve BodyParser's and QueryParser's performance
@@ -461,39 +463,39 @@ var decoderPool = &sync.Pool{New: func() interface{} {
 // BodyParser binds the request body to a struct.
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
-func (ctx *Ctx) BodyParser(out interface{}) error {
+func (ctx *Context) BodyParser(out interface{}) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPool.Get().(*schema.Decoder)
 	defer decoderPool.Put(schemaDecoder)
 
 	// Get content-type
-	ctype := getString(ctx.Fasthttp.Request.Header.ContentType())
+	ctype := getString(ctx.Fasthttp().Request.Header.ContentType())
 
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
 		schemaDecoder.SetAliasTag("json")
-		return json.Unmarshal(ctx.Fasthttp.Request.Body(), out)
+		return json.Unmarshal(ctx.Fasthttp().Request.Body(), out)
 	} else if strings.HasPrefix(ctype, MIMEApplicationForm) {
 		schemaDecoder.SetAliasTag("form")
 		data := make(map[string][]string)
-		ctx.Fasthttp.PostArgs().VisitAll(func(key []byte, val []byte) {
+		ctx.Fasthttp().PostArgs().VisitAll(func(key []byte, val []byte) {
 			data[getString(key)] = append(data[getString(key)], getString(val))
 		})
 		return schemaDecoder.Decode(out, data)
 	} else if strings.HasPrefix(ctype, MIMEMultipartForm) {
 		schemaDecoder.SetAliasTag("form")
-		data, err := ctx.Fasthttp.MultipartForm()
+		data, err := ctx.Fasthttp().MultipartForm()
 		if err != nil {
 			return err
 		}
 		return schemaDecoder.Decode(out, data.Value)
 	} else if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
 		schemaDecoder.SetAliasTag("xml")
-		return xml.Unmarshal(ctx.Fasthttp.Request.Body(), out)
+		return xml.Unmarshal(ctx.Fasthttp().Request.Body(), out)
 	}
 
 	// Query params in BodyParser is deprecated
-	if ctx.Fasthttp.QueryArgs().Len() > 0 {
+	if ctx.Fasthttp().QueryArgs().Len() > 0 {
 		fmt.Println("bodyparser: parsing query strings is deprecated since v1.12.7, please use `ctx.QueryParser` instead")
 		return ctx.QueryParser(out)
 	}
@@ -503,8 +505,8 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 }
 
 // QueryParser binds the query string to a struct.
-func (ctx *Ctx) QueryParser(out interface{}) error {
-	if ctx.Fasthttp.QueryArgs().Len() < 1 {
+func (ctx *Context) QueryParser(out interface{}) error {
+	if ctx.Fasthttp().QueryArgs().Len() < 1 {
 		return nil
 	}
 	// Get decoder from pool
@@ -515,7 +517,7 @@ func (ctx *Ctx) QueryParser(out interface{}) error {
 	decoder.SetAliasTag("query")
 
 	data := make(map[string][]string)
-	ctx.Fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
+	ctx.Fasthttp().QueryArgs().VisitAll(func(key []byte, val []byte) {
 		data[getString(key)] = append(data[getString(key)], getString(val))
 	})
 
@@ -524,26 +526,26 @@ func (ctx *Ctx) QueryParser(out interface{}) error {
 
 // ClearCookie expires a specific cookie by key on the client side.
 // If no key is provided it expires all cookies that came with the request.
-func (ctx *Ctx) ClearCookie(key ...string) {
+func (ctx *Context) ClearCookie(key ...string) {
 	if len(key) > 0 {
 		for i := range key {
-			ctx.Fasthttp.Response.Header.DelClientCookie(key[i])
+			ctx.Fasthttp().Response.Header.DelClientCookie(key[i])
 		}
 		return
 	}
-	ctx.Fasthttp.Request.Header.VisitAllCookie(func(k, v []byte) {
-		ctx.Fasthttp.Response.Header.DelClientCookieBytes(k)
+	ctx.Fasthttp().Request.Header.VisitAllCookie(func(k, v []byte) {
+		ctx.Fasthttp().Response.Header.DelClientCookieBytes(k)
 	})
 }
 
 // Context returns context.Context that carries a deadline, a cancellation signal,
 // and other values across API boundaries.
-func (ctx *Ctx) Context() context.Context {
-	return ctx.Fasthttp
+func (ctx *Context) Context() context.Context {
+	return ctx.Fasthttp()
 }
 
 // Cookie sets a cookie by passing a cookie struct.
-func (ctx *Ctx) Cookie(cookie *Cookie) {
+func (ctx *Context) Cookie(cookie *Cookie) {
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(cookie.Name)
 	fcookie.SetValue(cookie.Value)
@@ -562,7 +564,7 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
 
-	ctx.Fasthttp.Response.Header.SetCookie(fcookie)
+	ctx.Fasthttp().Response.Header.SetCookie(fcookie)
 	fasthttp.ReleaseCookie(fcookie)
 }
 
@@ -571,15 +573,15 @@ func (ctx *Ctx) Cookie(cookie *Cookie) {
 // If a default value is given, it will return that value if the cookie doesn't exist.
 // The returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
-func (ctx *Ctx) Cookies(key string, defaultValue ...string) string {
-	return defaultString(getString(ctx.Fasthttp.Request.Header.Cookie(key)), defaultValue)
+func (ctx *Context) Cookies(key string, defaultValue ...string) string {
+	return defaultString(getString(ctx.Fasthttp().Request.Header.Cookie(key)), defaultValue)
 }
 
 // Download transfers the file from path as an attachment.
 // Typically, browsers will prompt the user for download.
 // By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
 // Override this default with the filename parameter.
-func (ctx *Ctx) Download(file string, filename ...string) error {
+func (ctx *Context) Download(file string, filename ...string) error {
 	fname := filepath.Base(file)
 	if len(filename) > 0 {
 		fname = filename[0]
@@ -589,14 +591,19 @@ func (ctx *Ctx) Download(file string, filename ...string) error {
 }
 
 // Error contains the error information passed via the Next(err) method.
-func (ctx *Ctx) Error() error {
+func (ctx *Context) Error() error {
 	return ctx.err
+}
+
+// Fasthttp return the Fasthttp Request Context
+func (ctx *Context) Fasthttp() *fasthttp.RequestCtx {
+	return ctx.fasthttp
 }
 
 // Format performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format.
 // If the header is not specified or there is no proper format, text/plain is used.
-func (ctx *Ctx) Format(body interface{}) {
+func (ctx *Context) Format(body interface{}) {
 	// Get accepted content type
 	accept := ctx.Accepts("html", "json", "txt", "xml")
 	// Set accepted content type
@@ -630,7 +637,7 @@ func (ctx *Ctx) Format(body interface{}) {
 			ctx.Send(body) // Fallback
 			log.Println("Format: error serializing xml ", err)
 		} else {
-			ctx.Fasthttp.Response.SetBodyRaw(raw)
+			ctx.Fasthttp().Response.SetBodyRaw(raw)
 		}
 	default:
 		ctx.SendString(b)
@@ -638,15 +645,15 @@ func (ctx *Ctx) Format(body interface{}) {
 }
 
 // FormFile returns the first file by key from a MultipartForm.
-func (ctx *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
-	return ctx.Fasthttp.FormFile(key)
+func (ctx *Context) FormFile(key string) (*multipart.FileHeader, error) {
+	return ctx.Fasthttp().FormFile(key)
 }
 
 // FormValue returns the first value by key from a MultipartForm.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (ctx *Ctx) FormValue(key string) (value string) {
-	return getString(ctx.Fasthttp.FormValue(key))
+func (ctx *Context) FormValue(key string) (value string) {
+	return getString(ctx.Fasthttp().FormValue(key))
 }
 
 // Fresh returns true when the response is still “fresh” in the client's cache,
@@ -655,7 +662,7 @@ func (ctx *Ctx) FormValue(key string) (value string) {
 // When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
 // reload request, this module will return false to make handling these requests transparent.
 // https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
-func (ctx *Ctx) Fresh() bool {
+func (ctx *Context) Fresh() bool {
 	// fields
 	var modifiedSince = ctx.Get(HeaderIfModifiedSince)
 	var noneMatch = ctx.Get(HeaderIfNoneMatch)
@@ -675,7 +682,7 @@ func (ctx *Ctx) Fresh() bool {
 
 	// if-none-match
 	if noneMatch != "" && noneMatch != "*" {
-		var etag = getString(ctx.Fasthttp.Response.Header.Peek(HeaderETag))
+		var etag = getString(ctx.Fasthttp().Response.Header.Peek(HeaderETag))
 		if etag == "" {
 			return false
 		}
@@ -684,7 +691,7 @@ func (ctx *Ctx) Fresh() bool {
 		}
 
 		if modifiedSince != "" {
-			var lastModified = getString(ctx.Fasthttp.Response.Header.Peek(HeaderLastModified))
+			var lastModified = getString(ctx.Fasthttp().Response.Header.Peek(HeaderLastModified))
 			if lastModified != "" {
 				lastModifiedTime, err := http.ParseTime(lastModified)
 				if err != nil {
@@ -705,25 +712,25 @@ func (ctx *Ctx) Fresh() bool {
 // Field names are case-insensitive
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (ctx *Ctx) Get(key string, defaultValue ...string) string {
-	return defaultString(getString(ctx.Fasthttp.Request.Header.Peek(key)), defaultValue)
+func (ctx *Context) Get(key string, defaultValue ...string) string {
+	return defaultString(getString(ctx.Fasthttp().Request.Header.Peek(key)), defaultValue)
 }
 
 // Hostname contains the hostname derived from the Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (ctx *Ctx) Hostname() string {
-	return getString(ctx.Fasthttp.URI().Host())
+func (ctx *Context) Hostname() string {
+	return getString(ctx.Fasthttp().URI().Host())
 }
 
 // IP returns the remote IP address of the request.
-func (ctx *Ctx) IP() string {
-	return ctx.Fasthttp.RemoteIP().String()
+func (ctx *Context) IP() string {
+	return ctx.Fasthttp().RemoteIP().String()
 }
 
 // IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
-func (ctx *Ctx) IPs() (ips []string) {
-	header := ctx.Fasthttp.Request.Header.Peek(HeaderXForwardedFor)
+func (ctx *Context) IPs() (ips []string) {
+	header := ctx.Fasthttp().Request.Header.Peek(HeaderXForwardedFor)
 	if len(header) == 0 {
 		return
 	}
@@ -743,29 +750,29 @@ func (ctx *Ctx) IPs() (ips []string) {
 
 // Is returns the matching content type,
 // if the incoming request's Content-Type HTTP header field matches the MIME type specified by the type parameter
-func (ctx *Ctx) Is(extension string) bool {
+func (ctx *Context) Is(extension string) bool {
 	extensionHeader := utils.GetMIME(extension)
 	if extensionHeader == "" {
 		return false
 	}
 
 	return strings.HasPrefix(
-		utils.TrimLeft(utils.GetString(ctx.Fasthttp.Request.Header.ContentType()), ' '),
+		utils.TrimLeft(utils.GetString(ctx.Fasthttp().Request.Header.ContentType()), ' '),
 		extensionHeader,
 	)
 }
 
 // JSON converts any interface or string to JSON.
 // This method also sets the content header to application/json.
-func (ctx *Ctx) JSON(data interface{}) error {
+func (ctx *Context) JSON(data interface{}) error {
 	raw, err := json.Marshal(data)
 	// Check for errors
 	if err != nil {
 		return err
 	}
 	// Set http headers
-	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
-	ctx.Fasthttp.Response.SetBodyRaw(raw)
+	ctx.Fasthttp().Response.Header.SetContentType(MIMEApplicationJSON)
+	ctx.Fasthttp().Response.SetBodyRaw(raw)
 
 	return nil
 }
@@ -773,7 +780,7 @@ func (ctx *Ctx) JSON(data interface{}) error {
 // JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
-func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
+func (ctx *Context) JSONP(data interface{}, callback ...string) error {
 	raw, err := json.Marshal(data)
 
 	if err != nil {
@@ -791,14 +798,14 @@ func (ctx *Ctx) JSONP(data interface{}, callback ...string) error {
 	result = cb + "(" + getString(raw) + ");"
 
 	ctx.Set(HeaderXContentTypeOptions, "nosniff")
-	ctx.Fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
+	ctx.Fasthttp().Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
 	ctx.SendString(result)
 
 	return nil
 }
 
 // Links joins the links followed by the property to populate the response's Link HTTP header field.
-func (ctx *Ctx) Links(link ...string) {
+func (ctx *Context) Links(link ...string) {
 	if len(link) == 0 {
 		return
 	}
@@ -818,21 +825,21 @@ func (ctx *Ctx) Links(link ...string) {
 
 // Locals makes it possible to pass interface{} values under string keys scoped to the request
 // and therefore available to all following routes that match the request.
-func (ctx *Ctx) Locals(key string, value ...interface{}) (val interface{}) {
+func (ctx *Context) Locals(key string, value ...interface{}) (val interface{}) {
 	if len(value) == 0 {
-		return ctx.Fasthttp.UserValue(key)
+		return ctx.Fasthttp().UserValue(key)
 	}
-	ctx.Fasthttp.SetUserValue(key, value[0])
+	ctx.Fasthttp().SetUserValue(key, value[0])
 	return value[0]
 }
 
 // Location sets the response Location HTTP header to the specified path parameter.
-func (ctx *Ctx) Location(path string) {
+func (ctx *Context) Location(path string) {
 	ctx.Set(HeaderLocation, path)
 }
 
 // Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
-func (ctx *Ctx) Method(override ...string) string {
+func (ctx *Context) Method(override ...string) string {
 	if len(override) > 0 {
 		method := utils.ToUpper(override[0])
 		mINT := methodInt(method)
@@ -847,13 +854,13 @@ func (ctx *Ctx) Method(override ...string) string {
 
 // MultipartForm parse form entries from binary.
 // This returns a map[string][]string, so given a key the value will be a string slice.
-func (ctx *Ctx) MultipartForm() (*multipart.Form, error) {
-	return ctx.Fasthttp.MultipartForm()
+func (ctx *Context) MultipartForm() (*multipart.Form, error) {
+	return ctx.Fasthttp().MultipartForm()
 }
 
 // Next executes the next method in the stack that matches the current route.
 // You can pass an optional error for custom error handling.
-func (ctx *Ctx) Next(err ...error) {
+func (ctx *Context) Next(err ...error) {
 	if len(err) > 0 {
 		ctx.err = err[0]
 		ctx.app.Settings.ErrorHandler(ctx, ctx.err)
@@ -875,8 +882,8 @@ func (ctx *Ctx) Next(err ...error) {
 // OriginalURL contains the original request URL.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
-func (ctx *Ctx) OriginalURL() string {
-	return getString(ctx.Fasthttp.Request.Header.RequestURI())
+func (ctx *Context) OriginalURL() string {
+	return getString(ctx.Fasthttp().Request.Header.RequestURI())
 }
 
 // Params is used to get the route parameters.
@@ -884,7 +891,7 @@ func (ctx *Ctx) OriginalURL() string {
 // If a default value is given, it will return that value if the param doesn't exist.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
-func (ctx *Ctx) Params(key string, defaultValue ...string) string {
+func (ctx *Context) Params(key string, defaultValue ...string) string {
 	for i := range ctx.route.Params {
 		if len(key) != len(ctx.route.Params[i]) {
 			continue
@@ -902,13 +909,13 @@ func (ctx *Ctx) Params(key string, defaultValue ...string) string {
 
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
-func (ctx *Ctx) Path(override ...string) string {
+func (ctx *Context) Path(override ...string) string {
 	if len(override) != 0 && ctx.path != override[0] {
 		// Set new path to context
 		ctx.path = override[0]
 		ctx.pathOriginal = ctx.path
 		// Set new path to request context
-		ctx.Fasthttp.Request.URI().SetPath(ctx.pathOriginal)
+		ctx.Fasthttp().Request.URI().SetPath(ctx.pathOriginal)
 		// Prettify path
 		ctx.prettifyPath()
 	}
@@ -916,12 +923,12 @@ func (ctx *Ctx) Path(override ...string) string {
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
-func (ctx *Ctx) Protocol() string {
-	if ctx.Fasthttp.IsTLS() {
+func (ctx *Context) Protocol() string {
+	if ctx.Fasthttp().IsTLS() {
 		return "https"
 	}
 	scheme := "http"
-	ctx.Fasthttp.Request.Header.VisitAll(func(key, val []byte) {
+	ctx.Fasthttp().Request.Header.VisitAll(func(key, val []byte) {
 		if len(key) < 12 {
 			return // X-Forwarded-
 		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
@@ -944,8 +951,8 @@ func (ctx *Ctx) Protocol() string {
 // If a default value is given, it will return that value if the query doesn't exist.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
-func (ctx *Ctx) Query(key string, defaultValue ...string) string {
-	return defaultString(getString(ctx.Fasthttp.QueryArgs().Peek(key)), defaultValue)
+func (ctx *Context) Query(key string, defaultValue ...string) string {
+	return defaultString(getString(ctx.Fasthttp().QueryArgs().Peek(key)), defaultValue)
 }
 
 var (
@@ -954,7 +961,7 @@ var (
 )
 
 // Range returns a struct containing the type and a slice of ranges.
-func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
+func (ctx *Context) Range(size int) (rangeData Range, err error) {
 	rangeStr := ctx.Get(HeaderRange)
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
 		err = ErrRangeMalformed
@@ -1005,7 +1012,7 @@ func (ctx *Ctx) Range(size int) (rangeData Range, err error) {
 
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found.
-func (ctx *Ctx) Redirect(location string, status ...int) {
+func (ctx *Context) Redirect(location string, status ...int) {
 	ctx.Set(HeaderLocation, location)
 	if len(status) > 0 {
 		ctx.Status(status[0])
@@ -1016,7 +1023,7 @@ func (ctx *Ctx) Redirect(location string, status ...int) {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err error) {
+func (ctx *Context) Render(name string, bind interface{}, layouts ...string) (err error) {
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -1045,13 +1052,13 @@ func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err er
 	// Set Content-Type to text/html
 	ctx.Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
-	ctx.Fasthttp.Response.SetBody(buf.Bytes())
+	ctx.Fasthttp().Response.SetBody(buf.Bytes())
 	// Return err if exist
 	return
 }
 
 // Route returns the matched Route struct.
-func (ctx *Ctx) Route() *Route {
+func (ctx *Context) Route() *Route {
 	if ctx.route == nil {
 		// Fallback for fasthttp error handler
 		return &Route{
@@ -1065,17 +1072,17 @@ func (ctx *Ctx) Route() *Route {
 }
 
 // SaveFile saves any multipart file to disk.
-func (ctx *Ctx) SaveFile(fileheader *multipart.FileHeader, path string) error {
+func (ctx *Context) SaveFile(fileheader *multipart.FileHeader, path string) error {
 	return fasthttp.SaveMultipartFile(fileheader, path)
 }
 
 // Secure returns a boolean property, that is true, if a TLS connection is established.
-func (ctx *Ctx) Secure() bool {
-	return ctx.Fasthttp.IsTLS()
+func (ctx *Context) Secure() bool {
+	return ctx.Fasthttp().IsTLS()
 }
 
 // Send sets the HTTP response body. The input can be of any type, io.Reader is also supported.
-func (ctx *Ctx) Send(bodies ...interface{}) {
+func (ctx *Context) Send(bodies ...interface{}) {
 	// Reset response body
 	ctx.SendString("")
 	// Write response body
@@ -1084,8 +1091,8 @@ func (ctx *Ctx) Send(bodies ...interface{}) {
 
 // SendBytes sets the HTTP response body for []byte types without copying it.
 // From this point onward the body argument must not be changed.
-func (ctx *Ctx) SendBytes(body []byte) {
-	ctx.Fasthttp.Response.SetBodyRaw(body)
+func (ctx *Context) SendBytes(body []byte) {
+	ctx.Fasthttp().Response.SetBodyRaw(body)
 }
 
 var fsOnce sync.Once
@@ -1095,7 +1102,7 @@ var sendFileHandler fasthttp.RequestHandler
 // SendFile transfers the file from the given path.
 // The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
-func (ctx *Ctx) SendFile(file string, compress ...bool) error {
+func (ctx *Context) SendFile(file string, compress ...bool) error {
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
 	fsOnce.Do(func() {
 		sendFileFS = &fasthttp.FS{
@@ -1118,7 +1125,7 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 	// Disable compression
 	if len(compress) <= 0 || !compress[0] {
 		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
-		ctx.Fasthttp.Request.Header.Del(HeaderAcceptEncoding)
+		ctx.Fasthttp().Request.Header.Del(HeaderAcceptEncoding)
 	}
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L85
 	if len(file) == 0 || file[0] != '/' {
@@ -1132,13 +1139,13 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 		}
 	}
 	// Set new URI for fileHandler
-	ctx.Fasthttp.Request.SetRequestURI(file)
+	ctx.Fasthttp().Request.SetRequestURI(file)
 	// Save status code
-	status := ctx.Fasthttp.Response.StatusCode()
+	status := ctx.Fasthttp().Response.StatusCode()
 	// Serve file
-	sendFileHandler(ctx.Fasthttp)
+	sendFileHandler(ctx.Fasthttp())
 	// Get the status code which is set by fasthttp
-	fsStatus := ctx.Fasthttp.Response.StatusCode()
+	fsStatus := ctx.Fasthttp().Response.StatusCode()
 	// Set the status code set by the user if it is different from the fasthttp status code and 200
 	if status != fsStatus && status != StatusOK {
 		ctx.Status(status)
@@ -1152,38 +1159,43 @@ func (ctx *Ctx) SendFile(file string, compress ...bool) error {
 
 // SendStatus sets the HTTP status code and if the response body is empty,
 // it sets the correct status message in the body.
-func (ctx *Ctx) SendStatus(status int) {
+func (ctx *Context) SendStatus(status int) {
 	ctx.Status(status)
 	// Only set status body when there is no response body
-	if len(ctx.Fasthttp.Response.Body()) == 0 {
+	if len(ctx.Fasthttp().Response.Body()) == 0 {
 		ctx.SendString(utils.StatusMessage(status))
 	}
 }
 
 // SendString sets the HTTP response body for string types.
 // This means no type assertion, recommended for faster performance
-func (ctx *Ctx) SendString(body string) {
-	ctx.Fasthttp.Response.SetBodyString(body)
+func (ctx *Context) SendString(body string) {
+	ctx.Fasthttp().Response.SetBodyString(body)
 }
 
 // SendStream sets response body stream and optional body size.
-func (ctx *Ctx) SendStream(stream io.Reader, size ...int) {
+func (ctx *Context) SendStream(stream io.Reader, size ...int) {
 	if len(size) > 0 && size[0] >= 0 {
-		ctx.Fasthttp.Response.SetBodyStream(stream, size[0])
+		ctx.Fasthttp().Response.SetBodyStream(stream, size[0])
 	} else {
-		ctx.Fasthttp.Response.SetBodyStream(stream, -1)
-		ctx.Set(HeaderContentLength, strconv.Itoa(len(ctx.Fasthttp.Response.Body())))
+		ctx.Fasthttp().Response.SetBodyStream(stream, -1)
+		ctx.Set(HeaderContentLength, strconv.Itoa(len(ctx.Fasthttp().Response.Body())))
 	}
 }
 
 // Set sets the response's HTTP header field to the specified key, value.
-func (ctx *Ctx) Set(key string, val string) {
-	ctx.Fasthttp.Response.Header.Set(key, val)
+func (ctx *Context) Set(key string, val string) {
+	ctx.Fasthttp().Response.Header.Set(key, val)
+}
+
+// Set the Fasthttp Request Context
+func (ctx *Context) setFasthttp(fctx *fasthttp.RequestCtx) {
+	ctx.fasthttp = fctx
 }
 
 // Subdomains returns a string slice of subdomains in the domain name of the request.
 // The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
-func (ctx *Ctx) Subdomains(offset ...int) []string {
+func (ctx *Context) Subdomains(offset ...int) []string {
 	o := 2
 	if len(offset) > 0 {
 		o = offset[0]
@@ -1199,62 +1211,59 @@ func (ctx *Ctx) Subdomains(offset ...int) []string {
 }
 
 // Stale is not implemented yet, pull requests are welcome!
-func (ctx *Ctx) Stale() bool {
+func (ctx *Context) Stale() bool {
 	return !ctx.Fresh()
 }
 
 // Status sets the HTTP status for the response.
-// This method is chainable.
-func (ctx *Ctx) Status(status int) *Ctx {
-	ctx.Fasthttp.Response.SetStatusCode(status)
-	return ctx
+func (ctx *Context) Status(status int) {
+	ctx.Fasthttp().Response.SetStatusCode(status)
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-func (ctx *Ctx) Type(extension string, charset ...string) *Ctx {
+func (ctx *Context) Type(extension string, charset ...string) {
 	if len(charset) > 0 {
-		ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
+		ctx.Fasthttp().Response.Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
 	} else {
-		ctx.Fasthttp.Response.Header.SetContentType(utils.GetMIME(extension))
+		ctx.Fasthttp().Response.Header.SetContentType(utils.GetMIME(extension))
 	}
-	return ctx
 }
 
 // Vary adds the given header field to the Vary response header.
 // This will append the header, if not already listed, otherwise leaves it listed in the current location.
-func (ctx *Ctx) Vary(fields ...string) {
+func (ctx *Context) Vary(fields ...string) {
 	ctx.Append(HeaderVary, fields...)
 }
 
 // Write appends any input to the HTTP body response, io.Reader is also supported as input.
-func (ctx *Ctx) Write(bodies ...interface{}) {
+func (ctx *Context) Write(bodies ...interface{}) {
 	for i := range bodies {
 		switch body := bodies[i].(type) {
 		case string:
-			ctx.Fasthttp.Response.AppendBodyString(body)
+			ctx.Fasthttp().Response.AppendBodyString(body)
 		case []byte:
-			ctx.Fasthttp.Response.AppendBodyString(getString(body))
+			ctx.Fasthttp().Response.AppendBodyString(getString(body))
 		case int:
-			ctx.Fasthttp.Response.AppendBodyString(strconv.Itoa(body))
+			ctx.Fasthttp().Response.AppendBodyString(strconv.Itoa(body))
 		case bool:
-			ctx.Fasthttp.Response.AppendBodyString(strconv.FormatBool(body))
+			ctx.Fasthttp().Response.AppendBodyString(strconv.FormatBool(body))
 		case io.Reader:
-			ctx.Fasthttp.Response.SetBodyStream(body, -1)
-			ctx.Set(HeaderContentLength, strconv.Itoa(len(ctx.Fasthttp.Response.Body())))
+			ctx.Fasthttp().Response.SetBodyStream(body, -1)
+			ctx.Set(HeaderContentLength, strconv.Itoa(len(ctx.Fasthttp().Response.Body())))
 		default:
-			ctx.Fasthttp.Response.AppendBodyString(fmt.Sprintf("%v", body))
+			ctx.Fasthttp().Response.AppendBodyString(fmt.Sprintf("%v", body))
 		}
 	}
 }
 
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
-func (ctx *Ctx) XHR() bool {
+func (ctx *Context) XHR() bool {
 	return strings.EqualFold(ctx.Get(HeaderXRequestedWith), "xmlhttprequest")
 }
 
 // prettifyPath ...
-func (ctx *Ctx) prettifyPath() {
+func (ctx *Context) prettifyPath() {
 	// If UnescapePath enabled, we decode the path
 	if ctx.app.Settings.UnescapePath {
 		pathBytes := getBytes(ctx.path)

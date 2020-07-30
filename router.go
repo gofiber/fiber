@@ -82,7 +82,7 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 	return false, values
 }
 
-func (app *App) next(ctx *Ctx) bool {
+func (app *App) next(ctx *Context) bool {
 	// Get stack length
 	lenr := len(app.stack[ctx.methodINT]) - 1
 	// Loop over the route stack starting from previous index
@@ -131,7 +131,8 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 
 	// handle invalid http method directly
 	if ctx.methodINT == -1 {
-		ctx.Status(StatusBadRequest).SendString("Invalid http method")
+		ctx.Status(StatusBadRequest)
+		ctx.SendString("Invalid http method")
 		app.ReleaseCtx(ctx)
 		return
 	}
@@ -293,18 +294,19 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Route {
 		}
 	}
 	fileHandler := fs.NewRequestHandler()
-	handler := func(c *Ctx) {
+
+	handler := func(c Ctx) {
 		// Serve file
-		fileHandler(c.Fasthttp)
+		fileHandler(c.Fasthttp())
 		// Return request if found and not forbidden
-		status := c.Fasthttp.Response.StatusCode()
+		status := c.Fasthttp().Response.StatusCode()
 		if status != StatusNotFound && status != StatusForbidden {
 			return
 		}
 		// Reset response to default
-		c.Fasthttp.SetContentType("") // Issue #420
-		c.Fasthttp.Response.SetStatusCode(StatusOK)
-		c.Fasthttp.Response.SetBodyString("")
+		c.Fasthttp().SetContentType("") // Issue #420
+		c.Fasthttp().Response.SetStatusCode(StatusOK)
+		c.Fasthttp().Response.SetBodyString("")
 		// Next middleware
 		c.Next()
 	}

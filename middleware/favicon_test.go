@@ -15,7 +15,7 @@ func Test_Middleware_Favicon(t *testing.T) {
 
 	app.Use(Favicon())
 
-	app.Get("/", func(c *fiber.Ctx) {})
+	app.Get("/", func(c fiber.Ctx) {})
 
 	// Skip Favicon middleware
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
@@ -53,7 +53,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 
 	app.Use(Favicon("./testdata/favicon.ico"))
 
-	app.Get("/", func(c *fiber.Ctx) {})
+	app.Get("/", func(c fiber.Ctx) {})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
 
@@ -66,7 +66,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 func Benchmark_Middleware_Favicon(b *testing.B) {
 	app := fiber.New()
 	app.Use(Favicon())
-	app.Get("/", func(c *fiber.Ctx) {})
+	app.Get("/", func(c fiber.Ctx) {})
 	handler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}

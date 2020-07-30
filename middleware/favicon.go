@@ -20,7 +20,7 @@ func Favicon(file ...string) fiber.Handler {
 		}
 	}
 	// Return handler
-	return func(c *fiber.Ctx) {
+	return func(c fiber.Ctx) {
 		if len(c.Path()) != 12 || c.Path() != "/favicon.ico" {
 			c.Next()
 			return
@@ -41,7 +41,8 @@ func Favicon(file ...string) fiber.Handler {
 			c.Set(fiber.HeaderContentLength, strconv.Itoa(len(icon)))
 			c.Set(fiber.HeaderContentType, "image/x-icon")
 			c.Set(fiber.HeaderCacheControl, "public, max-age=31536000")
-			c.Status(200).SendBytes(icon)
+			c.Status(200)
+			c.SendBytes(icon)
 			return
 		}
 

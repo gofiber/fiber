@@ -10,7 +10,7 @@ type (
 	// RequestIDConfig defines the config for Logger middleware.
 	RequestIDConfig struct {
 		// Next defines a function to skip this middleware.
-		Next func(ctx *fiber.Ctx) bool
+		Next func(ctx fiber.Ctx) bool
 
 		// Header is the header key where to get/set the unique ID
 		// Optional. Default: X-Request-ID
@@ -49,7 +49,7 @@ func RequestID(options ...interface{}) fiber.Handler {
 	if len(options) > 0 {
 		for i := range options {
 			switch opt := options[i].(type) {
-			case func(*fiber.Ctx) bool:
+			case func(fiber.Ctx) bool:
 				config.Next = opt
 			case string:
 				config.Header = opt
@@ -76,7 +76,7 @@ func requestID(config RequestIDConfig) fiber.Handler {
 	}
 
 	// Return handler
-	return func(ctx *fiber.Ctx) {
+	return func(ctx fiber.Ctx) {
 		// Don't execute the middleware if Next returns true
 		if config.Next != nil && config.Next(ctx) {
 			ctx.Next()

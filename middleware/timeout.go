@@ -13,7 +13,7 @@ func Timeout(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 	}
 
 	// logic is from fasthttp.TimeoutWithCodeHandler https://github.com/valyala/fasthttp/blob/master/server.go#L418
-	return func(ctx *fiber.Ctx) {
+	return func(ctx fiber.Ctx) {
 		ch := make(chan struct{}, 1)
 
 		go func() {

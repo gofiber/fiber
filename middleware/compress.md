@@ -37,7 +37,7 @@ func Compress(options ...interface{}) fiber.Handler {}
 type CompressConfig struct {
   // Next defines a function to skip this middleware.
   // Default: nil
-  Next func(*fiber.Ctx) bool
+  Next func(fiber.Ctx) bool
 
   // Compression level for brotli, gzip and deflate
   // Default: CompressLevelDefault

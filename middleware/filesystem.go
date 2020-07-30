@@ -18,7 +18,7 @@ type (
 	// FileSystemConfig defines the config for FileSystem middleware.
 	FileSystemConfig struct {
 		// Next defines a function to skip this middleware if returned true.
-		Next func(ctx *fiber.Ctx) bool
+		Next func(ctx fiber.Ctx) bool
 
 		// Root is a FileSystem that provides access
 		// to a collection of files and directories.
@@ -57,7 +57,7 @@ func FileSystem(options ...interface{}) fiber.Handler {
 	// Assert options if provided to adjust the config
 	for i := range options {
 		switch opt := options[i].(type) {
-		case func(*fiber.Ctx) bool:
+		case func(fiber.Ctx) bool:
 			config.Next = opt
 		case http.FileSystem:
 			config.Root = opt
@@ -91,7 +91,7 @@ func fileSystem(config FileSystemConfig) fiber.Handler {
 	var prefix string
 
 	// Return handler
-	return func(c *fiber.Ctx) {
+	return func(c fiber.Ctx) {
 		// Set prefix
 		if len(prefix) == 0 {
 			prefix = c.Route().Path
@@ -152,12 +152,12 @@ func fileSystem(config FileSystemConfig) fiber.Handler {
 		}
 
 		if c.Method() == fiber.MethodGet {
-			c.Fasthttp.SetBodyStream(file, contentLength)
+			c.Fasthttp().SetBodyStream(file, contentLength)
 			return
 		} else if c.Method() == fiber.MethodHead {
-			c.Fasthttp.ResetBody()
-			c.Fasthttp.Response.SkipBody = true
-			c.Fasthttp.Response.Header.SetContentLength(contentLength)
+			c.Fasthttp().ResetBody()
+			c.Fasthttp().Response.SkipBody = true
+			c.Fasthttp().Response.Header.SetContentLength(contentLength)
 			if err := file.Close(); err != nil {
 				c.Next(err)
 			}
@@ -176,7 +176,7 @@ func getFileExtension(path string) string {
 	return path[n:]
 }
 
-func dirList(c *fiber.Ctx, f http.File) error {
+func dirList(c fiber.Ctx, f http.File) error {
 	fileinfos, err := f.Readdir(-1)
 	if err != nil {
 		return err

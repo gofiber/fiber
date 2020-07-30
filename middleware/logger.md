@@ -54,7 +54,7 @@ func Logger(options ...interface{}) fiber.Handler {}
 ```go
 type LoggerConfig struct {
   // Next defines a function to skip this middleware.
-  Next func(ctx *fiber.Ctx) bool
+  Next func(ctx fiber.Ctx) bool
 
   // Format defines the logging tags
   //

@@ -19,10 +19,11 @@ embed.New(config ...embed.Config) func(c *fiber.Ctx)
 ### Config
 | Property | Type | Description | Default |
 | :--- | :--- | :--- | :--- |
+| Next | `func(ctx fiber.Ctx) bool` | Next defines a function to skip this middleware. | `false` |
 | Index | `string` | Index file name | `index.html` |
 | Browse | `bool` | Enable directory browsing | `false` |
 | Root | `http.FileSystem` | http.FileSystem to use | `nil` |
-| ErrorHandler | `func(*fiber.Ctx, error)` | Error handler | `InternalServerError` |
+| ErrorHandler | `func(fiber.ICtx, error)` | Error handler | `InternalServerError` |
 
 ### pkger
 

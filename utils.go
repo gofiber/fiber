@@ -42,7 +42,7 @@ func quoteString(raw string) string {
 }
 
 // Scan stack if other methods match
-func setMethodNotAllowed(ctx *Ctx) {
+func setMethodNotAllowed(ctx *Context) {
 	var matched bool
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
@@ -91,12 +91,12 @@ func defaultString(value string, defaultValue []string) string {
 }
 
 // Generate and set ETag header to response
-func setETag(ctx *Ctx, weak bool) {
+func setETag(ctx *Context, weak bool) {
 	// Don't generate ETags for invalid responses
-	if ctx.Fasthttp.Response.StatusCode() != StatusOK {
+	if ctx.Fasthttp().Response.StatusCode() != StatusOK {
 		return
 	}
-	body := ctx.Fasthttp.Response.Body()
+	body := ctx.Fasthttp().Response.Body()
 	// Skips ETag if no response body is present
 	if len(body) <= 0 {
 		return
@@ -119,7 +119,7 @@ func setETag(ctx *Ctx, weak bool) {
 		if clientEtag[2:] == etag || clientEtag[2:] == etag[2:] {
 			// W/1 == 1 || W/1 == W/1
 			ctx.SendStatus(StatusNotModified)
-			ctx.Fasthttp.ResetBody()
+			ctx.Fasthttp().ResetBody()
 			return
 		}
 		// W/1 != W/2 || W/1 != 2
@@ -129,7 +129,7 @@ func setETag(ctx *Ctx, weak bool) {
 	if strings.Contains(clientEtag, etag) {
 		// 1 == 1
 		ctx.SendStatus(StatusNotModified)
-		ctx.Fasthttp.ResetBody()
+		ctx.Fasthttp().ResetBody()
 		return
 	}
 	// 1 != 2

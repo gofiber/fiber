@@ -21,7 +21,7 @@ func Test_Middleware_RequestID(t *testing.T) {
 
 	app.Use(RequestID())
 
-	app.Get("/", func(ctx *fiber.Ctx) {
+	app.Get("/", func(ctx fiber.Ctx) {
 		ctx.Send("Hello?")
 	})
 
@@ -46,7 +46,7 @@ func Test_Middleware_RequestID_Header(t *testing.T) {
 
 	app.Use(RequestID("X-Test-header"))
 
-	app.Get("/", func(ctx *fiber.Ctx) {
+	app.Get("/", func(ctx fiber.Ctx) {
 		ctx.Send("Hello?")
 	})
 
@@ -95,7 +95,7 @@ func Test_Middleware_RequestID_Options_And_WithConfig(t *testing.T) {
 
 		app.Use(testCase.handler)
 
-		app.Get("/", func(ctx *fiber.Ctx) {
+		app.Get("/", func(ctx fiber.Ctx) {
 			ctx.Send("Hello?")
 		})
 
@@ -118,7 +118,7 @@ func Test_Middleware_RequestID_Config(t *testing.T) {
 		},
 	}))
 
-	app.Get("/", func(ctx *fiber.Ctx) {
+	app.Get("/", func(ctx fiber.Ctx) {
 		ctx.Send("Hello?")
 	})
 
@@ -141,11 +141,11 @@ func Test_Middleware_RequestID_Config(t *testing.T) {
 func Test_Middleware_RequestID_Skip(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(RequestID(func(_ *fiber.Ctx) bool {
+	app.Use(RequestID(func(_ fiber.Ctx) bool {
 		return true
 	}))
 
-	app.Get("/", func(ctx *fiber.Ctx) {})
+	app.Get("/", func(ctx fiber.Ctx) {})
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -170,7 +170,7 @@ func Benchmark_Middleware_RequestID(b *testing.B) {
 	app := fiber.New()
 	app.Use(RequestID())
 
-	app.Get("/", func(c *fiber.Ctx) {})
+	app.Get("/", func(c fiber.Ctx) {})
 	handler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}

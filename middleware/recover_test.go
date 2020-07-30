@@ -16,7 +16,7 @@ func Test_Middleware_Recover(t *testing.T) {
 
 	app.Use(Recover())
 
-	app.Get("/panic", func(ctx *fiber.Ctx) {
+	app.Get("/panic", func(ctx fiber.Ctx) {
 		ctx.Set("dummy", "this should be here")
 		panic("Hi, I'm an error!")
 	})
@@ -37,7 +37,7 @@ func Benchmark_Middleware_Recover(b *testing.B) {
 	app := fiber.New()
 	app.Use(Recover())
 
-	app.Get("/", func(c *fiber.Ctx) {})
+	app.Get("/", func(c fiber.Ctx) {})
 	handler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
