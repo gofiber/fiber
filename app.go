@@ -237,7 +237,7 @@ func New(settings ...*Settings) *App {
 		// Create Ctx pool
 		pool: sync.Pool{
 			New: func() interface{} {
-				return new(Context)
+				return new(ctx)
 			},
 		},
 		// Set settings

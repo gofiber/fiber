@@ -82,7 +82,7 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 	return false, values
 }
 
-func (app *App) next(ctx *Context) bool {
+func (app *App) next(ctx *ctx) bool {
 	// Get stack length
 	lenr := len(app.stack[ctx.methodINT]) - 1
 	// Loop over the route stack starting from previous index

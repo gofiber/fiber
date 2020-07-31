@@ -42,7 +42,7 @@ func quoteString(raw string) string {
 }
 
 // Scan stack if other methods match
-func setMethodNotAllowed(ctx *Context) {
+func setMethodNotAllowed(ctx *ctx) {
 	var matched bool
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
@@ -91,7 +91,7 @@ func defaultString(value string, defaultValue []string) string {
 }
 
 // Generate and set ETag header to response
-func setETag(ctx *Context, weak bool) {
+func setETag(ctx *ctx, weak bool) {
 	// Don't generate ETags for invalid responses
 	if ctx.Fasthttp().Response.StatusCode() != StatusOK {
 		return
