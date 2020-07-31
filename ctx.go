@@ -804,7 +804,7 @@ func (ctx *Ctx) Render(name string, bind interface{}, layouts ...string) (err er
 		}
 	}
 	// Set Content-Type to text/html
-	ctx.Set(HeaderContentType, MIMETextHTMLCharsetUTF8)
+	ctx.Fasthttp.Response.Header.SetContentType(MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
 	ctx.Fasthttp.Response.SetBody(buf.Bytes())
 	// Return err if exist
