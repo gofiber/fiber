@@ -202,7 +202,7 @@ type (
 
 		// Redirect to the URL derived from the specified path, with specified status.
 		// If status is not specified, status defaults to 302 Found.
-		Redirect(location string, status ...int)
+		Redirect(location string, status ...int) Ctx
 
 		// Render a template with data and sends a text/html response.
 		// We support the following engines: html, amber, handlebars, mustache, pug
@@ -251,10 +251,10 @@ type (
 		Stale() bool
 
 		// Status sets the HTTP status for the response.
-		Status(status int)
+		Status(status int) Ctx
 
 		// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-		Type(extension string, charset ...string)
+		Type(extension string, charset ...string) Ctx
 
 		// Vary adds the given header field to the Vary response header.
 		// This will append the header, if not already listed, otherwise leaves it listed in the current location.
@@ -1012,13 +1012,14 @@ func (ctx *ctx) Range(size int) (rangeData Range, err error) {
 
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found.
-func (ctx *ctx) Redirect(location string, status ...int) {
+func (ctx *ctx) Redirect(location string, status ...int) Ctx {
 	ctx.Set(HeaderLocation, location)
 	if len(status) > 0 {
 		ctx.Status(status[0])
 	} else {
 		ctx.Status(StatusFound)
 	}
+	return ctx
 }
 
 // Render a template with data and sends a text/html response.
@@ -1216,17 +1217,19 @@ func (ctx *ctx) Stale() bool {
 }
 
 // Status sets the HTTP status for the response.
-func (ctx *ctx) Status(status int) {
+func (ctx *ctx) Status(status int) Ctx {
 	ctx.Fasthttp().Response.SetStatusCode(status)
+	return ctx
 }
 
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
-func (ctx *ctx) Type(extension string, charset ...string) {
+func (ctx *ctx) Type(extension string, charset ...string) Ctx {
 	if len(charset) > 0 {
 		ctx.Fasthttp().Response.Header.SetContentType(utils.GetMIME(extension) + "; charset=" + charset[0])
 	} else {
 		ctx.Fasthttp().Response.Header.SetContentType(utils.GetMIME(extension))
 	}
+	return ctx
 }
 
 // Vary adds the given header field to the Vary response header.
