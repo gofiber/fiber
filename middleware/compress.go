@@ -27,6 +27,13 @@ var CompressConfigDefault = CompressConfig{
 	Level: CompressLevelDefault,
 }
 
+var compressHandlers = map[int]fasthttp.RequestHandler{
+	CompressLevelDisabled:        fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliNoCompression, fasthttp.CompressNoCompression),
+	CompressLevelDefault:         fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression),
+	CompressLevelBestSpeed:       fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliBestSpeed, fasthttp.CompressBestSpeed),
+	CompressLevelBestCompression: fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliBestCompression, fasthttp.CompressBestCompression),
+}
+
 /*
 Compress allows the following config arguments in any order:
 	- Compress()
@@ -58,17 +65,12 @@ func Compress(options ...interface{}) fiber.Handler {
 
 func compress(config CompressConfig) fiber.Handler {
 	// Init middleware settings
-	var compressHandler fasthttp.RequestHandler
-	switch config.Level {
-	case -1: // Disabled
-		compressHandler = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliNoCompression, fasthttp.CompressNoCompression)
-	case 1: // Best speed
-		compressHandler = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliBestSpeed, fasthttp.CompressBestSpeed)
-	case 2: // Best compression
-		compressHandler = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliBestCompression, fasthttp.CompressBestCompression)
-	default: // Default
-		compressHandler = fasthttp.CompressHandlerBrotliLevel(func(c *fasthttp.RequestCtx) {}, fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression)
+	compressHandler, ok := compressHandlers[config.Level]
+	if !ok {
+		// Use default level if provided level is invalid
+		compressHandler = compressHandlers[CompressLevelDefault]
 	}
+
 	// Return handler
 	return func(c *fiber.Ctx) {
 		// Don't execute the middleware if Next returns false
