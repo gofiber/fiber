@@ -27,7 +27,6 @@ type routeSegment struct {
 	IsWildcard bool
 	IsOptional bool
 	IsLast     bool
-	EndChar    byte // TODO: remove ?
 }
 
 const (
@@ -44,7 +43,7 @@ var (
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
 	// list of chars for the parameter recognising
 	parameterStartChars = []byte{wildcardParam, paramStarterChar}
-	// list of chars to find the end of a parameter
+	// list of chars at the end of the parameter
 	parameterDelimiterChars = append([]byte{paramStarterChar}, routeDelimiter...)
 	// list of chars to find the end of a parameter
 	parameterEndChars = append([]byte{optionalParam}, parameterDelimiterChars...)
@@ -162,10 +161,6 @@ func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 	lenKeys := len(p.params)
 	paramsPositions := getAllocFreeParamsPos(lenKeys)
 	var i, paramsIterator, partLen, paramStart int
-	//if len(s) > 0 {
-	//	s = s[1:]
-	//	paramStart++
-	//}
 	for index, segment := range p.segs {
 		partLen = len(s)
 		// check parameter
