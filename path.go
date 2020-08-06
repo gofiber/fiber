@@ -156,6 +156,7 @@ func findNextCharsetPosition(search string, charset []byte) int {
 	return nextPosition
 }
 
+// TODO: check performance
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
 	lenKeys := len(p.params)
