@@ -256,7 +256,11 @@ func findParamLen(s string, segments []routeSegment, currIndex int) int {
 	}
 	// get the length to the next constant part
 	if false == nextSeg.IsParam {
-		if constPosition := strings.Index(s, nextSeg.Const); constPosition != -1 {
+		searchString := nextSeg.Const
+		if len(searchString) > 1 {
+			searchString = utils.TrimRight(nextSeg.Const, slashDelimiter)
+		}
+		if constPosition := strings.Index(s, searchString); constPosition != -1 {
 			return constPosition
 		}
 	}

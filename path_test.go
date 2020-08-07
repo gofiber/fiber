@@ -128,12 +128,11 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/foobar", params: []string{""}, match: true},
 		{url: "/", params: []string{""}, match: false},
 	})
-	// TODO: fix it
-	//testCase("/a*cde*g/", []testparams{
-	//	{url: "/abbbcdefffg", params: []string{"bbb", "fff"}, match: true},
-	//	{url: "/acdeg", params: []string{"", ""}, match: true},
-	//	{url: "/", params: nil, match: false},
-	//})
+	testCase("/a*cde*g/", []testparams{
+		{url: "/abbbcdefffg", params: []string{"bbb", "fff"}, match: true},
+		{url: "/acdeg", params: []string{"", ""}, match: true},
+		{url: "/", params: nil, match: false},
+	})
 	testCase("/*v1*/proxy", []testparams{
 		{url: "/customer/v1/cart/proxy", params: []string{"customer/", "/cart"}, match: true},
 		{url: "/v1/proxy", params: []string{"", ""}, match: true},
@@ -162,7 +161,7 @@ func Test_Path_matchParams(t *testing.T) {
 	testCase("/api/v1/:param/abc/*", []testparams{
 		{url: "/api/v1/well/abc/wildcard", params: []string{"well", "wildcard"}, match: true},
 		{url: "/api/v1/well/abc/", params: []string{"well", ""}, match: true},
-		{url: "/api/v1/well/abc", params: nil, match: false},
+		{url: "/api/v1/well/abc", params: []string{"well", ""}, match: true},
 		{url: "/api/v1/well/ttt", params: nil, match: false},
 	})
 	testCase("/api/:day/:month?/:year?", []testparams{
@@ -235,19 +234,19 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "xyz/", params: nil, match: false},
 	})
 	// TODO: fix this
-	//testCase("/api/*/:param?", []testparams{
-	//	{url: "/api/", params: []string{"", ""}, match: true},
-	//	{url: "/api/joker", params: []string{"joker", ""}, match: true},
-	//	{url: "/api/joker/batman", params: []string{"joker", "batman"}, match: true},
-	//	{url: "/api/joker//batman", params: []string{"joker//batman", "batman"}, match: true},
-	//	{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},
-	//	{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
-	//	{url: "/api/joker/batman/robin/1/", params: []string{"joker/batman/robin/1", ""}, match: true},
-	//	{url: "/api/joker-batman/robin/1", params: []string{"joker-batman/robin", "1"}, match: true},
-	//	{url: "/api/joker-batman-robin/1", params: []string{"joker-batman-robin", "1"}, match: true},
-	//	{url: "/api/joker-batman-robin-1", params: []string{"joker-batman-robin-1", ""}, match: true},
-	//	{url: "/api", params: []string{"", ""}, match: true},
-	//})
+	testCase("/api/*/:param?", []testparams{
+		{url: "/api/", params: []string{"", ""}, match: true},
+		{url: "/api/joker", params: []string{"joker", ""}, match: true},
+		{url: "/api/joker/batman", params: []string{"joker", "batman"}, match: true},
+		//{url: "/api/joker//batman", params: []string{"joker//batman", "batman"}, match: true},
+		//{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},
+		//{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
+		//{url: "/api/joker/batman/robin/1/", params: []string{"joker/batman/robin/1", ""}, match: true},
+		//{url: "/api/joker-batman/robin/1", params: []string{"joker-batman/robin", "1"}, match: true},
+		//{url: "/api/joker-batman-robin/1", params: []string{"joker-batman-robin", "1"}, match: true},
+		//{url: "/api/joker-batman-robin-1", params: []string{"joker-batman-robin-1", ""}, match: true},
+		{url: "/api", params: []string{"", ""}, match: true},
+	})
 	//testCase("/api/*/:param", []testparams{
 	//	{url: "/api/test/abc", params: []string{"test", "abc"}, match: true},
 	//	{url: "/api/joker/batman", params: []string{"joker", "batman"}, match: true},
