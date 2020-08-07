@@ -41,6 +41,14 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v2", params: nil, match: false},
 		{url: "/api/v1/", params: nil, match: false},
 	})
+	testCase("/api/v1/:param/+", []testparams{
+		{url: "/api/v1/entity", params: nil, match: false},
+		{url: "/api/v1/entity/", params: nil, match: false},
+		{url: "/api/v1/entity/1", params: []string{"entity", "1"}, match: true},
+		{url: "/api/v", params: nil, match: false},
+		{url: "/api/v2", params: nil, match: false},
+		{url: "/api/v1/", params: nil, match: false},
+	})
 	testCase("/api/v1/:param?", []testparams{
 		{url: "/api/v1", params: []string{""}, match: true},
 		{url: "/api/v1/", params: []string{""}, match: true},
@@ -126,7 +134,12 @@ func Test_Path_matchParams(t *testing.T) {
 	testCase("/foo*bar", []testparams{
 		{url: "/foofaselbar", params: []string{"fasel"}, match: true},
 		{url: "/foobar", params: []string{""}, match: true},
-		{url: "/", params: []string{""}, match: false},
+		{url: "/", params: nil, match: false},
+	})
+	testCase("/foo+bar", []testparams{
+		{url: "/foofaselbar", params: []string{"fasel"}, match: true},
+		{url: "/foobar", params: nil, match: false},
+		{url: "/", params: nil, match: false},
 	})
 	testCase("/a*cde*g/", []testparams{
 		{url: "/abbbcdefffg", params: []string{"bbb", "fff"}, match: true},
@@ -225,6 +238,15 @@ func Test_Path_matchParams(t *testing.T) {
 	testCase("/config/*.json", []testparams{
 		{url: "/config/abc.json", params: []string{"abc"}, match: true},
 		{url: "/config/efg.json", params: []string{"efg"}, match: true},
+		{url: "/config/.json", params: []string{""}, match: true},
+		{url: "/config/efg.csv", params: nil, match: false},
+		{url: "config/abc.json", params: nil, match: false},
+		{url: "/config", params: nil, match: false},
+	})
+	testCase("/config/+.json", []testparams{
+		{url: "/config/abc.json", params: []string{"abc"}, match: true},
+		{url: "/config/.json", params: nil, match: false},
+		{url: "/config/efg.json", params: []string{"efg"}, match: true},
 		{url: "/config/efg.csv", params: nil, match: false},
 		{url: "config/abc.json", params: nil, match: false},
 		{url: "/config", params: nil, match: false},
@@ -233,27 +255,32 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "xyz", params: nil, match: false},
 		{url: "xyz/", params: nil, match: false},
 	})
-	// TODO: fix this
 	testCase("/api/*/:param?", []testparams{
 		{url: "/api/", params: []string{"", ""}, match: true},
 		{url: "/api/joker", params: []string{"joker", ""}, match: true},
 		{url: "/api/joker/batman", params: []string{"joker", "batman"}, match: true},
-		//{url: "/api/joker//batman", params: []string{"joker//batman", "batman"}, match: true},// TODO: fix it
-		//{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},// TODO: fix it
-		//{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},// TODO: fix it
-		//{url: "/api/joker/batman/robin/1/", params: []string{"joker/batman/robin/1", ""}, match: true},// TODO: fix it
-		//{url: "/api/joker-batman/robin/1", params: []string{"joker-batman/robin", "1"}, match: true},// TODO: fix it
-		//{url: "/api/joker-batman-robin/1", params: []string{"joker-batman-robin", "1"}, match: true},// TODO: fix it
-		//{url: "/api/joker-batman-robin-1", params: []string{"joker-batman-robin-1", ""}, match: true},// TODO: fix it
+		{url: "/api/joker//batman", params: []string{"joker/", "batman"}, match: true},
+		{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},
+		{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
+		{url: "/api/joker/batman/robin/1/", params: []string{"joker/batman/robin/1", ""}, match: true},
+		{url: "/api/joker-batman/robin/1", params: []string{"joker-batman/robin", "1"}, match: true},
+		{url: "/api/joker-batman-robin/1", params: []string{"joker-batman-robin", "1"}, match: true},
+		{url: "/api/joker-batman-robin-1", params: []string{"joker-batman-robin-1", ""}, match: true},
 		{url: "/api", params: []string{"", ""}, match: true},
 	})
 	testCase("/api/*/:param", []testparams{
 		{url: "/api/test/abc", params: []string{"test", "abc"}, match: true},
 		{url: "/api/joker/batman", params: []string{"joker", "batman"}, match: true},
-		//{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},// TODO: fix it
-		//{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},// TODO: fix it
-		//{url: "/api/joker/batman-robin/1", params: []string{"joker/batman-robin", "1"}, match: true},// TODO: fix it
+		{url: "/api/joker/batman/robin", params: []string{"joker/batman", "robin"}, match: true},
+		{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
+		{url: "/api/joker/batman-robin/1", params: []string{"joker/batman-robin", "1"}, match: true},
 		{url: "/api/joker-batman-robin-1", params: nil, match: false},
+		{url: "/api", params: nil, match: false},
+	})
+	testCase("/api/+/:param", []testparams{
+		{url: "/api/test/abc", params: []string{"test", "abc"}, match: true},
+		{url: "/api/joker/batman/robin/1", params: []string{"joker/batman/robin", "1"}, match: true},
+		{url: "/api/joker", params: nil, match: false},
 		{url: "/api", params: nil, match: false},
 	})
 	testCase("/api/*/:param/:param2", []testparams{
@@ -263,8 +290,8 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/joker-batman-robin-1", params: nil, match: false},
 		{url: "/api/test/abc", params: nil, match: false},
 		{url: "/api/joker/batman/robin", params: []string{"joker", "batman", "robin"}, match: true},
-		//{url: "/api/joker/batman/robin/1", params: []string{"joker/batman", "robin", "1"}, match: true}, // TODO: fix it
-		//{url: "/api/joker/batman/robin/1/2", params: []string{"joker/batman/robin", "1", "2"}, match: true},// TODO: fix it
+		{url: "/api/joker/batman/robin/1", params: []string{"joker/batman", "robin", "1"}, match: true},
+		{url: "/api/joker/batman/robin/1/2", params: []string{"joker/batman/robin", "1", "2"}, match: true},
 		{url: "/api", params: nil, match: false},
 		{url: "/api/:test", params: nil, match: false},
 	})

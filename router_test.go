@@ -98,8 +98,8 @@ func Test_Route_Match_Root(t *testing.T) {
 func Test_Route_Match_Parser(t *testing.T) {
 	app := New()
 
-	app.Get("/foo/:Param", func(ctx *Ctx) {
-		ctx.Send(ctx.Params("Param"))
+	app.Get("/foo/:ParamName", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("ParamName"))
 	})
 	app.Get("/Foobar/*", func(ctx *Ctx) {
 		ctx.Send(ctx.Params("*"))
