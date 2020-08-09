@@ -913,16 +913,26 @@ func Test_Ctx_Params(t *testing.T) {
 	app.Get("/test2/*", func(c *Ctx) {
 		utils.AssertEqual(t, "im/a/cookie", c.Params("*"))
 	})
-	app.Get("/test3/:optional?", func(c *Ctx) {
+	app.Get("/test3/*/blafasel/*", func(c *Ctx) {
+		utils.AssertEqual(t, "1111", c.Params("*1"))
+		utils.AssertEqual(t, "2222", c.Params("*2"))
+	})
+	app.Get("/test4/:optional?", func(c *Ctx) {
 		utils.AssertEqual(t, "", c.Params("optional"))
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3", nil))
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }

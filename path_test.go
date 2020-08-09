@@ -297,6 +297,49 @@ func Test_Path_matchParams(t *testing.T) {
 	})
 }
 
+// go test -race -run Test_Path_matchParams
+func Benchmark_Path_matchParams(t *testing.B) {
+	type testparams struct {
+		url          string
+		params       []string
+		match        bool
+		partialCheck bool
+	}
+	benchCase := func(r string, cases []testparams) {
+		parser := parseRoute(r)
+		for _, c := range cases {
+
+			var params []string
+			var matchRes bool
+			t.Run(r+" | "+c.url, func(b *testing.B) {
+				params = nil
+				for i := 0; i <= b.N; i++ {
+					if paramPos, match := parser.getMatch(c.url, c.partialCheck); match {
+						// Get params from the original path
+						matchRes = true
+						params = parser.paramsForPos(c.url, paramPos)
+					}
+				}
+				utils.AssertEqual(t, c.match, matchRes, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				if matchRes && params != nil {
+					utils.AssertEqual(t, c.params, params, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				} else {
+					utils.AssertEqual(t, true, nil == params, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				}
+			})
+
+		}
+	}
+	benchCase("/api/v1/:param/*", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity", ""}, match: true},
+		{url: "/api/v1/entity/", params: []string{"entity", ""}, match: true},
+		{url: "/api/v1/entity/1", params: []string{"entity", "1"}, match: true},
+		{url: "/api/v", params: nil, match: false},
+		{url: "/api/v2", params: nil, match: false},
+		{url: "/api/v1/", params: nil, match: false},
+	})
+}
+
 // go test -race -run Test_Reset_StartParamPosList
 func Test_Reset_StartParamPosList(t *testing.T) {
 	atomic.StoreUint32(&startParamPosList, uint32(len(paramsPosDummy))-10)
