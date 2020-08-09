@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -37,6 +38,7 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
 	// Data for routing
+	pos         int         // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
 	star        bool        // Path equals '*'
 	root        bool        // Path equals '/'
@@ -84,13 +86,17 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 
 func (app *App) next(ctx *Ctx) bool {
 	// Get stack length
-	lenr := len(app.stack[ctx.methodINT]) - 1
+	tree, ok := app.treeStack[ctx.methodINT][ctx.treePart]
+	if !ok {
+		tree = app.treeStack[ctx.methodINT][""]
+	}
+	lenr := len(tree) - 1
 	// Loop over the route stack starting from previous index
 	for ctx.indexRoute < lenr {
 		// Increment route index
 		ctx.indexRoute++
 		// Get *Route
-		route := app.stack[ctx.methodINT][ctx.indexRoute]
+		route := tree[ctx.indexRoute]
 		// Check if it matches the request path
 		match, values := route.match(ctx.path, ctx.pathOriginal)
 		// No match, next route
@@ -135,9 +141,6 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		app.ReleaseCtx(ctx)
 		return
 	}
-
-	// Prettify path
-	ctx.prettifyPath()
 	// Find match in stack
 	match := app.next(ctx)
 	// Generate ETag if enabled
@@ -335,15 +338,68 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Route {
 func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method indentifier
 	m := methodInt(method)
+	// TODO: improve code
+	if app.treeStack[m] == nil {
+		app.treeStack[m] = make(map[string][]*Route)
+	}
+
+	treePart := ""
+	if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 2 {
+		// TODO: change it for the new route logic
+		treePart = "/" + route.routeParser.segs[0].Const[:2]
+	}
 
 	// prevent identically route registration
-	l := len(app.stack[m])
-	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use {
-		preRoute := app.stack[m][l-1]
+	l := len(app.treeStack[m][treePart])
+	if l > 0 && app.treeStack[m][treePart][l-1].Path == route.Path && route.use == app.treeStack[m][treePart][l-1].use {
+		preRoute := app.treeStack[m][treePart][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
 	} else {
+		// Increment global route position
+		app.mutex.Lock()
+		app.routesCount++
+		app.mutex.Unlock()
+		route.pos = app.routesCount
 		route.Method = method
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)
+
+		// TODO: outsource code
+		app.treeStack[m][treePart] = append(app.treeStack[m][treePart], route)
+
+		if treePart != "" {
+			app.treeStack[m][treePart] = uniqueRouteStack(append(app.treeStack[m][treePart], app.treeStack[m][""]...))
+		} else {
+			for k, v := range app.treeStack[m] {
+				if k != treePart {
+					app.treeStack[m][k] = uniqueRouteStack(append(v, app.treeStack[m][""]...))
+					sort.Slice(app.treeStack[m][k], func(i, j int) bool {
+						return app.treeStack[m][k][i].pos < app.treeStack[m][k][j].pos
+					})
+				}
+			}
+		}
+		sort.Slice(app.treeStack[m][treePart], func(i, j int) bool {
+			return app.treeStack[m][treePart][i].pos < app.treeStack[m][treePart][j].pos
+		})
 	}
+}
+
+func uniqueRouteStack(stack []*Route) []*Route {
+	var unique []*Route
+	m := make(map[*Route]int)
+	for _, v := range stack {
+		if i, ok := m[v]; ok {
+			// Overwrite previous value per requirement in
+			// question to keep last matching value.
+			unique[i] = v
+		} else {
+			// Unique key found. Record position and collect
+			// in result.
+			m[v] = len(unique)
+			unique = append(unique, v)
+		}
+	}
+
+	return unique
 }

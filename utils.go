@@ -51,14 +51,18 @@ func setMethodNotAllowed(ctx *Ctx) {
 		}
 		// Reset stack index
 		ctx.indexRoute = -1
+		tree, ok := ctx.app.treeStack[i][ctx.treePart]
+		if !ok {
+			tree = ctx.app.treeStack[i][""]
+		}
 		// Get stack length
-		lenr := len(ctx.app.stack[i]) - 1
+		lenr := len(tree) - 1
 		//Loop over the route stack starting from previous index
 		for ctx.indexRoute < lenr {
 			// Increment route index
 			ctx.indexRoute++
 			// Get *Route
-			route := ctx.app.stack[i][ctx.indexRoute]
+			route := tree[ctx.indexRoute]
 			// Skip use routes
 			if route.use {
 				continue

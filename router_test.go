@@ -383,7 +383,7 @@ func Benchmark_Router_Next(b *testing.B) {
 		res = app.next(c)
 	}
 	utils.AssertEqual(b, true, res)
-	utils.AssertEqual(b, 31, c.indexRoute)
+	utils.AssertEqual(b, 4, c.indexRoute)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
@@ -493,6 +493,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	c.URI().SetPath("/cr%C3%A9er")
 
 	for n := 0; n < b.N; n++ {
+		c.URI().SetPath("/cr%C3%A9er")
 		app.handler(c)
 	}
 }
@@ -518,23 +519,22 @@ func Benchmark_Router_Github_API(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
 
+	c := &fasthttp.RequestCtx{}
 	var match bool
-	var params []string
 
-	for n := 0; n < b.N; n++ {
-		for i := range routesFixture.TestRoutes {
+	for i := range routesFixture.TestRoutes {
+		c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
 
-			mINT := methodInt(routesFixture.TestRoutes[i].Method)
-			path := routesFixture.TestRoutes[i].Path
-
-			for i := range app.stack[mINT] {
-				match, params = app.stack[mINT][i].match(path, path)
-			}
+		for n := 0; n < b.N; n++ {
+			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
+			ctx := app.AcquireCtx(c)
+			match = app.next(ctx)
+			app.ReleaseCtx(ctx)
 		}
+
+		utils.AssertEqual(b, true, match)
 	}
 
-	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, true, params != nil)
 }
 
 type testRoute struct {
