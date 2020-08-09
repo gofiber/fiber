@@ -162,7 +162,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, ro
 		parameterEndPosition = 0
 	} else if parameterEndPosition == -1 {
 		parameterEndPosition = len(pattern) - 1
-	} else if false == isInCharset(pattern[parameterEndPosition+1], parameterDelimiterChars) {
+	} else if !isInCharset(pattern[parameterEndPosition+1], parameterDelimiterChars) {
 		parameterEndPosition = parameterEndPosition + 1
 	}
 	// cut params part
@@ -230,7 +230,7 @@ func (routeParser *routeParser) getMatch(s string, partialCheck bool) ([][2]int,
 				}
 			}
 			// is optional part or the const part must match with the given string
-			if optionalPart == false && (partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const) {
+			if !optionalPart && (partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const) {
 				return nil, false
 			}
 		} else {
