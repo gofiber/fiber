@@ -50,7 +50,10 @@ type Error struct {
 type App struct {
 	mutex sync.Mutex
 	// Route stack divided by HTTP methods
-	stack [][]*Route
+	stack     [][]*Route
+	treeStack []map[string][]*Route
+	// Amount of registered routes
+	routesCount int
 	// Amount of registered handlers
 	handlerCount int
 	// Ctx pool
@@ -232,7 +235,8 @@ func New(settings ...*Settings) *App {
 	// Create a new app
 	app := &App{
 		// Create router stack
-		stack: make([][]*Route, len(intMethod)),
+		stack:     make([][]*Route, len(intMethod)),
+		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create Ctx pool
 		pool: sync.Pool{
 			New: func() interface{} {
