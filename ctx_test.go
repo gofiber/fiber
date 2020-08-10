@@ -916,6 +916,7 @@ func Test_Ctx_Params(t *testing.T) {
 	app.Get("/test3/*/blafasel/*", func(c *Ctx) {
 		utils.AssertEqual(t, "1111", c.Params("*1"))
 		utils.AssertEqual(t, "2222", c.Params("*2"))
+		utils.AssertEqual(t, "1111", c.Params("*"))
 	})
 	app.Get("/test4/:optional?", func(c *Ctx) {
 		utils.AssertEqual(t, "", c.Params("optional"))

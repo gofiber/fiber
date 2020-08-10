@@ -12,6 +12,93 @@ import (
 	utils "github.com/gofiber/utils"
 )
 
+// go test -race -run Test_Path_parseRoute
+func Test_Path_parseRoute(t *testing.T) {
+	var rp routeParser
+
+	rp = parseRoute("/shop/product/::filter/color::color/size::size")
+	utils.AssertEqual(t, routeParser{
+		segs: []routeSegment{
+			{Const: "/shop/product/:"},
+			{IsParam: true, ParamName: "filter", ComparePart: "/color:", PartCount: 1},
+			{Const: "/color:"},
+			{IsParam: true, ParamName: "color", ComparePart: "/size:", PartCount: 1},
+			{Const: "/size:"},
+			{IsParam: true, ParamName: "size", IsLast: true},
+		},
+		params:        []string{"filter", "color", "size"},
+		wildCardCount: 0,
+		plusCount:     0,
+	}, rp)
+
+	rp = parseRoute("/api/v1/:param/abc/*")
+	utils.AssertEqual(t, routeParser{
+		segs: []routeSegment{
+			{Const: "/api/v1/"},
+			{IsParam: true, ParamName: "param", ComparePart: "/abc", PartCount: 1},
+			{Const: "/abc/"},
+			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, IsLast: true},
+		},
+		params:        []string{"param", "*1"},
+		wildCardCount: 1,
+		plusCount:     0,
+	}, rp)
+
+	rp = parseRoute("/api/*/:param/:param2")
+	utils.AssertEqual(t, routeParser{
+		segs: []routeSegment{
+			{Const: "/api/"},
+			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "/", PartCount: 2},
+			{Const: "/"},
+			{IsParam: true, ParamName: "param", ComparePart: "/", PartCount: 1},
+			{Const: "/"},
+			{IsParam: true, ParamName: "param2", IsLast: true},
+		},
+		params:        []string{"*1", "param", "param2"},
+		wildCardCount: 1,
+		plusCount:     0,
+	}, rp)
+
+	rp = parseRoute("/test:optional?:optional2?")
+	utils.AssertEqual(t, routeParser{
+		segs: []routeSegment{
+			{Const: "/test"},
+			{IsParam: true, ParamName: "optional", IsOptional: true},
+			{IsParam: true, ParamName: "optional2", IsOptional: true, IsLast: true},
+		},
+		params:        []string{"optional", "optional2"},
+		wildCardCount: 0,
+		plusCount:     0,
+	}, rp)
+
+	rp = parseRoute("/config/+.json")
+	utils.AssertEqual(t, routeParser{
+		segs: []routeSegment{
+			{Const: "/config/"},
+			{IsParam: true, ParamName: "+1", IsGreedy: true, IsOptional: false, ComparePart: ".json", PartCount: 0},
+			{Const: ".json", IsLast: true},
+		},
+		params:        []string{"+1"},
+		wildCardCount: 0,
+		plusCount:     1,
+	}, rp)
+
+	rp = parseRoute("/api/:day.:month?.:year?")
+	utils.AssertEqual(t, routeParser{
+		segs: []routeSegment{
+			{Const: "/api/"},
+			{IsParam: true, ParamName: "day", IsOptional: false, ComparePart: ".", PartCount: 2},
+			{Const: "."},
+			{IsParam: true, ParamName: "month", IsOptional: true, ComparePart: ".", PartCount: 1},
+			{Const: "."},
+			{IsParam: true, ParamName: "year", IsOptional: true, IsLast: true},
+		},
+		params:        []string{"day", "month", "year"},
+		wildCardCount: 0,
+		plusCount:     0,
+	}, rp)
+}
+
 // go test -race -run Test_Path_matchParams
 func Test_Path_matchParams(t *testing.T) {
 	t.Parallel()

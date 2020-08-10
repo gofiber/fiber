@@ -30,7 +30,6 @@ type routeSegment struct {
 	ParamName   string
 	ComparePart string // search part to find the end of the parameter
 	PartCount   int    // how often is the search part contained in the non-param segments? -> necessary for greedy search
-	IsWildcard  bool
 	IsGreedy    bool
 	IsOptional  bool
 	IsLast      bool
@@ -48,7 +47,6 @@ const (
 var (
 	// list of possible parameter and segment delimiter
 	// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
-	// TODO '(' ')' delimiters for regex patterns
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
 	// list of chars for the parameter recognising
 	parameterStartChars = []byte{wildcardParam, plusParam, paramStarterChar}
@@ -217,9 +215,8 @@ func (routeParser *routeParser) getMatch(s string, partialCheck bool) ([][2]int,
 	var i, paramsIterator, partLen, paramStart int
 	for index, segment := range routeParser.segs {
 		partLen = len(s)
-		// check parameter
+		// check const segment
 		if !segment.IsParam {
-			// check const segment
 			optionalPart := false
 			i = len(segment.Const)
 			// check if the end of the segment is a optional slash and then if the segement is optional or the last one
@@ -284,29 +281,21 @@ func findParamLen(s string, segments []routeSegment, currIndex int) int {
 	}
 
 	compareSeg := segments[currIndex+1]
-	// check if parameter segments are directly after each other
-	if compareSeg.IsParam {
-		// and if one of them is greedy
-		if !segments[currIndex].IsGreedy && !compareSeg.IsGreedy && len(s) > 0 {
-			// in case the next parameter or the current parameter is not a wildcard its not greedy, we only want one character
-			return 1
-		}
+	// check if parameter segments are directly after each other and if one of them is greedy
+	if compareSeg.IsParam && !segments[currIndex].IsGreedy && !compareSeg.IsGreedy && len(s) > 0 {
+		// in case the next parameter or the current parameter is not a wildcard its not greedy, we only want one character
+		return 1
 	}
-
-	return findParamLenUntilNextConstSeg(s, segments[currIndex])
-}
-
-// findParamLenUntilNextConstSeg Search the parameters until the next constant part
-func findParamLenUntilNextConstSeg(s string, segment routeSegment) int {
+	// Search the parameters until the next constant part
 	// special logic for greedy params
-	if segment.IsGreedy {
-		searchCount := strings.Count(s, segment.ComparePart)
+	if segments[currIndex].IsGreedy {
+		searchCount := strings.Count(s, segments[currIndex].ComparePart)
 		if searchCount > 1 {
-			return findGreedyParamLen(s, searchCount, segment)
+			return findGreedyParamLen(s, searchCount, segments[currIndex])
 		}
 	}
 
-	if constPosition := strings.Index(s, segment.ComparePart); constPosition != -1 {
+	if constPosition := strings.Index(s, segments[currIndex].ComparePart); constPosition != -1 {
 		return constPosition
 	}
 
