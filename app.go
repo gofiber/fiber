@@ -508,6 +508,9 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 
 // Handler returns the server handler.
 func (app *App) Handler() fasthttp.RequestHandler {
+	if !app.initialized {
+		app.init()
+	}
 	return app.handler
 }
 
