@@ -49,6 +49,8 @@ type Error struct {
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
+	// Defines if the application is initialized
+	initialized bool
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// Route stack divided by HTTP methods and route prefixes
@@ -439,8 +441,10 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 // This method does not support the Prefork feature
 // To use Prefork, please use app.Listen()
 func (app *App) Listener(ln net.Listener, tlsconfig ...*tls.Config) error {
-	// Update fiber server settings
-	app.init()
+	// Update server settings
+	if !app.initialized {
+		app.init()
+	}
 	// TLS config
 	if len(tlsconfig) > 0 {
 		ln = tls.NewListener(ln, tlsconfig[0])
@@ -472,8 +476,10 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	if !strings.Contains(addr, ":") {
 		addr = ":" + addr
 	}
-	// Update fiber server settings
-	app.init()
+	// Update server settings
+	if !app.initialized {
+		app.init()
+	}
 	// Start prefork
 	if app.Settings.Prefork {
 		return app.prefork(addr, tlsconfig...)
@@ -543,7 +549,9 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		return nil, err
 	}
 	// Update server settings
-	app.init()
+	if !app.initialized {
+		app.init()
+	}
 	// Create test connection
 	conn := new(testConn)
 	// Write raw http request
@@ -590,6 +598,8 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 
 func (app *App) init() *App {
 	app.mutex.Lock()
+	// Only init once
+	app.initialized = true
 	// Load view engine if provided
 	if app.Settings != nil {
 		// Only load templates if an view engine is specified
