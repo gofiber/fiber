@@ -356,7 +356,7 @@ func (app *App) addRoute(method string, route *Route) {
 	}
 }
 
-// uniqueRouteStack
+// buildTree build the prefix tree from the previously registered routes
 func (app *App) buildTree() *App {
 	// loop all the methods and stacks and create the prefix tree
 	for m := range intMethod {

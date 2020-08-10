@@ -50,7 +50,8 @@ type Error struct {
 type App struct {
 	mutex sync.Mutex
 	// Route stack divided by HTTP methods
-	stack     [][]*Route
+	stack [][]*Route
+	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[string][]*Route
 	// Amount of registered routes
 	routesCount int
