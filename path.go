@@ -16,41 +16,44 @@ import (
 
 // routeParser holds the path segments and param names
 type routeParser struct {
-	segs          []routeSegment
-	params        []string
-	wildCardCount int
-	plusCount     int
+	segs          []routeSegment // the parsed segments of the route
+	params        []string       // that parameter names the parsed route
+	wildCardCount int            // number of wildcard parameters, used internally to give the wildcard parameter its number
+	plusCount     int            // number of plus parameters, used internally to give the plus parameter its number
 }
 
 // paramsSeg holds the segment metadata
 type routeSegment struct {
-	Const string
-
-	IsParam     bool
-	ParamName   string
+	// const information
+	Const string // constant part of the route
+	// parameter information
+	IsParam     bool   // Truth value that indicates whether it is a parameter or a constant part
+	ParamName   string // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
 	ComparePart string // search part to find the end of the parameter
 	PartCount   int    // how often is the search part contained in the non-param segments? -> necessary for greedy search
-	IsGreedy    bool
-	IsOptional  bool
-	IsLast      bool
-	// TODO: add support for optional groups ?
+	IsGreedy    bool   // indicates whether the parameter is greedy or not, is used with wildcard and plus
+	IsOptional  bool   // indicates whether the parameter is optional or not
+	// common information
+	IsLast bool // shows if the segment is the last one for the route
+	// future TODO: add support for optional groups "/abc(/def)?"
 }
 
+// different special routing signs
 const (
-	wildcardParam    byte = '*'
-	plusParam        byte = '+'
-	optionalParam    byte = '?'
-	slashDelimiter   byte = '/'
-	paramStarterChar byte = ':'
+	wildcardParam    byte = '*' // indicates a optional greedy parameter
+	plusParam        byte = '+' // indicates a required greedy parameter
+	optionalParam    byte = '?' // concludes a parameter by name and makes it optional
+	paramStarterChar byte = ':' // start character for a parameter with name
+	slashDelimiter   byte = '/' // separator for the route, unlike the other delimiters this character at the end can be optional
 )
 
+// list of possible parameter and segment delimiter
 var (
-	// list of possible parameter and segment delimiter
 	// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
 	// list of chars for the parameter recognising
 	parameterStartChars = []byte{wildcardParam, plusParam, paramStarterChar}
-	// list of chars at the end of the parameter
+	// list of chars of delimiters and the starting parameter name char
 	parameterDelimiterChars = append([]byte{paramStarterChar}, routeDelimiter...)
 	// list of chars to find the end of a parameter
 	parameterEndChars = append([]byte{optionalParam}, parameterDelimiterChars...)
@@ -96,6 +99,7 @@ func addParameterMetaInfo(segs []routeSegment) []routeSegment {
 	for i := len(segs) - 1; i >= 0; i-- {
 		// set the compare part for the parameter
 		if segs[i].IsParam {
+			// important for finding the end of the parameter
 			segs[i].ComparePart = comparePart
 		} else {
 			comparePart = segs[i].Const
@@ -109,8 +113,9 @@ func addParameterMetaInfo(segs []routeSegment) []routeSegment {
 	for i := 0; i < len(segs); i++ {
 		// check how often the compare part is in the following const parts
 		if segs[i].IsParam && segs[i].ComparePart != "" {
-			for j := i + 1; j < len(segs)-1; j++ {
+			for j := i + 1; j <= len(segs)-1; j++ {
 				if !segs[j].IsParam {
+					// count is important for the greedy match
 					segs[i].PartCount += strings.Count(segs[j].Const, segs[i].ComparePart)
 				}
 			}
@@ -155,6 +160,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, ro
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 	parameterEndPosition := findNextCharsetPosition(pattern[1:], parameterEndChars)
+
 	// handle wildcard end
 	if isWildCard || isPlusParam {
 		parameterEndPosition = 0
@@ -166,7 +172,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, ro
 	// cut params part
 	processedPart := pattern[0 : parameterEndPosition+1]
 
-	paramName := processedPart
+	paramName := utils.GetTrimmedParam(processedPart)
 	// add access iterator to wildcard and plus
 	if isWildCard {
 		routeParser.wildCardCount++
@@ -174,8 +180,6 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, ro
 	} else if isPlusParam {
 		routeParser.plusCount++
 		paramName += strconv.Itoa(routeParser.plusCount)
-	} else {
-		paramName = utils.GetTrimmedParam(paramName)
 	}
 
 	return processedPart, routeSegment{
