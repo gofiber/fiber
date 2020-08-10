@@ -49,8 +49,6 @@ type Error struct {
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
-	// Defines if the application is initialized
-	initialized bool
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// Route stack divided by HTTP methods and route prefixes
@@ -592,11 +590,10 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 }
 
 func (app *App) init() *App {
-	// Initialize only once
-	if app.initialized {
-		return app
-	}
+	// Lock application
 	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
 	// Load view engine if provided
 	if app.Settings != nil {
 		// Only load templates if an view engine is specified
@@ -643,9 +640,6 @@ func (app *App) init() *App {
 	app.server.ReadBufferSize = app.Settings.ReadBufferSize
 	app.server.WriteBufferSize = app.Settings.WriteBufferSize
 	app.buildTree()
-	// App is initialized
-	app.initialized = true
-	app.mutex.Unlock()
 	return app
 }
 
