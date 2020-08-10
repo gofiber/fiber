@@ -38,6 +38,7 @@ type Ctx struct {
 	method       string               // HTTP method
 	methodINT    int                  // HTTP method INT equivalent
 	path         string               // Prettified HTTP path
+	treePath     string               // Path for the search in the tree
 	pathOriginal string               // Original HTTP path
 	values       []string             // Route parameter values
 	err          error                // Contains error if passed to Next
@@ -90,6 +91,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	ctx.methodINT = methodInt(ctx.method)
 	// Attach *fasthttp.RequestCtx to ctx
 	ctx.Fasthttp = fctx
+	// Prettify path
+	ctx.prettifyPath()
 	return ctx
 }
 
@@ -646,6 +649,9 @@ func (ctx *Ctx) OriginalURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (ctx *Ctx) Params(key string, defaultValue ...string) string {
+	if key == "*" || key == "+" {
+		key += "1"
+	}
 	for i := range ctx.route.Params {
 		if len(key) != len(ctx.route.Params[i]) {
 			continue
@@ -1030,5 +1036,10 @@ func (ctx *Ctx) prettifyPath() {
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !ctx.app.Settings.StrictRouting && len(ctx.path) > 1 && ctx.path[len(ctx.path)-1] == '/' {
 		ctx.path = utils.TrimRight(ctx.path, '/')
+	}
+
+	ctx.treePath = ctx.treePath[0:0]
+	if len(ctx.path) >= 3 {
+		ctx.treePath = ctx.path[:3]
 	}
 }

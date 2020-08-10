@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -37,6 +38,7 @@ type Router interface {
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
 	// Data for routing
+	pos         int         // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
 	star        bool        // Path equals '*'
 	root        bool        // Path equals '/'
@@ -84,13 +86,17 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 
 func (app *App) next(ctx *Ctx) bool {
 	// Get stack length
-	lenr := len(app.stack[ctx.methodINT]) - 1
+	tree, ok := app.treeStack[ctx.methodINT][ctx.treePath]
+	if !ok {
+		tree = app.treeStack[ctx.methodINT][""]
+	}
+	lenr := len(tree) - 1
 	// Loop over the route stack starting from previous index
 	for ctx.indexRoute < lenr {
 		// Increment route index
 		ctx.indexRoute++
 		// Get *Route
-		route := app.stack[ctx.methodINT][ctx.indexRoute]
+		route := tree[ctx.indexRoute]
 		// Check if it matches the request path
 		match, values := route.match(ctx.path, ctx.pathOriginal)
 		// No match, next route
@@ -135,9 +141,6 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		app.ReleaseCtx(ctx)
 		return
 	}
-
-	// Prettify path
-	ctx.prettifyPath()
 	// Find match in stack
 	match := app.next(ctx)
 	// Generate ETag if enabled
@@ -342,8 +345,44 @@ func (app *App) addRoute(method string, route *Route) {
 		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
 	} else {
+		// Increment global route position
+		app.mutex.Lock()
+		app.routesCount++
+		app.mutex.Unlock()
+		route.pos = app.routesCount
 		route.Method = method
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)
 	}
+}
+
+// buildTree build the prefix tree from the previously registered routes
+func (app *App) buildTree() *App {
+	// loop all the methods and stacks and create the prefix tree
+	for m := range intMethod {
+		app.treeStack[m] = make(map[string][]*Route)
+		for _, route := range app.stack[m] {
+			treePath := ""
+			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
+				treePath = route.routeParser.segs[0].Const[:3]
+			}
+			// create tree stack
+			app.treeStack[m][treePath] = append(app.treeStack[m][treePath], route)
+		}
+	}
+	// loop the methods and tree stacks and add global stack and sort everything
+	for m := range intMethod {
+		for treePart := range app.treeStack[m] {
+			if treePart != "" {
+				// merge global tree routes in current tree stack
+				app.treeStack[m][treePart] = uniqueRouteStack(append(app.treeStack[m][treePart], app.treeStack[m][""]...))
+			}
+			// sort tree slices with the positions
+			sort.Slice(app.treeStack[m][treePart], func(i, j int) bool {
+				return app.treeStack[m][treePart][i].pos < app.treeStack[m][treePart][j].pos
+			})
+		}
+	}
+
+	return app
 }

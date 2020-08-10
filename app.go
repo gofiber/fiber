@@ -51,6 +51,10 @@ type App struct {
 	mutex sync.Mutex
 	// Route stack divided by HTTP methods
 	stack [][]*Route
+	// Route stack divided by HTTP methods and route prefixes
+	treeStack []map[string][]*Route
+	// Amount of registered routes
+	routesCount int
 	// Amount of registered handlers
 	handlerCount int
 	// Ctx pool
@@ -232,7 +236,8 @@ func New(settings ...*Settings) *App {
 	// Create a new app
 	app := &App{
 		// Create router stack
-		stack: make([][]*Route, len(intMethod)),
+		stack:     make([][]*Route, len(intMethod)),
+		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create Ctx pool
 		pool: sync.Pool{
 			New: func() interface{} {
@@ -630,6 +635,7 @@ func (app *App) init() *App {
 	app.server.IdleTimeout = app.Settings.IdleTimeout
 	app.server.ReadBufferSize = app.Settings.ReadBufferSize
 	app.server.WriteBufferSize = app.Settings.WriteBufferSize
+	app.buildTree()
 	app.mutex.Unlock()
 	return app
 }
