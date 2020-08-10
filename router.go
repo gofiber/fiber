@@ -86,7 +86,7 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 
 func (app *App) next(ctx *Ctx) bool {
 	// Get stack length
-	tree, ok := app.treeStack[ctx.methodINT][ctx.treePart]
+	tree, ok := app.treeStack[ctx.methodINT][ctx.treePath]
 	if !ok {
 		tree = app.treeStack[ctx.methodINT][""]
 	}
@@ -338,21 +338,11 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Route {
 func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method indentifier
 	m := methodInt(method)
-	// TODO: improve code
-	if app.treeStack[m] == nil {
-		app.treeStack[m] = make(map[string][]*Route)
-	}
-
-	treePart := ""
-	if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 2 {
-		// TODO: change it for the new route logic
-		treePart = "/" + route.routeParser.segs[0].Const[:2]
-	}
 
 	// prevent identically route registration
-	l := len(app.treeStack[m][treePart])
-	if l > 0 && app.treeStack[m][treePart][l-1].Path == route.Path && route.use == app.treeStack[m][treePart][l-1].use {
-		preRoute := app.treeStack[m][treePart][l-1]
+	l := len(app.stack[m])
+	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use {
+		preRoute := app.stack[m][l-1]
 		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
 	} else {
 		// Increment global route position
@@ -363,43 +353,36 @@ func (app *App) addRoute(method string, route *Route) {
 		route.Method = method
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)
-
-		// TODO: outsource code
-		app.treeStack[m][treePart] = append(app.treeStack[m][treePart], route)
-
-		if treePart != "" {
-			app.treeStack[m][treePart] = uniqueRouteStack(append(app.treeStack[m][treePart], app.treeStack[m][""]...))
-		} else {
-			for k, v := range app.treeStack[m] {
-				if k != treePart {
-					app.treeStack[m][k] = uniqueRouteStack(append(v, app.treeStack[m][""]...))
-					sort.Slice(app.treeStack[m][k], func(i, j int) bool {
-						return app.treeStack[m][k][i].pos < app.treeStack[m][k][j].pos
-					})
-				}
-			}
-		}
-		sort.Slice(app.treeStack[m][treePart], func(i, j int) bool {
-			return app.treeStack[m][treePart][i].pos < app.treeStack[m][treePart][j].pos
-		})
 	}
 }
 
-func uniqueRouteStack(stack []*Route) []*Route {
-	var unique []*Route
-	m := make(map[*Route]int)
-	for _, v := range stack {
-		if i, ok := m[v]; ok {
-			// Overwrite previous value per requirement in
-			// question to keep last matching value.
-			unique[i] = v
-		} else {
-			// Unique key found. Record position and collect
-			// in result.
-			m[v] = len(unique)
-			unique = append(unique, v)
+// uniqueRouteStack
+func (app *App) buildTree() *App {
+	// loop all the methods and stacks and create the prefix tree
+	for m := range intMethod {
+		app.treeStack[m] = make(map[string][]*Route)
+		for _, route := range app.stack[m] {
+			treePath := ""
+			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
+				treePath = route.routeParser.segs[0].Const[:3]
+			}
+			// create tree stack
+			app.treeStack[m][treePath] = append(app.treeStack[m][treePath], route)
+		}
+	}
+	// loop the methods and tree stacks and add global stack and sort everything
+	for m := range intMethod {
+		for treePart := range app.treeStack[m] {
+			if treePart != "" {
+				// merge global tree routes in current tree stack
+				app.treeStack[m][treePart] = uniqueRouteStack(append(app.treeStack[m][treePart], app.treeStack[m][""]...))
+			}
+			// sort tree slices with the positions
+			sort.Slice(app.treeStack[m][treePart], func(i, j int) bool {
+				return app.treeStack[m][treePart][i].pos < app.treeStack[m][treePart][j].pos
+			})
 		}
 	}
 
-	return unique
+	return app
 }

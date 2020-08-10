@@ -634,6 +634,7 @@ func (app *App) init() *App {
 	app.server.IdleTimeout = app.Settings.IdleTimeout
 	app.server.ReadBufferSize = app.Settings.ReadBufferSize
 	app.server.WriteBufferSize = app.Settings.WriteBufferSize
+	app.buildTree()
 	app.mutex.Unlock()
 	return app
 }

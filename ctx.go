@@ -38,7 +38,7 @@ type Ctx struct {
 	method       string               // HTTP method
 	methodINT    int                  // HTTP method INT equivalent
 	path         string               // Prettified HTTP path
-	treePart     string               //
+	treePath     string               // Path for the search in the tree
 	pathOriginal string               // Original HTTP path
 	values       []string             // Route parameter values
 	err          error                // Contains error if passed to Next
@@ -1038,8 +1038,8 @@ func (ctx *Ctx) prettifyPath() {
 		ctx.path = utils.TrimRight(ctx.path, '/')
 	}
 
-	ctx.treePart = ctx.treePart[0:0]
+	ctx.treePath = ctx.treePath[0:0]
 	if len(ctx.path) >= 3 {
-		ctx.treePart = ctx.path[:3]
+		ctx.treePath = ctx.path[:3]
 	}
 }

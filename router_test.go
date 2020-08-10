@@ -234,8 +234,7 @@ func Test_Router_Handler_SetETag(t *testing.T) {
 	})
 
 	c := &fasthttp.RequestCtx{}
-
-	app.handler(c)
+	app.init().handler(c)
 
 	utils.AssertEqual(t, `"13-1831710635"`, string(c.Response.Header.Peek(HeaderETag)))
 }
@@ -375,6 +374,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	request.URI().SetPath("/user/keys/1337")
 	var res bool
 
+	app.init()
 	c := app.AcquireCtx(request)
 	defer app.ReleaseCtx(c)
 
@@ -518,6 +518,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 func Benchmark_Router_Github_API(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	app.init()
 
 	c := &fasthttp.RequestCtx{}
 	var match bool
