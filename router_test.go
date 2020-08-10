@@ -98,8 +98,8 @@ func Test_Route_Match_Root(t *testing.T) {
 func Test_Route_Match_Parser(t *testing.T) {
 	app := New()
 
-	app.Get("/foo/:Param", func(ctx *Ctx) {
-		ctx.Send(ctx.Params("Param"))
+	app.Get("/foo/:ParamName", func(ctx *Ctx) {
+		ctx.Send(ctx.Params("ParamName"))
 	})
 	app.Get("/Foobar/*", func(ctx *Ctx) {
 		ctx.Send(ctx.Params("*"))
@@ -234,8 +234,7 @@ func Test_Router_Handler_SetETag(t *testing.T) {
 	})
 
 	c := &fasthttp.RequestCtx{}
-
-	app.handler(c)
+	app.init().handler(c)
 
 	utils.AssertEqual(t, `"13-1831710635"`, string(c.Response.Header.Peek(HeaderETag)))
 }
@@ -375,6 +374,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	request.URI().SetPath("/user/keys/1337")
 	var res bool
 
+	app.init()
 	c := app.AcquireCtx(request)
 	defer app.ReleaseCtx(c)
 
@@ -383,7 +383,7 @@ func Benchmark_Router_Next(b *testing.B) {
 		res = app.next(c)
 	}
 	utils.AssertEqual(b, true, res)
-	utils.AssertEqual(b, 31, c.indexRoute)
+	utils.AssertEqual(b, 4, c.indexRoute)
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
@@ -493,6 +493,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	c.URI().SetPath("/cr%C3%A9er")
 
 	for n := 0; n < b.N; n++ {
+		c.URI().SetPath("/cr%C3%A9er")
 		app.handler(c)
 	}
 }
@@ -517,24 +518,24 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 func Benchmark_Router_Github_API(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	app.init()
 
+	c := &fasthttp.RequestCtx{}
 	var match bool
-	var params []string
 
-	for n := 0; n < b.N; n++ {
-		for i := range routesFixture.TestRoutes {
+	for i := range routesFixture.TestRoutes {
+		c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
 
-			mINT := methodInt(routesFixture.TestRoutes[i].Method)
-			path := routesFixture.TestRoutes[i].Path
-
-			for i := range app.stack[mINT] {
-				match, params = app.stack[mINT][i].match(path, path)
-			}
+		for n := 0; n < b.N; n++ {
+			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
+			ctx := app.AcquireCtx(c)
+			match = app.next(ctx)
+			app.ReleaseCtx(ctx)
 		}
+
+		utils.AssertEqual(b, true, match)
 	}
 
-	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, true, params != nil)
 }
 
 type testRoute struct {

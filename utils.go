@@ -51,14 +51,18 @@ func setMethodNotAllowed(ctx *Ctx) {
 		}
 		// Reset stack index
 		ctx.indexRoute = -1
+		tree, ok := ctx.app.treeStack[i][ctx.treePath]
+		if !ok {
+			tree = ctx.app.treeStack[i][""]
+		}
 		// Get stack length
-		lenr := len(ctx.app.stack[i]) - 1
+		lenr := len(tree) - 1
 		//Loop over the route stack starting from previous index
 		for ctx.indexRoute < lenr {
 			// Increment route index
 			ctx.indexRoute++
 			// Get *Route
-			route := ctx.app.stack[i][ctx.indexRoute]
+			route := tree[ctx.indexRoute]
 			// Skip use routes
 			if route.use {
 				continue
@@ -288,6 +292,22 @@ var getStringImmutable = func(b []byte) string {
 var getBytes = utils.GetBytes
 var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
+}
+
+// uniqueRouteStack drop all not unique routes from the slice
+func uniqueRouteStack(stack []*Route) []*Route {
+	var unique []*Route
+	m := make(map[*Route]int)
+	for _, v := range stack {
+		if _, ok := m[v]; !ok {
+			// Unique key found. Record position and collect
+			// in result.
+			m[v] = len(unique)
+			unique = append(unique, v)
+		}
+	}
+
+	return unique
 }
 
 // HTTP methods and their unique INTs

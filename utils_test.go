@@ -211,6 +211,34 @@ func Test_Utils_TestConn_Deadline(t *testing.T) {
 	utils.AssertEqual(t, nil, conn.SetWriteDeadline(time.Time{}))
 }
 
+func Test_Utils_UniqueRouteStack(t *testing.T) {
+	route1 := &Route{}
+	route2 := &Route{}
+	route3 := &Route{}
+	utils.AssertEqual(
+		t,
+		[]*Route{
+			route1,
+			route2,
+			route3,
+		},
+		uniqueRouteStack([]*Route{
+			route1,
+			route1,
+			route1,
+			route2,
+			route2,
+			route2,
+			route3,
+			route3,
+			route3,
+			route1,
+			route2,
+			route3,
+		}),
+	)
+}
+
 func Test_Utils_IsNoCache(t *testing.T) {
 	testCases := []struct {
 		string
