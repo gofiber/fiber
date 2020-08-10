@@ -439,7 +439,7 @@ func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
 // This method does not support the Prefork feature
 // To use Prefork, please use app.Listen()
 func (app *App) Listener(ln net.Listener, tlsconfig ...*tls.Config) error {
-	// Update fiber server settings
+	// Update server settings
 	app.init()
 	// TLS config
 	if len(tlsconfig) > 0 {
@@ -472,7 +472,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 	if !strings.Contains(addr, ":") {
 		addr = ":" + addr
 	}
-	// Update fiber server settings
+	// Update server settings
 	app.init()
 	// Start prefork
 	if app.Settings.Prefork {
@@ -502,6 +502,7 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 
 // Handler returns the server handler.
 func (app *App) Handler() fasthttp.RequestHandler {
+	app.init()
 	return app.handler
 }
 
@@ -589,7 +590,10 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 }
 
 func (app *App) init() *App {
+	// Lock application
 	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
 	// Load view engine if provided
 	if app.Settings != nil {
 		// Only load templates if an view engine is specified
@@ -636,7 +640,6 @@ func (app *App) init() *App {
 	app.server.ReadBufferSize = app.Settings.ReadBufferSize
 	app.server.WriteBufferSize = app.Settings.WriteBufferSize
 	app.buildTree()
-	app.mutex.Unlock()
 	return app
 }
 
