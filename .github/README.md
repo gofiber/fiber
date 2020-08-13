@@ -533,6 +533,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [解析Gofiber路由管理](https://zhuanlan.zhihu.com/p/152494502) - _08 July 2020_
 - [📺 Introduction to Fiber - An Express-inspired web framework](https://youtu.be/MfFi4Gt-tos) - _25 July 2020_
 - [📺 How to use the Go Fiber JWT middleware](https://youtu.be/ejEizICXm9w) - _30 July 2020_
+- [📺 Introduction to SQLC and how to use it with Fiber](https://youtu.be/xIqulnDQwp0) - _11 Aug 2020_
 
 ## 👍 Contribute
 
