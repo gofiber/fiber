@@ -378,7 +378,7 @@ func (c *Ctx) Format(body interface{}) error {
 	case "xml":
 		raw, err := xml.Marshal(body)
 		if err != nil {
-			return errors.New(fmt.Sprintf("error serializing xml: %v", body))
+			return fmt.Errorf("error serializing xml: %v", body)
 		}
 		c.fasthttp.Response.SetBody(raw)
 		return nil

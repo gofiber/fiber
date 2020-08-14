@@ -6,7 +6,7 @@ import (
 	"github.com/gofiber/fiber"
 )
 
-// Recover will recover from panics and passes them to the global error handler
+// New will create a recover handler that recovers from panics and passes them to the global error handler
 func New() fiber.Handler {
 	return func(c *fiber.Ctx) (err error) {
 		defer func() {
