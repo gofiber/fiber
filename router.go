@@ -120,8 +120,8 @@ func (app *App) next(c *Ctx) bool {
 		return true
 	}
 	// If c.Next() does not match, return 404
-	c.SendStatus(StatusNotFound)
-	c.SendString("Cannot " + c.method + " " + c.pathOriginal)
+	_ = c.SendStatus(StatusNotFound)
+	_ = c.SendString("Cannot " + c.method + " " + c.pathOriginal)
 
 	// Scan stack for other methods
 	// Moved from app.handler
@@ -139,7 +139,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 
 	// handle invalid http method directly
 	if c.methodINT == -1 {
-		c.Status(StatusBadRequest).SendString("Invalid http method")
+		_ = c.Status(StatusBadRequest).SendString("Invalid http method")
 		app.ReleaseCtx(c)
 		return
 	}

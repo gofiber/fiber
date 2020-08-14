@@ -561,7 +561,7 @@ func (app *App) init() *App {
 				} else {
 					err = ErrBadRequest
 				}
-				app.errorHandler(c, err)
+				_ = app.errorHandler(c, err)
 				app.ReleaseCtx(c)
 			},
 		}

@@ -23,6 +23,7 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
+/* #nosec */
 // lnMetadata will close the listener and return the addr and tls config
 func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
 	// Get addr
@@ -187,7 +188,7 @@ func setETag(ctx *Ctx, weak bool) {
 		// Check if server's ETag is weak
 		if clientEtag[2:] == etag || clientEtag[2:] == etag[2:] {
 			// W/1 == 1 || W/1 == W/1
-			ctx.SendStatus(StatusNotModified)
+			_ = ctx.SendStatus(StatusNotModified)
 			ctx.fasthttp.ResetBody()
 			return
 		}
@@ -197,7 +198,7 @@ func setETag(ctx *Ctx, weak bool) {
 	}
 	if strings.Contains(clientEtag, etag) {
 		// 1 == 1
-		ctx.SendStatus(StatusNotModified)
+		_ = ctx.SendStatus(StatusNotModified)
 		ctx.fasthttp.ResetBody()
 		return
 	}

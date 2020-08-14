@@ -541,9 +541,7 @@ func (c *Ctx) JSONP(data interface{}, callback ...string) error {
 
 	c.Set(HeaderXContentTypeOptions, "nosniff")
 	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
-	c.SendString(result)
-
-	return nil
+	return c.SendString(result)
 }
 
 // Links joins the links followed by the property to populate the response's Link HTTP header field.
@@ -898,9 +896,10 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 // it sets the correct status message in the body.
 func (c *Ctx) SendStatus(status int) error {
 	c.Status(status)
+
 	// Only set status body when there is no response body
 	if len(c.fasthttp.Response.Body()) == 0 {
-		c.SendString(utils.StatusMessage(status))
+		return c.SendString(utils.StatusMessage(status))
 	}
 
 	return nil
