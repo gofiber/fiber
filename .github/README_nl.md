@@ -87,7 +87,7 @@ func main() {
   app := fiber.New()
 
   app.Get("/", func(c *fiber.Ctx) error {
-    return c.Send("Hello, World 👋!")
+    return c.SendString("Hello, World 👋!")
   })
 
   log.Fatal(app.Listen(3000))
@@ -153,31 +153,31 @@ func main() {
   // GET /john
   app.Get("/:name", func(c *fiber.Ctx) error {
     msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
-    return c.Send(msg) // => Hello john 👋!
+    return c.SendString(msg) // => Hello john 👋!
   })
 
   // GET /john/75
   app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
     msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
-    return c.Send(msg) // => 👴 john is 75 years old
+    return c.SendString(msg) // => 👴 john is 75 years old
   })
 
   // GET /dictionary.txt
   app.Get("/:file.:ext", func(c *fiber.Ctx) error {
     msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
-    return c.Send(msg) // => 📃 dictionary.txt
+    return c.SendString(msg) // => 📃 dictionary.txt
   })
 
   // GET /flights/LAX-SFO
   app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
     msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
-    return c.Send(msg) // => 💸 From: LAX, To: SFO
+    return c.SendString(msg) // => 💸 From: LAX, To: SFO
   })
 
   // GET /api/register
   app.Get("/api/*", func(c *fiber.Ctx) error {
     msg := fmt.Sprintf("✋ %s", c.Params("*"))
-    return c.Send(msg) // => ✋ /api/register
+    return c.SendString(msg) // => ✋ /api/register
   })
 
   log.Fatal(app.Listen(3000))
@@ -226,7 +226,7 @@ func main() {
   // GET /api/register
   app.Get("/api/list", func(c *fiber.Ctx) error {
     fmt.Println("🥉 Last handler")
-    return c.Send("Hello, World 👋!")
+    return c.SendString("Hello, World 👋!")
   })
 
   log.Fatal(app.Listen(3000))
@@ -256,7 +256,7 @@ import (
 
 func main() {
   // You can setup Views engine before initiation app:
-  app := fiber.New(&fiber.Settings{
+  app := fiber.New(fiber.Config{
     Views: pug.New("./views", ".pug"),
   })
 
@@ -369,11 +369,11 @@ func main() {
   app.Static("./public")
 
   app.Get("/demo", func(c *fiber.Ctx) error {
-    return c.Send("This is a demo!")
+    return c.SendString("This is a demo!")
   })
 
   app.Post("/register", func(c *fiber.Ctx) error {
-    return c.Send("Welcome!")
+    return c.SendString("Welcome!")
   })
 
   // Last middleware to match anything

@@ -231,7 +231,7 @@ var defaultErrHandler = func(c *Ctx, err error) error {
 // New creates a new Fiber named instance.
 //  myApp := app.New()
 // You can pass an optional settings by passing a *Settings struct:
-//  myApp := app.New(&fiber.Settings{
+//  myApp := app.New(fiber.Config{
 //      Prefork: true,
 //      ServerHeader: "Fiber",
 //  })
