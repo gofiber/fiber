@@ -18,7 +18,7 @@ func Test_Recover(t *testing.T) {
 		panic("Hi, I'm an error!")
 	})
 
-	app.Errors(func(c *fiber.Ctx, err error) error {
+	app.Use(func(c *fiber.Ctx, err error) error {
 		utils.AssertEqual(t, "Hi, I'm an error!", err.Error())
 		return c.SendStatus(500)
 	})
