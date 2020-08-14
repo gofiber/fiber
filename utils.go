@@ -36,7 +36,7 @@ func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
 
 	// Wait for the listener to be 100% closed
 	for {
-		conn, err := net.DialTimeout("tcp4", addr, 1*time.Second)
+		conn, err := net.DialTimeout("tcp4", addr, 100*time.Second)
 		if err != nil {
 			break
 		}
@@ -49,6 +49,8 @@ func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
 
 	// Get listener type
 	pointer := reflect.ValueOf(ln)
+
+	fmt.Println(pointer.String())
 
 	// Is it a tls.listener?
 	if pointer.String() == "<*tls.listener Value>" {
