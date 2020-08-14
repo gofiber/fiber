@@ -31,6 +31,9 @@ func (grp *Group) Use(args ...interface{}) Router {
 			path = arg
 		case Handler:
 			handlers = append(handlers, arg)
+		case ErrorHandler:
+			grp.app.errorHandler = arg
+			return grp
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}

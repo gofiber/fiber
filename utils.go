@@ -6,19 +6,68 @@ package fiber
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"hash/crc32"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
+	"unsafe"
 
 	utils "github.com/gofiber/utils"
 	bytebufferpool "github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
+
+// lnMetadata will close the listener and return the addr and tls config
+func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
+	// Get addr
+	addr = ln.Addr().String()
+
+	// Close listener
+	if err := ln.Close(); err != nil {
+		return
+	}
+
+	// Wait for the listener to be 100% closed
+	for {
+		conn, err := net.DialTimeout("tcp4", addr, 1*time.Second)
+		if err != nil {
+			break
+		}
+		if conn == nil {
+			break
+		}
+		_ = conn.Close()
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Get listener type
+	pointer := reflect.ValueOf(ln)
+
+	// Is it a tls.listener?
+	if pointer.String() == "<*tls.listener Value>" {
+		// Copy value from pointer
+		if val := reflect.Indirect(pointer); val.Type() != nil {
+			// Get private field from value
+			if field := val.FieldByName("config"); field.Type() != nil {
+				// Copy value from pointer field (unsafe)
+				if newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())); newval.Type() != nil {
+					// Get element from pointer
+					if elem := newval.Elem(); elem.Type() != nil {
+						// Cast value to *tls.Config
+						cfg = elem.Interface().(*tls.Config)
+					}
+				}
+			}
+		}
+	}
+	return
+}
 
 // readContent opens a named file and read content from it
 func readContent(rf io.ReaderFrom, name string) (n int64, err error) {
@@ -86,6 +135,22 @@ func setMethodNotAllowed(ctx *Ctx) {
 	}
 }
 
+// uniqueRouteStack drop all not unique routes from the slice
+func uniqueRouteStack(stack []*Route) []*Route {
+	var unique []*Route
+	m := make(map[*Route]int)
+	for _, v := range stack {
+		if _, ok := m[v]; !ok {
+			// Unique key found. Record position and collect
+			// in result.
+			m[v] = len(unique)
+			unique = append(unique, v)
+		}
+	}
+
+	return unique
+}
+
 // defaultString returns the value or a default value if it is set
 func defaultString(value string, defaultValue []string) string {
 	if len(value) == 0 && len(defaultValue) > 0 {
@@ -97,10 +162,10 @@ func defaultString(value string, defaultValue []string) string {
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses
-	if ctx.Fasthttp.Response.StatusCode() != StatusOK {
+	if ctx.fasthttp.Response.StatusCode() != StatusOK {
 		return
 	}
-	body := ctx.Fasthttp.Response.Body()
+	body := ctx.fasthttp.Response.Body()
 	// Skips ETag if no response body is present
 	if len(body) <= 0 {
 		return
@@ -123,7 +188,7 @@ func setETag(ctx *Ctx, weak bool) {
 		if clientEtag[2:] == etag || clientEtag[2:] == etag[2:] {
 			// W/1 == 1 || W/1 == W/1
 			ctx.SendStatus(StatusNotModified)
-			ctx.Fasthttp.ResetBody()
+			ctx.fasthttp.ResetBody()
 			return
 		}
 		// W/1 != W/2 || W/1 != 2
@@ -133,7 +198,7 @@ func setETag(ctx *Ctx, weak bool) {
 	if strings.Contains(clientEtag, etag) {
 		// 1 == 1
 		ctx.SendStatus(StatusNotModified)
-		ctx.Fasthttp.ResetBody()
+		ctx.fasthttp.ResetBody()
 		return
 	}
 	// 1 != 2
@@ -292,22 +357,6 @@ var getStringImmutable = func(b []byte) string {
 var getBytes = utils.GetBytes
 var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
-}
-
-// uniqueRouteStack drop all not unique routes from the slice
-func uniqueRouteStack(stack []*Route) []*Route {
-	var unique []*Route
-	m := make(map[*Route]int)
-	for _, v := range stack {
-		if _, ok := m[v]; !ok {
-			// Unique key found. Record position and collect
-			// in result.
-			m[v] = len(unique)
-			unique = append(unique, v)
-		}
-	}
-
-	return unique
 }
 
 // HTTP methods and their unique INTs

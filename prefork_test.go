@@ -65,25 +65,6 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	utils.AssertEqual(t, false, err == nil)
 }
 
-func Test_App_Prefork_TCP6_Addr(t *testing.T) {
-	// Reset test var
-	testPreforkMaster = true
-
-	app := New()
-	app.Settings.Prefork = true
-	app.Settings.DisableStartupMessage = true
-
-	app.init()
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	err := app.Listen("[::1]:3200")
-	utils.AssertEqual(t, true, err != nil)
-}
-
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
 	defer os.Setenv(envPreforkChildKey, "")

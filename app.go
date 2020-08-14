@@ -11,7 +11,6 @@ package fiber
 
 import (
 	"bufio"
-	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -20,7 +19,6 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"text/tabwriter"
 	"time"
@@ -32,13 +30,17 @@ import (
 )
 
 // Version of current package
-const Version = "1.13.3"
+const Version = "1.14.0"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
 // Handler defines a function to serve HTTP requests.
-type Handler = func(*Ctx)
+type Handler = func(*Ctx) error
+
+// ErrorHandler defines a function that will process all errors
+// returned from any handlers in the stack
+type ErrorHandler = func(*Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
@@ -61,12 +63,14 @@ type App struct {
 	pool sync.Pool
 	// Fasthttp server
 	server *fasthttp.Server
-	// App settings
-	Settings *Settings `json:"settings"`
+	// Global error handler
+	errorHandler ErrorHandler
+	// App config
+	config Config
 }
 
 // Settings is a struct holding the server settings.
-type Settings struct {
+type Config struct {
 	// ErrorHandler is executed when you pass an error in the Next(err) method.
 	// This function is also executed when middleware.Recover() catches a panic
 	// Default: func(ctx *Ctx, err error) {
@@ -77,7 +81,6 @@ type Settings struct {
 	// 	ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	// 	ctx.Status(code).SendString(err.Error())
 	// }
-	ErrorHandler func(*Ctx, error) `json:"-"`
 
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
@@ -216,13 +219,13 @@ const (
 	defaultCompressedFileSuffix = ".fiber.gz"
 )
 
-var defaultErrorHandler = func(ctx *Ctx, err error) {
+var defaultErrHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {
 		code = e.Code
 	}
-	ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-	ctx.Status(code).SendString(err.Error())
+	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+	return c.Status(code).SendString(err.Error())
 }
 
 // New creates a new Fiber named instance.
@@ -232,7 +235,7 @@ var defaultErrorHandler = func(ctx *Ctx, err error) {
 //      Prefork: true,
 //      ServerHeader: "Fiber",
 //  })
-func New(settings ...*Settings) *App {
+func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
 		// Create router stack
@@ -244,37 +247,32 @@ func New(settings ...*Settings) *App {
 				return new(Ctx)
 			},
 		},
-		// Set settings
-		Settings: &Settings{},
+		// Create config
+		config: Config{},
 	}
-
-	// Overwrite settings if provided
-	if len(settings) > 0 {
-		app.Settings = settings[0]
+	// Override config if provided
+	if len(config) > 0 {
+		app.config = config[0]
 	}
-
-	if app.Settings.BodyLimit <= 0 {
-		app.Settings.BodyLimit = defaultBodyLimit
+	// Override default values
+	if app.config.BodyLimit <= 0 {
+		app.config.BodyLimit = defaultBodyLimit
 	}
-	if app.Settings.Concurrency <= 0 {
-		app.Settings.Concurrency = defaultConcurrency
+	if app.config.Concurrency <= 0 {
+		app.config.Concurrency = defaultConcurrency
 	}
-	if app.Settings.ReadBufferSize <= 0 {
-		app.Settings.ReadBufferSize = defaultReadBufferSize
+	if app.config.ReadBufferSize <= 0 {
+		app.config.ReadBufferSize = defaultReadBufferSize
 	}
-	if app.Settings.WriteBufferSize <= 0 {
-		app.Settings.WriteBufferSize = defaultWriteBufferSize
+	if app.config.WriteBufferSize <= 0 {
+		app.config.WriteBufferSize = defaultWriteBufferSize
 	}
-	if app.Settings.CompressedFileSuffix == "" {
-		app.Settings.CompressedFileSuffix = defaultCompressedFileSuffix
+	if app.config.CompressedFileSuffix == "" {
+		app.config.CompressedFileSuffix = defaultCompressedFileSuffix
 	}
-	if app.Settings.ErrorHandler == nil {
-		app.Settings.ErrorHandler = defaultErrorHandler
-	}
-	if app.Settings.Immutable {
+	if app.config.Immutable {
 		getBytes, getString = getBytesImmutable, getStringImmutable
 	}
-
 	// Return app
 	return app
 }
@@ -296,6 +294,9 @@ func (app *App) Use(args ...interface{}) Router {
 			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
+		case ErrorHandler:
+			app.errorHandler = arg
+			return app
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
@@ -404,50 +405,18 @@ func NewError(code int, message ...string) *Error {
 	return e
 }
 
-// Routes returns all registered routes
-//  for _, r := range app.Routes() {
-//  	fmt.Printf("%s\t%s\n", r.Method, r.Path)
-//  }
-func (app *App) Routes() []*Route {
-	fmt.Println("routes is deprecated since v1.13.2, please use `app.Stack()` to access the raw router stack")
-	routes := make([]*Route, 0)
-	for m := range app.stack {
-	stackLoop:
-		for r := range app.stack[m] {
-			// Don't duplicate USE routesCount
-			if app.stack[m][r].use {
-				for i := range routes {
-					if routes[i].use && routes[i].Path == app.stack[m][r].Path {
-						continue stackLoop
-					}
-				}
-			}
-			routes = append(routes, app.stack[m][r])
-		}
-	}
-	return routes
-}
-
-// Serve is deprecated, please use app.Listener()
-func (app *App) Serve(ln net.Listener, tlsconfig ...*tls.Config) error {
-	fmt.Println("serve: app.Serve() is deprecated since v1.12.5, please use app.Listener()")
-	return app.Listener(ln, tlsconfig...)
-}
-
 // Listener can be used to pass a custom listener.
-// You can pass an optional *tls.Config to enable TLS.
-// This method does not support the Prefork feature
-// To use Prefork, please use app.Listen()
-func (app *App) Listener(ln net.Listener, tlsconfig ...*tls.Config) error {
-	// Update server settings
+func (app *App) Listener(ln net.Listener) error {
+	// Update fiber server settings
 	app.init()
-	// TLS config
-	if len(tlsconfig) > 0 {
-		ln = tls.NewListener(ln, tlsconfig[0])
+	// Prefork is supported for custom listeners
+	if app.config.Prefork {
+		addr, tls := lnMetadata(ln)
+		return app.prefork(addr, tls)
 	}
 	// Print startup message
-	if !app.Settings.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), len(tlsconfig) > 0, "")
+	if !app.config.DisableStartupMessage {
+		app.startupMessage(ln.Addr().String(), false, "")
 	}
 	return app.server.Serve(ln)
 }
@@ -455,46 +424,25 @@ func (app *App) Listener(ln net.Listener, tlsconfig ...*tls.Config) error {
 // Listen serves HTTP requests from the given addr or port.
 // You can pass an optional *tls.Config to enable TLS.
 //
-//  app.Listen(8080)
-//  app.Listen("8080")
 //  app.Listen(":8080")
 //  app.Listen("127.0.0.1:8080")
-func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
-	// Convert address to string
-	addr, ok := address.(string)
-	if !ok {
-		port, ok := address.(int)
-		if !ok {
-			return fmt.Errorf("listen: host must be an `int` port or `string` address")
-		}
-		addr = strconv.Itoa(port)
-	}
-	if !strings.Contains(addr, ":") {
-		addr = ":" + addr
-	}
-	// Update server settings
+func (app *App) Listen(port int) error {
+	// Convert port to string
+	addr := ":" + strconv.Itoa(port)
+	// Update fiber server settings
 	app.init()
 	// Start prefork
-	if app.Settings.Prefork {
-		return app.prefork(addr, tlsconfig...)
-	}
-	// Set correct network protocol
-	network := "tcp4"
-	if isIPv6(addr) {
-		network = "tcp6"
+	if app.config.Prefork {
+		return app.prefork(addr)
 	}
 	// Setup listener
-	ln, err := net.Listen(network, addr)
+	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
-	// Add TLS config if provided
-	if len(tlsconfig) > 0 {
-		ln = tls.NewListener(ln, tlsconfig[0])
-	}
 	// Print startup message
-	if !app.Settings.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), len(tlsconfig) > 0, "")
+	if !app.config.DisableStartupMessage {
+		app.startupMessage(ln.Addr().String(), false, "")
 	}
 	// Start listening
 	return app.server.Serve(ln)
@@ -502,7 +450,6 @@ func (app *App) Listen(address interface{}, tlsconfig ...*tls.Config) error {
 
 // Handler returns the server handler.
 func (app *App) Handler() fasthttp.RequestHandler {
-	app.init()
 	return app.handler
 }
 
@@ -590,56 +537,56 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 }
 
 func (app *App) init() *App {
-	// Lock application
 	app.mutex.Lock()
-	defer app.mutex.Unlock()
 
-	// Load view engine if provided
-	if app.Settings != nil {
-		// Only load templates if an view engine is specified
-		if app.Settings.Views != nil {
-			if err := app.Settings.Views.Load(); err != nil {
-				fmt.Printf("views: %v\n", err)
-			}
+	// Only load templates if an view engine is specified
+	if app.config.Views != nil {
+		if err := app.config.Views.Load(); err != nil {
+			fmt.Printf("views: %v\n", err)
 		}
 	}
+
 	if app.server == nil {
 		app.server = &fasthttp.Server{
 			Logger:       &disableLogger{},
 			LogAllErrors: false,
 			ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
-				ctx := app.AcquireCtx(fctx)
+				c := app.AcquireCtx(fctx)
 				if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
-					ctx.err = ErrRequestHeaderFieldsTooLarge
+					err = ErrRequestHeaderFieldsTooLarge
 				} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
-					ctx.err = ErrRequestTimeout
+					err = ErrRequestTimeout
 				} else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
-					ctx.err = ErrRequestEntityTooLarge
+					err = ErrRequestEntityTooLarge
 				} else {
-					ctx.err = ErrBadRequest
+					err = ErrBadRequest
 				}
-				app.Settings.ErrorHandler(ctx, ctx.err)
-				app.ReleaseCtx(ctx)
+				app.errorHandler(c, err)
+				app.ReleaseCtx(c)
 			},
 		}
 	}
 	if app.server.Handler == nil {
 		app.server.Handler = app.handler
 	}
-	app.server.Name = app.Settings.ServerHeader
-	app.server.Concurrency = app.Settings.Concurrency
-	app.server.NoDefaultDate = app.Settings.DisableDefaultDate
-	app.server.NoDefaultContentType = app.Settings.DisableDefaultContentType
-	app.server.DisableHeaderNamesNormalizing = app.Settings.DisableHeaderNormalizing
-	app.server.DisableKeepalive = app.Settings.DisableKeepalive
-	app.server.MaxRequestBodySize = app.Settings.BodyLimit
-	app.server.NoDefaultServerHeader = app.Settings.ServerHeader == ""
-	app.server.ReadTimeout = app.Settings.ReadTimeout
-	app.server.WriteTimeout = app.Settings.WriteTimeout
-	app.server.IdleTimeout = app.Settings.IdleTimeout
-	app.server.ReadBufferSize = app.Settings.ReadBufferSize
-	app.server.WriteBufferSize = app.Settings.WriteBufferSize
+	if app.errorHandler == nil {
+		app.errorHandler = defaultErrHandler
+	}
+	app.server.Name = app.config.ServerHeader
+	app.server.Concurrency = app.config.Concurrency
+	app.server.NoDefaultDate = app.config.DisableDefaultDate
+	app.server.NoDefaultContentType = app.config.DisableDefaultContentType
+	app.server.DisableHeaderNamesNormalizing = app.config.DisableHeaderNormalizing
+	app.server.DisableKeepalive = app.config.DisableKeepalive
+	app.server.MaxRequestBodySize = app.config.BodyLimit
+	app.server.NoDefaultServerHeader = app.config.ServerHeader == ""
+	app.server.ReadTimeout = app.config.ReadTimeout
+	app.server.WriteTimeout = app.config.WriteTimeout
+	app.server.IdleTimeout = app.config.IdleTimeout
+	app.server.ReadBufferSize = app.config.ReadBufferSize
+	app.server.WriteBufferSize = app.config.WriteBufferSize
 	app.buildTree()
+	app.mutex.Unlock()
 	return app
 }
 

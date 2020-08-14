@@ -86,11 +86,11 @@ import "github.com/gofiber/fiber"
 func main() {
   app := fiber.New()
 
-  app.Get("/", func(c *fiber.Ctx) {
-    c.Send("Hello, World 👋!")
+  app.Get("/", func(c *fiber.Ctx) error {
+    return c.Send("Hello, World 👋!")
   })
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(3000))
 }
 ```
 
@@ -149,36 +149,36 @@ func main() {
   app := fiber.New()
 
   // GET /john
-  app.Get("/:name", func(c *fiber.Ctx) {
+  app.Get("/:name", func(c *fiber.Ctx) error {
     msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
-    c.Send(msg) // => Hello john 👋!
+    return c.Send(msg) // => Hello john 👋!
   })
 
   // GET /john/75
-  app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) {
+  app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
     msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
-    c.Send(msg) // => 👴 john is 75 years old
+    return c.Send(msg) // => 👴 john is 75 years old
   })
 
   // GET /dictionary.txt
-  app.Get("/:file.:ext", func(c *fiber.Ctx) {
+  app.Get("/:file.:ext", func(c *fiber.Ctx) error {
     msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
-    c.Send(msg) // => 📃 dictionary.txt
+    return c.Send(msg) // => 📃 dictionary.txt
   })
 
   // GET /flights/LAX-SFO
-  app.Get("/flights/:from-:to", func(c *fiber.Ctx) {
+  app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
     msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
-    c.Send(msg) // => 💸 From: LAX, To: SFO
+    return c.Send(msg) // => 💸 From: LAX, To: SFO
   })
 
   // GET /api/register
-  app.Get("/api/*", func(c *fiber.Ctx) {
+  app.Get("/api/*", func(c *fiber.Ctx) error {
     msg := fmt.Sprintf("✋ %s", c.Params("*"))
-    c.Send(msg) // => ✋ /api/register
+    return c.Send(msg) // => ✋ /api/register
   })
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(3000))
 }
 ```
 
@@ -199,7 +199,7 @@ func main() {
   app.Static("*", "./public/index.html")
   // => http://localhost:3000/any/path/shows/index/html
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(3000))
 }
 ```
 
@@ -210,24 +210,24 @@ func main() {
   app := fiber.New()
 
   // Match any route
-  app.Use(func(c *fiber.Ctx) {
+  app.Use(func(c *fiber.Ctx) error {
     fmt.Println("🥇 First handler")
-    c.Next()
+    return c.Next()
   })
 
   // Match all routes starting with /api
-  app.Use("/api", func(c *fiber.Ctx) {
+  app.Use("/api", func(c *fiber.Ctx) error {
     fmt.Println("🥈 Second handler")
-    c.Next()
+    return c.Next()
   })
 
   // GET /api/register
-  app.Get("/api/list", func(c *fiber.Ctx) {
+  app.Get("/api/list", func(c *fiber.Ctx) error {
     fmt.Println("🥉 Last handler")
-    c.Send("Hello, World 👋!")
+    return c.Send("Hello, World 👋!")
   })
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(3000))
 }
 ```
 
@@ -260,8 +260,8 @@ func main() {
   app.Settings.Views = pug.New("./views", ".pug"),
 
   // 現在，你可以像這樣呼叫樣板 `./views/home.pug`:
-  app.Get("/", func(c *fiber.Ctx) {
-    c.Render("home", fiber.Map{
+  app.Get("/", func(c *fiber.Ctx) error {
+    return c.Render("home", fiber.Map{
       "title": "首頁",
       "year":  1999,
     })
@@ -324,7 +324,7 @@ func main() {
     Output: io.Writer,
   }))
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(3000))
 }
 
 ### 跨網域資源共享 (CORS)
@@ -343,7 +343,7 @@ func main() {
     // 預設的CORS
     app.Use(cors.New())
 
-    app.Listen(3000)
+    log.Fatal(app.Listen(3000))
 }
 ```
 
@@ -363,21 +363,21 @@ func main() {
 
   app.Static("./public")
 
-  app.Get("/demo", func(c *fiber.Ctx) {
-    c.Send("This is a demo!")
+  app.Get("/demo", func(c *fiber.Ctx) error {
+    return c.Send("This is a demo!")
   })
 
-  app.Post("/register", func(c *fiber.Ctx) {
-    c.Send("Welcome!")
+  app.Post("/register", func(c *fiber.Ctx) error {
+    return c.Send("Welcome!")
   })
 
   // 用最後一個中介器攔截剩餘的case
-  app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404)
+  app.Use(func(c *fiber.Ctx) error {
+    return c.SendStatus(404)
     // => 404 "Not Found"
   })
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(3000))
 }
 ```
 
@@ -394,20 +394,20 @@ type User struct {
 func main() {
   app := fiber.New()
 
-  app.Get("/user", func(c *fiber.Ctx) {
-    c.JSON(&User{"John", 20})
+  app.Get("/user", func(c *fiber.Ctx) error {
+    return c.JSON(&User{"John", 20})
     // => {"name":"John", "age":20}
   })
 
-  app.Get("/json", func(c *fiber.Ctx) {
-    c.JSON(fiber.Map{
+  app.Get("/json", func(c *fiber.Ctx) error {
+    return c.JSON(fiber.Map{
       "success": true,
       "message": "Hi John!",
     })
     // => {"success":true, "message":"Hi John!"}
   })
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(3000))
 }
 ```
 
@@ -440,7 +440,7 @@ func main() {
     }
   }))
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(3000))
   // ws://localhost:3000/ws
 }
 ```
@@ -460,11 +460,12 @@ func main() {
 
   app.Use(middleware.Recover())
 
-  app.Get("/", func(c *fiber.Ctx) {
+  app.Get("/", func(c *fiber.Ctx) error {
     panic("normally this would crash your app")
+    return nil
   })
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(3000))
 }
 ```
 </details>
