@@ -84,71 +84,74 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 	return false, values
 }
 
-func (app *App) next(ctx *Ctx) bool {
+func (app *App) next(c *Ctx) bool {
 	// Get stack length
-	tree, ok := app.treeStack[ctx.methodINT][ctx.treePath]
+	tree, ok := app.treeStack[c.methodINT][c.treePath]
 	if !ok {
-		tree = app.treeStack[ctx.methodINT][""]
+		tree = app.treeStack[c.methodINT][""]
 	}
 	lenr := len(tree) - 1
 	// Loop over the route stack starting from previous index
-	for ctx.indexRoute < lenr {
+	for c.indexRoute < lenr {
 		// Increment route index
-		ctx.indexRoute++
+		c.indexRoute++
 		// Get *Route
-		route := tree[ctx.indexRoute]
+		route := tree[c.indexRoute]
 		// Check if it matches the request path
-		match, values := route.match(ctx.path, ctx.pathOriginal)
+		match, values := route.match(c.path, c.pathOriginal)
 		// No match, next route
 		if !match {
 			continue
 		}
 		// Pass route reference and param values
-		ctx.route = route
+		c.route = route
 		// Non use handler matched
-		if !ctx.matched && !route.use {
-			ctx.matched = true
+		if !c.matched && !route.use {
+			c.matched = true
 		}
 
-		ctx.values = values
+		c.values = values
 		// Execute first handler of route
-		ctx.indexHandler = 0
-		route.Handlers[0](ctx)
+		c.indexHandler = 0
+		if err := route.Handlers[0](c); err != nil {
+			_ = c.app.errorHandler(c, err)
+		}
 		// Stop scanning the stack
 		return true
 	}
 	// If c.Next() does not match, return 404
-	ctx.SendStatus(StatusNotFound)
-	ctx.SendString("Cannot " + ctx.method + " " + ctx.pathOriginal)
+	_ = c.SendStatus(StatusNotFound)
+	_ = c.SendString("Cannot " + c.method + " " + c.pathOriginal)
 
 	// Scan stack for other methods
 	// Moved from app.handler
 	// It should be here,
 	// because middleware may break the route chain
-	if !ctx.matched {
-		setMethodNotAllowed(ctx)
+	if !c.matched {
+		setMethodNotAllowed(c)
 	}
 	return false
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
-	ctx := app.AcquireCtx(rctx)
+	c := app.AcquireCtx(rctx)
 
 	// handle invalid http method directly
-	if ctx.methodINT == -1 {
-		ctx.Status(StatusBadRequest).SendString("Invalid http method")
-		app.ReleaseCtx(ctx)
+	if c.methodINT == -1 {
+		_ = c.Status(StatusBadRequest).SendString("Invalid http method")
+		app.ReleaseCtx(c)
 		return
 	}
+
 	// Find match in stack
-	match := app.next(ctx)
+	match := app.next(c)
 	// Generate ETag if enabled
-	if match && app.Settings.ETag {
-		setETag(ctx, false)
+	if match && app.config.ETag {
+		setETag(c, false)
 	}
 	// Release Ctx
-	app.ReleaseCtx(ctx)
+	app.ReleaseCtx(c)
 }
 
 func (app *App) register(method, pathRaw string, handlers ...Handler) Route {
@@ -173,11 +176,11 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Route {
 	// Create a stripped path in-case sensitive / trailing slashes
 	pathPretty := pathRaw
 	// Case sensitive routing, all to lowercase
-	if !app.Settings.CaseSensitive {
+	if !app.config.CaseSensitive {
 		pathPretty = utils.ToLower(pathPretty)
 	}
 	// Strict routing, remove trailing slashes
-	if !app.Settings.StrictRouting && len(pathPretty) > 1 {
+	if !app.config.StrictRouting && len(pathPretty) > 1 {
 		pathPretty = utils.TrimRight(pathPretty, '/')
 	}
 	// Is layer a middleware?
@@ -240,7 +243,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Route {
 		prefix = "/" + prefix
 	}
 	// in case sensitive routing, all to lowercase
-	if !app.Settings.CaseSensitive {
+	if !app.config.CaseSensitive {
 		prefix = utils.ToLower(prefix)
 	}
 	// Strip trailing slashes from the root path
@@ -265,11 +268,11 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Route {
 		GenerateIndexPages:   false,
 		AcceptByteRange:      false,
 		Compress:             false,
-		CompressedFileSuffix: app.Settings.CompressedFileSuffix,
+		CompressedFileSuffix: app.config.CompressedFileSuffix,
 		CacheDuration:        10 * time.Second,
 		IndexNames:           []string{"index.html"},
-		PathRewrite: func(ctx *fasthttp.RequestCtx) []byte {
-			path := ctx.Path()
+		PathRewrite: func(fctx *fasthttp.RequestCtx) []byte {
+			path := fctx.Path()
 			if len(path) >= prefixLen {
 				if isStar && getString(path[0:prefixLen]) == prefix {
 					path = append(path[0:0], '/')
@@ -282,8 +285,8 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Route {
 			}
 			return path
 		},
-		PathNotFound: func(ctx *fasthttp.RequestCtx) {
-			ctx.Response.SetStatusCode(StatusNotFound)
+		PathNotFound: func(fctx *fasthttp.RequestCtx) {
+			fctx.Response.SetStatusCode(StatusNotFound)
 		},
 	}
 	// Set config if provided
@@ -296,20 +299,20 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Route {
 		}
 	}
 	fileHandler := fs.NewRequestHandler()
-	handler := func(c *Ctx) {
+	handler := func(c *Ctx) error {
 		// Serve file
-		fileHandler(c.Fasthttp)
+		fileHandler(c.Fasthttp())
 		// Return request if found and not forbidden
-		status := c.Fasthttp.Response.StatusCode()
+		status := c.Fasthttp().Response.StatusCode()
 		if status != StatusNotFound && status != StatusForbidden {
-			return
+			return nil
 		}
 		// Reset response to default
-		c.Fasthttp.SetContentType("") // Issue #420
-		c.Fasthttp.Response.SetStatusCode(StatusOK)
-		c.Fasthttp.Response.SetBodyString("")
+		c.Fasthttp().SetContentType("") // Issue #420
+		c.Fasthttp().Response.SetStatusCode(StatusOK)
+		c.Fasthttp().Response.SetBodyString("")
 		// Next middleware
-		c.Next()
+		return c.Next()
 	}
 
 	// Create route metadata without pointer
