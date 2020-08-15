@@ -208,8 +208,8 @@ func (c *Ctx) BaseURL() string {
 // Body contains the raw body submitted in a POST request.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (c *Ctx) Body() string {
-	return getString(c.fasthttp.Request.Body())
+func (c *Ctx) Body() []byte {
+	return c.fasthttp.Request.Body()
 }
 
 // decoderPool helps to improve BodyParser's and QueryParser's performance
@@ -752,13 +752,14 @@ func (c *Ctx) Range(size int) (rangeData Range, err error) {
 
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found.
-func (c *Ctx) Redirect(location string, status ...int) {
+func (c *Ctx) Redirect(location string, status ...int) error {
 	c.Set(HeaderLocation, location)
 	if len(status) > 0 {
 		c.Status(status[0])
 	} else {
 		c.Status(StatusFound)
 	}
+	return nil
 }
 
 // Render a template with data and sends a text/html response.

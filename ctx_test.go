@@ -283,7 +283,7 @@ func Test_Ctx_Body(t *testing.T) {
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	ctx.fasthttp.Request.SetBody([]byte("john=doe"))
-	utils.AssertEqual(t, "john=doe", ctx.Body())
+	utils.AssertEqual(t, []byte("john=doe"), ctx.Body())
 }
 
 // go test -run Test_Ctx_BodyParser
