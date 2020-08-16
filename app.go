@@ -71,17 +71,6 @@ type App struct {
 
 // Settings is a struct holding the server settings.
 type Config struct {
-	// ErrorHandler is executed when you pass an error in the Next(err) method.
-	// This function is also executed when middleware.Recover() catches a panic
-	// Default: func(ctx *Ctx, err error) {
-	// 	code := StatusInternalServerError
-	// 	if e, ok := err.(*Error); ok {
-	// 		code = e.Code
-	// 	}
-	// 	ctx.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-	// 	ctx.Status(code).SendString(err.Error())
-	// }
-
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
 	ServerHeader string `json:"server_header"`
