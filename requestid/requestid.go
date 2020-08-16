@@ -46,6 +46,7 @@ func New(config ...Config) fiber.Handler {
 		if config[0].Generator == nil {
 			config[0].Generator = ConfigDefault.Generator
 		}
+		cfg = config[0]
 	}
 
 	// Return new handler
