@@ -160,7 +160,7 @@ func (c *Ctx) AcceptsLanguages(offers ...string) string {
 	return getOffer(c.Get(HeaderAcceptLanguage), offers...)
 }
 
-// App returns the *App reference to access Settings or ErrorHandler
+// App returns the *App reference to the instance of the Fiber application
 func (c *Ctx) App() *App {
 	return c.app
 }
@@ -202,7 +202,7 @@ func (c *Ctx) Attachment(filename ...string) {
 func (c *Ctx) BaseURL() string {
 	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
 	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
-	return c.Protocol() + "://" + c.Hostname()
+	return c.Protocol() + "://" + c.Host()
 }
 
 // Body contains the raw body submitted in a POST request.
@@ -394,8 +394,8 @@ func (c *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 // FormValue returns the first value by key from a MultipartForm.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (c *Ctx) FormValue(key string) (value string) {
-	return getString(c.fasthttp.FormValue(key))
+func (c *Ctx) FormValue(key string, defaultValue ...string) string {
+	return defaultString(getString(c.fasthttp.FormValue(key)), defaultValue)
 }
 
 // Fresh returns true when the response is still “fresh” in the client's cache,
@@ -458,11 +458,11 @@ func (c *Ctx) Get(key string, defaultValue ...string) string {
 	return defaultString(getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
 }
 
-// Hostname contains the hostname derived from the Host HTTP header.
+// Host contains the hostname derived from the Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (c *Ctx) Hostname() string {
-	return getString(c.fasthttp.URI().Host())
+func (c *Ctx) Host() string {
+	return getString(c.fasthttp.Request.URI().Host())
 }
 
 // IP returns the remote IP address of the request.
@@ -938,7 +938,7 @@ func (c *Ctx) Subdomains(offset ...int) []string {
 	if len(offset) > 0 {
 		o = offset[0]
 	}
-	subdomains := strings.Split(c.Hostname(), ".")
+	subdomains := strings.Split(c.Host(), ".")
 	l := len(subdomains) - o
 	// Check index to avoid slice bounds out of range panic
 	if l < 0 {
