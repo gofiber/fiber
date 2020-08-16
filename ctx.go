@@ -355,7 +355,6 @@ func (c *Ctx) Format(body interface{}) error {
 	accept := c.Accepts("html", "json", "txt", "xml")
 	// Set accepted content type
 	c.Type(accept)
-
 	// Type convert provided body
 	var b string
 	switch val := body.(type) {

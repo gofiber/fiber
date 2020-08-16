@@ -20,10 +20,10 @@ func Test_Recover(t *testing.T) {
 
 	app.Use(func(c *fiber.Ctx, err error) error {
 		utils.AssertEqual(t, "Hi, I'm an error!", err.Error())
-		return c.SendStatus(500)
+		return c.SendStatus(fiber.StatusTeapot)
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/panic", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 }
