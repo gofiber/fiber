@@ -573,6 +573,7 @@ The Fiber middleware modules listed here are maintained by the [Fiber team](http
 - [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
 - [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
 - [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
+- [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
 
 ## 💬 وسائل الإعلام
 

@@ -508,6 +508,7 @@ func main() {
 - [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
 - [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
 - [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
+- [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
 
 ## 💬 新聞
 
