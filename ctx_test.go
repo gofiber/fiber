@@ -735,7 +735,7 @@ func Test_Ctx_Hostname(t *testing.T) {
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 	ctx.fasthttp.Request.SetRequestURI("http://google.com/test")
-	utils.AssertEqual(t, "google.com", ctx.Hostname())
+	utils.AssertEqual(t, "google.com", ctx.Host())
 }
 
 // go test -run Test_Ctx_IP
