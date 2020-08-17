@@ -36,27 +36,22 @@ var ConfigDefault = Config{
 }
 
 // New creates a new middleware handler
-func New(config ...Config) fiber.Handler {
-	// Set default config
-	cfg := ConfigDefault
+func New(config Config) fiber.Handler {
+	// Set config
+	cfg := config
 
-	// Override config if provided
-	if len(config) > 0 {
-		cfg = config[0]
-
-		// Set default values
-		if cfg.Next == nil {
-			cfg.Next = ConfigDefault.Next
-		}
-		if cfg.Index == "" {
-			cfg.Index = ConfigDefault.Index
-		}
-		if !strings.HasPrefix(cfg.Index, "/") {
-			cfg.Index = "/" + cfg.Index
-		}
-		if cfg.Root == nil {
-			log.Fatal("filesystem: Root cannot be nil")
-		}
+	// Set default values
+	if cfg.Next == nil {
+		cfg.Next = ConfigDefault.Next
+	}
+	if cfg.Index == "" {
+		cfg.Index = ConfigDefault.Index
+	}
+	if !strings.HasPrefix(cfg.Index, "/") {
+		cfg.Index = "/" + cfg.Index
+	}
+	if cfg.Root == nil {
+		log.Fatal("filesystem: Root cannot be nil")
 	}
 
 	var prefix string
