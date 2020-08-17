@@ -12,10 +12,10 @@ type Config struct {
 
 	// CompressLevel determins the compression algoritm
 	// Optional. Default: LevelDefault
-	// LevelDisabled:			-1
-	// LevelDefault:			0
-	// LevelBestSpeed:			1
-	// LevelBestCompression:	2
+	// LevelDisabled:         -1
+	// LevelDefault:          0
+	// LevelBestSpeed:        1
+	// LevelBestCompression:  2
 	Level int
 }
 
