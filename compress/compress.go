@@ -11,7 +11,7 @@ type Config struct {
 	Next func(c *fiber.Ctx) bool
 
 	// CompressLevel determins the compression algoritm
-	// Optional. Default: LevelDisabled
+	// Optional. Default: LevelDefault
 	// LevelDisabled:			-1
 	// LevelDefault:			0
 	// LevelBestSpeed:			1
