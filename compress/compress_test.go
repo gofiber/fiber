@@ -19,7 +19,7 @@ func Test_Compress(t *testing.T) {
 	})
 
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set(fiber.HeaderAcceptEncoding, "gzip")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
 
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
