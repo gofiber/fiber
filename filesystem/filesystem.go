@@ -3,7 +3,9 @@ package filesystem
 import (
 	"log"
 	"net/http"
+	"os"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber"
 )
@@ -54,6 +56,7 @@ func New(config Config) fiber.Handler {
 		log.Fatal("filesystem: Root cannot be nil")
 	}
 
+	var once sync.Once
 	var prefix string
 
 	// Return new handler
@@ -70,10 +73,10 @@ func New(config Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Set prefix
-		if len(prefix) == 0 {
+		// Set prefix once
+		once.Do(func() {
 			prefix = c.Route().Path
-		}
+		})
 
 		// Strip prefix
 		path := strings.TrimPrefix(c.Path(), prefix)
@@ -83,6 +86,9 @@ func New(config Config) fiber.Handler {
 
 		file, err := cfg.Root.Open(path)
 		if err != nil {
+			if os.IsNotExist(err) {
+				return c.Status(fiber.StatusNotFound).Next()
+			}
 			return err
 		}
 
@@ -110,8 +116,9 @@ func New(config Config) fiber.Handler {
 				if err := dirList(c, file); err != nil {
 					return err
 				}
+				return nil
 			}
-			return c.SendStatus(fiber.StatusForbidden)
+			return fiber.ErrForbidden
 		}
 
 		modTime := stat.ModTime()
