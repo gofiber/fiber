@@ -58,6 +58,18 @@ func New(config Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
+		// Don't execute middleware if Next returns true
+		if cfg.Next != nil && cfg.Next(c) {
+			return c.Next()
+		}
+
+		method := c.Method()
+
+		// We only serve static assets on GET or HEAD methods
+		if method != fiber.MethodGet && method != fiber.MethodHead {
+			return c.Next()
+		}
+
 		// Set prefix
 		if len(prefix) == 0 {
 			prefix = c.Route().Path
@@ -113,12 +125,13 @@ func New(config Config) fiber.Handler {
 			c.Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
 		}
 
-		if c.Method() == fiber.MethodGet {
+		if method == fiber.MethodGet {
 			c.Fasthttp().SetBodyStream(file, contentLength)
 			return nil
 		}
-		if c.Method() == fiber.MethodHead {
+		if method == fiber.MethodHead {
 			c.Fasthttp().ResetBody()
+			// Fasthttp should skipbody by default if HEAD?
 			c.Fasthttp().Response.SkipBody = true
 			c.Fasthttp().Response.Header.SetContentLength(contentLength)
 			if err := file.Close(); err != nil {

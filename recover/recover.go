@@ -34,6 +34,11 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
+		// Don't execute middleware if Next returns true
+		if cfg.Next != nil && cfg.Next(c) {
+			return c.Next()
+		}
+
 		// Catch panics
 		defer func() {
 			if r := recover(); r != nil {
