@@ -962,7 +962,7 @@ func Benchmark_Ctx_Params(b *testing.B) {
 			"param1", "param2", "param3", "param4",
 		},
 	}
-	c.values = []string{
+	c.values = [maxParams]string{
 		"john", "doe", "is", "awesome",
 	}
 	var res string

@@ -42,11 +42,9 @@ type Ctx struct {
 	path         string               // Prettified HTTP path
 	treePath     string               // Path for the search in the tree
 	pathOriginal string               // Original HTTP path
-	values       []string             // Route parameter values
+	values       [maxParams]string    // Route parameter values
 	fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched      bool                 // Non use route matched
-
-	paramValues [maxParams]string
 }
 
 // Range data for c.Range
@@ -103,7 +101,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 func (app *App) ReleaseCtx(c *Ctx) {
 	// Reset values
 	c.route = nil
-	c.values = nil
+	// TODO: check it
+	//c.values = c.values[:0]
 	c.fasthttp = nil
 	app.pool.Put(c)
 }

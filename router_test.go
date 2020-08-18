@@ -392,7 +392,7 @@ func Benchmark_Router_Next(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
 func Benchmark_Route_Match(b *testing.B) {
 	var match bool
-	var params []string
+	var params [maxParams]string
 
 	parsed := parseRoute("/user/keys/:id")
 	route := &Route{
@@ -410,7 +410,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		return nil
 	})
 	for n := 0; n < b.N; n++ {
-		match, params = route.match("/user/keys/1337", "/user/keys/1337")
+		match = route.match("/user/keys/1337", "/user/keys/1337", &params)
 	}
 
 	utils.AssertEqual(b, true, match)
@@ -420,7 +420,7 @@ func Benchmark_Route_Match(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Star -benchmem -count=4
 func Benchmark_Route_Match_Star(b *testing.B) {
 	var match bool
-	var params []string
+	var params [maxParams]string
 
 	parsed := parseRoute("/*")
 	route := &Route{
@@ -438,7 +438,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		return nil
 	})
 	for n := 0; n < b.N; n++ {
-		match, params = route.match("/user/keys/bla", "/user/keys/bla")
+		match = route.match("/user/keys/bla", "/user/keys/bla", &params)
 	}
 
 	utils.AssertEqual(b, true, match)
@@ -448,7 +448,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Root -benchmem -count=4
 func Benchmark_Route_Match_Root(b *testing.B) {
 	var match bool
-	var params []string
+	var params [maxParams]string
 
 	parsed := parseRoute("/")
 	route := &Route{
@@ -466,7 +466,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		return nil
 	})
 	for n := 0; n < b.N; n++ {
-		match, params = route.match("/", "/")
+		match = route.match("/", "/", &params)
 	}
 
 	utils.AssertEqual(b, true, match)

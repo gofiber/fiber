@@ -120,7 +120,7 @@ func setMethodNotAllowed(ctx *Ctx) {
 				continue
 			}
 			// Check if it matches the request path
-			match, _ := route.match(ctx.path, ctx.pathOriginal)
+			match := route.match(ctx.path, ctx.pathOriginal, &ctx.values)
 			// No match, next route
 			if match {
 				// We matched

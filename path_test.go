@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"fmt"
-	"sync/atomic"
 	"testing"
 
 	utils "github.com/gofiber/utils"
@@ -18,7 +17,7 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/shop/product/::filter/color::color/size::size")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
+		segs: []*routeSegment{
 			{Const: "/shop/product/:"},
 			{IsParam: true, ParamName: "filter", ComparePart: "/color:", PartCount: 1},
 			{Const: "/color:"},
@@ -31,7 +30,7 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/api/v1/:param/abc/*")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
+		segs: []*routeSegment{
 			{Const: "/api/v1/"},
 			{IsParam: true, ParamName: "param", ComparePart: "/abc", PartCount: 1},
 			{Const: "/abc/"},
@@ -43,7 +42,7 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/api/*/:param/:param2")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
+		segs: []*routeSegment{
 			{Const: "/api/"},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "/", PartCount: 2},
 			{Const: "/"},
@@ -57,7 +56,7 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/test:optional?:optional2?")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
+		segs: []*routeSegment{
 			{Const: "/test"},
 			{IsParam: true, ParamName: "optional", IsOptional: true},
 			{IsParam: true, ParamName: "optional2", IsOptional: true, IsLast: true},
@@ -67,7 +66,7 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/config/+.json")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
+		segs: []*routeSegment{
 			{Const: "/config/"},
 			{IsParam: true, ParamName: "+1", IsGreedy: true, IsOptional: false, ComparePart: ".json", PartCount: 1},
 			{Const: ".json", IsLast: true},
@@ -78,7 +77,7 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/api/:day.:month?.:year?")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
+		segs: []*routeSegment{
 			{Const: "/api/"},
 			{IsParam: true, ParamName: "day", IsOptional: false, ComparePart: ".", PartCount: 2},
 			{Const: "."},
@@ -91,7 +90,7 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/*v1*/proxy")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
+		segs: []*routeSegment{
 			{Const: "/"},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "v1", PartCount: 1},
 			{Const: "v1"},
@@ -112,15 +111,14 @@ func Test_Path_matchParams(t *testing.T) {
 		match        bool
 		partialCheck bool
 	}
+	var ctxParams [maxParams]string
 	testCase := func(r string, cases []testparams) {
 		parser := parseRoute(r)
 		for _, c := range cases {
-			paramsPos, match := parser.getMatch(c.url, c.partialCheck)
+			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
 			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-			if match && paramsPos != nil {
-				utils.AssertEqual(t, c.params, parser.paramsForPos(c.url, paramsPos), fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-			} else {
-				utils.AssertEqual(t, true, nil == paramsPos, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			if match && len(c.params) > 0 {
+				utils.AssertEqual(t, c.params[0:len(c.params)-1], ctxParams[0:len(c.params)-1], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			}
 		}
 	}
@@ -396,26 +394,21 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		match        bool
 		partialCheck bool
 	}
+	var ctxParams [maxParams]string
 	benchCase := func(r string, cases []testparams) {
 		parser := parseRoute(r)
 		for _, c := range cases {
-
-			var params []string
 			var matchRes bool
 			t.Run(r+" | "+c.url, func(b *testing.B) {
-				params = nil
 				for i := 0; i <= b.N; i++ {
-					if paramPos, match := parser.getMatch(c.url, c.partialCheck); match {
+					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck); match {
 						// Get params from the original path
 						matchRes = true
-						params = parser.paramsForPos(c.url, paramPos)
 					}
 				}
 				utils.AssertEqual(t, c.match, matchRes, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-				if matchRes && params != nil {
-					utils.AssertEqual(t, c.params, params, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-				} else {
-					utils.AssertEqual(t, true, nil == params, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				if matchRes && len(c.params) > 0 {
+					utils.AssertEqual(t, c.params[0:len(c.params)-1], ctxParams[0:len(c.params)-1], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 				}
 			})
 
@@ -429,22 +422,4 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v2", params: nil, match: false},
 		{url: "/api/v1/", params: nil, match: false},
 	})
-}
-
-// go test -race -run Test_Reset_StartParamPosList
-func Test_Reset_StartParamPosList(t *testing.T) {
-	atomic.StoreUint32(&startParamPosList, uint32(len(paramsPosDummy))-10)
-
-	getAllocFreeParamsPos(5)
-
-	utils.AssertEqual(t, uint32(5), startParamPosList)
-}
-
-// go test -race -run Test_Reset_startParamList
-func Test_Reset_startParamList(t *testing.T) {
-	atomic.StoreUint32(&startParamList, uint32(len(paramsDummy))-10)
-
-	getAllocFreeParams(5)
-
-	utils.AssertEqual(t, uint32(5), startParamList)
 }

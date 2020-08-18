@@ -52,36 +52,35 @@ type Route struct {
 	Handlers []Handler `json:"-"`      // Ctx handlers
 }
 
-func (r *Route) match(path, original string) (match bool, values []string) {
+func (r *Route) match(path, original string, params *[maxParams]string) (match bool) {
 	// root path check
 	if r.root && path == "/" {
-		return true, values
+		return true
 		// '*' wildcard matches any path
 	} else if r.star {
-		values := getAllocFreeParams(1)
-		values[0] = original[1:]
-		return true, values
+		params[0] = original[1:]
+		return true
 	}
 	// Does this route have parameters
 	if len(r.Params) > 0 {
 		// Match params
-		if paramPos, match := r.routeParser.getMatch(path, r.use); match {
+		if match := r.routeParser.getMatch(path, original, params, r.use); match {
 			// Get params from the original path
-			return match, r.routeParser.paramsForPos(original, paramPos)
+			return match
 		}
 	}
 	// Is this route a Middleware?
 	if r.use {
 		// Single slash will match or path prefix
 		if r.root || strings.HasPrefix(path, r.path) {
-			return true, values
+			return true
 		}
 		// Check for a simple path match
 	} else if len(r.path) == len(path) && r.path == path {
-		return true, values
+		return true
 	}
 	// No match
-	return false, values
+	return false
 }
 
 func (app *App) next(c *Ctx) bool {
@@ -98,7 +97,7 @@ func (app *App) next(c *Ctx) bool {
 		// Get *Route
 		route := tree[c.indexRoute]
 		// Check if it matches the request path
-		match, values := route.match(c.path, c.pathOriginal)
+		match := route.match(c.path, c.pathOriginal, &c.values)
 		// No match, next route
 		if !match {
 			continue
@@ -110,7 +109,6 @@ func (app *App) next(c *Ctx) bool {
 			c.matched = true
 		}
 
-		c.values = values
 		// Execute first handler of route
 		c.indexHandler = 0
 		if err := route.Handlers[0](c); err != nil {
