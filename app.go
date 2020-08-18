@@ -262,6 +262,8 @@ func New(config ...Config) *App {
 	if app.config.Immutable {
 		getBytes, getString = getBytesImmutable, getStringImmutable
 	}
+	// Initialize app config
+	app.init()
 	// Return app
 	return app
 }
@@ -567,7 +569,6 @@ func (app *App) init() *App {
 	app.server.IdleTimeout = app.config.IdleTimeout
 	app.server.ReadBufferSize = app.config.ReadBufferSize
 	app.server.WriteBufferSize = app.config.WriteBufferSize
-	app.buildTree()
 	app.mutex.Unlock()
 	return app
 }

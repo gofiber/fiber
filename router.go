@@ -219,11 +219,12 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 			r := route
 			app.addRoute(m, &r)
 		}
-		return app
+	} else {
+		// Add route to stack
+		app.addRoute(method, &route)
 	}
-
-	// Add route to stack
-	app.addRoute(method, &route)
+	// Build router tree
+	app.buildTree()
 	return app
 }
 
@@ -332,6 +333,8 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	app.addRoute(MethodGet, &route)
 	// Add HEAD route
 	app.addRoute(MethodHead, &route)
+	// Build router tree
+	app.buildTree()
 	return app
 }
 
