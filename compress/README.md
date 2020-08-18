@@ -1,55 +1,66 @@
 # Compress
-Compression middleware for Fiber with support for `deflate`, `gzip` and `brotli`.
+Compression middleware for Fiber that supports `gzip`, `deflate` and `brotlit` compression depending on the `Accept-Encoding` header.
 
 ### Example
 Import the middleware package that is part of the Fiber web framework
 ```go
 import (
   "github.com/gofiber/fiber"
-  "github.com/gofiber/fiber/middleware"
+  "github.com/gofiber/fiber/compress"
 )
 ```
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
 // Default compression config
-app.Use(middleware.Compress())
+app.Use(compress.New())
 
 // Provide a custom compression level
-app.Use(middleware.Compress(middleware.CompressLevelBestSpeed))
+app.Use(compress.New(compress.Config{
+    Level: compress.LevelBestSpeed, // 1
+}))
 
-// Provide a full CompressConfig
-app.Use(middleware.Compress(middleware.CompressConfig{
+// Skip compression for specific routes
+app.Use(compress.New(compress.Config{
   Next:  func(c *fiber.Ctx) bool {
-    return c.Path() == "/ignore"
+    return c.Path() == "/dont_compress"
   },
-  Level: CompressLevelDefault,
+  Level: compress.LevelBestSpeed, // 1
 })
 ```
 
 ### Signatures
 ```go
-func Compress(options ...interface{}) fiber.Handler {}
+func New(config ...Config) fiber.Handler {}
 ```
 
 ### Config
 ```go
-type CompressConfig struct {
-  // Next defines a function to skip this middleware.
-  // Default: nil
-  Next func(*fiber.Ctx) bool
+// Config defines the config for middleware.
+type Config struct {
+	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
+	Next func(c *fiber.Ctx) bool
 
-  // Compression level for brotli, gzip and deflate
-  // Default: CompressLevelDefault
-  Level int
+	// CompressLevel determins the compression algoritm
+	//
+	// Optional. Default: LevelDefault
+	// LevelDisabled:         -1
+	// LevelDefault:          0
+	// LevelBestSpeed:        1
+	// LevelBestCompression:  2
+	Level int
 }
+
 ```
 ### Compression Levels
 ```go
+// Compression levels
 const (
-	CompressLevelDisabled        = -1
-	CompressLevelDefault         = 0
-	CompressLevelBestSpeed       = 1
-	CompressLevelBestCompression = 2
+	LevelDisabled        = -1
+	LevelDefault         = 0
+	LevelBestSpeed       = 1
+	LevelBestCompression = 2
 )
 ```
