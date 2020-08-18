@@ -1653,7 +1653,7 @@ func Benchmark_Ctx_Send(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		c.Send(byt)
 	}
-	utils.AssertEqual(b, "true", string(c.fasthttp.Response.Body()))
+	utils.AssertEqual(b, "Hello, World!", string(c.fasthttp.Response.Body()))
 }
 
 // go test -run Test_Ctx_SendStatus
