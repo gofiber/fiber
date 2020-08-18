@@ -1,5 +1,5 @@
 # Compress
-Compression middleware for Fiber that supports `gzip`, `deflate` and `brotlit` compression depending on the `Accept-Encoding` header.
+Compression middleware for Fiber that supports `gzip`, `deflate` and `brotli` compression depending on the `Accept-Encoding` header.
 
 ### Example
 Import the compress package that is part of the Fiber web framework
@@ -54,7 +54,7 @@ type Config struct {
 }
 
 ```
-### Compression Levels
+### Constants
 ```go
 // Compression levels
 const (
