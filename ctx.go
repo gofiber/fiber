@@ -101,8 +101,6 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 func (app *App) ReleaseCtx(c *Ctx) {
 	// Reset values
 	c.route = nil
-	// TODO: check it
-	//c.values = c.values[:0]
 	c.fasthttp = nil
 	app.pool.Put(c)
 }
