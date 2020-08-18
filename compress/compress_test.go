@@ -15,7 +15,7 @@ func Test_Compress(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendFile("../filesystem/data/img/map.png")
+		return c.SendFile("../filesystem/data/img/map.png", true)
 	})
 
 	req := httptest.NewRequest("GET", "/", nil)

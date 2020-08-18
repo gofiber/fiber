@@ -261,6 +261,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	}
 	app.All("/this/is/a/", h)
 	app.Get("/this/is/a/dummy/route/oke", h)
+	app.init()
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
@@ -281,6 +282,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 		return c.Next()
 	})
 	registerDummyRoutes(app)
+	app.init()
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
@@ -297,6 +299,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 func Benchmark_Router_Handler(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -314,6 +317,7 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 		CaseSensitive: true,
 	})
 	registerDummyRoutes(app)
+	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -332,6 +336,7 @@ func Benchmark_Router_Chain(b *testing.B) {
 		return c.Next()
 	}
 	app.Get("/", handler, handler, handler, handler, handler, handler)
+	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -356,6 +361,8 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	app.Get("/", handler)
 	app.Get("/", handler)
 
+	app.init()
+
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("GET")
@@ -370,6 +377,7 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 func Benchmark_Router_Next(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	app.init()
 
 	request := &fasthttp.RequestCtx{}
 
@@ -414,7 +422,7 @@ func Benchmark_Route_Match(b *testing.B) {
 	}
 
 	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, []string{"1337"}, params)
+	utils.AssertEqual(b, []string{"1337"}, params[0:len(parsed.params)])
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Star -benchmem -count=4
@@ -442,7 +450,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	}
 
 	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, []string{"user/keys/bla"}, params)
+	utils.AssertEqual(b, []string{"user/keys/bla"}, params[0:len(parsed.params)])
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Root -benchmem -count=4
@@ -470,7 +478,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	}
 
 	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, []string(nil), params)
+	utils.AssertEqual(b, []string(nil), params[0:len(parsed.params)])
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4
@@ -478,6 +486,7 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	app := New()
 	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
+	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -497,6 +506,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	app.Delete("/créer", func(c *Ctx) error {
 		return nil
 	})
+	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -514,6 +524,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	app := New()
 	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
+	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
