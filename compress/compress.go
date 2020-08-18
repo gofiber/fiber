@@ -8,9 +8,12 @@ import (
 // Config defines the config for middleware.
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// CompressLevel determins the compression algoritm
+	// CompressLevel determines the compression algoritm
+	//
 	// Optional. Default: LevelDefault
 	// LevelDisabled:         -1
 	// LevelDefault:          0
