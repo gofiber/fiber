@@ -13,18 +13,23 @@ import (
 // Config defines the config for middleware.
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
 	// Root is a FileSystem that provides access
 	// to a collection of files and directories.
+	//
 	// Required. Default: nil
 	Root http.FileSystem
 
 	// Index file for serving a directory.
+	//
 	// Optional. Default: "index.html"
 	Index string
 
 	// Enable directory browsing.
+	//
 	// Optional. Default: false
 	Browse bool
 }
