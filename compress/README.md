@@ -2,7 +2,7 @@
 Compression middleware for Fiber that supports `gzip`, `deflate` and `brotlit` compression depending on the `Accept-Encoding` header.
 
 ### Example
-Import the middleware package that is part of the Fiber web framework
+Import the compress package that is part of the Fiber web framework
 ```go
 import (
   "github.com/gofiber/fiber"
@@ -26,7 +26,7 @@ app.Use(compress.New(compress.Config{
     return c.Path() == "/dont_compress"
   },
   Level: compress.LevelBestSpeed, // 1
-})
+}))
 ```
 
 ### Signatures
@@ -43,7 +43,7 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// CompressLevel determins the compression algoritm
+	// CompressLevel determines the compression algoritm
 	//
 	// Optional. Default: LevelDefault
 	// LevelDisabled:         -1
