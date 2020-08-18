@@ -865,7 +865,6 @@ func (i invalidView) Render(io.Writer, string, interface{}, ...string) error { p
 
 func Test_App_Init_Error_View(t *testing.T) {
 	app := New(Config{Views: invalidView{}})
-	app.init()
 
 	defer func() {
 		if err := recover(); err != nil {

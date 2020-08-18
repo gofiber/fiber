@@ -235,7 +235,7 @@ func Test_Router_Handler_SetETag(t *testing.T) {
 
 	c := &fasthttp.RequestCtx{}
 
-	app.init().handler(c)
+	app.handler(c)
 
 	utils.AssertEqual(t, `"13-1831710635"`, string(c.Response.Header.Peek(HeaderETag)))
 }
@@ -261,7 +261,6 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	}
 	app.All("/this/is/a/", h)
 	app.Get("/this/is/a/dummy/route/oke", h)
-	app.init()
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
@@ -282,7 +281,6 @@ func Benchmark_Router_NotFound(b *testing.B) {
 		return c.Next()
 	})
 	registerDummyRoutes(app)
-	app.init()
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
@@ -299,7 +297,6 @@ func Benchmark_Router_NotFound(b *testing.B) {
 func Benchmark_Router_Handler(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
-	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -317,7 +314,6 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 		CaseSensitive: true,
 	})
 	registerDummyRoutes(app)
-	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -336,7 +332,6 @@ func Benchmark_Router_Chain(b *testing.B) {
 		return c.Next()
 	}
 	app.Get("/", handler, handler, handler, handler, handler, handler)
-	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -361,8 +356,6 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	app.Get("/", handler)
 	app.Get("/", handler)
 
-	app.init()
-
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("GET")
@@ -377,7 +370,6 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 func Benchmark_Router_Next(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
-	app.init()
 
 	request := &fasthttp.RequestCtx{}
 
@@ -385,7 +377,6 @@ func Benchmark_Router_Next(b *testing.B) {
 	request.URI().SetPath("/user/keys/1337")
 	var res bool
 
-	app.init()
 	c := app.AcquireCtx(request)
 	defer app.ReleaseCtx(c)
 
@@ -486,7 +477,6 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	app := New()
 	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
-	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -506,7 +496,6 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	app.Delete("/créer", func(c *Ctx) error {
 		return nil
 	})
-	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -524,7 +513,6 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	app := New()
 	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
-	app.init()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -540,7 +528,6 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 func Benchmark_Router_Github_API(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
-	app.init()
 
 	c := &fasthttp.RequestCtx{}
 	var match bool

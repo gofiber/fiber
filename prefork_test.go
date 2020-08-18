@@ -18,7 +18,6 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	defer os.Setenv(envPreforkChildKey, "")
 
 	app := New()
-	app.init()
 
 	err := app.prefork("invalid")
 	utils.AssertEqual(t, false, err == nil)
@@ -50,7 +49,6 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	testPreforkMaster = true
 
 	app := New()
-	app.init()
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
