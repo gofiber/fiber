@@ -33,7 +33,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		segs: []*routeSegment{
 			{Const: "/api/v1/"},
 			{IsParam: true, ParamName: "param", ComparePart: "/abc", PartCount: 1},
-			{Const: "/abc/"},
+			{Const: "/abc/", HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, IsLast: true},
 		},
 		params:        []string{"param", "*1"},
@@ -43,7 +43,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	rp = parseRoute("/api/*/:param/:param2")
 	utils.AssertEqual(t, routeParser{
 		segs: []*routeSegment{
-			{Const: "/api/"},
+			{Const: "/api/", HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "/", PartCount: 2},
 			{Const: "/"},
 			{IsParam: true, ParamName: "param", ComparePart: "/", PartCount: 1},
@@ -91,7 +91,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	rp = parseRoute("/*v1*/proxy")
 	utils.AssertEqual(t, routeParser{
 		segs: []*routeSegment{
-			{Const: "/"},
+			{Const: "/", HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "v1", PartCount: 1},
 			{Const: "v1"},
 			{IsParam: true, ParamName: "*2", IsGreedy: true, IsOptional: true, ComparePart: "/proxy", PartCount: 1},
@@ -422,4 +422,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v2", params: nil, match: false},
 		{url: "/api/v1/", params: nil, match: false},
 	})
+	//benchCase("/api/v1", []testparams{
+	//	{url: "/api/v1", params: []string{}, match: true},
+	//})
 }

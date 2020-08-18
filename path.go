@@ -32,7 +32,8 @@ type routeSegment struct {
 	IsGreedy    bool   // indicates whether the parameter is greedy or not, is used with wildcard and plus
 	IsOptional  bool   // indicates whether the parameter is optional or not
 	// common information
-	IsLast bool // shows if the segment is the last one for the route
+	IsLast           bool // shows if the segment is the last one for the route
+	HasOptionalSlash bool // segment has the possibility of an optional slash
 	// future TODO: add support for optional groups "/abc(/def)?"
 }
 
@@ -93,8 +94,9 @@ func parseRoute(pattern string) routeParser {
 // to simplify the search for the end of the parameter
 func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 	comparePart := ""
+	segLen := len(segs)
 	// loop from end to begin
-	for i := len(segs) - 1; i >= 0; i-- {
+	for i := segLen - 1; i >= 0; i-- {
 		// set the compare part for the parameter
 		if segs[i].IsParam {
 			// important for finding the end of the parameter
@@ -108,15 +110,21 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 	}
 
 	// loop from begin to end
-	for i := 0; i < len(segs); i++ {
+	for i := 0; i < segLen; i++ {
 		// check how often the compare part is in the following const parts
-		if segs[i].IsParam && segs[i].ComparePart != "" {
+		if segs[i].IsParam {
+			if segs[i].ComparePart == "" {
+				continue
+			}
 			for j := i + 1; j <= len(segs)-1; j++ {
 				if !segs[j].IsParam {
 					// count is important for the greedy match
 					segs[i].PartCount += strings.Count(segs[j].Const, segs[i].ComparePart)
 				}
 			}
+			// check if the end of the segment is a optional slash and then if the segement is optional or the last one
+		} else if segs[i].Const[len(segs[i].Const)-1] == slashDelimiter && (segs[i].IsLast || (segLen > i+1 && segs[i+1].IsOptional)) {
+			segs[i].HasOptionalSlash = true
 		}
 	}
 
@@ -212,17 +220,16 @@ func findNextCharsetPosition(search string, charset []byte) int {
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (routeParser *routeParser) getMatch(s, original string, params *[maxParams]string, partialCheck bool) bool {
-	var i, paramsIterator, partLen, paramStart int
+	var i, paramsIterator, partLen int
 	for index, segment := range routeParser.segs {
 		partLen = len(s)
 		// check const segment
 		if !segment.IsParam {
 			i = len(segment.Const)
 			// is optional part or the const part must match with the given string
-			if partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const {
-				// check if the end of the segment is a optional slash and then if the segement is optional or the last one
-				if i > 0 && segment.Const[i-1] == slashDelimiter && partLen == i-1 && s[:i-1] == segment.Const[:i-1] &&
-					(segment.IsLast || routeParser.segs[index+1].IsOptional) {
+			if !(i <= partLen && s[:i] == segment.Const) {
+				// check if the end of the segment is a optional slash
+				if segment.HasOptionalSlash && partLen == i-1 && s[:i-1] == segment.Const[:i-1] {
 					i--
 				} else {
 					return false
@@ -235,18 +242,13 @@ func (routeParser *routeParser) getMatch(s, original string, params *[maxParams]
 				return false
 			}
 			// take over the params positions
-			params[paramsIterator] = original[paramStart : paramStart+i]
+			params[paramsIterator] = original[:i]
 			paramsIterator++
 		}
 
 		// reduce founded part from the string
 		if partLen > 0 {
-			if partLen < i {
-				i = partLen
-			}
-			paramStart += i
-
-			s = s[i:]
+			s, original = s[i:], original[i:]
 		}
 	}
 	if len(s) != 0 && !partialCheck {
