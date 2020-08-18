@@ -377,6 +377,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	request.URI().SetPath("/user/keys/1337")
 	var res bool
 
+	app.init()
 	c := app.AcquireCtx(request)
 	defer app.ReleaseCtx(c)
 

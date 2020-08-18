@@ -214,6 +214,7 @@ func findNextCharsetPosition(search string, charset []byte) int {
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (routeParser *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
+	// TODO: use locations from outside, remove positions array
 	lenKeys := len(routeParser.params)
 	paramsPositions := getAllocFreeParamsPos(lenKeys)
 	var i, paramsIterator, partLen, paramStart int

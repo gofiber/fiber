@@ -27,6 +27,9 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
+// maxParams defines the maximum number of parameters per route.
+const maxParams = 30
+
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
@@ -42,6 +45,8 @@ type Ctx struct {
 	values       []string             // Route parameter values
 	fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched      bool                 // Non use route matched
+
+	paramValues [maxParams]string
 }
 
 // Range data for c.Range
