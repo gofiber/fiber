@@ -297,12 +297,7 @@ func (app *App) Use(args ...interface{}) Router {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (app *App) Get(path string, handlers ...Handler) Router {
-	route := app.register(MethodGet, path, handlers...)
-	// Add HEAD route
-	headRoute := route
-	app.addRoute(MethodHead, &headRoute)
-
-	return app
+	return app.Add(MethodHead, path, handlers...).Add(MethodGet, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -354,20 +349,18 @@ func (app *App) Patch(path string, handlers ...Handler) Router {
 
 // Add ...
 func (app *App) Add(method, path string, handlers ...Handler) Router {
-	app.register(method, path, handlers...)
-	return app
+	return app.register(method, path, handlers...)
 }
 
 // Static ...
 func (app *App) Static(prefix, root string, config ...Static) Router {
-	app.registerStatic(prefix, root, config...)
-	return app
+	return app.registerStatic(prefix, root, config...)
 }
 
 // All ...
 func (app *App) All(path string, handlers ...Handler) Router {
 	for _, method := range intMethod {
-		app.Add(method, path, handlers...)
+		_ = app.Add(method, path, handlers...)
 	}
 	return app
 }

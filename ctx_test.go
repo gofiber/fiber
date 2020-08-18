@@ -1521,7 +1521,7 @@ func Test_Ctx_Render(t *testing.T) {
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	err := ctx.Render("./.github/TEST_DATA/template.html", Map{
+	err := ctx.Render("./.github/testdata/template.html", Map{
 		"Title": "Hello, World!",
 	})
 
@@ -1532,10 +1532,10 @@ func Test_Ctx_Render(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(ctx.fasthttp.Response.Body()))
 
-	err = ctx.Render("./.github/TEST_DATA/template-non-exists.html", nil)
+	err = ctx.Render("./.github/testdata/template-non-exists.html", nil)
 	utils.AssertEqual(t, false, err == nil)
 
-	err = ctx.Render("./.github/TEST_DATA/template-invalid.html", nil)
+	err = ctx.Render("./.github/testdata/template-invalid.html", nil)
 	utils.AssertEqual(t, false, err == nil)
 }
 
@@ -1549,7 +1549,7 @@ func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, 
 }
 
 func (t *testTemplateEngine) Load() error {
-	t.templates = template.Must(template.ParseGlob("./.github/TEST_DATA/*.tmpl"))
+	t.templates = template.Must(template.ParseGlob("./.github/testdata/*.tmpl"))
 	return nil
 }
 

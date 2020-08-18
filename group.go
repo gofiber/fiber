@@ -45,11 +45,8 @@ func (grp *Group) Use(args ...interface{}) Router {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (grp *Group) Get(path string, handlers ...Handler) Router {
-	route := grp.app.register(MethodGet, getGroupPath(grp.prefix, path), handlers...)
-	// Add head route
-	headRoute := route
-	grp.app.addRoute(MethodHead, &headRoute)
-	return grp
+	path = getGroupPath(grp.prefix, path)
+	return grp.app.Add(MethodHead, path, handlers...).Add(MethodGet, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -101,20 +98,18 @@ func (grp *Group) Patch(path string, handlers ...Handler) Router {
 
 // Add ...
 func (grp *Group) Add(method, path string, handlers ...Handler) Router {
-	grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
-	return grp
+	return grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
 }
 
 // Static ...
 func (grp *Group) Static(prefix, root string, config ...Static) Router {
-	grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
-	return grp
+	return grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
 }
 
 // All ...
 func (grp *Group) All(path string, handlers ...Handler) Router {
 	for _, method := range intMethod {
-		grp.Add(method, path, handlers...)
+		_ = grp.Add(method, path, handlers...)
 	}
 	return grp
 }
@@ -123,7 +118,7 @@ func (grp *Group) All(path string, handlers ...Handler) Router {
 func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 	prefix = getGroupPath(grp.prefix, prefix)
 	if len(handlers) > 0 {
-		grp.app.register(methodUse, prefix, handlers...)
+		_ = grp.app.register(methodUse, prefix, handlers...)
 	}
 	return grp.app.Group(prefix)
 }

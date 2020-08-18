@@ -265,7 +265,7 @@ func Test_App_Add_Method_Test(t *testing.T) {
 // 	app := New()
 
 // 	// Create tls certificate
-// 	cer, err := tls.LoadX509KeyPair("./.github/TEST_DATA/ssl.pem", "./.github/TEST_DATA/ssl.key")
+// 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 // 	if err != nil {
 // 		utils.AssertEqual(t, nil, err)
 // 	}
@@ -283,7 +283,7 @@ func Test_App_Add_Method_Test(t *testing.T) {
 // 	app := New()
 
 // 	// Create tls certificate
-// 	cer, err := tls.LoadX509KeyPair("./.github/TEST_DATA/ssl.pem", "./.github/TEST_DATA/ssl.key")
+// 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 // 	if err != nil {
 // 		utils.AssertEqual(t, nil, err)
 // 	}

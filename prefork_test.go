@@ -31,7 +31,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	utils.AssertEqual(t, nil, app.prefork("[::]:"))
 
 	// Create tls certificate
-	cer, err := tls.LoadX509KeyPair("./.github/TEST_DATA/ssl.pem", "./.github/TEST_DATA/ssl.key")
+	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
 		utils.AssertEqual(t, nil, err)
 	}

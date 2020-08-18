@@ -53,7 +53,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Setup request handlers
 	var (
-		fctx       fasthttp.RequestHandler
+		fctx       = func(c *fasthttp.RequestCtx) {}
 		compressor fasthttp.RequestHandler
 	)
 
@@ -77,7 +77,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
-		// Don't execute the middleware if Next returns true
+		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
@@ -89,6 +89,10 @@ func New(config ...Config) fiber.Handler {
 
 		// Compress response
 		compressor(c.Fasthttp())
+
+		// https://github.com/valyala/fasthttp/blob/master/http.go#L1408
+		// Why not set :()
+		// fmt.Println(c.Fasthttp().Response.Header.Peek(fiber.HeaderContentEncoding))
 
 		// Return from handler
 		return nil
