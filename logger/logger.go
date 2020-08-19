@@ -35,7 +35,6 @@ type Config struct {
 	// Default: os.Stderr
 	Output io.Writer
 
-	haveColors       bool
 	haveLatency      bool
 	timeZoneLocation *time.Location
 }
@@ -98,7 +97,7 @@ const (
 	cReset   = "\u001b[0m"
 )
 
-var colorTags = []string{"${black}", "${red}", "${green}", "${yellow}", "${blue}", "${magenta}", "${cyan}", "${white}", "${reset}"}
+// var colorTags = []string{"${black}", "${red}", "${green}", "${yellow}", "${blue}", "${magenta}", "${cyan}", "${white}", "${reset}"}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -135,13 +134,13 @@ func New(config ...Config) fiber.Handler {
 		cfg.timeZoneLocation = tz
 	}
 
-	// Check if format contains colors
-	for i := 0; i < len(colorTags); i++ {
-		if strings.Contains(cfg.Format, colorTags[i]) {
-			cfg.haveColors = true
-			break
-		}
-	}
+	// // Check if format contains colors
+	// for i := 0; i < len(colorTags); i++ {
+	// 	if strings.Contains(cfg.Format, colorTags[i]) {
+	// 		cfg.haveColors = true
+	// 		break
+	// 	}
+	// }
 
 	// Check if format contains latency
 	cfg.haveLatency = strings.Contains(cfg.Format, "${latency}")
