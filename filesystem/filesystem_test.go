@@ -14,11 +14,11 @@ func Test_FileSystem(t *testing.T) {
 	app := fiber.New()
 
 	app.Use("/test", New(Config{
-		Root: http.Dir("./data"),
+		Root: http.Dir("../.github/testdata/fs"),
 	}))
 
 	app.Use("/dir", New(Config{
-		Root:   http.Dir("./data"),
+		Root:   http.Dir("../.github/testdata/fs"),
 		Browse: true,
 	}))
 

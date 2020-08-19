@@ -508,15 +508,23 @@ func (c *Ctx) Is(extension string) bool {
 // JSON converts any interface or string to JSON.
 // This method also sets the content header to application/json.
 func (c *Ctx) JSON(data interface{}) error {
+	// TODO: Discuss the possibility to disable/enable EscapeHTML
+	// encoder := json.NewEncoder(c.fasthttp.Response.BodyWriter())
+	// encoder.SetEscapeHTML(false)
+	// if err := encoder.Encode(data); err != nil {
+	// 	return err
+	// }
+	// // remove \n
+	// b := c.fasthttp.Response.Body()
+	// if end := len(b) - 1; end >= 0 && b[end] == '\n' {
+	// 	c.fasthttp.Response.SetBodyRaw(b[:end])
+	// }
 	raw, err := json.Marshal(data)
-	// Check for errors
 	if err != nil {
 		return err
 	}
-	// Set http headers
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
 	c.fasthttp.Response.SetBodyRaw(raw)
-
+	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
 	return nil
 }
 
