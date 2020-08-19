@@ -4,28 +4,9 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/gofiber/utils"
 )
-
-func nowTimeString(tzl *time.Location, layout string) string {
-	// This is different from Golang's time package which returns UTC, and Local is better than it
-	if tzl == nil {
-		return time.Now().Format(layout)
-	}
-	return time.Now().In(tzl).Format(layout)
-}
-
-// Use Golang's time package to determine whether the TimeZone is available
-func getTimeZoneLocation(name string) *time.Location {
-	tz, err := time.LoadLocation(name)
-	if err != nil {
-		tz, _ = time.LoadLocation("Local")
-		return tz
-	}
-	return tz
-}
 
 // MIT License fasttemplate
 // Copyright (c) 2015 Aliaksandr Valialkin
