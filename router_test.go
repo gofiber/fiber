@@ -469,7 +469,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	}
 
 	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, []string(nil), params[0:len(parsed.params)])
+	utils.AssertEqual(b, []string{}, params[0:len(parsed.params)])
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4

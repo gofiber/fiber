@@ -227,13 +227,11 @@ func (routeParser *routeParser) getMatch(s, original string, params *[maxParams]
 		if !segment.IsParam {
 			i = len(segment.Const)
 			// is optional part or the const part must match with the given string
-			if !(i <= partLen && s[:i] == segment.Const) {
-				// check if the end of the segment is a optional slash
-				if segment.HasOptionalSlash && partLen == i-1 && s[:i-1] == segment.Const[:i-1] {
-					i--
-				} else {
-					return false
-				}
+			// check if the end of the segment is a optional slash
+			if segment.HasOptionalSlash && partLen == i-1 && s == segment.Const[:i-1] {
+				i--
+			} else if !(i <= partLen && s[:i] == segment.Const) {
+				return false
 			}
 		} else {
 			// determine parameter length
