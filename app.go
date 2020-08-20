@@ -208,7 +208,7 @@ const (
 	defaultCompressedFileSuffix = ".fiber.gz"
 )
 
-var defaultErrHandler = func(c *Ctx, err error) error {
+var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {
 		code = e.Code
@@ -515,6 +515,7 @@ func (dl *disableLogger) Printf(format string, args ...interface{}) {
 }
 
 func (app *App) init() *App {
+	// lock application
 	app.mutex.Lock()
 
 	// Only load templates if an view engine is specified
@@ -524,32 +525,28 @@ func (app *App) init() *App {
 		}
 	}
 
-	if app.server == nil {
-		app.server = &fasthttp.Server{
-			Logger:       &disableLogger{},
-			LogAllErrors: false,
-			ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
-				c := app.AcquireCtx(fctx)
-				if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
-					err = ErrRequestHeaderFieldsTooLarge
-				} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
-					err = ErrRequestTimeout
-				} else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
-					err = ErrRequestEntityTooLarge
-				} else {
-					err = ErrBadRequest
-				}
-				_ = app.errorHandler(c, err)
-				app.ReleaseCtx(c)
-			},
-		}
+	// create fasthttp server
+	app.server = &fasthttp.Server{
+		Logger:       &disableLogger{},
+		LogAllErrors: false,
+		ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
+			c := app.AcquireCtx(fctx)
+			if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
+				err = ErrRequestHeaderFieldsTooLarge
+			} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
+				err = ErrRequestTimeout
+			} else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
+				err = ErrRequestEntityTooLarge
+			} else {
+				err = ErrBadRequest
+			}
+			_ = app.errorHandler(c, err)
+			app.ReleaseCtx(c)
+		},
 	}
-	if app.server.Handler == nil {
-		app.server.Handler = app.handler
-	}
-	if app.errorHandler == nil {
-		app.errorHandler = defaultErrHandler
-	}
+
+	// fasthttp server settings
+	app.server.Handler = app.handler
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate
@@ -563,6 +560,11 @@ func (app *App) init() *App {
 	app.server.IdleTimeout = app.config.IdleTimeout
 	app.server.ReadBufferSize = app.config.ReadBufferSize
 	app.server.WriteBufferSize = app.config.WriteBufferSize
+
+	// set global error handler
+	app.errorHandler = DefaultErrorHandler
+
+	// unlock application
 	app.mutex.Unlock()
 	return app
 }
