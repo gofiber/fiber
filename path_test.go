@@ -18,11 +18,11 @@ func Test_Path_parseRoute(t *testing.T) {
 	rp = parseRoute("/shop/product/::filter/color::color/size::size")
 	utils.AssertEqual(t, routeParser{
 		segs: []*routeSegment{
-			{Const: "/shop/product/:"},
+			{Const: "/shop/product/:", Length: 15},
 			{IsParam: true, ParamName: "filter", ComparePart: "/color:", PartCount: 1},
-			{Const: "/color:"},
+			{Const: "/color:", Length: 7},
 			{IsParam: true, ParamName: "color", ComparePart: "/size:", PartCount: 1},
-			{Const: "/size:"},
+			{Const: "/size:", Length: 6},
 			{IsParam: true, ParamName: "size", IsLast: true},
 		},
 		params: []string{"filter", "color", "size"},
@@ -31,9 +31,9 @@ func Test_Path_parseRoute(t *testing.T) {
 	rp = parseRoute("/api/v1/:param/abc/*")
 	utils.AssertEqual(t, routeParser{
 		segs: []*routeSegment{
-			{Const: "/api/v1/"},
+			{Const: "/api/v1/", Length: 8},
 			{IsParam: true, ParamName: "param", ComparePart: "/abc", PartCount: 1},
-			{Const: "/abc/", HasOptionalSlash: true},
+			{Const: "/abc/", Length: 5, HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, IsLast: true},
 		},
 		params:        []string{"param", "*1"},
@@ -43,11 +43,11 @@ func Test_Path_parseRoute(t *testing.T) {
 	rp = parseRoute("/api/*/:param/:param2")
 	utils.AssertEqual(t, routeParser{
 		segs: []*routeSegment{
-			{Const: "/api/", HasOptionalSlash: true},
+			{Const: "/api/", Length: 5, HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "/", PartCount: 2},
-			{Const: "/"},
+			{Const: "/", Length: 1},
 			{IsParam: true, ParamName: "param", ComparePart: "/", PartCount: 1},
-			{Const: "/"},
+			{Const: "/", Length: 1},
 			{IsParam: true, ParamName: "param2", IsLast: true},
 		},
 		params:        []string{"*1", "param", "param2"},
@@ -57,8 +57,8 @@ func Test_Path_parseRoute(t *testing.T) {
 	rp = parseRoute("/test:optional?:optional2?")
 	utils.AssertEqual(t, routeParser{
 		segs: []*routeSegment{
-			{Const: "/test"},
-			{IsParam: true, ParamName: "optional", IsOptional: true},
+			{Const: "/test", Length: 5},
+			{IsParam: true, ParamName: "optional", IsOptional: true, Length: 1},
 			{IsParam: true, ParamName: "optional2", IsOptional: true, IsLast: true},
 		},
 		params: []string{"optional", "optional2"},
@@ -67,9 +67,9 @@ func Test_Path_parseRoute(t *testing.T) {
 	rp = parseRoute("/config/+.json")
 	utils.AssertEqual(t, routeParser{
 		segs: []*routeSegment{
-			{Const: "/config/"},
+			{Const: "/config/", Length: 8},
 			{IsParam: true, ParamName: "+1", IsGreedy: true, IsOptional: false, ComparePart: ".json", PartCount: 1},
-			{Const: ".json", IsLast: true},
+			{Const: ".json", Length: 5, IsLast: true},
 		},
 		params:    []string{"+1"},
 		plusCount: 1,
@@ -78,11 +78,11 @@ func Test_Path_parseRoute(t *testing.T) {
 	rp = parseRoute("/api/:day.:month?.:year?")
 	utils.AssertEqual(t, routeParser{
 		segs: []*routeSegment{
-			{Const: "/api/"},
+			{Const: "/api/", Length: 5},
 			{IsParam: true, ParamName: "day", IsOptional: false, ComparePart: ".", PartCount: 2},
-			{Const: "."},
+			{Const: ".", Length: 1},
 			{IsParam: true, ParamName: "month", IsOptional: true, ComparePart: ".", PartCount: 1},
-			{Const: "."},
+			{Const: ".", Length: 1},
 			{IsParam: true, ParamName: "year", IsOptional: true, IsLast: true},
 		},
 		params: []string{"day", "month", "year"},
@@ -91,11 +91,11 @@ func Test_Path_parseRoute(t *testing.T) {
 	rp = parseRoute("/*v1*/proxy")
 	utils.AssertEqual(t, routeParser{
 		segs: []*routeSegment{
-			{Const: "/", HasOptionalSlash: true},
+			{Const: "/", Length: 1, HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "v1", PartCount: 1},
-			{Const: "v1"},
+			{Const: "v1", Length: 2},
 			{IsParam: true, ParamName: "*2", IsGreedy: true, IsOptional: true, ComparePart: "/proxy", PartCount: 1},
-			{Const: "/proxy", IsLast: true},
+			{Const: "/proxy", Length: 6, IsLast: true},
 		},
 		params:        []string{"*1", "*2"},
 		wildCardCount: 2,
