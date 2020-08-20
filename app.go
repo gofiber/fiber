@@ -262,6 +262,8 @@ func New(config ...Config) *App {
 	if app.config.Immutable {
 		getBytes, getString = getBytesImmutable, getStringImmutable
 	}
+	// Init app
+	app.init()
 	// Return app
 	return app
 }

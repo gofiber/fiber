@@ -42,7 +42,7 @@ type Config struct {
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:       nil,
-	Format:     `{"pid": "${pid}", "time": "${time}, "status": "${status}", "latency", "${latency}", "method", "${method}", "path": "${path}"},\n`,
+	Format:     "#${pid} - ${time} ${status} - ${latency} ${method} ${path}\n",
 	TimeFormat: "2006/01/02 15:04:05",
 	TimeZone:   "Local",
 	Output:     os.Stderr,
