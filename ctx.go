@@ -662,8 +662,12 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 func (c *Ctx) Path(override ...string) string {
 	if len(override) != 0 && c.path != override[0] {
 		// Set new path to context
-		c.path = override[0]
-		c.pathOriginal = c.path
+
+		c.path = getString(append(getBytes(c.path)[0:0], override[0]...))
+		c.pathOriginal = override[0]
+		// c.path = override[0]
+		// c.pathOriginal = c.path
+
 		// Set new path to request context
 		c.fasthttp.Request.URI().SetPath(c.pathOriginal)
 		// Prettify path
