@@ -266,6 +266,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/this/is/a/dummy/route/oke")
 
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -286,6 +287,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/this/route/does/not/exist")
 
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -302,6 +304,8 @@ func Benchmark_Router_Handler(b *testing.B) {
 
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
+
+	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
@@ -320,6 +324,8 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
 
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -337,7 +343,7 @@ func Benchmark_Router_Chain(b *testing.B) {
 
 	c.Request.Header.SetMethod("GET")
 	c.URI().SetPath("/")
-
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -360,7 +366,7 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 
 	c.Request.Header.SetMethod("GET")
 	c.URI().SetPath("/")
-
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -379,7 +385,7 @@ func Benchmark_Router_Next(b *testing.B) {
 
 	c := app.AcquireCtx(request)
 	defer app.ReleaseCtx(c)
-
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		c.indexRoute = -1
 		res = app.next(c)
@@ -408,6 +414,7 @@ func Benchmark_Route_Match(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(c *Ctx) error {
 		return nil
 	})
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		match = route.match("/user/keys/1337", "/user/keys/1337", &params)
 	}
@@ -436,6 +443,8 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(c *Ctx) error {
 		return nil
 	})
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
 		match = route.match("/user/keys/bla", "/user/keys/bla", &params)
 	}
@@ -464,6 +473,9 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	route.Handlers = append(route.Handlers, func(c *Ctx) error {
 		return nil
 	})
+
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
 		match = route.match("/", "/", &params)
 	}
@@ -482,6 +494,8 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
+
+	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
@@ -502,6 +516,8 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	c.Request.Header.SetMethod(MethodDelete)
 	c.URI().SetPath("/cr%C3%A9er")
 
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
 		c.URI().SetPath("/cr%C3%A9er")
 		app.handler(c)
@@ -519,6 +535,8 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
 
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -531,6 +549,8 @@ func Benchmark_Router_Github_API(b *testing.B) {
 
 	c := &fasthttp.RequestCtx{}
 	var match bool
+
+	b.ResetTimer()
 
 	for i := range routesFixture.TestRoutes {
 		c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
