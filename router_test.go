@@ -524,7 +524,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Github_API -benchmem -count=4
+// go test -v  -run=^$ -bench=Benchmark_Router_Github_API -benchmem -count=4
 func Benchmark_Router_Github_API(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
