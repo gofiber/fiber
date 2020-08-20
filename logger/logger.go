@@ -18,7 +18,7 @@ type Config struct {
 	Next func(c *fiber.Ctx) bool
 
 	// Format defines the logging tags
-	// Optional. Default: ${time} - ${ip} - ${status} - ${latency} - ${method} ${path}\n
+	// Optional. Default: [${time}] ${status} - ${latency} ${method} ${path}\n
 	Format string
 
 	// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
@@ -42,8 +42,8 @@ type Config struct {
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:       nil,
-	Format:     "#${pid} - ${time} ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat: "2006/01/02 15:04:05",
+	Format:     "[${time}] ${status} - ${latency} ${method} ${path}\n",
+	TimeFormat: "15:04:05",
 	TimeZone:   "Local",
 	Output:     os.Stderr,
 }
@@ -67,6 +67,7 @@ const (
 	TagBytesSent     = "bytesSent"
 	TagBytesReceived = "bytesReceived"
 	TagRoute         = "route"
+	TagError         = "error"
 	TagHeader        = "header:"
 	TagQuery         = "query:"
 	TagForm          = "form:"
@@ -234,6 +235,11 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(cWhite)
 			case TagReset:
 				return buf.WriteString(cReset)
+			case TagError:
+				if err != nil {
+					return buf.WriteString(err.Error())
+				}
+				return buf.WriteString("-")
 			default:
 				// Check if we have a value tag i.e.: "header:x-key"
 				switch {
