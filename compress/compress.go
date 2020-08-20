@@ -93,10 +93,6 @@ func New(config ...Config) fiber.Handler {
 		// Compress response
 		compressor(c.Fasthttp())
 
-		// https://github.com/valyala/fasthttp/blob/master/http.go#L1408
-		// Why not set :()
-		// fmt.Println(c.Fasthttp().Response.Header.Peek(fiber.HeaderContentEncoding))
-
 		// Return from handler
 		return nil
 	}
