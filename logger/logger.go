@@ -96,8 +96,6 @@ const (
 	cReset   = "\u001b[0m"
 )
 
-// var colorTags = []string{"${black}", "${red}", "${green}", "${yellow}", "${blue}", "${magenta}", "${cyan}", "${white}", "${reset}"}
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
