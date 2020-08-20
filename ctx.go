@@ -85,8 +85,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	// Reset matched flag
 	c.matched = false
 	// Set paths
-	c.path = getString(fctx.URI().PathOriginal())
-	c.pathOriginal = c.path
+	c.path = getString(append(getBytes(c.path)[0:0], fctx.URI().PathOriginal()...))
+	c.pathOriginal = getString(fctx.URI().PathOriginal())
 	// Set method
 	c.method = getString(fctx.Request.Header.Method())
 	c.methodINT = methodInt(c.method)
@@ -1008,7 +1008,7 @@ func (c *Ctx) prettifyPath() {
 	// If CaseSensitive is disabled, we lowercase the original path
 	if !c.app.config.CaseSensitive {
 		// We are making a copy here to keep access to the original path
-		c.path = utils.ToLower(c.path)
+		c.path = getString(utils.ToLowerBytes(getBytes(c.path)))
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.path) > 1 && c.path[len(c.path)-1] == '/' {
