@@ -67,7 +67,6 @@ const (
 	TagBytesSent     = "bytesSent"
 	TagBytesReceived = "bytesReceived"
 	TagRoute         = "route"
-	TagError         = "error"
 	TagHeader        = "header:"
 	TagQuery         = "query:"
 	TagForm          = "form:"
@@ -133,14 +132,6 @@ func New(config ...Config) fiber.Handler {
 	} else {
 		cfg.timeZoneLocation = tz
 	}
-
-	// // Check if format contains colors
-	// for i := 0; i < len(colorTags); i++ {
-	// 	if strings.Contains(cfg.Format, colorTags[i]) {
-	// 		cfg.haveColors = true
-	// 		break
-	// 	}
-	// }
 
 	// Check if format contains latency
 	cfg.haveLatency = strings.Contains(cfg.Format, "${latency}")
@@ -223,10 +214,6 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(strconv.Itoa(len(c.Fasthttp().Response.Body())))
 			case TagRoute:
 				return buf.WriteString(c.Route().Path)
-			case TagError:
-				// if c.Error() != nil {
-				// 	return buf.WriteString(c.Error().Error())
-				// }
 			case TagStatus:
 				return buf.WriteString(strconv.Itoa(c.Fasthttp().Response.StatusCode()))
 			case TagMethod:
