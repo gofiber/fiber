@@ -616,7 +616,7 @@ func (c *Ctx) Next() error {
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
 		if err := c.route.Handlers[c.indexHandler](c); err != nil {
-			_ = c.app.errorHandler(c, err)
+			c.app.errorHandler(c, err)
 			return nil
 		}
 	} else {

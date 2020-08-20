@@ -40,7 +40,7 @@ type Handler = func(*Ctx) error
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
-type ErrorHandler = func(*Ctx, error) error
+type ErrorHandler = func(*Ctx, error)
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
@@ -201,20 +201,20 @@ type Static struct {
 
 // default settings
 const (
-	defaultBodyLimit            = 4 * 1024 * 1024
-	defaultConcurrency          = 256 * 1024
-	defaultReadBufferSize       = 4096
-	defaultWriteBufferSize      = 4096
-	defaultCompressedFileSuffix = ".fiber.gz"
+	DefaultBodyLimit            = 4 * 1024 * 1024
+	DefaultConcurrency          = 256 * 1024
+	DefaultReadBufferSize       = 4096
+	DefaultWriteBufferSize      = 4096
+	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-var DefaultErrorHandler = func(c *Ctx, err error) error {
+var DefaultErrorHandler = func(c *Ctx, err error) {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {
 		code = e.Code
 	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-	return c.Status(code).SendString(err.Error())
+	c.Status(code).SendString(err.Error())
 }
 
 // New creates a new Fiber named instance.
@@ -245,19 +245,19 @@ func New(config ...Config) *App {
 	}
 	// Override default values
 	if app.config.BodyLimit <= 0 {
-		app.config.BodyLimit = defaultBodyLimit
+		app.config.BodyLimit = DefaultBodyLimit
 	}
 	if app.config.Concurrency <= 0 {
-		app.config.Concurrency = defaultConcurrency
+		app.config.Concurrency = DefaultConcurrency
 	}
 	if app.config.ReadBufferSize <= 0 {
-		app.config.ReadBufferSize = defaultReadBufferSize
+		app.config.ReadBufferSize = DefaultReadBufferSize
 	}
 	if app.config.WriteBufferSize <= 0 {
-		app.config.WriteBufferSize = defaultWriteBufferSize
+		app.config.WriteBufferSize = DefaultWriteBufferSize
 	}
 	if app.config.CompressedFileSuffix == "" {
-		app.config.CompressedFileSuffix = defaultCompressedFileSuffix
+		app.config.CompressedFileSuffix = DefaultCompressedFileSuffix
 	}
 	if app.config.Immutable {
 		getBytes, getString = getBytesImmutable, getStringImmutable
@@ -540,7 +540,7 @@ func (app *App) init() *App {
 			} else {
 				err = ErrBadRequest
 			}
-			_ = app.errorHandler(c, err)
+			app.errorHandler(c, err)
 			app.ReleaseCtx(c)
 		},
 	}

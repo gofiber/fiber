@@ -112,7 +112,7 @@ func (app *App) next(c *Ctx) bool {
 		// Execute first handler of route
 		c.indexHandler = 0
 		if err := route.Handlers[0](c); err != nil {
-			_ = c.app.errorHandler(c, err)
+			c.app.errorHandler(c, err)
 		}
 		// Stop scanning the stack
 		return true
