@@ -399,7 +399,11 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		parser := parseRoute(r)
 		for _, c := range cases {
 			var matchRes bool
-			t.Run(r+" | "+c.url, func(b *testing.B) {
+			state := "match"
+			if !c.match {
+				state = "not match"
+			}
+			t.Run(r+" | "+state+" | "+c.url, func(b *testing.B) {
 				for i := 0; i <= b.N; i++ {
 					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck); match {
 						// Get params from the original path
@@ -422,7 +426,22 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v2", params: nil, match: false},
 		{url: "/api/v1/", params: nil, match: false},
 	})
-	//benchCase("/api/v1", []testparams{
-	//	{url: "/api/v1", params: []string{}, match: true},
-	//})
+	benchCase("/api/v1/:param", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: true},
+		{url: "/api/v1/entity/8728382", params: nil, match: false},
+		{url: "/api/v1", params: nil, match: false},
+		{url: "/api/v1/", params: nil, match: false},
+	})
+	benchCase("/api/v1", []testparams{
+		{url: "/api/v1", params: []string{}, match: true},
+		{url: "/api/v2", params: nil, match: false},
+	})
+	benchCase("/api/v1/:param/*", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity", ""}, match: true},
+		{url: "/api/v1/entity/", params: []string{"entity", ""}, match: true},
+		{url: "/api/v1/entity/1", params: []string{"entity", "1"}, match: true},
+		{url: "/api/v", params: nil, match: false},
+		{url: "/api/v2", params: nil, match: false},
+		{url: "/api/v1/", params: nil, match: false},
+	})
 }

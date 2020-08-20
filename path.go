@@ -34,6 +34,7 @@ type routeSegment struct {
 	// common information
 	IsLast           bool // shows if the segment is the last one for the route
 	HasOptionalSlash bool // segment has the possibility of an optional slash
+	Length           int  // length of the parameter for segment, when its 0 then the length is undetermined
 	// future TODO: add support for optional groups "/abc(/def)?"
 }
 
@@ -113,6 +114,11 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 	for i := 0; i < segLen; i++ {
 		// check how often the compare part is in the following const parts
 		if segs[i].IsParam {
+			// check if parameter segments are directly after each other and if one of them is greedy
+			// in case the next parameter or the current parameter is not a wildcard its not greedy, we only want one character
+			if segLen > i+1 && !segs[i].IsGreedy && segs[i+1].IsParam && !segs[i+1].IsGreedy {
+				segs[i].Length = 1
+			}
 			if segs[i].ComparePart == "" {
 				continue
 			}
@@ -157,7 +163,8 @@ func (routeParser *routeParser) analyseConstantPart(pattern string, nextParamPos
 		processedPart = pattern[:nextParamPosition]
 	}
 	return processedPart, &routeSegment{
-		Const: processedPart,
+		Const:  processedPart,
+		Length: len(processedPart),
 	}
 }
 
@@ -221,11 +228,11 @@ func findNextCharsetPosition(search string, charset []byte) int {
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
 func (routeParser *routeParser) getMatch(s, original string, params *[maxParams]string, partialCheck bool) bool {
 	var i, paramsIterator, partLen int
-	for index, segment := range routeParser.segs {
+	for _, segment := range routeParser.segs {
 		partLen = len(s)
 		// check const segment
 		if !segment.IsParam {
-			i = len(segment.Const)
+			i = segment.Length
 			// is optional part or the const part must match with the given string
 			// check if the end of the segment is a optional slash
 			if segment.HasOptionalSlash && partLen == i-1 && s == segment.Const[:i-1] {
@@ -235,7 +242,7 @@ func (routeParser *routeParser) getMatch(s, original string, params *[maxParams]
 			}
 		} else {
 			// determine parameter length
-			i = findParamLen(s, routeParser.segs, index)
+			i = findParamLen(s, segment)
 			if !segment.IsOptional && i == 0 {
 				return false
 			}
@@ -258,29 +265,27 @@ func (routeParser *routeParser) getMatch(s, original string, params *[maxParams]
 
 // findParamLen for the expressjs wildcard behavior (right to left greedy)
 // look at the other segments and take what is left for the wildcard from right to left
-func findParamLen(s string, segments []*routeSegment, currIndex int) int {
-	if segments[currIndex].IsLast {
-		return findParamLenForLastSegment(s, segments[currIndex])
+func findParamLen(s string, segment *routeSegment) int {
+	if segment.IsLast {
+		return findParamLenForLastSegment(s, segment)
 	}
 
-	// Search the parameters until the next constant part
-	// special logic for greedy params
-	if segments[currIndex].IsGreedy {
-		searchCount := strings.Count(s, segments[currIndex].ComparePart)
+	if segment.Length != 0 && len(s) >= segment.Length {
+		return segment.Length
+	} else if segment.IsGreedy {
+		// Search the parameters until the next constant part
+		// special logic for greedy params
+		searchCount := strings.Count(s, segment.ComparePart)
 		if searchCount > 1 {
-			return findGreedyParamLen(s, searchCount, segments[currIndex])
+			return findGreedyParamLen(s, searchCount, segment)
 		}
-	} else if !segments[currIndex].IsGreedy && !segments[currIndex+1].IsGreedy && segments[currIndex+1].IsParam && len(s) > 0 {
-		// check if parameter segments are directly after each other and if one of them is greedy
-		// in case the next parameter or the current parameter is not a wildcard its not greedy, we only want one character
-		return 1
 	}
 
-	if len(segments[currIndex].ComparePart) == 1 {
-		if constPosition := strings.IndexByte(s, segments[currIndex].ComparePart[0]); constPosition != -1 {
+	if len(segment.ComparePart) == 1 {
+		if constPosition := strings.IndexByte(s, segment.ComparePart[0]); constPosition != -1 {
 			return constPosition
 		}
-	} else if constPosition := strings.Index(s, segments[currIndex].ComparePart); constPosition != -1 {
+	} else if constPosition := strings.Index(s, segment.ComparePart); constPosition != -1 {
 		return constPosition
 	}
 
