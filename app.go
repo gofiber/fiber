@@ -262,8 +262,6 @@ func New(config ...Config) *App {
 	if app.config.Immutable {
 		getBytes, getString = getBytesImmutable, getStringImmutable
 	}
-	// Initialize app config
-	app.init()
 	// Return app
 	return app
 }
@@ -391,8 +389,6 @@ func NewError(code int, message ...string) *Error {
 
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
-	// Update fiber server settings
-	app.init()
 	// Prefork is supported for custom listeners
 	if app.config.Prefork {
 		addr, tls := lnMetadata(ln)
@@ -413,8 +409,6 @@ func (app *App) Listener(ln net.Listener) error {
 func (app *App) Listen(port int) error {
 	// Convert port to string
 	addr := ":" + strconv.Itoa(port)
-	// Update fiber server settings
-	app.init()
 	// Start prefork
 	if app.config.Prefork {
 		return app.prefork(addr)
@@ -474,8 +468,6 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 	if err != nil {
 		return nil, err
 	}
-	// Update server settings
-	app.init()
 	// Create test connection
 	conn := new(testConn)
 	// Write raw http request
