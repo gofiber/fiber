@@ -740,14 +740,14 @@ func Test_App_Listen(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen(4003))
+	utils.AssertEqual(t, nil, app.Listen(":4003"))
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen(4010))
+	utils.AssertEqual(t, nil, app.Listen(":4010"))
 }
 
 // go test -run Test_App_Listener
@@ -940,7 +940,7 @@ func Test_App_BadRequest(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen(4005))
+	utils.AssertEqual(t, nil, app.Listen("4005"))
 }
 
 // go test -run Test_App_SmallReadBuffer
@@ -964,5 +964,5 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen(4006))
+	utils.AssertEqual(t, nil, app.Listen("4006"))
 }
