@@ -39,7 +39,8 @@ type Ctx struct {
 	indexHandler int                  // Index of the current handler
 	method       string               // HTTP method
 	methodINT    int                  // HTTP method INT equivalent
-	path         string               // Prettified HTTP path
+	path         string               // Prettified HTTP path -> string copy from pathBuffer
+	pathBuffer   []byte               // Prettified HTTP path buffer
 	treePath     string               // Path for the search in the tree
 	pathOriginal string               // Original HTTP path
 	values       [maxParams]string    // Route parameter values
@@ -85,8 +86,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	// Reset matched flag
 	c.matched = false
 	// Set paths
-	// c.path = getString(append(getBytes(c.path)[0:0], fctx.URI().PathOriginal()...))
-	c.path = getString(append(getBytes(c.path)[0:0], fctx.URI().PathOriginal()...))
+	c.pathBuffer = append(c.pathBuffer[0:0], fctx.URI().PathOriginal()...)
 	c.pathOriginal = getString(fctx.URI().PathOriginal())
 	// Set method
 	c.method = getString(fctx.Request.Header.Method())
@@ -651,8 +651,7 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 func (c *Ctx) Path(override ...string) string {
 	if len(override) != 0 && c.path != override[0] {
 		// Set new path to context
-
-		c.path = getString(append(getBytes(c.path)[0:0], override[0]...))
+		c.pathBuffer = append(c.pathBuffer[0:0], override[0]...)
 		c.pathOriginal = override[0]
 		// c.path = override[0]
 		// c.pathOriginal = c.path
@@ -995,21 +994,31 @@ func (c *Ctx) XHR() bool {
 func (c *Ctx) prettifyPath() {
 	// If UnescapePath enabled, we decode the path
 	if c.app.config.UnescapePath {
-		pathBytes := getBytes(c.path)
-		pathBytes = fasthttp.AppendUnquotedArg(pathBytes[:0], pathBytes)
-		c.path = getString(pathBytes)
+		c.pathBuffer = fasthttp.AppendUnquotedArg(c.pathBuffer[:0], c.pathBuffer)
 	}
 	// If CaseSensitive is disabled, we lowercase the original path
 	if !c.app.config.CaseSensitive {
 		// We are making a copy here to keep access to the original path
-		c.path = getString(utils.ToLowerBytes(getBytes(c.path)))
+		c.pathBuffer = utils.ToLowerBytes(c.pathBuffer)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
-	if !c.app.config.StrictRouting && len(c.path) > 1 && c.path[len(c.path)-1] == '/' {
-		c.path = utils.TrimRight(c.path, '/')
+	if !c.app.config.StrictRouting && len(c.pathBuffer) > 1 && c.pathBuffer[len(c.pathBuffer)-1] == '/' {
+		c.pathBuffer = TrimRightByte(c.pathBuffer, '/')
 	}
+	c.path = getString(c.pathBuffer)
+
 	c.treePath = c.treePath[0:0]
 	if len(c.path) >= 3 {
 		c.treePath = c.path[:3]
 	}
+}
+
+// TODO: outsource in utils
+// TrimRight is the equivalent of strings.TrimRight
+func TrimRightByte(s []byte, cutset byte) []byte {
+	lenStr := len(s)
+	for lenStr > 0 && s[lenStr-1] == cutset {
+		lenStr--
+	}
+	return s[:lenStr]
 }
