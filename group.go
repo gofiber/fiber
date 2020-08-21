@@ -93,17 +93,17 @@ func (grp *Group) Patch(path string, handlers ...Handler) Router {
 	return grp.Add(MethodPatch, path, handlers...)
 }
 
-// Add ...
+// Add allows you to specify a HTTP method to register a route
 func (grp *Group) Add(method, path string, handlers ...Handler) Router {
 	return grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
 }
 
-// Static ...
+// Static will create a file server serving static files
 func (grp *Group) Static(prefix, root string, config ...Static) Router {
 	return grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
 }
 
-// All ...
+// All will register the handler on all HTTP methods
 func (grp *Group) All(path string, handlers ...Handler) Router {
 	for _, method := range intMethod {
 		_ = grp.Add(method, path, handlers...)

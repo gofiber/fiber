@@ -346,17 +346,17 @@ func (app *App) Patch(path string, handlers ...Handler) Router {
 	return app.Add(MethodPatch, path, handlers...)
 }
 
-// Add ...
+// Add allows you to specify a HTTP method to register a route
 func (app *App) Add(method, path string, handlers ...Handler) Router {
 	return app.register(method, path, handlers...)
 }
 
-// Static ...
+// Static will create a file server serving static files
 func (app *App) Static(prefix, root string, config ...Static) Router {
 	return app.registerStatic(prefix, root, config...)
 }
 
-// All ...
+// All will register the handler on all HTTP methods
 func (app *App) All(path string, handlers ...Handler) Router {
 	for _, method := range intMethod {
 		_ = app.Add(method, path, handlers...)
@@ -406,8 +406,7 @@ func (app *App) Listener(ln net.Listener) error {
 	return app.server.Serve(ln)
 }
 
-// Listen serves HTTP requests from the given addr or port.
-// You can pass an optional *tls.Config to enable TLS.
+// Listen serves HTTP requests from the given addr.
 //
 //  app.Listen(":8080")
 //  app.Listen("127.0.0.1:8080")
@@ -442,7 +441,6 @@ func (app *App) Stack() [][]*Route {
 // Shutdown gracefully shuts down the server without interrupting any active connections.
 // Shutdown works by first closing all open listeners and then waiting indefinitely for all connections to return to idle and then shut down.
 //
-// When Shutdown is called, Serve, ListenAndServe, and ListenAndServeTLS immediately return nil.
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
@@ -457,31 +455,38 @@ func (app *App) Shutdown() error {
 
 // Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
-func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, error) {
-	timeout := 1000 // 1 second default
+func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, err error) {
+	// Set timeout
+	timeout := 1000
 	if len(msTimeout) > 0 {
 		timeout = msTimeout[0]
 	}
+
 	// Add Content-Length if not provided with body
-	if request.Body != http.NoBody && request.Header.Get("Content-Length") == "" {
-		request.Header.Add("Content-Length", strconv.FormatInt(request.ContentLength, 10))
+	if req.Body != http.NoBody && req.Header.Get(HeaderContentLength) == "" {
+		req.Header.Add(HeaderContentLength, strconv.FormatInt(req.ContentLength, 10))
 	}
+
 	// Dump raw http request
-	dump, err := httputil.DumpRequest(request, true)
+	dump, err := httputil.DumpRequest(req, true)
 	if err != nil {
 		return nil, err
 	}
+
 	// Create test connection
 	conn := new(testConn)
+
 	// Write raw http request
 	if _, err = conn.r.Write(dump); err != nil {
 		return nil, err
 	}
+
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
 		channel <- app.server.ServeConn(conn)
 	}()
+
 	// Wait for callback
 	if timeout >= 0 {
 		// With timeout
@@ -494,19 +499,17 @@ func (app *App) Test(request *http.Request, msTimeout ...int) (*http.Response, e
 		// Without timeout
 		err = <-channel
 	}
+
 	// Check for errors
 	if err != nil {
 		return nil, err
 	}
+
 	// Read response
 	buffer := bufio.NewReader(&conn.w)
+
 	// Convert raw http response to *http.Response
-	resp, err := http.ReadResponse(buffer, request)
-	if err != nil {
-		return nil, err
-	}
-	// Return *http.Response
-	return resp, nil
+	return http.ReadResponse(buffer, req)
 }
 
 type disableLogger struct{}
