@@ -83,7 +83,7 @@ func (r *Route) match(path, original string, params *[maxParams]string) (match b
 	return false
 }
 
-func (app *App) next(c *Ctx) bool {
+func (app *App) next(c *Ctx) (match bool, err error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.methodINT][c.treePath]
 	if !ok {
@@ -97,7 +97,7 @@ func (app *App) next(c *Ctx) bool {
 		// Get *Route
 		route := tree[c.indexRoute]
 		// Check if it matches the request path
-		match := route.match(c.path, c.pathOriginal, &c.values)
+		match = route.match(c.path, c.pathOriginal, &c.values)
 		// No match, next route
 		if !match {
 			continue
@@ -111,11 +111,11 @@ func (app *App) next(c *Ctx) bool {
 
 		// Execute first handler of route
 		c.indexHandler = 0
-		if err := route.Handlers[0](c); err != nil {
+		if err = route.Handlers[0](c); err != nil {
 			c.app.errorHandler(c, err)
 		}
 		// Stop scanning the stack
-		return true
+		return
 	}
 	// If c.Next() does not match, return 404
 	_ = c.SendStatus(StatusNotFound)
@@ -128,7 +128,7 @@ func (app *App) next(c *Ctx) bool {
 	if !c.matched {
 		setMethodNotAllowed(c)
 	}
-	return false
+	return
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
@@ -143,7 +143,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Find match in stack
-	match := app.next(c)
+	match, _ := app.next(c)
 	// Generate ETag if enabled
 	if match && app.config.ETag {
 		setETag(c, false)

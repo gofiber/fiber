@@ -609,21 +609,21 @@ func (c *Ctx) MultipartForm() (*multipart.Form, error) {
 }
 
 // Next executes the next method in the stack that matches the current route.
-func (c *Ctx) Next() error {
+func (c *Ctx) Next() (err error) {
 	// Increment handler index
 	c.indexHandler++
 	// Did we executed all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
-		if err := c.route.Handlers[c.indexHandler](c); err != nil {
+		if err = c.route.Handlers[c.indexHandler](c); err != nil {
 			c.app.errorHandler(c, err)
-			return nil
+			return err
 		}
 	} else {
 		// Continue handler stack
-		c.app.next(c)
+		_, err = c.app.next(c)
 	}
-	return nil
+	return
 }
 
 // OriginalURL contains the original request URL.

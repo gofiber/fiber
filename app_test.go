@@ -23,6 +23,10 @@ import (
 	fasthttp "github.com/valyala/fasthttp"
 )
 
+var testEmptyHandler = func(c *Ctx) error {
+	return nil
+}
+
 func testStatus200(t *testing.T, app *App, url string, method string) {
 	req := httptest.NewRequest(method, url, nil)
 
@@ -38,13 +42,9 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 		return c.Next()
 	})
 
-	app.Post("/", func(c *Ctx) error {
-		return nil
-	})
+	app.Post("/", testEmptyHandler)
 
-	app.Options("/", func(c *Ctx) error {
-		return nil
-	})
+	app.Options("/", testEmptyHandler)
 
 	resp, err := app.Test(httptest.NewRequest("POST", "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -66,9 +66,7 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	utils.AssertEqual(t, 405, resp.StatusCode)
 	utils.AssertEqual(t, "POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
-	app.Get("/", func(c *Ctx) error {
-		return nil
-	})
+	app.Get("/", testEmptyHandler)
 
 	resp, err = app.Test(httptest.NewRequest("TRACE", "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -93,9 +91,7 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 		return c.SendStatus(404)
 	})
 
-	app.Post("/", func(c *Ctx) error {
-		return nil
-	})
+	app.Post("/", testEmptyHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -105,9 +101,7 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 		return c.Status(404).Next()
 	})
 
-	g.Post("/", func(c *Ctx) error {
-		return nil
-	})
+	g.Post("/", testEmptyHandler)
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/with-next", nil))
 	utils.AssertEqual(t, nil, err)
@@ -171,8 +165,8 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 		return errors.New("hi, i'm an error")
 	})
 
-	app.Use(func(c *Ctx, err error) error {
-		return c.Status(200).SendString("hi, i'm an custom error")
+	app.Errors(func(c *Ctx, err error) {
+		c.Status(200).SendString("hi, i'm an custom error")
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
@@ -256,9 +250,7 @@ func Test_App_Add_Method_Test(t *testing.T) {
 			utils.AssertEqual(t, "add: invalid http method JOHN\n", fmt.Sprintf("%v", err))
 		}
 	}()
-	app.Add("JOHN", "/doe", func(c *Ctx) error {
-		return nil
-	})
+	app.Add("JOHN", "/doe", testEmptyHandler)
 }
 
 // func Test_App_Listen_TLS(t *testing.T) {
@@ -375,9 +367,7 @@ func Test_App_Order(t *testing.T) {
 	utils.AssertEqual(t, "123", string(body))
 }
 func Test_App_Methods(t *testing.T) {
-	var dummyHandler = func(c *Ctx) error {
-		return nil
-	}
+	var dummyHandler = testEmptyHandler
 
 	app := New()
 
@@ -418,16 +408,12 @@ func Test_App_Methods(t *testing.T) {
 
 func Test_App_New(t *testing.T) {
 	app := New()
-	app.Get("/", func(c *Ctx) error {
-		return nil
-	})
+	app.Get("/", testEmptyHandler)
 
 	appConfig := New(Config{
 		Immutable: true,
 	})
-	appConfig.Get("/", func(c *Ctx) error {
-		return nil
-	})
+	appConfig.Get("/", testEmptyHandler)
 }
 
 func Test_App_Shutdown(t *testing.T) {
@@ -653,9 +639,7 @@ func Test_App_Group_Invalid(t *testing.T) {
 }
 
 func Test_App_Group(t *testing.T) {
-	var dummyHandler = func(c *Ctx) error {
-		return nil
-	}
+	var dummyHandler = testEmptyHandler
 
 	app := New()
 
@@ -816,9 +800,7 @@ func Test_Test_Timeout(t *testing.T) {
 	app := New()
 	app.config.DisableStartupMessage = true
 
-	app.Get("/", func(c *Ctx) error {
-		return nil
-	})
+	app.Get("/", testEmptyHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), -1)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -843,9 +825,7 @@ func Test_Test_DumpError(t *testing.T) {
 	app := New()
 	app.config.DisableStartupMessage = true
 
-	app.Get("/", func(c *Ctx) error {
-		return nil
-	})
+	app.Get("/", testEmptyHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", errorReader(0)))
 	utils.AssertEqual(t, true, resp == nil)
@@ -877,18 +857,10 @@ func Test_App_Init_Error_View(t *testing.T) {
 func Test_App_Stack(t *testing.T) {
 	app := New()
 
-	app.Use("/path0", func(c *Ctx) error {
-		return nil
-	})
-	app.Get("/path1", func(c *Ctx) error {
-		return nil
-	})
-	app.Get("/path2", func(c *Ctx) error {
-		return nil
-	})
-	app.Post("/path3", func(c *Ctx) error {
-		return nil
-	})
+	app.Use("/path0", testEmptyHandler)
+	app.Get("/path1", testEmptyHandler)
+	app.Get("/path2", testEmptyHandler)
+	app.Post("/path3", testEmptyHandler)
 
 	stack := app.Stack()
 	utils.AssertEqual(t, 9, len(stack))

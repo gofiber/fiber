@@ -285,9 +285,6 @@ func (app *App) Use(args ...interface{}) Router {
 			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
-		case ErrorHandler:
-			app.errorHandler = arg
-			return app
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
@@ -367,6 +364,12 @@ func (app *App) All(path string, handlers ...Handler) Router {
 	return app
 }
 
+// Errors allows you to override the global error handler
+func (app *App) Errors(handler ErrorHandler) Router {
+	app.errorHandler = handler
+	return app
+}
+
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
@@ -408,9 +411,7 @@ func (app *App) Listener(ln net.Listener) error {
 //
 //  app.Listen(":8080")
 //  app.Listen("127.0.0.1:8080")
-func (app *App) Listen(port int) error {
-	// Convert port to string
-	addr := ":" + strconv.Itoa(port)
+func (app *App) Listen(addr string) error {
 	// Start prefork
 	if app.config.Prefork {
 		return app.prefork(addr)

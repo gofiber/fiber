@@ -18,9 +18,9 @@ func Test_Recover(t *testing.T) {
 		panic("Hi, I'm an error!")
 	})
 
-	app.Use(func(c *fiber.Ctx, err error) error {
+	app.Errors(func(c *fiber.Ctx, err error) {
 		utils.AssertEqual(t, "Hi, I'm an error!", err.Error())
-		return c.SendStatus(fiber.StatusTeapot)
+		c.SendStatus(fiber.StatusTeapot)
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/panic", nil))

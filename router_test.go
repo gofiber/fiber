@@ -382,14 +382,17 @@ func Benchmark_Router_Next(b *testing.B) {
 	request.Request.Header.SetMethod("DELETE")
 	request.URI().SetPath("/user/keys/1337")
 	var res bool
+	var err error
 
 	c := app.AcquireCtx(request)
 	defer app.ReleaseCtx(c)
+
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		c.indexRoute = -1
-		res = app.next(c)
+		res, err = app.next(c)
 	}
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, true, res)
 	utils.AssertEqual(b, 4, c.indexRoute)
 }
@@ -549,6 +552,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 
 	c := &fasthttp.RequestCtx{}
 	var match bool
+	var err error
 
 	b.ResetTimer()
 
@@ -557,10 +561,10 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 			ctx := app.AcquireCtx(c)
-			match = app.next(ctx)
+			match, err = app.next(ctx)
 			app.ReleaseCtx(ctx)
 		}
-
+		utils.AssertEqual(b, nil, err)
 		utils.AssertEqual(b, true, match)
 	}
 

@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -171,6 +172,8 @@ func New(config ...Config) fiber.Handler {
 		}
 		// Handle request, store err for logging
 		err = c.Next()
+
+		fmt.Println(err)
 
 		// Set latency stop time
 		if cfg.haveLatency {
