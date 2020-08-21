@@ -214,7 +214,7 @@ var DefaultErrorHandler = func(c *Ctx, err error) {
 		code = e.Code
 	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-	c.Status(code).SendString(err.Error())
+	_ = c.Status(code).SendString(err.Error())
 }
 
 // New creates a new Fiber named instance.

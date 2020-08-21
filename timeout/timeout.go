@@ -20,7 +20,7 @@ func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 			defer func() {
 				_ = recover()
 			}()
-			handler(ctx)
+			_ = handler(ctx)
 			ch <- struct{}{}
 		}()
 
