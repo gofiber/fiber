@@ -987,7 +987,7 @@ func (c *Ctx) Write(p []byte) (n int, err error) {
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *Ctx) XHR() bool {
-	return strings.EqualFold(c.Get(HeaderXRequestedWith), "xmlhttprequest")
+	return utils.EqualsFold(utils.GetBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
 }
 
 // prettifyPath ...
@@ -998,7 +998,6 @@ func (c *Ctx) prettifyPath() {
 	}
 	// If CaseSensitive is disabled, we lowercase the original path
 	if !c.app.config.CaseSensitive {
-		// We are making a copy here to keep access to the original path
 		c.pathBuffer = utils.ToLowerBytes(c.pathBuffer)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes

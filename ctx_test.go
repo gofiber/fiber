@@ -1356,7 +1356,7 @@ func Test_Ctx_JSON(t *testing.T) {
 	testEmpty([]int{}, "[]")
 }
 
-// go test -v  -run=^$ -bench=Benchmark_Ctx_JSON -benchmem -count=4
+// go test -run=^$ -bench=Benchmark_Ctx_JSON -benchmem -count=4
 func Benchmark_Ctx_JSON(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1828,6 +1828,21 @@ func Test_Ctx_XHR(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 	ctx.fasthttp.Request.Header.Set(HeaderXRequestedWith, "XMLHttpRequest")
 	utils.AssertEqual(t, true, ctx.XHR())
+}
+
+// go test -run=^$ -bench=Benchmark_Ctx_XHR -benchmem -count=4
+func Benchmark_Ctx_XHR(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.fasthttp.Request.Header.Set(HeaderXRequestedWith, "XMLHttpRequest")
+	var equal bool
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		equal = c.XHR()
+	}
+	utils.AssertEqual(b, true, equal)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_SendString_B -benchmem -count=4
