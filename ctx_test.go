@@ -747,14 +747,14 @@ func Test_Ctx_IP(t *testing.T) {
 	utils.AssertEqual(t, "0.0.0.0", ctx.IP())
 }
 
-// go test -run Test_Ctx_IPs
+// go test -run Test_Ctx_IPs  -parallel
 func Test_Ctx_IPs(t *testing.T) {
 	t.Parallel()
 	app := New()
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
-	ctx.fasthttp.Request.Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.1, 127.0.0.1")
-	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.1", "127.0.0.1"}, ctx.IPs())
+	ctx.fasthttp.Request.Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.2, 127.0.0.3")
+	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, ctx.IPs())
 
 	ctx.fasthttp.Request.Header.Set(HeaderXForwardedFor, "")
 	utils.AssertEqual(t, 0, len(ctx.IPs()))

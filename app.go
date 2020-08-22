@@ -172,6 +172,13 @@ type Config struct {
 	// Default: ".fiber.gz"
 	CompressedFileSuffix string `json:"compressed_file_suffix"`
 
+	// IPHeader will enable c.IP() to return the value of the given header key
+	// By default c.IP() will return the Remote IP from the tcp connection
+	// This property can be useful if you are behind a load balancer: X-Forwarded-*
+	// NOTE: headers are easily spoofed and the detected IP addresses are unreliable.
+	// Default: ""
+	IPHeader string `json:"ip_header"`
+
 	// FEATURE: v1.13
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
