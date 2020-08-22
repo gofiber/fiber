@@ -469,8 +469,8 @@ func (c *Ctx) Hostname() string {
 
 // IP returns the remote IP address of the request.
 func (c *Ctx) IP() string {
-	if len(c.app.config.IPHeader) > 0 {
-		return c.Get(c.app.config.IPHeader)
+	if len(c.app.config.ProxyHeader) > 0 {
+		return c.Get(c.app.config.ProxyHeader)
 	}
 	return c.fasthttp.RemoteIP().String()
 }
