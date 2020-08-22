@@ -184,22 +184,22 @@ type Static struct {
 	// When set to true, the server tries minimizing CPU usage by caching compressed files.
 	// This works differently than the github.com/gofiber/compression middleware.
 	// Optional. Default value false
-	Compress bool
+	Compress bool `json:"compress"`
 
 	// When set to true, enables byte range requests.
 	// Optional. Default value false
-	ByteRange bool
+	ByteRange bool `json:"byte_range"`
 
 	// When set to true, enables directory browsing.
 	// Optional. Default value false.
-	Browse bool
+	Browse bool `json:"browse"`
 
 	// The name of the index file for serving a directory.
 	// Optional. Default value "index.html".
-	Index string
+	Index string `json:"index"`
 }
 
-// default settings
+// Default settings
 const (
 	DefaultBodyLimit            = 4 * 1024 * 1024
 	DefaultConcurrency          = 256 * 1024
@@ -218,9 +218,9 @@ var DefaultErrorHandler = func(c *Ctx, err error) {
 }
 
 // New creates a new Fiber named instance.
-//  myApp := app.New()
-// You can pass an optional settings by passing a *Settings struct:
-//  myApp := app.New(fiber.Config{
+//  app := fiber.New()
+// You can pass an optional settings by passing a Config struct:
+//  app := fiber.New(fiber.Config{
 //      Prefork: true,
 //      ServerHeader: "Fiber",
 //  })
@@ -268,13 +268,20 @@ func New(config ...Config) *App {
 	return app
 }
 
-// Use registers a middleware route.
-// Middleware matches requests beginning with the provided prefix.
-// Providing a prefix is optional, it defaults to "/".
+// Use registers a middleware route. that will match requests
+// that contain the provided prefix ( which is optional and defaults to "/" ).
 //
-//  app.Use(handler)
-//  app.Use("/api", handler)
-//  app.Use("/api", handler, handler)
+//  app.Use(func(c *fiber.Ctx) error {
+//       return c.Next()
+//  })
+//  app.Use("/api", func(c *fiber.Ctx) error {
+//       return c.Next()
+//  })
+//  app.Use("/api", handler(), func(c *fiber.Ctx) error {
+//       return c.Next()
+//  })
+//
+// This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...interface{}) Router {
 	var prefix string
 	var handlers []Handler
@@ -364,13 +371,18 @@ func (app *App) All(path string, handlers ...Handler) Router {
 	return app
 }
 
-// Errors allows you to override the global error handler
+// Errors allows you to override the global error handler ( fiber.DefaultErrorHandler )
+//  app.Errors(func(c *fiber.Ctx, err error) {
+//       c.Status(500).SendString(err.Error())
+//  })
 func (app *App) Errors(handler ErrorHandler) Router {
 	app.errorHandler = handler
 	return app
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
+//  api := app.Group("/api")
+//  api.Get("/users", handler())
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
 		app.register(methodUse, prefix, handlers...)
