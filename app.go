@@ -705,7 +705,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	fmt.Fprintf(out, logo, cBlack, cBlack,
 		cCyan, cBlack, fmt.Sprintf(" HOST     %s\tOS      %s", cyan(host), cyan(osName)),
 		cCyan, cBlack, fmt.Sprintf(" PORT     %s\tTHREADS %s", cyan(port), cyan(cpuThreads)),
-		cCyan, cBlack, fmt.Sprintf(" TLS      %s\tMEM     %s", cyan(tlsStr), cyan(preforkStr)),
+		cCyan, cBlack, fmt.Sprintf(" TLS      %s\tPREFORK %s", cyan(tlsStr), cyan(preforkStr)),
 		cBlack, cyan(Version), fmt.Sprintf(" HANDLERS %s\t\t\t PID     %s%s%s\n", cyan(handlerCount), cyan(pid), pids, cReset),
 	)
 	// Write to io.write
