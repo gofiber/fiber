@@ -197,6 +197,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		use:  isUse,
 		star: isStar,
 		root: isRoot,
+
 		// Path data
 		path:        pathPretty,
 		routeParser: parsedPretty,
@@ -211,11 +212,12 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 	app.mutex.Lock()
 	app.handlerCount += len(handlers)
 	app.mutex.Unlock()
+
 	// Middleware route matches all HTTP methods
 	if isUse {
 		// Add route to all HTTP methods stack
 		for _, m := range intMethod {
-			// create a route copy
+			// Create a route copy to avoid duplicates during compression
 			r := route
 			app.addRoute(m, &r)
 		}

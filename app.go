@@ -299,6 +299,16 @@ func (app *App) Use(args ...interface{}) Router {
 			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
+		case *App:
+			stack := arg.Stack()
+			for m := range stack {
+				for r := range stack[m] {
+					// path = getGroupPath(prefix, app.stack[m][r].Path)
+					// app.stack[m][r].
+					app.addRoute(app.stack[m][r].Method, app.stack[m][r])
+				}
+			}
+			return app
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
@@ -622,7 +632,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		tlsStr       = "FALSE"
 		handlerCount = app.handlerCount
 		osName       = utils.ToUpper(runtime.GOOS)
-		memTotal     = utils.ByteSize(utils.MemoryTotal())
+		preforkStr   = "FALSE"
 		cpuThreads   = runtime.NumCPU()
 		pid          = os.Getpid()
 	)
@@ -631,6 +641,9 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 	if tls {
 		tlsStr = "TRUE"
+	}
+	if app.config.Prefork {
+		preforkStr = "TRUE"
 	}
 	// tabwriter makes sure the spacing are consistent across different values
 	// colorable handles the escape sequence for stdout using ascii color codes
@@ -650,7 +663,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	fmt.Fprintf(out, logo, cBlack, cBlack,
 		cCyan, cBlack, fmt.Sprintf(" HOST     %s\tOS      %s", cyan(host), cyan(osName)),
 		cCyan, cBlack, fmt.Sprintf(" PORT     %s\tTHREADS %s", cyan(port), cyan(cpuThreads)),
-		cCyan, cBlack, fmt.Sprintf(" TLS      %s\tMEM     %s", cyan(tlsStr), cyan(memTotal)),
+		cCyan, cBlack, fmt.Sprintf(" TLS      %s\tPREFORK %s", cyan(tlsStr), cyan(preforkStr)),
 		cBlack, cyan(Version), fmt.Sprintf(" HANDLERS %s\t\t\t PID     %s%s%s\n", cyan(handlerCount), cyan(pid), pids, cReset),
 	)
 	// Write to io.write
