@@ -1005,7 +1005,7 @@ func (c *Ctx) prettifyPath() {
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.pathBuffer) > 1 && c.pathBuffer[len(c.pathBuffer)-1] == '/' {
-		c.pathBuffer = TrimRightByte(c.pathBuffer, '/')
+		c.pathBuffer = utils.TrimRightBytes(c.pathBuffer, '/')
 	}
 	c.path = getString(c.pathBuffer)
 
@@ -1013,14 +1013,4 @@ func (c *Ctx) prettifyPath() {
 	if len(c.path) >= 3 {
 		c.treePath = c.path[:3]
 	}
-}
-
-// TODO: outsource in utils
-// TrimRight is the equivalent of strings.TrimRight
-func TrimRightByte(s []byte, cutset byte) []byte {
-	lenStr := len(s)
-	for lenStr > 0 && s[lenStr-1] == cutset {
-		lenStr--
-	}
-	return s[:lenStr]
 }
