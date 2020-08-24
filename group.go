@@ -42,7 +42,8 @@ func (grp *Group) Use(args ...interface{}) Router {
 			stack := arg.Stack()
 			for m := range stack {
 				for r := range stack[m] {
-					grp.app.copyRoute(prefix, stack[m][r])
+					route := grp.app.copyRoute(stack[m][r])
+					grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(prefix, route))
 				}
 			}
 			return grp

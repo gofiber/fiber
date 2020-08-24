@@ -303,7 +303,8 @@ func (app *App) Use(args ...interface{}) Router {
 			stack := arg.Stack()
 			for m := range stack {
 				for r := range stack[m] {
-					app.copyRoute(prefix, stack[m][r])
+					route := app.copyRoute(stack[m][r])
+					app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
 				}
 			}
 			return app

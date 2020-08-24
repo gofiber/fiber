@@ -152,45 +152,44 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	app.ReleaseCtx(c)
 }
 
-func (app *App) copyRoute(prefix string, route *Route) {
-	pathRaw := getGroupPath(prefix, route.Path)
-
-	// Cannot have an empty path
-	if pathRaw == "" {
-		pathRaw = "/"
-	}
-	// Path always start with a '/'
-	if pathRaw[0] != '/' {
-		pathRaw = "/" + pathRaw
-	}
-	// Create a stripped path in-case sensitive / trailing slashes
-	pathPretty := pathRaw
+func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
+	prefixedPath := getGroupPath(prefix, route.Path)
+	prettyPath := prefixedPath
 	// Case sensitive routing, all to lowercase
 	if !app.config.CaseSensitive {
-		pathPretty = utils.ToLower(pathPretty)
+		prettyPath = utils.ToLower(prettyPath)
 	}
 	// Strict routing, remove trailing slashes
-	if !app.config.StrictRouting && len(pathPretty) > 1 {
-		pathPretty = utils.TrimRight(pathPretty, '/')
+	if !app.config.StrictRouting && len(prettyPath) > 1 {
+		prettyPath = utils.TrimRight(prettyPath, '/')
 	}
 
-	var parsedRaw = parseRoute(pathRaw)
-	var parsedPretty = parseRoute(pathPretty)
+	route.Path = prefixedPath
+	route.path = prettyPath
+	route.routeParser = parseRoute(prettyPath)
+	route.root = false
+	route.star = false
 
-	route.path = pathPretty
-	route.routeParser = parsedPretty
-	route.Params = parsedRaw.params
-	route.Path = pathRaw
+	return route
+}
 
-	r := route
+func (app *App) copyRoute(route *Route) *Route {
+	return &Route{
+		// Router booleans
+		use:  route.use,
+		star: route.star,
+		root: route.root,
 
-	app.mutex.Lock()
-	app.handlerCount += len(r.Handlers)
-	app.mutex.Unlock()
+		// Path data
+		path:        route.path,
+		routeParser: route.routeParser,
+		Params:      route.Params,
 
-	app.addRoute(route.Method, r)
-	app.buildTree()
-	// ^^
+		// Public data
+		Path:     route.path,
+		Method:   route.Method,
+		Handlers: route.Handlers,
+	}
 }
 
 func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
