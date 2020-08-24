@@ -30,19 +30,27 @@ type Group struct {
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (grp *Group) Use(args ...interface{}) Router {
-	var path = ""
+	var prefix = ""
 	var handlers []Handler
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
-			path = arg
+			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
+		case *App:
+			stack := arg.Stack()
+			for m := range stack {
+				for r := range stack[m] {
+					grp.app.copyRoute(prefix, stack[m][r])
+				}
+			}
+			return grp
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	grp.app.register(methodUse, getGroupPath(grp.prefix, path), handlers...)
+	grp.app.register(methodUse, getGroupPath(grp.prefix, prefix), handlers...)
 	return grp
 }
 

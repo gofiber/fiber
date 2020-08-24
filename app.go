@@ -303,9 +303,7 @@ func (app *App) Use(args ...interface{}) Router {
 			stack := arg.Stack()
 			for m := range stack {
 				for r := range stack[m] {
-					// path = getGroupPath(prefix, app.stack[m][r].Path)
-					// app.stack[m][r].
-					app.addRoute(app.stack[m][r].Method, app.stack[m][r])
+					app.copyRoute(prefix, stack[m][r])
 				}
 			}
 			return app
