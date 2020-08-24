@@ -173,7 +173,7 @@ type Config struct {
 	CompressedFileSuffix string `json:"compressed_file_suffix"`
 
 	// ProxyHeader will enable c.IP() to return the value of the given header key
-	// By default c.IP() will return the Remote IP from the tcp connection
+	// By default c.IP() will return the Remote IP from the TCP connection
 	// This property can be useful if you are behind a load balancer: X-Forwarded-*
 	// NOTE: headers are easily spoofed and the detected IP addresses are unreliable.
 	// Default: ""
