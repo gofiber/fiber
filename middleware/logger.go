@@ -217,7 +217,7 @@ func logger(config LoggerConfig) fiber.Handler {
 	if strings.Contains(config.Format, "${time}") {
 		go func() {
 			for {
-				time.Sleep(time.Millisecond)
+				time.Sleep(450 * time.Millisecond)
 				timestamp.Store(nowTimeString(config.timeZoneLocation, config.TimeFormat))
 			}
 		}()
