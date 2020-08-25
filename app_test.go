@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 
 	utils "github.com/gofiber/utils"
 	fasthttp "github.com/valyala/fasthttp"
+	fasthttputil "github.com/valyala/fasthttp/fasthttputil"
 )
 
 var testEmptyHandler = func(c *Ctx) error {
@@ -253,44 +255,29 @@ func Test_App_Add_Method_Test(t *testing.T) {
 	app.Add("JOHN", "/doe", testEmptyHandler)
 }
 
-// func Test_App_Listen_TLS(t *testing.T) {
-// 	app := New()
+func Test_App_Listener_TLS(t *testing.T) {
+	app := New()
 
-// 	// Create tls certificate
-// 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-// 	if err != nil {
-// 		utils.AssertEqual(t, nil, err)
-// 	}
-// 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+	// Create tls certificate
+	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
-// 	go func() {
-// 		time.Sleep(1000 * time.Millisecond)
-// 		utils.AssertEqual(t, nil, app.Shutdown())
-// 	}()
+	ln, err := net.Listen("tcp4", ":3078")
+	utils.AssertEqual(t, nil, err)
 
-// 	utils.AssertEqual(t, nil, app.Listen(":3078", config))
-// }
+	ln = tls.NewListener(ln, config)
 
-// func Test_App_Listener_TLS(t *testing.T) {
-// 	app := New()
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
 
-// 	// Create tls certificate
-// 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-// 	if err != nil {
-// 		utils.AssertEqual(t, nil, err)
-// 	}
-// 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+	utils.AssertEqual(t, nil, app.Listener(ln))
+}
 
-// 	go func() {
-// 		time.Sleep(1000 * time.Millisecond)
-// 		utils.AssertEqual(t, nil, app.Shutdown())
-// 	}()
-
-// 	ln, err := net.Listen("tcp4", ":3055")
-// 	utils.AssertEqual(t, nil, err)
-
-// 	utils.AssertEqual(t, nil, app.Listener(ln, config))
-// }
 func Test_App_Use_Params_Group(t *testing.T) {
 	app := New()
 
@@ -752,17 +739,15 @@ func Test_App_Listen(t *testing.T) {
 
 // go test -run Test_App_Listener
 func Test_App_Listener(t *testing.T) {
-	// app := New(Config{
-	// 	Prefork: true,
-	// })
+	app := New()
 
-	// go func() {
-	// 	time.Sleep(500 * time.Millisecond)
-	// 	utils.AssertEqual(t, nil, app.Shutdown())
-	// }()
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
 
-	// ln := fasthttputil.NewInmemoryListener()
-	// utils.AssertEqual(t, nil, app.Listener(ln))
+	ln := fasthttputil.NewInmemoryListener()
+	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
@@ -876,40 +861,40 @@ func Test_App_Stack(t *testing.T) {
 }
 
 // go test -run Test_App_ReadTimeout
-//func Test_App_ReadTimeout(t *testing.T) {
-//	app := New(Config{
-//		ReadTimeout:           time.Nanosecond,
-//		IdleTimeout:           time.Minute,
-//		DisableStartupMessage: true,
-//		DisableKeepalive:      true,
-//	})
-//
-//	app.Get("/read-timeout", func(c *Ctx) error {
-//		c.SendString("I should not be sent")
-//	})
-//
-//	go func() {
-//		time.Sleep(500 * time.Millisecond)
-//
-//		conn, err := net.Dial("tcp4", "127.0.0.1:4004")
-//		utils.AssertEqual(t, nil, err)
-//		defer conn.Close()
-//
-//		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
-//		utils.AssertEqual(t, nil, err)
-//
-//		buf := make([]byte, 1024)
-//		var n int
-//		n, err = conn.Read(buf)
-//
-//		utils.AssertEqual(t, nil, err)
-//		utils.AssertEqual(t, true, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
-//
-//		utils.AssertEqual(t, nil, app.Shutdown())
-//	}()
-//
-//	utils.AssertEqual(t, nil, app.Listen(4004))
-//}
+func Test_App_ReadTimeout(t *testing.T) {
+	app := New(Config{
+		ReadTimeout:           time.Nanosecond,
+		IdleTimeout:           time.Minute,
+		DisableStartupMessage: true,
+		DisableKeepalive:      true,
+	})
+
+	app.Get("/read-timeout", func(c *Ctx) error {
+		return c.SendString("I should not be sent")
+	})
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+
+		conn, err := net.Dial("tcp4", "127.0.0.1:4004")
+		utils.AssertEqual(t, nil, err)
+		defer conn.Close()
+
+		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
+		utils.AssertEqual(t, nil, err)
+
+		buf := make([]byte, 1024)
+		var n int
+		n, err = conn.Read(buf)
+
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, true, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
+
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.Listen(":4004"))
+}
 
 // go test -run Test_App_BadRequest
 func Test_App_BadRequest(t *testing.T) {

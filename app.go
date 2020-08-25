@@ -179,9 +179,14 @@ type Config struct {
 	// Default: ""
 	ProxyHeader string `json:"proxy_header"`
 
-	// GETOnly
+	// GETOnly rejects all non-GET requests if set to true.
+	// This option is useful as anti-DoS protection for servers
+	// accepting only GET requests. The request size is limited
+	// by ReadBufferSize if GETOnly is set.
+	// Server accepts all the requests by default.
 	GETOnly bool
-	// FEATURE: v1.13
+
+	// FEATURE: v1.16.x
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
@@ -437,10 +442,13 @@ func (app *App) Listener(ln net.Listener) error {
 		addr, tls := lnMetadata(ln)
 		return app.prefork(addr, tls)
 	}
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
 	}
+
+	// TODO: Detect TLS
 	return app.server.Serve(ln)
 }
 
