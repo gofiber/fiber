@@ -278,6 +278,22 @@ func Test_App_Listener_TLS(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
+// go test -run Test_App_GETOnly
+func Test_App_GETOnly(t *testing.T) {
+	app := New(Config{
+		GETOnly: true,
+	})
+
+	app.Post("/", func(c *Ctx) error {
+		return c.SendString("Hello 👋!")
+	})
+
+	req := httptest.NewRequest("POST", "/", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+}
+
 func Test_App_Use_Params_Group(t *testing.T) {
 	app := New()
 

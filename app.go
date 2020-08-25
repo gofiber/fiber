@@ -547,7 +547,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	}
 
 	// Check for errors
-	if err != nil {
+	if err != nil && err != fasthttp.ErrGetOnly {
 		return nil, err
 	}
 
