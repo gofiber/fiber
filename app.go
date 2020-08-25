@@ -179,6 +179,8 @@ type Config struct {
 	// Default: ""
 	ProxyHeader string `json:"proxy_header"`
 
+	// GETOnly
+	GETOnly bool
 	// FEATURE: v1.13
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
@@ -577,6 +579,8 @@ func (app *App) init() *App {
 				err = ErrRequestTimeout
 			} else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
 				err = ErrRequestEntityTooLarge
+			} else if err == fasthttp.ErrGetOnly {
+				err = ErrMethodNotAllowed
 			} else {
 				err = ErrBadRequest
 			}
@@ -600,6 +604,7 @@ func (app *App) init() *App {
 	app.server.IdleTimeout = app.config.IdleTimeout
 	app.server.ReadBufferSize = app.config.ReadBufferSize
 	app.server.WriteBufferSize = app.config.WriteBufferSize
+	app.server.GetOnly = app.config.GETOnly
 
 	// set global error handler
 	app.errorHandler = DefaultErrorHandler
