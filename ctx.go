@@ -337,9 +337,11 @@ func (c *Ctx) Cookies(key string, defaultValue ...string) string {
 // By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
 // Override this default with the filename parameter.
 func (c *Ctx) Download(file string, filename ...string) error {
-	fname := filepath.Base(file)
+	var fname string
 	if len(filename) > 0 {
 		fname = filename[0]
+	} else {
+		fname = filepath.Base(file)
 	}
 	c.Set(HeaderContentDisposition, `attachment; filename="`+quoteString(fname)+`"`)
 	return c.SendFile(file)
@@ -836,7 +838,7 @@ func (c *Ctx) Send(body []byte) error {
 	return nil
 }
 
-var fsOnce sync.Once
+var sendFileOnce sync.Once
 var sendFileFS *fasthttp.FS
 var sendFileHandler fasthttp.RequestHandler
 
@@ -845,7 +847,7 @@ var sendFileHandler fasthttp.RequestHandler
 // Sets the Content-Type response HTTP header field based on the filenames extension.
 func (c *Ctx) SendFile(file string, compress ...bool) error {
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
-	fsOnce.Do(func() {
+	sendFileOnce.Do(func() {
 		sendFileFS = &fasthttp.FS{
 			Root:                 "/",
 			GenerateIndexPages:   false,

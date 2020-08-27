@@ -35,6 +35,7 @@ func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
 	}
 
 	// Wait for the listener to be 100% closed
+	var loop, max = 0, 10
 	for {
 		conn, err := net.DialTimeout("tcp4", addr, 100*time.Second)
 		if err != nil {
@@ -45,6 +46,10 @@ func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
 		}
 		_ = conn.Close()
 		time.Sleep(100 * time.Millisecond)
+		loop++
+		if loop >= max {
+			panic("listener: " + addr + ": Only one usage of each socket address (protocol/network address/port) is normally permitted.")
+		}
 	}
 
 	// Get listener type
