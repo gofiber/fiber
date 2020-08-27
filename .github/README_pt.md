@@ -497,16 +497,17 @@ Os middlewares Fiber listados aqui são mantidos pelo [Time Fiber](https://githu
 ## 🌱 Middlewares Third Party
 
 Esta é uma lista de middlewares criados pela comunidade do Fiber, se quiser ter o seu middleware aqui, é só abrir um PR!
-- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
-- [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
-- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
-- [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
+- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
-- [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
-- [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
+- [codemicro/fiber-cache](https://github.com/codemicro/fiber-cache)
 - [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
+- [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
+- [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
+- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
+- [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
+- [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 
 ## 💬 Mídia
 
