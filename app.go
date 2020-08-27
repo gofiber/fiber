@@ -19,6 +19,7 @@ import (
 	"reflect"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"text/tabwriter"
 	"time"
@@ -589,6 +590,8 @@ func (app *App) init() *App {
 				err = ErrRequestEntityTooLarge
 			} else if err == fasthttp.ErrGetOnly {
 				err = ErrMethodNotAllowed
+			} else if strings.Contains(err.Error(), "timeout") {
+				err = ErrRequestTimeout
 			} else {
 				err = ErrBadRequest
 			}
