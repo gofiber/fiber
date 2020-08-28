@@ -756,6 +756,9 @@ func Test_Ctx_IPs(t *testing.T) {
 	ctx.fasthttp.Request.Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.2, 127.0.0.3")
 	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, ctx.IPs())
 
+	ctx.fasthttp.Request.Header.Set(HeaderXForwardedFor, "127.0.0.1,127.0.0.2,127.0.0.3")
+	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, ctx.IPs())
+
 	ctx.fasthttp.Request.Header.Set(HeaderXForwardedFor, "")
 	utils.AssertEqual(t, 0, len(ctx.IPs()))
 }
