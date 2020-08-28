@@ -488,10 +488,10 @@ func (c *Ctx) IPs() (ips []string) {
 	for {
 		commaPos = bytes.IndexByte(header, ',')
 		if commaPos != -1 {
-			ips[i] = getString(header[:commaPos])
-			header, i = header[commaPos+2:], i+1
+			ips[i] = utils.Trim(getString(header[:commaPos]), ' ')
+			header, i = header[commaPos+1:], i+1
 		} else {
-			ips[i] = getString(header)
+			ips[i] = utils.Trim(getString(header), ' ')
 			return
 		}
 	}
