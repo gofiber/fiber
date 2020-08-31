@@ -46,15 +46,7 @@ func (grp *Group) Use(args ...interface{}) Router {
 					grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(prefix, route))
 				}
 			}
-			return grp
-		// case *Group:
-		// 	stack := arg.app.Stack()
-		// 	for m := range stack {
-		// 		for r := range stack[m] {
-		// 			grp.app.copyRoute(prefix, stack[m][r])
-		// 		}
-		// 	}
-		// 	return grp
+			return grp.app
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
