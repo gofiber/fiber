@@ -935,7 +935,8 @@ func (c *Ctx) SendStream(stream io.Reader, size ...int) error {
 
 // Set sets the response's HTTP header field to the specified key, value.
 func (c *Ctx) Set(key string, val string) {
-	c.fasthttp.Response.Header.Set(key, val)
+	c.fasthttp.Response.Header.SetCanonical(utils.GetBytes(key), utils.GetBytes(val))
+	//c.fasthttp.Response.Header.Set(key, val)
 }
 
 // Subdomains returns a string slice of subdomains in the domain name of the request.

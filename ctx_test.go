@@ -1717,6 +1717,20 @@ func Test_Ctx_Set(t *testing.T) {
 	utils.AssertEqual(t, "1337", string(ctx.fasthttp.Response.Header.Peek("x-3")))
 }
 
+// go test -v  -run=^$ -bench=Benchmark_Ctx_Set -benchmem -count=4
+func Benchmark_Ctx_Set(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	var val = "1431-15132-3423"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.fasthttp.Response.Header.SetCanonical(utils.GetBytes(HeaderXRequestID), utils.GetBytes(val))
+		//c.Set(HeaderXRequestID, key)
+	}
+}
+
 // go test -run Test_Ctx_Status
 func Test_Ctx_Status(t *testing.T) {
 	t.Parallel()
