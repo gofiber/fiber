@@ -573,7 +573,6 @@ func (app *App) init() *App {
 		Logger:       &disableLogger{},
 		LogAllErrors: false,
 		ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
-			fmt.Println(err.Error())
 			c := app.AcquireCtx(fctx)
 			if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
 				err = ErrRequestHeaderFieldsTooLarge
