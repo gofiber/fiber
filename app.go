@@ -586,7 +586,7 @@ func (app *App) init() *App {
 				err = ErrRequestHeaderFieldsTooLarge
 			} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
 				err = ErrRequestTimeout
-			} else if len(err.Error()) == 33 && err.Error() == "body size exceeds the given limit" {
+			} else if err == fasthttp.ErrBodyTooLarge {
 				err = ErrRequestEntityTooLarge
 			} else if err == fasthttp.ErrGetOnly {
 				err = ErrMethodNotAllowed
