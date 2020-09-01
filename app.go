@@ -32,7 +32,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.14.5"
+const Version = "1.14.5-pre"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
