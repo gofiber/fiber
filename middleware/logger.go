@@ -51,12 +51,12 @@ type (
 		// - form:<key>
 		// - cookie:<key>
 		//
-		// Optional. Default: ${time} - ${ip} - ${status} - ${latency} - ${method} ${path}\n
+		// Optional. Default: #${pid} - ${time} ${status} - ${latency} ${method} ${path}\n
 		Format string
 
 		// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
 		//
-		// Optional. Default: 15:04:05
+		// Optional. Default: 2006/01/02 15:04:05
 		TimeFormat string
 
 		// TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc
@@ -213,7 +213,7 @@ func logger(config LoggerConfig) fiber.Handler {
 
 	var timestamp atomic.Value
 	timestamp.Store(nowTimeString(config.timeZoneLocation, config.TimeFormat))
-	// Update date/time every millisecond in a separate go routine
+	// Update date/time every 750 milliseconds in a separate go routine
 	if strings.Contains(config.Format, "${time}") {
 		go func() {
 			for {
