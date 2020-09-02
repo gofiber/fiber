@@ -77,6 +77,16 @@ func Test_Route_Match_Star(t *testing.T) {
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "test", getString(body))
+
+	// without parameter
+	route := Route{
+		star:        true,
+		path:        "/*",
+		routeParser: routeParser{},
+	}
+	match, params := route.match("", "")
+	utils.AssertEqual(t, true, match)
+	utils.AssertEqual(t, []string{""}, params)
 }
 
 func Test_Route_Match_Root(t *testing.T) {
