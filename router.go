@@ -59,7 +59,9 @@ func (r *Route) match(path, original string) (match bool, values []string) {
 		// '*' wildcard matches any path
 	} else if r.star {
 		values := getAllocFreeParams(1)
-		values[0] = original[1:]
+		if len(original) > 1 {
+			values[0] = original[1:]
+		}
 		return true, values
 	}
 	// Does this route have parameters
