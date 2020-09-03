@@ -259,26 +259,6 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	return fmt.Errorf("bodyparser: cannot parse content-type: %v", ctype)
 }
 
-// QueryParser binds the query string to a struct.
-func (c *Ctx) QueryParser(out interface{}) error {
-	if c.fasthttp.QueryArgs().Len() < 1 {
-		return nil
-	}
-	// Get decoder from pool
-	var decoder = decoderPool.Get().(*schema.Decoder)
-	defer decoderPool.Put(decoder)
-
-	// Set correct alias tag
-	decoder.SetAliasTag("query")
-
-	data := make(map[string][]string)
-	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
-		data[getString(key)] = append(data[getString(key)], getString(val))
-	})
-
-	return decoder.Decode(out, data)
-}
-
 // ClearCookie expires a specific cookie by key on the client side.
 // If no key is provided it expires all cookies that came with the request.
 func (c *Ctx) ClearCookie(key ...string) {
@@ -702,6 +682,26 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 	return defaultString(getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
 
+// QueryParser binds the query string to a struct.
+func (c *Ctx) QueryParser(out interface{}) error {
+	if c.fasthttp.QueryArgs().Len() < 1 {
+		return nil
+	}
+	// Get decoder from pool
+	var decoder = decoderPool.Get().(*schema.Decoder)
+	defer decoderPool.Put(decoder)
+
+	// Set correct alias tag
+	decoder.SetAliasTag("query")
+
+	data := make(map[string][]string)
+	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
+		data[getString(key)] = append(data[getString(key)], getString(val))
+	})
+
+	return decoder.Decode(out, data)
+}
+
 var (
 	ErrRangeMalformed     = errors.New("range: malformed range header string")
 	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
@@ -815,6 +815,7 @@ func (c *Ctx) Route() *Route {
 			Path:     c.pathOriginal,
 			Method:   c.method,
 			Handlers: make([]Handler, 0),
+			Params:   make([]string, 0),
 		}
 	}
 	return c.route
