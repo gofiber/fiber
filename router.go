@@ -58,7 +58,9 @@ func (r *Route) match(path, original string, params *[maxParams]string) (match b
 		return true
 		// '*' wildcard matches any path
 	} else if r.star {
-		params[0] = original[1:]
+		if len(original) > 1 {
+			params[0] = original[1:]
+		}
 		return true
 	}
 	// Does this route have parameters
