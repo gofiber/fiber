@@ -48,6 +48,11 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Next == nil {
 			cfg.Next = ConfigDefault.Next
 		}
+		if cfg.Hosts == "" {
+			return func(c *fiber.Ctx) error {
+				return c.Next()
+			}
+		}
 	}
 
 	// Create host client
@@ -72,12 +77,14 @@ func New(config ...Config) fiber.Handler {
 		req.Header.Del(fiber.HeaderConnection)
 
 		// Modify request
-		if err := cfg.Before(c); err != nil {
-			return err
+		if cfg.Before != nil {
+			if err = cfg.Before(c); err != nil {
+				return err
+			}
 		}
 
 		// Forward request
-		if err := hostClient.Do(req, res); err != nil {
+		if err = hostClient.Do(req, res); err != nil {
 			return err
 		}
 
@@ -85,8 +92,10 @@ func New(config ...Config) fiber.Handler {
 		res.Header.Del(fiber.HeaderConnection)
 
 		// Modify response
-		if err := cfg.After(c); err != nil {
-			return err
+		if cfg.After != nil {
+			if err = cfg.After(c); err != nil {
+				return err
+			}
 		}
 
 		// Return err if exist, else move to next handler
