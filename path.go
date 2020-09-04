@@ -7,9 +7,10 @@
 package fiber
 
 import (
-	utils "github.com/gofiber/utils"
 	"strconv"
 	"strings"
+
+	"github.com/gofiber/fiber/utils"
 )
 
 // routeParser holds the path segments and param names

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	reuseport "github.com/valyala/fasthttp/reuseport"
+	"github.com/valyala/fasthttp/reuseport"
 )
 
 const (

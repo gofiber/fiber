@@ -24,10 +24,9 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/valyala/bytebufferpool"
-
-	utils "github.com/gofiber/utils"
-	fasthttp "github.com/valyala/fasthttp"
+	"github.com/gofiber/fiber/utils"
+	"github.com/gofiber/fiber/utils/bytebufferpool"
+	"github.com/valyala/fasthttp"
 )
 
 // go test -run Test_Ctx_Accepts
@@ -1726,8 +1725,7 @@ func Benchmark_Ctx_Set(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.fasthttp.Response.Header.SetCanonical(utils.GetBytes(HeaderXRequestID), utils.GetBytes(val))
-		//c.Set(HeaderXRequestID, key)
+		c.Set(HeaderXRequestID, val)
 	}
 }
 

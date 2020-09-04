@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/gofiber/utils"
-	fasthttp "github.com/valyala/fasthttp"
+	"github.com/gofiber/fiber/utils"
+	"github.com/valyala/fasthttp"
 )
 
 // Router defines all router handle interface includes app and group router.

@@ -4,9 +4,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/gofiber/utils"
-
 	"github.com/gofiber/fiber"
+	"github.com/gofiber/fiber/utils"
 )
 
 // go test -run Test_FileSystem

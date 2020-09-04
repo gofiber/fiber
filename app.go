@@ -23,10 +23,10 @@ import (
 	"sync"
 	"time"
 
-	utils "github.com/gofiber/utils"
-	colorable "github.com/mattn/go-colorable"
-	isatty "github.com/mattn/go-isatty"
-	fasthttp "github.com/valyala/fasthttp"
+	"github.com/gofiber/fiber/utils"
+	"github.com/gofiber/fiber/utils/colorable"
+	"github.com/gofiber/fiber/utils/isatty"
+	"github.com/valyala/fasthttp"
 )
 
 // Version of current package

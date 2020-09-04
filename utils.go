@@ -18,9 +18,9 @@ import (
 	"time"
 	"unsafe"
 
-	utils "github.com/gofiber/utils"
-	bytebufferpool "github.com/valyala/bytebufferpool"
-	fasthttp "github.com/valyala/fasthttp"
+	"github.com/gofiber/fiber/utils"
+	"github.com/gofiber/fiber/utils/bytebufferpool"
+	"github.com/valyala/fasthttp"
 )
 
 /* #nosec */

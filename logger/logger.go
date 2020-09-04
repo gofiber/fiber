@@ -10,7 +10,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber"
-	"github.com/valyala/bytebufferpool"
+	"github.com/gofiber/fiber/utils/bytebufferpool"
+	"github.com/gofiber/fiber/utils/fasttemplate"
 )
 
 // Config defines the config for middleware.
@@ -137,8 +138,7 @@ func New(config ...Config) fiber.Handler {
 	cfg.haveLatency = strings.Contains(cfg.Format, "${latency}")
 
 	// Create template parser
-	var tmpl loggerTemplate
-	tmpl.new(cfg.Format, "${", "}")
+	tmpl := fasttemplate.New(cfg.Format, "${", "}")
 
 	// Create correct timeformat
 	var timestamp atomic.Value
@@ -184,7 +184,7 @@ func New(config ...Config) fiber.Handler {
 		buf := bytebufferpool.Get()
 
 		// Loop over template tags to replace it with the correct value
-		_, err = tmpl.executeFunc(buf, func(w io.Writer, tag string) (int, error) {
+		_, err = tmpl.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
 			switch tag {
 			case TagTime:
 				return buf.WriteString(timestamp.Load().(string))

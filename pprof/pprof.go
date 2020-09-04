@@ -4,8 +4,8 @@ import (
 	"net/http/pprof"
 	"strings"
 
-	fiber "github.com/gofiber/fiber"
-	fasthttpadaptor "github.com/valyala/fasthttp/fasthttpadaptor"
+	"github.com/gofiber/fiber"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
 // Set pprof adaptors

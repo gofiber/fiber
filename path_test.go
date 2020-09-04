@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	utils "github.com/gofiber/utils"
+	"github.com/gofiber/fiber/utils"
 )
 
 // go test -race -run Test_Path_parseRoute

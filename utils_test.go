@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	utils "github.com/gofiber/utils"
-	fasthttp "github.com/valyala/fasthttp"
+	"github.com/gofiber/fiber/utils"
+	"github.com/valyala/fasthttp"
 )
 
 // go test -v -run=Test_Utils_ -count=3

@@ -13,8 +13,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	utils "github.com/gofiber/utils"
-	fasthttp "github.com/valyala/fasthttp"
+	"github.com/gofiber/fiber/utils"
+	"github.com/valyala/fasthttp"
 )
 
 var routesFixture = routeJSON{}

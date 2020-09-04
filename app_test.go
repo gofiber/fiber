@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	utils "github.com/gofiber/utils"
-	fasthttp "github.com/valyala/fasthttp"
-	fasthttputil "github.com/valyala/fasthttp/fasthttputil"
+	"github.com/gofiber/fiber/utils"
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 var testEmptyHandler = func(c *Ctx) error {

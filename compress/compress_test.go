@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber"
-	"github.com/gofiber/utils"
+	"github.com/gofiber/fiber/utils"
 )
 
 var filedata []byte

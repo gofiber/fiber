@@ -5,9 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber"
-	"github.com/gofiber/utils"
-	"github.com/valyala/bytebufferpool"
+	fiber "github.com/gofiber/fiber"
+	utils "github.com/gofiber/fiber/utils"
+	bytebufferpool "github.com/gofiber/fiber/utils/bytebufferpool"
 )
 
 // go test -run Test_Logger

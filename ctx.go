@@ -20,11 +20,11 @@ import (
 	"text/template"
 	"time"
 
-	utils "github.com/gofiber/utils"
-	schema "github.com/gorilla/schema"
-	json "github.com/segmentio/encoding/json"
-	bytebufferpool "github.com/valyala/bytebufferpool"
-	fasthttp "github.com/valyala/fasthttp"
+	"github.com/gofiber/fiber/utils"
+	"github.com/gofiber/fiber/utils/bytebufferpool"
+	"github.com/gofiber/fiber/utils/encoding/json"
+	"github.com/gofiber/fiber/utils/schema"
+	"github.com/valyala/fasthttp"
 )
 
 // maxParams defines the maximum number of parameters per route.
