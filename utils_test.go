@@ -65,6 +65,7 @@ func Benchmark_Utils_ETag(b *testing.B) {
 	utils.AssertEqual(b, `"13-1831710635"`, string(c.fasthttp.Response.Header.Peek(HeaderETag)))
 }
 
+// go test -v -run=Test_Utils_ETag_Weak -count=1
 func Test_Utils_ETag_Weak(t *testing.T) {
 	app := New()
 	t.Run("Set Weak", func(t *testing.T) {

@@ -21,7 +21,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"text/tabwriter"
 	"time"
 
 	utils "github.com/gofiber/utils"
@@ -617,70 +616,93 @@ func (app *App) init() *App {
 	return app
 }
 
-const (
-	cBlack = "\u001b[90m"
-	// cRed     = "\u001b[91m"
-	// cGreen = "\u001b[92m"
-	// cYellow  = "\u001b[93m"
-	// cBlue    = "\u001b[94m"
-	// cMagenta = "\u001b[95m"
-	cCyan = "\u001b[96m"
-	// cWhite   = "\u001b[97m"
-	cReset = "\u001b[0m"
-)
-
 func (app *App) startupMessage(addr string, tls bool, pids string) {
 	// ignore child processes
 	if app.IsChild() {
 		return
 	}
+
 	// ascii logo
 	var logo string
-	logo += `%s        _______ __                 %s` + "\n"
-	logo += `%s  ____%s / ____(_) /_  ___  _____  %s` + "\n"
-	logo += `%s_____%s / /_  / / __ \/ _ \/ ___/  %s` + "\n"
-	logo += `%s  __%s / __/ / / /_/ /  __/ /      %s` + "\n"
-	logo += `%s    /_/   /_/_.___/\___/_/%s %s` + "\n"
+	// logo += `%s        _______ __                 %s` + "\n"
+	// logo += `%s  ____%s / ____(_) /_  ___  _____  %s` + "\n"
+	// logo += `%s_____%s / /_  / / __ \/ _ \/ ___/  %s` + "\n"
+	// logo += `%s  __%s / __/ / / /_/ /  __/ /      %s` + "\n"
+	// logo += `%s    /_/   /_/_.___/\___/_/%s %s` + "\n"
+
+	logo += "\n%s"
+	logo += " ┌───────────────────────────────────────────────────────┐\n"
+	logo += " │                      %sFiber v%s%s                    │\n"
+	logo += " │             Express inspired web framework            │\n"
+	logo += " │                                                       │\n"
+	logo += " │ Host     : %s  %s :      OS │\n"
+	logo += " │ Port     : %s  %s : Threads │\n"
+	logo += " │ TLS      : %s  %s : Prefork │\n"
+	logo += " │ Handlers : %s  %s :     PID │\n"
+	logo += " └───────────────────────────────────────────────────────┘"
+	logo += "%s\n"
+
+	const (
+		cBlack = "\u001b[90m"
+		cRed   = "\u001b[91m"
+		cCyan  = "\u001b[96m"
+		cGreen = "\u001b[92m"
+		// cYellow  = "\u001b[93m"
+		// cBlue    = "\u001b[94m"
+		// cMagenta = "\u001b[95m"
+		// cWhite   = "\u001b[97m"
+		cReset = "\u001b[0m"
+	)
+
+	clrL := func(v interface{}) string {
+		if v == "disabled" {
+			return fmt.Sprintf("%s%15v%s", cRed, "•", cBlack)
+		}
+		if v == "enabled" {
+			return fmt.Sprintf("%s%15v%s", cGreen, "•", cBlack)
+		}
+		return fmt.Sprintf("%s%15v%s", cCyan, v, cBlack)
+	}
+	clR := func(v interface{}) string {
+		if v == "disabled" {
+			return fmt.Sprintf("%s%-15v%s", cRed, "•", cBlack)
+		}
+		if v == "enabled" {
+			return fmt.Sprintf("%s%-15v%s", cGreen, "•", cBlack)
+		}
+		return fmt.Sprintf("%s%-15v%s", cCyan, v, cBlack)
+	}
 
 	host, port := parseAddr(addr)
 	var (
-		tlsStr       = "FALSE"
-		handlerCount = app.handlerCount
-		osName       = utils.ToUpper(runtime.GOOS)
-		preforkStr   = "FALSE"
-		cpuThreads   = runtime.NumCPU()
-		pid          = os.Getpid()
+		isTLS     = "disabled"
+		isPrefork = "disabled"
 	)
+
 	if host == "" {
 		host = "0.0.0.0"
 	}
 	if tls {
-		tlsStr = "TRUE"
+		isTLS = "enabled"
 	}
 	if app.config.Prefork {
-		preforkStr = "TRUE"
+		isPrefork = "enabled"
 	}
-	// tabwriter makes sure the spacing are consistent across different values
-	// colorable handles the escape sequence for stdout using ascii color codes
-	var out *tabwriter.Writer
-	// Check if colors are supported
+
+	out := colorable.NewColorableStdout()
 	if os.Getenv("TERM") == "dumb" ||
 		(!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-		out = tabwriter.NewWriter(colorable.NewNonColorable(os.Stdout), 0, 0, 2, ' ', 0)
-	} else {
-		out = tabwriter.NewWriter(colorable.NewColorableStdout(), 0, 0, 2, ' ', 0)
+		out = colorable.NewNonColorable(os.Stdout)
 	}
-	// simple Sprintf function that defaults back to black
-	cyan := func(v interface{}) string {
-		return fmt.Sprintf("%s%v%s", cCyan, v, cBlack)
-	}
-	// Build startup banner
-	fmt.Fprintf(out, logo, cBlack, cBlack,
-		cCyan, cBlack, fmt.Sprintf(" HOST     %s\tOS      %s", cyan(host), cyan(osName)),
-		cCyan, cBlack, fmt.Sprintf(" PORT     %s\tTHREADS %s", cyan(port), cyan(cpuThreads)),
-		cCyan, cBlack, fmt.Sprintf(" TLS      %s\tPREFORK %s", cyan(tlsStr), cyan(preforkStr)),
-		cBlack, cyan(Version), fmt.Sprintf(" HANDLERS %s\t\t\t PID     %s%s%s\n", cyan(handlerCount), cyan(pid), pids, cReset),
+
+	fmt.Fprintf(out, logo,
+		cBlack,
+		cCyan, Version, cBlack,
+		clR(host), clrL(utils.ToUpper(runtime.GOOS)),
+		clR(port), clrL(runtime.NumCPU()),
+		clR(isTLS), clrL(isPrefork),
+		clR(app.handlerCount), clrL(os.Getpid()),
+		cReset,
 	)
-	// Write to io.write
-	_ = out.Flush()
+
 }
