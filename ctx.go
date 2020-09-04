@@ -7,7 +7,6 @@ package fiber
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -23,6 +22,7 @@ import (
 
 	utils "github.com/gofiber/utils"
 	schema "github.com/gorilla/schema"
+	json "github.com/segmentio/encoding/json"
 	bytebufferpool "github.com/valyala/bytebufferpool"
 	fasthttp "github.com/valyala/fasthttp"
 )
@@ -195,10 +195,10 @@ func (c *Ctx) Attachment(filename ...string) {
 		fname := filepath.Base(filename[0])
 		c.Type(filepath.Ext(fname))
 
-		c.Set(HeaderContentDisposition, `attachment; filename="`+quoteString(fname)+`"`)
+		c.setCanonical(HeaderContentDisposition, `attachment; filename="`+quoteString(fname)+`"`)
 		return
 	}
-	c.Set(HeaderContentDisposition, "attachment")
+	c.setCanonical(HeaderContentDisposition, "attachment")
 }
 
 // BaseURL returns (protocol + host + base path).
@@ -323,7 +323,7 @@ func (c *Ctx) Download(file string, filename ...string) error {
 	} else {
 		fname = filepath.Base(file)
 	}
-	c.Set(HeaderContentDisposition, `attachment; filename="`+quoteString(fname)+`"`)
+	c.setCanonical(HeaderContentDisposition, `attachment; filename="`+quoteString(fname)+`"`)
 	return c.SendFile(file)
 }
 
@@ -523,7 +523,7 @@ func (c *Ctx) JSONP(data interface{}, callback ...string) error {
 
 	result = cb + "(" + getString(raw) + ");"
 
-	c.Set(HeaderXContentTypeOptions, "nosniff")
+	c.setCanonical(HeaderXContentTypeOptions, "nosniff")
 	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
 	return c.SendString(result)
 }
@@ -543,7 +543,7 @@ func (c *Ctx) Links(link ...string) {
 			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	c.Set(HeaderLink, utils.TrimRight(getString(bb.Bytes()), ','))
+	c.setCanonical(HeaderLink, utils.TrimRight(getString(bb.Bytes()), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -559,7 +559,7 @@ func (c *Ctx) Locals(key string, value ...interface{}) (val interface{}) {
 
 // Location sets the response Location HTTP header to the specified path parameter.
 func (c *Ctx) Location(path string) {
-	c.Set(HeaderLocation, path)
+	c.setCanonical(HeaderLocation, path)
 }
 
 // Method contains a string corresponding to the HTTP method of the request: GET, POST, PUT and so on.
@@ -760,7 +760,7 @@ func (c *Ctx) Range(size int) (rangeData Range, err error) {
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found.
 func (c *Ctx) Redirect(location string, status ...int) error {
-	c.Set(HeaderLocation, location)
+	c.setCanonical(HeaderLocation, location)
 	if len(status) > 0 {
 		c.Status(status[0])
 	} else {
@@ -928,7 +928,7 @@ func (c *Ctx) SendStream(stream io.Reader, size ...int) error {
 		c.fasthttp.Response.SetBodyStream(stream, size[0])
 	} else {
 		c.fasthttp.Response.SetBodyStream(stream, -1)
-		c.Set(HeaderContentLength, strconv.Itoa(len(c.fasthttp.Response.Body())))
+		c.setCanonical(HeaderContentLength, strconv.Itoa(len(c.fasthttp.Response.Body())))
 	}
 
 	return nil
@@ -936,8 +936,11 @@ func (c *Ctx) SendStream(stream io.Reader, size ...int) error {
 
 // Set sets the response's HTTP header field to the specified key, value.
 func (c *Ctx) Set(key string, val string) {
-	//c.fasthttp.Response.Header.SetCanonical(utils.GetBytes(key), utils.GetBytes(val))
 	c.fasthttp.Response.Header.Set(key, val)
+}
+
+func (c *Ctx) setCanonical(key string, val string) {
+	c.fasthttp.Response.Header.SetCanonical(utils.GetBytes(key), utils.GetBytes(val))
 }
 
 // Subdomains returns a string slice of subdomains in the domain name of the request.

@@ -162,6 +162,8 @@ func defaultString(value string, defaultValue []string) string {
 	return value
 }
 
+const normalizedHeaderETag = "Etag"
+
 // Generate and set ETag header to response
 func setETag(ctx *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses
@@ -195,7 +197,7 @@ func setETag(ctx *Ctx, weak bool) {
 			return
 		}
 		// W/1 != W/2 || W/1 != 2
-		ctx.Set(HeaderETag, etag)
+		ctx.setCanonical(normalizedHeaderETag, etag)
 		return
 	}
 	if strings.Contains(clientEtag, etag) {
@@ -205,7 +207,7 @@ func setETag(ctx *Ctx, weak bool) {
 		return
 	}
 	// 1 != 2
-	ctx.Set(HeaderETag, etag)
+	ctx.setCanonical(normalizedHeaderETag, etag)
 }
 
 func getGroupPath(prefix, path string) string {
