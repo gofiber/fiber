@@ -92,20 +92,25 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 		tree = app.treeStack[c.methodINT][""]
 	}
 	lenr := len(tree) - 1
+
 	// Loop over the route stack starting from previous index
 	for c.indexRoute < lenr {
 		// Increment route index
 		c.indexRoute++
+
 		// Get *Route
 		route := tree[c.indexRoute]
+
 		// Check if it matches the request path
 		match = route.match(c.path, c.pathOriginal, &c.values)
+
 		// No match, next route
 		if !match {
 			continue
 		}
 		// Pass route reference and param values
 		c.route = route
+
 		// Non use handler matched
 		if !c.matched && !route.use {
 			c.matched = true
@@ -116,14 +121,14 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 		if err = route.Handlers[0](c); err != nil {
 			c.app.errorHandler(c, err)
 		}
-		// Stop scanning the stack
-		return
+		return // Stop scanning the stack
 	}
+
 	// If c.Next() does not match, return 404
 	_ = c.SendStatus(StatusNotFound)
 	_ = c.SendString("Cannot " + c.method + " " + c.pathOriginal)
 
-	// Scan stack if other methods match the request
+	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
 	if !c.matched && methodExist(c) {
 		c.app.errorHandler(c, ErrMethodNotAllowed)
