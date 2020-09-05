@@ -93,9 +93,8 @@ func quoteString(raw string) string {
 	return quoted
 }
 
-// Scan stack if other methods match
-func setMethodNotAllowed(ctx *Ctx) {
-	var matched bool
+// Scan stack if other methods match the request
+func methodExist(ctx *Ctx) (exist bool) {
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
 		if ctx.methodINT == i {
@@ -124,7 +123,7 @@ func setMethodNotAllowed(ctx *Ctx) {
 			// No match, next route
 			if match {
 				// We matched
-				matched = true
+				exist = true
 				// Add method to Allow header
 				ctx.Append(HeaderAllow, intMethod[i])
 				// Break stack loop
@@ -132,10 +131,7 @@ func setMethodNotAllowed(ctx *Ctx) {
 			}
 		}
 	}
-	// Update response status
-	if matched {
-		ctx.Status(StatusMethodNotAllowed)
-	}
+	return
 }
 
 // uniqueRouteStack drop all not unique routes from the slice
