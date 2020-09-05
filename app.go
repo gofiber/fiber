@@ -40,7 +40,7 @@ type Handler = func(*Ctx) error
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
-type ErrorHandler = func(*Ctx, error)
+type ErrorHandler = func(*Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
@@ -222,13 +222,13 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-var DefaultErrorHandler = func(c *Ctx, err error) {
+var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {
 		code = e.Code
 	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-	_ = c.Status(code).SendString(err.Error())
+	return c.Status(code).SendString(err.Error())
 }
 
 // New creates a new Fiber named instance.

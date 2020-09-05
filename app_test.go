@@ -167,8 +167,8 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 		return errors.New("hi, i'm an error")
 	})
 
-	app.Errors(func(c *Ctx, err error) {
-		c.Status(200).SendString("hi, i'm an custom error")
+	app.Errors(func(c *Ctx, err error) error {
+		return c.Status(200).SendString("hi, i'm an custom error")
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
