@@ -84,13 +84,13 @@ package main
 import "github.com/gofiber/fiber"
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Get("/", func(c *fiber.Ctx) error {
-    return c.SendString("Hello, World 👋!")
-  })
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World 👋!")
+	})
 
-  log.Fatal(app.Listen(3000))
+	app.Listen(":3000")
 }
 ```
 
@@ -144,89 +144,92 @@ Listed below are some of the common examples. If you want to see more code examp
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  // GET /john
-  app.Get("/:name", func(c *fiber.Ctx) error {
-    msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
-    return c.SendString(msg) // => Hello john 👋!
-  })
+	// GET /john
+	app.Get("/:name", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
+		return c.SendString(msg) // => Hello john 👋!
+	})
 
-  // GET /john/75
-  app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
-    msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
-    return c.SendString(msg) // => 👴 john is 75 years old
-  })
+	// GET /john/75
+	app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
+		return c.SendString(msg) // => 👴 john is 75 years old
+	})
 
-  // GET /dictionary.txt
-  app.Get("/:file.:ext", func(c *fiber.Ctx) error {
-    msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
-    return c.SendString(msg) // => 📃 dictionary.txt
-  })
+	// GET /dictionary.txt
+	app.Get("/:file.:ext", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
+		return c.SendString(msg) // => 📃 dictionary.txt
+	})
 
-  // GET /flights/LAX-SFO
-  app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
-    msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
-    return c.SendString(msg) // => 💸 From: LAX, To: SFO
-  })
+	// GET /flights/LAX-SFO
+	app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
+		return c.SendString(msg) // => 💸 From: LAX, To: SFO
+	})
 
-  // GET /api/register
-  app.Get("/api/*", func(c *fiber.Ctx) error {
-    msg := fmt.Sprintf("✋ %s", c.Params("*"))
-    return c.SendString(msg) // => ✋ /api/register
-  })
+	// GET /api/register
+	app.Get("/api/*", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("✋ %s", c.Params("*"))
+		return c.SendString(msg) // => ✋ /api/register
+	})
 
-  log.Fatal(app.Listen(3000))
+	app.Listen(":3000")
 }
+
 ```
 
 #### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Static("/", "./public")
-  // => http://localhost:3000/js/script.js
-  // => http://localhost:3000/css/style.css
+	app.Static("/", "./public")
+	// => http://localhost:3000/js/script.js
+	// => http://localhost:3000/css/style.css
 
-  app.Static("/prefix", "./public")
-  // => http://localhost:3000/prefix/js/script.js
-  // => http://localhost:3000/prefix/css/style.css
+	app.Static("/prefix", "./public")
+	// => http://localhost:3000/prefix/js/script.js
+	// => http://localhost:3000/prefix/css/style.css
 
-  app.Static("*", "./public/index.html")
-  // => http://localhost:3000/any/path/shows/index/html
+	app.Static("*", "./public/index.html")
+	// => http://localhost:3000/any/path/shows/index/html
 
-  log.Fatal(app.Listen(3000))
+	app.Listen(":3000")
 }
+
 ```
 
 #### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  // Match any route
-  app.Use(func(c *fiber.Ctx) error {
-    fmt.Println("🥇 First handler")
-    return c.Next()
-  })
+	// Match any route
+	app.Use(func(c *fiber.Ctx) error {
+		fmt.Println("🥇 First handler")
+		return c.Next()
+	})
 
-  // Match all routes starting with /api
-  app.Use("/api", func(c *fiber.Ctx) error {
-    fmt.Println("🥈 Second handler")
-    return c.Next()
-  })
+	// Match all routes starting with /api
+	app.Use("/api", func(c *fiber.Ctx) error {
+		fmt.Println("🥈 Second handler")
+		return c.Next()
+	})
 
-  // GET /api/register
-  app.Get("/api/list", func(c *fiber.Ctx) error {
-    fmt.Println("🥉 Last handler")
-    return c.SendString("Hello, World 👋!")
-  })
+	// GET /api/register
+	app.Get("/api/list", func(c *fiber.Ctx) error {
+		fmt.Println("🥉 Last handler")
+		return c.SendString("Hello, World 👋!")
+	})
 
-  log.Fatal(app.Listen(3000))
+	app.Listen(":3000")
 }
+
 ```
 
 <details>
@@ -245,29 +248,28 @@ If you want to execute partials or use a different engine like [amber](https://g
 Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
 
 ```go
+package main
+
 import (
-  "github.com/gofiber/fiber"
-  "github.com/gofiber/template/pug"
+	"github.com/gofiber/fiber"
+	"github.com/gofiber/template/pug"
 )
 
 func main() {
-  // You can setup Views engine before initiation app:
-  app := fiber.New(fiber.Config{
-    Views: pug.New("./views", ".pug"),
-  })
+	// You can setup Views engine before initiation app:
+	app := fiber.New(fiber.Config{
+		Views: pug.New("./views", ".pug"),
+	})
 
-  // OR after initiation app at any convenient location:
-  app.Settings.Views = pug.New("./views", ".pug"),
+	// And now, you can call template `./views/home.pug` like this:
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.Render("home", fiber.Map{
+			"title": "Homepage",
+			"year":  1999,
+		})
+	})
 
-  // And now, you can call template `./views/home.pug` like this:
-  app.Get("/", func(c *fiber.Ctx) error {
-    return c.Render("home", fiber.Map{
-      "title": "Homepage",
-      "year":  1999,
-    })
-  })
-
-  // ...
+	app.Listen(":3000")
 }
 ```
 
@@ -276,24 +278,34 @@ func main() {
 📖 [Group](https://docs.gofiber.io/application#group)
 
 ```go
-func main() {
-  app := fiber.New()
-
-  // Root API route
-  api := app.Group("/api", cors())  // /api
-
-  // API v1 routes
-  v1 := api.Group("/v1", mysql())   // /api/v1
-  v1.Get("/list", handler)          // /api/v1/list
-  v1.Get("/user", handler)          // /api/v1/user
-
-  // API v2 routes
-  v2 := api.Group("/v2", mongodb()) // /api/v2
-  v2.Get("/list", handler)          // /api/v2/list
-  v2.Get("/user", handler)          // /api/v2/user
-
-  // ...
+func middleware(c *fiber.Ctx) error {
+	fmt.Println("Don't mind me!")
+	return c.Next()
 }
+
+func handler(c *fiber.Ctx) error {
+	return c.SendString(c.Path())
+}
+
+func main() {
+	app := fiber.New()
+
+	// Root API route
+	api := app.Group("/api", middleware) // /api
+
+	// API v1 routes
+	v1 := api.Group("/v1", middleware) // /api/v1
+	v1.Get("/list", handler)           // /api/v1/list
+	v1.Get("/user", handler)           // /api/v1/user
+
+	// API v2 routes
+	v2 := api.Group("/v2", middleware) // /api/v2
+	v2.Get("/list", handler)           // /api/v2/list
+	v2.Get("/user", handler)           // /api/v2/user
+
+	// ...
+}
+
 ```
 
 ### Middleware logger
@@ -301,32 +313,39 @@ func main() {
 📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
 
 ```go
+package main
+
 import (
-  "github.com/gofiber/fiber"
-  "github.com/gofiber/fiber/middleware"
+	"os"
+
+	"github.com/gofiber/fiber"
+	"github.com/gofiber/fiber/logger"
 )
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  // Default
-  app.Use(middleware.Logger())
+	// Default
+	app.Use(logger.New())
 
-  // Custom logging format
-  app.Use(middleware.Logger("${method} - ${path}"))
+	// Custom logging format
+	app.Use(logger.New(logger.Config{
+		Format: "${method} - ${path}",
+	}))
 
-  // Custom Config
-  app.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-    Next: func(ctx *fiber.Ctx) bool {
-      return ctx.Path() != "/private"
-    },
-    Format: "${method} - ${path}",
-    Output: io.Writer,
-  }))
+	// More configs
+	app.Use(logger.New(logger.Config{
+		Next: func(ctx *fiber.Ctx) bool {
+			return ctx.Path() != "/private"
+		},
+		Format: "${method} - ${path}",
+		Output: os.Stdout,
+	}))
 
-  log.Fatal(app.Listen(3000))
+	app.Listen(":3000")
 }
-``````
+```
+
 ### Cross-Origin Resource Sharing (CORS)
 
 📖 [CORS](https://docs.gofiber.io/middleware#cors)
@@ -359,25 +378,25 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Static("./public")
+	app.Static("/", "./public")
 
-  app.Get("/demo", func(c *fiber.Ctx) error {
-    return c.SendString("This is a demo!")
-  })
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		return c.SendString("This is a demo!")
+	})
 
-  app.Post("/register", func(c *fiber.Ctx) error {
-    return c.SendString("Welcome!")
-  })
+	app.Post("/register", func(c *fiber.Ctx) error {
+		return c.SendString("Welcome!")
+	})
 
-  // Last middleware to match anything
-  app.Use(func(c *fiber.Ctx) error {
-    return c.SendStatus(404)
-    // => 404 "Not Found"
-  })
+	// Last middleware to match anything
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(404)
+		// => 404 "Not Found"
+	})
 
-  log.Fatal(app.Listen(3000))
+	app.Listen(":3000")
 }
 ```
 
@@ -387,27 +406,27 @@ func main() {
 
 ```go
 type User struct {
-  Name string `json:"name"`
-  Age  int    `json:"age"`
+	Name string `json:"name"`
+	Age  int    `json:"age"`
 }
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Get("/user", func(c *fiber.Ctx) error {
-    return c.JSON(&User{"John", 20})
-    // => {"name":"John", "age":20}
-  })
+	app.Get("/user", func(c *fiber.Ctx) error {
+		return c.JSON(&User{"John", 20})
+		// => {"name":"John", "age":20}
+	})
 
-  app.Get("/json", func(c *fiber.Ctx) error {
-    return c.JSON(fiber.Map{
-      "success": true,
-      "message": "Hi John!",
-    })
-    // => {"success":true, "message":"Hi John!"}
-  })
+	app.Get("/json", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "Hi John!",
+		})
+		// => {"success":true, "message":"Hi John!"}
+	})
 
-  log.Fatal(app.Listen(3000))
+	app.Listen(":3000")
 }
 ```
 
@@ -451,21 +470,20 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+	"github.com/gofiber/fiber"
+	"github.com/gofiber/fiber/recover"
 )
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Use(middleware.Recover())
+	app.Use(recover.New())
 
-  app.Get("/", func(c *fiber.Ctx) error {
-    panic("normally this would crash your app")
-    return nil
-  })
+	app.Get("/", func(c *fiber.Ctx) error {
+		panic("normally this would crash your app")
+	})
 
-  log.Fatal(app.Listen(3000))
+	app.Listen(":3000")
 }
 ```
 </details>
@@ -586,6 +604,9 @@ Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](
 
 **Third-party library licenses**
 - [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 - [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+- [encoding](https://github.com/segmentio/encoding/blob/master/LICENSE)
+- [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 - [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 - [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)

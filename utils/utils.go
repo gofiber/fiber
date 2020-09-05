@@ -11,11 +11,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -64,51 +62,6 @@ func UUID() string {
 	hex.Encode(b[24:], uuid[10:16])
 
 	return GetString(b)
-}
-
-const (
-	uByte = 1 << (10 * iota)
-	uKilobyte
-	uMegabyte
-	uGigabyte
-	uTerabyte
-	uPetabyte
-	uExabyte
-)
-
-// Copyright github.com/cloudfoundry/bytefmt
-// ByteSize returns a human-readable byte string of the form 10M, 12.5K, and so forth.
-// The unit that results in the smallest number greater than or equal to 1 is always chosen.
-func ByteSize(bytes uint64) string {
-	unit := ""
-	value := float64(bytes)
-	switch {
-	case bytes >= uExabyte:
-		unit = "E"
-		value = value / uExabyte
-	case bytes >= uPetabyte:
-		unit = "P"
-		value = value / uPetabyte
-	case bytes >= uTerabyte:
-		unit = "T"
-		value = value / uTerabyte
-	case bytes >= uGigabyte:
-		unit = "G"
-		value = value / uGigabyte
-	case bytes >= uMegabyte:
-		unit = "M"
-		value = value / uMegabyte
-	case bytes >= uKilobyte:
-		unit = "K"
-		value = value / uKilobyte
-	case bytes >= uByte:
-		unit = "B"
-	default:
-		return "0B"
-	}
-	result := strconv.FormatFloat(value, 'f', 1, 64)
-	result = strings.TrimSuffix(result, ".0")
-	return result + unit
 }
 
 // Returns function name
@@ -259,7 +212,7 @@ func GetBytes(s string) (bs []byte) {
 	return
 }
 
-// ImmutableString returns a immutable string with allocation
+// ImmutableString copies a string to make it immutable
 func ImmutableString(s string) string {
 	return string(GetBytes(s))
 }
@@ -362,17 +315,7 @@ func GetCharPos(s string, char byte, matchCount int) int {
 	return endPos
 }
 
-// GetArgument check if key is in arguments
-func GetArgument(arg string) bool {
-	for i := range os.Args[1:] {
-		if os.Args[1:][i] == arg {
-			return true
-		}
-	}
-	return false
-}
-
-// limit for the access
+// limits for HTTP statuscodes
 const (
 	statusMessageMin = 100
 	statusMessageMax = 511
