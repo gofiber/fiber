@@ -119,7 +119,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 		// Execute first handler of route
 		c.indexHandler = 0
 		if err = route.Handlers[0](c); err != nil {
-			if err = c.app.errorHandler(c, err); err != nil {
+			if err = c.app.config.ErrorHandler(c, err); err != nil {
 				c.SendStatus(StatusInternalServerError)
 			}
 		}
@@ -133,7 +133,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
 	if !c.matched && methodExist(c) {
-		if err = c.app.errorHandler(c, ErrMethodNotAllowed); err != nil {
+		if err = c.app.config.ErrorHandler(c, ErrMethodNotAllowed); err != nil {
 			c.SendStatus(StatusInternalServerError)
 		}
 	}

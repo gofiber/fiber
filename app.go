@@ -63,8 +63,6 @@ type App struct {
 	pool sync.Pool
 	// Fasthttp server
 	server *fasthttp.Server
-	// Global error handler
-	errorHandler ErrorHandler
 	// App config
 	config Config
 }
@@ -186,6 +184,9 @@ type Config struct {
 	// Server accepts all the requests by default.
 	GETOnly bool
 
+	// ErrorHandler allows you to override the global error handler ( fiber.DefaultErrorHandler )
+	ErrorHandler ErrorHandler
+
 	// FEATURE: v1.16.x
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
@@ -275,6 +276,9 @@ func New(config ...Config) *App {
 	}
 	if app.config.Immutable {
 		getBytes, getString = getBytesImmutable, getStringImmutable
+	}
+	if app.config.ErrorHandler == nil {
+		app.config.ErrorHandler = DefaultErrorHandler
 	}
 	// Init app
 	app.init()
@@ -391,15 +395,6 @@ func (app *App) All(path string, handlers ...Handler) Router {
 	for _, method := range intMethod {
 		_ = app.Add(method, path, handlers...)
 	}
-	return app
-}
-
-// Errors allows you to override the global error handler ( fiber.DefaultErrorHandler )
-//  app.Errors(func(c *fiber.Ctx, err error) {
-//       c.Status(500).SendString(err.Error())
-//  })
-func (app *App) Errors(handler ErrorHandler) Router {
-	app.errorHandler = handler
 	return app
 }
 
@@ -586,7 +581,7 @@ func (app *App) init() *App {
 			} else {
 				err = ErrBadRequest
 			}
-			app.errorHandler(c, err)
+			app.config.ErrorHandler(c, err)
 			app.ReleaseCtx(c)
 		},
 	}
@@ -607,9 +602,6 @@ func (app *App) init() *App {
 	app.server.ReadBufferSize = app.config.ReadBufferSize
 	app.server.WriteBufferSize = app.config.WriteBufferSize
 	app.server.GetOnly = app.config.GETOnly
-
-	// set global error handler
-	app.errorHandler = DefaultErrorHandler
 
 	// unlock application
 	app.mutex.Unlock()
@@ -656,19 +648,19 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 
 	clrL := func(v interface{}) string {
 		if v == "disabled" {
-			return fmt.Sprintf("%s%15v%s", cRed, "•", cBlack)
+			return fmt.Sprintf("%s%15v%s", cRed, v, cBlack)
 		}
 		if v == "enabled" {
-			return fmt.Sprintf("%s%15v%s", cGreen, "•", cBlack)
+			return fmt.Sprintf("%s%15v%s", cGreen, v, cBlack)
 		}
 		return fmt.Sprintf("%s%15v%s", cCyan, v, cBlack)
 	}
 	clR := func(v interface{}) string {
 		if v == "disabled" {
-			return fmt.Sprintf("%s%-15v%s", cRed, "•", cBlack)
+			return fmt.Sprintf("%s%-15v%s", cRed, v, cBlack)
 		}
 		if v == "enabled" {
-			return fmt.Sprintf("%s%-15v%s", cGreen, "•", cBlack)
+			return fmt.Sprintf("%s%-15v%s", cGreen, v, cBlack)
 		}
 		return fmt.Sprintf("%s%-15v%s", cCyan, v, cBlack)
 	}
