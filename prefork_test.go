@@ -19,7 +19,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 
 	app := New()
 
-	err := app.prefork("invalid")
+	err := app.prefork("invalid", nil)
 	utils.AssertEqual(t, false, err == nil)
 
 	go func() {
@@ -27,7 +27,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork("[::]:"))
+	utils.AssertEqual(t, nil, app.prefork("[::]:", nil))
 
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
@@ -55,11 +55,11 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork(":3000"))
+	utils.AssertEqual(t, nil, app.prefork(":3000", nil))
 
 	dummyChildCmd = "invalid"
 
-	err := app.prefork("127.0.0.1:")
+	err := app.prefork("127.0.0.1:", nil)
 	utils.AssertEqual(t, false, err == nil)
 }
 

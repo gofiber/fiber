@@ -29,7 +29,7 @@ func (app *App) IsChild() bool {
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
-func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
+func (app *App) prefork(addr string, tlsConfig *tls.Config) (err error) {
 	// 👶 child process 👶
 	if app.IsChild() {
 		// use 1 cpu core per child process
@@ -44,8 +44,8 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 			return fmt.Errorf("prefork: %v", err)
 		}
 		// wrap a tls config around the listener if provided
-		if len(tlsconfig) > 0 {
-			ln = tls.NewListener(ln, tlsconfig[0])
+		if tlsConfig != nil {
+			ln = tls.NewListener(ln, tlsConfig)
 		}
 
 		// kill current child proc when master exits
@@ -109,7 +109,7 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
-		app.startupMessage(addr, len(tlsconfig) > 0, ","+strings.Join(pids, ","))
+		app.startupMessage(addr, tlsConfig != nil, ","+strings.Join(pids, ","))
 	}
 
 	// return error if child crashes

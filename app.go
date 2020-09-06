@@ -112,28 +112,6 @@ type Config struct {
 	// Default: 256 * 1024
 	Concurrency int `json:"concurrency"`
 
-	// When set to true, disables keep-alive connections.
-	// The server will close incoming connections after sending the first response to client.
-	// Default: false
-	DisableKeepalive bool `json:"disable_keep_alive"`
-
-	// When set to true, causes the default date header to be excluded from the response.
-	// Default: false
-	DisableDefaultDate bool `json:"disable_default_date"`
-
-	// When set to true, causes the default Content-Type header to be excluded from the response.
-	// Default: false
-	DisableDefaultContentType bool `json:"disable_default_content_type"`
-
-	// When set to true, disables header normalization.
-	// By default all header names are normalized: conteNT-tYPE -> Content-Type.
-	// Default: false
-	DisableHeaderNormalizing bool `json:"disable_header_normalizing"`
-
-	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
-	// Default: false
-	DisableStartupMessage bool `json:"disable_startup_message"`
-
 	// Views is the interface that wraps the Render function.
 	// Default: nil
 	Views Views `json:"-"`
@@ -182,10 +160,32 @@ type Config struct {
 	// accepting only GET requests. The request size is limited
 	// by ReadBufferSize if GETOnly is set.
 	// Server accepts all the requests by default.
-	GETOnly bool
+	GETOnly bool `json:"get_only"`
 
 	// ErrorHandler allows you to override the global error handler ( fiber.DefaultErrorHandler )
-	ErrorHandler ErrorHandler
+	ErrorHandler ErrorHandler `json:"-"`
+
+	// When set to true, disables keep-alive connections.
+	// The server will close incoming connections after sending the first response to client.
+	// Default: false
+	DisableKeepalive bool `json:"disable_keep_alive"`
+
+	// When set to true, causes the default date header to be excluded from the response.
+	// Default: false
+	DisableDefaultDate bool `json:"disable_default_date"`
+
+	// When set to true, causes the default Content-Type header to be excluded from the response.
+	// Default: false
+	DisableDefaultContentType bool `json:"disable_default_content_type"`
+
+	// When set to true, disables header normalization.
+	// By default all header names are normalized: conteNT-tYPE -> Content-Type.
+	// Default: false
+	DisableHeaderNormalizing bool `json:"disable_header_normalizing"`
+
+	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
+	// Default: false
+	DisableStartupMessage bool `json:"disable_startup_message"`
 
 	// FEATURE: v1.16.x
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
@@ -446,7 +446,7 @@ func (app *App) Listener(ln net.Listener) error {
 func (app *App) Listen(addr string) error {
 	// Start prefork
 	if app.config.Prefork {
-		return app.prefork(addr)
+		return app.prefork(addr, nil)
 	}
 	// Setup listener
 	ln, err := net.Listen("tcp4", addr)
@@ -459,6 +459,11 @@ func (app *App) Listen(addr string) error {
 	}
 	// Start listening
 	return app.server.Serve(ln)
+}
+
+// Config returns the app config as value ( read-only ).
+func (app *App) Config() Config {
+	return app.config
 }
 
 // Handler returns the server handler.
@@ -682,8 +687,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	out := colorable.NewColorableStdout()
-	if os.Getenv("TERM") == "dumb" ||
-		(!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+	if os.Getenv("TERM") == "dumb" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
