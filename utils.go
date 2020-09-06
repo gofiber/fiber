@@ -161,18 +161,18 @@ func defaultString(value string, defaultValue []string) string {
 const normalizedHeaderETag = "Etag"
 
 // Generate and set ETag header to response
-func setETag(ctx *Ctx, weak bool) {
+func setETag(c *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses
-	if ctx.fasthttp.Response.StatusCode() != StatusOK {
+	if c.request.Response.StatusCode() != StatusOK {
 		return
 	}
-	body := ctx.fasthttp.Response.Body()
+	body := c.request.Response.Body()
 	// Skips ETag if no response body is present
 	if len(body) <= 0 {
 		return
 	}
 	// Get ETag header from request
-	clientEtag := ctx.Get(HeaderIfNoneMatch)
+	clientEtag := c.Get(HeaderIfNoneMatch)
 
 	// Generate ETag for response
 	crc32q := crc32.MakeTable(0xD5828281)
@@ -188,22 +188,22 @@ func setETag(ctx *Ctx, weak bool) {
 		// Check if server's ETag is weak
 		if clientEtag[2:] == etag || clientEtag[2:] == etag[2:] {
 			// W/1 == 1 || W/1 == W/1
-			_ = ctx.SendStatus(StatusNotModified)
-			ctx.fasthttp.ResetBody()
+			_ = c.SendStatus(StatusNotModified)
+			c.request.ResetBody()
 			return
 		}
 		// W/1 != W/2 || W/1 != 2
-		ctx.setCanonical(normalizedHeaderETag, etag)
+		c.setCanonical(normalizedHeaderETag, etag)
 		return
 	}
 	if strings.Contains(clientEtag, etag) {
 		// 1 == 1
-		_ = ctx.SendStatus(StatusNotModified)
-		ctx.fasthttp.ResetBody()
+		_ = c.SendStatus(StatusNotModified)
+		c.request.ResetBody()
 		return
 	}
 	// 1 != 2
-	ctx.setCanonical(normalizedHeaderETag, etag)
+	c.setCanonical(normalizedHeaderETag, etag)
 }
 
 func getGroupPath(prefix, path string) string {
