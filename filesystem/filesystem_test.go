@@ -89,12 +89,12 @@ func Test_FileSystem(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, _ := http.NewRequest("GET", tt.url, nil)
 			resp, err := app.Test(req)
-			utils.AssertEqual(t, err, nil)
-			utils.AssertEqual(t, resp.StatusCode, tt.statusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, tt.statusCode, resp.StatusCode)
 
 			if tt.contentType != "" {
 				ct := resp.Header.Get("Content-Type")
-				utils.AssertEqual(t, ct, tt.contentType)
+				utils.AssertEqual(t, tt.contentType, ct)
 			}
 		})
 	}
