@@ -442,7 +442,7 @@ const (
 	StatusOK                            = 200 // RFC 7231, 6.3.1
 	StatusCreated                       = 201 // RFC 7231, 6.3.2
 	StatusAccepted                      = 202 // RFC 7231, 6.3.3
-	StatusNonAuthoritativeInfo          = 203 // RFC 7231, 6.3.4
+	StatusNonAuthoritativeInformation   = 203 // RFC 7231, 6.3.4
 	StatusNoContent                     = 204 // RFC 7231, 6.3.5
 	StatusResetContent                  = 205 // RFC 7231, 6.3.6
 	StatusPartialContent                = 206 // RFC 7233, 4.1
@@ -501,28 +501,6 @@ const (
 
 // Errors
 var (
-	ErrContinue                      = NewError(StatusContinue)                      // RFC 7231, 6.2.1
-	ErrSwitchingProtocols            = NewError(StatusSwitchingProtocols)            // RFC 7231, 6.2.2
-	ErrProcessing                    = NewError(StatusProcessing)                    // RFC 2518, 10.1
-	ErrEarlyHints                    = NewError(StatusEarlyHints)                    // RFC 8297
-	ErrOK                            = NewError(StatusOK)                            // RFC 7231, 6.3.1
-	ErrCreated                       = NewError(StatusCreated)                       // RFC 7231, 6.3.2
-	ErrAccepted                      = NewError(StatusAccepted)                      // RFC 7231, 6.3.3
-	ErrNonAuthoritativeInfo          = NewError(StatusNonAuthoritativeInfo)          // RFC 7231, 6.3.4
-	ErrNoContent                     = NewError(StatusNoContent)                     // RFC 7231, 6.3.5
-	ErrResetContent                  = NewError(StatusResetContent)                  // RFC 7231, 6.3.6
-	ErrPartialContent                = NewError(StatusPartialContent)                // RFC 7233, 4.1
-	ErrMultiStatus                   = NewError(StatusMultiStatus)                   // RFC 4918, 11.1
-	ErrAlreadyReported               = NewError(StatusAlreadyReported)               // RFC 5842, 7.1
-	ErrIMUsed                        = NewError(StatusIMUsed)                        // RFC 3229, 10.4.1
-	ErrMultipleChoices               = NewError(StatusMultipleChoices)               // RFC 7231, 6.4.1
-	ErrMovedPermanently              = NewError(StatusMovedPermanently)              // RFC 7231, 6.4.2
-	ErrFound                         = NewError(StatusFound)                         // RFC 7231, 6.4.3
-	ErrSeeOther                      = NewError(StatusSeeOther)                      // RFC 7231, 6.4.4
-	ErrNotModified                   = NewError(StatusNotModified)                   // RFC 7232, 4.1
-	ErrUseProxy                      = NewError(StatusUseProxy)                      // RFC 7231, 6.4.5
-	ErrTemporaryRedirect             = NewError(StatusTemporaryRedirect)             // RFC 7231, 6.4.7
-	ErrPermanentRedirect             = NewError(StatusPermanentRedirect)             // RFC 7538, 3
 	ErrBadRequest                    = NewError(StatusBadRequest)                    // RFC 7231, 6.5.1
 	ErrUnauthorized                  = NewError(StatusUnauthorized)                  // RFC 7235, 3.1
 	ErrPaymentRequired               = NewError(StatusPaymentRequired)               // RFC 7231, 6.5.2

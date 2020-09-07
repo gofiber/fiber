@@ -162,7 +162,18 @@ type Config struct {
 	// Server accepts all the requests by default.
 	GETOnly bool `json:"get_only"`
 
-	// ErrorHandler allows you to override the global error handler ( fiber.DefaultErrorHandler )
+	// ErrorHandler is executed when an error is returned from fiber.Handler.
+	// This function is also executed when middleware.Recover() catches a panic
+	//  cfg := fiber.Config{}
+	//  cfg.ErrorHandler = func(c *Ctx, err error) error {
+	//   code := StatusInternalServerError
+	//   if e, ok := err.(*Error); ok {
+	//     code = e.Code
+	//   }
+	//   c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+	//   return c.Status(code).SendString(err.Error())
+	//  }
+	//  app := fiber.New(cfg)
 	ErrorHandler ErrorHandler `json:"-"`
 
 	// When set to true, disables keep-alive connections.
@@ -408,16 +419,20 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 	return &Group{prefix: prefix, app: app}
 }
 
-// Error makes it compatible with `error` interface.
+// Error makes it compatible with the `error` interface.
 func (e *Error) Error() string {
 	return e.Message
 }
 
-// NewError creates a new HTTPError instance.
+// NewError creates a new HTTPError instance with an optional message
 func NewError(code int, message ...string) *Error {
-	e := &Error{code, utils.StatusMessage(code)}
+	e := &Error{
+		Code: code,
+	}
 	if len(message) > 0 {
 		e.Message = message[0]
+	} else {
+		e.Message = utils.StatusMessage(code)
 	}
 	return e
 }
