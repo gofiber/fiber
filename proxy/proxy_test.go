@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +12,9 @@ import (
 
 // go test -run Test_Proxy
 func Test_Proxy(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	go func() {
 		app2 := fiber.New(fiber.Config{
 			DisableStartupMessage: true,
@@ -25,6 +29,7 @@ func Test_Proxy(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	go func() {
+		defer wg.Done()
 		app1 := fiber.New(fiber.Config{
 			DisableStartupMessage: true,
 		})
@@ -35,4 +40,6 @@ func Test_Proxy(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 	}()
+
+	wg.Wait()
 }

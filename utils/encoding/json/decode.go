@@ -1135,10 +1135,6 @@ func (d decoder) decodeJSONUnmarshaler(b []byte, p unsafe.Pointer, t reflect.Typ
 		return b, err
 	}
 
-	if len(v) != 0 && v[0] == 'n' { // null
-		return b, nil
-	}
-
 	u := reflect.NewAt(t, p)
 	if !pointer {
 		u = u.Elem()
@@ -1147,6 +1143,7 @@ func (d decoder) decodeJSONUnmarshaler(b []byte, p unsafe.Pointer, t reflect.Typ
 	if u.IsNil() {
 		u.Set(reflect.New(t))
 	}
+
 	return b, u.Interface().(Unmarshaler).UnmarshalJSON(v)
 }
 
