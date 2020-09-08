@@ -591,7 +591,7 @@ func (c *Ctx) Next() (err error) {
 		// Continue route stack
 		if err = c.route.Handlers[c.indexHandler](c); err != nil {
 			if err = c.app.config.ErrorHandler(c, err); err != nil {
-				c.SendStatus(StatusInternalServerError)
+				_ = c.SendStatus(StatusInternalServerError)
 			}
 			return err
 		}
