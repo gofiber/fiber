@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"fmt"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -16,27 +17,37 @@ func Test_Proxy(t *testing.T) {
 	wg.Add(1)
 
 	go func() {
-		app2 := fiber.New(fiber.Config{
+		fmt.Println("1")
+		app := fiber.New(fiber.Config{
 			DisableStartupMessage: true,
 		})
-		app2.Get("/", func(c *fiber.Ctx) error {
-			return c.SendStatus(fiber.StatusTeapot)
+
+		app.Get("/", func(c *fiber.Ctx) error {
+			fmt.Println(c)
+			fmt.Println(c.Request())
+			fmt.Println(c.Request().String())
+			c.SendStatus(fiber.StatusTeapot)
+			fmt.Println(c.Request().Response.StatusCode())
+			return nil
 		})
 
-		utils.AssertEqual(t, nil, app2.Listen(":3001"))
+		utils.AssertEqual(t, nil, app.Listen(":3001"))
 	}()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	go func() {
+		fmt.Println("2")
 		defer wg.Done()
-		app1 := fiber.New(fiber.Config{
+
+		app := fiber.New(fiber.Config{
 			DisableStartupMessage: true,
 		})
-		app1.Use(New(Config{
-			Hosts: "127.0.0.1:3001",
+		app.Use(New(Config{
+			Hosts: "localhost:3001",
 		}))
-		resp, err := app1.Test(httptest.NewRequest("GET", "/", nil))
+
+		resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 	}()

@@ -1,9 +1,10 @@
-# Compress
-Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will compress the response using `gzip`, `deflate` and `brotli` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header.
+# Favicon
+Favicon middleware ignores favicon requests or caches a provided icon in memory to improve performance by skipping disk access. User agents request `/favicon.ico` frequently and indiscriminately, so you may wish to exclude these requests from your logs by using this middleware before your logger middleware.
+
+**Note**: This middleware is exclusively for serving the default, implicit favicon, which is `GET /favicon.ico`.
 
 - [Signatures](#signatures)
 - [Config](#config)
-- [Constants](#config)
 - [Examples](#examples)
 
 <!-- 
@@ -28,26 +29,11 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// CompressLevel determines the compression algoritm
+	// File holds the path to an actual favicon that will be cached
 	//
-	// Optional. Default: LevelDefault
-	// LevelDisabled:         -1
-	// LevelDefault:          0
-	// LevelBestSpeed:        1
-	// LevelBestCompression:  2
-	Level int
+	// Optional. Default: ""
+	File string
 }
-
-```
-### Constants
-```go
-// Compression levels
-const (
-	LevelDisabled        = -1
-	LevelDefault         = 0
-	LevelBestSpeed       = 1
-	LevelBestCompression = 2
-)
 ```
 
 ### Example
@@ -55,25 +41,25 @@ Import the compress package that is part of the Fiber web framework
 ```go
 import (
   "github.com/gofiber/fiber"
-  "github.com/gofiber/fiber/compress"
+  "github.com/gofiber/fiber/favicon"
 )
 ```
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-// Default compression config
-app.Use(compress.New())
+// Default favicon config
+app.Use(favicon.New())
 
-// Provide a custom compression level
-app.Use(compress.New(compress.Config{
-    Level: compress.LevelBestSpeed, // 1
+// Provide a custom favicon to load into memory
+app.Use(favicon.New(favicon.Config{
+    File: "./favicon.ico",
 }))
 
 // Skip middleware for specific routes
 app.Use(compress.New(compress.Config{
   Next:  func(c *fiber.Ctx) bool {
-    return c.Path() == "/dont_compress"
+    return c.Path() == "/admin"
   },
-  Level: compress.LevelBestSpeed, // 1
+  File: "./favicon.ico",
 }))
 ```

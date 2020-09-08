@@ -974,6 +974,20 @@ func (c *Ctx) Status(status int) *Ctx {
 	return c
 }
 
+// String returns unique string representation of the ctx.
+//
+// The returned value may be useful for logging.
+func (c *Ctx) String() string {
+	return fmt.Sprintf(
+		"#%016X - %s <-> %s - %s %s",
+		c.request.ID(),
+		c.request.LocalAddr(),
+		c.request.RemoteAddr(),
+		c.request.Request.Header.Method(),
+		c.request.URI().FullURI(),
+	)
+}
+
 // Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 func (c *Ctx) Type(extension string, charset ...string) *Ctx {
 	if len(charset) > 0 {
