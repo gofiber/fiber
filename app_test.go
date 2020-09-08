@@ -789,7 +789,7 @@ func Benchmark_App_ETag(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		setETag(c, false)
 	}
-	utils.AssertEqual(b, `"13-1831710635"`, string(c.request.Response.Header.Peek(HeaderETag)))
+	utils.AssertEqual(b, `"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_App_ETag_Weak -benchmem -count=4
@@ -801,7 +801,7 @@ func Benchmark_App_ETag_Weak(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		setETag(c, true)
 	}
-	utils.AssertEqual(b, `W/"13-1831710635"`, string(c.request.Response.Header.Peek(HeaderETag)))
+	utils.AssertEqual(b, `W/"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
 }
 
 // go test -run Test_NewError

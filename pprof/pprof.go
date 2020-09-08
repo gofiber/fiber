@@ -35,28 +35,28 @@ func New() fiber.Handler {
 		// Switch to original path without stripped slashes
 		switch path {
 		case "/debug/pprof/":
-			c.Request().SetContentType(fiber.MIMETextHTML)
-			pprofIndex(c.Request())
+			c.Context().SetContentType(fiber.MIMETextHTML)
+			pprofIndex(c.Context())
 		case "/debug/pprof/cmdline":
-			pprofCmdline(c.Request())
+			pprofCmdline(c.Context())
 		case "/debug/pprof/profile":
-			pprofProfile(c.Request())
+			pprofProfile(c.Context())
 		case "/debug/pprof/symbol":
-			pprofSymbol(c.Request())
+			pprofSymbol(c.Context())
 		case "/debug/pprof/trace":
-			pprofTrace(c.Request())
+			pprofTrace(c.Context())
 		case "/debug/pprof/allocs":
-			pprofAllocs(c.Request())
+			pprofAllocs(c.Context())
 		case "/debug/pprof/block":
-			pprofBlock(c.Request())
+			pprofBlock(c.Context())
 		case "/debug/pprof/goroutine":
-			pprofGoroutine(c.Request())
+			pprofGoroutine(c.Context())
 		case "/debug/pprof/heap":
-			pprofHeap(c.Request())
+			pprofHeap(c.Context())
 		case "/debug/pprof/mutex":
-			pprofMutex(c.Request())
+			pprofMutex(c.Context())
 		case "/debug/pprof/threadcreate":
-			pprofThreadcreate(c.Request())
+			pprofThreadcreate(c.Context())
 		default:
 			// pprof index only works with trailing slash
 			return c.Redirect("/debug/pprof/", 302)

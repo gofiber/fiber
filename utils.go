@@ -163,10 +163,10 @@ const normalizedHeaderETag = "Etag"
 // Generate and set ETag header to response
 func setETag(c *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses
-	if c.request.Response.StatusCode() != StatusOK {
+	if c.fasthttp.Response.StatusCode() != StatusOK {
 		return
 	}
-	body := c.request.Response.Body()
+	body := c.fasthttp.Response.Body()
 	// Skips ETag if no response body is present
 	if len(body) <= 0 {
 		return
@@ -189,7 +189,7 @@ func setETag(c *Ctx, weak bool) {
 		if clientEtag[2:] == etag || clientEtag[2:] == etag[2:] {
 			// W/1 == 1 || W/1 == W/1
 			_ = c.SendStatus(StatusNotModified)
-			c.request.ResetBody()
+			c.fasthttp.ResetBody()
 			return
 		}
 		// W/1 != W/2 || W/1 != 2
@@ -199,7 +199,7 @@ func setETag(c *Ctx, weak bool) {
 	if strings.Contains(clientEtag, etag) {
 		// 1 == 1
 		_ = c.SendStatus(StatusNotModified)
-		c.request.ResetBody()
+		c.fasthttp.ResetBody()
 		return
 	}
 	// 1 != 2

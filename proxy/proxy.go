@@ -70,8 +70,8 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Set request and response
-		req := &c.Request().Request
-		res := &c.Request().Response
+		req := c.Request()
+		res := c.Response()
 
 		// Don't proxy "Connection" header
 		req.Header.Del(fiber.HeaderConnection)

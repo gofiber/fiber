@@ -23,11 +23,7 @@ func Test_Proxy(t *testing.T) {
 		})
 
 		app.Get("/", func(c *fiber.Ctx) error {
-			fmt.Println(c)
-			fmt.Println(c.Request())
-			fmt.Println(c.Request().String())
 			c.SendStatus(fiber.StatusTeapot)
-			fmt.Println(c.Request().Response.StatusCode())
 			return nil
 		})
 

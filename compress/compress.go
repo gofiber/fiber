@@ -91,7 +91,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Compress response
-		compressor(c.Request())
+		compressor(c.Context())
 
 		// Return from handler
 		return nil

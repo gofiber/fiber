@@ -138,14 +138,14 @@ func New(config Config) fiber.Handler {
 		}
 
 		if method == fiber.MethodGet {
-			c.Request().SetBodyStream(file, contentLength)
+			c.Response().SetBodyStream(file, contentLength)
 			return nil
 		}
 		if method == fiber.MethodHead {
 			c.Request().ResetBody()
 			// Fasthttp should skipbody by default if HEAD?
-			c.Request().Response.SkipBody = true
-			c.Request().Response.Header.SetContentLength(contentLength)
+			c.Response().SkipBody = true
+			c.Response().Header.SetContentLength(contentLength)
 			if err := file.Close(); err != nil {
 				return err
 			}

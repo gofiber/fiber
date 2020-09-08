@@ -351,16 +351,16 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	fileHandler := fs.NewRequestHandler()
 	handler := func(c *Ctx) error {
 		// Serve file
-		fileHandler(c.request)
+		fileHandler(c.fasthttp)
 		// Return request if found and not forbidden
-		status := c.request.Response.StatusCode()
+		status := c.fasthttp.Response.StatusCode()
 		if status != StatusNotFound && status != StatusForbidden {
 			return nil
 		}
 		// Reset response to default
-		c.request.SetContentType("") // Issue #420
-		c.request.Response.SetStatusCode(StatusOK)
-		c.request.Response.SetBodyString("")
+		c.fasthttp.SetContentType("") // Issue #420
+		c.fasthttp.Response.SetStatusCode(StatusOK)
+		c.fasthttp.Response.SetBodyString("")
 		// Next middleware
 		return c.Next()
 	}
