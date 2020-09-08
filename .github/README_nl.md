@@ -105,7 +105,7 @@ Deze tests zijn uitgevoerd door [TechEmpower](https://www.techempower.com/benchm
 
 ## ⚙️ Installatie
 
-Allereerst, [download](https://golang.org/dl/) en installeer Go. `1.11` of hoger is vereist.
+Allereerst, [download](https://golang.org/dl/) en installeer Go. `1.13` of hoger is vereist.
 
 Installatie wordt gedaan met behulp van het [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) commando:
 

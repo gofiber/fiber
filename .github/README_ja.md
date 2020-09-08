@@ -105,7 +105,7 @@ func main() {
 
 ## ⚙️ インストール
 
-まず、Goを[ダウンロード](https://golang.org/dl/)してください。 `1.11`以降が必要です。
+まず、Goを[ダウンロード](https://golang.org/dl/)してください。 `1.13`以降が必要です。
 
 そして、[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)コマンドを使用してインストールしてください。
 

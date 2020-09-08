@@ -123,7 +123,7 @@ func main() {
 
 <div dir="rtl">
 
-קודם כל, [הורידו](https://golang.org/dl/) והתקינו את Go. נדרשת גרסה <span dir="ltr">`1.11`</span> ומעלה.
+קודם כל, [הורידו](https://golang.org/dl/) והתקינו את Go. נדרשת גרסה <span dir="ltr">`1.13`</span> ומעלה.
 </div>
 
 <div dir="rtl">

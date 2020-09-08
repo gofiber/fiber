@@ -120,7 +120,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 		c.indexHandler = 0
 		if err = route.Handlers[0](c); err != nil {
 			if catch := c.app.config.ErrorHandler(c, err); catch != nil {
-				c.SendStatus(StatusInternalServerError)
+				_ = c.SendStatus(StatusInternalServerError)
 			}
 		}
 		return // Stop scanning the stack
@@ -134,7 +134,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 	// Moved from app.handler because middleware may break the route chain
 	if !c.matched && methodExist(c) {
 		if catch := c.app.config.ErrorHandler(c, ErrMethodNotAllowed); catch != nil {
-			c.SendStatus(StatusInternalServerError)
+			_ = c.SendStatus(StatusInternalServerError)
 		}
 	}
 	return

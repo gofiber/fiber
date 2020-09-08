@@ -105,7 +105,7 @@ Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r1
 
 ## ⚙️ Kurulum
 
-İlk önce, Go yu [indirip](https://golang.org/dl/) kuruyoruz. `1.11` veya daha yeni sürüm gereklidir.
+İlk önce, Go yu [indirip](https://golang.org/dl/) kuruyoruz. `1.13` veya daha yeni sürüm gereklidir.
 
 [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu kullanarak kurulumu tamamlıyoruz:
 

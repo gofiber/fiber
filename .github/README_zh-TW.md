@@ -105,7 +105,7 @@ func main() {
 
 ## ⚙️ 安裝
 
-第一步， [下載](https://golang.org/dl/)並安裝Go。 請使用`1.11`以上版本。
+第一步， [下載](https://golang.org/dl/)並安裝Go。 請使用`1.13`以上版本。
 
 下指令[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)下載套件：
 
