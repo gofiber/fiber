@@ -8,7 +8,7 @@
 
 A collection of common functions but with better performance, less allocations and no dependencies created for [Fiber](https://github.com/gofiber/fiber).
 
-
+```go
 // go test -v -benchmem -run=^$ -bench=Benchmark_ -count=2
 
 Benchmark_GetMIME/fiber               14287550                84.2 ns/op             0 B/op          0 allocs/op
@@ -60,3 +60,4 @@ Benchmark_TrimRight/fiber             374543056               3.15 ns/op        
 Benchmark_TrimRight/fiber             336067616               3.15 ns/op             0 B/op          0 allocs/op
 Benchmark_TrimRight/default           20868186                52.8 ns/op            32 B/op          1 allocs/op
 Benchmark_TrimRight/default           21434695                55.1 ns/op            32 B/op          1 allocs/op
+```
