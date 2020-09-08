@@ -35,28 +35,28 @@ func New() fiber.Handler {
 		// Switch to original path without stripped slashes
 		switch path {
 		case "/debug/pprof/":
-			c.Fasthttp().SetContentType(fiber.MIMETextHTML)
-			pprofIndex(c.Fasthttp())
+			c.Request().SetContentType(fiber.MIMETextHTML)
+			pprofIndex(c.Request())
 		case "/debug/pprof/cmdline":
-			pprofCmdline(c.Fasthttp())
+			pprofCmdline(c.Request())
 		case "/debug/pprof/profile":
-			pprofProfile(c.Fasthttp())
+			pprofProfile(c.Request())
 		case "/debug/pprof/symbol":
-			pprofSymbol(c.Fasthttp())
+			pprofSymbol(c.Request())
 		case "/debug/pprof/trace":
-			pprofTrace(c.Fasthttp())
+			pprofTrace(c.Request())
 		case "/debug/pprof/allocs":
-			pprofAllocs(c.Fasthttp())
+			pprofAllocs(c.Request())
 		case "/debug/pprof/block":
-			pprofBlock(c.Fasthttp())
+			pprofBlock(c.Request())
 		case "/debug/pprof/goroutine":
-			pprofGoroutine(c.Fasthttp())
+			pprofGoroutine(c.Request())
 		case "/debug/pprof/heap":
-			pprofHeap(c.Fasthttp())
+			pprofHeap(c.Request())
 		case "/debug/pprof/mutex":
-			pprofMutex(c.Fasthttp())
+			pprofMutex(c.Request())
 		case "/debug/pprof/threadcreate":
-			pprofThreadcreate(c.Fasthttp())
+			pprofThreadcreate(c.Request())
 		default:
 			// pprof index only works with trailing slash
 			return c.Redirect("/debug/pprof/", 302)

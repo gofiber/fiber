@@ -10,17 +10,17 @@ import (
 
 // go test -run Test_Recover
 func Test_Recover(t *testing.T) {
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c *fiber.Ctx, err error) error {
+			utils.AssertEqual(t, "Hi, I'm an error!", err.Error())
+			return c.SendStatus(fiber.StatusTeapot)
+		},
+	})
 
 	app.Use(New())
 
 	app.Get("/panic", func(c *fiber.Ctx) error {
 		panic("Hi, I'm an error!")
-	})
-
-	app.Errors(func(c *fiber.Ctx, err error) {
-		utils.AssertEqual(t, "Hi, I'm an error!", err.Error())
-		c.SendStatus(fiber.StatusTeapot)
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/panic", nil))

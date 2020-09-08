@@ -70,8 +70,8 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Set request and response
-		req := &c.Fasthttp().Request
-		res := &c.Fasthttp().Response
+		req := &c.Request().Request
+		res := &c.Request().Response
 
 		// Don't proxy "Connection" header
 		req.Header.Del(fiber.HeaderConnection)

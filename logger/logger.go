@@ -211,13 +211,13 @@ func New(config ...Config) fiber.Handler {
 			case TagBody:
 				return buf.Write(c.Body())
 			case TagBytesReceived:
-				return buf.WriteString(strconv.Itoa(len(c.Fasthttp().Request.Body())))
+				return buf.WriteString(strconv.Itoa(len(c.Request().Request.Body())))
 			case TagBytesSent:
-				return buf.WriteString(strconv.Itoa(len(c.Fasthttp().Response.Body())))
+				return buf.WriteString(strconv.Itoa(len(c.Request().Response.Body())))
 			case TagRoute:
 				return buf.WriteString(c.Route().Path)
 			case TagStatus:
-				return buf.WriteString(strconv.Itoa(c.Fasthttp().Response.StatusCode()))
+				return buf.WriteString(strconv.Itoa(c.Request().Response.StatusCode()))
 			case TagMethod:
 				return buf.WriteString(c.Method())
 			case TagBlack:
