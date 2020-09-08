@@ -1,6 +1,6 @@
 # Utils
 
-[![Release](https://img.shields.io/github/release/gofiber/utils.svg)](https://github.com/gofiber/utils/releases)
+[![Release](https://img.shields.io/github/release/gofiber/fiber.svg)](https://github.com/gofiber/fiber/releases)
 [![Discord](https://img.shields.io/discord/704680098577514527?label=Discord&logo=discord&logoColor=white&color=7289DA)](https://gofiber.io/discord)
 [![Test](https://github.com/gofiber/utils/workflows/Test/badge.svg)](https://github.com/gofiber/utils/actions?query=workflow%3ATest)
 [![Security](https://github.com/gofiber/utils/workflows/Security/badge.svg)](https://github.com/gofiber/utils/actions?query=workflow%3ASecurity)
