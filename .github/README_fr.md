@@ -105,7 +105,7 @@ Ces tests sont effectués par [TechEmpower](https://www.techempower.com/benchmar
 
 ## ⚙️ Installation
 
-Premièrement, [téléchargez](https://golang.org/dl/) et installez Go. Version `1.13` ou supérieur requise.
+Premièrement, [téléchargez](https://golang.org/dl/) et installez Go. Version `1.14` ou supérieur requise.
 
 L'installation est ensuite lancée via la commande  [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 

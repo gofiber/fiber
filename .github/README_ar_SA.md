@@ -114,7 +114,7 @@ func main() {
 
 ## ⚙️ تثبيت
 
-قبل كل شي قم , [بتحميل](https://golang.org/dl/)   و تثبيت  Go. `1.13` أو أعلى مطلوب.
+قبل كل شي قم , [بتحميل](https://golang.org/dl/)   و تثبيت  Go. `1.14` أو أعلى مطلوب.
 
 بعد الانتهاء من التثبيت استخدم الامر [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) :
 

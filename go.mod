@@ -1,6 +1,6 @@
 module github.com/gofiber/fiber
 
-go 1.13
+go 1.14
 
 require (
 	github.com/valyala/fasthttp v1.16.0

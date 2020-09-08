@@ -105,7 +105,7 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmar
 
 ## ⚙️ Instalasi
 
-Pertama, [unduh](https://golang.org/dl/) dan instal Go di komputer anda. Versi `1.13` atau yang lebih tinggi diperlukan.
+Pertama, [unduh](https://golang.org/dl/) dan instal Go di komputer anda. Versi `1.14` atau yang lebih tinggi diperlukan.
 
 Instalasi dilakukkan dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 

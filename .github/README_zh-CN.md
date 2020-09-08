@@ -105,7 +105,7 @@ func main() {
 
 ## ⚙️ 安装
 
-首先， [下载](https://golang.org/dl/)并安装Go。 需要`1.13`或更高版本。
+首先， [下载](https://golang.org/dl/)并安装Go。 需要`1.14`或更高版本。
 
 使用[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)命令完成安装：
 
@@ -513,7 +513,7 @@ func main() {
 | [rewrite](https://github.com/gofiber/rewrite) | `Rewrite`中间件根据提供的规则重写`URL`路径。它对于向后兼容或创建更简洁，更具描述性的链接很有帮助。 | - |
 | [requestid](https://github.com/gofiber/fiber/blob/master/middleware/request_id.md) | Request ID中间件为请求生成唯一的ID。 | `middleware.RequestID()` |
 | [session](https://github.com/gofiber/session) | `session`中间件通过了 @savsgio MIT 许可，建立在`fasthttp/session`之上。特别感谢 @thomasvvugt 帮助完成此中间件。 | - |
-| [template](https://github.com/gofiber/template) | 该软件包包含8个模板引擎，需要配合Fiber`v1.10.x`以及Go`1.13`或更高版本使用。 | - |
+| [template](https://github.com/gofiber/template) | 该软件包包含8个模板引擎，需要配合Fiber`v1.10.x`以及Go`1.14`或更高版本使用。 | - |
 | [websocket](https://github.com/gofiber/websocket) | `Fiber`基于`Fasthttp WebSocket`的中间件，支持`Locals`功能！ | - |
 
 ## 🌱 第三方中间件
