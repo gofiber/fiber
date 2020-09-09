@@ -1723,7 +1723,7 @@ func Test_Ctx_Set_Splitter(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	c.Set("Location", "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n")
+	c.Set("Location", "foo\r\nSet-Cookie: SESSIONID=MaliciousValue\r\n")
 	h := string(c.Response().Header.Peek("Location"))
 	utils.AssertEqual(t, false, strings.Contains(h, "\r\n"), h)
 
