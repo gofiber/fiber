@@ -94,6 +94,23 @@ func quoteString(raw string) string {
 	return quoted
 }
 
+// quoteHeader
+func quoteHeader(raw string) string {
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '\r' && raw[i] != '\n' {
+			continue
+		}
+		if len(raw) > i+1 {
+			raw = raw[:i] + raw[i+1:]
+			i--
+		} else {
+			raw = raw[:i]
+		}
+	}
+
+	return raw
+}
+
 // Scan stack if other methods match the request
 func methodExist(ctx *Ctx) (exist bool) {
 	for i := 0; i < len(intMethod); i++ {
