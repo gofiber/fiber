@@ -630,7 +630,7 @@ func (app *App) init() *App {
 
 func (app *App) startupMessage(addr string, tls bool, pids string) {
 	// ignore child processes
-	if app.IsChild() {
+	if IsChild() {
 		return
 	}
 
