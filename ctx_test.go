@@ -1716,6 +1716,18 @@ func Test_Ctx_Set(t *testing.T) {
 	utils.AssertEqual(t, "1337", string(c.Response().Header.Peek("x-3")))
 }
 
+// go test -run Test_Ctx_Set_Splitter
+func Test_Ctx_Set_Splitter(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Set("Location", `foo%0d%0aSet-Cookie:%20SESSIONID=MaliciousValue%0d%0a`)
+	// fmt.Println(string(c.Response().Header.Header()))
+	h := string(c.Response().Header.Peek("Location"))
+	utils.AssertEqual(t, false, strings.Contains(h, `%0d%0a`), h)
+}
+
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Set -benchmem -count=4
 func Benchmark_Ctx_Set(b *testing.B) {
 	app := New()
