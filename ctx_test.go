@@ -1723,15 +1723,21 @@ func Test_Ctx_Set_Splitter(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	c.Set("Location", "foo\r\nSet-Cookie: SESSIONID=MaliciousValue\r\n")
+	c.Set("Location", "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n")
+	//fmt.Println(string(c.Response().Header.Header()))
 	h := string(c.Response().Header.Peek("Location"))
 	utils.AssertEqual(t, false, strings.Contains(h, "\r\n"), h)
 
+	c.Set("Location", "foo\nSet-Cookie:%20SESSIONID=MaliciousValue\n")
+	//fmt.Println(string(c.Response().Header.Header()))
+	h = string(c.Response().Header.Peek("Location"))
+	utils.AssertEqual(t, false, strings.Contains(h, "\n"), h)
+
 	c.Set("Location", `foo%0d%0aSet-Cookie:%20SESSIONID=MaliciousValue%0d%0a`)
+	//fmt.Println(string(c.Response().Header.Header()))
 	h = string(c.Response().Header.Peek("Location"))
 	utils.AssertEqual(t, false, strings.Contains(h, `%0d%0a`), h)
 
-	// fmt.Println(string(c.Response().Header.Header()))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Set -benchmem -count=4
