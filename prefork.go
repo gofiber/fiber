@@ -24,7 +24,7 @@ var (
 )
 
 // IsChild determines if the current process is a result of Prefork
-func (app *App) IsChild() bool {
+func IsChild() bool {
 	return os.Getenv(envPreforkChildKey) == envPreforkChildVal
 }
 
