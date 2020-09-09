@@ -94,20 +94,42 @@ func quoteString(raw string) string {
 	return quoted
 }
 
-// quoteHeader
-func quoteHeader(raw string) string {
+// removeNewLines will replace `\r` and `\n` with an empty space
+func removeNewLines(raw string) string {
+	// for i := 0; i < len(raw); i++ {
+	// 	if raw[i] != '\r' && raw[i] != '\n' {
+	// 		continue
+	// 	}
+	// 	if len(raw) > i+1 {
+	// 		raw = raw[:i] + raw[i+1:]
+	// 		i--
+	// 	} else {
+	// 		raw = raw[:i]
+	// 	}
+	// }
+
+	// return raw
+	nline := false
 	for i := 0; i < len(raw); i++ {
-		if raw[i] != '\r' && raw[i] != '\n' {
-			continue
-		}
-		if len(raw) > i+1 {
-			raw = raw[:i] + raw[i+1:]
-			i--
-		} else {
-			raw = raw[:i]
+		if raw[i] == '\r' || raw[i] == '\n' {
+			nline = true
+			break
 		}
 	}
-
+	if !nline {
+		return raw
+	}
+	safe := make([]byte, len(raw))
+	//safe := bytebufferpool.Get()
+	for i := 0; i < len(raw); i++ {
+		if raw[i] == '\r' || raw[i] == '\n' {
+			safe[i] = ' '
+		} else {
+			safe[i] = raw[i]
+		}
+	}
+	raw = utils.GetString(safe)
+	//bytebufferpool.Put(safe)
 	return raw
 }
 

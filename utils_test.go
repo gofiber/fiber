@@ -13,8 +13,18 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// go test -v -run=Test_Utils_ -count=3
+// go test -v -run=^$ -bench=Benchmark_Utils_RemoveNewLines -benchmem -count=4
+func Benchmark_Utils_RemoveNewLines(b *testing.B) {
+	val := "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n"
+	var res string
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = removeNewLines(val)
+	}
+	utils.AssertEqual(b, "foo  Set-Cookie:%20SESSIONID=MaliciousValue  ", res)
+}
 
+// go test -v -run=Test_Utils_ -count=3
 func Test_Utils_ETag(t *testing.T) {
 	app := New()
 	t.Run("Not Status OK", func(t *testing.T) {
