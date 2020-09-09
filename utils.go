@@ -96,40 +96,24 @@ func quoteString(raw string) string {
 
 // removeNewLines will replace `\r` and `\n` with an empty space
 func removeNewLines(raw string) string {
-	// for i := 0; i < len(raw); i++ {
-	// 	if raw[i] != '\r' && raw[i] != '\n' {
-	// 		continue
-	// 	}
-	// 	if len(raw) > i+1 {
-	// 		raw = raw[:i] + raw[i+1:]
-	// 		i--
-	// 	} else {
-	// 		raw = raw[:i]
-	// 	}
-	// }
+	start := 0
+	if start = strings.IndexByte(raw, '\r'); start == -1 {
+		if start = strings.IndexByte(raw, '\n'); start == -1 {
+			return raw
+		}
+	}
+	bb := bytebufferpool.Get()
+	buf := bb.Bytes()
+	buf = append(buf, raw...)
+	for i := start; i < len(buf); i++ {
+		if buf[i] != '\r' && buf[i] != '\n' {
+			continue
+		}
+		buf[i] = ' '
+	}
+	raw = utils.GetString(buf)
+	bytebufferpool.Put(bb)
 
-	// return raw
-	nline := false
-	for i := 0; i < len(raw); i++ {
-		if raw[i] == '\r' || raw[i] == '\n' {
-			nline = true
-			break
-		}
-	}
-	if !nline {
-		return raw
-	}
-	safe := make([]byte, len(raw))
-	//safe := bytebufferpool.Get()
-	for i := 0; i < len(raw); i++ {
-		if raw[i] == '\r' || raw[i] == '\n' {
-			safe[i] = ' '
-		} else {
-			safe[i] = raw[i]
-		}
-	}
-	raw = utils.GetString(safe)
-	//bytebufferpool.Put(safe)
 	return raw
 }
 

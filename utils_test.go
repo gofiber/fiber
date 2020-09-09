@@ -15,13 +15,28 @@ import (
 
 // go test -v -run=^$ -bench=Benchmark_Utils_RemoveNewLines -benchmem -count=4
 func Benchmark_Utils_RemoveNewLines(b *testing.B) {
-	val := "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n"
+	withNL := "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n"
+	withoutNL := "foo  Set-Cookie:%20SESSIONID=MaliciousValue  "
+	expected := utils.ImmutableString(withoutNL)
 	var res string
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		res = removeNewLines(val)
-	}
-	utils.AssertEqual(b, "foo  Set-Cookie:%20SESSIONID=MaliciousValue  ", res)
+
+	b.Run("withNewlines", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			res = removeNewLines(withNL)
+		}
+		utils.AssertEqual(b, expected, res)
+	})
+	b.Run("withoutNewlines", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			res = removeNewLines(withoutNL)
+		}
+		utils.AssertEqual(b, expected, res)
+	})
+
 }
 
 // go test -v -run=Test_Utils_ -count=3
