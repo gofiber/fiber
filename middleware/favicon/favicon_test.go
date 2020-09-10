@@ -56,7 +56,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		File: "../.github/testdata/favicon.ico",
+		File: "../../.github/testdata/favicon.ico",
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
