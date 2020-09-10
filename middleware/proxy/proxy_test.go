@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/utils"
 	"io/ioutil"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -152,7 +153,7 @@ func Test_Proxy_Do_With_Error(t *testing.T) {
 
 	app.Use(
 		New(Config{
-			Hosts: "non-exist-host",
+			Hosts: "localhost:90000",
 		}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
@@ -161,5 +162,5 @@ func Test_Proxy_Do_With_Error(t *testing.T) {
 
 	b, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "lookup non-exist-host: no such host", string(b))
+	utils.AssertEqual(t, true, strings.Contains(string(b), "127.0.0.1:90000"))
 }
