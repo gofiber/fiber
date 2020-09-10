@@ -41,7 +41,7 @@ Import the compress package that is part of the Fiber web framework
 ```go
 import (
   "github.com/gofiber/fiber"
-  "github.com/gofiber/fiber/favicon"
+  "github.com/gofiber/fiber/middleware/favicon"
 )
 ```
 
