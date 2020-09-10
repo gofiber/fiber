@@ -98,7 +98,7 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// Return err if exist, else move to next handler
-		return c.Next()
+		// Return nil to end proxying if no error
+		return nil
 	}
 }
