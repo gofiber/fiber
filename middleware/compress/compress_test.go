@@ -12,7 +12,7 @@ import (
 var filedata []byte
 
 func init() {
-	dat, err := ioutil.ReadFile("../.github/README.md")
+	dat, err := ioutil.ReadFile("../../.github/README.md")
 	if err != nil {
 		panic(err)
 	}
