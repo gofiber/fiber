@@ -32,7 +32,7 @@ import (
 )
 
 // Version of current package
-const Version = "1.14.5-pre"
+const Version = "1.14.6"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -663,7 +663,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	logo += `%s_____%s / /_  / / __ \/ _ \/ ___/  %s` + "\n"
 	logo += `%s  __%s / __/ / / /_/ /  __/ /      %s` + "\n"
 	logo += `%s    /_/   /_/_.___/\___/_/%s %s` + ""
-	logo += cRed + "v1.15.0 will be released on 15 September 2020 and contains breaking changes!\nPlease visit https://github.com/gofiber/fiber/issues/736 for more information.\n" + cReset
+	logo += cRed + "v2 will be released on 15 September 2020!\nPlease visit https://gofiber.io/v2 for more information.\n" + cReset
 	host, port := parseAddr(addr)
 	padding := strconv.Itoa(len(host))
 	if len(host) <= 4 {
