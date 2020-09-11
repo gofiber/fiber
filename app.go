@@ -69,6 +69,10 @@ type App struct {
 
 // Settings is a struct holding the server settings.
 type Config struct {
+	// When set to true, this will spawn multiple Go processes listening on the same port.
+	// Default: false
+	Prefork bool `json:"prefork"`
+
 	// Enables the "Server: value" HTTP header.
 	// Default: ""
 	ServerHeader string `json:"server_header"`
@@ -99,10 +103,6 @@ type Config struct {
 	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
 	// Default: false
 	ETag bool `json:"etag"`
-
-	// When set to true, this will spawn multiple Go processes listening on the same port.
-	// Default: false
-	Prefork bool `json:"prefork"`
 
 	// Max body size that the server accepts.
 	// Default: 4 * 1024 * 1024
@@ -163,7 +163,6 @@ type Config struct {
 	GETOnly bool `json:"get_only"`
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
-	// This function is also executed when middleware.Recover() catches a panic
 	//  cfg := fiber.Config{}
 	//  cfg.ErrorHandler = func(c *Ctx, err error) error {
 	//   code := StatusInternalServerError
