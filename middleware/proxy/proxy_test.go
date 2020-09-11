@@ -2,12 +2,13 @@ package proxy
 
 import (
 	"fmt"
-	"github.com/gofiber/fiber"
-	"github.com/gofiber/fiber/utils"
 	"io/ioutil"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // go test -run Test_Proxy_Empty_Host

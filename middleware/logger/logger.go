@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gofiber/fiber"
-	"github.com/gofiber/fiber/utils/bytebufferpool"
-	"github.com/gofiber/fiber/utils/fasttemplate"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils/bytebufferpool"
+	"github.com/gofiber/fiber/v2/utils/fasttemplate"
 )
 
 // Config defines the config for middleware.

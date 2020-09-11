@@ -3,7 +3,7 @@ package timeout
 import (
 	"time"
 
-	"github.com/gofiber/fiber"
+	"github.com/gofiber/fiber/v2"
 )
 
 // New wraps a handler and aborts the process of the handler if the timeout is reached

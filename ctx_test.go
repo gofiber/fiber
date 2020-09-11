@@ -24,8 +24,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gofiber/fiber/utils"
-	"github.com/gofiber/fiber/utils/bytebufferpool"
+	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v2/utils/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 

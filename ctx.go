@@ -19,10 +19,10 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gofiber/fiber/utils"
-	"github.com/gofiber/fiber/utils/bytebufferpool"
-	"github.com/gofiber/fiber/utils/encoding/json"
-	"github.com/gofiber/fiber/utils/schema"
+	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v2/utils/bytebufferpool"
+	"github.com/gofiber/fiber/v2/utils/encoding/json"
+	"github.com/gofiber/fiber/v2/utils/schema"
 	"github.com/valyala/fasthttp"
 )
 
