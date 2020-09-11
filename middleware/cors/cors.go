@@ -15,21 +15,33 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
+	// TODO: Description
+	//
 	// Optional. Default value "*"
 	AllowOrigins string
 
+	// TODO: Description
+	//
 	// Optional. Default value "GET,POST,HEAD,PUT,DELETE,PATCH"
 	AllowMethods string
 
+	// TODO: Description
+	//
 	// Optional. Default value "".
 	AllowHeaders string
 
+	// TODO: Description
+	//
 	// Optional. Default value false.
 	AllowCredentials bool
 
+	// TODO: Description
+	//
 	// Optional. Default value "".
 	ExposeHeaders string
 
+	// TODO: Description
+	//
 	// Optional. Default value 0.
 	MaxAge int
 }
