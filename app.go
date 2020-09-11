@@ -67,7 +67,7 @@ type App struct {
 	config Config
 }
 
-// Settings is a struct holding the server settings.
+// Config is a struct holding the server settings.
 type Config struct {
 	// When set to true, this will spawn multiple Go processes listening on the same port.
 	// Default: false
