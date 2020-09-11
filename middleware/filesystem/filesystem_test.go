@@ -25,6 +25,11 @@ func Test_FileSystem(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
+	app.Use("/spatest", New(Config{
+		Root:         http.Dir("../../.github/testdata/fs"),
+		NotFoundFile: "index.html",
+	}))
+
 	tests := []struct {
 		name         string
 		url          string
@@ -82,6 +87,12 @@ func Test_FileSystem(t *testing.T) {
 			url:         "/dir/img/fiber.png",
 			statusCode:  200,
 			contentType: "image/png",
+		},
+		{
+			name:        "Should be return status 200",
+			url:         "/spatest/doesnotexist",
+			statusCode:  200,
+			contentType: "text/html",
 		},
 	}
 

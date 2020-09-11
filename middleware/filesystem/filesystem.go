@@ -32,6 +32,11 @@ type Config struct {
 	//
 	// Optional. Default: false
 	Browse bool
+
+	// File to return if path is not found. Useful for SPA's.
+	//
+	// Optional. Default: ""
+	NotFoundFile string
 }
 
 // ConfigDefault is the default config
@@ -90,6 +95,10 @@ func New(config Config) fiber.Handler {
 		}
 
 		file, err := cfg.Root.Open(path)
+		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
+			file, err = cfg.Root.Open(cfg.NotFoundFile)
+		}
+
 		if err != nil {
 			if os.IsNotExist(err) {
 				return c.Status(fiber.StatusNotFound).Next()
