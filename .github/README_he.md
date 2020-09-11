@@ -88,7 +88,7 @@
 ```go
 package main
 
-import "github.com/gofiber/fiber"
+import "github.com/gofiber/fiber/v2"
 
 func main() {
 	app := fiber.New()
@@ -312,7 +312,7 @@ Checkout our [Template](https://github.com/gofiber/template) package that suppor
 package main
 
 import (
-	"github.com/gofiber/fiber"
+	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/template/pug"
 )
 
@@ -385,7 +385,7 @@ package main
 import (
 	"os"
 
-	"github.com/gofiber/fiber"
+	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/logger"
 )
 
@@ -423,7 +423,7 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/v2"
     "github.com/gofiber/cors"
 )
 
@@ -519,7 +519,7 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/v2"
     "github.com/gofiber/websocket"
 )
 
@@ -556,7 +556,7 @@ func main() {
 
 ```go
 import (
-	"github.com/gofiber/fiber"
+	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/recover"
 )
 
