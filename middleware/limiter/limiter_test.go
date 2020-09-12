@@ -15,7 +15,10 @@ import (
 func Test_Concurrency(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New(Config{Max: 100}))
+	app.Use(New(Config{
+		Max:      100,
+		Duration: 1 * time.Minute,
+	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		// random delay between the requests

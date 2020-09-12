@@ -15,15 +15,15 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// Max number of recent connections during `Timeout` seconds before sending a 429 response
+	// Max number of recent connections during `Duration` seconds before sending a 429 response
 	//
 	// Default: 5
 	Max int
 
-	// Timeout in seconds on how long to keep records of requests in memory
+	// Duration is the time on how long to keep records of requests in memory
 	//
-	// Default: 60 (1 minute)
-	Timeout int
+	// Default: time.Minute
+	Duration time.Duration
 
 	// Key allows you to generate custom keys, by default c.IP() is used
 	//
@@ -42,9 +42,9 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:    nil,
-	Max:     5,
-	Timeout: 60,
+	Next:     nil,
+	Max:      5,
+	Duration: time.Minute,
 	Key: func(c *fiber.Ctx) string {
 		return c.IP()
 	},
@@ -76,8 +76,8 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Max <= 0 {
 			cfg.Max = ConfigDefault.Max
 		}
-		if cfg.Timeout <= 0 {
-			cfg.Timeout = ConfigDefault.Timeout
+		if int(cfg.Duration.Seconds()) <= 0 {
+			cfg.Duration = ConfigDefault.Duration
 		}
 		if cfg.Key == nil {
 			cfg.Key = ConfigDefault.Key
@@ -92,7 +92,7 @@ func New(config ...Config) fiber.Handler {
 	var hits = make(map[string]int)
 	var reset = make(map[string]int)
 	var timestamp = int(time.Now().Unix())
-
+	var duration = int(cfg.Duration.Seconds())
 	// mutex for parallel read and write access
 	mux := &sync.Mutex{}
 
@@ -111,10 +111,10 @@ func New(config ...Config) fiber.Handler {
 
 		// Set unix timestamp if not exist
 		if reset[key] == 0 {
-			reset[key] = timestamp + cfg.Timeout
+			reset[key] = timestamp + duration
 		} else if timestamp >= reset[key] {
 			hits[key] = 0
-			reset[key] = timestamp + cfg.Timeout
+			reset[key] = timestamp + duration
 		}
 
 		// Increment key hits
