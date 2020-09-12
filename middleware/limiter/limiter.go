@@ -93,6 +93,7 @@ func New(config ...Config) fiber.Handler {
 	var reset = make(map[string]int)
 	var timestamp = int(time.Now().Unix())
 	var duration = int(cfg.Duration.Seconds())
+
 	// mutex for parallel read and write access
 	mux := &sync.Mutex{}
 

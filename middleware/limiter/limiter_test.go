@@ -9,10 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/valyala/fasthttp"
 )
 
-func Test_Concurrency(t *testing.T) {
+// go test -run Test_Limiter_Concurrency -race -v
+func Test_Limiter_Concurrency(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -48,4 +52,32 @@ func Test_Concurrency(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+// go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4
+func Benchmark_Limiter(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:      100,
+		Duration: 60 * time.Second,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/")
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, "100", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
 }
