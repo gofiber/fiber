@@ -780,6 +780,15 @@ func Test_App_Listener(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
+// go test -v -run=^$ -bench=Benchmark_AcquireCtx -benchmem -count=4
+func Benchmark_AcquireCtx(b *testing.B) {
+	app := New()
+	for n := 0; n < b.N; n++ {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		app.ReleaseCtx(c)
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
 func Benchmark_App_ETag(b *testing.B) {
 	app := New()
