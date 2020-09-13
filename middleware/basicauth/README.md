@@ -5,6 +5,7 @@ Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) th
 - [Signatures](#signatures)
 - [Examples](#examples)
 - [Config](#config)
+- [Default Config](#default-config)
 
 
 ### Signatures
@@ -100,5 +101,18 @@ type Config struct {
 	//
 	// Optional. Default: "password"
 	ContextPassword string
+}
+```
+
+### Default Config
+```go
+var ConfigDefault = Config{
+	Next:            nil,
+	Users:           map[string]string{},
+	Realm:           "Restricted",
+	Authorizer:      nil,
+	Unauthorized:    nil,
+	ContextUsername: "username",
+	ContextPassword: "password",
 }
 ```
