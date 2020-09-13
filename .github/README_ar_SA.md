@@ -122,7 +122,7 @@ func main() {
 
 
 ```bash
-go get -u github.com/gofiber/fiber
+go get github.com/gofiber/fiber/v2
 ```
 
 </div>

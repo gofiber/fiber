@@ -110,7 +110,7 @@ func main() {
 下指令[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)下載套件：
 
 ```bash
-go get -u github.com/gofiber/fiber
+go get github.com/gofiber/fiber/v2
 ```
 
 ## 🎯 功能

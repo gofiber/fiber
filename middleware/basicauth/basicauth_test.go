@@ -25,8 +25,8 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 	app.Use(New(cfg))
 
 	app.Get("/testauth", func(c *fiber.Ctx) error {
-		username := c.Locals("user").(string)
-		password := c.Locals("pass").(string)
+		username := c.Locals("username").(string)
+		password := c.Locals("password").(string)
 
 		return c.SendString(username + password)
 	})

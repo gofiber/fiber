@@ -110,7 +110,7 @@ Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r1
 [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu kullanarak kurulumu tamamlıyoruz:
 
 ```bash
-go get -u github.com/gofiber/fiber/...
+go get github.com/gofiber/fiber/v2/...
 ```
 
 ## 🎯 Özellikler

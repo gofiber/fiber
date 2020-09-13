@@ -44,24 +44,24 @@ type Config struct {
 
 	// ContextUser is the key to store the username in Locals
 	//
-	// Optional. Default: "user"
-	ContextUser string
+	// Optional. Default: "username"
+	ContextUsername string
 
 	// ContextPass is the key to store the password in Locals
 	//
-	// Optional. Default: "pass"
-	ContextPass string
+	// Optional. Default: "password"
+	ContextPassword string
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:         nil,
-	Users:        map[string]string{},
-	Realm:        "Restricted",
-	Authorizer:   nil,
-	Unauthorized: nil,
-	ContextUser:  "user",
-	ContextPass:  "pass",
+	Next:            nil,
+	Users:           map[string]string{},
+	Realm:           "Restricted",
+	Authorizer:      nil,
+	Unauthorized:    nil,
+	ContextUsername: "username",
+	ContextPassword: "password",
 }
 
 // New creates a new middleware handler
@@ -98,11 +98,11 @@ func New(config ...Config) fiber.Handler {
 				return c.SendStatus(fiber.StatusUnauthorized)
 			}
 		}
-		if cfg.ContextUser == "" {
-			cfg.ContextUser = ConfigDefault.ContextUser
+		if cfg.ContextUsername == "" {
+			cfg.ContextUsername = ConfigDefault.ContextUsername
 		}
-		if cfg.ContextPass == "" {
-			cfg.ContextPass = ConfigDefault.ContextPass
+		if cfg.ContextPassword == "" {
+			cfg.ContextPassword = ConfigDefault.ContextPassword
 		}
 	}
 
@@ -134,8 +134,8 @@ func New(config ...Config) fiber.Handler {
 
 						// If exist & match in Users, we let him pass
 						if cfg.Authorizer(user, pass) {
-							c.Locals(cfg.ContextUser, user)
-							c.Locals(cfg.ContextPass, pass)
+							c.Locals(cfg.ContextUsername, user)
+							c.Locals(cfg.ContextPassword, pass)
 							return c.Next()
 						}
 					}

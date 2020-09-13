@@ -110,7 +110,7 @@ Primeiro de tudo, faça o [download](https://golang.org/dl/) e instale o Go. É 
 A instalação é feita usando o comando [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) :
 
 ```bash
-go get -u github.com/gofiber/fiber/...
+go get github.com/gofiber/fiber/v2/...
 ```
 
 ## 🎯 Recursos

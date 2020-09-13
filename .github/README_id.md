@@ -110,7 +110,7 @@ Pertama, [unduh](https://golang.org/dl/) dan instal Go di komputer anda. Versi `
 Instalasi dilakukkan dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
-go get -u github.com/gofiber/fiber/...
+go get github.com/gofiber/fiber/v2/...
 ```
 
 ## 🎯 Fitur

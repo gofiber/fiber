@@ -113,7 +113,7 @@ func main() {
 export GO111MODULE=on
 export GOPROXY=https://goproxy.cn
 
-go get -u github.com/gofiber/fiber
+go get github.com/gofiber/fiber/v2
 ```
 
 ## 🎯 特点
