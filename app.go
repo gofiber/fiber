@@ -224,7 +224,7 @@ type Static struct {
 	Index string `json:"index"`
 }
 
-// Default settings
+// Default Config values
 const (
 	DefaultBodyLimit            = 4 * 1024 * 1024
 	DefaultConcurrency          = 256 * 1024
@@ -233,6 +233,7 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
+// Default ErrorHandler
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {

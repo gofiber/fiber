@@ -333,7 +333,7 @@ func (c *Ctx) Request() *fasthttp.Request {
 	return &c.fasthttp.Request
 }
 
-// Request return the *fasthttp.Response object
+// Response return the *fasthttp.Response object
 // This allows you to use all fasthttp response methods
 // https://godoc.org/github.com/valyala/fasthttp#Response
 func (c *Ctx) Response() *fasthttp.Response {
