@@ -30,7 +30,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 app.Use(favicon.New(favicon.Config{}))
 
 // Or extend your config for customization
-app.Use(basicauth.New(favicon.Config{
+app.Use(favicon.New(favicon.Config{
 	File: "./favicon.ico"
 }))
 ```
