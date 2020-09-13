@@ -12,7 +12,7 @@ Basic Authentication middleware [Fiber](https://github.com/gofiber/fiber) that p
 func New(config ...Config) fiber.Handler
 ```
 
-### Example
+### Examples
 Import the middleware package that is part of the Fiber web framework
 ```go
 import (
