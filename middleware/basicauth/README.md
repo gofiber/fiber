@@ -1,6 +1,7 @@
 # Basic Authentication
 Basic Authentication middleware [Fiber](https://github.com/gofiber/fiber) that provides an HTTP basic authentication. It calls the next handler for valid credentials and [401 Unauthorized](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401) or custom response for missing or invalid credentials.
 
+### Table of Contents
 - [Signatures](#signatures)
 - [Examples](#examples)
 - [Config](#config)
