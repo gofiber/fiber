@@ -23,7 +23,7 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-// Provide a minimal config
+// Default config
 app.Use(cors.New())
 
 // Or extend your config for customization
