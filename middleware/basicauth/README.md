@@ -39,7 +39,13 @@ app.Use(basicauth.New(basicauth.Config{
 	},
 	Realm: "Forbidden",
 	Authorizer: func(user, pass string) bool {
-		return user == "admin" && pass == "123456"
+		if user == "john" && pass == "doe" {
+			return true
+		}
+		if user == "admin" && pass == "123456" {
+			return true
+		}
+		return false
 	},
 	Unauthorized: func(c *fiber.Ctx) error {
 		return c.SendFile("./unauthorized.html")
