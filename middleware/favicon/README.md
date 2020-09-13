@@ -1,23 +1,59 @@
-# Favicon
-Favicon middleware ignores favicon requests or caches a provided icon in memory to improve performance by skipping disk access. User agents request `/favicon.ico` frequently and indiscriminately, so you may wish to exclude these requests from your logs by using this middleware before your logger middleware.
+# Basic Authentication
+Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) that provides an HTTP basic authentication. It calls the next handler for valid credentials and [401 Unauthorized](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401) or a custom response for missing or invalid credentials.
 
-**Note**: This middleware is exclusively for serving the default, implicit favicon, which is `GET /favicon.ico`.
-
+### Table of Contents
 - [Signatures](#signatures)
-- [Config](#config)
 - [Examples](#examples)
+- [Config](#config)
+- [Default Config](#default-config)
 
-<!-- 
-### Config
-
-| Signature | Description | Required | Default |
-| :--- | :--- | ---: | ---: |
-| `Next func(c *fiber.Ctx) bool` | Defines a function to skip this middleware when returned true. | `✘` | `nil` |
-| `Level int` | Determines the compression algoritm: `-1`, `0`, `1` or `2` | `✔` | `0` | -->
 
 ### Signatures
 ```go
 func New(config ...Config) fiber.Handler
+```
+
+### Examples
+Import the middleware package that is part of the Fiber web framework
+```go
+import (
+  "github.com/gofiber/fiber/v2"
+  "github.com/gofiber/fiber/v2/middleware/basicauth"
+)
+```
+
+After you initiate your Fiber app, you can use the following possibilities:
+```go
+// Provide a minimal config
+app.Use(basicauth.New(basicauth.Config{
+	Users: map[string]string{
+		"john":  "doe",
+		"admin": "123456",
+	},
+}))
+
+// Or extend your config for customization
+app.Use(basicauth.New(basicauth.Config{
+	Users: map[string]string{
+		"john":  "doe",
+		"admin": "123456",
+	},
+	Realm: "Forbidden",
+	Authorizer: func(user, pass string) bool {
+		if user == "john" && pass == "doe" {
+			return true
+		}
+		if user == "admin" && pass == "123456" {
+			return true
+		}
+		return false
+	},
+	Unauthorized: func(c *fiber.Ctx) error {
+		return c.SendFile("./unauthorized.html")
+	},
+	ContextUsername: "_user",
+	ContextPassword: "_pass",
+}))
 ```
 
 ### Config
@@ -29,37 +65,54 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// File holds the path to an actual favicon that will be cached
+	// Users defines the allowed credentials
 	//
-	// Optional. Default: ""
-	File string
+	// Required. Default: map[string]string{}
+	Users map[string]string
+
+	// Realm is a string to define realm attribute of BasicAuth.
+	// the realm identifies the system to authenticate against
+	// and can be used by clients to save credentials
+	//
+	// Optional. Default: "Restricted".
+	Realm string
+
+	// Authorizer defines a function you can pass
+	// to check the credentials however you want.
+	// It will be called with a username and password
+	// and is expected to return true or false to indicate
+	// that the credentials were approved or not.
+	//
+	// Optional. Default: nil.
+	Authorizer func(string, string) bool
+
+	// Unauthorized defines the response body for unauthorized responses.
+	// By default it will return with a 401 Unauthorized and the correct WWW-Auth header
+	//
+	// Optional. Default: nil
+	Unauthorized fiber.Handler
+
+	// ContextUser is the key to store the username in Locals
+	//
+	// Optional. Default: "username"
+	ContextUsername string
+
+	// ContextPass is the key to store the password in Locals
+	//
+	// Optional. Default: "password"
+	ContextPassword string
 }
 ```
 
-### Example
-Import the compress package that is part of the Fiber web framework
+### Default Config
 ```go
-import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/middleware/favicon"
-)
-```
-
-After you initiate your Fiber app, you can use the following possibilities:
-```go
-// Default favicon config
-app.Use(favicon.New())
-
-// Provide a custom favicon to load into memory
-app.Use(favicon.New(favicon.Config{
-    File: "./favicon.ico",
-}))
-
-// Skip middleware for specific routes
-app.Use(compress.New(compress.Config{
-  Next:  func(c *fiber.Ctx) bool {
-    return c.Path() == "/admin"
-  },
-  File: "./favicon.ico",
-}))
+var ConfigDefault = Config{
+	Next:            nil,
+	Users:           map[string]string{},
+	Realm:           "Restricted",
+	Authorizer:      nil,
+	Unauthorized:    nil,
+	ContextUsername: "username",
+	ContextPassword: "password",
+}
 ```
