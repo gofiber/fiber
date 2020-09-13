@@ -32,7 +32,7 @@ app.Use(basicauth.New(basicauth.Config{
 }))
 
 // Or extend your config for customization
-app.Use(compress.New(compress.Config{
+app.Use(basicauth.New(basicauth.Config{
 	Users: map[string]string{
 		"john":  "doe",
 		"admin": "123456",
