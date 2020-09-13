@@ -1,22 +1,36 @@
-# Compress
-Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will compress the response using `gzip`, `deflate` and `brotli` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header.
+# Cross-Origin Resource Sharing (CORS)
+CORS middleware for [Fiber](https://github.com/gofiber/fiber) that  that can be used to enable [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) with various options.
 
+### Table of Contents
 - [Signatures](#signatures)
-- [Config](#config)
-- [Constants](#config)
 - [Examples](#examples)
-
-<!-- 
-### Config
-
-| Signature | Description | Required | Default |
-| :--- | :--- | ---: | ---: |
-| `Next func(c *fiber.Ctx) bool` | Defines a function to skip this middleware when returned true. | `✘` | `nil` |
-| `Level int` | Determines the compression algoritm: `-1`, `0`, `1` or `2` | `✔` | `0` | -->
+- [Config](#config)
+- [Default Config](#default-config)
 
 ### Signatures
 ```go
 func New(config ...Config) fiber.Handler
+```
+
+### Examples
+Import the middleware package that is part of the Fiber web framework
+```go
+import (
+  "github.com/gofiber/fiber/v2"
+  "github.com/gofiber/fiber/v2/middleware/cors"
+)
+```
+
+After you initiate your Fiber app, you can use the following possibilities:
+```go
+// Provide a minimal config
+app.Use(cors.New())
+
+// Or extend your config for customization
+app.Use(cors.New(cors.Config{
+	AllowOrigins: "https://gofiber.io, https://gofiber.net",
+	AllowHeader:  "Origin, Content-Type, Accept",
+}))
 ```
 
 ### Config
@@ -28,52 +42,54 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// CompressLevel determines the compression algoritm
+	// AllowOrigin defines a list of origins that may access the resource.
 	//
-	// Optional. Default: LevelDefault
-	// LevelDisabled:         -1
-	// LevelDefault:          0
-	// LevelBestSpeed:        1
-	// LevelBestCompression:  2
-	Level int
+	// Optional. Default value "*"
+	AllowOrigins string
+
+	// AllowMethods defines a list methods allowed when accessing the resource.
+	// This is used in response to a preflight request.
+	//
+	// Optional. Default value "GET,POST,HEAD,PUT,DELETE,PATCH"
+	AllowMethods string
+
+	// AllowHeaders defines a list of request headers that can be used when
+	// making the actual request. This is in response to a preflight request.
+	//
+	// Optional. Default value "".
+	AllowHeaders string
+
+	// AllowCredentials indicates whether or not the response to the request
+	// can be exposed when the credentials flag is true. When used as part of
+	// a response to a preflight request, this indicates whether or not the
+	// actual request can be made using credentials.
+	//
+	// Optional. Default value false.
+	AllowCredentials bool
+
+	// ExposeHeaders defines a whitelist headers that clients are allowed to
+	// access.
+	//
+	// Optional. Default value "".
+	ExposeHeaders string
+
+	// MaxAge indicates how long (in seconds) the results of a preflight request
+	// can be cached.
+	//
+	// Optional. Default value 0.
+	MaxAge int
 }
-
-```
-### Constants
-```go
-// Compression levels
-const (
-	LevelDisabled        = -1
-	LevelDefault         = 0
-	LevelBestSpeed       = 1
-	LevelBestCompression = 2
-)
 ```
 
-### Example
-Import the compress package that is part of the Fiber web framework
+### Default Config
 ```go
-import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/middleware/compress"
-)
-```
-
-After you initiate your Fiber app, you can use the following possibilities:
-```go
-// Default compression config
-app.Use(compress.New())
-
-// Provide a custom compression level
-app.Use(compress.New(compress.Config{
-    Level: compress.LevelBestSpeed, // 1
-}))
-
-// Skip middleware for specific routes
-app.Use(compress.New(compress.Config{
-  Next:  func(c *fiber.Ctx) bool {
-    return c.Path() == "/dont_compress"
-  },
-  Level: compress.LevelBestSpeed, // 1
-}))
+var ConfigDefault = Config{
+	Next:             nil,
+	AllowOrigins:     "*",
+	AllowMethods:     "GET,POST,HEAD,PUT,DELETE,PATCH",
+	AllowHeaders:     "",
+	AllowCredentials: false,
+	ExposeHeaders:    "",
+	MaxAge:           0,
+}
 ```
