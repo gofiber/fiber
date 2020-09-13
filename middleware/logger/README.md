@@ -6,7 +6,7 @@ Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP r
 - [Examples](#examples)
 - [Config](#config)
 - [Default Config](#default-config)
-
+- [Constants](#constants)
 
 ### Signatures
 ```go
