@@ -13,14 +13,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	utils "github.com/gofiber/utils"
-	fasthttp "github.com/valyala/fasthttp"
+	"github.com/gofiber/fiber/v2/utils"
+	"github.com/valyala/fasthttp"
 )
 
 var routesFixture = routeJSON{}
 
 func init() {
-	dat, err := ioutil.ReadFile("./.github/TEST_DATA/testRoutes.json")
+	dat, err := ioutil.ReadFile("./.github/testdata/testRoutes.json")
 	if err != nil {
 		panic(err)
 	}
@@ -32,8 +32,8 @@ func init() {
 func Test_Route_Match_SameLength(t *testing.T) {
 	app := New()
 
-	app.Get("/:param", func(ctx *Ctx) {
-		ctx.Send(ctx.Params("param"))
+	app.Get("/:param", func(c *Ctx) error {
+		return c.SendString(c.Params("param"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/:param", nil))
@@ -57,8 +57,8 @@ func Test_Route_Match_SameLength(t *testing.T) {
 func Test_Route_Match_Star(t *testing.T) {
 	app := New()
 
-	app.Get("/*", func(ctx *Ctx) {
-		ctx.Send(ctx.Params("*"))
+	app.Get("/*", func(c *Ctx) error {
+		return c.SendString(c.Params("*"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", nil))
@@ -84,16 +84,17 @@ func Test_Route_Match_Star(t *testing.T) {
 		path:        "/*",
 		routeParser: routeParser{},
 	}
-	match, params := route.match("", "")
+	params := [maxParams]string{}
+	match := route.match("", "", &params)
 	utils.AssertEqual(t, true, match)
-	utils.AssertEqual(t, []string{""}, params)
+	utils.AssertEqual(t, [maxParams]string{}, params)
 }
 
 func Test_Route_Match_Root(t *testing.T) {
 	app := New()
 
-	app.Get("/", func(ctx *Ctx) {
-		ctx.Send("root")
+	app.Get("/", func(c *Ctx) error {
+		return c.SendString("root")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
@@ -108,11 +109,11 @@ func Test_Route_Match_Root(t *testing.T) {
 func Test_Route_Match_Parser(t *testing.T) {
 	app := New()
 
-	app.Get("/foo/:ParamName", func(ctx *Ctx) {
-		ctx.Send(ctx.Params("ParamName"))
+	app.Get("/foo/:ParamName", func(c *Ctx) error {
+		return c.SendString(c.Params("ParamName"))
 	})
-	app.Get("/Foobar/*", func(ctx *Ctx) {
-		ctx.Send(ctx.Params("*"))
+	app.Get("/Foobar/*", func(c *Ctx) error {
+		return c.SendString(c.Params("*"))
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -135,8 +136,8 @@ func Test_Route_Match_Parser(t *testing.T) {
 func Test_Route_Match_Middleware(t *testing.T) {
 	app := New()
 
-	app.Use("/foo/*", func(ctx *Ctx) {
-		ctx.Send(ctx.Params("*"))
+	app.Use("/foo/*", func(c *Ctx) error {
+		return c.SendString(c.Params("*"))
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/*", nil))
@@ -158,10 +159,10 @@ func Test_Route_Match_Middleware(t *testing.T) {
 }
 
 func Test_Route_Match_UnescapedPath(t *testing.T) {
-	app := New(&Settings{UnescapePath: true})
+	app := New(Config{UnescapePath: true})
 
-	app.Use("/créer", func(ctx *Ctx) {
-		ctx.Send("test")
+	app.Use("/créer", func(c *Ctx) error {
+		return c.SendString("test")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
@@ -177,7 +178,7 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	// check deactivated behavior
-	app.Settings.UnescapePath = false
+	app.config.UnescapePath = false
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
@@ -186,8 +187,8 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 	app := New()
 
-	app.Use("/foo", func(ctx *Ctx) {
-		ctx.Send("middleware")
+	app.Use("/foo", func(c *Ctx) error {
+		return c.SendString("middleware")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
@@ -202,8 +203,8 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 func Test_Route_Match_Middleware_Root(t *testing.T) {
 	app := New()
 
-	app.Use("/", func(ctx *Ctx) {
-		ctx.Send("middleware")
+	app.Use("/", func(c *Ctx) error {
+		return c.SendString("middleware")
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/everything", nil))
@@ -237,14 +238,15 @@ func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 
 func Test_Router_Handler_SetETag(t *testing.T) {
 	app := New()
-	app.Settings.ETag = true
+	app.config.ETag = true
 
-	app.Get("/", func(c *Ctx) {
-		c.Send("Hello, World!")
+	app.Get("/", func(c *Ctx) error {
+		return c.SendString("Hello, World!")
 	})
 
 	c := &fasthttp.RequestCtx{}
-	app.init().handler(c)
+
+	app.handler(c)
 
 	utils.AssertEqual(t, `"13-1831710635"`, string(c.Response.Header.Peek(HeaderETag)))
 }
@@ -254,7 +256,9 @@ func Test_Router_Handler_SetETag(t *testing.T) {
 //////////////////////////////////////////////
 
 func registerDummyRoutes(app *App) {
-	h := func(c *Ctx) {}
+	h := func(c *Ctx) error {
+		return nil
+	}
 	for _, r := range routesFixture.GithubAPI {
 		app.Add(r.Method, r.Path, h)
 	}
@@ -263,8 +267,8 @@ func registerDummyRoutes(app *App) {
 // go test -v -run=^$ -bench=Benchmark_App_MethodNotAllowed -benchmem -count=4
 func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	app := New()
-	h := func(c *Ctx) {
-		c.Send("Hello World!")
+	h := func(c *Ctx) error {
+		return c.SendString("Hello World!")
 	}
 	app.All("/this/is/a/", h)
 	app.Get("/this/is/a/dummy/route/oke", h)
@@ -273,6 +277,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/this/is/a/dummy/route/oke")
 
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -284,8 +289,8 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
 func Benchmark_Router_NotFound(b *testing.B) {
 	app := New()
-	app.Use(func(c *Ctx) {
-		c.Next()
+	app.Use(func(c *Ctx) error {
+		return c.Next()
 	})
 	registerDummyRoutes(app)
 	c := &fasthttp.RequestCtx{}
@@ -293,6 +298,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/this/route/does/not/exist")
 
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -310,13 +316,15 @@ func Benchmark_Router_Handler(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
 
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
 }
 
 func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
-	app := New(&Settings{
+	app := New(Config{
 		StrictRouting: true,
 		CaseSensitive: true,
 	})
@@ -327,6 +335,8 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
 
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -335,8 +345,8 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Chain -benchmem -count=4
 func Benchmark_Router_Chain(b *testing.B) {
 	app := New()
-	handler := func(c *Ctx) {
-		c.Next()
+	handler := func(c *Ctx) error {
+		return c.Next()
 	}
 	app.Get("/", handler, handler, handler, handler, handler, handler)
 
@@ -344,7 +354,7 @@ func Benchmark_Router_Chain(b *testing.B) {
 
 	c.Request.Header.SetMethod("GET")
 	c.URI().SetPath("/")
-
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -353,8 +363,8 @@ func Benchmark_Router_Chain(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Router_WithCompression -benchmem -count=4
 func Benchmark_Router_WithCompression(b *testing.B) {
 	app := New()
-	handler := func(c *Ctx) {
-		c.Next()
+	handler := func(c *Ctx) error {
+		return c.Next()
 	}
 	app.Get("/", handler)
 	app.Get("/", handler)
@@ -367,7 +377,7 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 
 	c.Request.Header.SetMethod("GET")
 	c.URI().SetPath("/")
-
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
@@ -383,15 +393,17 @@ func Benchmark_Router_Next(b *testing.B) {
 	request.Request.Header.SetMethod("DELETE")
 	request.URI().SetPath("/user/keys/1337")
 	var res bool
+	var err error
 
-	app.init()
 	c := app.AcquireCtx(request)
 	defer app.ReleaseCtx(c)
 
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		c.indexRoute = -1
-		res = app.next(c)
+		res, err = app.next(c)
 	}
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, true, res)
 	utils.AssertEqual(b, 4, c.indexRoute)
 }
@@ -399,7 +411,7 @@ func Benchmark_Router_Next(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match -benchmem -count=4
 func Benchmark_Route_Match(b *testing.B) {
 	var match bool
-	var params []string
+	var params [maxParams]string
 
 	parsed := parseRoute("/user/keys/:id")
 	route := &Route{
@@ -413,19 +425,22 @@ func Benchmark_Route_Match(b *testing.B) {
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c *Ctx) {})
+	route.Handlers = append(route.Handlers, func(c *Ctx) error {
+		return nil
+	})
+	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		match, params = route.match("/user/keys/1337", "/user/keys/1337")
+		match = route.match("/user/keys/1337", "/user/keys/1337", &params)
 	}
 
 	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, []string{"1337"}, params)
+	utils.AssertEqual(b, []string{"1337"}, params[0:len(parsed.params)])
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Star -benchmem -count=4
 func Benchmark_Route_Match_Star(b *testing.B) {
 	var match bool
-	var params []string
+	var params [maxParams]string
 
 	parsed := parseRoute("/*")
 	route := &Route{
@@ -439,19 +454,23 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		Path:   "/user/keys/bla",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c *Ctx) {})
+	route.Handlers = append(route.Handlers, func(c *Ctx) error {
+		return nil
+	})
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
-		match, params = route.match("/user/keys/bla", "/user/keys/bla")
+		match = route.match("/user/keys/bla", "/user/keys/bla", &params)
 	}
 
 	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, []string{"user/keys/bla"}, params)
+	utils.AssertEqual(b, []string{"user/keys/bla"}, params[0:len(parsed.params)])
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Route_Match_Root -benchmem -count=4
 func Benchmark_Route_Match_Root(b *testing.B) {
 	var match bool
-	var params []string
+	var params [maxParams]string
 
 	parsed := parseRoute("/")
 	route := &Route{
@@ -465,25 +484,32 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		Path:   "/",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c *Ctx) {})
+	route.Handlers = append(route.Handlers, func(c *Ctx) error {
+		return nil
+	})
+
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
-		match, params = route.match("/", "/")
+		match = route.match("/", "/", &params)
 	}
 
 	utils.AssertEqual(b, true, match)
-	utils.AssertEqual(b, []string(nil), params)
+	utils.AssertEqual(b, []string{}, params[0:len(parsed.params)])
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_CaseSensitive -benchmem -count=4
 func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	app := New()
-	app.Settings.CaseSensitive = true
+	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
 
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
+
+	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
@@ -493,14 +519,18 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_Unescape -benchmem -count=4
 func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	app := New()
-	app.Settings.UnescapePath = true
+	app.config.UnescapePath = true
 	registerDummyRoutes(app)
-	app.Delete("/créer", func(c *Ctx) {})
+	app.Delete("/créer", func(c *Ctx) error {
+		return nil
+	})
 
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod(MethodDelete)
 	c.URI().SetPath("/cr%C3%A9er")
+
+	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
 		c.URI().SetPath("/cr%C3%A9er")
@@ -508,10 +538,10 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Handler_StrictRouting -benchmem -count=4
+// go test -run=^$ -bench=Benchmark_Router_Handler_StrictRouting -benchmem -count=4
 func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	app := New()
-	app.Settings.CaseSensitive = true
+	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
 
 	c := &fasthttp.RequestCtx{}
@@ -519,30 +549,33 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	c.Request.Header.SetMethod("DELETE")
 	c.URI().SetPath("/user/keys/1337")
 
+	b.ResetTimer()
+
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
 }
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router_Github_API -benchmem -count=4
+// go test -run=^$ -bench=Benchmark_Router_Github_API -benchmem -count=16
 func Benchmark_Router_Github_API(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
-	app.init()
 
 	c := &fasthttp.RequestCtx{}
 	var match bool
+	var err error
+
+	b.ResetTimer()
 
 	for i := range routesFixture.TestRoutes {
 		c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
-
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 			ctx := app.AcquireCtx(c)
-			match = app.next(ctx)
+			match, err = app.next(ctx)
 			app.ReleaseCtx(ctx)
 		}
-
+		utils.AssertEqual(b, nil, err)
 		utils.AssertEqual(b, true, match)
 	}
 
