@@ -61,7 +61,7 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-// Default compression config
+// Default middleware config
 app.Use(compress.New())
 
 // Provide a custom compression level

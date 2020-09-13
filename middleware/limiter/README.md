@@ -1,5 +1,7 @@
-# Basic Authentication
-Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) that provides an HTTP basic authentication. It calls the next handler for valid credentials and [401 Unauthorized](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401) or a custom response for missing or invalid credentials.
+# Limiter
+Limiter middleware for [Fiber](https://github.com/gofiber/fiber) used to limit repeated requests to public APIs and/or endpoints such as password reset etc. Also useful for API clients, web crawling, or other tasks that need to be throttled.
+
+**Note: this module does not share state with other processes/servers by default.**
 
 ### Table of Contents
 - [Signatures](#signatures)
@@ -18,41 +20,25 @@ Import the middleware package that is part of the Fiber web framework
 ```go
 import (
   "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/basicauth"
+  "github.com/gofiber/fiber/v2/middleware/limiter"
 )
 ```
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-// Provide a minimal config
-app.Use(basicauth.New(basicauth.Config{
-	Users: map[string]string{
-		"john":  "doe",
-		"admin": "123456",
-	},
-}))
+// Default middleware config
+app.Use(limiter.New())
 
 // Or extend your config for customization
-app.Use(basicauth.New(basicauth.Config{
-	Users: map[string]string{
-		"john":  "doe",
-		"admin": "123456",
+app.Use(limiter.New(limiter.Config{
+	Next: func(c *fiber.Ctx) bool {
+		return c.IP() == "127.0.0.1"
 	},
-	Realm: "Forbidden",
-	Authorizer: func(user, pass string) bool {
-		if user == "john" && pass == "doe" {
-			return true
-		}
-		if user == "admin" && pass == "123456" {
-			return true
-		}
-		return false
+	Max:          20,
+	Duration:     30 * time.Second,
+	LimitReached: func(c *fiber.Ctx) error {
+		return c.SendFile("./toofast.html")
 	},
-	Unauthorized: func(c *fiber.Ctx) error {
-		return c.SendFile("./unauthorized.html")
-	},
-	ContextUsername: "_user",
-	ContextPassword: "_pass",
 }))
 ```
 
@@ -65,54 +51,43 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// Users defines the allowed credentials
+	// Max number of recent connections during `Duration` seconds before sending a 429 response
 	//
-	// Required. Default: map[string]string{}
-	Users map[string]string
+	// Default: 5
+	Max int
 
-	// Realm is a string to define realm attribute of BasicAuth.
-	// the realm identifies the system to authenticate against
-	// and can be used by clients to save credentials
+	// Duration is the time on how long to keep records of requests in memory
 	//
-	// Optional. Default: "Restricted".
-	Realm string
+	// Default: time.Minute
+	Duration time.Duration
 
-	// Authorizer defines a function you can pass
-	// to check the credentials however you want.
-	// It will be called with a username and password
-	// and is expected to return true or false to indicate
-	// that the credentials were approved or not.
+	// Key allows you to generate custom keys, by default c.IP() is used
 	//
-	// Optional. Default: nil.
-	Authorizer func(string, string) bool
+	// Default: func(c *fiber.Ctx) string {
+	//   return c.IP()
+	// }
+	Key func(*fiber.Ctx) string
 
-	// Unauthorized defines the response body for unauthorized responses.
-	// By default it will return with a 401 Unauthorized and the correct WWW-Auth header
+	// LimitReached is called when a request hits the limit
 	//
-	// Optional. Default: nil
-	Unauthorized fiber.Handler
-
-	// ContextUser is the key to store the username in Locals
-	//
-	// Optional. Default: "username"
-	ContextUsername string
-
-	// ContextPass is the key to store the password in Locals
-	//
-	// Optional. Default: "password"
-	ContextPassword string
+	// Default: func(c *fiber.Ctx) error {
+	//   return c.SendStatus(fiber.StatusTooManyRequests)
+	// }
+	LimitReached fiber.Handler
 }
 ```
 
 ### Default Config
 ```go
 var ConfigDefault = Config{
-	Next:            nil,
-	Users:           map[string]string{},
-	Realm:           "Restricted",
-	Authorizer:      nil,
-	Unauthorized:    nil,
-	ContextUsername: "username",
-	ContextPassword: "password",
+	Next:     nil,
+	Max:      5,
+	Duration: time.Minute,
+	Key: func(c *fiber.Ctx) string {
+		return c.IP()
+	},
+	LimitReached: func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTooManyRequests)
+	},
 }
 ```
