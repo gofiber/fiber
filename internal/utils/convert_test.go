@@ -61,21 +61,3 @@ func Test_Utils_ImmutableString(t *testing.T) {
 	res := ImmutableString("Hello, World!")
 	AssertEqual(t, "Hello, World!", res)
 }
-
-func Test_Utils_GetMIME(t *testing.T) {
-	t.Parallel()
-	res := GetMIME(".json")
-	AssertEqual(t, "application/json", res)
-
-	res = GetMIME(".xml")
-	AssertEqual(t, "application/xml", res)
-
-	res = GetMIME("xml")
-	AssertEqual(t, "application/xml", res)
-
-	res = GetMIME("unknown")
-	AssertEqual(t, MIMEOctetStream, res)
-	// empty case
-	res = GetMIME("")
-	AssertEqual(t, "", res)
-}

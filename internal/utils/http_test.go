@@ -10,6 +10,24 @@ import (
 	"testing"
 )
 
+func Test_Utils_GetMIME(t *testing.T) {
+	t.Parallel()
+	res := GetMIME(".json")
+	AssertEqual(t, "application/json", res)
+
+	res = GetMIME(".xml")
+	AssertEqual(t, "application/xml", res)
+
+	res = GetMIME("xml")
+	AssertEqual(t, "application/xml", res)
+
+	res = GetMIME("unknown")
+	AssertEqual(t, MIMEOctetStream, res)
+	// empty case
+	res = GetMIME("")
+	AssertEqual(t, "", res)
+}
+
 // go test -v -run=^$ -bench=Benchmark_GetMIME -benchmem -count=2
 func Benchmark_GetMIME(b *testing.B) {
 	var res string
