@@ -1,4 +1,11 @@
 on: [push, pull_request]
+paths-ignore:
+  - 'utils/bytebufferpool/**'
+  - 'utils/colorable/**'
+  - 'utils/encoding/**'
+  - 'utils/fasttemplate/**'
+  - 'utils/isatty/**'
+  - 'utils/schema/**'
 name: Security
 jobs:
   Gosec:
@@ -9,4 +16,4 @@ jobs:
       - name: Run Gosec
         uses: securego/gosec@master
         with:
-          args: -exclude=G103,G104,G601 ./...
+          args: ./...

@@ -316,7 +316,7 @@ func main() {
 package main
 
 import (
-	"os"
+	"log"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/logger"
@@ -325,24 +325,11 @@ import (
 func main() {
 	app := fiber.New()
 
-	// Default
 	app.Use(logger.New())
 
-	// Custom logging format
-	app.Use(logger.New(logger.Config{
-		Format: "${method} - ${path}",
-	}))
+	// ...
 
-	// More configs
-	app.Use(logger.New(logger.Config{
-		Next: func(ctx *fiber.Ctx) bool {
-			return ctx.Path() != "/private"
-		},
-		Format: "${method} - ${path}",
-		Output: os.Stdout,
-	}))
-
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -352,17 +339,20 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/cors"
+	"log"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
 func main() {
-    app := fiber.New()
+	app := fiber.New()
 
-    // CORS with default config
-    app.Use(cors.New())
+	app.Use(cors.New())
 
-    log.Fatal(app.Listen(3000))
+	// ...
+
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -459,7 +449,7 @@ func main() {
     }
   }))
 
-  log.Fatal(app.Listen(3000))
+  log.Fatal(app.Listen(":3000"))
   // ws://localhost:3000/ws
 }
 ```
