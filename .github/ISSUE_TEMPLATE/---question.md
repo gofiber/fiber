@@ -14,7 +14,7 @@ assignees: ''
 ```go
 package main
 
-import "github.com/gofiber/fiber"
+import "github.com/gofiber/fiber/v2"
 
 func main() {
   app := fiber.New()

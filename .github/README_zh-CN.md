@@ -81,16 +81,16 @@
 ```go
 package main
 
-import "github.com/gofiber/fiber"
+import "github.com/gofiber/fiber/v2"
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Get("/", func(c *fiber.Ctx) {
-    c.Send("Hello, World 👋!")
-  })
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World 👋!")
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
 ```
 
@@ -105,7 +105,7 @@ func main() {
 
 ## ⚙️ 安装
 
-首先， [下载](https://golang.org/dl/)并安装Go。 需要`1.11`或更高版本。
+首先， [下载](https://golang.org/dl/)并安装Go。 需要`1.14`或更高版本。
 
 使用[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)命令完成安装：
 
@@ -113,7 +113,7 @@ func main() {
 export GO111MODULE=on
 export GOPROXY=https://goproxy.cn
 
-go get -u github.com/gofiber/fiber
+go get github.com/gofiber/fiber/v2
 ```
 
 ## 🎯 特点
@@ -147,89 +147,92 @@ go get -u github.com/gofiber/fiber
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  // GET /john
-  app.Get("/:name", func(c *fiber.Ctx) {
-    msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
-    c.Send(msg) // => Hello john 👋!
-  })
+	// GET /john
+	app.Get("/:name", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
+		return c.SendString(msg) // => Hello john 👋!
+	})
 
-  // GET /john/75
-  app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) {
-    msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
-    c.Send(msg) // => 👴 john is 75 years old
-  })
+	// GET /john/75
+	app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
+		return c.SendString(msg) // => 👴 john is 75 years old
+	})
 
-  // GET /dictionary.txt
-  app.Get("/:file.:ext", func(c *fiber.Ctx) {
-    msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
-    c.Send(msg) // => 📃 dictionary.txt
-  })
+	// GET /dictionary.txt
+	app.Get("/:file.:ext", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
+		return c.SendString(msg) // => 📃 dictionary.txt
+	})
 
-  // GET /flights/LAX-SFO
-  app.Get("/flights/:from-:to", func(c *fiber.Ctx) {
-    msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
-    c.Send(msg) // => 💸 From: LAX, To: SFO
-  })
+	// GET /flights/LAX-SFO
+	app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
+		return c.SendString(msg) // => 💸 From: LAX, To: SFO
+	})
 
-  // GET /api/register
-  app.Get("/api/*", func(c *fiber.Ctx) {
-    msg := fmt.Sprintf("✋ %s", c.Params("*"))
-    c.Send(msg) // => ✋ /api/register
-  })
+	// GET /api/register
+	app.Get("/api/*", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("✋ %s", c.Params("*"))
+		return c.SendString(msg) // => ✋ /api/register
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
+
 ```
 
 #### 📖 [**静态文件**](https://docs.gofiber.io/application#static)服务
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Static("/", "./public")
-  // => http://localhost:3000/js/script.js
-  // => http://localhost:3000/css/style.css
+	app.Static("/", "./public")
+	// => http://localhost:3000/js/script.js
+	// => http://localhost:3000/css/style.css
 
-  app.Static("/prefix", "./public")
-  // => http://localhost:3000/prefix/js/script.js
-  // => http://localhost:3000/prefix/css/style.css
+	app.Static("/prefix", "./public")
+	// => http://localhost:3000/prefix/js/script.js
+	// => http://localhost:3000/prefix/css/style.css
 
-  app.Static("*", "./public/index.html")
-  // => http://localhost:3000/any/path/shows/index/html
+	app.Static("*", "./public/index.html")
+	// => http://localhost:3000/any/path/shows/index/html
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
+
 ```
 
 #### 📖 [**中间件**](https://docs.gofiber.io/middleware)和[**Next**](https://docs.gofiber.io/context#next)
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  // Match any route
-  app.Use(func(c *fiber.Ctx) {
-    fmt.Println("🥇 First handler")
-    c.Next()
-  })
+	// Match any route
+	app.Use(func(c *fiber.Ctx) error {
+		fmt.Println("🥇 First handler")
+		return c.Next()
+	})
 
-  // Match all routes starting with /api
-  app.Use("/api", func(c *fiber.Ctx) {
-    fmt.Println("🥈 Second handler")
-    c.Next()
-  })
+	// Match all routes starting with /api
+	app.Use("/api", func(c *fiber.Ctx) error {
+		fmt.Println("🥈 Second handler")
+		return c.Next()
+	})
 
-  // GET /api/register
-  app.Get("/api/list", func(c *fiber.Ctx) {
-    fmt.Println("🥉 Last handler")
-    c.Send("Hello, World 👋!")
-  })
+	// GET /api/register
+	app.Get("/api/list", func(c *fiber.Ctx) error {
+		fmt.Println("🥉 Last handler")
+		return c.SendString("Hello, World 👋!")
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
+
 ```
 
 <details>
@@ -248,29 +251,28 @@ func main() {
 请查看我们的[Template](https://github.com/gofiber/template)包，该包支持多个模版引擎。
 
 ```go
+package main
+
 import (
-  "github.com/gofiber/fiber"
-  "github.com/gofiber/template/pug"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/template/pug"
 )
 
 func main() {
-  // You can setup Views engine before initiation app:
-  app := fiber.New(&fiber.Settings{
-    Views: pug.New("./views", ".pug"),
-  })
+	// You can setup Views engine before initiation app:
+	app := fiber.New(fiber.Config{
+		Views: pug.New("./views", ".pug"),
+	})
 
-  // OR after initiation app at any convenient location:
-  app.Settings.Views = pug.New("./views", ".pug"),
+	// And now, you can call template `./views/home.pug` like this:
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.Render("home", fiber.Map{
+			"title": "Homepage",
+			"year":  1999,
+		})
+	})
 
-  // And now, you can call template `./views/home.pug` like this:
-  app.Get("/", func(c *fiber.Ctx) {
-    c.Render("home", fiber.Map{
-      "title": "Homepage",
-      "year":  1999,
-    })
-  })
-
-  // ...
+	app.Listen(":3000")
 }
 ```
 
@@ -279,24 +281,34 @@ func main() {
 📖 [路由分组](https://docs.gofiber.io/application#group)
 
 ```go
-func main() {
-  app := fiber.New()
-
-  // Root API route
-  api := app.Group("/api", cors())  // /api
-
-  // API v1 routes
-  v1 := api.Group("/v1", mysql())   // /api/v1
-  v1.Get("/list", handler)          // /api/v1/list
-  v1.Get("/user", handler)          // /api/v1/user
-
-  // API v2 routes
-  v2 := api.Group("/v2", mongodb()) // /api/v2
-  v2.Get("/list", handler)          // /api/v2/list
-  v2.Get("/user", handler)          // /api/v2/user
-
-  // ...
+func middleware(c *fiber.Ctx) error {
+	fmt.Println("Don't mind me!")
+	return c.Next()
 }
+
+func handler(c *fiber.Ctx) error {
+	return c.SendString(c.Path())
+}
+
+func main() {
+	app := fiber.New()
+
+	// Root API route
+	api := app.Group("/api", middleware) // /api
+
+	// API v1 routes
+	v1 := api.Group("/v1", middleware) // /api/v1
+	v1.Get("/list", handler)           // /api/v1/list
+	v1.Get("/user", handler)           // /api/v1/user
+
+	// API v2 routes
+	v2 := api.Group("/v2", middleware) // /api/v2
+	v2.Get("/list", handler)           // /api/v2/list
+	v2.Get("/user", handler)           // /api/v2/user
+
+	// ...
+}
+
 ```
 
 ### 日志中间件
@@ -304,30 +316,23 @@ func main() {
 📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
 
 ```go
+package main
+
 import (
-  "github.com/gofiber/fiber"
-  "github.com/gofiber/fiber/middleware"
+	"log"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
 )
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  // Default
-  app.Use(middleware.Logger())
+	app.Use(logger.New())
 
-  // Custom logging format
-  app.Use(middleware.Logger("${method} - ${path}"))
+	// ...
 
-  // Custom Config
-  app.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-    Next: func(ctx *fiber.Ctx) bool {
-      return ctx.Path() != "/private"
-    },
-    Format: "${method} - ${path}",
-    Output: io.Writer,
-  }))
-
-  app.Listen(3000)
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 ### 跨域资源共享(CORS)中间件
@@ -336,17 +341,20 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/cors"
+	"log"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
 func main() {
-    app := fiber.New()
+	app := fiber.New()
 
-    // CORS with default config
-    app.Use(cors.New())
+	app.Use(cors.New())
 
-    app.Listen(3000)
+	// ...
+
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -362,25 +370,25 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Static("./public")
+	app.Static("/", "./public")
 
-  app.Get("/demo", func(c *fiber.Ctx) {
-    c.Send("This is a demo!")
-  })
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		return c.SendString("This is a demo!")
+	})
 
-  app.Post("/register", func(c *fiber.Ctx) {
-    c.Send("Welcome!")
-  })
+	app.Post("/register", func(c *fiber.Ctx) error {
+		return c.SendString("Welcome!")
+	})
 
-  // Last middleware to match anything
-  app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404)
-    // => 404 "Not Found"
-  })
+	// Last middleware to match anything
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(404)
+		// => 404 "Not Found"
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
 ```
 
@@ -390,27 +398,27 @@ func main() {
 
 ```go
 type User struct {
-  Name string `json:"name"`
-  Age  int    `json:"age"`
+	Name string `json:"name"`
+	Age  int    `json:"age"`
 }
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Get("/user", func(c *fiber.Ctx) {
-    c.JSON(&User{"John", 20})
-    // => {"name":"John", "age":20}
-  })
+	app.Get("/user", func(c *fiber.Ctx) error {
+		return c.JSON(&User{"John", 20})
+		// => {"name":"John", "age":20}
+	})
 
-  app.Get("/json", func(c *fiber.Ctx) {
-    c.JSON(fiber.Map{
-      "success": true,
-      "message": "Hi John!",
-    })
-    // => {"success":true, "message":"Hi John!"}
-  })
+	app.Get("/json", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "Hi John!",
+		})
+		// => {"success":true, "message":"Hi John!"}
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
 ```
 
@@ -420,7 +428,7 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/v2"
     "github.com/gofiber/websocket"
 )
 
@@ -443,7 +451,7 @@ func main() {
     }
   }))
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(":3000"))
   // ws://localhost:3000/ws
 }
 ```
@@ -454,20 +462,20 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/recover"
 )
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Use(middleware.Recover())
+	app.Use(recover.New())
 
-  app.Get("/", func(c *fiber.Ctx) {
-    panic("normally this would crash your app")
-  })
+	app.Get("/", func(c *fiber.Ctx) error {
+		panic("normally this would crash your app")
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
 ```
 </details>
@@ -495,48 +503,22 @@ func main() {
 | [rewrite](https://github.com/gofiber/rewrite) | `Rewrite`中间件根据提供的规则重写`URL`路径。它对于向后兼容或创建更简洁，更具描述性的链接很有帮助。 | - |
 | [requestid](https://github.com/gofiber/fiber/blob/master/middleware/request_id.md) | Request ID中间件为请求生成唯一的ID。 | `middleware.RequestID()` |
 | [session](https://github.com/gofiber/session) | `session`中间件通过了 @savsgio MIT 许可，建立在`fasthttp/session`之上。特别感谢 @thomasvvugt 帮助完成此中间件。 | - |
-| [template](https://github.com/gofiber/template) | 该软件包包含8个模板引擎，需要配合Fiber`v1.10.x`以及Go`1.13`或更高版本使用。 | - |
+| [template](https://github.com/gofiber/template) | 该软件包包含8个模板引擎，需要配合Fiber`v1.10.x`以及Go`1.14`或更高版本使用。 | - |
 | [websocket](https://github.com/gofiber/websocket) | `Fiber`基于`Fasthttp WebSocket`的中间件，支持`Locals`功能！ | - |
 
 ## 🌱 第三方中间件
 
 这是由`Fiber`社区创建的中间件列表，如果您想看到自己的中间件，请创建`PR`。
+- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
-- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
-- [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
-- [codemicro/fiber-cache](https://github.com/codemicro/fiber-cache)
-- [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
-- [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
-- [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
-- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 - [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
+- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 - [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
-
-## 💬 媒体
-
-<p float="left" align="middle">
-  <a href="https://www.youtube.com/watch?v=Iq2qT0fRhAA"><img src="https://img.youtube.com/vi/Iq2qT0fRhAA/mqdefault.jpg" width="49%" style="border-radius:4px"></a>
-   <a href="https://www.youtube.com/watch?v=kvwsPeWDLM8"><img src="https://img.youtube.com/vi/kvwsPeWDLM8/mqdefault.jpg" width="49%" style="border-radius:4px"></a>
-</p>
-
-- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) — _03 Feb 2020_
-- [Fiber released v1.7! 🎉 What's new and is it still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) — _21 Feb 2020_
-- [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) — _03 Mar 2020_
-- [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) — _01 Apr 2020_
-- [Creating Fast APIs In Go Using Fiber](https://dev.to/jozsefsallai/creating-fast-apis-in-go-using-fiber-59m9) — _07 Apr 2020_
-- [Building a Basic REST API in Go using Fiber](https://tutorialedge.net/golang/basic-rest-api-go-fiber/) - _23 Apr 2020_
-- [📺 Building a REST API using GORM and Fiber](https://youtu.be/Iq2qT0fRhAA) - _25 Apr 2020_
-- [🌎 Create a travel list app with Go, Fiber, Angular, MongoDB and Google Cloud Secret Manager](https://blog.yongweilun.me/create-a-travel-list-app-with-go-fiber-angular-mongodb-and-google-cloud-secret-manager-ck9fgxy0p061pcss1xt1ubu8t) - _25 Apr 2020_
-- [Fiber v1.9.6 🔥 How to improve performance by 817% and stay fast, flexible and friendly?](https://dev.to/koddr/fiber-v1-9-5-how-to-improve-performance-by-817-and-stay-fast-flexible-and-friendly-2dp6) - _12 May 2020_
-- [The road to web-based authentication with Fiber ⚡](https://vugt.me/the-road-to-web-based-authentication-with-fiber/) - _20 May 2020_
-- [Building an Express-style API in Go with Fiber](https://blog.logrocket.com/express-style-api-go-fiber/) - _10 June 2020_
-- [基于golang fiber和angular开发web](https://zhuanlan.zhihu.com/p/148925642) - _19 June 2020_
-- [基于延迟计算令牌桶的gofiber频率限制中间件实现](https://zhuanlan.zhihu.com/p/149308936) - _20 June 2020_
-- [Construir una API en Golang con Fiber 🇪🇸](https://enbonnet.me/article/53/construir-api-golang-con-fiber) - _28 June 2020_
-- [📺Why Go Fiber Is THE New Framework To Learn](https://www.youtube.com/watch?v=kvwsPeWDLM8) - _29 June 2020_
-- [解析Gofiber路由管理](https://zhuanlan.zhihu.com/p/152494502) - _08 July 2020_
-- [📺 Introduction to Fiber - An Express-inspired web framework](https://youtu.be/MfFi4Gt-tos) - _25 July 2020_
+- [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
+- [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
+- [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
+- [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
 
 ## 👍 贡献
 
@@ -545,8 +527,7 @@ func main() {
 1. 为`Fiber`[GitHub Star](https://github.com/gofiber/fiber/stargazers)点个⭐星星。
 2. 在[Twitter](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)上发布有关项目的[推文](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)。
 3. 在[Medium](https://medium.com/)，[Dev.to](https://dev.to/)或个人博客上写评论或教程。
-4. 帮助我们通过[Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)翻译我们的API文档
-5. 通过捐赠[一杯咖啡](https://buymeacoff.ee/fenny)来支持本项目。
+4. 通过捐赠[一杯咖啡](https://buymeacoff.ee/fenny)来支持本项目。
 
 ## ☕ 支持者
 
@@ -588,6 +569,9 @@ Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](
 
 **Third-party library licenses**
 - [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 - [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+- [encoding](https://github.com/segmentio/encoding/blob/master/LICENSE)
+- [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 - [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 - [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
