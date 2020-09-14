@@ -321,15 +321,16 @@ func (app *App) Use(args ...interface{}) Router {
 			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
-		case *App:
-			stack := arg.Stack()
-			for m := range stack {
-				for r := range stack[m] {
-					route := app.copyRoute(stack[m][r])
-					app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
-				}
-			}
-			return app
+		// TODO: v2.1.0
+		// case *App:
+		// 	stack := arg.Stack()
+		// 	for m := range stack {
+		// 		for r := range stack[m] {
+		// 			route := app.copyRoute(stack[m][r])
+		// 			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
+		// 		}
+		// 	}
+		// 	return app
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
@@ -636,31 +637,22 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		return
 	}
 
-	// ascii logo
 	var logo string
-	// logo += `%s        _______ __                 %s` + "\n"
-	// logo += `%s  ____%s / ____(_) /_  ___  _____  %s` + "\n"
-	// logo += `%s_____%s / /_  / / __ \/ _ \/ ___/  %s` + "\n"
-	// logo += `%s  __%s / __/ / / /_/ /  __/ /      %s` + "\n"
-	// logo += `%s    /_/   /_/_.___/\___/_/%s %s` + "\n"
-
 	logo += "\n%s"
-	logo += " ┌───────────────────────────────────────────────────────┐\n"
-	logo += " │                      %sFiber v%s%s                    │\n"
-	logo += " │             Express inspired web framework            │\n"
-	logo += " │                                                       │\n"
-	logo += " │ Host     : %s  %s :      OS │\n"
-	logo += " │ Port     : %s  %s : Threads │\n"
-	logo += " │ TLS      : %s  %s : Prefork │\n"
-	logo += " │ Handlers : %s  %s :     PID │\n"
-	logo += " └───────────────────────────────────────────────────────┘"
-	logo += "%s\n"
+	logo += " ┌───────────────────────────────────────────────────┐\n"
+	logo += " │ %s │\n"
+	logo += " │ %s │\n"
+	logo += " │                                                   │\n"
+	logo += " │ Handlers %s  Threads %s │\n"
+	logo += " │ Prefork .%s  PID ....%s │\n"
+	logo += " └───────────────────────────────────────────────────┘"
+	logo += "%s\n\n"
 
 	const (
 		cBlack = "\u001b[90m"
-		cRed   = "\u001b[91m"
-		cCyan  = "\u001b[96m"
-		cGreen = "\u001b[92m"
+		// cRed   = "\u001b[91m"
+		cCyan = "\u001b[96m"
+		// cGreen = "\u001b[92m"
 		// cYellow  = "\u001b[93m"
 		// cBlue    = "\u001b[94m"
 		// cMagenta = "\u001b[95m"
@@ -668,37 +660,52 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		cReset = "\u001b[0m"
 	)
 
-	clrL := func(v interface{}) string {
-		if v == "disabled" {
-			return fmt.Sprintf("%s%15v%s", cRed, v, cBlack)
+	value := func(s string, width int) string {
+		pad := width - len(s)
+		str := ""
+		for i := 0; i < pad; i++ {
+			str += "."
 		}
-		if v == "enabled" {
-			return fmt.Sprintf("%s%15v%s", cGreen, v, cBlack)
+		if s == "Disabled" {
+			str += " " + s
+		} else {
+			str += fmt.Sprintf(" %s%s%s", cCyan, s, cBlack)
 		}
-		return fmt.Sprintf("%s%15v%s", cCyan, v, cBlack)
+		return str
 	}
-	clR := func(v interface{}) string {
-		if v == "disabled" {
-			return fmt.Sprintf("%s%-15v%s", cRed, v, cBlack)
+
+	center := func(s string, width int) string {
+		pad := strconv.Itoa((width - len(s)) / 2)
+		str := fmt.Sprintf("%"+pad+"s", " ")
+		str += s
+		str += fmt.Sprintf("%"+pad+"s", " ")
+		if len(str) < width {
+			str += " "
 		}
-		if v == "enabled" {
-			return fmt.Sprintf("%s%-15v%s", cGreen, v, cBlack)
+		return str
+	}
+
+	centerValue := func(s string, width int) string {
+		pad := strconv.Itoa((width - len(s)) / 2)
+		str := fmt.Sprintf("%"+pad+"s", " ")
+		str += fmt.Sprintf("%s%s%s", cCyan, s, cBlack)
+		str += fmt.Sprintf("%"+pad+"s", " ")
+		if len(str)-10 < width {
+			str += " "
 		}
-		return fmt.Sprintf("%s%-15v%s", cCyan, v, cBlack)
+		return str
 	}
 
 	host, port := parseAddr(addr)
-	var (
-		isTLS     = "disabled"
-		isPrefork = "disabled"
-	)
-
-	if host == "" {
-		host = "0.0.0.0"
+	if host == "" || host == "0.0.0.0" {
+		host = "127.0.0.1"
 	}
+	addr = "http://" + host + ":" + port
 	if tls {
-		isTLS = "enabled"
+		addr = "https://" + host + ":" + port
 	}
+
+	isPrefork := "disabled"
 	if app.config.Prefork {
 		isPrefork = "enabled"
 	}
@@ -707,14 +714,12 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	if os.Getenv("TERM") == "dumb" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
-
 	fmt.Fprintf(out, logo,
 		cBlack,
-		cCyan, Version, cBlack,
-		clR(host), clrL(utils.ToUpper(runtime.GOOS)),
-		clR(port), clrL(runtime.NumCPU()),
-		clR(isTLS), clrL(isPrefork),
-		clR(app.handlerCount), clrL(os.Getpid()),
+		centerValue(" Fiber v"+Version, 49),
+		center(addr, 49),
+		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.NumCPU()), 14),
+		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 		cReset,
 	)
 
