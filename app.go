@@ -178,7 +178,7 @@ type Config struct {
 	// When set to true, disables keep-alive connections.
 	// The server will close incoming connections after sending the first response to client.
 	// Default: false
-	DisableKeepalive bool `json:"disable_keep_alive"`
+	DisableKeepalive bool `json:"disable_keepalive"`
 
 	// When set to true, causes the default date header to be excluded from the response.
 	// Default: false
@@ -245,7 +245,7 @@ var DefaultErrorHandler = func(c *Ctx, err error) error {
 
 // New creates a new Fiber named instance.
 //  app := fiber.New()
-// You can pass an optional settings by passing a Config struct:
+// You can pass optional configuration options by passing a Config struct:
 //  app := fiber.New(fiber.Config{
 //      Prefork: true,
 //      ServerHeader: "Fiber",
@@ -297,8 +297,8 @@ func New(config ...Config) *App {
 	return app
 }
 
-// Use registers a middleware route. that will match requests
-// that contain the provided prefix ( which is optional and defaults to "/" ).
+// Use registers a middleware route that will match requests
+// with the provided prefix (which is optional and defaults to "/").
 //
 //  app.Use(func(c *fiber.Ctx) error {
 //       return c.Next()
@@ -306,7 +306,7 @@ func New(config ...Config) *App {
 //  app.Use("/api", func(c *fiber.Ctx) error {
 //       return c.Next()
 //  })
-//  app.Use("/api", handler(), func(c *fiber.Ctx) error {
+//  app.Use("/api", handler, func(c *fiber.Ctx) error {
 //       return c.Next()
 //  })
 //
@@ -411,7 +411,7 @@ func (app *App) All(path string, handlers ...Handler) Router {
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
 //  api := app.Group("/api")
-//  api.Get("/users", handler())
+//  api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
 		app.register(methodUse, prefix, handlers...)
@@ -424,7 +424,7 @@ func (e *Error) Error() string {
 	return e.Message
 }
 
-// NewError creates a new HTTPError instance with an optional message
+// NewError creates a new Error instance with an optional message
 func NewError(code int, message ...string) *Error {
 	e := &Error{
 		Code: code,

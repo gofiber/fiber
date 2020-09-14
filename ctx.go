@@ -384,6 +384,8 @@ func (c *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 }
 
 // FormValue returns the first value by key from a MultipartForm.
+// Defaults to the empty string "" if the form value doesn't exist.
+// If a default value is given, it will return that value if the form value does not exist.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) FormValue(key string, defaultValue ...string) string {
@@ -947,7 +949,6 @@ func (c *Ctx) SendStream(stream io.Reader, size ...int) error {
 // Set sets the response's HTTP header field to the specified key, value.
 func (c *Ctx) Set(key string, val string) {
 	c.fasthttp.Response.Header.Set(key, removeNewLines(val))
-	//c.fasthttp.Response.Header.Set(key, val)
 }
 
 func (c *Ctx) setCanonical(key string, val string) {

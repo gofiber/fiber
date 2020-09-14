@@ -15,8 +15,8 @@ type Group struct {
 	prefix string
 }
 
-// Use registers a middleware route. that will match requests
-// that contain the provided prefix ( which is optional and defaults to "/" ).
+// Use registers a middleware route that will match requests
+// with the provided prefix (which is optional and defaults to "/").
 //
 //  app.Use(func(c *fiber.Ctx) error {
 //       return c.Next()
@@ -24,7 +24,7 @@ type Group struct {
 //  app.Use("/api", func(c *fiber.Ctx) error {
 //       return c.Next()
 //  })
-//  app.Use("/api", handler(), func(c *fiber.Ctx) error {
+//  app.Use("/api", handler, func(c *fiber.Ctx) error {
 //       return c.Next()
 //  })
 //
@@ -129,7 +129,7 @@ func (grp *Group) All(path string, handlers ...Handler) Router {
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
 //  api := app.Group("/api")
-//  api.Get("/users", handler())
+//  api.Get("/users", handler)
 func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 	prefix = getGroupPath(grp.prefix, prefix)
 	if len(handlers) > 0 {
