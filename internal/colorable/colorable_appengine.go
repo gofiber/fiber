@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	_ "github.com/gofiber/fiber/v2/utils/isatty"
+	_ "github.com/gofiber/fiber/v2/internal/isatty"
 )
 
 // NewColorable returns new instance of Writer which handles escape sequence.
