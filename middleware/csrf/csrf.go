@@ -123,7 +123,7 @@ func New(config ...Config) fiber.Handler {
 			csrf, err := extractor(c)
 			if err != nil {
 				// We have a problem extracting the csrf token
-				return c.SendStatus(fiber.StatusBadRequest)
+				return c.SendStatus(fiber.StatusForbidden)
 			}
 			// Some magic to compare both cookie and client csrf token
 			if subtle.ConstantTimeCompare(utils.GetBytes(token), utils.GetBytes(csrf)) != 1 {
