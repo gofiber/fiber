@@ -488,6 +488,7 @@ func main() {
 Here is a list of middleware that are included within the Fiber framework.
 
 | Middleware | Description |
+| :--- | :--- |
 | [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
 | [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. |
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors) | Enable cross-origin resource sharing \(CORS\) with various options. |
@@ -504,7 +505,7 @@ Here is a list of middleware that are included within the Fiber framework.
 List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
 
 | Middleware | Description |
-| :--- | :--- | :--- |
+| :--- | :--- |
 | [adaptor](https://github.com/gofiber/adaptor) | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn! |
 | [helmet](https://github.com/gofiber/helmet) | Helps secure your apps by setting various HTTP headers. |
 | [jwt](https://github.com/gofiber/jwt) | JWT returns a JSON Web Token \(JWT\) auth middleware. |
