@@ -324,11 +324,11 @@ func GetTrimmedParam(param string) string {
 	start := 0
 	end := len(param)
 
-	if param[start] != ':' { // is not a param
+	if param[start] != paramStarterChar { // is not a param
 		return param
 	}
 	start++
-	if param[end-1] == '?' { // is ?
+	if param[end-1] == optionalParam { // is ?
 		end--
 	}
 
