@@ -480,31 +480,36 @@ func main() {
 ```
 </details>
 
-## 🧬 Fiber中间件
+## 🧬 Internal Middleware
 
-此处列出的`Fiber`中间件模块由[Fiber团队](https://github.com/orgs/gofiber/people)维护。
+Here is a list of middleware that are included within the Fiber framework.
 
-| 中间件 | 描述 | 内置中间件 |
+| Middleware | Description |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. |
+| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors) | Enable cross-origin resource sharing \(CORS\) with various options. |
+| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf) | Protect from CSRF exploits. |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary |
+| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon) | Ignore favicon from logs or serve from memory if a file path is provided. |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter) | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset. |
+| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger) | HTTP request/response logger. |
+| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof) | Special thanks to Matthew Lee \(@mthli\) |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover) | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md). |
+
+## 🧬 External Middleware
+
+List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+
+| Middleware | Description |
 | :--- | :--- | :--- |
-| [adaptor](https://github.com/gofiber/adaptor) | `net/http`处理程序与`Fiber`处理程序之间的适配器，特别感谢 @arsmn! | - |
-| [basicauth](https://github.com/gofiber/basicauth) | 基本身份验证中间件提供HTTP基本身份验证。验证有效时，它调用下一个处理程序，否则返回`401 Unauthorized`响应。 | - |
-| [compress](https://github.com/gofiber/fiber/blob/master/middleware/compress.md) | `Fiber`的压缩中间件，默认情况下支持`deflate`，`gzip`和`brotli`。 | `middleware.Compress()` |
-| [cors](https://github.com/gofiber/cors) | 使用各种选项启用跨域资源共享（CORS）。 | - |
-| [csrf](https://github.com/gofiber/csrf) | 保护免受CSRF攻击。 | - |
-| [filesystem](https://github.com/gofiber/fiber/blob/master/middleware/filesystem.md) | `Fiber`的FileSystem中间件，特别感谢 Alireza Salary | - |
-| [favicon](https://github.com/gofiber/fiber/blob/master/middleware/favicon.md) | 如果提供了`favicon`文件路径，则忽略日志中的图标或从内存中提供图标。 | `middleware.Favicon()` |
-| [helmet](https://github.com/gofiber/helmet) | 通过设置各种HTTP标头来保护您的应用程序。 | - |
-| [jwt](https://github.com/gofiber/jwt) | JWT是返回JSON Web令牌（JWT）的身份验证中间件。 | - |
-| [keyauth](https://github.com/gofiber/keyauth) | 密钥身份验证中间件提供基于密钥的身份验证。 | - |
-| [limiter](https://github.com/gofiber/limiter) | `Fiber`的频率限制中间件。用于限制对公共API的重复请求，例如密码重置。 | - |
-| [logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md) | HTTP 访问日志中间件。 | `middleware.Logger()` |
-| [pprof](https://github.com/gofiber/pprof) | 特别感谢 Matthew Lee （@mthli） | - |
-| [recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md) | 恢复中间件可从堆栈链中任何地方的`panic`中恢复，并将控制权交给集中式[错误处理器](error-handling.md). | `middleware.Recover()` |
-| [rewrite](https://github.com/gofiber/rewrite) | `Rewrite`中间件根据提供的规则重写`URL`路径。它对于向后兼容或创建更简洁，更具描述性的链接很有帮助。 | - |
-| [requestid](https://github.com/gofiber/fiber/blob/master/middleware/request_id.md) | Request ID中间件为请求生成唯一的ID。 | `middleware.RequestID()` |
-| [session](https://github.com/gofiber/session) | `session`中间件通过了 @savsgio MIT 许可，建立在`fasthttp/session`之上。特别感谢 @thomasvvugt 帮助完成此中间件。 | - |
-| [template](https://github.com/gofiber/template) | 该软件包包含8个模板引擎，需要配合Fiber`v1.10.x`以及Go`1.14`或更高版本使用。 | - |
-| [websocket](https://github.com/gofiber/websocket) | `Fiber`基于`Fasthttp WebSocket`的中间件，支持`Locals`功能！ | - |
+| [adaptor](https://github.com/gofiber/adaptor) | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn! |
+| [helmet](https://github.com/gofiber/helmet) | Helps secure your apps by setting various HTTP headers. |
+| [jwt](https://github.com/gofiber/jwt) | JWT returns a JSON Web Token \(JWT\) auth middleware. |
+| [keyauth](https://github.com/gofiber/keyauth) | Key auth middleware provides a key based authentication. |
+| [rewrite](https://github.com/gofiber/rewrite) | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. |
+| [session](https://github.com/gofiber/session) | This session middleware is build on top of fasthttp/session by @savsgio MIT. Special thanks to @thomasvvugt for helping with this middleware. |
+| [template](https://github.com/gofiber/template) | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required. |
+| [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support! |
 
 ## 🌱 第三方中间件
 
