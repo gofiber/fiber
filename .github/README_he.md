@@ -97,7 +97,7 @@ func main() {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -227,7 +227,7 @@ func main() {
 		return c.SendString(msg) // => ✋ /api/register
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -252,7 +252,7 @@ func main() {
 	app.Static("*", "./public/index.html")
 	// => http://localhost:3000/any/path/shows/index/html
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -284,7 +284,7 @@ func main() {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -330,7 +330,7 @@ func main() {
 		})
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 </div>
@@ -463,7 +463,7 @@ func main() {
 		// => 404 "Not Found"
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 </div>
@@ -496,7 +496,7 @@ func main() {
 		// => {"success":true, "message":"Hi John!"}
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 </div>
@@ -559,7 +559,7 @@ func main() {
 		panic("normally this would crash your app")
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 </div>
