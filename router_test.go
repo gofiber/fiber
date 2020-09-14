@@ -281,9 +281,10 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
+	b.StopTimer()
 	utils.AssertEqual(b, 405, c.Response.StatusCode())
 	utils.AssertEqual(b, "GET, HEAD", string(c.Response.Header.Peek("Allow")))
-	utils.AssertEqual(b, "Cannot DELETE /this/is/a/dummy/route/oke", string(c.Response.Body()))
+	utils.AssertEqual(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
