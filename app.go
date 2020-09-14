@@ -601,7 +601,9 @@ func (app *App) init() *App {
 			} else {
 				err = ErrBadRequest
 			}
-			app.config.ErrorHandler(c, err)
+			if catch := app.config.ErrorHandler(c, err); catch != nil {
+				_ = c.SendStatus(StatusInternalServerError)
+			}
 			app.ReleaseCtx(c)
 		},
 	}
