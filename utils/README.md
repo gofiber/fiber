@@ -2,9 +2,9 @@
 
 [![Release](https://img.shields.io/github/release/gofiber/fiber.svg)](https://github.com/gofiber/fiber/releases)
 [![Discord](https://img.shields.io/discord/704680098577514527?label=Discord&logo=discord&logoColor=white&color=7289DA)](https://gofiber.io/discord)
-[![Test](https://github.com/gofiber/utils/workflows/Test/badge.svg)](https://github.com/gofiber/utils/actions?query=workflow%3ATest)
-[![Security](https://github.com/gofiber/utils/workflows/Security/badge.svg)](https://github.com/gofiber/utils/actions?query=workflow%3ASecurity)
-[![Linter](https://github.com/gofiber/utils/workflows/Linter/badge.svg)](https://github.com/gofiber/utils/actions?query=workflow%3ALinter)
+[![Test](https://github.com/gofiber/fiber/workflows/Test/badge.svg)](https://github.com/gofiber/utils/actions?query=workflow%3ATest)
+[![Security](https://github.com/gofiber/fiber/workflows/Security/badge.svg)](https://github.com/gofiber/utils/actions?query=workflow%3ASecurity)
+[![Linter](https://github.com/gofiber/fiber/workflows/Linter/badge.svg)](https://github.com/gofiber/utils/actions?query=workflow%3ALinter)
 
 A collection of common functions but with better performance, less allocations and no dependencies created for [Fiber](https://github.com/gofiber/fiber).
 
