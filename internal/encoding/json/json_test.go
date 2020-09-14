@@ -470,47 +470,47 @@ func newValue(model interface{}) reflect.Value {
 	return reflect.New(reflect.TypeOf(model))
 }
 
-func BenchmarkMarshal(b *testing.B) {
-	j := make([]byte, 0, 128*1024)
+// func BenchmarkMarshal(b *testing.B) {
+// 	j := make([]byte, 0, 128*1024)
 
-	for _, v := range testValues {
-		b.Run(testName(v), func(b *testing.B) {
-			if marshal == nil {
-				return
-			}
+// 	for _, v := range testValues {
+// 		b.Run(testName(v), func(b *testing.B) {
+// 			if marshal == nil {
+// 				return
+// 			}
 
-			for i := 0; i != b.N; i++ {
-				j, _ = marshal(j[:0], v)
-			}
+// 			for i := 0; i != b.N; i++ {
+// 				j, _ = marshal(j[:0], v)
+// 			}
 
-			b.SetBytes(int64(len(j)))
-		})
-	}
-}
+// 			b.SetBytes(int64(len(j)))
+// 		})
+// 	}
+// }
 
-func BenchmarkUnmarshal(b *testing.B) {
-	for _, v := range testValues {
-		b.Run(testName(v), func(b *testing.B) {
-			if unmarshal == nil {
-				return
-			}
+// func BenchmarkUnmarshal(b *testing.B) {
+// 	for _, v := range testValues {
+// 		b.Run(testName(v), func(b *testing.B) {
+// 			if unmarshal == nil {
+// 				return
+// 			}
 
-			x := v
-			if d, ok := x.(time.Duration); ok {
-				x = duration(d)
-			}
+// 			x := v
+// 			if d, ok := x.(time.Duration); ok {
+// 				x = duration(d)
+// 			}
 
-			j, _ := json.Marshal(x)
-			x = newValue(v).Interface()
+// 			j, _ := json.Marshal(x)
+// 			x = newValue(v).Interface()
 
-			for i := 0; i != b.N; i++ {
-				unmarshal(j, x)
-			}
+// 			for i := 0; i != b.N; i++ {
+// 				unmarshal(j, x)
+// 			}
 
-			b.SetBytes(int64(len(j)))
-		})
-	}
-}
+// 			b.SetBytes(int64(len(j)))
+// 		})
+// 	}
+// }
 
 type buffer struct{ data []byte }
 
@@ -1178,28 +1178,28 @@ func TestUnmarshalFuzzBugs(t *testing.T) {
 	}
 }
 
-func BenchmarkEasyjsonUnmarshalSmallStruct(b *testing.B) {
-	type Hashtag struct {
-		Indices []int  `json:"indices"`
-		Text    string `json:"text"`
-	}
+// func BenchmarkEasyjsonUnmarshalSmallStruct(b *testing.B) {
+// 	type Hashtag struct {
+// 		Indices []int  `json:"indices"`
+// 		Text    string `json:"text"`
+// 	}
 
-	//easyjson:json
-	type Entities struct {
-		Hashtags     []Hashtag `json:"hashtags"`
-		Urls         []*string `json:"urls"`
-		UserMentions []*string `json:"user_mentions"`
-	}
+// 	//easyjson:json
+// 	type Entities struct {
+// 		Hashtags     []Hashtag `json:"hashtags"`
+// 		Urls         []*string `json:"urls"`
+// 		UserMentions []*string `json:"user_mentions"`
+// 	}
 
-	var json = []byte(`{"hashtags":[{"indices":[5, 10],"text":"some-text"}],"urls":[],"user_mentions":[]}`)
+// 	var json = []byte(`{"hashtags":[{"indices":[5, 10],"text":"some-text"}],"urls":[],"user_mentions":[]}`)
 
-	for i := 0; i < b.N; i++ {
-		var value Entities
-		if err := Unmarshal(json, &value); err != nil {
-			b.Fatal(err)
-		}
-	}
-}
+// 	for i := 0; i < b.N; i++ {
+// 		var value Entities
+// 		if err := Unmarshal(json, &value); err != nil {
+// 			b.Fatal(err)
+// 		}
+// 	}
+// }
 
 type testMarshaller struct {
 	v string

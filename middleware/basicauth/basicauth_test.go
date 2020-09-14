@@ -9,7 +9,7 @@ import (
 	b64 "encoding/base64"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 func Test_Middleware_BasicAuth(t *testing.T) {

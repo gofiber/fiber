@@ -7,7 +7,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // go test -run Test_Logger

@@ -25,7 +25,7 @@ import (
 
 	"github.com/gofiber/fiber/v2/internal/colorable"
 	"github.com/gofiber/fiber/v2/internal/isatty"
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 
 	"github.com/valyala/fasthttp"
 )
