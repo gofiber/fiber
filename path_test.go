@@ -386,6 +386,18 @@ func Test_Path_matchParams(t *testing.T) {
 	})
 }
 
+func Test_Utils_GetTrimmedParam(t *testing.T) {
+	t.Parallel()
+	res := GetTrimmedParam("*")
+	utils.AssertEqual(t, "*", res)
+	res = GetTrimmedParam(":param")
+	utils.AssertEqual(t, "param", res)
+	res = GetTrimmedParam(":param1?")
+	utils.AssertEqual(t, "param1", res)
+	res = GetTrimmedParam("noParam")
+	utils.AssertEqual(t, "noParam", res)
+}
+
 // go test -race -run Test_Path_matchParams
 func Benchmark_Path_matchParams(t *testing.B) {
 	type testparams struct {

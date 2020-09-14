@@ -186,7 +186,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	// cut params part
 	processedPart := pattern[0 : parameterEndPosition+1]
 
-	paramName := utils.GetTrimmedParam(processedPart)
+	paramName := GetTrimmedParam(processedPart)
 	// add access iterator to wildcard and plus
 	if isWildCard {
 		routeParser.wildCardCount++
@@ -317,4 +317,20 @@ func findGreedyParamLen(s string, searchCount int, segment *routeSegment) int {
 	}
 
 	return len(s)
+}
+
+// GetTrimmedParam trims the ':' & '?' from a string
+func GetTrimmedParam(param string) string {
+	start := 0
+	end := len(param)
+
+	if param[start] != ':' { // is not a param
+		return param
+	}
+	start++
+	if param[end-1] == '?' { // is ?
+		end--
+	}
+
+	return param[start:end]
 }
