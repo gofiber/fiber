@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v2/internal/utils/isatty"
+	"github.com/gofiber/fiber/v2/internal/isatty"
 )
 
 const (
