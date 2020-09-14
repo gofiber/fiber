@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils/bytebufferpool"
-	"github.com/gofiber/fiber/v2/utils/fasttemplate"
+	"github.com/gofiber/fiber/v2/internal/utils/bytebufferpool"
+	"github.com/gofiber/fiber/v2/internal/utils/fasttemplate"
 )
 
 // Config defines the config for middleware.

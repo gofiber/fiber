@@ -8,7 +8,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"github.com/gofiber/fiber/v2/utils/encoding/ascii"
+	"github.com/gofiber/fiber/v2/internal/utils/encoding/ascii"
 )
 
 // All spaces characters defined in the json specification.
