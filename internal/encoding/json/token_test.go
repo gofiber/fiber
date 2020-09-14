@@ -185,103 +185,103 @@ func TestTokenizer(t *testing.T) {
 	}
 }
 
-func BenchmarkTokenizer(b *testing.B) {
-	values := []struct {
-		scenario string
-		payload  []byte
-	}{
-		{
-			scenario: "null",
-			payload:  []byte(`null`),
-		},
+// func BenchmarkTokenizer(b *testing.B) {
+// 	values := []struct {
+// 		scenario string
+// 		payload  []byte
+// 	}{
+// 		{
+// 			scenario: "null",
+// 			payload:  []byte(`null`),
+// 		},
 
-		{
-			scenario: "true",
-			payload:  []byte(`true`),
-		},
+// 		{
+// 			scenario: "true",
+// 			payload:  []byte(`true`),
+// 		},
 
-		{
-			scenario: "false",
-			payload:  []byte(`false`),
-		},
+// 		{
+// 			scenario: "false",
+// 			payload:  []byte(`false`),
+// 		},
 
-		{
-			scenario: "number",
-			payload:  []byte(`-1.23456789`),
-		},
+// 		{
+// 			scenario: "number",
+// 			payload:  []byte(`-1.23456789`),
+// 		},
 
-		{
-			scenario: "string",
-			payload:  []byte(`"1234567890"`),
-		},
+// 		{
+// 			scenario: "string",
+// 			payload:  []byte(`"1234567890"`),
+// 		},
 
-		{
-			scenario: "object",
-			payload: []byte(`{
-    "timestamp": "2019-01-09T18:59:57.456Z",
-    "channel": "server",
-    "type": "track",
-    "event": "Test",
-    "userId": "test-user-whatever",
-    "messageId": "test-message-whatever",
-    "integrations": {
-        "whatever": {
-            "debugMode": false
-        },
-        "myIntegration": {
-            "debugMode": true
-        }
-    },
-    "properties": {
-        "trait1": 1,
-        "trait2": "test",
-        "trait3": true
-    },
-    "settings": {
-        "apiKey": "1234567890",
-        "debugMode": false,
-        "directChannels": [
-            "server",
-            "client"
-        ],
-        "endpoint": "https://somewhere.com/v1/integrations/segment"
-    }
-}`),
-		},
-	}
+// 		{
+// 			scenario: "object",
+// 			payload: []byte(`{
+//     "timestamp": "2019-01-09T18:59:57.456Z",
+//     "channel": "server",
+//     "type": "track",
+//     "event": "Test",
+//     "userId": "test-user-whatever",
+//     "messageId": "test-message-whatever",
+//     "integrations": {
+//         "whatever": {
+//             "debugMode": false
+//         },
+//         "myIntegration": {
+//             "debugMode": true
+//         }
+//     },
+//     "properties": {
+//         "trait1": 1,
+//         "trait2": "test",
+//         "trait3": true
+//     },
+//     "settings": {
+//         "apiKey": "1234567890",
+//         "debugMode": false,
+//         "directChannels": [
+//             "server",
+//             "client"
+//         ],
+//         "endpoint": "https://somewhere.com/v1/integrations/segment"
+//     }
+// }`),
+// 		},
+// 	}
 
-	benchmarks := []struct {
-		scenario string
-		function func(*testing.B, []byte)
-	}{
-		{
-			scenario: "github.com/segmentio/encoding/json",
-			function: func(b *testing.B, json []byte) {
-				t := NewTokenizer(nil)
+// 	benchmarks := []struct {
+// 		scenario string
+// 		function func(*testing.B, []byte)
+// 	}{
+// 		{
+// 			scenario: "github.com/segmentio/encoding/json",
+// 			function: func(b *testing.B, json []byte) {
+// 				t := NewTokenizer(nil)
 
-				for i := 0; i < b.N; i++ {
-					t.Reset(json)
+// 				for i := 0; i < b.N; i++ {
+// 					t.Reset(json)
 
-					for t.Next() {
-						// Does nothing other than iterating over each token to measure the
-						// CPU and memory footprint.
-					}
+// 					for t.Next() {
+// 						// Does nothing other than iterating over each token to measure the
+// 						// CPU and memory footprint.
+// 					}
 
-					if t.Err != nil {
-						b.Error(t.Err)
-					}
-				}
-			},
-		},
-	}
+// 					if t.Err != nil {
+// 						b.Error(t.Err)
+// 					}
+// 				}
+// 			},
+// 		},
+// 	}
 
-	for _, bechmark := range benchmarks {
-		b.Run(bechmark.scenario, func(b *testing.B) {
-			for _, value := range values {
-				b.Run(value.scenario, func(b *testing.B) {
-					bechmark.function(b, value.payload)
-				})
-			}
-		})
-	}
-}
+// 	for _, bechmark := range benchmarks {
+// 		b.Run(bechmark.scenario, func(b *testing.B) {
+// 			for _, value := range values {
+// 				b.Run(value.scenario, func(b *testing.B) {
+// 					bechmark.function(b, value.payload)
+// 				})
+// 			}
+// 		})
+// 	}
+// }

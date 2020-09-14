@@ -1,7 +1,6 @@
 package json
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 )
@@ -82,93 +81,93 @@ func TestAppendToLower(t *testing.T) {
 	}
 }
 
-func BenchmarkParseString(b *testing.B) {
-	s := []byte(`"__segment_internal"`)
+// func BenchmarkParseString(b *testing.B) {
+// 	s := []byte(`"__segment_internal"`)
 
-	for i := 0; i != b.N; i++ {
-		parseString(s)
-	}
-}
+// 	for i := 0; i != b.N; i++ {
+// 		parseString(s)
+// 	}
+// }
 
-func BenchmarkToLower(b *testing.B) {
-	s := []byte("someFieldWithALongName")
+// func BenchmarkToLower(b *testing.B) {
+// 	s := []byte("someFieldWithALongName")
 
-	for i := 0; i != b.N; i++ {
-		bytes.ToLower(s)
-	}
-}
+// 	for i := 0; i != b.N; i++ {
+// 		bytes.ToLower(s)
+// 	}
+// }
 
-func BenchmarkAppendToLower(b *testing.B) {
-	a := []byte(nil)
-	s := []byte("someFieldWithALongName")
+// func BenchmarkAppendToLower(b *testing.B) {
+// 	a := []byte(nil)
+// 	s := []byte("someFieldWithALongName")
 
-	for i := 0; i != b.N; i++ {
-		a = appendToLower(a[:0], s)
-	}
-}
+// 	for i := 0; i != b.N; i++ {
+// 		a = appendToLower(a[:0], s)
+// 	}
+// }
 
-var benchmarkHasPrefixString = []byte("some random string")
-var benchmarkHasPrefixResult = false
+// var benchmarkHasPrefixString = []byte("some random string")
+// var benchmarkHasPrefixResult = false
 
-func BenchmarkHasPrefix(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		benchmarkHasPrefixResult = hasPrefix(benchmarkHasPrefixString, "null")
-	}
-}
+// func BenchmarkHasPrefix(b *testing.B) {
+// 	for i := 0; i < b.N; i++ {
+// 		benchmarkHasPrefixResult = hasPrefix(benchmarkHasPrefixString, "null")
+// 	}
+// }
 
-func BenchmarkHasNullPrefix(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		benchmarkHasPrefixResult = hasNullPrefix(benchmarkHasPrefixString)
-	}
-}
+// func BenchmarkHasNullPrefix(b *testing.B) {
+// 	for i := 0; i < b.N; i++ {
+// 		benchmarkHasPrefixResult = hasNullPrefix(benchmarkHasPrefixString)
+// 	}
+// }
 
-func BenchmarkHasTruePrefix(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		benchmarkHasPrefixResult = hasTruePrefix(benchmarkHasPrefixString)
-	}
-}
+// func BenchmarkHasTruePrefix(b *testing.B) {
+// 	for i := 0; i < b.N; i++ {
+// 		benchmarkHasPrefixResult = hasTruePrefix(benchmarkHasPrefixString)
+// 	}
+// }
 
-func BenchmarkHasFalsePrefix(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		benchmarkHasPrefixResult = hasFalsePrefix(benchmarkHasPrefixString)
-	}
-}
+// func BenchmarkHasFalsePrefix(b *testing.B) {
+// 	for i := 0; i < b.N; i++ {
+// 		benchmarkHasPrefixResult = hasFalsePrefix(benchmarkHasPrefixString)
+// 	}
+// }
 
-func BenchmarkParseStringEscapeNone(b *testing.B) {
-	var j = []byte(`"` + strings.Repeat(`a`, 1000) + `"`)
-	var s string
-	b.SetBytes(int64(len(j)))
+// func BenchmarkParseStringEscapeNone(b *testing.B) {
+// 	var j = []byte(`"` + strings.Repeat(`a`, 1000) + `"`)
+// 	var s string
+// 	b.SetBytes(int64(len(j)))
 
-	for i := 0; i < b.N; i++ {
-		if err := Unmarshal(j, &s); err != nil {
-			b.Fatal(err)
-		}
-		s = ""
-	}
-}
+// 	for i := 0; i < b.N; i++ {
+// 		if err := Unmarshal(j, &s); err != nil {
+// 			b.Fatal(err)
+// 		}
+// 		s = ""
+// 	}
+// }
 
-func BenchmarkParseStringEscapeOne(b *testing.B) {
-	var j = []byte(`"` + strings.Repeat(`a`, 998) + `\n"`)
-	var s string
-	b.SetBytes(int64(len(j)))
+// func BenchmarkParseStringEscapeOne(b *testing.B) {
+// 	var j = []byte(`"` + strings.Repeat(`a`, 998) + `\n"`)
+// 	var s string
+// 	b.SetBytes(int64(len(j)))
 
-	for i := 0; i < b.N; i++ {
-		if err := Unmarshal(j, &s); err != nil {
-			b.Fatal(err)
-		}
-		s = ""
-	}
-}
+// 	for i := 0; i < b.N; i++ {
+// 		if err := Unmarshal(j, &s); err != nil {
+// 			b.Fatal(err)
+// 		}
+// 		s = ""
+// 	}
+// }
 
-func BenchmarkParseStringEscapeAll(b *testing.B) {
-	var j = []byte(`"` + strings.Repeat(`\`, 1000) + `"`)
-	var s string
-	b.SetBytes(int64(len(j)))
+// func BenchmarkParseStringEscapeAll(b *testing.B) {
+// 	var j = []byte(`"` + strings.Repeat(`\`, 1000) + `"`)
+// 	var s string
+// 	b.SetBytes(int64(len(j)))
 
-	for i := 0; i < b.N; i++ {
-		if err := Unmarshal(j, &s); err != nil {
-			b.Fatal(err)
-		}
-		s = ""
-	}
-}
+// 	for i := 0; i < b.N; i++ {
+// 		if err := Unmarshal(j, &s); err != nil {
+// 			b.Fatal(err)
+// 		}
+// 		s = ""
+// 	}
+// }
