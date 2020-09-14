@@ -29,7 +29,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Version of current package
+// Version of current fiber package
 const Version = "2.0.0"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
@@ -40,6 +40,16 @@ type Handler = func(*Ctx) error
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
+//  cfg := fiber.Config{}
+//  cfg.ErrorHandler = func(c *Ctx, err error) error {
+//   code := StatusInternalServerError
+//   if e, ok := err.(*Error); ok {
+//     code = e.Code
+//   }
+//   c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+//   return c.Status(code).SendString(err.Error())
+//  }
+//  app := fiber.New(cfg)
 type ErrorHandler = func(*Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
@@ -163,16 +173,6 @@ type Config struct {
 	GETOnly bool `json:"get_only"`
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
-	//  cfg := fiber.Config{}
-	//  cfg.ErrorHandler = func(c *Ctx, err error) error {
-	//   code := StatusInternalServerError
-	//   if e, ok := err.(*Error); ok {
-	//     code = e.Code
-	//   }
-	//   c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-	//   return c.Status(code).SendString(err.Error())
-	//  }
-	//  app := fiber.New(cfg)
 	ErrorHandler ErrorHandler `json:"-"`
 
 	// When set to true, disables keep-alive connections.
