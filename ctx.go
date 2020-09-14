@@ -19,10 +19,10 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/gofiber/fiber/v2/internal/encoding/json"
+	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/internal/utils"
-	"github.com/gofiber/fiber/v2/internal/utils/bytebufferpool"
-	"github.com/gofiber/fiber/v2/internal/utils/encoding/json"
-	"github.com/gofiber/fiber/v2/internal/utils/schema"
 	"github.com/valyala/fasthttp"
 )
 
@@ -612,7 +612,7 @@ func (c *Ctx) Next() (err error) {
 	return
 }
 
-// OriginalURL contains the original request URL. URI without scheme and host
+// OriginalURL contains the original request URL.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *Ctx) OriginalURL() string {
