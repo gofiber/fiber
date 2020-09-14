@@ -6,42 +6,148 @@ package fiber
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"net"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
+	"unsafe"
 
-	utils "github.com/gofiber/utils"
+	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/internal/utils/bytebufferpool"
+	"github.com/valyala/fasthttp"
 )
 
-// Scan stack if other methods match
-func setMethodNotAllowed(ctx *Ctx) {
-	var allow bool
-	original := methodInt(ctx.method)
+/* #nosec */
+// lnMetadata will close the listener and return the addr and tls config
+func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
+	// Get addr
+	addr = ln.Addr().String()
+
+	// Close listener
+	if err := ln.Close(); err != nil {
+		return
+	}
+
+	// Wait for the listener to be closed
+	var closed bool
+	for i := 0; i < 10; i++ {
+		conn, err := net.DialTimeout("tcp4", addr, 3*time.Second)
+		if err != nil || conn == nil {
+			closed = true
+			break
+		}
+		_ = conn.Close()
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !closed {
+		panic("listener: " + addr + ": Only one usage of each socket address (protocol/network address/port) is normally permitted.")
+	}
+
+	// Get listener type
+	pointer := reflect.ValueOf(ln)
+
+	// Is it a tls.listener?
+	if pointer.String() == "<*tls.listener Value>" {
+		// Copy value from pointer
+		if val := reflect.Indirect(pointer); val.Type() != nil {
+			// Get private field from value
+			if field := val.FieldByName("config"); field.Type() != nil {
+				// Copy value from pointer field (unsafe)
+				if newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())); newval.Type() != nil {
+					// Get element from pointer
+					if elem := newval.Elem(); elem.Type() != nil {
+						// Cast value to *tls.Config
+						cfg = elem.Interface().(*tls.Config)
+					}
+				}
+			}
+		}
+	}
+	return
+}
+
+// readContent opens a named file and read content from it
+func readContent(rf io.ReaderFrom, name string) (n int64, err error) {
+	// Read file
+	f, err := os.Open(filepath.Clean(name))
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		err = f.Close()
+	}()
+	return rf.ReadFrom(f)
+}
+
+// quoteString escape special characters in a given string
+func quoteString(raw string) string {
+	bb := bytebufferpool.Get()
+	// quoted := string(fasthttp.AppendQuotedArg(bb.B, getBytes(raw)))
+	quoted := getString(fasthttp.AppendQuotedArg(bb.B, getBytes(raw)))
+	bytebufferpool.Put(bb)
+	return quoted
+}
+
+// removeNewLines will replace `\r` and `\n` with an empty space
+func removeNewLines(raw string) string {
+	start := 0
+	if start = strings.IndexByte(raw, '\r'); start == -1 {
+		if start = strings.IndexByte(raw, '\n'); start == -1 {
+			return raw
+		}
+	}
+	bb := bytebufferpool.Get()
+	buf := bb.Bytes()
+	buf = append(buf, raw...)
+	for i := start; i < len(buf); i++ {
+		if buf[i] != '\r' && buf[i] != '\n' {
+			continue
+		}
+		buf[i] = ' '
+	}
+	raw = utils.GetString(buf)
+	bytebufferpool.Put(bb)
+
+	return raw
+}
+
+// Scan stack if other methods match the request
+func methodExist(ctx *Ctx) (exist bool) {
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
-		if original == i {
+		if ctx.methodINT == i {
 			continue
 		}
 		// Reset stack index
 		ctx.indexRoute = -1
-		// Set new method
-		ctx.method = intMethod[i]
+		tree, ok := ctx.app.treeStack[i][ctx.treePath]
+		if !ok {
+			tree = ctx.app.treeStack[i][""]
+		}
 		// Get stack length
-		lenr := len(ctx.app.stack[i]) - 1
+		lenr := len(tree) - 1
 		//Loop over the route stack starting from previous index
 		for ctx.indexRoute < lenr {
 			// Increment route index
 			ctx.indexRoute++
 			// Get *Route
-			route := ctx.app.stack[i][ctx.indexRoute]
+			route := tree[ctx.indexRoute]
+			// Skip use routes
+			if route.use {
+				continue
+			}
 			// Check if it matches the request path
-			match, _ := route.match(ctx.path, ctx.pathOriginal)
+			match := route.match(ctx.path, ctx.pathOriginal, &ctx.values)
 			// No match, next route
 			if match {
-				// Update allow bool
-				allow = true
+				// We matched
+				exist = true
 				// Add method to Allow header
 				ctx.Append(HeaderAllow, intMethod[i])
 				// Break stack loop
@@ -49,25 +155,48 @@ func setMethodNotAllowed(ctx *Ctx) {
 			}
 		}
 	}
-	// Update response status
-	if allow {
-		ctx.Status(StatusMethodNotAllowed)
-	}
+	return
 }
 
+// uniqueRouteStack drop all not unique routes from the slice
+func uniqueRouteStack(stack []*Route) []*Route {
+	var unique []*Route
+	m := make(map[*Route]int)
+	for _, v := range stack {
+		if _, ok := m[v]; !ok {
+			// Unique key found. Record position and collect
+			// in result.
+			m[v] = len(unique)
+			unique = append(unique, v)
+		}
+	}
+
+	return unique
+}
+
+// defaultString returns the value or a default value if it is set
+func defaultString(value string, defaultValue []string) string {
+	if len(value) == 0 && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return value
+}
+
+const normalizedHeaderETag = "Etag"
+
 // Generate and set ETag header to response
-func setETag(ctx *Ctx, weak bool) {
+func setETag(c *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses
-	if ctx.Fasthttp.Response.StatusCode() != 200 {
+	if c.fasthttp.Response.StatusCode() != StatusOK {
 		return
 	}
-	body := ctx.Fasthttp.Response.Body()
+	body := c.fasthttp.Response.Body()
 	// Skips ETag if no response body is present
 	if len(body) <= 0 {
 		return
 	}
 	// Get ETag header from request
-	clientEtag := ctx.Get(HeaderIfNoneMatch)
+	clientEtag := c.Get(HeaderIfNoneMatch)
 
 	// Generate ETag for response
 	crc32q := crc32.MakeTable(0xD5828281)
@@ -83,22 +212,22 @@ func setETag(ctx *Ctx, weak bool) {
 		// Check if server's ETag is weak
 		if clientEtag[2:] == etag || clientEtag[2:] == etag[2:] {
 			// W/1 == 1 || W/1 == W/1
-			ctx.SendStatus(304)
-			ctx.Fasthttp.ResetBody()
+			_ = c.SendStatus(StatusNotModified)
+			c.fasthttp.ResetBody()
 			return
 		}
 		// W/1 != W/2 || W/1 != 2
-		ctx.Set(HeaderETag, etag)
+		c.setCanonical(normalizedHeaderETag, etag)
 		return
 	}
 	if strings.Contains(clientEtag, etag) {
 		// 1 == 1
-		ctx.SendStatus(304)
-		ctx.Fasthttp.ResetBody()
+		_ = c.SendStatus(StatusNotModified)
+		c.fasthttp.ResetBody()
 		return
 	}
 	// 1 != 2
-	ctx.Set(HeaderETag, etag)
+	c.setCanonical(normalizedHeaderETag, etag)
 }
 
 func getGroupPath(prefix, path string) string {
@@ -144,14 +273,19 @@ func getOffer(header string, offers ...string) string {
 	return ""
 }
 
-// Adapted from:
-// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
-func parseTokenList(noneMatchBytes []byte) []string {
-	var (
-		start int
-		end   int
-		list  []string
-	)
+func matchEtag(s string, etag string) bool {
+	if s == etag || s == "W/"+etag || "W/"+s == etag {
+		return true
+	}
+
+	return false
+}
+
+func isEtagStale(etag string, noneMatchBytes []byte) bool {
+	var start, end int
+
+	// Adapted from:
+	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
 	for i := range noneMatchBytes {
 		switch noneMatchBytes[i] {
 		case 0x20:
@@ -160,7 +294,9 @@ func parseTokenList(noneMatchBytes []byte) []string {
 				end = i + 1
 			}
 		case 0x2c:
-			list = append(list, getString(noneMatchBytes[start:end]))
+			if matchEtag(getString(noneMatchBytes[start:end]), etag) {
+				return false
+			}
 			start = i + 1
 			end = i + 1
 		default:
@@ -168,27 +304,70 @@ func parseTokenList(noneMatchBytes []byte) []string {
 		}
 	}
 
-	list = append(list, getString(noneMatchBytes[start:end]))
-	return list
+	return !matchEtag(getString(noneMatchBytes[start:end]), etag)
+}
+
+func isIPv6(address string) bool {
+	return strings.Count(address, ":") >= 2
+}
+
+func parseAddr(raw string) (host, port string) {
+	if i := strings.LastIndex(raw, ":"); i != -1 {
+		return raw[:i], raw[i+1:]
+	}
+	return raw, ""
+}
+
+const noCacheValue = "no-cache"
+
+// isNoCache checks if the cacheControl header value is a `no-cache`.
+func isNoCache(cacheControl string) bool {
+	i := strings.Index(cacheControl, noCacheValue)
+	if i == -1 {
+		return false
+	}
+
+	// Xno-cache
+	if i > 0 && !(cacheControl[i-1] == ' ' || cacheControl[i-1] == ',') {
+		return false
+	}
+
+	// bla bla, no-cache
+	if i+len(noCacheValue) == len(cacheControl) {
+		return true
+	}
+
+	// bla bla, no-cacheX
+	if cacheControl[i+len(noCacheValue)] != ',' {
+		return false
+	}
+
+	// OK
+	return true
 }
 
 // https://golang.org/src/net/net.go#L113
 // Helper methods for application#test
+type testAddr string
+
+func (a testAddr) Network() string {
+	return string(a)
+}
+func (a testAddr) String() string {
+	return string(a)
+}
+
 type testConn struct {
-	net.Conn
 	r bytes.Buffer
 	w bytes.Buffer
 }
 
-func (c *testConn) RemoteAddr() net.Addr {
-	return &net.TCPAddr{
-		IP: net.IPv4(0, 0, 0, 0),
-	}
-}
-func (c *testConn) LocalAddr() net.Addr                { return c.RemoteAddr() }
-func (c *testConn) Read(b []byte) (int, error)         { return c.r.Read(b) }
-func (c *testConn) Write(b []byte) (int, error)        { return c.w.Write(b) }
-func (c *testConn) Close() error                       { return nil }
+func (c *testConn) Read(b []byte) (int, error)  { return c.r.Read(b) }
+func (c *testConn) Write(b []byte) (int, error) { return c.w.Write(b) }
+func (c *testConn) Close() error                { return nil }
+
+func (c *testConn) LocalAddr() net.Addr                { return testAddr("local-addr") }
+func (c *testConn) RemoteAddr() net.Addr               { return testAddr("remote-addr") }
 func (c *testConn) SetDeadline(t time.Time) error      { return nil }
 func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
@@ -227,7 +406,7 @@ func methodInt(s string) int {
 	case MethodPatch:
 		return 8
 	default:
-		return 0
+		return -1
 	}
 }
 
@@ -255,6 +434,7 @@ const (
 	MethodConnect = "CONNECT" // RFC 7231, 4.3.6
 	MethodOptions = "OPTIONS" // RFC 7231, 4.3.7
 	MethodTrace   = "TRACE"   // RFC 7231, 4.3.8
+	methodUse     = "USE"
 )
 
 // MIME types that are commonly used
@@ -273,6 +453,7 @@ const (
 	MIMETextHTMLCharsetUTF8              = "text/html; charset=utf-8"
 	MIMETextPlainCharsetUTF8             = "text/plain; charset=utf-8"
 	MIMEApplicationXMLCharsetUTF8        = "application/xml; charset=utf-8"
+	MIMEApplicationJSONCharsetUTF8       = "application/json; charset=utf-8"
 	MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 
@@ -285,7 +466,7 @@ const (
 	StatusOK                            = 200 // RFC 7231, 6.3.1
 	StatusCreated                       = 201 // RFC 7231, 6.3.2
 	StatusAccepted                      = 202 // RFC 7231, 6.3.3
-	StatusNonAuthoritativeInfo          = 203 // RFC 7231, 6.3.4
+	StatusNonAuthoritativeInformation   = 203 // RFC 7231, 6.3.4
 	StatusNoContent                     = 204 // RFC 7231, 6.3.5
 	StatusResetContent                  = 205 // RFC 7231, 6.3.6
 	StatusPartialContent                = 206 // RFC 7233, 4.1
@@ -344,28 +525,6 @@ const (
 
 // Errors
 var (
-	ErrContinue                      = NewError(StatusContinue)                      // RFC 7231, 6.2.1
-	ErrSwitchingProtocols            = NewError(StatusSwitchingProtocols)            // RFC 7231, 6.2.2
-	ErrProcessing                    = NewError(StatusProcessing)                    // RFC 2518, 10.1
-	ErrEarlyHints                    = NewError(StatusEarlyHints)                    // RFC 8297
-	ErrOK                            = NewError(StatusOK)                            // RFC 7231, 6.3.1
-	ErrCreated                       = NewError(StatusCreated)                       // RFC 7231, 6.3.2
-	ErrAccepted                      = NewError(StatusAccepted)                      // RFC 7231, 6.3.3
-	ErrNonAuthoritativeInfo          = NewError(StatusNonAuthoritativeInfo)          // RFC 7231, 6.3.4
-	ErrNoContent                     = NewError(StatusNoContent)                     // RFC 7231, 6.3.5
-	ErrResetContent                  = NewError(StatusResetContent)                  // RFC 7231, 6.3.6
-	ErrPartialContent                = NewError(StatusPartialContent)                // RFC 7233, 4.1
-	ErrMultiStatus                   = NewError(StatusMultiStatus)                   // RFC 4918, 11.1
-	ErrAlreadyReported               = NewError(StatusAlreadyReported)               // RFC 5842, 7.1
-	ErrIMUsed                        = NewError(StatusIMUsed)                        // RFC 3229, 10.4.1
-	ErrMultipleChoices               = NewError(StatusMultipleChoices)               // RFC 7231, 6.4.1
-	ErrMovedPermanently              = NewError(StatusMovedPermanently)              // RFC 7231, 6.4.2
-	ErrFound                         = NewError(StatusFound)                         // RFC 7231, 6.4.3
-	ErrSeeOther                      = NewError(StatusSeeOther)                      // RFC 7231, 6.4.4
-	ErrNotModified                   = NewError(StatusNotModified)                   // RFC 7232, 4.1
-	ErrUseProxy                      = NewError(StatusUseProxy)                      // RFC 7231, 6.4.5
-	ErrTemporaryRedirect             = NewError(StatusTemporaryRedirect)             // RFC 7231, 6.4.7
-	ErrPermanentRedirect             = NewError(StatusPermanentRedirect)             // RFC 7538, 3
 	ErrBadRequest                    = NewError(StatusBadRequest)                    // RFC 7231, 6.5.1
 	ErrUnauthorized                  = NewError(StatusUnauthorized)                  // RFC 7235, 3.1
 	ErrPaymentRequired               = NewError(StatusPaymentRequired)               // RFC 7231, 6.5.2

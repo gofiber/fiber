@@ -1,7 +1,7 @@
 ---
-name: "\U0001F914 Question"
+name: "\U0001F917 Question"
 about: Ask a question so we can help
-title: "\U0001F914 "
+title: "\U0001F917 "
 labels: 'Type: Question'
 assignees: ''
 
@@ -14,7 +14,7 @@ assignees: ''
 ```go
 package main
 
-import "github.com/gofiber/fiber"
+import "github.com/gofiber/fiber/v2"
 
 func main() {
   app := fiber.New()

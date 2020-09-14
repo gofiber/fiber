@@ -7,6 +7,7 @@
 
 # Test binary, built with `go test -c`
 *.test
+*.tmp
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
@@ -20,6 +21,10 @@
 *.fiber.gz
 *.fasthttp.gz
 *.pprof
+*.workspace
 
 # Dependencies
+/vendor/
+vendor/
 vendor
+/Godeps/

@@ -5,144 +5,212 @@
 package fiber
 
 import (
-	"log"
+	"fmt"
+	"sort"
 	"strings"
 	"time"
 
-	utils "github.com/gofiber/utils"
-	fasthttp "github.com/valyala/fasthttp"
+	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/valyala/fasthttp"
 )
 
 // Router defines all router handle interface includes app and group router.
 type Router interface {
-	Use(args ...interface{}) *Route
+	Use(args ...interface{}) Router
 
-	Get(path string, handlers ...Handler) *Route
-	Head(path string, handlers ...Handler) *Route
-	Post(path string, handlers ...Handler) *Route
-	Put(path string, handlers ...Handler) *Route
-	Delete(path string, handlers ...Handler) *Route
-	Connect(path string, handlers ...Handler) *Route
-	Options(path string, handlers ...Handler) *Route
-	Trace(path string, handlers ...Handler) *Route
-	Patch(path string, handlers ...Handler) *Route
+	Get(path string, handlers ...Handler) Router
+	Head(path string, handlers ...Handler) Router
+	Post(path string, handlers ...Handler) Router
+	Put(path string, handlers ...Handler) Router
+	Delete(path string, handlers ...Handler) Router
+	Connect(path string, handlers ...Handler) Router
+	Options(path string, handlers ...Handler) Router
+	Trace(path string, handlers ...Handler) Router
+	Patch(path string, handlers ...Handler) Router
 
-	Add(method, path string, handlers ...Handler) *Route
-	Static(prefix, root string, config ...Static) *Route
-	All(path string, handlers ...Handler) []*Route
+	Add(method, path string, handlers ...Handler) Router
+	Static(prefix, root string, config ...Static) Router
+	All(path string, handlers ...Handler) Router
 
-	Group(prefix string, handlers ...Handler) *Group
+	Group(prefix string, handlers ...Handler) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler
 type Route struct {
 	// Data for routing
-	pos         int         // Position in stack
+	pos         int         // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
 	star        bool        // Path equals '*'
 	root        bool        // Path equals '/'
 	path        string      // Prettified path
 	routeParser routeParser // Parameter parser
-	routeParams []string    // Case sensitive param keys
 
 	// Public fields
 	Method   string    `json:"method"` // HTTP method
 	Path     string    `json:"path"`   // Original registered route path
-	Name     string    `json:"name"`   // Name of first handler used in route
+	Params   []string  `json:"params"` // Case sensitive param keys
 	Handlers []Handler `json:"-"`      // Ctx handlers
 }
 
-func (r *Route) match(path, original string) (match bool, values []string) {
+func (r *Route) match(path, original string, params *[maxParams]string) (match bool) {
 	// root path check
 	if r.root && path == "/" {
-		return true, values
+		return true
 		// '*' wildcard matches any path
 	} else if r.star {
-		values := getAllocFreeParams(1)
-		values[0] = original[1:]
-		return true, values
+		if len(original) > 1 {
+			params[0] = original[1:]
+		}
+		return true
 	}
 	// Does this route have parameters
-	if len(r.routeParams) > 0 {
+	if len(r.Params) > 0 {
 		// Match params
-		if paramPos, match := r.routeParser.getMatch(path, r.use); match {
+		if match := r.routeParser.getMatch(path, original, params, r.use); match {
 			// Get params from the original path
-			return match, r.routeParser.paramsForPos(original, paramPos)
+			return match
 		}
 	}
 	// Is this route a Middleware?
 	if r.use {
 		// Single slash will match or path prefix
 		if r.root || strings.HasPrefix(path, r.path) {
-			return true, values
+			return true
 		}
 		// Check for a simple path match
 	} else if len(r.path) == len(path) && r.path == path {
-		return true, values
+		return true
 	}
 	// No match
-	return false, values
+	return false
 }
 
-func (app *App) next(ctx *Ctx) bool {
+func (app *App) next(c *Ctx) (match bool, err error) {
 	// Get stack length
-	lenr := len(app.stack[ctx.methodINT]) - 1
+	tree, ok := app.treeStack[c.methodINT][c.treePath]
+	if !ok {
+		tree = app.treeStack[c.methodINT][""]
+	}
+	lenr := len(tree) - 1
+
 	// Loop over the route stack starting from previous index
-	for ctx.indexRoute < lenr {
+	for c.indexRoute < lenr {
 		// Increment route index
-		ctx.indexRoute++
+		c.indexRoute++
+
 		// Get *Route
-		route := app.stack[ctx.methodINT][ctx.indexRoute]
+		route := tree[c.indexRoute]
+
 		// Check if it matches the request path
-		match, values := route.match(ctx.path, ctx.pathOriginal)
+		match = route.match(c.path, c.pathOriginal, &c.values)
+
 		// No match, next route
 		if !match {
 			continue
 		}
 		// Pass route reference and param values
-		ctx.route = route
-		ctx.values = values
+		c.route = route
+
+		// Non use handler matched
+		if !c.matched && !route.use {
+			c.matched = true
+		}
+
 		// Execute first handler of route
-		ctx.indexHandler = 0
-		route.Handlers[0](ctx)
-		// Stop scanning the stack
-		return true
+		c.indexHandler = 0
+		if err = route.Handlers[0](c); err != nil {
+			if catch := c.app.config.ErrorHandler(c, err); catch != nil {
+				_ = c.SendStatus(StatusInternalServerError)
+			}
+		}
+		return // Stop scanning the stack
 	}
+
 	// If c.Next() does not match, return 404
-	ctx.SendStatus(404)
-	ctx.SendString("Cannot " + ctx.method + " " + ctx.pathOriginal)
-	return false
+	_ = c.SendStatus(StatusNotFound)
+	_ = c.SendString("Cannot " + c.method + " " + c.pathOriginal)
+
+	// If no match, scan stack again if other methods match the request
+	// Moved from app.handler because middleware may break the route chain
+	if !c.matched && methodExist(c) {
+		if catch := c.app.config.ErrorHandler(c, ErrMethodNotAllowed); catch != nil {
+			_ = c.SendStatus(StatusInternalServerError)
+		}
+	}
+	return
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
-	ctx := app.AcquireCtx(rctx)
-	// Prettify path
-	ctx.prettifyPath()
-	// Find match in stack
-	match := app.next(ctx)
-	// Generate ETag if enabled
-	if match && app.Settings.ETag {
-		setETag(ctx, false)
+	c := app.AcquireCtx(rctx)
+
+	// handle invalid http method directly
+	if c.methodINT == -1 {
+		_ = c.Status(StatusBadRequest).SendString("Invalid http method")
+		app.ReleaseCtx(c)
+		return
 	}
-	// Scan stack for other methods
-	if !match {
-		setMethodNotAllowed(ctx)
+
+	// Find match in stack
+	match, _ := app.next(c)
+	// Generate ETag if enabled
+	if match && app.config.ETag {
+		setETag(c, false)
 	}
 	// Release Ctx
-	app.ReleaseCtx(ctx)
+	app.ReleaseCtx(c)
 }
 
-func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
+func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
+	prefixedPath := getGroupPath(prefix, route.Path)
+	prettyPath := prefixedPath
+	// Case sensitive routing, all to lowercase
+	if !app.config.CaseSensitive {
+		prettyPath = utils.ToLower(prettyPath)
+	}
+	// Strict routing, remove trailing slashes
+	if !app.config.StrictRouting && len(prettyPath) > 1 {
+		prettyPath = utils.TrimRight(prettyPath, '/')
+	}
+
+	route.Path = prefixedPath
+	route.path = prettyPath
+	route.routeParser = parseRoute(prettyPath)
+	route.root = false
+	route.star = false
+
+	return route
+}
+
+func (app *App) copyRoute(route *Route) *Route {
+	return &Route{
+		// Router booleans
+		use:  route.use,
+		star: route.star,
+		root: route.root,
+
+		// Path data
+		path:        route.path,
+		routeParser: route.routeParser,
+		Params:      route.Params,
+
+		// Public data
+		Path:     route.path,
+		Method:   route.Method,
+		Handlers: route.Handlers,
+	}
+}
+
+func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
-	if method != "USE" && methodInt(method) == 0 && method != MethodGet {
-		log.Fatalf("Add: Invalid HTTP method %s", method)
+	if method != methodUse && methodInt(method) == -1 {
+		panic(fmt.Sprintf("add: invalid http method %s\n", method))
 	}
 	// A route requires atleast one ctx handler
 	if len(handlers) == 0 {
-		log.Fatalf("Missing func(c *fiber.Ctx) handler in route: %s", pathRaw)
+		panic(fmt.Sprintf("missing handler in route: %s\n", pathRaw))
 	}
 	// Cannot have an empty path
 	if pathRaw == "" {
@@ -155,15 +223,15 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 	// Create a stripped path in-case sensitive / trailing slashes
 	pathPretty := pathRaw
 	// Case sensitive routing, all to lowercase
-	if !app.Settings.CaseSensitive {
+	if !app.config.CaseSensitive {
 		pathPretty = utils.ToLower(pathPretty)
 	}
 	// Strict routing, remove trailing slashes
-	if !app.Settings.StrictRouting && len(pathPretty) > 1 {
+	if !app.config.StrictRouting && len(pathPretty) > 1 {
 		pathPretty = utils.TrimRight(pathPretty, '/')
 	}
 	// Is layer a middleware?
-	var isUse = method == "USE"
+	var isUse = method == methodUse
 	// Is path a direct wildcard?
 	var isStar = pathPretty == "/*"
 	// Is path a root slash?
@@ -172,48 +240,46 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) *Route {
 	var parsedRaw = parseRoute(pathRaw)
 	var parsedPretty = parseRoute(pathPretty)
 
-	// Increment global route position
-	app.mutex.Lock()
-	app.routes++
-	app.mutex.Unlock()
-	// Create route metadata
-	route := &Route{
+	// Create route metadata without pointer
+	route := Route{
 		// Router booleans
-		pos:  app.routes,
 		use:  isUse,
 		star: isStar,
 		root: isRoot,
+
 		// Path data
 		path:        pathPretty,
 		routeParser: parsedPretty,
-		routeParams: parsedRaw.params,
+		Params:      parsedRaw.params,
 
 		// Public data
 		Path:     pathRaw,
 		Method:   method,
 		Handlers: handlers,
 	}
+	// Increment global handler count
+	app.mutex.Lock()
+	app.handlerCount += len(handlers)
+	app.mutex.Unlock()
+
 	// Middleware route matches all HTTP methods
 	if isUse {
 		// Add route to all HTTP methods stack
 		for _, m := range intMethod {
-			app.addRoute(m, route)
+			// Create a route copy to avoid duplicates during compression
+			r := route
+			app.addRoute(m, &r)
 		}
-		return route
+	} else {
+		// Add route to stack
+		app.addRoute(method, &route)
 	}
-
-	// Handle GET routes on HEAD requests
-	if method == MethodGet {
-		app.addRoute(MethodHead, route)
-	}
-
-	// Add route to stack
-	app.addRoute(method, route)
-
-	return route
+	// Build router tree
+	app.buildTree()
+	return app
 }
 
-func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
+func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	// For security we want to restrict to the current work directory.
 	if len(root) == 0 {
 		root = "."
@@ -227,7 +293,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 		prefix = "/" + prefix
 	}
 	// in case sensitive routing, all to lowercase
-	if !app.Settings.CaseSensitive {
+	if !app.config.CaseSensitive {
 		prefix = utils.ToLower(prefix)
 	}
 	// Strip trailing slashes from the root path
@@ -252,11 +318,11 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 		GenerateIndexPages:   false,
 		AcceptByteRange:      false,
 		Compress:             false,
-		CompressedFileSuffix: app.Settings.CompressedFileSuffix,
+		CompressedFileSuffix: app.config.CompressedFileSuffix,
 		CacheDuration:        10 * time.Second,
 		IndexNames:           []string{"index.html"},
-		PathRewrite: func(ctx *fasthttp.RequestCtx) []byte {
-			path := ctx.Path()
+		PathRewrite: func(fctx *fasthttp.RequestCtx) []byte {
+			path := fctx.Path()
 			if len(path) >= prefixLen {
 				if isStar && getString(path[0:prefixLen]) == prefix {
 					path = append(path[0:0], '/')
@@ -269,8 +335,8 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 			}
 			return path
 		},
-		PathNotFound: func(ctx *fasthttp.RequestCtx) {
-			ctx.Response.SetStatusCode(404)
+		PathNotFound: func(fctx *fasthttp.RequestCtx) {
+			fctx.Response.SetStatusCode(StatusNotFound)
 		},
 	}
 	// Set config if provided
@@ -283,47 +349,94 @@ func (app *App) registerStatic(prefix, root string, config ...Static) *Route {
 		}
 	}
 	fileHandler := fs.NewRequestHandler()
-	handler := func(c *Ctx) {
+	handler := func(c *Ctx) error {
 		// Serve file
-		fileHandler(c.Fasthttp)
+		fileHandler(c.fasthttp)
 		// Return request if found and not forbidden
-		status := c.Fasthttp.Response.StatusCode()
-		if status != 404 && status != 403 {
-			return
+		status := c.fasthttp.Response.StatusCode()
+		if status != StatusNotFound && status != StatusForbidden {
+			return nil
 		}
 		// Reset response to default
-		c.Fasthttp.SetContentType("") // Issue #420
-		c.Fasthttp.Response.SetStatusCode(200)
-		c.Fasthttp.Response.SetBodyString("")
+		c.fasthttp.SetContentType("") // Issue #420
+		c.fasthttp.Response.SetStatusCode(StatusOK)
+		c.fasthttp.Response.SetBodyString("")
 		// Next middleware
-		c.Next()
+		return c.Next()
 	}
-	// Increment global route position
+
+	// Create route metadata without pointer
+	route := Route{
+		// Router booleans
+		use:  true,
+		root: isRoot,
+		path: prefix,
+		// Public data
+		Method:   MethodGet,
+		Path:     prefix,
+		Handlers: []Handler{handler},
+	}
+	// Increment global handler count
 	app.mutex.Lock()
-	app.routes++
+	app.handlerCount++
 	app.mutex.Unlock()
-	route := &Route{
-		pos:    app.routes,
-		use:    true,
-		root:   isRoot,
-		path:   prefix,
-		Method: MethodGet,
-		Path:   prefix,
-	}
-	route.Handlers = append(route.Handlers, handler)
 	// Add route to stack
-	app.addRoute(MethodGet, route)
-	app.addRoute(MethodHead, route)
-	return route
+	app.addRoute(MethodGet, &route)
+	// Add HEAD route
+	app.addRoute(MethodHead, &route)
+	// Build router tree
+	app.buildTree()
+	return app
 }
 
 func (app *App) addRoute(method string, route *Route) {
-	// Give name to route if not defined
-	if route.Name == "" && len(route.Handlers) > 0 {
-		route.Name = utils.FunctionName(route.Handlers[0])
-	}
 	// Get unique HTTP method indentifier
 	m := methodInt(method)
-	// Add route to the stack
-	app.stack[m] = append(app.stack[m], route)
+
+	// prevent identically route registration
+	l := len(app.stack[m])
+	if l > 0 && app.stack[m][l-1].Path == route.Path && route.use == app.stack[m][l-1].use {
+		preRoute := app.stack[m][l-1]
+		preRoute.Handlers = append(preRoute.Handlers, route.Handlers...)
+	} else {
+		// Increment global route position
+		app.mutex.Lock()
+		app.routesCount++
+		app.mutex.Unlock()
+		route.pos = app.routesCount
+		route.Method = method
+		// Add route to the stack
+		app.stack[m] = append(app.stack[m], route)
+	}
+}
+
+// buildTree build the prefix tree from the previously registered routes
+func (app *App) buildTree() *App {
+	// loop all the methods and stacks and create the prefix tree
+	for m := range intMethod {
+		app.treeStack[m] = make(map[string][]*Route)
+		for _, route := range app.stack[m] {
+			treePath := ""
+			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
+				treePath = route.routeParser.segs[0].Const[:3]
+			}
+			// create tree stack
+			app.treeStack[m][treePath] = append(app.treeStack[m][treePath], route)
+		}
+	}
+	// loop the methods and tree stacks and add global stack and sort everything
+	for m := range intMethod {
+		for treePart := range app.treeStack[m] {
+			if treePart != "" {
+				// merge global tree routes in current tree stack
+				app.treeStack[m][treePart] = uniqueRouteStack(append(app.treeStack[m][treePart], app.treeStack[m][""]...))
+			}
+			// sort tree slices with the positions
+			sort.Slice(app.treeStack[m][treePart], func(i, j int) bool {
+				return app.treeStack[m][treePart][i].pos < app.treeStack[m][treePart][j].pos
+			})
+		}
+	}
+
+	return app
 }

@@ -7,98 +7,218 @@
 package fiber
 
 import (
+	"strconv"
 	"strings"
-	"sync/atomic"
 
-	utils "github.com/gofiber/utils"
+	"github.com/gofiber/fiber/v2/internal/utils"
 )
 
-// routeParser  holds the path segments and param names
+// routeParser holds the path segments and param names
 type routeParser struct {
-	segs   []paramSeg
-	params []string
+	segs          []*routeSegment // the parsed segments of the route
+	params        []string        // that parameter names the parsed route
+	wildCardCount int             // number of wildcard parameters, used internally to give the wildcard parameter its number
+	plusCount     int             // number of plus parameters, used internally to give the plus parameter its number
 }
 
 // paramsSeg holds the segment metadata
-type paramSeg struct {
-	Param      string
-	Const      string
-	IsParam    bool
-	IsOptional bool
-	IsLast     bool
-	EndChar    byte
+type routeSegment struct {
+	// const information
+	Const string // constant part of the route
+	// parameter information
+	IsParam     bool   // Truth value that indicates whether it is a parameter or a constant part
+	ParamName   string // name of the parameter for access to it, for wildcards and plus parameters access iterators starting with 1 are added
+	ComparePart string // search part to find the end of the parameter
+	PartCount   int    // how often is the search part contained in the non-param segments? -> necessary for greedy search
+	IsGreedy    bool   // indicates whether the parameter is greedy or not, is used with wildcard and plus
+	IsOptional  bool   // indicates whether the parameter is optional or not
+	// common information
+	IsLast           bool // shows if the segment is the last one for the route
+	HasOptionalSlash bool // segment has the possibility of an optional slash
+	Length           int  // length of the parameter for segment, when its 0 then the length is undetermined
+	// future TODO: add support for optional groups "/abc(/def)?"
 }
 
-// list of possible parameter and segment delimiter
-// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
-var routeDelimiter = []byte{'/', '-', '.'}
+// different special routing signs
+const (
+	wildcardParam    byte = '*' // indicates a optional greedy parameter
+	plusParam        byte = '+' // indicates a required greedy parameter
+	optionalParam    byte = '?' // concludes a parameter by name and makes it optional
+	paramStarterChar byte = ':' // start character for a parameter with name
+	slashDelimiter   byte = '/' // separator for the route, unlike the other delimiters this character at the end can be optional
+)
 
-const wildcardParam string = "*"
+// list of possible parameter and segment delimiter
+var (
+	// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
+	routeDelimiter = []byte{slashDelimiter, '-', '.'}
+	// list of chars for the parameter recognising
+	parameterStartChars = []byte{wildcardParam, plusParam, paramStarterChar}
+	// list of chars of delimiters and the starting parameter name char
+	parameterDelimiterChars = append([]byte{paramStarterChar}, routeDelimiter...)
+	// list of chars to find the end of a parameter
+	parameterEndChars = append([]byte{optionalParam}, parameterDelimiterChars...)
+)
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
-func parseRoute(pattern string) (p routeParser) {
-	var out []paramSeg
-	var params []string
+func parseRoute(pattern string) routeParser {
+	parser := routeParser{}
 
-	part, delimiterPos := "", 0
-	for len(pattern) > 0 && delimiterPos != -1 {
-		delimiterPos = findNextRouteSegmentEnd(pattern)
-		if delimiterPos != -1 {
-			part = pattern[:delimiterPos]
+	part := ""
+	for len(pattern) > 0 {
+		nextParamPosition := findNextParamPosition(pattern)
+		// handle the parameter part
+		if nextParamPosition == 0 {
+			processedPart, seg := parser.analyseParameterPart(pattern)
+			parser.params, parser.segs, part = append(parser.params, seg.ParamName), append(parser.segs, seg), processedPart
 		} else {
-			part = pattern
-		}
-
-		partLen, lastSeg := len(part), len(out)-1
-		if partLen == 0 { // skip empty parts
-			if len(pattern) > 0 {
-				// remove first char
-				pattern = pattern[1:]
-			}
-			continue
-		}
-		// is parameter ?
-		if part[0] == '*' || part[0] == ':' {
-			out = append(out, paramSeg{
-				Param:      utils.GetTrimmedParam(part),
-				IsParam:    true,
-				IsOptional: part == wildcardParam || part[partLen-1] == '?',
-			})
-			lastSeg = len(out) - 1
-			params = append(params, out[lastSeg].Param)
-			// combine const segments
-		} else if lastSeg >= 0 && !out[lastSeg].IsParam {
-			out[lastSeg].Const += string(out[lastSeg].EndChar) + part
-			// create new const segment
-		} else {
-			out = append(out, paramSeg{
-				Const: part,
-			})
-			lastSeg = len(out) - 1
+			processedPart, seg := parser.analyseConstantPart(pattern, nextParamPosition)
+			parser.segs, part = append(parser.segs, seg), processedPart
 		}
 
-		if delimiterPos != -1 && len(pattern) >= delimiterPos+1 {
-			out[lastSeg].EndChar = pattern[delimiterPos]
-			pattern = pattern[delimiterPos+1:]
-		} else {
-			// last default char
-			out[lastSeg].EndChar = '/'
+		// reduce the pattern by the processed parts
+		if len(part) == len(pattern) {
+			break
 		}
+		pattern = pattern[len(part):]
 	}
-	if len(out) > 0 {
-		out[len(out)-1].IsLast = true
+	// mark last segment
+	if len(parser.segs) > 0 {
+		parser.segs[len(parser.segs)-1].IsLast = true
 	}
+	parser.segs = addParameterMetaInfo(parser.segs)
 
-	p = routeParser{segs: out, params: params}
-	return
+	return parser
 }
 
-// findNextRouteSegmentEnd searches in the route for the next end position for a segment
-func findNextRouteSegmentEnd(search string) int {
+// addParameterMetaInfo add important meta information to the parameter segments
+// to simplify the search for the end of the parameter
+func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
+	comparePart := ""
+	segLen := len(segs)
+	// loop from end to begin
+	for i := segLen - 1; i >= 0; i-- {
+		// set the compare part for the parameter
+		if segs[i].IsParam {
+			// important for finding the end of the parameter
+			segs[i].ComparePart = comparePart
+		} else {
+			comparePart = segs[i].Const
+			if len(comparePart) > 1 {
+				comparePart = utils.TrimRight(comparePart, slashDelimiter)
+			}
+		}
+	}
+
+	// loop from begin to end
+	for i := 0; i < segLen; i++ {
+		// check how often the compare part is in the following const parts
+		if segs[i].IsParam {
+			// check if parameter segments are directly after each other and if one of them is greedy
+			// in case the next parameter or the current parameter is not a wildcard its not greedy, we only want one character
+			if segLen > i+1 && !segs[i].IsGreedy && segs[i+1].IsParam && !segs[i+1].IsGreedy {
+				segs[i].Length = 1
+			}
+			if segs[i].ComparePart == "" {
+				continue
+			}
+			for j := i + 1; j <= len(segs)-1; j++ {
+				if !segs[j].IsParam {
+					// count is important for the greedy match
+					segs[i].PartCount += strings.Count(segs[j].Const, segs[i].ComparePart)
+				}
+			}
+			// check if the end of the segment is a optional slash and then if the segement is optional or the last one
+		} else if segs[i].Const[len(segs[i].Const)-1] == slashDelimiter && (segs[i].IsLast || (segLen > i+1 && segs[i+1].IsOptional)) {
+			segs[i].HasOptionalSlash = true
+		}
+	}
+
+	return segs
+}
+
+// findNextParamPosition search for the next possible parameter start position
+func findNextParamPosition(pattern string) int {
+	nextParamPosition := findNextCharsetPosition(pattern, parameterStartChars)
+	if nextParamPosition != -1 && len(pattern) > nextParamPosition && pattern[nextParamPosition] != wildcardParam {
+		// search for parameter characters for the found parameter start,
+		// if there are more, move the parameter start to the last parameter char
+		for found := findNextCharsetPosition(pattern[nextParamPosition+1:], parameterStartChars); found == 0; {
+			nextParamPosition++
+			if len(pattern) > nextParamPosition {
+				break
+			}
+		}
+	}
+
+	return nextParamPosition
+}
+
+// analyseConstantPart find the end of the constant part and create the route segment
+func (routeParser *routeParser) analyseConstantPart(pattern string, nextParamPosition int) (string, *routeSegment) {
+	// handle the constant part
+	processedPart := pattern
+	if nextParamPosition != -1 {
+		// remove the constant part until the parameter
+		processedPart = pattern[:nextParamPosition]
+	}
+	return processedPart, &routeSegment{
+		Const:  processedPart,
+		Length: len(processedPart),
+	}
+}
+
+// analyseParameterPart find the parameter end and create the route segment
+func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *routeSegment) {
+	isWildCard := pattern[0] == wildcardParam
+	isPlusParam := pattern[0] == plusParam
+	parameterEndPosition := findNextCharsetPosition(pattern[1:], parameterEndChars)
+
+	// handle wildcard end
+	if isWildCard || isPlusParam {
+		parameterEndPosition = 0
+	} else if parameterEndPosition == -1 {
+		parameterEndPosition = len(pattern) - 1
+	} else if !isInCharset(pattern[parameterEndPosition+1], parameterDelimiterChars) {
+		parameterEndPosition = parameterEndPosition + 1
+	}
+	// cut params part
+	processedPart := pattern[0 : parameterEndPosition+1]
+
+	paramName := utils.GetTrimmedParam(processedPart)
+	// add access iterator to wildcard and plus
+	if isWildCard {
+		routeParser.wildCardCount++
+		paramName += strconv.Itoa(routeParser.wildCardCount)
+	} else if isPlusParam {
+		routeParser.plusCount++
+		paramName += strconv.Itoa(routeParser.plusCount)
+	}
+
+	return processedPart, &routeSegment{
+		ParamName:  paramName,
+		IsParam:    true,
+		IsOptional: isWildCard || pattern[parameterEndPosition] == optionalParam,
+		IsGreedy:   isWildCard || isPlusParam,
+	}
+}
+
+// isInCharset check is the given character in the charset list
+func isInCharset(searchChar byte, charset []byte) bool {
+	for _, char := range charset {
+		if char == searchChar {
+			return true
+		}
+	}
+	return false
+}
+
+// findNextCharsetPosition search the next char position from the charset
+func findNextCharsetPosition(search string, charset []byte) int {
 	nextPosition := -1
-	for _, delimiter := range routeDelimiter {
-		if pos := strings.IndexByte(search, delimiter); pos != -1 && (pos < nextPosition || nextPosition == -1) {
+	for _, char := range charset {
+		if pos := strings.IndexByte(search, char); pos != -1 && (pos < nextPosition || nextPosition == -1) {
 			nextPosition = pos
 		}
 	}
@@ -107,143 +227,94 @@ func findNextRouteSegmentEnd(search string) int {
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
-func (p *routeParser) getMatch(s string, partialCheck bool) ([][2]int, bool) {
-	lenKeys := len(p.params)
-	paramsPositions := getAllocFreeParamsPos(lenKeys)
-	var i, j, paramsIterator, partLen, paramStart int
-	if len(s) > 0 {
-		s = s[1:]
-		paramStart++
-	}
-	for index, segment := range p.segs {
+func (routeParser *routeParser) getMatch(s, original string, params *[maxParams]string, partialCheck bool) bool {
+	var i, paramsIterator, partLen int
+	for _, segment := range routeParser.segs {
 		partLen = len(s)
-		// check parameter
-		if segment.IsParam {
-			// determine parameter length
-			if segment.Param == wildcardParam {
-				if segment.IsLast {
-					i = partLen
-				} else {
-					i = findWildcardParamLen(s, p.segs, index)
-				}
-			} else {
-				i = strings.IndexByte(s, segment.EndChar)
+		// check const segment
+		if !segment.IsParam {
+			i = segment.Length
+			// is optional part or the const part must match with the given string
+			// check if the end of the segment is a optional slash
+			if segment.HasOptionalSlash && partLen == i-1 && s == segment.Const[:i-1] {
+				i--
+			} else if !(i <= partLen && s[:i] == segment.Const) {
+				return false
 			}
-			if i == -1 {
-				i = partLen
-			}
-
-			if !segment.IsOptional && i == 0 {
-				return nil, false
-				// special case for not slash end character
-			} else if i > 0 && partLen >= i && segment.EndChar != '/' && s[i-1] == '/' {
-				return nil, false
-			}
-
-			paramsPositions[paramsIterator][0], paramsPositions[paramsIterator][1] = paramStart, paramStart+i
-			paramsIterator++
 		} else {
-			// check const segment
-			i = len(segment.Const)
-			if partLen < i || (i == 0 && partLen > 0) || s[:i] != segment.Const || (partLen > i && s[i] != segment.EndChar) {
-				return nil, false
+			// determine parameter length
+			i = findParamLen(s, segment)
+			if !segment.IsOptional && i == 0 {
+				return false
 			}
+			// take over the params positions
+			params[paramsIterator] = original[:i]
+			paramsIterator++
 		}
 
 		// reduce founded part from the string
 		if partLen > 0 {
-			j = i + 1
-			if segment.IsLast || partLen < j {
-				j = i
-			}
-			paramStart += j
-
-			s = s[j:]
+			s, original = s[i:], original[i:]
 		}
 	}
 	if len(s) != 0 && !partialCheck {
-		return nil, false
+		return false
 	}
 
-	return paramsPositions, true
+	return true
 }
 
-// paramsForPos get parameters for the given positions from the given path
-func (p *routeParser) paramsForPos(path string, paramsPositions [][2]int) []string {
-	size := len(paramsPositions)
-	params := getAllocFreeParams(size)
-	for i, positions := range paramsPositions {
-		if positions[0] != positions[1] && len(path) >= positions[1] {
-			params[i] = path[positions[0]:positions[1]]
-		} else {
-			params[i] = ""
-		}
-	}
-
-	return params
-}
-
-// findWildcardParamLen for the expressjs wildcard behavior (right to left greedy)
+// findParamLen for the expressjs wildcard behavior (right to left greedy)
 // look at the other segments and take what is left for the wildcard from right to left
-func findWildcardParamLen(s string, segments []paramSeg, currIndex int) int {
-	// "/api/*/:param" - "/api/joker/batman/robin/1" -> "joker/batman/robin", "1"
-	// "/api/*/:param" - "/api/joker/batman"         -> "joker", "batman"
-	// "/api/*/:param" - "/api/joker-batman-robin/1" -> "joker-batman-robin", "1"
-	endChar := segments[currIndex].EndChar
-	neededEndChars := 0
-	// count the needed chars for the other segments
-	for i := currIndex + 1; i < len(segments); i++ {
-		if segments[i].EndChar == endChar {
-			neededEndChars++
+func findParamLen(s string, segment *routeSegment) int {
+	if segment.IsLast {
+		return findParamLenForLastSegment(s, segment)
+	}
+
+	if segment.Length != 0 && len(s) >= segment.Length {
+		return segment.Length
+	} else if segment.IsGreedy {
+		// Search the parameters until the next constant part
+		// special logic for greedy params
+		searchCount := strings.Count(s, segment.ComparePart)
+		if searchCount > 1 {
+			return findGreedyParamLen(s, searchCount, segment)
 		}
 	}
-	// remove the part the other segments still need
-	for {
-		pos := strings.LastIndexByte(s, endChar)
-		if pos != -1 {
-			s = s[:pos]
+
+	if len(segment.ComparePart) == 1 {
+		if constPosition := strings.IndexByte(s, segment.ComparePart[0]); constPosition != -1 {
+			return constPosition
 		}
-		neededEndChars--
-		if neededEndChars <= 0 || pos == -1 {
-			break
+	} else if constPosition := strings.Index(s, segment.ComparePart); constPosition != -1 {
+		return constPosition
+	}
+
+	return len(s)
+}
+
+// findParamLenForLastSegment get the length of the parameter if it is the last segment
+func findParamLenForLastSegment(s string, seg *routeSegment) int {
+	if !seg.IsGreedy {
+		if i := strings.IndexByte(s, slashDelimiter); i != -1 {
+			return i
 		}
 	}
 
 	return len(s)
 }
 
-// performance tricks
-// creates predefined arrays that are used to match the request routes so that no allocations need to be made
-var paramsDummy, paramsPosDummy = make([]string, 100000), make([][2]int, 100000)
-
-// positions parameter that moves further and further to the right and remains atomic over all simultaneous requests
-// to assign a separate range to each request
-var startParamList, startParamPosList uint32 = 0, 0
-
-// getAllocFreeParamsPos fetches a slice area from the predefined slice, which is currently not in use
-func getAllocFreeParamsPos(allocLen int) [][2]int {
-	size := uint32(allocLen)
-	start := atomic.AddUint32(&startParamPosList, size)
-	if (start + 10) >= uint32(len(paramsPosDummy)) {
-		atomic.StoreUint32(&startParamPosList, 0)
-		return getAllocFreeParamsPos(allocLen)
+// findGreedyParamLen get the length of the parameter for greedy segments from right to left
+func findGreedyParamLen(s string, searchCount int, segment *routeSegment) int {
+	// check all from right to left segments
+	for i := segment.PartCount; i > 0 && searchCount > 0; i-- {
+		searchCount--
+		if constPosition := strings.LastIndex(s, segment.ComparePart); constPosition != -1 {
+			s = s[:constPosition]
+		} else {
+			break
+		}
 	}
-	start -= size
-	allocLen += int(start)
-	paramsPositions := paramsPosDummy[start:allocLen:allocLen]
-	return paramsPositions
-}
 
-// getAllocFreeParams fetches a slice area from the predefined slice, which is currently not in use
-func getAllocFreeParams(allocLen int) []string {
-	size := uint32(allocLen)
-	start := atomic.AddUint32(&startParamList, size)
-	if (start + 10) >= uint32(len(paramsPosDummy)) {
-		atomic.StoreUint32(&startParamList, 0)
-		return getAllocFreeParams(allocLen)
-	}
-	start -= size
-	allocLen += int(start)
-	params := paramsDummy[start:allocLen:allocLen]
-	return params
+	return len(s)
 }

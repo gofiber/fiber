@@ -2,7 +2,6 @@ package fiber
 
 import (
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -12,40 +11,46 @@ import (
 	"strings"
 	"time"
 
-	utils "github.com/gofiber/utils"
+	"github.com/valyala/fasthttp/reuseport"
+)
+
+const (
+	envPreforkChildKey = "FIBER_PREFORK_CHILD"
+	envPreforkChildVal = "1"
 )
 
 var (
-	flagPrefork = "-prefork"
-	flagChild   = "-prefork-child"
-	isPrefork   bool
-	isChild     bool
+	testPreforkMaster = false
 )
 
-func init() { //nolint:gochecknoinits
-	// Avoid panic when the user adds their own flags and runs `flag.Parse()`
-	flag.BoolVar(&isPrefork, flagPrefork[1:], false, "Prefork")
-	flag.BoolVar(&isChild, flagChild[1:], false, "Child Process")
+// IsChild determines if the current process is a result of Prefork
+func IsChild() bool {
+	return os.Getenv(envPreforkChildKey) == envPreforkChildVal
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
-func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
+func (app *App) prefork(addr string, tlsConfig *tls.Config) (err error) {
 	// 👶 child process 👶
-	if utils.GetArgument(flagChild) {
+	if IsChild() {
 		// use 1 cpu core per child process
 		runtime.GOMAXPROCS(1)
 		var ln net.Listener
-		// SO_REUSEPORT is not supported on Windows, use SO_REUSEADDR instead
-		if ln, err = reuseport("tcp4", addr); err != nil {
-			if !app.Settings.DisableStartupMessage {
+		// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
+		// Only tcp4 or tcp6 is supported when preforking, both are not supported
+		if ln, err = reuseport.Listen("tcp4", addr); err != nil {
+			if !app.config.DisableStartupMessage {
 				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
 			return fmt.Errorf("prefork: %v", err)
 		}
 		// wrap a tls config around the listener if provided
-		if len(tlsconfig) > 0 {
-			ln = tls.NewListener(ln, tlsconfig[0])
+		if tlsConfig != nil {
+			ln = tls.NewListener(ln, tlsConfig)
 		}
+
+		// kill current child proc when master exits
+		go watchMaster()
+
 		// listen for incoming connections
 		return app.server.Serve(ln)
 	}
@@ -66,35 +71,77 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 			_ = proc.Process.Kill()
 		}
 	}()
+
 	// collect child pids
-	pids := []string{}
+	var pids []string
+
 	// launch child procs
 	for i := 0; i < max; i++ {
 		/* #nosec G204 */
-		cmd := exec.Command(os.Args[0], append(os.Args[1:], flagChild)...)
+		cmd := exec.Command(os.Args[0], os.Args[1:]...)
+		if testPreforkMaster {
+			// When test prefork master,
+			// just start the child process with a dummy cmd,
+			// which will exit soon
+			cmd = dummyCmd()
+		}
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
+
+		// add fiber prefork child flag into child proc env
+		cmd.Env = append(os.Environ(),
+			fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
+		)
 		if err = cmd.Start(); err != nil {
-			return fmt.Errorf("failed to start a child prefork process, error: %v\n", err)
+			return fmt.Errorf("failed to start a child prefork process, error: %v", err)
 		}
+
 		// store child process
-		childs[cmd.Process.Pid] = cmd
-		pids = append(pids, strconv.Itoa(cmd.Process.Pid))
+		pid := cmd.Process.Pid
+		childs[pid] = cmd
+		pids = append(pids, strconv.Itoa(pid))
+
 		// notify master if child crashes
 		go func() {
-			channel <- child{cmd.Process.Pid, cmd.Wait()}
+			channel <- child{pid, cmd.Wait()}
 		}()
 	}
 
 	// Print startup message
-	if !app.Settings.DisableStartupMessage {
-		app.startupMessage(addr, len(tlsconfig) > 0, ","+strings.Join(pids, ","))
+	if !app.config.DisableStartupMessage {
+		app.startupMessage(addr, tlsConfig != nil, ","+strings.Join(pids, ","))
 	}
 
 	// return error if child crashes
-	for sig := range channel {
-		return sig.err
-	}
+	return (<-channel).err
+}
 
-	return
+// watchMaster watches child procs
+func watchMaster() {
+	if runtime.GOOS == "windows" {
+		// finds parent process,
+		// and waits for it to exit
+		p, err := os.FindProcess(os.Getppid())
+		if err == nil {
+			_, _ = p.Wait()
+		}
+		os.Exit(1)
+	}
+	// if it is equal to 1 (init process ID),
+	// it indicates that the master process has exited
+	for range time.NewTicker(time.Millisecond * 500).C {
+		if os.Getppid() == 1 {
+			os.Exit(1)
+		}
+	}
+}
+
+var dummyChildCmd = "go"
+
+// dummyCmd is for internal prefork testing
+func dummyCmd() *exec.Cmd {
+	if runtime.GOOS == "windows" {
+		return exec.Command("cmd", "/C", dummyChildCmd, "version")
+	}
+	return exec.Command(dummyChildCmd, "version")
 }

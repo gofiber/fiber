@@ -57,7 +57,7 @@
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
-    <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-91%25-75C46B.svg?style=flat">
+    <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-97.8%25-75C46B.svg?style=flat">
   </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3AGosec">
     <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Security?label=%F0%9F%94%91%20gosec&style=flat&color=75C46B">
@@ -81,16 +81,16 @@
 ```go
 package main
 
-import "github.com/gofiber/fiber"
+import "github.com/gofiber/fiber/v2"
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Get("/", func(c *fiber.Ctx) {
-    c.Send("Hello, World 👋!")
-  })
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World 👋!")
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
 ```
 
@@ -105,12 +105,12 @@ Esses testes são realizados pelo [TechEmpower](https://www.techempower.com/benc
 
 ## ⚙️ Instalação
 
-Primeiro de tudo, faça o [download](https://golang.org/dl/) e instale o Go. É necessário a versão `1.11` ou superior.
+Primeiro de tudo, faça o [download](https://golang.org/dl/) e instale o Go. É necessário a versão `1.14` ou superior.
 
 A instalação é feita usando o comando [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) :
 
 ```bash
-go get -u github.com/gofiber/fiber/...
+go get github.com/gofiber/fiber/v2/...
 ```
 
 ## 🎯 Recursos
@@ -120,212 +120,216 @@ go get -u github.com/gofiber/fiber/...
 - [Desempenho](https://docs.gofiber.io/benchmarks) extremo
 - [Baixo consumo de memória](https://docs.gofiber.io/benchmarks)
 - [API de rotas](https://docs.gofiber.io/context)
-- Suporte para Middleware e [Next](https://docs.gofiber.io/context#next)
+- Suporte à Middleware e [Next](https://docs.gofiber.io/context#next)
 - Programação [rápida](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) de aplicações de servidor
-- [Template engines](https://github.com/gofiber/template)
-- [WebSocket support](https://docs.gofiber.io/middleware#websocket)
-- [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Available in [15 languages](https://docs.gofiber.io/)
+- [Templates](https://github.com/gofiber/template)
+- [Suporte à WebSockets](https://docs.gofiber.io/middleware#websocket)
+- [Limitador de requisições](https://docs.gofiber.io/middleware#limiter)
+- Disponível em [15 línguas](https://docs.gofiber.io/)
 - E muito mais, [explore o Fiber](https://docs.gofiber.io/)
 
 ## 💡 Filosofia
 
-Os novos gophers que mudaram do [Node.js](https://nodejs.org/en/about/) para o [Go](https://golang.org/doc/) estão tendo que lidar com uma curva de aprendizado antes que possam começar a criar seus aplicativos web ou microsserviços. O Fiber, como um **framework web**, foi criado com a ideia de ser **minimalista** e seguindo o **caminho UNIX**, para que novos gophers possam, rapidamente, entrar no mundo do Go com uma recepção calorosa e confiável.
+Os novos gophers que mudaram do [Node.js](https://nodejs.org/en/about/) para o [Go](https://golang.org/doc/) estão tendo que lidar com uma curva de aprendizado antes que possam começar a criar seus aplicativos web ou microsserviços. O Fiber, como um **framework web**, foi criado com a ideia de ser **minimalista** e seguindo a **filosofia UNIX**, para que novos gophers possam, rapidamente, entrar no mundo do Go com uma recepção calorosa e confiável.
 
-O Fiber é **inspirado** no Express, o framework web mais popular da Internet. Combinamos a **facilidade** do Express e o **desempenho bruto** do Go. Se você já implementou um aplicativo web com Node.js ( _usando Express.js ou similar_ ), então muitos métodos e princípios parecerão **muito comuns** para você.
+O Fiber é **inspirado** no Express, o framework web mais popular da Internet. Combinamos a **facilidade** do Express e com o **desempenho bruto** do Go.  Se você já implementou um aplicativo web com Node.js ( _usando Express.js ou similar_ ), então muitos métodos e princípios parecerão **muito familiares** para você.
 
 ## 👀 Exemplos
 
-Listados abaixo estão alguns exemplos comuns. Se você quiser ver mais exemplos de código, visite nosso [repositório de receitas](https://github.com/gofiber/recipes) ou a [documentação da API](https://docs.gofiber.io).
+Listados abaixo estão alguns exemplos comuns. Se você quiser ver mais exemplos de código,
+visite nosso [repositório de receitas](https://github.com/gofiber/recipes) ou
+a [documentação da API](https://docs.gofiber.io).
 
-Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
-
-#### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
+#### 📖 [**Roteamento básico**](https://docs.gofiber.io/#basic-routing)
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  // GET /john
-  app.Get("/:name", func(c *fiber.Ctx) {
-    msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
-    c.Send(msg) // => Hello john 👋!
-  })
+	// GET /john
+	app.Get("/:name", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
+		return c.SendString(msg) // => Hello john 👋!
+	})
 
-  // GET /john/75
-  app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) {
-    msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
-    c.Send(msg) // => 👴 john is 75 years old
-  })
+	// GET /john/75
+	app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
+		return c.SendString(msg) // => 👴 john is 75 years old
+	})
 
-  // GET /dictionary.txt
-  app.Get("/:file.:ext", func(c *fiber.Ctx) {
-    msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
-    c.Send(msg) // => 📃 dictionary.txt
-  })
+	// GET /dictionary.txt
+	app.Get("/:file.:ext", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
+		return c.SendString(msg) // => 📃 dictionary.txt
+	})
 
-  // GET /flights/LAX-SFO
-  app.Get("/flights/:from-:to", func(c *fiber.Ctx) {
-    msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
-    c.Send(msg) // => 💸 From: LAX, To: SFO
-  })
+	// GET /flights/LAX-SFO
+	app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
+		return c.SendString(msg) // => 💸 From: LAX, To: SFO
+	})
 
-  // GET /api/register
-  app.Get("/api/*", func(c *fiber.Ctx) {
-    msg := fmt.Sprintf("✋ %s", c.Params("*"))
-    c.Send(msg) // => ✋ /api/register
-  })
+	// GET /api/register
+	app.Get("/api/*", func(c *fiber.Ctx) error {
+		msg := fmt.Sprintf("✋ %s", c.Params("*"))
+		return c.SendString(msg) // => ✋ /api/register
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
+
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Servindo arquivos estáticos**](https://docs.gofiber.io/application#static)
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Static("/", "./public")
-  // => http://localhost:3000/js/script.js
-  // => http://localhost:3000/css/style.css
+	app.Static("/", "./public")
+	// => http://localhost:3000/js/script.js
+	// => http://localhost:3000/css/style.css
 
-  app.Static("/prefix", "./public")
-  // => http://localhost:3000/prefix/js/script.js
-  // => http://localhost:3000/prefix/css/style.css
+	app.Static("/prefix", "./public")
+	// => http://localhost:3000/prefix/js/script.js
+	// => http://localhost:3000/prefix/css/style.css
 
-  app.Static("*", "/public/index.html")
-  // => http://localhost:3000/any/path/shows/index/html
+	app.Static("*", "./public/index.html")
+	// => http://localhost:3000/any/path/shows/index/html
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
+
 ```
 
 #### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  // Match any route
-  app.Use(func(c *fiber.Ctx) {
-    fmt.Println("🥇 First handler")
-    c.Next()
-  })
+	// Match any route
+	app.Use(func(c *fiber.Ctx) error {
+		fmt.Println("🥇 First handler")
+		return c.Next()
+	})
 
-  // Match all routes starting with /api
-  app.Use("/api", func(c *fiber.Ctx) {
-    fmt.Println("🥈 Second handler")
-    c.Next()
-  })
+	// Match all routes starting with /api
+	app.Use("/api", func(c *fiber.Ctx) error {
+		fmt.Println("🥈 Second handler")
+		return c.Next()
+	})
 
-  // GET /api/register
-  app.Get("/api/list", func(c *fiber.Ctx) {
-    fmt.Println("🥉 Last handler")
-    c.Send("Hello, World 👋!")
-  })
+	// GET /api/register
+	app.Get("/api/list", func(c *fiber.Ctx) error {
+		fmt.Println("🥉 Last handler")
+		return c.SendString("Hello, World 👋!")
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
+
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 Mostrar mais exemplos</summary>
 
-### Views engines
+### Engines de visualização
 
 📖 [Settings](https://docs.gofiber.io/application#settings)
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/context#render)
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
+O Fiber usa por padrão o [html/template](https://golang.org/pkg/html/template/) quando nenhuma engine é selecionada.
 
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
-
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
+Se você quiser uma execução parcial ou usar uma engine diferente como [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) ou [pug](https://github.com/Joker/jade) etc.. Dê uma olhada no package [Template](https://github.com/gofiber/template) que suporta multiplas engines de visualização.
 
 ```go
+package main
+
 import (
-  "github.com/gofiber/fiber"
-  "github.com/gofiber/template/pug"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/template/pug"
 )
 
 func main() {
-  // You can setup Views engine before initiation app:
-  app := fiber.New(&fiber.Settings{
-    Views: pug.New("./views", ".pug"),
-  })
+	// You can setup Views engine before initiation app:
+	app := fiber.New(fiber.Config{
+		Views: pug.New("./views", ".pug"),
+	})
 
-  // OR after initiation app at any convenient location:
-  app.Settings.Views = pug.New("./views", ".pug"),
+	// And now, you can call template `./views/home.pug` like this:
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.Render("home", fiber.Map{
+			"title": "Homepage",
+			"year":  1999,
+		})
+	})
 
-  // And now, you can call template `./views/home.pug` like this:
-  app.Get("/", func(c *fiber.Ctx) {
-    c.Render("home", fiber.Map{
-      "title": "Homepage",
-      "year":  1999,
-    })
-  })
-
-  // ...
+	app.Listen(":3000")
 }
 ```
 
-### Grouping routes into chains
+### Agrupamento de rotas
 
 📖 [Group](https://docs.gofiber.io/application#group)
 
 ```go
-func main() {
-  app := fiber.New()
-
-  // Root API route
-  api := app.Group("/api", cors())  // /api
-
-  // API v1 routes
-  v1 := api.Group("/v1", mysql())   // /api/v1
-  v1.Get("/list", handler)          // /api/v1/list
-  v1.Get("/user", handler)          // /api/v1/user
-
-  // API v2 routes
-  v2 := api.Group("/v2", mongodb()) // /api/v2
-  v2.Get("/list", handler)          // /api/v2/list
-  v2.Get("/user", handler)          // /api/v2/user
-
-  // ...
+func middleware(c *fiber.Ctx) error {
+	fmt.Println("Don't mind me!")
+	return c.Next()
 }
+
+func handler(c *fiber.Ctx) error {
+	return c.SendString(c.Path())
+}
+
+func main() {
+	app := fiber.New()
+
+	// Root API route
+	api := app.Group("/api", middleware) // /api
+
+	// API v1 routes
+	v1 := api.Group("/v1", middleware) // /api/v1
+	v1.Get("/list", handler)           // /api/v1/list
+	v1.Get("/user", handler)           // /api/v1/user
+
+	// API v2 routes
+	v2 := api.Group("/v2", middleware) // /api/v2
+	v2.Get("/list", handler)           // /api/v2/list
+	v2.Get("/user", handler)           // /api/v2/user
+
+	// ...
+}
+
 ```
 
-### Middleware logger
+### Middleware Logger
 
 📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
 
 ```go
+package main
+
 import (
-  "github.com/gofiber/fiber"
-  "github.com/gofiber/fiber/middleware"
+	"log"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/logger"
 )
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  // Default
-  app.Use(middleware.Logger())
+	app.Use(logger.New())
 
-  // Custom logging format
-  app.Use(middleware.Logger("${method} - ${path}"))
+	// ...
 
-  // Custom Config
-  app.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-    Next: func(ctx *fiber.Ctx) bool {
-      return ctx.Path() != "/private"
-    },
-    Format: "${method} - ${path}",
-    Output: io.Writer,
-  }))
-
-  app.Listen(3000)
+	log.Fatal(app.Listen(":3000"))
 }
+```
 
 ### Cross-Origin Resource Sharing (CORS)
 
@@ -333,91 +337,94 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/cors"
+	"log"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 )
 
 func main() {
-    app := fiber.New()
+	app := fiber.New()
 
-    // CORS with default config
-    app.Use(cors.New())
+	app.Use(cors.New())
 
-    app.Listen(3000)
+	// ...
+
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+Verifique o CORS passando qualquer domínio no header `Origin`:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
-### Custom 404 response
+### Resposta 404 customizada
 
 📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)
 
 ```go
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Static("./public")
+	app.Static("/", "./public")
 
-  app.Get("/demo", func(c *fiber.Ctx) {
-    c.Send("This is a demo!")
-  })
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		return c.SendString("This is a demo!")
+	})
 
-  app.Post("/register", func(c *fiber.Ctx) {
-    c.Send("Welcome!")
-  })
+	app.Post("/register", func(c *fiber.Ctx) error {
+		return c.SendString("Welcome!")
+	})
 
-  // Last middleware to match anything
-  app.Use(func(c *fiber.Ctx) {
-    c.SendStatus(404)
-    // => 404 "Not Found"
-  })
+	// Last middleware to match anything
+	app.Use(func(c *fiber.Ctx) error {
+		return c.SendStatus(404)
+		// => 404 "Not Found"
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
 ```
 
-### JSON Response
+### Resposta JSON
 
 📖 [JSON](https://docs.gofiber.io/context#json)
 
 ```go
 type User struct {
-  Name string `json:"name"`
-  Age  int    `json:"age"`
+	Name string `json:"name"`
+	Age  int    `json:"age"`
 }
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Get("/user", func(c *fiber.Ctx) {
-    c.JSON(&User{"John", 20})
-    // => {"name":"John", "age":20}
-  })
+	app.Get("/user", func(c *fiber.Ctx) error {
+		return c.JSON(&User{"John", 20})
+		// => {"name":"John", "age":20}
+	})
 
-  app.Get("/json", func(c *fiber.Ctx) {
-    c.JSON(fiber.Map{
-      "success": true,
-      "message": "Hi John!",
-    })
-    // => {"success":true, "message":"Hi John!"}
-  })
+	app.Get("/json", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"success": true,
+			"message": "Hi John!",
+		})
+		// => {"success":true, "message":"Hi John!"}
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
 ```
 
-### WebSocket Upgrade
+### WebSocket
 
 📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
 
 ```go
 import (
-    "github.com/gofiber/fiber"
+    "github.com/gofiber/fiber/v2"
     "github.com/gofiber/websocket"
 )
 
@@ -440,64 +447,69 @@ func main() {
     }
   }))
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(":3000"))
   // ws://localhost:3000/ws
 }
 ```
 
-### Recover middleware
+### Middleware Recover
 
 📖 [Recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)
 
 ```go
 import (
-    "github.com/gofiber/fiber"
-    "github.com/gofiber/fiber/middleware"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/recover"
 )
 
 func main() {
-  app := fiber.New()
+	app := fiber.New()
 
-  app.Use(middleware.Recover())
+	app.Use(recover.New())
 
-  app.Get("/", func(c *fiber.Ctx) {
-    panic("normally this would crash your app")
-  })
+	app.Get("/", func(c *fiber.Ctx) error {
+		panic("normally this would crash your app")
+	})
 
-  app.Listen(3000)
+	app.Listen(":3000")
 }
 ```
 </details>
 
-## 🧬 Fiber Middleware
+## 🧬 Internal Middleware
 
-The Fiber middleware modules listed here are maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+Here is a list of middleware that are included within the Fiber framework.
 
-| Middleware | Description | Built-in middleware |
+| Middleware | Description |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. |
+| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors) | Enable cross-origin resource sharing \(CORS\) with various options. |
+| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf) | Protect from CSRF exploits. |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary |
+| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon) | Ignore favicon from logs or serve from memory if a file path is provided. |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter) | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset. |
+| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger) | HTTP request/response logger. |
+| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof) | Special thanks to Matthew Lee \(@mthli\) |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover) | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md). |
+
+## 🧬 External Middleware
+
+List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+
+| Middleware | Description |
 | :--- | :--- | :--- |
-| [adaptor](https://github.com/gofiber/adaptor) | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn! | - |
-| [basicauth](https://github.com/gofiber/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. | - |
-| [compress](https://github.com/gofiber/fiber/blob/master/middleware/compress.md) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. | `middleware.Compress()` |
-| [cors](https://github.com/gofiber/cors) | Enable cross-origin resource sharing \(CORS\) with various options. | - |
-| [csrf](https://github.com/gofiber/csrf) | Protect from CSRF exploits. | - |
-| [filesystem](https://github.com/gofiber/fiber/blob/master/middleware/filesystem.md) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary | - |
-| [favicon](https://github.com/gofiber/fiber/blob/master/middleware/favicon.md) | Ignore favicon from logs or serve from memory if a file path is provided. | `middleware.Favicon()` |
-| [helmet](https://github.com/gofiber/helmet) | Helps secure your apps by setting various HTTP headers. | - |
-| [jwt](https://github.com/gofiber/jwt) | JWT returns a JSON Web Token \(JWT\) auth middleware. | - |
-| [keyauth](https://github.com/gofiber/keyauth) | Key auth middleware provides a key based authentication. | - |
-| [limiter](https://github.com/gofiber/limiter) | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset. | - |
-| [logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md) | HTTP request/response logger. | `middleware.Logger()` |
-| [pprof](https://github.com/gofiber/pprof) | Special thanks to Matthew Lee \(@mthli\) | - |
-| [recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md) | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md). | `middleware.Recover()` |
-| [rewrite](https://github.com/gofiber/rewrite) | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. | - |
-| [requestid](https://github.com/gofiber/fiber/blob/master/middleware/request_id.md) | Request ID middleware generates a unique id for a request. | `middleware.RequestID()` |
-| [session](https://github.com/gofiber/session) | This session middleware is build on top of fasthttp/session by @savsgio MIT. Special thanks to @thomasvvugt for helping with this middleware. | - |
-| [template](https://github.com/gofiber/template) | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required. | - |
-| [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support! | - |
+| [adaptor](https://github.com/gofiber/adaptor) | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn! |
+| [helmet](https://github.com/gofiber/helmet) | Helps secure your apps by setting various HTTP headers. |
+| [jwt](https://github.com/gofiber/jwt) | JWT returns a JSON Web Token \(JWT\) auth middleware. |
+| [keyauth](https://github.com/gofiber/keyauth) | Key auth middleware provides a key based authentication. |
+| [rewrite](https://github.com/gofiber/rewrite) | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. |
+| [session](https://github.com/gofiber/session) | This session middleware is build on top of fasthttp/session by @savsgio MIT. Special thanks to @thomasvvugt for helping with this middleware. |
+| [template](https://github.com/gofiber/template) | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required. |
+| [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support! |
 
-## 🌱 Third Party Middlewares
+## 🌱 Middlewares Third Party
 
-This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+Esta é uma lista de middlewares criados pela comunidade do Fiber, se quiser ter o seu middleware aqui, é só abrir um PR!
 - [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
@@ -507,27 +519,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
 - [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
 - [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
-
-## 💬 Mídia
-
-<p float="left" align="middle">
-  <a href="https://www.youtube.com/watch?v=Iq2qT0fRhAA"><img src="https://img.youtube.com/vi/Iq2qT0fRhAA/mqdefault.jpg" width="49%" style="border-radius:4px"></a>
-   <a href="https://www.youtube.com/watch?v=kvwsPeWDLM8"><img src="https://img.youtube.com/vi/kvwsPeWDLM8/mqdefault.jpg" width="49%" style="border-radius:4px"></a>
-</p>
-
-- [Welcome to Fiber — an Express.js styled web framework written in Go with ❤️](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) — _03 Feb 2020_
-- [Fiber released v1.7! 🎉 What's new and is it still fast, flexible and friendly?](https://dev.to/koddr/fiber-v2-is-out-now-what-s-new-and-is-he-still-fast-flexible-and-friendly-3ipf) — _21 Feb 2020_
-- [🚀 Fiber v1.8. What's new, updated and re-thinked?](https://dev.to/koddr/fiber-v1-8-what-s-new-updated-and-re-thinked-339h) — _03 Mar 2020_
-- [Is switching from Express to Fiber worth it? 🤔](https://dev.to/koddr/are-sure-what-your-lovely-web-framework-running-so-fast-2jl1) — _01 Apr 2020_
-- [Creating Fast APIs In Go Using Fiber](https://dev.to/jozsefsallai/creating-fast-apis-in-go-using-fiber-59m9) — _07 Apr 2020_
-- [Building a Basic REST API in Go using Fiber](https://tutorialedge.net/golang/basic-rest-api-go-fiber/) - _23 Apr 2020_
-- [📺 Building a REST API using GORM and Fiber](https://youtu.be/Iq2qT0fRhAA) - _25 Apr 2020_
-- [🌎 Create a travel list app with Go, Fiber, Angular, MongoDB and Google Cloud Secret Manager](https://blog.yongweilun.me/create-a-travel-list-app-with-go-fiber-angular-mongodb-and-google-cloud-secret-manager-ck9fgxy0p061pcss1xt1ubu8t) - _25 Apr 2020_
-- [Fiber v1.9.6 🔥 How to improve performance by 817% and stay fast, flexible and friendly?](https://dev.to/koddr/fiber-v1-9-5-how-to-improve-performance-by-817-and-stay-fast-flexible-and-friendly-2dp6) - _12 May 2020_
-- [The road to web-based authentication with Fiber ⚡](https://vugt.me/the-road-to-web-based-authentication-with-fiber/) - _20 May 2020_
-- [Building an Express-style API in Go with Fiber](https://blog.logrocket.com/express-style-api-go-fiber/) - _10 June 2020_
-- [Construir una API en Golang con Fiber 🇪🇸](https://enbonnet.me/article/53/construir-api-golang-con-fiber) - _28 June 2020_
-- [📺Why Go Fiber Is THE New Framework To Learn](https://www.youtube.com/watch?v=kvwsPeWDLM8) - _29 June 2020_
+- [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
 
 ## 👍 Contribuindo
 
@@ -536,16 +528,16 @@ Se você quer **agradecer** e/ou apoiar o desenvolvimento ativo do `Fiber`:
 1. Deixe uma [estrela no GitHub](https://github.com/gofiber/fiber/stargazers) do projeto.
 2. Tweet sobre o projeto [no seu Twitter](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Escreva um review ou tutorial no [Medium](https://medium.com/), [Dev.to](https://dev.to/) ou blog pessoal.
-4. Help us to translate our API Documentation via [Crowdin](https://crowdin.com/project/gofiber) [![Crowdin](https://badges.crowdin.net/gofiber/localized.svg)](https://crowdin.com/project/gofiber)
-5. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+4. Apoie o projeto pagando uma [xícara de café](https://buymeacoff.ee/fenny).
 
-## ☕ Supporters
+## ☕ Apoiadores
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny).
+Fiber é um projeto open source que usa de doações para pagar seus custos (domínio, GitBook, Netlify e hospedagem serverless). Se você quiser apoiar o projeto, você pode ☕ [**pagar um café**](https://buymeacoff.ee/fenny).
 
 |                                                             | User                                             | Donation |
 | :---------------------------------------------------------- | :----------------------------------------------- | :-------- |
 | ![](https://avatars.githubusercontent.com/u/204341?s=25 )   | [@destari](https://github.com/destari)           | ☕ x 10   |
+| ![](https://avatars.githubusercontent.com/u/63164982?s=25 ) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/56607882?s=25 ) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/27820675?s=25 ) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5    |
 | ![](https://avatars.githubusercontent.com/u/1094221?s=25 )  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5    |
@@ -564,7 +556,7 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt)  | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy)             | ☕ x 1    |
 
-## ‎‍💻 Code Contributors
+## ‎‍💻 Contribuidores de código
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
@@ -572,12 +564,17 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
-## ⚠️ License
+## ⚠️ Licença
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+Todos os direitos reservados (c) 2019-presente [Fenny](https://github.com/fenny) e [Contribuidores](https://github.com/gofiber/fiber/graphs/contributors). 
+`Fiber` é software livre e aberto sob a [licença MIT](https://github.com/gofiber/fiber/blob/master/LICENSE). 
+O logo oficial foi criado por [Vic Shóstak](https://github.com/koddr) e distribuído sob a licença [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0 International).
 
-**Third-party library licenses**
+**Licença das bibliotecas de terceiros**
 - [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+- [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 - [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
+- [encoding](https://github.com/segmentio/encoding/blob/master/LICENSE)
+- [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 - [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 - [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)

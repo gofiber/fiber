@@ -16,13 +16,13 @@ assignees: ''
 ```go
 package main
 
-import "github.com/gofiber/fiber"
+import "github.com/gofiber/fiber/v2"
 
 func main() {
   app := fiber.New()
 
   // Steps to reproduce
 
-  app.Listen(3000)
+  log.Fatal(app.Listen(":3000"))
 }
 ```
