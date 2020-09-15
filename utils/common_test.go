@@ -24,6 +24,24 @@ func Test_Utils_UUID(t *testing.T) {
 	t.Parallel()
 	res := UUID()
 	AssertEqual(t, 36, len(res))
+	AssertEqual(t, true, res != "00000000-0000-0000-0000-000000000000")
+}
+
+func Test_Utils_UUID_Concurrency(t *testing.T) {
+	iterations := 100
+	var res string
+	ch := make(chan string, iterations)
+	results := make(map[string]string)
+	for i := 0; i < iterations; i++ {
+		go func() {
+			ch <- UUID()
+		}()
+	}
+	for i := 0; i < iterations; i++ {
+		res = <-ch
+		results[res] = res
+	}
+	AssertEqual(t, iterations, len(results))
 }
 
 // go test -v -run=^$ -bench=Benchmark_UUID -benchmem -count=2

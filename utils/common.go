@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"reflect"
 	"runtime"
+	"sync"
 	"sync/atomic"
 )
 
@@ -22,14 +23,18 @@ const toUpperTable = "\x00\x01\x02\x03\x04\x05\x06\a\b\t\n\v\f\r\x0e\x0f\x10\x11
 
 var uuidSeed [24]byte
 var uuidCounter uint64
+var uuidSetup sync.Once
 
 func UUID() string {
 	// Setup seed & counter once
-	if uuidCounter <= 0 {
+	uuidSetup.Do(func() {
 		if _, err := rand.Read(uuidSeed[:]); err != nil {
-			return "00000000-0000-0000-0000-000000000000"
+			return
 		}
 		uuidCounter = binary.LittleEndian.Uint64(uuidSeed[:8])
+	})
+	if uuidCounter <= 0 {
+		return "00000000-0000-0000-0000-000000000000"
 	}
 	// first 8 bytes differ, taking a slice of the first 16 bytes
 	x := atomic.AddUint64(&uuidCounter, 1)
