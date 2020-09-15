@@ -706,9 +706,9 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		addr = "https://" + host + ":" + port
 	}
 
-	isPrefork := "disabled"
+	isPrefork := "Disabled"
 	if app.config.Prefork {
-		isPrefork = "enabled"
+		isPrefork = "Enabled"
 	}
 
 	out := colorable.NewColorableStdout()

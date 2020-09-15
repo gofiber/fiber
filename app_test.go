@@ -433,15 +433,29 @@ func Test_App_New(t *testing.T) {
 	appConfig.Get("/", testEmptyHandler)
 }
 
-func Test_App_Shutdown(t *testing.T) {
+func Test_App_Config(t *testing.T) {
 	app := New(Config{
 		DisableStartupMessage: true,
 	})
-	if err := app.Shutdown(); err != nil {
-		if err.Error() != "shutdown: server is not running" {
-			t.Fatal()
+	utils.AssertEqual(t, true, app.Config().DisableStartupMessage)
+}
+
+func Test_App_Shutdown(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		app := New(Config{
+			DisableStartupMessage: true,
+		})
+		utils.AssertEqual(t, true, app.Shutdown() == nil)
+	})
+
+	t.Run("no server", func(t *testing.T) {
+		app := &App{}
+		if err := app.Shutdown(); err != nil {
+			if err.Error() != "shutdown: server is not running" {
+				t.Fatal()
+			}
 		}
-	}
+	})
 }
 
 // go test -run Test_App_Static_Index_Default
@@ -750,7 +764,9 @@ func Test_App_Next_Method(t *testing.T) {
 
 // go test -run Test_App_Listen
 func Test_App_Listen(t *testing.T) {
-	app := New()
+	app := New(Config{DisableStartupMessage: true})
+
+	utils.AssertEqual(t, false, app.Listen(":99999") == nil)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
@@ -758,13 +774,6 @@ func Test_App_Listen(t *testing.T) {
 	}()
 
 	utils.AssertEqual(t, nil, app.Listen(":4003"))
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	utils.AssertEqual(t, nil, app.Listen(":4010"))
 }
 
 // go test -run Test_App_Listener
@@ -989,4 +998,9 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 	}()
 
 	utils.AssertEqual(t, nil, app.Listen(":4006"))
+}
+
+func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
+	New(Config{Prefork: true}).
+		startupMessage(":3000", true, "")
 }
