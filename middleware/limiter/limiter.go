@@ -3,6 +3,7 @@ package limiter
 import (
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -91,7 +92,9 @@ func New(config ...Config) fiber.Handler {
 	var max = strconv.Itoa(cfg.Max)
 	var hits = make(map[string]int)
 	var reset = make(map[string]int)
-	var timestamp = int(time.Now().Unix())
+	// var timestamp = int(time.Now().Unix())
+	var timestamp atomic.Value
+	timestamp.Store(int(time.Now().Unix()))
 	var duration = int(cfg.Duration.Seconds())
 
 	// mutex for parallel read and write access
@@ -100,8 +103,8 @@ func New(config ...Config) fiber.Handler {
 	// Update timestamp every second
 	go func() {
 		for {
-			timestamp = int(time.Now().Unix())
-			time.Sleep(1 * time.Second)
+			timestamp.Store(int(time.Now().Unix()))
+			time.Sleep(time.Second)
 		}
 	}()
 
@@ -119,11 +122,12 @@ func New(config ...Config) fiber.Handler {
 		mux.Lock()
 
 		// Set unix timestamp if not exist
+		ts := timestamp.Load().(int)
 		if reset[key] == 0 {
-			reset[key] = timestamp + duration
-		} else if timestamp >= reset[key] {
+			reset[key] = ts + duration
+		} else if ts >= reset[key] {
 			hits[key] = 0
-			reset[key] = timestamp + duration
+			reset[key] = ts + duration
 		}
 
 		// Increment key hits
@@ -133,7 +137,7 @@ func New(config ...Config) fiber.Handler {
 		hitCount := hits[key]
 
 		// Calculate when it resets in seconds
-		resetTime := reset[key] - timestamp
+		resetTime := reset[key] - ts
 
 		// Unlock map
 		mux.Unlock()
