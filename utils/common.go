@@ -33,7 +33,7 @@ func UUID() string {
 		}
 		uuidCounter = binary.LittleEndian.Uint64(uuidSeed[:8])
 	})
-	if uuidCounter <= 0 {
+	if atomic.LoadUint64(&uuidCounter) <= 0 {
 		return "00000000-0000-0000-0000-000000000000"
 	}
 	// first 8 bytes differ, taking a slice of the first 16 bytes
