@@ -92,7 +92,6 @@ func New(config ...Config) fiber.Handler {
 	var max = strconv.Itoa(cfg.Max)
 	var hits = make(map[string]int)
 	var reset = make(map[string]uint64)
-	// var timestamp = int(time.Now().Unix())
 	var timestamp = uint64(time.Now().Unix())
 	var duration = uint64(cfg.Duration.Seconds())
 
