@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
@@ -55,6 +56,8 @@ func Test_Proxy(t *testing.T) {
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":3001"))
 	}()
+
+	time.Sleep(time.Second)
 
 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
 	utils.AssertEqual(t, nil, err)
@@ -115,6 +118,8 @@ func Test_Proxy_After_With_Error(t *testing.T) {
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":3002"))
 	}()
+
+	time.Sleep(time.Second)
 
 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
 	utils.AssertEqual(t, nil, err)

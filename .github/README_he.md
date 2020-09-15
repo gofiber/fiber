@@ -97,7 +97,7 @@ func main() {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -227,7 +227,7 @@ func main() {
 		return c.SendString(msg) // => ✋ /api/register
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -252,7 +252,7 @@ func main() {
 	app.Static("*", "./public/index.html")
 	// => http://localhost:3000/any/path/shows/index/html
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -284,7 +284,7 @@ func main() {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -330,7 +330,7 @@ func main() {
 		})
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 </div>
@@ -463,7 +463,7 @@ func main() {
 		// => 404 "Not Found"
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 </div>
@@ -496,7 +496,7 @@ func main() {
 		// => {"success":true, "message":"Hi John!"}
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 </div>
@@ -559,7 +559,7 @@ func main() {
 		panic("normally this would crash your app")
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 </div>
@@ -579,6 +579,7 @@ Here is a list of middleware that are included within the Fiber framework.
 <div dir="rtl">
 
 | Middleware | Description |
+| :--- | :--- |
 | [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
 | [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. |
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors) | Enable cross-origin resource sharing \(CORS\) with various options. |
@@ -593,23 +594,30 @@ Here is a list of middleware that are included within the Fiber framework.
 </div>
 
 
-## 🧬 Internal Middleware
+
+<div dir="rtl">
+
+## 🧬 External Middleware
+</div>
+
+<div dir="rtl">
 
 Here is a list of middleware that are included within the Fiber framework.
+</div>
+
+<div dir="rtl">
+
 
 | Middleware | Description |
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. |
-| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors) | Enable cross-origin resource sharing \(CORS\) with various options. |
-| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf) | Protect from CSRF exploits. |
-| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary |
-| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon) | Ignore favicon from logs or serve from memory if a file path is provided. |
-| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter) | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset. |
-| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger) | HTTP request/response logger. |
-| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof) | Special thanks to Matthew Lee \(@mthli\) |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover) | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md). |
-
-
+| :--- | :--- |
+| [adaptor](https://github.com/gofiber/adaptor) | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn! |
+| [helmet](https://github.com/gofiber/helmet) | Helps secure your apps by setting various HTTP headers. |
+| [jwt](https://github.com/gofiber/jwt) | JWT returns a JSON Web Token \(JWT\) auth middleware. |
+| [keyauth](https://github.com/gofiber/keyauth) | Key auth middleware provides a key based authentication. |
+| [rewrite](https://github.com/gofiber/rewrite) | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. |
+| [session](https://github.com/gofiber/session) | This session middleware is build on top of fasthttp/session by @savsgio MIT. Special thanks to @thomasvvugt for helping with this middleware. |
+| [template](https://github.com/gofiber/template) | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required. |
+| [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support! |
 
 <div dir="rtl">
 
@@ -623,16 +631,17 @@ This is a list of middlewares that are created by the Fiber community, please cr
 
 <div dir="rtl">
 
-- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
-- [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
-- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
-- [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
+- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
-- [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
-- [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
+- [codemicro/fiber-cache](https://github.com/codemicro/fiber-cache)
 - [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
+- [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
+- [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
+- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
+- [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
+- [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 </div>
 
 <div dir="rtl">

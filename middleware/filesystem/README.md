@@ -59,7 +59,7 @@ func main() {
 		Root: packr.New("Assets Box", "/assets"),
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -83,7 +83,7 @@ func main() {
 		Root: rice.MustFindBox("assets").HTTPBox(),
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -107,7 +107,7 @@ func main() {
 		Root: myEmbeddedFiles.HTTP,
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -137,7 +137,7 @@ func main() {
 		Root: statikFS,
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
