@@ -91,11 +91,10 @@ func New(config ...Config) fiber.Handler {
 	// Limiter settings
 	var max = strconv.Itoa(cfg.Max)
 	var hits = make(map[string]int)
-	var reset = make(map[string]int)
+	var reset = make(map[string]uint64)
 	// var timestamp = int(time.Now().Unix())
-	var timestamp atomic.Value
-	timestamp.Store(int(time.Now().Unix()))
-	var duration = int(cfg.Duration.Seconds())
+	var timestamp = uint64(time.Now().Unix())
+	var duration = uint64(cfg.Duration.Seconds())
 
 	// mutex for parallel read and write access
 	mux := &sync.Mutex{}
@@ -103,7 +102,7 @@ func New(config ...Config) fiber.Handler {
 	// Update timestamp every second
 	go func() {
 		for {
-			timestamp.Store(int(time.Now().Unix()))
+			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
 			time.Sleep(time.Second)
 		}
 	}()
@@ -122,7 +121,7 @@ func New(config ...Config) fiber.Handler {
 		mux.Lock()
 
 		// Set unix timestamp if not exist
-		ts := timestamp.Load().(int)
+		ts := atomic.LoadUint64(&timestamp)
 		if reset[key] == 0 {
 			reset[key] = ts + duration
 		} else if ts >= reset[key] {
@@ -149,7 +148,7 @@ func New(config ...Config) fiber.Handler {
 		if remaining < 0 {
 			// Return response with Retry-After header
 			// https://tools.ietf.org/html/rfc6584
-			c.Set(fiber.HeaderRetryAfter, strconv.Itoa(resetTime))
+			c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(resetTime, 10))
 
 			// Call LimitReached handler
 			return cfg.LimitReached(c)
@@ -158,7 +157,7 @@ func New(config ...Config) fiber.Handler {
 		// We can continue, update RateLimit headers
 		c.Set(xRateLimitLimit, max)
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
-		c.Set(xRateLimitReset, strconv.Itoa(resetTime))
+		c.Set(xRateLimitReset, strconv.FormatUint(resetTime, 10))
 
 		// Continue stack
 		return c.Next()
