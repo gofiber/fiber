@@ -97,6 +97,14 @@ func New(config ...Config) fiber.Handler {
 	// mutex for parallel read and write access
 	mux := &sync.Mutex{}
 
+	// Update timestamp every second
+	go func() {
+		for {
+			timestamp = int(time.Now().Unix())
+			time.Sleep(1 * time.Second)
+		}
+	}()
+
 	// Return new handler
 	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
