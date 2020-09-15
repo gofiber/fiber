@@ -5,7 +5,9 @@
 package fiber
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net"
 	"testing"
 	"time"
 
@@ -299,4 +301,46 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
 	utils.AssertEqual(b, true, ok)
+}
+
+func Test_Utils_lnMetadata(t *testing.T) {
+	t.Run("closed listen", func(t *testing.T) {
+		ln, err := net.Listen("tcp", ":0")
+		utils.AssertEqual(t, nil, err)
+
+		utils.AssertEqual(t, nil, ln.Close())
+
+		addr, config := lnMetadata(ln)
+
+		utils.AssertEqual(t, ln.Addr().String(), addr)
+		utils.AssertEqual(t, true, config == nil)
+	})
+
+	t.Run("non tls", func(t *testing.T) {
+		ln, err := net.Listen("tcp", ":0")
+
+		utils.AssertEqual(t, nil, err)
+
+		addr, config := lnMetadata(ln)
+
+		utils.AssertEqual(t, ln.Addr().String(), addr)
+		utils.AssertEqual(t, true, config == nil)
+	})
+
+	t.Run("tls", func(t *testing.T) {
+		cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+		utils.AssertEqual(t, nil, err)
+
+		config := &tls.Config{Certificates: []tls.Certificate{cer}}
+
+		ln, err := net.Listen("tcp4", ":0")
+		utils.AssertEqual(t, nil, err)
+
+		ln = tls.NewListener(ln, config)
+
+		addr, config := lnMetadata(ln)
+
+		utils.AssertEqual(t, ln.Addr().String(), addr)
+		utils.AssertEqual(t, true, config != nil)
+	})
 }
