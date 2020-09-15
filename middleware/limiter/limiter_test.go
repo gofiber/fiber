@@ -2,7 +2,6 @@ package limiter
 
 import (
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -20,13 +19,11 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Max:      100,
-		Duration: 1 * time.Minute,
+		Max:      50,
+		Duration: 2 * time.Second,
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
-		// random delay between the requests
-		time.Sleep(time.Duration(rand.Intn(10000)) * time.Microsecond)
 		return c.SendString("Hello tester!")
 	})
 
@@ -46,12 +43,22 @@ func Test_Limiter_Concurrency(t *testing.T) {
 		}
 	}
 
-	for i := 0; i <= 50; i++ {
+	for i := 0; i <= 49; i++ {
 		wg.Add(1)
 		go singleRequest(&wg)
 	}
 
 	wg.Wait()
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 429, resp.StatusCode)
+
+	time.Sleep(3 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4
