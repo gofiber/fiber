@@ -28,6 +28,7 @@ func Test_Utils_UUID(t *testing.T) {
 }
 
 func Test_Utils_UUID_Concurrency(t *testing.T) {
+	t.Parallel()
 	iterations := 10000
 	var res string
 	ch := make(chan string, iterations)
