@@ -28,7 +28,7 @@ func Test_Utils_UUID(t *testing.T) {
 }
 
 func Test_Utils_UUID_Concurrency(t *testing.T) {
-	iterations := 100
+	iterations := 10000
 	var res string
 	ch := make(chan string, iterations)
 	results := make(map[string]string)
