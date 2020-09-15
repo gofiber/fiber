@@ -31,7 +31,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.0.0"
+const Version = "2.0.1"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
