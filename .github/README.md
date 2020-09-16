@@ -59,7 +59,7 @@
   <a href="https://gocover.io/github.com/gofiber/fiber">
     <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-97.8%25-75C46B.svg?style=flat">
   </a>
-  <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ASecurity">
+  <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ASecurity>
     <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Security?label=%F0%9F%94%91%20gosec&style=flat&color=75C46B">
   </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
@@ -513,17 +513,16 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 ## 🌱 Third Party Middlewares
 
 This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
-- [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
-- [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
-- [codemicro/fiber-cache](https://github.com/codemicro/fiber-cache)
-- [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
-- [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
-- [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
-- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 - [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
+- [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 - [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
+- [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
+- [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
+- [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
+- [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
 
 ## 👍 Contribute
 
