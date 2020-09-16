@@ -81,11 +81,7 @@
 ```go
 package main
 
-import (
-	"log"
-	
-	"github.com/gofiber/fiber/v2"
-)
+import "github.com/gofiber/fiber/v2"
 
 func main() {
 	app := fiber.New()
@@ -94,7 +90,7 @@ func main() {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	log.Fatal(app.Listen(":3000"))
+	app.Listen(":3000")
 }
 ```
 
