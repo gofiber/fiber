@@ -13,6 +13,17 @@ func Test_CORS_Defaults(t *testing.T) {
 	app := fiber.New()
 	app.Use(New())
 
+	testDefaultOrEmptyConfig(t, app)
+}
+
+func Test_CORS_Empty_Config(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{}))
+
+	testDefaultOrEmptyConfig(t, app)
+}
+
+func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 	h := app.Handler()
 
 	// Test default GET response headers
