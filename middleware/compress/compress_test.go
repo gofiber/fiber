@@ -84,7 +84,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, 10000)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
