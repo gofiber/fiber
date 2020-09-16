@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -50,4 +51,20 @@ func Test_CSRF(t *testing.T) {
 	ctx.Request.Header.Set("X-CSRF-Token", token)
 	h(ctx)
 	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
+}
+
+// go test -run Test_CSRF_Next
+func Test_CSRF_Next(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+	})
+	app.Use(New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }

@@ -95,3 +95,19 @@ func Test_Compress_Brotli(t *testing.T) {
 	}
 	utils.AssertEqual(t, true, len(body) < len(filedata))
 }
+
+// go test -run Test_Compress_Next
+func Test_Compress_Next(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+	})
+	app.Use(New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}

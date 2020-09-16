@@ -44,9 +44,6 @@ func New(config ...Config) fiber.Handler {
 		cfg = config[0]
 
 		// Set default values
-		if cfg.Next == nil {
-			cfg.Next = ConfigDefault.Next
-		}
 		if cfg.Header == "" {
 			cfg.Header = ConfigDefault.Header
 		}
