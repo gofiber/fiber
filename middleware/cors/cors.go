@@ -84,6 +84,9 @@ func New(config ...Config) fiber.Handler {
 		if cfg.AllowMethods == "" {
 			cfg.AllowMethods = ConfigDefault.AllowMethods
 		}
+		if cfg.AllowOrigins == "" {
+			cfg.AllowOrigins = ConfigDefault.AllowOrigins
+		}
 	}
 
 	// Convert string to slice
