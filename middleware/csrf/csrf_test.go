@@ -143,25 +143,23 @@ func Test_CSRF_From_Query(t *testing.T) {
 	utils.AssertEqual(t, "Forbidden", string(ctx.Response.Body()))
 }
 
-// TODO: failed
-//func Test_CSRF_From_Param(t *testing.T) {
-//	app := fiber.New()
-//
-//	app.Use(New(Config{TokenLookup:"param:csrf"}))
-//
-//	app.Post("/:key/:csrf", func(c *fiber.Ctx) error {
-//		t.Log(c.Params("csrf"))
-//		return c.SendStatus(fiber.StatusOK)
-//	})
-//
-//	h := app.Handler()
-//	ctx := &fasthttp.RequestCtx{}
-//
-//	// Valid CSRF token
-//	token := utils.UUID()
-//	ctx.Request.Header.SetMethod("POST")
-//	ctx.Request.Header.Set(fiber.HeaderCookie, "_csrf="+token)
-//	ctx.Request.SetRequestURI("/key/" + token)
-//	h(ctx)
-//	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
-//}
+func Test_CSRF_From_Param(t *testing.T) {
+	app := fiber.New()
+
+	csrfGroup := app.Group("/:csrf", New(Config{TokenLookup: "param:csrf"}))
+
+	csrfGroup.Post("/", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	// Valid CSRF token
+	token := utils.UUID()
+	ctx.Request.Header.SetMethod("POST")
+	ctx.Request.Header.Set(fiber.HeaderCookie, "_csrf="+token)
+	ctx.Request.SetRequestURI("/" + token)
+	h(ctx)
+	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
+}
