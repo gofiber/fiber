@@ -11,6 +11,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/internal/fasttemplate"
+	"github.com/valyala/fasthttp"
 )
 
 // Config defines the config for middleware.
@@ -210,13 +211,13 @@ func New(config ...Config) fiber.Handler {
 			case TagBody:
 				return buf.Write(c.Body())
 			case TagBytesReceived:
-				return buf.WriteString(strconv.Itoa(len(c.Request().Body())))
+				return appendInt(buf, len(c.Request().Body()))
 			case TagBytesSent:
-				return buf.WriteString(strconv.Itoa(len(c.Response().Body())))
+				return appendInt(buf, len(c.Response().Body()))
 			case TagRoute:
 				return buf.WriteString(c.Route().Path)
 			case TagStatus:
-				return buf.WriteString(strconv.Itoa(c.Response().StatusCode()))
+				return appendInt(buf, c.Response().StatusCode())
 			case TagMethod:
 				return buf.WriteString(c.Method())
 			case TagBlack:
@@ -274,4 +275,10 @@ func New(config ...Config) fiber.Handler {
 
 		return nil
 	}
+}
+
+func appendInt(buf *bytebufferpool.ByteBuffer, v int) (int, error) {
+	old := len(buf.B)
+	buf.B = fasthttp.AppendUint(buf.B, v)
+	return len(buf.B) - old, nil
 }
