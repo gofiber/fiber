@@ -42,7 +42,13 @@ func Test_CORS_Wildcard(t *testing.T) {
 	handler := app.Handler()
 
 	// OPTIONS (preflight) response headers when AllowOrigins is *
-	app.Use(New(Config{AllowOrigins: "*", AllowCredentials: true, MaxAge: 3600}))
+	app.Use(New(Config{
+		AllowOrigins:     "*",
+		AllowCredentials: true,
+		MaxAge:           3600,
+		ExposeHeaders:    "X-Request-ID",
+		AllowHeaders:     "Authentication",
+	}))
 
 	// Make request
 	ctx := &fasthttp.RequestCtx{}
@@ -57,6 +63,16 @@ func Test_CORS_Wildcard(t *testing.T) {
 	utils.AssertEqual(t, "localhost", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 	utils.AssertEqual(t, "true", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	utils.AssertEqual(t, "3600", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
+	utils.AssertEqual(t, "Authentication", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
+
+	// Test non OPTIONS (preflight) response headers
+	ctx = &fasthttp.RequestCtx{}
+	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	handler(ctx)
+
+	utils.AssertEqual(t, "true", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
+	utils.AssertEqual(t, "X-Request-ID", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
+
 }
 
 // go test -run -v Test_CORS_Subdomain
