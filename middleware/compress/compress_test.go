@@ -1,6 +1,7 @@
 package compress
 
 import (
+	"errors"
 	"io/ioutil"
 	"net/http/httptest"
 	"testing"
@@ -23,7 +24,7 @@ func init() {
 func Test_Compress_Gzip(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New())
+	app.Use(New(Config{Level: 10}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
@@ -49,7 +50,7 @@ func Test_Compress_Gzip(t *testing.T) {
 func Test_Compress_Deflate(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New())
+	app.Use(New(Config{Level: LevelBestSpeed}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.Send(filedata)
@@ -74,7 +75,7 @@ func Test_Compress_Deflate(t *testing.T) {
 func Test_Compress_Brotli(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New())
+	app.Use(New(Config{Level: LevelBestCompression}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.Send(filedata)
@@ -94,6 +95,53 @@ func Test_Compress_Brotli(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 	}
 	utils.AssertEqual(t, true, len(body) < len(filedata))
+}
+
+func Test_Compress_Disabled(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{Level: LevelDisabled}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.Send(filedata)
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Accept-Encoding", "br")
+
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+
+	// Validate the file size is not shrinked
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	utils.AssertEqual(t, true, len(body) == len(filedata))
+}
+
+func Test_Compress_Next_Error(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return errors.New("next error")
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "next error", string(body))
 }
 
 // go test -run Test_Compress_Next
