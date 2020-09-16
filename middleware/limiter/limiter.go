@@ -23,7 +23,7 @@ type Config struct {
 
 	// Duration is the time on how long to keep records of requests in memory
 	//
-	// Default: time.Minute
+	// Default: 1 * time.Minute
 	Duration time.Duration
 
 	// Key allows you to generate custom keys, by default c.IP() is used
@@ -45,7 +45,7 @@ type Config struct {
 var ConfigDefault = Config{
 	Next:     nil,
 	Max:      5,
-	Duration: time.Minute,
+	Duration: 1 * time.Minute,
 	Key: func(c *fiber.Ctx) string {
 		return c.IP()
 	},
@@ -102,7 +102,7 @@ func New(config ...Config) fiber.Handler {
 	go func() {
 		for {
 			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
-			time.Sleep(time.Second)
+			time.Sleep(1 * time.Second)
 		}
 	}()
 
