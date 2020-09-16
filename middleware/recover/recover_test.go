@@ -27,3 +27,19 @@ func Test_Recover(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 }
+
+// go test -run Test_Recover_Next
+func Test_Recover_Next(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+	})
+	app.Use(New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}

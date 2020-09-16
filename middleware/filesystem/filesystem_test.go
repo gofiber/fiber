@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -109,4 +110,21 @@ func Test_FileSystem(t *testing.T) {
 			}
 		})
 	}
+}
+
+// go test -run Test_FileSystem_Next
+func Test_FileSystem_Next(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+	})
+	app.Use(New(Config{
+		Root: http.Dir("../../.github/testdata/fs"),
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }

@@ -81,14 +81,11 @@ func New(config ...Config) fiber.Handler {
 		cfg = config[0]
 
 		// Set default values
-		if cfg.Next == nil {
-			cfg.Next = ConfigDefault.Next
+		if cfg.AllowMethods == "" {
+			cfg.AllowMethods = ConfigDefault.AllowMethods
 		}
 		if cfg.AllowOrigins == "" {
 			cfg.AllowOrigins = ConfigDefault.AllowOrigins
-		}
-		if cfg.AllowMethods == "" {
-			cfg.AllowMethods = ConfigDefault.AllowMethods
 		}
 	}
 

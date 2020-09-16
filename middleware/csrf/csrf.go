@@ -85,6 +85,10 @@ func New(config ...Config) fiber.Handler {
 	// Generate the correct extractor to get the token from the correct location
 	selectors := strings.Split(cfg.TokenLookup, ":")
 
+	if len(selectors) != 2 {
+		panic("csrf: Token lookup must in the form of <source>:<key>")
+	}
+
 	// By default we extract from a header
 	extractor := csrfFromHeader(selectors[1])
 
@@ -169,7 +173,7 @@ func csrfFromHeader(param string) func(c *fiber.Ctx) (string, error) {
 	}
 }
 
-// csrfcsrfFromQuery returns a function that extracts token from the query string.
+// csrfFromQuery returns a function that extracts token from the query string.
 func csrfFromQuery(param string) func(c *fiber.Ctx) (string, error) {
 	return func(c *fiber.Ctx) (string, error) {
 		token := c.Query(param)

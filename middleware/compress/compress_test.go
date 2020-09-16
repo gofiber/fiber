@@ -1,6 +1,8 @@
 package compress
 
 import (
+	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
 	"testing"
@@ -19,7 +21,7 @@ func init() {
 	filedata = dat
 }
 
-// go test -run Test_Compress
+// go test -run Test_Compress_Gzip
 func Test_Compress_Gzip(t *testing.T) {
 	app := fiber.New()
 
@@ -40,10 +42,31 @@ func Test_Compress_Gzip(t *testing.T) {
 
 	// Validate the file size is shrinked
 	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		utils.AssertEqual(t, nil, err)
-	}
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
+}
+
+// go test -run Test_Compress_Different_Level
+func Test_Compress_Different_Level(t *testing.T) {
+	levels := []int{LevelBestSpeed, LevelBestCompression, 10}
+	for _, level := range levels {
+		t.Run(fmt.Sprintf("level %d", level), func(t *testing.T) {
+			app := fiber.New()
+
+			app.Use(New(Config{Level: level}))
+
+			app.Get("/", func(c *fiber.Ctx) error {
+				c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
+				return c.Send(filedata)
+			})
+
+			req := httptest.NewRequest("GET", "/", nil)
+
+			resp, err := app.Test(req)
+			utils.AssertEqual(t, nil, err, "app.Test(req)")
+			utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+		})
+	}
 }
 
 func Test_Compress_Deflate(t *testing.T) {
@@ -65,9 +88,7 @@ func Test_Compress_Deflate(t *testing.T) {
 
 	// Validate the file size is shrinked
 	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		utils.AssertEqual(t, nil, err)
-	}
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
 }
 
@@ -83,15 +104,74 @@ func Test_Compress_Brotli(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
-	resp, err := app.Test(req)
+	resp, err := app.Test(req, 10000)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate the file size is shrinked
 	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		utils.AssertEqual(t, nil, err)
-	}
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
+}
+
+func Test_Compress_Disabled(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{Level: LevelDisabled}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.Send(filedata)
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Accept-Encoding", "br")
+
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+
+	// Validate the file size is not shrinked
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, len(body) == len(filedata))
+}
+
+func Test_Compress_Next_Error(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return errors.New("next error")
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Accept-Encoding", "gzip")
+
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "next error", string(body))
+}
+
+// go test -run Test_Compress_Next
+func Test_Compress_Next(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+	})
+	app.Use(New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }

@@ -88,3 +88,19 @@ func Benchmark_Middleware_Favicon(b *testing.B) {
 		handler(c)
 	}
 }
+
+// go test -run Test_Favicon_Next
+func Test_Favicon_Next(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+	})
+	app.Use(New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}
