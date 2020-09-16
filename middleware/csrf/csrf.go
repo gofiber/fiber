@@ -33,7 +33,7 @@ type Config struct {
 	// Optional.
 	Cookie *fiber.Cookie
 
-	// CookieExpires
+	// CookieExpires is the duration before the cookie will expire
 	//
 	// Optional. Default: 24 * time.Hour
 	CookieExpires time.Duration
