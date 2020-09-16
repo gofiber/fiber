@@ -212,7 +212,7 @@ func New(config ...Config) fiber.Handler {
 			case TagBytesReceived:
 				return buf.WriteString(strconv.Itoa(len(c.Request().Body())))
 			case TagBytesSent:
-				return buf.WriteString(strconv.Itoa(len(c.Request().Body())))
+				return buf.WriteString(strconv.Itoa(len(c.Response().Body())))
 			case TagRoute:
 				return buf.WriteString(c.Route().Path)
 			case TagStatus:
