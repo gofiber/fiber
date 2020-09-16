@@ -1,7 +1,6 @@
 package filesystem
 
 import (
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -62,8 +61,11 @@ func New(config Config) fiber.Handler {
 	if !strings.HasPrefix(cfg.Index, "/") {
 		cfg.Index = "/" + cfg.Index
 	}
+	if cfg.NotFoundFile != "" && !strings.HasPrefix(cfg.NotFoundFile, "/") {
+		cfg.NotFoundFile = "/" + cfg.NotFoundFile
+	}
 	if cfg.Root == nil {
-		log.Fatal("filesystem: Root cannot be nil")
+		panic("filesystem: Root cannot be nil")
 	}
 
 	var once sync.Once

@@ -46,9 +46,6 @@ func New(config ...Config) fiber.Handler {
 		cfg = config[0]
 
 		// Set default values
-		if cfg.Next == nil {
-			cfg.Next = ConfigDefault.Next
-		}
 		if cfg.Level < -1 || cfg.Level > 2 {
 			cfg.Level = ConfigDefault.Level
 		}
@@ -62,13 +59,13 @@ func New(config ...Config) fiber.Handler {
 
 	// Setup compression algorithm
 	switch cfg.Level {
-	case 0:
+	case LevelDefault:
 		// LevelDefault
 		compressor = fasthttp.CompressHandlerBrotliLevel(fctx, fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression)
-	case 1:
+	case LevelBestSpeed:
 		// LevelBestSpeed
 		compressor = fasthttp.CompressHandlerBrotliLevel(fctx, fasthttp.CompressBrotliBestSpeed, fasthttp.CompressBestSpeed)
-	case 2:
+	case LevelBestCompression:
 		// LevelBestCompression
 		compressor = fasthttp.CompressHandlerBrotliLevel(fctx, fasthttp.CompressBrotliBestCompression, fasthttp.CompressBestCompression)
 	default:

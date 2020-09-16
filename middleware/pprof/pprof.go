@@ -35,7 +35,6 @@ func New() fiber.Handler {
 		// Switch to original path without stripped slashes
 		switch path {
 		case "/debug/pprof/":
-			c.Context().SetContentType(fiber.MIMETextHTML)
 			pprofIndex(c.Context())
 		case "/debug/pprof/cmdline":
 			pprofCmdline(c.Context())

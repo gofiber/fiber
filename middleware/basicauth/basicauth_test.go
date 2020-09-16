@@ -12,6 +12,22 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
+// go test -run Test_BasicAuth_Next
+func Test_BasicAuth_Next(t *testing.T) {
+	app := fiber.New(fiber.Config{
+		DisableStartupMessage: true,
+	})
+	app.Use(New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
 func Test_Middleware_BasicAuth(t *testing.T) {
 	app := fiber.New()
 
