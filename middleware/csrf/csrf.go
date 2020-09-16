@@ -35,8 +35,8 @@ type Config struct {
 
 	// CookieExpires
 	//
-	// Optional. Default: time.Now().Add(24 * time.Hour)
-	CookieExpires time.Time
+	// Optional. Default: 24 * time.Hour
+	CookieExpires time.Duration
 
 	// Context key to store generated CSRF token into context.
 	//
@@ -56,6 +56,7 @@ var ConfigDefault = Config{
 		Secure:   false,
 		HTTPOnly: false,
 	},
+	CookieExpires: 25 * time.Hour,
 }
 
 // New creates a new middleware handler
@@ -77,7 +78,7 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Cookie == nil {
 			cfg.Cookie = ConfigDefault.Cookie
 		}
-		if cfg.CookieExpires.IsZero() {
+		if cfg.CookieExpires == 0 {
 			cfg.CookieExpires = ConfigDefault.CookieExpires
 		}
 	}
@@ -127,12 +128,12 @@ func New(config ...Config) fiber.Handler {
 			csrf, err := extractor(c)
 			if err != nil {
 				// We have a problem extracting the csrf token
-				return c.SendStatus(fiber.StatusForbidden)
+				return fiber.ErrForbidden
 			}
 			// Some magic to compare both cookie and client csrf token
 			if subtle.ConstantTimeCompare(utils.GetBytes(token), utils.GetBytes(csrf)) != 1 {
 				// Comparison failed, return forbidden
-				return c.SendStatus(fiber.StatusForbidden)
+				return fiber.ErrForbidden
 			}
 		}
 
@@ -142,7 +143,7 @@ func New(config ...Config) fiber.Handler {
 			Value:    token,
 			Domain:   cfg.Cookie.Domain,
 			Path:     cfg.Cookie.Path,
-			Expires:  cfg.CookieExpires,
+			Expires:  time.Now().Add(cfg.CookieExpires),
 			Secure:   cfg.Cookie.Secure,
 			HTTPOnly: cfg.Cookie.HTTPOnly,
 		}
