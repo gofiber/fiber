@@ -7,13 +7,6 @@ Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will c
 - [Default Config](#default-config)
 - [Constants](#config)
 
-<!-- 
-### Config
-
-| Signature | Description | Required | Default |
-| :--- | :--- | ---: | ---: |
-| `Next func(c *fiber.Ctx) bool` | Defines a function to skip this middleware when returned true. | `✘` | `nil` |
-| `Level int` | Determines the compression algoritm: `-1`, `0`, `1` or `2` | `✔` | `0` | -->
 
 ### Signatures
 ```go

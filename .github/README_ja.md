@@ -91,7 +91,7 @@ func main() {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	log.Fatal(app.Listen(":3000"))
+	app.Listen(":3000")
 }
 ```
 ## 🤖 ベンチマーク

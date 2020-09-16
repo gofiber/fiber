@@ -56,7 +56,7 @@ var ConfigDefault = Config{
 		Secure:   false,
 		HTTPOnly: false,
 	},
-	CookieExpires: 25 * time.Hour,
+	CookieExpires: 24 * time.Hour,
 }
 
 // New creates a new middleware handler

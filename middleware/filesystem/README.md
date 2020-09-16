@@ -38,6 +38,29 @@ app.Use(filesystem.New(filesystem.Config{
 }))
 ```
 
+## pkger
+https://github.com/markbates/pkger
+
+```go
+package main
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/filesystem"
+
+	"github.com/markbates/pkger"
+)
+
+func main() {
+	app := fiber.New()
+
+	app.Use("/assets", filesystem.New(filesystem.Config{
+		Root: pkger.Dir("/assets"),
+	})
+
+	log.Fatal(app.Listen(":3000"))
+}
+```
 
 ## packr
 https://github.com/gobuffalo/packr
