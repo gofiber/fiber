@@ -81,37 +81,46 @@ type App struct {
 // Config is a struct holding the server settings.
 type Config struct {
 	// When set to true, this will spawn multiple Go processes listening on the same port.
+	//
 	// Default: false
 	Prefork bool `json:"prefork"`
 
 	// Enables the "Server: value" HTTP header.
+	//
 	// Default: ""
 	ServerHeader string `json:"server_header"`
 
 	// When set to true, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
+	//
+	// Default: false
 	StrictRouting bool `json:"strict_routing"`
 
 	// When set to true, enables case sensitive routing.
 	// E.g. "/FoO" and "/foo" are treated as different routes.
 	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
+	//
+	// Default: false
 	CaseSensitive bool `json:"case_sensitive"`
 
 	// When set to true, this relinquishes the 0-allocation promise in certain
 	// cases in order to access the handler values (e.g. request bodies) in an
 	// immutable fashion so that these values are available even if you return
 	// from handler.
+	//
 	// Default: false
 	Immutable bool `json:"immutable"`
 
 	// When set to true, converts all encoded characters in the route back
 	// before setting the path for the context, so that the routing can also
 	// work with urlencoded special characters.
+	//
 	// Default: false
 	UnescapePath bool `json:"unescape_path"`
 
 	// Enable or disable ETag header generation, since both weak and strong etags are generated
 	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
+	//
 	// Default: false
 	ETag bool `json:"etag"`
 
@@ -120,26 +129,31 @@ type Config struct {
 	BodyLimit int `json:"body_limit"`
 
 	// Maximum number of concurrent connections.
+	//
 	// Default: 256 * 1024
 	Concurrency int `json:"concurrency"`
 
 	// Views is the interface that wraps the Render function.
+	//
 	// Default: nil
 	Views Views `json:"-"`
 
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
 	// The connection's read deadline is reset when the connection opens.
+	//
 	// Default: unlimited
 	ReadTimeout time.Duration `json:"read_timeout"`
 
 	// The maximum duration before timing out writes of the response.
 	// It is reset after the request handler has returned.
+	//
 	// Default: unlimited
 	WriteTimeout time.Duration `json:"write_timeout"`
 
 	// The maximum amount of time to wait for the next request when keep-alive is enabled.
 	// If IdleTimeout is zero, the value of ReadTimeout is used.
+	//
 	// Default: unlimited
 	IdleTimeout time.Duration `json:"idle_timeout"`
 
@@ -147,15 +161,18 @@ type Config struct {
 	// This also limits the maximum header size.
 	// Increase this buffer if your clients send multi-KB RequestURIs
 	// and/or multi-KB headers (for example, BIG cookies).
+	//
 	// Default: 4096
 	ReadBufferSize int `json:"read_buffer_size"`
 
 	// Per-connection buffer size for responses' writing.
+	//
 	// Default: 4096
 	WriteBufferSize int `json:"write_buffer_size"`
 
 	// CompressedFileSuffix adds suffix to the original file name and
 	// tries saving the resulting compressed file under the new file name.
+	//
 	// Default: ".fiber.gz"
 	CompressedFileSuffix string `json:"compressed_file_suffix"`
 
@@ -163,6 +180,7 @@ type Config struct {
 	// By default c.IP() will return the Remote IP from the TCP connection
 	// This property can be useful if you are behind a load balancer: X-Forwarded-*
 	// NOTE: headers are easily spoofed and the detected IP addresses are unreliable.
+	//
 	// Default: ""
 	ProxyHeader string `json:"proxy_header"`
 
@@ -170,31 +188,39 @@ type Config struct {
 	// This option is useful as anti-DoS protection for servers
 	// accepting only GET requests. The request size is limited
 	// by ReadBufferSize if GETOnly is set.
-	// Server accepts all the requests by default.
+	//
+	// Default: false
 	GETOnly bool `json:"get_only"`
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
+	//
+	// Default: DefaultErrorHandler
 	ErrorHandler ErrorHandler `json:"-"`
 
 	// When set to true, disables keep-alive connections.
 	// The server will close incoming connections after sending the first response to client.
+	//
 	// Default: false
 	DisableKeepalive bool `json:"disable_keepalive"`
 
 	// When set to true, causes the default date header to be excluded from the response.
+	//
 	// Default: false
 	DisableDefaultDate bool `json:"disable_default_date"`
 
 	// When set to true, causes the default Content-Type header to be excluded from the response.
+	//
 	// Default: false
 	DisableDefaultContentType bool `json:"disable_default_content_type"`
 
 	// When set to true, disables header normalization.
 	// By default all header names are normalized: conteNT-tYPE -> Content-Type.
+	//
 	// Default: false
 	DisableHeaderNormalizing bool `json:"disable_header_normalizing"`
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
+	//
 	// Default: false
 	DisableStartupMessage bool `json:"disable_startup_message"`
 
@@ -202,6 +228,8 @@ type Config struct {
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
+	//
+	// Default: false
 	// RedirectFixedPath bool
 }
 
