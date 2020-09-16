@@ -61,7 +61,8 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config) (err error) {
 		err error
 	}
 	// create variables
-	var max = runtime.GOMAXPROCS(0)
+	// set 'max' to the previous value of GOMAXPROCS and set GOMAXPROCS to 1 for the master process;
+	var max = runtime.GOMAXPROCS(1)
 	var childs = make(map[int]*exec.Cmd)
 	var channel = make(chan child, max)
 
