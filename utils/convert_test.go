@@ -17,7 +17,7 @@ func Test_Utils_GetString(t *testing.T) {
 func Benchmark_GetString(b *testing.B) {
 	var hello = []byte("Hello, World!")
 	var res string
-	b.Run("fiber", func(b *testing.B) {
+	b.Run("unsafe", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = GetString(hello)
 		}
@@ -42,7 +42,7 @@ func Test_Utils_GetBytes(t *testing.T) {
 func Benchmark_GetBytes(b *testing.B) {
 	var hello = "Hello, World!"
 	var res []byte
-	b.Run("fiber", func(b *testing.B) {
+	b.Run("unsafe", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = GetBytes(hello)
 		}

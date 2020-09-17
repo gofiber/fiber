@@ -80,11 +80,19 @@ func Test_Utils_StatusMessage(t *testing.T) {
 	AssertEqual(t, "", res)
 }
 
-// go test -v -run=^$ -bench=Benchmark_StatusMessage -benchmem -count=4
+// go test -run=^$ -bench=Benchmark_StatusMessage -benchmem -count=2
 func Benchmark_StatusMessage(b *testing.B) {
 	var res string
-	for n := 0; n < b.N; n++ {
-		res = StatusMessage(http.StatusNotExtended)
-	}
-	AssertEqual(b, "Not Extended", res)
+	b.Run("fiber", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = StatusMessage(http.StatusNotExtended)
+		}
+		AssertEqual(b, "Not Extended", res)
+	})
+	b.Run("default", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = http.StatusText(http.StatusNotExtended)
+		}
+		AssertEqual(b, "Not Extended", res)
+	})
 }

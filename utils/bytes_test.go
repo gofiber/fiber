@@ -31,13 +31,45 @@ func Benchmark_ToLowerBytes(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToLowerBytes(path)
 		}
-		AssertEqual(b, bytes.EqualFold(GetBytes("/repos/gofiber/fiber/issues/187643/comments"), res), true)
+		AssertEqual(b, bytes.Equal(GetBytes("/repos/gofiber/fiber/issues/187643/comments"), res), true)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = bytes.ToLower(path)
 		}
-		AssertEqual(b, bytes.EqualFold(GetBytes("/repos/gofiber/fiber/issues/187643/comments"), res), true)
+		AssertEqual(b, bytes.Equal(GetBytes("/repos/gofiber/fiber/issues/187643/comments"), res), true)
+	})
+}
+
+func Test_Utils_ToUpperBytes(t *testing.T) {
+	t.Parallel()
+	res := ToUpperBytes([]byte("/my/name/is/:param/*"))
+	AssertEqual(t, true, bytes.Equal([]byte("/MY/NAME/IS/:PARAM/*"), res))
+	res = ToUpperBytes([]byte("/my1/name/is/:param/*"))
+	AssertEqual(t, true, bytes.Equal([]byte("/MY1/NAME/IS/:PARAM/*"), res))
+	res = ToUpperBytes([]byte("/my2/name/is/:param/*"))
+	AssertEqual(t, true, bytes.Equal([]byte("/MY2/NAME/IS/:PARAM/*"), res))
+	res = ToUpperBytes([]byte("/my3/name/is/:param/*"))
+	AssertEqual(t, true, bytes.Equal([]byte("/MY3/NAME/IS/:PARAM/*"), res))
+	res = ToUpperBytes([]byte("/my4/name/is/:param/*"))
+	AssertEqual(t, true, bytes.Equal([]byte("/MY4/NAME/IS/:PARAM/*"), res))
+}
+
+func Benchmark_ToUpperBytes(b *testing.B) {
+	var path = []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
+	var res []byte
+
+	b.Run("fiber", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = ToUpperBytes(path)
+		}
+		AssertEqual(b, bytes.Equal(GetBytes("/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS"), res), true)
+	})
+	b.Run("default", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = bytes.ToUpper(path)
+		}
+		AssertEqual(b, bytes.Equal(GetBytes("/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS"), res), true)
 	})
 }
 
