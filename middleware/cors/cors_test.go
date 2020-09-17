@@ -224,9 +224,7 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 
 // go test -run Test_CORS_Next
 func Test_CORS_Next(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
 			return true

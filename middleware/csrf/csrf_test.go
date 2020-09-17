@@ -55,9 +55,7 @@ func Test_CSRF(t *testing.T) {
 
 // go test -run Test_CSRF_Next
 func Test_CSRF_Next(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
 			return true

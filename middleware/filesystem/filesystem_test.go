@@ -114,9 +114,7 @@ func Test_FileSystem(t *testing.T) {
 
 // go test -run Test_FileSystem_Next
 func Test_FileSystem_Next(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 	app.Use(New(Config{
 		Root: http.Dir("../../.github/testdata/fs"),
 		Next: func(_ *fiber.Ctx) bool {
