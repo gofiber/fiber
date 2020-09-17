@@ -47,23 +47,26 @@ var ConfigDefault = Config{
 }
 
 // New creates a new middleware handler
-func New(config Config) fiber.Handler {
-	// Set config
-	cfg := config
+func New(config ...Config) fiber.Handler {
+	// Set default config
+	cfg := ConfigDefault
 
-	// Set default values
-	if cfg.Next == nil {
-		cfg.Next = ConfigDefault.Next
+	// Override config if provided
+	if len(config) > 0 {
+		cfg = config[0]
+
+		// Set default values
+		if cfg.Index == "" {
+			cfg.Index = ConfigDefault.Index
+		}
+		if !strings.HasPrefix(cfg.Index, "/") {
+			cfg.Index = "/" + cfg.Index
+		}
+		if cfg.NotFoundFile != "" && !strings.HasPrefix(cfg.NotFoundFile, "/") {
+			cfg.NotFoundFile = "/" + cfg.NotFoundFile
+		}
 	}
-	if cfg.Index == "" {
-		cfg.Index = ConfigDefault.Index
-	}
-	if !strings.HasPrefix(cfg.Index, "/") {
-		cfg.Index = "/" + cfg.Index
-	}
-	if cfg.NotFoundFile != "" && !strings.HasPrefix(cfg.NotFoundFile, "/") {
-		cfg.NotFoundFile = "/" + cfg.NotFoundFile
-	}
+
 	if cfg.Root == nil {
 		panic("filesystem: Root cannot be nil")
 	}
@@ -72,7 +75,7 @@ func New(config Config) fiber.Handler {
 	var prefix string
 
 	// Return new handler
-	return func(c *fiber.Ctx) error {
+	return func(c *fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -96,7 +99,12 @@ func New(config Config) fiber.Handler {
 			path = "/" + path
 		}
 
-		file, err := cfg.Root.Open(path)
+		var (
+			file http.File
+			stat os.FileInfo
+		)
+
+		file, err = cfg.Root.Open(path)
 		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
 			file, err = cfg.Root.Open(cfg.NotFoundFile)
 		}
@@ -105,12 +113,11 @@ func New(config Config) fiber.Handler {
 			if os.IsNotExist(err) {
 				return c.Status(fiber.StatusNotFound).Next()
 			}
-			return err
+			return
 		}
 
-		stat, err := file.Stat()
-		if err != nil {
-			return err
+		if stat, err = file.Stat(); err != nil {
+			return
 		}
 
 		// Serve index if path is directory
@@ -129,10 +136,7 @@ func New(config Config) fiber.Handler {
 		// Browse directory if no index found and browsing is enabled
 		if stat.IsDir() {
 			if cfg.Browse {
-				if err := dirList(c, file); err != nil {
-					return err
-				}
-				return nil
+				return dirList(c, file)
 			}
 			return fiber.ErrForbidden
 		}
