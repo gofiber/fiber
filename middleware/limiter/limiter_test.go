@@ -91,9 +91,7 @@ func Benchmark_Limiter(b *testing.B) {
 
 // go test -run Test_Limiter_Next
 func Test_Limiter_Next(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
 			return true

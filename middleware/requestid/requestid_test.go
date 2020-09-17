@@ -36,9 +36,7 @@ func Test_RequestID(t *testing.T) {
 
 // go test -run Test_RequestID_Next
 func Test_RequestID_Next(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
 			return true

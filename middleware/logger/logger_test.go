@@ -2,8 +2,10 @@ package logger
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -32,6 +34,73 @@ func Test_Logger(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 	utils.AssertEqual(t, "some random error", buf.String())
+}
+
+// go test -run Test_Logger_Next
+func Test_Logger_Next(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+// go test -run Test_Logger_ErrorTimeZone
+func Test_Logger_ErrorTimeZone(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		TimeZone: "invalid",
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+type fakeOutput int
+
+func (o *fakeOutput) Write([]byte) (int, error) {
+	*o++
+	return 0, errors.New("fake output")
+}
+
+// go test -run Test_Logger_ErrorOutput
+func Test_Logger_ErrorOutput(t *testing.T) {
+	o := new(fakeOutput)
+	app := fiber.New()
+	app.Use(New(Config{
+		Output: o,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+
+	utils.AssertEqual(t, 2, int(*o))
+}
+
+// go test -run Test_Logger_All
+func Test_Logger_All(t *testing.T) {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${pid}${referer}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${header:test}${query:test}${form:test}${cookie:test}${non}",
+		Output: buf,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf("%dhttp0.0.0.0example.com//%s%s%s%s%s%s%s%s%s-", os.Getpid(), cBlack, cRed, cGreen, cYellow, cBlue, cMagenta, cCyan, cWhite, cReset)
+	utils.AssertEqual(t, expected, buf.String())
 }
 
 // go test -run Test_Logger_AppendUint
