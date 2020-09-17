@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"os"
 	"reflect"
 	"runtime"
 	"sync"
@@ -68,4 +69,14 @@ func FunctionName(fn interface{}) string {
 		return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
 	}
 	return t.String()
+}
+
+// GetArgument check if key is in arguments
+func GetArgument(arg string) bool {
+	for i := range os.Args[1:] {
+		if os.Args[1:][i] == arg {
+			return true
+		}
+	}
+	return false
 }
