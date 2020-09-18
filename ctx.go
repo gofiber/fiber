@@ -1014,10 +1014,16 @@ func (c *Ctx) Vary(fields ...string) {
 	c.Append(HeaderVary, fields...)
 }
 
-// Write writes p into response body.
-func (c *Ctx) Write(p []byte) (n int, err error) {
+// Write appends p into response body.
+func (c *Ctx) Write(p []byte) (int, error) {
 	c.fasthttp.Response.AppendBody(p)
 	return len(p), nil
+}
+
+// WriteString appends s to response body.
+func (c *Ctx) WriteString(s string) (int, error) {
+	c.fasthttp.Response.AppendBodyString(s)
+	return len(s), nil
 }
 
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,

@@ -1936,3 +1936,52 @@ func Benchmark_Ctx_QueryParser(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, c.QueryParser(q))
 }
+
+// go test -run Test_Ctx_BodyStreamWriter
+func Test_Ctx_BodyStreamWriter(t *testing.T) {
+	t.Parallel()
+
+	ctx := &fasthttp.RequestCtx{}
+
+	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
+		fmt.Fprintf(w, "body writer line 1\n")
+		if err := w.Flush(); err != nil {
+			t.Errorf("unexpected error: %s", err)
+		}
+		fmt.Fprintf(w, "body writer line 2\n")
+	})
+	if !ctx.IsBodyStream() {
+		t.Fatal("IsBodyStream must return true")
+	}
+
+	s := ctx.Response.String()
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	var resp fasthttp.Response
+	if err := resp.Read(br); err != nil {
+		t.Fatalf("Error when reading response: %s", err)
+	}
+	body := string(resp.Body())
+	expectedBody := "body writer line 1\nbody writer line 2\n"
+	if body != expectedBody {
+		t.Fatalf("unexpected body: %q. Expecting %q", body, expectedBody)
+	}
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_BodyStreamWriter -benchmem -count=4
+func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
+	ctx := &fasthttp.RequestCtx{}
+	user := []byte(`{"name":"john"}`)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		ctx.ResetBody()
+		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
+			for i := 0; i < 10; i++ {
+				w.Write(user)
+				if err := w.Flush(); err != nil {
+					return
+				}
+			}
+		})
+	}
+}
