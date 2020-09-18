@@ -150,7 +150,7 @@ go get github.com/gofiber/fiber/v2
 - תמיכה ב-[Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/context#next)
 - תכנות [מהיר](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) של צד שרת
 - [מנועי תבניות](https://docs.gofiber.io/middleware#template)
-- [תמיכה ב-WebSocket](https://docs.gofiber.io/middleware#websocket)
+- [תמיכה ב-WebSocket](https://github.com/gofiber/websocket)
 - [הגבלת קצבים ובקשות](https://docs.gofiber.io/middleware#limiter)
 - Available in [12 languages](https://docs.gofiber.io/)
 - והרבה יותר, [חקור את Fiber](https://docs.gofiber.io/)
@@ -296,7 +296,7 @@ func main() {
 
 ### Views engines
 
-📖 [Settings](https://docs.gofiber.io/application#settings)
+📖 [Config](https://docs.gofiber.io/fiber#config)
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/context#render)
 
@@ -375,7 +375,7 @@ func main() {
 
 ### Middleware של לוגים
 
-📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
+📖 [Logger](https://docs.gofiber.io/middleware/logger)
 
 <div dir="ltr">
 
@@ -404,7 +404,7 @@ func main() {
 
 ### שיתוף משאבים בין מקורות (CORS)
 
-📖 [CORS](https://docs.gofiber.io/middleware#cors)
+📖 [CORS](https://docs.gofiber.io/middleware/cors)
 
 <div dir="ltr">
 
@@ -470,7 +470,7 @@ func main() {
 
 ### תגובת JSON
 
-📖 [JSON](https://docs.gofiber.io/context#json)
+📖 [JSON](https://docs.gofiber.io/ctx#json)
 
 <div dir="ltr">
 
@@ -503,7 +503,7 @@ func main() {
 
 ### WebSocket Upgrade
 
-📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
+📖 [Websocket](https://github.com/gofiber/websocket)
 
 <div dir="ltr">
 
@@ -540,7 +540,7 @@ func main() {
 
 ### Middleware של התאוששות
 
-📖 [התאוששות](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)
+📖 [התאוששות](https://docs.gofiber.io/middleware/recover)
 
 <div dir="ltr">
 

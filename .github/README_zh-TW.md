@@ -123,7 +123,7 @@ go get github.com/gofiber/fiber/v2
 - 支援中介器和[下一步](https://docs.gofiber.io/context#next)
 - [立即上手](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 - [樣板引擎](https://github.com/gofiber/template)
-- 支援[WebSocket](https://docs.gofiber.io/middleware#websocket)
+- 支援[WebSocket](https://github.com/gofiber/websocket)
 - 支援[限速](https://docs.gofiber.io/middleware#limiter)
 - 被翻譯成[15]國語言(https://docs.gofiber.io/)
 - 豐富的[文件](https://docs.gofiber.io/)
@@ -239,7 +239,7 @@ func main() {
 
 ### 界面引擎
 
-📖 [設定](https://docs.gofiber.io/application#settings)
+📖 [設定](https://docs.gofiber.io/fiber#config)
 📖 [引擎](https://github.com/gofiber/template)
 📖 [渲染](https://docs.gofiber.io/context#render)
 
@@ -311,7 +311,7 @@ func main() {
 
 ### 中介器logger
 
-📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
+📖 [Logger](https://docs.gofiber.io/middleware/logger)
 
 ```go
 package main
@@ -336,7 +336,7 @@ func main() {
 
 ### 跨網域資源共享 (CORS)
 
-📖 [CORS](https://docs.gofiber.io/middleware#cors)
+📖 [CORS](https://docs.gofiber.io/middleware/cors)
 
 ```go
 import (
@@ -393,7 +393,7 @@ func main() {
 
 ### JSON 回應
 
-📖 [JSON](https://docs.gofiber.io/context#json)
+📖 [JSON](https://docs.gofiber.io/ctx#json)
 
 ```go
 type User struct {
@@ -423,7 +423,7 @@ func main() {
 
 ### WebSocket 升級
 
-📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
+📖 [Websocket](https://github.com/gofiber/websocket)
 
 ```go
 import (
@@ -457,7 +457,7 @@ func main() {
 
 ### Recover 中介器
 
-📖 [Recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)
+📖 [Recover](https://docs.gofiber.io/middleware/recover)
 
 ```go
 import (

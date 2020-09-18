@@ -123,7 +123,7 @@ go get github.com/gofiber/fiber/v2/...
 - Suporte à Middleware e [Next](https://docs.gofiber.io/context#next)
 - Programação [rápida](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) de aplicações de servidor
 - [Templates](https://github.com/gofiber/template)
-- [Suporte à WebSockets](https://docs.gofiber.io/middleware#websocket)
+- [Suporte à WebSockets](https://github.com/gofiber/websocket)
 - [Limitador de requisições](https://docs.gofiber.io/middleware#limiter)
 - Disponível em [15 línguas](https://docs.gofiber.io/)
 - E muito mais, [explore o Fiber](https://docs.gofiber.io/)
@@ -237,7 +237,7 @@ func main() {
 
 ### Engines de visualização
 
-📖 [Settings](https://docs.gofiber.io/application#settings)
+📖 [Config](https://docs.gofiber.io/fiber#config)
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/context#render)
 
@@ -308,7 +308,7 @@ func main() {
 
 ### Middleware Logger
 
-📖 [Logger](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
+📖 [Logger](https://docs.gofiber.io/middleware/logger)
 
 ```go
 package main
@@ -333,7 +333,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 [CORS](https://docs.gofiber.io/middleware#cors)
+📖 [CORS](https://docs.gofiber.io/middleware/cors)
 
 ```go
 import (
@@ -390,7 +390,7 @@ func main() {
 
 ### Resposta JSON
 
-📖 [JSON](https://docs.gofiber.io/context#json)
+📖 [JSON](https://docs.gofiber.io/ctx#json)
 
 ```go
 type User struct {
@@ -420,7 +420,7 @@ func main() {
 
 ### WebSocket
 
-📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
+📖 [Websocket](https://github.com/gofiber/websocket)
 
 ```go
 import (
@@ -454,7 +454,7 @@ func main() {
 
 ### Middleware Recover
 
-📖 [Recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)
+📖 [Recover](https://docs.gofiber.io/middleware/recover)
 
 ```go
 import (

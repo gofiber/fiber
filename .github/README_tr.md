@@ -123,7 +123,7 @@ go get github.com/gofiber/fiber/v2/...
 - Ara katman & [Sonraki](https://docs.gofiber.io/context#next) desteği
 - [Hızlı](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) sunucu taraflı programlama
 - [Template engines](https://github.com/gofiber/template)
-- [WebSocket support](https://docs.gofiber.io/middleware#websocket)
+- [WebSocket support](https://github.com/gofiber/websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
 - Available in [15 languages](https://docs.gofiber.io/)
 - Ve daha fazlası, [Fiber ı keşfet](https://docs.gofiber.io/)
@@ -235,7 +235,7 @@ func main() {
 
 ### Views engines
 
-📖 [Settings](https://docs.gofiber.io/application#settings)
+📖 [Config](https://docs.gofiber.io/fiber#config)
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/context#render)
 
@@ -307,7 +307,7 @@ func main() {
 
 ### Ara Katman Günlükcüsü(Logger)
 
-📖 [Günlükcü](https://github.com/gofiber/fiber/blob/master/middleware/logger.md)
+📖 [Günlükcü](https://docs.gofiber.io/middleware/logger)
 
 ```go
 package main
@@ -332,7 +332,7 @@ func main() {
 
 ### Farklı Merkezler Arası Kaynak Paylaşımı (CORS)
 
-📖 [CORS](https://docs.gofiber.io/middleware#cors)
+📖 [CORS](https://docs.gofiber.io/middleware/cors)
 
 ```go
 import (
@@ -389,7 +389,7 @@ func main() {
 
 ### JSON Yanıtları
 
-📖 [JSON](https://docs.gofiber.io/context#json)
+📖 [JSON](https://docs.gofiber.io/ctx#json)
 
 ```go
 type User struct {
@@ -419,7 +419,7 @@ func main() {
 
 ### WebSocket Yükseltmesi
 
-📖 [Websocket](https://docs.gofiber.io/middleware#websocket)
+📖 [Websocket](https://github.com/gofiber/websocket)
 
 ```go
 import (
@@ -453,7 +453,7 @@ func main() {
 
 ### Recover middleware
 
-📖 [Recover](https://github.com/gofiber/fiber/blob/master/middleware/recover.md)
+📖 [Recover](https://docs.gofiber.io/middleware/recover)
 
 ```go
 import (
