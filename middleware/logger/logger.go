@@ -172,7 +172,7 @@ func New(config ...Config) fiber.Handler {
 			start = time.Now()
 		}
 		// Handle request, store err for logging
-		err = c.Next()
+		handlerErr := c.Next()
 
 		// Set latency stop time
 		if cfg.haveLatency {
@@ -238,8 +238,8 @@ func New(config ...Config) fiber.Handler {
 			case TagReset:
 				return buf.WriteString(cReset)
 			case TagError:
-				if err != nil {
-					return buf.WriteString(err.Error())
+				if handlerErr != nil {
+					return buf.WriteString(handlerErr.Error())
 				}
 				return buf.WriteString("-")
 			default:
@@ -272,6 +272,6 @@ func New(config ...Config) fiber.Handler {
 		// Put buffer back to pool
 		bytebufferpool.Put(buf)
 
-		return nil
+		return handlerErr
 	}
 }
