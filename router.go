@@ -118,12 +118,8 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 
 		// Execute first handler of route
 		c.indexHandler = 0
-		if err = route.Handlers[0](c); err != nil {
-			if catch := c.app.config.ErrorHandler(c, err); catch != nil {
-				_ = c.SendStatus(StatusInternalServerError)
-			}
-		}
-		return // Stop scanning the stack
+		err = route.Handlers[0](c)
+		return match, err // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
@@ -152,7 +148,12 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Find match in stack
-	match, _ := app.next(c)
+	match, err := app.next(c)
+	if err != nil {
+		if catch := c.app.config.ErrorHandler(c, err); catch != nil {
+			_ = c.SendStatus(StatusInternalServerError)
+		}
+	}
 	// Generate ETag if enabled
 	if match && app.config.ETag {
 		setETag(c, false)
