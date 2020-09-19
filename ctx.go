@@ -599,12 +599,12 @@ func (c *Ctx) Next() (err error) {
 	// Did we executed all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
-		return c.route.Handlers[c.indexHandler](c)
+		err = c.route.Handlers[c.indexHandler](c)
 	} else {
 		// Continue handler stack
 		_, err = c.app.next(c)
 	}
-	return
+	return err
 }
 
 // OriginalURL contains the original request URL.
