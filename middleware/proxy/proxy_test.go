@@ -14,9 +14,7 @@ import (
 
 // go test -run Test_Proxy_Empty_Host
 func Test_Proxy_Empty_Host(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 	app.Use(New(
 		Config{Hosts: ""},
 	))
@@ -28,9 +26,7 @@ func Test_Proxy_Empty_Host(t *testing.T) {
 
 // go test -run Test_Proxy_Next
 func Test_Proxy_Next(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 	app.Use(New(Config{
 		Hosts: "next",
 		Next: func(_ *fiber.Ctx) bool {
@@ -63,9 +59,7 @@ func Test_Proxy(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 
 	host := "localhost:3001"
 
@@ -82,9 +76,7 @@ func Test_Proxy(t *testing.T) {
 
 // go test -run Test_Proxy_Before_With_Error
 func Test_Proxy_Before_With_Error(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 
 	errStr := "error after Before"
 
@@ -125,9 +117,7 @@ func Test_Proxy_After_With_Error(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 
 	host := "localhost:3001"
 	errStr := "error after After"
@@ -153,9 +143,7 @@ func Test_Proxy_After_With_Error(t *testing.T) {
 
 // go test -run Test_Proxy_Do_With_Error
 func Test_Proxy_Do_With_Error(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 
 	app.Use(
 		New(Config{

@@ -14,9 +14,7 @@ import (
 
 // go test -run Test_BasicAuth_Next
 func Test_BasicAuth_Next(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
 			return true

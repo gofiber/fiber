@@ -30,9 +30,7 @@ func Test_Recover(t *testing.T) {
 
 // go test -run Test_Recover_Next
 func Test_Recover_Next(t *testing.T) {
-	app := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
 			return true
