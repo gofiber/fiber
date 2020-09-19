@@ -13,7 +13,7 @@ Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will c
 func New(config ...Config) fiber.Handler
 ```
 
-### Example
+### Examples
 Import the compress package that is part of the Fiber web framework
 ```go
 import (
