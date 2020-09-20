@@ -13,6 +13,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -703,10 +704,57 @@ func (c *Ctx) QueryParser(out interface{}) error {
 
 	data := make(map[string][]string)
 	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
-		data[getString(key)] = append(data[getString(key)], getString(val))
+		k := utils.GetString(key)
+		v := utils.GetString(val)
+		if strings.Index(v, ",") > -1 && equalFieldType(out, reflect.Slice, k) {
+			values := strings.Split(v, ",")
+			for i := 0; i < len(values); i++ {
+				data[k] = append(data[k], values[i])
+			}
+		} else {
+			data[k] = append(data[k], v)
+		}
 	})
 
 	return decoder.Decode(out, data)
+}
+
+func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
+	// Get type of interface
+	outTyp := reflect.TypeOf(out).Elem()
+	// Must be a struct to match a field
+	if outTyp.Kind() != reflect.Struct {
+		return false
+	}
+	// Copy interface to an value to be used
+	outVal := reflect.ValueOf(out).Elem()
+	// Loop over each field
+	for i := 0; i < outTyp.NumField(); i++ {
+		// Get field value data
+		structField := outVal.Field(i)
+		// Can this field be changed?
+		if !structField.CanSet() {
+			continue
+		}
+		// Get field key data
+		typeField := outTyp.Field(i)
+		// Get type of field key
+		structFieldKind := structField.Kind()
+		// Does the field type equals input?
+		if structFieldKind != kind {
+			continue
+		}
+		// Get tag from field if exist
+		inputFieldName := typeField.Tag.Get(key)
+		if inputFieldName == "" {
+			inputFieldName = typeField.Name
+		}
+		// Compare field/tag with provided key
+		if utils.ToLower(inputFieldName) == key {
+			return true
+		}
+	}
+	return false
 }
 
 var (
