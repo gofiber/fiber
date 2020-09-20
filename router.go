@@ -327,7 +327,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 			if len(path) >= prefixLen {
 				if isStar && getString(path[0:prefixLen]) == prefix {
 					path = append(path[0:0], '/')
-				} else {
+				} else if len(path) > 0 && path[len(path)-1] != '/' {
 					path = append(path[prefixLen:], '/')
 				}
 			}
