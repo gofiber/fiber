@@ -1891,7 +1891,7 @@ func Benchmark_Ctx_SendString_B(b *testing.B) {
 	utils.AssertEqual(b, []byte("Hello, world!"), c.Response().Body())
 }
 
-// go test -run Benchmark_Ctx_QueryParser
+// go test -run Test_Ctx_QueryParser -v
 func Test_Ctx_QueryParser(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1909,10 +1909,32 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, nil, c.QueryParser(q))
 	utils.AssertEqual(t, 2, len(q.Hobby))
 
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	q = new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	q = new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, 3, len(q.Hobby))
+
 	empty := new(Query)
 	c.Request().URI().SetQueryString("")
 	utils.AssertEqual(t, nil, c.QueryParser(empty))
 	utils.AssertEqual(t, 0, len(empty.Hobby))
+
+	type Query2 struct {
+		ID    int
+		Name  string
+		Hobby string
+	}
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	q2 := new(Query2)
+	utils.AssertEqual(t, nil, c.QueryParser(q2))
+	utils.AssertEqual(t, "basketball,football", q2.Hobby)
+
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
@@ -1928,6 +1950,29 @@ func Benchmark_Ctx_QueryParser(b *testing.B) {
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	q := new(Query)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.QueryParser(q)
+	}
+	utils.AssertEqual(b, nil, c.QueryParser(q))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser_Comma -benchmem -count=4
+func Benchmark_Ctx_QueryParser_Comma(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Query struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	// c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q := new(Query)
 	b.ReportAllocs()
 	b.ResetTimer()
