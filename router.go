@@ -129,9 +129,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
 	if !c.matched && methodExist(c) {
-		if catch := c.app.config.ErrorHandler(c, ErrMethodNotAllowed); catch != nil {
-			_ = c.SendStatus(StatusInternalServerError)
-		}
+		err = ErrMethodNotAllowed
 	}
 	return
 }
