@@ -525,6 +525,7 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 - [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 - [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
 - [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
+- [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
 
 ## 👍 貢獻
 
