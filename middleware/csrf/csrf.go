@@ -55,6 +55,7 @@ var ConfigDefault = Config{
 		Path:     "",
 		Secure:   false,
 		HTTPOnly: false,
+		SameSite: "Lax",
 	},
 	CookieExpires: 24 * time.Hour,
 }
@@ -146,6 +147,7 @@ func New(config ...Config) fiber.Handler {
 			Expires:  time.Now().Add(cfg.CookieExpires),
 			Secure:   cfg.Cookie.Secure,
 			HTTPOnly: cfg.Cookie.HTTPOnly,
+			SameSite: cfg.Cookie.SameSite,
 		}
 
 		// Set cookie to response
