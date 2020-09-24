@@ -51,10 +51,6 @@ var ConfigDefault = Config{
 	ContextKey:  "csrf",
 	Cookie: &fiber.Cookie{
 		Name:     "_csrf",
-		Domain:   "",
-		Path:     "",
-		Secure:   false,
-		HTTPOnly: false,
 		SameSite: "Lax",
 	},
 	CookieExpires: 24 * time.Hour,
@@ -78,6 +74,9 @@ func New(config ...Config) fiber.Handler {
 		}
 		if cfg.Cookie == nil {
 			cfg.Cookie = ConfigDefault.Cookie
+			if cfg.Cookie.Name == "" {
+				cfg.Cookie.Name = "_csrf"
+			}
 		}
 		if cfg.CookieExpires == 0 {
 			cfg.CookieExpires = ConfigDefault.CookieExpires
