@@ -670,6 +670,18 @@ func Test_App_Static_Prefix(t *testing.T) {
 	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 }
 
+func Test_App_Static_Trailing_Slash(t *testing.T) {
+	app := New()
+	app.Static("/john", "./.github")
+
+	req := httptest.NewRequest("GET", "/john/", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get("Content-Length") == "")
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+}
+
 // go test -run Test_App_Mixed_Routes_WithSameLen
 func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	app := New()
