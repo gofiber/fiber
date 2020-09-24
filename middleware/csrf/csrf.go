@@ -51,7 +51,7 @@ var ConfigDefault = Config{
 	ContextKey:  "csrf",
 	Cookie: &fiber.Cookie{
 		Name:     "_csrf",
-		SameSite: "Lax",
+		SameSite: "Strict",
 	},
 	CookieExpires: 24 * time.Hour,
 }
