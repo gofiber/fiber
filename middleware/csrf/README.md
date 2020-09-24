@@ -17,8 +17,8 @@ func New(config ...Config) fiber.Handler
 Import the middleware package that is part of the Fiber web framework
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/csrf"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/csrf"
 )
 ```
 
@@ -30,11 +30,11 @@ app.Use(csrf.New())
 // Or extend your config for customization
 app.Use(csrf.New(csrf.Config{
 	TokenLookup: "header:X-CSRF-Token",
-    ContextKey: "csrf",
-    Cookie: &fiber.Cookie{
+	ContextKey: "csrf",
+	Cookie: &fiber.Cookie{
 		Name: "_csrf",
-    },
-    CookieExpires: 24 * time.Hour,
+	},
+	CookieExpires: 24 * time.Hour,
 }))
 ```
 

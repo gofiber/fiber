@@ -17,8 +17,8 @@ func New(config ...Config) fiber.Handler
 Import the middleware package that is part of the Fiber web framework
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/cache"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cache"
 )
 ```
 
@@ -30,11 +30,11 @@ app.Use(cache.New())
 // Or extend your config for customization
 app.Use(cache.New(cacge.Config{
 	Expiration: 30 * time.Minute,
-    Hydrate: func(c *fiber.Ctx) error {
-        // Dynamic changes
-        c.Set("X-Query", c.Query("id"))
-        return nil
-    }
+	Hydrate: func(c *fiber.Ctx) error {
+		// Dynamic changes
+		c.Set("X-Query", c.Query("id"))
+		return nil
+	}
 }))
 ```
 
@@ -67,7 +67,7 @@ type Config struct {
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:       nil,
-    Expiration: 5 * time.Minute,
-    Hydrate:    nil,
+	Expiration: 5 * time.Minute,
+	Hydrate:    nil,
 }
 ```
