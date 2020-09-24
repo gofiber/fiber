@@ -29,12 +29,10 @@ app.Use(cache.New())
 
 // Or extend your config for customization
 app.Use(cache.New(cacge.Config{
-	Expiration: 30 * time.Minute,
-	Hydrate: func(c *fiber.Ctx) error {
-		// Dynamic changes
-		c.Set("X-Query", c.Query("id"))
-		return nil
+	Next: func(c *fiber.Ctx) bool {
+		return c.Query("refresh") == "true"
 	}
+	Expiration: 30 * time.Minute,
 }))
 ```
 
@@ -51,14 +49,6 @@ type Config struct {
 	//
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration
-
-	// Hydrate is run before the response is returned to the client.
-	// Because this middleware is backend-agnostic, it makes no assumptions
-	// about what you want to do with cached response other than caching the statuscode,
-	// content-type and response body. Hydrate allows you to alter the cached response.
-	//
-	// Optional. Default: nil
-	Hydrate fiber.Handler
 }
 ```
 
@@ -68,6 +58,5 @@ type Config struct {
 var ConfigDefault = Config{
 	Next:       nil,
 	Expiration: 5 * time.Minute,
-	Hydrate:    nil,
 }
 ```
