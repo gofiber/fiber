@@ -19,6 +19,14 @@ type Config struct {
 	//
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration
+
+	// Hydrate is run before the response is returned to the client.
+	// Because this middleware is backend-agnostic, it makes no assumptions
+	// about what you want to do with cached response other than caching the statuscode,
+	// content-type and response body. Hydrate allows you to alter the cached response.
+	//
+	// Optional. Default: nil
+	Hydrate fiber.Handler
 }
 
 // ConfigDefault is the default config
@@ -27,12 +35,14 @@ var ConfigDefault = Config{
 	Expiration: 5 * time.Minute,
 }
 
+// cache is the manager to store the cached responses
 type cache struct {
 	sync.RWMutex
 	entries    map[string]entry
 	expiration int64
 }
 
+// entry defines the cached response
 type entry struct {
 	body        []byte
 	contentType []byte
@@ -40,9 +50,11 @@ type entry struct {
 	expiration  int64
 }
 
-// Global memory storage
-var db *cache
-var once sync.Once
+// Internal variables
+var (
+	db   *cache
+	once sync.Once
+)
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -68,10 +80,17 @@ func New(config ...Config) fiber.Handler {
 			entries:    make(map[string]entry),
 			expiration: int64(cfg.Expiration.Seconds()),
 		}
-		// TODO: Expiration logic
-		// go func() {
-		// 	// ...
-		// }()
+		// Remove expired entries
+		go func() {
+			for {
+				time.Sleep(1 * time.Minute)
+				for k := range db.entries {
+					if time.Now().Unix() >= db.entries[k].expiration {
+						delete(db.entries, k)
+					}
+				}
+			}
+		}()
 	})
 
 	// Return new handler
@@ -92,14 +111,18 @@ func New(config ...Config) fiber.Handler {
 		// Fine cached entry
 		db.RLock()
 		resp, ok := db.entries[key]
+		db.RUnlock()
 		if ok {
+			// Set response headers from cache
 			c.Response().SetBodyRaw(resp.body)
 			c.Response().SetStatusCode(resp.statusCode)
 			c.Response().Header.SetContentTypeBytes(resp.contentType)
-			db.RUnlock()
+			// Hydrate response if defined
+			if cfg.Hydrate != nil {
+				return cfg.Hydrate(c)
+			}
 			return nil
 		}
-		db.RUnlock()
 
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
