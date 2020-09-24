@@ -31,7 +31,7 @@ app.Use(cache.New())
 app.Use(cache.New(cache.Config{
 	Next: func(c *fiber.Ctx) bool {
 		return c.Query("refresh") == "true"
-	}
+	},
 	Expiration: 30 * time.Minute,
 }))
 ```
