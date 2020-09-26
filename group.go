@@ -15,6 +15,20 @@ type Group struct {
 	prefix string
 }
 
+// Mount attaches another app instance as a subrouter along a routing path.
+// It's very useful to split up a large API as many independent routers and
+// compose them as a single service using Mount.
+func (grp *Group) Mount(prefix string, fiber *App) Router {
+	stack := fiber.Stack()
+	for m := range stack {
+		for r := range stack[m] {
+			route := grp.app.copyRoute(stack[m][r])
+			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(prefix, route))
+		}
+	}
+	return grp
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //
@@ -38,16 +52,6 @@ func (grp *Group) Use(args ...interface{}) Router {
 			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
-		// TODO: v2.1.0
-		// case *App:
-		// 	stack := arg.Stack()
-		// 	for m := range stack {
-		// 		for r := range stack[m] {
-		// 			route := grp.app.copyRoute(stack[m][r])
-		// 			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(prefix, route))
-		// 		}
-		// 	}
-		// 	return grp.app
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}

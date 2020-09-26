@@ -257,19 +257,20 @@ func Test_App_Nested_Params(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
-// func Test_App_Use_App(t *testing.T) {
-// 	micro := New()
-// 	micro.Get("/doe", func(c *Ctx) error {
-// 		return c.SendStatus(StatusOK)
-// 	})
+// go test -run Test_App_Mount
+func Test_App_Mount(t *testing.T) {
+	micro := New()
+	micro.Get("/doe", func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
 
-// 	app := New()
-// 	app.Use("/john", micro)
+	app := New()
+	app.Mount("/john", micro)
 
-// 	resp, err := app.Test(httptest.NewRequest("GET", "/john/doe", nil))
-// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-// 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-// }
+	resp, err := app.Test(httptest.NewRequest("GET", "/john/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+}
 
 func Test_App_Use_Params(t *testing.T) {
 	app := New()
