@@ -52,16 +52,6 @@ func (grp *Group) Use(args ...interface{}) Router {
 			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
-		// TODO: v2.1.0
-		// case *App:
-		// 	stack := arg.Stack()
-		// 	for m := range stack {
-		// 		for r := range stack[m] {
-		// 			route := grp.app.copyRoute(stack[m][r])
-		// 			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(prefix, route))
-		// 		}
-		// 	}
-		// 	return grp.app
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}

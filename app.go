@@ -364,16 +364,6 @@ func (app *App) Use(args ...interface{}) Router {
 			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
-		// // TODO: v2.1.0
-		// case *App:
-		// 	stack := arg.Stack()
-		// 	for m := range stack {
-		// 		for r := range stack[m] {
-		// 			route := app.copyRoute(stack[m][r])
-		// 			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
-		// 		}
-		// 	}
-		// 	return app
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
