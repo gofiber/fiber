@@ -16,8 +16,6 @@ import (
 
 // Router defines all router handle interface includes app and group router.
 type Router interface {
-	Mount(prefix string, fiber *App) Router
-
 	Use(args ...interface{}) Router
 
 	Get(path string, handlers ...Handler) Router
@@ -35,6 +33,8 @@ type Router interface {
 	All(path string, handlers ...Handler) Router
 
 	Group(prefix string, handlers ...Handler) Router
+
+	Mount(prefix string, fiber *App) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler
@@ -275,8 +275,6 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		// Add route to stack
 		app.addRoute(method, &route)
 	}
-	// Build router tree
-	app.buildTree()
 	return app
 }
 
@@ -385,8 +383,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	app.addRoute(MethodGet, &route)
 	// Add HEAD route
 	app.addRoute(MethodHead, &route)
-	// Build router tree
-	app.buildTree()
 	return app
 }
 
@@ -409,6 +405,8 @@ func (app *App) addRoute(method string, route *Route) {
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)
 	}
+	// Build router tree
+	app.buildTree()
 }
 
 // buildTree build the prefix tree from the previously registered routes
