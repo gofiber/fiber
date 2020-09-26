@@ -16,6 +16,8 @@ import (
 
 // Router defines all router handle interface includes app and group router.
 type Router interface {
+	Mount(prefix string, fiber *App) Router
+
 	Use(args ...interface{}) Router
 
 	Get(path string, handlers ...Handler) Router
