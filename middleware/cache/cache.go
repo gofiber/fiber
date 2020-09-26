@@ -1,4 +1,5 @@
-// Special thanks to @codemicro for helping with this middleware: github.com/codemicro/fiber-cache
+// Special thanks to @codemicro for moving this to fiber core
+// Original middleware: github.com/codemicro/fiber-cache
 package cache
 
 import (
@@ -19,14 +20,6 @@ type Config struct {
 	//
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration
-
-	// // Hydrate is run before the response is returned to the client.
-	// // Because this middleware is backend-agnostic, it makes no assumptions
-	// // about what you want to do with cached response other than caching the statuscode,
-	// // content-type and response body. Hydrate allows you to alter the cached response.
-	// //
-	// // Optional. Default: nil
-	// Hydrate fiber.Handler
 }
 
 // ConfigDefault is the default config
@@ -117,10 +110,6 @@ func New(config ...Config) fiber.Handler {
 			c.Response().SetBodyRaw(resp.body)
 			c.Response().SetStatusCode(resp.statusCode)
 			c.Response().Header.SetContentTypeBytes(resp.contentType)
-			// // Hydrate response if defined
-			// if cfg.Hydrate != nil {
-			// 	return cfg.Hydrate(c)
-			// }
 			return nil
 		}
 
