@@ -1,6 +1,8 @@
 # Filesystem middleware
 Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables you to serve files from a directory. 
 
+⚠️ `Parameters within the prefix path are not supported!`
+
 ### Table of Contents
 - [Signatures](#signatures)
 - [Examples](#examples)
