@@ -33,28 +33,11 @@ func SafeString(s string) string {
 	return string(UnsafeBytes(s))
 }
 
-// SafeBytes copies a slive to make it immutable
+// SafeBytes copies a slice to make it immutable
 func SafeBytes(b []byte) []byte {
 	tmp := make([]byte, len(b))
 	copy(tmp, b)
 	return tmp
-}
-
-// #nosec G103
-// GetString returns a string pointer without allocation
-func GetString(b []byte) string {
-	return UnsafeString(b)
-}
-
-// #nosec G103
-// GetBytes returns a byte pointer without allocation
-func GetBytes(s string) []byte {
-	return UnsafeBytes(s)
-}
-
-// ImmutableString copies a string to make it immutable
-func ImmutableString(s string) string {
-	return SafeString(s)
 }
 
 const (
@@ -99,4 +82,23 @@ func ByteSize(bytes uint64) string {
 	result := strconv.FormatFloat(value, 'f', 1, 64)
 	result = strings.TrimSuffix(result, ".0")
 	return result + unit
+}
+
+// Deprecated fn's
+
+// #nosec G103
+// GetString returns a string pointer without allocation
+func GetString(b []byte) string {
+	return UnsafeString(b)
+}
+
+// #nosec G103
+// GetBytes returns a byte pointer without allocation
+func GetBytes(s string) []byte {
+	return UnsafeBytes(s)
+}
+
+// ImmutableString copies a string to make it immutable
+func ImmutableString(s string) string {
+	return SafeString(s)
 }
