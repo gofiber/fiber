@@ -1,7 +1,11 @@
 package proxy
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -12,31 +16,40 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// Comma-separated list of upstream HTTP server host addresses,
-	// which are passed to Dial in a round-robin manner.
+	// Servers defines a list of <scheme>://<host> HTTP servers,
 	//
-	// Each address may contain port if default dialer is used.
-	// For example,
+	// which are used in a round-robin manner.
+	// i.e.: "https://foobar.com, http://www.foobar.com"
 	//
-	//    - foobar.com:80
-	//    - foobar.com:443
-	//    - foobar.com:8080
-	Hosts string
+	// Required
+	Servers []string
 
-	// Before allows you to alter the request
-	Before fiber.Handler
+	// ModifyRequest allows you to alter the request
+	//
+	// Optional. Default: nil
+	ModifyRequest fiber.Handler
 
-	// After allows you to alter the response
-	After fiber.Handler
+	// ModifyResponse allows you to alter the response
+	//
+	// Optional. Default: nil
+	ModifyResponse fiber.Handler
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next: nil,
+	Next:           nil,
+	ModifyRequest:  nil,
+	ModifyResponse: nil,
 }
 
-// New creates a new middleware handler
+// New is deprecated
 func New(config Config) fiber.Handler {
+	fmt.Println("proxy.New is deprecated, please us proxy.Balancer instead")
+	return Balancer(config)
+}
+
+// Balancer creates a load balancer among multiple upstream servers
+func Balancer(config Config) fiber.Handler {
 	// Override config if provided
 	cfg := config
 
@@ -44,18 +57,23 @@ func New(config Config) fiber.Handler {
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
 	}
-	if cfg.Hosts == "" {
-		return func(c *fiber.Ctx) error {
-			return c.Next()
+	if len(cfg.Servers) == 0 {
+		panic("Servers cannot be empty")
+	}
+
+	client := fasthttp.Client{
+		NoDefaultUserAgentHeader: true,
+		DisablePathNormalizing:   true,
+	}
+
+	// Scheme must be provided, falls back to http
+	for i := 0; i < len(cfg.Servers); i++ {
+		if !strings.HasPrefix(cfg.Servers[i], "http") {
+			cfg.Servers[i] = "http://" + cfg.Servers[i]
 		}
 	}
 
-	// Create host client
-	// https://godoc.org/github.com/valyala/fasthttp#HostClient
-	hostClient := fasthttp.HostClient{
-		Addr:                     cfg.Hosts,
-		NoDefaultUserAgentHeader: true,
-	}
+	var counter = 0
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
@@ -72,23 +90,30 @@ func New(config Config) fiber.Handler {
 		req.Header.Del(fiber.HeaderConnection)
 
 		// Modify request
-		if cfg.Before != nil {
-			if err = cfg.Before(c); err != nil {
+		if cfg.ModifyRequest != nil {
+			if err = cfg.ModifyRequest(c); err != nil {
 				return err
 			}
 		}
 
+		req.SetRequestURI(cfg.Servers[counter] + utils.UnsafeString(req.RequestURI()))
+
+		counter = (counter + 1) % len(cfg.Servers)
+
 		// Forward request
-		if err = hostClient.Do(req, res); err != nil {
+		if err = client.Do(req, res); err != nil {
+			fmt.Println(err)
 			return err
 		}
 
 		// Don't proxy "Connection" header
 		res.Header.Del(fiber.HeaderConnection)
 
+		//fmt.Println(string(res.Header.ContentType()))
+
 		// Modify response
-		if cfg.After != nil {
-			if err = cfg.After(c); err != nil {
+		if cfg.ModifyResponse != nil {
+			if err = cfg.ModifyResponse(c); err != nil {
 				return err
 			}
 		}
@@ -96,4 +121,31 @@ func New(config Config) fiber.Handler {
 		// Return nil to end proxying if no error
 		return nil
 	}
+}
+
+var client = fasthttp.Client{
+	NoDefaultUserAgentHeader: true,
+	DisablePathNormalizing:   true,
+}
+
+// Forward performs the given http request and fills the given http response.
+// This method will return an fiber.Handler
+func Forward(addr string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		return Do(c, addr)
+	}
+}
+
+// Do performs the given http request and fills the given http response.
+// This method can be used within a fiber.Handler
+func Do(c *fiber.Ctx, addr string) error {
+	req := c.Request()
+	res := c.Response()
+	req.SetRequestURI(addr)
+	req.Header.Del(fiber.HeaderConnection)
+	if err := client.Do(req, res); err != nil {
+		return err
+	}
+	res.Header.Del(fiber.HeaderConnection)
+	return nil
 }
