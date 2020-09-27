@@ -13,9 +13,14 @@ type stats struct {
 	CPU  float64 `json:"cpu"`
 	RAM  uint64  `json:"ram"`
 	Load float64 `json:"load"`
-	Time int     `json:"time"`
-	Reqs int     `json:"reqs"`
+	Time int64   `json:"time"`
+	Reqs uint32  `json:"reqs"`
 }
+
+var (
+	monitorCPU float64
+	monitorRAM uint64
+)
 
 var (
 	mutex sync.RWMutex
@@ -32,7 +37,21 @@ func New() fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
+		// Call chain
+		if err := c.Next(); err != nil {
+			return err
+		}
+
 		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON {
+			mutex.Lock()
+			data = &stats{
+				CPU:  monitorCPU,
+				RAM:  monitorRAM,
+				Load: 2.32,
+				Time: (time.Now().UnixNano() - c.Context().Time().UnixNano()) / 100000,
+				Reqs: c.App().Server().GetCurrentConcurrency(),
+			}
+			mutex.Unlock()
 			return c.JSON(data)
 		}
 		c.Response().Header.SetContentType(fiber.MIMETextHTMLCharsetUTF8)
@@ -42,26 +61,13 @@ func New() fiber.Handler {
 
 func monitor() {
 	p, _ := process.NewProcess(int32(os.Getpid()))
-
 	for {
-		time.Sleep(1 * time.Second)
-		// *magic*
-		mutex.Lock()
-
 		cpu, _ := p.CPUPercent()
-		//fmt.Println(fmt.Sprintf("CPU:  %.1f%%", cpu/10))
+		monitorCPU = cpu / 10
 
 		mem, _ := p.MemoryInfo()
-		//fmt.Println("RAM: ", utils.ByteSize(mem.RSS))
+		monitorRAM = mem.RSS
 
-		data = &stats{
-			CPU:  cpu / 10,
-			RAM:  mem.RSS,
-			Load: 2.32,
-			Time: 234,
-			Reqs: 23,
-		}
-		mutex.Unlock()
-		// *magic*
+		time.Sleep(1 * time.Second)
 	}
 }
