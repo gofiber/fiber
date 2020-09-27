@@ -526,6 +526,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 - [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
 - [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
+- [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
 
 ## 👍 Berkontribusi
 
