@@ -19,7 +19,7 @@ import (
 func Benchmark_Utils_RemoveNewLines(b *testing.B) {
 	withNL := "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n"
 	withoutNL := "foo  Set-Cookie:%20SESSIONID=MaliciousValue  "
-	expected := utils.ImmutableString(withoutNL)
+	expected := utils.SafeString(withoutNL)
 	var res string
 
 	b.Run("withNewlines", func(b *testing.B) {

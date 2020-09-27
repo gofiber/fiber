@@ -131,7 +131,7 @@ func New(config ...Config) fiber.Handler {
 				return fiber.ErrForbidden
 			}
 			// Some magic to compare both cookie and client csrf token
-			if subtle.ConstantTimeCompare(utils.GetBytes(token), utils.GetBytes(csrf)) != 1 {
+			if subtle.ConstantTimeCompare(utils.UnsafeBytes(token), utils.UnsafeBytes(csrf)) != 1 {
 				// Comparison failed, return forbidden
 				return fiber.ErrForbidden
 			}

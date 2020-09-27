@@ -13,13 +13,13 @@ import (
 
 // #nosec G103
 // GetString returns a string pointer without allocation
-func GetString(b []byte) string {
+func UnsafeString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
 // #nosec G103
 // GetBytes returns a byte pointer without allocation
-func GetBytes(s string) (bs []byte) {
+func UnsafeBytes(s string) (bs []byte) {
 	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
 	bh := (*reflect.SliceHeader)(unsafe.Pointer(&bs))
 	bh.Data = sh.Data
@@ -28,9 +28,33 @@ func GetBytes(s string) (bs []byte) {
 	return
 }
 
+// SafeString copies a string to make it immutable
+func SafeString(s string) string {
+	return string(UnsafeBytes(s))
+}
+
+// SafeBytes copies a slive to make it immutable
+func SafeBytes(b []byte) []byte {
+	tmp := make([]byte, len(b))
+	copy(tmp, b)
+	return tmp
+}
+
+// #nosec G103
+// GetString returns a string pointer without allocation
+func GetString(b []byte) string {
+	return UnsafeString(b)
+}
+
+// #nosec G103
+// GetBytes returns a byte pointer without allocation
+func GetBytes(s string) []byte {
+	return UnsafeBytes(s)
+}
+
 // ImmutableString copies a string to make it immutable
 func ImmutableString(s string) string {
-	return string(GetBytes(s))
+	return SafeString(s)
 }
 
 const (
