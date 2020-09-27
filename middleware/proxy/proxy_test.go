@@ -1,160 +1,148 @@
 package proxy
 
-import (
-	"fmt"
-	"io/ioutil"
-	"net/http/httptest"
-	"strings"
-	"testing"
-	"time"
+// // go test -run Test_Proxy_Empty_Host
+// func Test_Proxy_Empty_Host(t *testing.T) {
+// 	app := fiber.New()
+// 	app.Use(New(
+// 		Config{Hosts: ""},
+// 	))
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
-)
+// 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+// }
 
-// go test -run Test_Proxy_Empty_Host
-func Test_Proxy_Empty_Host(t *testing.T) {
-	app := fiber.New()
-	app.Use(New(
-		Config{Hosts: ""},
-	))
+// // go test -run Test_Proxy_Next
+// func Test_Proxy_Next(t *testing.T) {
+// 	app := fiber.New()
+// 	app.Use(New(Config{
+// 		Hosts: "next",
+// 		Next: func(_ *fiber.Ctx) bool {
+// 			return true
+// 		},
+// 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
-}
+// 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+// }
 
-// go test -run Test_Proxy_Next
-func Test_Proxy_Next(t *testing.T) {
-	app := fiber.New()
-	app.Use(New(Config{
-		Hosts: "next",
-		Next: func(_ *fiber.Ctx) bool {
-			return true
-		},
-	}))
+// // go test -run Test_Proxy
+// func Test_Proxy(t *testing.T) {
+// 	target := fiber.New(fiber.Config{
+// 		DisableStartupMessage: true,
+// 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
-}
+// 	target.Get("/", func(c *fiber.Ctx) error {
+// 		return c.SendStatus(fiber.StatusTeapot)
+// 	})
 
-// go test -run Test_Proxy
-func Test_Proxy(t *testing.T) {
-	target := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+// 	go func() {
+// 		utils.AssertEqual(t, nil, target.Listen(":3001"))
+// 	}()
 
-	target.Get("/", func(c *fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+// 	time.Sleep(time.Second)
 
-	go func() {
-		utils.AssertEqual(t, nil, target.Listen(":3001"))
-	}()
+// 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 
-	time.Sleep(time.Second)
+// 	app := fiber.New()
 
-	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
+// 	host := "localhost:3001"
 
-	app := fiber.New()
+// 	app.Use(New(Config{
+// 		Hosts: host,
+// 	}))
 
-	host := "localhost:3001"
+// 	req := httptest.NewRequest("GET", "/", nil)
+// 	req.Host = host
+// 	resp, err = app.Test(req)
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
+// }
 
-	app.Use(New(Config{
-		Hosts: host,
-	}))
+// // go test -run Test_Proxy_Before_With_Error
+// func Test_Proxy_Before_With_Error(t *testing.T) {
+// 	app := fiber.New()
 
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Host = host
-	resp, err = app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
-}
+// 	errStr := "error after Before"
 
-// go test -run Test_Proxy_Before_With_Error
-func Test_Proxy_Before_With_Error(t *testing.T) {
-	app := fiber.New()
+// 	app.Use(
+// 		New(Config{
+// 			Hosts: "host",
+// 			Before: func(c *fiber.Ctx) error {
+// 				return fmt.Errorf(errStr)
+// 			},
+// 		}))
 
-	errStr := "error after Before"
+// 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 
-	app.Use(
-		New(Config{
-			Hosts: "host",
-			Before: func(c *fiber.Ctx) error {
-				return fmt.Errorf(errStr)
-			},
-		}))
+// 	b, err := ioutil.ReadAll(resp.Body)
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, errStr, string(b))
+// }
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
+// // go test -run Test_Proxy_After_With_Error
+// func Test_Proxy_After_With_Error(t *testing.T) {
+// 	target := fiber.New(fiber.Config{
+// 		DisableStartupMessage: true,
+// 	})
 
-	b, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, errStr, string(b))
-}
+// 	target.Get("/", func(c *fiber.Ctx) error {
+// 		return c.SendStatus(fiber.StatusTeapot)
+// 	})
 
-// go test -run Test_Proxy_After_With_Error
-func Test_Proxy_After_With_Error(t *testing.T) {
-	target := fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+// 	go func() {
+// 		utils.AssertEqual(t, nil, target.Listen(":3002"))
+// 	}()
 
-	target.Get("/", func(c *fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
+// 	time.Sleep(time.Second)
 
-	go func() {
-		utils.AssertEqual(t, nil, target.Listen(":3002"))
-	}()
+// 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 
-	time.Sleep(time.Second)
+// 	app := fiber.New()
 
-	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
+// 	host := "localhost:3001"
+// 	errStr := "error after After"
 
-	app := fiber.New()
+// 	app.Use(New(Config{
+// 		Hosts: host,
+// 		After: func(ctx *fiber.Ctx) error {
+// 			utils.AssertEqual(t, fiber.StatusTeapot, ctx.Response().StatusCode())
+// 			return fmt.Errorf(errStr)
+// 		},
+// 	}))
 
-	host := "localhost:3001"
-	errStr := "error after After"
+// 	req := httptest.NewRequest("GET", "/", nil)
+// 	req.Host = host
+// 	resp, err = app.Test(req)
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 
-	app.Use(New(Config{
-		Hosts: host,
-		After: func(ctx *fiber.Ctx) error {
-			utils.AssertEqual(t, fiber.StatusTeapot, ctx.Response().StatusCode())
-			return fmt.Errorf(errStr)
-		},
-	}))
+// 	b, err := ioutil.ReadAll(resp.Body)
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, errStr, string(b))
+// }
 
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Host = host
-	resp, err = app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
+// // go test -run Test_Proxy_Do_With_Error
+// func Test_Proxy_Do_With_Error(t *testing.T) {
+// 	app := fiber.New()
 
-	b, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, errStr, string(b))
-}
+// 	app.Use(
+// 		New(Config{
+// 			Hosts: "localhost:90000",
+// 		}))
 
-// go test -run Test_Proxy_Do_With_Error
-func Test_Proxy_Do_With_Error(t *testing.T) {
-	app := fiber.New()
+// 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 
-	app.Use(
-		New(Config{
-			Hosts: "localhost:90000",
-		}))
-
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
-
-	b, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(b), "127.0.0.1:90000"))
-}
+// 	b, err := ioutil.ReadAll(resp.Body)
+// 	utils.AssertEqual(t, nil, err)
+// 	utils.AssertEqual(t, true, strings.Contains(string(b), "127.0.0.1:90000"))
+// }
