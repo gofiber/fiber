@@ -173,7 +173,7 @@ func main() {
 	// GET /api/register
 	app.Get("/api/*", func(c *fiber.Ctx) error {
 		msg := fmt.Sprintf("✋ %s", c.Params("*"))
-		return c.SendString(msg) // => ✋ /api/register
+		return c.SendString(msg) // => ✋ register
 	})
 
 	log.Fatal(app.Listen(":3000"))
