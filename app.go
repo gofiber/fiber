@@ -540,6 +540,11 @@ func (app *App) Shutdown() error {
 	return app.server.Shutdown()
 }
 
+// Server returns the underlying fasthttp server
+func (app *App) Server() *fasthttp.Server {
+	return app.server
+}
+
 // Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
 func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, err error) {

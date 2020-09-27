@@ -1,10 +1,10 @@
+on: [push]
 name: Snyk security
-on: [push, pull_request]
 jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v2
     - name: Run Snyk to check for vulnerabilities
       uses: snyk/actions/golang@master
       env:

@@ -581,3 +581,6 @@ O logo oficial foi criado por [Vic Shóstak](https://github.com/koddr) e distrib
 - [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 - [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 - [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
+- [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
+- [go-ole](https://github.com/go-ole/go-ole)
+- [wmi](https://github.com/StackExchange/wmi)
