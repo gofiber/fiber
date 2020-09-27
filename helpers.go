@@ -111,7 +111,7 @@ func removeNewLines(raw string) string {
 		}
 		buf[i] = ' '
 	}
-	raw = utils.GetString(buf)
+	raw = utils.UnsafeString(buf)
 	bytebufferpool.Put(bb)
 
 	return raw
@@ -373,13 +373,13 @@ func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
 
 // getString converts byte slice to a string without memory allocation.
-var getString = utils.GetString
+var getString = utils.UnsafeString
 var getStringImmutable = func(b []byte) string {
 	return string(b)
 }
 
 // getBytes converts string to a byte slice without memory allocation.
-var getBytes = utils.GetBytes
+var getBytes = utils.UnsafeBytes
 var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
 }

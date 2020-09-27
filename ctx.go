@@ -497,7 +497,7 @@ func (c *Ctx) Is(extension string) bool {
 	}
 
 	return strings.HasPrefix(
-		utils.TrimLeft(utils.GetString(c.fasthttp.Request.Header.ContentType()), ' '),
+		utils.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), ' '),
 		extensionHeader,
 	)
 }
@@ -704,8 +704,8 @@ func (c *Ctx) QueryParser(out interface{}) error {
 
 	data := make(map[string][]string)
 	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
-		k := utils.GetString(key)
-		v := utils.GetString(val)
+		k := utils.UnsafeString(key)
+		v := utils.UnsafeString(val)
 		if strings.Index(v, ",") > -1 && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
@@ -920,7 +920,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	})
 
 	// Keep original path for mutable params
-	c.pathOriginal = utils.ImmutableString(c.pathOriginal)
+	c.pathOriginal = utils.SafeString(c.pathOriginal)
 	// Disable compression
 	if len(compress) <= 0 || !compress[0] {
 		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
@@ -995,7 +995,7 @@ func (c *Ctx) Set(key string, val string) {
 }
 
 func (c *Ctx) setCanonical(key string, val string) {
-	c.fasthttp.Response.Header.SetCanonical(utils.GetBytes(key), utils.GetBytes(val))
+	c.fasthttp.Response.Header.SetCanonical(utils.UnsafeBytes(key), utils.UnsafeBytes(val))
 }
 
 // Subdomains returns a string slice of subdomains in the domain name of the request.
@@ -1072,7 +1072,7 @@ func (c *Ctx) WriteString(s string) (int, error) {
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *Ctx) XHR() bool {
-	return utils.EqualsFold(utils.GetBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualsFold(utils.UnsafeBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
 }
 
 // prettifyPath ...

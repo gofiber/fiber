@@ -117,7 +117,7 @@ func New(config Config) fiber.Handler {
 			if raw, err := base64.StdEncoding.DecodeString(auth[6:]); err == nil {
 
 				// Convert to string
-				cred := utils.GetString(raw)
+				cred := utils.UnsafeString(raw)
 
 				// Find semicolumn
 				for i := 0; i < len(cred); i++ {
