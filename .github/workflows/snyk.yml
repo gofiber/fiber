@@ -1,4 +1,4 @@
-on: [push]
+on: [push, pull_request_target]
 name: Snyk security
 jobs:
   security:
