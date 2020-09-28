@@ -10,7 +10,7 @@ func New() fiber.Handler
 ```
 
 ### Example
-Import the compress package that is part of the Fiber web framework
+Import the middleware package that is part of the Fiber web framework
 ```go
 import (
   "github.com/gofiber/fiber/v2"
