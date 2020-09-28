@@ -1,7 +1,6 @@
 package monitor
 
 import (
-	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -50,7 +49,6 @@ func New() fiber.Handler {
 	// Return new handler
 	return func(c *fiber.Ctx) error {
 		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON {
-			time.Sleep(time.Duration(rand.Intn(rand.Intn(50-10)+10)) * time.Millisecond)
 			mutex.Lock()
 			data.CPU = monitorCPU
 			data.RAM = monitorRAM
