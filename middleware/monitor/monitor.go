@@ -52,10 +52,10 @@ func New() fiber.Handler {
 				Reqs: c.App().Server().GetCurrentConcurrency(),
 			}
 			mutex.Unlock()
-			return c.JSON(data)
+			return c.Status(200).JSON(data)
 		}
 		c.Response().Header.SetContentType(fiber.MIMETextHTMLCharsetUTF8)
-		return c.Send(index)
+		return c.Status(200).Send(index)
 	}
 }
 
