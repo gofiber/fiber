@@ -73,7 +73,7 @@ var index = []byte(`<!DOCTYPE html>
         <section class="charts">
             <div class="row">
                 <div class="column">
-                    <div class="metric">CPU:</div>
+                    <div class="metric">CPU Usage</div>
                     <h2 id="cpuMetric">0.00%</h2>
                 </div>
                 <div class="column">
@@ -83,7 +83,7 @@ var index = []byte(`<!DOCTYPE html>
 
             <div class="row">
                 <div class="column">
-                    <div class="metric">RAM:</div>
+                    <div class="metric">Memory Usage</div>
                     <h2 id="ramMetric">0.00 MB</h2>
                 </div>
                 <div class="column">
@@ -93,7 +93,7 @@ var index = []byte(`<!DOCTYPE html>
 
             <div class="row">
                 <div class="column">
-                    <div class="metric">Load:</div>
+                    <div class="metric">Load</div>
                     <h2 id="loadMetric">0.00%</h2>
                 </div>
                 <div class="column">
@@ -103,7 +103,7 @@ var index = []byte(`<!DOCTYPE html>
 
             <div class="row">
                 <div class="column">
-                    <div class="metric">Latest Response Time:</div>
+                    <div class="metric">Response Time:</div>
                     <h2 id="timeMetric">0ms</h2>
                 </div>
                 <div class="column">
@@ -113,7 +113,7 @@ var index = []byte(`<!DOCTYPE html>
 
             <div class="row">
                 <div class="column">
-                    <div class="metric">Requests:</div>
+                    <div class="metric">Requests per Second</div>
                     <h2 id="reqMetric">0</h2>
                 </div>
                 <div class="column">
