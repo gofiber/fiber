@@ -1,5 +1,5 @@
 # Expvar
-Expvar middleware for [Fiber](https://github.com/gofiber/fiber) that serves via its HTTP server runtime profiling data in the format expected by the expvar visualization tool. The package is typically only imported for the side effect of registering its HTTP handlers. The handled paths all begin with /debug/expvar/.
+Expvar middleware for [Fiber](https://github.com/gofiber/fiber) that serves via its HTTP server runtime exposed variants in the JSON format. The package is typically only imported for the side effect of registering its HTTP handlers. The handled path is `/debug/vars`.
 
 - [Signatures](#signatures)
 - [Examples](#example)
