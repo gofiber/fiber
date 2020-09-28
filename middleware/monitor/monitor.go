@@ -32,42 +32,32 @@ var (
 func New() fiber.Handler {
 	// Start routine to update statistics
 	once.Do(func() {
-		go monitor()
+		go func() {
+			p, _ := process.NewProcess(int32(os.Getpid()))
+			for {
+				cpu, _ := p.CPUPercent()
+				monitorCPU = cpu / 10
+
+				mem, _ := p.MemoryInfo()
+				monitorRAM = mem.RSS
+
+				time.Sleep(1 * time.Second)
+			}
+		}()
 	})
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
-		// Call chain
-		if err := c.Next(); err != nil {
-			return err
-		}
-
 		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON {
 			mutex.Lock()
-			data = &stats{
-				CPU:  monitorCPU,
-				RAM:  monitorRAM,
-				Load: 2.32,
-				Time: (time.Now().UnixNano() - c.Context().Time().UnixNano()) / 100000,
-				Reqs: c.App().Server().GetCurrentConcurrency(),
-			}
+			data.CPU = monitorCPU
+			data.RAM = monitorRAM
+			data.Time = (time.Now().UnixNano() - c.Context().Time().UnixNano()) / 1000000
+			data.Reqs = c.App().Server().GetCurrentConcurrency()
 			mutex.Unlock()
-			return c.Status(200).JSON(data)
+			return c.Status(fiber.StatusOK).JSON(data)
 		}
 		c.Response().Header.SetContentType(fiber.MIMETextHTMLCharsetUTF8)
-		return c.Status(200).Send(index)
-	}
-}
-
-func monitor() {
-	p, _ := process.NewProcess(int32(os.Getpid()))
-	for {
-		cpu, _ := p.CPUPercent()
-		monitorCPU = cpu / 10
-
-		mem, _ := p.MemoryInfo()
-		monitorRAM = mem.RSS
-
-		time.Sleep(1 * time.Second)
+		return c.Status(fiber.StatusOK).Send(index)
 	}
 }
