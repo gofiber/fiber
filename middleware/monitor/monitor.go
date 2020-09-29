@@ -10,22 +10,18 @@ import (
 )
 
 type stats struct {
-	CPU  float64 `json:"cpu"`
-	RAM  uint64  `json:"ram"`
-	Load float64 `json:"load"`
-	Time int64   `json:"time"`
-	Reqs uint32  `json:"reqs"`
+	Cpu   float64 `json:"cpu"`
+	Ram   uint64  `json:"ram"`
+	Rtime int64   `json:"rtime"`
+	Conns uint32  `json:"conns"`
 }
 
 var (
 	monitorCPU float64
 	monitorRAM uint64
-)
-
-var (
-	mutex sync.RWMutex
-	once  sync.Once
-	data  = &stats{}
+	mutex      sync.RWMutex
+	once       sync.Once
+	data       = &stats{}
 )
 
 // New creates a new middleware handler
@@ -50,10 +46,10 @@ func New() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON {
 			mutex.Lock()
-			data.CPU = monitorCPU
-			data.RAM = monitorRAM
-			data.Time = (time.Now().UnixNano() - c.Context().Time().UnixNano()) / 1000000
-			data.Reqs = c.App().Server().GetCurrentConcurrency()
+			data.Cpu = monitorCPU
+			data.Ram = monitorRAM
+			data.Rtime = (time.Now().UnixNano() - c.Context().Time().UnixNano()) / 1000000
+			data.Conns = c.App().Server().GetCurrentConcurrency()
 			mutex.Unlock()
 			return c.Status(fiber.StatusOK).JSON(data)
 		}

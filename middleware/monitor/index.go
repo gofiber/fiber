@@ -94,20 +94,20 @@ var index = []byte(`<!DOCTYPE html>
             <div class="row">
                 <div class="column">
                     <div class="metric">Response Time</div>
-                    <h2 id="timeMetric">0ms</h2>
+                    <h2 id="rtimeMetric">0ms</h2>
                 </div>
                 <div class="column">
-                    <canvas id="timeChart"></canvas>
+                    <canvas id="rtimeChart"></canvas>
                 </div>
             </div>
 
             <div class="row">
                 <div class="column">
                     <div class="metric">Open Connections</div>
-                    <h2 id="reqMetric">0</h2>
+                    <h2 id="connsMetric">0</h2>
                 </div>
                 <div class="column">
-                    <canvas id="reqChart"></canvas>
+                    <canvas id="connsChart"></canvas>
                 </div>
             </div>
         </section>
@@ -126,7 +126,7 @@ var index = []byte(`<!DOCTYPE html>
             scales: {
                 yAxes: [{
                     ticks: {
-                        beginAtZero: false
+                        beginAtZero: true
                     }
                 }],
                 xAxes: [{
@@ -150,20 +150,20 @@ var index = []byte(`<!DOCTYPE html>
 
         const cpuMetric = document.querySelector('#cpuMetric');
         const ramMetric = document.querySelector('#ramMetric');
-        const timeMetric = document.querySelector('#timeMetric');
-        const reqMetric = document.querySelector('#reqMetric');
+        const rtimeMetric = document.querySelector('#rtimeMetric');
+        const connsMetric = document.querySelector('#connsMetric');
 
         const cpuChartCtx = document.querySelector('#cpuChart').getContext('2d');
         const ramChartCtx = document.querySelector('#ramChart').getContext('2d');
-        const timeChartCtx = document.querySelector('#timeChart').getContext('2d');
-        const reqChartCtx = document.querySelector('#reqChart').getContext('2d');
+        const rtimeChartCtx = document.querySelector('#rtimeChart').getContext('2d');
+        const connsChartCtx = document.querySelector('#connsChart').getContext('2d');
 
         const cpuChart = createChart(cpuChartCtx);
         const ramChart = createChart(ramChartCtx);
-        const timeChart = createChart(timeChartCtx);
-        const reqChart = createChart(reqChartCtx);
+        const rtimeChart = createChart(rtimeChartCtx);
+        const connsChart = createChart(connsChartCtx);
 
-        const charts = [cpuChart, ramChart, timeChart, reqChart];
+        const charts = [cpuChart, ramChart, rtimeChart, connsChart];
 
         function createChart(ctx) {
             return new Chart(ctx, {
@@ -191,21 +191,21 @@ var index = []byte(`<!DOCTYPE html>
         function update({
             cpu,
             ram,
-            time,
-            reqs
+            rtime,
+            conns
         }) {
-            cpu = cpu.toFixed(2);
-            ram = (ram / 1e6).toFixed(2);
+            cpu = cpu.toFixed(1);
+            ram = (ram / 1e6).toFixed(1);
 
             cpuMetric.innerHTML = cpu + '%';
             ramMetric.innerHTML = ram + ' MB';
-            timeMetric.innerHTML = time + 'ms';
-            reqMetric.innerHTML = reqs;
+            rtimeMetric.innerHTML = rtime + 'ms';
+            connsMetric.innerHTML = conns;
 
             cpuChart.data.datasets[0].data.push(cpu);
-            ramChart.data.datasets[0].data.push(Math.round(ram));
-            timeChart.data.datasets[0].data.push(time);
-            reqChart.data.datasets[0].data.push(reqs);
+            ramChart.data.datasets[0].data.push(ram);
+            rtimeChart.data.datasets[0].data.push(rtime);
+            connsChart.data.datasets[0].data.push(conns);
 
             const timestamp = new Date().getTime();
 
