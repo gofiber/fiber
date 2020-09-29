@@ -241,7 +241,7 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Format log to buffer
-			buf.WriteString(fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
+			_, _ = buf.WriteString(fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
 				timestamp.Load().(string),
 				statusColor(c.Response().StatusCode()), c.Response().StatusCode(), cReset,
 				stop.Sub(start).Round(time.Millisecond),
