@@ -235,6 +235,7 @@ var index = []byte(`<!DOCTYPE html>
                 chart.update();
                 // localStorage.setItem(chart.canvas.id, JSON.stringify(chart.data.datasets[0].data));
             });
+            setTimeout(fetchJSON, 750)
         }
 
         function fetchJSON() {
@@ -251,10 +252,11 @@ var index = []byte(`<!DOCTYPE html>
                     return res.json()
                 })
                 .then(res => {
-                    update(res, Math.round(performance.now() - t0))
+                    update(res, Match.Round(performance.now() - t0))
                 })
-                .catch(console.error);
-            setTimeout(fetchJSON, 750)
+                .catch(() => {
+                    setTimeout(fetchJSON, 750)
+                });
         }
 
         fetchJSON()
