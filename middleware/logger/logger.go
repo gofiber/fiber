@@ -237,7 +237,7 @@ func New(config ...Config) fiber.Handler {
 			// Format error if exist
 			formatErr := ""
 			if chainErr != nil {
-				formatErr = cRed + " -> " + chainErr.Error() + cReset
+				formatErr = cRed + " | " + chainErr.Error() + cReset
 			}
 
 			// Format log to buffer
