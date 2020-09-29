@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -49,8 +50,9 @@ var (
 func New() fiber.Handler {
 	// Start routine to update statistics
 	once.Do(func() {
+		fmt.Println("[Warning] monitor is still in beta, API might change in the future!")
+
 		p, _ := process.NewProcess(int32(os.Getpid()))
-		updateStatistics(p)
 
 		go func() {
 			for {
