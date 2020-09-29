@@ -233,6 +233,7 @@
                 chart.update();
                 // localStorage.setItem(chart.canvas.id, JSON.stringify(chart.data.datasets[0].data));
             });
+            setTimeout(fetchJSON, 750)
         }
 
         function fetchJSON() {
@@ -251,8 +252,9 @@
                 .then(res => {
                     update(res, Match.Round(performance.now() - t0))
                 })
-                .catch(console.error);
-            setTimeout(fetchJSON, 750)
+                .catch(() => {
+                    setTimeout(fetchJSON, 750)
+                });
         }
 
         fetchJSON()
