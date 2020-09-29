@@ -3,11 +3,6 @@ Monitor middleware for [Fiber](https://github.com/gofiber/fiber) that reports se
 
 ![](https://i.imgur.com/4NfRCDm.gif)
 
-
-### Table of Contents
-- [Signatures](#signatures)
-- [Examples](#examples)
-
 ### Signatures
 ```go
 func New() fiber.Handler
