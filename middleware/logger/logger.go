@@ -160,12 +160,12 @@ func New(config ...Config) fiber.Handler {
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
 
-	// Set start and stop
-	var start, stop time.Time
-
-	var once sync.Once
-
-	var errHandler fiber.ErrorHandler
+	// Set variables
+	var (
+		start, stop time.Time
+		once        sync.Once
+		errHandler  fiber.ErrorHandler
+	)
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
