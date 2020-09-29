@@ -14,7 +14,6 @@ import (
 type stats struct {
 	PID   statsPID `json:"pid"`
 	OS    statsOS  `json:"os"`
-	Rtime int64    `json:"rtime"`
 	Conns uint32   `json:"conns"`
 }
 
@@ -76,7 +75,6 @@ func New() fiber.Handler {
 			data.PID.RAM = monitPidRam
 			data.OS.CPU = monitOsCpu
 			data.OS.RAM = monitOsRam
-			data.Rtime = (time.Now().UnixNano() - c.Context().Time().UnixNano()) / 1000000
 			data.Conns = c.App().Server().GetCurrentConcurrency()
 			mutex.Unlock()
 			return c.Status(fiber.StatusOK).JSON(data)
