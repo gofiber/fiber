@@ -213,7 +213,7 @@ var index = []byte(`<!DOCTYPE html>
 
             cpuMetric.innerHTML = cpu + '% <span>' + cpuOS + '%</span>';
             ramMetric.innerHTML = formatBytes(json.pid.ram) + ' <span>' + formatBytes(json.os.ram) + '</span>';
-            rtimeMetric.innerHTML = rtime + 'ms';
+            rtimeMetric.innerHTML = rtime + 'ms <span>client</span>';
             connsMetric.innerHTML = json.conns;
 
             cpuChart.data.datasets[0].data.push(cpu);
@@ -236,6 +236,7 @@ var index = []byte(`<!DOCTYPE html>
                 // localStorage.setItem(chart.canvas.id, JSON.stringify(chart.data.datasets[0].data));
             });
             setTimeout(fetchJSON, 750)
+            
         }
 
         function fetchJSON() {
@@ -252,11 +253,9 @@ var index = []byte(`<!DOCTYPE html>
                     return res.json()
                 })
                 .then(res => {
-                    update(res, Match.Round(performance.now() - t0))
+                    update(res, Math.round(t1 - t0))
                 })
-                .catch(() => {
-                    setTimeout(fetchJSON, 750)
-                });
+                .catch(console.error);
         }
 
         fetchJSON()
