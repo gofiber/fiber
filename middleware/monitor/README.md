@@ -1,5 +1,5 @@
 # Monitor
-Monitor middleware for [Fiber](https://github.com/gofiber/fiber) that reports server metrics. Inspired by [express-status-monitor](https://github.com/RafalWilinski/express-status-monitor)
+Monitor middleware for [Fiber](https://github.com/gofiber/fiber) that reports server metrics, inspired by [express-status-monitor](https://github.com/RafalWilinski/express-status-monitor)
 
 ![](https://i.imgur.com/4NfRCDm.gif)
 
