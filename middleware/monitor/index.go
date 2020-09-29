@@ -207,16 +207,14 @@ var index = []byte(`<!DOCTYPE html>
         function update(json) {
             cpu = json.pid.cpu.toFixed(1);
             cpuOS = json.os.cpu.toFixed(1);
-            ram = formatBytes(json.pid.ram);
-            ramOS = formatBytes(json.os.ram);
 
             cpuMetric.innerHTML = cpu + '% <span>' + cpuOS + '%</span>';
-            ramMetric.innerHTML = ram + ' <span>' + ramOS + '</span>';
+            ramMetric.innerHTML = formatBytes(json.pid.ram) + ' <span>' + formatBytes(json.os.ram) + '</span>';
             rtimeMetric.innerHTML = json.rtime + 'ms';
             connsMetric.innerHTML = json.conns;
 
             cpuChart.data.datasets[0].data.push(cpu);
-            ramChart.data.datasets[0].data.push(ram);
+            ramChart.data.datasets[0].data.push((json.pid.ram / 1e6).toFixed(2));
             rtimeChart.data.datasets[0].data.push(json.rtime);
             connsChart.data.datasets[0].data.push(json.conns);
 
