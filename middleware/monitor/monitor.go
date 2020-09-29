@@ -6,22 +6,39 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
+	"github.com/gofiber/fiber/v2/internal/gopsutil/mem"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/process"
 )
 
 type stats struct {
-	Cpu   float64 `json:"cpu"`
-	Ram   uint64  `json:"ram"`
-	Rtime int64   `json:"rtime"`
-	Conns uint32  `json:"conns"`
+	PID   statsPID `json:"pid"`
+	OS    statsOS  `json:"os"`
+	Rtime int64    `json:"rtime"`
+	Conns uint32   `json:"conns"`
+}
+
+type statsPID struct {
+	CPU float64 `json:"cpu"`
+	RAM uint64  `json:"ram"`
+}
+type statsOS struct {
+	CPU float64 `json:"cpu"`
+	RAM uint64  `json:"ram"`
 }
 
 var (
-	monitorCPU float64
-	monitorRAM uint64
-	mutex      sync.RWMutex
-	once       sync.Once
-	data       = &stats{}
+	monitPidCpu float64
+	monitPidRam uint64
+
+	monitOsCpu float64
+	monitOsRam uint64
+)
+
+var (
+	mutex sync.RWMutex
+	once  sync.Once
+	data  = &stats{}
 )
 
 // New creates a new middleware handler
@@ -31,11 +48,17 @@ func New() fiber.Handler {
 		go func() {
 			p, _ := process.NewProcess(int32(os.Getpid()))
 			for {
-				cpu, _ := p.CPUPercent()
-				monitorCPU = cpu / 10
+				pidCpu, _ := p.CPUPercent()
+				monitPidCpu = pidCpu / 10
 
-				mem, _ := p.MemoryInfo()
-				monitorRAM = mem.RSS
+				osCpu, _ := cpu.Percent(0, false)
+				monitOsCpu = osCpu[0]
+
+				pidMem, _ := p.MemoryInfo()
+				monitPidRam = pidMem.RSS
+
+				osMem, _ := mem.VirtualMemory()
+				monitOsRam = osMem.Used
 
 				time.Sleep(1 * time.Second)
 			}
@@ -49,8 +72,10 @@ func New() fiber.Handler {
 		}
 		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON {
 			mutex.Lock()
-			data.Cpu = monitorCPU
-			data.Ram = monitorRAM
+			data.PID.CPU = monitPidCpu
+			data.PID.RAM = monitPidRam
+			data.OS.CPU = monitOsCpu
+			data.OS.RAM = monitOsRam
 			data.Rtime = (time.Now().UnixNano() - c.Context().Time().UnixNano()) / 1000000
 			data.Conns = c.App().Server().GetCurrentConcurrency()
 			mutex.Unlock()

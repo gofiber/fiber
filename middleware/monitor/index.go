@@ -8,7 +8,7 @@ var index = []byte(`<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@2.8.0/dist/Chart.bundle.min.js"></script>
-    <title>Fiber Status Monitor</title>
+    <title>Fiber Monitor</title>
     <style>
         body {
             margin: 0;
@@ -55,6 +55,11 @@ var index = []byte(`<!DOCTYPE html>
             padding: 0;
             margin: 0;
             font-size: 2.2em;
+        }
+
+        h2 span {
+            font-size: 12px;
+            color: #777;
         }
 
         canvas {
@@ -114,6 +119,17 @@ var index = []byte(`<!DOCTYPE html>
     </section>
 
     <script>
+        function formatBytes(bytes, decimals = 1) {
+            if (bytes === 0) return '0 Bytes';
+
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
         Chart.defaults.global.legend.display = false;
         Chart.defaults.global.defaultFontSize = 8;
         Chart.defaults.global.animation.duration = 1000;
@@ -188,24 +204,21 @@ var index = []byte(`<!DOCTYPE html>
         //     })
         // }
 
-        function update({
-            cpu,
-            ram,
-            rtime,
-            conns
-        }) {
-            cpu = cpu.toFixed(1);
-            ram = (ram / 1e6).toFixed(1);
+        function update(json) {
+            cpu = json.pid.cpu.toFixed(1);
+            cpuOS = json.os.cpu.toFixed(1);
+            ram = formatBytes(json.pid.ram);
+            ramOS = formatBytes(json.os.ram);
 
-            cpuMetric.innerHTML = cpu + '%';
-            ramMetric.innerHTML = ram + ' MB';
-            rtimeMetric.innerHTML = rtime + 'ms';
-            connsMetric.innerHTML = conns;
+            cpuMetric.innerHTML = cpu + '% <span>' + cpuOS + '%</span>';
+            ramMetric.innerHTML = ram + ' <span>' + ramOS + '</span>';
+            rtimeMetric.innerHTML = json.rtime + 'ms';
+            connsMetric.innerHTML = json.conns;
 
             cpuChart.data.datasets[0].data.push(cpu);
             ramChart.data.datasets[0].data.push(ram);
-            rtimeChart.data.datasets[0].data.push(rtime);
-            connsChart.data.datasets[0].data.push(conns);
+            rtimeChart.data.datasets[0].data.push(json.rtime);
+            connsChart.data.datasets[0].data.push(json.conns);
 
             const timestamp = new Date().getTime();
 
