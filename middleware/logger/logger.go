@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -162,18 +163,36 @@ func New(config ...Config) fiber.Handler {
 	// Set start and stop
 	var start, stop time.Time
 
+	var once sync.Once
+
+	var errHandler fiber.ErrorHandler
+
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
+
+		// Set error handler once
+		once.Do(func() {
+			errHandler = c.App().Config().ErrorHandler
+		})
+
 		// Set latency start time
 		if cfg.haveLatency {
 			start = time.Now()
 		}
+
 		// Handle request, store err for logging
-		handlerErr := c.Next()
+		chainErr := c.Next()
+
+		// Manually call error handler
+		if chainErr != nil {
+			if err := errHandler(c, chainErr); err != nil {
+				_ = c.SendStatus(fiber.StatusInternalServerError)
+			}
+		}
 
 		// Set latency stop time
 		if cfg.haveLatency {
@@ -239,8 +258,8 @@ func New(config ...Config) fiber.Handler {
 			case TagReset:
 				return buf.WriteString(cReset)
 			case TagError:
-				if handlerErr != nil {
-					return buf.WriteString(handlerErr.Error())
+				if chainErr != nil {
+					return buf.WriteString(chainErr.Error())
 				}
 				return buf.WriteString("-")
 			default:
@@ -273,7 +292,7 @@ func New(config ...Config) fiber.Handler {
 		// Put buffer back to pool
 		bytebufferpool.Put(buf)
 
-		return handlerErr
+		return nil
 	}
 }
 
