@@ -14,7 +14,7 @@ func New() fiber.Handler
 ```
 
 ### Examples
-Import the middleware package that is part of the Fiber web framework
+Import the middleware package and assign it to a route.
 ```go
 package main
 
@@ -27,7 +27,9 @@ import (
 
 func main() {
 	app := fiber.New()
+	
 	app.Get("/dashboard", monitor.New())
+	
 	log.Fatal(app.Listen(":3000"))
 }
 ```
