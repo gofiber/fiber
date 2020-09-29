@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -12,6 +13,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/internal/fasttemplate"
+	"github.com/gofiber/fiber/v2/internal/isatty"
+	"github.com/mattn/go-colorable"
 	"github.com/valyala/fasthttp"
 )
 
@@ -40,6 +43,9 @@ type Config struct {
 	//
 	// Default: os.Stderr
 	Output io.Writer
+
+	// Colors are only supported if no custom Output is given
+	enableColors bool
 
 	haveLatency      bool
 	timeZoneLocation *time.Location
@@ -102,6 +108,12 @@ const (
 	cReset   = "\u001b[0m"
 )
 
+// for colorizing response status and request method
+var (
+	statusColor string
+	methodColor string
+)
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -125,7 +137,15 @@ func New(config ...Config) fiber.Handler {
 			cfg.TimeFormat = ConfigDefault.TimeFormat
 		}
 		if cfg.Output == nil {
-			cfg.Output = ConfigDefault.Output
+			// cfg.Output = ConfigDefault.Output
+			// Check if colors should be disabled
+			if os.Getenv("TERM") == "dumb" ||
+				(!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+				cfg.Output = ConfigDefault.Output
+			} else {
+				cfg.enableColors = true
+				cfg.Output = colorable.NewColorableStderr()
+			}
 		}
 	}
 
@@ -238,7 +258,30 @@ func New(config ...Config) fiber.Handler {
 			case TagStatus:
 				return appendInt(buf, c.Response().StatusCode())
 			case TagMethod:
-				return buf.WriteString(c.Method())
+				// return buf.WriteString(c.Method())
+				// requestMethod = c.Method()
+				if !cfg.enableColors {
+					return buf.WriteString(c.Method())
+				}
+				switch c.Method() {
+				case fiber.MethodGet:
+					methodColor = cGreen
+				case fiber.MethodPost:
+					methodColor = cCyan
+				case fiber.MethodPut:
+					methodColor = cYellow
+				case fiber.MethodDelete:
+					methodColor = cRed
+				case fiber.MethodPatch:
+					methodColor = cBlue
+				case fiber.MethodHead:
+					methodColor = cMagenta
+				case fiber.MethodOptions:
+					methodColor = cBlack
+				default:
+					methodColor = cReset
+				}
+				return buf.WriteString(fmt.Sprintf("%s%7s%s", methodColor, c.Method(), cReset))
 			case TagBlack:
 				return buf.WriteString(cBlack)
 			case TagRed:
