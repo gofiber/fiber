@@ -44,6 +44,9 @@ func New() fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
+		if c.Method() != fiber.MethodGet {
+			return fiber.ErrMethodNotAllowed
+		}
 		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON {
 			mutex.Lock()
 			data.Cpu = monitorCPU
