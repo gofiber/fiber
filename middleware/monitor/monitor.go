@@ -54,6 +54,8 @@ func New() fiber.Handler {
 
 		p, _ := process.NewProcess(int32(os.Getpid()))
 
+		updateStatistics(p)
+
 		go func() {
 			for {
 				updateStatistics(p)

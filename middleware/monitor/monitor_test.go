@@ -59,7 +59,6 @@ func Test_Monitor_JSON(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("pid")))
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("os")))
-	utils.AssertEqual(t, true, bytes.Contains(b, []byte("conns")))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Monitor -benchmem -count=4
