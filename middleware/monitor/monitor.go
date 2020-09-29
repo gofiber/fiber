@@ -3,6 +3,7 @@ package monitor
 import (
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -27,11 +28,11 @@ type statsOS struct {
 }
 
 var (
-	monitPidCpu float64
-	monitPidRam uint64
+	monitPidCpu atomic.Value
+	monitPidRam atomic.Value
 
-	monitOsCpu float64
-	monitOsRam uint64
+	monitOsCpu atomic.Value
+	monitOsRam atomic.Value
 )
 
 var (
@@ -44,20 +45,12 @@ var (
 func New() fiber.Handler {
 	// Start routine to update statistics
 	once.Do(func() {
+		p, _ := process.NewProcess(int32(os.Getpid()))
+		updateStatistics(p)
+
 		go func() {
-			p, _ := process.NewProcess(int32(os.Getpid()))
 			for {
-				pidCpu, _ := p.CPUPercent()
-				monitPidCpu = pidCpu / 10
-
-				osCpu, _ := cpu.Percent(0, false)
-				monitOsCpu = osCpu[0]
-
-				pidMem, _ := p.MemoryInfo()
-				monitPidRam = pidMem.RSS
-
-				osMem, _ := mem.VirtualMemory()
-				monitOsRam = osMem.Used
+				updateStatistics(p)
 
 				time.Sleep(1 * time.Second)
 			}
@@ -71,10 +64,10 @@ func New() fiber.Handler {
 		}
 		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON {
 			mutex.Lock()
-			data.PID.CPU = monitPidCpu
-			data.PID.RAM = monitPidRam
-			data.OS.CPU = monitOsCpu
-			data.OS.RAM = monitOsRam
+			data.PID.CPU = monitPidCpu.Load().(float64)
+			data.PID.RAM = monitPidRam.Load().(uint64)
+			data.OS.CPU = monitOsCpu.Load().(float64)
+			data.OS.RAM = monitOsRam.Load().(uint64)
 			data.Conns = c.App().Server().GetCurrentConcurrency()
 			mutex.Unlock()
 			return c.Status(fiber.StatusOK).JSON(data)
@@ -82,4 +75,18 @@ func New() fiber.Handler {
 		c.Response().Header.SetContentType(fiber.MIMETextHTMLCharsetUTF8)
 		return c.Status(fiber.StatusOK).Send(index)
 	}
+}
+
+func updateStatistics(p *process.Process) {
+	pidCpu, _ := p.CPUPercent()
+	monitPidCpu.Store(pidCpu / 10)
+
+	osCpu, _ := cpu.Percent(0, false)
+	monitOsCpu.Store(osCpu[0])
+
+	pidMem, _ := p.MemoryInfo()
+	monitPidRam.Store(pidMem.RSS)
+
+	osMem, _ := mem.VirtualMemory()
+	monitOsRam.Store(osMem.Used)
 }
