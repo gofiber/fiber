@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -11,7 +12,9 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/gofiber/fiber/v2/internal/colorable"
 	"github.com/gofiber/fiber/v2/internal/fasttemplate"
+	"github.com/gofiber/fiber/v2/internal/isatty"
 	"github.com/valyala/fasthttp"
 )
 
@@ -41,7 +44,8 @@ type Config struct {
 	// Default: os.Stderr
 	Output io.Writer
 
-	haveLatency      bool
+	enableColors     bool
+	enableLatency    bool
 	timeZoneLocation *time.Location
 }
 
@@ -111,6 +115,11 @@ func New(config ...Config) fiber.Handler {
 	if len(config) > 0 {
 		cfg = config[0]
 
+		// Enable colors if no custom format or output is given
+		if cfg.Format == "" && cfg.Output == nil {
+			cfg.enableColors = true
+		}
+
 		// Set default values
 		if cfg.Next == nil {
 			cfg.Next = ConfigDefault.Next
@@ -127,6 +136,8 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Output == nil {
 			cfg.Output = ConfigDefault.Output
 		}
+	} else {
+		cfg.enableColors = true
 	}
 
 	// Get timezone location
@@ -138,7 +149,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Check if format contains latency
-	cfg.haveLatency = strings.Contains(cfg.Format, "${latency}")
+	cfg.enableLatency = strings.Contains(cfg.Format, "${latency}")
 
 	// Create template parser
 	tmpl := fasttemplate.New(cfg.Format, "${", "}")
@@ -167,6 +178,15 @@ func New(config ...Config) fiber.Handler {
 		errHandler  fiber.ErrorHandler
 	)
 
+	// If colors are enabled, check terminal compatibility
+	if cfg.enableColors {
+		cfg.Output = colorable.NewColorableStderr()
+		if os.Getenv("TERM") == "dumb" || (!isatty.IsTerminal(os.Stderr.Fd()) && !isatty.IsCygwinTerminal(os.Stderr.Fd())) {
+			cfg.Output = colorable.NewNonColorable(os.Stderr)
+		}
+	}
+	var errPadding = 15
+	var errPaddingStr = strconv.Itoa(errPadding)
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
@@ -177,10 +197,20 @@ func New(config ...Config) fiber.Handler {
 		// Set error handler once
 		once.Do(func() {
 			errHandler = c.App().Config().ErrorHandler
+			stack := c.App().Stack()
+			for m := range stack {
+				for r := range stack[m] {
+					if len(stack[m][r].Path) > errPadding {
+						errPadding = len(stack[m][r].Path)
+						errPaddingStr = strconv.Itoa(errPadding)
+					}
+				}
+			}
+
 		})
 
 		// Set latency start time
-		if cfg.haveLatency {
+		if cfg.enableLatency {
 			start = time.Now()
 		}
 
@@ -195,12 +225,41 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Set latency stop time
-		if cfg.haveLatency {
+		if cfg.enableLatency {
 			stop = time.Now()
 		}
 
 		// Get new buffer
 		buf := bytebufferpool.Get()
+
+		// Default output when no custom Format or io.Writer is given
+		if cfg.enableColors {
+			// Format error if exist
+			formatErr := ""
+			if chainErr != nil {
+				formatErr = cRed + " | " + chainErr.Error() + cReset
+			}
+
+			// Format log to buffer
+			_, _ = buf.WriteString(fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
+				timestamp.Load().(string),
+				statusColor(c.Response().StatusCode()), c.Response().StatusCode(), cReset,
+				stop.Sub(start).Round(time.Millisecond),
+				c.IP(),
+				methodColor(c.Method()), c.Method(), cReset,
+				c.Path(),
+				formatErr,
+			))
+
+			// Write buffer to output
+			_, _ = cfg.Output.Write(buf.Bytes())
+
+			// Put buffer back to pool
+			bytebufferpool.Put(buf)
+
+			// End chain
+			return nil
+		}
 
 		// Loop over template tags to replace it with the correct value
 		_, err = tmpl.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
