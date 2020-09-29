@@ -7,20 +7,19 @@ import (
 	"testing"
 	"time"
 
-	utils "github.com/gofiber/utils"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
 	// Reset test var
 	testPreforkMaster = true
 
-	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
-	defer os.Setenv(envPreforkChildKey, "")
+	setupIsChild(t)
+	defer teardownIsChild(t)
 
 	app := New()
-	app.init()
 
-	err := app.prefork("invalid")
+	err := app.prefork("invalid", nil)
 	utils.AssertEqual(t, false, err == nil)
 
 	go func() {
@@ -28,10 +27,10 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork("[::]:"))
+	utils.AssertEqual(t, nil, app.prefork("[::]:", nil))
 
 	// Create tls certificate
-	cer, err := tls.LoadX509KeyPair("./.github/TEST_DATA/ssl.pem", "./.github/TEST_DATA/ssl.key")
+	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
 		utils.AssertEqual(t, nil, err)
 	}
@@ -50,43 +49,23 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	testPreforkMaster = true
 
 	app := New()
-	app.init()
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork(":3000"))
+	utils.AssertEqual(t, nil, app.prefork(":3000", nil))
 
 	dummyChildCmd = "invalid"
 
-	err := app.prefork("127.0.0.1:")
+	err := app.prefork("127.0.0.1:", nil)
 	utils.AssertEqual(t, false, err == nil)
 }
 
-func Test_App_Prefork_TCP6_Addr(t *testing.T) {
-	// Reset test var
-	testPreforkMaster = true
-
-	app := New()
-	app.Settings.Prefork = true
-	app.Settings.DisableStartupMessage = true
-
-	app.init()
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	err := app.Listen("[::1]:3200")
-	utils.AssertEqual(t, true, err != nil)
-}
-
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
-	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
-	defer os.Setenv(envPreforkChildKey, "")
+	setupIsChild(t)
+	defer teardownIsChild(t)
 
 	rescueStdout := os.Stdout
 	defer func() { os.Stdout = rescueStdout }()
@@ -103,4 +82,12 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	out, err := ioutil.ReadAll(r)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 0, len(out))
+}
+
+func setupIsChild(t *testing.T) {
+	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
+}
+
+func teardownIsChild(t *testing.T) {
+	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, ""))
 }

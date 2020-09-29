@@ -6,10 +6,9 @@ package fiber
 
 import (
 	"fmt"
-	"sync/atomic"
 	"testing"
 
-	utils "github.com/gofiber/utils"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // go test -race -run Test_Path_parseRoute
@@ -18,12 +17,12 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/shop/product/::filter/color::color/size::size")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
-			{Const: "/shop/product/:"},
+		segs: []*routeSegment{
+			{Const: "/shop/product/:", Length: 15},
 			{IsParam: true, ParamName: "filter", ComparePart: "/color:", PartCount: 1},
-			{Const: "/color:"},
+			{Const: "/color:", Length: 7},
 			{IsParam: true, ParamName: "color", ComparePart: "/size:", PartCount: 1},
-			{Const: "/size:"},
+			{Const: "/size:", Length: 6},
 			{IsParam: true, ParamName: "size", IsLast: true},
 		},
 		params: []string{"filter", "color", "size"},
@@ -31,10 +30,10 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/api/v1/:param/abc/*")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
-			{Const: "/api/v1/"},
+		segs: []*routeSegment{
+			{Const: "/api/v1/", Length: 8},
 			{IsParam: true, ParamName: "param", ComparePart: "/abc", PartCount: 1},
-			{Const: "/abc/"},
+			{Const: "/abc/", Length: 5, HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, IsLast: true},
 		},
 		params:        []string{"param", "*1"},
@@ -43,12 +42,12 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/api/*/:param/:param2")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
-			{Const: "/api/"},
+		segs: []*routeSegment{
+			{Const: "/api/", Length: 5, HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "/", PartCount: 2},
-			{Const: "/"},
+			{Const: "/", Length: 1},
 			{IsParam: true, ParamName: "param", ComparePart: "/", PartCount: 1},
-			{Const: "/"},
+			{Const: "/", Length: 1},
 			{IsParam: true, ParamName: "param2", IsLast: true},
 		},
 		params:        []string{"*1", "param", "param2"},
@@ -57,9 +56,9 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/test:optional?:optional2?")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
-			{Const: "/test"},
-			{IsParam: true, ParamName: "optional", IsOptional: true},
+		segs: []*routeSegment{
+			{Const: "/test", Length: 5},
+			{IsParam: true, ParamName: "optional", IsOptional: true, Length: 1},
 			{IsParam: true, ParamName: "optional2", IsOptional: true, IsLast: true},
 		},
 		params: []string{"optional", "optional2"},
@@ -67,10 +66,10 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/config/+.json")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
-			{Const: "/config/"},
+		segs: []*routeSegment{
+			{Const: "/config/", Length: 8},
 			{IsParam: true, ParamName: "+1", IsGreedy: true, IsOptional: false, ComparePart: ".json", PartCount: 1},
-			{Const: ".json", IsLast: true},
+			{Const: ".json", Length: 5, IsLast: true},
 		},
 		params:    []string{"+1"},
 		plusCount: 1,
@@ -78,12 +77,12 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/api/:day.:month?.:year?")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
-			{Const: "/api/"},
+		segs: []*routeSegment{
+			{Const: "/api/", Length: 5},
 			{IsParam: true, ParamName: "day", IsOptional: false, ComparePart: ".", PartCount: 2},
-			{Const: "."},
+			{Const: ".", Length: 1},
 			{IsParam: true, ParamName: "month", IsOptional: true, ComparePart: ".", PartCount: 1},
-			{Const: "."},
+			{Const: ".", Length: 1},
 			{IsParam: true, ParamName: "year", IsOptional: true, IsLast: true},
 		},
 		params: []string{"day", "month", "year"},
@@ -91,12 +90,12 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	rp = parseRoute("/*v1*/proxy")
 	utils.AssertEqual(t, routeParser{
-		segs: []routeSegment{
-			{Const: "/"},
+		segs: []*routeSegment{
+			{Const: "/", Length: 1, HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "v1", PartCount: 1},
-			{Const: "v1"},
+			{Const: "v1", Length: 2},
 			{IsParam: true, ParamName: "*2", IsGreedy: true, IsOptional: true, ComparePart: "/proxy", PartCount: 1},
-			{Const: "/proxy", IsLast: true},
+			{Const: "/proxy", Length: 6, IsLast: true},
 		},
 		params:        []string{"*1", "*2"},
 		wildCardCount: 2,
@@ -112,15 +111,14 @@ func Test_Path_matchParams(t *testing.T) {
 		match        bool
 		partialCheck bool
 	}
+	var ctxParams [maxParams]string
 	testCase := func(r string, cases []testparams) {
 		parser := parseRoute(r)
 		for _, c := range cases {
-			paramsPos, match := parser.getMatch(c.url, c.partialCheck)
+			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
 			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-			if match && paramsPos != nil {
-				utils.AssertEqual(t, c.params, parser.paramsForPos(c.url, paramsPos), fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-			} else {
-				utils.AssertEqual(t, true, nil == paramsPos, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			if match && len(c.params) > 0 {
+				utils.AssertEqual(t, c.params[0:len(c.params)-1], ctxParams[0:len(c.params)-1], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			}
 		}
 	}
@@ -388,6 +386,18 @@ func Test_Path_matchParams(t *testing.T) {
 	})
 }
 
+func Test_Utils_GetTrimmedParam(t *testing.T) {
+	t.Parallel()
+	res := GetTrimmedParam("*")
+	utils.AssertEqual(t, "*", res)
+	res = GetTrimmedParam(":param")
+	utils.AssertEqual(t, "param", res)
+	res = GetTrimmedParam(":param1?")
+	utils.AssertEqual(t, "param1", res)
+	res = GetTrimmedParam("noParam")
+	utils.AssertEqual(t, "noParam", res)
+}
+
 // go test -race -run Test_Path_matchParams
 func Benchmark_Path_matchParams(t *testing.B) {
 	type testparams struct {
@@ -396,26 +406,25 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		match        bool
 		partialCheck bool
 	}
+	var ctxParams [maxParams]string
 	benchCase := func(r string, cases []testparams) {
 		parser := parseRoute(r)
 		for _, c := range cases {
-
-			var params []string
 			var matchRes bool
-			t.Run(r+" | "+c.url, func(b *testing.B) {
-				params = nil
+			state := "match"
+			if !c.match {
+				state = "not match"
+			}
+			t.Run(r+" | "+state+" | "+c.url, func(b *testing.B) {
 				for i := 0; i <= b.N; i++ {
-					if paramPos, match := parser.getMatch(c.url, c.partialCheck); match {
+					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck); match {
 						// Get params from the original path
 						matchRes = true
-						params = parser.paramsForPos(c.url, paramPos)
 					}
 				}
 				utils.AssertEqual(t, c.match, matchRes, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-				if matchRes && params != nil {
-					utils.AssertEqual(t, c.params, params, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-				} else {
-					utils.AssertEqual(t, true, nil == params, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				if matchRes && len(c.params) > 0 {
+					utils.AssertEqual(t, c.params[0:len(c.params)-1], ctxParams[0:len(c.params)-1], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 				}
 			})
 
@@ -429,22 +438,22 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v2", params: nil, match: false},
 		{url: "/api/v1/", params: nil, match: false},
 	})
-}
-
-// go test -race -run Test_Reset_StartParamPosList
-func Test_Reset_StartParamPosList(t *testing.T) {
-	atomic.StoreUint32(&startParamPosList, uint32(len(paramsPosDummy))-10)
-
-	getAllocFreeParamsPos(5)
-
-	utils.AssertEqual(t, uint32(5), startParamPosList)
-}
-
-// go test -race -run Test_Reset_startParamList
-func Test_Reset_startParamList(t *testing.T) {
-	atomic.StoreUint32(&startParamList, uint32(len(paramsDummy))-10)
-
-	getAllocFreeParams(5)
-
-	utils.AssertEqual(t, uint32(5), startParamList)
+	benchCase("/api/v1/:param", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: true},
+		{url: "/api/v1/entity/8728382", params: nil, match: false},
+		{url: "/api/v1", params: nil, match: false},
+		{url: "/api/v1/", params: nil, match: false},
+	})
+	benchCase("/api/v1", []testparams{
+		{url: "/api/v1", params: []string{}, match: true},
+		{url: "/api/v2", params: nil, match: false},
+	})
+	benchCase("/api/v1/:param/*", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity", ""}, match: true},
+		{url: "/api/v1/entity/", params: []string{"entity", ""}, match: true},
+		{url: "/api/v1/entity/1", params: []string{"entity", "1"}, match: true},
+		{url: "/api/v", params: nil, match: false},
+		{url: "/api/v2", params: nil, match: false},
+		{url: "/api/v1/", params: nil, match: false},
+	})
 }

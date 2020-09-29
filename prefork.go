@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	reuseport "github.com/valyala/fasthttp/reuseport"
+	"github.com/valyala/fasthttp/reuseport"
 )
 
 const (
@@ -24,33 +24,28 @@ var (
 )
 
 // IsChild determines if the current process is a result of Prefork
-func (app *App) IsChild() bool {
+func IsChild() bool {
 	return os.Getenv(envPreforkChildKey) == envPreforkChildVal
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
-func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
+func (app *App) prefork(addr string, tlsConfig *tls.Config) (err error) {
 	// 👶 child process 👶
-	if app.IsChild() {
+	if IsChild() {
 		// use 1 cpu core per child process
 		runtime.GOMAXPROCS(1)
 		var ln net.Listener
-		// Set correct network protocol
-		network := "tcp4"
-		if isIPv6(addr) {
-			network = "tcp6"
-		}
 		// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
 		// Only tcp4 or tcp6 is supported when preforking, both are not supported
-		if ln, err = reuseport.Listen(network, addr); err != nil {
-			if !app.Settings.DisableStartupMessage {
+		if ln, err = reuseport.Listen("tcp4", addr); err != nil {
+			if !app.config.DisableStartupMessage {
 				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
 			return fmt.Errorf("prefork: %v", err)
 		}
 		// wrap a tls config around the listener if provided
-		if len(tlsconfig) > 0 {
-			ln = tls.NewListener(ln, tlsconfig[0])
+		if tlsConfig != nil {
+			ln = tls.NewListener(ln, tlsConfig)
 		}
 
 		// kill current child proc when master exits
@@ -113,8 +108,8 @@ func (app *App) prefork(addr string, tlsconfig ...*tls.Config) (err error) {
 	}
 
 	// Print startup message
-	if !app.Settings.DisableStartupMessage {
-		app.startupMessage(addr, len(tlsconfig) > 0, ","+strings.Join(pids, ","))
+	if !app.config.DisableStartupMessage {
+		app.startupMessage(addr, tlsConfig != nil, ","+strings.Join(pids, ","))
 	}
 
 	// return error if child crashes

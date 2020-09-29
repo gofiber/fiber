@@ -1,1 +1,4 @@
 * @gofiber/maintainers
+
+middleware/filesystem/* @arsmn
+middleware/cache/* @codemicro
