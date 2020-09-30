@@ -79,7 +79,7 @@ func New(config ...Config) fiber.Handler {
 		// Remove expired entries
 		go func() {
 			for {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(cfg.Expiration)
 				for k := range db.entries {
 					if time.Now().Unix() >= db.entries[k].expiration {
 						delete(db.entries, k)
