@@ -78,7 +78,7 @@ func New(config ...Config) fiber.Handler {
 				cfg.Cookie.Name = "_csrf"
 			}
 			if cfg.Cookie.SameSite == "" {
-				cfg.Cookie.Name = "Strict"
+				cfg.Cookie.SameSite = "Strict"
 			}
 		}
 		if cfg.CookieExpires == 0 {
