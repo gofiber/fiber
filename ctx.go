@@ -63,6 +63,7 @@ type Cookie struct {
 	Value    string    `json:"value"`
 	Path     string    `json:"path"`
 	Domain   string    `json:"domain"`
+	MaxAge   int       `json:"max_age"`
 	Expires  time.Time `json:"expires"`
 	Secure   bool      `json:"secure"`
 	HTTPOnly bool      `json:"http_only"`
@@ -286,6 +287,7 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetValue(cookie.Value)
 	fcookie.SetPath(cookie.Path)
 	fcookie.SetDomain(cookie.Domain)
+	fcookie.SetMaxAge(cookie.MaxAge)
 	fcookie.SetExpire(cookie.Expires)
 	fcookie.SetSecure(cookie.Secure)
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
