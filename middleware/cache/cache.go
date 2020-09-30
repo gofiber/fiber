@@ -22,10 +22,13 @@ type Config struct {
 	Expiration time.Duration
 }
 
+// ConfigDefaultExpiration represents the default expiration time in minutes.
+const ConfigDefaultExpiration = 5 * time.Minute
+
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:       nil,
-	Expiration: 5 * time.Minute,
+	Expiration: ConfigDefaultExpiration,
 }
 
 // cache is the manager to store the cached responses
