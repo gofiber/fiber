@@ -30,9 +30,9 @@ app.Use(requestid.New())
 // Or extend your config for customization
 app.Use(requestid.New(requestid.Config{
 	Header:    "X-Custom-Header",
-	Generetor: func() string {
+	Generator: func() string {
 		return "static-id"
-	}
+	},
 }))
 ```
 
