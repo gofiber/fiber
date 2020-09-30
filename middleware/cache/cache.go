@@ -16,7 +16,7 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// Expiration is the time that an cached response will live
+	// Expiration is the time to live for a cached response.
 	//
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration
@@ -104,7 +104,7 @@ func New(config ...Config) fiber.Handler {
 		// Get key from request
 		key := c.Path()
 
-		// Fine cached entry
+		// Find cached entry
 		db.RLock()
 		resp, ok := db.entries[key]
 		db.RUnlock()
