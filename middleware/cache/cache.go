@@ -16,16 +16,19 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// Expiration is the time that an cached response will live
+	// Expiration is the time to live for a cached response.
 	//
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration
 }
 
+// ConfigDefaultExpiration represents the default expiration time in minutes.
+const ConfigDefaultExpiration = 5 * time.Minute
+
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:       nil,
-	Expiration: 5 * time.Minute,
+	Expiration: ConfigDefaultExpiration,
 }
 
 // cache is the manager to store the cached responses
@@ -76,7 +79,7 @@ func New(config ...Config) fiber.Handler {
 		// Remove expired entries
 		go func() {
 			for {
-				time.Sleep(1 * time.Minute)
+				time.Sleep(cfg.Expiration)
 				for k := range db.entries {
 					if time.Now().Unix() >= db.entries[k].expiration {
 						delete(db.entries, k)
@@ -101,7 +104,7 @@ func New(config ...Config) fiber.Handler {
 		// Get key from request
 		key := c.Path()
 
-		// Fine cached entry
+		// Find cached entry
 		db.RLock()
 		resp, ok := db.entries[key]
 		db.RUnlock()
