@@ -14,19 +14,40 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
+func Test_Cache_CacheControl(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		CacheControl: true,
+		Expiration:   10 * time.Second,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
+}
+
 func Test_Cache_Expired(t *testing.T) {
 	app := fiber.New()
 
 	expiration := 1 * time.Second
-	app.Use(New(Config{Expiration: expiration}))
+
+	app.Use(New(Config{
+		Expiration: expiration,
+	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
-		return c.SendString(now)
+		return c.SendString(fmt.Sprintf("%d", time.Now().UnixNano()))
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -34,14 +55,13 @@ func Test_Cache_Expired(t *testing.T) {
 	// Sleep until the cache is expired
 	time.Sleep(expiration)
 
-	cachedReq := httptest.NewRequest("GET", "/", nil)
-	cached, err := app.Test(cachedReq)
+	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	cachedBody, err := ioutil.ReadAll(cached.Body)
+	bodyCached, err := ioutil.ReadAll(respCached.Body)
 	utils.AssertEqual(t, nil, err)
 
-	if bytes.Equal(body, cachedBody) {
-		t.Errorf("Cache should have expired: %v, %v", body, cachedBody)
+	if bytes.Equal(body, bodyCached) {
+		t.Errorf("Cache should have expired: %s, %s", body, bodyCached)
 	}
 }
 
