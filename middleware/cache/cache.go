@@ -30,8 +30,9 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:       nil,
-	Expiration: 5 * time.Minute,
+	Next:         nil,
+	Expiration:   5 * time.Minute,
+	CacheControl: false,
 }
 
 // cache is the manager to store the cached responses
@@ -48,12 +49,6 @@ type entry struct {
 	statusCode  int
 	expiration  int64
 }
-
-// Internal variables
-var (
-	db   *cache
-	once sync.Once
-)
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -80,26 +75,25 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
-	// Initialize db once
-	once.Do(func() {
-		db = &cache{
-			entries:    make(map[string]entry),
-			expiration: int64(cfg.Expiration.Seconds()),
-		}
-		// Remove expired entries
-		go func() {
-			for {
-				time.Sleep(10 * time.Second)
-				db.Lock()
-				for k := range db.entries {
-					if time.Now().Unix() >= db.entries[k].expiration {
-						delete(db.entries, k)
-					}
+	// Initialize db
+	db := &cache{
+		entries:    make(map[string]entry),
+		expiration: int64(cfg.Expiration.Seconds()),
+	}
+	// Remove expired entries
+	go func() {
+		for {
+			// GC the entries every 10 seconds to avoid
+			time.Sleep(10 * time.Second)
+			db.Lock()
+			for k := range db.entries {
+				if time.Now().Unix() >= db.entries[k].expiration {
+					delete(db.entries, k)
 				}
-				db.Unlock()
 			}
-		}()
-	})
+			db.Unlock()
+		}
+	}()
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
@@ -131,6 +125,7 @@ func New(config ...Config) fiber.Handler {
 				c.Response().SetBodyRaw(resp.body)
 				c.Response().SetStatusCode(resp.statusCode)
 				c.Response().Header.SetContentTypeBytes(resp.contentType)
+				// Set Cache-Control header if enabled
 				if cfg.CacheControl {
 					maxAge := strconv.FormatInt(resp.expiration-time.Now().Unix(), 10)
 					c.Set(fiber.HeaderCacheControl, "max-age="+maxAge)
