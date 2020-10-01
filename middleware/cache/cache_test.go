@@ -1,6 +1,5 @@
 // Special thanks to @codemicro for moving this to fiber core
 // Original middleware: github.com/codemicro/fiber-cache
-
 package cache
 
 import (
@@ -99,27 +98,39 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 
 func Test_Cache_Invalid_Method(t *testing.T) {
 	app := fiber.New()
+
 	app.Use(New())
 
 	app.Post("/", func(c *fiber.Ctx) error {
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
-		return c.SendString(now)
+		return c.SendString(c.Query("cache"))
 	})
 
-	req := httptest.NewRequest("POST", "/", nil)
-	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
+	app.Get("/get", func(c *fiber.Ctx) error {
+		return c.SendString(c.Query("cache"))
+	})
 
-	notCachedReq := httptest.NewRequest("POST", "/", nil)
-	notCachedResp, err := app.Test(notCachedReq)
+	resp, err := app.Test(httptest.NewRequest("POST", "/?cache=123", nil))
 	utils.AssertEqual(t, nil, err)
-
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	notCachedBody, err := ioutil.ReadAll(notCachedResp.Body)
-	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "123", string(body))
 
-	if bytes.Equal(body, notCachedBody) {
-		t.Errorf(t.Name(), " should not be cached, due to POST method, want: %v, got: %v", notCachedBody, body)
-	}
+	resp, err = app.Test(httptest.NewRequest("POST", "/?cache=12345", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "12345", string(body))
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=123", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "123", string(body))
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=12345", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "123", string(body))
+
 }

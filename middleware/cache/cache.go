@@ -16,19 +16,16 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// Expiration is the time to live for a cached response.
+	// Expiration is the time that an cached response will live
 	//
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration
 }
 
-// ConfigDefaultExpiration represents the default expiration time in minutes.
-const ConfigDefaultExpiration = 5 * time.Minute
-
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:       nil,
-	Expiration: ConfigDefaultExpiration,
+	Expiration: 5 * time.Minute,
 }
 
 // cache is the manager to store the cached responses
@@ -70,6 +67,13 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
+	// Nothing to cache
+	if int(cfg.Expiration.Seconds()) < 0 {
+		return func(c *fiber.Ctx) error {
+			return c.Next()
+		}
+	}
+
 	// Initialize db once
 	once.Do(func() {
 		db = &cache{
@@ -79,19 +83,21 @@ func New(config ...Config) fiber.Handler {
 		// Remove expired entries
 		go func() {
 			for {
-				time.Sleep(cfg.Expiration)
+				time.Sleep(10 * time.Second)
+				db.Lock()
 				for k := range db.entries {
 					if time.Now().Unix() >= db.entries[k].expiration {
 						delete(db.entries, k)
 					}
 				}
+				db.Unlock()
 			}
 		}()
 	})
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
-		// Don't execute middleware if Next returns true
+		// Don't execute middleware if no expiration or Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
@@ -109,11 +115,18 @@ func New(config ...Config) fiber.Handler {
 		resp, ok := db.entries[key]
 		db.RUnlock()
 		if ok {
-			// Set response headers from cache
-			c.Response().SetBodyRaw(resp.body)
-			c.Response().SetStatusCode(resp.statusCode)
-			c.Response().Header.SetContentTypeBytes(resp.contentType)
-			return nil
+			// Check if entry is expired
+			if time.Now().Unix() >= resp.expiration {
+				db.Lock()
+				delete(db.entries, key)
+				db.Unlock()
+			} else {
+				// Set response headers from cache
+				c.Response().SetBodyRaw(resp.body)
+				c.Response().SetStatusCode(resp.statusCode)
+				c.Response().Header.SetContentTypeBytes(resp.contentType)
+				return nil
+			}
 		}
 
 		// Continue stack, return err to Fiber if exist
