@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -20,6 +21,11 @@ type Config struct {
 	//
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration
+
+	// CacheControl enables client side caching if set to true
+	//
+	// Optional. Default: false
+	CacheControl bool
 }
 
 // ConfigDefault is the default config
@@ -97,7 +103,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
-		// Don't execute middleware if no expiration or Next returns true
+		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
@@ -125,6 +131,10 @@ func New(config ...Config) fiber.Handler {
 				c.Response().SetBodyRaw(resp.body)
 				c.Response().SetStatusCode(resp.statusCode)
 				c.Response().Header.SetContentTypeBytes(resp.contentType)
+				if cfg.CacheControl {
+					maxAge := strconv.FormatInt(resp.expiration-time.Now().Unix(), 10)
+					c.Set(fiber.HeaderCacheControl, "max-age="+maxAge)
+				}
 				return nil
 			}
 		}
