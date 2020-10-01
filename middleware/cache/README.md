@@ -33,6 +33,7 @@ app.Use(cache.New(cache.Config{
 		return c.Query("refresh") == "true"
 	},
 	Expiration: 30 * time.Minute,
+	CacheControl: true,
 }))
 ```
 
@@ -49,6 +50,11 @@ type Config struct {
 	//
 	// Optional. Default: 5 * time.Minute
 	Expiration time.Duration
+
+	// CacheControl enables client side caching if set to true
+	//
+	// Optional. Default: false
+	CacheControl bool
 }
 ```
 
@@ -56,7 +62,8 @@ type Config struct {
 ```go
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:       nil,
-	Expiration: 5 * time.Minute,
+	Next:         nil,
+	Expiration:   5 * time.Minute,
+	CacheControl: false,
 }
 ```
