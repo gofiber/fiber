@@ -532,6 +532,7 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 - [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
 - [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 - [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
+- [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
 
 ## 👍 Помощь проекту
 

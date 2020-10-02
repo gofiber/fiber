@@ -527,6 +527,7 @@ Esta é uma lista de middlewares criados pela comunidade do Fiber, se quiser ter
 - [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
 - [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 - [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
+- [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
 
 ## 👍 Contribuindo
 
