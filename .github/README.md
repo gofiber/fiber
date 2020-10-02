@@ -528,6 +528,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 - [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
 - [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
 - [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
+- [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
 
 ## 👍 Contribute
 
