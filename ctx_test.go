@@ -1326,7 +1326,7 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 		if err := c.SendFile("./.github/" + file + ".html"); err != nil {
 			utils.AssertEqual(t, nil, err)
 		}
-		utils.AssertEqual(t, "index", fmt.Sprintf("%s", file))
+		utils.AssertEqual(t, "index", file)
 		return c.SendString(file)
 	})
 	// 1st try

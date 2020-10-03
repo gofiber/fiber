@@ -121,7 +121,7 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	})
 
 	request := httptest.NewRequest("GET", "/", nil)
-	logHeaderSlice := make([]string, 5000, 5000)
+	logHeaderSlice := make([]string, 5000)
 	request.Header.Set("Very-Long-Header", strings.Join(logHeaderSlice, "-"))
 	_, err := app.Test(request)
 

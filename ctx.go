@@ -708,7 +708,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		if strings.Index(v, ",") > -1 && equalFieldType(out, reflect.Slice, k) {
+		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				data[k] = append(data[k], values[i])
