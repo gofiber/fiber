@@ -736,6 +736,22 @@ func Test_App_Group_Invalid(t *testing.T) {
 	New().Group("/").Use(1)
 }
 
+// go test -run Test_App_Group_Mount
+func Test_App_Group_Mount(t *testing.T) {
+	micro := New()
+	micro.Get("/doe", func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	app := New()
+	v1 := app.Group("/v1")
+	v1.Mount("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/v1/john/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+}
+
 func Test_App_Group(t *testing.T) {
 	var dummyHandler = testEmptyHandler
 
