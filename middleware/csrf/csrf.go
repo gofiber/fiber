@@ -72,17 +72,18 @@ func New(config ...Config) fiber.Handler {
 		if cfg.ContextKey == "" {
 			cfg.ContextKey = ConfigDefault.ContextKey
 		}
-		if cfg.Cookie == nil {
-			cfg.Cookie = ConfigDefault.Cookie
-			if cfg.Cookie.Name == "" {
-				cfg.Cookie.Name = "_csrf"
-			}
-			if cfg.Cookie.SameSite == "" {
-				cfg.Cookie.SameSite = "Strict"
-			}
-		}
 		if cfg.CookieExpires == 0 {
 			cfg.CookieExpires = ConfigDefault.CookieExpires
+		}
+		if cfg.Cookie != nil {
+			if cfg.Cookie.Name == "" {
+				cfg.Cookie.Name = ConfigDefault.Cookie.Name
+			}
+			if cfg.Cookie.SameSite == "" {
+				cfg.Cookie.SameSite = ConfigDefault.Cookie.SameSite
+			}
+		} else {
+			cfg.Cookie = ConfigDefault.Cookie
 		}
 	}
 
