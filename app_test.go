@@ -1071,3 +1071,9 @@ func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 	New(Config{Prefork: true}).
 		startupMessage(":3000", true, "")
 }
+
+func Test_App_Server(t *testing.T) {
+	app := New()
+
+	utils.AssertEqual(t, false, app.Server() == nil)
+}
