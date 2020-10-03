@@ -752,7 +752,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	if os.Getenv("TERM") == "dumb" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
-	fmt.Fprintf(out, logo,
+	_, _ = fmt.Fprintf(out, logo,
 		cBlack,
 		centerValue(" Fiber v"+Version, 49),
 		center(addr, 49),
