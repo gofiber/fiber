@@ -746,6 +746,15 @@ func Test_Ctx_IP(t *testing.T) {
 	utils.AssertEqual(t, "0.0.0.0", c.IP())
 }
 
+// go test -run Test_Ctx_IP_ProxyHeader
+func Test_Ctx_IP_ProxyHeader(t *testing.T) {
+	t.Parallel()
+	app := New(Config{ProxyHeader: "Real-Ip"})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, "", c.IP())
+}
+
 // go test -run Test_Ctx_IPs  -parallel
 func Test_Ctx_IPs(t *testing.T) {
 	t.Parallel()
@@ -1852,6 +1861,17 @@ func Benchmark_Ctx_Write(b *testing.B) {
 	}
 }
 
+// go test -run Test_Ctx_WriteString
+func Test_Ctx_WriteString(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.WriteString("Hello, ")
+	c.WriteString("World!")
+	utils.AssertEqual(t, "Hello, World!", string(c.Response().Body()))
+}
+
 // go test -run Test_Ctx_XHR
 func Test_Ctx_XHR(t *testing.T) {
 	t.Parallel()
@@ -2029,4 +2049,14 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 			}
 		})
 	}
+}
+
+func Test_Ctx_String(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	utils.AssertEqual(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
 }
