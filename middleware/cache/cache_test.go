@@ -152,5 +152,30 @@ func Test_Cache_Invalid_Method(t *testing.T) {
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
+}
 
+func Test_Cache_NothingToCache(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{Expiration: -(time.Second * 1)}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString(time.Now().String())
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	time.Sleep(500 * time.Millisecond)
+
+	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	bodyCached, err := ioutil.ReadAll(respCached.Body)
+	utils.AssertEqual(t, nil, err)
+
+	if bytes.Equal(body, bodyCached) {
+		t.Errorf("Cache should have expired: %s, %s", body, bodyCached)
+	}
 }
