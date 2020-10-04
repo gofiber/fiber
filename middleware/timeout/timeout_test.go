@@ -13,10 +13,12 @@ import (
 
 // go test -run Test_Middleware_Timeout
 func Test_Middleware_Timeout(t *testing.T) {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true, Immutable: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
 	h := New(func(c *fiber.Ctx) error {
-		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+		msSleep := c.Params("sleepTime")
+		msSleep += "ms"
+		sleepTime, _ := time.ParseDuration(msSleep)
 		time.Sleep(sleepTime)
 		return c.SendString("After " + c.Params("sleepTime") + "ms sleeping")
 	}, 5*time.Millisecond)
