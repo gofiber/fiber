@@ -115,7 +115,7 @@ go get github.com/gofiber/fiber/v2
 
 ## 🎯 Features
 
-<div style="width 49%; float:left;">
+<div float="left" width="49%">
 
 - **[Awesome router](https://docs.gofiber.io/routing)**
 - **[Serve static files](https://docs.gofiber.io/application#static)**
@@ -129,7 +129,7 @@ go get github.com/gofiber/fiber/v2
 
  </div>
 
-<div style="width 49%; float:left;">
+<div float="left" width="49%">
 
 - **[Server-side caching](https://github.com/gofiber/fiber/tree/master/middleware/cache)**
 - **[No more server crashes](https://github.com/gofiber/fiber/tree/master/middleware/recover)**
