@@ -115,18 +115,36 @@ go get github.com/gofiber/fiber/v2
 
 ## 🎯 Features
 
-- Robust [routing](https://docs.gofiber.io/routing)
-- Serve [static files](https://docs.gofiber.io/application#static)
-- Extreme [performance](https://docs.gofiber.io/benchmarks)
-- [Low memory](https://docs.gofiber.io/benchmarks) footprint
-- [API endpoints](https://docs.gofiber.io/context)
-- [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/context#next) support
-- [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
-- [Template engines](https://github.com/gofiber/template)
-- [WebSocket support](https://github.com/gofiber/websocket)
-- [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Translated in [15 languages](https://docs.gofiber.io/)
-- And much more, [explore Fiber](https://docs.gofiber.io/)
+<div style="width 49%; float:left;">
+
+- **[Awesome router](https://docs.gofiber.io/routing)**
+- **[Serve static files](https://docs.gofiber.io/application#static)**
+- **[Extreme performance](https://docs.gofiber.io/benchmarks)**
+- **[Zero Garbage](https://docs.gofiber.io/benchmarks)**
+- **[Clean and simple API](https://docs.gofiber.io/context)**
+- **[Flexible routing](https://docs.gofiber.io/context#next)**
+- **[Supporting 9+ template engines](https://github.com/gofiber/template)**
+- **[WebSocket support](https://github.com/gofiber/websocket)**
+- **[Many examples](https://github.com/gofiber/recipes)**
+
+ </div>
+
+<div style="width 49%; float:left;">
+
+- **[Server-side caching](https://github.com/gofiber/fiber/tree/master/middleware/cache)**
+- **[No more server crashes](https://github.com/gofiber/fiber/tree/master/middleware/recover)**
+- **[Lots of good middlewares](https://github.com/gofiber/fiber/tree/master/middleware)**
+- **[Flexible logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)**
+- **[Rapid server-side programming](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)**
+- **[Session support](https://github.com/gofiber/session)**
+- **[Rate Limiter](https://docs.gofiber.io/middleware#limiter)**
+- **[Translated in 15 languages](https://docs.gofiber.io/)**
+- **[Rate limiting](https://github.com/gofiber/fiber/tree/master/middleware/limiter)**
+
+ </div>
+
+<div style="clear:both"></div>
+
 
 ## 💡 Philosophy
 
