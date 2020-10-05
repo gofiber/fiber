@@ -277,24 +277,24 @@ func Test_App_Use_Params(t *testing.T) {
 
 	app.Use("/prefix/:param", func(c *Ctx) error {
 		param := c.Params("param")
-		time.Sleep(time.Second)
+		time.Sleep(300 * time.Millisecond)
 		utils.AssertEqual(t, "john", param)
 		return nil
 	})
 
 	app.Use("/foo/:bar?", func(c *Ctx) error {
 		param := c.Params("bar", "foobar")
-		time.Sleep(time.Second)
+		time.Sleep(300 * time.Millisecond)
 		utils.AssertEqual(t, "foobar", param)
 		return nil
 	})
 
 	app.Use("/:param/*", func(c *Ctx) error {
 		param := c.Params("param")
-		time.Sleep(time.Second)
+		time.Sleep(300 * time.Millisecond)
 		utils.AssertEqual(t, "john", param)
 		param = c.Params("*")
-		time.Sleep(time.Second)
+		time.Sleep(300 * time.Millisecond)
 		utils.AssertEqual(t, "doe", param)
 		return nil
 	})
