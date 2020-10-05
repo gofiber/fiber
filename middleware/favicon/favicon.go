@@ -18,18 +18,23 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	File string
+
+	// CacheControl defines how the Cache-Control header in the response should be set
+	//
+	// Optional. Default: "public, max-age=31536000"
+	CacheControl string
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next: nil,
-	File: "",
+	Next:         nil,
+	File:         "",
+	CacheControl: "public, max-age=31536000",
 }
 
 const (
 	hType  = "image/x-icon"
 	hAllow = "GET, HEAD, OPTIONS"
-	hCache = "public, max-age=31536000"
 	hZero  = "0"
 )
 
@@ -48,6 +53,9 @@ func New(config ...Config) fiber.Handler {
 		}
 		if cfg.File == "" {
 			cfg.File = ConfigDefault.File
+		}
+		if cfg.CacheControl == "" {
+			cfg.CacheControl = ConfigDefault.CacheControl
 		}
 	}
 
@@ -92,7 +100,7 @@ func New(config ...Config) fiber.Handler {
 		if len(icon) > 0 {
 			c.Set(fiber.HeaderContentLength, iconLen)
 			c.Set(fiber.HeaderContentType, hType)
-			c.Set(fiber.HeaderCacheControl, hCache)
+			c.Set(fiber.HeaderCacheControl, cfg.CacheControl)
 			return c.Status(fiber.StatusOK).Send(icon)
 		}
 
