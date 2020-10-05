@@ -128,6 +128,7 @@ go get github.com/gofiber/fiber/v2
 - Translated in [15 languages](https://docs.gofiber.io/)
 - And much more, [explore Fiber](https://docs.gofiber.io/)
 
+
 ## 💡 Philosophy
 
 New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follows the **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
