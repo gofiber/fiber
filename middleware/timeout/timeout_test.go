@@ -17,7 +17,6 @@ func Test_Middleware_Timeout(t *testing.T) {
 
 	h := New(func(c *fiber.Ctx) error {
 		msSleep := c.Params("sleepTime")
-		msSleep += "ms"
 		sleepTime, _ := time.ParseDuration(msSleep)
 		time.Sleep(sleepTime)
 		return c.SendString("After " + c.Params("sleepTime") + "ms sleeping")
@@ -43,10 +42,10 @@ func Test_Middleware_Timeout(t *testing.T) {
 		utils.AssertEqual(t, "After "+timeoutStr+"ms sleeping", string(body))
 	}
 
-	testTimeout("15")
-	testSucces("2")
-	testTimeout("30")
-	testSucces("3")
+	testTimeout("15ms")
+	testSucces("2ms")
+	testTimeout("30ms")
+	testSucces("3ms")
 }
 
 // go test -run -v Test_Timeout_Panic
