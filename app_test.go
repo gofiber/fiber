@@ -121,7 +121,7 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	})
 
 	request := httptest.NewRequest("GET", "/", nil)
-	logHeaderSlice := make([]string, 5000, 5000)
+	logHeaderSlice := make([]string, 5000)
 	request.Header.Set("Very-Long-Header", strings.Join(logHeaderSlice, "-"))
 	_, err := app.Test(request)
 
@@ -736,6 +736,22 @@ func Test_App_Group_Invalid(t *testing.T) {
 	New().Group("/").Use(1)
 }
 
+// go test -run Test_App_Group_Mount
+func Test_App_Group_Mount(t *testing.T) {
+	micro := New()
+	micro.Get("/doe", func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	app := New()
+	v1 := app.Group("/v1")
+	v1.Mount("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/v1/john/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+}
+
 func Test_App_Group(t *testing.T) {
 	var dummyHandler = testEmptyHandler
 
@@ -1070,4 +1086,10 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 	New(Config{Prefork: true}).
 		startupMessage(":3000", true, "")
+}
+
+func Test_App_Server(t *testing.T) {
+	app := New()
+
+	utils.AssertEqual(t, false, app.Server() == nil)
 }

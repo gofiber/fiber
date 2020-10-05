@@ -23,7 +23,7 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 	for m := range stack {
 		for r := range stack[m] {
 			route := grp.app.copyRoute(stack[m][r])
-			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(prefix, route))
+			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(getGroupPath(grp.prefix, prefix), route))
 		}
 	}
 	return grp
