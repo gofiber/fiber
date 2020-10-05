@@ -68,6 +68,22 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+}
+
+// go test -run Test_Middleware_Favicon_CacheControl
+func Test_Middleware_Favicon_CacheControl(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		CacheControl: "public, max-age=100",
+		File:         "../../.github/testdata/favicon.ico",
+	}))
+	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	utils.AssertEqual(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_Favicon -benchmem -count=4
