@@ -31,7 +31,7 @@ func Test_Cache_CacheControl(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
+	utils.AssertEqual(t, "public, max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
 }
 
 func Test_Cache_Expired(t *testing.T) {

@@ -128,7 +128,7 @@ func New(config ...Config) fiber.Handler {
 				// Set Cache-Control header if enabled
 				if cfg.CacheControl {
 					maxAge := strconv.FormatInt(resp.expiration-time.Now().Unix(), 10)
-					c.Set(fiber.HeaderCacheControl, "max-age="+maxAge)
+					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 				}
 				return nil
 			}
