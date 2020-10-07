@@ -457,6 +457,7 @@ func (c *Ctx) Get(key string, defaultValue ...string) string {
 
 // GetAll returns a map of all HTTP request headers
 func (c *Ctx) GetAll() (out map[string]string) {
+	out = make(map[string]string)
 	c.fasthttp.Request.Header.VisitAll(func(key, value []byte) {
 		out[getString(key)] = getString(value)
 	})
