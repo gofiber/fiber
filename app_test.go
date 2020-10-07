@@ -562,12 +562,30 @@ func Test_App_Static_Direct(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
+	utils.AssertEqual(t, "", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
+
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
 }
+
+// go test -run Test_App_Static_MaxAge
+func Test_App_Static_MaxAge(t *testing.T) {
+	app := New()
+
+	app.Static("/", "./.github", Static{MaxAge: 100})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/index.html", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+	utils.AssertEqual(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, "public, max-age=100", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
+}
+
+// go test -run Test_App_Static_Group
 func Test_App_Static_Group(t *testing.T) {
 	app := New()
 
