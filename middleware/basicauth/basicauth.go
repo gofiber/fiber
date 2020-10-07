@@ -118,20 +118,19 @@ func New(config Config) fiber.Handler {
 
 				// Convert to string
 				cred := utils.UnsafeString(raw)
+				credArray := strings.Split(cred, ":")
 
-				// Find semicolumn
-				for i := 0; i < len(cred); i++ {
-					if cred[i] == ':' {
-						// Split into user & pass
-						user := cred[:i]
-						pass := cred[i+1:]
+				// Check array size must be 2
+				if len(credArray) == 2 {
+					// Split into user & pass
+					user := credArray[0]
+					pass := credArray[1]
 
-						// If exist & match in Users, we let him pass
-						if cfg.Authorizer(user, pass) {
-							c.Locals(cfg.ContextUsername, user)
-							c.Locals(cfg.ContextPassword, pass)
-							return c.Next()
-						}
+					// If exist & match in Users, we let him pass
+					if cfg.Authorizer(user, pass) {
+						c.Locals(cfg.ContextUsername, user)
+						c.Locals(cfg.ContextPassword, pass)
+						return c.Next()
 					}
 				}
 			}
