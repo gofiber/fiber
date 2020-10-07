@@ -455,6 +455,14 @@ func (c *Ctx) Get(key string, defaultValue ...string) string {
 	return defaultString(getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
 }
 
+// GetAll returns a map of all HTTP request headers
+func (c *Ctx) GetAll() (out map[string]string) {
+	c.fasthttp.Request.Header.VisitAll(func(key, value []byte) {
+		out[getString(key)] = getString(value)
+	})
+	return out
+}
+
 // Hostname contains the hostname derived from the Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
