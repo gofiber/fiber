@@ -10,6 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+	"github.com/valyala/fasthttp"
 )
 
 // go test -run Test_BasicAuth_Next
@@ -89,4 +90,34 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 			utils.AssertEqual(t, fmt.Sprintf("%s%s", tt.username, tt.password), string(body))
 		}
 	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Middleware_BasicAuth -benchmem -count=4
+func Benchmark_Middleware_BasicAuth(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Users: map[string]string{
+			"john": "doe",
+		},
+	}))
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/")
+	fctx.Request.Header.Set(fiber.HeaderAuthorization, "basic am9objpkb2U=") // john:doe
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 }
