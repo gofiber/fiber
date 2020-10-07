@@ -727,6 +727,21 @@ func Test_Ctx_Get(t *testing.T) {
 	utils.AssertEqual(t, "default", c.Get("unknown", "default"))
 }
 
+// go test -run Test_Ctx_GetAll
+func Test_Ctx_GetAll(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderAcceptCharset, "utf-8, iso-8859-1;q=0.5")
+	c.Request().Header.Set(HeaderReferer, "Monster")
+	expected := map[string]string{
+		HeaderAcceptCharset: "utf-8, iso-8859-1;q=0.5",
+		HeaderReferer:       "Monster",
+	}
+	utils.AssertEqual(t, expected, c.GetAll())
+}
+
 // go test -run Test_Ctx_Hostname
 func Test_Ctx_Hostname(t *testing.T) {
 	t.Parallel()
