@@ -46,7 +46,7 @@ func New(config ...Config) fiber.Handler {
 		cfg = config[0]
 
 		// Set default values
-		if cfg.Level < -1 || cfg.Level > 2 {
+		if cfg.Level < LevelDisabled || cfg.Level > LevelBestCompression {
 			cfg.Level = ConfigDefault.Level
 		}
 	}
