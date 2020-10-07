@@ -7,6 +7,7 @@ package fiber
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -338,8 +339,15 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 			fctx.Response.SetStatusCode(StatusNotFound)
 		},
 	}
+
 	// Set config if provided
+	var cacheControlValue string
 	if len(config) > 0 {
+		maxAge := config[0].MaxAge
+		if maxAge > 0 {
+			cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
+		}
+
 		fs.Compress = config[0].Compress
 		fs.AcceptByteRange = config[0].ByteRange
 		fs.GenerateIndexPages = config[0].Browse
@@ -354,6 +362,9 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		// Return request if found and not forbidden
 		status := c.fasthttp.Response.StatusCode()
 		if status != StatusNotFound && status != StatusForbidden {
+			if len(cacheControlValue) > 0 {
+				c.fasthttp.Response.Header.Set(HeaderCacheControl, cacheControlValue)
+			}
 			return nil
 		}
 		// Reset response to default
