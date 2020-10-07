@@ -224,6 +224,16 @@ type Config struct {
 	// Default: false
 	DisableStartupMessage bool `json:"disable_startup_message"`
 
+	// Aggressively reduces memory usage at the cost of higher CPU usage
+	// if set to true.
+	//
+	// Try enabling this option only if the server consumes too much memory
+	// serving mostly idle keep-alive connections. This may reduce memory
+	// usage by more than 50%.
+	//
+	// Default: false
+	ReduceMemoryUsage bool `json:"reduce_memory_usage"`
+
 	// FEATURE: v2.2.x
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
@@ -663,6 +673,7 @@ func (app *App) init() *App {
 	app.server.ReadBufferSize = app.config.ReadBufferSize
 	app.server.WriteBufferSize = app.config.WriteBufferSize
 	app.server.GetOnly = app.config.GETOnly
+	app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
 
 	// unlock application
 	app.mutex.Unlock()
