@@ -40,7 +40,7 @@ func Test_Compress_Gzip(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
-	// Validate the file size is shrinked
+	// Validate the file size is shrunk
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
@@ -48,7 +48,7 @@ func Test_Compress_Gzip(t *testing.T) {
 
 // go test -run Test_Compress_Different_Level
 func Test_Compress_Different_Level(t *testing.T) {
-	levels := []int{LevelBestSpeed, LevelBestCompression, 10}
+	levels := []Level{LevelBestSpeed, LevelBestCompression}
 	for _, level := range levels {
 		t.Run(fmt.Sprintf("level %d", level), func(t *testing.T) {
 			app := fiber.New()
@@ -86,7 +86,7 @@ func Test_Compress_Deflate(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "deflate", resp.Header.Get(fiber.HeaderContentEncoding))
 
-	// Validate the file size is shrinked
+	// Validate the file size is shrunk
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
@@ -109,7 +109,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
 
-	// Validate the file size is shrinked
+	// Validate the file size is shrunk
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
@@ -132,7 +132,7 @@ func Test_Compress_Disabled(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 
-	// Validate the file size is not shrinked
+	// Validate the file size is not shrunk
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) == len(filedata))
