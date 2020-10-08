@@ -191,7 +191,10 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Store those bytes
-			cfg.Store.Set(key, buf.Bytes(), time.Duration(0))
+			err = cfg.Store.Set(key, buf.Bytes(), time.Duration(0))
+			if err != nil {
+				return err
+			}
 		} else {
 			sessions[key] = session
 		}
