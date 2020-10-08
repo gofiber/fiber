@@ -85,8 +85,6 @@ func Benchmark_Limiter(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		h(fctx)
 	}
-
-	utils.AssertEqual(b, "100", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
 }
 
 // go test -run Test_Limiter_Next
@@ -101,4 +99,28 @@ func Test_Limiter_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+func Test_Limiter_Headers(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:      50,
+		Duration: 2 * time.Second,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/")
+	app.Handler()(fctx)
+
+	utils.AssertEqual(t, "50", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
+	utils.AssertEqual(t, "48", string(fctx.Response.Header.Peek("X-RateLimit-Remaining")))
+	if v := string(fctx.Response.Header.Peek("X-RateLimit-Reset")); !(v == "1" || v == "2") {
+		t.Errorf("The X-RateLimit-Reset header is not set correctly - value is an empty string.")
+	}
 }
