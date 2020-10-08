@@ -40,7 +40,7 @@ func Test_Compress_Gzip(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
-	// Validate the file size is shrunk
+	// Validate that the file size has shrunk
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
@@ -86,7 +86,7 @@ func Test_Compress_Deflate(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "deflate", resp.Header.Get(fiber.HeaderContentEncoding))
 
-	// Validate the file size is shrunk
+	// Validate that the file size has shrunk
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
@@ -109,7 +109,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
 
-	// Validate the file size is shrunk
+	// Validate that the file size has shrunk
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
