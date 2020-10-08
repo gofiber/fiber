@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_Cache_CacheControl(t *testing.T) {
@@ -178,4 +179,32 @@ func Test_Cache_NothingToCache(t *testing.T) {
 	if bytes.Equal(body, bodyCached) {
 		t.Errorf("Cache should have expired: %s, %s", body, bodyCached)
 	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
+func Benchmark_Cache(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		data, err := ioutil.ReadFile("../../.github/README.md")
+		utils.AssertEqual(b, nil, err)
+		return c.Send(data)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
 }
