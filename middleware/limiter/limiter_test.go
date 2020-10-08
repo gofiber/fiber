@@ -119,7 +119,7 @@ func Test_Limiter_Headers(t *testing.T) {
 	app.Handler()(fctx)
 
 	utils.AssertEqual(t, "50", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
-	if v := string(fctx.Response.Header.Peek("X-RateLimit-Remaining")); v != "" {
+	if v := string(fctx.Response.Header.Peek("X-RateLimit-Remaining")); v == "" {
 		t.Errorf("The X-RateLimit-Remaining header is not set correctly - value is an empty string.")
 	}
 	if v := string(fctx.Response.Header.Peek("X-RateLimit-Reset")); !(v == "1" || v == "2") {
