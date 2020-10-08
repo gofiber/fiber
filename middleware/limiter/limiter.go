@@ -46,6 +46,10 @@ type Config struct {
 	//
 	// Default: an in memory store for this process only
 	Store Storage
+
+	// Internally used - if true, the simpler method of two maps is used in order to keep
+	// execution time down.
+	usingCustomStore bool
 }
 
 // ConfigDefault is the default config
@@ -102,13 +106,14 @@ func New(config ...Config) fiber.Handler {
 		}
 		if cfg.Store == nil {
 			cfg.Store = ConfigDefault.Store
+		} else {
+			cfg.usingCustomStore = true
 		}
 	}
 
 	// Limiter settings
 	var max = strconv.Itoa(cfg.Max)
-	// var hits = make(map[string]int)
-	// var reset = make(map[string]uint64)
+	var sessions = make(map[string]trackedSession)
 	var timestamp = uint64(time.Now().Unix())
 	var duration = uint64(cfg.Duration.Seconds())
 
@@ -137,27 +142,31 @@ func New(config ...Config) fiber.Handler {
 		// break things)
 		mux.Lock()
 
-		// Load data from store
-		fromStore, err := cfg.Store.Get(key)
-		if err != nil {
-			return err
-		}
-
-		// Decode data from store
 		var session trackedSession
 
-		if len(fromStore) == 0 {
-			// Assume item not found.
-			session = trackedSession{}
-		} else {
-			// Decode bytes using gob
-			var buf bytes.Buffer
-			_, _ = buf.Write(fromStore)
-			dec := gob.NewDecoder(&buf)
-			err := dec.Decode(&session)
+		if cfg.usingCustomStore {
+			// Load data from store
+			fromStore, err := cfg.Store.Get(key)
 			if err != nil {
 				return err
 			}
+
+			if len(fromStore) == 0 {
+				// Assume this means item not found.
+				session = trackedSession{}
+			} else {
+				// Decode bytes using gob
+				var buf bytes.Buffer
+				_, _ = buf.Write(fromStore)
+				dec := gob.NewDecoder(&buf)
+				err := dec.Decode(&session)
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			// Load data from in-memory map
+			session = sessions[key]
 		}
 
 		// Set unix timestamp if not exist
@@ -172,16 +181,20 @@ func New(config ...Config) fiber.Handler {
 		// Increment key hits
 		session.Hits++
 
-		// Convert session struct into bytes
-		var buf bytes.Buffer
-		enc := gob.NewEncoder(&buf)
-		err = enc.Encode(session)
-		if err != nil {
-			return err
-		}
+		if cfg.usingCustomStore {
+			// Convert session struct into bytes
+			var buf bytes.Buffer
+			enc := gob.NewEncoder(&buf)
+			err := enc.Encode(session)
+			if err != nil {
+				return err
+			}
 
-		// Store those bytes
-		cfg.Store.Set(key, buf.Bytes(), time.Duration(0))
+			// Store those bytes
+			cfg.Store.Set(key, buf.Bytes(), time.Duration(0))
+		} else {
+			sessions[key] = session
+		}
 
 		// Get current hits
 		hitCount := session.Hits
