@@ -7,9 +7,10 @@ import (
 
 // Storage interface implemented by providers
 type Storage interface {
-	// Get session value
+	// Get session value. If the ID is not found, this function should return
+	// []byte{}, nil and not an error.
 	Get(id string) ([]byte, error)
-	// Set session value
+	// Set session value. `exp` will be zero for no duration.
 	Set(id string, value []byte, exp time.Duration) error
 	// Delete session value
 	Delete(id string) error
