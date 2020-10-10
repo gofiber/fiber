@@ -820,7 +820,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			if len(thisLine+strings.Join(append(itemsOnThisLine, pid), ", ")) > 49 {
 				addLine()
 				thisLine = ""
-				itemsOnThisLine = []string{}
+				itemsOnThisLine = []string{pid}
 			} else {
 				itemsOnThisLine = append(itemsOnThisLine, pid)
 			}
@@ -833,8 +833,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 
 		// Form logo
 		childPidsLogo = fmt.Sprintf(childPidsTemplate,
-			cBlack, 
-			strings.Join(lines, "\n")+"\n", 
+			cBlack,
+			strings.Join(lines, "\n")+"\n",
 			cReset,
 		)
 	}
