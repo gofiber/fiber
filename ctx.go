@@ -904,6 +904,9 @@ var sendFileHandler fasthttp.RequestHandler
 // The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
 func (c *Ctx) SendFile(file string, compress ...bool) error {
+	// Save the filename, we will need it in the error message if the file isn't found
+	filename := file
+
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
 	sendFileOnce.Do(func() {
 		sendFileFS = &fasthttp.FS{
@@ -953,7 +956,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	}
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
-		return ErrNotFound
+		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
 	}
 	return nil
 }
