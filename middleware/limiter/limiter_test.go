@@ -59,6 +59,36 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
+
+	app = fiber.New()
+
+	app.Use(New(Config{
+		Max:      50,
+		Duration: 2 * time.Second,
+		Store:    defaultStore{stmap: map[string][]byte{}},
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	for i := 0; i <= 49; i++ {
+		wg.Add(1)
+		go singleRequest(&wg)
+	}
+
+	wg.Wait()
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 429, resp.StatusCode)
+
+	time.Sleep(3 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+
 }
 
 // go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4

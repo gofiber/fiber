@@ -23,7 +23,7 @@ type defaultStore struct {
 	mutex sync.Mutex
 }
 
-func (s *defaultStore) Get(id string) ([]byte, error) {
+func (s defaultStore) Get(id string) ([]byte, error) {
 	s.mutex.Lock()
 	val, ok := s.stmap[id]
 	s.mutex.Unlock()
@@ -34,7 +34,7 @@ func (s *defaultStore) Get(id string) ([]byte, error) {
 	}
 }
 
-func (s *defaultStore) Set(id string, val []byte, _ time.Duration) error {
+func (s defaultStore) Set(id string, val []byte, _ time.Duration) error {
 	s.mutex.Lock()
 	s.stmap[id] = val
 	s.mutex.Unlock()
@@ -42,7 +42,7 @@ func (s *defaultStore) Set(id string, val []byte, _ time.Duration) error {
 	return nil
 }
 
-func (s *defaultStore) Clear() error {
+func (s defaultStore) Clear() error {
 	s.mutex.Lock()
 	s.stmap = map[string][]byte{}
 	s.mutex.Unlock()
@@ -50,7 +50,7 @@ func (s *defaultStore) Clear() error {
 	return nil
 }
 
-func (s *defaultStore) Delete(id string) error {
+func (s defaultStore) Delete(id string) error {
 	s.mutex.Lock()
 	_, ok := s.stmap[id]
 	if ok {
