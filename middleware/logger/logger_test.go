@@ -125,6 +125,19 @@ func Test_Logger_AppendUint(t *testing.T) {
 	utils.AssertEqual(t, "0 5 200", buf.String())
 }
 
+func TestLogger_FileNotFound(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New())
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendFile("not_found")
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
 // go test -v -run=^$ -bench=Benchmark_Logger -benchmem -count=4
 func Benchmark_Logger(b *testing.B) {
 	app := fiber.New()
