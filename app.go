@@ -778,7 +778,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		cBlack,
 		centerValue(" Fiber v"+Version, 49),
 		center(addr, 49),
-		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.NumCPU()), 14),
+		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.GOMAXPROCS(0)), 14),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 		cReset,
 	)
@@ -833,8 +833,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 
 		// Form logo
 		childPidsLogo = fmt.Sprintf(childPidsTemplate,
-			cBlack, 
-			strings.Join(lines, "\n")+"\n", 
+			cBlack,
+			strings.Join(lines, "\n")+"\n",
 			cReset,
 		)
 	}
