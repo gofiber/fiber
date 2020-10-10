@@ -953,7 +953,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	}
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
-		return fmt.Errorf("sendfile: file %s not found", file)
+		return ErrNotFound
 	}
 	return nil
 }
