@@ -63,7 +63,6 @@ var ConfigDefault = Config{
 	LimitReached: func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTooManyRequests)
 	},
-	Store: &defaultStore{stmap: map[string][]byte{}},
 }
 
 // trackedSession is the type used for session tracking
@@ -104,9 +103,7 @@ func New(config ...Config) fiber.Handler {
 		if cfg.LimitReached == nil {
 			cfg.LimitReached = ConfigDefault.LimitReached
 		}
-		if cfg.Store == nil {
-			cfg.Store = ConfigDefault.Store
-		} else {
+		if cfg.Store != nil {
 			cfg.usingCustomStore = true
 		}
 	}
