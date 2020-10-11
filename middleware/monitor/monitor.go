@@ -91,14 +91,17 @@ func updateStatistics(p *process.Process) {
 	pidCpu, _ := p.CPUPercent()
 	monitPidCpu.Store(pidCpu / 10)
 
-	osCpu, _ := cpu.Percent(0, false)
-	monitOsCpu.Store(osCpu[0])
+	if osCpu, _ := cpu.Percent(0, false); len(osCpu) > 0 {
+		monitOsCpu.Store(osCpu[0])
+	}
 
-	pidMem, _ := p.MemoryInfo()
-	monitPidRam.Store(pidMem.RSS)
+	if pidMem, _ := p.MemoryInfo(); pidMem != nil {
+		monitPidRam.Store(pidMem.RSS)
+	}
 
-	osMem, _ := mem.VirtualMemory()
-	monitOsRam.Store(osMem.Used)
+	if osMem, _ := mem.VirtualMemory(); osMem != nil {
+		monitOsRam.Store(osMem.Used)
+	}
 
 	pidConns, _ := net.ConnectionsPid("tcp", p.Pid)
 	monitPidConns.Store(len(pidConns))

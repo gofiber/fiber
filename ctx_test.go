@@ -1309,7 +1309,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	app.Get("/", func(c *Ctx) error {
 		err := c.SendFile("./john_dow.go/")
 		utils.AssertEqual(t, false, err == nil)
-		return nil
+		return err
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
