@@ -15,6 +15,8 @@ import (
 
 // go test -run Test_BasicAuth_Next
 func Test_BasicAuth_Next(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
@@ -28,16 +30,15 @@ func Test_BasicAuth_Next(t *testing.T) {
 }
 
 func Test_Middleware_BasicAuth(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
-	cfg := Config{
+	app.Use(New(Config{
 		Users: map[string]string{
 			"john":  "doe",
 			"admin": "123456",
 		},
-	}
-
-	app.Use(New(cfg))
+	}))
 
 	app.Get("/testauth", func(c *fiber.Ctx) error {
 		username := c.Locals("username").(string)
@@ -85,7 +86,6 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, tt.statusCode, resp.StatusCode)
 
-		// Only check body if statusCode is 200
 		if tt.statusCode == 200 {
 			utils.AssertEqual(t, fmt.Sprintf("%s%s", tt.username, tt.password), string(body))
 		}
