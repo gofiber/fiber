@@ -44,7 +44,7 @@ var ConfigDefault = Config{
 
 // New is deprecated
 func New(config Config) fiber.Handler {
-	fmt.Println("proxy.New is deprecated, please us proxy.Balancer instead")
+	fmt.Println("proxy.New is deprecated, please use proxy.Balancer instead")
 	return Balancer(config)
 }
 
@@ -58,7 +58,9 @@ func Balancer(config Config) fiber.Handler {
 		cfg.Next = ConfigDefault.Next
 	}
 	if len(cfg.Servers) == 0 {
-		panic("Servers cannot be empty")
+		return func(c *fiber.Ctx) (err error) {
+			panic("Servers cannot be empty")
+		}
 	}
 
 	client := fasthttp.Client{
@@ -97,19 +99,15 @@ func Balancer(config Config) fiber.Handler {
 		}
 
 		req.SetRequestURI(cfg.Servers[counter] + utils.UnsafeString(req.RequestURI()))
-
 		counter = (counter + 1) % len(cfg.Servers)
 
 		// Forward request
 		if err = client.Do(req, res); err != nil {
-			fmt.Println(err)
 			return err
 		}
 
 		// Don't proxy "Connection" header
 		res.Header.Del(fiber.HeaderConnection)
-
-		//fmt.Println(string(res.Header.ContentType()))
 
 		// Modify response
 		if cfg.ModifyResponse != nil {
