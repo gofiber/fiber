@@ -45,5 +45,6 @@ func Test_RequestID_Next(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, resp.Header.Get(fiber.HeaderXRequestID), "")
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }

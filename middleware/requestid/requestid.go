@@ -19,19 +19,15 @@ type Config struct {
 
 	// Generator defines a function to generate the unique identifier.
 	//
-	// Optional. Default: func() string {
-	//   return utils.UUID()
-	// }
+	// Optional. Default: utils.UUID
 	Generator func() string
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:   nil,
-	Header: fiber.HeaderXRequestID,
-	Generator: func() string {
-		return utils.UUID()
-	},
+	Next:      nil,
+	Header:    fiber.HeaderXRequestID,
+	Generator: utils.UUID,
 }
 
 // New creates a new middleware handler
