@@ -110,32 +110,37 @@ func New(config Config) fiber.Handler {
 		// Get authorization header
 		auth := c.Get(fiber.HeaderAuthorization)
 
-		// Check if header is valid
-		if len(auth) > 6 && strings.ToLower(auth[:5]) == "basic" {
-
-			// Try to decode
-			if raw, err := base64.StdEncoding.DecodeString(auth[6:]); err == nil {
-
-				// Convert to string
-				cred := utils.UnsafeString(raw)
-
-				// Find semicolumn
-				for i := 0; i < len(cred); i++ {
-					if cred[i] == ':' {
-						// Split into user & pass
-						user := cred[:i]
-						pass := cred[i+1:]
-
-						// If exist & match in Users, we let him pass
-						if cfg.Authorizer(user, pass) {
-							c.Locals(cfg.ContextUsername, user)
-							c.Locals(cfg.ContextPassword, pass)
-							return c.Next()
-						}
-					}
-				}
-			}
+		// Check if the header contains content besides "basic".
+		if len(auth) <= 6 || strings.ToLower(auth[:5]) != "basic" {
+			return cfg.Unauthorized(c)
 		}
+
+		// Decode the header contents
+		raw, err := base64.StdEncoding.DecodeString(auth[6:])
+		if err != nil {
+			return cfg.Unauthorized(c)
+		}
+
+		// Get the credentials
+		creds := utils.UnsafeString(raw)
+
+		// Check if the credentials are in the correct form
+		// which is "username:password".
+		index := strings.Index(creds, ":")
+		if index == -1 {
+			return cfg.Unauthorized(c)
+		}
+
+		// Get the username and password
+		username := creds[:index]
+		password := creds[index+1:]
+
+		if cfg.Authorizer(username, password) {
+			c.Locals(cfg.ContextUsername, username)
+			c.Locals(cfg.ContextPassword, password)
+			return c.Next()
+		}
+
 		// Authentication failed
 		return cfg.Unauthorized(c)
 	}
