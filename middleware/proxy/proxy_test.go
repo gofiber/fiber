@@ -86,7 +86,7 @@ func Test_Proxy_Forward(t *testing.T) {
 
 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
 	go func() {
-		utils.AssertEqual(t, nil, target.Listen("localhost:50001"))
+		utils.AssertEqual(t, nil, target.Listen(":50001"))
 	}()
 	target.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("forwarded")
@@ -106,7 +106,7 @@ func Test_Proxy_Forward(t *testing.T) {
 func Test_Proxy_Modify_Response(t *testing.T) {
 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
 	go func() {
-		utils.AssertEqual(t, nil, target.Listen("localhost:50002"))
+		utils.AssertEqual(t, nil, target.Listen(":50002"))
 	}()
 
 	app := fiber.New()
@@ -134,7 +134,7 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 func Test_Proxy_Modify_Request(t *testing.T) {
 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
 	go func() {
-		utils.AssertEqual(t, nil, target.Listen("localhost:50003"))
+		utils.AssertEqual(t, nil, target.Listen(":50003"))
 	}()
 
 	app := fiber.New()
