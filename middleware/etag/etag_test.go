@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/valyala/fasthttp"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 )
@@ -71,17 +73,17 @@ func Test_ETag_NoBody(t *testing.T) {
 // go test -run Test_ETag_NewEtag
 func Test_ETag_NewEtag(t *testing.T) {
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
-		testEtagNewEtag(t, false, false)
+		testETagNewEtag(t, false, false)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
-		testEtagNewEtag(t, true, false)
+		testETagNewEtag(t, true, false)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
-		testEtagNewEtag(t, true, true)
+		testETagNewEtag(t, true, true)
 	})
 }
 
-func testEtagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
+func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	app := fiber.New()
 
 	app.Use(New())
@@ -119,17 +121,17 @@ func testEtagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 // go test -run Test_ETag_WeakEtag
 func Test_ETag_WeakEtag(t *testing.T) {
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
-		testEtagWeakEtag(t, false, false)
+		testETagWeakEtag(t, false, false)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
-		testEtagWeakEtag(t, true, false)
+		testETagWeakEtag(t, true, false)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
-		testEtagWeakEtag(t, true, true)
+		testETagWeakEtag(t, true, true)
 	})
 }
 
-func testEtagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
+func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	app := fiber.New()
 
 	app.Use(New(Config{Weak: true}))
@@ -162,4 +164,31 @@ func testEtagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, 0, len(b))
 	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Etag -benchmem -count=4
+func Benchmark_Etag(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, 200, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, `"13-1831710635"`, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 }
