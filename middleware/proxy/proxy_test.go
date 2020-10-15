@@ -22,7 +22,7 @@ func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 }
 
-// // go test -run Test_Proxy_Next
+// go test -run Test_Proxy_Next
 func Test_Proxy_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
@@ -37,7 +37,7 @@ func Test_Proxy_Next(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
-// // go test -run Test_Proxy
+// go test -run Test_Proxy
 func Test_Proxy(t *testing.T) {
 	target := fiber.New()
 
