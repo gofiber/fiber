@@ -10,7 +10,14 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
-	// Weak
+	// Weak indicates that a weak validator is used. Weak etags are easy
+	// to generate, but are far less useful for comparisons. Strong
+	// validators are ideal for comparisons but can be very difficult
+	// to generate efficiently. Weak ETag values of two representations
+	// of the same resources might be semantically equivalent, but not
+	// byte-for-byte identical. This means weak etags prevent caching
+	// when byte range requests are used, but strong etags mean range
+	// requests can still be cached.
 	Weak bool
 
 	// Next defines a function to skip this middleware when returned true.
@@ -20,7 +27,10 @@ type Config struct {
 }
 
 // ConfigDefault is the default config
-var ConfigDefault = Config{}
+var ConfigDefault = Config{
+	Weak: false,
+	Next: nil,
+}
 
 var normalizedHeaderETag = []byte("Etag")
 var weakPrefix = []byte("W/")
@@ -56,26 +66,14 @@ func New(config ...Config) fiber.Handler {
 		if len(body) <= 0 {
 			return
 		}
-		// Get ETag header from request
-		clientEtag := c.Request().Header.Peek(fiber.HeaderIfNoneMatch)
 
 		// Generate ETag for response
-		crc32q := crc32.MakeTable(0xD5828281)
-
 		bb := bytebufferpool.Get()
 		defer bytebufferpool.Put(bb)
+		etag := generateEtag(body, bb, cfg.Weak)
 
-		// Enable weak tag
-		if cfg.Weak {
-			_, _ = bb.Write(weakPrefix)
-		}
-
-		_ = bb.WriteByte('"')
-		appendUint(bb.Bytes(), uint32(len(body)))
-		_ = bb.WriteByte('-')
-		appendUint(bb.Bytes(), crc32.Checksum(body, crc32q))
-		_ = bb.WriteByte('"')
-		etag := bb.Bytes()
+		// Get ETag header from request
+		clientEtag := c.Request().Header.Peek(fiber.HeaderIfNoneMatch)
 
 		// Check if client's ETag is weak
 		if bytes.HasPrefix(clientEtag, weakPrefix) {
@@ -83,15 +81,19 @@ func New(config ...Config) fiber.Handler {
 			if bytes.Equal(clientEtag[2:], etag) || bytes.Equal(clientEtag[2:], etag[2:]) {
 				// W/1 == 1 || W/1 == W/1
 				c.Context().ResetBody()
+
 				return c.SendStatus(fiber.StatusNotModified)
 			}
 			// W/1 != W/2 || W/1 != 2
 			c.Response().Header.SetCanonical(normalizedHeaderETag, etag)
+
 			return
 		}
+
 		if bytes.Contains(clientEtag, etag) {
 			// 1 == 1
 			c.Context().ResetBody()
+
 			return c.SendStatus(fiber.StatusNotModified)
 		}
 		// 1 != 2
@@ -99,6 +101,23 @@ func New(config ...Config) fiber.Handler {
 
 		return
 	}
+}
+
+func generateEtag(body []byte, bb *bytebufferpool.ByteBuffer, weak bool) []byte {
+	crc32q := crc32.MakeTable(0xD5828281)
+
+	// Enable weak tag
+	if weak {
+		_, _ = bb.Write(weakPrefix)
+	}
+
+	_ = bb.WriteByte('"')
+	bb.B = appendUint(bb.Bytes(), uint32(len(body)))
+	_ = bb.WriteByte('-')
+	bb.B = appendUint(bb.Bytes(), crc32.Checksum(body, crc32q))
+	_ = bb.WriteByte('"')
+
+	return bb.Bytes()
 }
 
 // appendUint appends n to dst and returns the extended dst.
