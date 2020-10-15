@@ -26,7 +26,7 @@ func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 func Test_Proxy_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
-		Servers: []string{"localhost"},
+		Servers: []string{"127.0.0.1"},
 		Next: func(_ *fiber.Ctx) bool {
 			return true
 		},
@@ -57,10 +57,10 @@ func Test_Proxy(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(New(Config{Servers: []string{"localhost:3001"}}))
+	app.Use(New(Config{Servers: []string{"127.0.0.1:3001"}}))
 
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Host = "localhost:3001"
+	req.Host = "127.0.0.1:3001"
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
@@ -70,7 +70,7 @@ func Test_Proxy(t *testing.T) {
 func Test_Proxy_Do_With_Error(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New(Config{Servers: []string{"localhost:90000"}}))
+	app.Use(New(Config{Servers: []string{"127.0.0.1:90000"}}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -92,7 +92,7 @@ func Test_Proxy_Forward(t *testing.T) {
 		return c.SendString("forwarded")
 	})
 
-	app.Use(Forward("http://localhost:50001"))
+	app.Use(Forward("http://127.0.0.1:50001"))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -111,7 +111,7 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
-		Servers: []string{"localhost:50002"},
+		Servers: []string{"127.0.0.1:50002"},
 		ModifyResponse: func(c *fiber.Ctx) error {
 			c.Response().SetStatusCode(fiber.StatusOK)
 			return c.SendString("modified response")
@@ -139,7 +139,7 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
-		Servers: []string{"localhost:50003"},
+		Servers: []string{"127.0.0.1:50003"},
 		ModifyRequest: func(c *fiber.Ctx) error {
 			c.Request().SetBody([]byte("modified request"))
 			return nil
