@@ -105,12 +105,12 @@ Esses testes são realizados pelo [TechEmpower](https://www.techempower.com/benc
 
 ## ⚙️ Instalação
 
-Primeiro de tudo, faça o [download](https://golang.org/dl/) e instale o Go. É necessário a versão `1.14` ou superior.
+Fiber requires Go version `1.14` or higher ([download](https://golang.org/dl/)). 
 
-A instalação é feita usando o comando [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) :
+Fiber also uses [Go Modules](https://blog.golang.org/using-go-modules) which are the standard for Go 1.11+. Initialize a module (if this is a new project) with `go mod init [modulename]`, and then use [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) to add Fiber v2 as a dependency:
 
 ```bash
-go get github.com/gofiber/fiber/v2/...
+go get github.com/gofiber/fiber/v2
 ```
 
 ## 🎯 Recursos

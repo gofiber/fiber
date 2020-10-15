@@ -105,12 +105,12 @@ Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r1
 
 ## ⚙️ Kurulum
 
-İlk önce, Go yu [indirip](https://golang.org/dl/) kuruyoruz. `1.14` veya daha yeni sürüm gereklidir.
+Fiber requires Go version `1.14` or higher ([download](https://golang.org/dl/)). 
 
-[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu kullanarak kurulumu tamamlıyoruz:
+Fiber also uses [Go Modules](https://blog.golang.org/using-go-modules) which are the standard for Go 1.11+. Initialize a module (if this is a new project) with `go mod init [modulename]`, and then use [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) to add Fiber v2 as a dependency:
 
 ```bash
-go get github.com/gofiber/fiber/v2/...
+go get github.com/gofiber/fiber/v2
 ```
 
 ## 🎯 Özellikler

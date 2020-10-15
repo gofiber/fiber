@@ -103,16 +103,13 @@ func main() {
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
 </p>
 
-## ⚙️ 安装
+## ⚙️ 
+安装
+Fiber requires Go version `1.14` or higher ([download](https://golang.org/dl/)). 
 
-首先， [下载](https://golang.org/dl/)并安装Go。 需要`1.14`或更高版本。
-
-使用[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)命令完成安装：
+Fiber also uses [Go Modules](https://blog.golang.org/using-go-modules) which are the standard for Go 1.11+. Initialize a module (if this is a new project) with `go mod init [modulename]`, and then use [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) to add Fiber v2 as a dependency:
 
 ```bash
-export GO111MODULE=on
-export GOPROXY=https://goproxy.cn
-
 go get github.com/gofiber/fiber/v2
 ```
 
