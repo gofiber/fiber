@@ -8,18 +8,18 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
 // go test -run Test_Proxy_Empty_Host
 func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			utils.AssertEqual(t, "Servers cannot be empty", r)
+		}
+	}()
 	app := fiber.New()
-	app.Use(recover.New(), Balancer(Config{Servers: []string{}}))
-
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
+	app.Use(Balancer(Config{Servers: []string{}}))
 }
 
 // go test -run Test_Proxy_Next
