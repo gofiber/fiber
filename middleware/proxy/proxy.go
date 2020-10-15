@@ -58,9 +58,7 @@ func Balancer(config Config) fiber.Handler {
 		cfg.Next = ConfigDefault.Next
 	}
 	if len(cfg.Servers) == 0 {
-		return func(c *fiber.Ctx) (err error) {
-			panic("Servers cannot be empty")
-		}
+		panic("Servers cannot be empty")
 	}
 
 	client := fasthttp.Client{
