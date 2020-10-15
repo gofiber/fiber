@@ -142,7 +142,7 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 	req := httptest.NewRequest("GET", "/", nil)
 	if headerIfNoneMatch {
-		etag := `"non-match"`
+		etag := `W/"non-match"`
 		if matched {
 			etag = `W/"13-1831710635"`
 		}

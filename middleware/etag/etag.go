@@ -45,6 +45,8 @@ func New(config ...Config) fiber.Handler {
 		cfg = config[0]
 	}
 
+	var crc32q = crc32.MakeTable(0xD5828281)
+
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
@@ -70,7 +72,19 @@ func New(config ...Config) fiber.Handler {
 		// Generate ETag for response
 		bb := bytebufferpool.Get()
 		defer bytebufferpool.Put(bb)
-		etag := generateEtag(body, bb, cfg.Weak)
+
+		// Enable weak tag
+		if cfg.Weak {
+			_, _ = bb.Write(weakPrefix)
+		}
+
+		_ = bb.WriteByte('"')
+		bb.B = appendUint(bb.Bytes(), uint32(len(body)))
+		_ = bb.WriteByte('-')
+		bb.B = appendUint(bb.Bytes(), crc32.Checksum(body, crc32q))
+		_ = bb.WriteByte('"')
+
+		etag := bb.Bytes()
 
 		// Get ETag header from request
 		clientEtag := c.Request().Header.Peek(fiber.HeaderIfNoneMatch)
@@ -101,23 +115,6 @@ func New(config ...Config) fiber.Handler {
 
 		return
 	}
-}
-
-func generateEtag(body []byte, bb *bytebufferpool.ByteBuffer, weak bool) []byte {
-	crc32q := crc32.MakeTable(0xD5828281)
-
-	// Enable weak tag
-	if weak {
-		_, _ = bb.Write(weakPrefix)
-	}
-
-	_ = bb.WriteByte('"')
-	bb.B = appendUint(bb.Bytes(), uint32(len(body)))
-	_ = bb.WriteByte('-')
-	bb.B = appendUint(bb.Bytes(), crc32.Checksum(body, crc32q))
-	_ = bb.WriteByte('"')
-
-	return bb.Bytes()
 }
 
 // appendUint appends n to dst and returns the extended dst.
