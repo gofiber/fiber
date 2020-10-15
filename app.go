@@ -31,7 +31,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.0.6"
+const Version = "2.1.0"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -314,6 +314,13 @@ func New(config ...Config) *App {
 	if len(config) > 0 {
 		app.config = config[0]
 	}
+
+	if app.config.ETag {
+		if !IsChild() {
+			fmt.Println("[Warning] Config.ETag is deprecated since v2.0.6, please use 'middleware/etag'.")
+		}
+	}
+
 	// Override default values
 	if app.config.BodyLimit <= 0 {
 		app.config.BodyLimit = DefaultBodyLimit
