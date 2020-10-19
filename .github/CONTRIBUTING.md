@@ -4,7 +4,7 @@ When contributing to this repository, please first discuss the change you wish t
 
 Please note: we have a [code of conduct](https://github.com/gofiber/fiber/blob/master/.github/CODE_OF_CONDUCT.md), please follow it in all your interactions with the `Fiber` project.
 
-## Pull Requests or Comits
+## Pull Requests or Commits
 Titles always we must use prefix according to below:
 
 > 🔥 Feature, ♻️ Refactor, 🩹 Fix, 🚨 Test, 📚 Doc, 🎨 Style
