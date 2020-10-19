@@ -76,7 +76,7 @@
 	<b>Fiber</b> adalah <b>web framework</b> yang terinspirasi dari <a href="https://github.com/expressjs/express">Express</a> yang berbasiskan <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, HTTP engine paling <b>cepat</b> untuk <a href="https://golang.org/doc/">Go</a>. Dirancang untuk <b>mempermudah</b>, <b>mempercepat</b> pengembangan aplikasi dengan <b>alokasi memori nol-nya</b> serta <b>kinerja</b> yang selalu diperhatikan.
 </p>
 
-## ⚡️ Cara Mulai
+## ⚡️ Cara Memulai
 
 ```go
 package main
@@ -107,7 +107,7 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmar
 
 Pertama, [unduh](https://golang.org/dl/) dan instal Go di komputer anda. Versi `1.14` atau yang lebih tinggi diperlukan.
 
-Instalasi dilakukkan dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
+Instalasi dilakukan dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
 go get github.com/gofiber/fiber/v2/...
@@ -125,24 +125,22 @@ go get github.com/gofiber/fiber/v2/...
 - [Template engines](https://github.com/gofiber/template)
 - [WebSocket support](https://github.com/gofiber/websocket)
 - [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
-- Available in [15 languages](https://docs.gofiber.io/)
+- Tersedia dalam [15 bahasa](https://docs.gofiber.io/)
 - Dan masih banyak lagi, [kunjungi Fiber](https://docs.gofiber.io/)
 
 ## 💡 Filosofi
 
-Bagi yang baru yang beralih dari [Node.js](https://nodejs.org/en/about/) ke [Go](https://golang.org/doc/) terkadang perlu waktu yang cukup lama sebelum mereka mampu membuat aplikasi web dengan Go. Fiber, sebagai **web framework** dirancang secara **minimalis** dan mengikuti filosofi dari **UNIX**, sehingga pengguna baru dengan cepat memasuki dunia Go dengan sambutan yang hangat dan dapat diandalkan.
+Bagi yang baru yang beralih dari [Node.js](https://nodejs.org/en/about/) ke [Go](https://golang.org/doc/) terkadang perlu waktu yang cukup lama sebelum mereka mampu membuat aplikasi web dengan Go. Fiber, sebagai **web framework** dirancang secara **minimalis** dan mengikuti filosofi dari **UNIX**, sehingga pengguna baru dapat dengan cepat memasuki dunia Go dengan sambutan yang hangat dan dapat diandalkan.
 
-Fiber terinspirasi dari Express, salah satu web framework paling terkenal di Internet. Kami menggabungkan **kemudahan** dari Express dan **kinerja luar biasa** dari Go. Apabila anda pernah membuat aplikasi dengan Node.js (_dengan Express atau yang lainnya_), maka banyak metode dan prinsip yang akan terasa **sangat umum** bagi anda.
+Fiber terinspirasi dari Express, salah satu web framework yang paling terkenal di Internet. Kami menggabungkan **kemudahan** dari Express dan **kinerja luar biasa** dari Go. Apabila anda pernah membuat aplikasi dengan Node.js (_dengan Express atau yang lainnya_), maka banyak metode dan prinsip yang akan terasa **sangat umum** bagi anda.
 
-Kami **mendengarkan** para pengguna di [GitHub Issues](https://github.com/gofiber/fiber/issues) (_dan berbagai platform lainnya_) untuk menciptakan web framework yang **cepat**, **fleksibel** dan **bersahabat** untuk berbagai macam keperluan, **tenggat waktu** dan **keahlian** para pengguna! Sama halnya seperti yang dilakukkan Express di dunia JavaScript.
+Kami **mendengarkan** para pengguna di [GitHub Issues](https://github.com/gofiber/fiber/issues) (_dan berbagai platform lainnya_) untuk menciptakan web framework yang **cepat**, **fleksibel** dan **bersahabat** untuk berbagai macam keperluan, **tenggat waktu** dan **keahlian** para pengguna! Sama halnya seperti yang dilakukan Express di dunia JavaScript.
 
 ## 👀 Contoh
 
-Dibawah ini terdapat beberapa contoh penggunaan. Jika anda ingin contoh lainnya, silahkan kunjungi [Gudang resep](https://github.com/gofiber/recipes) atau kunjungi [Dokumentasi API](https://docs.gofiber.io) kami.
+Dibawah ini terdapat beberapa contoh penggunaan. Jika anda ingin melihat contoh lainnya, silahkan kunjungi [Gudang resep](https://github.com/gofiber/recipes) atau kunjungi [Dokumentasi API](https://docs.gofiber.io) kami.
 
-Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
-
-#### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
+#### 📖 [**Routing Dasar**](https://docs.gofiber.io/#basic-routing)
 
 ```go
 func main() {
@@ -183,7 +181,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving File Static**](https://docs.gofiber.io/application#static)
 
 ```go
 func main() {
@@ -235,7 +233,7 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 Tampilkan lebih banyak contoh kode</summary>
 
 ### Views engines
 
@@ -480,45 +478,42 @@ func main() {
 ```
 </details>
 
-## 🧬 Internal Middleware
-
-Here is a list of middleware that are included within the Fiber framework.
+## 🧬 Middleware Internal
+Kumpulan `middleware` yang ada didalam framework Fiber.
 
 | Middleware | Description |
 | :--- | :--- |
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. |
-| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache) | Intercept and cache responses |
-| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors) | Enable cross-origin resource sharing \(CORS\) with various options. |
-| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf) | Protect from CSRF exploits. |
-| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary |
-| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon) | Ignore favicon from logs or serve from memory if a file path is provided. |
-| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter) | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset. |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth) | Middleware Basic auth menyediakan Authentikasi dasar HTTP. Ia memanggil handler selanjutnya untuk kredensial yang valid dan 401 unathorized untuk kredential yang hilang atau tidak valid. |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress) | Kompresi middleware untuk fiber, ia mendukung `deflate`, `gzip` and `brotli` secara default |
+| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache) | Mencegat dan respond cache |
+| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors) | Memungkinkan cross-origin resource sharing \(CORS\) dengan berbagai pilihan. |
+| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf) | Melindungi dari eksploitasi CSRF. |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | FileSystem middleware untuk Fiber, Terima kasih khusus dan kredit untuk Alireza Salary |
+| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon) | Mengabaikan favicon dari logs atau serve dari memori jika file path tersedia. |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter) | Rate-limiting middleware untuk Fiber. Digunakan untuk membatasi request berulang ke APIs publik dan/atau endpoint seperti password reset. |
 | [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger) | HTTP request/response logger. |
-| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof) | Special thanks to Matthew Lee \(@mthli\) |
-| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/pprof) | Allows you to proxy requests to a multiple servers |
-| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid) | Adds a requestid to every request. |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover) | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md). |
-| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout) | Adds a max time for a request and forwards to ErrorHandler if it is exceeded. |
+| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof) | Terima kasih khusus kepada Matthew Lee \(@mthli\) |
+| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/pprof) | Mengizinkan anda untuk proxy request ke banyak server.|
+| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid) | Menambahkan sebuah requestid pada tiap request. |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover) | Middleware Recover memulihkan dari panik di rantai stack manapun dan menangani kontrol pada [ ErrorHandler](error-handling.md) tersentralisasi.|
+| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout) | Menambahkan waktu maksimal untuk sebuah request dan melanjutkan ke ErrorHandler jikan sudah melampaui waktunya. |
 
-## 🧬 External Middleware
-
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+## 🧬 Middleware External 
+Kumpulan `middleware` yang dihost external dan diurus oleh [Tim Fiber](https://github.com/orgs/gofiber/people).
 
 | Middleware | Description |
 | :--- | :--- |
-| [adaptor](https://github.com/gofiber/adaptor) | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn! |
-| [helmet](https://github.com/gofiber/helmet) | Helps secure your apps by setting various HTTP headers. |
-| [jwt](https://github.com/gofiber/jwt) | JWT returns a JSON Web Token \(JWT\) auth middleware. |
-| [keyauth](https://github.com/gofiber/keyauth) | Key auth middleware provides a key based authentication. |
-| [rewrite](https://github.com/gofiber/rewrite) | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. |
-| [session](https://github.com/gofiber/session) | This session middleware is build on top of fasthttp/session by @savsgio MIT. Special thanks to @thomasvvugt for helping with this middleware. |
-| [template](https://github.com/gofiber/template) | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required. |
-| [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support! |
+| [adaptor](https://github.com/gofiber/adaptor) | Konverter untuk net/http handlers ke/dari request Fiber, terima kasih khusus pada @arsmn! |
+| [helmet](https://github.com/gofiber/helmet) | Membantu mengamankan aplikasi anda dengan mengatur berbagai HTTP headers. |
+| [jwt](https://github.com/gofiber/jwt) | JWT mengembalikan sebuah Middleware Auth JSON Web Token \(JWT\). |
+| [keyauth](https://github.com/gofiber/keyauth) | Middleware Key auth menyediakan authentikasi berbasis kunci. |
+| [rewrite](https://github.com/gofiber/rewrite) | Middleware Rewrite menulis kembali jalur URL berdasarkan aturan yang disediakan. Ini akan bermanfaat untuk _backward compatibility_ atau hanya membuat cleaner dan link deskriptif. |
+| [session](https://github.com/gofiber/session) | Middleware session ini dibangun diatas fasthttp/session oleh @savsgio MIT. Terima kasih khusus kepada @thomasvvugt untuk bantuannya membangun middleware ini. |
+| [template](https://github.com/gofiber/template) | Package ini berisi 8 template engines yang dapat digunakan dengan Fiber `v1.10.x`, Go versi 1.13 atau lebih tinggi diperlukan. |
+| [websocket](https://github.com/gofiber/websocket) | Berdasarkan WebSocket Fasthttp untuk Fiber dengan dukungan lokal! |
 
 ## 🌱 Third Party Middlewares
-
-This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+Berikut adalah kumpulan _middlewares_ yang dibuat oleh komunitas Fiber, silahkan membuat PR jika kamu ingin melihat milik anda disini!
 - [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 - [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
 - [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
@@ -540,11 +535,10 @@ Apabila anda ingin mengucapkan **terima kasih** dan/atau mendukung pengembangan 
 1. Berikan bintang atau [GitHub Star](https://github.com/gofiber/fiber/stargazers) ke proyek ini.
 2. Bagikan [di Twitter anda](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Buat ulasan atau tutorial di [Medium](https://medium.com/), [Dev.to](https://dev.to/) atau blog pribadi anda.
-4. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+4. Dukung project ini dengan membelikan [secangkir kopi](https://buymeacoff.ee/fenny).
 
-## ☕ Supporters
-
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny).
+## ☕ Pendukung
+Fiber adalah projek open source yang beroperasi dalam donasi untuk membayar tagihan, seperti nama domain, _gitbook, netlify_ dan _serverless hosting_. Jika anda mau mendukung Fiber, anda dapat [**membeli kami kopi disini**](https://buymeacoff.ee/fenny).
 
 |                                                             | User                                             | Donation |
 | :---------------------------------------------------------- | :----------------------------------------------- | :-------- |
@@ -568,7 +562,7 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25 ) | [@marvinjwendt](https://github.com/thomasvvugt)  | ☕ x 1    |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25 ) | [@toishy](https://github.com/toishy)             | ☕ x 1    |
 
-## ‎‍💻 Code Contributors
+## ‎‍💻 Kontributor Kode
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
@@ -576,11 +570,11 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
-## ⚠️ License
+## ⚠️ Lisensi
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` adalah project gratis dan open-source dibawah [lisensi MIT](https://github.com/gofiber/fiber/blob/master/LICENSE). Logo resmi diciptakan oleh [Vic Shóstak](https://github.com/koddr) dan didistribusikan dalam lisensi [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0 International).
 
-**Third-party library licenses**
+**Lisensi Third-party library**
 - [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 - [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 - [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
