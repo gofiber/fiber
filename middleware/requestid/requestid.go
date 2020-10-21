@@ -21,6 +21,12 @@ type Config struct {
 	//
 	// Optional. Default: utils.UUID
 	Generator func() string
+
+	// ContextKey defines the key used when storing the request ID in
+	// the locals for a specific request.
+	//
+	// Optional. Default: requestId
+	ContextKey string
 }
 
 // ConfigDefault is the default config
@@ -28,6 +34,7 @@ var ConfigDefault = Config{
 	Next:      nil,
 	Header:    fiber.HeaderXRequestID,
 	Generator: utils.UUID,
+	ContextKey: "requestId",
 }
 
 // New creates a new middleware handler
@@ -46,6 +53,9 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Generator == nil {
 			cfg.Generator = ConfigDefault.Generator
 		}
+		if cfg.ContextKey == "" {
+			cfg.ContextKey = ConfigDefault.ContextKey
+		}
 	}
 
 	// Return new handler
@@ -59,6 +69,9 @@ func New(config ...Config) fiber.Handler {
 
 		// Set new id to response header
 		c.Set(cfg.Header, rid)
+
+		// Add the request ID to locals
+		c.Locals(cfg.ContextKey, rid)
 
 		// Continue stack
 		return c.Next()
