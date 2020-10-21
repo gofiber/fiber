@@ -259,7 +259,7 @@ func Test_Ctx_BaseURL(t *testing.T) {
 	utils.AssertEqual(t, "http://google.com", c.BaseURL())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Append -benchmem -count=4
+// go test -v -run=^$ -bench=Benchmark_Ctx_BaseURL -benchmem
 func Benchmark_Ctx_BaseURL(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1309,7 +1309,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	app.Get("/", func(c *Ctx) error {
 		err := c.SendFile("./john_dow.go/")
 		utils.AssertEqual(t, false, err == nil)
-		return nil
+		return err
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))

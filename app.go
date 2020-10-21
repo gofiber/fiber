@@ -31,7 +31,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.0.6"
+const Version = "2.1.0"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -314,6 +314,13 @@ func New(config ...Config) *App {
 	if len(config) > 0 {
 		app.config = config[0]
 	}
+
+	if app.config.ETag {
+		if !IsChild() {
+			fmt.Println("[Warning] Config.ETag is deprecated since v2.0.6, please use 'middleware/etag'.")
+		}
+	}
+
 	// Override default values
 	if app.config.BodyLimit <= 0 {
 		app.config.BodyLimit = DefaultBodyLimit
@@ -693,7 +700,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	var logo string
-	logo += "\n%s"
+	logo += "%s"
 	logo += " ┌───────────────────────────────────────────────────┐\n"
 	logo += " │ %s │\n"
 	logo += " │ %s │\n"
@@ -701,7 +708,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	logo += " │ Handlers %s  Threads %s │\n"
 	logo += " │ Prefork .%s  PID ....%s │\n"
 	logo += " └───────────────────────────────────────────────────┘"
-	logo += "%s\n\n"
+	logo += "%s"
 
 	const (
 		cBlack = "\u001b[90m"
@@ -751,6 +758,15 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		return str
 	}
 
+	pad := func(s string, width int) (str string) {
+		toAdd := width - len(s)
+		str += s
+		for i := 0; i < toAdd; i++ {
+			str += " "
+		}
+		return
+	}
+
 	host, port := parseAddr(addr)
 	if host == "" || host == "0.0.0.0" {
 		host = "127.0.0.1"
@@ -765,17 +781,103 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		isPrefork = "Enabled"
 	}
 
+	mainLogo := fmt.Sprintf(logo,
+		cBlack,
+		centerValue(" Fiber v"+Version, 49),
+		center(addr, 49),
+		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.GOMAXPROCS(0)), 14),
+		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
+		cReset,
+	)
+
+	var childPidsLogo string
+	if app.config.Prefork {
+		var childPidsTemplate string
+		childPidsTemplate += "%s"
+		childPidsTemplate += " ┌───────────────────────────────────────────────────┐\n%s"
+		childPidsTemplate += " └───────────────────────────────────────────────────┘"
+		childPidsTemplate += "%s"
+
+		newLine := " │ %s%s%s │"
+
+		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
+		var pidSlice []string
+		for _, v := range strings.Split(pids, ",") {
+			if v != "" {
+				pidSlice = append(pidSlice, v)
+			}
+		}
+
+		var lines []string
+		thisLine := "Child PIDs ... "
+		var itemsOnThisLine []string
+
+		addLine := func() {
+			lines = append(lines,
+				fmt.Sprintf(
+					newLine,
+					cBlack,
+					thisLine+cCyan+pad(strings.Join(itemsOnThisLine, ", "), 49-len(thisLine)),
+					cBlack,
+				),
+			)
+		}
+
+		for _, pid := range pidSlice {
+			if len(thisLine+strings.Join(append(itemsOnThisLine, pid), ", ")) > 49 {
+				addLine()
+				thisLine = ""
+				itemsOnThisLine = []string{pid}
+			} else {
+				itemsOnThisLine = append(itemsOnThisLine, pid)
+			}
+		}
+
+		// Add left over items to their own line
+		if len(itemsOnThisLine) != 0 {
+			addLine()
+		}
+
+		// Form logo
+		childPidsLogo = fmt.Sprintf(childPidsTemplate,
+			cBlack,
+			strings.Join(lines, "\n")+"\n",
+			cReset,
+		)
+	}
+
+	// Combine both the child PID logo and the main Fiber logo
+
+	// Pad the shorter logo to the length of the longer one
+	splitMainLogo := strings.Split(mainLogo, "\n")
+	splitChildPidsLogo := strings.Split(childPidsLogo, "\n")
+
+	mainLen := len(splitMainLogo)
+	childLen := len(splitChildPidsLogo)
+
+	if mainLen > childLen {
+		diff := mainLen - childLen
+		for i := 0; i < diff; i++ {
+			splitChildPidsLogo = append(splitChildPidsLogo, "")
+		}
+	} else {
+		diff := childLen - mainLen
+		for i := 0; i < diff; i++ {
+			splitMainLogo = append(splitMainLogo, "")
+		}
+	}
+
+	// Combine the two logos, line by line
+	output := "\n"
+	for i := range splitMainLogo {
+		output += cBlack + splitMainLogo[i] + " " + splitChildPidsLogo[i] + "\n"
+	}
+
 	out := colorable.NewColorableStdout()
 	if os.Getenv("TERM") == "dumb" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
-	_, _ = fmt.Fprintf(out, logo,
-		cBlack,
-		centerValue(" Fiber v"+Version, 49),
-		center(addr, 49),
-		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.NumCPU()), 14),
-		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
-		cReset,
-	)
+
+	fmt.Fprintln(out, output)
 
 }
