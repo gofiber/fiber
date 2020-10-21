@@ -25,7 +25,7 @@ func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 // go test -run Test_Proxy_Next
 func Test_Proxy_Next(t *testing.T) {
 	app := fiber.New()
-	app.Use(New(Config{
+	app.Use(Balancer(Config{
 		Servers: []string{"127.0.0.1"},
 		Next: func(_ *fiber.Ctx) bool {
 			return true
@@ -57,7 +57,7 @@ func Test_Proxy(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(New(Config{Servers: []string{"127.0.0.1:3001"}}))
+	app.Use(Balancer(Config{Servers: []string{"127.0.0.1:3001"}}))
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Host = "127.0.0.1:3001"
@@ -70,7 +70,7 @@ func Test_Proxy(t *testing.T) {
 func Test_Proxy_Do_With_Error(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New(Config{Servers: []string{"127.0.0.1:90000"}}))
+	app.Use(Balancer(Config{Servers: []string{"127.0.0.1:90000"}}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
