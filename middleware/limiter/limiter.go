@@ -188,7 +188,7 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Store those bytes
-			err = cfg.Store.Set(key, buf.Bytes(), time.Duration(0))
+			err = cfg.Store.Set(key, buf.Bytes(), cfg.Duration)
 			if err != nil {
 				return err
 			}
