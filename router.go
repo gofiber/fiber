@@ -63,6 +63,8 @@ func (r *Route) match(path, original string, params *[maxParams]string) (match b
 	} else if r.star {
 		if len(original) > 1 {
 			params[0] = original[1:]
+		} else {
+			params[0] = ""
 		}
 		return true
 	}

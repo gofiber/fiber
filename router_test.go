@@ -88,6 +88,16 @@ func Test_Route_Match_Star(t *testing.T) {
 	match := route.match("", "", &params)
 	utils.AssertEqual(t, true, match)
 	utils.AssertEqual(t, [maxParams]string{}, params)
+
+	// with parameter
+	match = route.match("/favicon.ico", "/favicon.ico", &params)
+	utils.AssertEqual(t, true, match)
+	utils.AssertEqual(t, [maxParams]string{"favicon.ico"}, params)
+
+	// without parameter again
+	match = route.match("", "", &params)
+	utils.AssertEqual(t, true, match)
+	utils.AssertEqual(t, [maxParams]string{}, params)
 }
 
 func Test_Route_Match_Root(t *testing.T) {
