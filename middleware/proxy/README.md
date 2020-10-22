@@ -57,7 +57,7 @@ app.Use(proxy.Balancer(proxy.Config{
 		"http://localhost:3003",
 	},
 	ModifyRequest: func(c *fiber.Ctx) error {
-		c.Set("X-Real-IP", c.IP())
+		c.Request().Header.Add("X-Real-IP", c.IP())
 		return nil
 	},
 	ModifyResponse: func(c *fiber.Ctx) error {
