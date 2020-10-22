@@ -25,7 +25,7 @@ type Config struct {
 	// ContextKey defines the key used when storing the request ID in
 	// the locals for a specific request.
 	//
-	// Optional. Default: requestId
+	// Optional. Default: requestid
 	ContextKey string
 }
 
@@ -34,7 +34,7 @@ var ConfigDefault = Config{
 	Next:      nil,
 	Header:    fiber.HeaderXRequestID,
 	Generator: utils.UUID,
-	ContextKey: "requestId",
+	ContextKey: "requestid",
 }
 
 // New creates a new middleware handler
