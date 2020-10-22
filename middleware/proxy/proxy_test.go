@@ -40,16 +40,14 @@ func Test_Proxy_Next(t *testing.T) {
 // go test -run Test_Proxy
 func Test_Proxy(t *testing.T) {
 	target := fiber.New()
-
 	target.Get("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
-
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":3001"))
 	}()
 
-	time.Sleep(time.Second)
+	time.Sleep(1 * time.Second)
 
 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
 	utils.AssertEqual(t, nil, err)
@@ -85,12 +83,13 @@ func Test_Proxy_Forward(t *testing.T) {
 	app := fiber.New()
 
 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
-	go func() {
-		utils.AssertEqual(t, nil, target.Listen(":50001"))
-	}()
 	target.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("forwarded")
 	})
+	go func() {
+		utils.AssertEqual(t, nil, target.Listen(":50001"))
+	}()
+	time.Sleep(1 * time.Second)
 
 	app.Use(Forward("http://127.0.0.1:50001"))
 
@@ -105,9 +104,13 @@ func Test_Proxy_Forward(t *testing.T) {
 
 func Test_Proxy_Modify_Response(t *testing.T) {
 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
+	target.Get("/", func(c *fiber.Ctx) error {
+		return c.Status(500).SendString("not modified")
+	})
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":50002"))
 	}()
+	time.Sleep(1 * time.Second)
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
@@ -117,10 +120,6 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 			return c.SendString("modified response")
 		},
 	}))
-
-	target.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("not modified")
-	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -133,9 +132,14 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 
 func Test_Proxy_Modify_Request(t *testing.T) {
 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
+	target.Get("/", func(c *fiber.Ctx) error {
+		b := c.Request().Body()
+		return c.SendString(string(b))
+	})
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":50003"))
 	}()
+	time.Sleep(1 * time.Second)
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
@@ -145,11 +149,6 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 			return nil
 		},
 	}))
-
-	target.Get("/", func(c *fiber.Ctx) error {
-		b := c.Request().Body()
-		return c.SendString(string(b))
-	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
