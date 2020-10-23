@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+	"github.com/valyala/fasthttp"
 )
 
 func Test_Cache_CacheControl(t *testing.T) {
@@ -31,7 +32,7 @@ func Test_Cache_CacheControl(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
+	utils.AssertEqual(t, "public, max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
 }
 
 func Test_Cache_Expired(t *testing.T) {
@@ -152,5 +153,58 @@ func Test_Cache_Invalid_Method(t *testing.T) {
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
+}
 
+func Test_Cache_NothingToCache(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{Expiration: -(time.Second * 1)}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString(time.Now().String())
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	time.Sleep(500 * time.Millisecond)
+
+	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	bodyCached, err := ioutil.ReadAll(respCached.Body)
+	utils.AssertEqual(t, nil, err)
+
+	if bytes.Equal(body, bodyCached) {
+		t.Errorf("Cache should have expired: %s, %s", body, bodyCached)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
+func Benchmark_Cache(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New())
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		data, err := ioutil.ReadFile("../../.github/README.md")
+		utils.AssertEqual(b, nil, err)
+		return c.Send(data)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
 }

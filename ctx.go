@@ -39,6 +39,7 @@ type Ctx struct {
 	indexHandler int                  // Index of the current handler
 	method       string               // HTTP method
 	methodINT    int                  // HTTP method INT equivalent
+	baseURI      string               // HTTP base uri
 	path         string               // Prettified HTTP path -> string copy from pathBuffer
 	pathBuffer   []byte               // Prettified HTTP path buffer
 	treePath     string               // Path for the search in the tree
@@ -94,6 +95,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	c.methodINT = methodInt(c.method)
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
+	// reset base uri
+	c.baseURI = ""
 	// Prettify path
 	c.prettifyPath()
 	return c
@@ -206,7 +209,11 @@ func (c *Ctx) Attachment(filename ...string) {
 func (c *Ctx) BaseURL() string {
 	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
 	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
-	return c.Protocol() + "://" + c.Hostname()
+	if c.baseURI != "" {
+		return c.baseURI
+	}
+	c.baseURI = c.Protocol() + "://" + c.Hostname()
+	return c.baseURI
 }
 
 // Body contains the raw body submitted in a POST request.
@@ -708,7 +715,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		if strings.Index(v, ",") > -1 && equalFieldType(out, reflect.Slice, k) {
+		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				data[k] = append(data[k], values[i])

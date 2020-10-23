@@ -259,7 +259,7 @@ func Test_Ctx_BaseURL(t *testing.T) {
 	utils.AssertEqual(t, "http://google.com", c.BaseURL())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Append -benchmem -count=4
+// go test -v -run=^$ -bench=Benchmark_Ctx_BaseURL -benchmem
 func Benchmark_Ctx_BaseURL(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -744,6 +744,15 @@ func Test_Ctx_IP(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	utils.AssertEqual(t, "0.0.0.0", c.IP())
+}
+
+// go test -run Test_Ctx_IP_ProxyHeader
+func Test_Ctx_IP_ProxyHeader(t *testing.T) {
+	t.Parallel()
+	app := New(Config{ProxyHeader: "Real-Ip"})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, "", c.IP())
 }
 
 // go test -run Test_Ctx_IPs  -parallel
@@ -1300,7 +1309,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	app.Get("/", func(c *Ctx) error {
 		err := c.SendFile("./john_dow.go/")
 		utils.AssertEqual(t, false, err == nil)
-		return nil
+		return err
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
@@ -1317,7 +1326,7 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 		if err := c.SendFile("./.github/" + file + ".html"); err != nil {
 			utils.AssertEqual(t, nil, err)
 		}
-		utils.AssertEqual(t, "index", fmt.Sprintf("%s", file))
+		utils.AssertEqual(t, "index", file)
 		return c.SendString(file)
 	})
 	// 1st try
@@ -1852,6 +1861,17 @@ func Benchmark_Ctx_Write(b *testing.B) {
 	}
 }
 
+// go test -run Test_Ctx_WriteString
+func Test_Ctx_WriteString(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.WriteString("Hello, ")
+	c.WriteString("World!")
+	utils.AssertEqual(t, "Hello, World!", string(c.Response().Body()))
+}
+
 // go test -run Test_Ctx_XHR
 func Test_Ctx_XHR(t *testing.T) {
 	t.Parallel()
@@ -2029,4 +2049,14 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 			}
 		})
 	}
+}
+
+func Test_Ctx_String(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	utils.AssertEqual(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
 }

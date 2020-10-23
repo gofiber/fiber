@@ -19,7 +19,7 @@ type Config struct {
 
 	// Expiration is the time that an cached response will live
 	//
-	// Optional. Default: 5 * time.Minute
+	// Optional. Default: 1 * time.Minute
 	Expiration time.Duration
 
 	// CacheControl enables client side caching if set to true
@@ -31,7 +31,7 @@ type Config struct {
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:         nil,
-	Expiration:   5 * time.Minute,
+	Expiration:   1 * time.Minute,
 	CacheControl: false,
 }
 
@@ -128,7 +128,7 @@ func New(config ...Config) fiber.Handler {
 				// Set Cache-Control header if enabled
 				if cfg.CacheControl {
 					maxAge := strconv.FormatInt(resp.expiration-time.Now().Unix(), 10)
-					c.Set(fiber.HeaderCacheControl, "max-age="+maxAge)
+					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 				}
 				return nil
 			}
