@@ -25,7 +25,8 @@ func Test_CSRF(t *testing.T) {
 	// Generate CSRF token
 	ctx.Request.Header.SetMethod("GET")
 	h(ctx)
-	utils.AssertEqual(t, true, strings.Contains(string(ctx.Response.Header.Peek(fiber.HeaderSetCookie)), "_csrf"))
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
 	// Without CSRF cookie
 	ctx.Request.Reset()
@@ -43,11 +44,14 @@ func Test_CSRF(t *testing.T) {
 	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
 
 	// Valid CSRF token
-	token := utils.UUID()
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod("GET")
+	h(ctx)
+
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod("POST")
-	ctx.Request.Header.Set(fiber.HeaderCookie, "_csrf="+token)
 	ctx.Request.Header.Set("X-CSRF-Token", token)
 	h(ctx)
 	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
@@ -97,17 +101,21 @@ func Test_CSRF_From_Form(t *testing.T) {
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 
-	// Valid CSRF token
-	token := utils.UUID()
+	// Invalid CSRF token
 	ctx.Request.Header.SetMethod("POST")
-	ctx.Request.Header.Set(fiber.HeaderCookie, "_csrf="+token)
 	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 	h(ctx)
 	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
 
+	// Generate CSRF token
 	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod("GET")
+	h(ctx)
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
 	ctx.Request.Header.SetMethod("POST")
-	ctx.Request.Header.Set(fiber.HeaderCookie, "_csrf="+token)
 	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 	ctx.Request.SetBodyString("_csrf=" + token)
 	h(ctx)
@@ -126,19 +134,28 @@ func Test_CSRF_From_Query(t *testing.T) {
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 
-	// Valid CSRF token
-	token := utils.UUID()
+	// Invalid CSRF token
 	ctx.Request.Header.SetMethod("POST")
-	ctx.Request.Header.Set(fiber.HeaderCookie, "_csrf="+token)
-	ctx.Request.SetRequestURI("/?_csrf=" + token)
-	h(ctx)
-	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
-
-	ctx.Request.SetRequestURI("/")
-	ctx.Response.Reset()
+	ctx.Request.SetRequestURI("/?_csrf=" + utils.UUID())
 	h(ctx)
 	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
-	utils.AssertEqual(t, "Forbidden", string(ctx.Response.Body()))
+
+	// Generate CSRF token
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod("GET")
+	ctx.Request.SetRequestURI("/")
+	h(ctx)
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.SetRequestURI("/?_csrf=" + token)
+	ctx.Request.Header.SetMethod("POST")
+	h(ctx)
+	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
+	utils.AssertEqual(t, "OK", string(ctx.Response.Body()))
 }
 
 func Test_CSRF_From_Param(t *testing.T) {
@@ -153,11 +170,64 @@ func Test_CSRF_From_Param(t *testing.T) {
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 
-	// Valid CSRF token
-	token := utils.UUID()
+	// Invalid CSRF token
 	ctx.Request.Header.SetMethod("POST")
-	ctx.Request.Header.Set(fiber.HeaderCookie, "_csrf="+token)
+	ctx.Request.SetRequestURI("/" + utils.UUID())
+	h(ctx)
+	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
+
+	// Generate CSRF token
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod("GET")
+	ctx.Request.SetRequestURI("/" + utils.UUID())
+	h(ctx)
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
 	ctx.Request.SetRequestURI("/" + token)
+	ctx.Request.Header.SetMethod("POST")
 	h(ctx)
 	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
+	utils.AssertEqual(t, "OK", string(ctx.Response.Body()))
+}
+
+func Test_CSRF_From_Cookie(t *testing.T) {
+	app := fiber.New()
+
+	csrfGroup := app.Group("/", New(Config{TokenLookup: "cookie:csrf"}))
+
+	csrfGroup.Post("/", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	// Invalid CSRF token
+	ctx.Request.Header.SetMethod("POST")
+	ctx.Request.SetRequestURI("/")
+	ctx.Request.Header.Set(fiber.HeaderCookie, "csrf="+utils.UUID()+";")
+	h(ctx)
+	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
+
+	// Generate CSRF token
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod("GET")
+	ctx.Request.SetRequestURI("/")
+	h(ctx)
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod("POST")
+	ctx.Request.Header.Set(fiber.HeaderCookie, "csrf="+token+";")
+	ctx.Request.SetRequestURI("/")
+	h(ctx)
+	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
+	utils.AssertEqual(t, "OK", string(ctx.Response.Body()))
 }

@@ -84,7 +84,7 @@ func New(config ...Config) fiber.Handler {
 			cfg.ContextKey = ConfigDefault.ContextKey
 		}
 		if cfg.CookieExpires != 0 {
-			fmt.Println("CookieExpires is deprecated, please use Expiration")
+			fmt.Println("[CSRF] CookieExpires is deprecated, please use Expiration")
 			cfg.CookieExpires = ConfigDefault.Expiration
 		}
 		if cfg.Expiration == 0 {
@@ -183,7 +183,6 @@ func New(config ...Config) fiber.Handler {
 			db.RLock()
 			t, ok := db.tokens[csrf]
 			db.RUnlock()
-
 			// Check if token exist or expired
 			if !ok || time.Now().Unix() >= t {
 				return fiber.ErrForbidden
@@ -204,7 +203,6 @@ func New(config ...Config) fiber.Handler {
 
 		// Set cookie to response
 		c.Cookie(cookie)
-
 		// Store token in context
 		c.Locals(cfg.ContextKey, token)
 
