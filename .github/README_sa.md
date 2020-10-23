@@ -111,10 +111,17 @@ func main() {
 
 ## ⚙️ تثبيت
 
+<<<<<<< HEAD:.github/README_sa.md
 <<<<<<< HEAD:.github/README_ar_SA.md
 Fiber requires Go version `1.14` or higher ([download](https://golang.org/dl/)). 
+=======
+قبل كل شي قم , [بتحميل](https://golang.org/dl/)   و تثبيت  Go. `1.14` أو أعلى مطلوب.
 
-Fiber also uses [Go Modules](https://blog.golang.org/using-go-modules) which are the standard for Go 1.11+. Initialize a module (if this is a new project) with `go mod init [modulename]`, and then use [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) to add Fiber v2 as a dependency:
+بعد الانتهاء من التثبيت استخدم الامر [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) :
+
+<div dir="ltr">
+>>>>>>> parent of afb060a... Mention Go Modules in README:.github/README_ar_SA.md
+
 
 =======
 قبل كل شي قم , [بتحميل](https://golang.org/dl/) و تثبيت Go. `1.14` أو أعلى مطلوب.
@@ -128,11 +135,17 @@ Fiber also uses [Go Modules](https://blog.golang.org/using-go-modules) which are
 go get github.com/gofiber/fiber/v2
 ```
 
+<<<<<<< HEAD:.github/README_sa.md
 <<<<<<< HEAD:.github/README_ar_SA.md
 =======
 </div>
 
 >>>>>>> upstream/master:.github/README_sa.md
+=======
+</div>
+
+
+>>>>>>> parent of afb060a... Mention Go Modules in README:.github/README_ar_SA.md
 ## 🎯 الميزات
 
 -   قوي [routing](https://docs.gofiber.io/routing)

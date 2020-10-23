@@ -107,15 +107,19 @@ func main() {
 ## ⚙️ インストール
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 Fiber requires Go version `1.14` or higher ([download](https://golang.org/dl/)). 
 =======
 まず、Go を[ダウンロード](https://golang.org/dl/)してください。 `1.14`以降が必要です。
 >>>>>>> upstream/master
+=======
+まず、Goを[ダウンロード](https://golang.org/dl/)してください。 `1.14`以降が必要です。
+>>>>>>> parent of afb060a... Mention Go Modules in README
 
-Fiber also uses [Go Modules](https://blog.golang.org/using-go-modules) which are the standard for Go 1.11+. Initialize a module (if this is a new project) with `go mod init [modulename]`, and then use [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) to add Fiber v2 as a dependency:
+そして、[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)コマンドを使用してインストールしてください。
 
 ```bash
-go get github.com/gofiber/fiber/v2
+go get github.com/gofiber/fiber/v2/...
 ```
 
 ## 🎯 機能

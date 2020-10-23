@@ -105,9 +105,9 @@ These tests are performed by [TechEmpower](https://www.techempower.com/benchmark
 
 ## ⚙️ Installation
 
-Fiber requires Go version `1.14` or higher ([download](https://golang.org/dl/)). 
+First of all, [download](https://golang.org/dl/) and install Go. `1.14` or higher is required.
 
-Fiber also uses [Go Modules](https://blog.golang.org/using-go-modules) which are the standard for Go 1.11+. Initialize a module (if this is a new project) with `go mod init [modulename]`, and then use [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) to add Fiber v2 as a dependency:
+Installation is done using the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
 go get github.com/gofiber/fiber/v2

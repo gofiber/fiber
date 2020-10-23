@@ -105,12 +105,12 @@ func main() {
 
 ## ⚙️ 설치
 
-우Fiber requires Go version `1.14` or higher ([download](https://golang.org/dl/)). 
+우선, Go를 [다운로드](https://golang.org/dl/)하고 설치합니다. `1.14` 버전 이상이 요구됩니다.
 
-Fiber also uses [Go Modules](https://blog.golang.org/using-go-modules) which are the standard for Go 1.11+. Initialize a module (if this is a new project) with `go mod init [modulename]`, and then use [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) to add Fiber v2 as a dependency:
+[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 명령어를 이용해 설치가 완료됩니다:
 
 ```bash
-go get github.com/gofiber/fiber/v2
+go get github.com/gofiber/fiber/v2/...
 ```
 
 ## 🎯 특징

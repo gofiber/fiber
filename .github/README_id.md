@@ -105,16 +105,20 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmar
 
 ## ⚙️ Instalasi
 
-Fiber requires Go version `1.14` or higher ([download](https://golang.org/dl/)). 
+Pertama, [unduh](https://golang.org/dl/) dan instal Go di komputer anda. Versi `1.14` atau yang lebih tinggi diperlukan.
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 Fiber also uses [Go Modules](https://blog.golang.org/using-go-modules) which are the standard for Go 1.11+. Initialize a module (if this is a new project) with `go mod init [modulename]`, and then use [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) to add Fiber v2 as a dependency:
 =======
 Instalasi dilakukan dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 >>>>>>> upstream/master
+=======
+Instalasi dilakukkan dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
+>>>>>>> parent of afb060a... Mention Go Modules in README
 
 ```bash
-go get github.com/gofiber/fiber/v2
+go get github.com/gofiber/fiber/v2/...
 ```
 
 ## 🎯 Fitur
