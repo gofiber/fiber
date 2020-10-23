@@ -201,7 +201,7 @@ func csrfFromParam(param string) func(c *fiber.Ctx) (string, error) {
 	}
 }
 
-// csrfFromParam returns a function that extracts token from the url param string.
+// csrfFromParam returns a function that extracts a token from a multipart-form.
 func csrfFromForm(param string) func(c *fiber.Ctx) (string, error) {
 	return func(c *fiber.Ctx) (string, error) {
 		token := c.FormValue(param)
