@@ -35,9 +35,7 @@ type Config struct {
 	// Optional.
 	Cookie *fiber.Cookie
 
-	// CookieExpires is the duration before the cookie will expire
-	//
-	// Optional. Default: 24 * time.Hour
+	// Deprecated, please use Expiration
 	CookieExpires time.Duration
 
 	// Expiration is the duration before csrf token will expire
