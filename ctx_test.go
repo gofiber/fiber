@@ -17,6 +17,7 @@ import (
 	"mime/multipart"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -256,6 +257,8 @@ func Test_Ctx_BaseURL(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	c.Request().SetRequestURI("http://google.com/test")
+	utils.AssertEqual(t, "http://google.com", c.BaseURL())
+	// Check cache
 	utils.AssertEqual(t, "http://google.com", c.BaseURL())
 }
 
@@ -503,6 +506,9 @@ func Test_Ctx_Format(t *testing.T) {
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationXML)
 	c.Format("Hello, World!")
 	utils.AssertEqual(t, `<string>Hello, World!</string>`, string(c.Response().Body()))
+
+	err := c.Format(complex(1, 1))
+	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
 	c.Format(Map{})
@@ -1256,6 +1262,9 @@ func Test_Ctx_Download(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, expect, c.Response().Body())
 	utils.AssertEqual(t, `attachment; filename="Awesome+File%21"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+
+	c.Download("ctx.go")
+	utils.AssertEqual(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
 // go test -race -run Test_Ctx_SendFile
@@ -1955,6 +1964,14 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, nil, c.QueryParser(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
 
+}
+
+func Test_Ctx_EqualFieldType(t *testing.T) {
+	var out int
+	utils.AssertEqual(t, false, equalFieldType(&out, reflect.Int, "key"))
+
+	var dummy struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy, reflect.String, "key"))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
