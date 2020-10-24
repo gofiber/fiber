@@ -41,6 +41,20 @@ func Test_Ctx_Accepts(t *testing.T) {
 	utils.AssertEqual(t, "", c.Accepts())
 	utils.AssertEqual(t, ".xml", c.Accepts(".xml"))
 	utils.AssertEqual(t, "", c.Accepts(".john"))
+
+	c.Request().Header.Set(HeaderAccept, "text/*, application/json")
+	utils.AssertEqual(t, "html", c.Accepts("html"))
+	utils.AssertEqual(t, "text/html", c.Accepts("text/html"))
+	utils.AssertEqual(t, "json", c.Accepts("json", "text"))
+	utils.AssertEqual(t, "application/json", c.Accepts("application/json"))
+	utils.AssertEqual(t, "", c.Accepts("image/png"))
+	utils.AssertEqual(t, "", c.Accepts("png"))
+
+	c.Request().Header.Set(HeaderAccept, "text/html, application/json")
+	utils.AssertEqual(t, "text/*", c.Accepts("text/*"))
+
+	c.Request().Header.Set(HeaderAccept, "*/*")
+	utils.AssertEqual(t, "html", c.Accepts("html"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Accepts -benchmem -count=4
