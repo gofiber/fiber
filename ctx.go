@@ -126,21 +126,35 @@ func (c *Ctx) Accepts(offers ...string) string {
 		if commaPos != -1 {
 			spec = utils.Trim(header[:commaPos], ' ')
 		} else {
-			spec = header
+			spec = utils.TrimLeft(header, ' ')
 		}
 		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
 			spec = spec[:factorSign]
 		}
 
+		var mimetype string
 		for _, offer := range offers {
-			mimetype := utils.GetMIME(offer)
-			if len(spec) > 2 && spec[len(spec)-2:] == "/*" {
-				if strings.HasPrefix(spec[:len(spec)-2], strings.Split(mimetype, "/")[0]) {
-					return offer
-				} else if spec == "*/*" {
-					return offer
-				}
-			} else if strings.HasPrefix(spec, mimetype) {
+			if len(offer) == 0 {
+				continue
+				// Accept: */*
+			} else if spec == "*/*" {
+				return offer
+			}
+
+			if strings.IndexByte(offer, '/') != -1 {
+				mimetype = offer // MIME type
+			} else {
+				mimetype = utils.GetMIME(offer) // extension
+			}
+
+			if spec == mimetype {
+				// Accept: <MIME_type>/<MIME_subtype>
+				return offer
+			}
+
+			s := strings.IndexByte(mimetype, '/')
+			// Accept: <MIME_type>/*
+			if strings.HasPrefix(spec, mimetype[:s]) && (spec[s:] == "/*" || mimetype[s:] == "/*") {
 				return offer
 			}
 		}
