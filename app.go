@@ -278,7 +278,7 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-// Default ErrorHandler that process return errors from handlers
+// DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {

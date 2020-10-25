@@ -14,12 +14,12 @@ func ValidString(s string) bool {
 	return valid(unsafe.Pointer(&s), uintptr(len(s)))
 }
 
-// ValidBytes returns true if b is an ASCII character.
+// ValidByte returns true if b is an ASCII character.
 func ValidByte(b byte) bool {
 	return b <= 0x7f
 }
 
-// ValidBytes returns true if b is an ASCII character.
+// ValidRune returns true if r is an ASCII character.
 func ValidRune(r rune) bool {
 	return r <= 0x7f
 }
@@ -59,22 +59,22 @@ func valid(s unsafe.Pointer, n uintptr) bool {
 	return (x & 0x80808080) == 0
 }
 
-// Valid returns true if b contains only printable ASCII characters.
+// ValidPrint returns true if b contains only printable ASCII characters.
 func ValidPrint(b []byte) bool {
 	return validPrint(unsafe.Pointer(&b), uintptr(len(b)))
 }
 
-// ValidString returns true if s contains only printable ASCII characters.
+// ValidPrintString returns true if s contains only printable ASCII characters.
 func ValidPrintString(s string) bool {
 	return validPrint(unsafe.Pointer(&s), uintptr(len(s)))
 }
 
-// ValidBytes returns true if b is an ASCII character.
+// ValidPrintByte returns true if b is an ASCII character.
 func ValidPrintByte(b byte) bool {
 	return 0x20 <= b && b <= 0x7e
 }
 
-// ValidBytes returns true if b is an ASCII character.
+// ValidPrintRune returns true if r is an ASCII character.
 func ValidPrintRune(r rune) bool {
 	return 0x20 <= r && r <= 0x7e
 }
