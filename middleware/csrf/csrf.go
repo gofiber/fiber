@@ -149,7 +149,9 @@ func New(config ...Config) fiber.Handler {
 	// Return new handler
 	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
-		if cfg.Next != nil && cfg.Next(c) {
+		if (cfg.Next != nil && cfg.Next(c)) ||
+			// Or non GET/POST method
+			(c.Method() != fiber.MethodGet && c.Method() != fiber.MethodPost) {
 			return c.Next()
 		}
 
@@ -162,7 +164,7 @@ func New(config ...Config) fiber.Handler {
 			token = utils.UUID()
 			// Add token with timestamp expiration
 			db.Lock()
-			db.tokens[token] = int64(time.Now().Unix()) + expiration
+			db.tokens[token] = time.Now().Unix() + expiration
 			db.Unlock()
 		} else {
 			// Use the server generated token previously to compare
@@ -187,6 +189,13 @@ func New(config ...Config) fiber.Handler {
 			if !ok || time.Now().Unix() >= t {
 				return fiber.ErrForbidden
 			}
+
+			// Delete token from DB
+			db.Lock()
+			delete(db.tokens, csrf)
+			db.Unlock()
+
+			return c.Next()
 		}
 
 		// Create new cookie to send new CSRF token
@@ -195,7 +204,7 @@ func New(config ...Config) fiber.Handler {
 			Value:    token,
 			Domain:   cfg.Cookie.Domain,
 			Path:     cfg.Cookie.Path,
-			Expires:  time.Now().Add(cfg.CookieExpires),
+			Expires:  time.Now().Add(cfg.Expiration),
 			Secure:   cfg.Cookie.Secure,
 			HTTPOnly: cfg.Cookie.HTTPOnly,
 			SameSite: cfg.Cookie.SameSite,
