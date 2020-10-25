@@ -22,8 +22,10 @@ type Config struct {
 	Level Level
 }
 
+// Level is numeric representation of compression level
 type Level int
 
+// Represents compression level that will be used in the middleware
 const (
 	LevelDisabled        Level = -1
 	LevelDefault         Level = 0
