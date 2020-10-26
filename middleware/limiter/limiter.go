@@ -1,6 +1,8 @@
 package limiter
 
 import (
+	"bytes"
+	"encoding/gob"
 	"strconv"
 	"sync"
 	"sync/atomic"
