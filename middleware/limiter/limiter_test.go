@@ -16,6 +16,9 @@ import (
 
 // go test -run Test_Limiter_Concurrency -race -v
 func Test_Limiter_Concurrency(t *testing.T) {
+
+	// Test concurrency using a default store
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -60,12 +63,14 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 
+	// Test concurrency using a custom store
+
 	app = fiber.New()
 
 	app.Use(New(Config{
 		Max:      50,
 		Duration: 2 * time.Second,
-		Store:    defaultStore{stmap: map[string][]byte{}},
+		Store:    testStore{stmap: map[string][]byte{}, mutex: new(sync.Mutex)},
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -98,6 +103,33 @@ func Benchmark_Limiter(b *testing.B) {
 	app.Use(New(Config{
 		Max:      100,
 		Duration: 60 * time.Second,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/")
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Limiter_Custom_Store -benchmem -count=4
+func Benchmark_Limiter_Custom_Store(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:      100,
+		Duration: 60 * time.Second,
+		Store:    testStore{stmap: map[string][]byte{}, mutex: new(sync.Mutex)},
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -155,4 +187,37 @@ func Test_Limiter_Headers(t *testing.T) {
 	if v := string(fctx.Response.Header.Peek("X-RateLimit-Reset")); !(v == "1" || v == "2") {
 		t.Errorf("The X-RateLimit-Reset header is not set correctly - value is out of bounds.")
 	}
+}
+
+// testStore is used for testing custom stores
+type testStore struct {
+	stmap map[string][]byte
+	mutex *sync.Mutex
+}
+
+func (s testStore) Get(id string) ([]byte, error) {
+	s.mutex.Lock()
+	val, ok := s.stmap[id]
+	s.mutex.Unlock()
+	if !ok {
+		return []byte{}, nil
+	} else {
+		return val, nil
+	}
+}
+
+func (s testStore) Set(id string, val []byte, _ time.Duration) error {
+	s.mutex.Lock()
+	s.stmap[id] = val
+	s.mutex.Unlock()
+
+	return nil
+}
+
+func (s testStore) Clear() error {
+	return nil
+}
+
+func (s testStore) Delete(id string) error {
+	return nil
 }

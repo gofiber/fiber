@@ -1,8 +1,6 @@
 package limiter
 
 import (
-	"bytes"
-	"encoding/gob"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -10,6 +8,9 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 )
+
+//go:generate msgp -unexported
+//msgp:ignore Config
 
 // Config defines the config for middleware.
 type Config struct {
@@ -45,7 +46,7 @@ type Config struct {
 	// Store is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
-	Store Storage
+	Store fiber.Storage
 
 	// Internally used - if true, the simpler method of two maps is used in order to keep
 	// execution time down.
@@ -152,11 +153,8 @@ func New(config ...Config) fiber.Handler {
 				// Assume this means item not found.
 				session = trackedSession{}
 			} else {
-				// Decode bytes using gob
-				var buf bytes.Buffer
-				_, _ = buf.Write(fromStore)
-				dec := gob.NewDecoder(&buf)
-				err := dec.Decode(&session)
+				// Decode bytes using msgp
+				_, err := session.UnmarshalMsg(fromStore)
 				if err != nil {
 					return err
 				}
@@ -180,15 +178,15 @@ func New(config ...Config) fiber.Handler {
 
 		if cfg.usingCustomStore {
 			// Convert session struct into bytes
-			var buf bytes.Buffer
-			enc := gob.NewEncoder(&buf)
-			err := enc.Encode(session)
+
+			data, err := session.MarshalMsg(nil)
+
 			if err != nil {
 				return err
 			}
 
 			// Store those bytes
-			err = cfg.Store.Set(key, buf.Bytes(), cfg.Duration)
+			err = cfg.Store.Set(key, data, cfg.Duration)
 			if err != nil {
 				return err
 			}
