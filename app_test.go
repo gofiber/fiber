@@ -565,7 +565,6 @@ func Test_App_Static_Direct(t *testing.T) {
 	utils.AssertEqual(t, "text/plain; charset=utf-8", resp.Header.Get("Content-Type"))
 	utils.AssertEqual(t, "", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 
-
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
@@ -877,6 +876,15 @@ func Test_App_Listen(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(":4003"))
 }
 
+// go test -run Test_App_Listen_Prefork
+func Test_App_Listen_Prefork(t *testing.T) {
+	testPreforkMaster = true
+
+	app := New(Config{DisableStartupMessage: true, Prefork: true})
+
+	utils.AssertEqual(t, nil, app.Listen(":99999"))
+}
+
 // go test -run Test_App_Listener
 func Test_App_Listener(t *testing.T) {
 	app := New()
@@ -885,6 +893,16 @@ func Test_App_Listener(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
+
+	ln := fasthttputil.NewInmemoryListener()
+	utils.AssertEqual(t, nil, app.Listener(ln))
+}
+
+// go test -run Test_App_Listener_Prefork
+func Test_App_Listener_Prefork(t *testing.T) {
+	testPreforkMaster = true
+
+	app := New(Config{DisableStartupMessage: true, Prefork: true})
 
 	ln := fasthttputil.NewInmemoryListener()
 	utils.AssertEqual(t, nil, app.Listener(ln))
@@ -1103,11 +1121,23 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 
 func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 	New(Config{Prefork: true}).
-		startupMessage(":3000", true, "")
+		startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
 }
 
 func Test_App_Server(t *testing.T) {
 	app := New()
 
 	utils.AssertEqual(t, false, app.Server() == nil)
+}
+
+func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
+	app := New()
+	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
+		return errors.New("fake error")
+	}
+	app.server.GetOnly = true
+
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 500, resp.StatusCode)
 }

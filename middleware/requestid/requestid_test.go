@@ -48,3 +48,28 @@ func Test_RequestID_Next(t *testing.T) {
 	utils.AssertEqual(t, resp.Header.Get(fiber.HeaderXRequestID), "")
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
+
+// go test -run Test_RequestID_Locals
+func Test_RequestID_Locals(t *testing.T) {
+	reqId := "ThisIsARequestId"
+	ctxKey := "ThisIsAContextKey"
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Generator: func() string {
+			return reqId
+		},
+		ContextKey: ctxKey,
+	}))
+
+	var ctxVal string
+
+	app.Use(func (c *fiber.Ctx) error {
+		ctxVal = c.Locals(ctxKey).(string)
+		return c.Next()
+	})
+
+	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, reqId, ctxVal)
+}

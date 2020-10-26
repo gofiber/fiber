@@ -1,9 +1,10 @@
 package csrf
 
 import (
-	"crypto/subtle"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -26,6 +27,7 @@ type Config struct {
 	// - "query:<name>"
 	// - "param:<name>"
 	// - "form:<name>"
+	// - "cookie:<name>"
 	TokenLookup string
 
 	// Cookie
@@ -33,10 +35,13 @@ type Config struct {
 	// Optional.
 	Cookie *fiber.Cookie
 
-	// CookieExpires is the duration before the cookie will expire
+	// Deprecated, please use Expiration
+	CookieExpires time.Duration
+
+	// Expiration is the duration before csrf token will expire
 	//
 	// Optional. Default: 24 * time.Hour
-	CookieExpires time.Duration
+	Expiration time.Duration
 
 	// Context key to store generated CSRF token into context.
 	//
@@ -53,7 +58,13 @@ var ConfigDefault = Config{
 		Name:     "_csrf",
 		SameSite: "Strict",
 	},
-	CookieExpires: 24 * time.Hour,
+	Expiration:    24 * time.Hour,
+	CookieExpires: 24 * time.Hour, // deprecated
+}
+
+type storage struct {
+	sync.RWMutex
+	tokens map[string]int64
 }
 
 // New creates a new middleware handler
@@ -72,8 +83,12 @@ func New(config ...Config) fiber.Handler {
 		if cfg.ContextKey == "" {
 			cfg.ContextKey = ConfigDefault.ContextKey
 		}
-		if cfg.CookieExpires == 0 {
-			cfg.CookieExpires = ConfigDefault.CookieExpires
+		if cfg.CookieExpires != 0 {
+			fmt.Println("[CSRF] CookieExpires is deprecated, please use Expiration")
+			cfg.CookieExpires = ConfigDefault.Expiration
+		}
+		if cfg.Expiration == 0 {
+			cfg.Expiration = ConfigDefault.Expiration
 		}
 		if cfg.Cookie != nil {
 			if cfg.Cookie.Name == "" {
@@ -86,6 +101,7 @@ func New(config ...Config) fiber.Handler {
 			cfg.Cookie = ConfigDefault.Cookie
 		}
 	}
+	expiration := int64(cfg.Expiration.Seconds())
 
 	// Generate the correct extractor to get the token from the correct location
 	selectors := strings.Split(cfg.TokenLookup, ":")
@@ -104,12 +120,38 @@ func New(config ...Config) fiber.Handler {
 		extractor = csrfFromQuery(selectors[1])
 	case "param":
 		extractor = csrfFromParam(selectors[1])
+	case "cookie":
+		if selectors[1] == cfg.Cookie.Name {
+			panic(fmt.Sprintf("TokenLookup key %s can't be the same as Cookie.Name %s", selectors[1], cfg.Cookie.Name))
+		}
+		extractor = csrfFromCookie(selectors[1])
 	}
+
+	// create new db
+	db := storage{
+		tokens: make(map[string]int64),
+	}
+	// Remove expired entries
+	go func() {
+		for {
+			// GC the tokens every 10 seconds to avoid
+			time.Sleep(10 * time.Second)
+			db.Lock()
+			for t := range db.tokens {
+				if time.Now().Unix() >= db.tokens[t] {
+					delete(db.tokens, t)
+				}
+			}
+			db.Unlock()
+		}
+	}()
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
-		if cfg.Next != nil && cfg.Next(c) {
+		if (cfg.Next != nil && cfg.Next(c)) ||
+			// Or non GET/POST method
+			(c.Method() != fiber.MethodGet && c.Method() != fiber.MethodPost) {
 			return c.Next()
 		}
 
@@ -120,6 +162,10 @@ func New(config ...Config) fiber.Handler {
 		if key == "" {
 			// Create a new CSRF token
 			token = utils.UUID()
+			// Add token with timestamp expiration
+			db.Lock()
+			db.tokens[token] = time.Now().Unix() + expiration
+			db.Unlock()
 		} else {
 			// Use the server generated token previously to compare
 			// To the extracted token later on
@@ -134,11 +180,22 @@ func New(config ...Config) fiber.Handler {
 				// We have a problem extracting the csrf token
 				return fiber.ErrForbidden
 			}
-			// Some magic to compare both cookie and client csrf token
-			if subtle.ConstantTimeCompare(utils.UnsafeBytes(token), utils.UnsafeBytes(csrf)) != 1 {
-				// Comparison failed, return forbidden
+
+			// Get token from DB
+			db.RLock()
+			t, ok := db.tokens[csrf]
+			db.RUnlock()
+			// Check if token exist or expired
+			if !ok || time.Now().Unix() >= t {
 				return fiber.ErrForbidden
 			}
+
+			// Delete token from DB
+			db.Lock()
+			delete(db.tokens, csrf)
+			db.Unlock()
+
+			return c.Next()
 		}
 
 		// Create new cookie to send new CSRF token
@@ -147,7 +204,7 @@ func New(config ...Config) fiber.Handler {
 			Value:    token,
 			Domain:   cfg.Cookie.Domain,
 			Path:     cfg.Cookie.Path,
-			Expires:  time.Now().Add(cfg.CookieExpires),
+			Expires:  time.Now().Add(cfg.Expiration),
 			Secure:   cfg.Cookie.Secure,
 			HTTPOnly: cfg.Cookie.HTTPOnly,
 			SameSite: cfg.Cookie.SameSite,
@@ -155,7 +212,6 @@ func New(config ...Config) fiber.Handler {
 
 		// Set cookie to response
 		c.Cookie(cookie)
-
 		// Store token in context
 		c.Locals(cfg.ContextKey, token)
 
@@ -201,12 +257,23 @@ func csrfFromParam(param string) func(c *fiber.Ctx) (string, error) {
 	}
 }
 
-// csrfFromParam returns a function that extracts token from the url param string.
+// csrfFromParam returns a function that extracts a token from a multipart-form.
 func csrfFromForm(param string) func(c *fiber.Ctx) (string, error) {
 	return func(c *fiber.Ctx) (string, error) {
 		token := c.FormValue(param)
 		if token == "" {
 			return "", errors.New("missing csrf token in form parameter")
+		}
+		return token, nil
+	}
+}
+
+// csrfFromCookie returns a function that extracts token from the cookie header.
+func csrfFromCookie(param string) func(c *fiber.Ctx) (string, error) {
+	return func(c *fiber.Ctx) (string, error) {
+		token := c.Cookies(param)
+		if token == "" {
+			return "", errors.New("missing csrf token in cookie")
 		}
 		return token, nil
 	}

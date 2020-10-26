@@ -8,6 +8,7 @@ package fiber
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
@@ -259,6 +260,23 @@ func Test_Router_Handler_SetETag(t *testing.T) {
 	app.handler(c)
 
 	utils.AssertEqual(t, `"13-1831710635"`, string(c.Response.Header.Peek(HeaderETag)))
+}
+
+func Test_Router_Handler_Catch_Error(t *testing.T) {
+	app := New()
+	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
+		return errors.New("fake error")
+	}
+
+	app.Get("/", func(c *Ctx) error {
+		return ErrForbidden
+	})
+
+	c := &fasthttp.RequestCtx{}
+
+	app.handler(c)
+
+	utils.AssertEqual(t, StatusInternalServerError, c.Response.Header.StatusCode())
 }
 
 //////////////////////////////////////////////

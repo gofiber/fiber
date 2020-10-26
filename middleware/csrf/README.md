@@ -34,7 +34,7 @@ app.Use(csrf.New(csrf.Config{
 	Cookie: &fiber.Cookie{
 		Name: "_csrf",
 	},
-	CookieExpires: 24 * time.Hour,
+	Expiration: 24 * time.Hour,
 }))
 ```
 
@@ -63,10 +63,10 @@ type Config struct {
 	// Optional.
 	Cookie *fiber.Cookie
 
-	// CookieExpires is the duration before the cookie will expire
+	// Expiration is the duration before csrf token will expire
 	//
 	// Optional. Default: 24 * time.Hour
-	CookieExpires time.Duration
+	Expiration time.Duration
 
 	// Context key to store generated CSRF token into context.
 	//
@@ -83,11 +83,8 @@ var ConfigDefault = Config{
 	ContextKey:  "csrf",
 	Cookie: &fiber.Cookie{
 		Name:     "_csrf",
-		Domain:   "",
-		Path:     "",
-		Secure:   false,
-		HTTPOnly: false,
+		SameSite: "Strict",
 	},
-	CookieExpires: 24 * time.Hour,
+	Expiration: 24 * time.Hour,
 }
 ```

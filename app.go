@@ -31,7 +31,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.1.0"
+const Version = "2.1.1"
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
@@ -278,7 +278,7 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-// Default ErrorHandler that process return errors from handlers
+// DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {

@@ -61,10 +61,17 @@ func Test_Compress_Different_Level(t *testing.T) {
 			})
 
 			req := httptest.NewRequest("GET", "/", nil)
+			req.Header.Set("Accept-Encoding", "gzip")
 
 			resp, err := app.Test(req)
 			utils.AssertEqual(t, nil, err, "app.Test(req)")
 			utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+			utils.AssertEqual(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+
+			// Validate that the file size has shrunk
+			body, err := ioutil.ReadAll(resp.Body)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, true, len(body) < len(filedata))
 		})
 	}
 }
