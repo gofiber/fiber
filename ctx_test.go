@@ -1900,6 +1900,13 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	ctx.Fasthttp.Request.URI().SetQueryString("")
 	utils.AssertEqual(t, nil, ctx.QueryParser(empty))
 	utils.AssertEqual(t, 0, len(empty.Hobby))
+
+	type RequiredQuery struct {
+		Name string `query:"name,required"`
+	}
+	rq := new(RequiredQuery)
+	ctx.Fasthttp.Request.URI().SetQueryString("")
+	utils.AssertEqual(t, "name is empty", ctx.QueryParser(rq).Error())
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
