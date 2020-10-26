@@ -36,6 +36,19 @@ const Version = "2.1.1"
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
+// Storage interface that is implemented by storage providers for different
+// middleware packages like cache, limiter, session and csrf
+type Storage interface {
+    // Get session value. If the ID is not found, it will return an empty []byte
+    Get(id string) ([]byte, error)
+    // Set session value. `exp` will be zero for no expiration.
+    Set(id string, value []byte, exp time.Duration) error
+    // Delete session value
+    Delete(id string) error
+    // Clear clears the storage
+    Clear() error
+}
+
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
 
