@@ -1978,6 +1978,13 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, nil, c.QueryParser(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
 
+	type RequiredQuery struct {
+		Name string `query:"name,required"`
+	}
+	rq := new(RequiredQuery)
+	c.Request().URI().SetQueryString("")
+	fmt.Println(c.QueryParser(rq))
+	utils.AssertEqual(t, "name is empty", c.QueryParser(rq).Error())
 }
 
 func Test_Ctx_EqualFieldType(t *testing.T) {
