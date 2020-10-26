@@ -268,9 +268,6 @@ func (ctx *Ctx) BodyParser(out interface{}) error {
 
 // QueryParser binds the query string to a struct.
 func (ctx *Ctx) QueryParser(out interface{}) error {
-	if ctx.Fasthttp.QueryArgs().Len() < 1 {
-		return nil
-	}
 	// Get decoder from pool
 	var decoder = decoderPool.Get().(*schema.Decoder)
 	defer decoderPool.Put(decoder)
