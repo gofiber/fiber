@@ -154,14 +154,14 @@ func New(config ...Config) fiber.Handler {
 			entry = data[key]
 		} else {
 			// Load data from store
-			eStore, err := cfg.Store.Get(key)
+			storeEntry, err := cfg.Store.Get(key)
 			if err != nil {
 				return err
 			}
 			// Only decode if we found an entry
-			if len(eStore) > 0 {
+			if len(storeEntry) > 0 {
 				// Decode bytes using msgp
-				if _, err := entry.UnmarshalMsg(eStore); err != nil {
+				if _, err := entry.UnmarshalMsg(storeEntry); err != nil {
 					return err
 				}
 			}
