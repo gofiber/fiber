@@ -715,9 +715,6 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
-	if c.fasthttp.QueryArgs().Len() < 1 {
-		return nil
-	}
 	// Get decoder from pool
 	var decoder = decoderPool.Get().(*schema.Decoder)
 	defer decoderPool.Put(decoder)
