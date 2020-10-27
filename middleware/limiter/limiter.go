@@ -9,6 +9,9 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+//go:generate msgp -unexported
+//msgp:ignore Config
+
 // Config defines the config for middleware.
 type Config struct {
 	// Next defines a function to skip this middleware when returned true.
@@ -39,6 +42,15 @@ type Config struct {
 	//   return c.SendStatus(fiber.StatusTooManyRequests)
 	// }
 	LimitReached fiber.Handler
+
+	// Store is used to store the state of the middleware
+	//
+	// Default: an in memory store for this process only
+	Store fiber.Storage
+
+	// Internally used - if true, the simpler method of two maps is used in order to keep
+	// execution time down.
+	usingCustomStore bool
 }
 
 // ConfigDefault is the default config
@@ -52,6 +64,12 @@ var ConfigDefault = Config{
 	LimitReached: func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTooManyRequests)
 	},
+}
+
+// trackedSession is the type used for session tracking
+type trackedSession struct {
+	Hits      int
+	ResetTime uint64
 }
 
 // X-RateLimit-* headers
@@ -86,12 +104,14 @@ func New(config ...Config) fiber.Handler {
 		if cfg.LimitReached == nil {
 			cfg.LimitReached = ConfigDefault.LimitReached
 		}
+		if cfg.Store != nil {
+			cfg.usingCustomStore = true
+		}
 	}
 
 	// Limiter settings
 	var max = strconv.Itoa(cfg.Max)
-	var hits = make(map[string]int)
-	var reset = make(map[string]uint64)
+	var sessions = make(map[string]trackedSession)
 	var timestamp = uint64(time.Now().Unix())
 	var duration = uint64(cfg.Duration.Seconds())
 
@@ -116,32 +136,74 @@ func New(config ...Config) fiber.Handler {
 		// Get key (default is the remote IP)
 		key := cfg.Key(c)
 
-		// Lock map
+		// Lock mux (prevents values changing between retrieval and reassignment, which can and does
+		// break things)
 		mux.Lock()
+
+		var session trackedSession
+
+		if cfg.usingCustomStore {
+			// Load data from store
+			fromStore, err := cfg.Store.Get(key)
+			if err != nil {
+				return err
+			}
+
+			if len(fromStore) == 0 {
+				// Assume this means item not found.
+				session = trackedSession{}
+			} else {
+				// Decode bytes using msgp
+				_, err := session.UnmarshalMsg(fromStore)
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			// Load data from in-memory map
+			session = sessions[key]
+		}
 
 		// Set unix timestamp if not exist
 		ts := atomic.LoadUint64(&timestamp)
-		if reset[key] == 0 {
-			reset[key] = ts + duration
-		} else if ts >= reset[key] {
-			hits[key] = 0
-			reset[key] = ts + duration
+		if session.ResetTime == 0 {
+			session.ResetTime = ts + duration
+		} else if ts >= session.ResetTime {
+			session.Hits = 0
+			session.ResetTime = ts + duration
 		}
 
 		// Increment key hits
-		hits[key]++
+		session.Hits++
+
+		if cfg.usingCustomStore {
+			// Convert session struct into bytes
+
+			data, err := session.MarshalMsg(nil)
+
+			if err != nil {
+				return err
+			}
+
+			// Store those bytes
+			err = cfg.Store.Set(key, data, cfg.Duration)
+			if err != nil {
+				return err
+			}
+		} else {
+			sessions[key] = session
+		}
 
 		// Get current hits
-		hitCount := hits[key]
+		hitCount := session.Hits
 
 		// Calculate when it resets in seconds
-		resetTime := reset[key] - ts
-
-		// Unlock map
-		mux.Unlock()
+		resetTime := session.ResetTime - ts
 
 		// Set how many hits we have left
 		remaining := cfg.Max - hitCount
+
+		mux.Unlock()
 
 		// Check if hits exceed the cfg.Max
 		if remaining < 0 {
