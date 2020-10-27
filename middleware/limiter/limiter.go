@@ -1,6 +1,7 @@
 package limiter
 
 import (
+	"fmt"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -24,10 +25,13 @@ type Config struct {
 	// Default: 5
 	Max int
 
-	// Duration is the time on how long to keep records of requests in memory
+	// DEPRECATED: Use Expiration instead
+	Duration time.Duration
+
+	// Expiration is the time on how long to keep records of requests in memory
 	//
 	// Default: 1 * time.Minute
-	Duration time.Duration
+	Expiration time.Duration
 
 	// Key allows you to generate custom keys, by default c.IP() is used
 	//
@@ -50,26 +54,21 @@ type Config struct {
 
 	// Internally used - if true, the simpler method of two maps is used in order to keep
 	// execution time down.
-	usingCustomStore bool
+	defaultStore bool
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:     nil,
-	Max:      5,
-	Duration: 1 * time.Minute,
+	Next:       nil,
+	Max:        5,
+	Expiration: 1 * time.Minute,
 	Key: func(c *fiber.Ctx) string {
 		return c.IP()
 	},
 	LimitReached: func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTooManyRequests)
 	},
-}
-
-// trackedSession is the type used for session tracking
-type trackedSession struct {
-	Hits      int
-	ResetTime uint64
+	defaultStore: true,
 }
 
 // X-RateLimit-* headers
@@ -95,8 +94,14 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Max <= 0 {
 			cfg.Max = ConfigDefault.Max
 		}
-		if int(cfg.Duration.Seconds()) <= 0 {
-			cfg.Duration = ConfigDefault.Duration
+		if int(cfg.Duration.Seconds()) <= 0 && int(cfg.Expiration.Seconds()) <= 0 {
+			cfg.Expiration = ConfigDefault.Expiration
+		}
+		if int(cfg.Duration.Seconds()) > 0 {
+			fmt.Println("[LIMITER] Duration is deprecated, please use Expiration")
+			if cfg.Expiration != ConfigDefault.Expiration {
+				cfg.Expiration = cfg.Duration
+			}
 		}
 		if cfg.Key == nil {
 			cfg.Key = ConfigDefault.Key
@@ -104,19 +109,21 @@ func New(config ...Config) fiber.Handler {
 		if cfg.LimitReached == nil {
 			cfg.LimitReached = ConfigDefault.LimitReached
 		}
-		if cfg.Store != nil {
-			cfg.usingCustomStore = true
+		if cfg.Store == nil {
+			cfg.defaultStore = true
 		}
 	}
 
-	// Limiter settings
-	var max = strconv.Itoa(cfg.Max)
-	var sessions = make(map[string]trackedSession)
-	var timestamp = uint64(time.Now().Unix())
-	var duration = uint64(cfg.Duration.Seconds())
+	var (
+		// Limiter settings
+		max        = strconv.Itoa(cfg.Max)
+		timestamp  = uint64(time.Now().Unix())
+		expiration = uint64(cfg.Expiration.Seconds())
 
-	// mutex for parallel read and write access
-	mux := &sync.Mutex{}
+		// Default store logic (if no Store is provided)
+		data = make(map[string]Entry)
+		mux  = &sync.RWMutex{}
+	)
 
 	// Update timestamp every second
 	go func() {
@@ -136,80 +143,71 @@ func New(config ...Config) fiber.Handler {
 		// Get key (default is the remote IP)
 		key := cfg.Key(c)
 
-		// Lock mux (prevents values changing between retrieval and reassignment, which can and does
-		// break things)
+		// Create new entry
+		entry := Entry{}
+
+		// Lock entry
 		mux.Lock()
 
-		var session trackedSession
-
-		if cfg.usingCustomStore {
+		// Check if we need to use the default in-memory storage
+		if cfg.defaultStore {
+			entry = data[key]
+		} else {
 			// Load data from store
-			fromStore, err := cfg.Store.Get(key)
+			eStore, err := cfg.Store.Get(key)
 			if err != nil {
 				return err
 			}
-
-			if len(fromStore) == 0 {
-				// Assume this means item not found.
-				session = trackedSession{}
-			} else {
+			// Only decode if we found an entry
+			if len(eStore) > 0 {
 				// Decode bytes using msgp
-				_, err := session.UnmarshalMsg(fromStore)
-				if err != nil {
+				if _, err := entry.UnmarshalMsg(eStore); err != nil {
 					return err
 				}
 			}
-		} else {
-			// Load data from in-memory map
-			session = sessions[key]
 		}
 
 		// Set unix timestamp if not exist
 		ts := atomic.LoadUint64(&timestamp)
-		if session.ResetTime == 0 {
-			session.ResetTime = ts + duration
-		} else if ts >= session.ResetTime {
-			session.Hits = 0
-			session.ResetTime = ts + duration
+		if entry.Exp == 0 {
+			entry.Exp = ts + expiration
+		} else if ts >= entry.Exp {
+			entry.Hits = 0
+			entry.Exp = ts + expiration
 		}
 
-		// Increment key hits
-		session.Hits++
+		// Increment hits
+		entry.Hits++
 
-		if cfg.usingCustomStore {
-			// Convert session struct into bytes
-
-			data, err := session.MarshalMsg(nil)
-
-			if err != nil {
-				return err
-			}
-
-			// Store those bytes
-			err = cfg.Store.Set(key, data, cfg.Duration)
-			if err != nil {
-				return err
-			}
+		// Check if we need to use the default in-memory storage
+		if cfg.defaultStore {
+			data[key] = entry
 		} else {
-			sessions[key] = session
+			// Encode Entry to bytes using msgp
+			data, err := entry.MarshalMsg(nil)
+			if err != nil {
+				return err
+			}
+
+			// Pass bytes to Storage
+			if err = cfg.Store.Set(key, data, cfg.Expiration); err != nil {
+				return err
+			}
 		}
-
-		// Get current hits
-		hitCount := session.Hits
-
-		// Calculate when it resets in seconds
-		resetTime := session.ResetTime - ts
-
-		// Set how many hits we have left
-		remaining := cfg.Max - hitCount
 
 		mux.Unlock()
+
+		// Calculate when it resets in seconds
+		expire := entry.Exp - ts
+
+		// Set how many hits we have left
+		remaining := cfg.Max - entry.Hits
 
 		// Check if hits exceed the cfg.Max
 		if remaining < 0 {
 			// Return response with Retry-After header
 			// https://tools.ietf.org/html/rfc6584
-			c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(resetTime, 10))
+			c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(expire, 10))
 
 			// Call LimitReached handler
 			return cfg.LimitReached(c)
@@ -218,9 +216,16 @@ func New(config ...Config) fiber.Handler {
 		// We can continue, update RateLimit headers
 		c.Set(xRateLimitLimit, max)
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
-		c.Set(xRateLimitReset, strconv.FormatUint(resetTime, 10))
+		c.Set(xRateLimitReset, strconv.FormatUint(expire, 10))
 
 		// Continue stack
 		return c.Next()
 	}
 }
+
+// replacer for strconv.FormatUint
+// func appendInt(buf *bytebufferpool.ByteBuffer, v int) (int, error) {
+// 	old := len(buf.B)
+// 	buf.B = fasthttp.AppendUint(buf.B, v)
+// 	return len(buf.B) - old, nil
+// }

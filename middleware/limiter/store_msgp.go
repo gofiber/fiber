@@ -7,7 +7,7 @@ import (
 )
 
 // DecodeMsg implements msgp.Decodable
-func (z *trackedSession) DecodeMsg(dc *msgp.Reader) (err error) {
+func (z *Entry) DecodeMsg(dc *msgp.Reader) (err error) {
 	var field []byte
 	_ = field
 	var zb0001 uint32
@@ -30,10 +30,10 @@ func (z *trackedSession) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "Hits")
 				return
 			}
-		case "ResetTime":
-			z.ResetTime, err = dc.ReadUint64()
+		case "Exp":
+			z.Exp, err = dc.ReadUint64()
 			if err != nil {
-				err = msgp.WrapError(err, "ResetTime")
+				err = msgp.WrapError(err, "Exp")
 				return
 			}
 		default:
@@ -48,7 +48,7 @@ func (z *trackedSession) DecodeMsg(dc *msgp.Reader) (err error) {
 }
 
 // EncodeMsg implements msgp.Encodable
-func (z trackedSession) EncodeMsg(en *msgp.Writer) (err error) {
+func (z Entry) EncodeMsg(en *msgp.Writer) (err error) {
 	// map header, size 2
 	// write "Hits"
 	err = en.Append(0x82, 0xa4, 0x48, 0x69, 0x74, 0x73)
@@ -60,34 +60,34 @@ func (z trackedSession) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "Hits")
 		return
 	}
-	// write "ResetTime"
-	err = en.Append(0xa9, 0x52, 0x65, 0x73, 0x65, 0x74, 0x54, 0x69, 0x6d, 0x65)
+	// write "Exp"
+	err = en.Append(0xa3, 0x45, 0x78, 0x70)
 	if err != nil {
 		return
 	}
-	err = en.WriteUint64(z.ResetTime)
+	err = en.WriteUint64(z.Exp)
 	if err != nil {
-		err = msgp.WrapError(err, "ResetTime")
+		err = msgp.WrapError(err, "Exp")
 		return
 	}
 	return
 }
 
 // MarshalMsg implements msgp.Marshaler
-func (z trackedSession) MarshalMsg(b []byte) (o []byte, err error) {
+func (z Entry) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
 	// map header, size 2
 	// string "Hits"
 	o = append(o, 0x82, 0xa4, 0x48, 0x69, 0x74, 0x73)
 	o = msgp.AppendInt(o, z.Hits)
-	// string "ResetTime"
-	o = append(o, 0xa9, 0x52, 0x65, 0x73, 0x65, 0x74, 0x54, 0x69, 0x6d, 0x65)
-	o = msgp.AppendUint64(o, z.ResetTime)
+	// string "Exp"
+	o = append(o, 0xa3, 0x45, 0x78, 0x70)
+	o = msgp.AppendUint64(o, z.Exp)
 	return
 }
 
 // UnmarshalMsg implements msgp.Unmarshaler
-func (z *trackedSession) UnmarshalMsg(bts []byte) (o []byte, err error) {
+func (z *Entry) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	var field []byte
 	_ = field
 	var zb0001 uint32
@@ -110,10 +110,10 @@ func (z *trackedSession) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "Hits")
 				return
 			}
-		case "ResetTime":
-			z.ResetTime, bts, err = msgp.ReadUint64Bytes(bts)
+		case "Exp":
+			z.Exp, bts, err = msgp.ReadUint64Bytes(bts)
 			if err != nil {
-				err = msgp.WrapError(err, "ResetTime")
+				err = msgp.WrapError(err, "Exp")
 				return
 			}
 		default:
@@ -129,7 +129,7 @@ func (z *trackedSession) UnmarshalMsg(bts []byte) (o []byte, err error) {
 }
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
-func (z trackedSession) Msgsize() (s int) {
-	s = 1 + 5 + msgp.IntSize + 10 + msgp.Uint64Size
+func (z Entry) Msgsize() (s int) {
+	s = 1 + 5 + msgp.IntSize + 4 + msgp.Uint64Size
 	return
 }
