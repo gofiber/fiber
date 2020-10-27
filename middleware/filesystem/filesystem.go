@@ -37,8 +37,7 @@ type Config struct {
 	// that is set on the file response. MaxAge is defined in seconds.
 	//
 	// Optional. Default value 0.
-	MaxAge    int `json:"max_age"`
-	maxAgeStr string
+	MaxAge int `json:"max_age"`
 
 	// File to return if path is not found. Useful for SPA's.
 	//
