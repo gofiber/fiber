@@ -189,13 +189,6 @@ func New(config ...Config) fiber.Handler {
 			if !ok || time.Now().Unix() >= t {
 				return fiber.ErrForbidden
 			}
-
-			// Delete token from DB
-			db.Lock()
-			delete(db.tokens, csrf)
-			db.Unlock()
-
-			return c.Next()
 		}
 
 		// Create new cookie to send new CSRF token
