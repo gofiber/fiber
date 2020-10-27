@@ -42,6 +42,7 @@ app.Use(limiter.New(limiter.Config{
 	LimitReached: func(c *fiber.Ctx) error {
 		return c.SendFile("./toofast.html")
 	},
+	Store: myCustomStore{}
 }))
 ```
 
@@ -77,8 +78,17 @@ type Config struct {
 	//   return c.SendStatus(fiber.StatusTooManyRequests)
 	// }
 	LimitReached fiber.Handler
+
+	// Store is used to store the state of the middleware.
+	// If no store is supplied, an in-memory store is used. If a store is supplied,
+	// it must implement the `Storage` interface.
+	//
+	// Default: in memory
+	Store Storage
 }
 ```
+
+A custom store can be used if it implements the `Storage` interface - more details and an example can be found in `store.go`.
 
 ### Default Config
 ```go
