@@ -3,6 +3,7 @@ package filesystem
 import (
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -20,30 +21,37 @@ type Config struct {
 	// to a collection of files and directories.
 	//
 	// Required. Default: nil
-	Root http.FileSystem
-
-	// Index file for serving a directory.
-	//
-	// Optional. Default: "index.html"
-	Index string
+	Root http.FileSystem `json:"-"`
 
 	// Enable directory browsing.
 	//
 	// Optional. Default: false
-	Browse bool
+	Browse bool `json:"browse"`
+
+	// Index file for serving a directory.
+	//
+	// Optional. Default: "index.html"
+	Index string `json:"index"`
+
+	// The value for the Cache-Control HTTP-header
+	// that is set on the file response. MaxAge is defined in seconds.
+	//
+	// Optional. Default value 0.
+	MaxAge int `json:"max_age"`
 
 	// File to return if path is not found. Useful for SPA's.
 	//
 	// Optional. Default: ""
-	NotFoundFile string
+	NotFoundFile string `json:"not_found_file"`
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:   nil,
 	Root:   nil,
-	Index:  "/index.html",
 	Browse: false,
+	Index:  "/index.html",
+	MaxAge: 0,
 }
 
 // New creates a new middleware handler
@@ -73,6 +81,7 @@ func New(config ...Config) fiber.Handler {
 
 	var once sync.Once
 	var prefix string
+	var cacheControlStr = "public, max-age=" + strconv.Itoa(cfg.MaxAge)
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
@@ -153,6 +162,9 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if method == fiber.MethodGet {
+			if cfg.MaxAge > 0 {
+				c.Set(fiber.HeaderCacheControl, cacheControlStr)
+			}
 			c.Response().SetBodyStream(file, contentLength)
 			return nil
 		}
