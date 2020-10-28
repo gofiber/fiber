@@ -35,16 +35,12 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("Unexpected status code %v", resp.StatusCode)
-		}
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+
 		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil || "Hello tester!" != string(body) {
-			t.Fatalf("Unexpected body %v", string(body))
-		}
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "Hello tester!", string(body))
 	}
 
 	for i := 0; i <= 49; i++ {
@@ -85,16 +81,12 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("Unexpected status code %v", resp.StatusCode)
-		}
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+
 		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil || "Hello tester!" != string(body) {
-			t.Fatalf("Unexpected body %v", string(body))
-		}
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "Hello tester!", string(body))
 	}
 
 	for i := 0; i <= 49; i++ {
