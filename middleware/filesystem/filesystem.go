@@ -54,13 +54,10 @@ var ConfigDefault = Config{
 	MaxAge: 0,
 }
 
-// config current after to call New
-var cfg Config
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg = ConfigDefault
+	cfg := ConfigDefault
 
 	// Override config if provided
 	if len(config) > 0 {
@@ -84,6 +81,7 @@ func New(config ...Config) fiber.Handler {
 
 	var once sync.Once
 	var prefix string
+	var cacheControlStr = "public, max-age=" + strconv.Itoa(cfg.MaxAge)
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
@@ -110,45 +108,104 @@ func New(config ...Config) fiber.Handler {
 			path = "/" + path
 		}
 
-		return SendFile(c, path)
+		var (
+			file http.File
+			stat os.FileInfo
+		)
+
+		file, err = cfg.Root.Open(path)
+		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
+			file, err = cfg.Root.Open(cfg.NotFoundFile)
+		}
+
+		if err != nil {
+			if os.IsNotExist(err) {
+				return c.Status(fiber.StatusNotFound).Next()
+			}
+			return
+		}
+
+		if stat, err = file.Stat(); err != nil {
+			return
+		}
+
+		// Serve index if path is directory
+		if stat.IsDir() {
+			indexPath := strings.TrimSuffix(path, "/") + cfg.Index
+			index, err := cfg.Root.Open(indexPath)
+			if err == nil {
+				indexStat, err := index.Stat()
+				if err == nil {
+					file = index
+					stat = indexStat
+				}
+			}
+		}
+
+		// Browse directory if no index found and browsing is enabled
+		if stat.IsDir() {
+			if cfg.Browse {
+				return dirList(c, file)
+			}
+			return fiber.ErrForbidden
+		}
+
+		modTime := stat.ModTime()
+		contentLength := int(stat.Size())
+
+		// Set Content Type header
+		c.Type(getFileExtension(stat.Name()))
+
+		// Set Last Modified header
+		if !modTime.IsZero() {
+			c.Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
+		}
+
+		if method == fiber.MethodGet {
+			if cfg.MaxAge > 0 {
+				c.Set(fiber.HeaderCacheControl, cacheControlStr)
+			}
+			c.Response().SetBodyStream(file, contentLength)
+			return nil
+		}
+		if method == fiber.MethodHead {
+			c.Request().ResetBody()
+			// Fasthttp should skipbody by default if HEAD?
+			c.Response().SkipBody = true
+			c.Response().Header.SetContentLength(contentLength)
+			if err := file.Close(); err != nil {
+				return err
+			}
+			return nil
+		}
+
+		return c.Next()
 	}
 }
 
 // SendFile ...
-func SendFile(c *fiber.Ctx, param string) (err error) {
+func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) (err error) {
 	var (
 		file http.File
 		stat os.FileInfo
 	)
-	method := c.Method()
 
-	// We only serve static assets on GET or HEAD methods
-	if method != fiber.MethodGet && method != fiber.MethodHead {
-		return c.Next()
-	}
-
-	cacheControlStr := "public, max-age=" + strconv.Itoa(cfg.MaxAge)
-
-	file, err = cfg.Root.Open(param)
-	if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
-		file, err = cfg.Root.Open(cfg.NotFoundFile)
-	}
-
+	file, err = fs.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return c.Status(fiber.StatusNotFound).Next()
+			return fiber.ErrNotFound
 		}
-		return
+		return err
 	}
 
 	if stat, err = file.Stat(); err != nil {
-		return
+		return err
 	}
 
 	// Serve index if path is directory
 	if stat.IsDir() {
-		indexPath := strings.TrimSuffix(param, "/") + cfg.Index
-		index, err := cfg.Root.Open(indexPath)
+		indexPath := strings.TrimSuffix(path, "/") + ConfigDefault.Index
+		index, err := fs.Open(indexPath)
 		if err == nil {
 			indexStat, err := index.Stat()
 			if err == nil {
@@ -158,11 +215,8 @@ func SendFile(c *fiber.Ctx, param string) (err error) {
 		}
 	}
 
-	// Browse directory if no index found and browsing is enabled
+	// Return forbidden if no index found
 	if stat.IsDir() {
-		if cfg.Browse {
-			return dirList(c, file)
-		}
 		return fiber.ErrForbidden
 	}
 
@@ -177,10 +231,8 @@ func SendFile(c *fiber.Ctx, param string) (err error) {
 		c.Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
 	}
 
+	method := c.Method()
 	if method == fiber.MethodGet {
-		if cfg.MaxAge > 0 {
-			c.Set(fiber.HeaderCacheControl, cacheControlStr)
-		}
 		c.Response().SetBodyStream(file, contentLength)
 		return nil
 	}
@@ -195,5 +247,5 @@ func SendFile(c *fiber.Ctx, param string) (err error) {
 		return nil
 	}
 
-	return c.Next()
+	return nil
 }
