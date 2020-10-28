@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -74,6 +76,55 @@ func Test_Cache(t *testing.T) {
 		now := fmt.Sprintf("%d", time.Now().UnixNano())
 		return c.SendString(now)
 	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+
+	cachedReq := httptest.NewRequest("GET", "/", nil)
+	cachedResp, err := app.Test(cachedReq)
+	utils.AssertEqual(t, nil, err)
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	cachedBody, err := ioutil.ReadAll(cachedResp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	utils.AssertEqual(t, cachedBody, body)
+}
+
+// go test -run Test_Cache_Concurrency_Store -race -v
+func Test_Cache_Concurrency_Store(t *testing.T) {
+	// Test concurrency using a custom store
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Store: testStore{stmap: map[string][]byte{}, mutex: new(sync.Mutex)},
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	var wg sync.WaitGroup
+	singleRequest := func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+
+		body, err := ioutil.ReadAll(resp.Body)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "Hello tester!", string(body))
+	}
+
+	for i := 0; i <= 49; i++ {
+		wg.Add(1)
+		go singleRequest(&wg)
+	}
+
+	wg.Wait()
 
 	req := httptest.NewRequest("GET", "/", nil)
 	resp, err := app.Test(req)
@@ -207,4 +258,37 @@ func Benchmark_Cache(b *testing.B) {
 	}
 
 	utils.AssertEqual(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+}
+
+// testStore is used for testing custom stores
+type testStore struct {
+	stmap map[string][]byte
+	mutex *sync.Mutex
+}
+
+func (s testStore) Get(id string) ([]byte, error) {
+	s.mutex.Lock()
+	val, ok := s.stmap[id]
+	s.mutex.Unlock()
+	if !ok {
+		return []byte{}, nil
+	} else {
+		return val, nil
+	}
+}
+
+func (s testStore) Set(id string, val []byte, _ time.Duration) error {
+	s.mutex.Lock()
+	s.stmap[id] = val
+	s.mutex.Unlock()
+
+	return nil
+}
+
+func (s testStore) Clear() error {
+	return nil
+}
+
+func (s testStore) Delete(id string) error {
+	return nil
 }
