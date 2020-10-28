@@ -43,9 +43,6 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	NotFoundFile string `json:"not_found_file"`
-
-	// share context with SendFile method
-	ctx *fiber.Ctx
 }
 
 // ConfigDefault is the default config
@@ -95,7 +92,6 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		cfg.ctx = c
 		method := c.Method()
 
 		// We only serve static assets on GET or HEAD methods
@@ -114,17 +110,16 @@ func New(config ...Config) fiber.Handler {
 			path = "/" + path
 		}
 
-		return SendFile(path)
+		return SendFile(c, path)
 	}
 }
 
 // SendFile ...
-func SendFile(param string) (err error) {
+func SendFile(c *fiber.Ctx, param string) (err error) {
 	var (
 		file http.File
 		stat os.FileInfo
 	)
-	c := cfg.ctx
 	method := c.Method()
 
 	// We only serve static assets on GET or HEAD methods
