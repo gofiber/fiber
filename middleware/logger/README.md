@@ -103,6 +103,7 @@ const (
 	TagQuery         = "query:"
 	TagForm          = "form:"
 	TagCookie        = "cookie:"
+	TagLocals        = "locals:"
 	TagBlack         = "black"
 	TagRed           = "red"
 	TagGreen         = "green"

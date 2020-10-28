@@ -79,6 +79,7 @@ const (
 	TagRoute         = "route"
 	TagError         = "error"
 	TagHeader        = "header:"
+	TagLocals        = "locals:"
 	TagQuery         = "query:"
 	TagForm          = "form:"
 	TagCookie        = "cookie:"
@@ -332,6 +333,17 @@ func New(config ...Config) fiber.Handler {
 					return buf.WriteString(c.FormValue(tag[5:]))
 				case strings.HasPrefix(tag, TagCookie):
 					return buf.WriteString(c.Cookies(tag[7:]))
+				case strings.HasPrefix(tag, TagLocals):
+					switch v := c.Locals(tag[7:]).(type) {
+					case []byte:
+						return buf.Write(v)
+					case string:
+						return buf.WriteString(v)
+					case nil:
+						return 0, nil
+					default:
+						return buf.WriteString(fmt.Sprintf("%v", v))
+					}
 				}
 			}
 			return 0, nil
