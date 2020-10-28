@@ -176,7 +176,7 @@ func Benchmark_Logger(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Format: "${path}",
+		Format: "${bytesReceived} ${bytesSent} ${status}",
 		Output: ioutil.Discard,
 	}))
 	app.Get("/", func(c *fiber.Ctx) error {
