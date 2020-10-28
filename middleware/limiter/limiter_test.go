@@ -116,7 +116,7 @@ func Test_Limiter_Concurrency(t *testing.T) {
 
 }
 
-// go test -v -run=^$ -bench=Benchmark_Limiter_Benchmark -benchmem -count=4
+// go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4
 func Benchmark_Limiter(b *testing.B) {
 	app := fiber.New()
 
