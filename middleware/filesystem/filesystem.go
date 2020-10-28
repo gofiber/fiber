@@ -43,6 +43,9 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	NotFoundFile string `json:"not_found_file"`
+
+	// share context with SendFile method
+	ctx *fiber.Ctx
 }
 
 // ConfigDefault is the default config
@@ -54,10 +57,13 @@ var ConfigDefault = Config{
 	MaxAge: 0,
 }
 
+// config current after to call New
+var cfg Config
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := ConfigDefault
+	cfg = ConfigDefault
 
 	// Override config if provided
 	if len(config) > 0 {
@@ -81,7 +87,6 @@ func New(config ...Config) fiber.Handler {
 
 	var once sync.Once
 	var prefix string
-	var cacheControlStr = "public, max-age=" + strconv.Itoa(cfg.MaxAge)
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
@@ -90,6 +95,7 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
+		cfg.ctx = c
 		method := c.Method()
 
 		// We only serve static assets on GET or HEAD methods
@@ -108,77 +114,91 @@ func New(config ...Config) fiber.Handler {
 			path = "/" + path
 		}
 
-		var (
-			file http.File
-			stat os.FileInfo
-		)
+		return SendFile(path)
+	}
+}
 
-		file, err = cfg.Root.Open(path)
-		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
-			file, err = cfg.Root.Open(cfg.NotFoundFile)
-		}
+// SendFile ...
+func SendFile(param string) (err error) {
+	var (
+		file http.File
+		stat os.FileInfo
+	)
+	c := cfg.ctx
+	method := c.Method()
 
-		if err != nil {
-			if os.IsNotExist(err) {
-				return c.Status(fiber.StatusNotFound).Next()
-			}
-			return
-		}
-
-		if stat, err = file.Stat(); err != nil {
-			return
-		}
-
-		// Serve index if path is directory
-		if stat.IsDir() {
-			indexPath := strings.TrimSuffix(path, "/") + cfg.Index
-			index, err := cfg.Root.Open(indexPath)
-			if err == nil {
-				indexStat, err := index.Stat()
-				if err == nil {
-					file = index
-					stat = indexStat
-				}
-			}
-		}
-
-		// Browse directory if no index found and browsing is enabled
-		if stat.IsDir() {
-			if cfg.Browse {
-				return dirList(c, file)
-			}
-			return fiber.ErrForbidden
-		}
-
-		modTime := stat.ModTime()
-		contentLength := int(stat.Size())
-
-		// Set Content Type header
-		c.Type(getFileExtension(stat.Name()))
-
-		// Set Last Modified header
-		if !modTime.IsZero() {
-			c.Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
-		}
-
-		if method == fiber.MethodGet {
-			if cfg.MaxAge > 0 {
-				c.Set(fiber.HeaderCacheControl, cacheControlStr)
-			}
-			c.Response().SetBodyStream(file, contentLength)
-			return nil
-		}
-		if method == fiber.MethodHead {
-			c.Request().ResetBody()
-			// Fasthttp should skipbody by default if HEAD?
-			c.Response().SkipBody = true
-			c.Response().Header.SetContentLength(contentLength)
-			if err := file.Close(); err != nil {
-				return err
-			}
-			return nil
-		}
-
+	// We only serve static assets on GET or HEAD methods
+	if method != fiber.MethodGet && method != fiber.MethodHead {
 		return c.Next()
 	}
+
+	cacheControlStr := "public, max-age=" + strconv.Itoa(cfg.MaxAge)
+
+	file, err = cfg.Root.Open(param)
+	if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
+		file, err = cfg.Root.Open(cfg.NotFoundFile)
+	}
+
+	if err != nil {
+		if os.IsNotExist(err) {
+			return c.Status(fiber.StatusNotFound).Next()
+		}
+		return
+	}
+
+	if stat, err = file.Stat(); err != nil {
+		return
+	}
+
+	// Serve index if path is directory
+	if stat.IsDir() {
+		indexPath := strings.TrimSuffix(param, "/") + cfg.Index
+		index, err := cfg.Root.Open(indexPath)
+		if err == nil {
+			indexStat, err := index.Stat()
+			if err == nil {
+				file = index
+				stat = indexStat
+			}
+		}
+	}
+
+	// Browse directory if no index found and browsing is enabled
+	if stat.IsDir() {
+		if cfg.Browse {
+			return dirList(c, file)
+		}
+		return fiber.ErrForbidden
+	}
+
+	modTime := stat.ModTime()
+	contentLength := int(stat.Size())
+
+	// Set Content Type header
+	c.Type(getFileExtension(stat.Name()))
+
+	// Set Last Modified header
+	if !modTime.IsZero() {
+		c.Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
+	}
+
+	if method == fiber.MethodGet {
+		if cfg.MaxAge > 0 {
+			c.Set(fiber.HeaderCacheControl, cacheControlStr)
+		}
+		c.Response().SetBodyStream(file, contentLength)
+		return nil
+	}
+	if method == fiber.MethodHead {
+		c.Request().ResetBody()
+		// Fasthttp should skipbody by default if HEAD?
+		c.Response().SkipBody = true
+		c.Response().Header.SetContentLength(contentLength)
+		if err := file.Close(); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	return c.Next()
 }
