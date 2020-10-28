@@ -5,6 +5,6 @@ package limiter
 // don't forget to replace the msgp import path to:
 // "github.com/gofiber/fiber/v2/internal/msgp"
 type entry struct {
-	hits int
-	exp  uint64
+	hits int    `msg:"hits"`
+	exp  uint64 `msg:"exp"`
 }
