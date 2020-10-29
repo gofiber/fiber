@@ -257,6 +257,7 @@ func Benchmark_Cache(b *testing.B) {
 	}
 
 	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, true, len(fctx.Response.Body()) > 30000)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Cache_Store -benchmem -count=4
@@ -286,6 +287,7 @@ func Benchmark_Cache_Store(b *testing.B) {
 	}
 
 	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, true, len(fctx.Response.Body()) > 30000)
 }
 
 // testStore is used for testing custom stores
