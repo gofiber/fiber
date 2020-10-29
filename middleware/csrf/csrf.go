@@ -152,7 +152,9 @@ func New(config ...Config) fiber.Handler {
 		// Check if the cookie had a CSRF token
 		if key == "" {
 			token = cfg.Generator.Generate()
-			cfg.Storage.Set(token, nil, cfg.Expiration)
+			if err := cfg.Storage.Set(token, nil, cfg.Expiration); err != nil {
+				return fiber.ErrInternalServerError
+			}
 		} else {
 			// Use the server generated token previously to compare
 			// To the extracted token later on
@@ -177,8 +179,11 @@ func New(config ...Config) fiber.Handler {
 			if err := cfg.Storage.Delete(csrf); err != nil {
 				return fiber.ErrInternalServerError
 			}
+
 			token = cfg.Generator.Generate()
-			cfg.Storage.Set(token, nil, cfg.Expiration)
+			if err := cfg.Storage.Set(token, nil, cfg.Expiration); err != nil {
+				return fiber.ErrInternalServerError
+			}
 		}
 
 		// Create new cookie to send new CSRF token

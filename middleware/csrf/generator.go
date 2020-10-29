@@ -10,11 +10,16 @@ type Generator interface {
 }
 
 type cryptoRandomGenerator struct {
-	length int32
+	length int
 }
 
 func (g cryptoRandomGenerator) Generate() string {
-	value := make([]byte, 32)
-	rand.Read(value)
+	value := make([]byte, g.length)
+	n, err := rand.Read(value)
+
+	if err != nil || n != g.length {
+		return ""
+	}
+
 	return base64.RawURLEncoding.EncodeToString(value)
 }
