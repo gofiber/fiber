@@ -178,8 +178,12 @@ func New(config ...Config) fiber.Handler {
 			}
 
 		} else {
+			if cfg.defaultStore {
+				c.Response().SetBodyRaw(entry.body)
+			} else {
+				c.Response().SetBodyRaw(entryBody)
+			}
 			// Set response headers from cache
-			c.Response().SetBodyRaw(entryBody)
 			c.Response().SetStatusCode(entry.status)
 			c.Response().Header.SetContentTypeBytes(entry.cType)
 

@@ -311,7 +311,6 @@ func (s testStore) Set(id string, val []byte, _ time.Duration) error {
 	s.mutex.Lock()
 	s.stmap[id] = val
 	s.mutex.Unlock()
-
 	return nil
 }
 
