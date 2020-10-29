@@ -46,15 +46,19 @@ func (m *memoryStorage) Set(id string, value []byte, exp time.Duration) error {
 
 // Delete session value
 func (m *memoryStorage) Delete(id string) error {
+	m.Lock()
 	delete(m.tokens, id)
+	m.Unlock()
 	return nil
 }
 
 // Clear clears the storage
 func (m *memoryStorage) Clear() error {
+	m.Lock()
 	for k := range m.tokens {
 		delete(m.tokens, k)
 	}
+	m.Unlock()
 	return nil
 }
 
