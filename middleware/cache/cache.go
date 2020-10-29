@@ -46,13 +46,6 @@ var ConfigDefault = Config{
 	defaultStore: true,
 }
 
-// cache is the manager to store the cached responses
-type cache struct {
-	sync.RWMutex
-	entries    map[string]entry
-	expiration int64
-}
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -100,19 +93,21 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Remove expired entries
-	go func() {
-		for {
-			// GC the entries every 10 seconds
-			time.Sleep(10 * time.Second)
-			mux.Lock()
-			for k := range entries {
-				if atomic.LoadUint64(&timestamp) >= entries[k].exp {
-					delete(entries, k)
+	if cfg.defaultStore {
+		go func() {
+			for {
+				// GC the entries every 10 seconds
+				time.Sleep(10 * time.Second)
+				mux.Lock()
+				for k := range entries {
+					if atomic.LoadUint64(&timestamp) >= entries[k].exp {
+						delete(entries, k)
+					}
 				}
+				mux.Unlock()
 			}
-			mux.Unlock()
-		}
-	}()
+		}()
+	}
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
