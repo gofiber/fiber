@@ -125,7 +125,8 @@ func New(config ...Config) fiber.Handler {
 		key := c.Path()
 
 		// Create new entry
-		entry := entry{}
+		var entry entry
+		var entryBody []byte
 
 		// Lock entry
 		mux.Lock()
@@ -149,6 +150,10 @@ func New(config ...Config) fiber.Handler {
 					return err
 				}
 			}
+
+			if entryBody, err = cfg.Store.Get(key + "_body"); err != nil {
+				return err
+			}
 		}
 
 		// Get timestamp
@@ -167,11 +172,14 @@ func New(config ...Config) fiber.Handler {
 				if err := cfg.Store.Delete(key); err != nil {
 					return err
 				}
+				if err := cfg.Store.Delete(key + "_body"); err != nil {
+					return err
+				}
 			}
 
 		} else {
 			// Set response headers from cache
-			c.Response().SetBodyRaw(entry.body)
+			c.Response().SetBodyRaw(entryBody)
 			c.Response().SetStatusCode(entry.status)
 			c.Response().Header.SetContentTypeBytes(entry.cType)
 
@@ -191,12 +199,13 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
-		entry.body = c.Response().Body()
+		entryBody = c.Response().Body()
 		entry.status = c.Response().StatusCode()
 		entry.cType = c.Response().Header.ContentType()
 
 		// Use default memory storage
 		if cfg.defaultStore {
+			entry.body = entryBody
 			entries[key] = entry
 
 		} else {
@@ -208,6 +217,11 @@ func New(config ...Config) fiber.Handler {
 
 			// Pass bytes to Storage
 			if err = cfg.Store.Set(key, data, cfg.Expiration); err != nil {
+				return err
+			}
+
+			// Pass bytes to Storage
+			if err = cfg.Store.Set(key+"_body", entryBody, cfg.Expiration); err != nil {
 				return err
 			}
 		}

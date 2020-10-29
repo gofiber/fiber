@@ -100,7 +100,7 @@ func Test_Cache_Concurrency_Store(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Store: testStore{stmap: map[string][]byte{}, mutex: new(sync.Mutex)},
+		Store: testStore{stmap: map[string][]byte{}, mutex: &sync.RWMutex{}},
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -260,16 +260,46 @@ func Benchmark_Cache(b *testing.B) {
 	utils.AssertEqual(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
 }
 
+// go test -v -run=^$ -bench=Benchmark_Cache_Store -benchmem -count=4
+func Benchmark_Cache_Store(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Store: testStore{stmap: map[string][]byte{}, mutex: &sync.RWMutex{}},
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		data, err := ioutil.ReadFile("../../.github/README.md")
+		utils.AssertEqual(b, nil, err)
+		return c.Send(data)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+}
+
 // testStore is used for testing custom stores
 type testStore struct {
 	stmap map[string][]byte
-	mutex *sync.Mutex
+	mutex *sync.RWMutex
 }
 
 func (s testStore) Get(id string) ([]byte, error) {
-	s.mutex.Lock()
+	s.mutex.RLock()
 	val, ok := s.stmap[id]
-	s.mutex.Unlock()
+	s.mutex.RUnlock()
 	if !ok {
 		return []byte{}, nil
 	} else {
@@ -286,9 +316,13 @@ func (s testStore) Set(id string, val []byte, _ time.Duration) error {
 }
 
 func (s testStore) Clear() error {
+	s.stmap = map[string][]byte{}
 	return nil
 }
 
 func (s testStore) Delete(id string) error {
+	s.mutex.Lock()
+	delete(s.stmap, id)
+	s.mutex.Unlock()
 	return nil
 }
