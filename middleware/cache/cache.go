@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // Config defines the config for middleware.
@@ -203,7 +204,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
-		entryBody = c.Response().Body()
+		entryBody = utils.SafeBytes(c.Response().Body())
 		entry.status = c.Response().StatusCode()
 		entry.cType = c.Response().Header.ContentType()
 
