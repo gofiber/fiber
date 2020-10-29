@@ -238,17 +238,16 @@ func Benchmark_Cache(b *testing.B) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		data, err := ioutil.ReadFile("../../.github/README.md")
-		utils.AssertEqual(b, nil, err)
-		return c.Send(data)
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		data, _ := ioutil.ReadFile("../../.github/README.md")
+		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod("GET")
-	fctx.Request.SetRequestURI("/")
+	fctx.Request.SetRequestURI("/demo")
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -257,7 +256,7 @@ func Benchmark_Cache(b *testing.B) {
 		h(fctx)
 	}
 
-	utils.AssertEqual(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Cache_Store -benchmem -count=4
@@ -268,17 +267,16 @@ func Benchmark_Cache_Store(b *testing.B) {
 		Store: testStore{stmap: map[string][]byte{}, mutex: &sync.RWMutex{}},
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		data, err := ioutil.ReadFile("../../.github/README.md")
-		utils.AssertEqual(b, nil, err)
-		return c.Send(data)
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		data, _ := ioutil.ReadFile("../../.github/README.md")
+		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod("GET")
-	fctx.Request.SetRequestURI("/")
+	fctx.Request.SetRequestURI("/demo")
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -287,7 +285,7 @@ func Benchmark_Cache_Store(b *testing.B) {
 		h(fctx)
 	}
 
-	utils.AssertEqual(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 }
 
 // testStore is used for testing custom stores
