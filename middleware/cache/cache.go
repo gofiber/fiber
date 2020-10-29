@@ -206,7 +206,7 @@ func New(config ...Config) fiber.Handler {
 		// Cache response
 		entryBody = utils.SafeBytes(c.Response().Body())
 		entry.status = c.Response().StatusCode()
-		entry.cType = c.Response().Header.ContentType()
+		entry.cType = utils.SafeBytes(c.Response().Header.ContentType())
 
 		// Use default memory storage
 		if cfg.defaultStore {
