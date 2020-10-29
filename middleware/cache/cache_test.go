@@ -100,7 +100,7 @@ func Test_Cache_Concurrency_Store(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Store: testStore{stmap: map[string][]byte{}, mutex: new(sync.Mutex)},
+		Store: testStore{stmap: map[string][]byte{}, mutex: &sync.RWMutex{}},
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -238,17 +238,16 @@ func Benchmark_Cache(b *testing.B) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		data, err := ioutil.ReadFile("../../.github/README.md")
-		utils.AssertEqual(b, nil, err)
-		return c.Send(data)
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		data, _ := ioutil.ReadFile("../../.github/README.md")
+		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod("GET")
-	fctx.Request.SetRequestURI("/")
+	fctx.Request.SetRequestURI("/demo")
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -257,19 +256,50 @@ func Benchmark_Cache(b *testing.B) {
 		h(fctx)
 	}
 
-	utils.AssertEqual(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, true, len(fctx.Response.Body()) > 30000)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Cache_Store -benchmem -count=4
+func Benchmark_Cache_Store(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Store: testStore{stmap: map[string][]byte{}, mutex: &sync.RWMutex{}},
+	}))
+
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		data, _ := ioutil.ReadFile("../../.github/README.md")
+		return c.Status(fiber.StatusTeapot).Send(data)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/demo")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, true, len(fctx.Response.Body()) > 30000)
 }
 
 // testStore is used for testing custom stores
 type testStore struct {
 	stmap map[string][]byte
-	mutex *sync.Mutex
+	mutex *sync.RWMutex
 }
 
 func (s testStore) Get(id string) ([]byte, error) {
-	s.mutex.Lock()
+	s.mutex.RLock()
 	val, ok := s.stmap[id]
-	s.mutex.Unlock()
+	s.mutex.RUnlock()
 	if !ok {
 		return []byte{}, nil
 	} else {
@@ -281,14 +311,17 @@ func (s testStore) Set(id string, val []byte, _ time.Duration) error {
 	s.mutex.Lock()
 	s.stmap[id] = val
 	s.mutex.Unlock()
-
 	return nil
 }
 
 func (s testStore) Clear() error {
+	s.stmap = map[string][]byte{}
 	return nil
 }
 
 func (s testStore) Delete(id string) error {
+	s.mutex.Lock()
+	delete(s.stmap, id)
+	s.mutex.Unlock()
 	return nil
 }
