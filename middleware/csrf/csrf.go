@@ -4,11 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v2/middleware/csrf/storage"
 )
 
 // Config defines the config for middleware.
@@ -47,6 +46,16 @@ type Config struct {
 	//
 	// Optional. Default value "csrf".
 	ContextKey string
+
+	// CSRF Storage
+	//
+	// Optional. Default value MemoryStorage
+	Storage fiber.Storage
+
+	// CSRF Token generator
+	//
+	// Optional.
+	Generator Generator
 }
 
 // ConfigDefault is the default config
@@ -60,11 +69,6 @@ var ConfigDefault = Config{
 	},
 	Expiration:    24 * time.Hour,
 	CookieExpires: 24 * time.Hour, // deprecated
-}
-
-type storage struct {
-	sync.RWMutex
-	tokens map[string]int64
 }
 
 // New creates a new middleware handler
@@ -100,8 +104,16 @@ func New(config ...Config) fiber.Handler {
 		} else {
 			cfg.Cookie = ConfigDefault.Cookie
 		}
+
 	}
-	expiration := int64(cfg.Expiration.Seconds())
+
+	if cfg.Storage == nil {
+		cfg.Storage = storage.NewMemoryStorage()
+	}
+
+	if cfg.Generator == nil {
+		cfg.Generator = cryptoRandomGenerator{length: 32}
+	}
 
 	// Generate the correct extractor to get the token from the correct location
 	selectors := strings.Split(cfg.TokenLookup, ":")
@@ -127,31 +139,10 @@ func New(config ...Config) fiber.Handler {
 		extractor = csrfFromCookie(selectors[1])
 	}
 
-	// create new db
-	db := storage{
-		tokens: make(map[string]int64),
-	}
-	// Remove expired entries
-	go func() {
-		for {
-			// GC the tokens every 10 seconds to avoid
-			time.Sleep(10 * time.Second)
-			db.Lock()
-			for t := range db.tokens {
-				if time.Now().Unix() >= db.tokens[t] {
-					delete(db.tokens, t)
-				}
-			}
-			db.Unlock()
-		}
-	}()
-
 	// Return new handler
 	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
-		if (cfg.Next != nil && cfg.Next(c)) ||
-			// Or non GET/POST method
-			(c.Method() != fiber.MethodGet && c.Method() != fiber.MethodPost) {
+		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
 
@@ -160,20 +151,16 @@ func New(config ...Config) fiber.Handler {
 
 		// Check if the cookie had a CSRF token
 		if key == "" {
-			// Create a new CSRF token
-			token = utils.UUID()
-			// Add token with timestamp expiration
-			db.Lock()
-			db.tokens[token] = time.Now().Unix() + expiration
-			db.Unlock()
+			token = cfg.Generator.Generate()
+			cfg.Storage.Set(token, nil, cfg.Expiration)
 		} else {
 			// Use the server generated token previously to compare
 			// To the extracted token later on
 			token = key
 		}
 
-		// Verify CSRF token on POST requests
-		if c.Method() == fiber.MethodPost {
+		// Verify CSRF token
+		if shouldCheckCSRFToken(c.Method()) {
 			// Extract token from client request i.e. header, query, param or form
 			csrf, err := extractor(c)
 			if err != nil {
@@ -181,14 +168,17 @@ func New(config ...Config) fiber.Handler {
 				return fiber.ErrForbidden
 			}
 
-			// Get token from DB
-			db.RLock()
-			t, ok := db.tokens[csrf]
-			db.RUnlock()
 			// Check if token exist or expired
-			if !ok || time.Now().Unix() >= t {
+			if _, err := cfg.Storage.Get(csrf); err != nil {
 				return fiber.ErrForbidden
 			}
+
+			// CSRF token should be only used once
+			if err := cfg.Storage.Delete(csrf); err != nil {
+				return fiber.ErrInternalServerError
+			}
+			token = cfg.Generator.Generate()
+			cfg.Storage.Set(token, nil, cfg.Expiration)
 		}
 
 		// Create new cookie to send new CSRF token
@@ -270,4 +260,11 @@ func csrfFromCookie(param string) func(c *fiber.Ctx) (string, error) {
 		}
 		return token, nil
 	}
+}
+
+func shouldCheckCSRFToken(httpMethod string) bool {
+	return httpMethod == fiber.MethodPost ||
+		httpMethod == fiber.MethodPut ||
+		httpMethod == fiber.MethodPatch ||
+		httpMethod == fiber.MethodDelete
 }
