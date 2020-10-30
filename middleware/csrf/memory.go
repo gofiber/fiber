@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -11,15 +12,19 @@ import (
 
 type memoryStorage struct {
 	sync.RWMutex
+	ctx    context.Context
 	tokens map[string]int64
+	gc     time.Duration
 }
 
-// NewMemoryStorage - Creates new in-memory storage for CSRF tokens
-func NewMemoryStorage() fiber.Storage {
+// newMemoryStorage - Creates new in-memory storage for CSRF tokens
+func newMemoryStorage(ctx context.Context) fiber.Storage {
 	storage := &memoryStorage{
+		ctx:    ctx,
 		tokens: make(map[string]int64),
+		gc:     10 * time.Second,
 	}
-	go storage.gc()
+	go storage.collect(ctx)
 	return storage
 }
 
@@ -62,17 +67,20 @@ func (m *memoryStorage) Clear() error {
 	return nil
 }
 
-func (m *memoryStorage) gc() {
+func (m *memoryStorage) collect(ctx context.Context) {
 	for {
-		// GC the tokens every 10 seconds to avoid
-		time.Sleep(10 * time.Second)
-		now := time.Now().Unix()
-		for t := range m.tokens {
-			if now >= m.tokens[t] {
-				m.Lock()
-				delete(m.tokens, t)
-				m.Unlock()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(m.gc):
+			now := time.Now().Unix()
+			m.Lock()
+			for t := range m.tokens {
+				if now >= m.tokens[t] {
+					delete(m.tokens, t)
+				}
 			}
+			m.Unlock()
 		}
 	}
 }

@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -112,7 +113,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	if cfg.Storage == nil {
-		cfg.Storage = NewMemoryStorage()
+		cfg.Storage = newMemoryStorage(context.Background())
 	}
 
 	// Generate the correct extractor to get the token from the correct location
