@@ -106,6 +106,9 @@ func New(config ...Config) fiber.Handler {
 			cfg.Cookie = ConfigDefault.Cookie
 		}
 
+		if cfg.Generator == nil {
+			cfg.Generator = utils.UUID
+		}
 	}
 
 	if cfg.Storage == nil {

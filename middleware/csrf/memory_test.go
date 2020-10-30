@@ -24,12 +24,12 @@ func Test_MemoryStorage(t *testing.T) {
 	utils.AssertEqual(t, nil, s.Delete(key))
 	data, err = s.Get(key)
 	utils.AssertEqual(t, true, err != nil)
-	utils.AssertEqual(t, "invalid key", err.Error())
+	utils.AssertEqual(t, "csrf: invalid key", err.Error())
 
 	// Check expiration
 	utils.AssertEqual(t, nil, s.Set(key, nil, time.Millisecond))
 	time.Sleep(2 * time.Millisecond)
 	data, err = s.Get(key)
 	utils.AssertEqual(t, true, err != nil)
-	utils.AssertEqual(t, "invalid key", err.Error())
+	utils.AssertEqual(t, "csrf: invalid key", err.Error())
 }
