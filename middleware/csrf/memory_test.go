@@ -1,10 +1,10 @@
-package storage_test
+package csrf_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/middleware/csrf/storage"
+	"github.com/gofiber/fiber/v2/middleware/csrf"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
@@ -12,7 +12,7 @@ func Test_MemoryStorage(t *testing.T) {
 	t.Parallel()
 	key := "Hello World"
 
-	s := storage.NewMemoryStorage()
+	s := csrf.NewMemoryStorage()
 
 	utils.AssertEqual(t, nil, s.Set(key, nil, time.Second))
 

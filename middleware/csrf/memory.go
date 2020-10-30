@@ -1,4 +1,4 @@
-package storage
+package csrf
 
 import (
 	"errors"
@@ -29,7 +29,7 @@ func (m *memoryStorage) Get(id string) ([]byte, error) {
 	m.RUnlock()
 	// Check if token exist or expired
 	if !ok || time.Now().Unix() >= t {
-		return nil, errors.New("invalid key")
+		return nil, errors.New("csrf: invalid key")
 	}
 
 	return utils.GetBytes(id), nil
@@ -66,12 +66,13 @@ func (m *memoryStorage) gc() {
 	for {
 		// GC the tokens every 10 seconds to avoid
 		time.Sleep(10 * time.Second)
-		m.Lock()
+		now := time.Now().Unix()
 		for t := range m.tokens {
-			if time.Now().Unix() >= m.tokens[t] {
+			if now >= m.tokens[t] {
+				m.Lock()
 				delete(m.tokens, t)
+				m.Unlock()
 			}
 		}
-		m.Unlock()
 	}
 }

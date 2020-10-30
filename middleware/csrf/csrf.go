@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/csrf/storage"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // Config defines the config for middleware.
@@ -52,10 +52,10 @@ type Config struct {
 	// Optional. Default value MemoryStorage
 	Storage fiber.Storage
 
-	// CSRF Token generator
+	// Generator defines a function to generate the unique identifier.
 	//
-	// Optional.
-	Generator Generator
+	// Optional. Default: utils.UUID
+	Generator func() string
 }
 
 // ConfigDefault is the default config
@@ -67,6 +67,7 @@ var ConfigDefault = Config{
 		Name:     "_csrf",
 		SameSite: "Strict",
 	},
+	Generator:     utils.UUID,
 	Expiration:    24 * time.Hour,
 	CookieExpires: 24 * time.Hour, // deprecated
 }
@@ -108,11 +109,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	if cfg.Storage == nil {
-		cfg.Storage = storage.NewMemoryStorage()
-	}
-
-	if cfg.Generator == nil {
-		cfg.Generator = cryptoRandomGenerator{length: 32}
+		cfg.Storage = NewMemoryStorage()
 	}
 
 	// Generate the correct extractor to get the token from the correct location
@@ -151,7 +148,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Check if the cookie had a CSRF token
 		if key == "" {
-			token = cfg.Generator.Generate()
+			token = cfg.Generator()
 			if err := cfg.Storage.Set(token, nil, cfg.Expiration); err != nil {
 				return fiber.ErrInternalServerError
 			}
@@ -162,7 +159,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Verify CSRF token
-		if shouldCheckCSRFToken(c.Method()) {
+		if shouldCheckToken(c.Method()) {
 			// Extract token from client request i.e. header, query, param or form
 			csrf, err := extractor(c)
 			if err != nil {
@@ -180,7 +177,7 @@ func New(config ...Config) fiber.Handler {
 				return fiber.ErrInternalServerError
 			}
 
-			token = cfg.Generator.Generate()
+			token = cfg.Generator()
 			if err := cfg.Storage.Set(token, nil, cfg.Expiration); err != nil {
 				return fiber.ErrInternalServerError
 			}
@@ -267,7 +264,7 @@ func csrfFromCookie(param string) func(c *fiber.Ctx) (string, error) {
 	}
 }
 
-func shouldCheckCSRFToken(httpMethod string) bool {
+func shouldCheckToken(httpMethod string) bool {
 	return httpMethod == fiber.MethodPost ||
 		httpMethod == fiber.MethodPut ||
 		httpMethod == fiber.MethodPatch ||
