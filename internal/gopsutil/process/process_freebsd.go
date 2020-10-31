@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	cpu "github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
+	cpu "github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	net "github.com/gofiber/fiber/v2/internal/gopsutil/net"
 	"golang.org/x/sys/unix"
 )
