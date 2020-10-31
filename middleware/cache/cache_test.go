@@ -301,7 +301,7 @@ func (s testStore) Get(id string) ([]byte, error) {
 	val, ok := s.stmap[id]
 	s.mutex.RUnlock()
 	if !ok {
-		return []byte{}, nil
+		return nil, nil
 	} else {
 		return val, nil
 	}

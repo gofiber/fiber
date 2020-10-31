@@ -145,7 +145,7 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Only decode if we found an entry
-			if len(storeEntry) > 0 {
+			if storeEntry != nil {
 				// Decode bytes using msgp
 				if _, err := entry.UnmarshalMsg(storeEntry); err != nil {
 					return err
