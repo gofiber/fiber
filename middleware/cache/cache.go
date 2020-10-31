@@ -29,6 +29,13 @@ type Config struct {
 	// Optional. Default: false
 	CacheControl bool
 
+	// Key allows you to generate custom keys, by default c.Path() is used
+	//
+	// Default: func(c *fiber.Ctx) string {
+	//   return c.Path()
+	// }
+	Key func(*fiber.Ctx) string
+
 	// Store is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
@@ -44,6 +51,9 @@ var ConfigDefault = Config{
 	Next:         nil,
 	Expiration:   1 * time.Minute,
 	CacheControl: false,
+	Key: func(c *fiber.Ctx) string {
+		return c.Path()
+	},
 	defaultStore: true,
 }
 
@@ -62,6 +72,9 @@ func New(config ...Config) fiber.Handler {
 		}
 		if int(cfg.Expiration.Seconds()) == 0 {
 			cfg.Expiration = ConfigDefault.Expiration
+		}
+		if cfg.Key == nil {
+			cfg.Key = ConfigDefault.Key
 		}
 		if cfg.Store == nil {
 			cfg.defaultStore = true
@@ -123,7 +136,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get key from request
-		key := c.Path()
+		key := cfg.Key(c)
 
 		// Create new entry
 		var entry entry
