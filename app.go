@@ -33,24 +33,27 @@ import (
 // Version of current fiber package
 const Version = "2.1.2"
 
+// Handler defines a function to serve HTTP requests.
+type Handler = func(*Ctx) error
+
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
 // Storage interface that is implemented by storage providers for different
 // middleware packages like cache, limiter, session and csrf
 type Storage interface {
-	// Get session value. If the ID is not found, it will return an empty []byte
-	Get(id string) ([]byte, error)
-	// Set session value. `exp` will be zero for no expiration.
-	Set(id string, value []byte, exp time.Duration) error
-	// Delete session value
-	Delete(id string) error
-	// Clear clears the storage
+	// Get value by key, nil is returned if either does not exist
+	Get(key string) ([]byte, error)
+
+	// Set key value. `exp` will be zero for no expiration.
+	Set(key string, val []byte, exp time.Duration) error
+
+	// Delete key
+	Delete(key string) error
+
+	// Clear storage
 	Clear() error
 }
-
-// Handler defines a function to serve HTTP requests.
-type Handler = func(*Ctx) error
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
