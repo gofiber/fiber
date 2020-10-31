@@ -51,12 +51,12 @@ type Config struct {
 	// CSRF Storage
 	//
 	// Optional. Default value MemoryStorage
-	Storage fiber.Storage
+	Store fiber.Storage
 
-	// Generator defines a function to generate the unique identifier.
+	// Key defines a function to generate the unique identifier.
 	//
 	// Optional. Default: utils.UUID
-	Generator func() string
+	Key func() string
 }
 
 // ConfigDefault is the default config
@@ -68,7 +68,7 @@ var ConfigDefault = Config{
 		Name:     "_csrf",
 		SameSite: "Strict",
 	},
-	Generator:     utils.UUID,
+	Key:           utils.UUID,
 	Expiration:    24 * time.Hour,
 	CookieExpires: 24 * time.Hour, // deprecated
 }
@@ -107,13 +107,13 @@ func New(config ...Config) fiber.Handler {
 			cfg.Cookie = ConfigDefault.Cookie
 		}
 
-		if cfg.Generator == nil {
-			cfg.Generator = utils.UUID
+		if cfg.Key == nil {
+			cfg.Key = utils.UUID
 		}
 	}
 
-	if cfg.Storage == nil {
-		cfg.Storage = newMemoryStorage(context.Background())
+	if cfg.Store == nil {
+		cfg.Store = newMemoryStorage(context.Background())
 	}
 
 	// Generate the correct extractor to get the token from the correct location
@@ -152,8 +152,8 @@ func New(config ...Config) fiber.Handler {
 
 		// Check if the cookie had a CSRF token
 		if key == "" {
-			token = cfg.Generator()
-			if err := cfg.Storage.Set(token, nil, cfg.Expiration); err != nil {
+			token = cfg.Key()
+			if err := cfg.Store.Set(token, nil, cfg.Expiration); err != nil {
 				return fiber.ErrInternalServerError
 			}
 		} else {
@@ -172,17 +172,17 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Check if token exist or expired
-			if _, err := cfg.Storage.Get(csrf); err != nil {
+			if _, err := cfg.Store.Get(csrf); err != nil {
 				return fiber.ErrForbidden
 			}
 
 			// CSRF token should be only used once
-			if err := cfg.Storage.Delete(csrf); err != nil {
+			if err := cfg.Store.Delete(csrf); err != nil {
 				return fiber.ErrInternalServerError
 			}
 
-			token = cfg.Generator()
-			if err := cfg.Storage.Set(token, nil, cfg.Expiration); err != nil {
+			token = cfg.Key()
+			if err := cfg.Store.Set(token, nil, cfg.Expiration); err != nil {
 				return fiber.ErrInternalServerError
 			}
 		}
