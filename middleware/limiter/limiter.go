@@ -119,10 +119,10 @@ func New(config ...Config) fiber.Handler {
 		max        = strconv.Itoa(cfg.Max)
 		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
+		mux        = &sync.RWMutex{}
 
 		// Default store logic (if no Store is provided)
-		data = make(map[string]Entry)
-		mux  = &sync.RWMutex{}
+		entries = make(map[string]entry)
 	)
 
 	// Update timestamp every second
@@ -140,20 +140,20 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Get key (default is the remote IP)
+		// Get key from request
 		key := cfg.Key(c)
 
 		// Create new entry
-		entry := Entry{}
+		entry := entry{}
 
 		// Lock entry
 		mux.Lock()
+		defer mux.Unlock()
 
-		// Check if we need to use the default in-memory storage
+		// Use default memory storage
 		if cfg.defaultStore {
-			entry = data[key]
-		} else {
-			// Load data from store
+			entry = entries[key]
+		} else { // Use custom storage
 			storeEntry, err := cfg.Store.Get(key)
 			if err != nil {
 				return err
@@ -167,23 +167,26 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		// Set unix timestamp if not exist
+		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
-		if entry.Exp == 0 {
-			entry.Exp = ts + expiration
-		} else if ts >= entry.Exp {
-			entry.Hits = 0
-			entry.Exp = ts + expiration
+
+		// Set expiration if entry does not exist
+		if entry.exp == 0 {
+			entry.exp = ts + expiration
+
+		} else if ts >= entry.exp {
+			// Check if entry is expired
+			entry.hits = 0
+			entry.exp = ts + expiration
 		}
 
 		// Increment hits
-		entry.Hits++
+		entry.hits++
 
-		// Check if we need to use the default in-memory storage
+		// Use default memory storage
 		if cfg.defaultStore {
-			data[key] = entry
-		} else {
-			// Encode Entry to bytes using msgp
+			entries[key] = entry
+		} else { // Use custom storage
 			data, err := entry.MarshalMsg(nil)
 			if err != nil {
 				return err
@@ -195,13 +198,11 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 
-		mux.Unlock()
-
 		// Calculate when it resets in seconds
-		expire := entry.Exp - ts
+		expire := entry.exp - ts
 
 		// Set how many hits we have left
-		remaining := cfg.Max - entry.Hits
+		remaining := cfg.Max - entry.hits
 
 		// Check if hits exceed the cfg.Max
 		if remaining < 0 {

@@ -36,6 +36,52 @@ func Test_Logger(t *testing.T) {
 	utils.AssertEqual(t, "some random error", buf.String())
 }
 
+// go test -run Test_Logger_locals
+func Test_Logger_locals(t *testing.T) {
+	app := fiber.New()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app.Use(New(Config{
+		Format: "${locals:demo}",
+		Output: buf,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		c.Locals("demo", "johndoe")
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app.Get("/int", func(c *fiber.Ctx) error {
+		c.Locals("demo", 55)
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	app.Get("/empty", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "johndoe", buf.String())
+
+	buf.Reset()
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/int", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "55", buf.String())
+
+	buf.Reset()
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/empty", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "", buf.String())
+}
+
 // go test -run Test_Logger_Next
 func Test_Logger_Next(t *testing.T) {
 	app := fiber.New()
@@ -133,7 +179,6 @@ func Benchmark_Logger(b *testing.B) {
 		Format: "${bytesReceived} ${bytesSent} ${status}",
 		Output: ioutil.Discard,
 	}))
-
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
