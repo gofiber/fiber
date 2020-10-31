@@ -39,13 +39,16 @@ type Map map[string]interface{}
 // Storage interface that is implemented by storage providers for different
 // middleware packages like cache, limiter, session and csrf
 type Storage interface {
-	// Get session value. If the ID is not found, it will return an empty []byte
-	Get(id string) ([]byte, error)
-	// Set session value. `exp` will be zero for no expiration.
-	Set(id string, value []byte, exp time.Duration) error
-	// Delete session value
-	Delete(id string) error
-	// Clear clears the storage
+	// Get value by key. Error is returned if key does not exist
+	Get(key string) ([]byte, error)
+
+	// Set key value. `exp` will be zero for no expiration.
+	Set(key string, val []byte, exp time.Duration) error
+
+	// Delete key
+	Delete(key string) error
+
+	// Clear storage
 	Clear() error
 }
 
