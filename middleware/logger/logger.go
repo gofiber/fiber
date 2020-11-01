@@ -159,15 +159,15 @@ func New(config ...Config) fiber.Handler {
 	var timestamp atomic.Value
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
-	// Update date/time every 750 milliseconds in a separate go routine
-	if strings.Contains(cfg.Format, "${time}") {
-		go func() {
-			for {
-				time.Sleep(750 * time.Millisecond)
-				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
-			}
-		}()
-	}
+	// // Update date/time every 750 milliseconds in a separate go routine
+	// if strings.Contains(cfg.Format, "${time}") {
+	// 	go func() {
+	// 		for {
+	// 			time.Sleep(750 * time.Millisecond)
+	// 			timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
+	// 		}
+	// 	}()
+	// }
 
 	// Set PID once
 	pid := strconv.Itoa(os.Getpid())
@@ -266,7 +266,7 @@ func New(config ...Config) fiber.Handler {
 		_, err = tmpl.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
 			switch tag {
 			case TagTime:
-				return buf.WriteString(timestamp.Load().(string))
+				return buf.WriteString(c.Context().Time().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 			case TagReferer:
 				return buf.WriteString(c.Get(fiber.HeaderReferer))
 			case TagProtocol:
