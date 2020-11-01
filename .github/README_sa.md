@@ -111,14 +111,12 @@ func main() {
 
 ## ⚙️ تثبيت
 
-قبل كل شي قم , [بتحميل](https://golang.org/dl/) و تثبيت Go. `1.14` أو أعلى مطلوب.
+Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
 
-بعد الانتهاء من التثبيت استخدم الامر [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) :
-
-<div dir="ltr">
+Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-go get github.com/gofiber/fiber/v2
+go get -u github.com/gofiber/fiber/v2
 ```
 
 </div>
