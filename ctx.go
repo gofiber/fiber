@@ -526,6 +526,9 @@ func (c *Ctx) Is(extension string) bool {
 }
 
 // JSON converts any interface or string to JSON.
+// Array and slice values encode as JSON arrays,
+// except that []byte encodes as a base64-encoded string,
+// and a nil slice encodes as the null JSON value.
 // This method also sets the content header to application/json.
 func (c *Ctx) JSON(data interface{}) error {
 	raw, err := json.Marshal(data)
