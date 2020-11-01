@@ -93,17 +93,19 @@ const (
 	TagURL           = "url"
 	TagUA            = "ua"
 	TagLatency       = "latency"
-	TagStatus        = "status"
-	TagBody          = "body"
+	TagStatus        = "status"        // response status
+	TagBody          = "body"          // request body
 	TagBytesSent     = "bytesSent"
 	TagBytesReceived = "bytesReceived"
 	TagRoute         = "route"
 	TagError         = "error"
-	TagHeader        = "header:"
-	TagQuery         = "query:"
-	TagForm          = "form:"
-	TagCookie        = "cookie:"
+	TagHeader        = "header:"       // request header
+	TagQuery         = "query:"        // request query
+	TagForm          = "form:"         // request form
+	TagCookie        = "cookie:"       // request cookie
 	TagLocals        = "locals:"
+
+	// colors
 	TagBlack         = "black"
 	TagRed           = "red"
 	TagGreen         = "green"
