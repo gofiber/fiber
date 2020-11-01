@@ -105,15 +105,12 @@ func main() {
 
 ## ⚙️ 安装
 
-首先， [下载](https://golang.org/dl/)并安装 Go。 需要`1.14`或更高版本。
+Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
 
-使用[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)命令完成安装：
+Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-export GO111MODULE=on
-export GOPROXY=https://goproxy.cn
-
-go get github.com/gofiber/fiber/v2
+go get -u github.com/gofiber/fiber/v2
 ```
 
 ## 🎯 特点
