@@ -105,12 +105,12 @@ Deze tests zijn uitgevoerd door [TechEmpower](https://www.techempower.com/benchm
 
 ## ⚙️ Installatie
 
-Allereerst, [download](https://golang.org/dl/) en installeer Go. `1.14` of hoger is vereist.
+Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
 
-Installatie wordt gedaan met behulp van het [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) commando:
+Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-go get github.com/gofiber/fiber/v2
+go get -u github.com/gofiber/fiber/v2
 ```
 
 ## 🎯 Features

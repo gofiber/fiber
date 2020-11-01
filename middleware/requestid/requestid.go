@@ -31,9 +31,9 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:      nil,
-	Header:    fiber.HeaderXRequestID,
-	Generator: utils.UUID,
+	Next:       nil,
+	Header:     fiber.HeaderXRequestID,
+	Generator:  utils.UUID,
 	ContextKey: "requestid",
 }
 

@@ -105,12 +105,12 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmar
 
 ## ⚙️ Instalasi
 
-Pertama, [unduh](https://golang.org/dl/) dan instal Go di komputer anda. Versi `1.14` atau yang lebih tinggi diperlukan.
+Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
 
-Instalasi dilakukan dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
+Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-go get github.com/gofiber/fiber/v2/...
+go get -u github.com/gofiber/fiber/v2
 ```
 
 ## 🎯 Fitur

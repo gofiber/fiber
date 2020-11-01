@@ -124,25 +124,13 @@ func main() {
 
 ## ⚙️ התקנה
 
-</div>
+Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
 
-<div dir="rtl">
-
-קודם כל, [הורידו](https://golang.org/dl/) והתקינו את Go. נדרשת גרסה <span dir="ltr">`1.14`</span> ומעלה.
-
-</div>
-
-<div dir="rtl">
-
-ההתקנה מתבצעת באמצעות הפקודה <span dir="ltr">[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)</span>:
-
-</div>
+Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-go get github.com/gofiber/fiber/v2
+go get -u github.com/gofiber/fiber/v2
 ```
-
-<div dir="rtl">
 
 ## 🎯 יכולות
 

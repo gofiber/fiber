@@ -48,13 +48,25 @@ type Config struct {
 
 	// Expiration is the time that an cached response will live
 	//
-	// Optional. Default: 5 * time.Minute
+	// Optional. Default: 1 * time.Minute
 	Expiration time.Duration
 
 	// CacheControl enables client side caching if set to true
 	//
 	// Optional. Default: false
 	CacheControl bool
+
+	// Key allows you to generate custom keys, by default c.Path() is used
+	//
+	// Default: func(c *fiber.Ctx) string {
+	//   return c.Path()
+	// }
+	Key func(*fiber.Ctx) string
+
+	// Store is used to store the state of the middleware
+	//
+	// Default: an in memory store for this process only
+	Store fiber.Storage
 }
 ```
 
@@ -63,7 +75,10 @@ type Config struct {
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:         nil,
-	Expiration:   5 * time.Minute,
+	Expiration:   1 * time.Minute,
 	CacheControl: false,
+	Key: func(c *fiber.Ctx) string {
+		return c.Path()
+	},
 }
 ```

@@ -232,6 +232,25 @@ func Test_Cache_NothingToCache(t *testing.T) {
 	}
 }
 
+func Test_CustomKey(t *testing.T) {
+	app := fiber.New()
+	var called bool
+	app.Use(New(Config{Key: func(c *fiber.Ctx) string {
+		called = true
+		return c.Path()
+	}}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("hi")
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	_, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, called)
+
+}
+
 // go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
 func Benchmark_Cache(b *testing.B) {
 	app := fiber.New()

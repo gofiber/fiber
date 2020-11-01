@@ -106,12 +106,12 @@ func main() {
 
 ## ⚙️ インストール
 
-まず、Go を[ダウンロード](https://golang.org/dl/)してください。 `1.14`以降が必要です。
+Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
 
-そして、[`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them)コマンドを使用してインストールしてください。
+Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
 ```bash
-go get github.com/gofiber/fiber/v2/...
+go get -u github.com/gofiber/fiber/v2
 ```
 
 ## 🎯 機能
