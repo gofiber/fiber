@@ -39,6 +39,12 @@ type Config struct {
 	//
 	// Optional. Default: "Local"
 	TimeZone string
+
+	// TimeInterval is the delay before the timestamp is updated
+	//
+	// Optional. Default: 500 * time.Millisecond
+	TimeInterval time.Duration
+
 	// Output is a writter where logs are written
 	//
 	// Default: os.Stderr
@@ -51,11 +57,12 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:       nil,
-	Format:     "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat: "15:04:05",
-	TimeZone:   "Local",
-	Output:     os.Stderr,
+	Next:         nil,
+	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
+	TimeFormat:   "15:04:05",
+	TimeZone:     "Local",
+	TimeInterval: 500 * time.Millisecond,
+	Output:       os.Stderr,
 }
 
 // Logger variables
@@ -134,6 +141,9 @@ func New(config ...Config) fiber.Handler {
 		if cfg.TimeFormat == "" {
 			cfg.TimeFormat = ConfigDefault.TimeFormat
 		}
+		if int(cfg.TimeInterval) <= 0 {
+			cfg.TimeInterval = ConfigDefault.TimeInterval
+		}
 		if cfg.Output == nil {
 			cfg.Output = ConfigDefault.Output
 		}
@@ -163,7 +173,7 @@ func New(config ...Config) fiber.Handler {
 	if strings.Contains(cfg.Format, "${time}") {
 		go func() {
 			for {
-				time.Sleep(750 * time.Millisecond)
+				time.Sleep(cfg.TimeInterval)
 				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 			}
 		}()
