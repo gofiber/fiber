@@ -80,6 +80,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		req := httptest.NewRequest("GET", "/testauth", nil)
 		req.Header.Add("Authorization", "Basic "+creds)
 		resp, err := app.Test(req)
+		utils.AssertEqual(t, nil, err)
 
 		body, err := ioutil.ReadAll(resp.Body)
 
