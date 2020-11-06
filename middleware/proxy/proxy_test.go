@@ -3,7 +3,6 @@ package proxy
 import (
 	"io/ioutil"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -62,21 +61,6 @@ func Test_Proxy(t *testing.T) {
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
-}
-
-// go test -run Test_Proxy_Do_With_Error
-func Test_Proxy_Do_With_Error(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(Balancer(Config{Servers: []string{"127.0.0.1:90000"}}))
-
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
-
-	b, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(b), "127.0.0.1:90000"))
 }
 
 func Test_Proxy_Forward(t *testing.T) {
