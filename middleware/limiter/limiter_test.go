@@ -228,10 +228,14 @@ func (s testStore) Set(id string, val []byte, _ time.Duration) error {
 	return nil
 }
 
-func (s testStore) Clear() error {
+func (s testStore) Reset() error {
 	return nil
 }
 
 func (s testStore) Delete(id string) error {
+	return nil
+}
+
+func (s testStore) Close() error {
 	return nil
 }

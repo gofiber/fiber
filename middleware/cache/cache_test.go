@@ -333,7 +333,7 @@ func (s testStore) Set(id string, val []byte, _ time.Duration) error {
 	return nil
 }
 
-func (s testStore) Clear() error {
+func (s testStore) Reset() error {
 	s.stmap = map[string][]byte{}
 	return nil
 }
@@ -342,5 +342,9 @@ func (s testStore) Delete(id string) error {
 	s.mutex.Lock()
 	delete(s.stmap, id)
 	s.mutex.Unlock()
+	return nil
+}
+
+func (s testStore) Close() error {
 	return nil
 }
