@@ -46,7 +46,7 @@ func Test_Proxy(t *testing.T) {
 		utils.AssertEqual(t, nil, target.Listen(":3001"))
 	}()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
 	utils.AssertEqual(t, nil, err)
@@ -73,7 +73,7 @@ func Test_Proxy_Forward(t *testing.T) {
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":50001"))
 	}()
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	app.Use(Forward("http://127.0.0.1:50001"))
 
@@ -94,7 +94,7 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":50002"))
 	}()
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
@@ -123,7 +123,7 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":50003"))
 	}()
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
