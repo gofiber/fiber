@@ -56,7 +56,7 @@ func Test_Cache_Expired(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	// Sleep until the cache is expired
-	time.Sleep(expiration)
+	time.Sleep(2 * time.Second)
 
 	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
