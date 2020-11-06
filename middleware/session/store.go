@@ -1,10 +1,11 @@
-package sessions
+package session
 
 import (
 	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/storage/memory"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
@@ -37,8 +38,8 @@ type Config struct {
 	Expiration time.Duration
 
 	// Store interface
-	// Optional. Default: memory.New
-	Store fiber.Storage
+	// Optional. Default: memory.New()
+	Storage fiber.Storage
 }
 
 var ConfigDefault = Config{
@@ -49,50 +50,50 @@ var ConfigDefault = Config{
 	KeyGenerator: utils.UUID,
 }
 
-type Sessions struct {
-	cfg Config
+type Store struct {
+	Config
 }
 
-func New(config ...Config) *Sessions {
+func New(config ...Config) *Store {
 	cfg := ConfigDefault
 
 	if len(config) > 0 {
 		cfg = config[0]
 	}
 
-	if cfg.Store == nil {
-		cfg.Store = memoryStorage()
+	if cfg.Storage == nil {
+		cfg.Storage = memory.New()
 	}
 
-	return &Sessions{
-		cfg: cfg,
+	return &Store{
+		cfg,
 	}
 }
 
-func (s *Sessions) Get(c *fiber.Ctx) *Session {
+func (s *Store) Get(c *fiber.Ctx) *Session {
 	var fresh bool
 
 	// Get ID from cookie
-	id := c.Cookies(s.cfg.Cookie.Name)
+	id := c.Cookies(s.Cookie.Name)
 
 	// If no ID exist, create new one
 	if len(id) == 0 {
-		id = s.cfg.KeyGenerator()
+		id = s.KeyGenerator()
 		fresh = true
 	}
 
 	// Create session object
 	sess := &Session{
-		ctx:      c,
-		sessions: s,
-		fresh:    fresh,
-		db:       acquireDB(),
-		id:       id,
+		ctx:    c,
+		config: s,
+		fresh:  fresh,
+		db:     acquireDB(),
+		id:     id,
 	}
 
 	// Fetch existing data
 	if !fresh {
-		raw, err := s.cfg.Store.Get(id)
+		raw, err := s.Storage.Get(id)
 
 		// Set data
 		if err == nil {
@@ -106,6 +107,6 @@ func (s *Sessions) Get(c *fiber.Ctx) *Session {
 	return sess
 }
 
-func (s *Sessions) Reset() error {
-	return s.cfg.Store.Reset()
+func (s *Store) Reset() error {
+	return s.Storage.Reset()
 }

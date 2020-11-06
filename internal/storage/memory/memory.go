@@ -1,4 +1,4 @@
-package sessions
+package memory
 
 import (
 	"errors"
@@ -6,26 +6,31 @@ import (
 	"time"
 )
 
-// copy of https://github.com/gofiber/storage/tree/main/memory
-type memory struct {
+// Storage interface that is implemented by storage providers
+type Storage struct {
 	mux        sync.RWMutex
-	db         map[string]memoryEntry
+	db         map[string]entry
 	gcInterval time.Duration
 	done       chan struct{}
 }
 
-var errNotExist = errors.New("key does not exist")
+// Common storage errors
+var ErrNotExist = errors.New("key does not exist")
 
-type memoryEntry struct {
+type entry struct {
 	data   []byte
 	expiry int64
 }
 
-func memoryStorage() *memory {
+// New creates a new memory storage
+func New(config ...Config) *Storage {
+	// Set default config
+	cfg := configDefault(config...)
+
 	// Create storage
-	store := &memory{
-		db:         make(map[string]memoryEntry),
-		gcInterval: 10 * time.Second,
+	store := &Storage{
+		db:         make(map[string]entry),
+		gcInterval: cfg.GCInterval,
 		done:       make(chan struct{}),
 	}
 
@@ -36,19 +41,20 @@ func memoryStorage() *memory {
 }
 
 // Get value by key
-func (s *memory) Get(key string) ([]byte, error) {
+func (s *Storage) Get(key string) ([]byte, error) {
 	s.mux.RLock()
 	v, ok := s.db[key]
 	s.mux.RUnlock()
 	if !ok || v.expiry != 0 && v.expiry <= time.Now().Unix() {
-		return nil, errNotExist
+		return nil, ErrNotExist
 	}
 
 	return v.data, nil
 }
 
 // Set key with value
-func (s *memory) Set(key string, val []byte, exp time.Duration) error {
+// Set key with value
+func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	// Ain't Nobody Got Time For That
 	if len(key) <= 0 || len(val) <= 0 {
 		return nil
@@ -60,13 +66,13 @@ func (s *memory) Set(key string, val []byte, exp time.Duration) error {
 	}
 
 	s.mux.Lock()
-	s.db[key] = memoryEntry{val, expire}
+	s.db[key] = entry{val, expire}
 	s.mux.Unlock()
 	return nil
 }
 
 // Delete key by key
-func (s *memory) Delete(key string) error {
+func (s *Storage) Delete(key string) error {
 	// Ain't Nobody Got Time For That
 	if len(key) <= 0 {
 		return nil
@@ -78,20 +84,20 @@ func (s *memory) Delete(key string) error {
 }
 
 // Reset all keys
-func (s *memory) Reset() error {
+func (s *Storage) Reset() error {
 	s.mux.Lock()
-	s.db = make(map[string]memoryEntry)
+	s.db = make(map[string]entry)
 	s.mux.Unlock()
 	return nil
 }
 
 // Close the memory storage
-func (s *memory) Close() error {
+func (s *Storage) Close() error {
 	s.done <- struct{}{}
 	return nil
 }
 
-func (s *memory) gc() {
+func (s *Storage) gc() {
 	ticker := time.NewTicker(s.gcInterval)
 	defer ticker.Stop()
 
