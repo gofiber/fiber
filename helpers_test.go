@@ -209,30 +209,6 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 	utils.AssertEqual(b, "/créer", unescaped)
 }
 
-func Test_Utils_IPv6(t *testing.T) {
-	testCases := []struct {
-		string
-		bool
-	}{
-		{"::FFFF:C0A8:1:3000", true},
-		{"::FFFF:C0A8:0001:3000", true},
-		{"0000:0000:0000:0000:0000:FFFF:C0A8:1:3000", true},
-		{"::FFFF:C0A8:1%1:3000", true},
-		{"::FFFF:192.168.0.1:3000", true},
-		{"[::FFFF:C0A8:1]:3000", true},
-		{"[::FFFF:C0A8:1%1]:3000", true},
-		{":3000", false},
-		{"127.0.0.1:3000", false},
-		{"127.0.0.1:", false},
-		{"0.0.0.0:3000", false},
-		{"", false},
-	}
-
-	for _, c := range testCases {
-		utils.AssertEqual(t, c.bool, isIPv6(c.string))
-	}
-}
-
 func Test_Utils_Parse_Address(t *testing.T) {
 	testCases := []struct {
 		addr, host, port string

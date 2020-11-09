@@ -161,3 +161,29 @@ func Test_FileSystem_NoRoot(t *testing.T) {
 	app.Use(New())
 	_, _ = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 }
+
+func Test_FileSystem_UsingParam(t *testing.T) {
+	app := fiber.New()
+
+	app.Use("/:path", func(c *fiber.Ctx) error {
+		return SendFile(c, http.Dir("../../.github/testdata/fs"), c.Params("path")+".html")
+	})
+
+	req, _ := http.NewRequest(fiber.MethodHead, "/index", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+}
+
+func Test_FileSystem_UsingParam_NonFile(t *testing.T) {
+	app := fiber.New()
+
+	app.Use("/:path", func(c *fiber.Ctx) error {
+		return SendFile(c, http.Dir("../../.github/testdata/fs"), c.Params("path")+".html")
+	})
+
+	req, _ := http.NewRequest(fiber.MethodHead, "/template", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 404, resp.StatusCode)
+}

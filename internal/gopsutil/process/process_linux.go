@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
+	"github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/net"
 	"golang.org/x/sys/unix"
 )
@@ -1181,7 +1181,7 @@ func (p *Process) fillFromTIDStatWithContext(ctx context.Context, tid int32) (ui
 	// docs).  Note: I am assuming at least Linux 2.6.18
 	iotime, err := strconv.ParseFloat(fields[i+40], 64)
 	if err != nil {
-		iotime = 0  // Ancient linux version, most likely
+		iotime = 0 // Ancient linux version, most likely
 	}
 
 	cpuTimes := &cpu.TimesStat{

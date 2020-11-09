@@ -307,10 +307,6 @@ func isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(getString(noneMatchBytes[start:end]), etag)
 }
 
-func isIPv6(address string) bool {
-	return strings.Count(address, ":") >= 2
-}
-
 func parseAddr(raw string) (host, port string) {
 	if i := strings.LastIndex(raw, ":"); i != -1 {
 		return raw[:i], raw[i+1:]

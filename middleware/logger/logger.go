@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -11,7 +12,9 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/gofiber/fiber/v2/internal/colorable"
 	"github.com/gofiber/fiber/v2/internal/fasttemplate"
+	"github.com/gofiber/fiber/v2/internal/isatty"
 	"github.com/valyala/fasthttp"
 )
 
@@ -36,22 +39,30 @@ type Config struct {
 	//
 	// Optional. Default: "Local"
 	TimeZone string
+
+	// TimeInterval is the delay before the timestamp is updated
+	//
+	// Optional. Default: 500 * time.Millisecond
+	TimeInterval time.Duration
+
 	// Output is a writter where logs are written
 	//
 	// Default: os.Stderr
 	Output io.Writer
 
-	haveLatency      bool
+	enableColors     bool
+	enableLatency    bool
 	timeZoneLocation *time.Location
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:       nil,
-	Format:     "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat: "15:04:05",
-	TimeZone:   "Local",
-	Output:     os.Stderr,
+	Next:         nil,
+	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
+	TimeFormat:   "15:04:05",
+	TimeZone:     "Local",
+	TimeInterval: 500 * time.Millisecond,
+	Output:       os.Stderr,
 }
 
 // Logger variables
@@ -75,6 +86,7 @@ const (
 	TagRoute         = "route"
 	TagError         = "error"
 	TagHeader        = "header:"
+	TagLocals        = "locals:"
 	TagQuery         = "query:"
 	TagForm          = "form:"
 	TagCookie        = "cookie:"
@@ -111,6 +123,11 @@ func New(config ...Config) fiber.Handler {
 	if len(config) > 0 {
 		cfg = config[0]
 
+		// Enable colors if no custom format or output is given
+		if cfg.Format == "" && cfg.Output == nil {
+			cfg.enableColors = true
+		}
+
 		// Set default values
 		if cfg.Next == nil {
 			cfg.Next = ConfigDefault.Next
@@ -124,9 +141,14 @@ func New(config ...Config) fiber.Handler {
 		if cfg.TimeFormat == "" {
 			cfg.TimeFormat = ConfigDefault.TimeFormat
 		}
+		if int(cfg.TimeInterval) <= 0 {
+			cfg.TimeInterval = ConfigDefault.TimeInterval
+		}
 		if cfg.Output == nil {
 			cfg.Output = ConfigDefault.Output
 		}
+	} else {
+		cfg.enableColors = true
 	}
 
 	// Get timezone location
@@ -138,7 +160,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Check if format contains latency
-	cfg.haveLatency = strings.Contains(cfg.Format, "${latency}")
+	cfg.enableLatency = strings.Contains(cfg.Format, "${latency}")
 
 	// Create template parser
 	tmpl := fasttemplate.New(cfg.Format, "${", "}")
@@ -151,7 +173,7 @@ func New(config ...Config) fiber.Handler {
 	if strings.Contains(cfg.Format, "${time}") {
 		go func() {
 			for {
-				time.Sleep(750 * time.Millisecond)
+				time.Sleep(cfg.TimeInterval)
 				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 			}
 		}()
@@ -167,6 +189,15 @@ func New(config ...Config) fiber.Handler {
 		errHandler  fiber.ErrorHandler
 	)
 
+	// If colors are enabled, check terminal compatibility
+	if cfg.enableColors {
+		cfg.Output = colorable.NewColorableStderr()
+		if os.Getenv("TERM") == "dumb" || (!isatty.IsTerminal(os.Stderr.Fd()) && !isatty.IsCygwinTerminal(os.Stderr.Fd())) {
+			cfg.Output = colorable.NewNonColorable(os.Stderr)
+		}
+	}
+	var errPadding = 15
+	var errPaddingStr = strconv.Itoa(errPadding)
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
@@ -177,10 +208,20 @@ func New(config ...Config) fiber.Handler {
 		// Set error handler once
 		once.Do(func() {
 			errHandler = c.App().Config().ErrorHandler
+			stack := c.App().Stack()
+			for m := range stack {
+				for r := range stack[m] {
+					if len(stack[m][r].Path) > errPadding {
+						errPadding = len(stack[m][r].Path)
+						errPaddingStr = strconv.Itoa(errPadding)
+					}
+				}
+			}
+
 		})
 
 		// Set latency start time
-		if cfg.haveLatency {
+		if cfg.enableLatency {
 			start = time.Now()
 		}
 
@@ -195,12 +236,41 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Set latency stop time
-		if cfg.haveLatency {
+		if cfg.enableLatency {
 			stop = time.Now()
 		}
 
 		// Get new buffer
 		buf := bytebufferpool.Get()
+
+		// Default output when no custom Format or io.Writer is given
+		if cfg.enableColors {
+			// Format error if exist
+			formatErr := ""
+			if chainErr != nil {
+				formatErr = cRed + " | " + chainErr.Error() + cReset
+			}
+
+			// Format log to buffer
+			_, _ = buf.WriteString(fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
+				timestamp.Load().(string),
+				statusColor(c.Response().StatusCode()), c.Response().StatusCode(), cReset,
+				stop.Sub(start).Round(time.Millisecond),
+				c.IP(),
+				methodColor(c.Method()), c.Method(), cReset,
+				c.Path(),
+				formatErr,
+			))
+
+			// Write buffer to output
+			_, _ = cfg.Output.Write(buf.Bytes())
+
+			// Put buffer back to pool
+			bytebufferpool.Put(buf)
+
+			// End chain
+			return nil
+		}
 
 		// Loop over template tags to replace it with the correct value
 		_, err = tmpl.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
@@ -273,6 +343,17 @@ func New(config ...Config) fiber.Handler {
 					return buf.WriteString(c.FormValue(tag[5:]))
 				case strings.HasPrefix(tag, TagCookie):
 					return buf.WriteString(c.Cookies(tag[7:]))
+				case strings.HasPrefix(tag, TagLocals):
+					switch v := c.Locals(tag[7:]).(type) {
+					case []byte:
+						return buf.Write(v)
+					case string:
+						return buf.WriteString(v)
+					case nil:
+						return 0, nil
+					default:
+						return buf.WriteString(fmt.Sprintf("%v", v))
+					}
 				}
 			}
 			return 0, nil

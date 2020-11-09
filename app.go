@@ -31,13 +31,37 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.0.3"
+const Version = "2.1.4"
+
+// Handler defines a function to serve HTTP requests.
+type Handler = func(*Ctx) error
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
-// Handler defines a function to serve HTTP requests.
-type Handler = func(*Ctx) error
+// Storage interface that is implemented by storage providers for different
+// middleware packages like cache, limiter, session and csrf
+type Storage interface {
+	// Get retrieves the value for the given key.
+	// If no value is not found it returns ErrNotExit error
+	Get(key string) ([]byte, error)
+
+	// Set stores the given value for the given key along with a
+	// time-to-live expiration value, 0 means live for ever
+	// The key must not be "" and the empty values are ignored.
+	Set(key string, val []byte, ttl time.Duration) error
+
+	// Delete deletes the stored value for the given key.
+	// Deleting a non-existing key-value pair does NOT lead to an error.
+	// The key must not be "".
+	Delete(key string) error
+
+	// Reset the storage
+	Reset() error
+
+	// Close the storage
+	Close() error
+}
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
@@ -224,6 +248,16 @@ type Config struct {
 	// Default: false
 	DisableStartupMessage bool `json:"disable_startup_message"`
 
+	// Aggressively reduces memory usage at the cost of higher CPU usage
+	// if set to true.
+	//
+	// Try enabling this option only if the server consumes too much memory
+	// serving mostly idle keep-alive connections. This may reduce memory
+	// usage by more than 50%.
+	//
+	// Default: false
+	ReduceMemoryUsage bool `json:"reduce_memory_usage"`
+
 	// FEATURE: v2.2.x
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
@@ -251,6 +285,12 @@ type Static struct {
 	// The name of the index file for serving a directory.
 	// Optional. Default value "index.html".
 	Index string `json:"index"`
+
+	// The value for the Cache-Control HTTP-header
+	// that is set on the file response. MaxAge is defined in seconds.
+	//
+	// Optional. Default value 0.
+	MaxAge int `json:"max_age"`
 }
 
 // Default Config values
@@ -262,7 +302,7 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-// Default ErrorHandler that process return errors from handlers
+// DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {
@@ -298,6 +338,13 @@ func New(config ...Config) *App {
 	if len(config) > 0 {
 		app.config = config[0]
 	}
+
+	if app.config.ETag {
+		if !IsChild() {
+			fmt.Println("[Warning] Config.ETag is deprecated since v2.0.6, please use 'middleware/etag'.")
+		}
+	}
+
 	// Override default values
 	if app.config.BodyLimit <= 0 {
 		app.config.BodyLimit = DefaultBodyLimit
@@ -663,6 +710,7 @@ func (app *App) init() *App {
 	app.server.ReadBufferSize = app.config.ReadBufferSize
 	app.server.WriteBufferSize = app.config.WriteBufferSize
 	app.server.GetOnly = app.config.GETOnly
+	app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
 
 	// unlock application
 	app.mutex.Unlock()
@@ -676,7 +724,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	var logo string
-	logo += "\n%s"
+	logo += "%s"
 	logo += " ┌───────────────────────────────────────────────────┐\n"
 	logo += " │ %s │\n"
 	logo += " │ %s │\n"
@@ -684,7 +732,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	logo += " │ Handlers %s  Threads %s │\n"
 	logo += " │ Prefork .%s  PID ....%s │\n"
 	logo += " └───────────────────────────────────────────────────┘"
-	logo += "%s\n\n"
+	logo += "%s"
 
 	const (
 		cBlack = "\u001b[90m"
@@ -734,6 +782,15 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		return str
 	}
 
+	pad := func(s string, width int) (str string) {
+		toAdd := width - len(s)
+		str += s
+		for i := 0; i < toAdd; i++ {
+			str += " "
+		}
+		return
+	}
+
 	host, port := parseAddr(addr)
 	if host == "" || host == "0.0.0.0" {
 		host = "127.0.0.1"
@@ -748,17 +805,103 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		isPrefork = "Enabled"
 	}
 
+	mainLogo := fmt.Sprintf(logo,
+		cBlack,
+		centerValue(" Fiber v"+Version, 49),
+		center(addr, 49),
+		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.GOMAXPROCS(0)), 14),
+		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
+		cReset,
+	)
+
+	var childPidsLogo string
+	if app.config.Prefork {
+		var childPidsTemplate string
+		childPidsTemplate += "%s"
+		childPidsTemplate += " ┌───────────────────────────────────────────────────┐\n%s"
+		childPidsTemplate += " └───────────────────────────────────────────────────┘"
+		childPidsTemplate += "%s"
+
+		newLine := " │ %s%s%s │"
+
+		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
+		var pidSlice []string
+		for _, v := range strings.Split(pids, ",") {
+			if v != "" {
+				pidSlice = append(pidSlice, v)
+			}
+		}
+
+		var lines []string
+		thisLine := "Child PIDs ... "
+		var itemsOnThisLine []string
+
+		addLine := func() {
+			lines = append(lines,
+				fmt.Sprintf(
+					newLine,
+					cBlack,
+					thisLine+cCyan+pad(strings.Join(itemsOnThisLine, ", "), 49-len(thisLine)),
+					cBlack,
+				),
+			)
+		}
+
+		for _, pid := range pidSlice {
+			if len(thisLine+strings.Join(append(itemsOnThisLine, pid), ", ")) > 49 {
+				addLine()
+				thisLine = ""
+				itemsOnThisLine = []string{pid}
+			} else {
+				itemsOnThisLine = append(itemsOnThisLine, pid)
+			}
+		}
+
+		// Add left over items to their own line
+		if len(itemsOnThisLine) != 0 {
+			addLine()
+		}
+
+		// Form logo
+		childPidsLogo = fmt.Sprintf(childPidsTemplate,
+			cBlack,
+			strings.Join(lines, "\n")+"\n",
+			cReset,
+		)
+	}
+
+	// Combine both the child PID logo and the main Fiber logo
+
+	// Pad the shorter logo to the length of the longer one
+	splitMainLogo := strings.Split(mainLogo, "\n")
+	splitChildPidsLogo := strings.Split(childPidsLogo, "\n")
+
+	mainLen := len(splitMainLogo)
+	childLen := len(splitChildPidsLogo)
+
+	if mainLen > childLen {
+		diff := mainLen - childLen
+		for i := 0; i < diff; i++ {
+			splitChildPidsLogo = append(splitChildPidsLogo, "")
+		}
+	} else {
+		diff := childLen - mainLen
+		for i := 0; i < diff; i++ {
+			splitMainLogo = append(splitMainLogo, "")
+		}
+	}
+
+	// Combine the two logos, line by line
+	output := "\n"
+	for i := range splitMainLogo {
+		output += cBlack + splitMainLogo[i] + " " + splitChildPidsLogo[i] + "\n"
+	}
+
 	out := colorable.NewColorableStdout()
 	if os.Getenv("TERM") == "dumb" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
-	fmt.Fprintf(out, logo,
-		cBlack,
-		centerValue(" Fiber v"+Version, 49),
-		center(addr, 49),
-		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.NumCPU()), 14),
-		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
-		cReset,
-	)
+
+	fmt.Fprintln(out, output)
 
 }

@@ -39,6 +39,7 @@ type Ctx struct {
 	indexHandler int                  // Index of the current handler
 	method       string               // HTTP method
 	methodINT    int                  // HTTP method INT equivalent
+	baseURI      string               // HTTP base uri
 	path         string               // Prettified HTTP path -> string copy from pathBuffer
 	pathBuffer   []byte               // Prettified HTTP path buffer
 	treePath     string               // Path for the search in the tree
@@ -63,6 +64,7 @@ type Cookie struct {
 	Value    string    `json:"value"`
 	Path     string    `json:"path"`
 	Domain   string    `json:"domain"`
+	MaxAge   int       `json:"max_age"`
 	Expires  time.Time `json:"expires"`
 	Secure   bool      `json:"secure"`
 	HTTPOnly bool      `json:"http_only"`
@@ -93,6 +95,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	c.methodINT = methodInt(c.method)
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
+	// reset base uri
+	c.baseURI = ""
 	// Prettify path
 	c.prettifyPath()
 	return c
@@ -122,21 +126,35 @@ func (c *Ctx) Accepts(offers ...string) string {
 		if commaPos != -1 {
 			spec = utils.Trim(header[:commaPos], ' ')
 		} else {
-			spec = header
+			spec = utils.TrimLeft(header, ' ')
 		}
 		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
 			spec = spec[:factorSign]
 		}
 
+		var mimetype string
 		for _, offer := range offers {
-			mimetype := utils.GetMIME(offer)
-			if len(spec) > 2 && spec[len(spec)-2:] == "/*" {
-				if strings.HasPrefix(spec[:len(spec)-2], strings.Split(mimetype, "/")[0]) {
-					return offer
-				} else if spec == "*/*" {
-					return offer
-				}
-			} else if strings.HasPrefix(spec, mimetype) {
+			if len(offer) == 0 {
+				continue
+				// Accept: */*
+			} else if spec == "*/*" {
+				return offer
+			}
+
+			if strings.IndexByte(offer, '/') != -1 {
+				mimetype = offer // MIME type
+			} else {
+				mimetype = utils.GetMIME(offer) // extension
+			}
+
+			if spec == mimetype {
+				// Accept: <MIME_type>/<MIME_subtype>
+				return offer
+			}
+
+			s := strings.IndexByte(mimetype, '/')
+			// Accept: <MIME_type>/*
+			if strings.HasPrefix(spec, mimetype[:s]) && (spec[s:] == "/*" || mimetype[s:] == "/*") {
 				return offer
 			}
 		}
@@ -205,7 +223,11 @@ func (c *Ctx) Attachment(filename ...string) {
 func (c *Ctx) BaseURL() string {
 	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
 	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
-	return c.Protocol() + "://" + c.Hostname()
+	if c.baseURI != "" {
+		return c.baseURI
+	}
+	c.baseURI = c.Protocol() + "://" + c.Hostname()
+	return c.baseURI
 }
 
 // Body contains the raw body submitted in a POST request.
@@ -286,6 +308,7 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetValue(cookie.Value)
 	fcookie.SetPath(cookie.Path)
 	fcookie.SetDomain(cookie.Domain)
+	fcookie.SetMaxAge(cookie.MaxAge)
 	fcookie.SetExpire(cookie.Expires)
 	fcookie.SetSecure(cookie.Secure)
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
@@ -503,6 +526,9 @@ func (c *Ctx) Is(extension string) bool {
 }
 
 // JSON converts any interface or string to JSON.
+// Array and slice values encode as JSON arrays,
+// except that []byte encodes as a base64-encoded string,
+// and a nil slice encodes as the null JSON value.
 // This method also sets the content header to application/json.
 func (c *Ctx) JSON(data interface{}) error {
 	raw, err := json.Marshal(data)
@@ -692,9 +718,6 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
-	if c.fasthttp.QueryArgs().Len() < 1 {
-		return nil
-	}
 	// Get decoder from pool
 	var decoder = decoderPool.Get().(*schema.Decoder)
 	defer decoderPool.Put(decoder)
@@ -706,7 +729,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
-		if strings.Index(v, ",") > -1 && equalFieldType(out, reflect.Slice, k) {
+		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
 				data[k] = append(data[k], values[i])
@@ -902,6 +925,9 @@ var sendFileHandler fasthttp.RequestHandler
 // The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
 func (c *Ctx) SendFile(file string, compress ...bool) error {
+	// Save the filename, we will need it in the error message if the file isn't found
+	filename := file
+
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
 	sendFileOnce.Do(func() {
 		sendFileFS = &fasthttp.FS{
@@ -951,7 +977,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	}
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
-		return fmt.Errorf("sendfile: file %s not found", file)
+		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
 	}
 	return nil
 }

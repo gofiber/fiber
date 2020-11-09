@@ -84,8 +84,8 @@ func readProcessMemory(h syscall.Handle, is32BitProcess bool, address uint64, si
 
 			ret, _, _ := common.ProcNtWow64ReadVirtualMemory64.Call(
 				uintptr(h),
-				uintptr(address & 0xFFFFFFFF), //the call expects a 64-bit value
-				uintptr(address >> 32),
+				uintptr(address&0xFFFFFFFF), //the call expects a 64-bit value
+				uintptr(address>>32),
 				uintptr(unsafe.Pointer(&buffer[0])),
 				uintptr(size), //the call expects a 64-bit value
 				uintptr(0),    //but size is 32-bit so pass zero as the high dword

@@ -212,12 +212,12 @@
             cpuMetric.innerHTML = cpu + '% <span>' + cpuOS + '%</span>';
             ramMetric.innerHTML = formatBytes(json.pid.ram) + ' <span>' + formatBytes(json.os.ram) + '</span>';
             rtimeMetric.innerHTML = rtime + 'ms <span>client</span>';
-            connsMetric.innerHTML = json.conns;
+            connsMetric.innerHTML = json.pid.conns + ' <span>' + json.os.conns + '</span>';
 
             cpuChart.data.datasets[0].data.push(cpu);
             ramChart.data.datasets[0].data.push((json.pid.ram / 1e6).toFixed(2));
             rtimeChart.data.datasets[0].data.push(rtime);
-            connsChart.data.datasets[0].data.push(json.conns);
+            connsChart.data.datasets[0].data.push(json.pid.conns);
 
             const timestamp = new Date().getTime();
 
