@@ -25,9 +25,6 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-const Charset="text/plain; charset=utf-8"
-const GoFiberSupport="gofiber.io/support"
-
 var testEmptyHandler = func(c *Ctx) error {
 	return nil
 }
@@ -555,7 +552,7 @@ func Test_App_Static_Direct(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
@@ -565,12 +562,12 @@ func Test_App_Static_Direct(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get("Content-Type"))
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get("Content-Type"))
 	utils.AssertEqual(t, "", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), GoFiberSupport))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
 }
 
 // go test -run Test_App_Static_MaxAge
@@ -603,7 +600,7 @@ func Test_App_Static_Group(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 	utils.AssertEqual(t, "123", resp.Header.Get("Test-Header"))
 
 	grp = app.Group("/v2")
@@ -614,7 +611,7 @@ func Test_App_Static_Group(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 }
 
@@ -628,11 +625,11 @@ func Test_App_Static_Wildcard(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), GoFiberSupport))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
 
 }
 
@@ -646,7 +643,7 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	app.Static("/my/nameisjohn*", "./.github/FUNDING.yml")
 
@@ -654,11 +651,11 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), GoFiberSupport))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
 }
 
 func Test_App_Static_Prefix(t *testing.T) {
@@ -670,7 +667,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	app.Static("/prefix", "./.github/workflows")
 
@@ -679,7 +676,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	app.Static("/single", "./.github/workflows/test.yml")
 
@@ -688,7 +685,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 }
 
 func Test_App_Static_Trailing_Slash(t *testing.T) {
@@ -700,7 +697,7 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, Charset, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 }
 
 // go test -run Test_App_Mixed_Routes_WithSameLen
