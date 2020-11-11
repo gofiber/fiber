@@ -29,7 +29,10 @@ store := session.New()
 
 // This panic will be catch by the middleware
 app.Get("/", func(c *fiber.Ctx) error {
-	sess := store.Get(c)
+	sess, err := store.Get(c)
+	if err != nil {
+		return c.Status(500).SendString(err.Error())
+	}
 	defer sess.Save()
 
 	// Get value
