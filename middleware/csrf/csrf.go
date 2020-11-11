@@ -25,7 +25,7 @@ func New(config ...Config) fiber.Handler {
 	selectors := strings.Split(cfg.KeyLookup, ":")
 
 	if len(selectors) != 2 {
-		panic("[CSRF] Token lookup must in the form of <source>:<key>")
+		panic("[CSRF] KeyLookup must in the form of <source>:<key>")
 	}
 
 	// By default we extract from a header

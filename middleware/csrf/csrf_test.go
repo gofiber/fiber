@@ -73,13 +73,13 @@ func Test_CSRF_Next(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
-func Test_CSRF_Invalid_TokenLookup(t *testing.T) {
+func Test_CSRF_Invalid_KeyLookup(t *testing.T) {
 	defer func() {
-		utils.AssertEqual(t, "[CSRF] Token lookup must in the form of <source>:<key>", recover())
+		utils.AssertEqual(t, "[CSRF] KeyLookup must in the form of <source>:<key>", recover())
 	}()
 	app := fiber.New()
 
-	app.Use(New(Config{TokenLookup: "I:am:invalid"}))
+	app.Use(New(Config{KeyLookup: "I:am:invalid"}))
 
 	app.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -94,7 +94,7 @@ func Test_CSRF_Invalid_TokenLookup(t *testing.T) {
 func Test_CSRF_From_Form(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New(Config{TokenLookup: "form:_csrf"}))
+	app.Use(New(Config{KeyLookup: "form:_csrf"}))
 
 	app.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -127,7 +127,7 @@ func Test_CSRF_From_Form(t *testing.T) {
 func Test_CSRF_From_Query(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New(Config{TokenLookup: "query:_csrf"}))
+	app.Use(New(Config{KeyLookup: "query:_csrf"}))
 
 	app.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -163,7 +163,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 func Test_CSRF_From_Param(t *testing.T) {
 	app := fiber.New()
 
-	csrfGroup := app.Group("/:csrf", New(Config{TokenLookup: "param:csrf"}))
+	csrfGroup := app.Group("/:csrf", New(Config{KeyLookup: "param:csrf"}))
 
 	csrfGroup.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -199,7 +199,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 func Test_CSRF_From_Cookie(t *testing.T) {
 	app := fiber.New()
 
-	csrfGroup := app.Group("/", New(Config{TokenLookup: "cookie:csrf"}))
+	csrfGroup := app.Group("/", New(Config{KeyLookup: "cookie:csrf"}))
 
 	csrfGroup.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
