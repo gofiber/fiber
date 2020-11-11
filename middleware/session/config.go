@@ -34,7 +34,7 @@ type Config struct {
 
 	// Allowed session duration
 	//
-	// Optional. Default: 24 hours
+	// Optional. Default: 24 * time.Hour
 	Expiration time.Duration
 
 	// Storage interface
@@ -48,7 +48,7 @@ var ConfigDefault = Config{
 	Cookie: fiber.Cookie{
 		Value: "session_id",
 	},
-	Expiration:   30 * time.Minute,
+	Expiration:   24 * time.Hour,
 	KeyGenerator: utils.UUID,
 }
 
