@@ -48,6 +48,8 @@ func Test_CSRF(t *testing.T) {
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod("GET")
 	h(ctx)
+	token = string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
 	ctx.Request.Reset()
 	ctx.Response.Reset()
@@ -73,7 +75,7 @@ func Test_CSRF_Next(t *testing.T) {
 
 func Test_CSRF_Invalid_TokenLookup(t *testing.T) {
 	defer func() {
-		utils.AssertEqual(t, "csrf: Token lookup must in the form of <source>:<key>", recover())
+		utils.AssertEqual(t, "[CSRF] Token lookup must in the form of <source>:<key>", recover())
 	}()
 	app := fiber.New()
 
