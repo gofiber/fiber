@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/storage/memory"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
@@ -39,7 +40,7 @@ type Config struct {
 
 	// Store is used to store the state of the middleware
 	//
-	// Default: an in memory store for this process only
+	// Optional. Default: memory.New()
 	Storage fiber.Storage
 
 	// Context key to store generated CSRF token into context.
@@ -66,6 +67,7 @@ var ConfigDefault = Config{
 		SameSite: "Strict",
 	},
 	Expiration: 1 * time.Hour,
+	Storage:    memory.New(),
 	Generator:  utils.UUID,
 }
 
