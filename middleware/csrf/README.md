@@ -1,5 +1,6 @@
 # CSRF
-CSRF middleware for [Fiber](https://github.com/gofiber/fiber) that provides [Cross-site request forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) protection by passing a csrf token via cookies. This cookie value will be used to compare against the client csrf token in POST requests. When the csrf token is invalid, this middleware will return the `fiber.ErrForbidden` error.
+CSRF middleware for [Fiber](https://github.com/gofiber/fiber) that provides [Cross-site request forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) protection by passing a csrf token via cookies. This cookie value will be used to compare against the client csrf token in POST requests. When the csrf token is invalid, this middleware will delete the `_csrf` cookie and return the `fiber.ErrForbidden` error.
+CSRF Tokens are generated on GET requests.
 
 ### Table of Contents
 - [Signatures](#signatures)
@@ -56,6 +57,7 @@ type Config struct {
 	// - "query:<name>"
 	// - "param:<name>"
 	// - "form:<name>"
+	// - "cookie:<name>"
 	TokenLookup string
 
 	// Cookie
@@ -65,13 +67,23 @@ type Config struct {
 
 	// Expiration is the duration before csrf token will expire
 	//
-	// Optional. Default: 24 * time.Hour
+	// Optional. Default: 1 * time.Hour
 	Expiration time.Duration
+
+	// Store is used to store the state of the middleware
+	//
+	// Default: an in memory store for this process only
+	Storage fiber.Storage
 
 	// Context key to store generated CSRF token into context.
 	//
 	// Optional. Default value "csrf".
 	ContextKey string
+
+	// Optional. ID generator function.
+	//
+	// Default: utils.UUID
+	Generator func() string
 }
 ```
 
@@ -85,6 +97,7 @@ var ConfigDefault = Config{
 		Name:     "_csrf",
 		SameSite: "Strict",
 	},
-	Expiration: 24 * time.Hour,
+	Expiration: 1 * time.Hour,
+	Generator:  utils.UUID,
 }
 ```
