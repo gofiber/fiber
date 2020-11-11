@@ -37,7 +37,8 @@ type Config struct {
 	// Optional. Default: 24 hours
 	Expiration time.Duration
 
-	// Store interface
+	// Storage interface
+	//
 	// Optional. Default: memory.New()
 	Storage fiber.Storage
 }
