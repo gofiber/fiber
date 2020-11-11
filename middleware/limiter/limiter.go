@@ -52,7 +52,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get key from request
-		key := cfg.Key(c)
+		key := cfg.KeyGenerator(c)
 
 		// Create new entry
 		entry := entry{}
