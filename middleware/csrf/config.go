@@ -15,19 +15,20 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// TokenLookup is a string in the form of "<source>:<key>" that is used
+	// KeyLookup is a string in the form of "<source>:<key>" that is used
 	// to extract token from the request.
-	//
-	// Optional. Default value "header:X-CSRF-Token".
 	// Possible values:
 	// - "header:<name>"
 	// - "query:<name>"
 	// - "param:<name>"
 	// - "form:<name>"
 	// - "cookie:<name>"
-	TokenLookup string
+	//
+	// Optional. Default: "header:X-CSRF-Token"
+	KeyLookup string
 
-	// Cookie
+	// Cookie settings to pass the CSRF token to the client on GET
+	// requests.
 	//
 	// Optional.
 	Cookie *fiber.Cookie
@@ -43,24 +44,26 @@ type Config struct {
 	Storage fiber.Storage
 
 	// Context key to store generated CSRF token into context.
+	// If left empty, token will not be stored in context.
 	//
-	// Optional. Default value "csrf".
+	// Optional. Default: ""
 	ContextKey string
 
-	// Optional. ID generator function.
+	// KeyGenerator creates a new CSRF token
 	//
-	// Default: utils.UUID
+	// Optional. Default: utils.UUID
 	KeyGenerator func() string
 
 	// Deprecated, please use Expiration
 	CookieExpires time.Duration
+
+	// Deprecated, please use KeyLookup
+	TokenLookup string
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:        nil,
-	TokenLookup: "header:X-CSRF-Token",
-	ContextKey:  "csrf",
+	KeyLookup: "header:X-Csrf-Token",
 	Cookie: &fiber.Cookie{
 		Name:     "_csrf",
 		SameSite: "Strict",
@@ -80,17 +83,18 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if cfg.TokenLookup == "" {
-		cfg.TokenLookup = ConfigDefault.TokenLookup
-	}
-	if cfg.ContextKey == "" {
-		cfg.ContextKey = ConfigDefault.ContextKey
+	if cfg.TokenLookup != "" {
+		fmt.Println("[CSRF] TokenLookup is deprecated, please use KeyLookup")
+		cfg.KeyLookup = ConfigDefault.TokenLookup
 	}
 	if cfg.CookieExpires != 0 {
 		fmt.Println("[CSRF] CookieExpires is deprecated, please use Expiration")
-		cfg.CookieExpires = ConfigDefault.Expiration
+		cfg.Expiration = ConfigDefault.CookieExpires
 	}
-	if cfg.Expiration == 0 {
+	if cfg.KeyLookup == "" {
+		cfg.KeyLookup = ConfigDefault.KeyLookup
+	}
+	if cfg.Expiration <= 0 {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
 	if cfg.Cookie != nil {

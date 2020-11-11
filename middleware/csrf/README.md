@@ -48,19 +48,20 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// TokenLookup is a string in the form of "<source>:<key>" that is used
+	// KeyLookup is a string in the form of "<source>:<key>" that is used
 	// to extract token from the request.
-	//
-	// Optional. Default value "header:X-CSRF-Token".
 	// Possible values:
 	// - "header:<name>"
 	// - "query:<name>"
 	// - "param:<name>"
 	// - "form:<name>"
 	// - "cookie:<name>"
-	TokenLookup string
+	//
+	// Optional. Default: "header:X-CSRF-Token"
+	KeyLookup string
 
-	// Cookie
+	// Cookie settings to pass the CSRF token to the client on GET
+	// requests.
 	//
 	// Optional.
 	Cookie *fiber.Cookie
@@ -76,13 +77,14 @@ type Config struct {
 	Storage fiber.Storage
 
 	// Context key to store generated CSRF token into context.
+	// If left empty, token will not be stored in context.
 	//
-	// Optional. Default value "csrf".
+	// Optional. Default: ""
 	ContextKey string
 
 	// Optional. ID generator function.
 	//
-	// Default: utils.UUID
+	// Optional. Default: utils.UUID
 	KeyGenerator func() string
 }
 ```
@@ -90,14 +92,12 @@ type Config struct {
 ### Default Config
 ```go
 var ConfigDefault = Config{
-	Next:        nil,
-	TokenLookup: "header:X-CSRF-Token",
-	ContextKey:  "csrf",
+	KeyLookup: "header:X-Csrf-Token",
 	Cookie: &fiber.Cookie{
 		Name:     "_csrf",
 		SameSite: "Strict",
 	},
-	Expiration: 1 * time.Hour,
-	KeyGenerator:  utils.UUID,
+	Expiration:   1 * time.Hour,
+	KeyGenerator: utils.UUID,
 }
 ```

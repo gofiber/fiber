@@ -19,12 +19,12 @@ type Config struct {
 	// Default: 5
 	Max int
 
-	// Key allows you to generate custom keys, by default c.IP() is used
+	// KeyGenerator allows you to generate custom keys, by default c.IP() is used
 	//
 	// Default: func(c *fiber.Ctx) string {
 	//   return c.IP()
 	// }
-	Key func(*fiber.Ctx) string
+	KeyGenerator func(*fiber.Ctx) string
 
 	// Expiration is the time on how long to keep records of requests in memory
 	//
@@ -48,14 +48,16 @@ type Config struct {
 
 	// DEPRECATED, use Storage instead
 	Store fiber.Storage
+
+	// DEPRECATED, use KeyGenerator instead
+	Key func(*fiber.Ctx) string
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:       nil,
 	Max:        5,
 	Expiration: 1 * time.Minute,
-	Key: func(c *fiber.Ctx) string {
+	KeyGenerator: func(c *fiber.Ctx) string {
 		return c.IP()
 	},
 	LimitReached: func(c *fiber.Ctx) error {
@@ -74,30 +76,32 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
+	if cfg.Duration > 0 {
+		fmt.Println("[LIMITER] Duration is deprecated, please use Expiration")
+		cfg.Expiration = cfg.Duration
+	}
+	if cfg.Key != nil {
+		fmt.Println("[LIMITER] Key is deprecated, please us KeyGenerator")
+		cfg.KeyGenerator = cfg.Key
+	}
+	if cfg.Store != nil {
+		fmt.Println("[LIMITER] Store is deprecated, please use Storage")
+		cfg.Storage = cfg.Store
+	}
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
 	}
 	if cfg.Max <= 0 {
 		cfg.Max = ConfigDefault.Max
 	}
-	if int(cfg.Duration.Seconds()) <= 0 && int(cfg.Expiration.Seconds()) <= 0 {
+	if cfg.Expiration <= 0 {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
-	if int(cfg.Duration.Seconds()) > 0 {
-		fmt.Println("[LIMITER] Duration is deprecated, please use Expiration")
-		if cfg.Expiration != ConfigDefault.Expiration {
-			cfg.Expiration = cfg.Duration
-		}
-	}
-	if cfg.Key == nil {
-		cfg.Key = ConfigDefault.Key
+	if cfg.KeyGenerator == nil {
+		cfg.KeyGenerator = ConfigDefault.KeyGenerator
 	}
 	if cfg.LimitReached == nil {
 		cfg.LimitReached = ConfigDefault.LimitReached
-	}
-	if cfg.Store != nil {
-		fmt.Println("[LIMITER] Store is deprecated, please use Storage")
-		cfg.Storage = cfg.Store
 	}
 	return cfg
 }

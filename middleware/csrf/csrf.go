@@ -22,7 +22,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Generate the correct extractor to get the token from the correct location
-	selectors := strings.Split(cfg.TokenLookup, ":")
+	selectors := strings.Split(cfg.KeyLookup, ":")
 
 	if len(selectors) != 2 {
 		panic("[CSRF] Token lookup must in the form of <source>:<key>")
@@ -40,7 +40,7 @@ func New(config ...Config) fiber.Handler {
 		extractor = csrfFromParam(selectors[1])
 	case "cookie":
 		if selectors[1] == cfg.Cookie.Name {
-			panic(fmt.Sprintf("TokenLookup key %s can't be the same as Cookie.Name %s", selectors[1], cfg.Cookie.Name))
+			panic(fmt.Sprintf("KeyLookup key %s can't be the same as Cookie.Name %s", selectors[1], cfg.Cookie.Name))
 		}
 		extractor = csrfFromCookie(selectors[1])
 	}
@@ -91,12 +91,14 @@ func New(config ...Config) fiber.Handler {
 			// Set cookie to response
 			c.Cookie(cookie)
 
-			// Store token in context
-			c.Locals(cfg.ContextKey, token)
-
 			// Protect clients from caching the response by telling the browser
 			// a new header value is generated
 			c.Vary(fiber.HeaderCookie)
+
+			// Store token in context if set
+			if cfg.ContextKey != "" {
+				c.Locals(cfg.ContextKey, token)
+			}
 
 		case fiber.MethodPost:
 			// Verify CSRF token
