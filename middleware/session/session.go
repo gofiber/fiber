@@ -100,16 +100,16 @@ func (s *Session) Save() error {
 
 func (s *Session) setCookie() {
 	fcookie := fasthttp.AcquireCookie()
-	fcookie.SetKey(s.config.Cookie.Name)
+	fcookie.SetKey(s.config.CookieName)
 	fcookie.SetValue(s.id)
-	fcookie.SetPath(s.config.Cookie.Path)
-	fcookie.SetDomain(s.config.Cookie.Domain)
+	fcookie.SetPath(s.config.CookiePath)
+	fcookie.SetDomain(s.config.CookieDomain)
 	fcookie.SetMaxAge(int(s.config.Expiration))
 	fcookie.SetExpire(time.Now().Add(s.config.Expiration))
-	fcookie.SetSecure(s.config.Cookie.Secure)
-	fcookie.SetHTTPOnly(s.config.Cookie.HTTPOnly)
+	fcookie.SetSecure(s.config.CookieSecure)
+	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 
-	switch utils.ToLower(s.config.Cookie.SameSite) {
+	switch utils.ToLower(s.config.CookieSameSite) {
 	case "strict":
 		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
 	case "none":
@@ -123,19 +123,19 @@ func (s *Session) setCookie() {
 }
 
 func (s *Session) deleteCookie() {
-	s.ctx.Request().Header.DelCookie(s.config.Cookie.Name)
-	s.ctx.Response().Header.DelCookie(s.config.Cookie.Name)
+	s.ctx.Request().Header.DelCookie(s.config.CookieName)
+	s.ctx.Response().Header.DelCookie(s.config.CookieName)
 
 	fcookie := fasthttp.AcquireCookie()
-	fcookie.SetKey(s.config.Cookie.Name)
-	fcookie.SetPath(s.config.Cookie.Path)
-	fcookie.SetDomain(s.config.Cookie.Domain)
+	fcookie.SetKey(s.config.CookieName)
+	fcookie.SetPath(s.config.CookiePath)
+	fcookie.SetDomain(s.config.CookieDomain)
 	fcookie.SetMaxAge(int(s.config.Expiration))
 	fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
-	fcookie.SetSecure(s.config.Cookie.Secure)
-	fcookie.SetHTTPOnly(s.config.Cookie.HTTPOnly)
+	fcookie.SetSecure(s.config.CookieSecure)
+	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 
-	switch utils.ToLower(s.config.Cookie.SameSite) {
+	switch utils.ToLower(s.config.CookieSameSite) {
 	case "strict":
 		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
 	case "none":

@@ -10,45 +10,47 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
-	// Possible values:
-	// - "header:<name>"
-	// - "query:<name>"
-	// - "param:<name>"
-	// - "form:<name>"
-	// - "cookie:<name>"
-	//
-	// Optional. Default value "cookie:_csrf".
-	// TODO: When to override Cookie.Value?
-	KeyLookup string
-
-	// Optional. Session ID generator function.
-	//
-	// Default: utils.UUID
-	KeyGenerator func() string
-
-	// Optional. Cookie to set values on
-	//
-	// NOTE: Value, MaxAge and Expires will be overriden by the session ID and expiration
-	// TODO: Should this be a pointer, if yes why?
-	Cookie fiber.Cookie
-
 	// Allowed session duration
-	//
-	// Optional. Default: 24 * time.Hour
+	// Optional. Default value 24 * time.Hour
 	Expiration time.Duration
 
-	// Storage interface
-	//
-	// Optional. Default: memory.New()
+	// Storage interface to store the session data
+	// Optional. Default value memory.New()
 	Storage fiber.Storage
+
+	// Name of the session cookie. This cookie will store session key.
+	// Optional. Default value "session_id".
+	CookieName string
+
+	// Domain of the CSRF cookie.
+	// Optional. Default value "".
+	CookieDomain string
+
+	// Path of the CSRF cookie.
+	// Optional. Default value "".
+	CookiePath string
+
+	// Indicates if CSRF cookie is secure.
+	// Optional. Default value false.
+	CookieSecure bool
+
+	// Indicates if CSRF cookie is HTTP only.
+	// Optional. Default value false.
+	CookieHTTPOnly bool
+
+	// Indicates if CSRF cookie is HTTP only.
+	// Optional. Default value false.
+	CookieSameSite string
+
+	// KeyGenerator generates the session key.
+	// Optional. Default value utils.UUID
+	KeyGenerator func() string
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Cookie: fiber.Cookie{
-		Value: "session_id",
-	},
 	Expiration:   24 * time.Hour,
+	CookieName:   "session_id",
 	KeyGenerator: utils.UUID,
 }
 
@@ -63,8 +65,14 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
+	if cfg.Expiration <= 0 {
+		cfg.Expiration = ConfigDefault.Expiration
+	}
 	if cfg.Storage == nil {
 		cfg.Storage = memory.New()
+	}
+	if cfg.KeyGenerator == nil {
+		cfg.KeyGenerator = ConfigDefault.KeyGenerator
 	}
 	return cfg
 }

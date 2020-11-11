@@ -60,12 +60,10 @@ func New(config ...Config) fiber.Handler {
 		// Action depends on the HTTP method
 		switch c.Method() {
 		case fiber.MethodGet:
-			// Generate CSRF token if not exist
-
 			// Declare empty token and try to get existing CSRF from cookie
 			token = c.Cookies(cfg.Cookie.Name)
 
-			// Do we have an existing CSRF token?
+			// Generate CSRF token if not exist
 			if token == "" {
 				// Generate new CSRF token
 				token = cfg.KeyGenerator()

@@ -24,7 +24,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	var fresh bool
 
 	// Get key from cookie
-	id := c.Cookies(s.Cookie.Name)
+	id := c.Cookies(s.CookieName)
 
 	// If no key exist, create new one
 	if len(id) == 0 {
