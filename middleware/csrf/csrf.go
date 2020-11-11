@@ -100,7 +100,7 @@ func New(config ...Config) fiber.Handler {
 				c.Locals(cfg.ContextKey, token)
 			}
 
-		case fiber.MethodPost:
+		case fiber.MethodPost, fiber.MethodDelete, fiber.MethodPatch, fiber.MethodPut:
 			// Verify CSRF token
 			// Extract token from client request i.e. header, query, param, form or cookie
 			csrf, err := extractor(c)
