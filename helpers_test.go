@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"bytes"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -38,31 +37,6 @@ func Benchmark_RemoveNewLines(b *testing.B) {
 			res = removeNewLines(withNL)
 		}
 		utils.AssertEqual(b, expected, res)
-	})
-}
-
-func Benchmark_RemoveNewLines_Bytes(b *testing.B) {
-	withNL := []byte("foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n")
-	withoutNL := []byte("foo  Set-Cookie:%20SESSIONID=MaliciousValue  ")
-	expected := []byte("foo  Set-Cookie:%20SESSIONID=MaliciousValue  ")
-	var res []byte
-
-	b.Run("withoutNL", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			res = removeNewLinesBytes(withoutNL)
-		}
-		utils.AssertEqual(b, true, bytes.Equal(res, expected))
-	})
-
-	b.Run("withNL", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			res = removeNewLinesBytes(withNL)
-		}
-		utils.AssertEqual(b, true, bytes.Equal(res, expected))
 	})
 }
 
@@ -104,7 +78,6 @@ func Test_RemoveNewLines_Bytes(t *testing.T) {
 		utils.AssertEqual(t, `"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
 	})
 }
-
 
 // go test -v -run=Test_Utils_ -count=3
 func Test_Utils_ETag(t *testing.T) {
