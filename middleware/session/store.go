@@ -1,14 +1,15 @@
 package session
 
 import (
-	"fmt"
-
 	"github.com/gofiber/fiber/v2"
 )
 
 type Store struct {
 	Config
 }
+
+// Storage ErrNotExist
+var errNotExist = "key does not exist"
 
 func New(config ...Config) *Store {
 	// Set default config
@@ -19,7 +20,7 @@ func New(config ...Config) *Store {
 	}
 }
 
-func (s *Store) Get(c *fiber.Ctx) *Session {
+func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	var fresh bool
 
 	// Get key from cookie
@@ -32,27 +33,27 @@ func (s *Store) Get(c *fiber.Ctx) *Session {
 	}
 
 	// Create session object
-	sess := &Session{
-		ctx:    c,
-		config: s,
-		fresh:  fresh,
-		db:     acquireDB(),
-		id:     id,
-	}
+	sess := acquireSession()
+	sess.ctx = c
+	sess.config = s
+	sess.fresh = fresh
+	sess.id = id
 
 	// Fetch existing data
 	if !fresh {
 		raw, err := s.Storage.Get(id)
-
-		// Set data
+		// Unmashal if we found data
 		if err == nil {
-			if _, err := sess.db.UnmarshalMsg(raw); err != nil {
-				fmt.Println("[SESSION]", err.Error())
+			if _, err = sess.db.UnmarshalMsg(raw); err != nil {
+				return nil, err
 			}
+		} else if err.Error() != errNotExist {
+			// Only return error if it's not ErrNotExist
+			return nil, err
 		}
 	}
-	// Return session object
-	return sess
+
+	return sess, nil
 }
 
 func (s *Store) Reset() error {

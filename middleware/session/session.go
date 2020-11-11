@@ -1,6 +1,7 @@
 package session
 
 import (
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -16,7 +17,28 @@ type Session struct {
 	fresh  bool
 }
 
-// Fresh is true if the current session is new or existing
+var sessionPool = sync.Pool{
+	New: func() interface{} {
+		return new(Session)
+	},
+}
+
+func acquireSession() *Session {
+	sess := sessionPool.Get().(*Session)
+	sess.db = new(db)
+	return sess
+}
+
+func releaseSession(s *Session) {
+	s.ctx = nil
+	s.config = nil
+	s.db.Reset()
+	s.id = ""
+	s.fresh = false
+	sessionPool.Put(s)
+}
+
+// Fresh is true if the current session is new
 func (s *Session) Fresh() bool {
 	return s.fresh
 }
@@ -67,11 +89,11 @@ func (s *Session) Save() error {
 		return err
 	}
 
-	// release db back to pool to be re-used on next request
-	releaseDB(s.db)
-
 	// Create cookie with the session ID
 	s.setCookie()
+
+	// release session to pool to be re-used on next request
+	releaseSession(s)
 
 	return nil
 }

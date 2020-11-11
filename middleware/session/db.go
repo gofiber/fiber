@@ -1,9 +1,5 @@
 package session
 
-import (
-	"sync"
-)
-
 // go:generate msgp
 // msgp -file="db.go" -o="db_msgp.go" -tests=false -unexported
 // don't forget to replace the msgp import path to:
@@ -16,21 +12,6 @@ type db struct {
 type kv struct {
 	k string
 	v interface{}
-}
-
-var dbPool = sync.Pool{
-	New: func() interface{} {
-		return new(db)
-	},
-}
-
-func acquireDB() *db {
-	return dbPool.Get().(*db)
-}
-
-func releaseDB(d *db) {
-	d.Reset()
-	dbPool.Put(d)
 }
 
 func (d *db) Reset() {
