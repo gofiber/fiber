@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -15,22 +16,14 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// go test -v -run=^$ -bench=Benchmark_Utils_RemoveNewLines -benchmem -count=4
-func Benchmark_Utils_RemoveNewLines(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_RemoveNewLines -benchmem -count=4
+func Benchmark_RemoveNewLines(b *testing.B) {
 	withNL := "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n"
 	withoutNL := "foo  Set-Cookie:%20SESSIONID=MaliciousValue  "
 	expected := utils.SafeString(withoutNL)
 	var res string
 
-	b.Run("withNewlines", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			res = removeNewLines(withNL)
-		}
-		utils.AssertEqual(b, expected, res)
-	})
-	b.Run("withoutNewlines", func(b *testing.B) {
+	b.Run("withoutNL", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
@@ -38,8 +31,80 @@ func Benchmark_Utils_RemoveNewLines(b *testing.B) {
 		}
 		utils.AssertEqual(b, expected, res)
 	})
-
+	b.Run("withNL", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			res = removeNewLines(withNL)
+		}
+		utils.AssertEqual(b, expected, res)
+	})
 }
+
+func Benchmark_RemoveNewLines_Bytes(b *testing.B) {
+	withNL := []byte("foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n")
+	withoutNL := []byte("foo  Set-Cookie:%20SESSIONID=MaliciousValue  ")
+	expected := []byte("foo  Set-Cookie:%20SESSIONID=MaliciousValue  ")
+	var res []byte
+
+	b.Run("withoutNL", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			res = removeNewLinesBytes(withoutNL)
+		}
+		utils.AssertEqual(b, true, bytes.Equal(res, expected))
+	})
+
+	b.Run("withNL", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			res = removeNewLinesBytes(withNL)
+		}
+		utils.AssertEqual(b, true, bytes.Equal(res, expected))
+	})
+}
+
+// go test -v -run=RemoveNewLines_Bytes -count=3
+func Test_RemoveNewLines_Bytes(t *testing.T) {
+	app := New()
+	t.Run("Not Status OK", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.SendString("Hello, World!")
+		c.Status(201)
+		setETag(c, false)
+		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
+	})
+
+	t.Run("No Body", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		setETag(c, false)
+		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
+	})
+
+	t.Run("Has HeaderIfNoneMatch", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.SendString("Hello, World!")
+		c.Request().Header.Set(HeaderIfNoneMatch, `"13-1831710635"`)
+		setETag(c, false)
+		utils.AssertEqual(t, 304, c.Response().StatusCode())
+		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, "", string(c.Response().Body()))
+	})
+
+	t.Run("No HeaderIfNoneMatch", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.SendString("Hello, World!")
+		setETag(c, false)
+		utils.AssertEqual(t, `"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
+	})
+}
+
 
 // go test -v -run=Test_Utils_ -count=3
 func Test_Utils_ETag(t *testing.T) {

@@ -117,6 +117,37 @@ func removeNewLines(raw string) string {
 	return raw
 }
 
+// removeNewLines will replace `\r` and `\n` with an empty space
+func removeNewLinesBytes(raw []byte) []byte {
+	var (
+		start = 0
+		// strings.IndexByte is faster than bytes.IndexByte
+		rawStr = utils.UnsafeString(raw) // b2s()
+	)
+	// check if a `\r` is present and save the position.
+	// if no `\r` is found, check if a `\n` is present,
+	if start = strings.IndexByte(rawStr, '\r'); start == -1 {
+		// check if a `\n` is present if no `\r` is found
+		if start = strings.IndexByte(rawStr, '\n'); start == -1 {
+			return raw
+		}
+	}
+	// loop from start position to replace `\r` or `\n` with empty space
+	for i := start; i < len(raw); i++ {
+		// switch raw[i] {
+		// case '\r', '\n':
+		// 	raw[i] = ' '
+		// default:
+		// 	continue
+		// }
+		if raw[i] != '\r' && raw[i] != '\n' {
+			continue
+		}
+		raw[i] = ' '
+	}
+	return raw
+}
+
 // Scan stack if other methods match the request
 func methodExist(ctx *Ctx) (exist bool) {
 	for i := 0; i < len(intMethod); i++ {

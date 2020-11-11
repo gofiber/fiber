@@ -40,8 +40,13 @@ type Config struct {
 
 	// Expiration is the duration before csrf token will expire
 	//
-	// Optional. Default: 24 * time.Hour
+	// Optional. Default: 1 * time.Hour
 	Expiration time.Duration
+
+	// Store is used to store the state of the middleware
+	//
+	// Default: an in memory store for this process only
+	Storage fiber.Storage
 
 	// Context key to store generated CSRF token into context.
 	//
@@ -58,8 +63,8 @@ var ConfigDefault = Config{
 		Name:     "_csrf",
 		SameSite: "Strict",
 	},
-	Expiration:    24 * time.Hour,
-	CookieExpires: 24 * time.Hour, // deprecated
+	Expiration:    1 * time.Hour,
+	CookieExpires: 1 * time.Hour, // deprecated
 }
 
 type storage struct {

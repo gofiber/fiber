@@ -186,6 +186,7 @@ func New(config ...Config) fiber.Handler {
 	var (
 		start, stop time.Time
 		once        sync.Once
+		mu          sync.Mutex
 		errHandler  fiber.ErrorHandler
 	)
 
@@ -362,6 +363,7 @@ func New(config ...Config) fiber.Handler {
 		if err != nil {
 			_, _ = buf.WriteString(err.Error())
 		}
+		mu.Lock()
 		// Write buffer to output
 		if _, err := cfg.Output.Write(buf.Bytes()); err != nil {
 			// Write error to output
@@ -370,6 +372,7 @@ func New(config ...Config) fiber.Handler {
 				// TODO: What should we do here?
 			}
 		}
+		mu.Unlock()
 		// Put buffer back to pool
 		bytebufferpool.Put(buf)
 
