@@ -106,7 +106,6 @@ func (s *Session) deleteCookie() {
 
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(s.config.Cookie.Name)
-	fcookie.SetValue(s.id)
 	fcookie.SetPath(s.config.Cookie.Path)
 	fcookie.SetDomain(s.config.Cookie.Domain)
 	fcookie.SetMaxAge(int(s.config.Expiration))

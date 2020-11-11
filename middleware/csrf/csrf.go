@@ -68,7 +68,7 @@ func New(config ...Config) fiber.Handler {
 				token = key
 			} else {
 				// Generate new CSRF token
-				token = cfg.Generator()
+				token = cfg.KeyGenerator()
 
 				// Add token to Storage
 				if err := cfg.Storage.Set(token, dummyVal, cfg.Expiration); err != nil {

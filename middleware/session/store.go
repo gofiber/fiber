@@ -22,10 +22,10 @@ func New(config ...Config) *Store {
 func (s *Store) Get(c *fiber.Ctx) *Session {
 	var fresh bool
 
-	// Get ID from cookie
+	// Get key from cookie
 	id := c.Cookies(s.Cookie.Name)
 
-	// If no ID exist, create new one
+	// If no key exist, create new one
 	if len(id) == 0 {
 		id = s.KeyGenerator()
 		fresh = true
@@ -46,9 +46,8 @@ func (s *Store) Get(c *fiber.Ctx) *Session {
 
 		// Set data
 		if err == nil {
-			_, err := sess.db.UnmarshalMsg(raw)
-			if err != nil {
-				fmt.Println(err)
+			if _, err := sess.db.UnmarshalMsg(raw); err != nil {
+				fmt.Println("[SESSION]", err.Error())
 			}
 		}
 	}

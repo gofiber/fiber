@@ -83,7 +83,7 @@ type Config struct {
 	// Optional. ID generator function.
 	//
 	// Default: utils.UUID
-	Generator func() string
+	KeyGenerator func() string
 }
 ```
 
@@ -98,6 +98,6 @@ var ConfigDefault = Config{
 		SameSite: "Strict",
 	},
 	Expiration: 1 * time.Hour,
-	Generator:  utils.UUID,
+	KeyGenerator:  utils.UUID,
 }
 ```

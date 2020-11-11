@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/storage/memory"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
@@ -51,7 +50,7 @@ type Config struct {
 	// Optional. ID generator function.
 	//
 	// Default: utils.UUID
-	Generator func() string
+	KeyGenerator func() string
 
 	// Deprecated, please use Expiration
 	CookieExpires time.Duration
@@ -66,9 +65,8 @@ var ConfigDefault = Config{
 		Name:     "_csrf",
 		SameSite: "Strict",
 	},
-	Expiration: 1 * time.Hour,
-	Storage:    memory.New(),
-	Generator:  utils.UUID,
+	Expiration:   1 * time.Hour,
+	KeyGenerator: utils.UUID,
 }
 
 // Helper function to set default values
@@ -105,8 +103,8 @@ func configDefault(config ...Config) Config {
 	} else {
 		cfg.Cookie = ConfigDefault.Cookie
 	}
-	if cfg.Generator == nil {
-		cfg.Generator = ConfigDefault.Generator
+	if cfg.KeyGenerator == nil {
+		cfg.KeyGenerator = ConfigDefault.KeyGenerator
 	}
 
 	return cfg
