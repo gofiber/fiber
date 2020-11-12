@@ -36,7 +36,7 @@ app.Use(limiter.New(limiter.Config{
 		return c.IP() == "127.0.0.1"
 	},
 	Max:          20,
-	Expiration:30 * time.Second,
+	Expiration: 30 * time.Second,
 	Key:          func(c *fiber.Ctx) string {
 		return c.Get("x-forwarded-for")
 	},
