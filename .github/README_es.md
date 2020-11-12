@@ -104,10 +104,9 @@ Estas pruebas son realizadas por [TechEmpower](https://www.techempower.com/bench
 </p>
 
 ## ⚙️ Instalación
+Asegúrese de tener instalado Go ([download](https://golang.org/dl/)). Version `1.14` o superior. 
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
-
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+Arranque su proyecto creando una nueva carpeta y ejecutando `go mod init github.com/your/repo` ([mas información](https://blog.golang.org/using-go-modules)) dentro de la misma carpeta. Después instale Fiber mediante el comando [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -137,8 +136,6 @@ Fiber está **inspirado** en Expressjs, el framework web más popular en Interne
 ## 👀 Ejemplos
 
 A continuación se enumeran algunos de los ejemplos comunes. Si desea ver más ejemplos de código, visite nuestro [repositorio de Recetas](https://github.com/gofiber/recipes) o nuestra [documentación de API](https://docs.gofiber.io) .
-
-Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
 
 #### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
 
@@ -524,7 +521,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 -   [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 -   [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
 -   [codemicro/fiber-cache](https://github.com/codemicro/fiber-cache)
--   [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
+-   [sujit-baniya/fiber-boilerplate](https://github.com/sujit-baniya/fiber-boilerplate)
 -   [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
 -   [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
 -   [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)

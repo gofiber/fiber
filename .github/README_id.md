@@ -524,7 +524,7 @@ Berikut adalah kumpulan _middlewares_ yang dibuat oleh komunitas Fiber, silahkan
 -   [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 -   [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
 -   [codemicro/fiber-cache](https://github.com/codemicro/fiber-cache)
--   [itsursujit/fiber-boilerplate](https://github.com/itsursujit/fiber-boilerplate)
+-   [sujit-baniya/fiber-boilerplate](https://github.com/sujit-baniya/fiber-boilerplate)
 -   [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
 -   [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
 -   [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
