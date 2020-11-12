@@ -24,17 +24,20 @@ var sessionPool = sync.Pool{
 }
 
 func acquireSession() *Session {
-	sess := sessionPool.Get().(*Session)
-	sess.db = new(db)
-	return sess
+	s := sessionPool.Get().(*Session)
+	s.db = new(db)
+	s.fresh = true
+	return s
 }
 
 func releaseSession(s *Session) {
 	s.ctx = nil
 	s.config = nil
-	s.db.Reset()
+	if s.db != nil {
+		s.db.Reset()
+	}
 	s.id = ""
-	s.fresh = false
+	s.fresh = true
 	sessionPool.Put(s)
 }
 

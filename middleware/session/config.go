@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/storage/memory"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
@@ -67,9 +66,6 @@ func configDefault(config ...Config) Config {
 	// Set default values
 	if cfg.Expiration <= 0 {
 		cfg.Expiration = ConfigDefault.Expiration
-	}
-	if cfg.Storage == nil {
-		cfg.Storage = memory.New()
 	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator

@@ -2,6 +2,7 @@ package session
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/storage/memory"
 )
 
 type Store struct {
@@ -14,6 +15,10 @@ var errNotExist = "key does not exist"
 func New(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
+
+	if cfg.Storage == nil {
+		cfg.Storage = memory.New()
+	}
 
 	return &Store{
 		cfg,
@@ -36,7 +41,6 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	sess := acquireSession()
 	sess.ctx = c
 	sess.config = s
-	sess.fresh = fresh
 	sess.id = id
 
 	// Fetch existing data
@@ -47,6 +51,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 			if _, err = sess.db.UnmarshalMsg(raw); err != nil {
 				return nil, err
 			}
+			sess.fresh = false
 		} else if err.Error() != errNotExist {
 			// Only return error if it's not ErrNotExist
 			return nil, err
