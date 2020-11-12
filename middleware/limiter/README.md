@@ -30,7 +30,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 app.Use(limiter.New())
 
 // Or extend your config for customization
-//Duration of limiter.Config is deprecated, please use Expiration instead. 
+
 app.Use(limiter.New(limiter.Config{
 	Next: func(c *fiber.Ctx) bool {
 		return c.IP() == "127.0.0.1"
