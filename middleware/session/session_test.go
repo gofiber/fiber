@@ -2,6 +2,7 @@ package session
 
 import (
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
@@ -23,7 +24,7 @@ func Test_Session(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 
 	// set cookie
-	ctx.Request().Header.SetCookie("session_id", "123")
+	ctx.Request().Header.SetCookie(store.CookieName, "123")
 
 	// get session
 	sess, err := store.Get(ctx)
@@ -63,4 +64,117 @@ func Test_Session(t *testing.T) {
 	// get id
 	id = sess.ID()
 	utils.AssertEqual(t, 36, len(id))
+}
+
+// go test -run Test_Session_Store_Reset
+func Test_Session_Store_Reset(t *testing.T) {
+	t.Parallel()
+	// session store
+	store := New()
+	// fiber instance
+	app := fiber.New()
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// get session
+	sess, _ := store.Get(ctx)
+	// make sure its new
+	utils.AssertEqual(t, true, sess.Fresh())
+	// set value & save
+	sess.Set("hello", "world")
+	ctx.Request().Header.SetCookie(store.CookieName, sess.ID())
+	sess.Save()
+
+	// reset store
+	store.Reset()
+
+	// make sure the session is recreated
+	sess, _ = store.Get(ctx)
+	utils.AssertEqual(t, true, sess.Fresh())
+	utils.AssertEqual(t, nil, sess.Get("hello"))
+}
+
+// go test -run Test_Session_Save
+func Test_Session_Save(t *testing.T) {
+	t.Parallel()
+
+	// session store
+	store := New()
+
+	// fiber instance
+	app := fiber.New()
+
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// get store
+	sess, _ := store.Get(ctx)
+
+	// set value
+	sess.Set("name", "john")
+
+	// save session
+	err := sess.Save()
+	utils.AssertEqual(t, nil, err)
+
+}
+
+// go test -run Test_Session_Reset
+func Test_Session_Reset(t *testing.T) {
+	t.Parallel()
+	// session store
+	store := New()
+	// fiber instance
+	app := fiber.New()
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+	// get session
+	sess, _ := store.Get(ctx)
+
+	sess.Set("name", "fenny")
+	sess.Reset()
+	name := sess.Get("name")
+	utils.AssertEqual(t, nil, name)
+}
+
+// go test -run Test_Session_Custom_Config
+func Test_Session_Custom_Config(t *testing.T) {
+	t.Parallel()
+
+	store := New(Config{Expiration: time.Hour, KeyGenerator: func() string { return "very random" }})
+	utils.AssertEqual(t, time.Hour, store.Expiration)
+	utils.AssertEqual(t, "very random", store.KeyGenerator())
+
+	store = New(Config{Expiration: 0})
+	utils.AssertEqual(t, ConfigDefault.Expiration, store.Expiration)
+	// fmt.Println(ConfigDefault.KeyGenerator == store.KeyGenerator)
+	// utils.AssertEqual(t, ConfigDefault.KeyGenerator, store.KeyGenerator)
+}
+
+// TODO
+func Test_Session_Cookie(t *testing.T) {
+	t.Parallel()
+	// session store
+	store := New()
+	// fiber instance
+	app := fiber.New()
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// get session
+	sess, _ := store.Get(ctx)
+	sess.Save()
+
+	// TODO make sure cookie exists
+	// fmt.Println(string(ctx.Response().Header.PeekCookie("session_id")))
+
+	// delete cookie
+	// sess.deleteCookie()
+	// sess.Save()
+
+	// TODO make sure cookie does not exist
 }
