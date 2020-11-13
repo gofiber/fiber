@@ -135,7 +135,7 @@ func Test_Session_Reset(t *testing.T) {
 	sess, _ := store.Get(ctx)
 
 	sess.Set("name", "fenny")
-	sess.Reset()
+	sess.Destroy()
 	name := sess.Get("name")
 	utils.AssertEqual(t, nil, name)
 }
@@ -150,31 +150,23 @@ func Test_Session_Custom_Config(t *testing.T) {
 
 	store = New(Config{Expiration: 0})
 	utils.AssertEqual(t, ConfigDefault.Expiration, store.Expiration)
-	// fmt.Println(ConfigDefault.KeyGenerator == store.KeyGenerator)
-	// utils.AssertEqual(t, ConfigDefault.KeyGenerator, store.KeyGenerator)
 }
 
-// TODO
-// func Test_Session_Cookie(t *testing.T) {
-// 	t.Parallel()
-// 	// session store
-// 	store := New()
-// 	// fiber instance
-// 	app := fiber.New()
-// 	// fiber context
-// 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-// 	defer app.ReleaseCtx(ctx)
+// go test -run Test_Session_Cookie
+func Test_Session_Cookie(t *testing.T) {
+	t.Parallel()
+	// session store
+	store := New()
+	// fiber instance
+	app := fiber.New()
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
 
-// 	// get session
-// 	sess, _ := store.Get(ctx)
-// 	sess.Save()
+	// get session
+	sess, _ := store.Get(ctx)
+	sess.Save()
 
-// 	// TODO make sure cookie exists
-// 	// fmt.Println(string(ctx.Response().Header.PeekCookie("session_id")))
-
-// 	// delete cookie
-// 	// sess.deleteCookie()
-// 	// sess.Save()
-
-// 	// TODO make sure cookie does not exist
-// }
+	// cookie should not be set if empty data
+	utils.AssertEqual(t, 0, len(ctx.Response().Header.PeekCookie(store.CookieName)))
+}

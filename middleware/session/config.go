@@ -64,7 +64,7 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if cfg.Expiration <= 0 {
+	if int(cfg.Expiration.Seconds()) <= 0 {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
 	if cfg.KeyGenerator == nil {

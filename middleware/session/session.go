@@ -66,18 +66,38 @@ func (s *Session) Delete(key string) {
 	s.db.Delete(key)
 }
 
-// Reset will clear the session and remove from storage
-func (s *Session) Reset() error {
+// Destroy will delete the session from Storage and expire session cookie
+func (s *Session) Destroy() error {
+	// Reset local data
 	s.db.Reset()
-	return s.config.Storage.Delete(s.id)
+
+	// Delete data from storage
+	if err := s.config.Storage.Delete(s.id); err != nil {
+		return err
+	}
+
+	// Expire cookie
+	s.delCookie()
+	return nil
+}
+
+// Regenerate generates a new session id and delete the old one from Storage
+func (s *Session) Regenerate() error {
+
+	// Delete old id from storage
+	if err := s.config.Storage.Delete(s.id); err != nil {
+		return err
+	}
+	// Create new ID
+	s.id = s.config.KeyGenerator()
+
+	return nil
 }
 
 // Save will update the storage and client cookie
 func (s *Session) Save() error {
-	// Expire session if no data is present ( aka reset )
+	// Don't save to Storage if no data is available
 	if s.db.Len() <= 0 {
-		// Delete cookie
-		s.deleteCookie()
 		return nil
 	}
 
@@ -107,7 +127,7 @@ func (s *Session) setCookie() {
 	fcookie.SetValue(s.id)
 	fcookie.SetPath(s.config.CookiePath)
 	fcookie.SetDomain(s.config.CookieDomain)
-	fcookie.SetMaxAge(int(s.config.Expiration))
+	fcookie.SetMaxAge(int(s.config.Expiration.Seconds()))
 	fcookie.SetExpire(time.Now().Add(s.config.Expiration))
 	fcookie.SetSecure(s.config.CookieSecure)
 	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
@@ -125,7 +145,7 @@ func (s *Session) setCookie() {
 	fasthttp.ReleaseCookie(fcookie)
 }
 
-func (s *Session) deleteCookie() {
+func (s *Session) delCookie() {
 	s.ctx.Request().Header.DelCookie(s.config.CookieName)
 	s.ctx.Response().Header.DelCookie(s.config.CookieName)
 
@@ -133,7 +153,7 @@ func (s *Session) deleteCookie() {
 	fcookie.SetKey(s.config.CookieName)
 	fcookie.SetPath(s.config.CookiePath)
 	fcookie.SetDomain(s.config.CookieDomain)
-	fcookie.SetMaxAge(int(s.config.Expiration))
+	fcookie.SetMaxAge(-1)
 	fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
 	fcookie.SetSecure(s.config.CookieSecure)
 	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)

@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -357,4 +358,50 @@ func Test_Utils_lnMetadata(t *testing.T) {
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config != nil)
 	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4
+func Benchmark_SlashRecognition(b *testing.B) {
+	search := "wtf/1234"
+	var result bool
+	b.Run("indexBytes", func(b *testing.B) {
+		result = false
+		for i := 0; i < b.N; i++ {
+			if strings.IndexByte(search, slashDelimiter) != -1 {
+				result = true
+			}
+		}
+		utils.AssertEqual(b, true, result)
+	})
+	b.Run("forEach", func(b *testing.B) {
+		result = false
+		c := int32(slashDelimiter)
+		for i := 0; i < b.N; i++ {
+			for _, b := range search {
+				if b == c {
+					result = true
+					break
+				}
+			}
+		}
+		utils.AssertEqual(b, true, result)
+	})
+	b.Run("IndexRune", func(b *testing.B) {
+		result = false
+		c := int32(slashDelimiter)
+		for i := 0; i < b.N; i++ {
+			result = IndexRune(search, c)
+
+		}
+		utils.AssertEqual(b, true, result)
+	})
+}
+
+func IndexRune(str string, needle int32) bool {
+	for _, b := range str {
+		if b == needle {
+			return true
+		}
+	}
+	return false
 }

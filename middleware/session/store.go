@@ -61,6 +61,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	return sess, nil
 }
 
+// Reset will delete all session from the storage
 func (s *Store) Reset() error {
 	return s.Storage.Reset()
 }
