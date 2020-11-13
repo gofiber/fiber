@@ -30,12 +30,11 @@ app.Use(csrf.New())
 
 // Or extend your config for customization
 app.Use(csrf.New(csrf.Config{
-	TokenLookup: "header:X-CSRF-Token",
-	ContextKey: "csrf",
-	Cookie: &fiber.Cookie{
-		Name: "_csrf",
-	},
-	Expiration: 24 * time.Hour,
+	KeyLookup:      "header:X-Csrf-Token",
+	CookieName:     "csrf_",
+	CookieSameSite: "Strict",
+	Expiration:     1 * time.Hour,
+	KeyGenerator:   utils.UUID,
 }))
 ```
 
@@ -60,11 +59,29 @@ type Config struct {
 	// Optional. Default: "header:X-CSRF-Token"
 	KeyLookup string
 
-	// Cookie settings to pass the CSRF token to the client on GET
-	// requests.
-	//
-	// Optional.
-	Cookie *fiber.Cookie
+	// Name of the session cookie. This cookie will store session key.
+	// Optional. Default value "_csrf".
+	CookieName string
+
+	// Domain of the CSRF cookie.
+	// Optional. Default value "".
+	CookieDomain string
+
+	// Path of the CSRF cookie.
+	// Optional. Default value "".
+	CookiePath string
+
+	// Indicates if CSRF cookie is secure.
+	// Optional. Default value false.
+	CookieSecure bool
+
+	// Indicates if CSRF cookie is HTTP only.
+	// Optional. Default value false.
+	CookieHTTPOnly bool
+
+	// Indicates if CSRF cookie is HTTP only.
+	// Optional. Default value "Strict".
+	CookieSameSite string
 
 	// Expiration is the duration before csrf token will expire
 	//
@@ -82,7 +99,7 @@ type Config struct {
 	// Optional. Default: ""
 	ContextKey string
 
-	// Optional. ID generator function.
+	// KeyGenerator creates a new CSRF token
 	//
 	// Optional. Default: utils.UUID
 	KeyGenerator func() string
@@ -92,12 +109,10 @@ type Config struct {
 ### Default Config
 ```go
 var ConfigDefault = Config{
-	KeyLookup: "header:X-Csrf-Token",
-	Cookie: &fiber.Cookie{
-		Name:     "_csrf",
-		SameSite: "Strict",
-	},
-	Expiration:   1 * time.Hour,
-	KeyGenerator: utils.UUID,
+	KeyLookup:      "header:X-Csrf-Token",
+	CookieName:     "csrf_",
+	CookieSameSite: "Strict",
+	Expiration:     1 * time.Hour,
+	KeyGenerator:   utils.UUID,
 }
 ```
