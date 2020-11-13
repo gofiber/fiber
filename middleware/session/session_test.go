@@ -155,26 +155,26 @@ func Test_Session_Custom_Config(t *testing.T) {
 }
 
 // TODO
-func Test_Session_Cookie(t *testing.T) {
-	t.Parallel()
-	// session store
-	store := New()
-	// fiber instance
-	app := fiber.New()
-	// fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+// func Test_Session_Cookie(t *testing.T) {
+// 	t.Parallel()
+// 	// session store
+// 	store := New()
+// 	// fiber instance
+// 	app := fiber.New()
+// 	// fiber context
+// 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+// 	defer app.ReleaseCtx(ctx)
 
-	// get session
-	sess, _ := store.Get(ctx)
-	sess.Save()
+// 	// get session
+// 	sess, _ := store.Get(ctx)
+// 	sess.Save()
 
-	// TODO make sure cookie exists
-	// fmt.Println(string(ctx.Response().Header.PeekCookie("session_id")))
+// 	// TODO make sure cookie exists
+// 	// fmt.Println(string(ctx.Response().Header.PeekCookie("session_id")))
 
-	// delete cookie
-	// sess.deleteCookie()
-	// sess.Save()
+// 	// delete cookie
+// 	// sess.deleteCookie()
+// 	// sess.Save()
 
-	// TODO make sure cookie does not exist
-}
+// 	// TODO make sure cookie does not exist
+// }
