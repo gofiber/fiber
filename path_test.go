@@ -184,7 +184,7 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/something", params: nil, match: false},
 	})
 	testCase("/api/:param/fixedEnd", []testparams{
-		{url: "/api/abc/fixedEnd", params: []string{"abc", ""}, match: true},
+		{url: "/api/abc/fixedEnd", params: []string{"abc"}, match: true},
 		{url: "/api/abc/def/fixedEnd", params: nil, match: false},
 	})
 	testCase("/shop/product/::filter/color::color/size::size", []testparams{
