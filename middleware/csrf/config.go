@@ -87,14 +87,14 @@ func configDefault(config ...Config) Config {
 		fmt.Println("[CSRF] TokenLookup is deprecated, please use KeyLookup")
 		cfg.KeyLookup = cfg.TokenLookup
 	}
-	if cfg.CookieExpires != 0 {
+	if int(cfg.CookieExpires.Seconds()) >= 0 {
 		fmt.Println("[CSRF] CookieExpires is deprecated, please use Expiration")
 		cfg.Expiration = cfg.CookieExpires
 	}
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup
 	}
-	if cfg.Expiration <= 0 {
+	if int(cfg.Expiration.Seconds()) <= 0 {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
 	if cfg.Cookie != nil {

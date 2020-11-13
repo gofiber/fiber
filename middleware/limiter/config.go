@@ -76,7 +76,7 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if cfg.Duration > 0 {
+	if int(cfg.Duration.Seconds()) > 0 {
 		fmt.Println("[LIMITER] Duration is deprecated, please use Expiration")
 		cfg.Expiration = cfg.Duration
 	}
@@ -94,7 +94,7 @@ func configDefault(config ...Config) Config {
 	if cfg.Max <= 0 {
 		cfg.Max = ConfigDefault.Max
 	}
-	if cfg.Expiration <= 0 {
+	if int(cfg.Expiration.Seconds()) <= 0 {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
 	if cfg.KeyGenerator == nil {
