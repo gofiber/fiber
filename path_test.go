@@ -435,7 +435,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		}
 	}
 	benchCase("/api/:param/fixedEnd", []testparams{
-		{url: "/api/abc/fixedEnd", params: []string{"abc", ""}, match: true},
+		{url: "/api/abc/fixedEnd", params: []string{"abc"}, match: true},
 		{url: "/api/abc/def/fixedEnd", params: nil, match: false},
 	})
 	benchCase("/api/v1/:param/*", []testparams{
