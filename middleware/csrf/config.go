@@ -27,11 +27,29 @@ type Config struct {
 	// Optional. Default: "header:X-CSRF-Token"
 	KeyLookup string
 
-	// Cookie settings to pass the CSRF token to the client on GET
-	// requests.
-	//
-	// Optional.
-	Cookie *fiber.Cookie
+	// Name of the session cookie. This cookie will store session key.
+	// Optional. Default value "_csrf".
+	CookieName string
+
+	// Domain of the CSRF cookie.
+	// Optional. Default value "".
+	CookieDomain string
+
+	// Path of the CSRF cookie.
+	// Optional. Default value "".
+	CookiePath string
+
+	// Indicates if CSRF cookie is secure.
+	// Optional. Default value false.
+	CookieSecure bool
+
+	// Indicates if CSRF cookie is HTTP only.
+	// Optional. Default value false.
+	CookieHTTPOnly bool
+
+	// Indicates if CSRF cookie is HTTP only.
+	// Optional. Default value "Strict".
+	CookieSameSite string
 
 	// Expiration is the duration before csrf token will expire
 	//
@@ -57,19 +75,20 @@ type Config struct {
 	// Deprecated, please use Expiration
 	CookieExpires time.Duration
 
+	// Deprecated, please use Cookie* related fields
+	Cookie *fiber.Cookie
+
 	// Deprecated, please use KeyLookup
 	TokenLookup string
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	KeyLookup: "header:X-Csrf-Token",
-	Cookie: &fiber.Cookie{
-		Name:     "_csrf",
-		SameSite: "Strict",
-	},
-	Expiration:   1 * time.Hour,
-	KeyGenerator: utils.UUID,
+	KeyLookup:      "header:X-Csrf-Token",
+	CookieName:     "csrf_",
+	CookieSameSite: "Strict",
+	Expiration:     1 * time.Hour,
+	KeyGenerator:   utils.UUID,
 }
 
 // Helper function to set default values
@@ -91,21 +110,34 @@ func configDefault(config ...Config) Config {
 		fmt.Println("[CSRF] CookieExpires is deprecated, please use Expiration")
 		cfg.Expiration = cfg.CookieExpires
 	}
+	if cfg.Cookie != nil {
+		fmt.Println("[CSRF] Cookie is deprecated, please use Cookie* related fields")
+		if cfg.Cookie.Name != "" {
+			cfg.CookieName = cfg.Cookie.Name
+		}
+		if cfg.Cookie.Domain != "" {
+			cfg.CookieDomain = cfg.Cookie.Domain
+		}
+		if cfg.Cookie.Path != "" {
+			cfg.CookiePath = cfg.Cookie.Path
+		}
+		cfg.CookieSecure = cfg.Cookie.Secure
+		cfg.CookieHTTPOnly = cfg.Cookie.HTTPOnly
+		if cfg.Cookie.SameSite != "" {
+			cfg.CookieSameSite = cfg.Cookie.SameSite
+		}
+	}
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup
 	}
 	if int(cfg.Expiration.Seconds()) <= 0 {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
-	if cfg.Cookie != nil {
-		if cfg.Cookie.Name == "" {
-			cfg.Cookie.Name = ConfigDefault.Cookie.Name
-		}
-		if cfg.Cookie.SameSite == "" {
-			cfg.Cookie.SameSite = ConfigDefault.Cookie.SameSite
-		}
-	} else {
-		cfg.Cookie = ConfigDefault.Cookie
+	if cfg.CookieName == "" {
+		cfg.CookieName = ConfigDefault.CookieName
+	}
+	if cfg.CookieSameSite == "" {
+		cfg.CookieSameSite = ConfigDefault.CookieSameSite
 	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator
