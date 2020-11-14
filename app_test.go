@@ -948,6 +948,7 @@ func Test_NewError(t *testing.T) {
 	utils.AssertEqual(t, "permission denied", e.Message)
 }
 
+// go test -run Test_Test_Timeout
 func Test_Test_Timeout(t *testing.T) {
 	app := New()
 	app.config.DisableStartupMessage = true
@@ -973,6 +974,7 @@ func (errorReader) Read([]byte) (int, error) {
 	return 0, errors.New("errorReader")
 }
 
+// go test -run Test_Test_DumpError
 func Test_Test_DumpError(t *testing.T) {
 	app := New()
 	app.config.DisableStartupMessage = true
@@ -984,6 +986,7 @@ func Test_Test_DumpError(t *testing.T) {
 	utils.AssertEqual(t, "errorReader", err.Error())
 }
 
+// go test -run Test_App_Handler
 func Test_App_Handler(t *testing.T) {
 	h := New().Handler()
 	utils.AssertEqual(t, "fasthttp.RequestHandler", reflect.TypeOf(h).String())
@@ -995,6 +998,7 @@ func (invalidView) Load() error { return errors.New("invalid view") }
 
 func (i invalidView) Render(io.Writer, string, interface{}, ...string) error { panic("implement me") }
 
+// go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
 	app := New(Config{Views: invalidView{}})
 
@@ -1006,6 +1010,7 @@ func Test_App_Init_Error_View(t *testing.T) {
 	_ = app.config.Views.Render(nil, "", nil)
 }
 
+// go test -run Test_App_Stack
 func Test_App_Stack(t *testing.T) {
 	app := New()
 
