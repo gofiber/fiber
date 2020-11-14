@@ -39,8 +39,8 @@ func New(config ...Config) fiber.Handler {
 	case "param":
 		extractor = csrfFromParam(selectors[1])
 	case "cookie":
-		if selectors[1] == cfg.Cookie.Name {
-			panic(fmt.Sprintf("KeyLookup key %s can't be the same as Cookie.Name %s", selectors[1], cfg.Cookie.Name))
+		if selectors[1] == cfg.CookieName {
+			panic(fmt.Sprintf("KeyLookup key %s can't be the same as CookieName %s", selectors[1], cfg.CookieName))
 		}
 		extractor = csrfFromCookie(selectors[1])
 	}
@@ -61,7 +61,7 @@ func New(config ...Config) fiber.Handler {
 		switch c.Method() {
 		case fiber.MethodGet:
 			// Declare empty token and try to get existing CSRF from cookie
-			token = c.Cookies(cfg.Cookie.Name)
+			token = c.Cookies(cfg.CookieName)
 
 			// Generate CSRF token if not exist
 			if token == "" {
@@ -76,14 +76,14 @@ func New(config ...Config) fiber.Handler {
 
 			// Create cookie to pass token to client
 			cookie := &fiber.Cookie{
-				Name:     cfg.Cookie.Name,
+				Name:     cfg.CookieName,
 				Value:    token,
-				Domain:   cfg.Cookie.Domain,
-				Path:     cfg.Cookie.Path,
+				Domain:   cfg.CookieDomain,
+				Path:     cfg.CookiePath,
 				Expires:  time.Now().Add(cfg.Expiration),
-				Secure:   cfg.Cookie.Secure,
-				HTTPOnly: cfg.Cookie.HTTPOnly,
-				SameSite: cfg.Cookie.SameSite,
+				Secure:   cfg.CookieSecure,
+				HTTPOnly: cfg.CookieHTTPOnly,
+				SameSite: cfg.CookieSameSite,
 			}
 
 			// Set cookie to response
@@ -103,13 +103,13 @@ func New(config ...Config) fiber.Handler {
 				}
 				// Expire cookie
 				c.Cookie(&fiber.Cookie{
-					Name:     cfg.Cookie.Name,
-					Domain:   cfg.Cookie.Domain,
-					Path:     cfg.Cookie.Path,
+					Name:     cfg.CookieName,
+					Domain:   cfg.CookieDomain,
+					Path:     cfg.CookiePath,
 					Expires:  time.Now().Add(-1 * time.Minute),
-					Secure:   cfg.Cookie.Secure,
-					HTTPOnly: cfg.Cookie.HTTPOnly,
-					SameSite: cfg.Cookie.SameSite,
+					Secure:   cfg.CookieSecure,
+					HTTPOnly: cfg.CookieHTTPOnly,
+					SameSite: cfg.CookieSameSite,
 				})
 				return fiber.ErrForbidden
 			}
