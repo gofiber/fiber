@@ -1,5 +1,5 @@
 # Session
-Session middleware for [Fiber](https://github.com/gofiber/fiber) that recovers from panics anywhere in the stack chain and handles the control to the centralized [ErrorHandler](https://docs.gofiber.io/error-handling).
+Session middleware for [Fiber](https://github.com/gofiber/fiber)
 
 ### Table of Contents
 - [Signatures](#signatures)
@@ -29,10 +29,13 @@ store := session.New()
 
 // This panic will be catch by the middleware
 app.Get("/", func(c *fiber.Ctx) error {
+	// get session from storage
 	sess, err := store.Get(c)
 	if err != nil {
-		return c.Status(500).SendString(err.Error())
+		panic(err)
 	}
+
+	// save session
 	defer sess.Save()
 
 	// Get value
@@ -44,6 +47,10 @@ app.Get("/", func(c *fiber.Ctx) error {
 	// Delete key
 	sess.Delete("name")
 
+	// Destry session
+	if err := sess.Destroy(); err != nil {
+		panic(err)
+	}
 
 	return fmt.Fprintf(ctx, "Welcome %v", name)
 })
