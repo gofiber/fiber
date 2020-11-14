@@ -6,28 +6,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// Config defines the config for middleware.
-type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
-}
-
-// ConfigDefault is the default config
-var ConfigDefault = Config{
-	Next: nil,
-}
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := ConfigDefault
-
-	// Override config if provided
-	if len(config) > 0 {
-		cfg = config[0]
-	}
+	cfg := configDefault(config...)
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {

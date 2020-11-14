@@ -30,13 +30,12 @@ After you initiate your Fiber app, you can use the following possibilities:
 app.Use(limiter.New())
 
 // Or extend your config for customization
-
 app.Use(limiter.New(limiter.Config{
 	Next: func(c *fiber.Ctx) bool {
 		return c.IP() == "127.0.0.1"
 	},
 	Max:          20,
-	Expiration: 30 * time.Second,
+	Duration:     30 * time.Second,
 	Key:          func(c *fiber.Ctx) string {
 		return c.Get("x-forwarded-for")
 	},
@@ -61,17 +60,17 @@ type Config struct {
 	// Default: 5
 	Max int
 
-	// Expiration is the time on how long to keep records of requests in memory
-	// 
-	// Default: time.Minute
-	Expiration time.Duration
-
-	// Key allows you to generate custom keys, by default c.IP() is used
+	// KeyGenerator allows you to generate custom keys, by default c.IP() is used
 	//
 	// Default: func(c *fiber.Ctx) string {
 	//   return c.IP()
 	// }
-	Key func(*fiber.Ctx) string
+	KeyGenerator func(*fiber.Ctx) string
+
+	// Expiration is the time on how long to keep records of requests in memory
+	//
+	// Default: 1 * time.Minute
+	Expiration time.Duration
 
 	// LimitReached is called when a request hits the limit
 	//
@@ -80,12 +79,10 @@ type Config struct {
 	// }
 	LimitReached fiber.Handler
 
-	// Store is used to store the state of the middleware.
-	// If no store is supplied, an in-memory store is used. If a store is supplied,
-	// it must implement the `Storage` interface.
+	// Store is used to store the state of the middleware
 	//
-	// Default: in memory
-	Store Storage
+	// Default: an in memory store for this process only
+	Storage fiber.Storage
 }
 ```
 
@@ -94,10 +91,9 @@ A custom store can be used if it implements the `Storage` interface - more detai
 ### Default Config
 ```go
 var ConfigDefault = Config{
-	Next:     nil,
-	Max:      5,
-	Duration: time.Minute,
-	Key: func(c *fiber.Ctx) string {
+	Max:        5,
+	Expiration: 1 * time.Minute,
+	KeyGenerator: func(c *fiber.Ctx) string {
 		return c.IP()
 	},
 	LimitReached: func(c *fiber.Ctx) error {

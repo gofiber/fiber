@@ -12,74 +12,10 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
-// Config defines the config for middleware.
-type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
-
-	// Expiration is the time that an cached response will live
-	//
-	// Optional. Default: 1 * time.Minute
-	Expiration time.Duration
-
-	// CacheControl enables client side caching if set to true
-	//
-	// Optional. Default: false
-	CacheControl bool
-
-	// Key allows you to generate custom keys, by default c.Path() is used
-	//
-	// Default: func(c *fiber.Ctx) string {
-	//   return c.Path()
-	// }
-	Key func(*fiber.Ctx) string
-
-	// Store is used to store the state of the middleware
-	//
-	// Default: an in memory store for this process only
-	Store fiber.Storage
-
-	// Internally used - if true, the simpler method of two maps is used in order to keep
-	// execution time down.
-	defaultStore bool
-}
-
-// ConfigDefault is the default config
-var ConfigDefault = Config{
-	Next:         nil,
-	Expiration:   1 * time.Minute,
-	CacheControl: false,
-	Key: func(c *fiber.Ctx) string {
-		return c.Path()
-	},
-	defaultStore: true,
-}
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := ConfigDefault
-
-	// Override config if provided
-	if len(config) > 0 {
-		cfg = config[0]
-
-		// Set default values
-		if cfg.Next == nil {
-			cfg.Next = ConfigDefault.Next
-		}
-		if int(cfg.Expiration.Seconds()) == 0 {
-			cfg.Expiration = ConfigDefault.Expiration
-		}
-		if cfg.Key == nil {
-			cfg.Key = ConfigDefault.Key
-		}
-		if cfg.Store == nil {
-			cfg.defaultStore = true
-		}
-	}
+	cfg := configDefault(config...)
 
 	var (
 		// Cache settings
@@ -152,7 +88,7 @@ func New(config ...Config) fiber.Handler {
 
 		} else {
 			// Load data from store
-			storeEntry, err := cfg.Store.Get(key)
+			storeEntry, err := cfg.Storage.Get(key)
 			if err != nil {
 				return err
 			}
@@ -165,7 +101,7 @@ func New(config ...Config) fiber.Handler {
 				}
 			}
 
-			if entryBody, err = cfg.Store.Get(key + "_body"); err != nil {
+			if entryBody, err = cfg.Storage.Get(key + "_body"); err != nil {
 				return err
 			}
 		}
@@ -183,10 +119,10 @@ func New(config ...Config) fiber.Handler {
 			if cfg.defaultStore {
 				delete(entries, key)
 			} else { // Use custom storage
-				if err := cfg.Store.Delete(key); err != nil {
+				if err := cfg.Storage.Delete(key); err != nil {
 					return err
 				}
-				if err := cfg.Store.Delete(key + "_body"); err != nil {
+				if err := cfg.Storage.Delete(key + "_body"); err != nil {
 					return err
 				}
 			}
@@ -234,12 +170,12 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Pass bytes to Storage
-			if err = cfg.Store.Set(key, data, cfg.Expiration); err != nil {
+			if err = cfg.Storage.Set(key, data, cfg.Expiration); err != nil {
 				return err
 			}
 
 			// Pass bytes to Storage
-			if err = cfg.Store.Set(key+"_body", entryBody, cfg.Expiration); err != nil {
+			if err = cfg.Storage.Set(key+"_body", entryBody, cfg.Expiration); err != nil {
 				return err
 			}
 		}
