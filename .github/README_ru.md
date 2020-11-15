@@ -105,9 +105,9 @@ func main() {
 
 ## ⚙️ Установка
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
+Убедитесь, что Go установлен ([скачать](https://golang.org/dl/)). Требуется версия `1.14` или выше. 
 
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+Инициализируйте проект, создав папку, а затем запустив `go mod init github.com/your/repo` ([подробнее](https://blog.golang.org/using-go-modules)) внутри этой папки. Далее, установите Fiber с помощью команды [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -139,8 +139,6 @@ Fiber **вдохновлен** Express, самым популярным веб �
 ## 👀 Примеры
 
 Ниже перечислены некоторые из распространенных примеров. Если вы хотите увидеть больше примеров кода, пожалуйста, посетите наш [репозиторий рецептов](https://github.com/gofiber/recipes) или [документацию по API](https://docs.gofiber.io).
-
-Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
 
 #### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
 
@@ -243,11 +241,11 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/context#render)
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
+Если не указано ни одного движка для views, Fiber использует [html/template](https://golang.org/pkg/html/template/).
 
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+Вы можете использовать движки [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) или [pug](https://github.com/Joker/jade) и другие...
 
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
+Ознакомьтесь с пакетом [Template](https://github.com/gofiber/template), который поддерживает множество движков для views.
 
 ```go
 package main
@@ -275,7 +273,7 @@ func main() {
 }
 ```
 
-### Grouping routes into chains
+### Группировка путей в цепочки
 
 📖 [Group](https://docs.gofiber.io/application#group)
 
@@ -481,11 +479,11 @@ func main() {
 
 </details>
 
-## 🧬 Internal Middleware
+## 🧬 Внутренние Middleware
 
-Here is a list of middleware that are included within the Fiber framework.
+Вот список middleware, входящих в состав фреймворка Fiber.
 
-| Middleware                                                                       | Description                                                                                                                                                           |
+| Middleware                                                                       | Описание                                                                                                                                                           |
 | :------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
 | [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default.                                                                              |
@@ -502,11 +500,11 @@ Here is a list of middleware that are included within the Fiber framework.
 | [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md).                     |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                         |
 
-## 🧬 External Middleware
+## 🧬 Внешние Middleware
 
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+Список модулей middleware, размещенных на внешнем хостинге от [Fiber team](https://github.com/orgs/gofiber/people).
 
-| Middleware                                        | Description                                                                                                                                                         |
+| Middleware                                        | Описание                                                                                                                                                         |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [adaptor](https://github.com/gofiber/adaptor)     | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn!                                                                           |
 | [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
