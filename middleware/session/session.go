@@ -10,11 +10,11 @@ import (
 )
 
 type Session struct {
-	ctx    *fiber.Ctx
-	config *Store
-	db     *db
-	id     string
-	fresh  bool
+	id     string     // session id
+	fresh  bool       // if new session
+	ctx    *fiber.Ctx // fiber context
+	config *Store     // store configuration
+	data   *data      // key value data
 }
 
 var sessionPool = sync.Pool{
@@ -24,20 +24,10 @@ var sessionPool = sync.Pool{
 }
 
 func acquireSession() *Session {
-	s := sessionPool.Get().(*Session)
-	s.db = new(db)
-	s.fresh = true
-	return s
+	return sessionPool.Get().(*Session)
 }
 
 func releaseSession(s *Session) {
-	s.ctx = nil
-	s.config = nil
-	if s.db != nil {
-		s.db.Reset()
-	}
-	s.id = ""
-	s.fresh = true
 	sessionPool.Put(s)
 }
 
@@ -53,27 +43,50 @@ func (s *Session) ID() string {
 
 // Get will return the value
 func (s *Session) Get(key string) interface{} {
-	return s.db.Get(key)
+	// Better safe than sorry
+	if s.data == nil {
+		return nil
+	}
+	return s.data.Get(key)
 }
 
 // Set will update or create a new key value
 func (s *Session) Set(key string, val interface{}) {
-	s.db.Set(key, val)
+	// Better safe than sorry
+	if s.data == nil {
+		return
+	}
+	s.data.Set(key, val)
 }
 
 // Delete will delete the value
 func (s *Session) Delete(key string) {
-	s.db.Delete(key)
+	// Better safe than sorry
+	if s.data == nil {
+		return
+	}
+	s.data.Delete(key)
 }
 
 // Destroy will delete the session from Storage and expire session cookie
 func (s *Session) Destroy() error {
-	// Reset local data
-	s.db.Reset()
+	// Better safe than sorry
+	if s.data == nil {
+		return nil
+	}
 
-	// Delete data from storage
-	if err := s.config.Storage.Delete(s.id); err != nil {
-		return err
+	// Reset local data
+	s.data.Reset()
+
+	// Use external Storage if exist
+	if s.config.Storage != nil {
+		if err := s.config.Storage.Delete(s.id); err != nil {
+			return err
+		}
+	} else {
+		s.config.mux.Lock()
+		delete(s.config.sessions, s.id)
+		s.config.mux.Unlock()
 	}
 
 	// Expire cookie
@@ -83,11 +96,18 @@ func (s *Session) Destroy() error {
 
 // Regenerate generates a new session id and delete the old one from Storage
 func (s *Session) Regenerate() error {
-
-	// Delete old id from storage
-	if err := s.config.Storage.Delete(s.id); err != nil {
-		return err
+	// Use external Storage if exist
+	if s.config.Storage != nil {
+		// Delete old id from storage
+		if err := s.config.Storage.Delete(s.id); err != nil {
+			return err
+		}
+	} else {
+		s.config.mux.Lock()
+		delete(s.config.sessions, s.id)
+		s.config.mux.Unlock()
 	}
+
 	// Create new ID
 	s.id = s.config.KeyGenerator()
 
@@ -96,26 +116,42 @@ func (s *Session) Regenerate() error {
 
 // Save will update the storage and client cookie
 func (s *Session) Save() error {
-	// Don't save to Storage if no data is available
-	if s.db.Len() <= 0 {
+	// Better safe than sorry
+	if s.data == nil {
 		return nil
 	}
 
-	// Convert book to bytes
-	data, err := s.db.MarshalMsg(nil)
-	if err != nil {
-		return err
+	// Don't save to Storage if no data is available
+	if s.data.Len() <= 0 {
+		return nil
 	}
 
-	// pass raw bytes with session id to provider
-	if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
-		return err
+	// Use external Storage if exist
+	if s.config.Storage != nil {
+		// Convert book to bytes
+		data, err := s.data.MarshalMsg(nil)
+		if err != nil {
+			return err
+		}
+
+		// pass raw bytes with session id to provider
+		if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
+			return err
+		}
+	} else {
+		s.config.mux.Lock()
+		s.config.sessions[s.id] = s.data
+		s.config.mux.Unlock()
 	}
 
 	// Create cookie with the session ID
 	s.setCookie()
 
-	// release session to pool to be re-used on next request
+	// Release data if we use a Storage
+	if s.config.Storage != nil {
+		releaseData(s.data)
+	}
+
 	releaseSession(s)
 
 	return nil

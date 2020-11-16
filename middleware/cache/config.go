@@ -29,15 +29,18 @@ type Config struct {
 	// Default: func(c *fiber.Ctx) string {
 	//   return c.Path()
 	// }
-	Key func(*fiber.Ctx) string
-
-	// Deprecated, use Storage instead
-	Store fiber.Storage
+	KeyGenerator func(*fiber.Ctx) string
 
 	// Store is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
 	Storage fiber.Storage
+
+	// Deprecated, use Storage instead
+	Store fiber.Storage
+
+	// Deprecated, use KeyGenerator instead
+	Key func(*fiber.Ctx) string
 
 	// Internally used - if true, the simpler method of two maps is used in order to keep
 	// execution time down.
@@ -49,9 +52,10 @@ var ConfigDefault = Config{
 	Next:         nil,
 	Expiration:   1 * time.Minute,
 	CacheControl: false,
-	Key: func(c *fiber.Ctx) string {
+	KeyGenerator: func(c *fiber.Ctx) string {
 		return c.Path()
 	},
+	Storage:      nil,
 	defaultStore: true,
 }
 
@@ -66,21 +70,24 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
+	if cfg.Store != nil {
+		fmt.Println("[CACHE] Store is deprecated, please use Storage")
+		cfg.Storage = cfg.Store
+	}
+	if cfg.Key != nil {
+		fmt.Println("[CACHE] Key is deprecated, please use KeyGenerator")
+		cfg.KeyGenerator = cfg.Key
+	}
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
 	}
 	if int(cfg.Expiration.Seconds()) == 0 {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
-	if cfg.Key == nil {
-		cfg.Key = ConfigDefault.Key
+	if cfg.KeyGenerator == nil {
+		cfg.KeyGenerator = ConfigDefault.KeyGenerator
 	}
-	if cfg.Storage == nil && cfg.Store == nil {
-		cfg.defaultStore = true
-	}
-	if cfg.Store != nil {
-		fmt.Println("cache: `Store` is deprecated, use `Storage` instead")
-		cfg.Storage = cfg.Store
+	if cfg.Storage != nil {
 		cfg.defaultStore = true
 	}
 	return cfg
