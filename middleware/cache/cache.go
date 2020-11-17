@@ -28,12 +28,12 @@ func New(config ...Config) fiber.Handler {
 		// Cache settings
 		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
-		mux        = &sync.RWMutex{}
 	)
 
 	// create storage handler
 	store := &storage{
 		cfg:     &cfg,
+		mux:     &sync.RWMutex{},
 		entries: make(map[string]*entry),
 	}
 
@@ -60,9 +60,6 @@ func New(config ...Config) fiber.Handler {
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
-		mux.Lock()
-		defer mux.Unlock()
-
 		// Get/Create new entry
 		var e = store.get(key)
 
@@ -78,9 +75,8 @@ func New(config ...Config) fiber.Handler {
 			store.delete(key)
 		} else {
 			// Set response headers from cache
-			c.Send(e.body)
-			c.Status(e.status)
 			c.Response().Header.SetContentTypeBytes(e.cType)
+			c.Status(e.status).Send(e.body)
 
 			// Set Cache-Control header if enabled
 			if cfg.CacheControl {
