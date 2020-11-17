@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func Test_Utils_ToUpper(t *testing.T) {
+func Test_ToUpper(t *testing.T) {
 	t.Parallel()
 	res := ToUpper("/my/name/is/:param/*")
 	AssertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
@@ -33,7 +33,7 @@ func Benchmark_ToUpper(b *testing.B) {
 	})
 }
 
-func Test_Utils_ToLower(t *testing.T) {
+func Test_ToLower(t *testing.T) {
 	t.Parallel()
 	res := ToLower("/MY/NAME/IS/:PARAM/*")
 	AssertEqual(t, "/my/name/is/:param/*", res)
@@ -64,7 +64,7 @@ func Benchmark_ToLower(b *testing.B) {
 	})
 }
 
-func Test_Utils_TrimRight(t *testing.T) {
+func Test_TrimRight(t *testing.T) {
 	t.Parallel()
 	res := TrimRight("/test//////", '/')
 	AssertEqual(t, "/test", res)
@@ -89,7 +89,7 @@ func Benchmark_TrimRight(b *testing.B) {
 	})
 }
 
-func Test_Utils_TrimLeft(t *testing.T) {
+func Test_TrimLeft(t *testing.T) {
 	t.Parallel()
 	res := TrimLeft("////test/", '/')
 	AssertEqual(t, "test/", res)
@@ -113,7 +113,7 @@ func Benchmark_TrimLeft(b *testing.B) {
 		AssertEqual(b, "foobar", res)
 	})
 }
-func Test_Utils_Trim(t *testing.T) {
+func Test_Trim(t *testing.T) {
 	t.Parallel()
 	res := Trim("   test  ", ' ')
 	AssertEqual(t, "test", res)

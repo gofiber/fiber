@@ -6,7 +6,7 @@ package utils
 
 import "testing"
 
-func Test_Utils_GetString(t *testing.T) {
+func Test_GetString(t *testing.T) {
 	t.Parallel()
 	res := GetString([]byte("Hello, World!"))
 	AssertEqual(t, "Hello, World!", res)
@@ -31,7 +31,7 @@ func Benchmark_GetString(b *testing.B) {
 	})
 }
 
-func Test_Utils_GetBytes(t *testing.T) {
+func Test_GetBytes(t *testing.T) {
 	t.Parallel()
 	res := GetBytes("Hello, World!")
 	AssertEqual(t, []byte("Hello, World!"), res)
@@ -56,7 +56,7 @@ func Benchmark_GetBytes(b *testing.B) {
 	})
 }
 
-func Test_Utils_ImmutableString(t *testing.T) {
+func Test_ImmutableString(t *testing.T) {
 	t.Parallel()
 	res := ImmutableString("Hello, World!")
 	AssertEqual(t, "Hello, World!", res)
