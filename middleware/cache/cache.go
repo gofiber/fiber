@@ -17,15 +17,25 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
+	// Nothing to cache
+	if int(cfg.Expiration.Seconds()) < 0 {
+		return func(c *fiber.Ctx) error {
+			return c.Next()
+		}
+	}
+
 	var (
 		// Cache settings
 		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
-		mux        = &sync.RWMutex{}
-
-		// Default store logic (if no Store is provided)
-		entries = make(map[string]entry)
 	)
+
+	// create storage handler
+	store := &storage{
+		cfg:     &cfg,
+		mux:     &sync.RWMutex{},
+		entries: make(map[string]*entry),
+	}
 
 	// Update timestamp every second
 	go func() {
@@ -34,30 +44,6 @@ func New(config ...Config) fiber.Handler {
 			time.Sleep(750 * time.Millisecond)
 		}
 	}()
-
-	// Nothing to cache
-	if int(cfg.Expiration.Seconds()) < 0 {
-		return func(c *fiber.Ctx) error {
-			return c.Next()
-		}
-	}
-
-	// Remove expired entries
-	if cfg.Storage == nil {
-		go func() {
-			for {
-				// GC the entries every 10 seconds
-				time.Sleep(10 * time.Second)
-				mux.Lock()
-				for k := range entries {
-					if atomic.LoadUint64(&timestamp) >= entries[k].exp {
-						delete(entries, k)
-					}
-				}
-				mux.Unlock()
-			}
-		}()
-	}
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
@@ -74,37 +60,8 @@ func New(config ...Config) fiber.Handler {
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
-		// Create new entry
-		var entry entry
-		var entryBody []byte
-
-		// Lock entry
-		mux.Lock()
-		defer mux.Unlock()
-
-		// Check if we need to use the default in-memory storage
-		if cfg.Storage == nil {
-			entry = entries[key]
-
-		} else {
-			// Load data from store
-			storeEntry, err := cfg.Storage.Get(key)
-			if err != nil {
-				return err
-			}
-
-			// Only decode if we found an entry
-			if storeEntry != nil {
-				// Decode bytes using msgp
-				if _, err := entry.UnmarshalMsg(storeEntry); err != nil {
-					return err
-				}
-			}
-
-			if entryBody, err = cfg.Storage.Get(key + "_body"); err != nil {
-				return err
-			}
-		}
+		// Get/Create new entry
+		var entry = store.get(key)
 
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
@@ -115,25 +72,10 @@ func New(config ...Config) fiber.Handler {
 
 		} else if ts >= entry.exp {
 			// Check if entry is expired
-			// Use default memory storage
-			if cfg.Storage == nil {
-				delete(entries, key)
-			} else { // Use custom storage
-				if err := cfg.Storage.Delete(key); err != nil {
-					return err
-				}
-				if err := cfg.Storage.Delete(key + "_body"); err != nil {
-					return err
-				}
-			}
-
+			store.delete(key)
 		} else {
-			if cfg.Storage == nil {
-				c.Send(entry.body)
-			} else {
-				c.Send(entryBody)
-			}
 			// Set response headers from cache
+			c.Send(entry.body)
 			c.Status(entry.status)
 			c.Response().Header.SetContentTypeBytes(entry.cType)
 
@@ -153,32 +95,11 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
-		entryBody = utils.SafeBytes(c.Response().Body())
 		entry.status = c.Response().StatusCode()
-		entry.cType = utils.SafeBytes(c.Response().Header.ContentType())
+		entry.body = utils.CopyBytes(c.Response().Body())
+		entry.cType = utils.CopyBytes(c.Response().Header.ContentType())
 
-		// Use default memory storage
-		if cfg.Storage == nil {
-			entry.body = entryBody
-			entries[key] = entry
-
-		} else {
-			// Use custom storage
-			data, err := entry.MarshalMsg(nil)
-			if err != nil {
-				return err
-			}
-
-			// Pass bytes to Storage
-			if err = cfg.Storage.Set(key, data, cfg.Expiration); err != nil {
-				return err
-			}
-
-			// Pass bytes to Storage
-			if err = cfg.Storage.Set(key+"_body", entryBody, cfg.Expiration); err != nil {
-				return err
-			}
-		}
+		store.set(key, entry)
 
 		// Finish response
 		return nil
