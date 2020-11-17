@@ -148,6 +148,7 @@ func Benchmark_Trim(b *testing.B) {
 	})
 }
 
+// go test -v -run=^$ -bench=Benchmark_EqualFold -benchmem -count=4
 func Benchmark_EqualFold(b *testing.B) {
 	var left = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
 	var right = "/RePos/goFiber/Fiber/issues/187643/COMMENTS"

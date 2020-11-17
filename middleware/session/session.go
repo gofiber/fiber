@@ -24,10 +24,21 @@ var sessionPool = sync.Pool{
 }
 
 func acquireSession() *Session {
-	return sessionPool.Get().(*Session)
+	s := sessionPool.Get().(*Session)
+	if s.data == nil {
+		s.data = new(data)
+	}
+	s.fresh = true
+	return s
 }
 
 func releaseSession(s *Session) {
+	s.id = ""
+	s.ctx = nil
+	s.config = nil
+	if s.data != nil {
+		s.data.Reset()
+	}
 	sessionPool.Put(s)
 }
 
@@ -79,14 +90,8 @@ func (s *Session) Destroy() error {
 	s.data.Reset()
 
 	// Use external Storage if exist
-	if s.config.Storage != nil {
-		if err := s.config.Storage.Delete(s.id); err != nil {
-			return err
-		}
-	} else {
-		s.config.mux.Lock()
-		delete(s.config.sessions, s.id)
-		s.config.mux.Unlock()
+	if err := s.config.Storage.Delete(s.id); err != nil {
+		return err
 	}
 
 	// Expire cookie
@@ -96,16 +101,10 @@ func (s *Session) Destroy() error {
 
 // Regenerate generates a new session id and delete the old one from Storage
 func (s *Session) Regenerate() error {
-	// Use external Storage if exist
-	if s.config.Storage != nil {
-		// Delete old id from storage
-		if err := s.config.Storage.Delete(s.id); err != nil {
-			return err
-		}
-	} else {
-		s.config.mux.Lock()
-		delete(s.config.sessions, s.id)
-		s.config.mux.Unlock()
+
+	// Delete old id from storage
+	if err := s.config.Storage.Delete(s.id); err != nil {
+		return err
 	}
 
 	// Create new ID
@@ -126,32 +125,22 @@ func (s *Session) Save() error {
 		return nil
 	}
 
-	// Use external Storage if exist
-	if s.config.Storage != nil {
-		// Convert book to bytes
-		data, err := s.data.MarshalMsg(nil)
-		if err != nil {
-			return err
-		}
+	// Convert data to bytes
+	data, err := s.data.MarshalMsg(nil)
+	if err != nil {
+		return err
+	}
 
-		// pass raw bytes with session id to provider
-		if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
-			return err
-		}
-	} else {
-		s.config.mux.Lock()
-		s.config.sessions[s.id] = s.data
-		s.config.mux.Unlock()
+	// pass raw bytes with session id to provider
+	if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
+		return err
 	}
 
 	// Create cookie with the session ID
 	s.setCookie()
 
-	// Release data if we use a Storage
-	if s.config.Storage != nil {
-		releaseData(s.data)
-	}
-
+	// Release session
+	// TODO: It's not safe to use the Session after called Save()
 	releaseSession(s)
 
 	return nil
