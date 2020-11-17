@@ -41,10 +41,6 @@ type Config struct {
 
 	// Deprecated, use KeyGenerator instead
 	Key func(*fiber.Ctx) string
-
-	// Internally used - if true, the simpler method of two maps is used in order to keep
-	// execution time down.
-	defaultStore bool
 }
 
 // ConfigDefault is the default config
@@ -55,8 +51,7 @@ var ConfigDefault = Config{
 	KeyGenerator: func(c *fiber.Ctx) string {
 		return c.Path()
 	},
-	Storage:      nil,
-	defaultStore: true,
+	Storage: nil,
 }
 
 // Helper function to set default values
@@ -86,9 +81,6 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator
-	}
-	if cfg.Storage != nil {
-		cfg.defaultStore = true
 	}
 	return cfg
 }

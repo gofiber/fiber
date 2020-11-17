@@ -31,7 +31,7 @@ func New(config ...Config) fiber.Handler {
 	go func() {
 		for {
 			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
-			time.Sleep(1 * time.Second)
+			time.Sleep(750 * time.Millisecond)
 		}
 	}()
 
@@ -43,7 +43,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Remove expired entries
-	if cfg.defaultStore {
+	if cfg.Storage == nil {
 		go func() {
 			for {
 				// GC the entries every 10 seconds
@@ -72,7 +72,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get key from request
-		key := cfg.Key(c)
+		key := cfg.KeyGenerator(c)
 
 		// Create new entry
 		var entry entry
@@ -83,7 +83,7 @@ func New(config ...Config) fiber.Handler {
 		defer mux.Unlock()
 
 		// Check if we need to use the default in-memory storage
-		if cfg.defaultStore {
+		if cfg.Storage == nil {
 			entry = entries[key]
 
 		} else {
@@ -116,7 +116,7 @@ func New(config ...Config) fiber.Handler {
 		} else if ts >= entry.exp {
 			// Check if entry is expired
 			// Use default memory storage
-			if cfg.defaultStore {
+			if cfg.Storage == nil {
 				delete(entries, key)
 			} else { // Use custom storage
 				if err := cfg.Storage.Delete(key); err != nil {
@@ -128,13 +128,13 @@ func New(config ...Config) fiber.Handler {
 			}
 
 		} else {
-			if cfg.defaultStore {
-				c.Response().SetBodyRaw(entry.body)
+			if cfg.Storage == nil {
+				c.Send(entry.body)
 			} else {
-				c.Response().SetBodyRaw(entryBody)
+				c.Send(entryBody)
 			}
 			// Set response headers from cache
-			c.Response().SetStatusCode(entry.status)
+			c.Status(entry.status)
 			c.Response().Header.SetContentTypeBytes(entry.cType)
 
 			// Set Cache-Control header if enabled
@@ -158,7 +158,7 @@ func New(config ...Config) fiber.Handler {
 		entry.cType = utils.SafeBytes(c.Response().Header.ContentType())
 
 		// Use default memory storage
-		if cfg.defaultStore {
+		if cfg.Storage == nil {
 			entry.body = entryBody
 			entries[key] = entry
 
