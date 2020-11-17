@@ -1,34 +1,47 @@
 # CSRF
+
 CSRF middleware for [Fiber](https://github.com/gofiber/fiber) that provides [Cross-site request forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) protection by passing a csrf token via cookies. This cookie value will be used to compare against the client csrf token in POST requests. When the csrf token is invalid, this middleware will delete the `_csrf` cookie and return the `fiber.ErrForbidden` error.
 CSRF Tokens are generated on GET requests.
 
-### Table of Contents
+_NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases._
+
+## Table of Contents
+
 - [Signatures](#signatures)
 - [Examples](#examples)
 - [Config](#config)
 - [Default Config](#default-config)
 
+## Signatures
 
-### Signatures
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+
+First import the middleware from Fiber,
+
 ```go
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/csrf"
+  "github.com/gofiber/fiber/v2"
+  "github.com/gofiber/fiber/v2/middleware/session"
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
-```go
-// Initialize default config
-app.Use(csrf.New())
+Then create a Fiber app with `app := fiber.New()`.
 
-// Or extend your config for customization
+### Default Config
+
+Then apply the middleware to your Fiber app,
+
+```go
+app.Use(csrf.New()) // Default config
+```
+
+### Custom Config
+
+```go
 app.Use(csrf.New(csrf.Config{
 	KeyLookup:      "header:X-Csrf-Token",
 	CookieName:     "csrf_",
@@ -38,7 +51,19 @@ app.Use(csrf.New(csrf.Config{
 }))
 ```
 
+### Custom Storage/Database
+
+You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
+
+```go
+storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
+app.Use(csrf.New(csrf.Config{
+	Storage: storage,
+}))
+```
+
 ### Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -107,6 +132,7 @@ type Config struct {
 ```
 
 ### Default Config
+
 ```go
 var ConfigDefault = Config{
 	KeyLookup:      "header:X-Csrf-Token",

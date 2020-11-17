@@ -1,19 +1,24 @@
 # Cross-Origin Resource Sharing (CORS)
-CORS middleware for [Fiber](https://github.com/gofiber/fiber) that  that can be used to enable [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) with various options.
 
-### Table of Contents
+CORS middleware for [Fiber](https://github.com/gofiber/fiber) that that can be used to enable [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) with various options.
+
+## Table of Contents
+
 - [Signatures](#signatures)
 - [Examples](#examples)
 - [Config](#config)
 - [Default Config](#default-config)
 
-### Signatures
+## Signatures
+
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+
+First import the middleware from Fiber,
+
 ```go
 import (
   "github.com/gofiber/fiber/v2"
@@ -21,19 +26,25 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
-```go
-// Default config
-app.Use(cors.New())
+Then create a Fiber app with `app := fiber.New()`.
 
-// Or extend your config for customization
+### Default Config
+
+```go
+app.Use(cors.New())
+```
+
+### Custom Config
+
+```go
 app.Use(cors.New(cors.Config{
 	AllowOrigins: "https://gofiber.io, https://gofiber.net",
 	AllowHeaders:  "Origin, Content-Type, Accept",
 }))
 ```
 
-### Config
+## Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -81,7 +92,8 @@ type Config struct {
 }
 ```
 
-### Default Config
+## Default Config
+
 ```go
 var ConfigDefault = Config{
 	Next:             nil,
