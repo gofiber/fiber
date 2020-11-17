@@ -675,18 +675,21 @@ func appendStructFields(fields []structField, t reflect.Type, offset uintptr, se
 	}
 
 	for i := range fields {
-		fields[i].json = encodeString(fields[i].name, 0)
-		fields[i].html = encodeString(fields[i].name, EscapeHTML)
+		name := fields[i].name
+		fields[i].json = encodeKeyFragment(name, 0)
+		fields[i].html = encodeKeyFragment(name, EscapeHTML)
 	}
 
 	sort.Slice(fields, func(i, j int) bool { return fields[i].index < fields[j].index })
 	return fields
 }
 
-func encodeString(s string, flags AppendFlags) string {
-	b := make([]byte, 0, len(s)+2)
+func encodeKeyFragment(s string, flags AppendFlags) string {
+	b := make([]byte, 1, len(s)+4)
+	b[0] = ','
 	e := encoder{flags: flags}
 	b, _ = e.encodeString(b, unsafe.Pointer(&s))
+	b = append(b, ':')
 	return *(*string)(unsafe.Pointer(&b))
 }
 

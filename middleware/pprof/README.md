@@ -9,8 +9,8 @@ Pprof middleware for [Fiber](https://github.com/gofiber/fiber) that serves via i
 func New() fiber.Handler
 ```
 
-### Example
-Import the compress package that is part of the Fiber web framework
+### Examples
+Import the middleware package that is part of the Fiber web framework
 ```go
 import (
   "github.com/gofiber/fiber/v2"

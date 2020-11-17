@@ -19,7 +19,7 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -111,7 +111,7 @@ func removeNewLines(raw string) string {
 		}
 		buf[i] = ' '
 	}
-	raw = utils.GetString(buf)
+	raw = utils.UnsafeString(buf)
 	bytebufferpool.Put(bb)
 
 	return raw
@@ -307,10 +307,6 @@ func isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(getString(noneMatchBytes[start:end]), etag)
 }
 
-func isIPv6(address string) bool {
-	return strings.Count(address, ":") >= 2
-}
-
 func parseAddr(raw string) (host, port string) {
 	if i := strings.LastIndex(raw, ":"); i != -1 {
 		return raw[:i], raw[i+1:]
@@ -373,13 +369,13 @@ func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
 
 // getString converts byte slice to a string without memory allocation.
-var getString = utils.GetString
+var getString = utils.UnsafeString
 var getStringImmutable = func(b []byte) string {
 	return string(b)
 }
 
 // getBytes converts string to a byte slice without memory allocation.
-var getBytes = utils.GetBytes
+var getBytes = utils.UnsafeBytes
 var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
 }

@@ -5,30 +5,25 @@
 package fiber
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
-// go test -v -run=^$ -bench=Benchmark_Utils_RemoveNewLines -benchmem -count=4
-func Benchmark_Utils_RemoveNewLines(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_RemoveNewLines -benchmem -count=4
+func Benchmark_RemoveNewLines(b *testing.B) {
 	withNL := "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n"
 	withoutNL := "foo  Set-Cookie:%20SESSIONID=MaliciousValue  "
-	expected := utils.ImmutableString(withoutNL)
+	expected := utils.SafeString(withoutNL)
 	var res string
 
-	b.Run("withNewlines", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			res = removeNewLines(withNL)
-		}
-		utils.AssertEqual(b, expected, res)
-	})
-	b.Run("withoutNewlines", func(b *testing.B) {
+	b.Run("withoutNL", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
@@ -36,7 +31,53 @@ func Benchmark_Utils_RemoveNewLines(b *testing.B) {
 		}
 		utils.AssertEqual(b, expected, res)
 	})
+	b.Run("withNL", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			res = removeNewLines(withNL)
+		}
+		utils.AssertEqual(b, expected, res)
+	})
+}
 
+// go test -v -run=RemoveNewLines_Bytes -count=3
+func Test_RemoveNewLines_Bytes(t *testing.T) {
+	app := New()
+	t.Run("Not Status OK", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.SendString("Hello, World!")
+		c.Status(201)
+		setETag(c, false)
+		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
+	})
+
+	t.Run("No Body", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		setETag(c, false)
+		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
+	})
+
+	t.Run("Has HeaderIfNoneMatch", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.SendString("Hello, World!")
+		c.Request().Header.Set(HeaderIfNoneMatch, `"13-1831710635"`)
+		setETag(c, false)
+		utils.AssertEqual(t, 304, c.Response().StatusCode())
+		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, "", string(c.Response().Body()))
+	})
+
+	t.Run("No HeaderIfNoneMatch", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.SendString("Hello, World!")
+		setETag(c, false)
+		utils.AssertEqual(t, `"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
+	})
 }
 
 // go test -v -run=Test_Utils_ -count=3
@@ -207,30 +248,6 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 	utils.AssertEqual(b, "/créer", unescaped)
 }
 
-func Test_Utils_IPv6(t *testing.T) {
-	testCases := []struct {
-		string
-		bool
-	}{
-		{"::FFFF:C0A8:1:3000", true},
-		{"::FFFF:C0A8:0001:3000", true},
-		{"0000:0000:0000:0000:0000:FFFF:C0A8:1:3000", true},
-		{"::FFFF:C0A8:1%1:3000", true},
-		{"::FFFF:192.168.0.1:3000", true},
-		{"[::FFFF:C0A8:1]:3000", true},
-		{"[::FFFF:C0A8:1%1]:3000", true},
-		{":3000", false},
-		{"127.0.0.1:3000", false},
-		{"127.0.0.1:", false},
-		{"0.0.0.0:3000", false},
-		{"", false},
-	}
-
-	for _, c := range testCases {
-		utils.AssertEqual(t, c.bool, isIPv6(c.string))
-	}
-}
-
 func Test_Utils_Parse_Address(t *testing.T) {
 	testCases := []struct {
 		addr, host, port string
@@ -299,4 +316,92 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
 	utils.AssertEqual(b, true, ok)
+}
+
+func Test_Utils_lnMetadata(t *testing.T) {
+	t.Run("closed listen", func(t *testing.T) {
+		ln, err := net.Listen("tcp", ":0")
+		utils.AssertEqual(t, nil, err)
+
+		utils.AssertEqual(t, nil, ln.Close())
+
+		addr, config := lnMetadata(ln)
+
+		utils.AssertEqual(t, ln.Addr().String(), addr)
+		utils.AssertEqual(t, true, config == nil)
+	})
+
+	t.Run("non tls", func(t *testing.T) {
+		ln, err := net.Listen("tcp", ":0")
+
+		utils.AssertEqual(t, nil, err)
+
+		addr, config := lnMetadata(ln)
+
+		utils.AssertEqual(t, ln.Addr().String(), addr)
+		utils.AssertEqual(t, true, config == nil)
+	})
+
+	t.Run("tls", func(t *testing.T) {
+		cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+		utils.AssertEqual(t, nil, err)
+
+		config := &tls.Config{Certificates: []tls.Certificate{cer}}
+
+		ln, err := net.Listen("tcp4", ":0")
+		utils.AssertEqual(t, nil, err)
+
+		ln = tls.NewListener(ln, config)
+
+		addr, config := lnMetadata(ln)
+
+		utils.AssertEqual(t, ln.Addr().String(), addr)
+		utils.AssertEqual(t, true, config != nil)
+	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4
+func Benchmark_SlashRecognition(b *testing.B) {
+	search := "wtf/1234"
+	var result bool
+	b.Run("indexBytes", func(b *testing.B) {
+		result = false
+		for i := 0; i < b.N; i++ {
+			if strings.IndexByte(search, slashDelimiter) != -1 {
+				result = true
+			}
+		}
+		utils.AssertEqual(b, true, result)
+	})
+	b.Run("forEach", func(b *testing.B) {
+		result = false
+		c := int32(slashDelimiter)
+		for i := 0; i < b.N; i++ {
+			for _, b := range search {
+				if b == c {
+					result = true
+					break
+				}
+			}
+		}
+		utils.AssertEqual(b, true, result)
+	})
+	b.Run("IndexRune", func(b *testing.B) {
+		result = false
+		c := int32(slashDelimiter)
+		for i := 0; i < b.N; i++ {
+			result = IndexRune(search, c)
+
+		}
+		utils.AssertEqual(b, true, result)
+	})
+}
+
+func IndexRune(str string, needle int32) bool {
+	for _, b := range str {
+		if b == needle {
+			return true
+		}
+	}
+	return false
 }

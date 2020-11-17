@@ -5,54 +5,10 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Config defines the config for middleware.
-type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
-
-	// CompressLevel determines the compression algoritm
-	//
-	// Optional. Default: LevelDefault
-	// LevelDisabled:         -1
-	// LevelDefault:          0
-	// LevelBestSpeed:        1
-	// LevelBestCompression:  2
-	Level int
-}
-
-// ConfigDefault is the default config
-var ConfigDefault = Config{
-	Next:  nil,
-	Level: LevelDefault,
-}
-
-// Compression levels
-const (
-	LevelDisabled        = -1
-	LevelDefault         = 0
-	LevelBestSpeed       = 1
-	LevelBestCompression = 2
-)
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := ConfigDefault
-
-	// Override config if provided
-	if len(config) > 0 {
-		cfg = config[0]
-
-		// Set default values
-		if cfg.Next == nil {
-			cfg.Next = ConfigDefault.Next
-		}
-		if cfg.Level < -1 || cfg.Level > 2 {
-			cfg.Level = ConfigDefault.Level
-		}
-	}
+	cfg := configDefault(config...)
 
 	// Setup request handlers
 	var (
@@ -62,15 +18,24 @@ func New(config ...Config) fiber.Handler {
 
 	// Setup compression algorithm
 	switch cfg.Level {
-	case 0:
+	case LevelDefault:
 		// LevelDefault
-		compressor = fasthttp.CompressHandlerBrotliLevel(fctx, fasthttp.CompressBrotliDefaultCompression, fasthttp.CompressDefaultCompression)
-	case 1:
+		compressor = fasthttp.CompressHandlerBrotliLevel(fctx,
+			fasthttp.CompressBrotliDefaultCompression,
+			fasthttp.CompressDefaultCompression,
+		)
+	case LevelBestSpeed:
 		// LevelBestSpeed
-		compressor = fasthttp.CompressHandlerBrotliLevel(fctx, fasthttp.CompressBrotliBestSpeed, fasthttp.CompressBestSpeed)
-	case 2:
+		compressor = fasthttp.CompressHandlerBrotliLevel(fctx,
+			fasthttp.CompressBrotliBestSpeed,
+			fasthttp.CompressBestSpeed,
+		)
+	case LevelBestCompression:
 		// LevelBestCompression
-		compressor = fasthttp.CompressHandlerBrotliLevel(fctx, fasthttp.CompressBrotliBestCompression, fasthttp.CompressBestCompression)
+		compressor = fasthttp.CompressHandlerBrotliLevel(fctx,
+			fasthttp.CompressBrotliBestCompression,
+			fasthttp.CompressBestCompression,
+		)
 	default:
 		// LevelDisabled
 		return func(c *fiber.Ctx) error {

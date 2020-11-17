@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // go test -race -run Test_Path_parseRoute
@@ -384,6 +384,18 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api", params: nil, match: false},
 		{url: "/api/:test", params: nil, match: false},
 	})
+}
+
+func Test_Utils_GetTrimmedParam(t *testing.T) {
+	t.Parallel()
+	res := GetTrimmedParam("*")
+	utils.AssertEqual(t, "*", res)
+	res = GetTrimmedParam(":param")
+	utils.AssertEqual(t, "param", res)
+	res = GetTrimmedParam(":param1?")
+	utils.AssertEqual(t, "param1", res)
+	res = GetTrimmedParam("noParam")
+	utils.AssertEqual(t, "noParam", res)
 }
 
 // go test -race -run Test_Path_matchParams

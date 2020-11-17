@@ -17,6 +17,7 @@ import (
 	"mime/multipart"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,7 +26,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -40,6 +41,20 @@ func Test_Ctx_Accepts(t *testing.T) {
 	utils.AssertEqual(t, "", c.Accepts())
 	utils.AssertEqual(t, ".xml", c.Accepts(".xml"))
 	utils.AssertEqual(t, "", c.Accepts(".john"))
+
+	c.Request().Header.Set(HeaderAccept, "text/*, application/json")
+	utils.AssertEqual(t, "html", c.Accepts("html"))
+	utils.AssertEqual(t, "text/html", c.Accepts("text/html"))
+	utils.AssertEqual(t, "json", c.Accepts("json", "text"))
+	utils.AssertEqual(t, "application/json", c.Accepts("application/json"))
+	utils.AssertEqual(t, "", c.Accepts("image/png"))
+	utils.AssertEqual(t, "", c.Accepts("png"))
+
+	c.Request().Header.Set(HeaderAccept, "text/html, application/json")
+	utils.AssertEqual(t, "text/*", c.Accepts("text/*"))
+
+	c.Request().Header.Set(HeaderAccept, "*/*")
+	utils.AssertEqual(t, "html", c.Accepts("html"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Accepts -benchmem -count=4
@@ -257,9 +272,11 @@ func Test_Ctx_BaseURL(t *testing.T) {
 	defer app.ReleaseCtx(c)
 	c.Request().SetRequestURI("http://google.com/test")
 	utils.AssertEqual(t, "http://google.com", c.BaseURL())
+	// Check cache
+	utils.AssertEqual(t, "http://google.com", c.BaseURL())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Append -benchmem -count=4
+// go test -v -run=^$ -bench=Benchmark_Ctx_BaseURL -benchmem
 func Benchmark_Ctx_BaseURL(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -504,6 +521,9 @@ func Test_Ctx_Format(t *testing.T) {
 	c.Format("Hello, World!")
 	utils.AssertEqual(t, `<string>Hello, World!</string>`, string(c.Response().Body()))
 
+	err := c.Format(complex(1, 1))
+	utils.AssertEqual(t, true, err != nil)
+
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
 	c.Format(Map{})
 	utils.AssertEqual(t, "map[]", string(c.Response().Body()))
@@ -746,6 +766,15 @@ func Test_Ctx_IP(t *testing.T) {
 	utils.AssertEqual(t, "0.0.0.0", c.IP())
 }
 
+// go test -run Test_Ctx_IP_ProxyHeader
+func Test_Ctx_IP_ProxyHeader(t *testing.T) {
+	t.Parallel()
+	app := New(Config{ProxyHeader: "Real-Ip"})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, "", c.IP())
+}
+
 // go test -run Test_Ctx_IPs  -parallel
 func Test_Ctx_IPs(t *testing.T) {
 	t.Parallel()
@@ -903,6 +932,33 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_MultipartForm -benchmem -count=4
+func Benchmark_Ctx_MultipartForm(b *testing.B) {
+	app := New()
+
+	app.Post("/", func(c *Ctx) error {
+		_, _ = c.MultipartForm()
+		return nil
+	})
+
+	c := &fasthttp.RequestCtx{}
+
+	body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+	c.Request.SetBody(body)
+	c.Request.Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+	c.Request.Header.SetContentLength(len(body))
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(c)
+	}
+
 }
 
 // go test -run Test_Ctx_OriginalURL
@@ -1247,6 +1303,9 @@ func Test_Ctx_Download(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, expect, c.Response().Body())
 	utils.AssertEqual(t, `attachment; filename="Awesome+File%21"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
+
+	c.Download("ctx.go")
+	utils.AssertEqual(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
 // go test -race -run Test_Ctx_SendFile
@@ -1300,7 +1359,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	app.Get("/", func(c *Ctx) error {
 		err := c.SendFile("./john_dow.go/")
 		utils.AssertEqual(t, false, err == nil)
-		return nil
+		return err
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
@@ -1317,7 +1376,7 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 		if err := c.SendFile("./.github/" + file + ".html"); err != nil {
 			utils.AssertEqual(t, nil, err)
 		}
-		utils.AssertEqual(t, "index", fmt.Sprintf("%s", file))
+		utils.AssertEqual(t, "index", file)
 		return c.SendString(file)
 	})
 	// 1st try
@@ -1852,6 +1911,17 @@ func Benchmark_Ctx_Write(b *testing.B) {
 	}
 }
 
+// go test -run Test_Ctx_WriteString
+func Test_Ctx_WriteString(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.WriteString("Hello, ")
+	c.WriteString("World!")
+	utils.AssertEqual(t, "Hello, World!", string(c.Response().Body()))
+}
+
 // go test -run Test_Ctx_XHR
 func Test_Ctx_XHR(t *testing.T) {
 	t.Parallel()
@@ -1891,7 +1961,7 @@ func Benchmark_Ctx_SendString_B(b *testing.B) {
 	utils.AssertEqual(b, []byte("Hello, world!"), c.Response().Body())
 }
 
-// go test -run Benchmark_Ctx_QueryParser
+// go test -run Test_Ctx_QueryParser -v
 func Test_Ctx_QueryParser(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -1909,10 +1979,47 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, nil, c.QueryParser(q))
 	utils.AssertEqual(t, 2, len(q.Hobby))
 
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	q = new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	q = new(Query)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, 3, len(q.Hobby))
+
 	empty := new(Query)
 	c.Request().URI().SetQueryString("")
 	utils.AssertEqual(t, nil, c.QueryParser(empty))
 	utils.AssertEqual(t, 0, len(empty.Hobby))
+
+	type Query2 struct {
+		ID    int
+		Name  string
+		Hobby string
+	}
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	q2 := new(Query2)
+	utils.AssertEqual(t, nil, c.QueryParser(q2))
+	utils.AssertEqual(t, "basketball,football", q2.Hobby)
+
+	type RequiredQuery struct {
+		Name string `query:"name,required"`
+	}
+	rq := new(RequiredQuery)
+	c.Request().URI().SetQueryString("")
+	fmt.Println(c.QueryParser(rq))
+	utils.AssertEqual(t, "name is empty", c.QueryParser(rq).Error())
+}
+
+func Test_Ctx_EqualFieldType(t *testing.T) {
+	var out int
+	utils.AssertEqual(t, false, equalFieldType(&out, reflect.Int, "key"))
+
+	var dummy struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy, reflect.String, "key"))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
@@ -1935,4 +2042,86 @@ func Benchmark_Ctx_QueryParser(b *testing.B) {
 		c.QueryParser(q)
 	}
 	utils.AssertEqual(b, nil, c.QueryParser(q))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser_Comma -benchmem -count=4
+func Benchmark_Ctx_QueryParser_Comma(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Query struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	// c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	q := new(Query)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.QueryParser(q)
+	}
+	utils.AssertEqual(b, nil, c.QueryParser(q))
+}
+
+// go test -run Test_Ctx_BodyStreamWriter
+func Test_Ctx_BodyStreamWriter(t *testing.T) {
+	t.Parallel()
+
+	ctx := &fasthttp.RequestCtx{}
+
+	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
+		fmt.Fprintf(w, "body writer line 1\n")
+		if err := w.Flush(); err != nil {
+			t.Errorf("unexpected error: %s", err)
+		}
+		fmt.Fprintf(w, "body writer line 2\n")
+	})
+	if !ctx.IsBodyStream() {
+		t.Fatal("IsBodyStream must return true")
+	}
+
+	s := ctx.Response.String()
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	var resp fasthttp.Response
+	if err := resp.Read(br); err != nil {
+		t.Fatalf("Error when reading response: %s", err)
+	}
+	body := string(resp.Body())
+	expectedBody := "body writer line 1\nbody writer line 2\n"
+	if body != expectedBody {
+		t.Fatalf("unexpected body: %q. Expecting %q", body, expectedBody)
+	}
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_BodyStreamWriter -benchmem -count=4
+func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
+	ctx := &fasthttp.RequestCtx{}
+	user := []byte(`{"name":"john"}`)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		ctx.ResetBody()
+		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
+			for i := 0; i < 10; i++ {
+				w.Write(user)
+				if err := w.Flush(); err != nil {
+					return
+				}
+			}
+		})
+	}
+}
+
+func Test_Ctx_String(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	utils.AssertEqual(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
 }

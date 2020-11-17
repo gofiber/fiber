@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 📄 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 // ⚠️ This path parser was inspired by ucarion/urlpath (MIT License).
 // 💖 Maintained and modified for Fiber by @renewerner87
@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // routeParser holds the path segments and param names
@@ -186,7 +186,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	// cut params part
 	processedPart := pattern[0 : parameterEndPosition+1]
 
-	paramName := utils.GetTrimmedParam(processedPart)
+	paramName := GetTrimmedParam(processedPart)
 	// add access iterator to wildcard and plus
 	if isWildCard {
 		routeParser.wildCardCount++
@@ -317,4 +317,20 @@ func findGreedyParamLen(s string, searchCount int, segment *routeSegment) int {
 	}
 
 	return len(s)
+}
+
+// GetTrimmedParam trims the ':' & '?' from a string
+func GetTrimmedParam(param string) string {
+	start := 0
+	end := len(param)
+
+	if param[start] != paramStarterChar { // is not a param
+		return param
+	}
+	start++
+	if param[end-1] == optionalParam { // is ?
+		end--
+	}
+
+	return param[start:end]
 }

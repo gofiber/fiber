@@ -1,13 +1,21 @@
 package timeout
 
 import (
+	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
 
+var once sync.Once
+
 // New wraps a handler and aborts the process of the handler if the timeout is reached
 func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
+	once.Do(func() {
+		fmt.Println("[Warning] timeout contains data race issues, not ready for production!")
+	})
+
 	if timeout <= 0 {
 		return handler
 	}

@@ -2,58 +2,12 @@ package requestid
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/utils"
 )
-
-// Config defines the config for middleware.
-type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
-
-	// Header is the header key where to get/set the unique request ID
-	//
-	// Optional. Default: "X-Request-ID"
-	Header string
-
-	// Generator defines a function to generate the unique identifier.
-	//
-	// Optional. Default: func() string {
-	//   return utils.UUID()
-	// }
-	Generator func() string
-}
-
-// ConfigDefault is the default config
-var ConfigDefault = Config{
-	Next:   nil,
-	Header: fiber.HeaderXRequestID,
-	Generator: func() string {
-		return utils.UUID()
-	},
-}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := ConfigDefault
-
-	// Override config if provided
-	if len(config) > 0 {
-		cfg = config[0]
-
-		// Set default values
-		if cfg.Next == nil {
-			cfg.Next = ConfigDefault.Next
-		}
-		if cfg.Header == "" {
-			cfg.Header = ConfigDefault.Header
-		}
-		if cfg.Generator == nil {
-			cfg.Generator = ConfigDefault.Generator
-		}
-	}
+	cfg := configDefault(config...)
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
@@ -66,6 +20,9 @@ func New(config ...Config) fiber.Handler {
 
 		// Set new id to response header
 		c.Set(cfg.Header, rid)
+
+		// Add the request ID to locals
+		c.Locals(cfg.ContextKey, rid)
 
 		// Continue stack
 		return c.Next()

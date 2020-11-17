@@ -1,4 +1,5 @@
 # Cross-Origin Resource Sharing (CORS)
+
 CORS middleware for [Fiber](https://github.com/gofiber/fiber) that  that can be used to enable [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) with various options.
 
 ### Table of Contents
@@ -29,7 +30,7 @@ app.Use(cors.New())
 // Or extend your config for customization
 app.Use(cors.New(cors.Config{
 	AllowOrigins: "https://gofiber.io, https://gofiber.net",
-	AllowHeader:  "Origin, Content-Type, Accept",
+	AllowHeaders:  "Origin, Content-Type, Accept",
 }))
 ```
 

@@ -371,16 +371,16 @@ func parseNumber(b []byte) (v, r []byte, err error) {
 
 func parseUnicode(b []byte) (rune, int, error) {
 	if len(b) < 4 {
-		return 0, 0, syntaxError(b, "unicode code point must have at least 4 characters")
+		return 0, len(b), syntaxError(b, "unicode code point must have at least 4 characters")
 	}
 
 	u, r, err := parseUintHex(b[:4])
 	if err != nil {
-		return 0, 0, syntaxError(b, "parsing unicode code point: %s", err)
+		return 0, 4, syntaxError(b, "parsing unicode code point: %s", err)
 	}
 
 	if len(r) != 0 {
-		return 0, 0, syntaxError(b, "invalid unicode code point")
+		return 0, 4, syntaxError(b, "invalid unicode code point")
 	}
 
 	return rune(u), 4, nil
@@ -411,7 +411,7 @@ func parseStringFast(b []byte) ([]byte, []byte, bool, error) {
 				case 'u':
 					_, n, err := parseUnicode(b[i+1:])
 					if err != nil {
-						return nil, b, false, err
+						return nil, b[i+1+n:], false, err
 					}
 					i += n
 				default:

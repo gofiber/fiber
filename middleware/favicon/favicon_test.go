@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -68,6 +68,22 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+}
+
+// go test -run Test_Middleware_Favicon_CacheControl
+func Test_Middleware_Favicon_CacheControl(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		CacheControl: "public, max-age=100",
+		File:         "../../.github/testdata/favicon.ico",
+	}))
+	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	utils.AssertEqual(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_Favicon -benchmem -count=4
@@ -87,4 +103,18 @@ func Benchmark_Middleware_Favicon(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		handler(c)
 	}
+}
+
+// go test -run Test_Favicon_Next
+func Test_Favicon_Next(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }

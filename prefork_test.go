@@ -1,3 +1,7 @@
+// ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
+// 📄 Github Repository: https://github.com/gofiber/fiber
+// 📌 API Documentation: https://docs.gofiber.io
+// 💖 Maintained and modified for Fiber by @renewerner87
 package fiber
 
 import (
@@ -7,15 +11,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
 	// Reset test var
 	testPreforkMaster = true
 
-	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
-	defer os.Setenv(envPreforkChildKey, "")
+	setupIsChild(t)
+	defer teardownIsChild(t)
 
 	app := New()
 
@@ -64,8 +68,8 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
-	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
-	defer os.Setenv(envPreforkChildKey, "")
+	setupIsChild(t)
+	defer teardownIsChild(t)
 
 	rescueStdout := os.Stdout
 	defer func() { os.Stdout = rescueStdout }()
@@ -82,4 +86,12 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	out, err := ioutil.ReadAll(r)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 0, len(out))
+}
+
+func setupIsChild(t *testing.T) {
+	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
+}
+
+func teardownIsChild(t *testing.T) {
+	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, ""))
 }

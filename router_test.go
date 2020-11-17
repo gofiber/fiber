@@ -1,5 +1,5 @@
 // ⚡️ Fiber is an Express inspired web framework written in Go with ☕️
-// 🤖 Github Repository: https://github.com/gofiber/fiber
+// 📃 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
 package fiber
@@ -8,12 +8,13 @@ package fiber
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -86,6 +87,16 @@ func Test_Route_Match_Star(t *testing.T) {
 	}
 	params := [maxParams]string{}
 	match := route.match("", "", &params)
+	utils.AssertEqual(t, true, match)
+	utils.AssertEqual(t, [maxParams]string{}, params)
+
+	// with parameter
+	match = route.match("/favicon.ico", "/favicon.ico", &params)
+	utils.AssertEqual(t, true, match)
+	utils.AssertEqual(t, [maxParams]string{"favicon.ico"}, params)
+
+	// without parameter again
+	match = route.match("", "", &params)
 	utils.AssertEqual(t, true, match)
 	utils.AssertEqual(t, [maxParams]string{}, params)
 }
@@ -251,6 +262,23 @@ func Test_Router_Handler_SetETag(t *testing.T) {
 	utils.AssertEqual(t, `"13-1831710635"`, string(c.Response.Header.Peek(HeaderETag)))
 }
 
+func Test_Router_Handler_Catch_Error(t *testing.T) {
+	app := New()
+	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
+		return errors.New("fake error")
+	}
+
+	app.Get("/", func(c *Ctx) error {
+		return ErrForbidden
+	})
+
+	c := &fasthttp.RequestCtx{}
+
+	app.handler(c)
+
+	utils.AssertEqual(t, StatusInternalServerError, c.Response.Header.StatusCode())
+}
+
 //////////////////////////////////////////////
 ///////////////// BENCHMARKS /////////////////
 //////////////////////////////////////////////
@@ -281,9 +309,10 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		app.handler(c)
 	}
+	b.StopTimer()
 	utils.AssertEqual(b, 405, c.Response.StatusCode())
 	utils.AssertEqual(b, "GET, HEAD", string(c.Response.Header.Peek("Allow")))
-	utils.AssertEqual(b, "Cannot DELETE /this/is/a/dummy/route/oke", string(c.Response.Body()))
+	utils.AssertEqual(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
 }
 
 // go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4

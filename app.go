@@ -25,19 +25,43 @@ import (
 
 	"github.com/gofiber/fiber/v2/internal/colorable"
 	"github.com/gofiber/fiber/v2/internal/isatty"
-	"github.com/gofiber/fiber/v2/internal/utils"
+	"github.com/gofiber/fiber/v2/utils"
 
 	"github.com/valyala/fasthttp"
 )
 
 // Version of current fiber package
-const Version = "2.0.0"
+const Version = "2.2.0"
+
+// Handler defines a function to serve HTTP requests.
+type Handler = func(*Ctx) error
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
-// Handler defines a function to serve HTTP requests.
-type Handler = func(*Ctx) error
+// Storage interface that is implemented by storage providers for different
+// middleware packages like cache, limiter, session and csrf
+type Storage interface {
+	// Get retrieves the value for the given key.
+	// If no value is not found it returns ErrNotExit error
+	Get(key string) ([]byte, error)
+
+	// Set stores the given value for the given key along with a
+	// time-to-live expiration value, 0 means live for ever
+	// The key must not be "" and the empty values are ignored.
+	Set(key string, val []byte, ttl time.Duration) error
+
+	// Delete deletes the stored value for the given key.
+	// Deleting a non-existing key-value pair does NOT lead to an error.
+	// The key must not be "".
+	Delete(key string) error
+
+	// Reset the storage
+	Reset() error
+
+	// Close the storage
+	Close() error
+}
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
@@ -81,37 +105,46 @@ type App struct {
 // Config is a struct holding the server settings.
 type Config struct {
 	// When set to true, this will spawn multiple Go processes listening on the same port.
+	//
 	// Default: false
 	Prefork bool `json:"prefork"`
 
 	// Enables the "Server: value" HTTP header.
+	//
 	// Default: ""
 	ServerHeader string `json:"server_header"`
 
 	// When set to true, the router treats "/foo" and "/foo/" as different.
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
+	//
+	// Default: false
 	StrictRouting bool `json:"strict_routing"`
 
 	// When set to true, enables case sensitive routing.
 	// E.g. "/FoO" and "/foo" are treated as different routes.
 	// By default this is disabled and both "/FoO" and "/foo" will execute the same handler.
+	//
+	// Default: false
 	CaseSensitive bool `json:"case_sensitive"`
 
 	// When set to true, this relinquishes the 0-allocation promise in certain
 	// cases in order to access the handler values (e.g. request bodies) in an
 	// immutable fashion so that these values are available even if you return
 	// from handler.
+	//
 	// Default: false
 	Immutable bool `json:"immutable"`
 
 	// When set to true, converts all encoded characters in the route back
 	// before setting the path for the context, so that the routing can also
 	// work with urlencoded special characters.
+	//
 	// Default: false
 	UnescapePath bool `json:"unescape_path"`
 
 	// Enable or disable ETag header generation, since both weak and strong etags are generated
 	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
+	//
 	// Default: false
 	ETag bool `json:"etag"`
 
@@ -120,26 +153,31 @@ type Config struct {
 	BodyLimit int `json:"body_limit"`
 
 	// Maximum number of concurrent connections.
+	//
 	// Default: 256 * 1024
 	Concurrency int `json:"concurrency"`
 
 	// Views is the interface that wraps the Render function.
+	//
 	// Default: nil
 	Views Views `json:"-"`
 
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
 	// The connection's read deadline is reset when the connection opens.
+	//
 	// Default: unlimited
 	ReadTimeout time.Duration `json:"read_timeout"`
 
 	// The maximum duration before timing out writes of the response.
 	// It is reset after the request handler has returned.
+	//
 	// Default: unlimited
 	WriteTimeout time.Duration `json:"write_timeout"`
 
 	// The maximum amount of time to wait for the next request when keep-alive is enabled.
 	// If IdleTimeout is zero, the value of ReadTimeout is used.
+	//
 	// Default: unlimited
 	IdleTimeout time.Duration `json:"idle_timeout"`
 
@@ -147,15 +185,18 @@ type Config struct {
 	// This also limits the maximum header size.
 	// Increase this buffer if your clients send multi-KB RequestURIs
 	// and/or multi-KB headers (for example, BIG cookies).
+	//
 	// Default: 4096
 	ReadBufferSize int `json:"read_buffer_size"`
 
 	// Per-connection buffer size for responses' writing.
+	//
 	// Default: 4096
 	WriteBufferSize int `json:"write_buffer_size"`
 
 	// CompressedFileSuffix adds suffix to the original file name and
 	// tries saving the resulting compressed file under the new file name.
+	//
 	// Default: ".fiber.gz"
 	CompressedFileSuffix string `json:"compressed_file_suffix"`
 
@@ -163,6 +204,7 @@ type Config struct {
 	// By default c.IP() will return the Remote IP from the TCP connection
 	// This property can be useful if you are behind a load balancer: X-Forwarded-*
 	// NOTE: headers are easily spoofed and the detected IP addresses are unreliable.
+	//
 	// Default: ""
 	ProxyHeader string `json:"proxy_header"`
 
@@ -170,38 +212,58 @@ type Config struct {
 	// This option is useful as anti-DoS protection for servers
 	// accepting only GET requests. The request size is limited
 	// by ReadBufferSize if GETOnly is set.
-	// Server accepts all the requests by default.
+	//
+	// Default: false
 	GETOnly bool `json:"get_only"`
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
+	//
+	// Default: DefaultErrorHandler
 	ErrorHandler ErrorHandler `json:"-"`
 
 	// When set to true, disables keep-alive connections.
 	// The server will close incoming connections after sending the first response to client.
+	//
 	// Default: false
 	DisableKeepalive bool `json:"disable_keepalive"`
 
 	// When set to true, causes the default date header to be excluded from the response.
+	//
 	// Default: false
 	DisableDefaultDate bool `json:"disable_default_date"`
 
 	// When set to true, causes the default Content-Type header to be excluded from the response.
+	//
 	// Default: false
 	DisableDefaultContentType bool `json:"disable_default_content_type"`
 
 	// When set to true, disables header normalization.
 	// By default all header names are normalized: conteNT-tYPE -> Content-Type.
+	//
 	// Default: false
 	DisableHeaderNormalizing bool `json:"disable_header_normalizing"`
 
 	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
+	//
 	// Default: false
 	DisableStartupMessage bool `json:"disable_startup_message"`
 
-	// FEATURE: v2.2.x
+	// Aggressively reduces memory usage at the cost of higher CPU usage
+	// if set to true.
+	//
+	// Try enabling this option only if the server consumes too much memory
+	// serving mostly idle keep-alive connections. This may reduce memory
+	// usage by more than 50%.
+	//
+	// Default: false
+	ReduceMemoryUsage bool `json:"reduce_memory_usage"`
+
+	// FEATURE: v2.3.x
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
+	//
+	// Default: false
 	// RedirectFixedPath bool
 }
 
@@ -223,6 +285,18 @@ type Static struct {
 	// The name of the index file for serving a directory.
 	// Optional. Default value "index.html".
 	Index string `json:"index"`
+
+	// Expiration duration for inactive file handlers.
+	// Use a negative time.Duration to disable it.
+	//
+	// Optional. Default value 10 * time.Second.
+	CacheDuration time.Duration `json:"cache_duration"`
+
+	// The value for the Cache-Control HTTP-header
+	// that is set on the file response. MaxAge is defined in seconds.
+	//
+	// Optional. Default value 0.
+	MaxAge int `json:"max_age"`
 }
 
 // Default Config values
@@ -234,7 +308,7 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-// Default ErrorHandler that process return errors from handlers
+// DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {
@@ -270,6 +344,13 @@ func New(config ...Config) *App {
 	if len(config) > 0 {
 		app.config = config[0]
 	}
+
+	if app.config.ETag {
+		if !IsChild() {
+			fmt.Println("[Warning] Config.ETag is deprecated since v2.0.6, please use 'middleware/etag'.")
+		}
+	}
+
 	// Override default values
 	if app.config.BodyLimit <= 0 {
 		app.config.BodyLimit = DefaultBodyLimit
@@ -298,6 +379,20 @@ func New(config ...Config) *App {
 	return app
 }
 
+// Mount attaches another app instance as a subrouter along a routing path.
+// It's very useful to split up a large API as many independent routers and
+// compose them as a single service using Mount.
+func (app *App) Mount(prefix string, fiber *App) Router {
+	stack := fiber.Stack()
+	for m := range stack {
+		for r := range stack[m] {
+			route := app.copyRoute(stack[m][r])
+			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
+		}
+	}
+	return app
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //
@@ -322,16 +417,6 @@ func (app *App) Use(args ...interface{}) Router {
 			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
-		// TODO: v2.1.0
-		// case *App:
-		// 	stack := arg.Stack()
-		// 	for m := range stack {
-		// 		for r := range stack[m] {
-		// 			route := app.copyRoute(stack[m][r])
-		// 			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
-		// 		}
-		// 	}
-		// 	return app
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
@@ -508,6 +593,11 @@ func (app *App) Shutdown() error {
 	return app.server.Shutdown()
 }
 
+// Server returns the underlying fasthttp server
+func (app *App) Server() *fasthttp.Server {
+	return app.server
+}
+
 // Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
 func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, err error) {
@@ -626,6 +716,7 @@ func (app *App) init() *App {
 	app.server.ReadBufferSize = app.config.ReadBufferSize
 	app.server.WriteBufferSize = app.config.WriteBufferSize
 	app.server.GetOnly = app.config.GETOnly
+	app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
 
 	// unlock application
 	app.mutex.Unlock()
@@ -639,7 +730,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	var logo string
-	logo += "\n%s"
+	logo += "%s"
 	logo += " ┌───────────────────────────────────────────────────┐\n"
 	logo += " │ %s │\n"
 	logo += " │ %s │\n"
@@ -647,7 +738,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	logo += " │ Handlers %s  Threads %s │\n"
 	logo += " │ Prefork .%s  PID ....%s │\n"
 	logo += " └───────────────────────────────────────────────────┘"
-	logo += "%s\n\n"
+	logo += "%s"
 
 	const (
 		cBlack = "\u001b[90m"
@@ -697,6 +788,15 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		return str
 	}
 
+	pad := func(s string, width int) (str string) {
+		toAdd := width - len(s)
+		str += s
+		for i := 0; i < toAdd; i++ {
+			str += " "
+		}
+		return
+	}
+
 	host, port := parseAddr(addr)
 	if host == "" || host == "0.0.0.0" {
 		host = "127.0.0.1"
@@ -706,22 +806,108 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		addr = "https://" + host + ":" + port
 	}
 
-	isPrefork := "disabled"
+	isPrefork := "Disabled"
 	if app.config.Prefork {
-		isPrefork = "enabled"
+		isPrefork = "Enabled"
+	}
+
+	mainLogo := fmt.Sprintf(logo,
+		cBlack,
+		centerValue(" Fiber v"+Version, 49),
+		center(addr, 49),
+		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.GOMAXPROCS(0)), 14),
+		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
+		cReset,
+	)
+
+	var childPidsLogo string
+	if app.config.Prefork {
+		var childPidsTemplate string
+		childPidsTemplate += "%s"
+		childPidsTemplate += " ┌───────────────────────────────────────────────────┐\n%s"
+		childPidsTemplate += " └───────────────────────────────────────────────────┘"
+		childPidsTemplate += "%s"
+
+		newLine := " │ %s%s%s │"
+
+		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
+		var pidSlice []string
+		for _, v := range strings.Split(pids, ",") {
+			if v != "" {
+				pidSlice = append(pidSlice, v)
+			}
+		}
+
+		var lines []string
+		thisLine := "Child PIDs ... "
+		var itemsOnThisLine []string
+
+		addLine := func() {
+			lines = append(lines,
+				fmt.Sprintf(
+					newLine,
+					cBlack,
+					thisLine+cCyan+pad(strings.Join(itemsOnThisLine, ", "), 49-len(thisLine)),
+					cBlack,
+				),
+			)
+		}
+
+		for _, pid := range pidSlice {
+			if len(thisLine+strings.Join(append(itemsOnThisLine, pid), ", ")) > 49 {
+				addLine()
+				thisLine = ""
+				itemsOnThisLine = []string{pid}
+			} else {
+				itemsOnThisLine = append(itemsOnThisLine, pid)
+			}
+		}
+
+		// Add left over items to their own line
+		if len(itemsOnThisLine) != 0 {
+			addLine()
+		}
+
+		// Form logo
+		childPidsLogo = fmt.Sprintf(childPidsTemplate,
+			cBlack,
+			strings.Join(lines, "\n")+"\n",
+			cReset,
+		)
+	}
+
+	// Combine both the child PID logo and the main Fiber logo
+
+	// Pad the shorter logo to the length of the longer one
+	splitMainLogo := strings.Split(mainLogo, "\n")
+	splitChildPidsLogo := strings.Split(childPidsLogo, "\n")
+
+	mainLen := len(splitMainLogo)
+	childLen := len(splitChildPidsLogo)
+
+	if mainLen > childLen {
+		diff := mainLen - childLen
+		for i := 0; i < diff; i++ {
+			splitChildPidsLogo = append(splitChildPidsLogo, "")
+		}
+	} else {
+		diff := childLen - mainLen
+		for i := 0; i < diff; i++ {
+			splitMainLogo = append(splitMainLogo, "")
+		}
+	}
+
+	// Combine the two logos, line by line
+	output := "\n"
+	for i := range splitMainLogo {
+		output += cBlack + splitMainLogo[i] + " " + splitChildPidsLogo[i] + "\n"
 	}
 
 	out := colorable.NewColorableStdout()
 	if os.Getenv("TERM") == "dumb" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
-	fmt.Fprintf(out, logo,
-		cBlack,
-		centerValue(" Fiber v"+Version, 49),
-		center(addr, 49),
-		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.NumCPU()), 14),
-		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
-		cReset,
-	)
+
+	fmt.Fprintln(out, output)
 
 }

@@ -27,47 +27,47 @@ func (e encoder) encodeBool(b []byte, p unsafe.Pointer) ([]byte, error) {
 }
 
 func (e encoder) encodeInt(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendInt(b, int64(*(*int)(p)), 10), nil
+	return appendInt(b, int64(*(*int)(p))), nil
 }
 
 func (e encoder) encodeInt8(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendInt(b, int64(*(*int8)(p)), 10), nil
+	return appendInt(b, int64(*(*int8)(p))), nil
 }
 
 func (e encoder) encodeInt16(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendInt(b, int64(*(*int16)(p)), 10), nil
+	return appendInt(b, int64(*(*int16)(p))), nil
 }
 
 func (e encoder) encodeInt32(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendInt(b, int64(*(*int32)(p)), 10), nil
+	return appendInt(b, int64(*(*int32)(p))), nil
 }
 
 func (e encoder) encodeInt64(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendInt(b, *(*int64)(p), 10), nil
+	return appendInt(b, *(*int64)(p)), nil
 }
 
 func (e encoder) encodeUint(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendUint(b, uint64(*(*uint)(p)), 10), nil
+	return appendUint(b, uint64(*(*uint)(p))), nil
 }
 
 func (e encoder) encodeUintptr(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendUint(b, uint64(*(*uintptr)(p)), 10), nil
+	return appendUint(b, uint64(*(*uintptr)(p))), nil
 }
 
 func (e encoder) encodeUint8(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendUint(b, uint64(*(*uint8)(p)), 10), nil
+	return appendUint(b, uint64(*(*uint8)(p))), nil
 }
 
 func (e encoder) encodeUint16(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendUint(b, uint64(*(*uint16)(p)), 10), nil
+	return appendUint(b, uint64(*(*uint16)(p))), nil
 }
 
 func (e encoder) encodeUint32(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendUint(b, uint64(*(*uint32)(p)), 10), nil
+	return appendUint(b, uint64(*(*uint32)(p))), nil
 }
 
 func (e encoder) encodeUint64(b []byte, p unsafe.Pointer) ([]byte, error) {
-	return strconv.AppendUint(b, *(*uint64)(p), 10), nil
+	return appendUint(b, *(*uint64)(p)), nil
 }
 
 func (e encoder) encodeFloat32(b []byte, p unsafe.Pointer) ([]byte, error) {
@@ -130,11 +130,20 @@ func (e encoder) encodeNumber(b []byte, p unsafe.Pointer) ([]byte, error) {
 
 func (e encoder) encodeString(b []byte, p unsafe.Pointer) ([]byte, error) {
 	s := *(*string)(p)
+	if len(s) == 0 {
+		return append(b, `""`...), nil
+	}
 	i := 0
 	j := 0
 	escapeHTML := (e.flags & EscapeHTML) != 0
 
 	b = append(b, '"')
+
+	if len(s) >= 8 {
+		if j = escapeIndex(s, escapeHTML); j < 0 {
+			return append(append(b, s...), '"'), nil
+		}
+	}
 
 	for j < len(s) {
 		c := s[j]
@@ -532,6 +541,8 @@ func (e encoder) encodeStruct(b []byte, p unsafe.Pointer, st *structType) ([]byt
 	var n int
 	b = append(b, '{')
 
+	escapeHTML := (e.flags & EscapeHTML) != 0
+
 	for i := range st.fields {
 		f := &st.fields[i]
 		v := unsafe.Pointer(uintptr(p) + f.offset)
@@ -540,7 +551,7 @@ func (e encoder) encodeStruct(b []byte, p unsafe.Pointer, st *structType) ([]byt
 			continue
 		}
 
-		if (e.flags & EscapeHTML) != 0 {
+		if escapeHTML {
 			k = f.html
 		} else {
 			k = f.json
@@ -549,11 +560,10 @@ func (e encoder) encodeStruct(b []byte, p unsafe.Pointer, st *structType) ([]byt
 		lengthBeforeKey := len(b)
 
 		if n != 0 {
-			b = append(b, ',')
+			b = append(b, k...)
+		} else {
+			b = append(b, k[1:]...)
 		}
-
-		b = append(b, k...)
-		b = append(b, ':')
 
 		if b, err = f.codec.encode(e, b, v); err != nil {
 			if err == (rollback{}) {

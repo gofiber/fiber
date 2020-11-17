@@ -30,9 +30,9 @@ app.Use(requestid.New())
 // Or extend your config for customization
 app.Use(requestid.New(requestid.Config{
 	Header:    "X-Custom-Header",
-	Generetor: func() string {
+	Generator: func() string {
 		return "static-id"
-	}
+	},
 }))
 ```
 
@@ -52,21 +52,25 @@ type Config struct {
 
 	// Generator defines a function to generate the unique identifier.
 	//
-	// Optional. Default: func() string {
-	//   return utils.UUID()
-	// }
+	// Optional. Default: utils.UUID
 	Generator func() string
+
+	// ContextKey defines the key used when storing the request ID in
+	// the locals for a specific request.
+	//
+	// Optional. Default: requestid
+	ContextKey string
 }
 ```
 
 ### Default Config
 ```go
 var ConfigDefault = Config{
-	Next:      nil,
-	Header:    fiber.HeaderXRequestID,
-	Generator: func() string {
+	Next:       nil,
+	Header:     fiber.HeaderXRequestID,
+	Generator:  func() string {
 		return utils.UUID()
 	},
+	ContextKey: "requestid"
 }
-
 ```

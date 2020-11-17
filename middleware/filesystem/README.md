@@ -1,6 +1,8 @@
 # Filesystem middleware
 Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables you to serve files from a directory. 
 
+⚠️ **`:params` & `:optionals?` within the prefix path are not supported!**
+
 ### Table of Contents
 - [Signatures](#signatures)
 - [Examples](#examples)
@@ -32,12 +34,36 @@ app.Use(filesystem.New(filesystem.Config{
 // Or extend your config for customization
 app.Use(filesystem.New(filesystem.Config{
 	Root:         http.Dir("./assets"),
-	Index:        "index.html",
 	Browse:       true,
-	NotFoundFile: "404.html"
+	Index:        "index.html",
+	NotFoundFile: "404.html",
+	MaxAge:       3600,
 }))
 ```
 
+## pkger
+https://github.com/markbates/pkger
+
+```go
+package main
+
+import (
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/filesystem"
+
+	"github.com/markbates/pkger"
+)
+
+func main() {
+	app := fiber.New()
+
+	app.Use("/assets", filesystem.New(filesystem.Config{
+		Root: pkger.Dir("/assets"),
+	})
+
+	log.Fatal(app.Listen(":3000"))
+}
+```
 
 ## packr
 https://github.com/gobuffalo/packr
@@ -59,7 +85,7 @@ func main() {
 		Root: packr.New("Assets Box", "/assets"),
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -83,7 +109,7 @@ func main() {
 		Root: rice.MustFindBox("assets").HTTPBox(),
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -107,7 +133,7 @@ func main() {
 		Root: myEmbeddedFiles.HTTP,
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -137,7 +163,7 @@ func main() {
 		Root: statikFS,
 	})
 
-	app.Listen(":3000")
+	log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -154,22 +180,28 @@ type Config struct {
 	// to a collection of files and directories.
 	//
 	// Required. Default: nil
-	Root http.FileSystem
-
-	// Index file for serving a directory.
-	//
-	// Optional. Default: "index.html"
-	Index string
+	Root http.FileSystem `json:"-"`
 
 	// Enable directory browsing.
 	//
 	// Optional. Default: false
-	Browse bool
+	Browse bool `json:"browse"`
+
+	// Index file for serving a directory.
+	//
+	// Optional. Default: "index.html"
+	Index string `json:"index"`
+
+	// The value for the Cache-Control HTTP-header
+	// that is set on the file response. MaxAge is defined in seconds.
+	//
+	// Optional. Default value 0.
+	MaxAge    int `json:"max_age"`
 
 	// File to return if path is not found. Useful for SPA's.
 	//
 	// Optional. Default: ""
-	NotFoundFile string
+	NotFoundFile string `json:"not_found_file"`
 }
 ```
 
@@ -178,7 +210,8 @@ type Config struct {
 var ConfigDefault = Config{
 	Next:   nil,
 	Root:   nil,
-	Index:  "/index.html",
 	Browse: false,
+	Index:  "/index.html",
+	MaxAge: 0,
 }
 ```
