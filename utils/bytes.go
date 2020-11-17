@@ -56,6 +56,20 @@ func TrimBytes(b []byte, cutset byte) []byte {
 }
 
 // EqualFold the equivalent of bytes.EqualFold
+func EqualFoldBytes(b, s []byte) (equals bool) {
+	n := len(b)
+	equals = n == len(s)
+	if equals {
+		for i := 0; i < n; i++ {
+			if equals = b[i]|0x20 == s[i]|0x20; !equals {
+				break
+			}
+		}
+	}
+	return
+}
+
+// DEPRECATED, please use EqualFoldBytes
 func EqualsFold(b, s []byte) (equals bool) {
 	n := len(b)
 	equals = n == len(s)
