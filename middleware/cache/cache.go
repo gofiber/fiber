@@ -28,12 +28,12 @@ func New(config ...Config) fiber.Handler {
 		// Cache settings
 		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
+		mux        = &sync.RWMutex{}
 	)
 
 	// create storage handler
 	store := &storage{
 		cfg:     &cfg,
-		mux:     &sync.RWMutex{},
 		entries: make(map[string]*entry),
 	}
 
@@ -60,28 +60,35 @@ func New(config ...Config) fiber.Handler {
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
+		mux.Lock()
+		defer mux.Unlock()
+
 		// Get/Create new entry
-		var entry = store.get(key)
+		var e = store.get(key)
 
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
-		// Set expiration if entry does not exist
-		if entry.exp == 0 {
-			entry.exp = ts + expiration
+		if e == nil {
+			e = new(entry)
+		}
 
-		} else if ts >= entry.exp {
+		// Set expiration if entry does not exist
+		if e.exp == 0 {
+			e.exp = ts + expiration
+
+		} else if ts >= e.exp {
 			// Check if entry is expired
 			store.delete(key)
 		} else {
 			// Set response headers from cache
-			c.Send(entry.body)
-			c.Status(entry.status)
-			c.Response().Header.SetContentTypeBytes(entry.cType)
+			c.Send(e.body)
+			c.Status(e.status)
+			c.Response().Header.SetContentTypeBytes(e.cType)
 
 			// Set Cache-Control header if enabled
 			if cfg.CacheControl {
-				maxAge := strconv.FormatUint(entry.exp-ts, 10)
+				maxAge := strconv.FormatUint(e.exp-ts, 10)
 				c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 			}
 
@@ -95,11 +102,11 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
-		entry.status = c.Response().StatusCode()
-		entry.body = utils.CopyBytes(c.Response().Body())
-		entry.cType = utils.CopyBytes(c.Response().Header.ContentType())
+		e.status = c.Response().StatusCode()
+		e.body = utils.CopyBytes(c.Response().Body())
+		e.cType = utils.CopyBytes(c.Response().Header.ContentType())
 
-		store.set(key, entry)
+		store.set(key, e)
 
 		// Finish response
 		return nil

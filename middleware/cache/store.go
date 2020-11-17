@@ -65,6 +65,8 @@ func (s *storage) delete(key string) {
 		_ = s.cfg.Storage.Delete(key)
 		_ = s.cfg.Storage.Delete(key + "_body")
 	} else {
+		s.mux.Lock()
 		delete(s.entries, key)
+		s.mux.Unlock()
 	}
 }
