@@ -25,14 +25,14 @@ func (s *storage) get(key string) *entry {
 	if s.cfg.Storage != nil {
 		raw, err := s.cfg.Storage.Get(key)
 		if err != nil || raw == nil {
-			return nil
+			return e
 		}
 		if _, err := e.UnmarshalMsg(raw); err != nil {
-			return nil
+			return e
 		}
 		body, err := s.cfg.Storage.Get(key + "_body")
 		if err != nil || body == nil {
-			return nil
+			return e
 		}
 		e.body = body
 	} else {

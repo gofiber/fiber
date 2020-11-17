@@ -69,10 +69,6 @@ func New(config ...Config) fiber.Handler {
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
-		if e == nil {
-			e = new(entry)
-		}
-
 		// Set expiration if entry does not exist
 		if e.exp == 0 {
 			e.exp = ts + expiration
