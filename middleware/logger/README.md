@@ -13,8 +13,8 @@ Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP r
 func New(config ...Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+First ensure the appropriate packages are imported
 ```go
 import (
 	"github.com/gofiber/fiber/v2"
@@ -22,17 +22,42 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+#### **Initialization / Default Config**
 ```go
 // Default middleware config
 app.Use(logger.New())
+```
 
-// Or extend your config for customization
+#### **Logging Request ID**
+```go
+app.Use(requestid.New())
+
+​app​.​Use​(​logger​.​New​(logger.​Config​{
+	// For more options, see the Config section
+  Format​: "${pid} ${locals:requestid} ${status} - ${method} ${path}​\n​"​,
+}))
+```
+
+#### **Changing TimeZone & TimeFormat**
+
+```go
 app.Use(logger.New(logger.Config{
 	Format:     "${pid} ${status} - ${method} ${path}\n",
 	TimeFormat: "02-Jan-2006",
 	TimeZone:   "America/New_York",
-	Output:     os.Stdout,
+}))
+```
+
+#### **Custom File Writer**
+```go
+file, err := os.OpenFile("./123.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+if err != nil {
+	log.Fatalf("error opening file: %v", err)
+}
+defer file.Close()
+
+app.Use(logger.New(logger.Config{
+	Output: file,
 }))
 ```
 
@@ -59,6 +84,12 @@ type Config struct {
 	//
 	// Optional. Default: "Local"
 	TimeZone string
+
+	// TimeInterval is the delay before the timestamp is updated
+	//
+	// Optional. Default: 500 * time.Millisecond
+	TimeInterval time.Duration
+
 	// Output is a writter where logs are written
 	//
 	// Default: os.Stderr
@@ -69,11 +100,12 @@ type Config struct {
 ### Default Config
 ```go
 var ConfigDefault = Config{
-	Next:       nil,
-	Format:     "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat: "15:04:05",
-	TimeZone:   "Local",
-	Output:     os.Stderr,
+	Next:         nil,
+	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
+	TimeFormat:   "15:04:05",
+	TimeZone:     "Local",
+	TimeInterval: 500 * time.Millisecond,
+	Output:       os.Stderr,
 }
 ```
 
@@ -93,16 +125,19 @@ const (
 	TagURL           = "url"
 	TagUA            = "ua"
 	TagLatency       = "latency"
-	TagStatus        = "status"
-	TagBody          = "body"
+	TagStatus        = "status"        // response status
+	TagBody          = "body"          // request body
 	TagBytesSent     = "bytesSent"
 	TagBytesReceived = "bytesReceived"
 	TagRoute         = "route"
 	TagError         = "error"
-	TagHeader        = "header:"
-	TagQuery         = "query:"
-	TagForm          = "form:"
-	TagCookie        = "cookie:"
+	TagHeader        = "header:"       // request header
+	TagQuery         = "query:"        // request query
+	TagForm          = "form:"         // request form
+	TagCookie        = "cookie:"       // request cookie
+	TagLocals        = "locals:"
+
+	// colors
 	TagBlack         = "black"
 	TagRed           = "red"
 	TagGreen         = "green"

@@ -31,7 +31,7 @@ app.Use(favicon.New())
 
 // Or extend your config for customization
 app.Use(favicon.New(favicon.Config{
-	File: "./favicon.ico"
+	File: "./favicon.ico",
 }))
 ```
 

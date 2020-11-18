@@ -3,6 +3,7 @@ package filesystem
 import (
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -20,30 +21,37 @@ type Config struct {
 	// to a collection of files and directories.
 	//
 	// Required. Default: nil
-	Root http.FileSystem
-
-	// Index file for serving a directory.
-	//
-	// Optional. Default: "index.html"
-	Index string
+	Root http.FileSystem `json:"-"`
 
 	// Enable directory browsing.
 	//
 	// Optional. Default: false
-	Browse bool
+	Browse bool `json:"browse"`
+
+	// Index file for serving a directory.
+	//
+	// Optional. Default: "index.html"
+	Index string `json:"index"`
+
+	// The value for the Cache-Control HTTP-header
+	// that is set on the file response. MaxAge is defined in seconds.
+	//
+	// Optional. Default value 0.
+	MaxAge int `json:"max_age"`
 
 	// File to return if path is not found. Useful for SPA's.
 	//
 	// Optional. Default: ""
-	NotFoundFile string
+	NotFoundFile string `json:"not_found_file"`
 }
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:   nil,
 	Root:   nil,
-	Index:  "/index.html",
 	Browse: false,
+	Index:  "/index.html",
+	MaxAge: 0,
 }
 
 // New creates a new middleware handler
@@ -73,6 +81,7 @@ func New(config ...Config) fiber.Handler {
 
 	var once sync.Once
 	var prefix string
+	var cacheControlStr = "public, max-age=" + strconv.Itoa(cfg.MaxAge)
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
@@ -153,6 +162,9 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if method == fiber.MethodGet {
+			if cfg.MaxAge > 0 {
+				c.Set(fiber.HeaderCacheControl, cacheControlStr)
+			}
 			c.Response().SetBodyStream(file, contentLength)
 			return nil
 		}
@@ -169,4 +181,71 @@ func New(config ...Config) fiber.Handler {
 
 		return c.Next()
 	}
+}
+
+// SendFile ...
+func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) (err error) {
+	var (
+		file http.File
+		stat os.FileInfo
+	)
+
+	file, err = fs.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fiber.ErrNotFound
+		}
+		return err
+	}
+
+	if stat, err = file.Stat(); err != nil {
+		return err
+	}
+
+	// Serve index if path is directory
+	if stat.IsDir() {
+		indexPath := strings.TrimSuffix(path, "/") + ConfigDefault.Index
+		index, err := fs.Open(indexPath)
+		if err == nil {
+			indexStat, err := index.Stat()
+			if err == nil {
+				file = index
+				stat = indexStat
+			}
+		}
+	}
+
+	// Return forbidden if no index found
+	if stat.IsDir() {
+		return fiber.ErrForbidden
+	}
+
+	modTime := stat.ModTime()
+	contentLength := int(stat.Size())
+
+	// Set Content Type header
+	c.Type(getFileExtension(stat.Name()))
+
+	// Set Last Modified header
+	if !modTime.IsZero() {
+		c.Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
+	}
+
+	method := c.Method()
+	if method == fiber.MethodGet {
+		c.Response().SetBodyStream(file, contentLength)
+		return nil
+	}
+	if method == fiber.MethodHead {
+		c.Request().ResetBody()
+		// Fasthttp should skipbody by default if HEAD?
+		c.Response().SkipBody = true
+		c.Response().Header.SetContentLength(contentLength)
+		if err := file.Close(); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	return nil
 }

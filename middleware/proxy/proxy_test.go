@@ -3,7 +3,6 @@ package proxy
 import (
 	"io/ioutil"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -47,7 +46,7 @@ func Test_Proxy(t *testing.T) {
 		utils.AssertEqual(t, nil, target.Listen(":3001"))
 	}()
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
 	utils.AssertEqual(t, nil, err)
@@ -64,21 +63,6 @@ func Test_Proxy(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
-// go test -run Test_Proxy_Do_With_Error
-func Test_Proxy_Do_With_Error(t *testing.T) {
-	app := fiber.New()
-
-	app.Use(Balancer(Config{Servers: []string{"127.0.0.1:90000"}}))
-
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
-
-	b, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(b), "127.0.0.1:90000"))
-}
-
 func Test_Proxy_Forward(t *testing.T) {
 	app := fiber.New()
 
@@ -89,7 +73,7 @@ func Test_Proxy_Forward(t *testing.T) {
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":50001"))
 	}()
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	app.Use(Forward("http://127.0.0.1:50001"))
 
@@ -110,7 +94,7 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":50002"))
 	}()
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
@@ -139,7 +123,7 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 	go func() {
 		utils.AssertEqual(t, nil, target.Listen(":50003"))
 	}()
-	time.Sleep(1 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	app := fiber.New()
 	app.Use(Balancer(Config{

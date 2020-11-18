@@ -934,6 +934,33 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_MultipartForm -benchmem -count=4
+func Benchmark_Ctx_MultipartForm(b *testing.B) {
+	app := New()
+
+	app.Post("/", func(c *Ctx) error {
+		_, _ = c.MultipartForm()
+		return nil
+	})
+
+	c := &fasthttp.RequestCtx{}
+
+	body := []byte("--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
+	c.Request.SetBody(body)
+	c.Request.Header.SetContentType(MIMEMultipartForm + `;boundary="b"`)
+	c.Request.Header.SetContentLength(len(body))
+
+	h := app.Handler()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(c)
+	}
+
+}
+
 // go test -run Test_Ctx_OriginalURL
 func Test_Ctx_OriginalURL(t *testing.T) {
 	t.Parallel()
@@ -1978,6 +2005,13 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, nil, c.QueryParser(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
 
+	type RequiredQuery struct {
+		Name string `query:"name,required"`
+	}
+	rq := new(RequiredQuery)
+	c.Request().URI().SetQueryString("")
+	fmt.Println(c.QueryParser(rq))
+	utils.AssertEqual(t, "name is empty", c.QueryParser(rq).Error())
 }
 
 func Test_Ctx_EqualFieldType(t *testing.T) {

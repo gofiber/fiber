@@ -5,68 +5,35 @@ package cache
 import (
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
-
-// Config defines the config for middleware.
-type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
-
-	// Expiration is the time that an cached response will live
-	//
-	// Optional. Default: 1 * time.Minute
-	Expiration time.Duration
-
-	// CacheControl enables client side caching if set to true
-	//
-	// Optional. Default: false
-	CacheControl bool
-}
-
-// ConfigDefault is the default config
-var ConfigDefault = Config{
-	Next:         nil,
-	Expiration:   1 * time.Minute,
-	CacheControl: false,
-}
-
-// cache is the manager to store the cached responses
-type cache struct {
-	sync.RWMutex
-	entries    map[string]entry
-	expiration int64
-}
-
-// entry defines the cached response
-type entry struct {
-	body        []byte
-	contentType []byte
-	statusCode  int
-	expiration  int64
-}
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := ConfigDefault
+	cfg := configDefault(config...)
 
-	// Override config if provided
-	if len(config) > 0 {
-		cfg = config[0]
+	var (
+		// Cache settings
+		timestamp  = uint64(time.Now().Unix())
+		expiration = uint64(cfg.Expiration.Seconds())
+		mux        = &sync.RWMutex{}
 
-		// Set default values
-		if cfg.Next == nil {
-			cfg.Next = ConfigDefault.Next
+		// Default store logic (if no Store is provided)
+		entries = make(map[string]entry)
+	)
+
+	// Update timestamp every second
+	go func() {
+		for {
+			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
+			time.Sleep(1 * time.Second)
 		}
-		if int(cfg.Expiration.Seconds()) == 0 {
-			cfg.Expiration = ConfigDefault.Expiration
-		}
-	}
+	}()
 
 	// Nothing to cache
 	if int(cfg.Expiration.Seconds()) < 0 {
@@ -75,25 +42,22 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 
-	// Initialize db
-	db := &cache{
-		entries:    make(map[string]entry),
-		expiration: int64(cfg.Expiration.Seconds()),
-	}
 	// Remove expired entries
-	go func() {
-		for {
-			// GC the entries every 10 seconds to avoid
-			time.Sleep(10 * time.Second)
-			db.Lock()
-			for k := range db.entries {
-				if time.Now().Unix() >= db.entries[k].expiration {
-					delete(db.entries, k)
+	if cfg.defaultStore {
+		go func() {
+			for {
+				// GC the entries every 10 seconds
+				time.Sleep(10 * time.Second)
+				mux.Lock()
+				for k := range entries {
+					if atomic.LoadUint64(&timestamp) >= entries[k].exp {
+						delete(entries, k)
+					}
 				}
+				mux.Unlock()
 			}
-			db.Unlock()
-		}
-	}()
+		}()
+	}
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
@@ -108,30 +72,79 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get key from request
-		key := c.Path()
+		key := cfg.Key(c)
 
-		// Find cached entry
-		db.RLock()
-		resp, ok := db.entries[key]
-		db.RUnlock()
-		if ok {
-			// Check if entry is expired
-			if time.Now().Unix() >= resp.expiration {
-				db.Lock()
-				delete(db.entries, key)
-				db.Unlock()
-			} else {
-				// Set response headers from cache
-				c.Response().SetBodyRaw(resp.body)
-				c.Response().SetStatusCode(resp.statusCode)
-				c.Response().Header.SetContentTypeBytes(resp.contentType)
-				// Set Cache-Control header if enabled
-				if cfg.CacheControl {
-					maxAge := strconv.FormatInt(resp.expiration-time.Now().Unix(), 10)
-					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
-				}
-				return nil
+		// Create new entry
+		var entry entry
+		var entryBody []byte
+
+		// Lock entry
+		mux.Lock()
+		defer mux.Unlock()
+
+		// Check if we need to use the default in-memory storage
+		if cfg.defaultStore {
+			entry = entries[key]
+
+		} else {
+			// Load data from store
+			storeEntry, err := cfg.Storage.Get(key)
+			if err != nil {
+				return err
 			}
+
+			// Only decode if we found an entry
+			if storeEntry != nil {
+				// Decode bytes using msgp
+				if _, err := entry.UnmarshalMsg(storeEntry); err != nil {
+					return err
+				}
+			}
+
+			if entryBody, err = cfg.Storage.Get(key + "_body"); err != nil {
+				return err
+			}
+		}
+
+		// Get timestamp
+		ts := atomic.LoadUint64(&timestamp)
+
+		// Set expiration if entry does not exist
+		if entry.exp == 0 {
+			entry.exp = ts + expiration
+
+		} else if ts >= entry.exp {
+			// Check if entry is expired
+			// Use default memory storage
+			if cfg.defaultStore {
+				delete(entries, key)
+			} else { // Use custom storage
+				if err := cfg.Storage.Delete(key); err != nil {
+					return err
+				}
+				if err := cfg.Storage.Delete(key + "_body"); err != nil {
+					return err
+				}
+			}
+
+		} else {
+			if cfg.defaultStore {
+				c.Response().SetBodyRaw(entry.body)
+			} else {
+				c.Response().SetBodyRaw(entryBody)
+			}
+			// Set response headers from cache
+			c.Response().SetStatusCode(entry.status)
+			c.Response().Header.SetContentTypeBytes(entry.cType)
+
+			// Set Cache-Control header if enabled
+			if cfg.CacheControl {
+				maxAge := strconv.FormatUint(entry.exp-ts, 10)
+				c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
+			}
+
+			// Return response
+			return nil
 		}
 
 		// Continue stack, return err to Fiber if exist
@@ -140,14 +153,32 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
-		db.Lock()
-		db.entries[key] = entry{
-			body:        c.Response().Body(),
-			statusCode:  c.Response().StatusCode(),
-			contentType: c.Response().Header.ContentType(),
-			expiration:  time.Now().Unix() + db.expiration,
+		entryBody = utils.SafeBytes(c.Response().Body())
+		entry.status = c.Response().StatusCode()
+		entry.cType = utils.SafeBytes(c.Response().Header.ContentType())
+
+		// Use default memory storage
+		if cfg.defaultStore {
+			entry.body = entryBody
+			entries[key] = entry
+
+		} else {
+			// Use custom storage
+			data, err := entry.MarshalMsg(nil)
+			if err != nil {
+				return err
+			}
+
+			// Pass bytes to Storage
+			if err = cfg.Storage.Set(key, data, cfg.Expiration); err != nil {
+				return err
+			}
+
+			// Pass bytes to Storage
+			if err = cfg.Storage.Set(key+"_body", entryBody, cfg.Expiration); err != nil {
+				return err
+			}
 		}
-		db.Unlock()
 
 		// Finish response
 		return nil

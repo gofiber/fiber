@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,22 +16,14 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// go test -v -run=^$ -bench=Benchmark_Utils_RemoveNewLines -benchmem -count=4
-func Benchmark_Utils_RemoveNewLines(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_RemoveNewLines -benchmem -count=4
+func Benchmark_RemoveNewLines(b *testing.B) {
 	withNL := "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n"
 	withoutNL := "foo  Set-Cookie:%20SESSIONID=MaliciousValue  "
 	expected := utils.SafeString(withoutNL)
 	var res string
 
-	b.Run("withNewlines", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			res = removeNewLines(withNL)
-		}
-		utils.AssertEqual(b, expected, res)
-	})
-	b.Run("withoutNewlines", func(b *testing.B) {
+	b.Run("withoutNL", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
@@ -38,7 +31,53 @@ func Benchmark_Utils_RemoveNewLines(b *testing.B) {
 		}
 		utils.AssertEqual(b, expected, res)
 	})
+	b.Run("withNL", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			res = removeNewLines(withNL)
+		}
+		utils.AssertEqual(b, expected, res)
+	})
+}
 
+// go test -v -run=RemoveNewLines_Bytes -count=3
+func Test_RemoveNewLines_Bytes(t *testing.T) {
+	app := New()
+	t.Run("Not Status OK", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.SendString("Hello, World!")
+		c.Status(201)
+		setETag(c, false)
+		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
+	})
+
+	t.Run("No Body", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		setETag(c, false)
+		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
+	})
+
+	t.Run("Has HeaderIfNoneMatch", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.SendString("Hello, World!")
+		c.Request().Header.Set(HeaderIfNoneMatch, `"13-1831710635"`)
+		setETag(c, false)
+		utils.AssertEqual(t, 304, c.Response().StatusCode())
+		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
+		utils.AssertEqual(t, "", string(c.Response().Body()))
+	})
+
+	t.Run("No HeaderIfNoneMatch", func(t *testing.T) {
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		c.SendString("Hello, World!")
+		setETag(c, false)
+		utils.AssertEqual(t, `"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
+	})
 }
 
 // go test -v -run=Test_Utils_ -count=3
@@ -319,4 +358,50 @@ func Test_Utils_lnMetadata(t *testing.T) {
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config != nil)
 	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4
+func Benchmark_SlashRecognition(b *testing.B) {
+	search := "wtf/1234"
+	var result bool
+	b.Run("indexBytes", func(b *testing.B) {
+		result = false
+		for i := 0; i < b.N; i++ {
+			if strings.IndexByte(search, slashDelimiter) != -1 {
+				result = true
+			}
+		}
+		utils.AssertEqual(b, true, result)
+	})
+	b.Run("forEach", func(b *testing.B) {
+		result = false
+		c := int32(slashDelimiter)
+		for i := 0; i < b.N; i++ {
+			for _, b := range search {
+				if b == c {
+					result = true
+					break
+				}
+			}
+		}
+		utils.AssertEqual(b, true, result)
+	})
+	b.Run("IndexRune", func(b *testing.B) {
+		result = false
+		c := int32(slashDelimiter)
+		for i := 0; i < b.N; i++ {
+			result = IndexRune(search, c)
+
+		}
+		utils.AssertEqual(b, true, result)
+	})
+}
+
+func IndexRune(str string, needle int32) bool {
+	for _, b := range str {
+		if b == needle {
+			return true
+		}
+	}
+	return false
 }

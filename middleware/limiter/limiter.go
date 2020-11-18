@@ -1,6 +1,7 @@
 package limiter
 
 import (
+	"fmt"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -9,53 +10,11 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// Config defines the config for middleware.
-type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
-
-	// Max number of recent connections during `Duration` seconds before sending a 429 response
-	//
-	// Default: 5
-	Max int
-
-	// Duration is the time on how long to keep records of requests in memory
-	//
-	// Default: 1 * time.Minute
-	Duration time.Duration
-
-	// Key allows you to generate custom keys, by default c.IP() is used
-	//
-	// Default: func(c *fiber.Ctx) string {
-	//   return c.IP()
-	// }
-	Key func(*fiber.Ctx) string
-
-	// LimitReached is called when a request hits the limit
-	//
-	// Default: func(c *fiber.Ctx) error {
-	//   return c.SendStatus(fiber.StatusTooManyRequests)
-	// }
-	LimitReached fiber.Handler
-}
-
-// ConfigDefault is the default config
-var ConfigDefault = Config{
-	Next:     nil,
-	Max:      5,
-	Duration: 1 * time.Minute,
-	Key: func(c *fiber.Ctx) string {
-		return c.IP()
-	},
-	LimitReached: func(c *fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTooManyRequests)
-	},
-}
-
-// X-RateLimit-* headers
 const (
+	// Storage ErrNotExist
+	errNotExist = "key does not exist"
+
+	// X-RateLimit-* headers
 	xRateLimitLimit     = "X-RateLimit-Limit"
 	xRateLimitRemaining = "X-RateLimit-Remaining"
 	xRateLimitReset     = "X-RateLimit-Reset"
@@ -64,39 +23,18 @@ const (
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := ConfigDefault
+	cfg := configDefault(config...)
 
-	// Override config if provided
-	if len(config) > 0 {
-		cfg = config[0]
+	var (
+		// Limiter settings
+		max        = strconv.Itoa(cfg.Max)
+		timestamp  = uint64(time.Now().Unix())
+		expiration = uint64(cfg.Expiration.Seconds())
+		mux        = &sync.RWMutex{}
 
-		// Set default values
-		if cfg.Next == nil {
-			cfg.Next = ConfigDefault.Next
-		}
-		if cfg.Max <= 0 {
-			cfg.Max = ConfigDefault.Max
-		}
-		if int(cfg.Duration.Seconds()) <= 0 {
-			cfg.Duration = ConfigDefault.Duration
-		}
-		if cfg.Key == nil {
-			cfg.Key = ConfigDefault.Key
-		}
-		if cfg.LimitReached == nil {
-			cfg.LimitReached = ConfigDefault.LimitReached
-		}
-	}
-
-	// Limiter settings
-	var max = strconv.Itoa(cfg.Max)
-	var hits = make(map[string]int)
-	var reset = make(map[string]uint64)
-	var timestamp = uint64(time.Now().Unix())
-	var duration = uint64(cfg.Duration.Seconds())
-
-	// mutex for parallel read and write access
-	mux := &sync.Mutex{}
+		// Default store logic (if no Store is provided)
+		entries = make(map[string]entry)
+	)
 
 	// Update timestamp every second
 	go func() {
@@ -113,41 +51,74 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Get key (default is the remote IP)
-		key := cfg.Key(c)
+		// Get key from request
+		key := cfg.KeyGenerator(c)
 
-		// Lock map
+		// Create new entry
+		entry := entry{}
+
+		// Lock entry
 		mux.Lock()
+		defer mux.Unlock()
 
-		// Set unix timestamp if not exist
-		ts := atomic.LoadUint64(&timestamp)
-		if reset[key] == 0 {
-			reset[key] = ts + duration
-		} else if ts >= reset[key] {
-			hits[key] = 0
-			reset[key] = ts + duration
+		// Use Storage if provided
+		if cfg.Storage != nil {
+			val, err := cfg.Storage.Get(key)
+			if val != nil && len(val) > 0 {
+				if _, err := entry.UnmarshalMsg(val); err != nil {
+					return err
+				}
+			}
+			if err != nil && err.Error() != errNotExist {
+				fmt.Println("[LIMITER]", err.Error())
+			}
+		} else {
+			entry = entries[key]
 		}
 
-		// Increment key hits
-		hits[key]++
+		// Get timestamp
+		ts := atomic.LoadUint64(&timestamp)
 
-		// Get current hits
-		hitCount := hits[key]
+		// Set expiration if entry does not exist
+		if entry.exp == 0 {
+			entry.exp = ts + expiration
+
+		} else if ts >= entry.exp {
+			// Check if entry is expired
+			entry.hits = 0
+			entry.exp = ts + expiration
+		}
+
+		// Increment hits
+		entry.hits++
+
+		// Use Storage if provided
+		if cfg.Storage != nil {
+			// Marshal entry to bytes
+			val, err := entry.MarshalMsg(nil)
+			if err != nil {
+				return err
+			}
+
+			// Pass value to Storage
+			if err = cfg.Storage.Set(key, val, cfg.Expiration); err != nil {
+				return err
+			}
+		} else {
+			entries[key] = entry
+		}
 
 		// Calculate when it resets in seconds
-		resetTime := reset[key] - ts
-
-		// Unlock map
-		mux.Unlock()
+		expire := entry.exp - ts
 
 		// Set how many hits we have left
-		remaining := cfg.Max - hitCount
+		remaining := cfg.Max - entry.hits
 
 		// Check if hits exceed the cfg.Max
 		if remaining < 0 {
 			// Return response with Retry-After header
 			// https://tools.ietf.org/html/rfc6584
-			c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(resetTime, 10))
+			c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(expire, 10))
 
 			// Call LimitReached handler
 			return cfg.LimitReached(c)
@@ -156,7 +127,7 @@ func New(config ...Config) fiber.Handler {
 		// We can continue, update RateLimit headers
 		c.Set(xRateLimitLimit, max)
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
-		c.Set(xRateLimitReset, strconv.FormatUint(resetTime, 10))
+		c.Set(xRateLimitReset, strconv.FormatUint(expire, 10))
 
 		// Continue stack
 		return c.Next()

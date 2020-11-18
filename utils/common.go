@@ -26,6 +26,7 @@ var uuidSeed [24]byte
 var uuidCounter uint64
 var uuidSetup sync.Once
 
+// UUID generates an universally unique identifier (UUID)
 func UUID() string {
 	// Setup seed & counter once
 	uuidSetup.Do(func() {
@@ -62,7 +63,7 @@ func UUID() string {
 	return GetString(b)
 }
 
-// Returns function name
+// FunctionName returns function name
 func FunctionName(fn interface{}) string {
 	t := reflect.ValueOf(fn).Type()
 	if t.Kind() == reflect.Func {

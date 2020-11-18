@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,10 +29,10 @@ func Test_Cache_CacheControl(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 
-	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "public, max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
 }
@@ -54,7 +56,7 @@ func Test_Cache_Expired(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	// Sleep until the cache is expired
-	time.Sleep(expiration)
+	time.Sleep(2 * time.Second)
 
 	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -74,6 +76,55 @@ func Test_Cache(t *testing.T) {
 		now := fmt.Sprintf("%d", time.Now().UnixNano())
 		return c.SendString(now)
 	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+
+	cachedReq := httptest.NewRequest("GET", "/", nil)
+	cachedResp, err := app.Test(cachedReq)
+	utils.AssertEqual(t, nil, err)
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	cachedBody, err := ioutil.ReadAll(cachedResp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	utils.AssertEqual(t, cachedBody, body)
+}
+
+// go test -run Test_Cache_Concurrency_Store -race -v
+func Test_Cache_Concurrency_Store(t *testing.T) {
+	// Test concurrency using a custom store
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Store: testStore{stmap: map[string][]byte{}, mutex: &sync.RWMutex{}},
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	var wg sync.WaitGroup
+	singleRequest := func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+
+		body, err := ioutil.ReadAll(resp.Body)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "Hello tester!", string(body))
+	}
+
+	for i := 0; i <= 49; i++ {
+		wg.Add(1)
+		go singleRequest(&wg)
+	}
+
+	wg.Wait()
 
 	req := httptest.NewRequest("GET", "/", nil)
 	resp, err := app.Test(req)
@@ -181,23 +232,41 @@ func Test_Cache_NothingToCache(t *testing.T) {
 	}
 }
 
+func Test_CustomKey(t *testing.T) {
+	app := fiber.New()
+	var called bool
+	app.Use(New(Config{Key: func(c *fiber.Ctx) string {
+		called = true
+		return c.Path()
+	}}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("hi")
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	_, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, called)
+
+}
+
 // go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
 func Benchmark_Cache(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		data, err := ioutil.ReadFile("../../.github/README.md")
-		utils.AssertEqual(b, nil, err)
-		return c.Send(data)
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		data, _ := ioutil.ReadFile("../../.github/README.md")
+		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
 	fctx.Request.Header.SetMethod("GET")
-	fctx.Request.SetRequestURI("/")
+	fctx.Request.SetRequestURI("/demo")
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -206,5 +275,76 @@ func Benchmark_Cache(b *testing.B) {
 		h(fctx)
 	}
 
-	utils.AssertEqual(b, fiber.StatusOK, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, true, len(fctx.Response.Body()) > 30000)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Cache_Store -benchmem -count=4
+func Benchmark_Cache_Store(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Store: testStore{stmap: map[string][]byte{}, mutex: &sync.RWMutex{}},
+	}))
+
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		data, _ := ioutil.ReadFile("../../.github/README.md")
+		return c.Status(fiber.StatusTeapot).Send(data)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/demo")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, true, len(fctx.Response.Body()) > 30000)
+}
+
+// testStore is used for testing custom stores
+type testStore struct {
+	stmap map[string][]byte
+	mutex *sync.RWMutex
+}
+
+func (s testStore) Get(id string) ([]byte, error) {
+	s.mutex.RLock()
+	val, ok := s.stmap[id]
+	s.mutex.RUnlock()
+	if !ok {
+		return nil, nil
+	} else {
+		return val, nil
+	}
+}
+
+func (s testStore) Set(id string, val []byte, _ time.Duration) error {
+	s.mutex.Lock()
+	s.stmap[id] = val
+	s.mutex.Unlock()
+	return nil
+}
+
+func (s testStore) Reset() error {
+	s.stmap = map[string][]byte{}
+	return nil
+}
+
+func (s testStore) Delete(id string) error {
+	s.mutex.Lock()
+	delete(s.stmap, id)
+	s.mutex.Unlock()
+	return nil
+}
+
+func (s testStore) Close() error {
+	return nil
 }

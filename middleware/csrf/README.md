@@ -1,5 +1,6 @@
 # CSRF
-CSRF middleware for [Fiber](https://github.com/gofiber/fiber) that provides [Cross-site request forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) protection by passing a csrf token via cookies. This cookie value will be used to compare against the client csrf token in POST requests. When the csrf token is invalid, this middleware will return the `fiber.ErrForbidden` error.
+CSRF middleware for [Fiber](https://github.com/gofiber/fiber) that provides [Cross-site request forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) protection by passing a csrf token via cookies. This cookie value will be used to compare against the client csrf token in POST requests. When the csrf token is invalid, this middleware will delete the `_csrf` cookie and return the `fiber.ErrForbidden` error.
+CSRF Tokens are generated on GET requests.
 
 ### Table of Contents
 - [Signatures](#signatures)
@@ -29,12 +30,11 @@ app.Use(csrf.New())
 
 // Or extend your config for customization
 app.Use(csrf.New(csrf.Config{
-	TokenLookup: "header:X-CSRF-Token",
-	ContextKey: "csrf",
-	Cookie: &fiber.Cookie{
-		Name: "_csrf",
-	},
-	Expiration: 24 * time.Hour,
+	KeyLookup:      "header:X-Csrf-Token",
+	CookieName:     "csrf_",
+	CookieSameSite: "Strict",
+	Expiration:     1 * time.Hour,
+	KeyGenerator:   utils.UUID,
 }))
 ```
 
@@ -47,44 +47,72 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// TokenLookup is a string in the form of "<source>:<key>" that is used
+	// KeyLookup is a string in the form of "<source>:<key>" that is used
 	// to extract token from the request.
-	//
-	// Optional. Default value "header:X-CSRF-Token".
 	// Possible values:
 	// - "header:<name>"
 	// - "query:<name>"
 	// - "param:<name>"
 	// - "form:<name>"
-	TokenLookup string
-
-	// Cookie
+	// - "cookie:<name>"
 	//
-	// Optional.
-	Cookie *fiber.Cookie
+	// Optional. Default: "header:X-CSRF-Token"
+	KeyLookup string
+
+	// Name of the session cookie. This cookie will store session key.
+	// Optional. Default value "_csrf".
+	CookieName string
+
+	// Domain of the CSRF cookie.
+	// Optional. Default value "".
+	CookieDomain string
+
+	// Path of the CSRF cookie.
+	// Optional. Default value "".
+	CookiePath string
+
+	// Indicates if CSRF cookie is secure.
+	// Optional. Default value false.
+	CookieSecure bool
+
+	// Indicates if CSRF cookie is HTTP only.
+	// Optional. Default value false.
+	CookieHTTPOnly bool
+
+	// Indicates if CSRF cookie is HTTP only.
+	// Optional. Default value "Strict".
+	CookieSameSite string
 
 	// Expiration is the duration before csrf token will expire
 	//
-	// Optional. Default: 24 * time.Hour
+	// Optional. Default: 1 * time.Hour
 	Expiration time.Duration
 
-	// Context key to store generated CSRF token into context.
+	// Store is used to store the state of the middleware
 	//
-	// Optional. Default value "csrf".
+	// Optional. Default: memory.New()
+	Storage fiber.Storage
+
+	// Context key to store generated CSRF token into context.
+	// If left empty, token will not be stored in context.
+	//
+	// Optional. Default: ""
 	ContextKey string
+
+	// KeyGenerator creates a new CSRF token
+	//
+	// Optional. Default: utils.UUID
+	KeyGenerator func() string
 }
 ```
 
 ### Default Config
 ```go
 var ConfigDefault = Config{
-	Next:        nil,
-	TokenLookup: "header:X-CSRF-Token",
-	ContextKey:  "csrf",
-	Cookie: &fiber.Cookie{
-		Name:     "_csrf",
-		SameSite: "Strict",
-	},
-	Expiration: 24 * time.Hour,
+	KeyLookup:      "header:X-Csrf-Token",
+	CookieName:     "csrf_",
+	CookieSameSite: "Strict",
+	Expiration:     1 * time.Hour,
+	KeyGenerator:   utils.UUID,
 }
 ```

@@ -31,13 +31,37 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.1.1"
+const Version = "2.2.0"
+
+// Handler defines a function to serve HTTP requests.
+type Handler = func(*Ctx) error
 
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
-// Handler defines a function to serve HTTP requests.
-type Handler = func(*Ctx) error
+// Storage interface that is implemented by storage providers for different
+// middleware packages like cache, limiter, session and csrf
+type Storage interface {
+	// Get retrieves the value for the given key.
+	// If no value is not found it returns ErrNotExit error
+	Get(key string) ([]byte, error)
+
+	// Set stores the given value for the given key along with a
+	// time-to-live expiration value, 0 means live for ever
+	// The key must not be "" and the empty values are ignored.
+	Set(key string, val []byte, ttl time.Duration) error
+
+	// Delete deletes the stored value for the given key.
+	// Deleting a non-existing key-value pair does NOT lead to an error.
+	// The key must not be "".
+	Delete(key string) error
+
+	// Reset the storage
+	Reset() error
+
+	// Close the storage
+	Close() error
+}
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
@@ -234,7 +258,7 @@ type Config struct {
 	// Default: false
 	ReduceMemoryUsage bool `json:"reduce_memory_usage"`
 
-	// FEATURE: v2.2.x
+	// FEATURE: v2.3.x
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
@@ -262,6 +286,12 @@ type Static struct {
 	// Optional. Default value "index.html".
 	Index string `json:"index"`
 
+	// Expiration duration for inactive file handlers.
+	// Use a negative time.Duration to disable it.
+	//
+	// Optional. Default value 10 * time.Second.
+	CacheDuration time.Duration `json:"cache_duration"`
+
 	// The value for the Cache-Control HTTP-header
 	// that is set on the file response. MaxAge is defined in seconds.
 	//
@@ -278,7 +308,7 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-// Default ErrorHandler that process return errors from handlers
+// DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {

@@ -189,6 +189,10 @@ skipLoop:
 		case ':':
 			t.isKey = false
 		case ',':
+			if len(t.stack) == 0 {
+				t.Err = syntaxError(t.json, "found unexpected comma")
+				return false
+			}
 			if t.is(inObject) {
 				t.isKey = true
 			}

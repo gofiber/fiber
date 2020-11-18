@@ -526,6 +526,9 @@ func (c *Ctx) Is(extension string) bool {
 }
 
 // JSON converts any interface or string to JSON.
+// Array and slice values encode as JSON arrays,
+// except that []byte encodes as a base64-encoded string,
+// and a nil slice encodes as the null JSON value.
 // This method also sets the content header to application/json.
 func (c *Ctx) JSON(data interface{}) error {
 	raw, err := json.Marshal(data)
@@ -715,9 +718,6 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
-	if c.fasthttp.QueryArgs().Len() < 1 {
-		return nil
-	}
 	// Get decoder from pool
 	var decoder = decoderPool.Get().(*schema.Decoder)
 	defer decoderPool.Put(decoder)

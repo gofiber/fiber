@@ -64,7 +64,7 @@ func Test_RequestID_Locals(t *testing.T) {
 
 	var ctxVal string
 
-	app.Use(func (c *fiber.Ctx) error {
+	app.Use(func(c *fiber.Ctx) error {
 		ctxVal = c.Locals(ctxKey).(string)
 		return c.Next()
 	})

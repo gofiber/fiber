@@ -18,46 +18,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Config defines the config for middleware.
-type Config struct {
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
-
-	// Format defines the logging tags
-	//
-	// Optional. Default: [${time}] ${status} - ${latency} ${method} ${path}\n
-	Format string
-
-	// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
-	//
-	// Optional. Default: 15:04:05
-	TimeFormat string
-
-	// TimeZone can be specified, such as "UTC" and "America/New_York" and "Asia/Chongqing", etc
-	//
-	// Optional. Default: "Local"
-	TimeZone string
-	// Output is a writter where logs are written
-	//
-	// Default: os.Stderr
-	Output io.Writer
-
-	enableColors     bool
-	enableLatency    bool
-	timeZoneLocation *time.Location
-}
-
-// ConfigDefault is the default config
-var ConfigDefault = Config{
-	Next:       nil,
-	Format:     "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat: "15:04:05",
-	TimeZone:   "Local",
-	Output:     os.Stderr,
-}
-
 // Logger variables
 const (
 	TagPid           = "pid"
@@ -79,6 +39,7 @@ const (
 	TagRoute         = "route"
 	TagError         = "error"
 	TagHeader        = "header:"
+	TagLocals        = "locals:"
 	TagQuery         = "query:"
 	TagForm          = "form:"
 	TagCookie        = "cookie:"
@@ -109,36 +70,7 @@ const (
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := ConfigDefault
-
-	// Override config if provided
-	if len(config) > 0 {
-		cfg = config[0]
-
-		// Enable colors if no custom format or output is given
-		if cfg.Format == "" && cfg.Output == nil {
-			cfg.enableColors = true
-		}
-
-		// Set default values
-		if cfg.Next == nil {
-			cfg.Next = ConfigDefault.Next
-		}
-		if cfg.Format == "" {
-			cfg.Format = ConfigDefault.Format
-		}
-		if cfg.TimeZone == "" {
-			cfg.TimeZone = ConfigDefault.TimeZone
-		}
-		if cfg.TimeFormat == "" {
-			cfg.TimeFormat = ConfigDefault.TimeFormat
-		}
-		if cfg.Output == nil {
-			cfg.Output = ConfigDefault.Output
-		}
-	} else {
-		cfg.enableColors = true
-	}
+	cfg := configDefault(config...)
 
 	// Get timezone location
 	tz, err := time.LoadLocation(cfg.TimeZone)
@@ -162,7 +94,7 @@ func New(config ...Config) fiber.Handler {
 	if strings.Contains(cfg.Format, "${time}") {
 		go func() {
 			for {
-				time.Sleep(750 * time.Millisecond)
+				time.Sleep(cfg.TimeInterval)
 				timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 			}
 		}()
@@ -175,6 +107,7 @@ func New(config ...Config) fiber.Handler {
 	var (
 		start, stop time.Time
 		once        sync.Once
+		mu          sync.Mutex
 		errHandler  fiber.ErrorHandler
 	)
 
@@ -332,6 +265,17 @@ func New(config ...Config) fiber.Handler {
 					return buf.WriteString(c.FormValue(tag[5:]))
 				case strings.HasPrefix(tag, TagCookie):
 					return buf.WriteString(c.Cookies(tag[7:]))
+				case strings.HasPrefix(tag, TagLocals):
+					switch v := c.Locals(tag[7:]).(type) {
+					case []byte:
+						return buf.Write(v)
+					case string:
+						return buf.WriteString(v)
+					case nil:
+						return 0, nil
+					default:
+						return buf.WriteString(fmt.Sprintf("%v", v))
+					}
 				}
 			}
 			return 0, nil
@@ -340,6 +284,7 @@ func New(config ...Config) fiber.Handler {
 		if err != nil {
 			_, _ = buf.WriteString(err.Error())
 		}
+		mu.Lock()
 		// Write buffer to output
 		if _, err := cfg.Output.Write(buf.Bytes()); err != nil {
 			// Write error to output
@@ -348,6 +293,7 @@ func New(config ...Config) fiber.Handler {
 				// TODO: What should we do here?
 			}
 		}
+		mu.Unlock()
 		// Put buffer back to pool
 		bytebufferpool.Put(buf)
 
