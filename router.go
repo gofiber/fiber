@@ -127,15 +127,14 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 		return match, err // Stop scanning the stack
 	}
 
-	// If c.Next() does not match, return 404
-	_ = c.SendStatus(StatusNotFound)
-	_ = c.SendString("Cannot " + c.method + " " + c.pathOriginal)
-
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
 	if !c.matched && methodExist(c) {
 		err = ErrMethodNotAllowed
+		return
 	}
+
+	err = fmt.Errorf("Cannot %s %s", c.method, c.pathOriginal)
 	return
 }
 
