@@ -45,14 +45,17 @@ func New(config ...Config) fiber.Handler {
 		extractor = csrfFromCookie(selectors[1])
 	}
 
-	// We only use Keys in Storage, so we need a dummy value
-	dummyVal := []byte{'+'}
-
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
+		}
+
+		// create storage handler
+		store := &storage{
+			cfg:     &cfg,
+			entries: make(map[string][]byte),
 		}
 
 		var token string
@@ -69,9 +72,7 @@ func New(config ...Config) fiber.Handler {
 				token = cfg.KeyGenerator()
 
 				// Add token to Storage
-				if err = cfg.Storage.Set(token, dummyVal, cfg.Expiration); err != nil {
-					fmt.Println("[CSRF]", err.Error())
-				}
+				store.set(token)
 			}
 
 			// Create cookie to pass token to client
@@ -96,11 +97,9 @@ func New(config ...Config) fiber.Handler {
 				return fiber.ErrForbidden
 			}
 			// We have a problem extracting the csrf token from Storage
-			if _, err = cfg.Storage.Get(token); err != nil {
+			if store.get(token) {
 				// The token is invalid, let client generate a new one
-				if err = cfg.Storage.Delete(token); err != nil {
-					fmt.Println("[CSRF]", err.Error())
-				}
+				store.delete(token)
 				// Expire cookie
 				c.Cookie(&fiber.Cookie{
 					Name:     cfg.CookieName,

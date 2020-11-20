@@ -49,12 +49,12 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 		raw, err := s.Storage.Get(id)
 		// Unmashal if we found data
 		if err == nil {
+			if 
 			if _, err = sess.data.UnmarshalMsg(raw); err != nil {
 				return nil, err
 			}
 			sess.fresh = false
-		} else if err.Error() != errNotExist {
-			// Only return error if it's not ErrNotExist
+		} else if raw == nil {
 			return nil, err
 		} else {
 			sess.fresh = true

@@ -4,7 +4,6 @@ package cache
 
 import (
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,11 +30,7 @@ func New(config ...Config) fiber.Handler {
 	)
 
 	// create storage handler
-	store := &storage{
-		cfg:     &cfg,
-		mux:     &sync.RWMutex{},
-		entries: make(map[string]*entry),
-	}
+	store := newStorage(&cfg)
 
 	// Update timestamp every second
 	go func() {
@@ -61,27 +56,27 @@ func New(config ...Config) fiber.Handler {
 		key := cfg.KeyGenerator(c)
 
 		// Get/Create new entry
-		var entry = store.get(key)
-
+		e := store.get(key)
+		if e == nil {
+			e = &entry{}
+		}
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
 		// Set expiration if entry does not exist
-		if entry.exp == 0 {
-			entry.exp = ts + expiration
-
-		} else if ts >= entry.exp {
+		if e.exp == 0 {
+			e.exp = ts + expiration
+		} else if ts >= e.exp {
 			// Check if entry is expired
 			store.delete(key)
 		} else {
 			// Set response headers from cache
-			c.Send(entry.body)
-			c.Status(entry.status)
-			c.Response().Header.SetContentTypeBytes(entry.cType)
+			c.Response().Header.SetContentTypeBytes(e.cType)
+			c.Status(e.status).Send(e.body)
 
 			// Set Cache-Control header if enabled
 			if cfg.CacheControl {
-				maxAge := strconv.FormatUint(entry.exp-ts, 10)
+				maxAge := strconv.FormatUint(e.exp-ts, 10)
 				c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 			}
 
@@ -95,11 +90,11 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
-		entry.status = c.Response().StatusCode()
-		entry.body = utils.CopyBytes(c.Response().Body())
-		entry.cType = utils.CopyBytes(c.Response().Header.ContentType())
+		e.status = c.Response().StatusCode()
+		e.body = utils.CopyBytes(c.Response().Body())
+		e.cType = utils.CopyBytes(c.Response().Header.ContentType())
 
-		store.set(key, entry)
+		store.set(key, e)
 
 		// Finish response
 		return nil
