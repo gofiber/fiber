@@ -1,6 +1,8 @@
 package cache
 
-import "sync"
+import (
+	"github.com/gofiber/fiber/v2/internal/mapstore"
+)
 
 // go:generate msgp
 // msgp -file="store.go" -o="store_msgp.go" -tests=false -unexported
@@ -15,31 +17,42 @@ type entry struct {
 
 //msgp:ignore storage
 type storage struct {
-	cfg     *Config
-	mux     *sync.RWMutex
-	entries map[string]*entry
+	cfg   *Config
+	store *mapstore.MapStore
 }
 
-func (s *storage) get(key string) (e *entry) {
+func newStorage(cfg *Config) *storage {
+	store := &storage{
+		cfg: cfg,
+	}
+	if cfg.Storage == nil {
+		store.store = mapstore.New()
+	}
+	return store
+}
+func (s *storage) get(key string) *entry {
 	if s.cfg.Storage != nil {
 		raw, err := s.cfg.Storage.Get(key)
 		if err != nil || raw == nil {
-			return e
+			return nil
 		}
+		e := &entry{}
 		if _, err := e.UnmarshalMsg(raw); err != nil {
-			return e
+			return nil
 		}
 		body, err := s.cfg.Storage.Get(key + "_body")
 		if err != nil || body == nil {
-			return e
+			return nil
 		}
 		e.body = body
+		return e
 	} else {
-		s.mux.Lock()
-		e = s.entries[key]
-		s.mux.Lock()
+		val := s.store.Get(key)
+		if val != nil {
+			return val.(*entry)
+		}
 	}
-	return e
+	return nil
 }
 
 func (s *storage) set(key string, e *entry) {
@@ -53,9 +66,7 @@ func (s *storage) set(key string, e *entry) {
 			_ = s.cfg.Storage.Set(key+"_body", body, s.cfg.Expiration)
 		}
 	} else {
-		s.mux.Lock()
-		s.entries[key] = e
-		s.mux.Unlock()
+		s.store.Set(key, e, s.cfg.Expiration)
 	}
 }
 
@@ -64,8 +75,6 @@ func (s *storage) delete(key string) {
 		_ = s.cfg.Storage.Delete(key)
 		_ = s.cfg.Storage.Delete(key + "_body")
 	} else {
-		s.mux.Lock()
-		delete(s.entries, key)
-		s.mux.Unlock()
+		s.store.Delete(key)
 	}
 }

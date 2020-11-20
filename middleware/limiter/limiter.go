@@ -1,9 +1,7 @@
 package limiter
 
 import (
-	"fmt"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,11 +28,13 @@ func New(config ...Config) fiber.Handler {
 		max        = strconv.Itoa(cfg.Max)
 		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
-		mux        = &sync.RWMutex{}
+		// mux        = &sync.RWMutex{}
 
-		// Default store logic (if no Store is provided)
-		entries = make(map[string]entry)
+		// // Default store logic (if no Store is provided)
+		// entries = make(map[string]entry)
 	)
+
+	store := newStorage(&cfg)
 
 	// Update timestamp every second
 	go func() {
@@ -54,65 +54,67 @@ func New(config ...Config) fiber.Handler {
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
-		// Create new entry
-		entry := entry{}
+		e := store.get(key)
+		// // Create new entry
+		// entry := entry{}
 
-		// Lock entry
-		mux.Lock()
-		defer mux.Unlock()
+		// // Lock entry
+		// mux.Lock()
+		// defer mux.Unlock()
 
-		// Use Storage if provided
-		if cfg.Storage != nil {
-			val, err := cfg.Storage.Get(key)
-			if val != nil && len(val) > 0 {
-				if _, err := entry.UnmarshalMsg(val); err != nil {
-					return err
-				}
-			}
-			if err != nil && err.Error() != errNotExist {
-				fmt.Println("[LIMITER]", err.Error())
-			}
-		} else {
-			entry = entries[key]
-		}
+		// // Use Storage if provided
+		// if cfg.Storage != nil {
+		// 	val, err := cfg.Storage.Get(key)
+		// 	if val != nil && len(val) > 0 {
+		// 		if _, err := entry.UnmarshalMsg(val); err != nil {
+		// 			return err
+		// 		}
+		// 	}
+		// 	if err != nil && err.Error() != errNotExist {
+		// 		fmt.Println("[LIMITER]", err.Error())
+		// 	}
+		// } else {
+		// 	entry = entries[key]
+		// }
 
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
 		// Set expiration if entry does not exist
-		if entry.exp == 0 {
-			entry.exp = ts + expiration
+		if e.exp == 0 {
+			e.exp = ts + expiration
 
-		} else if ts >= entry.exp {
+		} else if ts >= e.exp {
 			// Check if entry is expired
-			entry.hits = 0
-			entry.exp = ts + expiration
+			e.hits = 0
+			e.exp = ts + expiration
 		}
 
 		// Increment hits
-		entry.hits++
+		e.hits++
 
-		// Use Storage if provided
-		if cfg.Storage != nil {
-			// Marshal entry to bytes
-			val, err := entry.MarshalMsg(nil)
-			if err != nil {
-				return err
-			}
+		store.set(key, e)
+		// // Use Storage if provided
+		// if cfg.Storage != nil {
+		// 	// Marshal entry to bytes
+		// 	val, err := entry.MarshalMsg(nil)
+		// 	if err != nil {
+		// 		return err
+		// 	}
 
-			// Pass value to Storage
-			if err = cfg.Storage.Set(key, val, cfg.Expiration); err != nil {
-				return err
-			}
-		} else {
-			entries[key] = entry
-		}
+		// 	// Pass value to Storage
+		// 	if err = cfg.Storage.Set(key, val, cfg.Expiration); err != nil {
+		// 		return err
+		// 	}
+		// } else {
+		// 	entries[key] = entry
+		// }
 
 		// Calculate when it resets in seconds
-		expire := entry.exp - ts
+		expire := e.exp - ts
 
 		// Set how many hits we have left
-		remaining := cfg.Max - entry.hits
+		remaining := cfg.Max - e.hits
 
 		// Check if hits exceed the cfg.Max
 		if remaining < 0 {

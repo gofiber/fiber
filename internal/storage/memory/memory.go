@@ -14,10 +14,8 @@ type Storage struct {
 	done       chan struct{}
 }
 
-
-// ErrNotFound means that a get call did not find the requested key.
-var ErrNotFound = errors.New("key not found")
-var ErrKeyNotExist = ErrNotFound
+// Common storage errors
+var ErrNotExist = errors.New("key does not exist")
 
 type entry struct {
 	data   []byte
@@ -25,14 +23,11 @@ type entry struct {
 }
 
 // New creates a new memory storage
-func New(config ...Config) *Storage {
-	// Set default config
-	cfg := configDefault(config...)
-
+func New() *Storage {
 	// Create storage
 	store := &Storage{
 		db:         make(map[string]entry),
-		gcInterval: cfg.GCInterval,
+		gcInterval: 10 * time.Second,
 		done:       make(chan struct{}),
 	}
 

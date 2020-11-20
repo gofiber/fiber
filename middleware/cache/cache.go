@@ -4,7 +4,6 @@ package cache
 
 import (
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,11 +30,7 @@ func New(config ...Config) fiber.Handler {
 	)
 
 	// create storage handler
-	store := &storage{
-		cfg:     &cfg,
-		mux:     &sync.RWMutex{},
-		entries: make(map[string]*entry),
-	}
+	store := newStorage(&cfg)
 
 	// Update timestamp every second
 	go func() {
@@ -61,15 +56,16 @@ func New(config ...Config) fiber.Handler {
 		key := cfg.KeyGenerator(c)
 
 		// Get/Create new entry
-		var e = store.get(key)
-
+		e := store.get(key)
+		if e == nil {
+			e = &entry{}
+		}
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
 		// Set expiration if entry does not exist
 		if e.exp == 0 {
 			e.exp = ts + expiration
-
 		} else if ts >= e.exp {
 			// Check if entry is expired
 			store.delete(key)
