@@ -1,7 +1,8 @@
-# Compress
+# Compress Middleware
+
 Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will compress the response using `gzip`, `deflate` and `brotli` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header.
 
-- [Compress](#compress)
+- [Compress Middleware](#compress-middleware)
 	- [Signatures](#signatures)
 	- [Examples](#examples)
 		- [Default Config](#default-config)
@@ -10,13 +11,14 @@ Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will c
 	- [Default Config](#default-config-1)
 	- [Constants](#constants)
 
-
 ## Signatures
+
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
 ## Examples
+
 First import the middleware from Fiber,
 
 ```go
@@ -29,6 +31,7 @@ import (
 Then create a Fiber app with `app := fiber.New()`.
 
 ### Default Config
+
 ```go
 app.Use(compress.New())
 ```
@@ -51,6 +54,7 @@ app.Use(compress.New(compress.Config{
 ```
 
 ## Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -71,6 +75,7 @@ type Config struct {
 ```
 
 ## Default Config
+
 ```go
 var ConfigDefault = Config{
 	Next:  nil,
@@ -79,6 +84,7 @@ var ConfigDefault = Config{
 ```
 
 ## Constants
+
 ```go
 // Compression levels
 const (

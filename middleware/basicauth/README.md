@@ -1,8 +1,10 @@
-# Basic Authentication
+# Basic Authentication Middleware
+
 Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) that provides an HTTP basic authentication. It calls the next handler for valid credentials and [401 Unauthorized](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/401) or a custom response for missing or invalid credentials.
 
 ## Table of Contents
-- [Basic Authentication](#basic-authentication)
+
+- [Basic Authentication Middleware](#basic-authentication-middleware)
 	- [Table of Contents](#table-of-contents)
 	- [Signatures](#signatures)
 	- [Examples](#examples)
@@ -10,13 +12,14 @@ Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) th
 	- [Config](#config)
 	- [Default Config](#default-config)
 
-
 ## Signatures
+
 ```go
 func New(config Config) fiber.Handler
 ```
 
 ## Examples
+
 First import the middleware from Fiber,
 
 ```go
@@ -64,6 +67,7 @@ app.Use(basicauth.New(basicauth.Config{
 ```
 
 ## Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -112,6 +116,7 @@ type Config struct {
 ```
 
 ## Default Config
+
 ```go
 var ConfigDefault = Config{
 	Next:            nil,

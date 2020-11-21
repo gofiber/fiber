@@ -1,15 +1,19 @@
-# Expvar
+# Expvar Middleware
+
 Expvar middleware for [Fiber](https://github.com/gofiber/fiber) that serves via its HTTP server runtime exposed variants in the JSON format. The package is typically only imported for the side effect of registering its HTTP handlers. The handled path is `/debug/vars`.
 
-- [Signatures](#signatures)
-- [Examples](#example)
+- [Expvar Middleware](#expvar-middleware)
+	- [Signatures](#signatures)
+	- [Example](#example)
 
-### Signatures
+## Signatures
+
 ```go
 func New() fiber.Handler
 ```
 
-### Example
+## Example
+
 Import the expvar package that is part of the Fiber web framework
 
 ```go

@@ -1,8 +1,10 @@
-# Cache
-Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to intercept responses and cache them. This middleware will cache the `Body`, `Content-Type` and `StatusCode` using the `c.Path()` (or a  string returned by the Key function) as unique identifier. Special thanks to [@codemicro](https://github.com/codemicro/fiber-cache) for creating this middleware for Fiber core!
+# Cache Middleware
+
+Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to intercept responses and cache them. This middleware will cache the `Body`, `Content-Type` and `StatusCode` using the `c.Path()` (or a string returned by the Key function) as unique identifier. Special thanks to [@codemicro](https://github.com/codemicro/fiber-cache) for creating this middleware for Fiber core!
 
 ## Table of Contents
-- [Cache](#cache)
+
+- [Cache Middleware](#cache-middleware)
 	- [Table of Contents](#table-of-contents)
 	- [Signatures](#signatures)
 	- [Examples](#examples)
@@ -11,13 +13,14 @@ Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to inter
 		- [Config](#config)
 		- [Default Config](#default-config-1)
 
-
 ## Signatures
+
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
 ## Examples
+
 First import the middleware from Fiber,
 
 ```go
@@ -30,6 +33,7 @@ import (
 Then create a Fiber app with `app := fiber.New()`.
 
 ### Default Config
+
 ```go
 app.Use(cache.New())
 ```
@@ -47,6 +51,7 @@ app.Use(cache.New(cache.Config{
 ```
 
 ### Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -80,6 +85,7 @@ type Config struct {
 ```
 
 ### Default Config
+
 ```go
 // ConfigDefault is the default config
 var ConfigDefault = Config{

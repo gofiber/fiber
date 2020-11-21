@@ -1,4 +1,4 @@
-# CSRF
+# CSRF Middleware
 
 CSRF middleware for [Fiber](https://github.com/gofiber/fiber) that provides [Cross-site request forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) protection by passing a csrf token via cookies. This cookie value will be used to compare against the client csrf token in POST requests. When the csrf token is invalid, this middleware will delete the `_csrf` cookie and return the `fiber.ErrForbidden` error.
 CSRF Tokens are generated on GET requests.
@@ -7,10 +7,15 @@ _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) pa
 
 ## Table of Contents
 
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+- [CSRF Middleware](#csrf-middleware)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Default Config](#default-config)
+		- [Custom Config](#custom-config)
+		- [Custom Storage/Database](#custom-storagedatabase)
+		- [Config](#config)
+		- [Default Config](#default-config-1)
 
 ## Signatures
 

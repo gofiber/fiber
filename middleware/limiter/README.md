@@ -1,6 +1,6 @@
-# Limiter
+# Limiter Middleware
 
-Limiter middleware for [Fiber](https://github.com/gofiber/fiber) used to limit repeated requests to public APIs and/or endpoints such as password reset etc. Also useful for API clients, web crawling, or other tasks that need to be throttled.
+Limiter middleware for [Fiber](https://github.com/gofiber/fiber) that is used to limit repeat requests to public APIs and/or endpoints such as password reset. It is also useful for API clients, web crawling, or other tasks that need to be throttled.
 
 _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases._
 
@@ -8,10 +8,15 @@ _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) pa
 
 ## Table of Contents
 
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+- [Limiter Middleware](#limiter-middleware)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Default Config](#default-config)
+		- [Custom Config](#custom-config)
+		- [Custom Storage/Database](#custom-storagedatabase)
+	- [Config](#config)
+		- [Default Config](#default-config-1)
 
 ## Signatures
 

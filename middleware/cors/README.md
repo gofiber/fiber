@@ -1,13 +1,17 @@
-# Cross-Origin Resource Sharing (CORS)
+# Cross-Origin Resource Sharing (CORS) Middleware
 
 CORS middleware for [Fiber](https://github.com/gofiber/fiber) that that can be used to enable [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) with various options.
 
 ## Table of Contents
 
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+- [Cross-Origin Resource Sharing (CORS) Middleware](#cross-origin-resource-sharing-cors-middleware)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Default Config](#default-config)
+		- [Custom Config](#custom-config)
+	- [Config](#config)
+	- [Default Config](#default-config-1)
 
 ## Signatures
 
