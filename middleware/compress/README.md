@@ -1,20 +1,24 @@
 # Compress
 Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will compress the response using `gzip`, `deflate` and `brotli` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header.
 
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
-- [Constants](#config)
+- [Compress](#compress)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Default Config](#default-config)
+		- [Custom Config](#custom-config)
+	- [Config](#config)
+	- [Default Config](#default-config-1)
+	- [Constants](#constants)
 
 
-### Signatures
+## Signatures
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+First import the middleware from Fiber,
+
 ```go
 import (
   "github.com/gofiber/fiber/v2"
@@ -22,11 +26,16 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
-```go
-// Default middleware config
-app.Use(compress.New())
+Then create a Fiber app with `app := fiber.New()`.
 
+### Default Config
+```go
+app.Use(compress.New())
+```
+
+### Custom Config
+
+```go
 // Provide a custom compression level
 app.Use(compress.New(compress.Config{
     Level: compress.LevelBestSpeed, // 1
@@ -41,7 +50,7 @@ app.Use(compress.New(compress.Config{
 }))
 ```
 
-### Config
+## Config
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -61,7 +70,7 @@ type Config struct {
 }
 ```
 
-### Default Config
+## Default Config
 ```go
 var ConfigDefault = Config{
 	Next:  nil,
@@ -69,7 +78,7 @@ var ConfigDefault = Config{
 }
 ```
 
-### Constants
+## Constants
 ```go
 // Compression levels
 const (
