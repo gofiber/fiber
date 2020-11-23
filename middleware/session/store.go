@@ -53,7 +53,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 				return nil, err
 			}
 			sess.fresh = false
-		} else if raw == nil {
+		} else if raw != nil && err.Error() != "key does not exist" {
 			return nil, err
 		} else {
 			sess.fresh = true
