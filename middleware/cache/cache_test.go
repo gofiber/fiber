@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/storage/memory"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -282,7 +283,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		//// Store: memory.New(),
+		Storage: memory.New(),
 	}))
 
 	app.Get("/demo", func(c *fiber.Ctx) error {

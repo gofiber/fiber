@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,17 +25,15 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	var (
-		// Limiter settings
+		// Limiter variables
+		mux        = &sync.RWMutex{}
 		max        = strconv.Itoa(cfg.Max)
 		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
-		// mux        = &sync.RWMutex{}
-
-		// // Default store logic (if no Store is provided)
-		// entries = make(map[string]entry)
 	)
 
-	store := newStorage(&cfg)
+	// Create manager to simplify storage operations ( see manager.go )
+	manager := newManager(cfg.Storage)
 
 	// Update timestamp every second
 	go func() {
@@ -54,28 +53,12 @@ func New(config ...Config) fiber.Handler {
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
-		e := store.get(key)
-		// // Create new entry
-		// entry := entry{}
+		// Get entry from pool and release when finished
+		e := manager.get(key)
 
-		// // Lock entry
-		// mux.Lock()
-		// defer mux.Unlock()
-
-		// // Use Storage if provided
-		// if cfg.Storage != nil {
-		// 	val, err := cfg.Storage.Get(key)
-		// 	if val != nil && len(val) > 0 {
-		// 		if _, err := entry.UnmarshalMsg(val); err != nil {
-		// 			return err
-		// 		}
-		// 	}
-		// 	if err != nil && err.Error() != errNotExist {
-		// 		fmt.Println("[LIMITER]", err.Error())
-		// 	}
-		// } else {
-		// 	entry = entries[key]
-		// }
+		// Lock entry and unlock when finished
+		mux.Lock()
+		defer mux.Unlock()
 
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
@@ -93,28 +76,14 @@ func New(config ...Config) fiber.Handler {
 		// Increment hits
 		e.hits++
 
-		store.set(key, e)
-		// // Use Storage if provided
-		// if cfg.Storage != nil {
-		// 	// Marshal entry to bytes
-		// 	val, err := entry.MarshalMsg(nil)
-		// 	if err != nil {
-		// 		return err
-		// 	}
-
-		// 	// Pass value to Storage
-		// 	if err = cfg.Storage.Set(key, val, cfg.Expiration); err != nil {
-		// 		return err
-		// 	}
-		// } else {
-		// 	entries[key] = entry
-		// }
-
 		// Calculate when it resets in seconds
 		expire := e.exp - ts
 
 		// Set how many hits we have left
 		remaining := cfg.Max - e.hits
+
+		// Update storage
+		manager.set(key, e, cfg.Expiration)
 
 		// Check if hits exceed the cfg.Max
 		if remaining < 0 {

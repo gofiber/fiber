@@ -1,4 +1,4 @@
-package mapstore
+package memory
 
 import (
 	"sync"

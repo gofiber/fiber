@@ -1,4 +1,4 @@
-package mapstore
+package memory
 
 import (
 	"testing"
@@ -7,9 +7,9 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
-// go test -run Test_MapStore -v -race
+// go test -run Test_Memory -v -race
 
-func Test_MapStore(t *testing.T) {
+func Test_Memory(t *testing.T) {
 	var store = New()
 	var (
 		key             = "john"
@@ -51,8 +51,8 @@ func Test_MapStore(t *testing.T) {
 	utils.AssertEqual(t, nil, result)
 }
 
-// go test -v -run=^$ -bench=Benchmark_MapStore -benchmem -count=4
-func Benchmark_MapStore(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Memory -benchmem -count=4
+func Benchmark_Memory(b *testing.B) {
 	keyLength := 1000
 	keys := make([]string, keyLength)
 	for i := 0; i < keyLength; i++ {
