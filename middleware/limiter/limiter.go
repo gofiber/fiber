@@ -53,12 +53,11 @@ func New(config ...Config) fiber.Handler {
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
+		// Lock entry
+		mux.Lock()
+
 		// Get entry from pool and release when finished
 		e := manager.get(key)
-
-		// Lock entry and unlock when finished
-		mux.Lock()
-		defer mux.Unlock()
 
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
@@ -84,6 +83,9 @@ func New(config ...Config) fiber.Handler {
 
 		// Update storage
 		manager.set(key, e, cfg.Expiration)
+
+		// Unlock entry
+		mux.Unlock()
 
 		// Check if hits exceed the cfg.Max
 		if remaining < 0 {

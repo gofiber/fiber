@@ -49,7 +49,6 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 		raw, err := s.Storage.Get(id)
 		// Unmashal if we found data
 		if err == nil {
-			if 
 			if _, err = sess.data.UnmarshalMsg(raw); err != nil {
 				return nil, err
 			}
