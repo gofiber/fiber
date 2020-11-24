@@ -23,14 +23,11 @@ type entry struct {
 }
 
 // New creates a new memory storage
-func New(config ...Config) *Storage {
-	// Set default config
-	cfg := configDefault(config...)
-
+func New() *Storage {
 	// Create storage
 	store := &Storage{
 		db:         make(map[string]entry),
-		gcInterval: cfg.GCInterval,
+		gcInterval: 10 * time.Second,
 		done:       make(chan struct{}),
 	}
 

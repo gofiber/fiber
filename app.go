@@ -39,27 +39,27 @@ type Handler = func(*Ctx) error
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
-// Storage interface that is implemented by storage providers for different
-// middleware packages like cache, limiter, session and csrf
+// Storage interface for communicating with different database/key-value
+// providers
 type Storage interface {
-	// Get retrieves the value for the given key.
-	// If no value is not found it returns ErrNotExit error
+	// Get gets the value for the given key.
+	// It returns ErrNotFound if the storage does not contain the key.
 	Get(key string) ([]byte, error)
 
 	// Set stores the given value for the given key along with a
 	// time-to-live expiration value, 0 means live for ever
-	// The key must not be "" and the empty values are ignored.
+	// Empty key or value will be ignored without an error.
 	Set(key string, val []byte, ttl time.Duration) error
 
-	// Delete deletes the stored value for the given key.
-	// Deleting a non-existing key-value pair does NOT lead to an error.
-	// The key must not be "".
+	// Delete deletes the value for the given key.
+	// It returns no error if the storage does not contain the key,
 	Delete(key string) error
 
-	// Reset the storage
+	// Reset resets the storage and delete all keys.
 	Reset() error
 
-	// Close the storage
+	// Close closes the storage and will stop any running garbage
+	// collectors and open connections.
 	Close() error
 }
 
@@ -149,6 +149,8 @@ type Config struct {
 	ETag bool `json:"etag"`
 
 	// Max body size that the server accepts.
+	// -1 will decline any body size
+	//
 	// Default: 4 * 1024 * 1024
 	BodyLimit int `json:"body_limit"`
 
@@ -352,7 +354,7 @@ func New(config ...Config) *App {
 	}
 
 	// Override default values
-	if app.config.BodyLimit <= 0 {
+	if app.config.BodyLimit == 0 {
 		app.config.BodyLimit = DefaultBodyLimit
 	}
 	if app.config.Concurrency <= 0 {
@@ -373,8 +375,10 @@ func New(config ...Config) *App {
 	if app.config.ErrorHandler == nil {
 		app.config.ErrorHandler = DefaultErrorHandler
 	}
+
 	// Init app
 	app.init()
+
 	// Return app
 	return app
 }

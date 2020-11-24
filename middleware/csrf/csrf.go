@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/storage/memory"
 )
 
 // New creates a new middleware handler
@@ -16,10 +15,8 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
-	// Set default values
-	if cfg.Storage == nil {
-		cfg.Storage = memory.New()
-	}
+	// Create manager to simplify storage operations ( see manager.go )
+	manager := newManager(cfg.Storage)
 
 	// Generate the correct extractor to get the token from the correct location
 	selectors := strings.Split(cfg.KeyLookup, ":")
@@ -45,8 +42,7 @@ func New(config ...Config) fiber.Handler {
 		extractor = csrfFromCookie(selectors[1])
 	}
 
-	// We only use Keys in Storage, so we need a dummy value
-	dummyVal := []byte{'+'}
+	dummyValue := []byte{'+'}
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
@@ -69,9 +65,7 @@ func New(config ...Config) fiber.Handler {
 				token = cfg.KeyGenerator()
 
 				// Add token to Storage
-				if err = cfg.Storage.Set(token, dummyVal, cfg.Expiration); err != nil {
-					fmt.Println("[CSRF]", err.Error())
-				}
+				manager.setRaw(token, dummyValue, cfg.Expiration)
 			}
 
 			// Create cookie to pass token to client
@@ -85,22 +79,19 @@ func New(config ...Config) fiber.Handler {
 				HTTPOnly: cfg.CookieHTTPOnly,
 				SameSite: cfg.CookieSameSite,
 			}
-
 			// Set cookie to response
 			c.Cookie(cookie)
+
 		case fiber.MethodPost, fiber.MethodDelete, fiber.MethodPatch, fiber.MethodPut:
-			// Verify CSRF token
 			// Extract token from client request i.e. header, query, param, form or cookie
 			token, err = extractor(c)
 			if err != nil {
 				return fiber.ErrForbidden
 			}
-			// We have a problem extracting the csrf token from Storage
-			if _, err = cfg.Storage.Get(token); err != nil {
-				// The token is invalid, let client generate a new one
-				if err = cfg.Storage.Delete(token); err != nil {
-					fmt.Println("[CSRF]", err.Error())
-				}
+
+			// 403 if token does not exist in Storage
+			if manager.getRaw(token) == nil {
+
 				// Expire cookie
 				c.Cookie(&fiber.Cookie{
 					Name:     cfg.CookieName,
@@ -111,8 +102,13 @@ func New(config ...Config) fiber.Handler {
 					HTTPOnly: cfg.CookieHTTPOnly,
 					SameSite: cfg.CookieSameSite,
 				})
+
+				// Return 403 Forbidden
 				return fiber.ErrForbidden
 			}
+
+			// The token is validated, time to delete it
+			manager.delete(token)
 		}
 
 		// Protect clients from caching the response by telling the browser

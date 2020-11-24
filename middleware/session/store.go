@@ -42,19 +42,21 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	sess.ctx = c
 	sess.config = s
 	sess.id = id
+	sess.fresh = fresh
 
 	// Fetch existing data
 	if !fresh {
 		raw, err := s.Storage.Get(id)
 		// Unmashal if we found data
 		if err == nil {
-			if _, err = sess.db.UnmarshalMsg(raw); err != nil {
+			if _, err = sess.data.UnmarshalMsg(raw); err != nil {
 				return nil, err
 			}
 			sess.fresh = false
-		} else if err.Error() != errNotExist {
-			// Only return error if it's not ErrNotExist
+		} else if raw != nil && err.Error() != "key does not exist" {
 			return nil, err
+		} else {
+			sess.fresh = true
 		}
 	}
 

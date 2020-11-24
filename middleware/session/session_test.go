@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/storage/memory"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -169,4 +170,35 @@ func Test_Session_Cookie(t *testing.T) {
 
 	// cookie should not be set if empty data
 	utils.AssertEqual(t, 0, len(ctx.Response().Header.PeekCookie(store.CookieName)))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4
+func Benchmark_Session(b *testing.B) {
+	app, store := fiber.New(), New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.SetCookie(store.CookieName, "12356789")
+
+	b.Run("default", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			sess, _ := store.Get(c)
+			sess.Set("john", "doe")
+			_ = sess.Save()
+		}
+	})
+
+	b.Run("storage", func(b *testing.B) {
+		store = New(Config{
+			Storage: memory.New(),
+		})
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			sess, _ := store.Get(c)
+			sess.Set("john", "doe")
+			_ = sess.Save()
+		}
+	})
 }

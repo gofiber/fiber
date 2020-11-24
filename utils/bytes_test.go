@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func Test_Utils_ToLowerBytes(t *testing.T) {
+func Test_ToLowerBytes(t *testing.T) {
 	t.Parallel()
 	res := ToLowerBytes([]byte("/MY/NAME/IS/:PARAM/*"))
 	AssertEqual(t, true, bytes.Equal([]byte("/my/name/is/:param/*"), res))
@@ -41,7 +41,7 @@ func Benchmark_ToLowerBytes(b *testing.B) {
 	})
 }
 
-func Test_Utils_ToUpperBytes(t *testing.T) {
+func Test_ToUpperBytes(t *testing.T) {
 	t.Parallel()
 	res := ToUpperBytes([]byte("/my/name/is/:param/*"))
 	AssertEqual(t, true, bytes.Equal([]byte("/MY/NAME/IS/:PARAM/*"), res))
@@ -73,7 +73,7 @@ func Benchmark_ToUpperBytes(b *testing.B) {
 	})
 }
 
-func Test_Utils_TrimRightBytes(t *testing.T) {
+func Test_TrimRightBytes(t *testing.T) {
 	t.Parallel()
 	res := TrimRightBytes([]byte("/test//////"), '/')
 	AssertEqual(t, []byte("/test"), res)
@@ -99,7 +99,7 @@ func Benchmark_TrimRightBytes(b *testing.B) {
 	})
 }
 
-func Test_Utils_TrimLeftBytes(t *testing.T) {
+func Test_TrimLeftBytes(t *testing.T) {
 	t.Parallel()
 	res := TrimLeftBytes([]byte("////test/"), '/')
 	AssertEqual(t, []byte("test/"), res)
@@ -123,7 +123,7 @@ func Benchmark_TrimLeftBytes(b *testing.B) {
 		AssertEqual(b, []byte("foobar"), res)
 	})
 }
-func Test_Utils_TrimBytes(t *testing.T) {
+func Test_TrimBytes(t *testing.T) {
 	t.Parallel()
 	res := TrimBytes([]byte("   test  "), ' ')
 	AssertEqual(t, []byte("test"), res)
@@ -151,14 +151,14 @@ func Benchmark_TrimBytes(b *testing.B) {
 	})
 }
 
-func Benchmark_EqualFolds(b *testing.B) {
+func Benchmark_EqualFoldBytes(b *testing.B) {
 	var left = []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
 	var right = []byte("/RePos/goFiber/Fiber/issues/187643/COMMENTS")
 	var res bool
 
 	b.Run("fiber", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			res = EqualsFold(left, right)
+			res = EqualFoldBytes(left, right)
 		}
 		AssertEqual(b, true, res)
 	})
@@ -170,18 +170,18 @@ func Benchmark_EqualFolds(b *testing.B) {
 	})
 }
 
-func Test_Utils_EqualsFold(t *testing.T) {
+func Test_EqualFoldBytes(t *testing.T) {
 	t.Parallel()
-	res := EqualsFold([]byte("/MY/NAME/IS/:PARAM/*"), []byte("/my/name/is/:param/*"))
+	res := EqualFoldBytes([]byte("/MY/NAME/IS/:PARAM/*"), []byte("/my/name/is/:param/*"))
 	AssertEqual(t, true, res)
-	res = EqualsFold([]byte("/MY1/NAME/IS/:PARAM/*"), []byte("/MY1/NAME/IS/:PARAM/*"))
+	res = EqualFoldBytes([]byte("/MY1/NAME/IS/:PARAM/*"), []byte("/MY1/NAME/IS/:PARAM/*"))
 	AssertEqual(t, true, res)
-	res = EqualsFold([]byte("/my2/name/is/:param/*"), []byte("/my2/name"))
+	res = EqualFoldBytes([]byte("/my2/name/is/:param/*"), []byte("/my2/name"))
 	AssertEqual(t, false, res)
-	res = EqualsFold([]byte("/dddddd"), []byte("eeeeee"))
+	res = EqualFoldBytes([]byte("/dddddd"), []byte("eeeeee"))
 	AssertEqual(t, false, res)
-	res = EqualsFold([]byte("/MY3/NAME/IS/:PARAM/*"), []byte("/my3/name/is/:param/*"))
+	res = EqualFoldBytes([]byte("/MY3/NAME/IS/:PARAM/*"), []byte("/my3/name/is/:param/*"))
 	AssertEqual(t, true, res)
-	res = EqualsFold([]byte("/MY4/NAME/IS/:PARAM/*"), []byte("/my4/nAME/IS/:param/*"))
+	res = EqualFoldBytes([]byte("/MY4/NAME/IS/:PARAM/*"), []byte("/my4/nAME/IS/:param/*"))
 	AssertEqual(t, true, res)
 }

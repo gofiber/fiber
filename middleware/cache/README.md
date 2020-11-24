@@ -61,12 +61,12 @@ type Config struct {
 	// Default: func(c *fiber.Ctx) string {
 	//   return c.Path()
 	// }
-	Key func(*fiber.Ctx) string
+	KeyGenerator func(*fiber.Ctx) string
 
 	// Store is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
-	Store fiber.Storage
+	Storage fiber.Storage
 }
 ```
 
@@ -77,8 +77,9 @@ var ConfigDefault = Config{
 	Next:         nil,
 	Expiration:   1 * time.Minute,
 	CacheControl: false,
-	Key: func(c *fiber.Ctx) string {
+	KeyGenerator: func(c *fiber.Ctx) string {
 		return c.Path()
 	},
+	Storage:      nil,
 }
 ```

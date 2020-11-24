@@ -17,15 +17,21 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
+	// Nothing to cache
+	if int(cfg.Expiration.Seconds()) < 0 {
+		return func(c *fiber.Ctx) error {
+			return c.Next()
+		}
+	}
+
 	var (
 		// Cache settings
+		mux        = &sync.RWMutex{}
 		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
-		mux        = &sync.RWMutex{}
-
-		// Default store logic (if no Store is provided)
-		entries = make(map[string]entry)
 	)
+	// Create manager to simplify storage operations ( see manager.go )
+	manager := newManager(cfg.Storage)
 
 	// Update timestamp every second
 	go func() {
@@ -34,30 +40,6 @@ func New(config ...Config) fiber.Handler {
 			time.Sleep(1 * time.Second)
 		}
 	}()
-
-	// Nothing to cache
-	if int(cfg.Expiration.Seconds()) < 0 {
-		return func(c *fiber.Ctx) error {
-			return c.Next()
-		}
-	}
-
-	// Remove expired entries
-	if cfg.defaultStore {
-		go func() {
-			for {
-				// GC the entries every 10 seconds
-				time.Sleep(10 * time.Second)
-				mux.Lock()
-				for k := range entries {
-					if atomic.LoadUint64(&timestamp) >= entries[k].exp {
-						delete(entries, k)
-					}
-				}
-				mux.Unlock()
-			}
-		}()
-	}
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
@@ -72,74 +54,43 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get key from request
-		key := cfg.Key(c)
+		key := cfg.KeyGenerator(c)
 
-		// Create new entry
-		var entry entry
-		var entryBody []byte
+		// Get entry from pool
+		e := manager.get(key)
 
-		// Lock entry
+		// Lock entry and unlock when finished
 		mux.Lock()
 		defer mux.Unlock()
-
-		// Check if we need to use the default in-memory storage
-		if cfg.defaultStore {
-			entry = entries[key]
-
-		} else {
-			// Load data from store
-			storeEntry, err := cfg.Storage.Get(key)
-			if err != nil {
-				return err
-			}
-
-			// Only decode if we found an entry
-			if storeEntry != nil {
-				// Decode bytes using msgp
-				if _, err := entry.UnmarshalMsg(storeEntry); err != nil {
-					return err
-				}
-			}
-
-			if entryBody, err = cfg.Storage.Get(key + "_body"); err != nil {
-				return err
-			}
-		}
 
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
-		// Set expiration if entry does not exist
-		if entry.exp == 0 {
-			entry.exp = ts + expiration
+		if e.exp == 0 {
+			// Set expiration if entry does not exist
+			e.exp = ts + expiration
 
-		} else if ts >= entry.exp {
+		} else if ts >= e.exp {
 			// Check if entry is expired
-			// Use default memory storage
-			if cfg.defaultStore {
-				delete(entries, key)
-			} else { // Use custom storage
-				if err := cfg.Storage.Delete(key); err != nil {
-					return err
-				}
-				if err := cfg.Storage.Delete(key + "_body"); err != nil {
-					return err
-				}
+			manager.delete(key)
+			// External storage saves body data with different key
+			if cfg.Storage != nil {
+				manager.delete(key + "_body")
 			}
-
 		} else {
-			if cfg.defaultStore {
-				c.Response().SetBodyRaw(entry.body)
-			} else {
-				c.Response().SetBodyRaw(entryBody)
+			// Seperate body value to avoid msgp serialization
+			// We can store raw bytes with Storage 👍
+			if cfg.Storage != nil {
+				e.body = manager.getRaw(key + "_body")
 			}
 			// Set response headers from cache
-			c.Response().SetStatusCode(entry.status)
-			c.Response().Header.SetContentTypeBytes(entry.cType)
+			c.Response().SetBodyRaw(e.body)
+			c.Response().SetStatusCode(e.status)
+			c.Response().Header.SetContentTypeBytes(e.ctype)
 
 			// Set Cache-Control header if enabled
 			if cfg.CacheControl {
-				maxAge := strconv.FormatUint(entry.exp-ts, 10)
+				maxAge := strconv.FormatUint(e.exp-ts, 10)
 				c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 			}
 
@@ -153,31 +104,20 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
-		entryBody = utils.SafeBytes(c.Response().Body())
-		entry.status = c.Response().StatusCode()
-		entry.cType = utils.SafeBytes(c.Response().Header.ContentType())
+		e.body = utils.SafeBytes(c.Response().Body())
+		e.status = c.Response().StatusCode()
+		e.ctype = utils.SafeBytes(c.Response().Header.ContentType())
 
-		// Use default memory storage
-		if cfg.defaultStore {
-			entry.body = entryBody
-			entries[key] = entry
-
+		// For external Storage we store raw body seperated
+		if cfg.Storage != nil {
+			manager.setRaw(key+"_body", e.body, cfg.Expiration)
+			// avoid body msgp encoding
+			e.body = nil
+			manager.set(key, e, cfg.Expiration)
+			manager.release(e)
 		} else {
-			// Use custom storage
-			data, err := entry.MarshalMsg(nil)
-			if err != nil {
-				return err
-			}
-
-			// Pass bytes to Storage
-			if err = cfg.Storage.Set(key, data, cfg.Expiration); err != nil {
-				return err
-			}
-
-			// Pass bytes to Storage
-			if err = cfg.Storage.Set(key+"_body", entryBody, cfg.Expiration); err != nil {
-				return err
-			}
+			// Store entry in memory
+			manager.set(key, e, cfg.Expiration)
 		}
 
 		// Finish response

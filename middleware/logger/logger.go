@@ -129,7 +129,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Set error handler once
 		once.Do(func() {
-			errHandler = c.App().Config().ErrorHandler
+			// get longested possible path
 			stack := c.App().Stack()
 			for m := range stack {
 				for r := range stack[m] {
@@ -139,7 +139,8 @@ func New(config ...Config) fiber.Handler {
 					}
 				}
 			}
-
+			// override error handler
+			errHandler = c.App().Config().ErrorHandler
 		})
 
 		// Set latency start time
