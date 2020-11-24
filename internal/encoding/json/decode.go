@@ -535,7 +535,7 @@ func (d decoder) decodeArray(b []byte, p unsafe.Pointer, n int, size uintptr, t 
 		if err != nil {
 			if e, ok := err.(*UnmarshalTypeError); ok {
 				e.Struct = t.String() + e.Struct
-				e.Field = strconv.Itoa(i) + "." + e.Field
+				e.Field = d.prependField(strconv.Itoa(i), e.Field)
 			}
 			return b, err
 		}
@@ -637,7 +637,7 @@ func (d decoder) decodeSlice(b []byte, p unsafe.Pointer, size uintptr, t reflect
 			}
 			if e, ok := err.(*UnmarshalTypeError); ok {
 				e.Struct = t.String() + e.Struct
-				e.Field = strconv.Itoa(s.len) + "." + e.Field
+				e.Field = d.prependField(strconv.Itoa(s.len), e.Field)
 			}
 			return b, err
 		}
@@ -716,7 +716,7 @@ func (d decoder) decodeMap(b []byte, p unsafe.Pointer, t, kt, vt reflect.Type, k
 			}
 			if e, ok := err.(*UnmarshalTypeError); ok {
 				e.Struct = "map[" + kt.String() + "]" + vt.String() + "{" + e.Struct + "}"
-				e.Field = fmt.Sprint(k.Interface()) + "." + e.Field
+				e.Field = d.prependField(fmt.Sprint(k.Interface()), e.Field)
 			}
 			return b, err
 		}
@@ -797,7 +797,7 @@ func (d decoder) decodeMapStringInterface(b []byte, p unsafe.Pointer) ([]byte, e
 			}
 			if e, ok := err.(*UnmarshalTypeError); ok {
 				e.Struct = mapStringInterfaceType.String() + e.Struct
-				e.Field = key + "." + e.Field
+				e.Field = d.prependField(key, e.Field)
 			}
 			return b, err
 		}
@@ -878,7 +878,254 @@ func (d decoder) decodeMapStringRawMessage(b []byte, p unsafe.Pointer) ([]byte, 
 			}
 			if e, ok := err.(*UnmarshalTypeError); ok {
 				e.Struct = mapStringRawMessageType.String() + e.Struct
-				e.Field = key + "." + e.Field
+				e.Field = d.prependField(key, e.Field)
+			}
+			return b, err
+		}
+
+		m[key] = val
+		i++
+	}
+}
+
+func (d decoder) decodeMapStringString(b []byte, p unsafe.Pointer) ([]byte, error) {
+	if hasNullPrefix(b) {
+		*(*unsafe.Pointer)(p) = nil
+		return b[4:], nil
+	}
+
+	if len(b) < 2 || b[0] != '{' {
+		return inputError(b, mapStringStringType)
+	}
+
+	i := 0
+	m := *(*map[string]string)(p)
+
+	if m == nil {
+		m = make(map[string]string, 64)
+	}
+
+	var err error
+	var key string
+	var val string
+	var input = b
+
+	b = b[1:]
+	for {
+		key = ""
+		val = ""
+
+		b = skipSpaces(b)
+
+		if len(b) != 0 && b[0] == '}' {
+			*(*unsafe.Pointer)(p) = *(*unsafe.Pointer)(unsafe.Pointer(&m))
+			return b[1:], nil
+		}
+
+		if i != 0 {
+			if len(b) == 0 {
+				return b, syntaxError(b, "unexpected end of JSON input after object field value")
+			}
+			if b[0] != ',' {
+				return b, syntaxError(b, "expected ',' after object field value but found '%c'", b[0])
+			}
+			b = skipSpaces(b[1:])
+		}
+
+		if hasPrefix(b, "null") {
+			return b, syntaxError(b, "cannot decode object key string from 'null' value")
+		}
+
+		b, err = d.decodeString(b, unsafe.Pointer(&key))
+		if err != nil {
+			return objectKeyError(b, err)
+		}
+		b = skipSpaces(b)
+
+		if len(b) == 0 {
+			return b, syntaxError(b, "unexpected end of JSON input after object field key")
+		}
+		if b[0] != ':' {
+			return b, syntaxError(b, "expected ':' after object field key but found '%c'", b[0])
+		}
+		b = skipSpaces(b[1:])
+
+		b, err = d.decodeString(b, unsafe.Pointer(&val))
+		if err != nil {
+			if _, r, err := parseValue(input); err != nil {
+				return r, err
+			} else {
+				b = r
+			}
+			if e, ok := err.(*UnmarshalTypeError); ok {
+				e.Struct = mapStringStringType.String() + e.Struct
+				e.Field = d.prependField(key, e.Field)
+			}
+			return b, err
+		}
+
+		m[key] = val
+		i++
+	}
+}
+
+func (d decoder) decodeMapStringStringSlice(b []byte, p unsafe.Pointer) ([]byte, error) {
+	if hasNullPrefix(b) {
+		*(*unsafe.Pointer)(p) = nil
+		return b[4:], nil
+	}
+
+	if len(b) < 2 || b[0] != '{' {
+		return inputError(b, mapStringStringSliceType)
+	}
+
+	i := 0
+	m := *(*map[string][]string)(p)
+
+	if m == nil {
+		m = make(map[string][]string, 64)
+	}
+
+	var err error
+	var key string
+	var buf []string
+	var input = b
+	var stringSize = unsafe.Sizeof("")
+
+	b = b[1:]
+	for {
+		key = ""
+		buf = buf[:0]
+
+		b = skipSpaces(b)
+
+		if len(b) != 0 && b[0] == '}' {
+			*(*unsafe.Pointer)(p) = *(*unsafe.Pointer)(unsafe.Pointer(&m))
+			return b[1:], nil
+		}
+
+		if i != 0 {
+			if len(b) == 0 {
+				return b, syntaxError(b, "unexpected end of JSON input after object field value")
+			}
+			if b[0] != ',' {
+				return b, syntaxError(b, "expected ',' after object field value but found '%c'", b[0])
+			}
+			b = skipSpaces(b[1:])
+		}
+
+		if hasPrefix(b, "null") {
+			return b, syntaxError(b, "cannot decode object key string from 'null' value")
+		}
+
+		b, err = d.decodeString(b, unsafe.Pointer(&key))
+		if err != nil {
+			return objectKeyError(b, err)
+		}
+		b = skipSpaces(b)
+
+		if len(b) == 0 {
+			return b, syntaxError(b, "unexpected end of JSON input after object field key")
+		}
+		if b[0] != ':' {
+			return b, syntaxError(b, "expected ':' after object field key but found '%c'", b[0])
+		}
+		b = skipSpaces(b[1:])
+
+		b, err = d.decodeSlice(b, unsafe.Pointer(&buf), stringSize, sliceStringType, decoder.decodeString)
+		if err != nil {
+			if _, r, err := parseValue(input); err != nil {
+				return r, err
+			} else {
+				b = r
+			}
+			if e, ok := err.(*UnmarshalTypeError); ok {
+				e.Struct = mapStringStringType.String() + e.Struct
+				e.Field = d.prependField(key, e.Field)
+			}
+			return b, err
+		}
+
+		val := make([]string, len(buf))
+		copy(val, buf)
+
+		m[key] = val
+		i++
+	}
+}
+
+func (d decoder) decodeMapStringBool(b []byte, p unsafe.Pointer) ([]byte, error) {
+	if hasNullPrefix(b) {
+		*(*unsafe.Pointer)(p) = nil
+		return b[4:], nil
+	}
+
+	if len(b) < 2 || b[0] != '{' {
+		return inputError(b, mapStringBoolType)
+	}
+
+	i := 0
+	m := *(*map[string]bool)(p)
+
+	if m == nil {
+		m = make(map[string]bool, 64)
+	}
+
+	var err error
+	var key string
+	var val bool
+	var input = b
+
+	b = b[1:]
+	for {
+		key = ""
+		val = false
+
+		b = skipSpaces(b)
+
+		if len(b) != 0 && b[0] == '}' {
+			*(*unsafe.Pointer)(p) = *(*unsafe.Pointer)(unsafe.Pointer(&m))
+			return b[1:], nil
+		}
+
+		if i != 0 {
+			if len(b) == 0 {
+				return b, syntaxError(b, "unexpected end of JSON input after object field value")
+			}
+			if b[0] != ',' {
+				return b, syntaxError(b, "expected ',' after object field value but found '%c'", b[0])
+			}
+			b = skipSpaces(b[1:])
+		}
+
+		if hasPrefix(b, "null") {
+			return b, syntaxError(b, "cannot decode object key string from 'null' value")
+		}
+
+		b, err = d.decodeString(b, unsafe.Pointer(&key))
+		if err != nil {
+			return objectKeyError(b, err)
+		}
+		b = skipSpaces(b)
+
+		if len(b) == 0 {
+			return b, syntaxError(b, "unexpected end of JSON input after object field key")
+		}
+		if b[0] != ':' {
+			return b, syntaxError(b, "expected ':' after object field key but found '%c'", b[0])
+		}
+		b = skipSpaces(b[1:])
+
+		b, err = d.decodeBool(b, unsafe.Pointer(&val))
+		if err != nil {
+			if _, r, err := parseValue(input); err != nil {
+				return r, err
+			} else {
+				b = r
+			}
+			if e, ok := err.(*UnmarshalTypeError); ok {
+				e.Struct = mapStringStringType.String() + e.Struct
+				e.Field = d.prependField(key, e.Field)
 			}
 			return b, err
 		}
@@ -968,7 +1215,7 @@ func (d decoder) decodeStruct(b []byte, p unsafe.Pointer, st *structType) ([]byt
 			}
 			if e, ok := err.(*UnmarshalTypeError); ok {
 				e.Struct = st.typ.String() + e.Struct
-				e.Field = string(k) + "." + e.Field
+				e.Field = d.prependField(string(k), e.Field)
 			}
 			return b, err
 		}
@@ -1189,4 +1436,11 @@ func (d decoder) decodeTextUnmarshaler(b []byte, p unsafe.Pointer, t reflect.Typ
 	}
 
 	return b, &UnmarshalTypeError{Value: value, Type: reflect.PtrTo(t)}
+}
+
+func (d decoder) prependField(key, field string) string {
+	if field != "" {
+		return key + "." + field
+	}
+	return key
 }
