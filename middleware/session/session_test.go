@@ -67,6 +67,45 @@ func Test_Session(t *testing.T) {
 	utils.AssertEqual(t, 36, len(id))
 }
 
+// go test -run Test_Session_CustomType
+func Test_Session_CustomType(t *testing.T) {
+	t.Parallel()
+
+	// session store
+	store := New()
+
+	// fiber instance
+	app := fiber.New()
+
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// set cookie
+	ctx.Request().Header.SetCookie(store.CookieName, "123")
+
+	// get session
+	sess, err := store.Get(ctx)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, sess.Fresh())
+
+	type User struct {
+		Name string
+	}
+
+	val := User{
+		Name: "john",
+	}
+
+	// set value
+	sess.Set("user", val)
+
+	// get value
+	user, ok := sess.Get("user").(User)
+	utils.AssertEqual(t, true, ok)
+	utils.AssertEqual(t, val, user)
+}
+
 // go test -run Test_Session_Store_Reset
 func Test_Session_Store_Reset(t *testing.T) {
 	t.Parallel()

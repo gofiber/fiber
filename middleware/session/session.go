@@ -136,8 +136,10 @@ func (s *Session) Save() error {
 		return err
 	}
 
-	// Create cookie with the session ID
-	s.setCookie()
+	// Create cookie with the session ID if fresh
+	if s.fresh {
+		s.setCookie()
+	}
 
 	// Release session
 	// TODO: It's not safe to use the Session after called Save()
