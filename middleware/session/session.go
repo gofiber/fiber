@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/gotiny"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -26,7 +27,7 @@ var sessionPool = sync.Pool{
 func acquireSession() *Session {
 	s := sessionPool.Get().(*Session)
 	if s.data == nil {
-		s.data = new(data)
+		s.data = acquireData()
 	}
 	s.fresh = true
 	return s
@@ -126,10 +127,12 @@ func (s *Session) Save() error {
 	}
 
 	// Convert data to bytes
-	data, err := s.data.MarshalMsg(nil)
-	if err != nil {
-		return err
-	}
+	data := gotiny.Marshal(&s.data)
+
+	// data, err := s.data.MarshalMsg(nil)
+	// if err != nil {
+	// 	return err
+	// }
 
 	// pass raw bytes with session id to provider
 	if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
