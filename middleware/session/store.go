@@ -1,6 +1,8 @@
 package session
 
 import (
+	"sync"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/gotiny"
 	"github.com/gofiber/fiber/v2/internal/storage/memory"
@@ -9,6 +11,8 @@ import (
 type Store struct {
 	Config
 }
+
+var mux sync.Mutex
 
 // Storage ErrNotExist
 var errNotExist = "key does not exist"
@@ -50,10 +54,9 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 		raw, err := s.Storage.Get(id)
 		// Unmashal if we found data
 		if err == nil {
+			mux.Lock()
 			gotiny.Unmarshal(raw, &sess.data)
-			// if _, err = sess.data.UnmarshalMsg(raw); err != nil {
-			// 	return nil, err
-			// }
+			mux.Unlock()
 			sess.fresh = false
 		} else if raw != nil && err.Error() != "key does not exist" {
 			return nil, err

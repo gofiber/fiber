@@ -129,9 +129,9 @@ func (s *Session) Save() error {
 	}
 
 	// Convert data to bytes
-	// s.RLock()
+	s.Lock()
 	data := gotiny.Marshal(&s.data)
-	// s.RUnlock()
+	s.Unlock()
 
 	// pass raw bytes with session id to provider
 	if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
