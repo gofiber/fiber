@@ -11,7 +11,7 @@ import (
 )
 
 type Session struct {
-	// sync.RWMutex
+	sync.Mutex
 	id     string     // session id
 	fresh  bool       // if new session
 	ctx    *fiber.Ctx // fiber context
@@ -129,9 +129,9 @@ func (s *Session) Save() error {
 	}
 
 	// Convert data to bytes
-	mux.Lock()
+	s.Lock()
 	data := gotiny.Marshal(&s.data)
-	mux.Unlock()
+	s.Unlock()
 
 	// pass raw bytes with session id to provider
 	if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
