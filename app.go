@@ -739,7 +739,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	logo += " │ %s │\n"
 	logo += " │ %s │\n"
 	logo += " │                                                   │\n"
-	logo += " │ Handlers %s  Threads %s │\n"
+	logo += " │ Handlers %s  Processes %s │\n"
 	logo += " │ Prefork .%s  PID ....%s │\n"
 	logo += " └───────────────────────────────────────────────────┘"
 	logo += "%s"
@@ -815,11 +815,16 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		isPrefork = "Enabled"
 	}
 
+	procs := strconv.Itoa(runtime.GOMAXPROCS(0))
+	if !app.config.Prefork {
+		procs = "1"
+	}
+
 	mainLogo := fmt.Sprintf(logo,
 		cBlack,
 		centerValue(" Fiber v"+Version, 49),
 		center(addr, 49),
-		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.GOMAXPROCS(0)), 14),
+		value(strconv.Itoa(app.handlerCount), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 		cReset,
 	)
