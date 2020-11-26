@@ -10,8 +10,21 @@ Session middleware for [Fiber](https://github.com/gofiber/fiber)
 
 ### Signatures
 ```go
-func New(config ...Config) fiber.Handler
+func New(config ...Config) *Store
+func (s *Store) Get(c *fiber.Ctx) (*Session, error)
+func (s *Store) Reset() error
+
+func (s *Session) Get(key string) interface{}
+func (s *Session) Set(key string, val interface{})
+func (s *Session) Delete(key string)
+func (s *Session) Destroy() error
+func (s *Session) Regenerate() error
+func (s *Session) Save() error
+func (s *Session) Fresh() bool
+func (s *Session) ID() string
 ```
+
+**⚠ _Storing `interface{}` values are limited to built-ins Go types_**
 
 ### Examples
 Import the middleware package that is part of the Fiber web framework
@@ -35,9 +48,6 @@ app.Get("/", func(c *fiber.Ctx) error {
 		panic(err)
 	}
 
-	// save session
-	defer sess.Save()
-
 	// Get value
 	name := sess.Get("name")
 
@@ -49,6 +59,11 @@ app.Get("/", func(c *fiber.Ctx) error {
 
 	// Destry session
 	if err := sess.Destroy(); err != nil {
+		panic(err)
+	}
+
+	// save session
+	if err := sess.Save(); err != nil {
 		panic(err)
 	}
 

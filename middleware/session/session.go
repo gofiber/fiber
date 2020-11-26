@@ -5,11 +5,13 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/gotiny"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
 type Session struct {
+	// sync.RWMutex
 	id     string     // session id
 	fresh  bool       // if new session
 	ctx    *fiber.Ctx // fiber context
@@ -26,7 +28,7 @@ var sessionPool = sync.Pool{
 func acquireSession() *Session {
 	s := sessionPool.Get().(*Session)
 	if s.data == nil {
-		s.data = new(data)
+		s.data = acquireData()
 	}
 	s.fresh = true
 	return s
@@ -115,6 +117,7 @@ func (s *Session) Regenerate() error {
 
 // Save will update the storage and client cookie
 func (s *Session) Save() error {
+
 	// Better safe than sorry
 	if s.data == nil {
 		return nil
@@ -126,18 +129,19 @@ func (s *Session) Save() error {
 	}
 
 	// Convert data to bytes
-	data, err := s.data.MarshalMsg(nil)
-	if err != nil {
-		return err
-	}
+	mux.Lock()
+	data := gotiny.Marshal(&s.data)
+	mux.Unlock()
 
 	// pass raw bytes with session id to provider
 	if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
 		return err
 	}
 
-	// Create cookie with the session ID
-	s.setCookie()
+	// Create cookie with the session ID if fresh
+	if s.fresh {
+		s.setCookie()
+	}
 
 	// Release session
 	// TODO: It's not safe to use the Session after called Save()
