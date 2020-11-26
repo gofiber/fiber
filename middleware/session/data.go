@@ -9,8 +9,8 @@ import (
 // don't forget to replace the msgp import path to:
 // "github.com/gofiber/fiber/v2/internal/msgp"
 type data struct {
-	sync.RWMutex `msg:"-"`
-	d            map[string]interface{} `msg:"d"`
+	sync.RWMutex `gotiny:"-"`
+	d            map[string]interface{} `gotiny:"d"`
 }
 
 var dataPool = sync.Pool{

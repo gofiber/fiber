@@ -127,8 +127,9 @@ func (s *Session) Save() error {
 	}
 
 	// Convert data to bytes
+	s.data.Lock()
 	data := gotiny.Marshal(&s.data)
-
+	s.data.Unlock()
 	// data, err := s.data.MarshalMsg(nil)
 	// if err != nil {
 	// 	return err
