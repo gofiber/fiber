@@ -4,6 +4,7 @@ package cache
 
 import (
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -25,18 +26,18 @@ func New(config ...Config) fiber.Handler {
 
 	var (
 		// Cache settings
+		mux        = &sync.RWMutex{}
 		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
 	)
-
-	// create storage handler
-	store := newStorage(&cfg)
+	// Create manager to simplify storage operations ( see manager.go )
+	manager := newManager(cfg.Storage)
 
 	// Update timestamp every second
 	go func() {
 		for {
 			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
-			time.Sleep(750 * time.Millisecond)
+			time.Sleep(1 * time.Second)
 		}
 	}()
 
@@ -55,24 +56,37 @@ func New(config ...Config) fiber.Handler {
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
-		// Get/Create new entry
-		e := store.get(key)
-		if e == nil {
-			e = &entry{}
-		}
+		// Get entry from pool
+		e := manager.get(key)
+
+		// Lock entry and unlock when finished
+		mux.Lock()
+		defer mux.Unlock()
+
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
-		// Set expiration if entry does not exist
 		if e.exp == 0 {
+			// Set expiration if entry does not exist
 			e.exp = ts + expiration
+
 		} else if ts >= e.exp {
 			// Check if entry is expired
-			store.delete(key)
+			manager.delete(key)
+			// External storage saves body data with different key
+			if cfg.Storage != nil {
+				manager.delete(key + "_body")
+			}
 		} else {
+			// Seperate body value to avoid msgp serialization
+			// We can store raw bytes with Storage 👍
+			if cfg.Storage != nil {
+				e.body = manager.getRaw(key + "_body")
+			}
 			// Set response headers from cache
-			c.Response().Header.SetContentTypeBytes(e.cType)
-			c.Status(e.status).Send(e.body)
+			c.Response().SetBodyRaw(e.body)
+			c.Response().SetStatusCode(e.status)
+			c.Response().Header.SetContentTypeBytes(e.ctype)
 
 			// Set Cache-Control header if enabled
 			if cfg.CacheControl {
@@ -90,11 +104,21 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
+		e.body = utils.SafeBytes(c.Response().Body())
 		e.status = c.Response().StatusCode()
-		e.body = utils.CopyBytes(c.Response().Body())
-		e.cType = utils.CopyBytes(c.Response().Header.ContentType())
+		e.ctype = utils.SafeBytes(c.Response().Header.ContentType())
 
-		store.set(key, e)
+		// For external Storage we store raw body seperated
+		if cfg.Storage != nil {
+			manager.setRaw(key+"_body", e.body, cfg.Expiration)
+			// avoid body msgp encoding
+			e.body = nil
+			manager.set(key, e, cfg.Expiration)
+			manager.release(e)
+		} else {
+			// Store entry in memory
+			manager.set(key, e, cfg.Expiration)
+		}
 
 		// Finish response
 		return nil
