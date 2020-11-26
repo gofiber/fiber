@@ -11,7 +11,6 @@ import (
 )
 
 type Session struct {
-	// sync.RWMutex
 	id     string     // session id
 	fresh  bool       // if new session
 	ctx    *fiber.Ctx // fiber context
