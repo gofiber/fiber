@@ -67,6 +67,9 @@ func configDefault(config ...Config) Config {
 	if int(cfg.Expiration.Seconds()) <= 0 {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
+	if cfg.CookieName == "" {
+		cfg.CookieName = ConfigDefault.CookieName
+	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator
 	}
