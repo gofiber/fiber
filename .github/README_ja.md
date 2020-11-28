@@ -143,8 +143,6 @@ Fiber は人気の高い Web フレームワークである Expressjs に**イ�
 
 以下に一般的な例をいくつか示します。他のコード例をご覧になりたい場合は、 [Recipes リポジトリ](https://github.com/gofiber/recipes)または[API ドキュメント](https://docs.gofiber.io)にアクセスしてください。
 
-Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
-
 #### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
 
 ```go
