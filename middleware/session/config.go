@@ -42,7 +42,7 @@ type Config struct {
 	CookieSameSite string
 
 	// KeyGenerator generates the session key.
-	// Optional. Default value utils.UUID
+	// Optional. Default value utils.UUIDv4
 	KeyGenerator func() string
 }
 
@@ -50,7 +50,7 @@ type Config struct {
 var ConfigDefault = Config{
 	Expiration:   24 * time.Hour,
 	CookieName:   "session_id",
-	KeyGenerator: utils.UUID,
+	KeyGenerator: utils.UUIDv4,
 }
 
 // Helper function to set default values

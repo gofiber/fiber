@@ -45,6 +45,30 @@ func Test_UUID_Concurrency(t *testing.T) {
 	AssertEqual(t, iterations, len(results))
 }
 
+func Test_UUIDv4(t *testing.T) {
+	t.Parallel()
+	res := UUIDv4()
+	AssertEqual(t, 36, len(res))
+	AssertEqual(t, true, res != "00000000-0000-0000-0000-000000000000")
+}
+func Test_UUIDv4_Concurrency(t *testing.T) {
+	t.Parallel()
+	iterations := 10000
+	var res string
+	ch := make(chan string, iterations)
+	results := make(map[string]string)
+	for i := 0; i < iterations; i++ {
+		go func() {
+			ch <- UUIDv4()
+		}()
+	}
+	for i := 0; i < iterations; i++ {
+		res = <-ch
+		results[res] = res
+	}
+	AssertEqual(t, iterations, len(results))
+}
+
 // go test -v -run=^$ -bench=Benchmark_UUID -benchmem -count=2
 
 func Benchmark_UUID(b *testing.B) {
