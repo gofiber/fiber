@@ -364,9 +364,9 @@ func (c *testConn) Close() error                { return nil }
 
 func (c *testConn) LocalAddr() net.Addr                { return testAddr("local-addr") }
 func (c *testConn) RemoteAddr() net.Addr               { return testAddr("remote-addr") }
-func (c *testConn) SetDeadline(t time.Time) error      { return nil }
-func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
-func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
+func (c *testConn) SetDeadline(_ time.Time) error      { return nil }
+func (c *testConn) SetReadDeadline(_ time.Time) error  { return nil }
+func (c *testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 // getString converts byte slice to a string without memory allocation.
 var getString = utils.UnsafeString

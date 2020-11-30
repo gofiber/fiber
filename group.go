@@ -15,7 +15,7 @@ type Group struct {
 	prefix string
 }
 
-// Mount attaches another app instance as a subrouter along a routing path.
+// Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
 func (grp *Group) Mount(prefix string, fiber *App) Router {

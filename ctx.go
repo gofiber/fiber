@@ -946,7 +946,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	})
 
 	// Keep original path for mutable params
-	c.pathOriginal = utils.SafeString(c.pathOriginal)
+	c.pathOriginal = utils.CopyString(c.pathOriginal)
 	// Disable compression
 	if len(compress) <= 0 || !compress[0] {
 		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
@@ -1098,7 +1098,7 @@ func (c *Ctx) WriteString(s string) (int, error) {
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *Ctx) XHR() bool {
-	return utils.EqualsFold(utils.UnsafeBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFoldBytes(utils.UnsafeBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
 }
 
 // prettifyPath ...
