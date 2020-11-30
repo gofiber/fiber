@@ -383,7 +383,7 @@ func New(config ...Config) *App {
 	return app
 }
 
-// Mount attaches another app instance as a subrouter along a routing path.
+// Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
 func (app *App) Mount(prefix string, fiber *App) Router {
@@ -663,7 +663,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 
 type disableLogger struct{}
 
-func (dl *disableLogger) Printf(format string, args ...interface{}) {
+func (dl *disableLogger) Printf(_ string, _ ...interface{}) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
@@ -917,6 +917,5 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
-	fmt.Fprintln(out, output)
-
+	_, _ = fmt.Fprintln(out, output)
 }
