@@ -29,7 +29,7 @@ func Test_UUID(t *testing.T) {
 
 func Test_UUID_Concurrency(t *testing.T) {
 	t.Parallel()
-	iterations := 10000
+	iterations := 1000
 	var res string
 	ch := make(chan string, iterations)
 	results := make(map[string]string)
@@ -53,7 +53,7 @@ func Test_UUIDv4(t *testing.T) {
 }
 func Test_UUIDv4_Concurrency(t *testing.T) {
 	t.Parallel()
-	iterations := 10000
+	iterations := 1000
 	var res string
 	ch := make(chan string, iterations)
 	results := make(map[string]string)
