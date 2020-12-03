@@ -122,6 +122,11 @@ func (s *Session) Save() error {
 		return nil
 	}
 
+	// Create cookie with the session ID if fresh
+	if s.fresh {
+		s.setCookie()
+	}
+
 	// Don't save to Storage if no data is available
 	if s.data.Len() <= 0 {
 		return nil
@@ -135,11 +140,6 @@ func (s *Session) Save() error {
 	// pass raw bytes with session id to provider
 	if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
 		return err
-	}
-
-	// Create cookie with the session ID if fresh
-	if s.fresh {
-		s.setCookie()
 	}
 
 	// Release session
