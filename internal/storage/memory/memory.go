@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"errors"
 	"sync"
 	"time"
 )
@@ -13,9 +12,6 @@ type Storage struct {
 	gcInterval time.Duration
 	done       chan struct{}
 }
-
-// Common storage errors
-var ErrNotExist = errors.New("key does not exist")
 
 type entry struct {
 	data   []byte
@@ -40,13 +36,13 @@ func New() *Storage {
 // Get value by key
 func (s *Storage) Get(key string) ([]byte, error) {
 	if len(key) <= 0 {
-		return nil, ErrNotExist
+		return nil, nil
 	}
 	s.mux.RLock()
 	v, ok := s.db[key]
 	s.mux.RUnlock()
 	if !ok || v.expiry != 0 && v.expiry <= time.Now().Unix() {
-		return nil, ErrNotExist
+		return nil, nil
 	}
 
 	return v.data, nil

@@ -270,8 +270,8 @@ func Test_Session_Cookie(t *testing.T) {
 	sess, _ := store.Get(ctx)
 	sess.Save()
 
-	// cookie should not be set if empty data
-	utils.AssertEqual(t, 0, len(ctx.Response().Header.PeekCookie(store.CookieName)))
+	// cookie should be set on Save ( even if empty data )
+	utils.AssertEqual(t, 84, len(ctx.Response().Header.PeekCookie(store.CookieName)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4
