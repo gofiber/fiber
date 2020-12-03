@@ -1,6 +1,7 @@
 package gotiny
 
 import (
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -178,7 +179,8 @@ func buildDecEngine(rt reflect.Type, engPtr *decEng) {
 				decString(d, unsafe.Pointer(&name))
 				et, has := name2type[name]
 				if !has {
-					panic("unknown typ:" + name)
+					//panic("unknown typ:" + name)
+					fmt.Println("[session] Use the `RegisterType` option to decode this value.")
 				}
 				v := reflect.NewAt(rt, p).Elem()
 				var ev reflect.Value
@@ -194,7 +196,7 @@ func buildDecEngine(rt reflect.Type, engPtr *decEng) {
 			}
 		}
 	case reflect.Chan, reflect.Func:
-		panic("not support " + rt.String() + " type")
+		//panic("not support " + rt.String() + " type")
 	default:
 		engine = baseDecEngines[kind]
 	}

@@ -14,15 +14,15 @@ type Store struct {
 
 var mux sync.Mutex
 
-// Storage ErrNotExist
-var errNotExist = "key does not exist"
-
 func New(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
 
 	if cfg.Storage == nil {
 		cfg.Storage = memory.New()
+	}
+	if cfg.RegisterType != nil {
+		gotiny.Register(cfg.RegisterType)
 	}
 
 	return &Store{
