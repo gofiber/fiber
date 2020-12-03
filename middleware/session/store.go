@@ -53,12 +53,12 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	if !fresh {
 		raw, err := s.Storage.Get(id)
 		// Unmashal if we found data
-		if err == nil {
+		if raw != nil && err == nil {
 			mux.Lock()
 			gotiny.Unmarshal(raw, &sess.data)
 			mux.Unlock()
 			sess.fresh = false
-		} else if raw != nil && err.Error() != "key does not exist" {
+		} else if err != nil {
 			return nil, err
 		} else {
 			sess.fresh = true
