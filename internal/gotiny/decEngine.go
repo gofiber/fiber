@@ -180,7 +180,7 @@ func buildDecEngine(rt reflect.Type, engPtr *decEng) {
 				et, has := name2type[name]
 				if !has {
 					//panic("unknown typ:" + name)
-					fmt.Println("[session] Use the `RegisterType` option to decode this value.")
+					fmt.Println("[session] Register this type first with the `RegisterType` method.")
 				}
 				v := reflect.NewAt(rt, p).Elem()
 				var ev reflect.Value
