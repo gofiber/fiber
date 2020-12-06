@@ -45,10 +45,10 @@ type Config struct {
 	// Optional. Default value utils.UUIDv4
 	KeyGenerator func() string
 
-	// RegisterType allows you to store custom type/struct
+	// CustomType allows you to store custom type/struct
 	// in any Storage provider. Only use this option if you
 	// are using custom a custom type/struct used as value.
-	RegisterType interface{}
+	CustomType interface{}
 }
 
 // ConfigDefault is the default config
