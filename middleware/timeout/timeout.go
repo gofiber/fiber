@@ -16,26 +16,14 @@ func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 		fmt.Println("[Warning] timeout contains data race issues, not ready for production!")
 	})
 
-	if timeout <= 0 {
-		return handler
-	}
-
 	// logic is from fasthttp.TimeoutWithCodeHandler https://github.com/valyala/fasthttp/blob/master/server.go#L418
 	return func(ctx *fiber.Ctx) error {
 		ch := make(chan struct{}, 1)
-
-		go func() {
-			defer func() {
-				_ = recover()
-			}()
-			_ = handler(ctx)
-			ch <- struct{}{}
-		}()
-
 		select {
-		case <-ch:
+		case ch <- c.Next():
+			return <-ch
 		case <-time.After(timeout):
-			return fiber.ErrRequestTimeout
+			return handler()
 		}
 
 		return nil
