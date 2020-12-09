@@ -11,6 +11,7 @@ Session middleware for [Fiber](https://github.com/gofiber/fiber)
 ### Signatures
 ```go
 func New(config ...Config) *Store
+func (s *Store) RegisterType(i interface{})
 func (s *Store) Get(c *fiber.Ctx) (*Session, error)
 func (s *Store) Reset() error
 

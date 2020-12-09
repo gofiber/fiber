@@ -187,7 +187,7 @@ func buildEncEngine(rt reflect.Type, engPtr *encEng) {
 			}
 		}
 	case reflect.Chan, reflect.Func:
-		panic("not support " + rt.String() + " type")
+		//panic("not support " + rt.String() + " type")
 	default:
 		engine = encEngines[kind]
 	}

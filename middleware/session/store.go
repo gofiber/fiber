@@ -14,9 +14,6 @@ type Store struct {
 
 var mux sync.Mutex
 
-// Storage ErrNotExist
-var errNotExist = "key does not exist"
-
 func New(config ...Config) *Store {
 	// Set default config
 	cfg := configDefault(config...)
@@ -30,6 +27,13 @@ func New(config ...Config) *Store {
 	}
 }
 
+// RegisterType will allow you to encode/decode custom types
+// into any Storage provider
+func (s *Store) RegisterType(i interface{}) {
+	gotiny.Register(i)
+}
+
+// Get will get/create a session
 func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	var fresh bool
 

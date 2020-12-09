@@ -87,7 +87,9 @@ func New(config ...Config) fiber.Handler {
 			c.Response().SetBodyRaw(e.body)
 			c.Response().SetStatusCode(e.status)
 			c.Response().Header.SetContentTypeBytes(e.ctype)
-
+			if len(e.cencoding) > 0 {
+				c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
+			}
 			// Set Cache-Control header if enabled
 			if cfg.CacheControl {
 				maxAge := strconv.FormatUint(e.exp-ts, 10)
@@ -107,6 +109,7 @@ func New(config ...Config) fiber.Handler {
 		e.body = utils.SafeBytes(c.Response().Body())
 		e.status = c.Response().StatusCode()
 		e.ctype = utils.SafeBytes(c.Response().Header.ContentType())
+		e.cencoding = utils.SafeBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 
 		// For external Storage we store raw body seperated
 		if cfg.Storage != nil {
