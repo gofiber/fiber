@@ -1017,7 +1017,7 @@ func (c *Ctx) SendStream(stream io.Reader, size ...int) error {
 
 // Set sets the response's HTTP header field to the specified key, value.
 func (c *Ctx) Set(key string, val string) {
-	c.fasthttp.Response.Header.Set(key, removeNewLines(val))
+	c.fasthttp.Response.Header.Set(key, val)
 }
 
 func (c *Ctx) setCanonical(key string, val string) {

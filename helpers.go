@@ -94,29 +94,6 @@ func quoteString(raw string) string {
 	return quoted
 }
 
-// removeNewLines will replace `\r` and `\n` with an empty space
-func removeNewLines(raw string) string {
-	start := 0
-	if start = strings.IndexByte(raw, '\r'); start == -1 {
-		if start = strings.IndexByte(raw, '\n'); start == -1 {
-			return raw
-		}
-	}
-	bb := bytebufferpool.Get()
-	buf := bb.Bytes()
-	buf = append(buf, raw...)
-	for i := start; i < len(buf); i++ {
-		if buf[i] != '\r' && buf[i] != '\n' {
-			continue
-		}
-		buf[i] = ' '
-	}
-	raw = utils.UnsafeString(buf)
-	bytebufferpool.Put(bb)
-
-	return raw
-}
-
 // Scan stack if other methods match the request
 func methodExist(ctx *Ctx) (exist bool) {
 	for i := 0; i < len(intMethod); i++ {
