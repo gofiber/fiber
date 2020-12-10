@@ -254,7 +254,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	defer decoderPool.Put(schemaDecoder)
 
 	// Get content-type
-	ctype := getString(c.fasthttp.Request.Header.ContentType())
+	ctype := utils.ToLower(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()))
 
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
@@ -265,7 +265,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 		schemaDecoder.SetAliasTag("form")
 		data := make(map[string][]string)
 		c.fasthttp.PostArgs().VisitAll(func(key []byte, val []byte) {
-			data[getString(key)] = append(data[getString(key)], getString(val))
+			data[utils.UnsafeString(key)] = append(data[utils.UnsafeString(key)], utils.UnsafeString(val))
 		})
 		return schemaDecoder.Decode(out, data)
 	}
