@@ -1,21 +1,25 @@
 # CSRF
+
 CSRF middleware for [Fiber](https://github.com/gofiber/fiber) that provides [Cross-site request forgery](https://en.wikipedia.org/wiki/Cross-site_request_forgery) protection by passing a csrf token via cookies. This cookie value will be used to compare against the client csrf token in POST requests. When the csrf token is invalid, this middleware will delete the `_csrf` cookie and return the `fiber.ErrForbidden` error.
 CSRF Tokens are generated on GET requests.
 
 ### Table of Contents
+
 - [Signatures](#signatures)
 - [Examples](#examples)
 - [Config](#config)
 - [Default Config](#default-config)
 
-
 ### Signatures
+
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
 ### Examples
+
 Import the middleware package that is part of the Fiber web framework
+
 ```go
 import (
 	"github.com/gofiber/fiber/v2"
@@ -24,6 +28,7 @@ import (
 ```
 
 After you initiate your Fiber app, you can use the following possibilities:
+
 ```go
 // Initialize default config
 app.Use(csrf.New())
@@ -39,6 +44,7 @@ app.Use(csrf.New(csrf.Config{
 ```
 
 ### Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -60,7 +66,7 @@ type Config struct {
 	KeyLookup string
 
 	// Name of the session cookie. This cookie will store session key.
-	// Optional. Default value "_csrf".
+	// Optional. Default value "csrf_".
 	CookieName string
 
 	// Domain of the CSRF cookie.
@@ -79,7 +85,7 @@ type Config struct {
 	// Optional. Default value false.
 	CookieHTTPOnly bool
 
-	// Indicates if CSRF cookie is HTTP only.
+	// Indicates if CSRF cookie is requested by SameSite.
 	// Optional. Default value "Strict".
 	CookieSameSite string
 
@@ -107,6 +113,7 @@ type Config struct {
 ```
 
 ### Default Config
+
 ```go
 var ConfigDefault = Config{
 	KeyLookup:      "header:X-Csrf-Token",

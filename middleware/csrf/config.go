@@ -28,7 +28,7 @@ type Config struct {
 	KeyLookup string
 
 	// Name of the session cookie. This cookie will store session key.
-	// Optional. Default value "_csrf".
+	// Optional. Default value "csrf_".
 	CookieName string
 
 	// Domain of the CSRF cookie.

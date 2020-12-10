@@ -2,7 +2,6 @@ package csrf
 
 import (
 	"errors"
-	"fmt"
 	"net/textproto"
 	"strings"
 	"time"
@@ -36,9 +35,6 @@ func New(config ...Config) fiber.Handler {
 	case "param":
 		extractor = csrfFromParam(selectors[1])
 	case "cookie":
-		if selectors[1] == cfg.CookieName {
-			panic(fmt.Sprintf("KeyLookup key %s can't be the same as CookieName %s", selectors[1], cfg.CookieName))
-		}
 		extractor = csrfFromCookie(selectors[1])
 	}
 
