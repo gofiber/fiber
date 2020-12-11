@@ -247,38 +247,42 @@ var decoderPool = &sync.Pool{New: func() interface{} {
 // BodyParser binds the request body to a struct.
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
+// If none of the content types above are matched, it will return a ErrUnprocessableEntity error
 func (c *Ctx) BodyParser(out interface{}) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPool.Get().(*schema.Decoder)
 	defer decoderPool.Put(schemaDecoder)
 
 	// Get content-type
-	ctype := getString(c.fasthttp.Request.Header.ContentType())
+	ctype := utils.ToLower(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()))
 
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
 		schemaDecoder.SetAliasTag("json")
 		return json.Unmarshal(c.fasthttp.Request.Body(), out)
-	} else if strings.HasPrefix(ctype, MIMEApplicationForm) {
+	}
+	if strings.HasPrefix(ctype, MIMEApplicationForm) {
 		schemaDecoder.SetAliasTag("form")
 		data := make(map[string][]string)
 		c.fasthttp.PostArgs().VisitAll(func(key []byte, val []byte) {
-			data[getString(key)] = append(data[getString(key)], getString(val))
+			data[utils.UnsafeString(key)] = append(data[utils.UnsafeString(key)], utils.UnsafeString(val))
 		})
 		return schemaDecoder.Decode(out, data)
-	} else if strings.HasPrefix(ctype, MIMEMultipartForm) {
+	}
+	if strings.HasPrefix(ctype, MIMEMultipartForm) {
 		schemaDecoder.SetAliasTag("form")
 		data, err := c.fasthttp.MultipartForm()
 		if err != nil {
 			return err
 		}
 		return schemaDecoder.Decode(out, data.Value)
-	} else if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
+	}
+	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
 		schemaDecoder.SetAliasTag("xml")
 		return xml.Unmarshal(c.fasthttp.Request.Body(), out)
 	}
 	// No suitable content type found
-	return fmt.Errorf("bodyparser: cannot parse content-type: %v", ctype)
+	return ErrUnprocessableEntity
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
