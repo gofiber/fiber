@@ -532,6 +532,7 @@ func main() {
 -   [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 -   [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
 -   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
+-   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
 
 ## 👍 Помощь проекту
 

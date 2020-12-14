@@ -31,7 +31,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.2.0"
+const Version = "2.2.5"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -39,27 +39,27 @@ type Handler = func(*Ctx) error
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
-// Storage interface that is implemented by storage providers for different
-// middleware packages like cache, limiter, session and csrf
+// Storage interface for communicating with different database/key-value
+// providers
 type Storage interface {
-	// Get retrieves the value for the given key.
-	// If no value is not found it returns ErrNotExit error
+	// Get gets the value for the given key.
+	// It returns ErrNotFound if the storage does not contain the key.
 	Get(key string) ([]byte, error)
 
 	// Set stores the given value for the given key along with a
 	// time-to-live expiration value, 0 means live for ever
-	// The key must not be "" and the empty values are ignored.
+	// Empty key or value will be ignored without an error.
 	Set(key string, val []byte, ttl time.Duration) error
 
-	// Delete deletes the stored value for the given key.
-	// Deleting a non-existing key-value pair does NOT lead to an error.
-	// The key must not be "".
+	// Delete deletes the value for the given key.
+	// It returns no error if the storage does not contain the key,
 	Delete(key string) error
 
-	// Reset the storage
+	// Reset resets the storage and delete all keys.
 	Reset() error
 
-	// Close the storage
+	// Close closes the storage and will stop any running garbage
+	// collectors and open connections.
 	Close() error
 }
 
@@ -149,6 +149,8 @@ type Config struct {
 	ETag bool `json:"etag"`
 
 	// Max body size that the server accepts.
+	// -1 will decline any body size
+	//
 	// Default: 4 * 1024 * 1024
 	BodyLimit int `json:"body_limit"`
 
@@ -352,7 +354,7 @@ func New(config ...Config) *App {
 	}
 
 	// Override default values
-	if app.config.BodyLimit <= 0 {
+	if app.config.BodyLimit == 0 {
 		app.config.BodyLimit = DefaultBodyLimit
 	}
 	if app.config.Concurrency <= 0 {
@@ -373,13 +375,15 @@ func New(config ...Config) *App {
 	if app.config.ErrorHandler == nil {
 		app.config.ErrorHandler = DefaultErrorHandler
 	}
+
 	// Init app
 	app.init()
+
 	// Return app
 	return app
 }
 
-// Mount attaches another app instance as a subrouter along a routing path.
+// Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
 func (app *App) Mount(prefix string, fiber *App) Router {
@@ -659,7 +663,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 
 type disableLogger struct{}
 
-func (dl *disableLogger) Printf(format string, args ...interface{}) {
+func (dl *disableLogger) Printf(_ string, _ ...interface{}) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
@@ -735,7 +739,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	logo += " │ %s │\n"
 	logo += " │ %s │\n"
 	logo += " │                                                   │\n"
-	logo += " │ Handlers %s  Threads %s │\n"
+	logo += " │ Handlers %s  Processes %s │\n"
 	logo += " │ Prefork .%s  PID ....%s │\n"
 	logo += " └───────────────────────────────────────────────────┘"
 	logo += "%s"
@@ -811,11 +815,16 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		isPrefork = "Enabled"
 	}
 
+	procs := strconv.Itoa(runtime.GOMAXPROCS(0))
+	if !app.config.Prefork {
+		procs = "1"
+	}
+
 	mainLogo := fmt.Sprintf(logo,
 		cBlack,
 		centerValue(" Fiber v"+Version, 49),
 		center(addr, 49),
-		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.GOMAXPROCS(0)), 14),
+		value(strconv.Itoa(app.handlerCount), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 		cReset,
 	)
@@ -908,6 +917,5 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
-	fmt.Fprintln(out, output)
-
+	_, _ = fmt.Fprintln(out, output)
 }

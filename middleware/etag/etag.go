@@ -8,42 +8,13 @@ import (
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 )
 
-// Config defines the config for middleware.
-type Config struct {
-	// Weak indicates that a weak validator is used. Weak etags are easy
-	// to generate, but are far less useful for comparisons. Strong
-	// validators are ideal for comparisons but can be very difficult
-	// to generate efficiently. Weak ETag values of two representations
-	// of the same resources might be semantically equivalent, but not
-	// byte-for-byte identical. This means weak etags prevent caching
-	// when byte range requests are used, but strong etags mean range
-	// requests can still be cached.
-	Weak bool
-
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
-}
-
-// ConfigDefault is the default config
-var ConfigDefault = Config{
-	Weak: false,
-	Next: nil,
-}
-
 var normalizedHeaderETag = []byte("Etag")
 var weakPrefix = []byte("W/")
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg := ConfigDefault
-
-	// Override config if provided
-	if len(config) > 0 {
-		cfg = config[0]
-	}
+	cfg := configDefault(config...)
 
 	var crc32q = crc32.MakeTable(0xD5828281)
 

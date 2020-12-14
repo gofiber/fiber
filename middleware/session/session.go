@@ -5,16 +5,17 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/gotiny"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
 type Session struct {
-	ctx    *fiber.Ctx
-	config *Store
-	db     *db
-	id     string
-	fresh  bool
+	id     string     // session id
+	fresh  bool       // if new session
+	ctx    *fiber.Ctx // fiber context
+	config *Store     // store configuration
+	data   *data      // key value data
 }
 
 var sessionPool = sync.Pool{
@@ -25,19 +26,20 @@ var sessionPool = sync.Pool{
 
 func acquireSession() *Session {
 	s := sessionPool.Get().(*Session)
-	s.db = new(db)
+	if s.data == nil {
+		s.data = acquireData()
+	}
 	s.fresh = true
 	return s
 }
 
 func releaseSession(s *Session) {
+	s.id = ""
 	s.ctx = nil
 	s.config = nil
-	if s.db != nil {
-		s.db.Reset()
+	if s.data != nil {
+		s.data.Reset()
 	}
-	s.id = ""
-	s.fresh = true
 	sessionPool.Put(s)
 }
 
@@ -53,25 +55,42 @@ func (s *Session) ID() string {
 
 // Get will return the value
 func (s *Session) Get(key string) interface{} {
-	return s.db.Get(key)
+	// Better safe than sorry
+	if s.data == nil {
+		return nil
+	}
+	return s.data.Get(key)
 }
 
 // Set will update or create a new key value
 func (s *Session) Set(key string, val interface{}) {
-	s.db.Set(key, val)
+	// Better safe than sorry
+	if s.data == nil {
+		return
+	}
+	s.data.Set(key, val)
 }
 
 // Delete will delete the value
 func (s *Session) Delete(key string) {
-	s.db.Delete(key)
+	// Better safe than sorry
+	if s.data == nil {
+		return
+	}
+	s.data.Delete(key)
 }
 
 // Destroy will delete the session from Storage and expire session cookie
 func (s *Session) Destroy() error {
-	// Reset local data
-	s.db.Reset()
+	// Better safe than sorry
+	if s.data == nil {
+		return nil
+	}
 
-	// Delete data from storage
+	// Reset local data
+	s.data.Reset()
+
+	// Use external Storage if exist
 	if err := s.config.Storage.Delete(s.id); err != nil {
 		return err
 	}
@@ -88,6 +107,7 @@ func (s *Session) Regenerate() error {
 	if err := s.config.Storage.Delete(s.id); err != nil {
 		return err
 	}
+
 	// Create new ID
 	s.id = s.config.KeyGenerator()
 
@@ -96,26 +116,34 @@ func (s *Session) Regenerate() error {
 
 // Save will update the storage and client cookie
 func (s *Session) Save() error {
-	// Don't save to Storage if no data is available
-	if s.db.Len() <= 0 {
+
+	// Better safe than sorry
+	if s.data == nil {
 		return nil
 	}
 
-	// Convert book to bytes
-	data, err := s.db.MarshalMsg(nil)
-	if err != nil {
-		return err
+	// Create cookie with the session ID if fresh
+	if s.fresh {
+		s.setCookie()
 	}
+
+	// Don't save to Storage if no data is available
+	if s.data.Len() <= 0 {
+		return nil
+	}
+
+	// Convert data to bytes
+	mux.Lock()
+	data := gotiny.Marshal(&s.data)
+	mux.Unlock()
 
 	// pass raw bytes with session id to provider
 	if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
 		return err
 	}
 
-	// Create cookie with the session ID
-	s.setCookie()
-
-	// release session to pool to be re-used on next request
+	// Release session
+	// TODO: It's not safe to use the Session after called Save()
 	releaseSession(s)
 
 	return nil

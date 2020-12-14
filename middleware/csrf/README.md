@@ -23,9 +23,9 @@ _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) pa
 func New(config ...Config) fiber.Handler
 ```
 
-## Examples
+### Examples
 
-First import the middleware from Fiber,
+Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
@@ -34,11 +34,7 @@ import (
 )
 ```
 
-Then create a Fiber app with `app := fiber.New()`.
-
-### Default Config
-
-Then apply the middleware to your Fiber app,
+After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
 app.Use(csrf.New()) // Default config
@@ -90,7 +86,7 @@ type Config struct {
 	KeyLookup string
 
 	// Name of the session cookie. This cookie will store session key.
-	// Optional. Default value "_csrf".
+	// Optional. Default value "csrf_".
 	CookieName string
 
 	// Domain of the CSRF cookie.
@@ -109,7 +105,7 @@ type Config struct {
 	// Optional. Default value false.
 	CookieHTTPOnly bool
 
-	// Indicates if CSRF cookie is HTTP only.
+	// Indicates if CSRF cookie is requested by SameSite.
 	// Optional. Default value "Strict".
 	CookieSameSite string
 

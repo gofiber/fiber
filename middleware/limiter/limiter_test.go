@@ -1,7 +1,6 @@
 package limiter
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -172,7 +171,6 @@ func Test_Limiter_Headers(t *testing.T) {
 		t.Errorf("The X-RateLimit-Remaining header is not set correctly - value is an empty string.")
 	}
 	if v := string(fctx.Response.Header.Peek("X-RateLimit-Reset")); !(v == "1" || v == "2") {
-		fmt.Println(v)
 		t.Errorf("The X-RateLimit-Reset header is not set correctly - value is out of bounds.")
 	}
 }

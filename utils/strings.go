@@ -60,3 +60,17 @@ func TrimRight(s string, cutset byte) string {
 	}
 	return s[:lenStr]
 }
+
+// EqualFold the equivalent of strings.EqualFold
+func EqualFold(b, s string) (equals bool) {
+	n := len(b)
+	equals = n == len(s)
+	if equals {
+		for i := 0; i < n; i++ {
+			if equals = b[i]|0x20 == s[i]|0x20; !equals {
+				break
+			}
+		}
+	}
+	return
+}

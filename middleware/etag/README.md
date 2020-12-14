@@ -59,6 +59,11 @@ app.Get("/", func(c *fiber.Ctx) error {
 ```go
 // Config defines the config for middleware.
 type Config struct {
+	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
+	Next func(c *fiber.Ctx) bool
+
 	// Weak indicates that a weak validator is used. Weak etags are easy
 	// to generate, but are far less useful for comparisons. Strong
 	// validators are ideal for comparisons but can be very difficult
@@ -68,11 +73,6 @@ type Config struct {
 	// when byte range requests are used, but strong etags mean range
 	// requests can still be cached.
 	Weak bool
-
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
 }
 ```
 
@@ -80,7 +80,7 @@ type Config struct {
 
 ```go
 var ConfigDefault = Config{
-	Weak: false,
 	Next: nil,
+	Weak: false,
 }
 ```

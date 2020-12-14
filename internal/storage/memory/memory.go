@@ -1,7 +1,6 @@
 package memory
 
 import (
-	"errors"
 	"sync"
 	"time"
 )
@@ -14,23 +13,17 @@ type Storage struct {
 	done       chan struct{}
 }
 
-// Common storage errors
-var ErrNotExist = errors.New("key does not exist")
-
 type entry struct {
 	data   []byte
 	expiry int64
 }
 
 // New creates a new memory storage
-func New(config ...Config) *Storage {
-	// Set default config
-	cfg := configDefault(config...)
-
+func New() *Storage {
 	// Create storage
 	store := &Storage{
 		db:         make(map[string]entry),
-		gcInterval: cfg.GCInterval,
+		gcInterval: 10 * time.Second,
 		done:       make(chan struct{}),
 	}
 
@@ -43,13 +36,13 @@ func New(config ...Config) *Storage {
 // Get value by key
 func (s *Storage) Get(key string) ([]byte, error) {
 	if len(key) <= 0 {
-		return nil, ErrNotExist
+		return nil, nil
 	}
 	s.mux.RLock()
 	v, ok := s.db[key]
 	s.mux.RUnlock()
 	if !ok || v.expiry != 0 && v.expiry <= time.Now().Unix() {
-		return nil, ErrNotExist
+		return nil, nil
 	}
 
 	return v.data, nil
