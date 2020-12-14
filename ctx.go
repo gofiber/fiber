@@ -244,13 +244,42 @@ var decoderPool = &sync.Pool{New: func() interface{} {
 	return decoder
 }}
 
+// CustomTypeRegister - require two element for register converter in schemaDecoder
+// For example: pause custom time in html form data
+//
+// type CustomTime time.Time
+//
+// var timeConverter = func(value string) reflect.Value {
+//	 if v, err := time.Parse("2006-02-01", value); err == nil {
+//		 return reflect.ValueOf(v)
+//	 }
+//	 return reflect.Value{}
+// }
+//
+// customTime := fiber.CustomTypeRegister{
+// 	 Customtype: CustomTime{},
+//	 Converter:  timeConverter,
+// }
+// c.BodyParser(formData, customTime)
+type CustomTypeRegister struct {
+	Customtype interface{}
+	Converter  func(string) reflect.Value
+}
+
 // BodyParser binds the request body to a struct.
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 // If none of the content types above are matched, it will return a ErrUnprocessableEntity error
-func (c *Ctx) BodyParser(out interface{}) error {
+func (c *Ctx) BodyParser(out interface{}, customTypeRegister ...CustomTypeRegister) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPool.Get().(*schema.Decoder)
+
+	if len(customTypeRegister) > 0 {
+		for _, v := range customTypeRegister {
+			schemaDecoder.RegisterConverter(reflect.ValueOf(v.Customtype).Interface(), v.Converter)
+		}
+	}
+
 	defer decoderPool.Put(schemaDecoder)
 
 	// Get content-type
