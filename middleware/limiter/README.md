@@ -1,34 +1,52 @@
-# Limiter
-Limiter middleware for [Fiber](https://github.com/gofiber/fiber) used to limit repeated requests to public APIs and/or endpoints such as password reset etc. Also useful for API clients, web crawling, or other tasks that need to be throttled.
+# Limiter Middleware
 
-**Note: this module does not share state with other processes/servers by default.**
+Limiter middleware for [Fiber](https://github.com/gofiber/fiber) that is used to limit repeat requests to public APIs and/or endpoints such as password reset. It is also useful for API clients, web crawling, or other tasks that need to be throttled.
 
-### Table of Contents
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+_NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases._
 
+**NOTE: this module does not share state with other processes/servers by default.**
 
-### Signatures
+## Table of Contents
+
+- [Limiter Middleware](#limiter-middleware)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Default Config](#default-config)
+		- [Custom Config](#custom-config)
+		- [Custom Storage/Database](#custom-storagedatabase)
+	- [Config](#config)
+		- [Default Config](#default-config-1)
+
+## Signatures
+
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+
+First import the middleware from Fiber,
+
 ```go
 import (
   "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/limiter"
+  "github.com/gofiber/fiber/v2/middleware/session"
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Then create a Fiber app with `app := fiber.New()`.
+
+### Default Config
+
 ```go
 // Default middleware config
 app.Use(limiter.New())
+```
 
+### Custom Config
+
+```go
 // Or extend your config for customization
 app.Use(limiter.New(limiter.Config{
 	Next: func(c *fiber.Ctx) bool {
@@ -46,7 +64,19 @@ app.Use(limiter.New(limiter.Config{
 }))
 ```
 
-### Config
+### Custom Storage/Database
+
+You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
+
+```go
+storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
+app.Use(limiter.New(limiter.Config{
+	Storage: storage,
+}))
+```
+
+## Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -89,6 +119,7 @@ type Config struct {
 A custom store can be used if it implements the `Storage` interface - more details and an example can be found in `store.go`.
 
 ### Default Config
+
 ```go
 var ConfigDefault = Config{
 	Max:        5,

@@ -1,30 +1,45 @@
-# Filesystem middleware
-Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables you to serve files from a directory. 
+# Filesystem Middleware
+
+Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables you to serve files from a directory.
 
 ⚠️ **`:params` & `:optionals?` within the prefix path are not supported!**
 
-### Table of Contents
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+## Table of Contents
+- [Filesystem Middleware](#filesystem-middleware)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Config](#config)
+		- [pkger](#pkger)
+		- [packr](#packr)
+		- [go.rice](#gorice)
+		- [fileb0x](#fileb0x)
+		- [statik](#statik)
+	- [Config](#config-1)
+		- [Default Config](#default-config)
 
 
-### Signatures
+## Signatures
+
 ```go
 func New(config Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+
+First import the middleware from Fiber,
+
 ```go
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/filesystem"
+  "github.com/gofiber/fiber/v2"
+  "github.com/gofiber/fiber/v2/middleware/filesystem"
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Then create a Fiber app with `app := fiber.New()`.
+
+### Config
+
 ```go
 // Provide a minimal config
 app.Use(filesystem.New(filesystem.Config{
@@ -41,8 +56,9 @@ app.Use(filesystem.New(filesystem.Config{
 }))
 ```
 
-## pkger
-https://github.com/markbates/pkger
+### pkger
+
+[Pkger](https://github.com/markbates/pkger) can be used to embed files in a Golang excecutable.
 
 ```go
 package main
@@ -65,8 +81,9 @@ func main() {
 }
 ```
 
-## packr
-https://github.com/gobuffalo/packr
+### packr
+
+[Packr](https://github.com/gobuffalo/packr) can be used to embed files in a Golang excecutable.
 
 ```go
 package main
@@ -89,7 +106,8 @@ func main() {
 }
 ```
 
-## go.rice
+### go.rice
+
 https://github.com/GeertJohan/go.rice
 
 ```go
@@ -113,8 +131,9 @@ func main() {
 }
 ```
 
-## fileb0x
-https://github.com/UnnoTed/fileb0x
+### fileb0x
+
+[Fileb0x](https://github.com/UnnoTed/fileb0x) can be used to embed files in a Golang excecutable.
 
 ```go
 package main
@@ -137,8 +156,9 @@ func main() {
 }
 ```
 
-## statik
-https://github.com/rakyll/statik
+### statik
+
+[Statik](https://github.com/rakyll/statik) can be used to embed files in a Golang excecutable.
 
 ```go
 package main
@@ -167,7 +187,8 @@ func main() {
 }
 ```
 
-### Config
+## Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -206,6 +227,7 @@ type Config struct {
 ```
 
 ### Default Config
+
 ```go
 var ConfigDefault = Config{
 	Next:   nil,

@@ -1,20 +1,28 @@
-# Cross-Origin Resource Sharing (CORS)
+# Cross-Origin Resource Sharing (CORS) Middleware
 
-CORS middleware for [Fiber](https://github.com/gofiber/fiber) that  that can be used to enable [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) with various options.
+CORS middleware for [Fiber](https://github.com/gofiber/fiber) that that can be used to enable [Cross-Origin Resource Sharing](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) with various options.
 
-### Table of Contents
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+## Table of Contents
 
-### Signatures
+- [Cross-Origin Resource Sharing (CORS) Middleware](#cross-origin-resource-sharing-cors-middleware)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Default Config](#default-config)
+		- [Custom Config](#custom-config)
+	- [Config](#config)
+	- [Default Config](#default-config-1)
+
+## Signatures
+
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+
+First import the middleware from Fiber,
+
 ```go
 import (
   "github.com/gofiber/fiber/v2"
@@ -22,19 +30,25 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
-```go
-// Default config
-app.Use(cors.New())
+Then create a Fiber app with `app := fiber.New()`.
 
-// Or extend your config for customization
+### Default Config
+
+```go
+app.Use(cors.New())
+```
+
+### Custom Config
+
+```go
 app.Use(cors.New(cors.Config{
 	AllowOrigins: "https://gofiber.io, https://gofiber.net",
 	AllowHeaders:  "Origin, Content-Type, Accept",
 }))
 ```
 
-### Config
+## Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -82,7 +96,8 @@ type Config struct {
 }
 ```
 
-### Default Config
+## Default Config
+
 ```go
 var ConfigDefault = Config{
 	Next:             nil,

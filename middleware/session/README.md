@@ -1,14 +1,18 @@
 # Session
-Session middleware for [Fiber](https://github.com/gofiber/fiber)
 
-### Table of Contents
+Session middleware for [Fiber](https://github.com/gofiber/fiber).
+
+_NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) package to support various databases through a single interface. The default configuration for this middleware saves data to memory, see the examples below for other databases._
+
+## Table of Contents
+
 - [Signatures](#signatures)
 - [Examples](#examples)
 - [Config](#config)
 - [Default Config](#default-config)
 
+## Signatures
 
-### Signatures
 ```go
 func New(config ...Config) *Store
 func (s *Store) RegisterType(i interface{})
@@ -36,8 +40,12 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Then create a Fiber app with `app := fiber.New()`.
+
+### Default Configuration
+
 ```go
+// This stores all of your app's sessions
 // Default middleware config
 store := session.New()
 
@@ -72,7 +80,21 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-### Config
+### Custom Storage/Database
+
+You can use any storage from our [storage](https://github.com/gofiber/storage/) package.
+
+```go
+storage := sqlite3.New() // From github.com/gofiber/storage/sqlite3
+store := session.New(session.Config{
+	Storage: storage,
+})
+```
+
+To use the the store, see the above example.
+
+## Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -114,7 +136,8 @@ type Config struct {
 }
 ```
 
-### Default Config
+## Default Config
+
 ```go
 var ConfigDefault = Config{
 	Expiration:   24 * time.Hour,

@@ -1,21 +1,28 @@
-# ETag
+# ETag Middleware
 
 ETag middleware for [Fiber](https://github.com/gofiber/fiber) that lets caches be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.
 
-### Table of Contents
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+## Table of Contents
 
+- [ETag Middleware](#etag-middleware)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Default Config](#default-config)
+		- [Default Config](#default-config-1)
+	- [Config](#config)
+	- [Default Config](#default-config-2)
 
-### Signatures
+## Signatures
+
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+
+First import the middleware from Fiber,
+
 ```go
 import (
   "github.com/gofiber/fiber/v2"
@@ -23,9 +30,11 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+Then create a Fiber app with `app := fiber.New()`.
+
+### Default Config
+
 ```go
-// Default middleware config
 app.Use(etag.New())
 
 // Get / receives Etag: "13-1831710635" in response header
@@ -34,7 +43,19 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-### Config
+### Default Config
+
+```go
+app.Use(etag.New())
+
+// Get / receives Etag: "13-1831710635" in response header
+app.Get("/", func(c *fiber.Ctx) error {
+	return c.SendString("Hello, World!")
+})
+```
+
+## Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -55,7 +76,8 @@ type Config struct {
 }
 ```
 
-### Default Config
+## Default Config
+
 ```go
 var ConfigDefault = Config{
 	Next: nil,
