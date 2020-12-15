@@ -250,7 +250,7 @@ var decoderPool = &sync.Pool{New: func() interface{} {
 // type CustomTime time.Time
 //
 // var timeConverter = func(value string) reflect.Value {
-//	 if v, err := time.Parse("2006-02-01", value); err == nil {
+//	 if v, err := time.Parse("2006-01-02", value); err == nil {
 //		 return reflect.ValueOf(v)
 //	 }
 //	 return reflect.Value{}
