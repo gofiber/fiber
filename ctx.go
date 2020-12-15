@@ -274,10 +274,8 @@ func (c *Ctx) BodyParser(out interface{}, customTypeRegister ...CustomTypeRegist
 	// Get decoder from pool
 	schemaDecoder := decoderPool.Get().(*schema.Decoder)
 
-	if len(customTypeRegister) > 0 {
-		for _, v := range customTypeRegister {
-			schemaDecoder.RegisterConverter(reflect.ValueOf(v.Customtype).Interface(), v.Converter)
-		}
+	for _, v := range customTypeRegister {
+		schemaDecoder.RegisterConverter(reflect.ValueOf(v.Customtype).Interface(), v.Converter)
 	}
 
 	defer decoderPool.Put(schemaDecoder)
