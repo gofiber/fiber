@@ -576,13 +576,13 @@ func (app *App) Listen(addr string) error {
 func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Check for valid cert/key path
 	if len(certFile) == 0 && len(keyFile) == 0 {
-		return errors.New("provide a valid cert or key path")
+		return errors.New("tls: provide a valid cert or key path")
 	}
 	// Prefork is supported
 	if app.config.Prefork {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
-			return fmt.Errorf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 		}
 		config := &tls.Config{
 			MinVersion:               tls.VersionTLS12,
