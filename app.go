@@ -33,7 +33,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.2.5"
+const Version = "2.3.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -591,6 +591,10 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
+	}
+	// Print startup message
+	if !app.config.DisableStartupMessage {
+		app.startupMessage(ln.Addr().String(), true, "")
 	}
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
