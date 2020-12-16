@@ -568,6 +568,11 @@ func (app *App) Listen(addr string) error {
 	return app.server.Serve(ln)
 }
 
+// ListenTLS serves HTTPs requests from the given addr.
+// certFile and keyFile are the paths to TLS certificate and key file.
+
+//  app.Listen(":8080", "./cert.pem", "./cert.key")
+//  app.Listen(":8080", "./cert.pem", "./cert.key")
 func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Check for valid cert/key path
 	if len(certFile) == 0 && len(keyFile) == 0 {
