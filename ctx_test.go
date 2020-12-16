@@ -339,6 +339,45 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
 }
 
+// go test -run Test_Ctx_BodyParser_with_CustomFormType
+func Test_Ctx_BodyParser_with_CustomFormType(t *testing.T) {
+	type CustomTime time.Time
+
+	var timeConverter = func(value string) reflect.Value {
+		if v, err := time.Parse("2006-01-02", value); err == nil {
+			return reflect.ValueOf(v)
+		}
+		return reflect.Value{}
+	}
+
+	customTime := CustomTypeRegister{
+		Customtype: CustomTime{},
+		Converter:  timeConverter,
+	}
+
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	type Demo struct {
+		Date string `form:"date"`
+	}
+
+	testDecodeParser := func(contentType, body string) {
+		c.Request().Header.SetContentType(contentType)
+		c.Request().SetBody([]byte(body))
+		c.Request().Header.SetContentLength(len(body))
+		d := new(Demo)
+		utils.AssertEqual(t, nil, c.BodyParser(d, customTime))
+		date := fmt.Sprintf("%v", d.Date)
+		utils.AssertEqual(t, "2020-12-15", date)
+	}
+
+	testDecodeParser(MIMEApplicationForm, "date=2020-12-15")
+	testDecodeParser(MIMEMultipartForm+`; boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"date\"\r\n\r\n2020-12-15\r\n--b--")
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_JSON -benchmem -count=4
 func Benchmark_Ctx_BodyParser_JSON(b *testing.B) {
 	app := New()
