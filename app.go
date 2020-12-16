@@ -11,6 +11,8 @@ package fiber
 
 import (
 	"bufio"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -540,8 +542,7 @@ func (app *App) Listener(ln net.Listener) error {
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
 	}
-
-	// TODO: Detect TLS
+	// Start listening
 	return app.server.Serve(ln)
 }
 
@@ -565,6 +566,34 @@ func (app *App) Listen(addr string) error {
 	}
 	// Start listening
 	return app.server.Serve(ln)
+}
+
+func (app *App) ListenTLS(addr, certFile, keyFile string) error {
+	// Check for valid cert/key path
+	if len(certFile) == 0 && len(keyFile) == 0 {
+		return errors.New("provide a valid cert or key path")
+	}
+	// Prefork is supported
+	if app.config.Prefork {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return fmt.Errorf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+		}
+		config := &tls.Config{
+			PreferServerCipherSuites: true,
+			Certificates: []tls.Certificate{
+				cert,
+			},
+		}
+		return app.prefork(addr, config)
+	}
+	// Setup listener
+	ln, err := net.Listen("tcp4", addr)
+	if err != nil {
+		return err
+	}
+	// Start listening
+	return app.server.ServeTLS(ln, certFile, keyFile)
 }
 
 // Config returns the app config as value ( read-only ).
