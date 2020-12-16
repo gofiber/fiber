@@ -585,6 +585,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 			return fmt.Errorf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 		}
 		config := &tls.Config{
+			MinVersion:               tls.VersionTLS12,
 			PreferServerCipherSuites: true,
 			Certificates: []tls.Certificate{
 				cert,
