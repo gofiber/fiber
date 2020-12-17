@@ -339,8 +339,8 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
 }
 
-// go test -run Test_Ctx_BodyParser_with_BodyParserType
-func Test_Ctx_BodyParser_with_BodyParserType(t *testing.T) {
+// go test -run Test_Ctx_BodyParser_WithBodyParserType
+func Test_Ctx_BodyParser_WithBodyParserType(t *testing.T) {
 	type CustomTime time.Time
 
 	var timeConverter = func(value string) reflect.Value {
@@ -361,7 +361,7 @@ func Test_Ctx_BodyParser_with_BodyParserType(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	type Demo struct {
-		Date string `form:"date"`
+		Date CustomTime `form:"date"`
 	}
 
 	testDecodeParser := func(contentType, body string) {
@@ -371,7 +371,7 @@ func Test_Ctx_BodyParser_with_BodyParserType(t *testing.T) {
 		d := new(Demo)
 		utils.AssertEqual(t, nil, c.BodyParser(d, customTime))
 		date := fmt.Sprintf("%v", d.Date)
-		utils.AssertEqual(t, "2020-12-15", date)
+		utils.AssertEqual(t, "{0 63743587200 <nil>}", date)
 	}
 
 	testDecodeParser(MIMEApplicationForm, "date=2020-12-15")
