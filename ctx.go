@@ -77,6 +77,13 @@ type Views interface {
 	Render(io.Writer, string, interface{}, ...string) error
 }
 
+// BodyParserType require two element, type and converter for register.
+// Use BodyParserType with BodyParser for parsing custom type in form data.
+type BodyParserType struct {
+	Customtype interface{}
+	Converter  func(string) reflect.Value
+}
+
 // AcquireCtx retrieves a new Ctx from the pool.
 func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	c := app.pool.Get().(*Ctx)
@@ -244,37 +251,15 @@ var decoderPool = &sync.Pool{New: func() interface{} {
 	return decoder
 }}
 
-// CustomTypeRegister - require two element for register converter in schemaDecoder
-// For example: pause custom time in html form data
-//
-// type CustomTime time.Time
-//
-// var timeConverter = func(value string) reflect.Value {
-//	 if v, err := time.Parse("2006-01-02", value); err == nil {
-//		 return reflect.ValueOf(v)
-//	 }
-//	 return reflect.Value{}
-// }
-//
-// customTime := fiber.CustomTypeRegister{
-// 	 Customtype: CustomTime{},
-//	 Converter:  timeConverter,
-// }
-// c.BodyParser(formData, customTime)
-type CustomTypeRegister struct {
-	Customtype interface{}
-	Converter  func(string) reflect.Value
-}
-
 // BodyParser binds the request body to a struct.
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 // If none of the content types above are matched, it will return a ErrUnprocessableEntity error
-func (c *Ctx) BodyParser(out interface{}, customTypeRegister ...CustomTypeRegister) error {
+func (c *Ctx) BodyParser(out interface{}, bodyParserType ...BodyParserType) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPool.Get().(*schema.Decoder)
 
-	for _, v := range customTypeRegister {
+	for _, v := range bodyParserType {
 		schemaDecoder.RegisterConverter(reflect.ValueOf(v.Customtype).Interface(), v.Converter)
 	}
 

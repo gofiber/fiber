@@ -339,8 +339,8 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
 }
 
-// go test -run Test_Ctx_BodyParser_with_CustomFormType
-func Test_Ctx_BodyParser_with_CustomFormType(t *testing.T) {
+// go test -run Test_Ctx_BodyParser_with_BodyParserType
+func Test_Ctx_BodyParser_with_BodyParserType(t *testing.T) {
 	type CustomTime time.Time
 
 	var timeConverter = func(value string) reflect.Value {
@@ -350,7 +350,7 @@ func Test_Ctx_BodyParser_with_CustomFormType(t *testing.T) {
 		return reflect.Value{}
 	}
 
-	customTime := CustomTypeRegister{
+	customTime := BodyParserType{
 		Customtype: CustomTime{},
 		Converter:  timeConverter,
 	}
