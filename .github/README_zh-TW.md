@@ -105,9 +105,9 @@ func main() {
 
 ## ⚙️ 安裝
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
+確保已安裝 Go 版本 `1.14` 或以上 ([下載](https://golang.org/dl/))。
 
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+建立文件夾並在文件夾內執行 `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) 指令建立專案，然後使用 [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 指令下載 fiber :
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
