@@ -211,6 +211,11 @@ func getGroupPath(prefix, path string) string {
 	if path == "/" {
 		return prefix
 	}
+
+	if path[0] != '/' {
+		path = "/" + path
+	}
+
 	return utils.TrimRight(prefix, '/') + path
 }
 
