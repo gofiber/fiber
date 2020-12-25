@@ -259,7 +259,7 @@ var decoderPool = &sync.Pool{New: func() interface{} {
 	return decoder
 }}
 
-// SetBodyParserDecoder allow globally change the option of form decoder
+// SetBodyParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetBodyParserDecoder(bodyParserConfig BodyParserConfig) {
 	decoderPool = &sync.Pool{New: func() interface{} {
 		var decoder = schema.NewDecoder()
