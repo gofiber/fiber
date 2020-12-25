@@ -339,8 +339,8 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
 }
 
-// go test -run Test_Ctx_BodyParser_WithBodyParserType
-func Test_Ctx_BodyParser_WithBodyParserType(t *testing.T) {
+// go test -run Test_Ctx_BodyParser_WithSetBodyParserDecoder
+func Test_Ctx_BodyParser_WithSetBodyParserDecoder(t *testing.T) {
 	type CustomTime time.Time
 
 	var timeConverter = func(value string) reflect.Value {
@@ -355,27 +355,41 @@ func Test_Ctx_BodyParser_WithBodyParserType(t *testing.T) {
 		Converter:  timeConverter,
 	}
 
+	SetBodyParserDecoder(BodyParserConfig{
+		IgnoreUnknownKeys: true,
+		BodyParserType:    []BodyParserType{customTime},
+		ZeroEmpty:         true,
+		SetAliasTag:       "form",
+	})
+
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
 	type Demo struct {
-		Date CustomTime `form:"date"`
+		Date  CustomTime `form:"date"`
+		Title string     `form:"title"`
+		Body  string     `form:"body"`
 	}
 
 	testDecodeParser := func(contentType, body string) {
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody([]byte(body))
 		c.Request().Header.SetContentLength(len(body))
-		d := new(Demo)
-		utils.AssertEqual(t, nil, c.BodyParser(d, customTime))
+		d := Demo{
+			Title: "Existing title",
+			Body:  "Existing Body",
+		}
+		utils.AssertEqual(t, nil, c.BodyParser(&d))
 		date := fmt.Sprintf("%v", d.Date)
 		utils.AssertEqual(t, "{0 63743587200 <nil>}", date)
+		utils.AssertEqual(t, "", d.Title)
+		utils.AssertEqual(t, "New Body", d.Body)
 	}
 
-	testDecodeParser(MIMEApplicationForm, "date=2020-12-15")
-	testDecodeParser(MIMEMultipartForm+`; boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"date\"\r\n\r\n2020-12-15\r\n--b--")
+	testDecodeParser(MIMEApplicationForm, "date=2020-12-15&body=New Body&title=")
+	testDecodeParser(MIMEMultipartForm+`; boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"date\"\r\n\r\n2020-12-15\r\n--b\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\n\r\n--b\r\nContent-Disposition: form-data; name=\"body\"\r\n\r\nNew Body\r\n--b--")
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_JSON -benchmem -count=4
