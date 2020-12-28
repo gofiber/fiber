@@ -212,7 +212,7 @@ func getGroupPath(prefix, path string) string {
 		return prefix
 	}
 
-	if path[0] != '/' {
+	if len(path) > 0 && path[0] != '/' {
 		path = "/" + path
 	}
 
