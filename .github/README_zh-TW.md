@@ -84,13 +84,13 @@ package main
 import "github.com/gofiber/fiber/v2"
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("Hello, World 👋!")
-	})
+    app.Get("/", func(c *fiber.Ctx) error {
+        return c.SendString("Hello, World 👋!")
+    })
 
-	app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -105,9 +105,9 @@ func main() {
 
 ## ⚙️ 安裝
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
+確保已安裝 Go 版本 `1.14` 或以上 ([下載](https://golang.org/dl/))。
 
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+建立文件夾並在文件夾內執行 `go mod init github.com/your/repo` ([了解更多](https://blog.golang.org/using-go-modules)) 指令建立專案，然後使用 [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 指令下載 fiber :
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -146,39 +146,39 @@ Fiber **受到** 網路上最流行的 Web 框架 ExpressJS**啟發**，結合 E
 
 ```go
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// GET /john
-	app.Get("/:name", func(c *fiber.Ctx) error {
-		msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
-		return c.SendString(msg) // => Hello john 👋!
-	})
+    // GET /john
+    app.Get("/:name", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
+        return c.SendString(msg) // => Hello john 👋!
+    })
 
-	// GET /john/75
-	app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
-		msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
-		return c.SendString(msg) // => 👴 john is 75 years old
-	})
+    // GET /john/75
+    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
+        return c.SendString(msg) // => 👴 john is 75 years old
+    })
 
-	// GET /dictionary.txt
-	app.Get("/:file.:ext", func(c *fiber.Ctx) error {
-		msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
-		return c.SendString(msg) // => 📃 dictionary.txt
-	})
+    // GET /dictionary.txt
+    app.Get("/:file.:ext", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
+        return c.SendString(msg) // => 📃 dictionary.txt
+    })
 
-	// GET /flights/LAX-SFO
-	app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
-		msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
-		return c.SendString(msg) // => 💸 From: LAX, To: SFO
-	})
+    // GET /flights/LAX-SFO
+    app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
+        return c.SendString(msg) // => 💸 From: LAX, To: SFO
+    })
 
-	// GET /api/register
-	app.Get("/api/*", func(c *fiber.Ctx) error {
-		msg := fmt.Sprintf("✋ %s", c.Params("*"))
-		return c.SendString(msg) // => ✋ register
-	})
+    // GET /api/register
+    app.Get("/api/*", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("✋ %s", c.Params("*"))
+        return c.SendString(msg) // => ✋ register
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -187,20 +187,20 @@ func main() {
 
 ```go
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Static("/", "./public")
-	// => http://localhost:3000/js/script.js
-	// => http://localhost:3000/css/style.css
+    app.Static("/", "./public")
+    // => http://localhost:3000/js/script.js
+    // => http://localhost:3000/css/style.css
 
-	app.Static("/prefix", "./public")
-	// => http://localhost:3000/prefix/js/script.js
-	// => http://localhost:3000/prefix/css/style.css
+    app.Static("/prefix", "./public")
+    // => http://localhost:3000/prefix/js/script.js
+    // => http://localhost:3000/prefix/css/style.css
 
-	app.Static("*", "./public/index.html")
-	// => http://localhost:3000/any/path/shows/index/html
+    app.Static("*", "./public/index.html")
+    // => http://localhost:3000/any/path/shows/index/html
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -251,25 +251,25 @@ func main() {
 package main
 
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/template/pug"
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/template/pug"
 )
 
 func main() {
-	// You can setup Views engine before initiation app:
-	app := fiber.New(fiber.Config{
-		Views: pug.New("./views", ".pug"),
-	})
+    // You can setup Views engine before initiation app:
+    app := fiber.New(fiber.Config{
+        Views: pug.New("./views", ".pug"),
+    })
 
-	// And now, you can call template `./views/home.pug` like this:
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.Render("home", fiber.Map{
-			"title": "Homepage",
-			"year":  1999,
-		})
-	})
+    // And now, you can call template `./views/home.pug` like this:
+    app.Get("/", func(c *fiber.Ctx) error {
+        return c.Render("home", fiber.Map{
+            "title": "Homepage",
+            "year":  1999,
+        })
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -280,31 +280,31 @@ func main() {
 
 ```go
 func middleware(c *fiber.Ctx) error {
-	fmt.Println("Don't mind me!")
-	return c.Next()
+    fmt.Println("Don't mind me!")
+    return c.Next()
 }
 
 func handler(c *fiber.Ctx) error {
-	return c.SendString(c.Path())
+    return c.SendString(c.Path())
 }
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// Root API route
-	api := app.Group("/api", middleware) // /api
+    // Root API route
+    api := app.Group("/api", middleware) // /api
 
-	// API v1 routes
-	v1 := api.Group("/v1", middleware) // /api/v1
-	v1.Get("/list", handler)           // /api/v1/list
-	v1.Get("/user", handler)           // /api/v1/user
+    // API v1 routes
+    v1 := api.Group("/v1", middleware) // /api/v1
+    v1.Get("/list", handler)           // /api/v1/list
+    v1.Get("/user", handler)           // /api/v1/user
 
-	// API v2 routes
-	v2 := api.Group("/v2", middleware) // /api/v2
-	v2.Get("/list", handler)           // /api/v2/list
-	v2.Get("/user", handler)           // /api/v2/user
+    // API v2 routes
+    v2 := api.Group("/v2", middleware) // /api/v2
+    v2.Get("/list", handler)           // /api/v2/list
+    v2.Get("/user", handler)           // /api/v2/user
 
-	// ...
+    // ...
 }
 
 ```
@@ -317,20 +317,20 @@ func main() {
 package main
 
 import (
-	"log"
+    "log"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2/middleware/logger"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Use(logger.New())
+    app.Use(logger.New())
 
-	// ...
+    // ...
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -340,20 +340,20 @@ func main() {
 
 ```go
 import (
-	"log"
+    "log"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2/middleware/cors"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Use(cors.New())
+    app.Use(cors.New())
 
-	// ...
+    // ...
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -369,25 +369,25 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ```go
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Static("/", "./public")
+    app.Static("/", "./public")
 
-	app.Get("/demo", func(c *fiber.Ctx) error {
-		return c.SendString("This is a demo!")
-	})
+    app.Get("/demo", func(c *fiber.Ctx) error {
+        return c.SendString("This is a demo!")
+    })
 
-	app.Post("/register", func(c *fiber.Ctx) error {
-		return c.SendString("Welcome!")
-	})
+    app.Post("/register", func(c *fiber.Ctx) error {
+        return c.SendString("Welcome!")
+    })
 
-	// Last middleware to match anything
-	app.Use(func(c *fiber.Ctx) error {
-		return c.SendStatus(404)
-		// => 404 "Not Found"
-	})
+    // Last middleware to match anything
+    app.Use(func(c *fiber.Ctx) error {
+        return c.SendStatus(404)
+        // => 404 "Not Found"
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -397,27 +397,27 @@ func main() {
 
 ```go
 type User struct {
-	Name string `json:"name"`
-	Age  int    `json:"age"`
+    Name string `json:"name"`
+    Age  int    `json:"age"`
 }
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Get("/user", func(c *fiber.Ctx) error {
-		return c.JSON(&User{"John", 20})
-		// => {"name":"John", "age":20}
-	})
+    app.Get("/user", func(c *fiber.Ctx) error {
+        return c.JSON(&User{"John", 20})
+        // => {"name":"John", "age":20}
+    })
 
-	app.Get("/json", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"success": true,
-			"message": "Hi John!",
-		})
-		// => {"success":true, "message":"Hi John!"}
-	})
+    app.Get("/json", func(c *fiber.Ctx) error {
+        return c.JSON(fiber.Map{
+            "success": true,
+            "message": "Hi John!",
+        })
+        // => {"success":true, "message":"Hi John!"}
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -428,7 +428,7 @@ func main() {
 ```go
 import (
     "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/websocket"
+    "github.com/gofiber/fiber/v2/middleware/websocket"
 )
 
 func main() {
@@ -484,21 +484,22 @@ func main() {
 
 Here is a list of middleware that are included within the Fiber framework.
 
-| Middleware | Description |
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth) | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress) | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default. |
-| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache) | Intercept and cache responses |
-| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors) | Enable cross-origin resource sharing \(CORS\) with various options. |
-| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf) | Protect from CSRF exploits. |
-| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary |
-| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon) | Ignore favicon from logs or serve from memory if a file path is provided. |
-| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter) | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset. |
-| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger) | HTTP request/response logger. |
-| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof) | Special thanks to Matthew Lee \(@mthli\) |
-| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy) | Allows you to proxy requests to a multiple servers |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover) | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md). |
-| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid) | Adds a requestid to every request. |
-| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout | Adds a max time for a request and forwards to ErrorHandler if it is exceeded. |
+| Middleware                                                                       | Description                                                                                                                                                           |
+| :------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default.                                                                              |
+| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)           | Intercept and cache responses                                                                                                                                         |
+| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)             | Enable cross-origin resource sharing \(CORS\) with various options.                                                                                                   |
+| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)             | Protect from CSRF exploits.                                                                                                                                           |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary                                                                                         |
+| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)       | Ignore favicon from logs or serve from memory if a file path is provided.                                                                                             |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)       | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset.                                            |
+| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)         | HTTP request/response logger.                                                                                                                                         |
+| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | Special thanks to Matthew Lee \(@mthli\)                                                                                                                              |
+| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | Allows you to proxy requests to a multiple servers                                                                                                                    |
+| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | Adds a requestid to every request.                                                                                                                                    |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md).                     |
+| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                         |
 
 ## 🧬 External Middleware
 
@@ -532,6 +533,7 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 -   [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 -   [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
 -   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
+-   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
 
 ## 👍 貢獻
 

@@ -1,7 +1,6 @@
 package limiter
 
 import (
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -9,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/utils"
-
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/storage/memory"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -24,7 +23,7 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	app.Use(New(Config{
 		Max:        50,
 		Expiration: 2 * time.Second,
-		Store:      testStore{stmap: map[string][]byte{}, mutex: new(sync.Mutex)},
+		Storage:    memory.New(),
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -108,32 +107,6 @@ func Test_Limiter_Concurrency(t *testing.T) {
 
 }
 
-// go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4
-func Benchmark_Limiter(b *testing.B) {
-	app := fiber.New()
-
-	app.Use(New(Config{
-		Max:        100,
-		Expiration: 60 * time.Second,
-	}))
-
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
-
-	h := app.Handler()
-
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
-	fctx.Request.SetRequestURI("/")
-
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		h(fctx)
-	}
-}
-
 // go test -v -run=^$ -bench=Benchmark_Limiter_Custom_Store -benchmem -count=4
 func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	app := fiber.New()
@@ -141,7 +114,7 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	app.Use(New(Config{
 		Max:        100,
 		Expiration: 60 * time.Second,
-		Store:      testStore{stmap: map[string][]byte{}, mutex: new(sync.Mutex)},
+		Storage:    memory.New(),
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -198,44 +171,32 @@ func Test_Limiter_Headers(t *testing.T) {
 		t.Errorf("The X-RateLimit-Remaining header is not set correctly - value is an empty string.")
 	}
 	if v := string(fctx.Response.Header.Peek("X-RateLimit-Reset")); !(v == "1" || v == "2") {
-		fmt.Println(v)
 		t.Errorf("The X-RateLimit-Reset header is not set correctly - value is out of bounds.")
 	}
 }
 
-// testStore is used for testing custom stores
-type testStore struct {
-	stmap map[string][]byte
-	mutex *sync.Mutex
-}
+// go test -v -run=^$ -bench=Benchmark_Limiter -benchmem -count=4
+func Benchmark_Limiter(b *testing.B) {
+	app := fiber.New()
 
-func (s testStore) Get(id string) ([]byte, error) {
-	s.mutex.Lock()
-	val, ok := s.stmap[id]
-	s.mutex.Unlock()
-	if !ok {
-		return nil, nil
-	} else {
-		return val, nil
+	app.Use(New(Config{
+		Max:        100,
+		Expiration: 60 * time.Second,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/")
+
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
 	}
-}
-
-func (s testStore) Set(id string, val []byte, _ time.Duration) error {
-	s.mutex.Lock()
-	s.stmap[id] = val
-	s.mutex.Unlock()
-
-	return nil
-}
-
-func (s testStore) Reset() error {
-	return nil
-}
-
-func (s testStore) Delete(id string) error {
-	return nil
-}
-
-func (s testStore) Close() error {
-	return nil
 }

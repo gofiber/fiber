@@ -7,7 +7,7 @@ import (
 )
 
 // DecodeMsg implements msgp.Decodable
-func (z *entry) DecodeMsg(dc *msgp.Reader) (err error) {
+func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 	var field []byte
 	_ = field
 	var zb0001 uint32
@@ -30,10 +30,16 @@ func (z *entry) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "body")
 				return
 			}
-		case "cType":
-			z.cType, err = dc.ReadBytes(z.cType)
+		case "ctype":
+			z.ctype, err = dc.ReadBytes(z.ctype)
 			if err != nil {
-				err = msgp.WrapError(err, "cType")
+				err = msgp.WrapError(err, "ctype")
+				return
+			}
+		case "cencoding":
+			z.cencoding, err = dc.ReadBytes(z.cencoding)
+			if err != nil {
+				err = msgp.WrapError(err, "cencoding")
 				return
 			}
 		case "status":
@@ -60,10 +66,10 @@ func (z *entry) DecodeMsg(dc *msgp.Reader) (err error) {
 }
 
 // EncodeMsg implements msgp.Encodable
-func (z *entry) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 4
+func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
+	// map header, size 5
 	// write "body"
-	err = en.Append(0x84, 0xa4, 0x62, 0x6f, 0x64, 0x79)
+	err = en.Append(0x85, 0xa4, 0x62, 0x6f, 0x64, 0x79)
 	if err != nil {
 		return
 	}
@@ -72,14 +78,24 @@ func (z *entry) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "body")
 		return
 	}
-	// write "cType"
-	err = en.Append(0xa5, 0x63, 0x54, 0x79, 0x70, 0x65)
+	// write "ctype"
+	err = en.Append(0xa5, 0x63, 0x74, 0x79, 0x70, 0x65)
 	if err != nil {
 		return
 	}
-	err = en.WriteBytes(z.cType)
+	err = en.WriteBytes(z.ctype)
 	if err != nil {
-		err = msgp.WrapError(err, "cType")
+		err = msgp.WrapError(err, "ctype")
+		return
+	}
+	// write "cencoding"
+	err = en.Append(0xa9, 0x63, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67)
+	if err != nil {
+		return
+	}
+	err = en.WriteBytes(z.cencoding)
+	if err != nil {
+		err = msgp.WrapError(err, "cencoding")
 		return
 	}
 	// write "status"
@@ -106,15 +122,18 @@ func (z *entry) EncodeMsg(en *msgp.Writer) (err error) {
 }
 
 // MarshalMsg implements msgp.Marshaler
-func (z *entry) MarshalMsg(b []byte) (o []byte, err error) {
+func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 4
+	// map header, size 5
 	// string "body"
-	o = append(o, 0x84, 0xa4, 0x62, 0x6f, 0x64, 0x79)
+	o = append(o, 0x85, 0xa4, 0x62, 0x6f, 0x64, 0x79)
 	o = msgp.AppendBytes(o, z.body)
-	// string "cType"
-	o = append(o, 0xa5, 0x63, 0x54, 0x79, 0x70, 0x65)
-	o = msgp.AppendBytes(o, z.cType)
+	// string "ctype"
+	o = append(o, 0xa5, 0x63, 0x74, 0x79, 0x70, 0x65)
+	o = msgp.AppendBytes(o, z.ctype)
+	// string "cencoding"
+	o = append(o, 0xa9, 0x63, 0x65, 0x6e, 0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67)
+	o = msgp.AppendBytes(o, z.cencoding)
 	// string "status"
 	o = append(o, 0xa6, 0x73, 0x74, 0x61, 0x74, 0x75, 0x73)
 	o = msgp.AppendInt(o, z.status)
@@ -125,7 +144,7 @@ func (z *entry) MarshalMsg(b []byte) (o []byte, err error) {
 }
 
 // UnmarshalMsg implements msgp.Unmarshaler
-func (z *entry) UnmarshalMsg(bts []byte) (o []byte, err error) {
+func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 	var field []byte
 	_ = field
 	var zb0001 uint32
@@ -148,10 +167,16 @@ func (z *entry) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "body")
 				return
 			}
-		case "cType":
-			z.cType, bts, err = msgp.ReadBytesBytes(bts, z.cType)
+		case "ctype":
+			z.ctype, bts, err = msgp.ReadBytesBytes(bts, z.ctype)
 			if err != nil {
-				err = msgp.WrapError(err, "cType")
+				err = msgp.WrapError(err, "ctype")
+				return
+			}
+		case "cencoding":
+			z.cencoding, bts, err = msgp.ReadBytesBytes(bts, z.cencoding)
+			if err != nil {
+				err = msgp.WrapError(err, "cencoding")
 				return
 			}
 		case "status":
@@ -179,7 +204,7 @@ func (z *entry) UnmarshalMsg(bts []byte) (o []byte, err error) {
 }
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
-func (z *entry) Msgsize() (s int) {
-	s = 1 + 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.cType) + 7 + msgp.IntSize + 4 + msgp.Uint64Size
+func (z *item) Msgsize() (s int) {
+	s = 1 + 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 7 + msgp.IntSize + 4 + msgp.Uint64Size
 	return
 }

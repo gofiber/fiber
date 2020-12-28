@@ -349,7 +349,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		if maxAge > 0 {
 			cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
 		}
-
+		fs.CacheDuration = config[0].CacheDuration
 		fs.Compress = config[0].Compress
 		fs.AcceptByteRange = config[0].ByteRange
 		fs.GenerateIndexPages = config[0].Browse

@@ -1,20 +1,26 @@
-# Logger
+# Logger Middleware
 Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP request/response details.
 
-### Table of Contents
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
-- [Constants](#constants)
+## Table of Contents
+- [Logger Middleware](#logger-middleware)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Default Config](#default-config)
+		- [Logging Request ID](#logging-request-id)
+		- [Changing TimeZone & TimeFormat](#changing-timezone--timeformat)
+		- [Custom File Writer](#custom-file-writer)
+	- [Config](#config)
+	- [Default Config](#default-config-1)
+	- [Constants](#constants)
 
-### Signatures
+## Signatures
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+First ensure the appropriate packages are imported
 ```go
 import (
 	"github.com/gofiber/fiber/v2"
@@ -22,21 +28,46 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
+### Default Config
 ```go
 // Default middleware config
 app.Use(logger.New())
+```
 
-// Or extend your config for customization
+### Logging Request ID
+```go
+app.Use(requestid.New())
+
+​app​.​Use​(​logger​.​New​(logger.​Config​{
+	// For more options, see the Config section
+  Format​: "${pid} ${locals:requestid} ${status} - ${method} ${path}​\n​"​,
+}))
+```
+
+### Changing TimeZone & TimeFormat
+
+```go
 app.Use(logger.New(logger.Config{
 	Format:     "${pid} ${status} - ${method} ${path}\n",
 	TimeFormat: "02-Jan-2006",
 	TimeZone:   "America/New_York",
-	Output:     os.Stdout,
 }))
 ```
 
-### Config
+### Custom File Writer
+```go
+file, err := os.OpenFile("./123.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+if err != nil {
+	log.Fatalf("error opening file: %v", err)
+}
+defer file.Close()
+
+app.Use(logger.New(logger.Config{
+	Output: file,
+}))
+```
+
+## Config
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -72,7 +103,7 @@ type Config struct {
 }
 ```
 
-### Default Config
+## Default Config
 ```go
 var ConfigDefault = Config{
 	Next:         nil,
@@ -84,7 +115,7 @@ var ConfigDefault = Config{
 }
 ```
 
-### Constants
+## Constants
 ```go
 // Logger variables
 const (

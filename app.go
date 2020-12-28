@@ -11,6 +11,8 @@ package fiber
 
 import (
 	"bufio"
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -31,7 +33,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.1.4"
+const Version = "2.3.1"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -39,27 +41,27 @@ type Handler = func(*Ctx) error
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
-// Storage interface that is implemented by storage providers for different
-// middleware packages like cache, limiter, session and csrf
+// Storage interface for communicating with different database/key-value
+// providers
 type Storage interface {
-	// Get retrieves the value for the given key.
-	// If no value is not found it returns ErrNotExit error
+	// Get gets the value for the given key.
+	// It returns ErrNotFound if the storage does not contain the key.
 	Get(key string) ([]byte, error)
 
 	// Set stores the given value for the given key along with a
 	// time-to-live expiration value, 0 means live for ever
-	// The key must not be "" and the empty values are ignored.
+	// Empty key or value will be ignored without an error.
 	Set(key string, val []byte, ttl time.Duration) error
 
-	// Delete deletes the stored value for the given key.
-	// Deleting a non-existing key-value pair does NOT lead to an error.
-	// The key must not be "".
+	// Delete deletes the value for the given key.
+	// It returns no error if the storage does not contain the key,
 	Delete(key string) error
 
-	// Reset the storage
+	// Reset resets the storage and delete all keys.
 	Reset() error
 
-	// Close the storage
+	// Close closes the storage and will stop any running garbage
+	// collectors and open connections.
 	Close() error
 }
 
@@ -149,6 +151,8 @@ type Config struct {
 	ETag bool `json:"etag"`
 
 	// Max body size that the server accepts.
+	// -1 will decline any body size
+	//
 	// Default: 4 * 1024 * 1024
 	BodyLimit int `json:"body_limit"`
 
@@ -258,7 +262,7 @@ type Config struct {
 	// Default: false
 	ReduceMemoryUsage bool `json:"reduce_memory_usage"`
 
-	// FEATURE: v2.2.x
+	// FEATURE: v2.3.x
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
@@ -285,6 +289,12 @@ type Static struct {
 	// The name of the index file for serving a directory.
 	// Optional. Default value "index.html".
 	Index string `json:"index"`
+
+	// Expiration duration for inactive file handlers.
+	// Use a negative time.Duration to disable it.
+	//
+	// Optional. Default value 10 * time.Second.
+	CacheDuration time.Duration `json:"cache_duration"`
 
 	// The value for the Cache-Control HTTP-header
 	// that is set on the file response. MaxAge is defined in seconds.
@@ -346,7 +356,7 @@ func New(config ...Config) *App {
 	}
 
 	// Override default values
-	if app.config.BodyLimit <= 0 {
+	if app.config.BodyLimit == 0 {
 		app.config.BodyLimit = DefaultBodyLimit
 	}
 	if app.config.Concurrency <= 0 {
@@ -367,13 +377,15 @@ func New(config ...Config) *App {
 	if app.config.ErrorHandler == nil {
 		app.config.ErrorHandler = DefaultErrorHandler
 	}
+
 	// Init app
 	app.init()
+
 	// Return app
 	return app
 }
 
-// Mount attaches another app instance as a subrouter along a routing path.
+// Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
 func (app *App) Mount(prefix string, fiber *App) Router {
@@ -530,8 +542,7 @@ func (app *App) Listener(ln net.Listener) error {
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
 	}
-
-	// TODO: Detect TLS
+	// Start listening
 	return app.server.Serve(ln)
 }
 
@@ -555,6 +566,44 @@ func (app *App) Listen(addr string) error {
 	}
 	// Start listening
 	return app.server.Serve(ln)
+}
+
+// ListenTLS serves HTTPs requests from the given addr.
+// certFile and keyFile are the paths to TLS certificate and key file.
+
+//  app.ListenTLS(":8080", "./cert.pem", "./cert.key")
+//  app.ListenTLS(":8080", "./cert.pem", "./cert.key")
+func (app *App) ListenTLS(addr, certFile, keyFile string) error {
+	// Check for valid cert/key path
+	if len(certFile) == 0 || len(keyFile) == 0 {
+		return errors.New("tls: provide a valid cert or key path")
+	}
+	// Prefork is supported
+	if app.config.Prefork {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+		}
+		config := &tls.Config{
+			MinVersion:               tls.VersionTLS12,
+			PreferServerCipherSuites: true,
+			Certificates: []tls.Certificate{
+				cert,
+			},
+		}
+		return app.prefork(addr, config)
+	}
+	// Setup listener
+	ln, err := net.Listen("tcp4", addr)
+	if err != nil {
+		return err
+	}
+	// Print startup message
+	if !app.config.DisableStartupMessage {
+		app.startupMessage(ln.Addr().String(), true, "")
+	}
+	// Start listening
+	return app.server.ServeTLS(ln, certFile, keyFile)
 }
 
 // Config returns the app config as value ( read-only ).
@@ -653,7 +702,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 
 type disableLogger struct{}
 
-func (dl *disableLogger) Printf(format string, args ...interface{}) {
+func (dl *disableLogger) Printf(_ string, _ ...interface{}) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
@@ -729,7 +778,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	logo += " │ %s │\n"
 	logo += " │ %s │\n"
 	logo += " │                                                   │\n"
-	logo += " │ Handlers %s  Threads %s │\n"
+	logo += " │ Handlers %s  Processes %s │\n"
 	logo += " │ Prefork .%s  PID ....%s │\n"
 	logo += " └───────────────────────────────────────────────────┘"
 	logo += "%s"
@@ -805,11 +854,16 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		isPrefork = "Enabled"
 	}
 
+	procs := strconv.Itoa(runtime.GOMAXPROCS(0))
+	if !app.config.Prefork {
+		procs = "1"
+	}
+
 	mainLogo := fmt.Sprintf(logo,
 		cBlack,
 		centerValue(" Fiber v"+Version, 49),
 		center(addr, 49),
-		value(strconv.Itoa(app.handlerCount), 14), value(strconv.Itoa(runtime.GOMAXPROCS(0)), 14),
+		value(strconv.Itoa(app.handlerCount), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 		cReset,
 	)
@@ -902,6 +956,5 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
-	fmt.Fprintln(out, output)
-
+	_, _ = fmt.Fprintln(out, output)
 }

@@ -1,41 +1,52 @@
-# Favicon Authentication
+# Favicon Middleware
+
 Favicon middleware for [Fiber](https://github.com/gofiber/fiber) that ignores favicon requests or caches a provided icon in memory to improve performance by skipping disk access. User agents request favicon.ico frequently and indiscriminately, so you may wish to exclude these requests from your logs by using this middleware before your logger middleware.
 
 **Note** This middleware is exclusively for serving the default, implicit favicon, which is GET /favicon.ico.
 
-### Table of Contents
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+## Table of Contents
+- [Favicon Middleware](#favicon-middleware)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Default Config](#default-config)
+		- [Custom Config](#custom-config)
+		- [Config](#config)
+		- [Default Config](#default-config-1)
+## Signatures
 
-
-### Signatures
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+
+First import the middleware from Fiber,
+
 ```go
 import (
   "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/favicon"
+  "github.com/gofiber/fiber/v2/middleware/cors"
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
-```go
-// Provide a minimal config
-app.Use(favicon.New())
+Then create a Fiber app with `app := fiber.New()`.
 
-// Or extend your config for customization
+### Default Config
+
+```go
+app.Use(favicon.New())
+```
+
+### Custom Config
+```go
 app.Use(favicon.New(favicon.Config{
 	File: "./favicon.ico",
 }))
 ```
 
 ### Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -52,6 +63,7 @@ type Config struct {
 ```
 
 ### Default Config
+
 ```go
 var ConfigDefault = Config{
 	Next: nil,

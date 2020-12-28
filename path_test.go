@@ -183,6 +183,10 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/", params: nil, match: false},
 		{url: "/api/v1/something", params: nil, match: false},
 	})
+	testCase("/api/:param/fixedEnd", []testparams{
+		{url: "/api/abc/fixedEnd", params: []string{"abc"}, match: true},
+		{url: "/api/abc/def/fixedEnd", params: nil, match: false},
+	})
 	testCase("/shop/product/::filter/color::color/size::size", []testparams{
 		{url: "/shop/product/:test/color:blue/size:xs", params: []string{"test", "blue", "xs"}, match: true},
 		{url: "/shop/product/test/color:blue/size:xs", params: nil, match: false},
@@ -430,6 +434,10 @@ func Benchmark_Path_matchParams(t *testing.B) {
 
 		}
 	}
+	benchCase("/api/:param/fixedEnd", []testparams{
+		{url: "/api/abc/fixedEnd", params: []string{"abc"}, match: true},
+		{url: "/api/abc/def/fixedEnd", params: nil, match: false},
+	})
 	benchCase("/api/v1/:param/*", []testparams{
 		{url: "/api/v1/entity", params: []string{"entity", ""}, match: true},
 		{url: "/api/v1/entity/", params: []string{"entity", ""}, match: true},

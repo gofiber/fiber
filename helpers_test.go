@@ -8,38 +8,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
-
-// go test -v -run=^$ -bench=Benchmark_Utils_RemoveNewLines -benchmem -count=4
-func Benchmark_Utils_RemoveNewLines(b *testing.B) {
-	withNL := "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n"
-	withoutNL := "foo  Set-Cookie:%20SESSIONID=MaliciousValue  "
-	expected := utils.SafeString(withoutNL)
-	var res string
-
-	b.Run("withNewlines", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			res = removeNewLines(withNL)
-		}
-		utils.AssertEqual(b, expected, res)
-	})
-	b.Run("withoutNewlines", func(b *testing.B) {
-		b.ReportAllocs()
-		b.ResetTimer()
-		for n := 0; n < b.N; n++ {
-			res = removeNewLines(withoutNL)
-		}
-		utils.AssertEqual(b, expected, res)
-	})
-
-}
 
 // go test -v -run=Test_Utils_ -count=3
 func Test_Utils_ETag(t *testing.T) {
@@ -180,6 +155,9 @@ func Test_Utils_getGroupPath(t *testing.T) {
 
 	res = getGroupPath("/v1/api/", "/")
 	utils.AssertEqual(t, "/v1/api/", res)
+
+	res = getGroupPath("/v1/api", "group")
+	utils.AssertEqual(t, "/v1/api/group", res)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_ -benchmem -count=3
@@ -319,4 +297,50 @@ func Test_Utils_lnMetadata(t *testing.T) {
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config != nil)
 	})
+}
+
+// go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4
+func Benchmark_SlashRecognition(b *testing.B) {
+	search := "wtf/1234"
+	var result bool
+	b.Run("indexBytes", func(b *testing.B) {
+		result = false
+		for i := 0; i < b.N; i++ {
+			if strings.IndexByte(search, slashDelimiter) != -1 {
+				result = true
+			}
+		}
+		utils.AssertEqual(b, true, result)
+	})
+	b.Run("forEach", func(b *testing.B) {
+		result = false
+		c := int32(slashDelimiter)
+		for i := 0; i < b.N; i++ {
+			for _, b := range search {
+				if b == c {
+					result = true
+					break
+				}
+			}
+		}
+		utils.AssertEqual(b, true, result)
+	})
+	b.Run("IndexRune", func(b *testing.B) {
+		result = false
+		c := int32(slashDelimiter)
+		for i := 0; i < b.N; i++ {
+			result = IndexRune(search, c)
+
+		}
+		utils.AssertEqual(b, true, result)
+	})
+}
+
+func IndexRune(str string, needle int32) bool {
+	for _, b := range str {
+		if b == needle {
+			return true
+		}
+	}
+	return false
 }

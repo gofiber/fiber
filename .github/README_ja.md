@@ -85,13 +85,13 @@ package main
 import "github.com/gofiber/fiber/v2"
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("Hello, World 👋!")
-	})
+    app.Get("/", func(c *fiber.Ctx) error {
+        return c.SendString("Hello, World 👋!")
+    })
 
-	app.Listen(":3000")
+    app.Listen(":3000")
 }
 ```
 
@@ -106,9 +106,10 @@ func main() {
 
 ## ⚙️ インストール
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
+Goがインストールされていることを確認してください ([ダウンロード](https://golang.org/dl/)). バージョン `1.14` またはそれ以上であることが必要です。
 
 Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+フォルダを作成し、フォルダ内で `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) を実行してプロジェクトを初期化してください。その後、 Fiber を以下の [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) コマンドでインストールしてください。
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -126,7 +127,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
 -   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
--   Available in [15 languages](https://docs.gofiber.io/)
+-   [15ヶ国語](https://docs.gofiber.io/)で利用可能
 -   [Fiber](https://docs.gofiber.io/)をもっと知る
 
 ## 💡 哲学
@@ -142,45 +143,43 @@ Fiber は人気の高い Web フレームワークである Expressjs に**イ�
 
 以下に一般的な例をいくつか示します。他のコード例をご覧になりたい場合は、 [Recipes リポジトリ](https://github.com/gofiber/recipes)または[API ドキュメント](https://docs.gofiber.io)にアクセスしてください。
 
-Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
-
 #### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
 
 ```go
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// GET /john
-	app.Get("/:name", func(c *fiber.Ctx) error {
-		msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
-		return c.SendString(msg) // => Hello john 👋!
-	})
+    // GET /john
+    app.Get("/:name", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
+        return c.SendString(msg) // => Hello john 👋!
+    })
 
-	// GET /john/75
-	app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
-		msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
-		return c.SendString(msg) // => 👴 john is 75 years old
-	})
+    // GET /john/75
+    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
+        return c.SendString(msg) // => 👴 john is 75 years old
+    })
 
-	// GET /dictionary.txt
-	app.Get("/:file.:ext", func(c *fiber.Ctx) error {
-		msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
-		return c.SendString(msg) // => 📃 dictionary.txt
-	})
+    // GET /dictionary.txt
+    app.Get("/:file.:ext", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
+        return c.SendString(msg) // => 📃 dictionary.txt
+    })
 
-	// GET /flights/LAX-SFO
-	app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
-		msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
-		return c.SendString(msg) // => 💸 From: LAX, To: SFO
-	})
+    // GET /flights/LAX-SFO
+    app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
+        return c.SendString(msg) // => 💸 From: LAX, To: SFO
+    })
 
-	// GET /api/register
-	app.Get("/api/*", func(c *fiber.Ctx) error {
-		msg := fmt.Sprintf("✋ %s", c.Params("*"))
-		return c.SendString(msg) // => ✋ register
-	})
+    // GET /api/register
+    app.Get("/api/*", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("✋ %s", c.Params("*"))
+        return c.SendString(msg) // => ✋ register
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -189,20 +188,20 @@ func main() {
 
 ```go
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Static("/", "./public")
-	// => http://localhost:3000/js/script.js
-	// => http://localhost:3000/css/style.css
+    app.Static("/", "./public")
+    // => http://localhost:3000/js/script.js
+    // => http://localhost:3000/css/style.css
 
-	app.Static("/prefix", "./public")
-	// => http://localhost:3000/prefix/js/script.js
-	// => http://localhost:3000/prefix/css/style.css
+    app.Static("/prefix", "./public")
+    // => http://localhost:3000/prefix/js/script.js
+    // => http://localhost:3000/prefix/css/style.css
 
-	app.Static("*", "./public/index.html")
-	// => http://localhost:3000/any/path/shows/index/html
+    app.Static("*", "./public/index.html")
+    // => http://localhost:3000/any/path/shows/index/html
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -255,25 +254,25 @@ Checkout our [Template](https://github.com/gofiber/template) package that suppor
 package main
 
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/template/pug"
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/template/pug"
 )
 
 func main() {
-	// You can setup Views engine before initiation app:
-	app := fiber.New(fiber.Config{
-		Views: pug.New("./views", ".pug"),
-	})
+    // You can setup Views engine before initiation app:
+    app := fiber.New(fiber.Config{
+        Views: pug.New("./views", ".pug"),
+    })
 
-	// And now, you can call template `./views/home.pug` like this:
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.Render("home", fiber.Map{
-			"title": "Homepage",
-			"year":  1999,
-		})
-	})
+    // And now, you can call template `./views/home.pug` like this:
+    app.Get("/", func(c *fiber.Ctx) error {
+        return c.Render("home", fiber.Map{
+            "title": "Homepage",
+            "year":  1999,
+        })
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -283,31 +282,31 @@ func main() {
 
 ```go
 func middleware(c *fiber.Ctx) error {
-	fmt.Println("Don't mind me!")
-	return c.Next()
+    fmt.Println("Don't mind me!")
+    return c.Next()
 }
 
 func handler(c *fiber.Ctx) error {
-	return c.SendString(c.Path())
+    return c.SendString(c.Path())
 }
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// Root API route
-	api := app.Group("/api", middleware) // /api
+    // Root API route
+    api := app.Group("/api", middleware) // /api
 
-	// API v1 routes
-	v1 := api.Group("/v1", middleware) // /api/v1
-	v1.Get("/list", handler)           // /api/v1/list
-	v1.Get("/user", handler)           // /api/v1/user
+    // API v1 routes
+    v1 := api.Group("/v1", middleware) // /api/v1
+    v1.Get("/list", handler)           // /api/v1/list
+    v1.Get("/user", handler)           // /api/v1/user
 
-	// API v2 routes
-	v2 := api.Group("/v2", middleware) // /api/v2
-	v2.Get("/list", handler)           // /api/v2/list
-	v2.Get("/user", handler)           // /api/v2/user
+    // API v2 routes
+    v2 := api.Group("/v2", middleware) // /api/v2
+    v2.Get("/list", handler)           // /api/v2/list
+    v2.Get("/user", handler)           // /api/v2/user
 
-	// ...
+    // ...
 }
 
 ```
@@ -320,20 +319,20 @@ func main() {
 package main
 
 import (
-	"log"
+    "log"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/logger"
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2/middleware/logger"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Use(logger.New())
+    app.Use(logger.New())
 
-	// ...
+    // ...
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -343,20 +342,20 @@ func main() {
 
 ```go
 import (
-	"log"
+    "log"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2/middleware/cors"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Use(cors.New())
+    app.Use(cors.New())
 
-	// ...
+    // ...
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -372,25 +371,25 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ```go
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Static("/", "./public")
+    app.Static("/", "./public")
 
-	app.Get("/demo", func(c *fiber.Ctx) error {
-		return c.SendString("This is a demo!")
-	})
+    app.Get("/demo", func(c *fiber.Ctx) error {
+        return c.SendString("This is a demo!")
+    })
 
-	app.Post("/register", func(c *fiber.Ctx) error {
-		return c.SendString("Welcome!")
-	})
+    app.Post("/register", func(c *fiber.Ctx) error {
+        return c.SendString("Welcome!")
+    })
 
-	// Last middleware to match anything
-	app.Use(func(c *fiber.Ctx) error {
-		return c.SendStatus(404)
-		// => 404 "Not Found"
-	})
+    // Last middleware to match anything
+    app.Use(func(c *fiber.Ctx) error {
+        return c.SendStatus(404)
+        // => 404 "Not Found"
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -400,27 +399,27 @@ func main() {
 
 ```go
 type User struct {
-	Name string `json:"name"`
-	Age  int    `json:"age"`
+    Name string `json:"name"`
+    Age  int    `json:"age"`
 }
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Get("/user", func(c *fiber.Ctx) error {
-		return c.JSON(&User{"John", 20})
-		// => {"name":"John", "age":20}
-	})
+    app.Get("/user", func(c *fiber.Ctx) error {
+        return c.JSON(&User{"John", 20})
+        // => {"name":"John", "age":20}
+    })
 
-	app.Get("/json", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"success": true,
-			"message": "Hi John!",
-		})
-		// => {"success":true, "message":"Hi John!"}
-	})
+    app.Get("/json", func(c *fiber.Ctx) error {
+        return c.JSON(fiber.Map{
+            "success": true,
+            "message": "Hi John!",
+        })
+        // => {"success":true, "message":"Hi John!"}
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -431,7 +430,7 @@ func main() {
 ```go
 import (
     "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/websocket"
+    "github.com/gofiber/fiber/v2/middleware/websocket"
 )
 
 func main() {
@@ -464,20 +463,20 @@ func main() {
 
 ```go
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/recover"
+    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v2/middleware/recover"
 )
 
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	app.Use(recover.New())
+    app.Use(recover.New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
-		panic("normally this would crash your app")
-	})
+    app.Get("/", func(c *fiber.Ctx) error {
+        panic("normally this would crash your app")
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 ```
 
@@ -485,7 +484,7 @@ func main() {
 
 ## 🧬 Internal Middleware
 
-Here is a list of middleware that are included within the Fiber framework.
+以下はFiberフレームワークに含まれるミドルウェアの一覧です。
 
 | Middleware                                                                       | Description                                                                                                                                                           |
 | :------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -506,7 +505,7 @@ Here is a list of middleware that are included within the Fiber framework.
 
 ## 🧬 External Middleware
 
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+[Fiber team](https://github.com/orgs/gofiber/people) により管理・運用されているミドルウェアの一覧です。
 
 | Middleware                                        | Description                                                                                                                                                         |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -522,6 +521,7 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 ## 🌱 Third Party Middlewares
 
 This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+これらはFiberのコミュニティーによって作成されたミドルウェアの一覧です。もしあなたのミドルウェアを掲載したい場合はPRを作成してください！
 
 -   [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 -   [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
@@ -536,6 +536,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 -   [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 -   [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
 -   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
+-   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
 
 ## 👍 貢献する
 
@@ -544,11 +545,11 @@ This is a list of middlewares that are created by the Fiber community, please cr
 1. [GitHub Star](https://github.com/gofiber/fiber/stargazers)をつけてください 。
 2. [あなたの Twitter で](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)プロジェクトについてツイートしてください。
 3. [Medium](https://medium.com/) 、 [Dev.to、](https://dev.to/)または個人のブログでレビューまたはチュートリアルを書いてください。
-4. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+4. [cup of coffee](https://buymeacoff.ee/fenny)の寄付でプロジェクトを支援しましょう。
 
 ## ☕ Supporters
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny).
+Fiberはオープンソースプロジェクトで、寄付によってドメイン名やgitbook、 netlify、そしてサーバーレスホスティングなどの費用を賄っています。もしFiberを支援したければ ☕ [**こちらから**](https://buymeacoff.ee/fenny)。
 
 |                                                            | User                                             | Donation |
 | :--------------------------------------------------------- | :----------------------------------------------- | :------- |

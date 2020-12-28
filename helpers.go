@@ -94,29 +94,6 @@ func quoteString(raw string) string {
 	return quoted
 }
 
-// removeNewLines will replace `\r` and `\n` with an empty space
-func removeNewLines(raw string) string {
-	start := 0
-	if start = strings.IndexByte(raw, '\r'); start == -1 {
-		if start = strings.IndexByte(raw, '\n'); start == -1 {
-			return raw
-		}
-	}
-	bb := bytebufferpool.Get()
-	buf := bb.Bytes()
-	buf = append(buf, raw...)
-	for i := start; i < len(buf); i++ {
-		if buf[i] != '\r' && buf[i] != '\n' {
-			continue
-		}
-		buf[i] = ' '
-	}
-	raw = utils.UnsafeString(buf)
-	bytebufferpool.Put(bb)
-
-	return raw
-}
-
 // Scan stack if other methods match the request
 func methodExist(ctx *Ctx) (exist bool) {
 	for i := 0; i < len(intMethod); i++ {
@@ -234,6 +211,11 @@ func getGroupPath(prefix, path string) string {
 	if path == "/" {
 		return prefix
 	}
+
+	if path[0] != '/' {
+		path = "/" + path
+	}
+
 	return utils.TrimRight(prefix, '/') + path
 }
 
@@ -364,9 +346,9 @@ func (c *testConn) Close() error                { return nil }
 
 func (c *testConn) LocalAddr() net.Addr                { return testAddr("local-addr") }
 func (c *testConn) RemoteAddr() net.Addr               { return testAddr("remote-addr") }
-func (c *testConn) SetDeadline(t time.Time) error      { return nil }
-func (c *testConn) SetReadDeadline(t time.Time) error  { return nil }
-func (c *testConn) SetWriteDeadline(t time.Time) error { return nil }
+func (c *testConn) SetDeadline(_ time.Time) error      { return nil }
+func (c *testConn) SetReadDeadline(_ time.Time) error  { return nil }
+func (c *testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
 // getString converts byte slice to a string without memory allocation.
 var getString = utils.UnsafeString

@@ -287,6 +287,11 @@ func findParamLen(s string, segment *routeSegment) int {
 			return constPosition
 		}
 	} else if constPosition := strings.Index(s, segment.ComparePart); constPosition != -1 {
+		// if the compare part was found, but contains a slash although this part is not greedy, then it must not match
+		// example: /api/:param/fixedEnd -> path: /api/123/456/fixedEnd = no match , /api/123/fixedEnd = match
+		if !segment.IsGreedy && strings.IndexByte(s[:constPosition], slashDelimiter) != -1 {
+			return 0
+		}
 		return constPosition
 	}
 

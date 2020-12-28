@@ -1,33 +1,46 @@
-# Cache
-Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to intercept responses and cache them. This middleware will cache the `Body`, `Content-Type` and `StatusCode` using the `c.Path()` as unique identifier. Special thanks to [@codemicro](https://github.com/codemicro/fiber-cache) for creating this middleware for Fiber core!
+# Cache Middleware
 
-### Table of Contents
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to intercept responses and cache them. This middleware will cache the `Body`, `Content-Type` and `StatusCode` using the `c.Path()` (or a string returned by the Key function) as unique identifier. Special thanks to [@codemicro](https://github.com/codemicro/fiber-cache) for creating this middleware for Fiber core!
 
+## Table of Contents
 
-### Signatures
+- [Cache Middleware](#cache-middleware)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+	- [Examples](#examples)
+		- [Default Config](#default-config)
+		- [Custom Config](#custom-config)
+		- [Config](#config)
+		- [Default Config](#default-config-1)
+
+## Signatures
+
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
-### Examples
-Import the middleware package that is part of the Fiber web framework
+## Examples
+
+First import the middleware from Fiber,
+
 ```go
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cache"
+  "github.com/gofiber/fiber/v2"
+  "github.com/gofiber/fiber/v2/middleware/cache"
 )
 ```
 
-After you initiate your Fiber app, you can use the following possibilities:
-```go
-// Initialize default config
-app.Use(cache.New())
+Then create a Fiber app with `app := fiber.New()`.
 
-// Or extend your config for customization
+### Default Config
+
+```go
+app.Use(cache.New())
+```
+
+### Custom Config
+
+```go
 app.Use(cache.New(cache.Config{
 	Next: func(c *fiber.Ctx) bool {
 		return c.Query("refresh") == "true"
@@ -38,6 +51,7 @@ app.Use(cache.New(cache.Config{
 ```
 
 ### Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -61,24 +75,26 @@ type Config struct {
 	// Default: func(c *fiber.Ctx) string {
 	//   return c.Path()
 	// }
-	Key func(*fiber.Ctx) string
+	KeyGenerator func(*fiber.Ctx) string
 
 	// Store is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
-	Store fiber.Storage
+	Storage fiber.Storage
 }
 ```
 
 ### Default Config
+
 ```go
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:         nil,
 	Expiration:   1 * time.Minute,
 	CacheControl: false,
-	Key: func(c *fiber.Ctx) string {
+	KeyGenerator: func(c *fiber.Ctx) string {
 		return c.Path()
 	},
+	Storage:      nil,
 }
 ```
