@@ -158,6 +158,9 @@ func Test_Utils_getGroupPath(t *testing.T) {
 
 	res = getGroupPath("/v1/api", "group")
 	utils.AssertEqual(t, "/v1/api/group", res)
+
+	res = getGroupPath("/v1/api", "")
+	utils.AssertEqual(t, "/v1/api", res)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Utils_ -benchmem -count=3
