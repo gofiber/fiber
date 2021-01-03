@@ -77,6 +77,21 @@ type Views interface {
 	Render(io.Writer, string, interface{}, ...string) error
 }
 
+// BodyParserType require two element, type and converter for register.
+// Use BodyParserType with BodyParser for parsing custom type in form data.
+type BodyParserType struct {
+	Customtype interface{}
+	Converter  func(string) reflect.Value
+}
+
+// BodyParserConfig form decoder config for SetBodyParserDecoder
+type BodyParserConfig struct {
+	IgnoreUnknownKeys bool
+	SetAliasTag       string
+	BodyParserType    []BodyParserType
+	ZeroEmpty         bool
+}
+
 // AcquireCtx retrieves a new Ctx from the pool.
 func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	c := app.pool.Get().(*Ctx)
@@ -243,6 +258,22 @@ var decoderPool = &sync.Pool{New: func() interface{} {
 	decoder.IgnoreUnknownKeys(true)
 	return decoder
 }}
+
+// SetBodyParserDecoder allow globally change the option of form decoder, update decoderPool
+func SetBodyParserDecoder(bodyParserConfig BodyParserConfig) {
+	decoderPool = &sync.Pool{New: func() interface{} {
+		var decoder = schema.NewDecoder()
+		decoder.IgnoreUnknownKeys(bodyParserConfig.IgnoreUnknownKeys)
+		if bodyParserConfig.SetAliasTag != "" {
+			decoder.SetAliasTag(bodyParserConfig.SetAliasTag)
+		}
+		for _, v := range bodyParserConfig.BodyParserType {
+			decoder.RegisterConverter(reflect.ValueOf(v.Customtype).Interface(), v.Converter)
+		}
+		decoder.ZeroEmpty(bodyParserConfig.ZeroEmpty)
+		return decoder
+	}}
+}
 
 // BodyParser binds the request body to a struct.
 // It supports decoding the following content types based on the Content-Type header:
