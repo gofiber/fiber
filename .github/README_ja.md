@@ -106,9 +106,10 @@ func main() {
 
 ## ⚙️ インストール
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
+Goがインストールされていることを確認してください ([ダウンロード](https://golang.org/dl/)). バージョン `1.14` またはそれ以上であることが必要です。
 
 Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+フォルダを作成し、フォルダ内で `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) を実行してプロジェクトを初期化してください。その後、 Fiber を以下の [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) コマンドでインストールしてください。
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -126,7 +127,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
 -   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
--   Available in [15 languages](https://docs.gofiber.io/)
+-   [15ヶ国語](https://docs.gofiber.io/)で利用可能
 -   [Fiber](https://docs.gofiber.io/)をもっと知る
 
 ## 💡 哲学
@@ -141,8 +142,6 @@ Fiber は人気の高い Web フレームワークである Expressjs に**イ�
 ## 👀 例
 
 以下に一般的な例をいくつか示します。他のコード例をご覧になりたい場合は、 [Recipes リポジトリ](https://github.com/gofiber/recipes)または[API ドキュメント](https://docs.gofiber.io)にアクセスしてください。
-
-Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
 
 #### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
 
@@ -485,7 +484,7 @@ func main() {
 
 ## 🧬 Internal Middleware
 
-Here is a list of middleware that are included within the Fiber framework.
+以下はFiberフレームワークに含まれるミドルウェアの一覧です。
 
 | Middleware                                                                       | Description                                                                                                                                                           |
 | :------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -506,7 +505,7 @@ Here is a list of middleware that are included within the Fiber framework.
 
 ## 🧬 External Middleware
 
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+[Fiber team](https://github.com/orgs/gofiber/people) により管理・運用されているミドルウェアの一覧です。
 
 | Middleware                                        | Description                                                                                                                                                         |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -522,6 +521,7 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 ## 🌱 Third Party Middlewares
 
 This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+これらはFiberのコミュニティーによって作成されたミドルウェアの一覧です。もしあなたのミドルウェアを掲載したい場合はPRを作成してください！
 
 -   [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 -   [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
@@ -536,6 +536,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 -   [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
 -   [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
 -   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
+-   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
 
 ## 👍 貢献する
 
@@ -544,11 +545,11 @@ This is a list of middlewares that are created by the Fiber community, please cr
 1. [GitHub Star](https://github.com/gofiber/fiber/stargazers)をつけてください 。
 2. [あなたの Twitter で](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)プロジェクトについてツイートしてください。
 3. [Medium](https://medium.com/) 、 [Dev.to、](https://dev.to/)または個人のブログでレビューまたはチュートリアルを書いてください。
-4. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+4. [cup of coffee](https://buymeacoff.ee/fenny)の寄付でプロジェクトを支援しましょう。
 
 ## ☕ Supporters
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny).
+Fiberはオープンソースプロジェクトで、寄付によってドメイン名やgitbook、 netlify、そしてサーバーレスホスティングなどの費用を賄っています。もしFiberを支援したければ ☕ [**こちらから**](https://buymeacoff.ee/fenny)。
 
 |                                                            | User                                             | Donation |
 | :--------------------------------------------------------- | :----------------------------------------------- | :------- |

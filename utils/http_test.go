@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func Test_Utils_GetMIME(t *testing.T) {
+func Test_GetMIME(t *testing.T) {
 	t.Parallel()
 	res := GetMIME(".json")
 	AssertEqual(t, "application/json", res)
@@ -53,7 +53,7 @@ func Benchmark_GetMIME(b *testing.B) {
 	})
 }
 
-func Test_Utils_StatusMessage(t *testing.T) {
+func Test_StatusMessage(t *testing.T) {
 	t.Parallel()
 	res := StatusMessage(204)
 	AssertEqual(t, "No Content", res)

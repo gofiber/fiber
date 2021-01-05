@@ -808,6 +808,9 @@ func Test_App_Group(t *testing.T) {
 	grp.All("/ALL", dummyHandler)
 	testStatus200(t, app, "/test/ALL", MethodPost)
 
+	grp.Use(dummyHandler)
+	testStatus200(t, app, "/test/oke", MethodGet)
+
 	grp.Use("/USE", dummyHandler)
 	testStatus200(t, app, "/test/USE/oke", MethodGet)
 
