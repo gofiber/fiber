@@ -42,7 +42,7 @@ type Ctx struct {
 	baseURI             string               // HTTP base uri
 	path                string               // Prettified HTTP path for the user -> string copy from pathBuffer
 	pathBuffer          []byte               // HTTP path buffer
-	detectionPath       string               // Route detection path              -> string copy from pathBuffer
+	detectionPath       string               // Route detection path              -> string copy from detectionPathBuffer
 	detectionPathBuffer []byte               // HTTP path detectionPath
 	treePath            string               // Path for the search in the tree
 	pathOriginal        string               // Original HTTP path
