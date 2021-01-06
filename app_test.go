@@ -318,7 +318,13 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	app := New(Config{UnescapePath: true, CaseSensitive: true})
 
 	app.Use("/cRéeR/:param", func(c *Ctx) error {
+		utils.AssertEqual(t, "/cRéeR/محمد", c.Path())
 		return c.SendString(c.Params("param"))
+	})
+
+	app.Use("/abc", func(c *Ctx) error {
+		utils.AssertEqual(t, "/AbC", c.Path())
+		return nil
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cR%C3%A9eR/%D9%85%D8%AD%D9%85%D8%AF", nil))
@@ -334,6 +340,36 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D9%85%D8%AD%D9%85%D8%AF", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+func Test_App_Use_CaseSensitive(t *testing.T) {
+	app := New(Config{CaseSensitive: true})
+
+	app.Use("/abc", func(c *Ctx) error {
+		return c.SendString(c.Path())
+	})
+
+	// wrong letters in the requested route -> 404
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/AbC", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+
+	// right letters in the requrested route -> 200
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	// check the detected path when the case insensitive recognition is activated
+	app.config.CaseSensitive = false
+	// check the case sensitive feature
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/AbC", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	// check the detected path result
+	utils.AssertEqual(t, "/AbC", getString(body))
 }
 
 func Test_App_Add_Method_Test(t *testing.T) {

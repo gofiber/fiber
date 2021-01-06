@@ -1038,15 +1038,23 @@ func Benchmark_Ctx_Params(b *testing.B) {
 // go test -run Test_Ctx_Path
 func Test_Ctx_Path(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{UnescapePath: true})
 	app.Get("/test/:user", func(c *Ctx) error {
-		utils.AssertEqual(t, "/test/john", c.Path())
+		utils.AssertEqual(t, "/Test/John", c.Path())
 		// not strict && case insensitive
 		utils.AssertEqual(t, "/ABC/", c.Path("/ABC/"))
 		utils.AssertEqual(t, "/test/john/", c.Path("/test/john/"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+
+	// test with special chars
+	app.Get("/specialChars/:name", func(c *Ctx) error {
+		utils.AssertEqual(t, "/specialChars/créer", c.Path())
+		// unescape is also working if you set the path afterwards
+		utils.AssertEqual(t, "/محمد/", c.Path("/%D9%85%D8%AD%D9%85%D8%AF/"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }

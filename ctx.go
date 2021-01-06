@@ -682,7 +682,7 @@ func (c *Ctx) Path(override ...string) string {
 		// Prettify path
 		c.configDependentPaths()
 	}
-	return c.pathOriginal
+	return c.path
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
