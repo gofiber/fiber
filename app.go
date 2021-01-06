@@ -138,8 +138,9 @@ type Config struct {
 	Immutable bool `json:"immutable"`
 
 	// When set to true, converts all encoded characters in the route back
-	// before setting the path for the context, so that the routing can also
-	// work with urlencoded special characters.
+	// before setting the path for the context, so that the routing,
+	// the returning of the current url from the context `ctx.Path()`
+	// and the paramters `ctx.Params(%key%)` with decoded characters will work
 	//
 	// Default: false
 	UnescapePath bool `json:"unescape_path"`
