@@ -314,6 +314,28 @@ func Test_App_Use_Params(t *testing.T) {
 	})
 }
 
+func Test_App_Use_UnescapedPath(t *testing.T) {
+	app := New(Config{UnescapePath: true, CaseSensitive: true})
+
+	app.Use("/cRéeR/:param", func(c *Ctx) error {
+		return c.SendString(c.Params("param"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cR%C3%A9eR/%D9%85%D8%AD%D9%85%D8%AF", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	// check the param result
+	utils.AssertEqual(t, "محمد", getString(body))
+
+	// with lowercase letters
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D9%85%D8%AD%D9%85%D8%AF", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
 func Test_App_Add_Method_Test(t *testing.T) {
 	app := New()
 	defer func() {

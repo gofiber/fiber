@@ -120,7 +120,7 @@ func methodExist(ctx *Ctx) (exist bool) {
 				continue
 			}
 			// Check if it matches the request path
-			match := route.match(ctx.path, ctx.pathOriginal, &ctx.values)
+			match := route.match(ctx.detectionPath, ctx.path, &ctx.values)
 			// No match, next route
 			if match {
 				// We matched

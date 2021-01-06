@@ -227,37 +227,37 @@ func findNextCharsetPosition(search string, charset []byte) int {
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
-func (routeParser *routeParser) getMatch(s, original string, params *[maxParams]string, partialCheck bool) bool {
+func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool {
 	var i, paramsIterator, partLen int
 	for _, segment := range routeParser.segs {
-		partLen = len(s)
+		partLen = len(detectionPath)
 		// check const segment
 		if !segment.IsParam {
 			i = segment.Length
 			// is optional part or the const part must match with the given string
 			// check if the end of the segment is a optional slash
-			if segment.HasOptionalSlash && partLen == i-1 && s == segment.Const[:i-1] {
+			if segment.HasOptionalSlash && partLen == i-1 && detectionPath == segment.Const[:i-1] {
 				i--
-			} else if !(i <= partLen && s[:i] == segment.Const) {
+			} else if !(i <= partLen && detectionPath[:i] == segment.Const) {
 				return false
 			}
 		} else {
 			// determine parameter length
-			i = findParamLen(s, segment)
+			i = findParamLen(detectionPath, segment)
 			if !segment.IsOptional && i == 0 {
 				return false
 			}
 			// take over the params positions
-			params[paramsIterator] = original[:i]
+			params[paramsIterator] = path[:i]
 			paramsIterator++
 		}
 
 		// reduce founded part from the string
 		if partLen > 0 {
-			s, original = s[i:], original[i:]
+			detectionPath, path = detectionPath[i:], path[i:]
 		}
 	}
-	if len(s) != 0 && !partialCheck {
+	if len(detectionPath) != 0 && !partialCheck {
 		return false
 	}
 
