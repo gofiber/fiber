@@ -1051,7 +1051,7 @@ func Test_Ctx_Path(t *testing.T) {
 	app.Get("/specialChars/:name", func(c *Ctx) error {
 		utils.AssertEqual(t, "/specialChars/créer", c.Path())
 		// unescape is also working if you set the path afterwards
-		utils.AssertEqual(t, "/محمد/", c.Path("/%D9%85%D8%AD%D9%85%D8%AF/"))
+		utils.AssertEqual(t, "/اختبار/", c.Path("/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1/"))
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", nil))

@@ -318,7 +318,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	app := New(Config{UnescapePath: true, CaseSensitive: true})
 
 	app.Use("/cRéeR/:param", func(c *Ctx) error {
-		utils.AssertEqual(t, "/cRéeR/محمد", c.Path())
+		utils.AssertEqual(t, "/cRéeR/اختبار", c.Path())
 		return c.SendString(c.Params("param"))
 	})
 
@@ -327,17 +327,17 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cR%C3%A9eR/%D9%85%D8%AD%D9%85%D8%AF", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cR%C3%A9eR/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	// check the param result
-	utils.AssertEqual(t, "محمد", getString(body))
+	utils.AssertEqual(t, "اختبار", getString(body))
 
 	// with lowercase letters
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D9%85%D8%AD%D9%85%D8%AF", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 }
