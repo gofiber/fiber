@@ -55,14 +55,14 @@ type Route struct {
 	Handlers []Handler `json:"-"`      // Ctx handlers
 }
 
-func (r *Route) match(path, original string, params *[maxParams]string) (match bool) {
-	// root path check
-	if r.root && path == "/" {
+func (r *Route) match(detectionPath, path string, params *[maxParams]string) (match bool) {
+	// root detectionPath check
+	if r.root && detectionPath == "/" {
 		return true
-		// '*' wildcard matches any path
+		// '*' wildcard matches any detectionPath
 	} else if r.star {
-		if len(original) > 1 {
-			params[0] = original[1:]
+		if len(path) > 1 {
+			params[0] = path[1:]
 		} else {
 			params[0] = ""
 		}
@@ -71,19 +71,19 @@ func (r *Route) match(path, original string, params *[maxParams]string) (match b
 	// Does this route have parameters
 	if len(r.Params) > 0 {
 		// Match params
-		if match := r.routeParser.getMatch(path, original, params, r.use); match {
-			// Get params from the original path
+		if match := r.routeParser.getMatch(detectionPath, path, params, r.use); match {
+			// Get params from the path detectionPath
 			return match
 		}
 	}
 	// Is this route a Middleware?
 	if r.use {
-		// Single slash will match or path prefix
-		if r.root || strings.HasPrefix(path, r.path) {
+		// Single slash will match or detectionPath prefix
+		if r.root || strings.HasPrefix(detectionPath, r.path) {
 			return true
 		}
-		// Check for a simple path match
-	} else if len(r.path) == len(path) && r.path == path {
+		// Check for a simple detectionPath match
+	} else if len(r.path) == len(detectionPath) && r.path == detectionPath {
 		return true
 	}
 	// No match
@@ -107,7 +107,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 		route := tree[c.indexRoute]
 
 		// Check if it matches the request path
-		match = route.match(c.path, c.pathOriginal, &c.values)
+		match = route.match(c.detectionPath, c.path, &c.values)
 
 		// No match, next route
 		if !match {
