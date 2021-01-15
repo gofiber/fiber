@@ -85,10 +85,7 @@ func configDefault(config ...Config) Config {
 	if cfg.Authorizer == nil {
 		cfg.Authorizer = func(user, pass string) bool {
 			userPwd, exist := cfg.Users[user]
-			if !exist {
-				return false
-			}
-			return subtle.ConstantTimeCompare(utils.UnsafeBytes(userPwd), utils.UnsafeBytes(pass)) == 1
+			return exist && subtle.ConstantTimeCompare(utils.UnsafeBytes(userPwd), utils.UnsafeBytes(pass)) == 1
 		}
 	}
 	if cfg.Unauthorized == nil {
