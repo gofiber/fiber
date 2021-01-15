@@ -1,7 +1,9 @@
 package basicauth
 
 import (
+	"crypto/subtle"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // Config defines the config for middleware.
@@ -82,11 +84,11 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.Authorizer == nil {
 		cfg.Authorizer = func(user, pass string) bool {
-			user, exist := cfg.Users[user]
+			userPwd, exist := cfg.Users[user]
 			if !exist {
 				return false
 			}
-			return user == pass
+			return subtle.ConstantTimeCompare(utils.UnsafeBytes(userPwd), utils.UnsafeBytes(pass)) == 1
 		}
 	}
 	if cfg.Unauthorized == nil {
