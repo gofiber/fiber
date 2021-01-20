@@ -536,7 +536,7 @@ func (c *Ctx) Is(extension string) bool {
 // and a nil slice encodes as the null JSON value.
 // This method also sets the content header to application/json.
 func (c *Ctx) JSON(data interface{}) error {
-	raw, err := json.Marshal(data)
+	raw, err := c.app.config.JSONEngineExecutor.Marshal(data)
 	if err != nil {
 		return err
 	}
