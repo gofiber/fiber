@@ -360,7 +360,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	fileHandler := fs.NewRequestHandler()
 	handler := func(c *Ctx) error {
 		// Don't execute middleware if Next returns true
-		if config[0].Next != nil && config[0].Next(c) {
+		if config != nil && config[0].Next != nil && config[0].Next(c) {
 			return c.Next()
 		}
 		// Serve file
