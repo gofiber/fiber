@@ -80,6 +80,11 @@ type Config struct {
 
 	// Deprecated, please use KeyLookup
 	TokenLookup string
+
+	// ErrorHandler is executed when an error is returned from fiber.Handler.
+	//
+	// Optional. Default: DefaultErrorHandler
+	ErrorHandler fiber.ErrorHandler
 }
 
 // ConfigDefault is the default config
@@ -89,6 +94,12 @@ var ConfigDefault = Config{
 	CookieSameSite: "Strict",
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
+	ErrorHandler:   DefaultErrorHandler,
+}
+
+// Default ErrorHandler that process return error from fiber.Handler
+var DefaultErrorHandler = func(c *fiber.Ctx, err error) error {
+	return fiber.ErrForbidden
 }
 
 // Helper function to set default values
@@ -141,6 +152,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator
+	}
+	if cfg.ErrorHandler == nil {
+		cfg.ErrorHandler = ConfigDefault.ErrorHandler
 	}
 
 	return cfg

@@ -82,10 +82,10 @@ func New(config ...Config) fiber.Handler {
 			// Extract token from client request i.e. header, query, param, form or cookie
 			token, err = extractor(c)
 			if err != nil {
-				return fiber.ErrForbidden
+				return cfg.ErrorHandler(c, err)
 			}
 
-			// 403 if token does not exist in Storage
+			// if token does not exist in Storage
 			if manager.getRaw(token) == nil {
 
 				// Expire cookie
@@ -99,8 +99,7 @@ func New(config ...Config) fiber.Handler {
 					SameSite: cfg.CookieSameSite,
 				})
 
-				// Return 403 Forbidden
-				return fiber.ErrForbidden
+				return cfg.ErrorHandler(c, err)
 			}
 
 			// The token is validated, time to delete it
