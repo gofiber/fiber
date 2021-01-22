@@ -65,6 +65,14 @@ var index = []byte(`<!DOCTYPE html>
             color: #777;
         }
 
+        h2 span.ram_os {
+            color: rgba(255, 150, 0, .8);
+        }
+
+        h2 span.ram_total {
+            color: rgba(0, 200, 0, .8);
+        }
+
         canvas {
             width: 200px;
             height: 180px;
@@ -92,7 +100,7 @@ var index = []byte(`<!DOCTYPE html>
                 <div class="row">
                     <div class="column">
                         <div class="metric">Memory Usage</div>
-                        <h2 id="ramMetric">0.00 MB</h2>
+                        <h2 id="ramMetric" title="PID used / OS used / OS total">0.00 MB</h2>
                     </div>
                     <div class="column">
                         <canvas id="ramChart"></canvas>
@@ -200,6 +208,21 @@ var index = []byte(`<!DOCTYPE html>
             });
         }
 
+        ramChart.data.datasets.push({
+            data: [],
+            lineTension: 0.2,
+            pointRadius: 0,
+            backgroundColor: 'rgba(255, 200, 0, .6)',
+            borderColor: 'rgba(255, 150, 0, .8)',
+        })
+        ramChart.data.datasets.push({
+            data: [],
+            lineTension: 0.2,
+            pointRadius: 0,
+            backgroundColor: 'rgba(0, 255, 0, .4)',
+            borderColor: 'rgba(0, 200, 0, .8)',
+        })
+
         // function init() {
         //     charts.forEach(chart => {
         //         chart.data.datasets[0].data = JSON.parse(localStorage.getItem(chart.canvas.id)) || []
@@ -212,11 +235,13 @@ var index = []byte(`<!DOCTYPE html>
             cpuOS = json.os.cpu.toFixed(1);
 
             cpuMetric.innerHTML = cpu + '% <span>' + cpuOS + '%</span>';
-            ramMetric.innerHTML = formatBytes(json.pid.ram) + ' <span>' + formatBytes(json.os.ram) + '</span>';
+            ramMetric.innerHTML = formatBytes(json.pid.ram) + '<span> / </span><span class="ram_os">' + formatBytes(json.os.ram) + '<span><span> / </span><span class="ram_total">' + formatBytes(json.os.total_ram) + '</span>';
             rtimeMetric.innerHTML = rtime + 'ms <span>client</span>';
             connsMetric.innerHTML = json.pid.conns + ' <span>' + json.os.conns + '</span>';
 
             cpuChart.data.datasets[0].data.push(cpu);
+            ramChart.data.datasets[2].data.push((json.os.total_ram / 1e6).toFixed(2));
+            ramChart.data.datasets[1].data.push((json.os.ram / 1e6).toFixed(2));
             ramChart.data.datasets[0].data.push((json.pid.ram / 1e6).toFixed(2));
             rtimeChart.data.datasets[0].data.push(rtime);
             connsChart.data.datasets[0].data.push(json.pid.conns);
