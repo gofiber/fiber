@@ -94,11 +94,11 @@ var ConfigDefault = Config{
 	CookieSameSite: "Strict",
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
-	ErrorHandler:   DefaultErrorHandler,
+	ErrorHandler:   defaultErrorHandler,
 }
 
-// Default ErrorHandler that process return error from fiber.Handler
-var DefaultErrorHandler = func(c *fiber.Ctx, err error) error {
+// default ErrorHandler that process return error from fiber.Handler
+var defaultErrorHandler = func(c *fiber.Ctx, err error) error {
 	return fiber.ErrForbidden
 }
 
