@@ -758,6 +758,48 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 }
 
+func Test_App_Static_Next(t *testing.T) {
+	app := New()
+	app.Static("/", ".github", Static{
+		Next: func(c *Ctx) bool {
+			// If value of the header is any other from "skip"
+			// c.Next() will be invoked
+			return c.Get("X-Custom-Header") == "skip"
+		},
+	})
+	app.Get("/", func(c *Ctx) error {
+		return c.SendString("You've skipped app.Static")
+	})
+
+	t.Run("app.Static is skipped: invoking Get handler", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Custom-Header", "skip")
+		resp, err := app.Test(req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, 200, resp.StatusCode)
+		utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+		utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+
+		body, err := ioutil.ReadAll(resp.Body)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, true, strings.Contains(string(body), "You've skipped app.Static"))
+	})
+
+	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Custom-Header", "don't skip")
+		resp, err := app.Test(req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, 200, resp.StatusCode)
+		utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+		utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
+
+		body, err := ioutil.ReadAll(resp.Body)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
+	})
+}
+
 // go test -run Test_App_Mixed_Routes_WithSameLen
 func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	app := New()
