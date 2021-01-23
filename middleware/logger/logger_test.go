@@ -137,7 +137,7 @@ func Test_Logger_All(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Format: "${pid}${referer}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${header:test}${query:test}${form:test}${cookie:test}${non}",
+		Format: "${pid}${referer}${protocol}${ip}${ips}${host}${url}${ua}${body}${resBody}${queryParams}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${header:test}${query:test}${form:test}${cookie:test}${non}",
 		Output: buf,
 	}))
 
