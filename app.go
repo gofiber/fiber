@@ -12,6 +12,7 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -272,11 +273,11 @@ type Config struct {
 	// RedirectFixedPath bool
 
 	// When set by an external client of Fiber it will use the provided implementation of a
-	// JSONExectuor
+	// JSONMarshal
 	//
-	// Allowing for flexibility in using another json library for marshalling/unmarshalling
-	// Default: utils.DefaultJSONExecutor
-	JSONEngineExecutor utils.JSONExecutor `json:"-"`
+	// Allowing for flexibility in using another json library for encoding
+	// Default: json.Marshal
+	JSONEncoder utils.JSONMarshal `json:"-"`
 }
 
 // Static defines configuration options when defining static assets.
@@ -385,8 +386,8 @@ func New(config ...Config) *App {
 	if app.config.ErrorHandler == nil {
 		app.config.ErrorHandler = DefaultErrorHandler
 	}
-	if app.config.JSONEngineExecutor == nil {
-		app.config.JSONEngineExecutor = &utils.DefaultJSONExecutor{}
+	if app.config.JSONEncoder == nil {
+		app.config.JSONEncoder = json.Marshal
 	}
 
 	// Init app

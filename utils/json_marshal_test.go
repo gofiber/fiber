@@ -1,10 +1,11 @@
 package utils
 
 import (
+	"encoding/json"
 	"testing"
 )
 
-func TestDefaultJSONExecutor(t *testing.T) {
+func TestDefaultJSONEncoder(t *testing.T) {
 	type SampleStructure struct {
 		ImportantString string `json:"important_string"`
 	}
@@ -14,11 +15,11 @@ func TestDefaultJSONExecutor(t *testing.T) {
 			ImportantString: "Hello World",
 		}
 		importantString = `{"important_string":"Hello World"}`
+
+		jsonEncoder JSONMarshal = json.Marshal
 	)
 
-	jsonExecutor := DefaultJSONExecutor{}
-
-	raw, err := jsonExecutor.Marshal(sampleStructure)
+	raw, err := jsonEncoder(sampleStructure)
 	AssertEqual(t, err, nil)
 
 	AssertEqual(t, string(raw), importantString)
