@@ -119,29 +119,31 @@ var ConfigDefault = Config{
 ```go
 // Logger variables
 const (
-	TagPid           = "pid"
-	TagTime          = "time"
-	TagReferer       = "referer"
-	TagProtocol      = "protocol"
-	TagIP            = "ip"
-	TagIPs           = "ips"
-	TagHost          = "host"
-	TagMethod        = "method"
-	TagPath          = "path"
-	TagURL           = "url"
-	TagUA            = "ua"
-	TagLatency       = "latency"
-	TagStatus        = "status"        // response status
-	TagBody          = "body"          // request body
-	TagBytesSent     = "bytesSent"
-	TagBytesReceived = "bytesReceived"
-	TagRoute         = "route"
-	TagError         = "error"
-	TagHeader        = "header:"       // request header
-	TagQuery         = "query:"        // request query
-	TagForm          = "form:"         // request form
-	TagCookie        = "cookie:"       // request cookie
-	TagLocals        = "locals:"
+	TagPid					= "pid"
+	TagTime					= "time"
+	TagReferer				= "referer"
+	TagProtocol				= "protocol"
+	TagIP					= "ip"
+	TagIPs					= "ips"
+	TagHost					= "host"
+	TagMethod				= "method"
+	TagPath					= "path"
+	TagURL					= "url"
+	TagUA					= "ua"
+	TagLatency				= "latency"
+	TagStatus				= "status"	// response status
+	TagResBody				= "resBody"	// response body
+	TagQueryStringParams	= "queryParams"	// request query parameters
+	TagBody					= "body"	// request body
+	TagBytesSent			= "bytesSent"
+	TagBytesReceived		= "bytesReceived"
+	TagRoute				= "route"
+	TagError				= "error"
+	TagHeader				= "header:"     // request header
+	TagQuery				= "query:"      // request query
+	TagForm					= "form:"       // request form
+	TagCookie				= "cookie:"     // request cookie
+	TagLocals				= "locals:"
 
 	// colors
 	TagBlack         = "black"
