@@ -49,9 +49,6 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 func Test_CORS_Wildcard(t *testing.T) {
 	// New fiber instance
 	app := fiber.New()
-	// Get handler pointer
-	handler := app.Handler()
-
 	// OPTIONS (preflight) response headers when AllowOrigins is *
 	app.Use(New(Config{
 		AllowOrigins:     "*",
@@ -60,6 +57,8 @@ func Test_CORS_Wildcard(t *testing.T) {
 		ExposeHeaders:    "X-Request-ID",
 		AllowHeaders:     "Authentication",
 	}))
+	// Get handler pointer
+	handler := app.Handler()
 
 	// Make request
 	ctx := &fasthttp.RequestCtx{}
@@ -90,11 +89,11 @@ func Test_CORS_Wildcard(t *testing.T) {
 func Test_CORS_Subdomain(t *testing.T) {
 	// New fiber instance
 	app := fiber.New()
-	// Get handler pointer
-	handler := app.Handler()
-
 	// OPTIONS (preflight) response headers when AllowOrigins is set to a subdomain
 	app.Use("/", New(Config{AllowOrigins: "http://*.example.com"}))
+
+	// Get handler pointer
+	handler := app.Handler()
 
 	// Make request with disallowed origin
 	ctx := &fasthttp.RequestCtx{}

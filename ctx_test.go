@@ -901,7 +901,7 @@ func Test_Ctx_InvalidMethod(t *testing.T) {
 	fctx.Request.Header.SetMethod("InvalidMethod")
 	fctx.Request.SetRequestURI("/")
 
-	app.handler(fctx)
+	app.Handler()(fctx)
 
 	utils.AssertEqual(t, 400, fctx.Response.StatusCode())
 	utils.AssertEqual(t, []byte("Invalid http method"), fctx.Response.Body())

@@ -417,13 +417,15 @@ func (app *App) addRoute(method string, route *Route) {
 		route.Method = method
 		// Add route to the stack
 		app.stack[m] = append(app.stack[m], route)
+		app.routesRefreshed = true
 	}
-	// Build router tree
-	app.buildTree()
 }
 
 // buildTree build the prefix tree from the previously registered routes
 func (app *App) buildTree() *App {
+	if app.routesRefreshed == false {
+		return app
+	}
 	// loop all the methods and stacks and create the prefix tree
 	for m := range intMethod {
 		app.treeStack[m] = make(map[string][]*Route)
@@ -449,6 +451,7 @@ func (app *App) buildTree() *App {
 			})
 		}
 	}
+	app.routesRefreshed = false
 
 	return app
 }
