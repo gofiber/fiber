@@ -149,14 +149,33 @@ func Test_Logger_All(t *testing.T) {
 	utils.AssertEqual(t, expected, buf.String())
 }
 
-// go test -run Test_Query_Params_Response_Body
+// go test -run Test_Query_Params
 func Test_Query_Params(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Format: "${queryParams}${resBody}",
+		Format: "${queryParams}",
+		Output: buf,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/?foo=bar&baz=moz", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf("foo=bar&baz=moz")
+	utils.AssertEqual(t, expected, buf.String())
+}
+
+// go test -run Test_Response_Body
+func Test_Response_Body(t *testing.T) {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${resBody}",
 		Output: buf,
 	}))
 
@@ -164,11 +183,21 @@ func Test_Query_Params(t *testing.T) {
 		return c.SendString("Sample response body")
 	})
 
-	_, err := app.Test(httptest.NewRequest("GET", "/?foo=bar&baz=moz", nil))
+	app.Post("/test", func(c *fiber.Ctx) error {
+		return c.Send([]byte("Post in test"))
+	})
+
+	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 
-	expected := fmt.Sprintf("foo=bar&baz=mozSample response body")
+	expected := fmt.Sprintf("Sample response body")
 	utils.AssertEqual(t, expected, buf.String())
+
+	_, err = app.Test(httptest.NewRequest("POST", "/test", nil))
+	utils.AssertEqual(t, nil, err)
+
+	expected = fmt.Sprintf("Post in test")
+	utils.AssertEqual(t, nil, err)
 }
 
 // go test -run Test_Logger_AppendUint
