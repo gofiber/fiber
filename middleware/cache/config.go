@@ -36,6 +36,13 @@ type Config struct {
 	// Default: an in memory store for this process only
 	Storage fiber.Storage
 
+	// NeedCache allows you to control whether to cache or not
+	//
+	// Default: func(c *fiber.Ctx) bool {
+	//   return true
+	// }
+	NeedCache func(*fiber.Ctx) bool
+
 	// Deprecated, use Storage instead
 	Store fiber.Storage
 
@@ -52,6 +59,9 @@ var ConfigDefault = Config{
 		return c.Path()
 	},
 	Storage: nil,
+	NeedCache: func(ctx *fiber.Ctx) bool {
+		return true
+	},
 }
 
 // Helper function to set default values
@@ -81,6 +91,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator
+	}
+	if cfg.NeedCache == nil {
+		cfg.NeedCache = ConfigDefault.NeedCache
 	}
 	return cfg
 }

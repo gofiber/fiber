@@ -81,6 +81,13 @@ type Config struct {
 	//
 	// Default: an in memory store for this process only
 	Storage fiber.Storage
+
+	// NeedCache allows you to control whether to cache or not
+	//
+	// Default: func(c *fiber.Ctx) bool {
+	//   return true
+	// }
+	NeedCache func(*fiber.Ctx) bool
 }
 ```
 
@@ -95,6 +102,9 @@ var ConfigDefault = Config{
 	KeyGenerator: func(c *fiber.Ctx) string {
 		return c.Path()
 	},
-	Storage:      nil,
+	Storage: nil,
+	NeedCache: func(ctx *fiber.Ctx) bool {
+		return true
+	},
 }
 ```

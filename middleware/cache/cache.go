@@ -105,6 +105,10 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
+		if !cfg.NeedCache(c) {
+			return nil
+		}
+
 		// Cache response
 		e.body = utils.SafeBytes(c.Response().Body())
 		e.status = c.Response().StatusCode()
