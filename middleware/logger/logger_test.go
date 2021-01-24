@@ -137,15 +137,37 @@ func Test_Logger_All(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Format: "${pid}${referer}${protocol}${ip}${ips}${host}${url}${ua}${body}${resBody}${queryParams}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${header:test}${query:test}${form:test}${cookie:test}${non}",
+		Format: "${pid}${referer}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${header:test}${query:test}${form:test}${cookie:test}${non}",
 		Output: buf,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest("GET", "/?foo=bar", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 
-	expected := fmt.Sprintf("%dhttp0.0.0.0example.com//%s%s%s%s%s%s%s%s%s-", os.Getpid(), cBlack, cRed, cGreen, cYellow, cBlue, cMagenta, cCyan, cWhite, cReset)
+	expected := fmt.Sprintf("%dhttp0.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%s-", os.Getpid(), cBlack, cRed, cGreen, cYellow, cBlue, cMagenta, cCyan, cWhite, cReset)
+	utils.AssertEqual(t, expected, buf.String())
+}
+
+// go test -run Test_Query_Params_Response_Body
+func Test_Query_Params(t *testing.T) {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${queryParams}${resBody}",
+		Output: buf,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Sample response body")
+	})
+
+	_, err := app.Test(httptest.NewRequest("GET", "/?foo=bar&baz=moz", nil))
+	utils.AssertEqual(t, nil, err)
+
+	expected := fmt.Sprintf("foo=bar&baz=mozSample response body")
 	utils.AssertEqual(t, expected, buf.String())
 }
 
