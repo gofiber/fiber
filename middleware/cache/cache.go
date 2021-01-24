@@ -43,11 +43,6 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
-		// Don't execute middleware if Next returns true
-		if cfg.Next != nil && cfg.Next(c) {
-			return c.Next()
-		}
-
 		// Only cache GET methods
 		if c.Method() != fiber.MethodGet {
 			return c.Next()
@@ -103,6 +98,11 @@ func New(config ...Config) fiber.Handler {
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
 			return err
+		}
+
+		// Don't cache response if Next returns true
+		if cfg.Next != nil && cfg.Next(c) {
+			return nil
 		}
 
 		// Cache response

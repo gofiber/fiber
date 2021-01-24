@@ -231,6 +231,44 @@ func Test_Cache_NothingToCache(t *testing.T) {
 	}
 }
 
+func Test_Cache_CustomNext(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Next: func(c *fiber.Ctx) bool {
+			return !(c.Response().StatusCode() == fiber.StatusOK)
+		},
+		CacheControl: true,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString(time.Now().String())
+	})
+
+	app.Get("/error", func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusInternalServerError).SendString(time.Now().String())
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	bodyCached, err := ioutil.ReadAll(respCached.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, bytes.Equal(body, bodyCached))
+	utils.AssertEqual(t, true, respCached.Header.Get(fiber.HeaderCacheControl) != "")
+
+	_, err = app.Test(httptest.NewRequest("GET", "/error", nil))
+	utils.AssertEqual(t, nil, err)
+
+	errRespCached, err := app.Test(httptest.NewRequest("GET", "/error", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, errRespCached.Header.Get(fiber.HeaderCacheControl) == "")
+}
+
 func Test_CustomKey(t *testing.T) {
 	app := fiber.New()
 	var called bool
