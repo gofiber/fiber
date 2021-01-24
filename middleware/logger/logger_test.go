@@ -190,14 +190,16 @@ func Test_Response_Body(t *testing.T) {
 	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 
-	expected := fmt.Sprintf("Sample response body")
-	utils.AssertEqual(t, expected, buf.String())
+	expectedGetResponse := fmt.Sprintf("Sample response body")
+	utils.AssertEqual(t, expectedGetResponse, buf.String())
+
+	buf.Reset()		// Reset buffer to test POST 
 
 	_, err = app.Test(httptest.NewRequest("POST", "/test", nil))
 	utils.AssertEqual(t, nil, err)
 
-	expected = fmt.Sprintf("Post in test")
-	utils.AssertEqual(t, nil, err)
+	expectedPostResponse := fmt.Sprintf("Post in test")
+	utils.AssertEqual(t, expectedPostResponse, buf.String())
 }
 
 // go test -run Test_Logger_AppendUint
