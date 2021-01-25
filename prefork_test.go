@@ -79,7 +79,7 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 
 	os.Stdout = w
 
-	New().startupMessage(":3000", false, "")
+	New().startupProcess().startupMessage(":3000", false, "")
 
 	utils.AssertEqual(t, nil, w.Close())
 

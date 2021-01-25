@@ -92,6 +92,8 @@ type App struct {
 	stack [][]*Route
 	// Route stack divided by HTTP methods and route prefixes
 	treeStack []map[string][]*Route
+	// contains the information if the route stack has been changed to build the optimized tree
+	routesRefreshed bool
 	// Amount of registered routes
 	routesCount int
 	// Amount of registered handlers
@@ -538,7 +540,8 @@ func (app *App) Listener(ln net.Listener) error {
 		addr, tls := lnMetadata(ln)
 		return app.prefork(addr, tls)
 	}
-
+	// prepare the server for the start
+	app.startupProcess()
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
@@ -561,6 +564,8 @@ func (app *App) Listen(addr string) error {
 	if err != nil {
 		return err
 	}
+	// prepare the server for the start
+	app.startupProcess()
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
@@ -599,6 +604,8 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if err != nil {
 		return err
 	}
+	// prepare the server for the start
+	app.startupProcess()
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), true, "")
@@ -614,6 +621,8 @@ func (app *App) Config() Config {
 
 // Handler returns the server handler.
 func (app *App) Handler() fasthttp.RequestHandler {
+	// prepare the server for the start
+	app.startupProcess()
 	return app.handler
 }
 
@@ -669,6 +678,8 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	if _, err = conn.r.Write(dump); err != nil {
 		return nil, err
 	}
+	// prepare the server for the start
+	app.startupProcess()
 
 	// Serve conn to server
 	channel := make(chan error)
@@ -767,6 +778,15 @@ func (app *App) init() *App {
 	return app
 }
 
+// startupProcess Is the method which executes all the necessary processes just before the start of the server.
+func (app *App) startupProcess() *App {
+	app.mutex.Lock()
+	app.buildTree()
+	app.mutex.Unlock()
+	return app
+}
+
+// startupMessage prepares the startup message with the handler number, port, address and other information
 func (app *App) startupMessage(addr string, tls bool, pids string) {
 	// ignore child processes
 	if IsChild() {
