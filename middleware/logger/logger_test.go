@@ -141,12 +141,65 @@ func Test_Logger_All(t *testing.T) {
 		Output: buf,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest("GET", "/?foo=bar", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 
-	expected := fmt.Sprintf("%dhttp0.0.0.0example.com//%s%s%s%s%s%s%s%s%s-", os.Getpid(), cBlack, cRed, cGreen, cYellow, cBlue, cMagenta, cCyan, cWhite, cReset)
+	expected := fmt.Sprintf("%dhttp0.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%s-", os.Getpid(), cBlack, cRed, cGreen, cYellow, cBlue, cMagenta, cCyan, cWhite, cReset)
 	utils.AssertEqual(t, expected, buf.String())
+}
+
+// go test -run Test_Query_Params
+func Test_Query_Params(t *testing.T) {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${queryParams}",
+		Output: buf,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/?foo=bar&baz=moz", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+
+	expected := fmt.Sprintf("foo=bar&baz=moz")
+	utils.AssertEqual(t, expected, buf.String())
+}
+
+// go test -run Test_Response_Body
+func Test_Response_Body(t *testing.T) {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${resBody}",
+		Output: buf,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Sample response body")
+	})
+
+	app.Post("/test", func(c *fiber.Ctx) error {
+		return c.Send([]byte("Post in test"))
+	})
+
+	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+
+	expectedGetResponse := fmt.Sprintf("Sample response body")
+	utils.AssertEqual(t, expectedGetResponse, buf.String())
+
+	buf.Reset()		// Reset buffer to test POST 
+
+	_, err = app.Test(httptest.NewRequest("POST", "/test", nil))
+	utils.AssertEqual(t, nil, err)
+
+	expectedPostResponse := fmt.Sprintf("Post in test")
+	utils.AssertEqual(t, expectedPostResponse, buf.String())
 }
 
 // go test -run Test_Logger_AppendUint
