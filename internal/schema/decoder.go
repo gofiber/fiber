@@ -193,7 +193,7 @@ func (d *Decoder) decode(v reflect.Value, path string, parts []pathPart, values 
 		if v.Type().Kind() == reflect.Struct {
 			for i := 0; i < v.NumField(); i++ {
 				field := v.Field(i)
-				if field.Type().Kind() == reflect.Ptr && field.IsNil() && v.Type().Field(i).Anonymous == true {
+				if field.Type().Kind() == reflect.Ptr && field.IsNil() && v.Type().Field(i).Anonymous {
 					field.Set(reflect.New(field.Type().Elem()))
 				}
 			}
