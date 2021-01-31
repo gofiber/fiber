@@ -25,10 +25,10 @@ func AssertEqual(t testing.TB, expected, actual interface{}, description ...stri
 	var bType = "<nil>"
 
 	if expected != nil {
-		aType = fmt.Sprintf("%s", reflect.TypeOf(expected))
+		aType = reflect.TypeOf(expected).String()
 	}
 	if actual != nil {
-		bType = fmt.Sprintf("%s", reflect.TypeOf(actual))
+		bType = reflect.TypeOf(actual).String()
 	}
 
 	testName := "AssertEqual"

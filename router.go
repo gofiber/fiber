@@ -423,7 +423,7 @@ func (app *App) addRoute(method string, route *Route) {
 
 // buildTree build the prefix tree from the previously registered routes
 func (app *App) buildTree() *App {
-	if app.routesRefreshed == false {
+	if !app.routesRefreshed {
 		return app
 	}
 	// loop all the methods and stacks and create the prefix tree
