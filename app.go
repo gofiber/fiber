@@ -304,6 +304,11 @@ type Static struct {
 	//
 	// Optional. Default value 0.
 	MaxAge int `json:"max_age"`
+
+	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
+	Next func(c *Ctx) bool
 }
 
 // Default Config values
