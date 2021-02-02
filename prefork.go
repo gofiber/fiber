@@ -51,6 +51,9 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config) (err error) {
 		// kill current child proc when master exits
 		go watchMaster()
 
+		// prepare the server for the start
+		app.startupProcess()
+
 		// listen for incoming connections
 		return app.server.Serve(ln)
 	}
