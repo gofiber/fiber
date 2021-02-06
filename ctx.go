@@ -541,7 +541,7 @@ func (c *Ctx) JSON(data interface{}) error {
 		return err
 	}
 	c.fasthttp.Response.SetBodyRaw(raw)
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSONCharsetUTF8)
 	return nil
 }
 
