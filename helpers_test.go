@@ -267,7 +267,7 @@ func Test_Utils_lnMetadata(t *testing.T) {
 
 		utils.AssertEqual(t, nil, ln.Close())
 
-		addr, config := lnMetadata(ln)
+		addr, config := lnMetadata("tcp", ln)
 
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config == nil)
@@ -278,7 +278,7 @@ func Test_Utils_lnMetadata(t *testing.T) {
 
 		utils.AssertEqual(t, nil, err)
 
-		addr, config := lnMetadata(ln)
+		addr, config := lnMetadata("tcp4", ln)
 
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config == nil)
@@ -295,7 +295,7 @@ func Test_Utils_lnMetadata(t *testing.T) {
 
 		ln = tls.NewListener(ln, config)
 
-		addr, config := lnMetadata(ln)
+		addr, config := lnMetadata("tcp4", ln)
 
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config != nil)
