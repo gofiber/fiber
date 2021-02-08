@@ -284,7 +284,7 @@ type Config struct {
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
 	//
-	// Default: "tcp4"
+	// Default: NetworkTCP4
 	Network string
 }
 
@@ -403,7 +403,7 @@ func New(config ...Config) *App {
 		app.config.JSONEncoder = json.Marshal
 	}
 	if app.config.Network == "" {
-		app.config.Network = "tcp4"
+		app.config.Network = NetworkTCP4
 	}
 
 	// Init app

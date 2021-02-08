@@ -262,23 +262,23 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 
 func Test_Utils_lnMetadata(t *testing.T) {
 	t.Run("closed listen", func(t *testing.T) {
-		ln, err := net.Listen("tcp", ":0")
+		ln, err := net.Listen(NetworkTCP, ":0")
 		utils.AssertEqual(t, nil, err)
 
 		utils.AssertEqual(t, nil, ln.Close())
 
-		addr, config := lnMetadata("tcp", ln)
+		addr, config := lnMetadata(NetworkTCP, ln)
 
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config == nil)
 	})
 
 	t.Run("non tls", func(t *testing.T) {
-		ln, err := net.Listen("tcp", ":0")
+		ln, err := net.Listen(NetworkTCP, ":0")
 
 		utils.AssertEqual(t, nil, err)
 
-		addr, config := lnMetadata("tcp4", ln)
+		addr, config := lnMetadata(NetworkTCP4, ln)
 
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config == nil)
@@ -290,12 +290,12 @@ func Test_Utils_lnMetadata(t *testing.T) {
 
 		config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
-		ln, err := net.Listen("tcp4", ":0")
+		ln, err := net.Listen(NetworkTCP4, ":0")
 		utils.AssertEqual(t, nil, err)
 
 		ln = tls.NewListener(ln, config)
 
-		addr, config := lnMetadata("tcp4", ln)
+		addr, config := lnMetadata(NetworkTCP4, ln)
 
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config != nil)
