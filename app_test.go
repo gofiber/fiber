@@ -392,7 +392,7 @@ func Test_App_Listener_TLS(t *testing.T) {
 	}
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
-	ln, err := net.Listen("tcp4", ":3078")
+	ln, err := net.Listen(NetworkTCP4, ":3078")
 	utils.AssertEqual(t, nil, err)
 
 	ln = tls.NewListener(ln, config)
@@ -1151,7 +1151,7 @@ func Test_App_ReadTimeout(t *testing.T) {
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 
-		conn, err := net.Dial("tcp4", "127.0.0.1:4004")
+		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
 		utils.AssertEqual(t, nil, err)
 		defer conn.Close()
 
@@ -1183,7 +1183,7 @@ func Test_App_BadRequest(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		conn, err := net.Dial("tcp4", "127.0.0.1:4005")
+		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4005")
 		utils.AssertEqual(t, nil, err)
 		defer conn.Close()
 

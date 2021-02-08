@@ -280,6 +280,12 @@ type Config struct {
 	// Allowing for flexibility in using another json library for encoding
 	// Default: json.Marshal
 	JSONEncoder utils.JSONMarshal `json:"-"`
+
+	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
+	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
+	//
+	// Default: NetworkTCP4
+	Network string
 }
 
 // Static defines configuration options when defining static assets.
@@ -395,6 +401,9 @@ func New(config ...Config) *App {
 	}
 	if app.config.JSONEncoder == nil {
 		app.config.JSONEncoder = json.Marshal
+	}
+	if app.config.Network == "" {
+		app.config.Network = NetworkTCP4
 	}
 
 	// Init app
@@ -553,8 +562,8 @@ func NewError(code int, message ...string) *Error {
 func (app *App) Listener(ln net.Listener) error {
 	// Prefork is supported for custom listeners
 	if app.config.Prefork {
-		addr, tls := lnMetadata(ln)
-		return app.prefork(addr, tls)
+		addr, tlsConfig := lnMetadata(app.config.Network, ln)
+		return app.prefork(app.config.Network, addr, tlsConfig)
 	}
 	// prepare the server for the start
 	app.startupProcess()
@@ -573,10 +582,10 @@ func (app *App) Listener(ln net.Listener) error {
 func (app *App) Listen(addr string) error {
 	// Start prefork
 	if app.config.Prefork {
-		return app.prefork(addr, nil)
+		return app.prefork(app.config.Network, addr, nil)
 	}
 	// Setup listener
-	ln, err := net.Listen("tcp4", addr)
+	ln, err := net.Listen(app.config.Network, addr)
 	if err != nil {
 		return err
 	}
@@ -613,10 +622,10 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 				cert,
 			},
 		}
-		return app.prefork(addr, config)
+		return app.prefork(app.config.Network, addr, config)
 	}
 	// Setup listener
-	ln, err := net.Listen("tcp4", addr)
+	ln, err := net.Listen(app.config.Network, addr)
 	if err != nil {
 		return err
 	}

@@ -25,7 +25,7 @@ import (
 
 /* #nosec */
 // lnMetadata will close the listener and return the addr and tls config
-func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
+func lnMetadata(network string, ln net.Listener) (addr string, cfg *tls.Config) {
 	// Get addr
 	addr = ln.Addr().String()
 
@@ -37,7 +37,7 @@ func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
 	// Wait for the listener to be closed
 	var closed bool
 	for i := 0; i < 10; i++ {
-		conn, err := net.DialTimeout("tcp4", addr, 3*time.Second)
+		conn, err := net.DialTimeout(network, addr, 3*time.Second)
 		if err != nil || conn == nil {
 			closed = true
 			break
@@ -669,4 +669,11 @@ const (
 	HeaderXRequestedWith                  = "X-Requested-With"
 	HeaderXRobotsTag                      = "X-Robots-Tag"
 	HeaderXUACompatible                   = "X-UA-Compatible"
+)
+
+// Network types that are commonly used
+const (
+	NetworkTCP  = "tcp"
+	NetworkTCP4 = "tcp4"
+	NetworkTCP6 = "tcp6"
 )
