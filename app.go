@@ -29,12 +29,11 @@ import (
 	"github.com/gofiber/fiber/v2/internal/colorable"
 	"github.com/gofiber/fiber/v2/internal/isatty"
 	"github.com/gofiber/fiber/v2/utils"
-
 	"github.com/valyala/fasthttp"
 )
 
 // Version of current fiber package
-const Version = "2.4.1"
+const Version = "2.5.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
