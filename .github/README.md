@@ -533,6 +533,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 -   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
 -   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
 -   [sacsand/gofiber-firebaseauth](https://github.com/sacsand/gofiber-firebaseauth)
+-   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
 
 ## 👍 Contribute
 
