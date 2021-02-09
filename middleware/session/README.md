@@ -114,9 +114,11 @@ type Config struct {
 	// Optional. Default value memory.New()
 	Storage fiber.Storage
 
-	// Name of the session cookie. This cookie will store session key.
-	// Optional. Default value "session_id".
-	CookieName string
+	// KeyLookup is a string in the form of "<source>:<name>" that is used
+	// to extract session id from the request.
+	// Possible values: "header:<name>", "query:<name>" or "cookie:<name>"
+	// Optional. Default value "cookie:session_id".
+	KeyLookup string
 
 	// Domain of the CSRF cookie.
 	// Optional. Default value "".
@@ -141,6 +143,15 @@ type Config struct {
 	// KeyGenerator generates the session key.
 	// Optional. Default value utils.UUID
 	KeyGenerator func() string
+
+	// Deprecated, please use KeyLookup
+	CookieName string
+
+	// Source defines where to obtain the session id
+	source      Source
+
+	// The session name
+	sessionName string
 }
 ```
 
@@ -149,7 +160,7 @@ type Config struct {
 ```go
 var ConfigDefault = Config{
 	Expiration:   24 * time.Hour,
-	CookieName:   "session_id",
+	KeyLookUp:    "cookie:session_id",
 	KeyGenerator: utils.UUID,
 }
 ```
