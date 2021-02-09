@@ -638,6 +638,29 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	return app.server.ServeTLS(ln, certFile, keyFile)
 }
 
+func (app *App) ListenConfigTLS(addr string, config *tls.Config) error {
+	if app.config.Prefork {
+		return app.prefork(app.config.Network, addr, config)
+	}
+
+	// Setup listener
+	ln, err := net.Listen(app.config.Network, addr)
+	if err != nil {
+		return err
+	}
+	// prepare the server for the start
+	app.startupProcess()
+	// Print startup message
+	if !app.config.DisableStartupMessage {
+		app.startupMessage(addr, true, "")
+	}
+
+	// Start listening
+	return app.Server().Serve(
+		tls.NewListener(ln, config),
+	)
+}
+
 // Config returns the app config as value ( read-only ).
 func (app *App) Config() Config {
 	return app.config
