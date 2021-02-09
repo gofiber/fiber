@@ -535,7 +535,6 @@ This is a list of middlewares that are created by the Fiber community, please cr
 -   [sacsand/gofiber-firebaseauth](https://github.com/sacsand/gofiber-firebaseauth)
 -   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
 
-
 ## 👍 Contribute
 
 If you want to say **thank you** and/or support the active development of `Fiber`:
