@@ -24,8 +24,8 @@ func Test_Session(t *testing.T) {
 	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 
-	// set cookie
-	ctx.Request().Header.SetCookie(store.CookieName, "123")
+	// set session
+	ctx.Request().Header.SetCookie(store.sessionName, "123")
 
 	// get session
 	sess, err := store.Get(ctx)
@@ -93,7 +93,7 @@ func Test_Session_Types(t *testing.T) {
 	defer app.ReleaseCtx(ctx)
 
 	// set cookie
-	ctx.Request().Header.SetCookie(store.CookieName, "123")
+	ctx.Request().Header.SetCookie(store.sessionName, "123")
 
 	// get session
 	sess, err := store.Get(ctx)
@@ -198,7 +198,7 @@ func Test_Session_Store_Reset(t *testing.T) {
 	utils.AssertEqual(t, true, sess.Fresh())
 	// set value & save
 	sess.Set("hello", "world")
-	ctx.Request().Header.SetCookie(store.CookieName, sess.ID())
+	ctx.Request().Header.SetCookie(store.sessionName, sess.ID())
 	sess.Save()
 
 	// reset store
@@ -214,45 +214,91 @@ func Test_Session_Store_Reset(t *testing.T) {
 func Test_Session_Save(t *testing.T) {
 	t.Parallel()
 
-	// session store
-	store := New()
+	t.Run("save to cookie", func(t *testing.T) {
+		// session store
+		store := New()
+		// fiber instance
+		app := fiber.New()
+		// fiber context
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		// get session
+		sess, _ := store.Get(ctx)
+		// set value
+		sess.Set("name", "john")
 
-	// fiber instance
-	app := fiber.New()
+		// save session
+		err := sess.Save()
+		utils.AssertEqual(t, nil, err)
+	})
 
-	// fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
+	t.Run("save to header", func(t *testing.T) {
+		// session store
+		store := New(Config{
+			KeyLookup: "header:session_id",
+		})
+		// fiber instance
+		app := fiber.New()
+		// fiber context
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		// get session
+		sess, _ := store.Get(ctx)
+		// set value
+		sess.Set("name", "john")
 
-	// get store
-	sess, _ := store.Get(ctx)
-
-	// set value
-	sess.Set("name", "john")
-
-	// save session
-	err := sess.Save()
-	utils.AssertEqual(t, nil, err)
-
+		// save session
+		err := sess.Save()
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, store.getSessionID(ctx), string(ctx.Response().Header.Peek(store.sessionName)))
+		utils.AssertEqual(t, store.getSessionID(ctx), string(ctx.Request().Header.Peek(store.sessionName)))
+	})
 }
 
 // go test -run Test_Session_Reset
 func Test_Session_Reset(t *testing.T) {
 	t.Parallel()
-	// session store
-	store := New()
-	// fiber instance
-	app := fiber.New()
-	// fiber context
-	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(ctx)
-	// get session
-	sess, _ := store.Get(ctx)
 
-	sess.Set("name", "fenny")
-	sess.Destroy()
-	name := sess.Get("name")
-	utils.AssertEqual(t, nil, name)
+	t.Run("reset from cookie", func(t *testing.T) {
+		// session store
+		store := New()
+		// fiber instance
+		app := fiber.New()
+		// fiber context
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		// get session
+		sess, _ := store.Get(ctx)
+
+		sess.Set("name", "fenny")
+		sess.Destroy()
+		name := sess.Get("name")
+		utils.AssertEqual(t, nil, name)
+	})
+
+	t.Run("reset from header", func(t *testing.T) {
+		// session store
+		store := New(Config{
+			KeyLookup: "header:session_id",
+		})
+		// fiber instance
+		app := fiber.New()
+		// fiber context
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		// get session
+		sess, _ := store.Get(ctx)
+
+		// set value & save
+		sess.Set("name", "fenny")
+		_ = sess.Save()
+		sess, _ = store.Get(ctx)
+
+		err := sess.Destroy()
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "", string(ctx.Response().Header.Peek(store.sessionName)))
+		utils.AssertEqual(t, "", string(ctx.Request().Header.Peek(store.sessionName)))
+	})
 }
 
 // go test -run Test_Session_Custom_Config
@@ -283,7 +329,7 @@ func Test_Session_Cookie(t *testing.T) {
 	sess.Save()
 
 	// cookie should be set on Save ( even if empty data )
-	utils.AssertEqual(t, 84, len(ctx.Response().Header.PeekCookie(store.CookieName)))
+	utils.AssertEqual(t, 84, len(ctx.Response().Header.PeekCookie(store.sessionName)))
 }
 
 // go test -run Test_Session_Cookie_In_Response
@@ -315,7 +361,7 @@ func Benchmark_Session(b *testing.B) {
 	app, store := fiber.New(), New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.Request().Header.SetCookie(store.CookieName, "12356789")
+	c.Request().Header.SetCookie(store.sessionName, "12356789")
 
 	b.Run("default", func(b *testing.B) {
 		b.ReportAllocs()
