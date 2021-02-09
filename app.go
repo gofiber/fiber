@@ -638,9 +638,12 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	return app.server.ServeTLS(ln, certFile, keyFile)
 }
 
-func (app *App) ListenConfigTLS(addr string, config *tls.Config) error {
+// ListenConfigTLS serves HTTPs requests from the given addr.
+//  addr - address to listen on
+//  conf - custom TLS configuration
+func (app *App) ListenConfigTLS(addr string, conf *tls.Config) error {
 	if app.config.Prefork {
-		return app.prefork(app.config.Network, addr, config)
+		return app.prefork(app.config.Network, addr, conf)
 	}
 
 	// Setup listener
@@ -657,7 +660,7 @@ func (app *App) ListenConfigTLS(addr string, config *tls.Config) error {
 
 	// Start listening
 	return app.Server().Serve(
-		tls.NewListener(ln, config),
+		tls.NewListener(ln, conf),
 	)
 }
 
