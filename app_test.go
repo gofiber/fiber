@@ -988,6 +988,47 @@ func Test_App_Listen_Prefork(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(":99999"))
 }
 
+func Test_App_ListenConfigTLS(t *testing.T) {
+	app := New(Config{
+		Network:               NetworkTCP4,
+		DisableStartupMessage: true,
+	})
+
+	crt, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	cfg := &tls.Config{Certificates: []tls.Certificate{crt}}
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenConfigTLS("127.0.0.1:3078", cfg))
+}
+
+func Test_App_ListenConfigTLS_Prefork(t *testing.T) {
+	app := New(Config{
+		Network:               NetworkTCP4,
+		DisableStartupMessage: true,
+		Prefork:               true,
+	})
+
+	crt, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	cfg := &tls.Config{Certificates: []tls.Certificate{crt}}
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenConfigTLS("127.0.0.1:3079", cfg))
+}
+
 // go test -run Test_App_Listener
 func Test_App_Listener(t *testing.T) {
 	app := New()
