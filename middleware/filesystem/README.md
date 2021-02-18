@@ -5,11 +5,13 @@ Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables
 ⚠️ **`:params` & `:optionals?` within the prefix path are not supported!**
 
 ## Table of Contents
+
 - [Filesystem Middleware](#filesystem-middleware)
 	- [Table of Contents](#table-of-contents)
 	- [Signatures](#signatures)
 	- [Examples](#examples)
 		- [Config](#config)
+		- [embed](#embed)
 		- [pkger](#pkger)
 		- [packr](#packr)
 		- [go.rice](#gorice)
@@ -17,7 +19,6 @@ Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables
 		- [statik](#statik)
 	- [Config](#config-1)
 		- [Default Config](#default-config)
-
 
 ## Signatures
 
@@ -54,6 +55,38 @@ app.Use(filesystem.New(filesystem.Config{
 	NotFoundFile: "404.html",
 	MaxAge:       3600,
 }))
+```
+
+> If your environment (Go 1.16+) supports it, we recommend using Go Embed instead of the other solutions listed as this one is native to Go and the easiest to use.
+
+### embed
+
+[Embed](https://golang.org/pkg/embed/) is the native method to embed files in a Golang excecutable. Introduced in Go 1.16.
+
+```go
+package main
+
+import (
+	"embed"
+	"log"
+	"net/http"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/filesystem"
+)
+
+//go:embed index.html
+var f embed.FS
+
+func main() {
+	app := fiber.New()
+
+	app.Use("/", filesystem.New(filesystem.Config{
+		Root: http.FS(f),
+	}))
+
+	log.Fatal(app.Listen(":3000"))
+}
 ```
 
 ### pkger
