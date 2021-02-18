@@ -252,6 +252,18 @@ func Test_Client_Agent_QueryString(t *testing.T) {
 	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")
 }
 
+func Test_Client_Agent_BodyString(t *testing.T) {
+	handler := func(c *Ctx) error {
+		return c.Send(c.Request().Body())
+	}
+
+	wrapAgent := func(a *Agent) {
+		a.BodyString("foo=bar&bar=baz")
+	}
+
+	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")
+}
+
 func Test_Client_Agent_Cookie(t *testing.T) {
 	handler := func(c *Ctx) error {
 		return c.SendString(

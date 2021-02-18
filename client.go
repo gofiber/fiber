@@ -259,6 +259,13 @@ func (a *Agent) QueryString(queryString string) *Agent {
 	return a
 }
 
+// BodyString sets request body.
+func (a *Agent) BodyString(bodyString string) *Agent {
+	a.req.SetBodyString(bodyString)
+
+	return a
+}
+
 // BodyStream sets request body stream and, optionally body size.
 //
 // If bodySize is >= 0, then the bodyStream must provide exactly bodySize bytes
