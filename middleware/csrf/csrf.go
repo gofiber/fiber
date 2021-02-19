@@ -84,21 +84,20 @@ func New(config ...Config) fiber.Handler {
 			if err != nil {
 				return cfg.ErrorHandler(c, err)
 			}
+			
+			// Expire cookie
+			c.Cookie(&fiber.Cookie{
+				Name:     cfg.CookieName,
+				Domain:   cfg.CookieDomain,
+				Path:     cfg.CookiePath,
+				Expires:  time.Now().Add(-1 * time.Minute),
+				Secure:   cfg.CookieSecure,
+				HTTPOnly: cfg.CookieHTTPOnly,
+				SameSite: cfg.CookieSameSite,
+			})
 
 			// if token does not exist in Storage
 			if manager.getRaw(token) == nil {
-
-				// Expire cookie
-				c.Cookie(&fiber.Cookie{
-					Name:     cfg.CookieName,
-					Domain:   cfg.CookieDomain,
-					Path:     cfg.CookiePath,
-					Expires:  time.Now().Add(-1 * time.Minute),
-					Secure:   cfg.CookieSecure,
-					HTTPOnly: cfg.CookieHTTPOnly,
-					SameSite: cfg.CookieSameSite,
-				})
-
 				return cfg.ErrorHandler(c, err)
 			}
 
