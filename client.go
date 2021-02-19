@@ -151,6 +151,8 @@ func addMissingPort(addr string, isTLS bool) string {
 	return net.JoinHostPort(addr, strconv.Itoa(port))
 }
 
+/************************** Header Setting **************************/
+
 // Set sets the given 'key: value' header.
 //
 // Use Add for setting multiple header values under the same key.
@@ -170,13 +172,6 @@ func (a *Agent) Add(k, v string) *Agent {
 	return a
 }
 
-// Host sets host for the uri.
-func (a *Agent) Host(host string) *Agent {
-	a.req.URI().SetHost(host)
-
-	return a
-}
-
 // ConnectionClose sets 'Connection: close' header.
 func (a *Agent) ConnectionClose() *Agent {
 	a.req.Header.SetConnectionClose()
@@ -187,16 +182,6 @@ func (a *Agent) ConnectionClose() *Agent {
 // UserAgent sets User-Agent header value.
 func (a *Agent) UserAgent(userAgent string) *Agent {
 	a.req.Header.SetUserAgent(userAgent)
-
-	return a
-}
-
-// Debug mode enables logging request and response detail
-func (a *Agent) Debug(w ...io.Writer) *Agent {
-	a.debugWriter = os.Stdout
-	if len(w) > 0 {
-		a.debugWriter = w[0]
-	}
 
 	return a
 }
@@ -217,9 +202,69 @@ func (a *Agent) Cookies(kv ...string) *Agent {
 	return a
 }
 
-// Timeout sets request timeout duration.
-func (a *Agent) Timeout(timeout time.Duration) *Agent {
-	a.timeout = timeout
+// Referer sets Referer header value.
+func (a *Agent) Referer(referer string) *Agent {
+	a.req.Header.SetReferer(referer)
+
+	return a
+}
+
+// ContentType sets Content-Type header value.
+func (a *Agent) ContentType(contentType string) *Agent {
+	a.req.Header.SetContentType(contentType)
+
+	return a
+}
+
+/************************** End Header Setting **************************/
+
+/************************** URI Setting **************************/
+
+// Host sets host for the uri.
+func (a *Agent) Host(host string) *Agent {
+	a.req.URI().SetHost(host)
+
+	return a
+}
+
+// QueryString sets URI query string.
+func (a *Agent) QueryString(queryString string) *Agent {
+	a.req.URI().SetQueryString(queryString)
+
+	return a
+}
+
+/************************** End URI Setting **************************/
+
+/************************** Request Setting **************************/
+
+// BodyString sets request body.
+func (a *Agent) BodyString(bodyString string) *Agent {
+	a.req.SetBodyString(bodyString)
+
+	return a
+}
+
+// BodyStream sets request body stream and, optionally body size.
+//
+// If bodySize is >= 0, then the bodyStream must provide exactly bodySize bytes
+// before returning io.EOF.
+//
+// If bodySize < 0, then bodyStream is read until io.EOF.
+//
+// bodyStream.Close() is called after finishing reading all body data
+// if it implements io.Closer.
+//
+// Note that GET and HEAD requests cannot have body.
+func (a *Agent) BodyStream(bodyStream io.Reader, bodySize int) *Agent {
+	a.req.SetBodyStream(bodyStream, bodySize)
+
+	return a
+}
+
+// Request sets custom request for createAgent.
+func (a *Agent) Request(req *Request) *Agent {
+	a.customReq = req
 
 	return a
 }
@@ -252,33 +297,23 @@ func (a *Agent) Form(args *Args) *Agent {
 	return a
 }
 
-// QueryString sets URI query string.
-func (a *Agent) QueryString(queryString string) *Agent {
-	a.req.URI().SetQueryString(queryString)
+/************************** End Request Setting **************************/
+
+/************************** Agent Setting **************************/
+
+// Debug mode enables logging request and response detail
+func (a *Agent) Debug(w ...io.Writer) *Agent {
+	a.debugWriter = os.Stdout
+	if len(w) > 0 {
+		a.debugWriter = w[0]
+	}
 
 	return a
 }
 
-// BodyString sets request body.
-func (a *Agent) BodyString(bodyString string) *Agent {
-	a.req.SetBodyString(bodyString)
-
-	return a
-}
-
-// BodyStream sets request body stream and, optionally body size.
-//
-// If bodySize is >= 0, then the bodyStream must provide exactly bodySize bytes
-// before returning io.EOF.
-//
-// If bodySize < 0, then bodyStream is read until io.EOF.
-//
-// bodyStream.Close() is called after finishing reading all body data
-// if it implements io.Closer.
-//
-// Note that GET and HEAD requests cannot have body.
-func (a *Agent) BodyStream(bodyStream io.Reader, bodySize int) *Agent {
-	a.req.SetBodyStream(bodyStream, bodySize)
+// Timeout sets request timeout duration.
+func (a *Agent) Timeout(timeout time.Duration) *Agent {
+	a.timeout = timeout
 
 	return a
 }
@@ -309,33 +344,14 @@ func (a *Agent) TLSConfig(config *tls.Config) *Agent {
 	return a
 }
 
-// Request sets custom request for createAgent.
-func (a *Agent) Request(req *Request) *Agent {
-	a.customReq = req
-
-	return a
-}
-
-// Referer sets Referer header value.
-func (a *Agent) Referer(referer string) *Agent {
-	a.req.Header.SetReferer(referer)
-
-	return a
-}
-
-// ContentType sets Content-Type header value.
-func (a *Agent) ContentType(contentType string) *Agent {
-	a.req.Header.SetContentType(contentType)
-
-	return a
-}
-
 // MaxRedirectsCount sets max redirect count for GET and HEAD.
 func (a *Agent) MaxRedirectsCount(count int) *Agent {
 	a.maxRedirectsCount = count
 
 	return a
 }
+
+/************************** End Agent Setting **************************/
 
 // Bytes returns the status code, bytes body and errors of url.
 func (a *Agent) Bytes(customResp ...*Response) (code int, body []byte, errs []error) {
