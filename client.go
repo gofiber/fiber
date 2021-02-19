@@ -6,8 +6,11 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"mime/multipart"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -90,8 +93,10 @@ type Agent struct {
 	args                     *Args
 	timeout                  time.Duration
 	errs                     []error
+	formFiles                []*FormFile
 	debugWriter              io.Writer
 	maxRedirectsCount        int
+	boundary                 string
 	Name                     string
 	NoDefaultUserAgentHeader bool
 	reuse                    bool
@@ -306,12 +311,125 @@ func (a *Agent) XML(v interface{}) *Agent {
 
 // Form sends request with body if args is non-nil.
 //
-// Note that this will force http method to post.
+// It is recommended obtaining args via AcquireArgs
+// in performance-critical code.
 func (a *Agent) Form(args *Args) *Agent {
 	a.req.Header.SetContentType(MIMEApplicationForm)
 
 	if args != nil {
 		a.req.SetBody(args.QueryString())
+	}
+
+	return a
+}
+
+// FormFile represents multipart form file
+type FormFile struct {
+	// Fieldname is form file's field name
+	Fieldname string
+	// Name is form file's name
+	Name string
+	// Content is form file's content
+	Content []byte
+	// autoRelease indicates if returns the object
+	// acquired via AcquireFormFile to the pool.
+	autoRelease bool
+}
+
+// FileData appends files for multipart form request.
+//
+// It is recommended obtaining formFile via AcquireFormFile
+// in performance-critical code.
+func (a *Agent) FileData(formFiles ...*FormFile) *Agent {
+	a.formFiles = append(a.formFiles, formFiles...)
+
+	return a
+}
+
+// SendFile reads file and appends it to multipart form request.
+func (a *Agent) SendFile(filename string, fieldname ...string) *Agent {
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		a.errs = append(a.errs, err)
+		return a
+	}
+
+	ff := AcquireFormFile()
+	if len(fieldname) > 0 && fieldname[0] != "" {
+		ff.Fieldname = fieldname[0]
+	} else {
+		ff.Fieldname = "file" + strconv.Itoa(len(a.formFiles)+1)
+	}
+	ff.Name = filepath.Base(filename)
+	ff.Content = append(ff.Content, content...)
+	ff.autoRelease = true
+
+	a.formFiles = append(a.formFiles, ff)
+
+	return a
+}
+
+// SendFiles reads files and appends them to multipart form request.
+//
+// Examples:
+//		SendFile("/path/to/file1", "fieldname1", "/path/to/file2")
+func (a *Agent) SendFiles(filenamesAndFieldnames ...string) *Agent {
+	pairs := len(filenamesAndFieldnames)
+	if pairs&1 == 1 {
+		filenamesAndFieldnames = append(filenamesAndFieldnames, "")
+	}
+
+	for i := 0; i < pairs; i += 2 {
+		a.SendFile(filenamesAndFieldnames[i], filenamesAndFieldnames[i+1])
+	}
+
+	return a
+}
+
+// Boundary sets boundary for multipart form request.
+func (a *Agent) Boundary(boundary string) *Agent {
+	a.boundary = boundary
+
+	return a
+}
+
+// MultipartForm sends multipart form request with k-v and files.
+//
+// It is recommended obtaining args via AcquireArgs
+// in performance-critical code.
+func (a *Agent) MultipartForm(args *Args) *Agent {
+	mw := multipart.NewWriter(a.req.BodyWriter())
+
+	if a.boundary != "" {
+		if err := mw.SetBoundary(a.boundary); err != nil {
+			a.errs = append(a.errs, err)
+			return a
+		}
+	}
+
+	a.req.Header.SetMultipartFormBoundary(mw.Boundary())
+
+	if args != nil {
+		args.VisitAll(func(key, value []byte) {
+			if err := mw.WriteField(getString(key), getString(value)); err != nil {
+				a.errs = append(a.errs, err)
+			}
+		})
+	}
+
+	for _, ff := range a.formFiles {
+		w, err := mw.CreateFormFile(ff.Fieldname, ff.Name)
+		if err != nil {
+			a.errs = append(a.errs, err)
+			continue
+		}
+		if _, err = w.Write(ff.Content); err != nil {
+			a.errs = append(a.errs, err)
+		}
+	}
+
+	if err := mw.Close(); err != nil {
+		a.errs = append(a.errs, err)
 	}
 
 	return a
@@ -479,8 +597,16 @@ func (a *Agent) reset() {
 	a.reuse = false
 	a.parsed = false
 	a.maxRedirectsCount = 0
+	a.boundary = ""
 	a.Name = ""
 	a.NoDefaultUserAgentHeader = false
+	for i, ff := range a.formFiles {
+		if ff.autoRelease {
+			ReleaseFormFile(ff)
+		}
+		a.formFiles[i] = nil
+	}
+	a.formFiles = a.formFiles[:0]
 }
 
 var (
@@ -489,6 +615,7 @@ var (
 	requestPool  sync.Pool
 	responsePool sync.Pool
 	argsPool     sync.Pool
+	formFilePool sync.Pool
 )
 
 // AcquireAgent returns an empty Agent instance from createAgent pool.
@@ -603,6 +730,30 @@ func AcquireArgs() *Args {
 func ReleaseArgs(a *Args) {
 	a.Reset()
 	argsPool.Put(a)
+}
+
+// AcquireFormFile returns an empty FormFile object from the pool.
+//
+// The returned FormFile may be returned to the pool with ReleaseFormFile
+// when no longer needed. This allows reducing GC load.
+func AcquireFormFile() *FormFile {
+	v := formFilePool.Get()
+	if v == nil {
+		return &FormFile{}
+	}
+	return v.(*FormFile)
+}
+
+// ReleaseFormFile returns the object acquired via AcquireFormFile to the pool.
+//
+// String not access the released FormFile object, otherwise data races may occur.
+func ReleaseFormFile(ff *FormFile) {
+	ff.Fieldname = ""
+	ff.Name = ""
+	ff.Content = ff.Content[:0]
+	ff.autoRelease = false
+
+	formFilePool.Put(ff)
 }
 
 var (

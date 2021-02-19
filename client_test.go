@@ -4,7 +4,11 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	"io/ioutil"
+	"mime/multipart"
 	"net"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -419,15 +423,155 @@ func Test_Client_Agent_Form(t *testing.T) {
 
 	args := AcquireArgs()
 
-	args.Set("a", "b")
+	args.Set("foo", "bar")
 
 	wrapAgent := func(a *Agent) {
 		a.Form(args)
 	}
 
-	testAgent(t, handler, wrapAgent, "a=b")
+	testAgent(t, handler, wrapAgent, "foo=bar")
 
 	ReleaseArgs(args)
+}
+
+func Test_Client_Agent_Multipart(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	app.Post("/", func(c *Ctx) error {
+		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
+
+		mf, err := c.MultipartForm()
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "bar", mf.Value["foo"][0])
+
+		return c.Send(c.Request().Body())
+	})
+
+	go app.Listener(ln) //nolint:errcheck
+
+	args := AcquireArgs()
+
+	args.Set("foo", "bar")
+
+	a := Post("http://example.com").
+		Boundary("myBoundary").
+		MultipartForm(args)
+
+	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+	code, body, errs := a.String()
+
+	utils.AssertEqual(t, StatusOK, code)
+	utils.AssertEqual(t, "--myBoundary\r\nContent-Disposition: form-data; name=\"foo\"\r\n\r\nbar\r\n--myBoundary--\r\n", body)
+	utils.AssertEqual(t, 0, len(errs))
+	ReleaseArgs(args)
+}
+
+func Test_Client_Agent_Multipart_SendFiles(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	app.Post("/", func(c *Ctx) error {
+		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
+
+		mf, err := c.MultipartForm()
+		utils.AssertEqual(t, nil, err)
+
+		fh1 := mf.File["field1"][0]
+		utils.AssertEqual(t, fh1.Filename, "name")
+		buf := make([]byte, fh1.Size, fh1.Size)
+		f, err := fh1.Open()
+		utils.AssertEqual(t, nil, err)
+		defer func() { _ = f.Close() }()
+		_, err = f.Read(buf)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "form file", string(buf))
+
+		checkFormFile(t, mf.File["index"][0], ".github/testdata/index.html")
+		checkFormFile(t, mf.File["file3"][0], ".github/testdata/index.tmpl")
+
+		return c.SendString("multipart form files")
+	})
+
+	go app.Listener(ln) //nolint:errcheck
+
+	for i := 0; i < 5; i++ {
+		ff := AcquireFormFile()
+		ff.Fieldname = "field1"
+		ff.Name = "name"
+		ff.Content = []byte("form file")
+
+		a := Post("http://example.com").
+			Boundary("myBoundary").
+			FileData(ff).
+			SendFiles(".github/testdata/index.html", "index", ".github/testdata/index.tmpl").
+			MultipartForm(nil)
+
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+		code, body, errs := a.String()
+
+		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, "multipart form files", body)
+		utils.AssertEqual(t, 0, len(errs))
+
+		ReleaseFormFile(ff)
+	}
+}
+
+func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
+	basename := filepath.Base(filename)
+	utils.AssertEqual(t, fh.Filename, basename)
+
+	b1, err := ioutil.ReadFile(filename)
+	utils.AssertEqual(t, nil, err)
+
+	b2 := make([]byte, fh.Size, fh.Size)
+	f, err := fh.Open()
+	utils.AssertEqual(t, nil, err)
+	defer func() { _ = f.Close() }()
+	_, err = f.Read(b2)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, b1, b2)
+}
+
+func Test_Client_Agent_Multipart_Random_Boundary(t *testing.T) {
+	t.Parallel()
+
+	a := Post("http://example.com").
+		MultipartForm(nil)
+
+	reg := regexp.MustCompile(`multipart/form-data; boundary=\w{30}`)
+
+	utils.AssertEqual(t, true, reg.Match(a.req.Header.Peek(HeaderContentType)))
+}
+
+func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
+	t.Parallel()
+
+	a := Post("http://example.com").
+		Boundary("*").
+		MultipartForm(nil)
+
+	utils.AssertEqual(t, 1, len(a.errs))
+	utils.AssertEqual(t, "mime: invalid boundary character", a.errs[0].Error())
+}
+
+func Test_Client_Agent_SendFile_Error(t *testing.T) {
+	t.Parallel()
+
+	a := Post("http://example.com").
+		SendFile("", "")
+
+	utils.AssertEqual(t, 1, len(a.errs))
+	utils.AssertEqual(t, "open : no such file or directory", a.errs[0].Error())
 }
 
 func Test_Client_Debug(t *testing.T) {
