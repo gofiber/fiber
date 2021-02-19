@@ -368,21 +368,46 @@ func Test_Client_Agent_Json(t *testing.T) {
 	}
 
 	wrapAgent := func(a *Agent) {
-		a.Json(jsonData{F: "f"})
+		a.JSON(data{Success: true})
 	}
 
-	testAgent(t, handler, wrapAgent, `{"f":"f"}`)
+	testAgent(t, handler, wrapAgent, `{"success":true}`)
 }
 
 func Test_Client_Agent_Json_Error(t *testing.T) {
 	a := Get("http://example.com").
-		Json(complex(1, 1))
+		JSON(complex(1, 1))
 
 	_, body, errs := a.String()
 
 	utils.AssertEqual(t, "", body)
 	utils.AssertEqual(t, 1, len(errs))
 	utils.AssertEqual(t, "json: unsupported type: complex128", errs[0].Error())
+}
+
+func Test_Client_Agent_XML(t *testing.T) {
+	handler := func(c *Ctx) error {
+		utils.AssertEqual(t, MIMEApplicationXML, string(c.Request().Header.ContentType()))
+
+		return c.Send(c.Request().Body())
+	}
+
+	wrapAgent := func(a *Agent) {
+		a.XML(data{Success: true})
+	}
+
+	testAgent(t, handler, wrapAgent, "<data><success>true</success></data>")
+}
+
+func Test_Client_Agent_XML_Error(t *testing.T) {
+	a := Get("http://example.com").
+		XML(complex(1, 1))
+
+	_, body, errs := a.String()
+
+	utils.AssertEqual(t, "", body)
+	utils.AssertEqual(t, 1, len(errs))
+	utils.AssertEqual(t, "xml: unsupported type: complex128", errs[0].Error())
 }
 
 func Test_Client_Agent_Form(t *testing.T) {
@@ -403,10 +428,6 @@ func Test_Client_Agent_Form(t *testing.T) {
 	testAgent(t, handler, wrapAgent, "a=b")
 
 	ReleaseArgs(args)
-}
-
-type jsonData struct {
-	F string `json:"f"`
 }
 
 func Test_Client_Debug(t *testing.T) {
@@ -522,10 +543,6 @@ func Test_Client_Agent_TLS(t *testing.T) {
 	utils.AssertEqual(t, 0, len(errs))
 	utils.AssertEqual(t, StatusOK, code)
 	utils.AssertEqual(t, "tls", body)
-}
-
-type data struct {
-	Success bool `json:"success"`
 }
 
 func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
@@ -664,4 +681,8 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 		utils.AssertEqual(t, excepted, body)
 		utils.AssertEqual(t, 0, len(errs))
 	}
+}
+
+type data struct {
+	Success bool `json:"success" xml:"success"`
 }

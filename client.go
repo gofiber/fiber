@@ -3,6 +3,7 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net"
@@ -277,11 +278,24 @@ func (a *Agent) Request(req *Request) *Agent {
 	return a
 }
 
-// Json sends a json request.
-func (a *Agent) Json(v interface{}) *Agent {
+// JSON sends a JSON request.
+func (a *Agent) JSON(v interface{}) *Agent {
 	a.req.Header.SetContentType(MIMEApplicationJSON)
 
 	if body, err := json.Marshal(v); err != nil {
+		a.errs = append(a.errs, err)
+	} else {
+		a.req.SetBody(body)
+	}
+
+	return a
+}
+
+// XML sends a XML request.
+func (a *Agent) XML(v interface{}) *Agent {
+	a.req.Header.SetContentType(MIMEApplicationXML)
+
+	if body, err := xml.Marshal(v); err != nil {
 		a.errs = append(a.errs, err)
 	} else {
 		a.req.SetBody(body)
