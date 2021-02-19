@@ -234,6 +234,14 @@ func (a *Agent) QueryString(queryString string) *Agent {
 	return a
 }
 
+// BasicAuth sets URI username and password.
+func (a *Agent) BasicAuth(username, password string) *Agent {
+	a.req.URI().SetUsername(username)
+	a.req.URI().SetPassword(password)
+
+	return a
+}
+
 /************************** End URI Setting **************************/
 
 /************************** Request Setting **************************/
@@ -289,9 +297,7 @@ func (a *Agent) Form(args *Args) *Agent {
 	a.req.Header.SetContentType(MIMEApplicationForm)
 
 	if args != nil {
-		if _, err := args.WriteTo(a.req.BodyWriter()); err != nil {
-			a.errs = append(a.errs, err)
-		}
+		a.req.SetBody(args.QueryString())
 	}
 
 	return a

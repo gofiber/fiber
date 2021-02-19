@@ -3,6 +3,7 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"net"
 	"strings"
 	"testing"
@@ -277,6 +278,24 @@ func Test_Client_Agent_QueryString(t *testing.T) {
 	}
 
 	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")
+}
+
+func Test_Client_Agent_BasicAuth(t *testing.T) {
+	handler := func(c *Ctx) error {
+		// Get authorization header
+		auth := c.Get(HeaderAuthorization)
+		// Decode the header contents
+		raw, err := base64.StdEncoding.DecodeString(auth[6:])
+		utils.AssertEqual(t, nil, err)
+
+		return c.Send(raw)
+	}
+
+	wrapAgent := func(a *Agent) {
+		a.BasicAuth("foo", "bar")
+	}
+
+	testAgent(t, handler, wrapAgent, "foo:bar")
 }
 
 func Test_Client_Agent_BodyString(t *testing.T) {
