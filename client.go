@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/gofiber/fiber/v2/internal/encoding/json"
 	"github.com/valyala/fasthttp"
 )
@@ -59,6 +61,18 @@ type Client struct {
 	// NoDefaultUserAgentHeader when set to true, causes the default
 	// User-Agent header to be excluded from the Request.
 	NoDefaultUserAgentHeader bool
+
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// JSONMarshal
+	//
+	// Allowing for flexibility in using another json library for encoding
+	JSONEncoder utils.JSONMarshal
+
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// JSONUnmarshal
+	//
+	// Allowing for flexibility in using another json library for decoding
+	JSONDecoder utils.JSONUnmarshal
 }
 
 // Get returns a agent with http method GET.
@@ -116,6 +130,8 @@ func (c *Client) createAgent(method, url string) *Agent {
 
 	a.Name = c.UserAgent
 	a.NoDefaultUserAgentHeader = c.NoDefaultUserAgentHeader
+	a.jsonDecoder = c.JSONDecoder
+	a.jsonEncoder = c.JSONEncoder
 
 	if err := a.Parse(); err != nil {
 		a.errs = append(a.errs, err)
@@ -135,6 +151,8 @@ type Agent struct {
 	formFiles                []*FormFile
 	debugWriter              io.Writer
 	mw                       multipartWriter
+	jsonEncoder              utils.JSONMarshal
+	jsonDecoder              utils.JSONUnmarshal
 	maxRedirectsCount        int
 	boundary                 string
 	Name                     string
@@ -450,9 +468,13 @@ func (a *Agent) Request(req *Request) *Agent {
 
 // JSON sends a JSON request.
 func (a *Agent) JSON(v interface{}) *Agent {
+	if a.jsonEncoder == nil {
+		a.jsonEncoder = json.Marshal
+	}
+
 	a.req.Header.SetContentType(MIMEApplicationJSON)
 
-	if body, err := json.Marshal(v); err != nil {
+	if body, err := a.jsonEncoder(v); err != nil {
 		a.errs = append(a.errs, err)
 	} else {
 		a.req.SetBody(body)
@@ -658,6 +680,20 @@ func (a *Agent) MaxRedirectsCount(count int) *Agent {
 	return a
 }
 
+// JSONEncoder sets custom json encoder.
+func (a *Agent) JSONEncoder(jsonEncoder utils.JSONMarshal) *Agent {
+	a.jsonEncoder = jsonEncoder
+
+	return a
+}
+
+// JSONDecoder sets custom json decoder.
+func (a *Agent) JSONDecoder(jsonDecoder utils.JSONUnmarshal) *Agent {
+	a.jsonDecoder = jsonDecoder
+
+	return a
+}
+
 /************************** End Agent Setting **************************/
 
 // Bytes returns the status code, bytes body and errors of url.
@@ -738,9 +774,13 @@ func (a *Agent) String(resp ...*Response) (int, string, []error) {
 // Struct returns the status code, bytes body and errors of url.
 // And bytes body will be unmarshalled to given v.
 func (a *Agent) Struct(v interface{}, resp ...*Response) (code int, body []byte, errs []error) {
+	if a.jsonDecoder == nil {
+		a.jsonDecoder = json.Unmarshal
+	}
+
 	code, body, errs = a.Bytes(resp...)
 
-	if err := json.Unmarshal(body, v); err != nil {
+	if err := a.jsonDecoder(body, v); err != nil {
 		errs = append(errs, err)
 	}
 

@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v2/internal/encoding/json"
+
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -532,6 +534,7 @@ func Test_Client_Agent_Json(t *testing.T) {
 
 func Test_Client_Agent_Json_Error(t *testing.T) {
 	a := Get("http://example.com").
+		JSONEncoder(json.Marshal).
 		JSON(complex(1, 1))
 
 	_, body, errs := a.String()
@@ -947,7 +950,8 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 		var d data
 
-		code, body, errs := a.Struct(&d)
+		code, body, errs := a.JSONDecoder(json.Unmarshal).
+			Struct(&d)
 
 		utils.AssertEqual(t, StatusOK, code)
 		utils.AssertEqual(t, `{"success"`, string(body))
