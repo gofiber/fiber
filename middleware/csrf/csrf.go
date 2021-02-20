@@ -48,21 +48,52 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		var token string
+		generateToken := false
 
 		// Action depends on the HTTP method
 		switch c.Method() {
-		case fiber.MethodGet:
+		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
 			// Declare empty token and try to get existing CSRF from cookie
 			token = c.Cookies(cfg.CookieName)
 
 			// Generate CSRF token if not exist
 			if token == "" {
-				// Generate new CSRF token
-				token = cfg.KeyGenerator()
-
-				// Add token to Storage
-				manager.setRaw(token, dummyValue, cfg.Expiration)
+				generateToken = true
 			}
+		default:
+			// Assume that anything not defined as 'safe' by RFC7231 needs protection
+
+			// Extract token from client request i.e. header, query, param, form or cookie
+			token, err = extractor(c)
+			if err != nil {
+				return cfg.ErrorHandler(c, err)
+			}
+
+			// if token does not exist in Storage
+			if manager.getRaw(token) == nil {
+				// Expire cookie
+				c.Cookie(&fiber.Cookie{
+					Name:     cfg.CookieName,
+					Domain:   cfg.CookieDomain,
+					Path:     cfg.CookiePath,
+					Expires:  time.Now().Add(-1 * time.Minute),
+					Secure:   cfg.CookieSecure,
+					HTTPOnly: cfg.CookieHTTPOnly,
+					SameSite: cfg.CookieSameSite,
+				})
+				return cfg.ErrorHandler(c, err)
+			}
+
+			// The token is validated, time to delete it
+			manager.delete(token)
+			generateToken = true
+		}
+
+		if generateToken {
+			// And generate a new token
+			token = cfg.KeyGenerator()
+			// Add token to Storage
+			manager.setRaw(token, dummyValue, cfg.Expiration)
 
 			// Create cookie to pass token to client
 			cookie := &fiber.Cookie{
@@ -77,32 +108,6 @@ func New(config ...Config) fiber.Handler {
 			}
 			// Set cookie to response
 			c.Cookie(cookie)
-
-		case fiber.MethodPost, fiber.MethodDelete, fiber.MethodPatch, fiber.MethodPut:
-			// Extract token from client request i.e. header, query, param, form or cookie
-			token, err = extractor(c)
-			if err != nil {
-				return cfg.ErrorHandler(c, err)
-			}
-			
-			// Expire cookie
-			c.Cookie(&fiber.Cookie{
-				Name:     cfg.CookieName,
-				Domain:   cfg.CookieDomain,
-				Path:     cfg.CookiePath,
-				Expires:  time.Now().Add(-1 * time.Minute),
-				Secure:   cfg.CookieSecure,
-				HTTPOnly: cfg.CookieHTTPOnly,
-				SameSite: cfg.CookieSameSite,
-			})
-
-			// if token does not exist in Storage
-			if manager.getRaw(token) == nil {
-				return cfg.ErrorHandler(c, err)
-			}
-
-			// The token is validated, time to delete it
-			manager.delete(token)
 		}
 
 		// Protect clients from caching the response by telling the browser
