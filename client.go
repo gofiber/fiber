@@ -69,12 +69,44 @@ func (c *Client) Get(url string) *Agent {
 	return c.createAgent(MethodGet, url)
 }
 
+// Head returns a agent with http method HEAD.
+func Head(url string) *Agent { return defaultClient.Head(url) }
+
+// Head returns a agent with http method GET.
+func (c *Client) Head(url string) *Agent {
+	return c.createAgent(MethodHead, url)
+}
+
 // Post sends POST request to the given url.
 func Post(url string) *Agent { return defaultClient.Post(url) }
 
 // Post sends POST request to the given url.
 func (c *Client) Post(url string) *Agent {
 	return c.createAgent(MethodPost, url)
+}
+
+// Put sends PUT request to the given url.
+func Put(url string) *Agent { return defaultClient.Put(url) }
+
+// Put sends PUT request to the given url.
+func (c *Client) Put(url string) *Agent {
+	return c.createAgent(MethodPut, url)
+}
+
+// Patch sends PATCH request to the given url.
+func Patch(url string) *Agent { return defaultClient.Patch(url) }
+
+// Patch sends PATCH request to the given url.
+func (c *Client) Patch(url string) *Agent {
+	return c.createAgent(MethodPatch, url)
+}
+
+// Delete sends DELETE request to the given url.
+func Delete(url string) *Agent { return defaultClient.Delete(url) }
+
+// Delete sends DELETE request to the given url.
+func (c *Client) Delete(url string) *Agent {
+	return c.createAgent(MethodDelete, url)
 }
 
 func (c *Client) createAgent(method, url string) *Agent {

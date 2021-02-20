@@ -80,6 +80,32 @@ func Test_Client_Get(t *testing.T) {
 	}
 }
 
+func Test_Client_Head(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	app.Get("/", func(c *Ctx) error {
+		return c.SendString(c.Hostname())
+	})
+
+	go app.Listener(ln) //nolint:errcheck
+
+	for i := 0; i < 5; i++ {
+		a := Head("http://example.com")
+
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+		code, body, errs := a.String()
+
+		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, "", body)
+		utils.AssertEqual(t, 0, len(errs))
+	}
+}
+
 func Test_Client_Post(t *testing.T) {
 	t.Parallel()
 
@@ -107,6 +133,103 @@ func Test_Client_Post(t *testing.T) {
 
 		utils.AssertEqual(t, StatusOK, code)
 		utils.AssertEqual(t, "example.com", body)
+		utils.AssertEqual(t, 0, len(errs))
+
+		ReleaseArgs(args)
+	}
+}
+
+func Test_Client_Put(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	app.Put("/", func(c *Ctx) error {
+		return c.SendString(c.FormValue("foo"))
+	})
+
+	go app.Listener(ln) //nolint:errcheck
+
+	for i := 0; i < 5; i++ {
+		args := AcquireArgs()
+
+		args.Set("foo", "bar")
+
+		a := Put("http://example.com").
+			Form(args)
+
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+		code, body, errs := a.String()
+
+		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, "bar", body)
+		utils.AssertEqual(t, 0, len(errs))
+
+		ReleaseArgs(args)
+	}
+}
+
+func Test_Client_Patch(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	app.Patch("/", func(c *Ctx) error {
+		return c.SendString(c.FormValue("foo"))
+	})
+
+	go app.Listener(ln) //nolint:errcheck
+
+	for i := 0; i < 5; i++ {
+		args := AcquireArgs()
+
+		args.Set("foo", "bar")
+
+		a := Patch("http://example.com").
+			Form(args)
+
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+		code, body, errs := a.String()
+
+		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, "bar", body)
+		utils.AssertEqual(t, 0, len(errs))
+
+		ReleaseArgs(args)
+	}
+}
+
+func Test_Client_Delete(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	app.Delete("/", func(c *Ctx) error {
+		return c.Status(StatusNoContent).
+			SendString("deleted")
+	})
+
+	go app.Listener(ln) //nolint:errcheck
+
+	for i := 0; i < 5; i++ {
+		args := AcquireArgs()
+
+		a := Delete("http://example.com")
+
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+		code, body, errs := a.String()
+
+		utils.AssertEqual(t, StatusNoContent, code)
+		utils.AssertEqual(t, "", body)
 		utils.AssertEqual(t, 0, len(errs))
 
 		ReleaseArgs(args)
