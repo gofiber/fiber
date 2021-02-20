@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
+	"io"
 	"io/ioutil"
 	"mime/multipart"
 	"net"
@@ -584,7 +586,7 @@ func Test_Client_Agent_Form(t *testing.T) {
 	ReleaseArgs(args)
 }
 
-func Test_Client_Agent_Multipart(t *testing.T) {
+func Test_Client_Agent_MultipartForm(t *testing.T) {
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()
@@ -621,7 +623,25 @@ func Test_Client_Agent_Multipart(t *testing.T) {
 	ReleaseArgs(args)
 }
 
-func Test_Client_Agent_Multipart_SendFiles(t *testing.T) {
+func Test_Client_Agent_MultipartForm_Errors(t *testing.T) {
+	t.Parallel()
+
+	a := AcquireAgent()
+	a.mw = &errorMultipartWriter{}
+
+	args := AcquireArgs()
+	args.Set("foo", "bar")
+
+	ff1 := &FormFile{"", "name1", []byte("content"), false}
+	ff2 := &FormFile{"", "name2", []byte("content"), false}
+	a.FileData(ff1, ff2).
+		MultipartForm(args)
+
+	utils.AssertEqual(t, 4, len(a.errs))
+	ReleaseArgs(args)
+}
+
+func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()
@@ -983,3 +1003,23 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 type data struct {
 	Success bool `json:"success" xml:"success"`
 }
+
+type errorMultipartWriter struct {
+	count int
+}
+
+func (e *errorMultipartWriter) Boundary() string           { return "myBoundary" }
+func (e *errorMultipartWriter) SetBoundary(_ string) error { return nil }
+func (e *errorMultipartWriter) CreateFormFile(_, _ string) (io.Writer, error) {
+	if e.count == 0 {
+		e.count++
+		return nil, errors.New("CreateFormFile error")
+	}
+	return errorWriter{}, nil
+}
+func (e *errorMultipartWriter) WriteField(_, _ string) error { return errors.New("WriteField error") }
+func (e *errorMultipartWriter) Close() error                 { return errors.New("Close error") }
+
+type errorWriter struct{}
+
+func (errorWriter) Write(_ []byte) (int, error) { return 0, errors.New("Write error") }

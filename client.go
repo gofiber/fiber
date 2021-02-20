@@ -134,6 +134,7 @@ type Agent struct {
 	errs                     []error
 	formFiles                []*FormFile
 	debugWriter              io.Writer
+	mw                       multipartWriter
 	maxRedirectsCount        int
 	boundary                 string
 	Name                     string
@@ -141,8 +142,6 @@ type Agent struct {
 	reuse                    bool
 	parsed                   bool
 }
-
-var ErrorInvalidURI = fasthttp.ErrorInvalidURI
 
 // Parse initializes URI and HostClient.
 func (a *Agent) Parse() error {
@@ -157,9 +156,6 @@ func (a *Agent) Parse() error {
 	}
 
 	uri := req.URI()
-	if uri == nil {
-		return ErrorInvalidURI
-	}
 
 	isTLS := false
 	scheme := uri.Scheme()
@@ -567,27 +563,29 @@ func (a *Agent) Boundary(boundary string) *Agent {
 // It is recommended obtaining args via AcquireArgs
 // in performance-critical code.
 func (a *Agent) MultipartForm(args *Args) *Agent {
-	mw := multipart.NewWriter(a.req.BodyWriter())
+	if a.mw == nil {
+		a.mw = multipart.NewWriter(a.req.BodyWriter())
+	}
 
 	if a.boundary != "" {
-		if err := mw.SetBoundary(a.boundary); err != nil {
+		if err := a.mw.SetBoundary(a.boundary); err != nil {
 			a.errs = append(a.errs, err)
 			return a
 		}
 	}
 
-	a.req.Header.SetMultipartFormBoundary(mw.Boundary())
+	a.req.Header.SetMultipartFormBoundary(a.mw.Boundary())
 
 	if args != nil {
 		args.VisitAll(func(key, value []byte) {
-			if err := mw.WriteField(getString(key), getString(value)); err != nil {
+			if err := a.mw.WriteField(getString(key), getString(value)); err != nil {
 				a.errs = append(a.errs, err)
 			}
 		})
 	}
 
 	for _, ff := range a.formFiles {
-		w, err := mw.CreateFormFile(ff.Fieldname, ff.Name)
+		w, err := a.mw.CreateFormFile(ff.Fieldname, ff.Name)
 		if err != nil {
 			a.errs = append(a.errs, err)
 			continue
@@ -597,7 +595,7 @@ func (a *Agent) MultipartForm(args *Args) *Agent {
 		}
 	}
 
-	if err := mw.Close(); err != nil {
+	if err := a.mw.Close(); err != nil {
 		a.errs = append(a.errs, err)
 	}
 
@@ -765,6 +763,7 @@ func (a *Agent) reset() {
 	a.args = nil
 	a.errs = a.errs[:0]
 	a.debugWriter = nil
+	a.mw = nil
 	a.reuse = false
 	a.parsed = false
 	a.maxRedirectsCount = 0
@@ -934,3 +933,11 @@ var (
 	strHTTPS         = []byte("https")
 	defaultUserAgent = "fiber"
 )
+
+type multipartWriter interface {
+	Boundary() string
+	SetBoundary(boundary string) error
+	CreateFormFile(fieldname, filename string) (io.Writer, error)
+	WriteField(fieldname, value string) error
+	Close() error
+}
