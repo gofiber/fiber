@@ -114,7 +114,8 @@ func Test_Client_Post(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true})
 
 	app.Post("/", func(c *Ctx) error {
-		return c.SendString(c.Hostname())
+		return c.Status(StatusCreated).
+			SendString(c.FormValue("foo"))
 	})
 
 	go app.Listener(ln) //nolint:errcheck
@@ -131,8 +132,8 @@ func Test_Client_Post(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, "example.com", body)
+		utils.AssertEqual(t, StatusCreated, code)
+		utils.AssertEqual(t, "bar", body)
 		utils.AssertEqual(t, 0, len(errs))
 
 		ReleaseArgs(args)
@@ -604,10 +605,8 @@ func Test_Client_Agent_Multipart_SendFiles(t *testing.T) {
 	app.Post("/", func(c *Ctx) error {
 		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
 
-		mf, err := c.MultipartForm()
+		fh1, err := c.FormFile("field1")
 		utils.AssertEqual(t, nil, err)
-
-		fh1 := mf.File["field1"][0]
 		utils.AssertEqual(t, fh1.Filename, "name")
 		buf := make([]byte, fh1.Size, fh1.Size)
 		f, err := fh1.Open()
@@ -617,8 +616,13 @@ func Test_Client_Agent_Multipart_SendFiles(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "form file", string(buf))
 
-		checkFormFile(t, mf.File["index"][0], ".github/testdata/index.html")
-		checkFormFile(t, mf.File["file3"][0], ".github/testdata/index.tmpl")
+		fh2, err := c.FormFile("index")
+		utils.AssertEqual(t, nil, err)
+		checkFormFile(t, fh2, ".github/testdata/index.html")
+
+		fh3, err := c.FormFile("file3")
+		utils.AssertEqual(t, nil, err)
+		checkFormFile(t, fh3, ".github/testdata/index.tmpl")
 
 		return c.SendString("multipart form files")
 	})
@@ -691,10 +695,10 @@ func Test_Client_Agent_SendFile_Error(t *testing.T) {
 	t.Parallel()
 
 	a := Post("http://example.com").
-		SendFile("", "")
+		SendFile("non-exist-file!", "")
 
 	utils.AssertEqual(t, 1, len(a.errs))
-	utils.AssertEqual(t, "open : no such file or directory", a.errs[0].Error())
+	utils.AssertEqual(t, "open non-exist-file!: no such file or directory", a.errs[0].Error())
 }
 
 func Test_Client_Debug(t *testing.T) {
