@@ -348,7 +348,7 @@ func (a *Agent) FileData(formFiles ...*FormFile) *Agent {
 
 // SendFile reads file and appends it to multipart form request.
 func (a *Agent) SendFile(filename string, fieldname ...string) *Agent {
-	content, err := ioutil.ReadFile(filename)
+	content, err := ioutil.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		a.errs = append(a.errs, err)
 		return a
@@ -467,8 +467,10 @@ func (a *Agent) Reuse() *Agent {
 // certificate chain and host name.
 func (a *Agent) InsecureSkipVerify() *Agent {
 	if a.HostClient.TLSConfig == nil {
+		/* #nosec G402 */
 		a.HostClient.TLSConfig = &tls.Config{InsecureSkipVerify: true}
 	} else {
+		/* #nosec G402 */
 		a.HostClient.TLSConfig.InsecureSkipVerify = true
 	}
 
