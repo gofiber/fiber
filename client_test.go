@@ -283,7 +283,7 @@ func Test_Client_UserAgent(t *testing.T) {
 	})
 }
 
-func Test_Client_Agent_Headers(t *testing.T) {
+func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
 	handler := func(c *Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
@@ -296,11 +296,17 @@ func Test_Client_Agent_Headers(t *testing.T) {
 
 	wrapAgent := func(a *Agent) {
 		a.Set("k1", "v1").
-			Add("k1", "v11").
-			Set("k2", "v2")
+			SetBytesK([]byte("k1"), "v1").
+			SetBytesV("k1", []byte("v1")).
+			AddBytesK([]byte("k1"), "v11").
+			AddBytesV("k1", []byte("v22")).
+			AddBytesKV([]byte("k1"), []byte("v33")).
+			SetBytesKV([]byte("k2"), []byte("v2")).
+			Add("k2", "v22")
+
 	}
 
-	testAgent(t, handler, wrapAgent, "K1v1K1v11K2v2")
+	testAgent(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
 }
 
 func Test_Client_Agent_Connection_Close(t *testing.T) {
@@ -324,7 +330,8 @@ func Test_Client_Agent_UserAgent(t *testing.T) {
 	}
 
 	wrapAgent := func(a *Agent) {
-		a.UserAgent("ua")
+		a.UserAgent("ua").
+			UserAgentBytes([]byte("ua"))
 	}
 
 	testAgent(t, handler, wrapAgent, "ua")
@@ -338,8 +345,10 @@ func Test_Client_Agent_Cookie(t *testing.T) {
 
 	wrapAgent := func(a *Agent) {
 		a.Cookie("k1", "v1").
-			Cookie("k2", "v2").
-			Cookies("k3", "v3", "k4", "v4")
+			CookieBytesK([]byte("k2"), "v2").
+			CookieBytesKV([]byte("k2"), []byte("v2")).
+			Cookies("k3", "v3", "k4", "v4").
+			CookiesBytesKV([]byte("k3"), []byte("v3"), []byte("k4"), []byte("v4"))
 	}
 
 	testAgent(t, handler, wrapAgent, "v1v2v3v4")
@@ -351,7 +360,8 @@ func Test_Client_Agent_Referer(t *testing.T) {
 	}
 
 	wrapAgent := func(a *Agent) {
-		a.Referer("http://referer.com")
+		a.Referer("http://referer.com").
+			RefererBytes([]byte("http://referer.com"))
 	}
 
 	testAgent(t, handler, wrapAgent, "http://referer.com")
@@ -363,13 +373,14 @@ func Test_Client_Agent_ContentType(t *testing.T) {
 	}
 
 	wrapAgent := func(a *Agent) {
-		a.ContentType("custom-type")
+		a.ContentType("custom-type").
+			ContentTypeBytes([]byte("custom-type"))
 	}
 
 	testAgent(t, handler, wrapAgent, "custom-type")
 }
 
-func Test_Client_Agent_Specific_Host(t *testing.T) {
+func Test_Client_Agent_Host(t *testing.T) {
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()
@@ -383,7 +394,8 @@ func Test_Client_Agent_Specific_Host(t *testing.T) {
 	go app.Listener(ln) //nolint:errcheck
 
 	a := Get("http://1.1.1.1:8080").
-		Host("example.com")
+		Host("example.com").
+		HostBytes([]byte("example.com"))
 
 	utils.AssertEqual(t, "1.1.1.1:8080", a.HostClient.Addr)
 
@@ -402,7 +414,8 @@ func Test_Client_Agent_QueryString(t *testing.T) {
 	}
 
 	wrapAgent := func(a *Agent) {
-		a.QueryString("foo=bar&bar=baz")
+		a.QueryString("foo=bar&bar=baz").
+			QueryStringBytes([]byte("foo=bar&bar=baz"))
 	}
 
 	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")
@@ -420,7 +433,8 @@ func Test_Client_Agent_BasicAuth(t *testing.T) {
 	}
 
 	wrapAgent := func(a *Agent) {
-		a.BasicAuth("foo", "bar")
+		a.BasicAuth("foo", "bar").
+			BasicAuthBytes([]byte("foo"), []byte("bar"))
 	}
 
 	testAgent(t, handler, wrapAgent, "foo:bar")
@@ -433,6 +447,18 @@ func Test_Client_Agent_BodyString(t *testing.T) {
 
 	wrapAgent := func(a *Agent) {
 		a.BodyString("foo=bar&bar=baz")
+	}
+
+	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")
+}
+
+func Test_Client_Agent_Body(t *testing.T) {
+	handler := func(c *Ctx) error {
+		return c.Send(c.Request().Body())
+	}
+
+	wrapAgent := func(a *Agent) {
+		a.Body([]byte("foo=bar&bar=baz"))
 	}
 
 	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")

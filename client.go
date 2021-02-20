@@ -207,12 +207,69 @@ func (a *Agent) Set(k, v string) *Agent {
 	return a
 }
 
+// SetBytesK sets the given 'key: value' header.
+//
+// Use AddBytesK for setting multiple header values under the same key.
+func (a *Agent) SetBytesK(k []byte, v string) *Agent {
+	a.req.Header.SetBytesK(k, v)
+
+	return a
+}
+
+// SetBytesV sets the given 'key: value' header.
+//
+// Use AddBytesV for setting multiple header values under the same key.
+func (a *Agent) SetBytesV(k string, v []byte) *Agent {
+	a.req.Header.SetBytesV(k, v)
+
+	return a
+}
+
+// SetBytesKV sets the given 'key: value' header.
+//
+// Use AddBytesKV for setting multiple header values under the same key.
+func (a *Agent) SetBytesKV(k []byte, v []byte) *Agent {
+	a.req.Header.SetBytesKV(k, v)
+
+	return a
+}
+
 // Add adds the given 'key: value' header.
 //
 // Multiple headers with the same key may be added with this function.
 // Use Set for setting a single header for the given key.
 func (a *Agent) Add(k, v string) *Agent {
 	a.req.Header.Add(k, v)
+
+	return a
+}
+
+// AddBytesK adds the given 'key: value' header.
+//
+// Multiple headers with the same key may be added with this function.
+// Use SetBytesK for setting a single header for the given key.
+func (a *Agent) AddBytesK(k []byte, v string) *Agent {
+	a.req.Header.AddBytesK(k, v)
+
+	return a
+}
+
+// AddBytesV adds the given 'key: value' header.
+//
+// Multiple headers with the same key may be added with this function.
+// Use SetBytesV for setting a single header for the given key.
+func (a *Agent) AddBytesV(k string, v []byte) *Agent {
+	a.req.Header.AddBytesV(k, v)
+
+	return a
+}
+
+// AddBytesKV adds the given 'key: value' header.
+//
+// Multiple headers with the same key may be added with this function.
+// Use SetBytesKV for setting a single header for the given key.
+func (a *Agent) AddBytesKV(k []byte, v []byte) *Agent {
+	a.req.Header.AddBytesKV(k, v)
 
 	return a
 }
@@ -231,9 +288,30 @@ func (a *Agent) UserAgent(userAgent string) *Agent {
 	return a
 }
 
+// UserAgentBytes sets User-Agent header value.
+func (a *Agent) UserAgentBytes(userAgent []byte) *Agent {
+	a.req.Header.SetUserAgentBytes(userAgent)
+
+	return a
+}
+
 // Cookie sets one 'key: value' cookie.
 func (a *Agent) Cookie(key, value string) *Agent {
 	a.req.Header.SetCookie(key, value)
+
+	return a
+}
+
+// CookieBytesK sets one 'key: value' cookie.
+func (a *Agent) CookieBytesK(key []byte, value string) *Agent {
+	a.req.Header.SetCookieBytesK(key, value)
+
+	return a
+}
+
+// CookieBytesKV sets one 'key: value' cookie.
+func (a *Agent) CookieBytesKV(key, value []byte) *Agent {
+	a.req.Header.SetCookieBytesKV(key, value)
 
 	return a
 }
@@ -247,6 +325,15 @@ func (a *Agent) Cookies(kv ...string) *Agent {
 	return a
 }
 
+// CookiesBytesKV sets multiple 'key: value' cookies.
+func (a *Agent) CookiesBytesKV(kv ...[]byte) *Agent {
+	for i := 1; i < len(kv); i += 2 {
+		a.req.Header.SetCookieBytesKV(kv[i-1], kv[i])
+	}
+
+	return a
+}
+
 // Referer sets Referer header value.
 func (a *Agent) Referer(referer string) *Agent {
 	a.req.Header.SetReferer(referer)
@@ -254,9 +341,23 @@ func (a *Agent) Referer(referer string) *Agent {
 	return a
 }
 
+// RefererBytes sets Referer header value.
+func (a *Agent) RefererBytes(referer []byte) *Agent {
+	a.req.Header.SetRefererBytes(referer)
+
+	return a
+}
+
 // ContentType sets Content-Type header value.
 func (a *Agent) ContentType(contentType string) *Agent {
 	a.req.Header.SetContentType(contentType)
+
+	return a
+}
+
+// ContentTypeBytes sets Content-Type header value.
+func (a *Agent) ContentTypeBytes(contentType []byte) *Agent {
+	a.req.Header.SetContentTypeBytes(contentType)
 
 	return a
 }
@@ -272,9 +373,23 @@ func (a *Agent) Host(host string) *Agent {
 	return a
 }
 
+// HostBytes sets host for the uri.
+func (a *Agent) HostBytes(host []byte) *Agent {
+	a.req.URI().SetHostBytes(host)
+
+	return a
+}
+
 // QueryString sets URI query string.
 func (a *Agent) QueryString(queryString string) *Agent {
 	a.req.URI().SetQueryString(queryString)
+
+	return a
+}
+
+// QueryStringBytes sets URI query string.
+func (a *Agent) QueryStringBytes(queryString []byte) *Agent {
+	a.req.URI().SetQueryStringBytes(queryString)
 
 	return a
 }
@@ -287,6 +402,14 @@ func (a *Agent) BasicAuth(username, password string) *Agent {
 	return a
 }
 
+// BasicAuthBytes sets URI username and password.
+func (a *Agent) BasicAuthBytes(username, password []byte) *Agent {
+	a.req.URI().SetUsernameBytes(username)
+	a.req.URI().SetPasswordBytes(password)
+
+	return a
+}
+
 /************************** End URI Setting **************************/
 
 /************************** Request Setting **************************/
@@ -294,6 +417,13 @@ func (a *Agent) BasicAuth(username, password string) *Agent {
 // BodyString sets request body.
 func (a *Agent) BodyString(bodyString string) *Agent {
 	a.req.SetBodyString(bodyString)
+
+	return a
+}
+
+// Body sets request body.
+func (a *Agent) Body(body []byte) *Agent {
+	a.req.SetBody(body)
 
 	return a
 }
