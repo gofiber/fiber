@@ -26,6 +26,7 @@ import (
 // and use CopyTo instead.
 //
 // Request instance MUST NOT be used from concurrently running goroutines.
+// Copy from fasthttp
 type Request = fasthttp.Request
 
 // Response represents HTTP response.
@@ -34,6 +35,7 @@ type Request = fasthttp.Request
 // and use CopyTo instead.
 //
 // Response instance MUST NOT be used from concurrently running goroutines.
+// Copy from fasthttp
 type Response = fasthttp.Response
 
 // Args represents query arguments.
@@ -42,6 +44,7 @@ type Response = fasthttp.Response
 // and use CopyTo().
 //
 // Args instance MUST NOT be used from concurrently running goroutines.
+// Copy from fasthttp
 type Args = fasthttp.Args
 
 var defaultClient Client
@@ -50,7 +53,11 @@ var defaultClient Client
 //
 // It is safe calling Client methods from concurrently running goroutines.
 type Client struct {
-	UserAgent                string
+	// UserAgent is used in User-Agent request header.
+	UserAgent string
+
+	// NoDefaultUserAgentHeader when set to true, causes the default
+	// User-Agent header to be excluded from the Request.
 	NoDefaultUserAgentHeader bool
 }
 
@@ -620,28 +627,6 @@ var (
 	formFilePool sync.Pool
 )
 
-// AcquireAgent returns an empty Agent instance from createAgent pool.
-//
-// The returned Agent instance may be passed to ReleaseAgent when it is
-// no longer needed. This allows Agent recycling, reduces GC pressure
-// and usually improves performance.
-func AcquireAgent() *Agent {
-	v := agentPool.Get()
-	if v == nil {
-		return &Agent{req: fasthttp.AcquireRequest()}
-	}
-	return v.(*Agent)
-}
-
-// ReleaseAgent returns a acquired via AcquireAgent to createAgent pool.
-//
-// It is forbidden accessing req and/or its' members after returning
-// it to createAgent pool.
-func ReleaseAgent(a *Agent) {
-	a.reset()
-	agentPool.Put(a)
-}
-
 // AcquireClient returns an empty Client instance from client pool.
 //
 // The returned Client instance may be passed to ReleaseClient when it is
@@ -666,11 +651,34 @@ func ReleaseClient(c *Client) {
 	clientPool.Put(c)
 }
 
+// AcquireAgent returns an empty Agent instance from createAgent pool.
+//
+// The returned Agent instance may be passed to ReleaseAgent when it is
+// no longer needed. This allows Agent recycling, reduces GC pressure
+// and usually improves performance.
+func AcquireAgent() *Agent {
+	v := agentPool.Get()
+	if v == nil {
+		return &Agent{req: fasthttp.AcquireRequest()}
+	}
+	return v.(*Agent)
+}
+
+// ReleaseAgent returns a acquired via AcquireAgent to createAgent pool.
+//
+// It is forbidden accessing req and/or its' members after returning
+// it to createAgent pool.
+func ReleaseAgent(a *Agent) {
+	a.reset()
+	agentPool.Put(a)
+}
+
 // AcquireRequest returns an empty Request instance from request pool.
 //
 // The returned Request instance may be passed to ReleaseRequest when it is
 // no longer needed. This allows Request recycling, reduces GC pressure
 // and usually improves performance.
+// Copy from fasthttp
 func AcquireRequest() *Request {
 	v := requestPool.Get()
 	if v == nil {
@@ -683,6 +691,7 @@ func AcquireRequest() *Request {
 //
 // It is forbidden accessing req and/or its' members after returning
 // it to request pool.
+// Copy from fasthttp
 func ReleaseRequest(req *Request) {
 	req.Reset()
 	requestPool.Put(req)
