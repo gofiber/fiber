@@ -698,7 +698,7 @@ func Test_Client_Agent_SendFile_Error(t *testing.T) {
 		SendFile("non-exist-file!", "")
 
 	utils.AssertEqual(t, 1, len(a.errs))
-	utils.AssertEqual(t, "open non-exist-file!: no such file or directory", a.errs[0].Error())
+	utils.AssertEqual(t, true, strings.Contains(a.errs[0].Error(), "open non-exist-file!"))
 }
 
 func Test_Client_Debug(t *testing.T) {
