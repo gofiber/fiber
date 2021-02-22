@@ -153,6 +153,7 @@ type Agent struct {
 	*fasthttp.HostClient
 
 	req               *Request
+	resp              *Response
 	args              *Args
 	timeout           time.Duration
 	errs              []error
@@ -696,13 +697,20 @@ func (a *Agent) Request() *Request {
 	return a.req
 }
 
-/************************** End Agent Setting **************************/
-
-// Bytes returns the status code, bytes body and errors of url.
+// SetResponse sets custom response for the Agent instance.
 //
 // It is recommended obtaining custom response via AcquireResponse and release it
 // manually in performance-critical code.
-func (a *Agent) Bytes(customResp ...*Response) (code int, body []byte, errs []error) {
+func (a *Agent) SetResponse(customResp *Response) *Agent {
+	a.resp = customResp
+
+	return a
+}
+
+/************************** End Agent Setting **************************/
+
+// Bytes returns the status code, bytes body and errors of url.
+func (a *Agent) Bytes() (code int, body []byte, errs []error) {
 	defer a.release()
 
 	if errs = append(errs, a.errs...); len(errs) > 0 {
@@ -712,14 +720,14 @@ func (a *Agent) Bytes(customResp ...*Response) (code int, body []byte, errs []er
 	req := a.req
 
 	var (
-		resp        *Response
-		releaseResp bool
+		resp    *Response
+		nilResp bool
 	)
-	if len(customResp) > 0 {
-		resp = customResp[0]
-	} else {
+	if a.resp == nil {
 		resp = AcquireResponse()
-		releaseResp = true
+		nilResp = true
+	} else {
+		resp = a.resp
 	}
 	defer func() {
 		if a.debugWriter != nil {
@@ -730,7 +738,7 @@ func (a *Agent) Bytes(customResp ...*Response) (code int, body []byte, errs []er
 			code = resp.StatusCode()
 		}
 
-		if releaseResp {
+		if nilResp {
 			body = append(body, resp.Body()...)
 			ReleaseResponse(resp)
 		} else {
@@ -767,26 +775,20 @@ func printDebugInfo(req *Request, resp *Response, w io.Writer) {
 }
 
 // String returns the status code, string body and errors of url.
-//
-// It is recommended obtaining custom response via AcquireResponse and release it
-// manually in performance-critical code.
-func (a *Agent) String(resp ...*Response) (int, string, []error) {
-	code, body, errs := a.Bytes(resp...)
+func (a *Agent) String() (int, string, []error) {
+	code, body, errs := a.Bytes()
 
 	return code, getString(body), errs
 }
 
 // Struct returns the status code, bytes body and errors of url.
 // And bytes body will be unmarshalled to given v.
-//
-// It is recommended obtaining custom response via AcquireResponse and release it
-// manually in performance-critical code.
-func (a *Agent) Struct(v interface{}, resp ...*Response) (code int, body []byte, errs []error) {
+func (a *Agent) Struct(v interface{}) (code int, body []byte, errs []error) {
 	if a.jsonDecoder == nil {
 		a.jsonDecoder = json.Unmarshal
 	}
 
-	code, body, errs = a.Bytes(resp...)
+	code, body, errs = a.Bytes()
 
 	if err := a.jsonDecoder(body, v); err != nil {
 		errs = append(errs, err)
@@ -806,6 +808,7 @@ func (a *Agent) release() {
 func (a *Agent) reset() {
 	a.HostClient = nil
 	a.req.Reset()
+	a.resp = nil
 	a.timeout = 0
 	a.args = nil
 	a.errs = a.errs[:0]
@@ -829,7 +832,6 @@ func (a *Agent) reset() {
 var (
 	clientPool   sync.Pool
 	agentPool    sync.Pool
-	requestPool  sync.Pool
 	responsePool sync.Pool
 	argsPool     sync.Pool
 	formFilePool sync.Pool

@@ -505,7 +505,8 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 
-		code, body, errs := a.String(resp)
+		code, body, errs := a.SetResponse(resp).
+			String()
 
 		utils.AssertEqual(t, StatusOK, code)
 		utils.AssertEqual(t, "custom", body)
