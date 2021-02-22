@@ -154,6 +154,7 @@ type Agent struct {
 
 	req               *Request
 	resp              *Response
+	dest              []byte
 	args              *Args
 	timeout           time.Duration
 	errs              []error
@@ -707,6 +708,16 @@ func (a *Agent) SetResponse(customResp *Response) *Agent {
 	return a
 }
 
+// Dest sets custom dest.
+//
+// The contents of dest will be replaced by the response body, if the dest
+// is too small a new slice will be allocated.
+func (a *Agent) Dest(dest []byte) *Agent {
+	a.dest = dest
+
+	return a
+}
+
 /************************** End Agent Setting **************************/
 
 // Bytes returns the status code, bytes body and errors of url.
@@ -738,11 +749,10 @@ func (a *Agent) Bytes() (code int, body []byte, errs []error) {
 			code = resp.StatusCode()
 		}
 
+		body = append(a.dest[:0], resp.Body()...)
+
 		if nilResp {
-			body = append(body, resp.Body()...)
 			ReleaseResponse(resp)
-		} else {
-			body = resp.Body()
 		}
 	}()
 
@@ -809,6 +819,7 @@ func (a *Agent) reset() {
 	a.HostClient = nil
 	a.req.Reset()
 	a.resp = nil
+	a.dest = nil
 	a.timeout = 0
 	a.args = nil
 	a.errs = a.errs[:0]

@@ -517,6 +517,50 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 	}
 }
 
+func Test_Client_Agent_Dest(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	app.Get("/", func(c *Ctx) error {
+		return c.SendString("dest")
+	})
+
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+
+	t.Run("small dest", func(t *testing.T) {
+		dest := []byte("de")
+
+		a := Get("http://example.com")
+
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+		code, body, errs := a.Dest(dest).String()
+
+		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, "dest", body)
+		utils.AssertEqual(t, "de", string(dest))
+		utils.AssertEqual(t, 0, len(errs))
+	})
+
+	t.Run("enough dest", func(t *testing.T) {
+		dest := []byte("foobar")
+
+		a := Get("http://example.com")
+
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+		code, body, errs := a.Dest(dest).String()
+
+		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, "dest", body)
+		utils.AssertEqual(t, "destar", string(dest))
+		utils.AssertEqual(t, 0, len(errs))
+	})
+}
+
 func Test_Client_Agent_Json(t *testing.T) {
 	handler := func(c *Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationJSON, string(c.Request().Header.ContentType()))
