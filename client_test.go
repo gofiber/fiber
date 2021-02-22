@@ -990,14 +990,14 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		a := Get("http://example.com")
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		a.errs = append(a.errs, errors.New("pre errors"))
 
 		var d data
-
-		_, body, errs := a.Timeout(time.Nanosecond).Struct(&d)
+		_, body, errs := a.Struct(&d)
 
 		utils.AssertEqual(t, "", string(body))
 		utils.AssertEqual(t, 1, len(errs))
-		utils.AssertEqual(t, "timeout", errs[0].Error())
+		utils.AssertEqual(t, "pre errors", errs[0].Error())
 		utils.AssertEqual(t, false, d.Success)
 	})
 
