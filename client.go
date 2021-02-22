@@ -142,23 +142,29 @@ func (c *Client) createAgent(method, url string) *Agent {
 
 // Agent is an object storing all request data for client.
 type Agent struct {
-	*fasthttp.HostClient
-	req                      *Request
-	customReq                *Request
-	args                     *Args
-	timeout                  time.Duration
-	errs                     []error
-	formFiles                []*FormFile
-	debugWriter              io.Writer
-	mw                       multipartWriter
-	jsonEncoder              utils.JSONMarshal
-	jsonDecoder              utils.JSONUnmarshal
-	maxRedirectsCount        int
-	boundary                 string
-	Name                     string
+	// Name is used in User-Agent request header.
+	Name string
+	// NoDefaultUserAgentHeader when set to true, causes the default
+	// User-Agent header to be excluded from the Request.
 	NoDefaultUserAgentHeader bool
-	reuse                    bool
-	parsed                   bool
+
+	// HostClient is an embedded fasthttp HostClient
+	*fasthttp.HostClient
+
+	req               *Request
+	customReq         *Request
+	args              *Args
+	timeout           time.Duration
+	errs              []error
+	formFiles         []*FormFile
+	debugWriter       io.Writer
+	mw                multipartWriter
+	jsonEncoder       utils.JSONMarshal
+	jsonDecoder       utils.JSONUnmarshal
+	maxRedirectsCount int
+	boundary          string
+	reuse             bool
+	parsed            bool
 }
 
 // Parse initializes URI and HostClient.
@@ -498,8 +504,8 @@ func (a *Agent) XML(v interface{}) *Agent {
 
 // Form sends request with body if args is non-nil.
 //
-// It is recommended obtaining args via AcquireArgs
-// in performance-critical code.
+// It is recommended obtaining args via AcquireArgs and release it
+// manually in performance-critical code.
 func (a *Agent) Form(args *Args) *Agent {
 	a.req.Header.SetContentType(MIMEApplicationForm)
 
@@ -525,8 +531,8 @@ type FormFile struct {
 
 // FileData appends files for multipart form request.
 //
-// It is recommended obtaining formFile via AcquireFormFile
-// in performance-critical code.
+// It is recommended obtaining formFile via AcquireFormFile and release it
+// manually in performance-critical code.
 func (a *Agent) FileData(formFiles ...*FormFile) *Agent {
 	a.formFiles = append(a.formFiles, formFiles...)
 
@@ -582,8 +588,8 @@ func (a *Agent) Boundary(boundary string) *Agent {
 
 // MultipartForm sends multipart form request with k-v and files.
 //
-// It is recommended obtaining args via AcquireArgs
-// in performance-critical code.
+// It is recommended obtaining args via AcquireArgs and release it
+// manually in performance-critical code.
 func (a *Agent) MultipartForm(args *Args) *Agent {
 	if a.mw == nil {
 		a.mw = multipart.NewWriter(a.req.BodyWriter())
@@ -646,6 +652,9 @@ func (a *Agent) Timeout(timeout time.Duration) *Agent {
 }
 
 // Reuse indicates the createAgent can be used again after one request.
+//
+// If agent is reusable, then it should be released manually when it is no
+// longer used.
 func (a *Agent) Reuse() *Agent {
 	a.reuse = true
 
@@ -697,6 +706,9 @@ func (a *Agent) JSONDecoder(jsonDecoder utils.JSONUnmarshal) *Agent {
 /************************** End Agent Setting **************************/
 
 // Bytes returns the status code, bytes body and errors of url.
+//
+// It is recommended obtaining custom response via AcquireResponse and release it
+// manually in performance-critical code.
 func (a *Agent) Bytes(customResp ...*Response) (code int, body []byte, errs []error) {
 	defer a.release()
 
@@ -765,6 +777,9 @@ func printDebugInfo(req *Request, resp *Response, w io.Writer) {
 }
 
 // String returns the status code, string body and errors of url.
+//
+// It is recommended obtaining custom response via AcquireResponse and release it
+// manually in performance-critical code.
 func (a *Agent) String(resp ...*Response) (int, string, []error) {
 	code, body, errs := a.Bytes(resp...)
 
@@ -773,6 +788,9 @@ func (a *Agent) String(resp ...*Response) (int, string, []error) {
 
 // Struct returns the status code, bytes body and errors of url.
 // And bytes body will be unmarshalled to given v.
+//
+// It is recommended obtaining custom response via AcquireResponse and release it
+// manually in performance-critical code.
 func (a *Agent) Struct(v interface{}, resp ...*Response) (code int, body []byte, errs []error) {
 	if a.jsonDecoder == nil {
 		a.jsonDecoder = json.Unmarshal
