@@ -32,7 +32,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 		return c.SendString(c.Hostname())
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	a := Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
@@ -69,7 +69,7 @@ func Test_Client_Get(t *testing.T) {
 		return c.SendString(c.Hostname())
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		a := Get("http://example.com")
@@ -95,7 +95,7 @@ func Test_Client_Head(t *testing.T) {
 		return c.SendString(c.Hostname())
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		a := Head("http://example.com")
@@ -122,7 +122,7 @@ func Test_Client_Post(t *testing.T) {
 			SendString(c.FormValue("foo"))
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -155,7 +155,7 @@ func Test_Client_Put(t *testing.T) {
 		return c.SendString(c.FormValue("foo"))
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -188,7 +188,7 @@ func Test_Client_Patch(t *testing.T) {
 		return c.SendString(c.FormValue("foo"))
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -222,7 +222,7 @@ func Test_Client_Delete(t *testing.T) {
 			SendString("deleted")
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -252,7 +252,7 @@ func Test_Client_UserAgent(t *testing.T) {
 		return c.Send(c.Request().Header.UserAgent())
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("default", func(t *testing.T) {
 		for i := 0; i < 5; i++ {
@@ -395,7 +395,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 		return c.SendString(c.Hostname())
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	a := Get("http://1.1.1.1:8080").
 		Host("example.com").
@@ -491,7 +491,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 		return c.SendString("custom")
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		a := AcquireAgent()
@@ -604,7 +604,7 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 		return c.Send(c.Request().Body())
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	args := AcquireArgs()
 
@@ -674,7 +674,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 		return c.SendString("multipart form files")
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		ff := AcquireFormFile()
@@ -783,7 +783,7 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 		return c.SendString("timeout")
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	a := Get("http://example.com").
 		Timeout(time.Millisecond * 100)
@@ -808,7 +808,7 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 		return c.SendString("reuse")
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	a := Get("http://example.com").
 		Reuse()
@@ -850,7 +850,7 @@ func Test_Client_Agent_TLS(t *testing.T) {
 		return c.SendString("tls")
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	code, body, errs := Get("https://" + ln.Addr().String()).
 		InsecureSkipVerify().
@@ -880,7 +880,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 		return c.SendString("redirect")
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("success", func(t *testing.T) {
 		a := Get("http://example.com?foo").
@@ -924,7 +924,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		return c.SendString(`{"success"`)
 	})
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("success", func(t *testing.T) {
 		a := Get("http://example.com")
@@ -980,7 +980,7 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 
 	app.Get("/", handler)
 
-	go app.Listener(ln) //nolint:errcheck
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	c := 1
 	if len(count) > 0 {
