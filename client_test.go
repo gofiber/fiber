@@ -986,6 +986,21 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		utils.AssertEqual(t, true, d.Success)
 	})
 
+	t.Run("pre error", func(t *testing.T) {
+		a := Get("http://example.com")
+
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+
+		var d data
+
+		_, body, errs := a.Timeout(time.Nanosecond).Struct(&d)
+
+		utils.AssertEqual(t, "", string(body))
+		utils.AssertEqual(t, 1, len(errs))
+		utils.AssertEqual(t, "timeout", errs[0].Error())
+		utils.AssertEqual(t, false, d.Success)
+	})
+
 	t.Run("error", func(t *testing.T) {
 		a := Get("http://example.com/error")
 
@@ -993,8 +1008,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 		var d data
 
-		code, body, errs := a.JSONDecoder(json.Unmarshal).
-			Struct(&d)
+		code, body, errs := a.JSONDecoder(json.Unmarshal).Struct(&d)
 
 		utils.AssertEqual(t, StatusOK, code)
 		utils.AssertEqual(t, `{"success"`, string(body))

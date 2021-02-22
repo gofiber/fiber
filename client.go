@@ -728,18 +728,19 @@ func (a *Agent) Bytes() (code int, body []byte, errs []error) {
 		return
 	}
 
-	req := a.req
-
 	var (
+		req     = a.req
 		resp    *Response
 		nilResp bool
 	)
+
 	if a.resp == nil {
 		resp = AcquireResponse()
 		nilResp = true
 	} else {
 		resp = a.resp
 	}
+
 	defer func() {
 		if a.debugWriter != nil {
 			printDebugInfo(req, resp, a.debugWriter)
@@ -798,7 +799,9 @@ func (a *Agent) Struct(v interface{}) (code int, body []byte, errs []error) {
 		a.jsonDecoder = json.Unmarshal
 	}
 
-	code, body, errs = a.Bytes()
+	if code, body, errs = a.Bytes(); len(errs) > 0 {
+		return
+	}
 
 	if err := a.jsonDecoder(body, v); err != nil {
 		errs = append(errs, err)
