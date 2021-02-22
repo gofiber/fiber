@@ -141,6 +141,7 @@ func (c *Client) createAgent(method, url string) *Agent {
 }
 
 // Agent is an object storing all request data for client.
+// Agent instance MUST NOT be used from concurrently running goroutines.
 type Agent struct {
 	// Name is used in User-Agent request header.
 	Name string
@@ -152,7 +153,6 @@ type Agent struct {
 	*fasthttp.HostClient
 
 	req               *Request
-	customReq         *Request
 	args              *Args
 	timeout           time.Duration
 	errs              []error
@@ -174,12 +174,7 @@ func (a *Agent) Parse() error {
 	}
 	a.parsed = true
 
-	req := a.req
-	if a.customReq != nil {
-		req = a.customReq
-	}
-
-	uri := req.URI()
+	uri := a.req.URI()
 
 	isTLS := false
 	scheme := uri.Scheme()
@@ -465,13 +460,6 @@ func (a *Agent) BodyStream(bodyStream io.Reader, bodySize int) *Agent {
 	return a
 }
 
-// Request sets custom request for createAgent.
-func (a *Agent) Request(req *Request) *Agent {
-	a.customReq = req
-
-	return a
-}
-
 // JSON sends a JSON request.
 func (a *Agent) JSON(v interface{}) *Agent {
 	if a.jsonEncoder == nil {
@@ -703,6 +691,11 @@ func (a *Agent) JSONDecoder(jsonDecoder utils.JSONUnmarshal) *Agent {
 	return a
 }
 
+// Request returns Agent request instance.
+func (a *Agent) Request() *Request {
+	return a.req
+}
+
 /************************** End Agent Setting **************************/
 
 // Bytes returns the status code, bytes body and errors of url.
@@ -717,9 +710,6 @@ func (a *Agent) Bytes(customResp ...*Response) (code int, body []byte, errs []er
 	}
 
 	req := a.req
-	if a.customReq != nil {
-		req = a.customReq
-	}
 
 	var (
 		resp        *Response
@@ -816,7 +806,6 @@ func (a *Agent) release() {
 func (a *Agent) reset() {
 	a.HostClient = nil
 	a.req.Reset()
-	a.customReq = nil
 	a.timeout = 0
 	a.args = nil
 	a.errs = a.errs[:0]
@@ -878,7 +867,7 @@ func ReleaseClient(c *Client) {
 func AcquireAgent() *Agent {
 	v := agentPool.Get()
 	if v == nil {
-		return &Agent{req: fasthttp.AcquireRequest()}
+		return &Agent{req: &Request{}}
 	}
 	return v.(*Agent)
 }
@@ -890,30 +879,6 @@ func AcquireAgent() *Agent {
 func ReleaseAgent(a *Agent) {
 	a.reset()
 	agentPool.Put(a)
-}
-
-// AcquireRequest returns an empty Request instance from request pool.
-//
-// The returned Request instance may be passed to ReleaseRequest when it is
-// no longer needed. This allows Request recycling, reduces GC pressure
-// and usually improves performance.
-// Copy from fasthttp
-func AcquireRequest() *Request {
-	v := requestPool.Get()
-	if v == nil {
-		return &Request{}
-	}
-	return v.(*Request)
-}
-
-// ReleaseRequest returns req acquired via AcquireRequest to request pool.
-//
-// It is forbidden accessing req and/or its' members after returning
-// it to request pool.
-// Copy from fasthttp
-func ReleaseRequest(req *Request) {
-	req.Reset()
-	requestPool.Put(req)
 }
 
 // AcquireResponse returns an empty Response instance from response pool.

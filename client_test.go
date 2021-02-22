@@ -480,7 +480,7 @@ func Test_Client_Agent_BodyStream(t *testing.T) {
 	testAgent(t, handler, wrapAgent, "body stream")
 }
 
-func Test_Client_Agent_Custom_Request_And_Response(t *testing.T) {
+func Test_Client_Agent_Custom_Response(t *testing.T) {
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()
@@ -495,12 +495,11 @@ func Test_Client_Agent_Custom_Request_And_Response(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		a := AcquireAgent()
-		req := AcquireRequest()
 		resp := AcquireResponse()
 
+		req := a.Request()
 		req.Header.SetMethod(MethodGet)
 		req.SetRequestURI("http://example.com")
-		a.Request(req)
 
 		utils.AssertEqual(t, nil, a.Parse())
 
@@ -513,7 +512,6 @@ func Test_Client_Agent_Custom_Request_And_Response(t *testing.T) {
 		utils.AssertEqual(t, "custom", string(resp.Body()))
 		utils.AssertEqual(t, 0, len(errs))
 
-		ReleaseRequest(req)
 		ReleaseResponse(resp)
 	}
 }
