@@ -537,7 +537,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 
-		code, body, errs := a.Dest(dest).String()
+		code, body, errs := a.Dest(dest[:0]).String()
 
 		utils.AssertEqual(t, StatusOK, code)
 		utils.AssertEqual(t, "dest", body)
@@ -552,7 +552,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 
-		code, body, errs := a.Dest(dest).String()
+		code, body, errs := a.Dest(dest[:0]).String()
 
 		utils.AssertEqual(t, StatusOK, code)
 		utils.AssertEqual(t, "dest", body)

@@ -750,7 +750,7 @@ func (a *Agent) Bytes() (code int, body []byte, errs []error) {
 			code = resp.StatusCode()
 		}
 
-		body = append(a.dest[:0], resp.Body()...)
+		body = append(a.dest, resp.Body()...)
 
 		if nilResp {
 			ReleaseResponse(resp)
