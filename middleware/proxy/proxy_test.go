@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"io/ioutil"
+	"net"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -12,6 +13,8 @@ import (
 
 // go test -run Test_Proxy_Empty_Host
 func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if r := recover(); r != nil {
 			utils.AssertEqual(t, "Servers cannot be empty", r)
@@ -23,6 +26,8 @@ func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 
 // go test -run Test_Proxy_Next
 func Test_Proxy_Next(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Use(Balancer(Config{
 		Servers: []string{"127.0.0.1"},
@@ -38,44 +43,59 @@ func Test_Proxy_Next(t *testing.T) {
 
 // go test -run Test_Proxy
 func Test_Proxy(t *testing.T) {
-	target := fiber.New()
+	t.Parallel()
+
+	target := fiber.New(fiber.Config{DisableStartupMessage: true})
 	target.Get("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
 	go func() {
-		utils.AssertEqual(t, nil, target.Listen(":3001"))
+		utils.AssertEqual(t, nil, target.Listener(ln))
 	}()
 
 	time.Sleep(2 * time.Second)
+	addr := ln.Addr().String()
 
 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Use(Balancer(Config{Servers: []string{"127.0.0.1:3001"}}))
+	app.Use(Balancer(Config{Servers: []string{addr}}))
 
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Host = "127.0.0.1:3001"
+	req.Host = addr
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
 func Test_Proxy_Forward(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
 	target.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("forwarded")
 	})
-	go func() {
-		utils.AssertEqual(t, nil, target.Listen(":50001"))
-	}()
-	time.Sleep(2 * time.Second)
 
-	app.Use(Forward("http://127.0.0.1:50001"))
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
+	go func() {
+		utils.AssertEqual(t, nil, target.Listener(ln))
+	}()
+
+	time.Sleep(2 * time.Second)
+	addr := ln.Addr().String()
+
+	app.Use(Forward("http://" + addr))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -87,18 +107,26 @@ func Test_Proxy_Forward(t *testing.T) {
 }
 
 func Test_Proxy_Modify_Response(t *testing.T) {
+	t.Parallel()
+
 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
 	target.Get("/", func(c *fiber.Ctx) error {
 		return c.Status(500).SendString("not modified")
 	})
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
 	go func() {
-		utils.AssertEqual(t, nil, target.Listen(":50002"))
+		utils.AssertEqual(t, nil, target.Listener(ln))
 	}()
+
 	time.Sleep(2 * time.Second)
+	addr := ln.Addr().String()
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
-		Servers: []string{"127.0.0.1:50002"},
+		Servers: []string{addr},
 		ModifyResponse: func(c *fiber.Ctx) error {
 			c.Response().SetStatusCode(fiber.StatusOK)
 			return c.SendString("modified response")
@@ -115,19 +143,27 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 }
 
 func Test_Proxy_Modify_Request(t *testing.T) {
+	t.Parallel()
+
 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
 	target.Get("/", func(c *fiber.Ctx) error {
 		b := c.Request().Body()
 		return c.SendString(string(b))
 	})
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
 	go func() {
-		utils.AssertEqual(t, nil, target.Listen(":50003"))
+		utils.AssertEqual(t, nil, target.Listener(ln))
 	}()
+
 	time.Sleep(2 * time.Second)
+	addr := ln.Addr().String()
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
-		Servers: []string{"127.0.0.1:50003"},
+		Servers: []string{addr},
 		ModifyRequest: func(c *fiber.Ctx) error {
 			c.Request().SetBody([]byte("modified request"))
 			return nil
