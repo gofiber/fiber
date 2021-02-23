@@ -568,7 +568,7 @@ func (app *App) Listener(ln net.Listener) error {
 	app.startupProcess()
 	// Print startup message
 	if !app.config.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), false, "")
+		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
 	}
 	// Start listening
 	return app.server.Serve(ln)
