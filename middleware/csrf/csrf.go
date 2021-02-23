@@ -48,18 +48,12 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		var token string
-		generateToken := false
 
 		// Action depends on the HTTP method
 		switch c.Method() {
 		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
 			// Declare empty token and try to get existing CSRF from cookie
 			token = c.Cookies(cfg.CookieName)
-
-			// Generate CSRF token if not exist
-			if token == "" {
-				generateToken = true
-			}
 		default:
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
@@ -83,32 +77,30 @@ func New(config ...Config) fiber.Handler {
 				})
 				return cfg.ErrorHandler(c, err)
 			}
-
-			// The token is validated, time to delete it
-			manager.delete(token)
-			generateToken = true
 		}
 
-		if generateToken {
+		// Generate CSRF token if not exist
+		if token == "" {
 			// And generate a new token
 			token = cfg.KeyGenerator()
-			// Add token to Storage
-			manager.setRaw(token, dummyValue, cfg.Expiration)
-
-			// Create cookie to pass token to client
-			cookie := &fiber.Cookie{
-				Name:     cfg.CookieName,
-				Value:    token,
-				Domain:   cfg.CookieDomain,
-				Path:     cfg.CookiePath,
-				Expires:  time.Now().Add(cfg.Expiration),
-				Secure:   cfg.CookieSecure,
-				HTTPOnly: cfg.CookieHTTPOnly,
-				SameSite: cfg.CookieSameSite,
-			}
-			// Set cookie to response
-			c.Cookie(cookie)
 		}
+
+		// Add/update token to Storage
+		manager.setRaw(token, dummyValue, cfg.Expiration)
+
+		// Create cookie to pass token to client
+		cookie := &fiber.Cookie{
+			Name:     cfg.CookieName,
+			Value:    token,
+			Domain:   cfg.CookieDomain,
+			Path:     cfg.CookiePath,
+			Expires:  time.Now().Add(cfg.Expiration),
+			Secure:   cfg.CookieSecure,
+			HTTPOnly: cfg.CookieHTTPOnly,
+			SameSite: cfg.CookieSameSite,
+		}
+		// Set cookie to response
+		c.Cookie(cookie)
 
 		// Protect clients from caching the response by telling the browser
 		// a new header value is generated
