@@ -1,7 +1,9 @@
 package favicon
 
 import (
+	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -71,6 +73,22 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
+// go test -run Test_Middleware_Favicon_FileSystem
+func Test_Middleware_Favicon_FileSystem(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		File:       "favicon.ico",
+		FileSystem: http.FS(os.DirFS("../../.github/testdata/")),
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+}
+
 // go test -run Test_Middleware_Favicon_CacheControl
 func Test_Middleware_Favicon_CacheControl(t *testing.T) {
 	app := fiber.New()
@@ -79,6 +97,7 @@ func Test_Middleware_Favicon_CacheControl(t *testing.T) {
 		CacheControl: "public, max-age=100",
 		File:         "../../.github/testdata/favicon.ico",
 	}))
+
 	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
