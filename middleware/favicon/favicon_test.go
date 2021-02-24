@@ -4,11 +4,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
+
+	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
-	"github.com/valyala/fasthttp"
 )
 
 // go test -run Test_Middleware_Favicon
@@ -73,13 +75,32 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
+// mockFS wraps local filesystem for the purposes of
+// Test_Middleware_Favicon_FileSystem located below
+// TODO use os.Dir if fiber upgrades to 1.16
+type mockFS struct {
+}
+
+func (m mockFS) Open(name string) (http.File, error) {
+	if name == "/" {
+		name = "."
+	} else {
+		name = strings.TrimPrefix(name, "/")
+	}
+	file, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
+}
+
 // go test -run Test_Middleware_Favicon_FileSystem
 func Test_Middleware_Favicon_FileSystem(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		File:       "favicon.ico",
-		FileSystem: http.FS(os.DirFS("../../.github/testdata/")),
+		File:       "../../.github/testdata/favicon.ico",
+		FileSystem: mockFS{},
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
