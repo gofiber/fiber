@@ -722,6 +722,8 @@ func (a *Agent) Dest(dest []byte) *Agent {
 
 // Bytes returns the status code, bytes body and errors of url.
 func (a *Agent) Bytes() (code int, body []byte, errs []error) {
+	fmt.Println("[Warning] client is still in beta, API might change in the future!")
+
 	defer a.release()
 
 	if errs = append(errs, a.errs...); len(errs) > 0 {
