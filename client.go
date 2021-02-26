@@ -145,6 +145,7 @@ func (c *Client) createAgent(method, url string) *Agent {
 type Agent struct {
 	// Name is used in User-Agent request header.
 	Name string
+
 	// NoDefaultUserAgentHeader when set to true, causes the default
 	// User-Agent header to be excluded from the Request.
 	NoDefaultUserAgentHeader bool
@@ -390,7 +391,7 @@ func (a *Agent) Host(host string) *Agent {
 	return a
 }
 
-// HostBytes sets host for the uri.
+// HostBytes sets host for the URI.
 func (a *Agent) HostBytes(host []byte) *Agent {
 	a.req.URI().SetHostBytes(host)
 
@@ -492,7 +493,7 @@ func (a *Agent) XML(v interface{}) *Agent {
 	return a
 }
 
-// Form sends request with body if args is non-nil.
+// Form sends form request with body if args is non-nil.
 //
 // It is recommended obtaining args via AcquireArgs and release it
 // manually in performance-critical code.
@@ -641,7 +642,7 @@ func (a *Agent) Timeout(timeout time.Duration) *Agent {
 	return a
 }
 
-// Reuse indicates the createAgent can be used again after one request.
+// Reuse enables the Agent instance to be used again after one request.
 //
 // If agent is reusable, then it should be released manually when it is no
 // longer used.
@@ -651,7 +652,7 @@ func (a *Agent) Reuse() *Agent {
 	return a
 }
 
-// InsecureSkipVerify controls whether the createAgent verifies the server's
+// InsecureSkipVerify controls whether the Agent verifies the server
 // certificate chain and host name.
 func (a *Agent) InsecureSkipVerify() *Agent {
 	if a.HostClient.TLSConfig == nil {
@@ -877,7 +878,7 @@ func ReleaseClient(c *Client) {
 	clientPool.Put(c)
 }
 
-// AcquireAgent returns an empty Agent instance from createAgent pool.
+// AcquireAgent returns an empty Agent instance from Agent pool.
 //
 // The returned Agent instance may be passed to ReleaseAgent when it is
 // no longer needed. This allows Agent recycling, reduces GC pressure
@@ -890,10 +891,10 @@ func AcquireAgent() *Agent {
 	return v.(*Agent)
 }
 
-// ReleaseAgent returns a acquired via AcquireAgent to createAgent pool.
+// ReleaseAgent returns a acquired via AcquireAgent to Agent pool.
 //
 // It is forbidden accessing req and/or its' members after returning
-// it to createAgent pool.
+// it to Agent pool.
 func ReleaseAgent(a *Agent) {
 	a.reset()
 	agentPool.Put(a)
