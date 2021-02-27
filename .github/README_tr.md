@@ -73,7 +73,7 @@
   </a>
 </p>
 <p align="center">
-    <b>Fiber</b>, <a href="https://golang.org/doc/">Go</a> için <b>en hızlı</b> HTTP motoru olan <a href="https://github.com/valyala/fasthttp">Fasthttp</a> üzerine inşa edilmiş, <a href="https://github.com/expressjs/express">Express</a> den ilham alan bir <b>web çatısıdır</b>. <b>Sıfır bellek ayırma</b> ve <b>performans</b> göz önünde bulundurularak <b>hızlı</b> geliştirme için işleri <b>kolaylaştırmak</b> üzere tasarlandı.
+    <b>Fiber</b>, <a href="https://golang.org/doc/">Go</a> için <b>en hızlı</b> HTTP motoru olan <a href="https://github.com/valyala/fasthttp">Fasthttp</a> üzerine inşa edilmiş, <a href="https://github.com/expressjs/express">Express</a>den ilham alan bir <b>web çatısıdır</b>. <b>Sıfır bellek ayırma</b> ve <b>performans</b> göz önünde bulundurularak <b>hızlı</b> geliştirme için işleri <b>kolaylaştırmak</b> üzere tasarlandı.
 </p>
 
 ## ⚡️ Hızlı Başlangıç
@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 Performans Ölçümleri
 
-Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) ve [Go Web](https://github.com/smallnest/go-web-framework-benchmark) ile koşuldu. Bütün sonuçları görmek için lütfen [Wiki](https://docs.gofiber.io/benchmarks) sayfasını ziyaret ediniz.
+Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) ve [Go Web](https://github.com/smallnest/go-web-framework-benchmark) ile gerçekleştirildi. Bütün sonuçları görmek için lütfen [Wiki](https://docs.gofiber.io/benchmarks) sayfasını ziyaret ediniz.
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -105,9 +105,9 @@ Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r1
 
 ## ⚙️ Kurulum
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
+Go'nun `1.14` sürümü ([indir](https://golang.org/dl/)) ya da daha yüksek bir sürüm gerekli. 
 
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+Bir klasör oluşturup klasörün içinde `go mod init github.com/your/repo` yazarak projenize başlayın ([daha fazla öğren](https://blog.golang.org/using-go-modules)). Ardından Fiberi kurmak için [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu çalıştırın:
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -125,12 +125,12 @@ go get -u github.com/gofiber/fiber/v2
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
 -   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
--   Available in [15 languages](https://docs.gofiber.io/)
--   Ve daha fazlası, [Fiber ı keşfet](https://docs.gofiber.io/)
+-   [15 dilde](https://docs.gofiber.io/) mevcut
+-   Ve daha fazlası, [Fiber'ı keşfet](https://docs.gofiber.io/)
 
 ## 💡 Felsefe
 
-[Node.js](https://nodejs.org/en/about/) den [Go](https://golang.org/doc/) ya geçen yeni gopher lar kendi web uygulamalarını ve mikroservislerini yazmaya başlamadan önce dili öğrenmek ile uğraşıyorlar. Fiber, bir **web çatısı** olarak, **minimalizm** ve **UNIX yolu**nu izlemek fikri ile oluşturuldu. Böylece yeni gopher lar sıcak ve güvenilir bir hoşgeldin ile Go dünyasına giriş yapabilirler.
+[Node.js](https://nodejs.org/en/about/) den [Go](https://golang.org/doc/) ya geçen yeni gopher lar kendi web uygulamalarını ve mikroservislerini yazmaya başlamadan önce dili öğrenmek ile uğraşıyorlar. Fiber, bir **web çatısı** olarak, **minimalizm** ve **UNIX yolu**nu izlemek fikri ile oluşturuldu. Böylece yeni gopherlar sıcak ve güvenilir bir hoşgeldin ile Go dünyasına giriş yapabilirler.
 
 Fiber internet üzerinde en popüler olan Express web çatısından **esinlenmiştir**. Biz Express in **kolaylığını** ve Go nun **ham performansını** birleştirdik. Daha önce Node.js üzerinde (Express veya benzerini kullanarak) bir web uygulaması geliştirdiyseniz, pek çok metod ve prensip size **çok tanıdık** gelecektir.
 
@@ -478,9 +478,9 @@ func main() {
 
 ## 🧬 Internal Middleware
 
-Here is a list of middleware that are included within the Fiber framework.
+Fibera dahil edilen middlewareların bir listesi aşağıda verilmiştir.
 
-| Middleware                                                                       | Description                                                                                                                                                           |
+| Middleware                                                                       | Açıklama                                                                                                                                                        |
 | :------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
 | [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default.                                                                              |
@@ -499,9 +499,9 @@ Here is a list of middleware that are included within the Fiber framework.
 
 ## 🧬 External Middleware
 
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+Harici olarak barındırılan middlewareların modüllerinin listesi [Fiber ekibi](https://github.com/orgs/gofiber/people) tarafından korunur.
 
-| Middleware                                        | Description                                                                                                                                                         |
+| Middleware                                        | Açıklama                                                                                                                                                         |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [adaptor](https://github.com/gofiber/adaptor)     | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn!                                                                           |
 | [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
@@ -514,7 +514,7 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 
 ## 🌱 Third Party Middlewares
 
-This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+Bu, Fiber topluluğu tarafından oluşturulan middlewareların bir listesidir, sizinkini görmek istiyorsanız lütfen bir PR oluşturun!
 
 -   [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 -   [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
@@ -571,7 +571,7 @@ Fiber, alan adı, gitbook, netlify, serverless yer sağlayıcısı giderleri ve 
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
-## ⭐️ Stargazers
+## ⭐️ Projeyi Yıldızlayanlar
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
