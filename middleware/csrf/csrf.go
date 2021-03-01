@@ -51,34 +51,12 @@ func New(config ...Config) fiber.Handler {
 
 		// Action depends on the HTTP method
 		switch c.Method() {
-		case fiber.MethodGet:
+		case fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace:
 			// Declare empty token and try to get existing CSRF from cookie
 			token = c.Cookies(cfg.CookieName)
+		default:
+			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
-			// Generate CSRF token if not exist
-			if token == "" {
-				// Generate new CSRF token
-				token = cfg.KeyGenerator()
-
-				// Add token to Storage
-				manager.setRaw(token, dummyValue, cfg.Expiration)
-			}
-
-			// Create cookie to pass token to client
-			cookie := &fiber.Cookie{
-				Name:     cfg.CookieName,
-				Value:    token,
-				Domain:   cfg.CookieDomain,
-				Path:     cfg.CookiePath,
-				Expires:  time.Now().Add(cfg.Expiration),
-				Secure:   cfg.CookieSecure,
-				HTTPOnly: cfg.CookieHTTPOnly,
-				SameSite: cfg.CookieSameSite,
-			}
-			// Set cookie to response
-			c.Cookie(cookie)
-
-		case fiber.MethodPost, fiber.MethodDelete, fiber.MethodPatch, fiber.MethodPut:
 			// Extract token from client request i.e. header, query, param, form or cookie
 			token, err = extractor(c)
 			if err != nil {
@@ -87,7 +65,6 @@ func New(config ...Config) fiber.Handler {
 
 			// if token does not exist in Storage
 			if manager.getRaw(token) == nil {
-
 				// Expire cookie
 				c.Cookie(&fiber.Cookie{
 					Name:     cfg.CookieName,
@@ -98,13 +75,32 @@ func New(config ...Config) fiber.Handler {
 					HTTPOnly: cfg.CookieHTTPOnly,
 					SameSite: cfg.CookieSameSite,
 				})
-
 				return cfg.ErrorHandler(c, err)
 			}
-
-			// The token is validated, time to delete it
-			manager.delete(token)
 		}
+
+		// Generate CSRF token if not exist
+		if token == "" {
+			// And generate a new token
+			token = cfg.KeyGenerator()
+		}
+
+		// Add/update token to Storage
+		manager.setRaw(token, dummyValue, cfg.Expiration)
+
+		// Create cookie to pass token to client
+		cookie := &fiber.Cookie{
+			Name:     cfg.CookieName,
+			Value:    token,
+			Domain:   cfg.CookieDomain,
+			Path:     cfg.CookiePath,
+			Expires:  time.Now().Add(cfg.Expiration),
+			Secure:   cfg.CookieSecure,
+			HTTPOnly: cfg.CookieHTTPOnly,
+			SameSite: cfg.CookieSameSite,
+		}
+		// Set cookie to response
+		c.Cookie(cookie)
 
 		// Protect clients from caching the response by telling the browser
 		// a new header value is generated
