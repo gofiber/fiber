@@ -68,6 +68,7 @@ package main
 
 import (
 	"embed"
+	"io/fs"
 	"log"
 	"net/http"
 
@@ -75,14 +76,28 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 )
 
+// Embed a single file
 //go:embed index.html
 var f embed.FS
+
+// Embed a directory
+//go:embed static/*
+var embedDirStatic embed.FS
 
 func main() {
 	app := fiber.New()
 
 	app.Use("/", filesystem.New(filesystem.Config{
 		Root: http.FS(f),
+	}))
+
+	// Access file "image.png" under `static/` directory via URL: `http://<server>/static/image.png`.
+	// With `http.FS(embedDirStatic)`, you have to access it via URL:
+	// `http://<server>/static/static/image.png`.
+	subFS, _ := fs.Sub(embedDirStatic, "static")
+	app.Use("/static", filesystem.New(filesystem.Config{
+		Root: http.FS(subFS),
+		Browse: true,
 	}))
 
 	log.Fatal(app.Listen(":3000"))
