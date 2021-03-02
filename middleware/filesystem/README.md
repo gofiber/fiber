@@ -76,6 +76,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 )
 
+// Embed a single file
 //go:embed index.html
 var f embed.FS
 
