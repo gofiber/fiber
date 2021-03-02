@@ -79,6 +79,7 @@ import (
 //go:embed index.html
 var f embed.FS
 
+// Embed a directory
 //go:embed static/*
 var embedDirStatic embed.FS
 
