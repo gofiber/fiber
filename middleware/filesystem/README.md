@@ -88,8 +88,10 @@ func main() {
 	app.Use("/", filesystem.New(filesystem.Config{
 		Root: http.FS(f),
 	}))
-	
-	// Access file "static/image.png" via URL: http://<server>/static/image.png
+
+	// Access file "image.png" under `static/` directory via URL: `http://<server>/static/image.png`.
+	// With `http.FS(embedDirStatic)`, you have to access it via URL:
+	// `http://<server>/static/static/image.png`.
 	subFS, _ := fs.Sub(embedDirStatic, "static")
 	app.Use("/static", filesystem.New(filesystem.Config{
 		Root: http.FS(f),
