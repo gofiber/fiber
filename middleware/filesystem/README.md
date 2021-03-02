@@ -68,6 +68,7 @@ package main
 
 import (
 	"embed"
+	"io/fs"
 	"log"
 	"net/http"
 
@@ -78,11 +79,21 @@ import (
 //go:embed index.html
 var f embed.FS
 
+//go:embed static/*
+var embedDirStatic embed.FS
+
 func main() {
 	app := fiber.New()
 
 	app.Use("/", filesystem.New(filesystem.Config{
 		Root: http.FS(f),
+	}))
+	
+	// Access file "static/image.png" via URL: http://<server>/static/image.png
+	subFS, _ := fs.Sub(embedDirStatic, "static")
+	app.Use("/static", filesystem.New(filesystem.Config{
+		Root: http.FS(f),
+		Browse: true,
 	}))
 
 	log.Fatal(app.Listen(":3000"))
