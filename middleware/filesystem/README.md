@@ -96,7 +96,7 @@ func main() {
 	// `http://<server>/static/static/image.png`.
 	subFS, _ := fs.Sub(embedDirStatic, "static")
 	app.Use("/static", filesystem.New(filesystem.Config{
-		Root: http.FS(f),
+		Root: http.FS(subFS),
 		Browse: true,
 	}))
 
