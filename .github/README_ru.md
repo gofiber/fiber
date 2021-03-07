@@ -207,27 +207,27 @@ func main() {
 
 ```go
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// Match any route
-	app.Use(func(c *fiber.Ctx) error {
-		fmt.Println("🥇 First handler")
-		return c.Next()
-	})
+    // Match any route
+    app.Use(func(c *fiber.Ctx) error {
+        fmt.Println("🥇 First handler")
+        return c.Next()
+    })
 
-	// Match all routes starting with /api
-	app.Use("/api", func(c *fiber.Ctx) error {
-		fmt.Println("🥈 Second handler")
-		return c.Next()
-	})
+    // Match all routes starting with /api
+    app.Use("/api", func(c *fiber.Ctx) error {
+        fmt.Println("🥈 Second handler")
+        return c.Next()
+    })
 
-	// GET /api/register
-	app.Get("/api/list", func(c *fiber.Ctx) error {
-		fmt.Println("🥉 Last handler")
-		return c.SendString("Hello, World 👋!")
-	})
+    // GET /api/register
+    app.Get("/api/list", func(c *fiber.Ctx) error {
+        fmt.Println("🥉 Last handler")
+        return c.SendString("Hello, World 👋!")
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -248,8 +248,6 @@ func main() {
 Ознакомьтесь с пакетом [Template](https://github.com/gofiber/template), который поддерживает множество движков для views.
 
 ```go
-package main
-
 import (
     "github.com/gofiber/fiber/v2"
     "github.com/gofiber/template/pug"
@@ -271,6 +269,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 ### Группировка путей в цепочки
@@ -313,8 +312,6 @@ func main() {
 📖 [Logger](https://docs.gofiber.io/middleware/logger)
 
 ```go
-package main
-
 import (
     "log"
 
@@ -331,6 +328,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 ### Cross-Origin Resource Sharing (CORS)
@@ -354,6 +352,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 Проверем CORS, присвоив домен в заголовок `Origin`, отличный от `localhost`:
@@ -388,6 +387,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 ### JSON Response
@@ -418,6 +418,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 ### WebSocket Upgrade
@@ -440,7 +441,9 @@ func main() {
         log.Println("read:", err)
         break
       }
+      
       log.Printf("recv: %s", msg)
+      
       err = c.WriteMessage(mt, msg)
       if err != nil {
         log.Println("write:", err)
@@ -450,8 +453,9 @@ func main() {
   }))
 
   log.Fatal(app.Listen(":3000"))
-  // ws://localhost:3000/ws
+  // => ws://localhost:3000/ws
 }
+
 ```
 
 ### Recover middleware
@@ -475,6 +479,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 </details>
