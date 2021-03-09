@@ -901,7 +901,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	if host == "0.0.0.0" {
 		mainLogo +=
 		" │ "+center(fmt.Sprintf("%s://127.0.0.1:%s", scheme, port), 49)+ " │\n" +
-		" │ "+center(fmt.Sprintf("bound %s://0.0.0.0:%s", scheme, port), 49)+ " │\n"
+		" │ "+center(fmt.Sprintf("(bound on host 0.0.0.0 and port %s)", port), 49)+ " │\n"
 	} else {
 		mainLogo +=
 		" │ "+center(fmt.Sprintf("%s://%s:%s", scheme, host, port), 49)+ " │\n"
