@@ -1,9 +1,6 @@
 package csrf
 
 import (
-	"errors"
-	"net/textproto"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -16,27 +13,6 @@ func New(config ...Config) fiber.Handler {
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
-
-	// Generate the correct extractor to get the token from the correct location
-	selectors := strings.Split(cfg.KeyLookup, ":")
-
-	if len(selectors) != 2 {
-		panic("[CSRF] KeyLookup must in the form of <source>:<key>")
-	}
-
-	// By default we extract from a header
-	extractor := csrfFromHeader(textproto.CanonicalMIMEHeaderKey(selectors[1]))
-
-	switch selectors[0] {
-	case "form":
-		extractor = csrfFromForm(selectors[1])
-	case "query":
-		extractor = csrfFromQuery(selectors[1])
-	case "param":
-		extractor = csrfFromParam(selectors[1])
-	case "cookie":
-		extractor = csrfFromCookie(selectors[1])
-	}
 
 	dummyValue := []byte{'+'}
 
@@ -58,7 +34,7 @@ func New(config ...Config) fiber.Handler {
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
 			// Extract token from client request i.e. header, query, param, form or cookie
-			token, err = extractor(c)
+			token, err = cfg.extractor(c)
 			if err != nil {
 				return cfg.ErrorHandler(c, err)
 			}
@@ -113,68 +89,5 @@ func New(config ...Config) fiber.Handler {
 
 		// Continue stack
 		return c.Next()
-	}
-}
-
-var (
-	errMissingHeader = errors.New("missing csrf token in header")
-	errMissingQuery  = errors.New("missing csrf token in query")
-	errMissingParam  = errors.New("missing csrf token in param")
-	errMissingForm   = errors.New("missing csrf token in form")
-	errMissingCookie = errors.New("missing csrf token in cookie")
-)
-
-// csrfFromHeader returns a function that extracts token from the request header.
-func csrfFromHeader(param string) func(c *fiber.Ctx) (string, error) {
-	return func(c *fiber.Ctx) (string, error) {
-		token := c.Get(param)
-		if token == "" {
-			return "", errMissingHeader
-		}
-		return token, nil
-	}
-}
-
-// csrfFromQuery returns a function that extracts token from the query string.
-func csrfFromQuery(param string) func(c *fiber.Ctx) (string, error) {
-	return func(c *fiber.Ctx) (string, error) {
-		token := c.Query(param)
-		if token == "" {
-			return "", errMissingQuery
-		}
-		return token, nil
-	}
-}
-
-// csrfFromParam returns a function that extracts token from the url param string.
-func csrfFromParam(param string) func(c *fiber.Ctx) (string, error) {
-	return func(c *fiber.Ctx) (string, error) {
-		token := c.Params(param)
-		if token == "" {
-			return "", errMissingParam
-		}
-		return token, nil
-	}
-}
-
-// csrfFromForm returns a function that extracts a token from a multipart-form.
-func csrfFromForm(param string) func(c *fiber.Ctx) (string, error) {
-	return func(c *fiber.Ctx) (string, error) {
-		token := c.FormValue(param)
-		if token == "" {
-			return "", errMissingForm
-		}
-		return token, nil
-	}
-}
-
-// csrfFromCookie returns a function that extracts token from the cookie header.
-func csrfFromCookie(param string) func(c *fiber.Ctx) (string, error) {
-	return func(c *fiber.Ctx) (string, error) {
-		token := c.Cookies(param)
-		if token == "" {
-			return "", errMissingCookie
-		}
-		return token, nil
 	}
 }
