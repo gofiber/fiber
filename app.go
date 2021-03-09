@@ -817,17 +817,6 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		return
 	}
 
-	var logo string
-	logo += "%s"
-	logo += " ┌───────────────────────────────────────────────────┐\n"
-	logo += " │ %s │\n"
-	logo += " │ %s │\n"
-	logo += " │                                                   │\n"
-	logo += " │ Handlers %s  Processes %s │\n"
-	logo += " │ Prefork .%s  PID ....%s │\n"
-	logo += " └───────────────────────────────────────────────────┘"
-	logo += "%s"
-
 	const (
 		cBlack = "\u001b[90m"
 		// cRed   = "\u001b[91m"
@@ -886,12 +875,13 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	host, port := parseAddr(addr)
-	if host == "" || host == "0.0.0.0" {
+	if host == "" {
 		host = "127.0.0.1"
 	}
-	addr = "http://" + host + ":" + port
+
+	scheme := "http"
 	if tls {
-		addr = "https://" + host + ":" + port
+		scheme = "https"
 	}
 
 	isPrefork := "Disabled"
@@ -904,14 +894,46 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		procs = "1"
 	}
 
-	mainLogo := fmt.Sprintf(logo,
-		cBlack,
-		centerValue(" Fiber v"+Version, 49),
-		center(addr, 49),
-		value(strconv.Itoa(app.handlerCount), 14), value(procs, 12),
-		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
-		cReset,
-	)
+	var mainLogo string
+	if host == "0.0.0.0" {
+		const logo string = "%s" +
+			" ┌───────────────────────────────────────────────────┐\n" +
+			" │ %s │\n" +
+			" │ %s │\n" +
+			" │ %s │\n" +
+			" │                                                   │\n" +
+			" │ Handlers %s  Processes %s │\n" +
+			" │ Prefork .%s  PID ....%s │\n" +
+			" └───────────────────────────────────────────────────┘" +
+			"%s"
+		mainLogo = fmt.Sprintf(logo,
+			cBlack,
+			centerValue(" Fiber v"+Version, 49),
+			center(fmt.Sprintf("bound %s://%v:%v", scheme, host, port), 49),
+			center(fmt.Sprintf("visit %s://127.0.0.1:%v", scheme, port), 49),
+			value(strconv.Itoa(app.handlerCount), 14), value(procs, 12),
+			value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
+			cReset,
+		)
+	} else {
+		const logo string = "%s" +
+			" ┌───────────────────────────────────────────────────┐\n" +
+			" │ %s │\n" +
+			" │ %s │\n" +
+			" │                                                   │\n" +
+			" │ Handlers %s  Processes %s │\n" +
+			" │ Prefork .%s  PID ....%s │\n" +
+			" └───────────────────────────────────────────────────┘" +
+			"%s"
+		mainLogo = fmt.Sprintf(logo,
+			cBlack,
+			centerValue(" Fiber v"+Version, 49),
+			center(fmt.Sprintf("%s://%v:%v", scheme, host, port), 49),
+			value(strconv.Itoa(app.handlerCount), 14), value(procs, 12),
+			value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
+			cReset,
+		)
+	}
 
 	var childPidsLogo string
 	if app.config.Prefork {
