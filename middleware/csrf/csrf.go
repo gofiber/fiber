@@ -6,12 +6,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-var cfg Config
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
-	cfg = configDefault(config...)
+	cfg := configDefault(config...)
 
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
