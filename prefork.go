@@ -28,6 +28,28 @@ func IsChild() bool {
 	return os.Getenv(envPreforkChildKey) == envPreforkChildVal
 }
 
+func doCommand() (*exec.Cmd, error) {
+	cmd := exec.Command(os.Args[0], os.Args[1:]...)
+	if testPreforkMaster {
+		// When test prefork master,
+		// just start the child process with a dummy cmd,
+		// which will exit soon
+		cmd = dummyCmd()
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// add fiber prefork child flag into child proc env
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
+	)
+	// we must get file descriptor by listener, but type net.Listener cannot get
+	// later to set files descriptor on `cmd.ExtraFiles`
+	// cmd.ExtraFiles = files
+	return cmd, cmd.Start()
+}
+
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
 func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error) {
 	// 👶 child process 👶
@@ -81,32 +103,18 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 	// launch child procs
 	for i := 0; i < max; i++ {
 		/* #nosec G204 */
-		cmd := exec.Command(os.Args[0], os.Args[1:]...)
-		if testPreforkMaster {
-			// When test prefork master,
-			// just start the child process with a dummy cmd,
-			// which will exit soon
-			cmd = dummyCmd()
-		}
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		// add fiber prefork child flag into child proc env
-		cmd.Env = append(os.Environ(),
-			fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
-		)
-		if err = cmd.Start(); err != nil {
+		var cmd *exec.Cmd
+		if cmd, err = doCommand(); err != nil {
 			return fmt.Errorf("failed to start a child prefork process, error: %v", err)
 		}
 
 		// store child process
-		pid := cmd.Process.Pid
-		childs[pid] = cmd
-		pids = append(pids, strconv.Itoa(pid))
+		childs[cmd.Process.Pid] = cmd
+		pids = append(pids, strconv.Itoa(cmd.Process.Pid))
 
 		// notify master if child crashes
 		go func() {
-			channel <- child{pid, cmd.Wait()}
+			channel <- child{cmd.Process.Pid, cmd.Wait()}
 		}()
 	}
 
