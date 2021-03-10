@@ -16,3 +16,4 @@ jobs:
       uses: actions/checkout@v2
     - name: Run Test
       run: go test ./... -v -race
+      

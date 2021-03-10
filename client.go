@@ -16,9 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v2/utils"
-
 	"github.com/gofiber/fiber/v2/internal/encoding/json"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -480,7 +479,7 @@ func (a *Agent) JSON(v interface{}) *Agent {
 	return a
 }
 
-// XML sends a XML request.
+// XML sends an XML request.
 func (a *Agent) XML(v interface{}) *Agent {
 	a.req.Header.SetContentType(MIMEApplicationXML)
 
@@ -720,10 +719,13 @@ func (a *Agent) Dest(dest []byte) *Agent {
 }
 
 /************************** End Agent Setting **************************/
+var warnOnce sync.Once
 
 // Bytes returns the status code, bytes body and errors of url.
 func (a *Agent) Bytes() (code int, body []byte, errs []error) {
-	fmt.Println("[Warning] client is still in beta, API might change in the future!")
+	warnOnce.Do(func() {
+		fmt.Println("[Warning] client is still in beta, API might change in the future!")
+	})
 
 	defer a.release()
 
