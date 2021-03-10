@@ -382,29 +382,6 @@ func Test_App_Add_Method_Test(t *testing.T) {
 	app.Add("JOHN", "/doe", testEmptyHandler)
 }
 
-func Test_App_Listener_TLS(t *testing.T) {
-	app := New()
-
-	// Create tls certificate
-	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	if err != nil {
-		utils.AssertEqual(t, nil, err)
-	}
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
-
-	ln, err := net.Listen(NetworkTCP4, ":3078")
-	utils.AssertEqual(t, nil, err)
-
-	ln = tls.NewListener(ln, config)
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	utils.AssertEqual(t, nil, app.Listener(ln))
-}
-
 // go test -run Test_App_GETOnly
 func Test_App_GETOnly(t *testing.T) {
 	app := New(Config{
@@ -1008,6 +985,27 @@ func Test_App_Listener_Prefork(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
 
 	ln := fasthttputil.NewInmemoryListener()
+	utils.AssertEqual(t, nil, app.Listener(ln))
+}
+
+func Test_App_Listener_TLS(t *testing.T) {
+	// Create tls certificate
+	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+
+	ln, err := tls.Listen(NetworkTCP4, ":0", config)
+	utils.AssertEqual(t, nil, err)
+
+	app := New()
+
+	go func() {
+		time.Sleep(time.Millisecond * 500)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
 	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
