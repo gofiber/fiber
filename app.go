@@ -12,7 +12,6 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -27,6 +26,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/colorable"
+	"github.com/gofiber/fiber/v2/internal/encoding/json"
 	"github.com/gofiber/fiber/v2/internal/isatty"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
