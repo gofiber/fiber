@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/encoding/json"
-
+	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -873,21 +873,49 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 	utils.AssertEqual(t, 0, len(errs))
 }
 
-func Test_Client_Agent_TLS(t *testing.T) {
+func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 	t.Parallel()
 
-	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	utils.AssertEqual(t, nil, err)
 
-	config := &tls.Config{
+	serverTLSConf := &tls.Config{
 		Certificates: []tls.Certificate{cer},
 	}
 
 	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
 	utils.AssertEqual(t, nil, err)
 
-	ln = tls.NewListener(ln, config)
+	ln = tls.NewListener(ln, serverTLSConf)
+
+	app := New(Config{DisableStartupMessage: true})
+
+	app.Get("/", func(c *Ctx) error {
+		return c.SendString("ignore tls")
+	})
+
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+
+	code, body, errs := Get("https://" + ln.Addr().String()).
+		InsecureSkipVerify().
+		InsecureSkipVerify().
+		String()
+
+	utils.AssertEqual(t, 0, len(errs))
+	utils.AssertEqual(t, StatusOK, code)
+	utils.AssertEqual(t, "ignore tls", body)
+}
+
+func Test_Client_Agent_TLS(t *testing.T) {
+	t.Parallel()
+
+	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+	utils.AssertEqual(t, nil, err)
+
+	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
+	ln = tls.NewListener(ln, serverTLSConf)
 
 	app := New(Config{DisableStartupMessage: true})
 
@@ -898,9 +926,7 @@ func Test_Client_Agent_TLS(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	code, body, errs := Get("https://" + ln.Addr().String()).
-		InsecureSkipVerify().
-		TLSConfig(config).
-		InsecureSkipVerify().
+		TLSConfig(clientTLSConf).
 		String()
 
 	utils.AssertEqual(t, 0, len(errs))
