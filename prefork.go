@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/valyala/fasthttp/reuseport"
 )
 
 const (
@@ -21,11 +19,34 @@ const (
 
 var (
 	testPreforkMaster = false
+	preforkFiles      = []*os.File{}
 )
 
 // IsChild determines if the current process is a result of Prefork
 func IsChild() bool {
 	return os.Getenv(envPreforkChildKey) == envPreforkChildVal
+}
+
+func setTCPListenerFiles(network, addr string) (net.Listener, error) {
+
+	tcpAddr, err := net.ResolveTCPAddr(network, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	tcplistener, err := net.ListenTCP(network, tcpAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	fl, err := tcplistener.File()
+	if err != nil {
+		return nil, err
+	}
+
+	preforkFiles = []*os.File{fl}
+
+	return tcplistener, nil
 }
 
 func doCommand() (*exec.Cmd, error) {
@@ -46,7 +67,7 @@ func doCommand() (*exec.Cmd, error) {
 	)
 	// we must get file descriptor by listener, but type net.Listener cannot get
 	// later to set files descriptor on `cmd.ExtraFiles`
-	// cmd.ExtraFiles = files
+	cmd.ExtraFiles = preforkFiles
 	return cmd, cmd.Start()
 }
 
@@ -59,12 +80,14 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 		var ln net.Listener
 		// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
 		// Only tcp4 or tcp6 is supported when preforking, both are not supported
-		if ln, err = reuseport.Listen(network, addr); err != nil {
+		// if ln, err = reuseport.Listen(network, addr); err != nil {
+		if ln, err = setTCPListenerFiles(network, addr); err != nil {
 			if !app.config.DisableStartupMessage {
 				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
 			return fmt.Errorf("prefork: %v", err)
 		}
+
 		// wrap a tls config around the listener if provided
 		if tlsConfig != nil {
 			ln = tls.NewListener(ln, tlsConfig)
@@ -72,6 +95,13 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 
 		// kill current child proc when master exits
 		go watchMaster()
+
+		defer func() {
+			e := ln.Close()
+			if err == nil {
+				err = e
+			}
+		}()
 
 		// prepare the server for the start
 		app.startupProcess()
