@@ -118,11 +118,11 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 機能
 
 -   堅牢な[ルーティング](https://docs.gofiber.io/routing)
--   [静的ファイル](https://docs.gofiber.io/application#static)のサポート
+-   [静的ファイル](https://docs.gofiber.io/api/app#static)のサポート
 -   究極の[パフォーマンス](https://docs.gofiber.io/benchmarks)
 -   [低メモリ](https://docs.gofiber.io/benchmarks)フットプリント
--   Express [API エンドポイント](https://docs.gofiber.io/context)
--   Middleware と[Next](https://docs.gofiber.io/context#next)のサポート
+-   Express [API エンドポイント](https://docs.gofiber.io/api/ctx)
+-   Middleware と[Next](https://docs.gofiber.io/api/ctx#next)のサポート
 -   [迅速](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)なサーバーサイドプログラミング
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
@@ -184,7 +184,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -206,7 +206,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {

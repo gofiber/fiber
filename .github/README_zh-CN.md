@@ -115,11 +115,11 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 特点
 
 -   强大的[路由](https://docs.gofiber.io/routing)
--   [静态文件](https://docs.gofiber.io/application#static)服务
+-   [静态文件](https://docs.gofiber.io/api/app#static)服务
 -   极限[表现](https://docs.gofiber.io/benchmarks)
 -   [内存占用低](https://docs.gofiber.io/benchmarks)
--   [API 接口](https://docs.gofiber.io/context)
--   [中间件](https://docs.gofiber.io/middleware)和[Next](https://docs.gofiber.io/context#next)支持
+-   [API 接口](https://docs.gofiber.io/api/ctx)
+-   [中间件](https://docs.gofiber.io/middleware)和[Next](https://docs.gofiber.io/api/ctx#next)支持
 -   [快速](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
 -   [模版引擎](https://github.com/gofiber/template)
 -   [WebSocket 支持](https://github.com/gofiber/websocket)
@@ -180,7 +180,7 @@ func main() {
 
 ```
 
-#### 📖 [**静态文件**](https://docs.gofiber.io/application#static)服务
+#### 📖 [**静态文件**](https://docs.gofiber.io/api/app#static)服务
 
 ```go
 func main() {
@@ -202,7 +202,7 @@ func main() {
 
 ```
 
-#### 📖 [**中间件**](https://docs.gofiber.io/middleware)和[**Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**中间件**](https://docs.gofiber.io/middleware)和[**Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {

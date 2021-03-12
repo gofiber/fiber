@@ -116,11 +116,11 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 Особенности
 
 -   Надежная [маршрутизация](https://docs.gofiber.io/routing)
--   Доступ к [статичным файлам](https://docs.gofiber.io/application#static)
+-   Доступ к [статичным файлам](https://docs.gofiber.io/api/app#static)
 -   Экстремальная [производительность](https://docs.gofiber.io/benchmarks)
 -   [Низкий объем потребления памяти](https://docs.gofiber.io/benchmarks)
--   [Эндпоинты](https://docs.gofiber.io/context), как в [API](https://docs.gofiber.io/context) Express
--   [Middleware](https://docs.gofiber.io/middleware) и поддержка [Next](https://docs.gofiber.io/context#next)
+-   [Эндпоинты](https://docs.gofiber.io/context), как в [API](https://docs.gofiber.io/api/ctx) Express
+-   [Middleware](https://docs.gofiber.io/middleware) и поддержка [Next](https://docs.gofiber.io/api/ctx#next)
 -   [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
 -   [Template engines](https://github.com/gofiber/template)
 -   [Поддержка WebSocket](https://github.com/gofiber/websocket)
@@ -181,7 +181,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -203,7 +203,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {
