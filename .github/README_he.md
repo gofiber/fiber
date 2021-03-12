@@ -139,11 +139,11 @@ go get -u github.com/gofiber/fiber/v2
 <div dir="rtl">
 
 -   [ניתוב](https://docs.gofiber.io/routing) רובסטי
--   הנגשת [קבצים סטטיים](https://docs.gofiber.io/application#static)
+-   הנגשת [קבצים סטטיים](https://docs.gofiber.io/api/app#static)
 -   [ביצועים](https://docs.gofiber.io/benchmarks) גבוהים במיוחד
 -   צורך כמות [זכרון קטנה](https://docs.gofiber.io/benchmarks)
--   [נקודות קצה עבור API](https://docs.gofiber.io/context)
--   תמיכה ב-[Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/context#next)
+-   [נקודות קצה עבור API](https://docs.gofiber.io/api/ctx)
+-   תמיכה ב-[Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next)
 -   תכנות [מהיר](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) של צד שרת
 -   [מנועי תבניות](https://docs.gofiber.io/middleware#template)
 -   [תמיכה ב-WebSocket](https://github.com/gofiber/websocket)
@@ -236,7 +236,7 @@ func main() {
 
 <div dir="rtl">
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 </div>
 
@@ -262,7 +262,7 @@ func main() {
 
 <div dir="rtl">
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 </div>
 

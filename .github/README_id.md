@@ -116,11 +116,11 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 Fitur
 
 -   Sistem [Routing](https://docs.gofiber.io/routing) yang solid
--   Serve [file statis](https://docs.gofiber.io/application#static)
+-   Serve [file statis](https://docs.gofiber.io/api/app#static)
 -   [Kinerja](https://docs.gofiber.io/benchmarks) ekstrim
 -   [Penggunaan memori](https://docs.gofiber.io/benchmarks) yang kecil
--   Cocok untuk [API](https://docs.gofiber.io/context)
--   Mendukung Middleware & [Next](https://docs.gofiber.io/context#next) seperti Express
+-   Cocok untuk [API](https://docs.gofiber.io/api/ctx)
+-   Mendukung Middleware & [Next](https://docs.gofiber.io/api/ctx#next) seperti Express
 -   Kembangkan aplikasi dengan [Cepat](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
@@ -181,7 +181,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving File Static**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving File Static**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -203,7 +203,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {

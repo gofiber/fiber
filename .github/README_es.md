@@ -115,11 +115,11 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 Características
 
 -   [Enrutamiento](https://docs.gofiber.io/routing) robusto
--   Servir [archivos estáticos](https://docs.gofiber.io/application#static)
+-   Servir [archivos estáticos](https://docs.gofiber.io/api/app#static)
 -   [Rendimiento](https://docs.gofiber.io/benchmarks) extremo
 -   [Poca](https://docs.gofiber.io/benchmarks) huella de [memoria](https://docs.gofiber.io/benchmarks)
--   [Puntos finales de API](https://docs.gofiber.io/context) Express
--   Middleware y [próximo](https://docs.gofiber.io/context#next) soporte
+-   [Puntos finales de API](https://docs.gofiber.io/api/ctx) Express
+-   Middleware y [próximo](https://docs.gofiber.io/api/ctx#next) soporte
 -   Programación [rápida](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) del lado del servidor
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
@@ -178,7 +178,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -200,7 +200,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {

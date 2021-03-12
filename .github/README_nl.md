@@ -116,11 +116,11 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 Features
 
 -   Robuuste [routing](https://fiber.wiki/routing)
--   Serveer [statische bestanden](https://fiber.wiki/application#static)
+-   Serveer [statische bestanden](https://docs.gofiber.io/api/app#static)
 -   Extreme [prestaties](https://fiber.wiki/benchmarks)
 -   [Weinig geheugenruimte](https://fiber.wiki/benchmarks)
--   [API endpoints](https://fiber.wiki/context)
--   [Middleware](https://fiber.wiki/middleware) & [Next](https://fiber.wiki/context#next) ondersteuning
+-   [API endpoints](https://docs.gofiber.io/api/ctx)
+-   [Middleware](https://fiber.wiki/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) ondersteuning
 -   [Snelle](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programmering
 -   [Template engines](https://fiber.wiki/middleware#template)
 -   [WebSocket ondersteuning](https://fiber.wiki/middleware#websocket)
@@ -185,7 +185,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -207,7 +207,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {
