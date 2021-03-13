@@ -33,7 +33,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.5.0"
+const Version = "2.6.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -894,25 +894,25 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		procs = "1"
 	}
 
-	mainLogo := cBlack+
-		" ┌───────────────────────────────────────────────────┐\n"+
-		" │ "+centerValue(" Fiber v"+Version, 49)+" │\n"
+	mainLogo := cBlack +
+		" ┌───────────────────────────────────────────────────┐\n" +
+		" │ " + centerValue(" Fiber v"+Version, 49) + " │\n"
 
 	if host == "0.0.0.0" {
 		mainLogo +=
-		" │ "+center(fmt.Sprintf("%s://127.0.0.1:%s", scheme, port), 49)+ " │\n" +
-		" │ "+center(fmt.Sprintf("(bound on host 0.0.0.0 and port %s)", port), 49)+ " │\n"
+			" │ " + center(fmt.Sprintf("%s://127.0.0.1:%s", scheme, port), 49) + " │\n" +
+				" │ " + center(fmt.Sprintf("(bound on host 0.0.0.0 and port %s)", port), 49) + " │\n"
 	} else {
 		mainLogo +=
-		" │ "+center(fmt.Sprintf("%s://%s:%s", scheme, host, port), 49)+ " │\n"
+			" │ " + center(fmt.Sprintf("%s://%s:%s", scheme, host, port), 49) + " │\n"
 	}
 
 	mainLogo += fmt.Sprintf(
 		" │                                                   │\n"+
-		" │ Handlers %s  Processes %s │\n"+
-		" │ Prefork .%s  PID ....%s │\n"+
-		" └───────────────────────────────────────────────────┘"+
-		cReset,
+			" │ Handlers %s  Processes %s │\n"+
+			" │ Prefork .%s  PID ....%s │\n"+
+			" └───────────────────────────────────────────────────┘"+
+			cReset,
 		value(strconv.Itoa(app.handlerCount), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 	)
