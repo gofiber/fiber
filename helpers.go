@@ -49,6 +49,14 @@ func lnMetadata(network string, ln net.Listener) (addr string, cfg *tls.Config) 
 		panic("listener: " + addr + ": Only one usage of each socket address (protocol/network address/port) is normally permitted.")
 	}
 
+	cfg = getTlsConfig(ln)
+
+	return
+}
+
+/* #nosec */
+// getTlsConfig returns a net listener's tls config
+func getTlsConfig(ln net.Listener) *tls.Config {
 	// Get listener type
 	pointer := reflect.ValueOf(ln)
 
@@ -63,13 +71,14 @@ func lnMetadata(network string, ln net.Listener) (addr string, cfg *tls.Config) 
 					// Get element from pointer
 					if elem := newval.Elem(); elem.Type() != nil {
 						// Cast value to *tls.Config
-						cfg = elem.Interface().(*tls.Config)
+						return elem.Interface().(*tls.Config)
 					}
 				}
 			}
 		}
 	}
-	return
+
+	return nil
 }
 
 // readContent opens a named file and read content from it

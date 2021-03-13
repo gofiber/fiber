@@ -116,11 +116,11 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 특징
 
 -   견고한 [라우팅](https://docs.gofiber.io/routing)
--   [정적 파일](https://docs.gofiber.io/application#static) 제공
+-   [정적 파일](https://docs.gofiber.io/api/app#static) 제공
 -   뛰어난 [성능](https://docs.gofiber.io/benchmarks)
 -   [적은 메모리](https://docs.gofiber.io/benchmarks) 공간
--   [API 엔드포인트](https://docs.gofiber.io/context)
--   미들웨어 & [Next](https://docs.gofiber.io/context#next) 지원
+-   [API 엔드포인트](https://docs.gofiber.io/api/ctx)
+-   미들웨어 & [Next](https://docs.gofiber.io/api/ctx#next) 지원
 -   [빠른](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 서버 사이드 프로그래밍
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
@@ -157,7 +157,7 @@ func main() {
     })
 
     // GET /john/75
-    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+    app.Get("/:name/:age", func(c *fiber.Ctx) error {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
@@ -185,7 +185,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -207,7 +207,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {

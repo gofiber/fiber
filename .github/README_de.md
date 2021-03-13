@@ -116,11 +116,11 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 Eigenschaften
 
 -   Robustes [Routing](https://docs.gofiber.io/routing)
--   Bereitstellen von [statischen Dateien](https://docs.gofiber.io/application#static)
+-   Bereitstellen von [statischen Dateien](https://docs.gofiber.io/api/app#static)
 -   Extreme [Performance](https://docs.gofiber.io/benchmarks)
 -   [Geringe Arbeitsspeicher](https://docs.gofiber.io/benchmarks) verwendung
--   Express [API Endpunkte](https://docs.gofiber.io/context)
--   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/context#next) Support
+-   Express [API Endpunkte](https://docs.gofiber.io/api/ctx)
+-   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) Support
 -   [Schnelle](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) serverseitige Programmierung
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
@@ -153,7 +153,7 @@ func main() {
     })
 
     // GET /john/75
-    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+    app.Get("/:name/:age", func(c *fiber.Ctx) error {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
@@ -181,7 +181,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -203,7 +203,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {

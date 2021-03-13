@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -20,19 +21,29 @@ func Balancer(config Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config)
 
-	client := fasthttp.Client{
-		NoDefaultUserAgentHeader: true,
-		DisablePathNormalizing:   true,
-	}
+	// Load balanced client
+	var lbc fasthttp.LBClient
 
 	// Scheme must be provided, falls back to http
-	for i := 0; i < len(cfg.Servers); i++ {
-		if !strings.HasPrefix(cfg.Servers[i], "http") {
-			cfg.Servers[i] = "http://" + cfg.Servers[i]
+	// TODO add https support
+	for _, server := range cfg.Servers {
+		if !strings.HasPrefix(server, "http") {
+			server = "http://" + server
 		}
-	}
 
-	var counter = 0
+		u, err := url.Parse(server)
+		if err != nil {
+			panic(err)
+		}
+
+		client := &fasthttp.HostClient{
+			NoDefaultUserAgentHeader: true,
+			DisablePathNormalizing:   true,
+			Addr:                     u.Host,
+		}
+
+		lbc.Clients = append(lbc.Clients, client)
+	}
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
@@ -55,11 +66,10 @@ func Balancer(config Config) fiber.Handler {
 			}
 		}
 
-		req.SetRequestURI(cfg.Servers[counter] + utils.UnsafeString(req.RequestURI()))
-		counter = (counter + 1) % len(cfg.Servers)
+		req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
 
 		// Forward request
-		if err = client.Do(req, res); err != nil {
+		if err = lbc.Do(req, res); err != nil {
 			return err
 		}
 

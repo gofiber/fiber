@@ -116,11 +116,11 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 功能
 
 -   強大的[路由](https://docs.gofiber.io/routing)
--   [靜態檔案](https://docs.gofiber.io/application#static)服務
+-   [靜態檔案](https://docs.gofiber.io/api/app#static)服務
 -   [超快速](https://docs.gofiber.io/benchmarks)
 -   [佔用很少記憶體](https://docs.gofiber.io/benchmarks)
--   支援 Express 的[API](https://docs.gofiber.io/context)
--   支援中介器和[下一步](https://docs.gofiber.io/context#next)
+-   支援 Express 的[API](https://docs.gofiber.io/api/ctx)
+-   支援中介器和[下一步](https://docs.gofiber.io/api/ctx#next)
 -   [立即上手](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 -   [樣板引擎](https://github.com/gofiber/template)
 -   支援[WebSocket](https://github.com/gofiber/websocket)
@@ -155,7 +155,7 @@ func main() {
     })
 
     // GET /john/75
-    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+    app.Get("/:name/:age", func(c *fiber.Ctx) error {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
@@ -183,7 +183,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -205,7 +205,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {
