@@ -61,7 +61,7 @@ func New(config ...Config) fiber.Handler {
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
-		if e.exp != 0 && ts >= e.exp  {
+		if e.exp != 0 && ts >= e.exp {
 			// Check if entry is expired
 			manager.delete(key)
 			// External storage saves body data with different key
