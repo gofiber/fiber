@@ -107,10 +107,9 @@ func New(config ...Config) fiber.Handler {
 
 	// Set variables
 	var (
-		start, stop time.Time
-		once        sync.Once
-		mu          sync.Mutex
-		errHandler  fiber.ErrorHandler
+		once       sync.Once
+		mu         sync.Mutex
+		errHandler fiber.ErrorHandler
 	)
 
 	// If colors are enabled, check terminal compatibility
@@ -144,6 +143,8 @@ func New(config ...Config) fiber.Handler {
 			// override error handler
 			errHandler = c.App().Config().ErrorHandler
 		})
+
+		var start, stop time.Time
 
 		// Set latency start time
 		if cfg.enableLatency {

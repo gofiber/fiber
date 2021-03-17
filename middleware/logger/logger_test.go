@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -193,7 +195,7 @@ func Test_Response_Body(t *testing.T) {
 	expectedGetResponse := fmt.Sprintf("Sample response body")
 	utils.AssertEqual(t, expectedGetResponse, buf.String())
 
-	buf.Reset()		// Reset buffer to test POST 
+	buf.Reset() // Reset buffer to test POST
 
 	_, err = app.Test(httptest.NewRequest("POST", "/test", nil))
 	utils.AssertEqual(t, nil, err)
@@ -222,6 +224,38 @@ func Test_Logger_AppendUint(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	utils.AssertEqual(t, "0 5 200", buf.String())
+}
+
+// go test -run Test_Logger_Data_Race -race
+func Test_Logger_Data_Race(t *testing.T) {
+	app := fiber.New()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app.Use(New(ConfigDefault))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("hello")
+	})
+
+	var (
+		resp1, resp2 *http.Response
+		err1, err2   error
+	)
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		resp1, err1 = app.Test(httptest.NewRequest("GET", "/", nil))
+		wg.Done()
+	}()
+	resp2, err2 = app.Test(httptest.NewRequest("GET", "/", nil))
+	wg.Wait()
+
+	utils.AssertEqual(t, nil, err1)
+	utils.AssertEqual(t, fiber.StatusOK, resp1.StatusCode)
+	utils.AssertEqual(t, nil, err2)
+	utils.AssertEqual(t, fiber.StatusOK, resp2.StatusCode)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Logger -benchmem -count=4
