@@ -61,19 +61,15 @@ func New(config ...Config) fiber.Handler {
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
-		if e.exp == 0 {
-			// Set expiration if entry does not exist
-			e.exp = ts + expiration
-
-		} else if ts >= e.exp {
+		if e.exp != 0 && ts >= e.exp  {
 			// Check if entry is expired
 			manager.delete(key)
 			// External storage saves body data with different key
 			if cfg.Storage != nil {
 				manager.delete(key + "_body")
 			}
-		} else {
-			// Seperate body value to avoid msgp serialization
+		} else if e.exp != 0 {
+			// Separate body value to avoid msgp serialization
 			// We can store raw bytes with Storage 👍
 			if cfg.Storage != nil {
 				e.body = manager.getRaw(key + "_body")
@@ -110,6 +106,7 @@ func New(config ...Config) fiber.Handler {
 		e.status = c.Response().StatusCode()
 		e.ctype = utils.SafeBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.SafeBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
+		e.exp = ts + expiration
 
 		// For external Storage we store raw body seperated
 		if cfg.Storage != nil {

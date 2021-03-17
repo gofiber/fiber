@@ -65,6 +65,16 @@ func Test_Cache_Expired(t *testing.T) {
 	if bytes.Equal(body, bodyCached) {
 		t.Errorf("Cache should have expired: %s, %s", body, bodyCached)
 	}
+
+	// Next response should be also cached
+	respCachedNextRound, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	bodyCachedNextRound, err := ioutil.ReadAll(respCachedNextRound.Body)
+	utils.AssertEqual(t, nil, err)
+
+	if !bytes.Equal(bodyCachedNextRound, bodyCached) {
+		t.Errorf("Cache should not have expired: %s, %s", bodyCached, bodyCachedNextRound)
+	}
 }
 
 func Test_Cache(t *testing.T) {
