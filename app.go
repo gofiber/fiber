@@ -255,6 +255,11 @@ type Config struct {
 	// Default: false
 	DisableStartupMessage bool `json:"disable_startup_message"`
 
+	// StreamRequestBody enables request body streaming,
+	// and calls the handler sooner when given body is
+	// larger then the current limit.
+	StreamRequestBody bool
+
 	// Aggressively reduces memory usage at the cost of higher CPU usage
 	// if set to true.
 	//
@@ -796,6 +801,7 @@ func (app *App) init() *App {
 	app.server.WriteBufferSize = app.config.WriteBufferSize
 	app.server.GetOnly = app.config.GETOnly
 	app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
+	app.server.StreamRequestBody = app.config.StreamRequestBody
 
 	// unlock application
 	app.mutex.Unlock()
