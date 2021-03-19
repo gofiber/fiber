@@ -260,6 +260,14 @@ type Config struct {
 	// larger then the current limit.
 	StreamRequestBody bool
 
+	// Will not pre parse Multipart Form data if set to true.
+	//
+	// This option is useful for servers that desire to treat
+	// multipart form data as a binary blob, or choose when to parse the data.
+	//
+	// Server pre parses multipart form data by default.
+	DisablePreParseMultipartForm bool
+
 	// Aggressively reduces memory usage at the cost of higher CPU usage
 	// if set to true.
 	//
@@ -802,6 +810,7 @@ func (app *App) init() *App {
 	app.server.GetOnly = app.config.GETOnly
 	app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
 	app.server.StreamRequestBody = app.config.StreamRequestBody
+	app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm
 
 	// unlock application
 	app.mutex.Unlock()
