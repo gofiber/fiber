@@ -92,6 +92,7 @@ func Test_Session_Types(t *testing.T) {
 	type User struct {
 		Name string
 	}
+	store.RegisterType(User{})
 	var vuser = User{
 		Name: "John",
 	}

@@ -1,10 +1,11 @@
 package session
 
 import (
+	"bytes"
+	"encoding/gob"
 	"sync"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/gotiny"
 	"github.com/gofiber/fiber/v2/internal/storage/memory"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
@@ -32,7 +33,7 @@ func New(config ...Config) *Store {
 // RegisterType will allow you to encode/decode custom types
 // into any Storage provider
 func (s *Store) RegisterType(i interface{}) {
-	gotiny.Register(i)
+	gob.Register(i)
 }
 
 // Get will get/create a session
@@ -70,7 +71,13 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 		// Unmashal if we found data
 		if raw != nil && err == nil {
 			mux.Lock()
-			gotiny.Unmarshal(raw, &sess.data)
+			// TODO: optimize buffer creation, add the buffer to the store struct
+			dataBuffer := bytes.NewBuffer(raw)
+			encCache := gob.NewDecoder(dataBuffer)
+			err := encCache.Decode(&sess.data.Data)
+			if err != nil {
+				return nil, err
+			}
 			mux.Unlock()
 		} else if err != nil {
 			return nil, err

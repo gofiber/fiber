@@ -1,11 +1,12 @@
 package session
 
 import (
+	"encoding/gob"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/gotiny"
+	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -134,11 +135,18 @@ func (s *Session) Save() error {
 
 	// Convert data to bytes
 	mux.Lock()
-	data := gotiny.Marshal(&s.data)
+	// TODO: optimize buffer creation, add the buffer to the session struct
+	dataBuffer := bytebufferpool.Get()
+	defer bytebufferpool.Put(dataBuffer)
+	encCache := gob.NewEncoder(dataBuffer)
+	err := encCache.Encode(&s.data.Data)
+	if err != nil {
+		return err
+	}
 	mux.Unlock()
 
 	// pass raw bytes with session id to provider
-	if err := s.config.Storage.Set(s.id, data, s.config.Expiration); err != nil {
+	if err := s.config.Storage.Set(s.id, dataBuffer.Bytes(), s.config.Expiration); err != nil {
 		return err
 	}
 
