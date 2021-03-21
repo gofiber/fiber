@@ -1,0 +1,49 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+categories:
+    - title: '🚀 New'
+      labels:
+          - '✏️ Feature'
+    - title: '🐛 Fixes'
+      labels:
+          - '☢️ Bug'
+    - title: '🧹 Updates'
+      labels:
+          - '🤖 dependencies'
+    - title: '📚 Documentation'
+      labels:
+          - '📒 Documentation'
+change-template: '- $TITLE (#$NUMBER)'
+change-title-escapes: '\<*_&' # You can add # and @ to disable mentions, and add ` to disable code blocks.
+version-resolver:
+    minor:
+        labels:
+            - 'minor'
+    patch:
+        labels:
+            - 'patch'
+    default: patch
+autolabeler:
+    - label: '📒 Documentation'
+      files:
+          - '*.md'
+      title:
+          - '/(doc(s|:)|README|typos|comment|📚)/i'
+    - label: '☢️ Bug'
+      branch:
+          - '/fix\/.+/'
+      title:
+          - '/(fix|race|bug|🐛)/i'
+    - label: '🧹 Updates'
+      title:
+          - '/(bump|improve|update|refactor|⚡|🧹)/i'
+    - label: '✏️ Feature'
+      branch:
+          - '/feature\/.+/'
+      body:
+          - '/(feature|add|🚀)/i'
+template: |
+    ## Changes
+    $CHANGES
+
+    Thank you $CONTRIBUTORS for making this update possible.
