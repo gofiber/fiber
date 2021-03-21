@@ -1,22 +1,23 @@
 package session
 
 import (
+	"bytes"
 	"encoding/gob"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
 type Session struct {
-	id     string     // session id
-	fresh  bool       // if new session
-	ctx    *fiber.Ctx // fiber context
-	config *Store     // store configuration
-	data   *data      // key value data
+	id         string        // session id
+	fresh      bool          // if new session
+	ctx        *fiber.Ctx    // fiber context
+	config     *Store        // store configuration
+	data       *data         // key value data
+	byteBuffer *bytes.Buffer // byte buffer for the en- and decode
 }
 
 var sessionPool = sync.Pool{
@@ -30,6 +31,9 @@ func acquireSession() *Session {
 	if s.data == nil {
 		s.data = acquireData()
 	}
+	if s.byteBuffer == nil {
+		s.byteBuffer = new(bytes.Buffer)
+	}
 	s.fresh = true
 	return s
 }
@@ -40,6 +44,9 @@ func releaseSession(s *Session) {
 	s.config = nil
 	if s.data != nil {
 		s.data.Reset()
+	}
+	if s.byteBuffer != nil {
+		s.byteBuffer.Reset()
 	}
 	sessionPool.Put(s)
 }
@@ -135,10 +142,7 @@ func (s *Session) Save() error {
 
 	// Convert data to bytes
 	mux.Lock()
-	// TODO: optimize buffer creation, add the buffer to the session struct
-	dataBuffer := bytebufferpool.Get()
-	defer bytebufferpool.Put(dataBuffer)
-	encCache := gob.NewEncoder(dataBuffer)
+	encCache := gob.NewEncoder(s.byteBuffer)
 	err := encCache.Encode(&s.data.Data)
 	if err != nil {
 		return err
@@ -146,7 +150,7 @@ func (s *Session) Save() error {
 	mux.Unlock()
 
 	// pass raw bytes with session id to provider
-	if err := s.config.Storage.Set(s.id, dataBuffer.Bytes(), s.config.Expiration); err != nil {
+	if err := s.config.Storage.Set(s.id, s.byteBuffer.Bytes(), s.config.Expiration); err != nil {
 		return err
 	}
 

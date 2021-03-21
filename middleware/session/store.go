@@ -1,7 +1,6 @@
 package session
 
 import (
-	"bytes"
 	"encoding/gob"
 	"sync"
 
@@ -71,9 +70,8 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 		// Unmashal if we found data
 		if raw != nil && err == nil {
 			mux.Lock()
-			// TODO: optimize buffer creation, add the buffer to the store struct
-			dataBuffer := bytes.NewBuffer(raw)
-			encCache := gob.NewDecoder(dataBuffer)
+			_, _ = sess.byteBuffer.Write(raw)
+			encCache := gob.NewDecoder(sess.byteBuffer)
 			err := encCache.Decode(&sess.data.Data)
 			if err != nil {
 				return nil, err
