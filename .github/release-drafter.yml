@@ -26,7 +26,7 @@ version-resolver:
       - 'patch'
       - '📒 Documentation'
       - '☢️ Bug'
-      - '🤖 dependencies'
+      - '🤖 Dependencies'
       - '🧹 Updates'
   default: patch
 autolabeler:
