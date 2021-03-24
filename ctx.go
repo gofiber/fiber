@@ -30,6 +30,8 @@ import (
 // maxParams defines the maximum number of parameters per route.
 const maxParams = 30
 
+const queryTag = "query"
+
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
@@ -725,7 +727,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 	defer decoderPool.Put(decoder)
 
 	// Set correct alias tag
-	decoder.SetAliasTag("query")
+	decoder.SetAliasTag(queryTag)
 
 	data := make(map[string][]string)
 	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
@@ -747,6 +749,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
 	// Get type of interface
 	outTyp := reflect.TypeOf(out).Elem()
+	key = utils.ToLower(key)
 	// Must be a struct to match a field
 	if outTyp.Kind() != reflect.Struct {
 		return false
@@ -770,9 +773,11 @@ func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
 			continue
 		}
 		// Get tag from field if exist
-		inputFieldName := typeField.Tag.Get(key)
+		inputFieldName := typeField.Tag.Get(queryTag)
 		if inputFieldName == "" {
 			inputFieldName = typeField.Name
+		} else {
+			inputFieldName = strings.Split(inputFieldName, ",")[0]
 		}
 		// Compare field/tag with provided key
 		if utils.ToLower(inputFieldName) == key {

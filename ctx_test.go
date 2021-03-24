@@ -2003,22 +2003,27 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, 0, len(empty.Hobby))
 
 	type Query2 struct {
-		ID    int
-		Name  string
-		Hobby string
+		ID              int
+		Name            string
+		Hobby           string
+		FavouriteDrinks []string
+		Empty           []string
+		No              []int64
 	}
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&empty=&no=1")
 	q2 := new(Query2)
 	utils.AssertEqual(t, nil, c.QueryParser(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, q2.FavouriteDrinks)
+	utils.AssertEqual(t, []string{}, q2.Empty)
+	utils.AssertEqual(t, []int64{1}, q2.No)
 
 	type RequiredQuery struct {
 		Name string `query:"name,required"`
 	}
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
-	fmt.Println(c.QueryParser(rq))
 	utils.AssertEqual(t, "name is empty", c.QueryParser(rq).Error())
 }
 
@@ -2028,6 +2033,21 @@ func Test_Ctx_EqualFieldType(t *testing.T) {
 
 	var dummy struct{ f string }
 	utils.AssertEqual(t, false, equalFieldType(&dummy, reflect.String, "key"))
+
+	var dummy2 struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy2, reflect.String, "f"))
+
+	var user struct {
+		Name    string
+		Address string `query:"address"`
+		Age     int    `query:"AGE"`
+	}
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "name"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Name"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "address"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Address"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "AGE"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "age"))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
