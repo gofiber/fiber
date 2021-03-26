@@ -233,7 +233,7 @@ func Test_Limiter_Cheat(t * testing.T){
 
 	t1 := time.Now()
 	singleRequest(nil, false) // one request to start our window
-	time.Sleep(1000*time.Millisecond) // Wait to make sure we are well into the current window2
+	time.Sleep(1000*time.Millisecond) // Wait to make sure we are well into the current window
 
 	// Send requests
 	for i := 0; i <= 48; i++ {
@@ -253,5 +253,13 @@ func Test_Limiter_Cheat(t * testing.T){
 		go singleRequest(&wg, true)
 	}
 
+	wg.Wait()
+
+	time.Sleep(4*time.Second) // wait 2 windows to ensure our rate has 
+	// Verify that we are able to send requests again
+	for i := 0; i <= 48; i++ {
+		wg.Add(1)
+		go singleRequest(&wg, false)
+	}
 	wg.Wait()
 }
