@@ -55,7 +55,6 @@ func New(config ...Config) fiber.Handler {
 
 		// Lock entry
 		mux.Lock()
-
 		// Get entry from pool and release when finished
 		e := manager.get(key)
 
@@ -68,18 +67,24 @@ func New(config ...Config) fiber.Handler {
 
 		} else if ts >= e.exp {
 			// Check if entry is expired
-			e.hits = 0
+			e.prevHits = e.currHits
+			e.currHits = 0
+
 			e.exp = ts + expiration
 		}
 
 		// Increment hits
-		e.hits++
+		e.currHits++
 
 		// Calculate when it resets in seconds
 		expire := e.exp - ts
 
-		// Set how many hits we have left
-		remaining := cfg.Max - e.hits
+		// Calculate current rate
+		windowEnd := expiration - uint64(expire)
+		rate := uint64(e.prevHits)*(expiration-windowEnd/expiration) + uint64(e.currHits)
+
+		// Calculate how many hits can be made based on the current rate
+		remaining := cfg.Max - int(rate)
 
 		// Update storage
 		manager.set(key, e, cfg.Expiration)

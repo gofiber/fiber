@@ -201,7 +201,7 @@ func Benchmark_Limiter(b *testing.B) {
 	}
 }
 
-// go test -run Test_Limiter_Cheat
+// go test -run Test_Limiter_Cheat -race v
 // Attempt to cheat the rate limiter by waiting until the window ends and sending more requests
 func Test_Limiter_Cheat(t * testing.T){
 	app := fiber.New()
