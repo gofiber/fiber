@@ -672,6 +672,14 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 	return defaultString("", defaultValue)
 }
 
+// ParamsInt is used to get an integer from the route parameters
+// it defaults to zero if the parameter is not found or if the
+// parameter cannot be converted to an integer
+func (c *Ctx) ParamsInt(key string) (int, error) {
+	// Use Atoi to convert the param to an int or return zero and an error
+	return strconv.Atoi(c.Params(key))
+}
+
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
 func (c *Ctx) Path(override ...string) string {
