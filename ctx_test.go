@@ -4,6 +4,9 @@
 
 package fiber
 
+// go test -v -run=^$ -bench=Benchmark_Ctx_Accepts -benchmem -count=4
+// go test -run Test_Ctx
+
 import (
 	"bufio"
 	"bytes"
