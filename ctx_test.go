@@ -2153,3 +2153,56 @@ func Test_Ctx_String(t *testing.T) {
 
 	utils.AssertEqual(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
 }
+
+func TestCtx_ParamsInt(t *testing.T) {
+	// Create a test context and set some strings (or params)
+
+	// create a fake app to be used within this test
+	app := New()
+
+	// Create some test endpoints
+
+	// For the user id I will use the number 1111, so I should be able to get the number
+	// 1111 from the Ctx
+	app.Get("/test/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user")
+
+		// Check the number matches
+		if num != 1111 {
+			t.Fatalf("Expected number 1111 from the path, got %d", num)
+		}
+
+		// Check no errors are returned, because we want NO errors in this one
+		if err != nil {
+			t.Fatalf("Expected nil error for 1111 test, got " + err.Error())
+		}
+
+		return nil
+	})
+
+	// In this test case, there will be a bad request where the expected number is NOT
+	// a number in the path
+	app.Get("/testnoint/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user")
+
+		// Check the number matches
+		if num != 0 {
+			t.Fatalf("Expected number 0 from the path, got %d", num)
+		}
+
+		// Check an error is returned, because we want NO errors in this one
+		if err == nil {
+			t.Fatal("Expected non nil error for bad req test, got nil")
+		}
+
+		return nil
+	})
+
+	app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
+
+}
