@@ -4,13 +4,13 @@ categories:
     - title: '🚀 New'
       labels:
           - '✏️ Feature'
+    - title: '🧹 Updates'
+      labels:
+        - '🧹 Updates'
+        - '🤖 Dependencies'
     - title: '🐛 Fixes'
       labels:
           - '☢️ Bug'
-    - title: '🧹 Updates'
-      labels:
-          - '🧹 Updates'
-          - '🤖 Dependencies'
     - title: '📚 Documentation'
       labels:
           - '📒 Documentation'
