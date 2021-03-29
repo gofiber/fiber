@@ -57,7 +57,7 @@ autolabeler:
           - '/refactor/i'
           - '/⚡/i'
           - '/🧹/i'
-    - label: '🤖 dependencies'
+    - label: '🤖 Dependencies'
       title:
           - '/bumb/i'
           - '/dependencies/i'
