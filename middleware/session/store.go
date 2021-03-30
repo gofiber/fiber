@@ -70,13 +70,13 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 		// Unmashal if we found data
 		if raw != nil && err == nil {
 			mux.Lock()
+			defer mux.Unlock()
 			_, _ = sess.byteBuffer.Write(raw)
 			encCache := gob.NewDecoder(sess.byteBuffer)
 			err := encCache.Decode(&sess.data.Data)
 			if err != nil {
 				return nil, err
 			}
-			mux.Unlock()
 		} else if err != nil {
 			return nil, err
 		} else {
@@ -95,6 +95,7 @@ func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 	}
 
 	cookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(cookie)
 	err := cookie.ParseBytes(cookieValue)
 	if err != nil {
 		return "", err
@@ -103,7 +104,6 @@ func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 	value := make([]byte, len(cookie.Value()))
 	copy(value, cookie.Value())
 	id := utils.UnsafeString(value)
-	fasthttp.ReleaseCookie(cookie)
 	return id, nil
 }
 

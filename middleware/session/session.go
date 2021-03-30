@@ -142,12 +142,12 @@ func (s *Session) Save() error {
 
 	// Convert data to bytes
 	mux.Lock()
+	defer mux.Unlock()
 	encCache := gob.NewEncoder(s.byteBuffer)
 	err := encCache.Encode(&s.data.Data)
 	if err != nil {
 		return err
 	}
-	mux.Unlock()
 
 	// pass raw bytes with session id to provider
 	if err := s.config.Storage.Set(s.id, s.byteBuffer.Bytes(), s.config.Expiration); err != nil {
