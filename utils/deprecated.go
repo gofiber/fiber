@@ -16,18 +16,3 @@ func GetBytes(s string) []byte {
 func ImmutableString(s string) string {
 	return CopyString(s)
 }
-
-// DEPRECATED, please use EqualFoldBytes
-func EqualsFold(b, s []byte) (equals bool) {
-	return EqualFoldBytes(b, s)
-}
-
-// DEPRECATED, Please use CopyString instead
-func SafeString(s string) string {
-	return CopyString(s)
-}
-
-// DEPRECATED, Please use CopyBytes instead
-func SafeBytes(b []byte) []byte {
-	return CopyBytes(b)
-}
