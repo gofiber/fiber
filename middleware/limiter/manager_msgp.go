@@ -5,7 +5,7 @@ package limiter
 // DO NOT EDIT
 
 import (
-	"github.com/tinylib/msgp/msgp"
+	"github.com/gofiber/fiber/v2/internal/msgp"
 )
 
 // DecodeMsg implements msgp.Decodable
