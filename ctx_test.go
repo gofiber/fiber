@@ -15,6 +15,7 @@ import (
 	"io"
 	"io/ioutil"
 	"mime/multipart"
+	"net"
 	"net/http/httptest"
 	"os"
 	"reflect"
@@ -764,6 +765,24 @@ func Test_Ctx_IP(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	utils.AssertEqual(t, "0.0.0.0", c.IP())
+}
+
+func TestCtx_IPAddress(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	// Given the IP address for local tests
+	// is the zero ip, then the net.IPv4Zero
+	// should be the same as the test ip
+
+	if ip := c.IPAddress(); !net.IPv4zero.Equal(ip) {
+		t.Errorf("IP address %v should be %v", ip, net.IPv4zero)
+	}
+
 }
 
 // go test -run Test_Ctx_IP_ProxyHeader

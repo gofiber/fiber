@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -496,6 +497,12 @@ func (c *Ctx) IP() string {
 		return c.Get(c.app.config.ProxyHeader)
 	}
 	return c.fasthttp.RemoteIP().String()
+}
+
+// IPAddress returns the IP address of the http
+// request as a net.IP object
+func (c *Ctx) IPAddress() net.IP {
+	return c.fasthttp.RemoteIP()
 }
 
 // IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
