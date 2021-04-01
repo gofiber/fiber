@@ -102,10 +102,10 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
-		e.body = utils.SafeBytes(c.Response().Body())
+		e.body = utils.CopyBytes(c.Response().Body())
 		e.status = c.Response().StatusCode()
-		e.ctype = utils.SafeBytes(c.Response().Header.ContentType())
-		e.cencoding = utils.SafeBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
+		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
+		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 		e.exp = ts + expiration
 
 		// For external Storage we store raw body seperated
