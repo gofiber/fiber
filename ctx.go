@@ -502,6 +502,9 @@ func (c *Ctx) IP() string {
 // IPAddress returns the IP address of the http
 // request as a net.IP object
 func (c *Ctx) IPAddress() net.IP {
+	// Use the remote ip method from
+	// the fasthttp reference to get
+	// the net.IP
 	return c.fasthttp.RemoteIP()
 }
 
