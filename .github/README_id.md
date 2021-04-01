@@ -497,7 +497,7 @@ Kumpulan `middleware` yang ada didalam framework Fiber.
 | [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | Terima kasih khusus kepada Matthew Lee \(@mthli\)                                                                                                                                          |
 | [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | Mengizinkan anda untuk proxy request ke banyak server.                                                                                                                                     |
 | [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | Menambahkan sebuah requestid pada tiap request.                                                                                                                                            |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Middleware Recover memulihkan dari panik di rantai stack manapun dan menangani kontrol pada [ ErrorHandler](error-handling.md) tersentralisasi.                                            |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Middleware Recover memulihkan dari panik di rantai stack manapun dan menangani kontrol pada [ ErrorHandler](https://docs.gofiber.io/guide/error-handling) tersentralisasi.                                            |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Menambahkan waktu maksimal untuk sebuah request dan melanjutkan ke ErrorHandler jikan sudah melampaui waktunya.                                                                            |
 
 ## 🧬 Middleware External

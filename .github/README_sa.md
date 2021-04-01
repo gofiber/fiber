@@ -561,7 +561,7 @@ Here is a list of middleware that are included within the Fiber framework.
 | [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | Special thanks to Matthew Lee \(@mthli\)                                                                                                                              |
 | [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | Allows you to proxy requests to a multiple servers                                                                                                                    |
 | [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | Adds a requestid to every request.                                                                                                                                    |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md).                     |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling).                     |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                         |
 
 ## 🧬 External Middleware
