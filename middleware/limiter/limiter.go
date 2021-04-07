@@ -60,7 +60,6 @@ func New(config ...Config) fiber.Handler {
 
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
-
 		// Set expiration if entry does not exist
 		if e.exp == 0 {
 			e.exp = ts + expiration
@@ -70,7 +69,15 @@ func New(config ...Config) fiber.Handler {
 			e.prevHits = e.currHits
 			e.currHits = 0
 
-			e.exp = ts + expiration
+			// checks how into the current window it is and sets the
+			// expiry based on that, otherwise this would only reset on
+			// the next request and not show the correct expiry
+			elapsed := ts - e.exp
+			if elapsed >= expiration {
+				e.exp = ts + expiration
+			} else {
+				e.exp = ts + expiration - elapsed
+			}
 		}
 
 		// Increment hits
@@ -79,15 +86,17 @@ func New(config ...Config) fiber.Handler {
 		// Calculate when it resets in seconds
 		expire := e.exp - ts
 
-		// Calculate current rate
-		windowEnd := expiration - uint64(expire)
-		rate := uint64(e.prevHits)*(expiration-windowEnd/expiration) + uint64(e.currHits)
+		// weight = time elapsed in current window / total window length
+		weight := float64(expiration-expire) / float64(expiration)
+
+		// rate = request count in previous window - weight + request count in current window
+		rate := int(float64(e.prevHits)*weight) + e.currHits
 
 		// Calculate how many hits can be made based on the current rate
-		remaining := cfg.Max - int(rate)
+		remaining := cfg.Max - rate
 
-		// Update storage
-		manager.set(key, e, cfg.Expiration)
+		// Update storage. Garbage collect after 2 windows
+		manager.set(key, e, cfg.Expiration*2)
 
 		// Unlock entry
 		mux.Unlock()
@@ -104,7 +113,7 @@ func New(config ...Config) fiber.Handler {
 
 		// We can continue, update RateLimit headers
 		c.Set(xRateLimitLimit, max)
-		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
+		c.Set(xRateLimitRemaining, strconv.Itoa(int(remaining)))
 		c.Set(xRateLimitReset, strconv.FormatUint(expire, 10))
 
 		// Continue stack
