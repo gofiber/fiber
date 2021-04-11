@@ -40,6 +40,26 @@ func Test_Path_parseRoute(t *testing.T) {
 		wildCardCount: 1,
 	}, rp)
 
+	rp = parseRoute("/v1/some/resource/name\\:customVerb")
+	utils.AssertEqual(t, routeParser{
+		segs: []*routeSegment{
+			{Const: "/v1/some/resource/name:customVerb", Length: 33, IsLast: true},
+		},
+		params: nil,
+	}, rp)
+	// heavy test with escaped charaters
+	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*")
+	utils.AssertEqual(t, routeParser{
+		segs: []*routeSegment{
+			{Const: "/v1/some/resource/name:customVerb??/", Length: 36},
+			{IsParam: true, ParamName: "param", ComparePart: "/", PartCount: 1},
+			{Const: "/", Length: 1, HasOptionalSlash: true},
+			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, IsLast: true},
+		},
+		params:        []string{"param", "*1"},
+		wildCardCount: 1,
+	}, rp)
+
 	rp = parseRoute("/api/*/:param/:param2")
 	utils.AssertEqual(t, routeParser{
 		segs: []*routeSegment{
@@ -118,7 +138,7 @@ func Test_Path_matchParams(t *testing.T) {
 			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
 			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			if match && len(c.params) > 0 {
-				utils.AssertEqual(t, c.params[0:len(c.params)-1], ctxParams[0:len(c.params)-1], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				utils.AssertEqual(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			}
 		}
 	}
@@ -145,6 +165,14 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v", params: nil, match: false},
 		{url: "/api/v2", params: nil, match: false},
 		{url: "/api/xyz", params: nil, match: false},
+	})
+	testCase("/v1/some/resource/name\\:customVerb", []testparams{
+		{url: "/v1/some/resource/name:customVerb", params: nil, match: true},
+		{url: "/v1/some/resource/name:test", params: nil, match: false},
+	})
+	testCase("/v1/some/resource/name\\\\:customVerb?\\?/:param/*", []testparams{
+		{url: "/v1/some/resource/name:customVerb??/test/optionalWildCard/character", params: []string{"test", "optionalWildCard/character"}, match: true},
+		{url: "/v1/some/resource/name:customVerb??/test", params: []string{"test", ""}, match: true},
 	})
 	testCase("/api/v1/*", []testparams{
 		{url: "/api/v1", params: []string{""}, match: true},
@@ -400,6 +428,16 @@ func Test_Utils_GetTrimmedParam(t *testing.T) {
 	utils.AssertEqual(t, "param1", res)
 	res = GetTrimmedParam("noParam")
 	utils.AssertEqual(t, "noParam", res)
+}
+
+func Test_Utils_RemoveEscapeChar(t *testing.T) {
+	t.Parallel()
+	res := RemoveEscapeChar(":test\\:bla")
+	utils.AssertEqual(t, ":test:bla", res)
+	res = RemoveEscapeChar("\\abc")
+	utils.AssertEqual(t, "abc", res)
+	res = RemoveEscapeChar("noEscapeChar")
+	utils.AssertEqual(t, "noEscapeChar", res)
 }
 
 // go test -race -run Test_Path_matchParams
