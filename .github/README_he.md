@@ -111,7 +111,7 @@ func main() {
 
 <div dir="rtl">
 
-הבדיקות מבוצעות על ידי [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) ו-[Go Web](https://github.com/smallnest/go-web-framework-benchmark). אם אתם רוצים לראות את כל התוצאות, אנא בקרו ב-[Wiki](https://docs.gofiber.io/benchmarks) שלנו.
+הבדיקות מבוצעות על ידי [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) ו-[Go Web](https://github.com/smallnest/go-web-framework-benchmark). אם אתם רוצים לראות את כל התוצאות, אנא בקרו ב-[Wiki](https://docs.gofiber.io/extra/benchmarks) שלנו.
 
 </div>
 
@@ -140,14 +140,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   [ניתוב](https://docs.gofiber.io/routing) רובסטי
 -   הנגשת [קבצים סטטיים](https://docs.gofiber.io/api/app#static)
--   [ביצועים](https://docs.gofiber.io/benchmarks) גבוהים במיוחד
--   צורך כמות [זכרון קטנה](https://docs.gofiber.io/benchmarks)
+-   [ביצועים](https://docs.gofiber.io/extra/benchmarks) גבוהים במיוחד
+-   צורך כמות [זכרון קטנה](https://docs.gofiber.io/extra/benchmarks)
 -   [נקודות קצה עבור API](https://docs.gofiber.io/api/ctx)
 -   תמיכה ב-[Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next)
 -   תכנות [מהיר](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) של צד שרת
 -   [מנועי תבניות](https://docs.gofiber.io/middleware#template)
 -   [תמיכה ב-WebSocket](https://github.com/gofiber/websocket)
--   [הגבלת קצבים ובקשות](https://docs.gofiber.io/middleware#limiter)
+-   [הגבלת קצבים ובקשות](https://docs.gofiber.io/api/middleware/limiter)
 -   Available in [12 languages](https://docs.gofiber.io/)
 -   והרבה יותר, [חקור את Fiber](https://docs.gofiber.io/)
 </div>

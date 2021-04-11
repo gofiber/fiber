@@ -115,18 +115,18 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 Features
 
--   Robuuste [routing](https://fiber.wiki/routing)
+-   Robuuste [routing](https://docs.gofiber.io/routing)
 -   Serveer [statische bestanden](https://docs.gofiber.io/api/app#static)
--   Extreme [prestaties](https://fiber.wiki/benchmarks)
--   [Weinig geheugenruimte](https://fiber.wiki/benchmarks)
+-   Extreme [prestaties](https://docs.gofiber.io/extra/benchmarks)
+-   [Weinig geheugenruimte](https://docs.gofiber.io/extra/benchmarks)
 -   [API endpoints](https://docs.gofiber.io/api/ctx)
--   [Middleware](https://fiber.wiki/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) ondersteuning
+-   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) ondersteuning
 -   [Snelle](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programmering
--   [Template engines](https://fiber.wiki/middleware#template)
--   [WebSocket ondersteuning](https://fiber.wiki/middleware#websocket)
--   [Rate Limiter](https://fiber.wiki/middleware#limiter)
+-   [Template engines](https://github.com/gofiber/template)
+-   [WebSocket ondersteuning](https://github.com/gofiber/websocket)
+-   [Rate Limiter](https://docs.gofiber.io/middleware/limiter)
 -   Vertaald in [15 talen](https://docs.gofiber.io/)
--   En nog veel meer, [ontdek Fiber](https://fiber.wiki/)
+-   En nog veel meer, [ontdek Fiber](https://docs.gofiber.io/)
 
 ## 💡 Filosofie
 

@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 Бенчмарки
 
-Тестирование проводилось с помощью [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) и [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Если вы хотите увидеть все результаты, пожалуйста, посетите наш [Wiki](https://docs.gofiber.io/benchmarks).
+Тестирование проводилось с помощью [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) и [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Если вы хотите увидеть все результаты, пожалуйста, посетите наш [Wiki](https://docs.gofiber.io/extra/benchmarks).
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -117,14 +117,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   Надежная [маршрутизация](https://docs.gofiber.io/routing)
 -   Доступ к [статичным файлам](https://docs.gofiber.io/api/app#static)
--   Экстремальная [производительность](https://docs.gofiber.io/benchmarks)
--   [Низкий объем потребления памяти](https://docs.gofiber.io/benchmarks)
+-   Экстремальная [производительность](https://docs.gofiber.io/extra/benchmarks)
+-   [Низкий объем потребления памяти](https://docs.gofiber.io/extra/benchmarks)
 -   [Эндпоинты](https://docs.gofiber.io/context), как в [API](https://docs.gofiber.io/api/ctx) Express
 -   [Middleware](https://docs.gofiber.io/middleware) и поддержка [Next](https://docs.gofiber.io/api/ctx#next)
 -   [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
 -   [Template engines](https://github.com/gofiber/template)
 -   [Поддержка WebSocket](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Документация доступна на [15 языках](https://docs.gofiber.io/)
 -   И многое другое, [посетите наш Wiki](https://docs.gofiber.io/)
 

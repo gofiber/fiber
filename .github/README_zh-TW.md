@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 效能
 
-本測試使用[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)和[Go Web 框架效能測試](https://github.com/smallnest/go-web-framework-benchmark)。如果要看全部的執行結果，請到[Wiki](https://docs.gofiber.io/benchmarks) 。
+本測試使用[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)和[Go Web 框架效能測試](https://github.com/smallnest/go-web-framework-benchmark)。如果要看全部的執行結果，請到[Wiki](https://docs.gofiber.io/extra/benchmarks) 。
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -117,14 +117,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   強大的[路由](https://docs.gofiber.io/routing)
 -   [靜態檔案](https://docs.gofiber.io/api/app#static)服務
--   [超快速](https://docs.gofiber.io/benchmarks)
--   [佔用很少記憶體](https://docs.gofiber.io/benchmarks)
+-   [超快速](https://docs.gofiber.io/extra/benchmarks)
+-   [佔用很少記憶體](https://docs.gofiber.io/extra/benchmarks)
 -   支援 Express 的[API](https://docs.gofiber.io/api/ctx)
 -   支援中介器和[下一步](https://docs.gofiber.io/api/ctx#next)
 -   [立即上手](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 -   [樣板引擎](https://github.com/gofiber/template)
 -   支援[WebSocket](https://github.com/gofiber/websocket)
--   支援[限速](https://docs.gofiber.io/middleware#limiter)
+-   支援[限速](https://docs.gofiber.io/api/middleware/limiter)
 -   被翻譯成[15]國語言(https://docs.gofiber.io/)
 -   豐富的[文件](https://docs.gofiber.io/)
 

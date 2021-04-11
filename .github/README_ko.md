@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 벤치마크
 
-이 테스트들은 [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)와 [Go Web](https://github.com/smallnest/go-web-framework-benchmark)을 통해 측정되었습니다. 만약 모든 결과를 보고 싶다면, [Wiki](https://docs.gofiber.io/benchmarks)를 확인해 주세요.
+이 테스트들은 [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)와 [Go Web](https://github.com/smallnest/go-web-framework-benchmark)을 통해 측정되었습니다. 만약 모든 결과를 보고 싶다면, [Wiki](https://docs.gofiber.io/extra/benchmarks)를 확인해 주세요.
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -117,14 +117,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   견고한 [라우팅](https://docs.gofiber.io/routing)
 -   [정적 파일](https://docs.gofiber.io/api/app#static) 제공
--   뛰어난 [성능](https://docs.gofiber.io/benchmarks)
--   [적은 메모리](https://docs.gofiber.io/benchmarks) 공간
+-   뛰어난 [성능](https://docs.gofiber.io/extra/benchmarks)
+-   [적은 메모리](https://docs.gofiber.io/extra/benchmarks) 공간
 -   [API 엔드포인트](https://docs.gofiber.io/api/ctx)
 -   미들웨어 & [Next](https://docs.gofiber.io/api/ctx#next) 지원
 -   [빠른](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 서버 사이드 프로그래밍
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Available in [15 languages](https://docs.gofiber.io/)
 -   더 알고 싶다면, [Fiber 둘러보기](https://docs.gofiber.io/)
 
