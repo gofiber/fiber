@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 Performans Ölçümleri
 
-Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) ve [Go Web](https://github.com/smallnest/go-web-framework-benchmark) ile gerçekleştirildi. Bütün sonuçları görmek için lütfen [Wiki](https://docs.gofiber.io/benchmarks) sayfasını ziyaret ediniz.
+Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) ve [Go Web](https://github.com/smallnest/go-web-framework-benchmark) ile gerçekleştirildi. Bütün sonuçları görmek için lütfen [Wiki](https://docs.gofiber.io/extra/benchmarks) sayfasını ziyaret ediniz.
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -117,14 +117,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   Güçlü [rotalar](https://docs.gofiber.io/routing)
 -   [Statik dosya](https://docs.gofiber.io/api/app#static) yönetimi
--   Olağanüstü [performans](https://docs.gofiber.io/benchmarks)
--   [Düşük bellek](https://docs.gofiber.io/benchmarks) tüketimi
+-   Olağanüstü [performans](https://docs.gofiber.io/extra/benchmarks)
+-   [Düşük bellek](https://docs.gofiber.io/extra/benchmarks) tüketimi
 -   [API uç noktaları](https://docs.gofiber.io/api/ctx)
 -   Ara katman & [Sonraki](https://docs.gofiber.io/api/ctx#next) desteği
 -   [Hızlı](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) sunucu taraflı programlama
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   [15 dilde](https://docs.gofiber.io/) mevcut
 -   Ve daha fazlası, [Fiber'ı keşfet](https://docs.gofiber.io/)
 

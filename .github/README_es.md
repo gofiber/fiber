@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 Puntos de referencia
 
-Estas pruebas son realizadas por [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) y [Go Web](https://github.com/smallnest/go-web-framework-benchmark) . Si desea ver todos los resultados, visite nuestro [Wiki](https://docs.gofiber.io/benchmarks) .
+Estas pruebas son realizadas por [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) y [Go Web](https://github.com/smallnest/go-web-framework-benchmark) . Si desea ver todos los resultados, visite nuestro [Wiki](https://docs.gofiber.io/extra/benchmarks) .
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -116,14 +116,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   [Enrutamiento](https://docs.gofiber.io/routing) robusto
 -   Servir [archivos estáticos](https://docs.gofiber.io/api/app#static)
--   [Rendimiento](https://docs.gofiber.io/benchmarks) extremo
--   [Poca](https://docs.gofiber.io/benchmarks) huella de [memoria](https://docs.gofiber.io/benchmarks)
+-   [Rendimiento](https://docs.gofiber.io/extra/benchmarks) extremo
+-   [Poca](https://docs.gofiber.io/extra/benchmarks) huella de [memoria](https://docs.gofiber.io/extra/benchmarks)
 -   [Puntos finales de API](https://docs.gofiber.io/api/ctx) Express
 -   Middleware y [próximo](https://docs.gofiber.io/api/ctx#next) soporte
 -   Programación [rápida](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) del lado del servidor
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Disponible en [15 idiomas](https://docs.gofiber.io/)
 -   Y mucho más, [explora Fiber](https://docs.gofiber.io/)
 

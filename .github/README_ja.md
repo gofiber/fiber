@@ -97,7 +97,7 @@ func main() {
 
 ## 🤖 ベンチマーク
 
-これらのテストは[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)および[Go Web](https://github.com/smallnest/go-web-framework-benchmark)によって計測を行っています 。すべての結果を表示するには、 [Wiki](https://docs.gofiber.io/benchmarks)にアクセスしてください。
+これらのテストは[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)および[Go Web](https://github.com/smallnest/go-web-framework-benchmark)によって計測を行っています 。すべての結果を表示するには、 [Wiki](https://docs.gofiber.io/extra/benchmarks)にアクセスしてください。
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -119,14 +119,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   堅牢な[ルーティング](https://docs.gofiber.io/routing)
 -   [静的ファイル](https://docs.gofiber.io/api/app#static)のサポート
--   究極の[パフォーマンス](https://docs.gofiber.io/benchmarks)
--   [低メモリ](https://docs.gofiber.io/benchmarks)フットプリント
+-   究極の[パフォーマンス](https://docs.gofiber.io/extra/benchmarks)
+-   [低メモリ](https://docs.gofiber.io/extra/benchmarks)フットプリント
 -   Express [API エンドポイント](https://docs.gofiber.io/api/ctx)
 -   Middleware と[Next](https://docs.gofiber.io/api/ctx#next)のサポート
 -   [迅速](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)なサーバーサイドプログラミング
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   [15ヶ国語](https://docs.gofiber.io/)で利用可能
 -   [Fiber](https://docs.gofiber.io/)をもっと知る
 

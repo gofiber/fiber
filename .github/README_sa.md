@@ -102,7 +102,7 @@ func main() {
 
 ## 🤖 مقايس الاداء
 
-يتم تنفيذ هذه الاختبارات من قبل [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) و [Go Web](https://github.com/smallnest/go-web-framework-benchmark). إذا كنت تريد رؤية جميع النتائج ، يرجى زيارة موقعنا [Wiki](https://docs.gofiber.io/benchmarks).
+يتم تنفيذ هذه الاختبارات من قبل [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) و [Go Web](https://github.com/smallnest/go-web-framework-benchmark). إذا كنت تريد رؤية جميع النتائج ، يرجى زيارة موقعنا [Wiki](https://docs.gofiber.io/extra/benchmarks).
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -133,14 +133,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   قوي [routing](https://docs.gofiber.io/routing)
 -   يقدم خدمة [static files](https://docs.gofiber.io/api/app#static)
--   أقصى [أداء](https://docs.gofiber.io/benchmarks)
--   [ذاكرة منخفضة](https://docs.gofiber.io/benchmarks)
+-   أقصى [أداء](https://docs.gofiber.io/extra/benchmarks)
+-   [ذاكرة منخفضة](https://docs.gofiber.io/extra/benchmarks)
 -   [API endpoints](https://docs.gofiber.io/api/ctx)
 -   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) مدعوم
 -   [سريع](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket دعم](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   ترجم الى [15 لغة أخرى](https://docs.gofiber.io/)
 -   وأكثر بكثير, [استكشف Fiber](https://docs.gofiber.io/)
 

@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 Pengukuran Kinerja
 
-Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) dan [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Apabila anda ingin melihat hasil lengkapnya, silahkan kunjungi halaman [Wiki](https://docs.gofiber.io/benchmarks) kami.
+Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) dan [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Apabila anda ingin melihat hasil lengkapnya, silahkan kunjungi halaman [Wiki](https://docs.gofiber.io/extra/benchmarks) kami.
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -117,14 +117,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   Sistem [Routing](https://docs.gofiber.io/routing) yang solid
 -   Serve [file statis](https://docs.gofiber.io/api/app#static)
--   [Kinerja](https://docs.gofiber.io/benchmarks) ekstrim
--   [Penggunaan memori](https://docs.gofiber.io/benchmarks) yang kecil
+-   [Kinerja](https://docs.gofiber.io/extra/benchmarks) ekstrim
+-   [Penggunaan memori](https://docs.gofiber.io/extra/benchmarks) yang kecil
 -   Cocok untuk [API](https://docs.gofiber.io/api/ctx)
 -   Mendukung Middleware & [Next](https://docs.gofiber.io/api/ctx#next) seperti Express
 -   Kembangkan aplikasi dengan [Cepat](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Tersedia dalam [15 bahasa](https://docs.gofiber.io/)
 -   Dan masih banyak lagi, [kunjungi Fiber](https://docs.gofiber.io/)
 

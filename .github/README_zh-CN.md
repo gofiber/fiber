@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 性能
 
-这些测试由[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)和[Go Web](https://github.com/smallnest/go-web-framework-benchmark) 执行。如果要查看所有结果，请访问我们的[Wiki](https://docs.gofiber.io/benchmarks) 。
+这些测试由[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)和[Go Web](https://github.com/smallnest/go-web-framework-benchmark) 执行。如果要查看所有结果，请访问我们的[Wiki](https://docs.gofiber.io/extra/benchmarks) 。
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -116,14 +116,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   强大的[路由](https://docs.gofiber.io/routing)
 -   [静态文件](https://docs.gofiber.io/api/app#static)服务
--   极限[表现](https://docs.gofiber.io/benchmarks)
--   [内存占用低](https://docs.gofiber.io/benchmarks)
+-   极限[表现](https://docs.gofiber.io/extra/benchmarks)
+-   [内存占用低](https://docs.gofiber.io/extra/benchmarks)
 -   [API 接口](https://docs.gofiber.io/api/ctx)
 -   [中间件](https://docs.gofiber.io/middleware)和[Next](https://docs.gofiber.io/api/ctx#next)支持
 -   [快速](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
 -   [模版引擎](https://github.com/gofiber/template)
 -   [WebSocket 支持](https://github.com/gofiber/websocket)
--   [频率限制器](https://docs.gofiber.io/middleware#limiter)
+-   [频率限制器](https://docs.gofiber.io/api/middleware/limiter)
 -   [15 种语言](https://docs.gofiber.io/)
 -   以及更多请[探索文档](https://docs.gofiber.io/)
 
