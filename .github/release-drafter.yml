@@ -6,8 +6,8 @@ categories:
           - '✏️ Feature'
     - title: '🧹 Updates'
       labels:
-        - '🧹 Updates'
-        - '🤖 Dependencies'
+          - '🧹 Updates'
+          - '🤖 Dependencies'
     - title: '🐛 Fixes'
       labels:
           - '☢️ Bug'
@@ -42,32 +42,51 @@ autolabeler:
           - '/typos/i'
           - '/comment/i'
           - '/📚/i'
+          - '/📒/i'
+          - '/📝/i'
+          - '/documentation/i'
     - label: '☢️ Bug'
-      branch:
-          - '/fix\/.+/'
       title:
           - '/fix/i'
           - '/race/i'
           - '/bug/i'
+          - '/missing/i'
+          - '/correct/i'
           - '/🐛/i'
+          - '/☢/i'
+          - '/🩹/i'
+          - '/🚨/i'
     - label: '🧹 Updates'
       title:
           - '/improve/i'
           - '/update/i'
           - '/refactor/i'
+          - '/deprecated/i'
+          - '/remove/i'
+          - '/unused/i'
+          - '/test/i'
           - '/⚡/i'
+          - '/👷/i'
+          - '/🚧/i'
+          - '/♻️/i'
+          - '/🎨/i'
+          - '/🧪/i'
           - '/🧹/i'
     - label: '🤖 Dependencies'
       title:
           - '/bumb/i'
           - '/dependencies/i'
+          - '/📦/i'
+          - '/🤖/i'
     - label: '✏️ Feature'
-      branch:
-          - '/feature\/.+/'
-      body:
+      title:
           - '/feature/i'
+          - '/create/i'
+          - '/implement/i'
           - '/add/i'
           - '/🚀/i'
+          - '/✨/i'
+          - '/🔥/i'
 template: |
     $CHANGES
 
