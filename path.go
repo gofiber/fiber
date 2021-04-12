@@ -228,7 +228,7 @@ func findNextCharsetPosition(search string, charset []byte) int {
 	return nextPosition
 }
 
-// findNextNonEscapedCharsetPosition search the next char position from the charset and skip the excaped charaters
+// findNextNonEscapedCharsetPosition search the next char position from the charset and skip the escaped characters
 func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
 	pos := findNextCharsetPosition(search, charset)
 	for pos > 0 && search[pos-1] == escapeChar {
@@ -361,9 +361,9 @@ func GetTrimmedParam(param string) string {
 	return param[start:end]
 }
 
-// RemoveEscapeChar remove escape charaters
+// RemoveEscapeChar remove escape characters
 func RemoveEscapeChar(word string) string {
-	if -1 != strings.IndexByte(word, escapeChar) {
+	if strings.IndexByte(word, escapeChar) != -1 {
 		return strings.ReplaceAll(word, string(escapeChar), "")
 	}
 	return word
