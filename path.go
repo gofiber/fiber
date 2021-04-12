@@ -41,11 +41,12 @@ type routeSegment struct {
 
 // different special routing signs
 const (
-	wildcardParam    byte = '*' // indicates a optional greedy parameter
-	plusParam        byte = '+' // indicates a required greedy parameter
-	optionalParam    byte = '?' // concludes a parameter by name and makes it optional
-	paramStarterChar byte = ':' // start character for a parameter with name
-	slashDelimiter   byte = '/' // separator for the route, unlike the other delimiters this character at the end can be optional
+	wildcardParam    byte = '*'  // indicates a optional greedy parameter
+	plusParam        byte = '+'  // indicates a required greedy parameter
+	optionalParam    byte = '?'  // concludes a parameter by name and makes it optional
+	paramStarterChar byte = ':'  // start character for a parameter with name
+	slashDelimiter   byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
+	escapeChar       byte = '\\' // escape character
 )
 
 // list of possible parameter and segment delimiter
@@ -102,7 +103,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 		// set the compare part for the parameter
 		if segs[i].IsParam {
 			// important for finding the end of the parameter
-			segs[i].ComparePart = comparePart
+			segs[i].ComparePart = RemoveEscapeChar(comparePart)
 		} else {
 			comparePart = segs[i].Const
 			if len(comparePart) > 1 {
@@ -140,11 +141,11 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 
 // findNextParamPosition search for the next possible parameter start position
 func findNextParamPosition(pattern string) int {
-	nextParamPosition := findNextCharsetPosition(pattern, parameterStartChars)
+	nextParamPosition := findNextNonEscapedCharsetPosition(pattern, parameterStartChars)
 	if nextParamPosition != -1 && len(pattern) > nextParamPosition && pattern[nextParamPosition] != wildcardParam {
 		// search for parameter characters for the found parameter start,
 		// if there are more, move the parameter start to the last parameter char
-		for found := findNextCharsetPosition(pattern[nextParamPosition+1:], parameterStartChars); found == 0; {
+		for found := findNextNonEscapedCharsetPosition(pattern[nextParamPosition+1:], parameterStartChars); found == 0; {
 			nextParamPosition++
 			if len(pattern) > nextParamPosition {
 				break
@@ -163,9 +164,10 @@ func (routeParser *routeParser) analyseConstantPart(pattern string, nextParamPos
 		// remove the constant part until the parameter
 		processedPart = pattern[:nextParamPosition]
 	}
+	constPart := RemoveEscapeChar(processedPart)
 	return processedPart, &routeSegment{
-		Const:  processedPart,
-		Length: len(processedPart),
+		Const:  constPart,
+		Length: len(constPart),
 	}
 }
 
@@ -173,7 +175,7 @@ func (routeParser *routeParser) analyseConstantPart(pattern string, nextParamPos
 func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *routeSegment) {
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
-	parameterEndPosition := findNextCharsetPosition(pattern[1:], parameterEndChars)
+	parameterEndPosition := findNextNonEscapedCharsetPosition(pattern[1:], parameterEndChars)
 
 	// handle wildcard end
 	if isWildCard || isPlusParam {
@@ -186,7 +188,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	// cut params part
 	processedPart := pattern[0 : parameterEndPosition+1]
 
-	paramName := GetTrimmedParam(processedPart)
+	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
 	// add access iterator to wildcard and plus
 	if isWildCard {
 		routeParser.wildCardCount++
@@ -224,6 +226,25 @@ func findNextCharsetPosition(search string, charset []byte) int {
 	}
 
 	return nextPosition
+}
+
+// findNextNonEscapedCharsetPosition search the next char position from the charset and skip the escaped characters
+func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
+	pos := findNextCharsetPosition(search, charset)
+	for pos > 0 && search[pos-1] == escapeChar {
+		if len(search) == pos+1 {
+			// escaped character is at the end
+			return -1
+		}
+		nextPossiblePos := findNextCharsetPosition(search[pos+1:], charset)
+		if nextPossiblePos == -1 {
+			return -1
+		}
+		// the previous character is taken into consideration
+		pos = nextPossiblePos + pos + 1
+	}
+
+	return pos
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
@@ -338,4 +359,12 @@ func GetTrimmedParam(param string) string {
 	}
 
 	return param[start:end]
+}
+
+// RemoveEscapeChar remove escape characters
+func RemoveEscapeChar(word string) string {
+	if strings.IndexByte(word, escapeChar) != -1 {
+		return strings.ReplaceAll(word, string(escapeChar), "")
+	}
+	return word
 }
