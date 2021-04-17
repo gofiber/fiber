@@ -2003,20 +2003,28 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, 0, len(empty.Hobby))
 
 	type Query2 struct {
+		Bool            bool
 		ID              int
 		Name            string
 		Hobby           string
 		FavouriteDrinks []string
 		Empty           []string
+		Alloc           []string
 		No              []int64
 	}
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&empty=&no=1")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 	q2 := new(Query2)
+	q2.Bool = true
+	q2.Name = "hello world"
 	utils.AssertEqual(t, nil, c.QueryParser(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
+	utils.AssertEqual(t, true, q2.Bool)
+	utils.AssertEqual(t, "tom", q2.Name) // check value get overwritten
 	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, q2.FavouriteDrinks)
-	utils.AssertEqual(t, []string{}, q2.Empty)
+	var nilSlice []string
+	utils.AssertEqual(t, nilSlice, q2.Empty)
+	utils.AssertEqual(t, []string{""}, q2.Alloc)
 	utils.AssertEqual(t, []int64{1}, q2.No)
 
 	type RequiredQuery struct {
