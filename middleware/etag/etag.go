@@ -39,6 +39,10 @@ func New(config ...Config) fiber.Handler {
 		if len(body) <= 0 {
 			return
 		}
+		// Skip ETag if header is already present
+		if c.Response().Header.PeekBytes(normalizedHeaderETag) != nil {
+			return
+		}
 
 		// Generate ETag for response
 		bb := bytebufferpool.Get()
