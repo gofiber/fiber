@@ -423,6 +423,11 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
 		}
 	}
+
+	app.mutex.Lock()
+	app.handlerCount += fiber.handlerCount
+	app.mutex.Unlock()
+
 	return app
 }
 
