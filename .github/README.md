@@ -124,7 +124,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware/limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Translated in [15 languages](https://docs.gofiber.io/)
 -   And much more, [explore Fiber](https://docs.gofiber.io/)
 
