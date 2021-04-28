@@ -26,6 +26,11 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(getGroupPath(grp.prefix, prefix), route))
 		}
 	}
+
+	grp.app.mutex.Lock()
+	grp.app.handlerCount += fiber.handlerCount
+	grp.app.mutex.Unlock()
+
 	return grp
 }
 
