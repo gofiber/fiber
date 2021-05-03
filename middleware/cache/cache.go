@@ -5,7 +5,6 @@ package cache
 import (
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -27,19 +26,10 @@ func New(config ...Config) fiber.Handler {
 	var (
 		// Cache settings
 		mux        = &sync.RWMutex{}
-		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
 	)
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
-
-	// Update timestamp every second
-	go func() {
-		for {
-			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
-			time.Sleep(1 * time.Second)
-		}
-	}()
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
@@ -59,7 +49,7 @@ func New(config ...Config) fiber.Handler {
 		defer mux.Unlock()
 
 		// Get timestamp
-		ts := atomic.LoadUint64(&timestamp)
+		ts := uint64(time.Now().Unix())
 
 		if e.exp != 0 && ts >= e.exp {
 			// Check if entry is expired
