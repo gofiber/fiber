@@ -5,11 +5,17 @@ package cache
 import (
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 )
+
+// timestampUpdatePeriod is the period which is used to check the cache expiration.
+// It should not be too long to provide more or less acceptable expiration error, and in the same
+// time it should not be too short to avoid overwhelming of the system
+const timestampUpdatePeriod = 300 * time.Millisecond
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -26,10 +32,19 @@ func New(config ...Config) fiber.Handler {
 	var (
 		// Cache settings
 		mux        = &sync.RWMutex{}
+		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
 	)
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
+
+	// Update timestamp every second
+	go func() {
+		for {
+			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
+			time.Sleep(timestampUpdatePeriod)
+		}
+	}()
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
@@ -49,7 +64,7 @@ func New(config ...Config) fiber.Handler {
 		defer mux.Unlock()
 
 		// Get timestamp
-		ts := uint64(time.Now().Unix())
+		ts := atomic.LoadUint64(&timestamp)
 
 		if e.exp != 0 && ts >= e.exp {
 			// Check if entry is expired
