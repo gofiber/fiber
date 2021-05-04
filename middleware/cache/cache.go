@@ -12,6 +12,11 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
+// timestampUpdatePeriod is the period which is used to check the cache expiration.
+// It should not be too long to provide more or less acceptable expiration error, and in the same
+// time it should not be too short to avoid overwhelming of the system
+const timestampUpdatePeriod = 300 * time.Millisecond
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -37,7 +42,7 @@ func New(config ...Config) fiber.Handler {
 	go func() {
 		for {
 			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
-			time.Sleep(1 * time.Second)
+			time.Sleep(timestampUpdatePeriod)
 		}
 	}()
 
