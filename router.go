@@ -401,7 +401,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 }
 
 func (app *App) addRoute(method string, route *Route) {
-	// Get unique HTTP method indentifier
+	// Get unique HTTP method identifier
 	m := methodInt(method)
 
 	// prevent identically route registration
