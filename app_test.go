@@ -1249,3 +1249,17 @@ func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 500, resp.StatusCode)
 }
+
+// go test -race -run Test_App_New_Test_Parallel
+func Test_App_New_Test_Parallel(t *testing.T) {
+	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{Immutable: true})
+		app.Test(httptest.NewRequest("GET", "/", nil))
+	})
+	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{Immutable: true})
+		app.Test(httptest.NewRequest("GET", "/", nil))
+	})
+}
