@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/colorable"
@@ -95,9 +96,9 @@ type App struct {
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
 	// Amount of registered routes
-	routesCount int
+	routesCount uint32
 	// Amount of registered handlers
-	handlerCount int
+	handlerCount uint32
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -424,9 +425,7 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 		}
 	}
 
-	app.mutex.Lock()
-	app.handlerCount += fiber.handlerCount
-	app.mutex.Unlock()
+	atomic.AddUint32(&app.handlerCount, fiber.handlerCount)
 
 	return app
 }
@@ -918,7 +917,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			" │ Prefork .%s  PID ....%s │\n"+
 			" └───────────────────────────────────────────────────┘"+
 			cReset,
-		value(strconv.Itoa(app.handlerCount), 14), value(procs, 12),
+		value(strconv.Itoa(int(app.handlerCount)), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 	)
 
