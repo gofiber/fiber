@@ -92,9 +92,9 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	// Reset matched flag
 	c.matched = false
 	// Set paths
-	c.pathOriginal = getString(fctx.URI().PathOriginal())
+	c.pathOriginal = app.getString(fctx.URI().PathOriginal())
 	// Set method
-	c.method = getString(fctx.Request.Header.Method())
+	c.method = app.getString(fctx.Request.Header.Method())
 	c.methodINT = methodInt(c.method)
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
@@ -195,7 +195,7 @@ func (c *Ctx) Append(field string, values ...string) {
 	if len(values) == 0 {
 		return
 	}
-	h := getString(c.fasthttp.Response.Header.Peek(field))
+	h := c.app.getString(c.fasthttp.Response.Header.Peek(field))
 	originalH := h
 	for _, value := range values {
 		if len(h) == 0 {
@@ -216,7 +216,7 @@ func (c *Ctx) Attachment(filename ...string) {
 		fname := filepath.Base(filename[0])
 		c.Type(filepath.Ext(fname))
 
-		c.setCanonical(HeaderContentDisposition, `attachment; filename="`+quoteString(fname)+`"`)
+		c.setCanonical(HeaderContentDisposition, `attachment; filename="`+c.app.quoteString(fname)+`"`)
 		return
 	}
 	c.setCanonical(HeaderContentDisposition, "attachment")
@@ -339,7 +339,7 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 // The returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *Ctx) Cookies(key string, defaultValue ...string) string {
-	return defaultString(getString(c.fasthttp.Request.Header.Cookie(key)), defaultValue)
+	return defaultString(c.app.getString(c.fasthttp.Request.Header.Cookie(key)), defaultValue)
 }
 
 // Download transfers the file from path as an attachment.
@@ -353,7 +353,7 @@ func (c *Ctx) Download(file string, filename ...string) error {
 	} else {
 		fname = filepath.Base(file)
 	}
-	c.setCanonical(HeaderContentDisposition, `attachment; filename="`+quoteString(fname)+`"`)
+	c.setCanonical(HeaderContentDisposition, `attachment; filename="`+c.app.quoteString(fname)+`"`)
 	return c.SendFile(file)
 }
 
@@ -385,7 +385,7 @@ func (c *Ctx) Format(body interface{}) error {
 	case string:
 		b = val
 	case []byte:
-		b = getString(val)
+		b = c.app.getString(val)
 	default:
 		b = fmt.Sprintf("%v", val)
 	}
@@ -420,7 +420,7 @@ func (c *Ctx) FormFile(key string) (*multipart.FileHeader, error) {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) FormValue(key string, defaultValue ...string) string {
-	return defaultString(getString(c.fasthttp.FormValue(key)), defaultValue)
+	return defaultString(c.app.getString(c.fasthttp.FormValue(key)), defaultValue)
 }
 
 // Fresh returns true when the response is still “fresh” in the client's cache,
@@ -449,16 +449,16 @@ func (c *Ctx) Fresh() bool {
 
 	// if-none-match
 	if noneMatch != "" && noneMatch != "*" {
-		var etag = getString(c.fasthttp.Response.Header.Peek(HeaderETag))
+		var etag = c.app.getString(c.fasthttp.Response.Header.Peek(HeaderETag))
 		if etag == "" {
 			return false
 		}
-		if isEtagStale(etag, getBytes(noneMatch)) {
+		if c.app.isEtagStale(etag, c.app.getBytes(noneMatch)) {
 			return false
 		}
 
 		if modifiedSince != "" {
-			var lastModified = getString(c.fasthttp.Response.Header.Peek(HeaderLastModified))
+			var lastModified = c.app.getString(c.fasthttp.Response.Header.Peek(HeaderLastModified))
 			if lastModified != "" {
 				lastModifiedTime, err := http.ParseTime(lastModified)
 				if err != nil {
@@ -480,14 +480,14 @@ func (c *Ctx) Fresh() bool {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) Get(key string, defaultValue ...string) string {
-	return defaultString(getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
+	return defaultString(c.app.getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
 }
 
 // Hostname contains the hostname derived from the Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) Hostname() string {
-	return getString(c.fasthttp.Request.URI().Host())
+	return c.app.getString(c.fasthttp.Request.URI().Host())
 }
 
 // IP returns the remote IP address of the request.
@@ -509,10 +509,10 @@ func (c *Ctx) IPs() (ips []string) {
 	for {
 		commaPos = bytes.IndexByte(header, ',')
 		if commaPos != -1 {
-			ips[i] = utils.Trim(getString(header[:commaPos]), ' ')
+			ips[i] = utils.Trim(c.app.getString(header[:commaPos]), ' ')
 			header, i = header[commaPos+1:], i+1
 		} else {
-			ips[i] = utils.Trim(getString(header), ' ')
+			ips[i] = utils.Trim(c.app.getString(header), ' ')
 			return
 		}
 	}
@@ -565,7 +565,7 @@ func (c *Ctx) JSONP(data interface{}, callback ...string) error {
 		cb = "callback"
 	}
 
-	result = cb + "(" + getString(raw) + ");"
+	result = cb + "(" + c.app.getString(raw) + ");"
 
 	c.setCanonical(HeaderXContentTypeOptions, "nosniff")
 	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
@@ -587,7 +587,7 @@ func (c *Ctx) Links(link ...string) {
 			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	c.setCanonical(HeaderLink, utils.TrimRight(getString(bb.Bytes()), ','))
+	c.setCanonical(HeaderLink, utils.TrimRight(c.app.getString(bb.Bytes()), ','))
 	bytebufferpool.Put(bb)
 }
 
@@ -645,7 +645,7 @@ func (c *Ctx) Next() (err error) {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *Ctx) OriginalURL() string {
-	return getString(c.fasthttp.Request.Header.RequestURI())
+	return c.app.getString(c.fasthttp.Request.Header.RequestURI())
 }
 
 // Params is used to get the route parameters.
@@ -706,14 +706,14 @@ func (c *Ctx) Protocol() string {
 			return // X-Forwarded-
 		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
 			if bytes.Equal(key, []byte(HeaderXForwardedProto)) {
-				scheme = getString(val)
+				scheme = c.app.getString(val)
 			} else if bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
-				scheme = getString(val)
+				scheme = c.app.getString(val)
 			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
 				scheme = "https"
 			}
 		} else if bytes.Equal(key, []byte(HeaderXUrlScheme)) {
-			scheme = getString(val)
+			scheme = c.app.getString(val)
 		}
 	})
 	return scheme
@@ -725,7 +725,7 @@ func (c *Ctx) Protocol() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *Ctx) Query(key string, defaultValue ...string) string {
-	return defaultString(getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
+	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
 
 // QueryParser binds the query string to a struct.
@@ -882,7 +882,7 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 			return err
 		}
 		// Parse template
-		if tmpl, err = template.New("").Parse(getString(buf.Bytes())); err != nil {
+		if tmpl, err = template.New("").Parse(c.app.getString(buf.Bytes())); err != nil {
 			return err
 		}
 		buf.Reset()
@@ -1124,7 +1124,7 @@ func (c *Ctx) configDependentPaths() {
 	if c.app.config.UnescapePath {
 		c.pathBuffer = fasthttp.AppendUnquotedArg(c.pathBuffer[:0], c.pathBuffer)
 	}
-	c.path = getString(c.pathBuffer)
+	c.path = c.app.getString(c.pathBuffer)
 
 	// another path is specified which is for routing recognition only
 	// use the path that was changed by the previous configuration flags
@@ -1137,7 +1137,7 @@ func (c *Ctx) configDependentPaths() {
 	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
 		c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
 	}
-	c.detectionPath = getString(c.detectionPathBuffer)
+	c.detectionPath = c.app.getString(c.detectionPathBuffer)
 
 	// Define the path for dividing routes into areas for fast tree detection, so that fewer routes need to be traversed,
 	// since the first three characters area select a list of routes

@@ -335,7 +335,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	// check the param result
-	utils.AssertEqual(t, "اختبار", getString(body))
+	utils.AssertEqual(t, "اختبار", app.getString(body))
 
 	// with lowercase letters
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
@@ -370,7 +370,7 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	// check the detected path result
-	utils.AssertEqual(t, "/AbC", getString(body))
+	utils.AssertEqual(t, "/AbC", app.getString(body))
 }
 
 func Test_App_Add_Method_Test(t *testing.T) {

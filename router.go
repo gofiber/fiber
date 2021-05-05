@@ -325,7 +325,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		PathRewrite: func(fctx *fasthttp.RequestCtx) []byte {
 			path := fctx.Path()
 			if len(path) >= prefixLen {
-				if isStar && getString(path[0:prefixLen]) == prefix {
+				if isStar && app.getString(path[0:prefixLen]) == prefix {
 					path = append(path[0:0], '/')
 				} else if len(path) > 0 && path[len(path)-1] != '/' {
 					path = append(path[prefixLen:], '/')
