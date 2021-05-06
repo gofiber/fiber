@@ -20,38 +20,40 @@ import (
 
 // Logger variables
 const (
-	TagPid           = "pid"
-	TagTime          = "time"
-	TagReferer       = "referer"
-	TagProtocol      = "protocol"
-	TagIP            = "ip"
-	TagIPs           = "ips"
-	TagHost          = "host"
-	TagMethod        = "method"
-	TagPath          = "path"
-	TagURL           = "url"
-	TagUA            = "ua"
-	TagLatency       = "latency"
-	TagStatus        = "status"
-	TagBody          = "body"
-	TagBytesSent     = "bytesSent"
-	TagBytesReceived = "bytesReceived"
-	TagRoute         = "route"
-	TagError         = "error"
-	TagHeader        = "header:"
-	TagLocals        = "locals:"
-	TagQuery         = "query:"
-	TagForm          = "form:"
-	TagCookie        = "cookie:"
-	TagBlack         = "black"
-	TagRed           = "red"
-	TagGreen         = "green"
-	TagYellow        = "yellow"
-	TagBlue          = "blue"
-	TagMagenta       = "magenta"
-	TagCyan          = "cyan"
-	TagWhite         = "white"
-	TagReset         = "reset"
+	TagPid               = "pid"
+	TagTime              = "time"
+	TagReferer           = "referer"
+	TagProtocol          = "protocol"
+	TagIP                = "ip"
+	TagIPs               = "ips"
+	TagHost              = "host"
+	TagMethod            = "method"
+	TagPath              = "path"
+	TagURL               = "url"
+	TagUA                = "ua"
+	TagLatency           = "latency"
+	TagStatus            = "status"
+	TagResBody           = "resBody"
+	TagQueryStringParams = "queryParams"
+	TagBody              = "body"
+	TagBytesSent         = "bytesSent"
+	TagBytesReceived     = "bytesReceived"
+	TagRoute             = "route"
+	TagError             = "error"
+	TagHeader            = "header:"
+	TagLocals            = "locals:"
+	TagQuery             = "query:"
+	TagForm              = "form:"
+	TagCookie            = "cookie:"
+	TagBlack             = "black"
+	TagRed               = "red"
+	TagGreen             = "green"
+	TagYellow            = "yellow"
+	TagBlue              = "blue"
+	TagMagenta           = "magenta"
+	TagCyan              = "cyan"
+	TagWhite             = "white"
+	TagReset             = "reset"
 )
 
 // Color values
@@ -105,10 +107,9 @@ func New(config ...Config) fiber.Handler {
 
 	// Set variables
 	var (
-		start, stop time.Time
-		once        sync.Once
-		mu          sync.Mutex
-		errHandler  fiber.ErrorHandler
+		once       sync.Once
+		mu         sync.Mutex
+		errHandler fiber.ErrorHandler
 	)
 
 	// If colors are enabled, check terminal compatibility
@@ -142,6 +143,8 @@ func New(config ...Config) fiber.Handler {
 			// override error handler
 			errHandler = c.App().Config().ErrorHandler
 		})
+
+		var start, stop time.Time
 
 		// Set latency start time
 		if cfg.enableLatency {
@@ -230,6 +233,10 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(c.Route().Path)
 			case TagStatus:
 				return appendInt(buf, c.Response().StatusCode())
+			case TagResBody:
+				return buf.Write(c.Response().Body())
+			case TagQueryStringParams:
+				return buf.WriteString(c.Request().URI().QueryArgs().String())
 			case TagMethod:
 				return buf.WriteString(c.Method())
 			case TagBlack:
@@ -291,7 +298,7 @@ func New(config ...Config) fiber.Handler {
 			// Write error to output
 			if _, err := cfg.Output.Write([]byte(err.Error())); err != nil {
 				// There is something wrong with the given io.Writer
-				// TODO: What should we do here?
+				fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
 			}
 		}
 		mu.Unlock()

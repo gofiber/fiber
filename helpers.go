@@ -25,7 +25,7 @@ import (
 
 /* #nosec */
 // lnMetadata will close the listener and return the addr and tls config
-func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
+func lnMetadata(network string, ln net.Listener) (addr string, cfg *tls.Config) {
 	// Get addr
 	addr = ln.Addr().String()
 
@@ -37,7 +37,7 @@ func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
 	// Wait for the listener to be closed
 	var closed bool
 	for i := 0; i < 10; i++ {
-		conn, err := net.DialTimeout("tcp4", addr, 3*time.Second)
+		conn, err := net.DialTimeout(network, addr, 3*time.Second)
 		if err != nil || conn == nil {
 			closed = true
 			break
@@ -49,6 +49,14 @@ func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
 		panic("listener: " + addr + ": Only one usage of each socket address (protocol/network address/port) is normally permitted.")
 	}
 
+	cfg = getTlsConfig(ln)
+
+	return
+}
+
+/* #nosec */
+// getTlsConfig returns a net listener's tls config
+func getTlsConfig(ln net.Listener) *tls.Config {
 	// Get listener type
 	pointer := reflect.ValueOf(ln)
 
@@ -63,13 +71,14 @@ func lnMetadata(ln net.Listener) (addr string, cfg *tls.Config) {
 					// Get element from pointer
 					if elem := newval.Elem(); elem.Type() != nil {
 						// Cast value to *tls.Config
-						cfg = elem.Interface().(*tls.Config)
+						return elem.Interface().(*tls.Config)
 					}
 				}
 			}
 		}
 	}
-	return
+
+	return nil
 }
 
 // readContent opens a named file and read content from it
@@ -120,7 +129,7 @@ func methodExist(ctx *Ctx) (exist bool) {
 				continue
 			}
 			// Check if it matches the request path
-			match := route.match(ctx.path, ctx.pathOriginal, &ctx.values)
+			match := route.match(ctx.detectionPath, ctx.path, &ctx.values)
 			// No match, next route
 			if match {
 				// We matched
@@ -669,4 +678,11 @@ const (
 	HeaderXRequestedWith                  = "X-Requested-With"
 	HeaderXRobotsTag                      = "X-Robots-Tag"
 	HeaderXUACompatible                   = "X-UA-Compatible"
+)
+
+// Network types that are commonly used
+const (
+	NetworkTCP  = "tcp"
+	NetworkTCP4 = "tcp4"
+	NetworkTCP6 = "tcp6"
 )

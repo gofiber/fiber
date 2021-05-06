@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 Бенчмарки
 
-Тестирование проводилось с помощью [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) и [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Если вы хотите увидеть все результаты, пожалуйста, посетите наш [Wiki](https://docs.gofiber.io/benchmarks).
+Тестирование проводилось с помощью [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) и [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Если вы хотите увидеть все результаты, пожалуйста, посетите наш [Wiki](https://docs.gofiber.io/extra/benchmarks).
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -116,15 +116,15 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 Особенности
 
 -   Надежная [маршрутизация](https://docs.gofiber.io/routing)
--   Доступ к [статичным файлам](https://docs.gofiber.io/application#static)
--   Экстремальная [производительность](https://docs.gofiber.io/benchmarks)
--   [Низкий объем потребления памяти](https://docs.gofiber.io/benchmarks)
--   [Эндпоинты](https://docs.gofiber.io/context), как в [API](https://docs.gofiber.io/context) Express
--   [Middleware](https://docs.gofiber.io/middleware) и поддержка [Next](https://docs.gofiber.io/context#next)
+-   Доступ к [статичным файлам](https://docs.gofiber.io/api/app#static)
+-   Экстремальная [производительность](https://docs.gofiber.io/extra/benchmarks)
+-   [Низкий объем потребления памяти](https://docs.gofiber.io/extra/benchmarks)
+-   [Эндпоинты](https://docs.gofiber.io/context), как в [API](https://docs.gofiber.io/api/ctx) Express
+-   [Middleware](https://docs.gofiber.io/middleware) и поддержка [Next](https://docs.gofiber.io/api/ctx#next)
 -   [Быстрое](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) программирование на стороне сервера
 -   [Template engines](https://github.com/gofiber/template)
 -   [Поддержка WebSocket](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Документация доступна на [15 языках](https://docs.gofiber.io/)
 -   И многое другое, [посетите наш Wiki](https://docs.gofiber.io/)
 
@@ -153,7 +153,7 @@ func main() {
     })
 
     // GET /john/75
-    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+    app.Get("/:name/:age", func(c *fiber.Ctx) error {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
@@ -181,7 +181,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -203,31 +203,31 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// Match any route
-	app.Use(func(c *fiber.Ctx) error {
-		fmt.Println("🥇 First handler")
-		return c.Next()
-	})
+    // Match any route
+    app.Use(func(c *fiber.Ctx) error {
+        fmt.Println("🥇 First handler")
+        return c.Next()
+    })
 
-	// Match all routes starting with /api
-	app.Use("/api", func(c *fiber.Ctx) error {
-		fmt.Println("🥈 Second handler")
-		return c.Next()
-	})
+    // Match all routes starting with /api
+    app.Use("/api", func(c *fiber.Ctx) error {
+        fmt.Println("🥈 Second handler")
+        return c.Next()
+    })
 
-	// GET /api/register
-	app.Get("/api/list", func(c *fiber.Ctx) error {
-		fmt.Println("🥉 Last handler")
-		return c.SendString("Hello, World 👋!")
-	})
+    // GET /api/register
+    app.Get("/api/list", func(c *fiber.Ctx) error {
+        fmt.Println("🥉 Last handler")
+        return c.SendString("Hello, World 👋!")
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 
 ```
@@ -248,8 +248,6 @@ func main() {
 Ознакомьтесь с пакетом [Template](https://github.com/gofiber/template), который поддерживает множество движков для views.
 
 ```go
-package main
-
 import (
     "github.com/gofiber/fiber/v2"
     "github.com/gofiber/template/pug"
@@ -271,6 +269,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 ### Группировка путей в цепочки
@@ -313,8 +312,6 @@ func main() {
 📖 [Logger](https://docs.gofiber.io/middleware/logger)
 
 ```go
-package main
-
 import (
     "log"
 
@@ -331,6 +328,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 ### Cross-Origin Resource Sharing (CORS)
@@ -354,6 +352,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 Проверем CORS, присвоив домен в заголовок `Origin`, отличный от `localhost`:
@@ -388,6 +387,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 ### JSON Response
@@ -418,6 +418,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 ### WebSocket Upgrade
@@ -440,7 +441,9 @@ func main() {
         log.Println("read:", err)
         break
       }
+      
       log.Printf("recv: %s", msg)
+      
       err = c.WriteMessage(mt, msg)
       if err != nil {
         log.Println("write:", err)
@@ -450,8 +453,9 @@ func main() {
   }))
 
   log.Fatal(app.Listen(":3000"))
-  // ws://localhost:3000/ws
+  // => ws://localhost:3000/ws
 }
+
 ```
 
 ### Recover middleware
@@ -475,6 +479,7 @@ func main() {
 
     log.Fatal(app.Listen(":3000"))
 }
+
 ```
 
 </details>
@@ -497,7 +502,7 @@ func main() {
 | [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | Special thanks to Matthew Lee \(@mthli\)                                                                                                                              |
 | [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | Allows you to proxy requests to a multiple servers                                                                                                                    |
 | [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | Adds a requestid to every request.                                                                                                                                    |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md).                     |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling).                     |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                         |
 
 ## 🧬 Внешние Middleware
@@ -533,6 +538,7 @@ func main() {
 -   [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
 -   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
 -   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
+-   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
 
 ## 👍 Помощь проекту
 

@@ -41,3 +41,18 @@ func Test_Recover_Next(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
+
+func Test_Recover_EnableStackTrace(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		EnableStackTrace: true,
+	}))
+
+	app.Get("/panic", func(c *fiber.Ctx) error {
+		panic("Hi, I'm an error!")
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/panic", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
+}

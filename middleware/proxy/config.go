@@ -28,6 +28,15 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	ModifyResponse fiber.Handler
+
+	// Per-connection buffer size for requests' reading.
+	// This also limits the maximum header size.
+	// Increase this buffer if your clients send multi-KB RequestURIs
+	// and/or multi-KB headers (for example, BIG cookies).
+	ReadBufferSize int
+
+	// Per-connection buffer size for responses' writing.
+	WriteBufferSize int
 }
 
 // ConfigDefault is the default config

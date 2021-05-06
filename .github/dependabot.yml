@@ -1,0 +1,13 @@
+# https://help.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/" # Location of package manifests
+    default_labels:
+      - "🤖 Dependencies"
+    schedule:
+      interval: "daily"
+    automerged_updates:
+      -   match:
+            dependency_name: "gofiber/fiber/*"

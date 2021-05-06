@@ -270,6 +270,7 @@ func Test_App_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, uint32(2), app.handlerCount)
 }
 
 func Test_App_Use_Params(t *testing.T) {
@@ -314,6 +315,64 @@ func Test_App_Use_Params(t *testing.T) {
 	})
 }
 
+func Test_App_Use_UnescapedPath(t *testing.T) {
+	app := New(Config{UnescapePath: true, CaseSensitive: true})
+
+	app.Use("/cRéeR/:param", func(c *Ctx) error {
+		utils.AssertEqual(t, "/cRéeR/اختبار", c.Path())
+		return c.SendString(c.Params("param"))
+	})
+
+	app.Use("/abc", func(c *Ctx) error {
+		utils.AssertEqual(t, "/AbC", c.Path())
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cR%C3%A9eR/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	// check the param result
+	utils.AssertEqual(t, "اختبار", getString(body))
+
+	// with lowercase letters
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+func Test_App_Use_CaseSensitive(t *testing.T) {
+	app := New(Config{CaseSensitive: true})
+
+	app.Use("/abc", func(c *Ctx) error {
+		return c.SendString(c.Path())
+	})
+
+	// wrong letters in the requested route -> 404
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/AbC", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+
+	// right letters in the requrested route -> 200
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	// check the detected path when the case insensitive recognition is activated
+	app.config.CaseSensitive = false
+	// check the case sensitive feature
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/AbC", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	// check the detected path result
+	utils.AssertEqual(t, "/AbC", getString(body))
+}
+
 func Test_App_Add_Method_Test(t *testing.T) {
 	app := New()
 	defer func() {
@@ -322,29 +381,6 @@ func Test_App_Add_Method_Test(t *testing.T) {
 		}
 	}()
 	app.Add("JOHN", "/doe", testEmptyHandler)
-}
-
-func Test_App_Listener_TLS(t *testing.T) {
-	app := New()
-
-	// Create tls certificate
-	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	if err != nil {
-		utils.AssertEqual(t, nil, err)
-	}
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
-
-	ln, err := net.Listen("tcp4", ":3078")
-	utils.AssertEqual(t, nil, err)
-
-	ln = tls.NewListener(ln, config)
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
 // go test -run Test_App_GETOnly
@@ -700,6 +736,48 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 }
 
+func Test_App_Static_Next(t *testing.T) {
+	app := New()
+	app.Static("/", ".github", Static{
+		Next: func(c *Ctx) bool {
+			// If value of the header is any other from "skip"
+			// c.Next() will be invoked
+			return c.Get("X-Custom-Header") == "skip"
+		},
+	})
+	app.Get("/", func(c *Ctx) error {
+		return c.SendString("You've skipped app.Static")
+	})
+
+	t.Run("app.Static is skipped: invoking Get handler", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Custom-Header", "skip")
+		resp, err := app.Test(req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, 200, resp.StatusCode)
+		utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+		utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+
+		body, err := ioutil.ReadAll(resp.Body)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, true, strings.Contains(string(body), "You've skipped app.Static"))
+	})
+
+	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("X-Custom-Header", "don't skip")
+		resp, err := app.Test(req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, 200, resp.StatusCode)
+		utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+		utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
+
+		body, err := ioutil.ReadAll(resp.Body)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
+	})
+}
+
 // go test -run Test_App_Mixed_Routes_WithSameLen
 func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	app := New()
@@ -767,6 +845,7 @@ func Test_App_Group_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, uint32(2), app.handlerCount)
 }
 
 func Test_App_Group(t *testing.T) {
@@ -807,6 +886,9 @@ func Test_App_Group(t *testing.T) {
 
 	grp.All("/ALL", dummyHandler)
 	testStatus200(t, app, "/test/ALL", MethodPost)
+
+	grp.Use(dummyHandler)
+	testStatus200(t, app, "/test/oke", MethodGet)
 
 	grp.Use("/USE", dummyHandler)
 	testStatus200(t, app, "/test/USE/oke", MethodGet)
@@ -905,6 +987,27 @@ func Test_App_Listener_Prefork(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
 
 	ln := fasthttputil.NewInmemoryListener()
+	utils.AssertEqual(t, nil, app.Listener(ln))
+}
+
+func Test_App_Listener_TLS(t *testing.T) {
+	// Create tls certificate
+	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+
+	ln, err := tls.Listen(NetworkTCP4, ":0", config)
+	utils.AssertEqual(t, nil, err)
+
+	app := New()
+
+	go func() {
+		time.Sleep(time.Millisecond * 500)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
 	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
@@ -1048,7 +1151,7 @@ func Test_App_ReadTimeout(t *testing.T) {
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 
-		conn, err := net.Dial("tcp4", "127.0.0.1:4004")
+		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
 		utils.AssertEqual(t, nil, err)
 		defer conn.Close()
 
@@ -1080,7 +1183,7 @@ func Test_App_BadRequest(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		conn, err := net.Dial("tcp4", "127.0.0.1:4005")
+		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4005")
 		utils.AssertEqual(t, nil, err)
 		defer conn.Close()
 

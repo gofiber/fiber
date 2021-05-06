@@ -92,6 +92,7 @@ func Test_Session_Types(t *testing.T) {
 	type User struct {
 		Name string
 	}
+	store.RegisterType(User{})
 	var vuser = User{
 		Name: "John",
 	}
@@ -272,6 +273,30 @@ func Test_Session_Cookie(t *testing.T) {
 
 	// cookie should be set on Save ( even if empty data )
 	utils.AssertEqual(t, 84, len(ctx.Response().Header.PeekCookie(store.CookieName)))
+}
+
+// go test -run Test_Session_Cookie_In_Response
+func Test_Session_Cookie_In_Response(t *testing.T) {
+	t.Parallel()
+	store := New()
+	app := fiber.New()
+
+	// fiber context
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// get session
+	sess, _ := store.Get(ctx)
+	sess.Set("id", "1")
+	utils.AssertEqual(t, true, sess.Fresh())
+	sess.Save()
+
+	sess, _ = store.Get(ctx)
+	sess.Set("name", "john")
+	utils.AssertEqual(t, true, sess.Fresh())
+
+	utils.AssertEqual(t, "1", sess.Get("id"))
+	utils.AssertEqual(t, "john", sess.Get("name"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4

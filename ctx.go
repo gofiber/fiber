@@ -30,23 +30,27 @@ import (
 // maxParams defines the maximum number of parameters per route.
 const maxParams = 30
 
+const queryTag = "query"
+
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
-	app          *App                 // Reference to *App
-	route        *Route               // Reference to *Route
-	indexRoute   int                  // Index of the current route
-	indexHandler int                  // Index of the current handler
-	method       string               // HTTP method
-	methodINT    int                  // HTTP method INT equivalent
-	baseURI      string               // HTTP base uri
-	path         string               // Prettified HTTP path -> string copy from pathBuffer
-	pathBuffer   []byte               // Prettified HTTP path buffer
-	treePath     string               // Path for the search in the tree
-	pathOriginal string               // Original HTTP path
-	values       [maxParams]string    // Route parameter values
-	fasthttp     *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
-	matched      bool                 // Non use route matched
+	app                 *App                 // Reference to *App
+	route               *Route               // Reference to *Route
+	indexRoute          int                  // Index of the current route
+	indexHandler        int                  // Index of the current handler
+	method              string               // HTTP method
+	methodINT           int                  // HTTP method INT equivalent
+	baseURI             string               // HTTP base uri
+	path                string               // HTTP path with the modifications by the configuration -> string copy from pathBuffer
+	pathBuffer          []byte               // HTTP path buffer
+	detectionPath       string               // Route detection path                                  -> string copy from detectionPathBuffer
+	detectionPathBuffer []byte               // HTTP detectionPath buffer
+	treePath            string               // Path for the search in the tree
+	pathOriginal        string               // Original HTTP path
+	values              [maxParams]string    // Route parameter values
+	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
+	matched             bool                 // Non use route matched
 }
 
 // Range data for c.Range
@@ -88,7 +92,6 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	// Reset matched flag
 	c.matched = false
 	// Set paths
-	c.pathBuffer = append(c.pathBuffer[0:0], fctx.URI().PathOriginal()...)
 	c.pathOriginal = getString(fctx.URI().PathOriginal())
 	// Set method
 	c.method = getString(fctx.Request.Header.Method())
@@ -98,7 +101,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	// reset base uri
 	c.baseURI = ""
 	// Prettify path
-	c.prettifyPath()
+	c.configDependentPaths()
 	return c
 }
 
@@ -535,7 +538,7 @@ func (c *Ctx) Is(extension string) bool {
 // and a nil slice encodes as the null JSON value.
 // This method also sets the content header to application/json.
 func (c *Ctx) JSON(data interface{}) error {
-	raw, err := json.Marshal(data)
+	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
 	}
@@ -669,22 +672,27 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 	return defaultString("", defaultValue)
 }
 
+// ParamsInt is used to get an integer from the route parameters
+// it defaults to zero if the parameter is not found or if the
+// parameter cannot be converted to an integer
+func (c *Ctx) ParamsInt(key string) (int, error) {
+	// Use Atoi to convert the param to an int or return zero and an error
+	return strconv.Atoi(c.Params(key))
+}
+
 // Path returns the path part of the request URL.
 // Optionally, you could override the path.
 func (c *Ctx) Path(override ...string) string {
 	if len(override) != 0 && c.path != override[0] {
 		// Set new path to context
-		c.pathBuffer = append(c.pathBuffer[0:0], override[0]...)
 		c.pathOriginal = override[0]
-		// c.path = override[0]
-		// c.pathOriginal = c.path
 
 		// Set new path to request context
 		c.fasthttp.Request.URI().SetPath(c.pathOriginal)
 		// Prettify path
-		c.prettifyPath()
+		c.configDependentPaths()
 	}
-	return c.pathOriginal
+	return c.path
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
@@ -727,7 +735,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 	defer decoderPool.Put(decoder)
 
 	// Set correct alias tag
-	decoder.SetAliasTag("query")
+	decoder.SetAliasTag(queryTag)
 
 	data := make(map[string][]string)
 	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
@@ -749,6 +757,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
 	// Get type of interface
 	outTyp := reflect.TypeOf(out).Elem()
+	key = utils.ToLower(key)
 	// Must be a struct to match a field
 	if outTyp.Kind() != reflect.Struct {
 		return false
@@ -772,9 +781,11 @@ func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
 			continue
 		}
 		// Get tag from field if exist
-		inputFieldName := typeField.Tag.Get(key)
+		inputFieldName := typeField.Tag.Get(queryTag)
 		if inputFieldName == "" {
 			inputFieldName = typeField.Name
+		} else {
+			inputFieldName = strings.Split(inputFieldName, ",")[0]
 		}
 		// Compare field/tag with provided key
 		if utils.ToLower(inputFieldName) == key {
@@ -1105,24 +1116,33 @@ func (c *Ctx) XHR() bool {
 	return utils.EqualFoldBytes(utils.UnsafeBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
 }
 
-// prettifyPath ...
-func (c *Ctx) prettifyPath() {
-	// If UnescapePath enabled, we decode the path
+// configDependentPaths set paths for route recognition and prepared paths for the user,
+// here the features for caseSensitive, decoded paths, strict paths are evaluated
+func (c *Ctx) configDependentPaths() {
+	c.pathBuffer = append(c.pathBuffer[0:0], c.pathOriginal...)
+	// If UnescapePath enabled, we decode the path and save it for the framework user
 	if c.app.config.UnescapePath {
 		c.pathBuffer = fasthttp.AppendUnquotedArg(c.pathBuffer[:0], c.pathBuffer)
 	}
-	// If CaseSensitive is disabled, we lowercase the original path
-	if !c.app.config.CaseSensitive {
-		c.pathBuffer = utils.ToLowerBytes(c.pathBuffer)
-	}
-	// If StrictRouting is disabled, we strip all trailing slashes
-	if !c.app.config.StrictRouting && len(c.pathBuffer) > 1 && c.pathBuffer[len(c.pathBuffer)-1] == '/' {
-		c.pathBuffer = utils.TrimRightBytes(c.pathBuffer, '/')
-	}
 	c.path = getString(c.pathBuffer)
 
+	// another path is specified which is for routing recognition only
+	// use the path that was changed by the previous configuration flags
+	c.detectionPathBuffer = append(c.detectionPathBuffer[0:0], c.pathBuffer...)
+	// If CaseSensitive is disabled, we lowercase the original path
+	if !c.app.config.CaseSensitive {
+		c.detectionPathBuffer = utils.ToLowerBytes(c.detectionPathBuffer)
+	}
+	// If StrictRouting is disabled, we strip all trailing slashes
+	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
+		c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
+	}
+	c.detectionPath = getString(c.detectionPathBuffer)
+
+	// Define the path for dividing routes into areas for fast tree detection, so that fewer routes need to be traversed,
+	// since the first three characters area select a list of routes
 	c.treePath = c.treePath[0:0]
-	if len(c.path) >= 3 {
-		c.treePath = c.path[:3]
+	if len(c.detectionPath) >= 3 {
+		c.treePath = c.detectionPath[:3]
 	}
 }

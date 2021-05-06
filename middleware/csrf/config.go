@@ -2,6 +2,8 @@ package csrf
 
 import (
 	"fmt"
+	"net/textproto"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -47,7 +49,7 @@ type Config struct {
 	// Optional. Default value false.
 	CookieHTTPOnly bool
 
-	// Indicates if CSRF cookie is HTTP only.
+	// Value of SameSite cookie.
 	// Optional. Default value "Strict".
 	CookieSameSite string
 
@@ -80,6 +82,14 @@ type Config struct {
 
 	// Deprecated, please use KeyLookup
 	TokenLookup string
+
+	// ErrorHandler is executed when an error is returned from fiber.Handler.
+	//
+	// Optional. Default: DefaultErrorHandler
+	ErrorHandler fiber.ErrorHandler
+
+	// extractor returns the csrf token from the request based on KeyLookup
+	extractor func(c *fiber.Ctx) (string, error)
 }
 
 // ConfigDefault is the default config
@@ -89,6 +99,13 @@ var ConfigDefault = Config{
 	CookieSameSite: "Strict",
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
+	ErrorHandler:   defaultErrorHandler,
+	extractor:      csrfFromHeader("X-Csrf-Token"),
+}
+
+// default ErrorHandler that process return error from fiber.Handler
+var defaultErrorHandler = func(c *fiber.Ctx, err error) error {
+	return fiber.ErrForbidden
 }
 
 // Helper function to set default values
@@ -141,6 +158,30 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator
+	}
+	if cfg.ErrorHandler == nil {
+		cfg.ErrorHandler = ConfigDefault.ErrorHandler
+	}
+
+	// Generate the correct extractor to get the token from the correct location
+	selectors := strings.Split(cfg.KeyLookup, ":")
+
+	if len(selectors) != 2 {
+		panic("[CSRF] KeyLookup must in the form of <source>:<key>")
+	}
+
+	// By default we extract from a header
+	cfg.extractor = csrfFromHeader(textproto.CanonicalMIMEHeaderKey(selectors[1]))
+
+	switch selectors[0] {
+	case "form":
+		cfg.extractor = csrfFromForm(selectors[1])
+	case "query":
+		cfg.extractor = csrfFromQuery(selectors[1])
+	case "param":
+		cfg.extractor = csrfFromParam(selectors[1])
+	case "cookie":
+		cfg.extractor = csrfFromCookie(selectors[1])
 	}
 
 	return cfg

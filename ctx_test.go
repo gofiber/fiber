@@ -901,7 +901,7 @@ func Test_Ctx_InvalidMethod(t *testing.T) {
 	fctx.Request.Header.SetMethod("InvalidMethod")
 	fctx.Request.SetRequestURI("/")
 
-	app.handler(fctx)
+	app.Handler()(fctx)
 
 	utils.AssertEqual(t, 400, fctx.Response.StatusCode())
 	utils.AssertEqual(t, []byte("Invalid http method"), fctx.Response.Body())
@@ -1038,15 +1038,23 @@ func Benchmark_Ctx_Params(b *testing.B) {
 // go test -run Test_Ctx_Path
 func Test_Ctx_Path(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{UnescapePath: true})
 	app.Get("/test/:user", func(c *Ctx) error {
-		utils.AssertEqual(t, "/test/john", c.Path())
+		utils.AssertEqual(t, "/Test/John", c.Path())
 		// not strict && case insensitive
 		utils.AssertEqual(t, "/ABC/", c.Path("/ABC/"))
 		utils.AssertEqual(t, "/test/john/", c.Path("/test/john/"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+
+	// test with special chars
+	app.Get("/specialChars/:name", func(c *Ctx) error {
+		utils.AssertEqual(t, "/specialChars/créer", c.Path())
+		// unescape is also working if you set the path afterwards
+		utils.AssertEqual(t, "/اختبار/", c.Path("/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1/"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -1995,22 +2003,27 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, 0, len(empty.Hobby))
 
 	type Query2 struct {
-		ID    int
-		Name  string
-		Hobby string
+		ID              int
+		Name            string
+		Hobby           string
+		FavouriteDrinks []string
+		Empty           []string
+		No              []int64
 	}
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&empty=&no=1")
 	q2 := new(Query2)
 	utils.AssertEqual(t, nil, c.QueryParser(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, q2.FavouriteDrinks)
+	utils.AssertEqual(t, []string{}, q2.Empty)
+	utils.AssertEqual(t, []int64{1}, q2.No)
 
 	type RequiredQuery struct {
 		Name string `query:"name,required"`
 	}
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
-	fmt.Println(c.QueryParser(rq))
 	utils.AssertEqual(t, "name is empty", c.QueryParser(rq).Error())
 }
 
@@ -2020,6 +2033,21 @@ func Test_Ctx_EqualFieldType(t *testing.T) {
 
 	var dummy struct{ f string }
 	utils.AssertEqual(t, false, equalFieldType(&dummy, reflect.String, "key"))
+
+	var dummy2 struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy2, reflect.String, "f"))
+
+	var user struct {
+		Name    string
+		Address string `query:"address"`
+		Age     int    `query:"AGE"`
+	}
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "name"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Name"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "address"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Address"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "AGE"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "age"))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
@@ -2124,4 +2152,57 @@ func Test_Ctx_String(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	utils.AssertEqual(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
+}
+
+func TestCtx_ParamsInt(t *testing.T) {
+	// Create a test context and set some strings (or params)
+
+	// create a fake app to be used within this test
+	app := New()
+
+	// Create some test endpoints
+
+	// For the user id I will use the number 1111, so I should be able to get the number
+	// 1111 from the Ctx
+	app.Get("/test/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user")
+
+		// Check the number matches
+		if num != 1111 {
+			t.Fatalf("Expected number 1111 from the path, got %d", num)
+		}
+
+		// Check no errors are returned, because we want NO errors in this one
+		if err != nil {
+			t.Fatalf("Expected nil error for 1111 test, got " + err.Error())
+		}
+
+		return nil
+	})
+
+	// In this test case, there will be a bad request where the expected number is NOT
+	// a number in the path
+	app.Get("/testnoint/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user")
+
+		// Check the number matches
+		if num != 0 {
+			t.Fatalf("Expected number 0 from the path, got %d", num)
+		}
+
+		// Check an error is returned, because we want NO errors in this one
+		if err == nil {
+			t.Fatal("Expected non nil error for bad req test, got nil")
+		}
+
+		return nil
+	})
+
+	app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
+
 }

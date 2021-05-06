@@ -1,7 +1,6 @@
 package monitor
 
 import (
-	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -25,9 +24,10 @@ type statsPID struct {
 	Conns int     `json:"conns"`
 }
 type statsOS struct {
-	CPU   float64 `json:"cpu"`
-	RAM   uint64  `json:"ram"`
-	Conns int     `json:"conns"`
+	CPU      float64 `json:"cpu"`
+	RAM      uint64  `json:"ram"`
+	TotalRAM uint64  `json:"total_ram"`
+	Conns    int     `json:"conns"`
 }
 
 var (
@@ -35,9 +35,10 @@ var (
 	monitPidRam   atomic.Value
 	monitPidConns atomic.Value
 
-	monitOsCpu   atomic.Value
-	monitOsRam   atomic.Value
-	monitOsConns atomic.Value
+	monitOsCpu      atomic.Value
+	monitOsRam      atomic.Value
+	monitOsTotalRam atomic.Value
+	monitOsConns    atomic.Value
 )
 
 var (
@@ -50,8 +51,6 @@ var (
 func New() fiber.Handler {
 	// Start routine to update statistics
 	once.Do(func() {
-		fmt.Println("[Warning] monitor is still in beta, API might change in the future!")
-
 		p, _ := process.NewProcess(int32(os.Getpid()))
 
 		updateStatistics(p)
@@ -78,6 +77,7 @@ func New() fiber.Handler {
 
 			data.OS.CPU = monitOsCpu.Load().(float64)
 			data.OS.RAM = monitOsRam.Load().(uint64)
+			data.OS.TotalRAM = monitOsTotalRam.Load().(uint64)
 			data.OS.Conns = monitOsConns.Load().(int)
 			mutex.Unlock()
 			return c.Status(fiber.StatusOK).JSON(data)
@@ -101,6 +101,7 @@ func updateStatistics(p *process.Process) {
 
 	if osMem, _ := mem.VirtualMemory(); osMem != nil {
 		monitOsRam.Store(osMem.Used)
+		monitOsTotalRam.Store(osMem.Total)
 	}
 
 	pidConns, _ := net.ConnectionsPid("tcp", p.Pid)

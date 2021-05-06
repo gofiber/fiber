@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 Puntos de referencia
 
-Estas pruebas son realizadas por [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) y [Go Web](https://github.com/smallnest/go-web-framework-benchmark) . Si desea ver todos los resultados, visite nuestro [Wiki](https://docs.gofiber.io/benchmarks) .
+Estas pruebas son realizadas por [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) y [Go Web](https://github.com/smallnest/go-web-framework-benchmark) . Si desea ver todos los resultados, visite nuestro [Wiki](https://docs.gofiber.io/extra/benchmarks) .
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -115,15 +115,15 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 Características
 
 -   [Enrutamiento](https://docs.gofiber.io/routing) robusto
--   Servir [archivos estáticos](https://docs.gofiber.io/application#static)
--   [Rendimiento](https://docs.gofiber.io/benchmarks) extremo
--   [Poca](https://docs.gofiber.io/benchmarks) huella de [memoria](https://docs.gofiber.io/benchmarks)
--   [Puntos finales de API](https://docs.gofiber.io/context) Express
--   Middleware y [próximo](https://docs.gofiber.io/context#next) soporte
+-   Servir [archivos estáticos](https://docs.gofiber.io/api/app#static)
+-   [Rendimiento](https://docs.gofiber.io/extra/benchmarks) extremo
+-   [Poca](https://docs.gofiber.io/extra/benchmarks) huella de [memoria](https://docs.gofiber.io/extra/benchmarks)
+-   [Puntos finales de API](https://docs.gofiber.io/api/ctx) Express
+-   Middleware y [próximo](https://docs.gofiber.io/api/ctx#next) soporte
 -   Programación [rápida](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) del lado del servidor
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Disponible en [15 idiomas](https://docs.gofiber.io/)
 -   Y mucho más, [explora Fiber](https://docs.gofiber.io/)
 
@@ -150,7 +150,7 @@ func main() {
     })
 
     // GET /john/75
-    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+    app.Get("/:name/:age", func(c *fiber.Ctx) error {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
@@ -178,7 +178,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -200,7 +200,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {
@@ -494,7 +494,7 @@ Here is a list of middleware that are included within the Fiber framework.
 | [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | Special thanks to Matthew Lee \(@mthli\)                                                                                                                              |
 | [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | Allows you to proxy requests to a multiple servers                                                                                                                    |
 | [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | Adds a requestid to every request.                                                                                                                                    |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md).                     |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling).                     |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                         |
 
 ## 🧬 External Middleware
@@ -530,7 +530,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 -   [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
 -   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
 -   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
-
+-   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
 
 ## 👍 Contribuir
 

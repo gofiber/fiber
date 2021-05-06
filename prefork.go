@@ -29,7 +29,7 @@ func IsChild() bool {
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
-func (app *App) prefork(addr string, tlsConfig *tls.Config) (err error) {
+func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error) {
 	// 👶 child process 👶
 	if IsChild() {
 		// use 1 cpu core per child process
@@ -37,7 +37,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config) (err error) {
 		var ln net.Listener
 		// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
 		// Only tcp4 or tcp6 is supported when preforking, both are not supported
-		if ln, err = reuseport.Listen("tcp4", addr); err != nil {
+		if ln, err = reuseport.Listen(network, addr); err != nil {
 			if !app.config.DisableStartupMessage {
 				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
@@ -50,6 +50,9 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config) (err error) {
 
 		// kill current child proc when master exits
 		go watchMaster()
+
+		// prepare the server for the start
+		app.startupProcess()
 
 		// listen for incoming connections
 		return app.server.Serve(ln)

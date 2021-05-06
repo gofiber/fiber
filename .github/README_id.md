@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 Pengukuran Kinerja
 
-Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) dan [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Apabila anda ingin melihat hasil lengkapnya, silahkan kunjungi halaman [Wiki](https://docs.gofiber.io/benchmarks) kami.
+Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) dan [Go Web](https://github.com/smallnest/go-web-framework-benchmark). Apabila anda ingin melihat hasil lengkapnya, silahkan kunjungi halaman [Wiki](https://docs.gofiber.io/extra/benchmarks) kami.
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -116,15 +116,15 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 Fitur
 
 -   Sistem [Routing](https://docs.gofiber.io/routing) yang solid
--   Serve [file statis](https://docs.gofiber.io/application#static)
--   [Kinerja](https://docs.gofiber.io/benchmarks) ekstrim
--   [Penggunaan memori](https://docs.gofiber.io/benchmarks) yang kecil
--   Cocok untuk [API](https://docs.gofiber.io/context)
--   Mendukung Middleware & [Next](https://docs.gofiber.io/context#next) seperti Express
+-   Serve [file statis](https://docs.gofiber.io/api/app#static)
+-   [Kinerja](https://docs.gofiber.io/extra/benchmarks) ekstrim
+-   [Penggunaan memori](https://docs.gofiber.io/extra/benchmarks) yang kecil
+-   Cocok untuk [API](https://docs.gofiber.io/api/ctx)
+-   Mendukung Middleware & [Next](https://docs.gofiber.io/api/ctx#next) seperti Express
 -   Kembangkan aplikasi dengan [Cepat](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware#limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Tersedia dalam [15 bahasa](https://docs.gofiber.io/)
 -   Dan masih banyak lagi, [kunjungi Fiber](https://docs.gofiber.io/)
 
@@ -153,7 +153,7 @@ func main() {
     })
 
     // GET /john/75
-    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+    app.Get("/:name/:age", func(c *fiber.Ctx) error {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
@@ -181,7 +181,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving File Static**](https://docs.gofiber.io/application#static)
+#### 📖 [**Serving File Static**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -203,7 +203,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/context#next)
+#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {
@@ -497,7 +497,7 @@ Kumpulan `middleware` yang ada didalam framework Fiber.
 | [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | Terima kasih khusus kepada Matthew Lee \(@mthli\)                                                                                                                                          |
 | [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | Mengizinkan anda untuk proxy request ke banyak server.                                                                                                                                     |
 | [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | Menambahkan sebuah requestid pada tiap request.                                                                                                                                            |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Middleware Recover memulihkan dari panik di rantai stack manapun dan menangani kontrol pada [ ErrorHandler](error-handling.md) tersentralisasi.                                            |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Middleware Recover memulihkan dari panik di rantai stack manapun dan menangani kontrol pada [ ErrorHandler](https://docs.gofiber.io/guide/error-handling) tersentralisasi.                                            |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Menambahkan waktu maksimal untuk sebuah request dan melanjutkan ke ErrorHandler jikan sudah melampaui waktunya.                                                                            |
 
 ## 🧬 Middleware External
@@ -533,6 +533,7 @@ Berikut adalah kumpulan _middlewares_ yang dibuat oleh komunitas Fiber, silahkan
 -   [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
 -   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
 -   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
+-   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
 
 ## 👍 Berkontribusi
 

@@ -76,7 +76,7 @@ app.Get("/", func(c *fiber.Ctx) error {
 		panic(err)
 	}
 
-	return fmt.Fprintf(ctx, "Welcome %v", name)
+	return c.SendString(fmt.Sprintf("Welcome %v", name))
 })
 ```
 
