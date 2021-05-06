@@ -91,7 +91,7 @@ func Test_Client_Head(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Head("/", func(c *Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
