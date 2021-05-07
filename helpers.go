@@ -95,10 +95,10 @@ func readContent(rf io.ReaderFrom, name string) (n int64, err error) {
 }
 
 // quoteString escape special characters in a given string
-func quoteString(raw string) string {
+func (app *App) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
 	// quoted := string(fasthttp.AppendQuotedArg(bb.B, getBytes(raw)))
-	quoted := getString(fasthttp.AppendQuotedArg(bb.B, getBytes(raw)))
+	quoted := app.getString(fasthttp.AppendQuotedArg(bb.B, app.getBytes(raw)))
 	bytebufferpool.Put(bb)
 	return quoted
 }
@@ -272,7 +272,7 @@ func matchEtag(s string, etag string) bool {
 	return false
 }
 
-func isEtagStale(etag string, noneMatchBytes []byte) bool {
+func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
 
 	// Adapted from:
@@ -285,7 +285,7 @@ func isEtagStale(etag string, noneMatchBytes []byte) bool {
 				end = i + 1
 			}
 		case 0x2c:
-			if matchEtag(getString(noneMatchBytes[start:end]), etag) {
+			if matchEtag(app.getString(noneMatchBytes[start:end]), etag) {
 				return false
 			}
 			start = i + 1
@@ -295,7 +295,7 @@ func isEtagStale(etag string, noneMatchBytes []byte) bool {
 		}
 	}
 
-	return !matchEtag(getString(noneMatchBytes[start:end]), etag)
+	return !matchEtag(app.getString(noneMatchBytes[start:end]), etag)
 }
 
 func parseAddr(raw string) (host, port string) {
@@ -359,14 +359,10 @@ func (c *testConn) SetDeadline(_ time.Time) error      { return nil }
 func (c *testConn) SetReadDeadline(_ time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
-// getString converts byte slice to a string without memory allocation.
-var getString = utils.UnsafeString
 var getStringImmutable = func(b []byte) string {
 	return string(b)
 }
 
-// getBytes converts string to a byte slice without memory allocation.
-var getBytes = utils.UnsafeBytes
 var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
 }

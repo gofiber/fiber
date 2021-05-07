@@ -229,7 +229,7 @@ func Benchmark_Ctx_Append(b *testing.B) {
 		c.Append("X-Custom-Header", "World")
 		c.Append("X-Custom-Header", "Hello")
 	}
-	utils.AssertEqual(b, "Hello, World", getString(c.Response().Header.Peek("X-Custom-Header")))
+	utils.AssertEqual(b, "Hello, World", app.getString(c.Response().Header.Peek("X-Custom-Header")))
 }
 
 // go test -run Test_Ctx_Attachment
@@ -481,7 +481,7 @@ func Benchmark_Ctx_Cookie(b *testing.B) {
 			Value: "Doe",
 		})
 	}
-	utils.AssertEqual(b, "John=Doe; path=/; SameSite=Lax", getString(c.Response().Header.Peek("Set-Cookie")))
+	utils.AssertEqual(b, "John=Doe; path=/; SameSite=Lax", app.getString(c.Response().Header.Peek("Set-Cookie")))
 }
 
 // go test -run Test_Ctx_Cookies
