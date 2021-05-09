@@ -92,11 +92,11 @@ func main() {
 	}))
 
 	// Access file "image.png" under `static/` directory via URL: `http://<server>/static/image.png`.
-	// With `http.FS(embedDirStatic)`, you have to access it via URL:
+	// Without `PathPrefix`, you have to access it via URL:
 	// `http://<server>/static/static/image.png`.
-	subFS, _ := fs.Sub(embedDirStatic, "static")
 	app.Use("/static", filesystem.New(filesystem.Config{
-		Root: http.FS(subFS),
+		Root: http.FS(embedDirStatic),
+		PathPrefix: "static"
 		Browse: true,
 	}))
 
@@ -251,6 +251,14 @@ type Config struct {
 	// Required. Default: nil
 	Root http.FileSystem `json:"-"`
 
+	// PathPrefix defines a prefix to be added to a filepath when
+	// reading a file from the FileSystem.
+	//
+	// Use when using Go 1.16 embed.FS
+	//
+	// Optional. Default ""
+	PathPrefix string `json:"path_prefix"`
+
 	// Enable directory browsing.
 	//
 	// Optional. Default: false
@@ -278,10 +286,11 @@ type Config struct {
 
 ```go
 var ConfigDefault = Config{
-	Next:   nil,
-	Root:   nil,
-	Browse: false,
-	Index:  "/index.html",
-	MaxAge: 0,
+	Next:       nil,
+	Root:       nil,
+	PathPrefix: "",
+	Browse:     false,
+	Index:      "/index.html",
+	MaxAge:     0,
 }
 ```
