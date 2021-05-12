@@ -2,11 +2,12 @@ package pprof
 
 import (
 	"bytes"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
 	"io/ioutil"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 func Test_Non_Pprof_Path(t *testing.T) {
@@ -36,7 +37,7 @@ func Test_Pprof_Index(t *testing.T) {
 		return c.SendString("escaped")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
