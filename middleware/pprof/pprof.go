@@ -59,7 +59,7 @@ func New() fiber.Handler {
 		default:
 			// pprof index only works with trailing slash
 			if strings.HasSuffix(path, "/") {
-				path = strings.TrimSuffix(path, "/")
+				path = strings.TrimRight(path, "/")
 			} else {
 				path = "/debug/pprof"
 			}
