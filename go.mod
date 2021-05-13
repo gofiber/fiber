@@ -1,6 +1,6 @@
 module github.com/gofiber/fiber/v2
 
-go 1.14
+go 1.16
 
 require (
 	github.com/klauspost/compress v1.11.13 // indirect
