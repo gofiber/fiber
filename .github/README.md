@@ -96,7 +96,7 @@ func main() {
 
 ## 🤖 Benchmarks
 
-These tests are performed by [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://docs.gofiber.io/benchmarks).
+These tests are performed by [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://docs.gofiber.io/extra/benchmarks).
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -117,14 +117,14 @@ go get -u github.com/gofiber/fiber/v2
 
 -   Robust [routing](https://docs.gofiber.io/routing)
 -   Serve [static files](https://docs.gofiber.io/api/app#static)
--   Extreme [performance](https://docs.gofiber.io/benchmarks)
--   [Low memory](https://docs.gofiber.io/benchmarks) footprint
+-   Extreme [performance](https://docs.gofiber.io/extra/benchmarks)
+-   [Low memory](https://docs.gofiber.io/extra/benchmarks) footprint
 -   [API endpoints](https://docs.gofiber.io/api/ctx)
 -   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) support
 -   [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware/limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Translated in [15 languages](https://docs.gofiber.io/)
 -   And much more, [explore Fiber](https://docs.gofiber.io/)
 
@@ -497,7 +497,7 @@ Here is a list of middleware that are included within the Fiber framework.
 | [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | Special thanks to Matthew Lee \(@mthli\)                                                                                                                              |
 | [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | Allows you to proxy requests to a multiple servers                                                                                                                    |
 | [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | Adds a requestid to every request.                                                                                                                                    |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](error-handling.md).                     |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling).                     |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                         |
 
 ## 🧬 External Middleware
@@ -567,7 +567,7 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 | ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1   |
 | ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1   |
 | ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/thomasvvugt)  | ☕ x 1   |
+| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1   |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1   |
 
 ## ‎‍💻 Code Contributors

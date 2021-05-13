@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/colorable"
@@ -33,7 +34,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.6.0"
+const Version = "2.9.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -95,15 +96,19 @@ type App struct {
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
 	// Amount of registered routes
-	routesCount int
+	routesCount uint32
 	// Amount of registered handlers
-	handlerCount int
+	handlerCount uint32
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
 	server *fasthttp.Server
 	// App config
 	config Config
+	// Converts string to a byte slice
+	getBytes func(s string) (b []byte)
+	// Converts byte slice to a string
+	getString func(b []byte) string
 }
 
 // Config is a struct holding the server settings.
@@ -376,7 +381,9 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config: Config{},
+		config:    Config{},
+		getBytes:  utils.GetBytes,
+		getString: utils.GetString,
 	}
 	// Override config if provided
 	if len(config) > 0 {
@@ -406,7 +413,7 @@ func New(config ...Config) *App {
 		app.config.CompressedFileSuffix = DefaultCompressedFileSuffix
 	}
 	if app.config.Immutable {
-		getBytes, getString = getBytesImmutable, getStringImmutable
+		app.getBytes, app.getString = getBytesImmutable, getStringImmutable
 	}
 	if app.config.ErrorHandler == nil {
 		app.config.ErrorHandler = DefaultErrorHandler
@@ -436,6 +443,9 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
 		}
 	}
+
+	atomic.AddUint32(&app.handlerCount, fiber.handlerCount)
+
 	return app
 }
 
@@ -928,7 +938,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			" │ Prefork .%s  PID ....%s │\n"+
 			" └───────────────────────────────────────────────────┘"+
 			cReset,
-		value(strconv.Itoa(app.handlerCount), 14), value(procs, 12),
+		value(strconv.Itoa(int(app.handlerCount)), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 	)
 

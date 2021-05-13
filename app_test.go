@@ -270,6 +270,7 @@ func Test_App_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, uint32(2), app.handlerCount)
 }
 
 func Test_App_Use_Params(t *testing.T) {
@@ -334,7 +335,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	// check the param result
-	utils.AssertEqual(t, "اختبار", getString(body))
+	utils.AssertEqual(t, "اختبار", app.getString(body))
 
 	// with lowercase letters
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
@@ -369,7 +370,7 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	// check the detected path result
-	utils.AssertEqual(t, "/AbC", getString(body))
+	utils.AssertEqual(t, "/AbC", app.getString(body))
 }
 
 func Test_App_Add_Method_Test(t *testing.T) {
@@ -844,6 +845,7 @@ func Test_App_Group_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, uint32(2), app.handlerCount)
 }
 
 func Test_App_Group(t *testing.T) {
@@ -965,6 +967,35 @@ func Test_App_Listen_Prefork(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(":99999"))
 }
 
+// go test -run Test_App_ListenTLS
+func Test_App_ListenTLS(t *testing.T) {
+	app := New()
+
+	// invalid port
+	utils.AssertEqual(t, false, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key") == nil)
+	// missing perm/cert file
+	utils.AssertEqual(t, false, app.ListenTLS(":0", "", "./.github/testdata/ssl.key") == nil)
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
+}
+
+// go test -run Test_App_ListenTLS_Prefork
+func Test_App_ListenTLS_Prefork(t *testing.T) {
+	testPreforkMaster = true
+
+	app := New(Config{DisableStartupMessage: true, Prefork: true})
+
+	// invalid key file content
+	utils.AssertEqual(t, false, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html") == nil)
+
+	utils.AssertEqual(t, nil, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
+}
+
 // go test -run Test_App_Listener
 func Test_App_Listener(t *testing.T) {
 	app := New()
@@ -988,7 +1019,7 @@ func Test_App_Listener_Prefork(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
-func Test_App_Listener_TLS(t *testing.T) {
+func Test_App_Listener_TLS_Listener(t *testing.T) {
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
@@ -1246,4 +1277,18 @@ func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 500, resp.StatusCode)
+}
+
+// go test -race -run Test_App_New_Test_Parallel
+func Test_App_New_Test_Parallel(t *testing.T) {
+	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{Immutable: true})
+		app.Test(httptest.NewRequest("GET", "/", nil))
+	})
+	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{Immutable: true})
+		app.Test(httptest.NewRequest("GET", "/", nil))
+	})
 }

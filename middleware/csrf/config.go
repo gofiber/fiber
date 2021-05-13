@@ -49,7 +49,7 @@ type Config struct {
 	// Optional. Default value false.
 	CookieHTTPOnly bool
 
-	// Indicates if CSRF cookie is HTTP only.
+	// Value of SameSite cookie.
 	// Optional. Default value "Strict".
 	CookieSameSite string
 

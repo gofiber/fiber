@@ -12,6 +12,11 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
+// timestampUpdatePeriod is the period which is used to check the cache expiration.
+// It should not be too long to provide more or less acceptable expiration error, and in the same
+// time it should not be too short to avoid overwhelming of the system
+const timestampUpdatePeriod = 300 * time.Millisecond
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -37,7 +42,7 @@ func New(config ...Config) fiber.Handler {
 	go func() {
 		for {
 			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
-			time.Sleep(1 * time.Second)
+			time.Sleep(timestampUpdatePeriod)
 		}
 	}()
 
@@ -61,7 +66,7 @@ func New(config ...Config) fiber.Handler {
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
-		if e.exp != 0 && ts >= e.exp  {
+		if e.exp != 0 && ts >= e.exp {
 			// Check if entry is expired
 			manager.delete(key)
 			// External storage saves body data with different key
@@ -102,10 +107,10 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Cache response
-		e.body = utils.SafeBytes(c.Response().Body())
+		e.body = utils.CopyBytes(c.Response().Body())
 		e.status = c.Response().StatusCode()
-		e.ctype = utils.SafeBytes(c.Response().Header.ContentType())
-		e.cencoding = utils.SafeBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
+		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
+		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 		e.exp = ts + expiration
 
 		// For external Storage we store raw body seperated

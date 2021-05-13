@@ -39,7 +39,8 @@ func Test_Cache_CacheControl(t *testing.T) {
 func Test_Cache_Expired(t *testing.T) {
 	app := fiber.New()
 
-	expiration := 1 * time.Second
+	// To avoid test failure we should set expiration time > 1s since the timer error in the cache middleware is 1s
+	expiration := 1*time.Second + 500*time.Millisecond
 
 	app.Use(New(Config{
 		Expiration: expiration,
