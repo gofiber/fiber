@@ -243,6 +243,7 @@ func (c *Ctx) Body() []byte {
 // decoderPool helps to improve BodyParser's and QueryParser's performance
 var decoderPool = &sync.Pool{New: func() interface{} {
 	var decoder = schema.NewDecoder()
+	decoder.ZeroEmpty(true)
 	decoder.IgnoreUnknownKeys(true)
 	return decoder
 }}
