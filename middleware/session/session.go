@@ -161,6 +161,14 @@ func (s *Session) Save() error {
 	return nil
 }
 
+// Keys will retrive all keys in current session
+func (s *Session) Keys() []string {
+	if s.data == nil {
+		return []string{}
+	}
+	return s.data.Keys()
+}
+
 func (s *Session) setCookie() {
 	fcookie := fasthttp.AcquireCookie()
 	fcookie.SetKey(s.config.CookieName)
