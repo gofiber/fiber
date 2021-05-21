@@ -311,6 +311,8 @@ func (c *Ctx) Context() *fasthttp.RequestCtx {
 	return c.fasthttp
 }
 
+//UserContext returns a context implementation that was set by
+//user earlier or returns a non-nil, empty context, it was not set earlier.
 func (c *Ctx) UserContext() context.Context {
 	if c.userContext == nil {
 		c.userContext = context.Background()
@@ -318,6 +320,7 @@ func (c *Ctx) UserContext() context.Context {
 	return c.userContext
 }
 
+//SetUserContext sets a context implementation by user.
 func (c *Ctx) SetUserContext(ctx context.Context) {
 	c.userContext = ctx
 }
