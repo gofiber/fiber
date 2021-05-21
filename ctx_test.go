@@ -447,7 +447,7 @@ func Test_Ctx_Context(t *testing.T) {
 	utils.AssertEqual(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.Context()))
 }
 
-//go test -run Test_Ctx_UserContext
+// go test -run Test_Ctx_UserContext
 func Test_Ctx_UserContext(t *testing.T) {
 	c := Ctx{}
 	t.Run("Nil_Context", func(t *testing.T) {
@@ -464,7 +464,7 @@ func Test_Ctx_UserContext(t *testing.T) {
 
 }
 
-//go test -run Test_Ctx_UserContext
+// go test -run Test_Ctx_UserContext
 func Test_Ctx_SetUserContext(t *testing.T) {
 	c := Ctx{}
 	c.SetUserContext(context.Background())
