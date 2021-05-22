@@ -320,7 +320,7 @@ func (c *Ctx) UserContext() context.Context {
 	return c.userContext
 }
 
-//SetUserContext sets a context implementation by user.
+// SetUserContext sets a context implementation by user.
 func (c *Ctx) SetUserContext(ctx context.Context) {
 	c.userContext = ctx
 }
