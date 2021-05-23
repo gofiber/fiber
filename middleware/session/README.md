@@ -6,10 +6,14 @@ _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) pa
 
 ## Table of Contents
 
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+- [Session](#session)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+		- [Examples](#examples)
+		- [Default Configuration](#default-configuration)
+		- [Custom Storage/Database](#custom-storagedatabase)
+	- [Config](#config)
+	- [Default Config](#default-config)
 
 ## Signatures
 
@@ -27,6 +31,7 @@ func (s *Session) Regenerate() error
 func (s *Session) Save() error
 func (s *Session) Fresh() bool
 func (s *Session) ID() string
+func (s *Session) Keys() []string
 ```
 
 **⚠ _Storing `interface{}` values are limited to built-ins Go types_**
@@ -51,7 +56,7 @@ store := session.New()
 
 // This panic will be catch by the middleware
 app.Get("/", func(c *fiber.Ctx) error {
-	// get session from storage
+	// Get session from storage
 	sess, err := store.Get(c)
 	if err != nil {
 		panic(err)
@@ -63,15 +68,18 @@ app.Get("/", func(c *fiber.Ctx) error {
 	// Set key/value
 	sess.Set("name", "john")
 
+	// Get all Keys
+	keys := sess.Keys()
+
 	// Delete key
 	sess.Delete("name")
 
-	// Destry session
+	// Destroy session
 	if err := sess.Destroy(); err != nil {
 		panic(err)
 	}
 
-	// save session
+	// Save session
 	if err := sess.Save(); err != nil {
 		panic(err)
 	}
