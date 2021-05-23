@@ -32,6 +32,10 @@ func Test_Session(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, sess.Fresh())
 
+	// get keys
+	keys := sess.Keys()
+	utils.AssertEqual(t, []string{}, keys)
+
 	// get value
 	name := sess.Get("name")
 	utils.AssertEqual(t, nil, name)
@@ -43,12 +47,19 @@ func Test_Session(t *testing.T) {
 	name = sess.Get("name")
 	utils.AssertEqual(t, "john", name)
 
+	keys = sess.Keys()
+	utils.AssertEqual(t, []string{"name"}, keys)
+
 	// delete key
 	sess.Delete("name")
 
 	// get value
 	name = sess.Get("name")
 	utils.AssertEqual(t, nil, name)
+
+	// get keys
+	keys = sess.Keys()
+	utils.AssertEqual(t, []string{}, keys)
 
 	// get id
 	id := sess.ID()
