@@ -137,8 +137,8 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 		Encryptor: func(decryptedString, _ string) (string, error) {
 			return base64.StdEncoding.EncodeToString([]byte(decryptedString)), nil
 		},
-		Decryptor: func(decryptedString, _ string) (string, error) {
-			decodedBytes, err := base64.StdEncoding.DecodeString(decryptedString)
+		Decryptor: func(encryptedString, _ string) (string, error) {
+			decodedBytes, err := base64.StdEncoding.DecodeString(encryptedString)
 			return string(decodedBytes), err
 		},
 	}))

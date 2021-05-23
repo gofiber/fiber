@@ -31,9 +31,7 @@ func New(config ...Config) fiber.Handler {
 		})
 
 		// Continue stack
-		if err := c.Next(); err != nil {
-			return err
-		}
+		err := c.Next()
 
 		// Encrypt response cookies
 		c.Response().Header.VisitAllCookie(func(key, value []byte) {
@@ -53,6 +51,6 @@ func New(config ...Config) fiber.Handler {
 			}
 		})
 
-		return nil
+		return err
 	}
 }
