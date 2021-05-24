@@ -10,6 +10,7 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -444,6 +445,30 @@ func Test_Ctx_Context(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	utils.AssertEqual(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.Context()))
+}
+
+// go test -run Test_Ctx_UserContext
+func Test_Ctx_UserContext(t *testing.T) {
+	c := Ctx{}
+	t.Run("Nil_Context", func(t *testing.T) {
+		ctx := c.UserContext()
+		utils.AssertEqual(t, ctx, context.Background())
+
+	})
+	t.Run("ValueContext", func(t *testing.T) {
+		testKey := "Test Key"
+		testValue := "Test Value"
+		ctx := context.WithValue(context.Background(), testKey, testValue)
+		utils.AssertEqual(t, ctx.Value(testKey), testValue)
+	})
+
+}
+
+// go test -run Test_Ctx_UserContext
+func Test_Ctx_SetUserContext(t *testing.T) {
+	c := Ctx{}
+	c.SetUserContext(context.Background())
+	utils.AssertEqual(t, c.UserContext(), context.Background())
 }
 
 // go test -run Test_Ctx_Cookie

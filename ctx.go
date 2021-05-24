@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -51,6 +52,7 @@ type Ctx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
+	userContext         context.Context
 }
 
 // Range data for c.Range
@@ -307,6 +309,20 @@ func (c *Ctx) ClearCookie(key ...string) {
 // a cancellation signal, and other values across API boundaries.
 func (c *Ctx) Context() *fasthttp.RequestCtx {
 	return c.fasthttp
+}
+
+// UserContext returns a context implementation that was set by
+// user earlier or returns a non-nil, empty context,if it was not set earlier.
+func (c *Ctx) UserContext() context.Context {
+	if c.userContext == nil {
+		c.userContext = context.Background()
+	}
+	return c.userContext
+}
+
+// SetUserContext sets a context implementation by user.
+func (c *Ctx) SetUserContext(ctx context.Context) {
+	c.userContext = ctx
 }
 
 // Cookie sets a cookie by passing a cookie struct.
