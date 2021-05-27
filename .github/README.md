@@ -221,7 +221,7 @@ func main() {
         return c.Next()
     })
 
-    // GET /api/register
+    // GET /api/list
     app.Get("/api/list", func(c *fiber.Ctx) error {
         fmt.Println("🥉 Last handler")
         return c.SendString("Hello, World 👋!")
