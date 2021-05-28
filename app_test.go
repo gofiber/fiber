@@ -698,7 +698,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 	app := New()
 	app.Static("/john", "./.github")
 
-	req := httptest.NewRequest(MethodGet, "/john/stale.yml", nil)
+	req := httptest.NewRequest(MethodGet, "/john/config.yml", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
