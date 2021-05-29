@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
-	"math/big"
 )
 
 func EncryptCookie(value, key string) (string, error) {
@@ -37,6 +36,7 @@ func EncryptCookie(value, key string) (string, error) {
 func DecryptCookie(value, key string) (string, error) {
 	keyDecoded, _ := base64.StdEncoding.DecodeString(key)
 	enc, _ := base64.StdEncoding.DecodeString(value)
+
 	block, err := aes.NewCipher(keyDecoded)
 	if err != nil {
 		return "", err
@@ -64,15 +64,8 @@ func DecryptCookie(value, key string) (string, error) {
 }
 
 func GenerateKey(length int) string {
-	const letters = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-"
 	ret := make([]byte, length)
-	for i := 0; i < length; i++ {
-		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
-		if err != nil {
-			return ""
-		}
-		ret[i] = letters[num.Int64()]
-	}
+	rand.Read(ret)
 
 	return base64.StdEncoding.EncodeToString(ret)
 }

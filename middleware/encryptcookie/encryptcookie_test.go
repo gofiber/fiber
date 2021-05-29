@@ -10,10 +10,14 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+var testKey = GenerateKey(32)
+
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New())
+	app.Use(New(Config{
+		Key: testKey,
+	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("value=" + c.Cookies("test"))
@@ -56,7 +60,7 @@ func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 	encryptedCookie := fasthttp.Cookie{}
 	encryptedCookie.SetKey("test")
 	utils.AssertEqual(t, true, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
-	decryptedCookieValue, _ := DecryptCookie(string(encryptedCookie.Value()), ConfigDefault.Key)
+	decryptedCookieValue, _ := DecryptCookie(string(encryptedCookie.Value()), testKey)
 	utils.AssertEqual(t, "SomeThing", decryptedCookieValue)
 
 	ctx = &fasthttp.RequestCtx{}
@@ -71,6 +75,7 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
+		Key: testKey,
 		Next: func(_ *fiber.Ctx) bool {
 			return true
 		},
@@ -93,6 +98,7 @@ func Test_Encrypt_Cookie_Except(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
+		Key: testKey,
 		Except: []string{
 			"test1",
 		},
@@ -126,7 +132,7 @@ func Test_Encrypt_Cookie_Except(t *testing.T) {
 	encryptedCookie := fasthttp.Cookie{}
 	encryptedCookie.SetKey("test2")
 	utils.AssertEqual(t, true, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
-	decryptedCookieValue, _ := DecryptCookie(string(encryptedCookie.Value()), ConfigDefault.Key)
+	decryptedCookieValue, _ := DecryptCookie(string(encryptedCookie.Value()), testKey)
 	utils.AssertEqual(t, "SomeThing", decryptedCookieValue)
 }
 
@@ -134,6 +140,7 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
+		Key: testKey,
 		Encryptor: func(decryptedString, _ string) (string, error) {
 			return base64.StdEncoding.EncodeToString([]byte(decryptedString)), nil
 		},

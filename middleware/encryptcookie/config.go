@@ -9,7 +9,7 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// Array of cookies that should not encrypt
+	// Array of cookie keys that should not be encrypted
 	//
 	// Optional. Default: []
 	Except []string
@@ -34,7 +34,7 @@ type Config struct {
 var ConfigDefault = Config{
 	Next:      nil,
 	Except:    make([]string, 0),
-	Key:       GenerateKey(32),
+	Key:       "",
 	Encryptor: EncryptCookie,
 	Decryptor: DecryptCookie,
 }
@@ -58,10 +58,6 @@ func configDefault(config ...Config) Config {
 			cfg.Except = ConfigDefault.Except
 		}
 
-		if cfg.Key == "" {
-			cfg.Key = ConfigDefault.Key
-		}
-
 		if cfg.Encryptor == nil {
 			cfg.Encryptor = ConfigDefault.Encryptor
 		}
@@ -69,6 +65,10 @@ func configDefault(config ...Config) Config {
 		if cfg.Decryptor == nil {
 			cfg.Decryptor = ConfigDefault.Decryptor
 		}
+	}
+
+	if cfg.Key == "" {
+		panic("Fiber: Encrypt cookie middleware requires key")
 	}
 
 	return cfg
