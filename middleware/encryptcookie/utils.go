@@ -9,6 +9,7 @@ import (
 	"io"
 )
 
+// EncryptCookie Encrypts a cookie value with specific encryption key
 func EncryptCookie(value, key string) (string, error) {
 	keyDecoded, _ := base64.StdEncoding.DecodeString(key)
 	plaintext := []byte(value)
@@ -33,6 +34,7 @@ func EncryptCookie(value, key string) (string, error) {
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
+// DecryptCookie Decrypts a cookie value with specific encryption key
 func DecryptCookie(value, key string) (string, error) {
 	keyDecoded, _ := base64.StdEncoding.DecodeString(key)
 	enc, _ := base64.StdEncoding.DecodeString(value)
@@ -63,9 +65,13 @@ func DecryptCookie(value, key string) (string, error) {
 	return string(plaintext), nil
 }
 
+// GenerateKey Generates an encryption key
 func GenerateKey(length int) string {
 	ret := make([]byte, length)
-	rand.Read(ret)
+
+	if _, err := rand.Read(ret); err != nil {
+		panic(err)
+	}
 
 	return base64.StdEncoding.EncodeToString(ret)
 }
