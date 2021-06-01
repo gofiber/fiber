@@ -46,7 +46,7 @@ var ConfigDefault = Config{
 	ModifyResponse: nil,
 }
 
-// Helper function to set default values
+// configDefault function to set default values
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {
