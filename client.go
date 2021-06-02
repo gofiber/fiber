@@ -596,7 +596,7 @@ func (a *Agent) MultipartForm(args *Args) *Agent {
 
 	if args != nil {
 		args.VisitAll(func(key, value []byte) {
-			if err := a.mw.WriteField(getString(key), getString(value)); err != nil {
+			if err := a.mw.WriteField(utils.UnsafeString(key), utils.UnsafeString(value)); err != nil {
 				a.errs = append(a.errs, err)
 			}
 		})
@@ -785,7 +785,7 @@ func (a *Agent) Bytes() (code int, body []byte, errs []error) {
 
 func printDebugInfo(req *Request, resp *Response, w io.Writer) {
 	msg := fmt.Sprintf("Connected to %s(%s)\r\n\r\n", req.URI().Host(), resp.RemoteAddr())
-	_, _ = w.Write(getBytes(msg))
+	_, _ = w.Write(utils.UnsafeBytes(msg))
 	_, _ = req.WriteTo(w)
 	_, _ = resp.WriteTo(w)
 }
@@ -794,7 +794,7 @@ func printDebugInfo(req *Request, resp *Response, w io.Writer) {
 func (a *Agent) String() (int, string, []error) {
 	code, body, errs := a.Bytes()
 
-	return code, getString(body), errs
+	return code, utils.UnsafeString(body), errs
 }
 
 // Struct returns the status code, bytes body and errors of url.

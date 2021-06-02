@@ -57,6 +57,16 @@ func (d *data) Delete(key string) {
 	d.Unlock()
 }
 
+func (d *data) Keys() []string {
+	d.Lock()
+	keys := make([]string, 0, len(d.Data))
+	for k := range d.Data {
+		keys = append(keys, k)
+	}
+	d.Unlock()
+	return keys
+}
+
 func (d *data) Len() int {
 	return len(d.Data)
 }

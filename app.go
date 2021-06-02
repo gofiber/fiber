@@ -34,7 +34,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.9.0"
+const Version = "2.11.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -105,6 +105,10 @@ type App struct {
 	server *fasthttp.Server
 	// App config
 	config Config
+	// Converts string to a byte slice
+	getBytes func(s string) (b []byte)
+	// Converts byte slice to a string
+	getString func(b []byte) string
 }
 
 // Config is a struct holding the server settings.
@@ -364,7 +368,9 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config: Config{},
+		config:    Config{},
+		getBytes:  utils.GetBytes,
+		getString: utils.GetString,
 	}
 	// Override config if provided
 	if len(config) > 0 {
@@ -394,7 +400,7 @@ func New(config ...Config) *App {
 		app.config.CompressedFileSuffix = DefaultCompressedFileSuffix
 	}
 	if app.config.Immutable {
-		getBytes, getString = getBytesImmutable, getStringImmutable
+		app.getBytes, app.getString = getBytesImmutable, getStringImmutable
 	}
 	if app.config.ErrorHandler == nil {
 		app.config.ErrorHandler = DefaultErrorHandler

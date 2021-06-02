@@ -32,6 +32,11 @@ func Test_FileSystem(t *testing.T) {
 		NotFoundFile: "index.html",
 	}))
 
+	app.Use("/prefix", New(Config{
+		Root: http.Dir("../../.github/testdata/fs"),
+		PathPrefix: "img",
+	}))
+
 	tests := []struct {
 		name         string
 		url          string
@@ -95,6 +100,12 @@ func Test_FileSystem(t *testing.T) {
 			url:         "/spatest/doesnotexist",
 			statusCode:  200,
 			contentType: "text/html",
+		},
+		{
+			name: "PathPrefix should be applied",
+			url: "/prefix/fiber.png",
+			statusCode: 200,
+			contentType: "image/png",
 		},
 	}
 
