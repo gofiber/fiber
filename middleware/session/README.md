@@ -32,6 +32,7 @@ func (s *Session) Save() error
 func (s *Session) Fresh() bool
 func (s *Session) ID() string
 func (s *Session) Keys() []string
+func (s *Session) ExpiresIn(time.Duration) 
 ```
 
 **⚠ _Storing `interface{}` values are limited to built-ins Go types_**
@@ -78,6 +79,9 @@ app.Get("/", func(c *fiber.Ctx) error {
 	if err := sess.Destroy(); err != nil {
 		panic(err)
 	}
+
+	// Set a custom expiration for this session
+	sess.ExpiresIn(time.Second * 2)
 
 	// Save session
 	if err := sess.Save(); err != nil {
