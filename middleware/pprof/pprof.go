@@ -34,7 +34,7 @@ func New() fiber.Handler {
 		}
 		// Switch to original path without stripped slashes
 		switch path {
-		case "/debug/pprof":
+		case "/debug/pprof/":
 			pprofIndex(c.Context())
 		case "/debug/pprof/cmdline":
 			pprofCmdline(c.Context())
@@ -61,7 +61,7 @@ func New() fiber.Handler {
 			if strings.HasSuffix(path, "/") {
 				path = strings.TrimRight(path, "/")
 			} else {
-				path = "/debug/pprof"
+				path = "/debug/pprof/"
 			}
 
 			return c.Redirect(path, fiber.StatusFound)
