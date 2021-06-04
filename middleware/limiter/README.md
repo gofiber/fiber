@@ -53,14 +53,14 @@ app.Use(limiter.New(limiter.Config{
 		return c.IP() == "127.0.0.1"
 	},
 	Max:          20,
-	Duration:     30 * time.Second,
+	Expiration:     30 * time.Second,
 	KeyGenerator: func(c *fiber.Ctx) string{
   		return "key"
 	}
 	LimitReached: func(c *fiber.Ctx) error {
 		return c.SendFile("./toofast.html")
 	},
-	Store: myCustomStore{}
+	Storage: myCustomStore{}
 }))
 ```
 

@@ -298,7 +298,7 @@ func New(config ...Config) fiber.Handler {
 			// Write error to output
 			if _, err := cfg.Output.Write([]byte(err.Error())); err != nil {
 				// There is something wrong with the given io.Writer
-				// TODO: What should we do here?
+				fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
 			}
 		}
 		mu.Unlock()

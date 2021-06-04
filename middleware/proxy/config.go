@@ -36,6 +36,15 @@ type Config struct {
 	//
 	// Optional. Default: 1 second
 	Timeout time.Duration
+
+	// Per-connection buffer size for requests' reading.
+	// This also limits the maximum header size.
+	// Increase this buffer if your clients send multi-KB RequestURIs
+	// and/or multi-KB headers (for example, BIG cookies).
+	ReadBufferSize int
+
+	// Per-connection buffer size for responses' writing.
+	WriteBufferSize int
 }
 
 // ConfigDefault is the default config
@@ -46,7 +55,7 @@ var ConfigDefault = Config{
 	Timeout:        fasthttp.DefaultLBClientTimeout,
 }
 
-// Helper function to set default values
+// configDefault function to set default values
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {

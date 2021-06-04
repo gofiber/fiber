@@ -58,7 +58,13 @@ func New() fiber.Handler {
 			pprofThreadcreate(c.Context())
 		default:
 			// pprof index only works with trailing slash
-			return c.Redirect("/debug/pprof/", 302)
+			if strings.HasSuffix(path, "/") {
+				path = strings.TrimRight(path, "/")
+			} else {
+				path = "/debug/pprof/"
+			}
+
+			return c.Redirect(path, fiber.StatusFound)
 		}
 		return nil
 	}

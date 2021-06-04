@@ -23,7 +23,7 @@ var (
 	testPreforkMaster = false
 )
 
-// IsChild determines if the current process is a result of Prefork
+// IsChild determines if the current process is a child of Prefork
 func IsChild() bool {
 	return os.Getenv(envPreforkChildKey) == envPreforkChildVal
 }

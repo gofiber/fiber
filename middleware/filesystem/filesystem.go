@@ -23,6 +23,14 @@ type Config struct {
 	// Required. Default: nil
 	Root http.FileSystem `json:"-"`
 
+	// PathPrefix defines a prefix to be added to a filepath when
+	// reading a file from the FileSystem.
+	//
+	// Use when using Go 1.16 embed.FS
+	//
+	// Optional. Default ""
+	PathPrefix string `json:"path_prefix"`
+
 	// Enable directory browsing.
 	//
 	// Optional. Default: false
@@ -47,11 +55,12 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:   nil,
-	Root:   nil,
-	Browse: false,
-	Index:  "/index.html",
-	MaxAge: 0,
+	Next:       nil,
+	Root:       nil,
+	PathPrefix: "",
+	Browse:     false,
+	Index:      "/index.html",
+	MaxAge:     0,
 }
 
 // New creates a new middleware handler
@@ -77,6 +86,10 @@ func New(config ...Config) fiber.Handler {
 
 	if cfg.Root == nil {
 		panic("filesystem: Root cannot be nil")
+	}
+
+	if cfg.PathPrefix != "" && !strings.HasPrefix(cfg.PathPrefix, "/") {
+		cfg.PathPrefix = "/" + cfg.PathPrefix
 	}
 
 	var once sync.Once
@@ -106,6 +119,11 @@ func New(config ...Config) fiber.Handler {
 		path := strings.TrimPrefix(c.Path(), prefix)
 		if !strings.HasPrefix(path, "/") {
 			path = "/" + path
+		}
+		// Add PathPrefix
+		if cfg.PathPrefix != "" {
+			// PathPrefix already has a "/" prefix
+			path = cfg.PathPrefix + path
 		}
 
 		var (

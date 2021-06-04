@@ -124,7 +124,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/middleware/limiter)
+-   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Translated in [15 languages](https://docs.gofiber.io/)
 -   And much more, [explore Fiber](https://docs.gofiber.io/)
 
@@ -221,7 +221,7 @@ func main() {
         return c.Next()
     })
 
-    // GET /api/register
+    // GET /api/list
     app.Get("/api/list", func(c *fiber.Ctx) error {
         fmt.Println("🥉 Last handler")
         return c.SendString("Hello, World 👋!")
@@ -534,6 +534,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 -   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
 -   [sacsand/gofiber-firebaseauth](https://github.com/sacsand/gofiber-firebaseauth)
 -   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
+-   [aschenmaker/fiber-health-check](https://github.com/aschenmaker/fiber-health-check)
 
 ## 👍 Contribute
 
@@ -567,7 +568,7 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 | ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1   |
 | ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1   |
 | ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/thomasvvugt)  | ☕ x 1   |
+| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1   |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1   |
 
 ## ‎‍💻 Code Contributors
