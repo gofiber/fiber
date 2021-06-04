@@ -23,6 +23,8 @@ func Balancer(config Config) fiber.Handler {
 
 	// Load balanced client
 	var lbc fasthttp.LBClient
+	// Set timeout
+	lbc.Timeout = cfg.Timeout
 
 	// Scheme must be provided, falls back to http
 	// TODO add https support

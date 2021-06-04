@@ -12,6 +12,23 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
+func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, string) {
+	target := fiber.New(fiber.Config{DisableStartupMessage: true})
+	target.Get("/", handler)
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
+	go func() {
+		utils.AssertEqual(t, nil, target.Listener(ln))
+	}()
+
+	time.Sleep(2 * time.Second)
+	addr := ln.Addr().String()
+
+	return target, addr
+}
+
 // go test -run Test_Proxy_Empty_Host
 func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 	t.Parallel()
@@ -46,20 +63,9 @@ func Test_Proxy_Next(t *testing.T) {
 func Test_Proxy(t *testing.T) {
 	t.Parallel()
 
-	target := fiber.New(fiber.Config{DisableStartupMessage: true})
-	target.Get("/", func(c *fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
-	})
-
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
-
-	go func() {
-		utils.AssertEqual(t, nil, target.Listener(ln))
-	}()
-
-	time.Sleep(2 * time.Second)
-	addr := ln.Addr().String()
+	target, addr := createProxyTestServer(
+		func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) }, t,
+	)
 
 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
 	utils.AssertEqual(t, nil, err)
@@ -76,25 +82,15 @@ func Test_Proxy(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
+// go test -run Test_Proxy_Forward
 func Test_Proxy_Forward(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
 
-	target := fiber.New(fiber.Config{DisableStartupMessage: true})
-	target.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("forwarded")
-	})
-
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
-
-	go func() {
-		utils.AssertEqual(t, nil, target.Listener(ln))
-	}()
-
-	time.Sleep(2 * time.Second)
-	addr := ln.Addr().String()
+	_, addr := createProxyTestServer(
+		func(c *fiber.Ctx) error { return c.SendString("forwarded") }, t,
+	)
 
 	app.Use(Forward("http://" + addr))
 
@@ -107,23 +103,13 @@ func Test_Proxy_Forward(t *testing.T) {
 	utils.AssertEqual(t, "forwarded", string(b))
 }
 
+// go test -run Test_Proxy_Modify_Response
 func Test_Proxy_Modify_Response(t *testing.T) {
 	t.Parallel()
 
-	target := fiber.New(fiber.Config{DisableStartupMessage: true})
-	target.Get("/", func(c *fiber.Ctx) error {
+	_, addr := createProxyTestServer(func(c *fiber.Ctx) error {
 		return c.Status(500).SendString("not modified")
-	})
-
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
-
-	go func() {
-		utils.AssertEqual(t, nil, target.Listener(ln))
-	}()
-
-	time.Sleep(2 * time.Second)
-	addr := ln.Addr().String()
+	}, t)
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
@@ -143,24 +129,14 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 	utils.AssertEqual(t, "modified response", string(b))
 }
 
+// go test -run Test_Proxy_Modify_Request
 func Test_Proxy_Modify_Request(t *testing.T) {
 	t.Parallel()
 
-	target := fiber.New(fiber.Config{DisableStartupMessage: true})
-	target.Get("/", func(c *fiber.Ctx) error {
+	_, addr := createProxyTestServer(func(c *fiber.Ctx) error {
 		b := c.Request().Body()
 		return c.SendString(string(b))
-	})
-
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
-
-	go func() {
-		utils.AssertEqual(t, nil, target.Listener(ln))
-	}()
-
-	time.Sleep(2 * time.Second)
-	addr := ln.Addr().String()
+	}, t)
 
 	app := fiber.New()
 	app.Use(Balancer(Config{
@@ -180,25 +156,63 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 	utils.AssertEqual(t, "modified request", string(b))
 }
 
+// go test -run Test_Proxy_Timeout_Slow_Server
+func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServer(func(c *fiber.Ctx) error {
+		time.Sleep(2 * time.Second)
+		return c.SendString("fiber is awesome")
+	}, t)
+
+	app := fiber.New()
+	app.Use(Balancer(Config{
+		Servers: []string{addr},
+		Timeout: 3 * time.Second,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), 5000)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+
+	b, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "fiber is awesome", string(b))
+}
+
+// go test -run Test_Proxy_With_Timeout
+func Test_Proxy_With_Timeout(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServer(func(c *fiber.Ctx) error {
+		time.Sleep(1 * time.Second)
+		return c.SendString("fiber is awesome")
+	}, t)
+
+	app := fiber.New()
+	app.Use(Balancer(Config{
+		Servers: []string{addr},
+		Timeout: 100 * time.Millisecond,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), 2000)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
+
+	b, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "timeout", string(b))
+}
+
+// go test -run Test_Proxy_Buffer_Size_Response
 func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	t.Parallel()
 
-	target := fiber.New(fiber.Config{DisableStartupMessage: true})
-	target.Get("/", func(c *fiber.Ctx) error {
+	_, addr := createProxyTestServer(func(c *fiber.Ctx) error {
 		long := strings.Join(make([]string, 5000), "-")
-		c.Response().Header.Set("Very-Long-Header", long)
+		c.Set("Very-Long-Header", long)
 		return c.SendString("ok")
-	})
-
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
-
-	go func() {
-		utils.AssertEqual(t, nil, target.Listener(ln))
-	}()
-
-	time.Sleep(2 * time.Second)
-	addr := ln.Addr().String()
+	}, t)
 
 	app := fiber.New()
 	app.Use(Balancer(Config{Servers: []string{addr}}))

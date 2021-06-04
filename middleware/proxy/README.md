@@ -99,6 +99,20 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	ModifyResponse fiber.Handler
+	
+	// Timeout is the request timeout used when calling the proxy client
+	//
+	// Optional. Default: 1 second
+	Timeout time.Duration
+
+	// Per-connection buffer size for requests' reading.
+	// This also limits the maximum header size.
+	// Increase this buffer if your clients send multi-KB RequestURIs
+	// and/or multi-KB headers (for example, BIG cookies).
+	ReadBufferSize int
+    
+	// Per-connection buffer size for responses' writing.
+	WriteBufferSize int
 }
 ```
 
