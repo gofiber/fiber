@@ -204,25 +204,15 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 	utils.AssertEqual(t, "timeout", string(b))
 }
 
+// go test -run Test_Proxy_Buffer_Size_Response
 func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	t.Parallel()
 
-	target := fiber.New(fiber.Config{DisableStartupMessage: true})
-	target.Get("/", func(c *fiber.Ctx) error {
+	_, addr := createProxyTestServer(func(c *fiber.Ctx) error {
 		long := strings.Join(make([]string, 5000), "-")
-		c.Response().Header.Set("Very-Long-Header", long)
+		c.Set("Very-Long-Header", long)
 		return c.SendString("ok")
-	})
-
-	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
-
-	go func() {
-		utils.AssertEqual(t, nil, target.Listener(ln))
-	}()
-
-	time.Sleep(2 * time.Second)
-	addr := ln.Addr().String()
+	}, t)
 
 	app := fiber.New()
 	app.Use(Balancer(Config{Servers: []string{addr}}))
