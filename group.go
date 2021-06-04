@@ -7,6 +7,7 @@ package fiber
 import (
 	"fmt"
 	"reflect"
+	"sync/atomic"
 )
 
 // Group struct
@@ -26,6 +27,9 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(getGroupPath(grp.prefix, prefix), route))
 		}
 	}
+
+	atomic.AddUint32(&grp.app.handlerCount, fiber.handlerCount)
+
 	return grp
 }
 

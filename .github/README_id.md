@@ -534,6 +534,7 @@ Berikut adalah kumpulan _middlewares_ yang dibuat oleh komunitas Fiber, silahkan
 -   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
 -   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
 -   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
+-   [aschenmaker/fiber-health-check](https://github.com/aschenmaker/fiber-health-check)
 
 ## 👍 Berkontribusi
 

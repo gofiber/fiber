@@ -40,8 +40,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	var fresh bool
 	var loadDada = true
 
-	// Get key from cookie
-	id := c.Cookies(s.CookieName)
+	id := s.getSessionID(c)
 
 	if len(id) == 0 {
 		fresh = true
@@ -87,9 +86,36 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	return sess, nil
 }
 
+// getSessionID will return the session id from:
+// 1. cookie
+// 2. http headers
+// 3. query string
+func (s *Store) getSessionID(c *fiber.Ctx) string {
+	id := c.Cookies(s.sessionName)
+	if len(id) > 0 {
+		return id
+	}
+
+	if s.source == SourceHeader {
+		id = string(c.Request().Header.Peek(s.sessionName))
+		if len(id) > 0 {
+			return id
+		}
+	}
+
+	if s.source == SourceURLQuery {
+		id = c.Query(s.sessionName)
+		if len(id) > 0 {
+			return id
+		}
+	}
+
+	return ""
+}
+
 func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 	// Get key from response cookie
-	cookieValue := c.Response().Header.PeekCookie(s.CookieName)
+	cookieValue := c.Response().Header.PeekCookie(s.sessionName)
 	if len(cookieValue) == 0 {
 		return "", nil
 	}

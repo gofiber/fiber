@@ -40,6 +40,9 @@ func Balancer(config Config) fiber.Handler {
 			NoDefaultUserAgentHeader: true,
 			DisablePathNormalizing:   true,
 			Addr:                     u.Host,
+
+			ReadBufferSize:  config.ReadBufferSize,
+			WriteBufferSize: config.WriteBufferSize,
 		}
 
 		lbc.Clients = append(lbc.Clients, client)
