@@ -137,7 +137,8 @@ func (s *Session) Save() error {
 
 	// Don't save to Storage if no data is available
 	if s.data.Len() <= 0 {
-		return nil
+		//return nil
+		return s.config.Storage.Delete(s.id)
 	}
 
 	// Convert data to bytes

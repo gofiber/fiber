@@ -356,6 +356,34 @@ func Test_Session_Cookie_In_Response(t *testing.T) {
 	utils.AssertEqual(t, "john", sess.Get("name"))
 }
 
+// go test -run Test_Session_Deletes_Single_Key
+// Regression: https://github.com/gofiber/fiber/issues/1365
+func Test_Session_Deletes_Single_Key(t *testing.T) {
+	t.Parallel()
+	store := New()
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	sess, err := store.Get(ctx)
+	utils.AssertEqual(t, nil, err)
+	ctx.Request().Header.SetCookie(store.sessionName, sess.ID())
+
+	sess.Set("id", "1")
+	utils.AssertEqual(t, nil, sess.Save())
+
+	sess, err = store.Get(ctx)
+	utils.AssertEqual(t, nil, err)
+	sess.Delete("id")
+	utils.AssertEqual(t, nil, sess.Save())
+
+	sess, err = store.Get(ctx)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, false, sess.Fresh())
+	utils.AssertEqual(t, nil, sess.Get("id"))
+}
+
 // go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4
 func Benchmark_Session(b *testing.B) {
 	app, store := fiber.New(), New()
