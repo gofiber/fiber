@@ -99,6 +99,11 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	ModifyResponse fiber.Handler
+	
+	// Timeout is the request timeout used when calling the proxy client
+	//
+	// Optional. Default: 1 second
+	Timeout time.Duration
 }
 ```
 
