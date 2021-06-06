@@ -69,7 +69,7 @@ type Config struct {
 	//
 	// hit, miss, unreachable
 	//
-	// Optional. Default: S-Cache
+	// Optional. Default: X-Cache
 	CacheHeader string
 
 	// CacheControl enables client side caching if set to true
@@ -98,7 +98,7 @@ type Config struct {
 var ConfigDefault = Config{
 	Next:         nil,
 	Expiration:   1 * time.Minute,
-	CacheHeader:  "S-Cache",
+	CacheHeader:  "X-Cache",
 	CacheControl: false,
 	KeyGenerator: func(c *fiber.Ctx) string {
 		return c.Path()
