@@ -4,9 +4,9 @@
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
-   <a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
+   <!--<a href="https://github.com/gofiber/fiber/blob/master/.github/README.md">
     <img height="20px" src="https://img.shields.io/badge/EN-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgNjAgMzAiIGhlaWdodD0iNjAwIj4NCjxkZWZzPg0KPGNsaXBQYXRoIGlkPSJ0Ij4NCjxwYXRoIGQ9Im0zMCwxNWgzMHYxNXp2MTVoLTMwemgtMzB2LTE1enYtMTVoMzB6Ii8+DQo8L2NsaXBQYXRoPg0KPC9kZWZzPg0KPHBhdGggZmlsbD0iIzAwMjQ3ZCIgZD0ibTAsMHYzMGg2MHYtMzB6Ii8+DQo8cGF0aCBzdHJva2U9IiNmZmYiIHN0cm9rZS13aWR0aD0iNiIgZD0ibTAsMGw2MCwzMG0wLTMwbC02MCwzMCIvPg0KPHBhdGggc3Ryb2tlPSIjY2YxNDJiIiBzdHJva2Utd2lkdGg9IjQiIGQ9Im0wLDBsNjAsMzBtMC0zMGwtNjAsMzAiIGNsaXAtcGF0aD0idXJsKCN0KSIvPg0KPHBhdGggc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjEwIiBkPSJtMzAsMHYzMG0tMzAtMTVoNjAiLz4NCjxwYXRoIHN0cm9rZT0iI2NmMTQyYiIgc3Ryb2tlLXdpZHRoPSI2IiBkPSJtMzAsMHYzMG0tMzAtMTVoNjAiLz4NCjwvc3ZnPg0K">
-  </a>
+  </a>-->
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_ru.md">
     <img height="20px" src="https://img.shields.io/badge/RU-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NTAgMzAwIj4NCjxwYXRoIGZpbGw9IiNmZmYiIGQ9Im0wLDBoNDUwdjEwMGgtNDUweiIvPg0KPHBhdGggZmlsbD0iIzAwZiIgZD0ibTAsMTAwaDQ1MHYxMDBoLTQ1MHoiLz4NCjxwYXRoIGZpbGw9IiNmMDAiIGQ9Im0wLDIwMGg0NTB2MTAwaC00NTB6Ii8+DQo8L3N2Zz4NCg==">
   </a>
@@ -46,10 +46,10 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_he.md">
     <img height="20px" src="https://img.shields.io/badge/HE-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjYwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIGhlaWdodD0iNDgwIiB2aWV3Qm94PSIwIDAgMjIwIDE2MCIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPg0KPGRlZnM+DQo8cGF0aCBzdHJva2U9IiMwMDM4YjgiIGZpbGwtb3BhY2l0eT0iMCIgaWQ9InRyaWFuZ2xlIiBzdHJva2Utd2lkdGg9IjUuNSIgZD0ibTAtMjkuMTQxLTI1LjIzNjksNDMuNzExNSA1MC40NzM4LTB6Ii8+DQo8L2RlZnM+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMCwwaDIyMHYxNjBoLTIyMHoiLz4NCjxnIGZpbGw9IiMwMDM4YjgiPg0KPHBhdGggZD0ibTAsMTVoMjIwdjI1aC0yMjB6Ii8+DQo8cGF0aCBkPSJtMCwxMjBoMjIwdjI1aC0yMjB6Ii8+DQo8L2c+DQo8dXNlIHhsaW5rOmhyZWY9IiN0cmlhbmdsZSIgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTEwIDgwKSIvPg0KPHVzZSB4bGluazpocmVmPSIjdHJpYW5nbGUiIHRyYW5zZm9ybT0ibWF0cml4KC0xIDAgLTAgLTEgMTEwIDgwKSIvPg0KPC9zdmc+DQo=">
   </a>
-   <!-- <a href="https://github.com/gofiber/fiber/blob/master/.github/README_sa.md">
+   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_sa.md">
      <img height="20px" src="https://img.shields.io/badge/SA-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDEyIDYiIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4NCjxwYXRoIGZpbGw9IiNjZTExMjYiIGQ9Im0wLDBoM3Y2aC0zeiIvPg0KPHBhdGggZmlsbD0iIzAwOWEwMCIgZD0ibTMsMGg5djJoLTl6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMywyaDl2MmgtOXoiLz4NCjxwYXRoIGQ9Im0zLDRoOXYyaC05eiIvPg0KPC9zdmc+DQo=">
-   </a> -->
-         <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fa.md">
+   </a>
+      <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fa.md">
      <img height="20px" src="https://img.shields.io/badge/IR-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNTQwIDg4MCIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiPg0KPGRlZnM+DQo8cGF0aCBmaWxsPSIjZmZmIiBpZD0iQWxsYWh1X0FrYmFyIiBkPSJtMCwwIDEsMCAwLTIgMywwIDAsMiA1LDAgMC0zLTMsMCAwLDEgMiwwIDAsMS0zLDAgMC0yLTUsMCAwLDN6bTIsMCAxLDAgMC0xLTEsMCAwLDF6bS0yLTQgMTMsMCAwLTEtMTMsMCAwLDF6bTEzLDQtMywwIDAtMyA0LDAgMC0yIDEsMCAwLDQgMSwwIDAtNCAxLDAgMCw0IDEsMCAwLTQgMSwwIDAsNS01LDAgMC0yLTMsMCAwLDEgMiwwIDAsMXoiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC05LjUpIi8+DQo8cGF0aCBmaWxsPSIjZmZmIiBpZD0ibGluZXMiIGQ9Im0wLDAgOSwwIDAtMi05LDAgMCwyem0xMCwwIDksMCAwLTItOSwwIDAsMnoiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC05LjUpIi8+DQo8L2RlZnM+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMCwwIDE1NDAsMCAwLDg4MGgtMTU0MHYtODgweiIvPg0KPHBhdGggZmlsbD0iIzIzOWY0MCIgZD0ibTAsMGgxNTQwdjI5NGgtMTU0MHoiLz4NCjxwYXRoIGZpbGw9IiNkYTAwMDAiIGQ9Im03NDMsMzI5Yy0yLDcgMSwxNCA3LDE4IDcsNCAxNSwyIDIwLTMgNSw1IDEzLDcgMjAsMyA2LTQgOS0xMSA3LTE4LTIsNC03LDctMTIsOC01LDEtMTEsMC0xNS0zLTQsMy0xMCw0LTE1LDMtNS0xLTEwLTQtMTItOHptMjcsMTktMTQsMTEgMiwxNDljLTExLTktMjEtMjAtMjktMzMtMjItMzgtMTktODYgNy0xMjEtNDAsMzEtNTEsODgtMjUsMTMyIDEwLDE3IDI0LDMwIDQwLDM4LTE2LDYtMzIsOC00OSw2IDE4LDcgMzgsOSA1Nyw1djFsMTEsMTMgMTEtMTN2LTFjMTksNCAzOSwyIDU3LTUtMTcsMi0zMywwLTQ5LTYgMTYtOCAzMC0yMSA0MC0zOCAyNi00NCAxNS0xMDEtMjUtMTMyIDI2LDM1IDI5LDgzIDcsMTIxLTgsMTMtMTgsMjQtMjksMzNsMi0xNDktMTQtMTF6bS00NywyYy0zNSwxMC02MCwzOS02NCw3NS01LDM2IDE0LDcwIDQ1LDg4LTIwLTI0LTMwLTU1LTI2LTg2IDQtMzEgMjAtNTkgNDUtNzd6bTk0LDBjMjUsMTggNDEsNDYgNDUsNzcgNCwzMS02LDYyLTI2LDg2IDMxLTE4IDUwLTUyIDQ1LTg4LTQtMzYtMjktNjUtNjQtNzV6bS04MTcsMjM2djI5NGgxNTQwdi0yOTRoLTE1NDB6Ii8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI0FsbGFodV9Ba2JhciIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyA3MCAyODApIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI0FsbGFodV9Ba2JhciIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyAyMTAgMjgwKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNBbGxhaHVfQWtiYXIiIHRyYW5zZm9ybT0ibWF0cml4KDcgMCAwIDcgMzUwIDI4MCkiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjQWxsYWh1X0FrYmFyIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDQ5MCAyODApIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI0FsbGFodV9Ba2JhciIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyA2MzAgMjgwKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNBbGxhaHVfQWtiYXIiIHRyYW5zZm9ybT0ibWF0cml4KDcgMCAwIDcgNzcwIDI4MCkiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjQWxsYWh1X0FrYmFyIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDkxMCAyODApIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI0FsbGFodV9Ba2JhciIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyAxMDUwIDI4MCkiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjQWxsYWh1X0FrYmFyIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDExOTAgMjgwKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNBbGxhaHVfQWtiYXIiIHRyYW5zZm9ybT0ibWF0cml4KDcgMCAwIDcgMTMzMCAyODApIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI0FsbGFodV9Ba2JhciIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyAxNDcwIDI4MCkiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjbGluZXMiIHRyYW5zZm9ybT0ibWF0cml4KDcgMCAwIDcgNzAgMzAxKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNsaW5lcyIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyAyMTAgMzAxKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNsaW5lcyIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyAzNTAgMzAxKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNsaW5lcyIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyA0OTAgMzAxKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNsaW5lcyIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyA2MzAgMzAxKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNsaW5lcyIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyA3NzAgMzAxKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNsaW5lcyIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyA5MTAgMzAxKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNsaW5lcyIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyAxMDUwIDMwMSkiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjbGluZXMiIHRyYW5zZm9ybT0ibWF0cml4KDcgMCAwIDcgMTE5MCAzMDEpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI2xpbmVzIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDEzMzAgMzAxKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNsaW5lcyIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyAxNDcwIDMwMSkiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjQWxsYWh1X0FrYmFyIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDcwIDYzNSkiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjQWxsYWh1X0FrYmFyIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDIxMCA2MzUpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI0FsbGFodV9Ba2JhciIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyAzNTAgNjM1KSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNBbGxhaHVfQWtiYXIiIHRyYW5zZm9ybT0ibWF0cml4KDcgMCAwIDcgNDkwIDYzNSkiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjQWxsYWh1X0FrYmFyIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDYzMCA2MzUpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI0FsbGFodV9Ba2JhciIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyA3NzAgNjM1KSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNBbGxhaHVfQWtiYXIiIHRyYW5zZm9ybT0ibWF0cml4KDcgMCAwIDcgOTEwIDYzNSkiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjQWxsYWh1X0FrYmFyIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDEwNTAgNjM1KSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNBbGxhaHVfQWtiYXIiIHRyYW5zZm9ybT0ibWF0cml4KDcgMCAwIDcgMTE5MCA2MzUpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI0FsbGFodV9Ba2JhciIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyAxMzMwIDYzNSkiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjQWxsYWh1X0FrYmFyIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDE0NzAgNjM1KSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNsaW5lcyIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyA3MCA1OTMpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI2xpbmVzIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDIxMCA1OTMpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI2xpbmVzIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDM1MCA1OTMpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI2xpbmVzIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDQ5MCA1OTMpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI2xpbmVzIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDYzMCA1OTMpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI2xpbmVzIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDc3MCA1OTMpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI2xpbmVzIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDkxMCA1OTMpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI2xpbmVzIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDEwNTAgNTkzKSIvPg0KPHVzZSB3aWR0aD0iMTU0MCIgaGVpZ2h0PSI4ODAiIHhsaW5rOmhyZWY9IiNsaW5lcyIgdHJhbnNmb3JtPSJtYXRyaXgoNyAwIDAgNyAxMTkwIDU5MykiLz4NCjx1c2Ugd2lkdGg9IjE1NDAiIGhlaWdodD0iODgwIiB4bGluazpocmVmPSIjbGluZXMiIHRyYW5zZm9ybT0ibWF0cml4KDcgMCAwIDcgMTMzMCA1OTMpIi8+DQo8dXNlIHdpZHRoPSIxNTQwIiBoZWlnaHQ9Ijg4MCIgeGxpbms6aHJlZj0iI2xpbmVzIiB0cmFuc2Zvcm09Im1hdHJpeCg3IDAgMCA3IDE0NzAgNTkzKSIvPg0KPC9zdmc+DQo=">
    </a>
   <br>
@@ -75,15 +75,17 @@
     <img src="https://img.shields.io/discord/704680098577514527?style=flat&label=%F0%9F%92%AC%20discord&color=00ACD7">
   </a>
 </p>
+<br>
 <p align="center">
- <div dir="rtl">
-  <b>Fiber</b> هو <b>إطار ويب</b>  مستوحى من <a href="https://github.com/expressjs/express">Express</a>   مبني على <a href="https://github.com/valyala/fasthttp">Fasthttp</a>,  <b>اسرع</b> محرك HTTP  لـ <a href="https://golang.org/doc/">Go</a>. مصمم ليكون <b>سهل</b> لأغراض <b>السرعة</b> مع عدم  <b>تخصيص ذاكرة والأداء</b> و <b>الاداء العالي</b> دائما.
- <div dir="rtl">
+<div dir="rtl">
+  <b>Fiber</b> الهام گرفته از <b>فریمورک وب</b> <a href="https://github.com/expressjs/express">Express</a> است که برپایه <a href="https://github.com/valyala/fasthttp">Fasthttp</a> ساخته شده است, که سریعترین موتور HTTP برای زبان <a href="https://golang.org/doc/">Go</a> است. طراحی شده است تا با تخصیص حافظه و عملکرد صفر ، کارها را برای توسعه سریع آسان کند.
+<div dir="rtl"><br>
 </p>
 
-## ⚡️ بداية سريعة
+## ⚡️ شروع سریع
 
 <div dir="ltr">
+<br>
 
 ```go
 package main
@@ -102,67 +104,90 @@ func main() {
 ```
 
 </div>
+</br>
 
-## 🤖 مقايس الاداء
+## 🤖 بنچمارک
 
-يتم تنفيذ هذه الاختبارات من قبل [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) و [Go Web](https://github.com/smallnest/go-web-framework-benchmark). إذا كنت تريد رؤية جميع النتائج ، يرجى زيارة موقعنا [Wiki](https://docs.gofiber.io/extra/benchmarks).
+<br>
+<p align="center">
+<div dir="rtl">
+این تست ها توسط <a href="https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext">TechEmpower</a> و <a href="https://github.com/smallnest/go-web-framework-benchmark">Go Web</a> انجام شده است. اگر شما تمامی نتایج را می خواهید ببینید, لطفا صفحه <a href="https://docs.gofiber.io/extra/benchmarks">ویکی</a> ما را بازدید کنید.
+<div dir="rtl">
+<br>
+</p>
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
 </p>
+</br>
 
-
-## ⚙️ تثبيت
-
-تأكد من تثبيت Go ([تحميل](https://golang.org/dl/)). الإصدار `1.14` أو أعلى مطلوب. 
-
-ابدأ مشروعك بإنشاء مجلد ثم تشغيله `go mod init github.com/your/repo` ([أعرف أكثر](https://blog.golang.org/using-go-modules)) 
-داخل المجلد. ثم قم بتثبيت Fiber باستخدام ملف [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) أمر:
-
-</div>
+## ⚙️ نصب و راه اندازی
+<br>
+<p align="center">
+<div dir="rtl">
+مطمئن شوید Go را نصب (<a href="https://golang.org/dl/">دانلود</a>) کرده اید. نسخه 1.14 یا بیشتر مورد نیاز است.<br>
+پروژه خود را با ساختن یک پوشه و سپس اجرای <code>go mod init github.com/your/repo</code> داخل پوشه (<a href="https://blog.golang.org/using-go-modules">یادگیری بیشتر</a>) راه اندازی کنید. سپس Fiber را با دستور <code><a href="https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them">go get</a></code> نصب کنید :
+<div dir="rtl">
+<br>
+</p>
 
 <div dir="ltr">
-
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
 ```
 
-
 </div>
 
-## 🎯 الميزات
+</br>
 
--   قوي [routing](https://docs.gofiber.io/routing)
--   يقدم خدمة [static files](https://docs.gofiber.io/api/app#static)
--   أقصى [أداء](https://docs.gofiber.io/extra/benchmarks)
--   [ذاكرة منخفضة](https://docs.gofiber.io/extra/benchmarks)
--   [API endpoints](https://docs.gofiber.io/api/ctx)
--   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) مدعوم
--   [سريع](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
--   [Template engines](https://github.com/gofiber/template)
--   [WebSocket دعم](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   ترجم الى [15 لغة أخرى](https://docs.gofiber.io/)
--   وأكثر بكثير, [استكشف Fiber](https://docs.gofiber.io/)
+## 🎯 ویژگی ها
 
-## 💡 فلسفة
+</br>
 
-قوفر(مستخدمي لغة Go الجدد) جديد يجعل التبديل من [Node.js](https://nodejs.org/en/about/) الى [Go](https://golang.org/doc/)تتعامل مع منحنى التعلم قبل أن يتمكنوا من البدء في بناءتطبيقات الويب . Fiber, كـ **إطار الويب**, تم إنشاؤه بفكرة **minimalism** ويتبع **UNIX way**, حتى يتمكن القوفرون الجدد من دخول عالم Go بترحيب حار وموثوق.
+-   [مسیریابی](https://docs.gofiber.io/routing) قدرتمند
+-   Serve [پرونده های ثابت](https://docs.gofiber.io/api/app#static)
+-   حداکثر [عملکرد](https://docs.gofiber.io/extra/benchmarks)
+-   مصرف [حافظه کم](https://docs.gofiber.io/extra/benchmarks)
+-   قابلیت [API endpoints](https://docs.gofiber.io/api/ctx)
+-   پشتیبانی از [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next)
+-   برنامه نویسی سمت سرور [سریع](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
+-   دارای [Template engines](https://github.com/gofiber/template) اختصاصی
+-   [پشتیبانی از وب سوکت](https://github.com/gofiber/websocket)
+-   قابلیت [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
+-   ترجمه در [15 زبان](https://docs.gofiber.io/)
+-   و امکانات بیشتر, [دیدن در داکیومنت](https://docs.gofiber.io/)
 
-Fiber هو **مستوحى** من Express, إطار الويب الأكثر شعبية على الإنترنت. قمنا بدمج **سهولة** الـ Express و **الأداء الخام** لـ Go. إذا كنت قد قمت بتطبيق تطبيق ويب في Node.js (_using Express or similar_), ستظهر العديد من الأساليب والمبادئ **الاكثر شيوعاً** لك.
+</br>
 
-نحن **نصغي** لمستخدمينا [issues](https://github.com/gofiber/fiber/issues), نناقش [channel](https://gofiber.io/discord) _وفي جميع أنحاء الإنترنت_ لإنشاء **سريع**, **مرن** و **مألوف** Go إطار الويب لـ **لأي** مهمة, **الموعد الأخير
-** و تطوير **مهارات**! فقط مثل Express تفعل لـ JavaScript عالم.
+## 💡 فلسفه
 
-## 👀 أمثلة
+<br>
+<p align="center">
+<div dir="rtl">
+گوفر های جدیدی که از <a href="https://nodejs.org/en/about/">Node.js</a> به <a href="https://golang.org/doc/">Go</a> تغییر می دهند قبل از شروع ساخت برنامه های وب یا میکروسرویس ها با یک منحنی یادگیری رو به رو هستند. Fiber, یک <b>فریمورک وب</b> است و با ایده <b>مینیمالیسم</b> ایجاد شده است و <b>روش های unix</b>  را دنبال می کند, بنابرین با استقبال گرم و اعتماد کامل وارد دنیای Go شده است.<br>
 
-فيما يلي بعض الأمثلة الشائعة. إذا كنت ترغب في رؤية المزيد من أمثلة التعليمات البرمجية, يرجى زيارة [Recipes repository](https://github.com/gofiber/recipes) او زيارة [API documentation](https://docs.gofiber.io).
+Fiber از Express <b>الهام گرفته</b>, که محبوب ترین فریمورک وب روی اینترنت است. ما <b>سادگی</b> Express را با <b>عملکرد بالا</b> زبان Go ترکیب کردیم. اگر شما قبلا یک برنامه وب را در Node.js (با استفاده از Express یا موارد مشابه) پیاده سازی کرده اید. بسیاری از روش ها و اصول ها برای شما ساده به نظر خواهد رسید.<br>
+
+ما در مورد <a href="https://github.com/gofiber/fiber/issues">مشکلات</a> کاربران, <a href="https://gofiber.io/discord">کانال</a> Discord سراسر دنیا گوش می دهیم و تا بتوانیم یک وب فریم ورک <b>سریع, مطمئن, ساده</b> ایجاد کنیم. درست مثل Express برای برنامه نویس های جاوا اسکریپت.
+<div dir="rtl">
+<br>
+</p>
+
+## 👀 مثال ها
+
+<br>
+<p align="center">
+<div dir="rtl">
+در پایین تعدادی نمونه مثال هستش. اگر شما مثال های بیشتر می خواهید ببینید, لطفا <a href="https://github.com/gofiber/recipes">مخزن کد</a> و <a href="https://docs.gofiber.io/">داکیومنت های</a> ما را بازدید کنید.
+<div dir="rtl">
+<br>
+</p>
 
 #### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
 
-<div dir="ltr" >
+<div dir="ltr">
 
 ```go
 func main() {
@@ -237,49 +262,57 @@ func main() {
 
 ```go
 func main() {
-	app := fiber.New()
+    app := fiber.New()
 
-	// Match any route
-	app.Use(func(c *fiber.Ctx) error {
-		fmt.Println("🥇 First handler")
-		return c.Next()
-	})
+    // Match any route
+    app.Use(func(c *fiber.Ctx) error {
+        fmt.Println("🥇 First handler")
+        return c.Next()
+    })
 
-	// Match all routes starting with /api
-	app.Use("/api", func(c *fiber.Ctx) error {
-		fmt.Println("🥈 Second handler")
-		return c.Next()
-	})
+    // Match all routes starting with /api
+    app.Use("/api", func(c *fiber.Ctx) error {
+        fmt.Println("🥈 Second handler")
+        return c.Next()
+    })
 
-	// GET /api/register
-	app.Get("/api/list", func(c *fiber.Ctx) error {
-		fmt.Println("🥉 Last handler")
-		return c.SendString("Hello, World 👋!")
-	})
+    // GET /api/list
+    app.Get("/api/list", func(c *fiber.Ctx) error {
+        fmt.Println("🥉 Last handler")
+        return c.SendString("Hello, World 👋!")
+    })
 
-	log.Fatal(app.Listen(":3000"))
+    log.Fatal(app.Listen(":3000"))
 }
 
 ```
 
 </div>
+</br>
 
 <details>
-  <summary>📚 إظهار المزيد من أمثلة التعليمات البرمجية</summary>
+  <summary>📚 نمایش نمونه کدهای بیشتر</summary>
+</br>
 
-### Views engines
+### View engines
 
-📖 [Config](https://docs.gofiber.io/fiber#config)
-📖 [Engines](https://github.com/gofiber/template)
-📖 [Render](https://docs.gofiber.io/context#render)
+</br>
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
+📖 [پیکربندی](https://docs.gofiber.io/fiber#config)
+📖 [موتورها](https://github.com/gofiber/template)
+📖 [رندر](https://docs.gofiber.io/context#render)
 
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+<br>
+<p align="center">
+<div dir="rtl">
+Fiber زمانیکه view engine تنظیم نشده باشد بطور پیش فرض از <a href="https://golang.org/pkg/html/template/">html/template</a> استفاده می کند.<br>
+شما می توانید از موتورهای مختلفی نظیر <a href="https://github.com/eknkc/amber">amber</a>, <a href="https://github.com/aymerick/raymond">handlebars</a>, <a href="https://github.com/cbroglie/mustache">mustache</a> یا <a href="https://github.com/Joker/jade">pug</a> استفاده کنید.<br>
+پکیج موتورهای پشتیبانی شده را می توانید در <a href="https://github.com/gofiber/template">اینجا</a> ببینید.
+<div dir="rtl">
+<br>
+</p>
 
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
-
-<div dir="ltr" >
+<div dir="ltr">
 
 ```go
 package main
@@ -313,7 +346,7 @@ func main() {
 
 📖 [Group](https://docs.gofiber.io/application#group)
 
-<div dir="ltr" >
+<div dir="ltr">
 
 ```go
 func middleware(c *fiber.Ctx) error {
@@ -352,7 +385,7 @@ func main() {
 
 📖 [Logger](https://docs.gofiber.io/middleware/logger)
 
-<div dir="ltr" >
+<div dir="ltr">
 
 ```go
 package main
@@ -381,7 +414,7 @@ func main() {
 
 📖 [CORS](https://docs.gofiber.io/middleware/cors)
 
-<div dir="ltr" >
+<div dir="ltr">
 
 ```go
 import (
@@ -404,9 +437,9 @@ func main() {
 
 </div>
 
-التحقق من CORS عن طريق تمرير أي مجال `Origin` العنوان:
+Check CORS by passing any domain in `Origin` header:
 
-<div dir="ltr" >
+<div dir="ltr">
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -414,11 +447,11 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 </div>
 
-### مخصص 404 response
+### Custom 404 response
 
 📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)
 
-<div dir="ltr" >
+<div dir="ltr">
 
 ```go
 func main() {
@@ -450,7 +483,7 @@ func main() {
 
 📖 [JSON](https://docs.gofiber.io/ctx#json)
 
-<div dir="ltr" >
+<div dir="ltr">
 
 ```go
 type User struct {
@@ -484,7 +517,7 @@ func main() {
 
 📖 [Websocket](https://github.com/gofiber/websocket)
 
-<div dir="ltr" >
+<div dir="ltr">
 
 ```go
 import (
@@ -522,7 +555,7 @@ func main() {
 
 📖 [Recover](https://docs.gofiber.io/middleware/recover)
 
-<div dir="ltr" >
+<div dir="ltr">
 
 ```go
 import (
@@ -544,13 +577,19 @@ func main() {
 ```
 
 </div>
+
 </details>
+</br></br>
 
-## 🧬 Internal Middleware
+## 🧬 Middleware داخلی
 
-Here is a list of middleware that are included within the Fiber framework.
+</br>
 
-| Middleware                                                                       | Description                                                                                                                                                           |
+در اینجا لیستی از middleware های Fiber موجود است.
+
+</br>
+
+| Middleware                                                                       | توضیحات                                                                                                                                                           |
 | :------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
 | [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default.                                                                              |
@@ -567,11 +606,17 @@ Here is a list of middleware that are included within the Fiber framework.
 | [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling).                     |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                         |
 
-## 🧬 External Middleware
+</br></br>
 
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+## 🧬  Middleware خارجی
 
-| Middleware                                        | Description                                                                                                                                                         |
+</br>
+
+ لیست middleware های خارجی که توسط [تیم Fiber](https://github.com/orgs/gofiber/people) نگه داری می شود.
+
+</br>
+
+| Middleware                                        | توضیحات                                                                                                                                                         |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [adaptor](https://github.com/gofiber/adaptor)     | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn!                                                                           |
 | [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
@@ -582,75 +627,110 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 | [template](https://github.com/gofiber/template)   | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required.                                               |
 | [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support!                                                                                                          |
 
-## 🌱 Third Party Middlewares
+</br></br>
 
-هذه قائمة middlewares التي تم إنشاؤها من قبل المجتمع Fiber , الرجاء إنشاءPR إذا كنت تريد أن ترى ذلك!
+## 🌱 سایر Middleware ها
 
+</br>
+
+Middleware های لیست زیر توسط انجمن Fiber ایجاده است, اگر میخواهید یکی خود را ببینید یک PR ایجاد کنید.
+
+</br>
+
+-   [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 -   [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 -   [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
--   [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
--   [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
--   [codemicro/fiber-cache](https://github.com/codemicro/fiber-cache)
--   [sujit-baniya/fiber-boilerplate](https://github.com/sujit-baniya/fiber-boilerplate)
--   [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
--   [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
--   [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 -   [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
+-   [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
 -   [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
+-   [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
+-   [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
+-   [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
+-   [sujit-baniya/fiber-boilerplate](https://github.com/sujit-baniya/fiber-boilerplate)
 -   [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
 -   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
 -   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
+-   [sacsand/gofiber-firebaseauth](https://github.com/sacsand/gofiber-firebaseauth)
 -   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
 -   [aschenmaker/fiber-health-check](https://github.com/aschenmaker/fiber-health-check)
 
-## 👍 مساهمة
+</br>
 
-إذا كنت تريد أن تقول **شكرا جزيل** و/او دعم التنمية النشطة للـ `Fiber`:
+## 👍 مشارکت کنندگان
 
-1. اضف [GitHub نجمة](https://github.com/gofiber/fiber/stargazers) للمشروع.
-2. غرد عن المشروع [في تويتر ](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. اكتب مراجعة أو برنامج تعليمي عن [Medium](https://medium.com/), [Dev.to](https://dev.to/) او في موقعك الشخصي.
-4. دعم المشروع بالتبرع بـ [كوب من القهوة](https://buymeacoff.ee/fenny).
+</br>
 
-## ☕ الداعمين
+اگر شما میخواهید **تشکر** کنید و یا از توسعه فعال Fiber حمایت کنید :
 
-Fiber هو مشروع مفتوح المصدر يعمل على التبرعات لدفع الفواتير ، على سبيل المثال اسم النطاق الخاص بنا , gitbook, netlify and serverless الاستضافة. إذا كنت تريد دعم Fiber, تستطيع ☕ [**شراء كوب قهوة هنا**](https://buymeacoff.ee/fenny).
+1. یک [GitHub Star](https://github.com/gofiber/fiber/stargazers) به پروژه اضافه کنید.
+2. ارسال توییت درباره Fiber برروی [صفحه توییتر شما](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+3. یک آموزش یا نظر برروی [Medium](https://medium.com/), [Dev.to](https://dev.to/) یا وبلاگ شخصیتان.
+4. پشتیبانی پروژه با حمایت مالی از طریق [یک فنجان قهوه](https://buymeacoff.ee/fenny).
 
-|                                                            | المستخدم                                         | التبرع  |
-| :--------------------------------------------------------- | :----------------------------------------------- | :------ |
-| ![](https://avatars.githubusercontent.com/u/204341?s=25)   | [@destari](https://github.com/destari)           | ☕ x 10 |
-| ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5  |
-| ![](https://avatars.githubusercontent.com/u/56607882?s=25) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5  |
-| ![](https://avatars.githubusercontent.com/u/27820675?s=25) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5  |
-| ![](https://avatars.githubusercontent.com/u/1094221?s=25)  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5  |
-| ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5  |
-| ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5  |
-| ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3  |
-| ![](https://avatars.githubusercontent.com/u/59947262?s=25) | [@ankush](https://github.com/ankush)             | ☕ x 3  |
-| ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3  |
-| ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3  |
-| ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1  |
-| ![](https://avatars.githubusercontent.com/u/29042462?s=25) | [@lapolinar](https://github.com/lapolinar)       | ☕ x 1  |
-| ![](https://avatars.githubusercontent.com/u/2978730?s=25)  | [@diegowifi](https://github.com/diegowifi)       | ☕ x 1  |
-| ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1  |
-| ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1  |
-| ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1  |
-| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/thomasvvugt)  | ☕ x 1  |
-| ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1  |
+</br>
 
-## ‎‍💻 المساهمون في كتابة الكود
+## ☕ حامیان مالی
+
+</br>
+
+Fiber یک پروژه متن باز است که با کمک مالی برای پرداخت قبض های دامنه, gitbook, netlify, هاست انجام می شود. اگر می خواهید از Fiber حمایت کنید شما می توانید [**از اینجا یک قهوه بخرید**](https://buymeacoff.ee/fenny).
+
+
+</br>
+
+|                                                            | کاربر                                             | حمایت مالی |
+| :--------------------------------------------------------- | :----------------------------------------------- | :------- |
+| ![](https://avatars.githubusercontent.com/u/204341?s=25)   | [@destari](https://github.com/destari)           | ☕ x 10  |
+| ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5   |
+| ![](https://avatars.githubusercontent.com/u/56607882?s=25) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5   |
+| ![](https://avatars.githubusercontent.com/u/27820675?s=25) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5   |
+| ![](https://avatars.githubusercontent.com/u/1094221?s=25)  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5   |
+| ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5   |
+| ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5   |
+| ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3   |
+| ![](https://avatars.githubusercontent.com/u/59947262?s=25) | [@ankush](https://github.com/ankush)             | ☕ x 3   |
+| ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3   |
+| ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3   |
+| ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1   |
+| ![](https://avatars.githubusercontent.com/u/29042462?s=25) | [@lapolinar](https://github.com/lapolinar)       | ☕ x 1   |
+| ![](https://avatars.githubusercontent.com/u/2978730?s=25)  | [@diegowifi](https://github.com/diegowifi)       | ☕ x 1   |
+| ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1   |
+| ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1   |
+| ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1   |
+| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1   |
+| ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1   |
+
+</br>
+
+## ‎‍💻 مشارکت کنندگان کد
+
+</br>
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
-## ⭐️ Stargazers
+</br>
+
+## ⭐️ ستاره ها
+
+</br>
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
-## ⚠️ رخصة
+</br></br>
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` هو برنامج مجاني ومفتوح المصدر مرخص بموجب [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). تم إنشاء الشعار الرسمي من قبل [Vic Shóstak](https://github.com/koddr) ووزعت تحت [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) رخصة (CC BY-SA 4.0 International).
+## ⚠️ لایسنس
 
-**Third-party library licenses**
+</br>
+
+<div dir="ltr">
+
+Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+
+</div>
+
+</br>
+
+**مجوزهای کتابخانه شخص ثالث**
 
 -   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
