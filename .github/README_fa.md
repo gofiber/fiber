@@ -49,7 +49,7 @@
    <a href="https://github.com/gofiber/fiber/blob/master/.github/README_sa.md">
      <img height="20px" src="https://img.shields.io/badge/SA-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDEyIDYiIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4NCjxwYXRoIGZpbGw9IiNjZTExMjYiIGQ9Im0wLDBoM3Y2aC0zeiIvPg0KPHBhdGggZmlsbD0iIzAwOWEwMCIgZD0ibTMsMGg5djJoLTl6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMywyaDl2MmgtOXoiLz4NCjxwYXRoIGQ9Im0zLDRoOXYyaC05eiIvPg0KPC9zdmc+DQo=">
    </a>
-         <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fa.md">
+      <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fa.md">
      <img height="20px" src="https://raw.githubusercontent.com/gofiber/fiber/master/.github/IR-flag.png">
    </a>
   <br>
@@ -75,11 +75,17 @@
     <img src="https://img.shields.io/discord/704680098577514527?style=flat&label=%F0%9F%92%AC%20discord&color=00ACD7">
   </a>
 </p>
+<br>
 <p align="center">
-  <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://golang.org/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
+<div dir="rtl">
+  <b>Fiber</b> الهام گرفته از <b>فریمورک وب</b> <a href="https://github.com/expressjs/express">Express</a> است که برپایه <a href="https://github.com/valyala/fasthttp">Fasthttp</a> ساخته شده است, که سریعترین موتور HTTP برای زبان <a href="https://golang.org/doc/">Go</a> است. طراحی شده است تا با تخصیص حافظه و عملکرد صفر ، کارها را برای توسعه سریع آسان کند.
+<div dir="rtl"><br>
 </p>
 
-## ⚡️ Quickstart
+## ⚡️ شروع سریع
+
+<div dir="ltr">
+<br>
 
 ```go
 package main
@@ -97,53 +103,91 @@ func main() {
 }
 ```
 
-## 🤖 Benchmarks
+</div>
+</br>
 
-These tests are performed by [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all results, please visit our [Wiki](https://docs.gofiber.io/extra/benchmarks).
+## 🤖 بنچمارک
+
+<br>
+<p align="center">
+<div dir="rtl">
+این تست ها توسط <a href="https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext">TechEmpower</a> و <a href="https://github.com/smallnest/go-web-framework-benchmark">Go Web</a> انجام شده است. اگر شما تمامی نتایج را می خواهید ببینید, لطفا صفحه <a href="https://docs.gofiber.io/extra/benchmarks">ویکی</a> ما را بازدید کنید.
+<div dir="rtl">
+<br>
+</p>
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
 </p>
+</br>
 
-## ⚙️ Installation
+## ⚙️ نصب و راه اندازی
+<br>
+<p align="center">
+<div dir="rtl">
+مطمئن شوید Go را نصب (<a href="https://golang.org/dl/">دانلود</a>) کرده اید. نسخه 1.14 یا بیشتر مورد نیاز است.<br>
+پروژه خود را با ساختن یک پوشه و سپس اجرای <code>go mod init github.com/your/repo</code> داخل پوشه (<a href="https://blog.golang.org/using-go-modules">یادگیری بیشتر</a>) راه اندازی کنید. سپس Fiber را با دستور <code><a href="https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them">go get</a></code> نصب کنید :
+<div dir="rtl">
+<br>
+</p>
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
-
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+<div dir="ltr">
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
 ```
 
-## 🎯 Features
+</div>
 
--   Robust [routing](https://docs.gofiber.io/routing)
--   Serve [static files](https://docs.gofiber.io/api/app#static)
--   Extreme [performance](https://docs.gofiber.io/extra/benchmarks)
--   [Low memory](https://docs.gofiber.io/extra/benchmarks) footprint
--   [API endpoints](https://docs.gofiber.io/api/ctx)
--   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) support
--   [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
--   [Template engines](https://github.com/gofiber/template)
--   [WebSocket support](https://github.com/gofiber/websocket)
--   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   Translated in [15 languages](https://docs.gofiber.io/)
--   And much more, [explore Fiber](https://docs.gofiber.io/)
+</br>
 
-## 💡 Philosophy
+## 🎯 ویژگی ها
 
-New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://golang.org/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follows the **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
+</br>
 
-Fiber is **inspired** by Express, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application in Node.js (_using Express or similar_), then many methods and principles will seem **very common** to you.
+-   [مسیریابی](https://docs.gofiber.io/routing) قدرتمند
+-   Serve [پرونده های ثابت](https://docs.gofiber.io/api/app#static)
+-   حداکثر [عملکرد](https://docs.gofiber.io/extra/benchmarks)
+-   مصرف [حافظه کم](https://docs.gofiber.io/extra/benchmarks)
+-   قابلیت [API endpoints](https://docs.gofiber.io/api/ctx)
+-   پشتیبانی از [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next)
+-   برنامه نویسی سمت سرور [سریع](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
+-   دارای [Template engines](https://github.com/gofiber/template) اختصاصی
+-   [پشتیبانی از وب سوکت](https://github.com/gofiber/websocket)
+-   قابلیت [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
+-   ترجمه در [15 زبان](https://docs.gofiber.io/)
+-   و امکانات بیشتر, [دیدن در داکیومنت](https://docs.gofiber.io/)
 
-We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues), Discord [channel](https://gofiber.io/discord) _and all over the Internet_ to create a **fast**, **flexible** and **friendly** Go web framework for **any** task, **deadline** and developer **skill**! Just like Express does in the JavaScript world.
+</br>
 
-## 👀 Examples
+## 💡 فلسفه
 
-Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
+<br>
+<p align="center">
+<div dir="rtl">
+گوفر های جدیدی که از <a href="https://nodejs.org/en/about/">Node.js</a> به <a href="https://golang.org/doc/">Go</a> تغییر می دهند قبل از شروع ساخت برنامه های وب یا میکروسرویس ها با یک منحنی یادگیری رو به رو هستند. Fiber, یک <b>فریمورک وب</b> است و با ایده <b>مینیمالیسم</b> ایجاد شده است و <b>روش های unix</b>  را دنبال می کند, بنابرین با استقبال گرم و اعتماد کامل وارد دنیای Go شده است.<br>
+
+Fiber از Express <b>الهام گرفته</b>, که محبوب ترین فریمورک وب روی اینترنت است. ما <b>سادگی</b> Express را با <b>عملکرد بالا</b> زبان Go ترکیب کردیم. اگر شما قبلا یک برنامه وب را در Node.js (با استفاده از Express یا موارد مشابه) پیاده سازی کرده اید. بسیاری از روش ها و اصول ها برای شما ساده به نظر خواهد رسید.<br>
+
+ما در مورد <a href="https://github.com/gofiber/fiber/issues">مشکلات</a> کاربران, <a href="https://gofiber.io/discord">کانال</a> Discord سراسر دنیا گوش می دهیم و تا بتوانیم یک وب فریم ورک <b>سریع, مطمئن, ساده</b> ایجاد کنیم. درست مثل Express برای برنامه نویس های جاوا اسکریپت.
+<div dir="rtl">
+<br>
+</p>
+
+## 👀 مثال ها
+
+<br>
+<p align="center">
+<div dir="rtl">
+در پایین تعدادی نمونه مثال هستش. اگر شما مثال های بیشتر می خواهید ببینید, لطفا <a href="https://github.com/gofiber/recipes">مخزن کد</a> و <a href="https://docs.gofiber.io/">داکیومنت های</a> ما را بازدید کنید.
+<div dir="rtl">
+<br>
+</p>
 
 #### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
+
+<div dir="ltr">
 
 ```go
 func main() {
@@ -184,7 +228,11 @@ func main() {
 
 ```
 
+</div>
+
 #### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
+
+<div dir="ltr">
 
 ```go
 func main() {
@@ -206,7 +254,11 @@ func main() {
 
 ```
 
+</div>
+
 #### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
+
+<div dir="ltr">
 
 ```go
 func main() {
@@ -235,20 +287,32 @@ func main() {
 
 ```
 
+</div>
+</br>
+
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 نمایش نمونه کدهای بیشتر</summary>
+</br>
 
-### Views engines
+### View engines
 
-📖 [Config](https://docs.gofiber.io/fiber#config)
-📖 [Engines](https://github.com/gofiber/template)
-📖 [Render](https://docs.gofiber.io/context#render)
+</br>
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
+📖 [پیکربندی](https://docs.gofiber.io/fiber#config)
+📖 [موتورها](https://github.com/gofiber/template)
+📖 [رندر](https://docs.gofiber.io/context#render)
 
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+<br>
+<p align="center">
+<div dir="rtl">
+Fiber زمانیکه view engine تنظیم نشده باشد بطور پیش فرض از <a href="https://golang.org/pkg/html/template/">html/template</a> استفاده می کند.<br>
+شما می توانید از موتورهای مختلفی نظیر <a href="https://github.com/eknkc/amber">amber</a>, <a href="https://github.com/aymerick/raymond">handlebars</a>, <a href="https://github.com/cbroglie/mustache">mustache</a> یا <a href="https://github.com/Joker/jade">pug</a> استفاده کنید.<br>
+پکیج موتورهای پشتیبانی شده را می توانید در <a href="https://github.com/gofiber/template">اینجا</a> ببینید.
+<div dir="rtl">
+<br>
+</p>
 
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
+<div dir="ltr">
 
 ```go
 package main
@@ -276,9 +340,13 @@ func main() {
 }
 ```
 
+</div>
+
 ### Grouping routes into chains
 
 📖 [Group](https://docs.gofiber.io/application#group)
+
+<div dir="ltr">
 
 ```go
 func middleware(c *fiber.Ctx) error {
@@ -311,9 +379,13 @@ func main() {
 
 ```
 
+</div>
+
 ### Middleware logger
 
 📖 [Logger](https://docs.gofiber.io/middleware/logger)
+
+<div dir="ltr">
 
 ```go
 package main
@@ -336,9 +408,13 @@ func main() {
 }
 ```
 
+</div>
+
 ### Cross-Origin Resource Sharing (CORS)
 
 📖 [CORS](https://docs.gofiber.io/middleware/cors)
+
+<div dir="ltr">
 
 ```go
 import (
@@ -359,15 +435,23 @@ func main() {
 }
 ```
 
+</div>
+
 Check CORS by passing any domain in `Origin` header:
+
+<div dir="ltr">
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
+</div>
+
 ### Custom 404 response
 
 📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)
+
+<div dir="ltr">
 
 ```go
 func main() {
@@ -393,9 +477,13 @@ func main() {
 }
 ```
 
+</div>
+
 ### JSON Response
 
 📖 [JSON](https://docs.gofiber.io/ctx#json)
+
+<div dir="ltr">
 
 ```go
 type User struct {
@@ -423,9 +511,13 @@ func main() {
 }
 ```
 
+</div>
+
 ### WebSocket Upgrade
 
 📖 [Websocket](https://github.com/gofiber/websocket)
+
+<div dir="ltr">
 
 ```go
 import (
@@ -457,9 +549,13 @@ func main() {
 }
 ```
 
+</div>
+
 ### Recover middleware
 
 📖 [Recover](https://docs.gofiber.io/middleware/recover)
+
+<div dir="ltr">
 
 ```go
 import (
@@ -480,13 +576,22 @@ func main() {
 }
 ```
 
+</div>
+
 </details>
+</br></br>
 
-## 🧬 Internal Middleware
+## 🧬 Middleware داخلی
 
-Here is a list of middleware that are included within the Fiber framework.
+</br>
 
-| Middleware                                                                       | Description                                                                                                                                                           |
+در اینجا لیستی از middleware های Fiber موجود است.
+
+</br>
+
+<div dir="ltr">
+
+| Middleware                                                                       | توضیحات                                                                                                                                                           |
 | :------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials. |
 | [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default.                                                                              |
@@ -503,11 +608,21 @@ Here is a list of middleware that are included within the Fiber framework.
 | [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling).                     |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                         |
 
-## 🧬 External Middleware
 
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+</div>
+</br></br>
 
-| Middleware                                        | Description                                                                                                                                                         |
+## 🧬  Middleware خارجی
+
+</br>
+
+ لیست middleware های خارجی که توسط [تیم Fiber](https://github.com/orgs/gofiber/people) نگه داری می شود.
+
+</br>
+
+<div dir="ltr">
+
+| Middleware                                        | توضیحات                                                                                                                                                         |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [adaptor](https://github.com/gofiber/adaptor)     | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn!                                                                           |
 | [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
@@ -518,9 +633,17 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 | [template](https://github.com/gofiber/template)   | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required.                                               |
 | [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support!                                                                                                          |
 
-## 🌱 Third Party Middlewares
 
-This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+</div>
+</br></br>
+
+## 🌱 سایر Middleware ها
+
+</br>
+
+Middleware های لیست زیر توسط انجمن Fiber ایجاده است, اگر میخواهید یکی خود را ببینید یک PR ایجاد کنید.
+
+</br>
 
 -   [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
 -   [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
@@ -539,20 +662,31 @@ This is a list of middlewares that are created by the Fiber community, please cr
 -   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
 -   [aschenmaker/fiber-health-check](https://github.com/aschenmaker/fiber-health-check)
 
-## 👍 Contribute
+</br>
 
-If you want to say **thank you** and/or support the active development of `Fiber`:
+## 👍 مشارکت کنندگان
 
-1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to the project.
-2. Tweet about the project [on your Twitter](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
-4. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+</br>
 
-## ☕ Supporters
+اگر شما میخواهید **تشکر** کنید و یا از توسعه فعال Fiber حمایت کنید :
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny).
+1. یک [GitHub Star](https://github.com/gofiber/fiber/stargazers) به پروژه اضافه کنید.
+2. ارسال توییت درباره Fiber برروی [صفحه توییتر شما](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
+3. یک آموزش یا نظر برروی [Medium](https://medium.com/), [Dev.to](https://dev.to/) یا وبلاگ شخصیتان.
+4. پشتیبانی پروژه با حمایت مالی از طریق [یک فنجان قهوه](https://buymeacoff.ee/fenny).
 
-|                                                            | User                                             | Donation |
+</br>
+
+## ☕ حامیان مالی
+
+</br>
+
+Fiber یک پروژه متن باز است که با کمک مالی برای پرداخت قبض های دامنه, gitbook, netlify, هاست انجام می شود. اگر می خواهید از Fiber حمایت کنید شما می توانید [**از اینجا یک قهوه بخرید**](https://buymeacoff.ee/fenny).
+
+
+</br>
+
+|                                                            | کاربر                                             | حمایت مالی |
 | :--------------------------------------------------------- | :----------------------------------------------- | :------- |
 | ![](https://avatars.githubusercontent.com/u/204341?s=25)   | [@destari](https://github.com/destari)           | ☕ x 10  |
 | ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5   |
@@ -574,19 +708,37 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1   |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1   |
 
-## ‎‍💻 Code Contributors
+</br>
+
+## ‎‍💻 مشارکت کنندگان کد
+
+</br>
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
-## ⭐️ Stargazers
+</br>
+
+## ⭐️ ستاره ها
+
+</br>
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
-## ⚠️ License
+</br></br>
+
+## ⚠️ لایسنس
+
+</br>
+
+<div dir="ltr">
 
 Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
 
-**Third-party library licenses**
+</div>
+
+</br>
+
+**مجوزهای کتابخانه شخص ثالث**
 
 -   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
