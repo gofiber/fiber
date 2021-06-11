@@ -6,6 +6,7 @@ package uuid
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 )
 
@@ -26,7 +27,7 @@ func (uuid *UUID) Scan(src interface{}) error {
 		// see Parse for required string format
 		u, err := Parse(src)
 		if err != nil {
-			return fmt.Errorf("Scan: %v", err)
+			return errors.New("Scan: " + err.Error())
 		}
 
 		*uuid = u
@@ -45,6 +46,7 @@ func (uuid *UUID) Scan(src interface{}) error {
 		copy((*uuid)[:], src)
 
 	default:
+		// here we use %T for type
 		return fmt.Errorf("Scan: unable to scan type %T into UUID", src)
 	}
 
