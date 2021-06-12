@@ -272,7 +272,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 		sess.Set("name", "john")
 
 		// expire this session in 5 seconds
-		sess.ExpiresIn(time.Second * 5)
+		sess.SetExpiry(time.Second * 5)
 
 		// save session
 		err := sess.Save()

@@ -176,8 +176,8 @@ func (s *Session) Keys() []string {
 	return s.data.Keys()
 }
 
-// ExpiresIn set a specific expiration for this session
-func (s *Session) ExpiresIn(exp time.Duration) {
+// SetExpiry sets a specific expiration for this session
+func (s *Session) SetExpiry(exp time.Duration) {
 	s.exp = exp
 }
 
