@@ -255,6 +255,42 @@ func Test_Session_Save(t *testing.T) {
 	})
 }
 
+func Test_Session_Save_Expiration(t *testing.T) {
+	t.Parallel()
+
+	t.Run("save to cookie", func(t *testing.T) {
+		// session store
+		store := New()
+		// fiber instance
+		app := fiber.New()
+		// fiber context
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		// get session
+		sess, _ := store.Get(ctx)
+		// set value
+		sess.Set("name", "john")
+
+		// expire this session in 5 seconds
+		sess.SetExpiry(time.Second * 5)
+
+		// save session
+		err := sess.Save()
+		utils.AssertEqual(t, nil, err)
+
+		// here you need to get the old session yet
+		sess, _ = store.Get(ctx)
+		utils.AssertEqual(t, "john", sess.Get("name"))
+
+		// just to make sure the session has been expired
+		time.Sleep(time.Second * 5)
+
+		// here you should get a new session
+		sess, _ = store.Get(ctx)
+		utils.AssertEqual(t, nil, sess.Get("name"))
+	})
+}
+
 // go test -run Test_Session_Reset
 func Test_Session_Reset(t *testing.T) {
 	t.Parallel()

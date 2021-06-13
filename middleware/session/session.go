@@ -18,6 +18,7 @@ type Session struct {
 	config     *Store        // store configuration
 	data       *data         // key value data
 	byteBuffer *bytes.Buffer // byte buffer for the en- and decode
+	exp        time.Duration // expiration of this session
 }
 
 var sessionPool = sync.Pool{
@@ -40,6 +41,7 @@ func acquireSession() *Session {
 
 func releaseSession(s *Session) {
 	s.id = ""
+	s.exp = 0
 	s.ctx = nil
 	s.config = nil
 	if s.data != nil {
@@ -130,6 +132,11 @@ func (s *Session) Save() error {
 		return nil
 	}
 
+	// Check if session has your own expiration, otherwise use default value
+	if s.exp <= 0 {
+		s.exp = s.config.Expiration
+	}
+
 	// Create session with the session ID if fresh
 	if s.fresh {
 		s.setSession()
@@ -145,7 +152,7 @@ func (s *Session) Save() error {
 	}
 
 	// pass raw bytes with session id to provider
-	if err := s.config.Storage.Set(s.id, s.byteBuffer.Bytes(), s.config.Expiration); err != nil {
+	if err := s.config.Storage.Set(s.id, s.byteBuffer.Bytes(), s.exp); err != nil {
 		return err
 	}
 
@@ -164,6 +171,11 @@ func (s *Session) Keys() []string {
 	return s.data.Keys()
 }
 
+// SetExpiry sets a specific expiration for this session
+func (s *Session) SetExpiry(exp time.Duration) {
+	s.exp = exp
+}
+
 func (s *Session) setSession() {
 	if s.config.source == SourceHeader {
 		s.ctx.Request().Header.SetBytesV(s.config.sessionName, []byte(s.id))
@@ -174,8 +186,8 @@ func (s *Session) setSession() {
 		fcookie.SetValue(s.id)
 		fcookie.SetPath(s.config.CookiePath)
 		fcookie.SetDomain(s.config.CookieDomain)
-		fcookie.SetMaxAge(int(s.config.Expiration.Seconds()))
-		fcookie.SetExpire(time.Now().Add(s.config.Expiration))
+		fcookie.SetMaxAge(int(s.exp.Seconds()))
+		fcookie.SetExpire(time.Now().Add(s.exp))
 		fcookie.SetSecure(s.config.CookieSecure)
 		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 
