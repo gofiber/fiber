@@ -323,19 +323,19 @@ func Test_CacheHeader(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "miss", resp.Header.Get("X-Cache"))
+	utils.AssertEqual(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "hit", resp.Header.Get("X-Cache"))
+	utils.AssertEqual(t, cacheHit, resp.Header.Get("X-Cache"))
 
 	resp, err = app.Test(httptest.NewRequest("POST", "/?cache=12345", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "unreachable", resp.Header.Get("X-Cache"))
+	utils.AssertEqual(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 
 	errRespCached, err := app.Test(httptest.NewRequest("GET", "/error", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "unreachable", errRespCached.Header.Get("X-Cache"))
+	utils.AssertEqual(t, cacheUnreachable, errRespCached.Header.Get("X-Cache"))
 }
 
 func Test_CustomCacheHeader(t *testing.T) {
@@ -351,7 +351,7 @@ func Test_CustomCacheHeader(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "miss", resp.Header.Get("Cache-Status"))
+	utils.AssertEqual(t, cacheMiss, resp.Header.Get("Cache-Status"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
