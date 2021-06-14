@@ -174,6 +174,11 @@ type Config struct {
 	// Default: nil
 	Views Views `json:"-"`
 
+	// Views Layout is the global layout for all template render until override on Render function.
+	//
+	// Default: ""
+	ViewsLayout string `json:"views_layout"`
+
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
 	// The connection's read deadline is reset when the connection opens.

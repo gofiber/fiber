@@ -888,6 +888,12 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	defer bytebufferpool.Put(buf)
 
 	if c.app.config.Views != nil {
+		// Render template based on global layout if exists
+		if len(layouts) == 0 && c.app.config.ViewsLayout != "" {
+			layouts = []string{
+				c.app.config.ViewsLayout,
+			}
+		}
 		// Render template from Views
 		if err := c.app.config.Views.Render(buf, name, bind, layouts...); err != nil {
 			return err

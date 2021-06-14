@@ -1639,7 +1639,11 @@ type testTemplateEngine struct {
 }
 
 func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
-	return t.templates.ExecuteTemplate(w, name, bind)
+	if len(layout) == 0 {
+		return t.templates.ExecuteTemplate(w, name, bind)
+	}
+	_ = t.templates.ExecuteTemplate(w, name, bind)
+	return t.templates.ExecuteTemplate(w, layout[0], bind)
 }
 
 func (t *testTemplateEngine) Load() error {
@@ -1660,6 +1664,21 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 	})
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
+// go test -run Test_Ctx_Render_Engine_With_View_Layout
+func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
+	engine := &testTemplateEngine{}
+	engine.Load()
+	app := New(Config{ViewsLayout: "main.tmpl"})
+	app.config.Views = engine
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	err := c.Render("index.tmpl", Map{
+		"Title": "Hello, World!",
+	})
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World!</h1><h1>I'm main</h1>", string(c.Response().Body()))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Render_Engine -benchmem -count=4
