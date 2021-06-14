@@ -17,6 +17,16 @@ import (
 // time it should not be too short to avoid overwhelming of the system
 const timestampUpdatePeriod = 300 * time.Millisecond
 
+// cache status
+// unreachable: when cache is bypass, or invalid
+// hit: cache is served
+// miss: do not have cache record
+const (
+	cacheUnreachable = "unreachable"
+	cacheHit         = "hit"
+	cacheMiss        = "miss"
+)
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -50,6 +60,7 @@ func New(config ...Config) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Only cache GET methods
 		if c.Method() != fiber.MethodGet {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
 
@@ -92,6 +103,8 @@ func New(config ...Config) fiber.Handler {
 				c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
 			}
 
+			c.Set(cfg.CacheHeader, cacheHit)
+
 			// Return response
 			return nil
 		}
@@ -103,6 +116,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Don't cache response if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return nil
 		}
 
@@ -124,6 +138,8 @@ func New(config ...Config) fiber.Handler {
 			// Store entry in memory
 			manager.set(key, e, cfg.Expiration)
 		}
+
+		c.Set(cfg.CacheHeader, cacheMiss)
 
 		// Finish response
 		return nil

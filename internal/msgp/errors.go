@@ -3,6 +3,7 @@ package msgp
 import (
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 const resumableDefault = false
@@ -110,7 +111,7 @@ type errWrapped struct {
 
 func (e errWrapped) Error() string {
 	if e.ctx != "" {
-		return fmt.Sprintf("%s at %s", e.cause, e.ctx)
+		return strings.Join([]string{e.cause.Error(), "at", e.ctx}, " ")
 	} else {
 		return e.cause.Error()
 	}

@@ -255,6 +255,42 @@ func Test_Session_Save(t *testing.T) {
 	})
 }
 
+func Test_Session_Save_Expiration(t *testing.T) {
+	t.Parallel()
+
+	t.Run("save to cookie", func(t *testing.T) {
+		// session store
+		store := New()
+		// fiber instance
+		app := fiber.New()
+		// fiber context
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		// get session
+		sess, _ := store.Get(ctx)
+		// set value
+		sess.Set("name", "john")
+
+		// expire this session in 5 seconds
+		sess.SetExpiry(time.Second * 5)
+
+		// save session
+		err := sess.Save()
+		utils.AssertEqual(t, nil, err)
+
+		// here you need to get the old session yet
+		sess, _ = store.Get(ctx)
+		utils.AssertEqual(t, "john", sess.Get("name"))
+
+		// just to make sure the session has been expired
+		time.Sleep(time.Second * 5)
+
+		// here you should get a new session
+		sess, _ = store.Get(ctx)
+		utils.AssertEqual(t, nil, sess.Get("name"))
+	})
+}
+
 // go test -run Test_Session_Reset
 func Test_Session_Reset(t *testing.T) {
 	t.Parallel()
@@ -354,6 +390,34 @@ func Test_Session_Cookie_In_Response(t *testing.T) {
 
 	utils.AssertEqual(t, "1", sess.Get("id"))
 	utils.AssertEqual(t, "john", sess.Get("name"))
+}
+
+// go test -run Test_Session_Deletes_Single_Key
+// Regression: https://github.com/gofiber/fiber/issues/1365
+func Test_Session_Deletes_Single_Key(t *testing.T) {
+	t.Parallel()
+	store := New()
+	app := fiber.New()
+
+	ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	sess, err := store.Get(ctx)
+	utils.AssertEqual(t, nil, err)
+	ctx.Request().Header.SetCookie(store.sessionName, sess.ID())
+
+	sess.Set("id", "1")
+	utils.AssertEqual(t, nil, sess.Save())
+
+	sess, err = store.Get(ctx)
+	utils.AssertEqual(t, nil, err)
+	sess.Delete("id")
+	utils.AssertEqual(t, nil, sess.Save())
+
+	sess, err = store.Get(ctx)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, false, sess.Fresh())
+	utils.AssertEqual(t, nil, sess.Get("id"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -49,7 +50,7 @@ func Parse(s string) (UUID, error) {
 	// urn:uuid:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 	case 36 + 9:
 		if strings.ToLower(s[:9]) != "urn:uuid:" {
-			return uuid, fmt.Errorf("invalid urn prefix: %q", s[:9])
+			return uuid, errors.New(`invalid urn prefix: "` + s[:9] + `"`)
 		}
 		s = s[9:]
 
@@ -68,7 +69,7 @@ func Parse(s string) (UUID, error) {
 		}
 		return uuid, nil
 	default:
-		return uuid, fmt.Errorf("invalid UUID length: %d", len(s))
+		return uuid, errors.New("invalid UUID length: " + strconv.Itoa(len(s)))
 	}
 	// s is now at least 36 bytes long
 	// it must be of the form  xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
@@ -97,7 +98,7 @@ func ParseBytes(b []byte) (UUID, error) {
 	case 36: // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 	case 36 + 9: // urn:uuid:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 		if !bytes.Equal(bytes.ToLower(b[:9]), []byte("urn:uuid:")) {
-			return uuid, fmt.Errorf("invalid urn prefix: %q", b[:9])
+			return uuid, errors.New(`invalid urn prefix: "` + string(b[:9]) + `"`)
 		}
 		b = b[9:]
 	case 36 + 2: // {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}
@@ -112,7 +113,7 @@ func ParseBytes(b []byte) (UUID, error) {
 		}
 		return uuid, nil
 	default:
-		return uuid, fmt.Errorf("invalid UUID length: %d", len(b))
+		return uuid, errors.New("invalid UUID length: " + strconv.Itoa(len(b)))
 	}
 	// s is now at least 36 bytes long
 	// it must be of the form  xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx

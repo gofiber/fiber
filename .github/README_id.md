@@ -49,6 +49,9 @@
    <a href="https://github.com/gofiber/fiber/blob/master/.github/README_sa.md">
      <img height="20px" src="https://img.shields.io/badge/SA-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjYwMCIgdmlld0JveD0iMCAwIDEyIDYiIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIj4NCjxwYXRoIGZpbGw9IiNjZTExMjYiIGQ9Im0wLDBoM3Y2aC0zeiIvPg0KPHBhdGggZmlsbD0iIzAwOWEwMCIgZD0ibTMsMGg5djJoLTl6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMywyaDl2MmgtOXoiLz4NCjxwYXRoIGQ9Im0zLDRoOXYyaC05eiIvPg0KPC9zdmc+DQo=">
    </a>
+         <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fa.md">
+     <img height="20px" src="https://raw.githubusercontent.com/gofiber/fiber/master/.github/IR-flag.png">
+   </a>
   <br>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
@@ -105,7 +108,7 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmar
 
 ## ⚙️ Instalasi
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required. 
+Pastikan kamu sudah menginstall Golang ([download](https://golang.org/dl/)). Dengan versi `1.14` atau lebih tinggi [ Direkomendasikan ]. 
 
 Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
