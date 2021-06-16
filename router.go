@@ -282,7 +282,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 
 func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	// For security we want to restrict to the current work directory.
-	if len(root) == 0 {
+	if root == "" {
 		root = "."
 	}
 	// Cannot have an empty prefix
