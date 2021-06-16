@@ -130,7 +130,7 @@ func AppendInt32(b []byte, i int32) []byte { return AppendInt64(b, int64(i)) }
 // AppendUint64 appends a uint64 to the slice
 func AppendUint64(b []byte, u uint64) []byte {
 	switch {
-	case u <= (1<<7)-1:
+	case u < (1 << 7):
 		return append(b, wfixint(uint8(u)))
 
 	case u <= math.MaxUint8:

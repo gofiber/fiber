@@ -400,7 +400,7 @@ func (mw *Writer) WriteInt(i int) error { return mw.WriteInt64(int64(i)) }
 // WriteUint64 writes a uint64 to the writer
 func (mw *Writer) WriteUint64(u uint64) error {
 	switch {
-	case u <= (1<<7)-1:
+	case u < (1 << 7):
 		return mw.push(wfixint(uint8(u)))
 	case u <= math.MaxUint8:
 		return mw.prefix8(muint8, uint8(u))
