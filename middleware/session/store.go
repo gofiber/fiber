@@ -42,7 +42,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 
 	id := s.getSessionID(c)
 
-	if len(id) == 0 {
+	if id == "" {
 		fresh = true
 		var err error
 		if id, err = s.responseCookies(c); err != nil {
