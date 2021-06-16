@@ -8,7 +8,7 @@ const MIMEOctetStream = "application/octet-stream"
 
 // GetMIME returns the content-type of a file extension
 func GetMIME(extension string) (mime string) {
-	if extension == "" {
+	if len(extension) == 0 {
 		return mime
 	}
 	if extension[0] == '.' {
@@ -16,7 +16,7 @@ func GetMIME(extension string) (mime string) {
 	} else {
 		mime = mimeExtensions[extension]
 	}
-	if mime == "" {
+	if len(mime) == 0 {
 		return MIMEOctetStream
 	}
 	return mime
