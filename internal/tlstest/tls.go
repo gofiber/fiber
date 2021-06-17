@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func GetTLSConfigs() (serverTLSConf *tls.Config, clientTLSConf *tls.Config, err error) {
+func GetTLSConfigs() (serverTLSConf, clientTLSConf *tls.Config, err error) {
 	// set up our CA certificate
 	ca := &x509.Certificate{
 		SerialNumber: big.NewInt(2021),

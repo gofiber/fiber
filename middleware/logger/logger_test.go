@@ -166,7 +166,7 @@ func Test_Query_Params(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 
-	expected := fmt.Sprintf("foo=bar&baz=moz")
+	expected := "foo=bar&baz=moz"
 	utils.AssertEqual(t, expected, buf.String())
 }
 
@@ -192,7 +192,7 @@ func Test_Response_Body(t *testing.T) {
 	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 
-	expectedGetResponse := fmt.Sprintf("Sample response body")
+	expectedGetResponse := "Sample response body"
 	utils.AssertEqual(t, expectedGetResponse, buf.String())
 
 	buf.Reset() // Reset buffer to test POST
@@ -200,7 +200,7 @@ func Test_Response_Body(t *testing.T) {
 	_, err = app.Test(httptest.NewRequest("POST", "/test", nil))
 	utils.AssertEqual(t, nil, err)
 
-	expectedPostResponse := fmt.Sprintf("Post in test")
+	expectedPostResponse := "Post in test"
 	utils.AssertEqual(t, expectedPostResponse, buf.String())
 }
 

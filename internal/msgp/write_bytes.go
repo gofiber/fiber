@@ -172,7 +172,7 @@ func AppendUint16(b []byte, u uint16) []byte { return AppendUint64(b, uint64(u))
 func AppendUint32(b []byte, u uint32) []byte { return AppendUint64(b, uint64(u)) }
 
 // AppendBytes appends bytes to the slice as MessagePack 'bin' data
-func AppendBytes(b []byte, bts []byte) []byte {
+func AppendBytes(b, bts []byte) []byte {
 	sz := len(bts)
 	var o []byte
 	var n int
@@ -229,7 +229,7 @@ func AppendString(b []byte, s string) []byte {
 
 // AppendStringFromBytes appends a []byte
 // as a MessagePack 'str' to the slice 'b.'
-func AppendStringFromBytes(b []byte, str []byte) []byte {
+func AppendStringFromBytes(b, str []byte) []byte {
 	sz := len(str)
 	var n int
 	var o []byte
