@@ -630,7 +630,9 @@ const (
 	HeaderContentSecurityPolicyReportOnly = "Content-Security-Policy-Report-Only"
 	HeaderCrossOriginResourcePolicy       = "Cross-Origin-Resource-Policy"
 	HeaderExpectCT                        = "Expect-CT"
+	// Deprecated: use HeaderPermissionsPolicy instead
 	HeaderFeaturePolicy                   = "Feature-Policy"
+	HeaderPermissionsPolicy               = "Permissions-Policy"
 	HeaderPublicKeyPins                   = "Public-Key-Pins"
 	HeaderPublicKeyPinsReportOnly         = "Public-Key-Pins-Report-Only"
 	HeaderStrictTransportSecurity         = "Strict-Transport-Security"
