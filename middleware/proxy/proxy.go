@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/url"
 	"strings"
@@ -96,6 +97,11 @@ func Balancer(config Config) fiber.Handler {
 var client = fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
+}
+
+// WithTlsConfig update http client with a user specified tls.config.
+func WithTlsConfig(tlsConfig *tls.Config) {
+	client.TLSConfig = tlsConfig
 }
 
 // Forward performs the given http request and fills the given http response.
