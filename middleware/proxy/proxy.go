@@ -46,6 +46,8 @@ func Balancer(config Config) fiber.Handler {
 
 			ReadBufferSize:  config.ReadBufferSize,
 			WriteBufferSize: config.WriteBufferSize,
+
+			TLSConfig: client.TLSConfig,
 		}
 
 		lbc.Clients = append(lbc.Clients, client)
@@ -99,7 +101,9 @@ var client = fasthttp.Client{
 	DisablePathNormalizing:   true,
 }
 
-// WithTlsConfig update http client with a user specified tls.config.
+// WithTlsConfig update http client with a user specified tls.config
+// also affects the TLSConfig of fasthttp.LBClient in Balancer.
+// This function should be called before Balancer and Forward.
 func WithTlsConfig(tlsConfig *tls.Config) {
 	client.TLSConfig = tlsConfig
 }

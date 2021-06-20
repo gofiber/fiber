@@ -31,6 +31,12 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
+// if target https site uses a self-signed certificate, you should
+// call WithTlsConfig before Balancer and Forward
+proxy.WithTlsConfig(&tls.Config{
+    InsecureSkipVerify: true,
+})
+
 // Forward to url
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
