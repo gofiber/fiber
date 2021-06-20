@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"crypto/tls"
+	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"io/ioutil"
 	"net"
 	"net/http/httptest"
@@ -101,6 +103,41 @@ func Test_Proxy_Forward(t *testing.T) {
 	b, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "forwarded", string(b))
+}
+
+// go test -run Test_Proxy_Forward_WithTlsConfig
+func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
+	t.Parallel()
+
+	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+	utils.AssertEqual(t, nil, err)
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
+	ln = tls.NewListener(ln, serverTLSConf)
+
+	app := fiber.New()
+
+	app.Get("/tlsfwd", func(c *fiber.Ctx) error {
+		return c.SendString("tls forward")
+	})
+
+	// disable certificate verification
+	WithTlsConfig(&tls.Config{
+		InsecureSkipVerify: true,
+	})
+	app.Use(Forward("https://" + ln.Addr().String() + "/tlsfwd"))
+
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+
+	code, body, errs := fiber.Get("https://" + ln.Addr().String()).
+		TLSConfig(clientTLSConf).
+		String()
+
+	utils.AssertEqual(t, 0, len(errs))
+	utils.AssertEqual(t, fiber.StatusOK, code)
+	utils.AssertEqual(t, "tls forward", body)
 }
 
 // go test -run Test_Proxy_Modify_Response
