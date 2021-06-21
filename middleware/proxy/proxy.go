@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
@@ -39,6 +40,7 @@ func Balancer(config Config) fiber.Handler {
 			panic(err)
 		}
 
+		rwMutex.RLock()
 		client := &fasthttp.HostClient{
 			NoDefaultUserAgentHeader: true,
 			DisablePathNormalizing:   true,
@@ -49,6 +51,7 @@ func Balancer(config Config) fiber.Handler {
 
 			TLSConfig: clientTlsConfig,
 		}
+		rwMutex.RUnlock()
 
 		lbc.Clients = append(lbc.Clients, client)
 	}
@@ -96,6 +99,7 @@ func Balancer(config Config) fiber.Handler {
 	}
 }
 
+var rwMutex sync.RWMutex
 var clientTlsConfig *tls.Config
 
 var client = fasthttp.Client{
@@ -107,8 +111,10 @@ var client = fasthttp.Client{
 // also affects the TLSConfig of fasthttp.LBClient in Balancer.
 // This function should be called before Balancer and Forward.
 func WithTlsConfig(tlsConfig *tls.Config) {
+	rwMutex.Lock()
 	clientTlsConfig = tlsConfig
 	client.TLSConfig = tlsConfig
+	rwMutex.Unlock()
 }
 
 // Forward performs the given http request and fills the given http response.
