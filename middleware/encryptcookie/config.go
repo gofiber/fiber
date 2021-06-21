@@ -9,22 +9,23 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// Array of cookie keys that should not be encrypted
+	// Array of cookie keys that should not be encrypted.
 	//
 	// Optional. Default: []
 	Except []string
 
-	// Base64 unique key to encode & decode cookies
+	// Base64 encoded unique key to encode & decode cookies.
 	//
-	// Optional. Default: Generating new key on every run
+	// Required. Key length should be 32 characters.
+	// you may use `encryptcookie.GenerateKey(32)` to generate a new key.
 	Key string
 
-	// Custom function to encrypt cookies
+	// Custom function to encrypt cookies.
 	//
 	// Optional. Default: EncryptCookie
 	Encryptor func(decryptedString, key string) (string, error)
 
-	// Custom function to decrypt cookies
+	// Custom function to decrypt cookies.
 	//
 	// Optional. Default: DecryptCookie
 	Decryptor func(encryptedString, key string) (string, error)
@@ -68,7 +69,7 @@ func configDefault(config ...Config) Config {
 	}
 
 	if cfg.Key == "" {
-		panic("Fiber: Encrypt cookie middleware requires key")
+		panic("fiber: encrypt cookie middleware requires key")
 	}
 
 	return cfg
