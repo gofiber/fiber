@@ -549,7 +549,7 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 
 ## ☕ 支持者
 
-`Fibre`是一个开源项目，依靠捐赠来支付账单，例如我们的域名，`gitbook`，`netlify`和无服务器托管。如果要支持`Fiber`，可以 ☕ [**在这里买一杯咖啡**](https://buymeacoff.ee/fenny)
+`Fiber`是一个开源项目，依靠捐赠来支付账单，例如我们的域名，`gitbook`，`netlify`和无服务器托管。如果要支持`Fiber`，可以 ☕ [**在这里买一杯咖啡**](https://buymeacoff.ee/fenny)
 
 |                                                            | User                                             | Donation |
 | :--------------------------------------------------------- | :----------------------------------------------- | :------- |
