@@ -240,9 +240,15 @@ func (c *Ctx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) Body() []byte {
-	encoding := utils.UnsafeString(c.Request().Header.Peek(HeaderContentEncoding))
 	var err error
+	var encoding string
 	var body []byte
+	// faster than peek
+	c.Request().Header.VisitAll(func(key, value []byte) {
+		if utils.UnsafeString(key) == HeaderContentEncoding {
+			encoding = utils.UnsafeString(value)
+		}
+	})
 
 	switch encoding {
 	case StrGzip:
