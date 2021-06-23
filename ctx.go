@@ -242,24 +242,36 @@ func (c *Ctx) BaseURL() string {
 // Body contains the raw body submitted in a POST request.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (c *Ctx) Body() ([]byte, error) {
+func (c *Ctx) Body() []byte {
 	encodingMatches := contentEncodingRe.FindStringSubmatch(c.Request().Header.String())
 	if len(encodingMatches) != 2 {
 		//means that there is no Content-Encoding header
-		return c.fasthttp.Request.Body(), nil
+		return c.fasthttp.Request.Body()
 	}
 
 	headerValue := encodingMatches[1]
 
 	switch headerValue {
 	case "gzip":
-		return c.fasthttp.Request.BodyGunzip()
+		body, err := c.fasthttp.Request.BodyGunzip()
+		if err != nil {
+			return []byte(err.Error())
+		}
+		return body
 	case "br", "brotli":
-		return c.fasthttp.Request.BodyUnbrotli()
+		body, err := c.fasthttp.Request.BodyUnbrotli()
+		if err != nil {
+			return []byte(err.Error())
+		}
+		return body
 	case "deflate":
-		return c.fasthttp.Request.BodyInflate()
+		body, err := c.fasthttp.Request.BodyInflate()
+		if err != nil {
+			return []byte(err.Error())
+		}
+		return body
 	default:
-		return c.fasthttp.Request.Body(), nil
+		return c.fasthttp.Request.Body()
 	}
 }
 
