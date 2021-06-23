@@ -241,10 +241,6 @@ func (c *Ctx) BaseURL() string {
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) Body() []byte {
 	encoding := utils.UnsafeString(c.Request().Header.Peek(HeaderContentEncoding))
-	if len(encoding) == 0 {
-		//means that there is no Content-Encoding header
-		return c.fasthttp.Request.Body()
-	}
 	var err error
 	var body []byte
 
