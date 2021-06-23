@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +33,9 @@ import (
 const maxParams = 30
 
 const queryTag = "query"
+
+//contentEncodingRe is used to extract the value of the Content-Encoding header from the string headers
+var contentEncodingRe = regexp.MustCompile(`(?:Content-Encoding).(.*)`)
 
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
@@ -238,8 +242,25 @@ func (c *Ctx) BaseURL() string {
 // Body contains the raw body submitted in a POST request.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
-func (c *Ctx) Body() []byte {
-	return c.fasthttp.Request.Body()
+func (c *Ctx) Body() ([]byte, error) {
+	encodingMatches := contentEncodingRe.FindStringSubmatch(c.Request().Header.String())
+	if len(encodingMatches) != 2 {
+		//means that there is no Content-Encoding header
+		return c.fasthttp.Request.Body(), nil
+	}
+
+	headerValue := encodingMatches[1]
+
+	switch headerValue {
+	case "gzip":
+		return c.fasthttp.Request.BodyGunzip()
+	case "br", "brotli":
+		return c.fasthttp.Request.BodyUnbrotli()
+	case "deflate":
+		return c.fasthttp.Request.BodyInflate()
+	default:
+		return c.fasthttp.Request.Body(), nil
+	}
 }
 
 // decoderPool helps to improve BodyParser's and QueryParser's performance
