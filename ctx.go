@@ -251,7 +251,7 @@ func (c *Ctx) Body() []byte {
 	switch encoding {
 	case StrGzip:
 		body, err = c.fasthttp.Request.BodyGunzip()
-	case StrBr:
+	case StrBr, StrBrotli:
 		body, err = c.fasthttp.Request.BodyUnbrotli()
 	case StrDeflate:
 		body, err = c.fasthttp.Request.BodyInflate()
