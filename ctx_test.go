@@ -10,6 +10,7 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -300,6 +301,25 @@ func Test_Ctx_Body(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	c.Request().SetBody([]byte("john=doe"))
+	utils.AssertEqual(t, []byte("john=doe"), c.Body())
+}
+
+// go test -run Test_Ctx_Body_With_Compression
+func Test_Ctx_Body_With_Compression(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set("Content-Encoding", "gzip")
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	_, err := gz.Write([]byte("john=doe"))
+	utils.AssertEqual(t, nil, err)
+	err = gz.Flush()
+	utils.AssertEqual(t, nil, err)
+	err = gz.Close()
+	utils.AssertEqual(t, nil, err)
+	c.Request().SetBody(b.Bytes())
 	utils.AssertEqual(t, []byte("john=doe"), c.Body())
 }
 
