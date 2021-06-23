@@ -12,7 +12,7 @@ import (
 	"sync"
 )
 
-var invalidPath = errors.New("schema: invalid path")
+var errInvalidPath = errors.New("schema: invalid path")
 
 // newCache returns a new cache.
 func newCache() *cache {
@@ -53,13 +53,13 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 	keys := strings.Split(p, ".")
 	for i := 0; i < len(keys); i++ {
 		if t.Kind() != reflect.Struct {
-			return nil, invalidPath
+			return nil, errInvalidPath
 		}
 		if struc = c.get(t); struc == nil {
-			return nil, invalidPath
+			return nil, errInvalidPath
 		}
 		if field = struc.get(keys[i]); field == nil {
-			return nil, invalidPath
+			return nil, errInvalidPath
 		}
 		// Valid field. Append index.
 		path = append(path, field.name)
@@ -72,10 +72,10 @@ func (c *cache) parsePath(p string, t reflect.Type) ([]pathPart, error) {
 			// So checking i+2 is not necessary anymore.
 			i++
 			if i+1 > len(keys) {
-				return nil, invalidPath
+				return nil, errInvalidPath
 			}
 			if index64, err = strconv.ParseInt(keys[i], 10, 0); err != nil {
-				return nil, invalidPath
+				return nil, errInvalidPath
 			}
 			parts = append(parts, pathPart{
 				path:  path,

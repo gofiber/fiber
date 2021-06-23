@@ -247,7 +247,7 @@ func Test_Cache_CustomNext(t *testing.T) {
 
 	app.Use(New(Config{
 		Next: func(c *fiber.Ctx) bool {
-			return !(c.Response().StatusCode() == fiber.StatusOK)
+			return c.Response().StatusCode() != fiber.StatusOK
 		},
 		CacheControl: true,
 	}))
@@ -305,7 +305,7 @@ func Test_CacheHeader(t *testing.T) {
 	app.Use(New(Config{
 		Expiration: 10 * time.Second,
 		Next: func(c *fiber.Ctx) bool {
-			return !(c.Response().StatusCode() == fiber.StatusOK)
+			return c.Response().StatusCode() != fiber.StatusOK
 		},
 	}))
 
