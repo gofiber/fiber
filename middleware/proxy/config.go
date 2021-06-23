@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"crypto/tls"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -45,6 +46,9 @@ type Config struct {
 
 	// Per-connection buffer size for responses' writing.
 	WriteBufferSize int
+
+	// tls config for the http client
+	TlsConfig *tls.Config
 }
 
 // ConfigDefault is the default config

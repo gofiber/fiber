@@ -119,6 +119,9 @@ type Config struct {
     
 	// Per-connection buffer size for responses' writing.
 	WriteBufferSize int
+
+	// tls config for the http client
+	TlsConfig *tls.Config
 }
 ```
 
@@ -127,6 +130,9 @@ type Config struct {
 ```go
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next: nil,
+    Next:           nil,
+    ModifyRequest:  nil,
+    ModifyResponse: nil,
+    Timeout:        fasthttp.DefaultLBClientTimeout,
 }
 ```

@@ -3,13 +3,11 @@ package proxy
 import (
 	"crypto/tls"
 	"fmt"
-	"net/url"
-	"strings"
-	"sync"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
+	"net/url"
+	"strings"
 )
 
 // New is deprecated
@@ -40,7 +38,6 @@ func Balancer(config Config) fiber.Handler {
 			panic(err)
 		}
 
-		rwMutex.RLock()
 		client := &fasthttp.HostClient{
 			NoDefaultUserAgentHeader: true,
 			DisablePathNormalizing:   true,
@@ -49,9 +46,8 @@ func Balancer(config Config) fiber.Handler {
 			ReadBufferSize:  config.ReadBufferSize,
 			WriteBufferSize: config.WriteBufferSize,
 
-			TLSConfig: clientTlsConfig,
+			TLSConfig: config.TlsConfig,
 		}
-		rwMutex.RUnlock()
 
 		lbc.Clients = append(lbc.Clients, client)
 	}
@@ -99,9 +95,6 @@ func Balancer(config Config) fiber.Handler {
 	}
 }
 
-var rwMutex sync.RWMutex
-var clientTlsConfig *tls.Config
-
 var client = fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
@@ -111,10 +104,7 @@ var client = fasthttp.Client{
 // also affects the TLSConfig of fasthttp.LBClient in Balancer.
 // This function should be called before Balancer and Forward.
 func WithTlsConfig(tlsConfig *tls.Config) {
-	rwMutex.Lock()
-	clientTlsConfig = tlsConfig
 	client.TLSConfig = tlsConfig
-	rwMutex.Unlock()
 }
 
 // Forward performs the given http request and fills the given http response.
