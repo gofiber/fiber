@@ -33,6 +33,7 @@ const maxParams = 30
 
 const queryTag = "query"
 
+
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
@@ -239,34 +240,30 @@ func (c *Ctx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) Body() []byte {
-	encoding := string(c.Request().Header.Peek("Content-Encoding"))
+	encoding := utils.UnsafeString(c.Request().Header.Peek(HeaderContentEncoding))
 	if len(encoding) == 0 {
 		//means that there is no Content-Encoding header
 		return c.fasthttp.Request.Body()
 	}
+	var err error
+	var body []byte
 
 	switch encoding {
-	case "gzip":
-		body, err := c.fasthttp.Request.BodyGunzip()
-		if err != nil {
-			return []byte(err.Error())
-		}
-		return body
-	case "br", "brotli":
-		body, err := c.fasthttp.Request.BodyUnbrotli()
-		if err != nil {
-			return []byte(err.Error())
-		}
-		return body
-	case "deflate":
-		body, err := c.fasthttp.Request.BodyInflate()
-		if err != nil {
-			return []byte(err.Error())
-		}
-		return body
+	case StrGzip:
+		body, err = c.fasthttp.Request.BodyGunzip()
+	case StrBr:
+		body, err = c.fasthttp.Request.BodyUnbrotli()
+	case StrDeflate:
+		body, err = c.fasthttp.Request.BodyInflate()
 	default:
-		return c.fasthttp.Request.Body()
+		body = c.fasthttp.Request.Body()
 	}
+
+	if err != nil {
+		return []byte(err.Error())
+	}
+
+	return body
 }
 
 // decoderPool helps to improve BodyParser's and QueryParser's performance
