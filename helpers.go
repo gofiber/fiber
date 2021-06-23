@@ -687,8 +687,8 @@ const (
 
 //Compression types
 const (
-	StrGzip                = "gzip"
-	StrBr                  = "br"
-	StrDeflate             = "deflate"
-	StrBrotli 			   = "brotli"
+	StrGzip    = "gzip"
+	StrBr      = "br"
+	StrDeflate = "deflate"
+	StrBrotli  = "brotli"
 )
