@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,9 +32,6 @@ import (
 const maxParams = 30
 
 const queryTag = "query"
-
-//contentEncodingRe is used to extract the value of the Content-Encoding header from the string headers
-var contentEncodingRe = regexp.MustCompile(`(?:Content-Encoding).(.*)`)
 
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
@@ -243,15 +239,13 @@ func (c *Ctx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) Body() []byte {
-	encodingMatches := contentEncodingRe.FindStringSubmatch(c.Request().Header.String())
-	if len(encodingMatches) != 2 {
+	encoding := string(c.Request().Header.Peek("Content-Encoding"))
+	if len(encoding) == 0 {
 		//means that there is no Content-Encoding header
 		return c.fasthttp.Request.Body()
 	}
 
-	headerValue := encodingMatches[1]
-
-	switch headerValue {
+	switch encoding {
 	case "gzip":
 		body, err := c.fasthttp.Request.BodyGunzip()
 		if err != nil {
