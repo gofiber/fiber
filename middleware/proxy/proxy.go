@@ -101,8 +101,7 @@ var client = fasthttp.Client{
 }
 
 // WithTlsConfig update http client with a user specified tls.config
-// also affects the TLSConfig of fasthttp.LBClient in Balancer.
-// This function should be called before Balancer and Forward.
+// This function should be called before Do and Forward.
 func WithTlsConfig(tlsConfig *tls.Config) {
 	client.TLSConfig = tlsConfig
 }
