@@ -56,3 +56,27 @@ func TestStore_getSessionID(t *testing.T) {
 		utils.AssertEqual(t, expectedID, store.getSessionID(ctx))
 	})
 }
+
+// go test -run TestStore_Get
+// Regression: https://github.com/gofiber/fiber/issues/1408
+func TestStore_Get(t *testing.T) {
+	unexpectedID := "test-session-id"
+	// fiber instance
+	app := fiber.New()
+	t.Run("regenerate a session when session is invalid", func(t *testing.T) {
+		// session store
+		store := New()
+		// fiber context
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+		// set cookie
+		ctx.Request().Header.SetCookie(store.sessionName, unexpectedID)
+
+		acquiredSession, err := store.Get(ctx)
+		utils.AssertEqual(t, err, nil)
+
+		if acquiredSession.ID() == unexpectedID {
+			t.Fatal("server should not accept the unexpectedID which is not in the store")
+		}
+	})
+}
