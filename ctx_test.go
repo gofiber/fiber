@@ -369,7 +369,6 @@ func Test_Ctx_BodyParser(t *testing.T) {
 
 	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
 	testDecodeParser(MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
-	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
 	testDecodeParser(MIMEApplicationForm, "name=john")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
 
