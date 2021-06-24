@@ -10,6 +10,7 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -301,6 +302,49 @@ func Test_Ctx_Body(t *testing.T) {
 	defer app.ReleaseCtx(c)
 	c.Request().SetBody([]byte("john=doe"))
 	utils.AssertEqual(t, []byte("john=doe"), c.Body())
+}
+
+// go test -run Test_Ctx_Body_With_Compression
+func Test_Ctx_Body_With_Compression(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set("Content-Encoding", "gzip")
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	_, err := gz.Write([]byte("john=doe"))
+	utils.AssertEqual(t, nil, err)
+	err = gz.Flush()
+	utils.AssertEqual(t, nil, err)
+	err = gz.Close()
+	utils.AssertEqual(t, nil, err)
+	c.Request().SetBody(b.Bytes())
+	utils.AssertEqual(t, []byte("john=doe"), c.Body())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
+func Benchmark_Ctx_Body_With_Compression(b *testing.B){
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set("Content-Encoding", "gzip")
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte("john=doe"))
+	utils.AssertEqual(b, nil, err)
+	err = gz.Flush()
+	utils.AssertEqual(b, nil, err)
+	err = gz.Close()
+	utils.AssertEqual(b, nil, err)
+
+	c.Request().SetBody(buf.Bytes())
+
+	for i := 0; i < b.N; i++{
+		_ = c.Body()
+	}
+
+	utils.AssertEqual(b, []byte("john=doe"), c.Body())
 }
 
 // go test -run Test_Ctx_BodyParser
@@ -1633,6 +1677,7 @@ func Test_Ctx_Render(t *testing.T) {
 	utils.AssertEqual(t, false, err == nil)
 }
 
+
 type testTemplateEngine struct {
 	mu        sync.Mutex
 	templates *template.Template
@@ -2195,6 +2240,7 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 		})
 	}
 }
+
 
 func Test_Ctx_String(t *testing.T) {
 	t.Parallel()

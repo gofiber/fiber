@@ -33,6 +33,7 @@ const maxParams = 30
 
 const queryTag = "query"
 
+
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
@@ -239,7 +240,32 @@ func (c *Ctx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) Body() []byte {
-	return c.fasthttp.Request.Body()
+	var err error
+	var encoding string
+	var body []byte
+	// faster than peek
+	c.Request().Header.VisitAll(func(key, value []byte) {
+		if utils.UnsafeString(key) == HeaderContentEncoding {
+			encoding = utils.UnsafeString(value)
+		}
+	})
+
+	switch encoding {
+	case StrGzip:
+		body, err = c.fasthttp.Request.BodyGunzip()
+	case StrBr, StrBrotli:
+		body, err = c.fasthttp.Request.BodyUnbrotli()
+	case StrDeflate:
+		body, err = c.fasthttp.Request.BodyInflate()
+	default:
+		body = c.fasthttp.Request.Body()
+	}
+
+	if err != nil {
+		return []byte(err.Error())
+	}
+
+	return body
 }
 
 // decoderPool helps to improve BodyParser's and QueryParser's performance
