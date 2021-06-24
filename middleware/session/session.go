@@ -120,7 +120,10 @@ func (s *Session) Regenerate() error {
 
 	// Create new ID
 	s.id = s.config.KeyGenerator()
-
+	
+	// We assign a new ID to the session, so the session must be fresh
+	s.fresh = true
+	
 	return nil
 }
 
