@@ -82,8 +82,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 			// raw is nil, which means id is not in the storage
 			// so it means that id is not valid (mainly because of id is expired or user provides an invalid id)
 			// therefore, we regenerate a id
-			sess.fresh = true
-			sess.id = s.KeyGenerator()
+			sess.refresh()
 		}
 	}
 
