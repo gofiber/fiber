@@ -10,7 +10,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var testKey = GenerateKey(32)
+var testKey = GenerateKey()
 
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 	app := fiber.New()

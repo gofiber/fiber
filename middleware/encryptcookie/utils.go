@@ -66,8 +66,8 @@ func DecryptCookie(value, key string) (string, error) {
 }
 
 // GenerateKey Generates an encryption key
-func GenerateKey(length int) string {
-	ret := make([]byte, length)
+func GenerateKey() string {
+	ret := make([]byte, 32)
 
 	if _, err := rand.Read(ret); err != nil {
 		panic(err)

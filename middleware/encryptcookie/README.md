@@ -25,8 +25,8 @@ Then create a Fiber app with `app := fiber.New()`.
 ## Minimum Config
 
 ```go
-// `Key` must be a 32 character string. It's used to encrpyt the values, so make sure it is random and keep it secret. 
-// You can call `encryptcookie.GenerateKey()` to create a random key for you. 
+// `Key` must be a 32 character string. It's used to encrpyt the values, so make sure it is random and keep it secret.
+// You can call `encryptcookie.GenerateKey()` to create a random key for you.
 // Make sure not to set `Key` to `encryptcookie.GenerateKey()` because that will create a new key every run.
 app.Use(encryptcookie.New(encryptcookie.Config{
     Key: "secret-thirty-2-character-string",
@@ -50,7 +50,7 @@ type Config struct {
 	// Base64 encoded unique key to encode & decode cookies.
 	//
 	// Required. Key length should be 32 characters.
-	// You may use `encryptcookie.GenerateKey(32)` to generate a new key.
+	// You may use `encryptcookie.GenerateKey()` to generate a new key.
 	Key string
 
 	// Custom function to encrypt cookies.
