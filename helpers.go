@@ -684,3 +684,11 @@ const (
 	NetworkTCP4 = "tcp4"
 	NetworkTCP6 = "tcp6"
 )
+
+//Compression types
+const (
+	StrGzip    = "gzip"
+	StrBr      = "br"
+	StrDeflate = "deflate"
+	StrBrotli  = "brotli"
+)
