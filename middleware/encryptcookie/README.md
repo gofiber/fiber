@@ -6,9 +6,11 @@ Encrypt middleware for [Fiber](https://github.com/gofiber/fiber) which encrypts 
 ## Signaures
 
 ```go
+// Intitializes the middleware
 func New(config ...Config) fiber.Handler
 
-func GenerateKey(length int) string
+// Returns a random 32 character long string
+func GenerateKey() string
 ```
 
 ## Setup
