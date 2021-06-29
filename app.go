@@ -302,7 +302,7 @@ type Config struct {
 	// But when you’re behind a proxy, the actual host may be stored in an X-Forwarded-Host header.
 	//
 	// If you are behind a proxy, and you don't want your headers were spoofed, you should enable TrustedProxyCheck.
-	// If You enable EnableTrustedProxyCheck and leave TrustedProxies empty fiber will skip
+	// If you enable EnableTrustedProxyCheck and leave TrustedProxies empty Fiber will skip
 	// all headers that could be spoofed.
 	// If request ip in TrustedProxies whitelist then:
 	//   1. c.Protocol() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
