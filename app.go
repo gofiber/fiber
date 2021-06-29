@@ -301,7 +301,7 @@ type Config struct {
 	// For example, the Host HTTP header is usually used to return the requested host.
 	// But when you’re behind a proxy, the actual host may be stored in an X-Forwarded-Host header.
 	//
-	// If you are behind a proxy, and you don't want your headers were spoofed, you should enable TrustedProxyCheck.
+	// If you are behind a proxy, you should enable TrustedProxyCheck to prevent header spoofing.
 	// If you enable EnableTrustedProxyCheck and leave TrustedProxies empty Fiber will skip
 	// all headers that could be spoofed.
 	// If request ip in TrustedProxies whitelist then:
