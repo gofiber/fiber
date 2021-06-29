@@ -721,7 +721,7 @@ func (c *Ctx) Path(override ...string) string {
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
-// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) Protocol() string {
 	if c.fasthttp.IsTLS() {
 		return "https"
