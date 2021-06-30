@@ -118,7 +118,7 @@ func (s *Session) Regenerate() error {
 		return err
 	}
 
-	// generate a new session, and set session.fresh to be true
+	// Generate a new session, and set session.fresh to true
 	s.refresh()
 
 	return nil
