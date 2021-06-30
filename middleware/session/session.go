@@ -118,10 +118,19 @@ func (s *Session) Regenerate() error {
 		return err
 	}
 
-	// Create new ID
-	s.id = s.config.KeyGenerator()
+	// Generate a new session, and set session.fresh to true
+	s.refresh()
 
 	return nil
+}
+
+// refresh generates a new session, and set session.fresh to be true
+func (s *Session) refresh() {
+	// Create a new id
+	s.id = s.config.KeyGenerator()
+
+	// We assign a new id to the session, so the session must be fresh
+	s.fresh = true
 }
 
 // Save will update the storage and client cookie
