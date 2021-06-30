@@ -295,6 +295,34 @@ type Config struct {
 	//
 	// Default: NetworkTCP4
 	Network string
+
+	// If you find yourself behind some sort of proxy, like a load balancer,
+	// then certain header information may be sent to you using special X-Forwarded-* headers or the Forwarded header.
+	// For example, the Host HTTP header is usually used to return the requested host.
+	// But when you’re behind a proxy, the actual host may be stored in an X-Forwarded-Host header.
+	//
+	// If you are behind a proxy, you should enable TrustedProxyCheck to prevent header spoofing.
+	// If you enable EnableTrustedProxyCheck and leave TrustedProxies empty Fiber will skip
+	// all headers that could be spoofed.
+	// If request ip in TrustedProxies whitelist then:
+	//   1. c.Protocol() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
+	//   2. c.IP() get value from ProxyHeader header.
+	//   3. c.Hostname() get value from X-Forwarded-Host header
+	// But if request ip NOT in Trusted Proxies whitelist then:
+	//   1. c.Protocol() WON't get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
+	//    will return https in case when tls connection is handled by the app, of http otherwise
+	//   2. c.IP() WON'T get value from ProxyHeader header, will return RemoteIP() from fasthttp context
+	//   3. c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
+	//    will be used to get the hostname.
+	//
+	// Default: false
+	EnableTrustedProxyCheck bool `json:"enable_trusted_proxy_check"`
+
+	// Read EnableTrustedProxyCheck doc.
+	//
+	// Default: []string
+	TrustedProxies    []string `json:"trusted_proxies"`
+	trustedProxiesMap map[string]struct{}
 }
 
 // Static defines configuration options when defining static assets.
@@ -415,6 +443,11 @@ func New(config ...Config) *App {
 	}
 	if app.config.Network == "" {
 		app.config.Network = NetworkTCP4
+	}
+
+	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
+	for _, ip := range app.config.TrustedProxies {
+		app.config.trustedProxiesMap[ip] = struct{}{}
 	}
 
 	// Init app

@@ -526,18 +526,26 @@ func (c *Ctx) Get(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
 }
 
-// Hostname contains the hostname derived from the Host HTTP header.
+// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
+// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) Hostname() string {
+	if c.IsProxyTrusted() {
+		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
+			return host
+		}
+	}
 	return c.app.getString(c.fasthttp.Request.URI().Host())
 }
 
 // IP returns the remote IP address of the request.
+// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) IP() string {
-	if len(c.app.config.ProxyHeader) > 0 {
+	if c.IsProxyTrusted() && len(c.app.config.ProxyHeader) > 0 {
 		return c.Get(c.app.config.ProxyHeader)
 	}
+
 	return c.fasthttp.RemoteIP().String()
 }
 
@@ -739,11 +747,15 @@ func (c *Ctx) Path(override ...string) string {
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
+// Use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) Protocol() string {
 	if c.fasthttp.IsTLS() {
 		return "https"
 	}
 	scheme := "http"
+	if !c.IsProxyTrusted() {
+		return scheme
+	}
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
 		if len(key) < 12 {
 			return // X-Forwarded-
@@ -1194,4 +1206,13 @@ func (c *Ctx) configDependentPaths() {
 	if len(c.detectionPath) >= 3 {
 		c.treePath = c.detectionPath[:3]
 	}
+}
+
+func (c *Ctx) IsProxyTrusted() bool {
+	if !c.app.config.EnableTrustedProxyCheck {
+		return true
+	}
+
+	_, trustProxy := c.app.config.trustedProxiesMap[c.fasthttp.RemoteIP().String()]
+	return trustProxy
 }
