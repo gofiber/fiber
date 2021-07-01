@@ -1262,9 +1262,7 @@ func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 }
 
 func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
-	New(Config{Prefork: true, AppName: func() string {
-		return "Test App v1.0.1"
-	}}).
+	New(Config{Prefork: true, AppName: "Test App v1.0.1"}).
 		startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
 }
 

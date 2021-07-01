@@ -268,7 +268,7 @@ type Config struct {
 	// This function allows to setup app name for the app
 	//
 	// Default: nil
-	AppName func() string
+	AppName string `json:"app_name"`
 
 	// Aggressively reduces memory usage at the cost of higher CPU usage
 	// if set to true.
@@ -948,8 +948,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	mainLogo := cBlack + " ┌───────────────────────────────────────────────────┐\n"
-	if app.config.AppName != nil {
-		mainLogo += " │ " + centerValue(app.config.AppName(), 49) + " │\n"
+	if app.config.AppName != "" {
+		mainLogo += " │ " + centerValue(app.config.AppName, 49) + " │\n"
 	}
 	mainLogo += " │ " + centerValue(" Fiber v"+Version, 49) + " │\n"
 
