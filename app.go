@@ -265,6 +265,11 @@ type Config struct {
 	// Default: false
 	DisableStartupMessage bool `json:"disable_startup_message"`
 
+	// This function allows to setup app name for the app
+	//
+	// Default: nil
+	AppName func() string `json:"app_name"`
+
 	// Aggressively reduces memory usage at the cost of higher CPU usage
 	// if set to true.
 	//
@@ -942,9 +947,11 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		procs = "1"
 	}
 
-	mainLogo := cBlack +
-		" ┌───────────────────────────────────────────────────┐\n" +
-		" │ " + centerValue(" Fiber v"+Version, 49) + " │\n"
+	mainLogo := cBlack + " ┌───────────────────────────────────────────────────┐\n"
+	if app.config.AppName != nil {
+		mainLogo += " │ " + centerValue(app.config.AppName(), 49) + " │\n"
+	}
+	mainLogo += " │ " + centerValue(" Fiber v"+Version, 49) + " │\n"
 
 	if host == "0.0.0.0" {
 		mainLogo +=
