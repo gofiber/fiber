@@ -268,7 +268,7 @@ type Config struct {
 	// This function allows to setup app name for the app
 	//
 	// Default: nil
-	AppName func() string `json:"app_name"`
+	AppName func() string
 
 	// Aggressively reduces memory usage at the cost of higher CPU usage
 	// if set to true.
