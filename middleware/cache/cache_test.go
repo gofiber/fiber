@@ -247,7 +247,7 @@ func Test_Cache_CustomNext(t *testing.T) {
 
 	app.Use(New(Config{
 		Next: func(c *fiber.Ctx) bool {
-			return !(c.Response().StatusCode() == fiber.StatusOK)
+			return c.Response().StatusCode() != fiber.StatusOK
 		},
 		CacheControl: true,
 	}))
@@ -297,6 +297,61 @@ func Test_CustomKey(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, called)
 
+}
+
+func Test_CacheHeader(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Expiration: 10 * time.Second,
+		Next: func(c *fiber.Ctx) bool {
+			return c.Response().StatusCode() != fiber.StatusOK
+		},
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	app.Post("/", func(c *fiber.Ctx) error {
+		return c.SendString(c.Query("cache"))
+	})
+
+	app.Get("/error", func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusInternalServerError).SendString(time.Now().String())
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, cacheHit, resp.Header.Get("X-Cache"))
+
+	resp, err = app.Test(httptest.NewRequest("POST", "/?cache=12345", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+
+	errRespCached, err := app.Test(httptest.NewRequest("GET", "/error", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, cacheUnreachable, errRespCached.Header.Get("X-Cache"))
+}
+
+func Test_CustomCacheHeader(t *testing.T) {
+	app := fiber.New()
+
+	app.Use(New(Config{
+		CacheHeader: "Cache-Status",
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, cacheMiss, resp.Header.Get("Cache-Status"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4

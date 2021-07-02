@@ -630,7 +630,9 @@ const (
 	HeaderContentSecurityPolicyReportOnly = "Content-Security-Policy-Report-Only"
 	HeaderCrossOriginResourcePolicy       = "Cross-Origin-Resource-Policy"
 	HeaderExpectCT                        = "Expect-CT"
+	// Deprecated: use HeaderPermissionsPolicy instead
 	HeaderFeaturePolicy                   = "Feature-Policy"
+	HeaderPermissionsPolicy               = "Permissions-Policy"
 	HeaderPublicKeyPins                   = "Public-Key-Pins"
 	HeaderPublicKeyPinsReportOnly         = "Public-Key-Pins-Report-Only"
 	HeaderStrictTransportSecurity         = "Strict-Transport-Security"
@@ -681,4 +683,12 @@ const (
 	NetworkTCP  = "tcp"
 	NetworkTCP4 = "tcp4"
 	NetworkTCP6 = "tcp6"
+)
+
+//Compression types
+const (
+	StrGzip    = "gzip"
+	StrBr      = "br"
+	StrDeflate = "deflate"
+	StrBrotli  = "brotli"
 )

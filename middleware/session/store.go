@@ -38,10 +38,9 @@ func (s *Store) RegisterType(i interface{}) {
 // Get will get/create a session
 func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	var fresh bool
-	var loadDada = true
+	var loadData = true
 
-	// Get key from cookie
-	id := c.Cookies(s.CookieName)
+	id := s.getSessionID(c)
 
 	if len(id) == 0 {
 		fresh = true
@@ -53,7 +52,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 
 	// If no key exist, create new one
 	if len(id) == 0 {
-		loadDada = false
+		loadData = false
 		id = s.KeyGenerator()
 	}
 
@@ -65,7 +64,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	sess.fresh = fresh
 
 	// Fetch existing data
-	if loadDada {
+	if loadData {
 		raw, err := s.Storage.Get(id)
 		// Unmashal if we found data
 		if raw != nil && err == nil {
@@ -80,16 +79,46 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 		} else if err != nil {
 			return nil, err
 		} else {
-			sess.fresh = true
+			// raw is nil, which means id is not in the storage
+			// so it means that id is not valid (mainly because of id is expired or user provides an invalid id)
+			// therefore, we regenerate a id
+			sess.refresh()
 		}
 	}
 
 	return sess, nil
 }
 
+// getSessionID will return the session id from:
+// 1. cookie
+// 2. http headers
+// 3. query string
+func (s *Store) getSessionID(c *fiber.Ctx) string {
+	id := c.Cookies(s.sessionName)
+	if len(id) > 0 {
+		return id
+	}
+
+	if s.source == SourceHeader {
+		id = string(c.Request().Header.Peek(s.sessionName))
+		if len(id) > 0 {
+			return id
+		}
+	}
+
+	if s.source == SourceURLQuery {
+		id = c.Query(s.sessionName)
+		if len(id) > 0 {
+			return id
+		}
+	}
+
+	return ""
+}
+
 func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 	// Get key from response cookie
-	cookieValue := c.Response().Header.PeekCookie(s.CookieName)
+	cookieValue := c.Response().Header.PeekCookie(s.sessionName)
 	if len(cookieValue) == 0 {
 		return "", nil
 	}

@@ -10,6 +10,7 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"errors"
 	"fmt"
@@ -303,6 +304,49 @@ func Test_Ctx_Body(t *testing.T) {
 	utils.AssertEqual(t, []byte("john=doe"), c.Body())
 }
 
+// go test -run Test_Ctx_Body_With_Compression
+func Test_Ctx_Body_With_Compression(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set("Content-Encoding", "gzip")
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	_, err := gz.Write([]byte("john=doe"))
+	utils.AssertEqual(t, nil, err)
+	err = gz.Flush()
+	utils.AssertEqual(t, nil, err)
+	err = gz.Close()
+	utils.AssertEqual(t, nil, err)
+	c.Request().SetBody(b.Bytes())
+	utils.AssertEqual(t, []byte("john=doe"), c.Body())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
+func Benchmark_Ctx_Body_With_Compression(b *testing.B){
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set("Content-Encoding", "gzip")
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte("john=doe"))
+	utils.AssertEqual(b, nil, err)
+	err = gz.Flush()
+	utils.AssertEqual(b, nil, err)
+	err = gz.Close()
+	utils.AssertEqual(b, nil, err)
+
+	c.Request().SetBody(buf.Bytes())
+
+	for i := 0; i < b.N; i++{
+		_ = c.Body()
+	}
+
+	utils.AssertEqual(b, []byte("john=doe"), c.Body())
+}
+
 // go test -run Test_Ctx_BodyParser
 func Test_Ctx_BodyParser(t *testing.T) {
 	t.Parallel()
@@ -325,7 +369,6 @@ func Test_Ctx_BodyParser(t *testing.T) {
 
 	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
 	testDecodeParser(MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
-	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
 	testDecodeParser(MIMEApplicationForm, "name=john")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
 
@@ -782,6 +825,42 @@ func Test_Ctx_Hostname(t *testing.T) {
 	utils.AssertEqual(t, "google.com", c.Hostname())
 }
 
+// go test -run Test_Ctx_Hostname_Untrusted
+func Test_Ctx_Hostname_UntrustedProxy(t *testing.T) {
+	t.Parallel()
+	// Don't trust any proxy
+	{
+		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{}})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		utils.AssertEqual(t, "google.com", c.Hostname())
+		app.ReleaseCtx(c)
+	}
+	// Trust to specific proxy list
+	{
+		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.0", "0.8.0.1"}})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		utils.AssertEqual(t, "google.com", c.Hostname())
+		app.ReleaseCtx(c)
+	}
+}
+
+// go test -run Test_Ctx_Hostname_Trusted
+func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
+	t.Parallel()
+	{
+		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "0.8.0.1"}})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		utils.AssertEqual(t, "google1.com", c.Hostname())
+		app.ReleaseCtx(c)
+	}
+}
+
 // go test -run Test_Ctx_IP
 func Test_Ctx_IP(t *testing.T) {
 	t.Parallel()
@@ -798,6 +877,26 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	utils.AssertEqual(t, "", c.IP())
+}
+
+// go test -run Test_Ctx_IP_UntrustedProxy
+func Test_Ctx_IP_UntrustedProxy(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.1"}, ProxyHeader: HeaderXForwardedFor})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, "0.0.0.0", c.IP())
+}
+
+// go test -run Test_Ctx_IP_TrustedProxy
+func Test_Ctx_IP_TrustedProxy(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0"}, ProxyHeader: HeaderXForwardedFor})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, "0.0.0.1", c.IP())
 }
 
 // go test -run Test_Ctx_IPs  -parallel
@@ -1124,6 +1223,58 @@ func Benchmark_Ctx_Protocol(b *testing.B) {
 		res = c.Protocol()
 	}
 	utils.AssertEqual(b, "http", res)
+}
+
+// go test -run Test_Ctx_Protocol_TrustedProxy
+func Test_Ctx_Protocol_TrustedProxy(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0"}})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderXForwardedProto, "https")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedSsl, "on")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXUrlScheme, "https")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	utils.AssertEqual(t, "http", c.Protocol())
+}
+
+// go test -run Test_Ctx_Protocol_UnTrustedProxy
+func Test_Ctx_Protocol_UnTrustedProxy(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.1"}})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderXForwardedProto, "https")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedSsl, "on")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXUrlScheme, "https")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	utils.AssertEqual(t, "http", c.Protocol())
 }
 
 // go test -run Test_Ctx_Query
@@ -1633,13 +1784,18 @@ func Test_Ctx_Render(t *testing.T) {
 	utils.AssertEqual(t, false, err == nil)
 }
 
+
 type testTemplateEngine struct {
 	mu        sync.Mutex
 	templates *template.Template
 }
 
 func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
-	return t.templates.ExecuteTemplate(w, name, bind)
+	if len(layout) == 0 {
+		return t.templates.ExecuteTemplate(w, name, bind)
+	}
+	_ = t.templates.ExecuteTemplate(w, name, bind)
+	return t.templates.ExecuteTemplate(w, layout[0], bind)
 }
 
 func (t *testTemplateEngine) Load() error {
@@ -1660,6 +1816,21 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 	})
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
+// go test -run Test_Ctx_Render_Engine_With_View_Layout
+func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
+	engine := &testTemplateEngine{}
+	engine.Load()
+	app := New(Config{ViewsLayout: "main.tmpl"})
+	app.config.Views = engine
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	err := c.Render("index.tmpl", Map{
+		"Title": "Hello, World!",
+	})
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World!</h1><h1>I'm main</h1>", string(c.Response().Body()))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Render_Engine -benchmem -count=4
@@ -2176,6 +2347,7 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 		})
 	}
 }
+
 
 func Test_Ctx_String(t *testing.T) {
 	t.Parallel()
