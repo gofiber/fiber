@@ -157,7 +157,10 @@ func isEmptyFields(fields []fieldWithPrefix, src map[string][]string) bool {
 				return false
 			}
 			for key := range src {
-				if !isEmpty(f.typ, src[key]) && strings.HasPrefix(key, path) {
+				// issue references:
+				// https://github.com/gofiber/fiber/issues/1414
+				// https://github.com/gorilla/schema/issues/176
+				if !isEmpty(f.typ, src[key]) && key == path {
 					return false
 				}
 			}
