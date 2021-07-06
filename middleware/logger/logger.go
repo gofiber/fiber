@@ -40,7 +40,8 @@ const (
 	TagBytesReceived     = "bytesReceived"
 	TagRoute             = "route"
 	TagError             = "error"
-	TagHeader            = "header:"
+	TagReqHeader         = "reqHeader:"
+	TagRespHeader        = "respHeader:"
 	TagLocals            = "locals:"
 	TagQuery             = "query:"
 	TagForm              = "form:"
@@ -263,10 +264,12 @@ func New(config ...Config) fiber.Handler {
 				}
 				return buf.WriteString("-")
 			default:
-				// Check if we have a value tag i.e.: "header:x-key"
+				// Check if we have a value tag i.e.: "reqHeader:x-key"
 				switch {
-				case strings.HasPrefix(tag, TagHeader):
-					return buf.WriteString(c.Get(tag[7:]))
+				case strings.HasPrefix(tag, TagReqHeader):
+					return buf.WriteString(c.Get(tag[10:]))
+				case strings.HasPrefix(tag, TagRespHeader):
+					return buf.WriteString(c.GetRespHeader(tag[11:]))
 				case strings.HasPrefix(tag, TagQuery):
 					return buf.WriteString(c.Query(tag[6:]))
 				case strings.HasPrefix(tag, TagForm):

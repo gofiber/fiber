@@ -33,7 +33,6 @@ const maxParams = 30
 
 const queryTag = "query"
 
-
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
@@ -524,6 +523,15 @@ func (c *Ctx) Fresh() bool {
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) Get(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
+}
+
+// GetRespHeader returns the HTTP response header specified by field.
+// Field names are case-insensitive
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *Ctx) GetRespHeader(key string, defaultValue ...string) string {
+	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
+
 }
 
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.

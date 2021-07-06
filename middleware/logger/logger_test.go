@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -284,4 +285,31 @@ func Benchmark_Logger(b *testing.B) {
 	}
 
 	utils.AssertEqual(b, 200, fctx.Response.Header.StatusCode())
+}
+
+// go test -run Test_Response_Header
+func Test_Response_Header(t *testing.T) {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(requestid.New(requestid.Config{
+		Next:       nil,
+		Header:     fiber.HeaderXRequestID,
+		Generator:  func() string { return "Hello fiber!" },
+		ContextKey: "requestid",
+	}))
+	app.Use(New(Config{
+		Format: "${respHeader:X-Request-ID}",
+		Output: buf,
+	}))
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello fiber!")
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "Hello fiber!", buf.String())
 }
