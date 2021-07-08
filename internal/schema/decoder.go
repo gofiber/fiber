@@ -160,7 +160,7 @@ func isEmptyFields(fields []fieldWithPrefix, src map[string][]string) bool {
 				// issue references:
 				// https://github.com/gofiber/fiber/issues/1414
 				// https://github.com/gorilla/schema/issues/176
-				nested := strings.Contains(key, ".")
+				nested := strings.IndexByte(key, '.') != -1
 
 				// for non required nested structs
 				c1 := strings.HasSuffix(f.prefix, ".") && key == path
