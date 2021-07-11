@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -1291,4 +1292,65 @@ func Test_App_New_Test_Parallel(t *testing.T) {
 		app := New(Config{Immutable: true})
 		app.Test(httptest.NewRequest("GET", "/", nil))
 	})
+}
+
+func Test_App_ReadBodyStream(t *testing.T) {
+	app := New(Config{StreamRequestBody: true})
+	app.Post("/", func(c *Ctx) error {
+		// Calling c.Body() automatically reads the entire stream.
+		return c.SendString(fmt.Sprintf("%v %s", c.Request().IsBodyStream(), c.Body()))
+	})
+	testString := "this is a test"
+	resp, err := app.Test(httptest.NewRequest("POST", "/", bytes.NewBufferString(testString)))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "ioutil.ReadAll(resp.Body)")
+	utils.AssertEqual(t, fmt.Sprintf("true %s", testString), string(body))
+}
+
+func Test_App_DisablePreParseMultipartForm(t *testing.T) {
+	// Must be used with both otherwise there is no point.
+	testString := "this is a test"
+
+	app := New(Config{DisablePreParseMultipartForm: true, StreamRequestBody: true})
+	app.Post("/", func(c *Ctx) error {
+		req := c.Request()
+		mpf, err := req.MultipartForm()
+		if err != nil {
+			return err
+		}
+		if !req.IsBodyStream() {
+			return fmt.Errorf("not a body stream")
+		}
+		file, err := mpf.File["test"][0].Open()
+		if err != nil {
+			return err
+		}
+		buffer := make([]byte, len(testString))
+		n, err := file.Read(buffer)
+		if err != nil {
+			return err
+		}
+		if n != len(testString) {
+			return fmt.Errorf("bad read length")
+		}
+		return c.Send(buffer)
+	})
+	b := &bytes.Buffer{}
+	w := multipart.NewWriter(b)
+	writer, err := w.CreateFormFile("test", "test")
+	utils.AssertEqual(t, nil, err, "w.CreateFormFile")
+	n, err := writer.Write([]byte(testString))
+	utils.AssertEqual(t, nil, err, "writer.Write")
+	utils.AssertEqual(t, len(testString), n, "writer n")
+	utils.AssertEqual(t, nil, w.Close(), "w.Close()")
+
+	req := httptest.NewRequest("POST", "/", b)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "ioutil.ReadAll(resp.Body)")
+
+	utils.AssertEqual(t, testString, string(body))
 }
