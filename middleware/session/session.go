@@ -160,8 +160,12 @@ func (s *Session) Save() error {
 		return err
 	}
 
-	// pass raw bytes with session id to provider
-	if err := s.config.Storage.Set(s.id, s.byteBuffer.Bytes(), s.exp); err != nil {
+	// copy the data in buffer
+	encodedBytes := make([]byte, s.byteBuffer.Len())
+	copy(encodedBytes, s.byteBuffer.Bytes())
+
+	// pass copied bytes with session id to provider
+	if err := s.config.Storage.Set(s.id, encodedBytes, s.exp); err != nil {
 		return err
 	}
 
