@@ -362,17 +362,15 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetSecure(cookie.Secure)
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
 
-	if cookie.SameSite == "" {
+	switch utils.ToLower(cookie.SameSite) {
+	case CookieSameSiteStrictMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+	case CookieSameSiteNoneMode:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	case CookieSameSiteDisabled:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
-	} else {
-		switch utils.ToLower(cookie.SameSite) {
-		case "strict":
-			fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-		case "none":
-			fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-		default:
-			fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
-		}
+	default:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
 
 	c.fasthttp.Response.Header.SetCookie(fcookie)

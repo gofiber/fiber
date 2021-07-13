@@ -524,16 +524,31 @@ func Test_Ctx_Cookie(t *testing.T) {
 	var dst []byte
 	dst = expire.In(time.UTC).AppendFormat(dst, time.RFC1123)
 	httpdate := strings.Replace(string(dst), "UTC", "GMT", -1)
-	c.Cookie(&Cookie{
+	cookie := &Cookie{
 		Name:    "username",
 		Value:   "john",
 		Expires: expire,
-	})
+		//SameSite: CookieSameSiteStrictMode, // default is "lax"
+	}
+	c.Cookie(cookie)
 	expect := "username=john; expires=" + httpdate + "; path=/; SameSite=Lax"
 	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 
-	c.Cookie(&Cookie{SameSite: "strict"})
-	c.Cookie(&Cookie{SameSite: "none"})
+	expect = "username=john; expires=" + httpdate + "; path=/"
+	cookie.SameSite = CookieSameSiteDisabled
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	expect = "username=john; expires=" + httpdate + "; path=/; SameSite=Strict"
+	cookie.SameSite = CookieSameSiteStrictMode
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	expect = "username=john; expires=" + httpdate + "; path=/; secure; SameSite=None"
+	cookie.Secure = true
+	cookie.SameSite = CookieSameSiteNoneMode
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
