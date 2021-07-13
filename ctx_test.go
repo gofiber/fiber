@@ -324,7 +324,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
-func Benchmark_Ctx_Body_With_Compression(b *testing.B){
+func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -340,7 +340,7 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B){
 
 	c.Request().SetBody(buf.Bytes())
 
-	for i := 0; i < b.N; i++{
+	for i := 0; i < b.N; i++ {
 		_ = c.Body()
 	}
 
@@ -1784,7 +1784,6 @@ func Test_Ctx_Render(t *testing.T) {
 	utils.AssertEqual(t, false, err == nil)
 }
 
-
 type testTemplateEngine struct {
 	mu        sync.Mutex
 	templates *template.Template
@@ -2231,6 +2230,80 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, "name is empty", c.QueryParser(rq).Error())
 }
 
+// go test -run Test_Ctx_QueryParser_Schema -v
+func Test_Ctx_QueryParser_Schema(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Query1 struct {
+		Name   string `query:"name,required"`
+		Nested struct {
+			Age int `query:"age"`
+		} `query:"nested,required"`
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("name=tom&nested.age=10")
+	q := new(Query1)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+
+	c.Request().URI().SetQueryString("namex=tom&nested.age=10")
+	q = new(Query1)
+	utils.AssertEqual(t, "name is empty", c.QueryParser(q).Error())
+
+	c.Request().URI().SetQueryString("name=tom&nested.agex=10")
+	q = new(Query1)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+
+	c.Request().URI().SetQueryString("name=tom&test.age=10")
+	q = new(Query1)
+	utils.AssertEqual(t, "nested is empty", c.QueryParser(q).Error())
+
+	type Query2 struct {
+		Name   string `query:"name"`
+		Nested struct {
+			Age int `query:"age,required"`
+		} `query:"nested"`
+	}
+	c.Request().URI().SetQueryString("name=tom&nested.age=10")
+	q2 := new(Query2)
+	utils.AssertEqual(t, nil, c.QueryParser(q2))
+
+	c.Request().URI().SetQueryString("nested.age=10")
+	q2 = new(Query2)
+	utils.AssertEqual(t, nil, c.QueryParser(q2))
+
+	c.Request().URI().SetQueryString("nested.agex=10")
+	q2 = new(Query2)
+	utils.AssertEqual(t, "nested.age is empty", c.QueryParser(q2).Error())
+
+	c.Request().URI().SetQueryString("nested.agex=10")
+	q2 = new(Query2)
+	utils.AssertEqual(t, "nested.age is empty", c.QueryParser(q2).Error())
+
+	type Node struct {
+		Value int   `query:"val,required"`
+		Next  *Node `query:"next,required"`
+	}
+	c.Request().URI().SetQueryString("val=1&next.val=3")
+	n := new(Node)
+	utils.AssertEqual(t, nil, c.QueryParser(n))
+	utils.AssertEqual(t, 1, n.Value)
+	utils.AssertEqual(t, 3, n.Next.Value)
+
+	c.Request().URI().SetQueryString("next.val=2")
+	n = new(Node)
+	utils.AssertEqual(t, "val is empty", c.QueryParser(n).Error())
+
+	c.Request().URI().SetQueryString("val=3&next.value=2")
+	n = new(Node)
+	n.Next = new(Node)
+	utils.AssertEqual(t, nil, c.QueryParser(n))
+	utils.AssertEqual(t, 3, n.Value)
+	utils.AssertEqual(t, 0, n.Next.Value)
+}
+
 func Test_Ctx_EqualFieldType(t *testing.T) {
 	var out int
 	utils.AssertEqual(t, false, equalFieldType(&out, reflect.Int, "key"))
@@ -2347,7 +2420,6 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 		})
 	}
 }
-
 
 func Test_Ctx_String(t *testing.T) {
 	t.Parallel()
