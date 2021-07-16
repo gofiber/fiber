@@ -33,7 +33,6 @@ const maxParams = 30
 
 const queryTag = "query"
 
-
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
@@ -364,10 +363,12 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
 
 	switch utils.ToLower(cookie.SameSite) {
-	case "strict":
+	case CookieSameSiteStrictMode:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-	case "none":
+	case CookieSameSiteNoneMode:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	case CookieSameSiteDisabled:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
 	default:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
