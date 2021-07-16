@@ -165,22 +165,10 @@ Fiber هو **مستوحى** من Express, إطار الويب الأكثر شع�
 func main() {
     app := fiber.New()
 
-    // GET /john
-    app.Get("/:name", func(c *fiber.Ctx) error {
-        msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
-        return c.SendString(msg) // => Hello john 👋!
-    })
-
-    // GET /john/75
-    app.Get("/:name/:age", func(c *fiber.Ctx) error {
-        msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
-        return c.SendString(msg) // => 👴 john is 75 years old
-    })
-
-    // GET /dictionary.txt
-    app.Get("/:file.:ext", func(c *fiber.Ctx) error {
-        msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
-        return c.SendString(msg) // => 📃 dictionary.txt
+    // GET /api/register
+    app.Get("/api/*", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("✋ %s", c.Params("*"))
+        return c.SendString(msg) // => ✋ register
     })
 
     // GET /flights/LAX-SFO
@@ -189,10 +177,22 @@ func main() {
         return c.SendString(msg) // => 💸 From: LAX, To: SFO
     })
 
-    // GET /api/register
-    app.Get("/api/*", func(c *fiber.Ctx) error {
-        msg := fmt.Sprintf("✋ %s", c.Params("*"))
-        return c.SendString(msg) // => ✋ register
+    // GET /dictionary.txt
+    app.Get("/:file.:ext", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
+        return c.SendString(msg) // => 📃 dictionary.txt
+    })
+
+    // GET /john/75
+    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
+        return c.SendString(msg) // => 👴 john is 75 years old
+    })
+    
+    // GET /john
+    app.Get("/:name", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
+        return c.SendString(msg) // => Hello john 👋!
     })
 
     log.Fatal(app.Listen(":3000"))

@@ -108,9 +108,9 @@ Esses testes são realizados pelo [TechEmpower](https://www.techempower.com/benc
 
 ## ⚙️ Instalação
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required.
+Certifique-se de ter o Go instalado ([download](https://golang.org/dl/)). Versão `1.14` ou superior é obrigatória.
 
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+Inicie seu projeto criando um diretório e então execute `go mod init github.com/your/repo` ([saiba mais](https://blog.golang.org/using-go-modules)) dentro dele. Então, instale o Fiber com o comando [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -149,22 +149,10 @@ a [documentação da API](https://docs.gofiber.io).
 func main() {
     app := fiber.New()
 
-    // GET /john
-    app.Get("/:name", func(c *fiber.Ctx) error {
-        msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
-        return c.SendString(msg) // => Hello john 👋!
-    })
-
-    // GET /john/75
-    app.Get("/:name/:age", func(c *fiber.Ctx) error {
-        msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
-        return c.SendString(msg) // => 👴 john is 75 years old
-    })
-
-    // GET /dictionary.txt
-    app.Get("/:file.:ext", func(c *fiber.Ctx) error {
-        msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
-        return c.SendString(msg) // => 📃 dictionary.txt
+    // GET /api/register
+    app.Get("/api/*", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("✋ %s", c.Params("*"))
+        return c.SendString(msg) // => ✋ register
     })
 
     // GET /flights/LAX-SFO
@@ -173,10 +161,22 @@ func main() {
         return c.SendString(msg) // => 💸 From: LAX, To: SFO
     })
 
-    // GET /api/register
-    app.Get("/api/*", func(c *fiber.Ctx) error {
-        msg := fmt.Sprintf("✋ %s", c.Params("*"))
-        return c.SendString(msg) // => ✋ register
+    // GET /dictionary.txt
+    app.Get("/:file.:ext", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
+        return c.SendString(msg) // => 📃 dictionary.txt
+    })
+
+    // GET /john/75
+    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
+        return c.SendString(msg) // => 👴 john is 75 years old
+    })
+    
+    // GET /john
+    app.Get("/:name", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
+        return c.SendString(msg) // => Hello john 👋!
     })
 
     log.Fatal(app.Listen(":3000"))
