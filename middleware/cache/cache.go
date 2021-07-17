@@ -127,7 +127,7 @@ func New(config ...Config) fiber.Handler {
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 		e.exp = ts + expiration
 
-		// For external Storage we store raw body seperated
+		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
 			manager.setRaw(key+"_body", e.body, cfg.Expiration)
 			// avoid body msgp encoding
