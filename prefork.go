@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/valyala/fasthttp/reuseport"
 )
 
 const (
@@ -21,11 +19,56 @@ const (
 
 var (
 	testPreforkMaster = false
+	preforkFiles      = []*os.File{}
 )
 
 // IsChild determines if the current process is a child of Prefork
 func IsChild() bool {
 	return os.Getenv(envPreforkChildKey) == envPreforkChildVal
+}
+
+func setTCPListenerFiles(network, addr string) (net.Listener, error) {
+
+	tcpAddr, err := net.ResolveTCPAddr(network, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	tcplistener, err := net.ListenTCP(network, tcpAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	fl, err := tcplistener.File()
+	if err != nil {
+		return nil, err
+	}
+
+	preforkFiles = []*os.File{fl}
+
+	return tcplistener, nil
+}
+
+func doCommand() (*exec.Cmd, error) {
+	cmd := exec.Command(os.Args[0], os.Args[1:]...)
+	if testPreforkMaster {
+		// When test prefork master,
+		// just start the child process with a dummy cmd,
+		// which will exit soon
+		cmd = dummyCmd()
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// add fiber prefork child flag into child proc env
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
+	)
+	// we must get file descriptor by listener, but type net.Listener cannot get
+	// later to set files descriptor on `cmd.ExtraFiles`
+	cmd.ExtraFiles = preforkFiles
+	return cmd, cmd.Start()
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
@@ -37,12 +80,14 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 		var ln net.Listener
 		// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
 		// Only tcp4 or tcp6 is supported when preforking, both are not supported
-		if ln, err = reuseport.Listen(network, addr); err != nil {
+		// if ln, err = reuseport.Listen(network, addr); err != nil {
+		if ln, err = setTCPListenerFiles(network, addr); err != nil {
 			if !app.config.DisableStartupMessage {
 				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
 			return fmt.Errorf("prefork: %v", err)
 		}
+
 		// wrap a tls config around the listener if provided
 		if tlsConfig != nil {
 			ln = tls.NewListener(ln, tlsConfig)
@@ -50,6 +95,13 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 
 		// kill current child proc when master exits
 		go watchMaster()
+
+		defer func() {
+			e := ln.Close()
+			if err == nil {
+				err = e
+			}
+		}()
 
 		// prepare the server for the start
 		app.startupProcess()
@@ -81,32 +133,18 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 	// launch child procs
 	for i := 0; i < max; i++ {
 		/* #nosec G204 */
-		cmd := exec.Command(os.Args[0], os.Args[1:]...)
-		if testPreforkMaster {
-			// When test prefork master,
-			// just start the child process with a dummy cmd,
-			// which will exit soon
-			cmd = dummyCmd()
-		}
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		// add fiber prefork child flag into child proc env
-		cmd.Env = append(os.Environ(),
-			fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
-		)
-		if err = cmd.Start(); err != nil {
+		var cmd *exec.Cmd
+		if cmd, err = doCommand(); err != nil {
 			return fmt.Errorf("failed to start a child prefork process, error: %v", err)
 		}
 
 		// store child process
-		pid := cmd.Process.Pid
-		childs[pid] = cmd
-		pids = append(pids, strconv.Itoa(pid))
+		childs[cmd.Process.Pid] = cmd
+		pids = append(pids, strconv.Itoa(cmd.Process.Pid))
 
 		// notify master if child crashes
 		go func() {
-			channel <- child{pid, cmd.Wait()}
+			channel <- child{cmd.Process.Pid, cmd.Wait()}
 		}()
 	}
 
