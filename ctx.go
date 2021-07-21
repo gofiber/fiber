@@ -13,6 +13,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -540,6 +541,17 @@ func (c *Ctx) Hostname() string {
 	return c.app.getString(c.fasthttp.Request.URI().Host())
 }
 
+// Addr returns the remote address of the request.
+func (c *Ctx) Addr() net.Addr {
+	return c.fasthttp.RemoteAddr()
+}
+
+// Port returns the remote port of the request.
+func (c *Ctx) Port() string {
+	port := c.Addr().(*net.TCPAddr).Port
+	return strconv.Itoa(port)
+}
+
 // IP returns the remote IP address of the request.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) IP() string {
@@ -547,7 +559,7 @@ func (c *Ctx) IP() string {
 		return c.Get(c.app.config.ProxyHeader)
 	}
 
-	return c.fasthttp.RemoteIP().String()
+	return c.Addr().(*net.TCPAddr).IP.String()
 }
 
 // IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
