@@ -541,14 +541,9 @@ func (c *Ctx) Hostname() string {
 	return c.app.getString(c.fasthttp.Request.URI().Host())
 }
 
-// Addr returns the remote address of the request.
-func (c *Ctx) Addr() net.Addr {
-	return c.fasthttp.RemoteAddr()
-}
-
 // Port returns the remote port of the request.
 func (c *Ctx) Port() string {
-	port := c.Addr().(*net.TCPAddr).Port
+	port := c.fasthttp.RemoteAddr().(*net.TCPAddr).Port
 	return strconv.Itoa(port)
 }
 
@@ -559,7 +554,7 @@ func (c *Ctx) IP() string {
 		return c.Get(c.app.config.ProxyHeader)
 	}
 
-	return c.Addr().(*net.TCPAddr).IP.String()
+	return c.fasthttp.RemoteIP().String()
 }
 
 // IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
