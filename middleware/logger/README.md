@@ -7,6 +7,7 @@ Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP r
 	- [Signatures](#signatures)
 	- [Examples](#examples)
 		- [Default Config](#default-config)
+		- [Logging remote IP and Port](#logging-remote-ip-and-port)
 		- [Logging Request ID](#logging-request-id)
 		- [Changing TimeZone & TimeFormat](#changing-timezone--timeformat)
 		- [Custom File Writer](#custom-file-writer)
@@ -32,6 +33,14 @@ import (
 ```go
 // Default middleware config
 app.Use(logger.New())
+```
+
+### Logging remote IP and Port
+
+```go
+app.Use(logger.New(logger.Config{
+        Format:     "[${ip}]:${port} ${status} - ${method} ${path}\n",
+}))
 ```
 
 ### Logging Request ID
@@ -123,6 +132,7 @@ const (
 	TagTime					= "time"
 	TagReferer				= "referer"
 	TagProtocol				= "protocol"
+	TagPort                                 = "port"
 	TagIP					= "ip"
 	TagIPs					= "ips"
 	TagHost					= "host"
