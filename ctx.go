@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -538,6 +539,12 @@ func (c *Ctx) Hostname() string {
 		}
 	}
 	return c.app.getString(c.fasthttp.Request.URI().Host())
+}
+
+// Port returns the remote port of the request.
+func (c *Ctx) Port() string {
+	port := c.fasthttp.RemoteAddr().(*net.TCPAddr).Port
+	return strconv.Itoa(port)
 }
 
 // IP returns the remote IP address of the request.

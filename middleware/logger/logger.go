@@ -24,6 +24,7 @@ const (
 	TagTime              = "time"
 	TagReferer           = "referer"
 	TagProtocol          = "protocol"
+	TagPort              = "port"
 	TagIP                = "ip"
 	TagIPs               = "ips"
 	TagHost              = "host"
@@ -209,6 +210,8 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(c.Protocol())
 			case TagPid:
 				return buf.WriteString(pid)
+			case TagPort:
+				return buf.WriteString(c.Port())
 			case TagIP:
 				return buf.WriteString(c.IP())
 			case TagIPs:
