@@ -734,9 +734,20 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 // ParamsInt is used to get an integer from the route parameters
 // it defaults to zero if the parameter is not found or if the
 // parameter cannot be converted to an integer
-func (c *Ctx) ParamsInt(key string) (int, error) {
+// If a default value is given, it will returb that value in case the param
+// doesn't exist or cannot be converted to an integrer
+func (c *Ctx) ParamsInt(key string, defaultValue ...int) (int, error) {
 	// Use Atoi to convert the param to an int or return zero and an error
-	return strconv.Atoi(c.Params(key))
+	value, err := strconv.Atoi(c.Params(key))
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0], nil
+		} else {
+			return 0, err
+		}
+	}
+
+	return value, nil
 }
 
 // Path returns the path part of the request URL.

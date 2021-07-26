@@ -2503,7 +2503,49 @@ func TestCtx_ParamsInt(t *testing.T) {
 		return nil
 	})
 
+	// For the user id I will use the number 2222, so I should be able to get the number
+	// 2222 from the Ctx even when the default value is specified
+	app.Get("/testignoredefault/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user", 1111)
+
+		// Check the number matches
+		if num != 2222 {
+			t.Fatalf("Expected number 2222 from the path, got %d", num)
+		}
+
+		// Check no errors are returned, because we want NO errors in this one
+		if err != nil {
+			t.Fatalf("Expected nil error for 2222 test, got " + err.Error())
+		}
+
+		return nil
+	})
+
+	// In this test case, there will be a bad request where the expected number is NOT
+	// a number in the path, default value of 1111 should be used instead
+	app.Get("/testdefault/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user", 1111)
+
+		// Check the number matches
+		if num != 1111 {
+			t.Fatalf("Expected number 1111 from the path, got %d", num)
+		}
+
+		// Check an error is returned, because we want NO errors in this one
+		if err != nil {
+			t.Fatalf("Expected nil error for 1111 test, got " + err.Error())
+		}
+
+		return nil
+	})
+
 	app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
 	app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
 
 }
