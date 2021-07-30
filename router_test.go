@@ -195,6 +195,50 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 }
 
+func Test_Route_Match_WithEscapeChar(t *testing.T) {
+	app := New()
+	// static route and escaped part
+	app.Get("/v1/some/resource/name\\:customVerb", func(c *Ctx) error {
+		return c.SendString("static")
+	})
+	// group route
+	group := app.Group("/v2/\\:firstVerb")
+	group.Get("/\\:customVerb", func(c *Ctx) error {
+		return c.SendString("group")
+	})
+	// route with resource param and escaped part
+	app.Get("/v3/:resource/name\\:customVerb", func(c *Ctx) error {
+		return c.SendString(c.Params("resource"))
+	})
+
+	// check static route
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "static", app.getString(body))
+
+	// check group route
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "group", app.getString(body))
+
+	// check param route
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "awesome", app.getString(body))
+}
+
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 	app := New()
 

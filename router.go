@@ -179,7 +179,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	}
 
 	route.Path = prefixedPath
-	route.path = prettyPath
+	route.path = RemoveEscapeChar(prettyPath)
 	route.routeParser = parseRoute(prettyPath)
 	route.root = false
 	route.star = false
@@ -253,7 +253,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		root: isRoot,
 
 		// Path data
-		path:        pathPretty,
+		path:        RemoveEscapeChar(pathPretty),
 		routeParser: parsedPretty,
 		Params:      parsedRaw.params,
 
