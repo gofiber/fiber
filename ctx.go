@@ -291,7 +291,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
 		schemaDecoder.SetAliasTag("json")
-		return json.Unmarshal(c.fasthttp.Request.Body(), out)
+		return json.Unmarshal(c.Body(), out)
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
 		schemaDecoder.SetAliasTag("form")
@@ -311,7 +311,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	}
 	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
 		schemaDecoder.SetAliasTag("xml")
-		return xml.Unmarshal(c.fasthttp.Request.Body(), out)
+		return xml.Unmarshal(c.Body(), out)
 	}
 	// No suitable content type found
 	return ErrUnprocessableEntity

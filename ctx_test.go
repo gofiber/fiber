@@ -358,6 +358,22 @@ func Test_Ctx_BodyParser(t *testing.T) {
 		Name string `json:"name" xml:"name" form:"name" query:"name"`
 	}
 
+	 {
+		 var gzipJSON bytes.Buffer
+		 w := gzip.NewWriter(&gzipJSON)
+		 _, _ = w.Write([]byte(`{"name":"john"}`))
+		 _ = w.Close()
+
+		 c.Request().Header.SetContentType(MIMEApplicationJSON)
+		 c.Request().Header.Set(HeaderContentEncoding, "gzip")
+		 c.Request().SetBody(gzipJSON.Bytes())
+		 c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
+		 d := new(Demo)
+		 utils.AssertEqual(t, nil, c.BodyParser(d))
+		 utils.AssertEqual(t, "john", d.Name)
+		 c.Request().Header.Del(HeaderContentEncoding)
+	 }
+
 	testDecodeParser := func(contentType, body string) {
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody([]byte(body))
