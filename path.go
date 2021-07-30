@@ -96,7 +96,7 @@ func parseRoute(pattern string) routeParser {
 // addParameterMetaInfo add important meta information to the parameter segments
 // to simplify the search for the end of the parameter
 func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
-	comparePart := ""
+	var comparePart string
 	segLen := len(segs)
 	// loop from end to begin
 	for i := segLen - 1; i >= 0; i-- {
@@ -278,7 +278,7 @@ func (routeParser *routeParser) getMatch(detectionPath, path string, params *[ma
 			detectionPath, path = detectionPath[i:], path[i:]
 		}
 	}
-	if len(detectionPath) != 0 && !partialCheck {
+	if detectionPath != "" && !partialCheck {
 		return false
 	}
 

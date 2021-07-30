@@ -38,7 +38,7 @@ func (s *Store) RegisterType(i interface{}) {
 // Get will get/create a session
 func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	var fresh bool
-	var loadDada = true
+	var loadData = true
 
 	id := s.getSessionID(c)
 
@@ -52,7 +52,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 
 	// If no key exist, create new one
 	if len(id) == 0 {
-		loadDada = false
+		loadData = false
 		id = s.KeyGenerator()
 	}
 
@@ -64,7 +64,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	sess.fresh = fresh
 
 	// Fetch existing data
-	if loadDada {
+	if loadData {
 		raw, err := s.Storage.Get(id)
 		// Unmashal if we found data
 		if raw != nil && err == nil {
@@ -79,7 +79,10 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 		} else if err != nil {
 			return nil, err
 		} else {
-			sess.fresh = true
+			// raw is nil, which means id is not in the storage
+			// so it means that id is not valid (mainly because of id is expired or user provides an invalid id)
+			// therefore, we regenerate a id
+			sess.refresh()
 		}
 	}
 

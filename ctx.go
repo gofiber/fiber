@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -239,7 +240,32 @@ func (c *Ctx) BaseURL() string {
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) Body() []byte {
-	return c.fasthttp.Request.Body()
+	var err error
+	var encoding string
+	var body []byte
+	// faster than peek
+	c.Request().Header.VisitAll(func(key, value []byte) {
+		if utils.UnsafeString(key) == HeaderContentEncoding {
+			encoding = utils.UnsafeString(value)
+		}
+	})
+
+	switch encoding {
+	case StrGzip:
+		body, err = c.fasthttp.Request.BodyGunzip()
+	case StrBr, StrBrotli:
+		body, err = c.fasthttp.Request.BodyUnbrotli()
+	case StrDeflate:
+		body, err = c.fasthttp.Request.BodyInflate()
+	default:
+		body = c.fasthttp.Request.Body()
+	}
+
+	if err != nil {
+		return []byte(err.Error())
+	}
+
+	return body
 }
 
 // decoderPool helps to improve BodyParser's and QueryParser's performance
@@ -265,7 +291,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
 		schemaDecoder.SetAliasTag("json")
-		return json.Unmarshal(c.fasthttp.Request.Body(), out)
+		return json.Unmarshal(c.Body(), out)
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
 		schemaDecoder.SetAliasTag("form")
@@ -285,7 +311,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	}
 	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
 		schemaDecoder.SetAliasTag("xml")
-		return xml.Unmarshal(c.fasthttp.Request.Body(), out)
+		return xml.Unmarshal(c.Body(), out)
 	}
 	// No suitable content type found
 	return ErrUnprocessableEntity
@@ -338,10 +364,12 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
 
 	switch utils.ToLower(cookie.SameSite) {
-	case "strict":
+	case CookieSameSiteStrictMode:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-	case "none":
+	case CookieSameSiteNoneMode:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	case CookieSameSiteDisabled:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
 	default:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
@@ -500,18 +528,32 @@ func (c *Ctx) Get(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
 }
 
-// Hostname contains the hostname derived from the Host HTTP header.
+// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
+// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) Hostname() string {
+	if c.IsProxyTrusted() {
+		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
+			return host
+		}
+	}
 	return c.app.getString(c.fasthttp.Request.URI().Host())
 }
 
+// Port returns the remote port of the request.
+func (c *Ctx) Port() string {
+	port := c.fasthttp.RemoteAddr().(*net.TCPAddr).Port
+	return strconv.Itoa(port)
+}
+
 // IP returns the remote IP address of the request.
+// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) IP() string {
-	if len(c.app.config.ProxyHeader) > 0 {
+	if c.IsProxyTrusted() && len(c.app.config.ProxyHeader) > 0 {
 		return c.Get(c.app.config.ProxyHeader)
 	}
+
 	return c.fasthttp.RemoteIP().String()
 }
 
@@ -692,9 +734,20 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 // ParamsInt is used to get an integer from the route parameters
 // it defaults to zero if the parameter is not found or if the
 // parameter cannot be converted to an integer
-func (c *Ctx) ParamsInt(key string) (int, error) {
+// If a default value is given, it will returb that value in case the param
+// doesn't exist or cannot be converted to an integrer
+func (c *Ctx) ParamsInt(key string, defaultValue ...int) (int, error) {
 	// Use Atoi to convert the param to an int or return zero and an error
-	return strconv.Atoi(c.Params(key))
+	value, err := strconv.Atoi(c.Params(key))
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0], nil
+		} else {
+			return 0, err
+		}
+	}
+
+	return value, nil
 }
 
 // Path returns the path part of the request URL.
@@ -713,11 +766,15 @@ func (c *Ctx) Path(override ...string) string {
 }
 
 // Protocol contains the request protocol string: http or https for TLS requests.
+// Use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) Protocol() string {
 	if c.fasthttp.IsTLS() {
 		return "https"
 	}
 	scheme := "http"
+	if !c.IsProxyTrusted() {
+		return scheme
+	}
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
 		if len(key) < 12 {
 			return // X-Forwarded-
@@ -888,6 +945,12 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	defer bytebufferpool.Put(buf)
 
 	if c.app.config.Views != nil {
+		// Render template based on global layout if exists
+		if len(layouts) == 0 && c.app.config.ViewsLayout != "" {
+			layouts = []string{
+				c.app.config.ViewsLayout,
+			}
+		}
 		// Render template from Views
 		if err := c.app.config.Views.Render(buf, name, bind, layouts...); err != nil {
 			return err
@@ -1162,4 +1225,13 @@ func (c *Ctx) configDependentPaths() {
 	if len(c.detectionPath) >= 3 {
 		c.treePath = c.detectionPath[:3]
 	}
+}
+
+func (c *Ctx) IsProxyTrusted() bool {
+	if !c.app.config.EnableTrustedProxyCheck {
+		return true
+	}
+
+	_, trustProxy := c.app.config.trustedProxiesMap[c.fasthttp.RemoteIP().String()]
+	return trustProxy
 }
