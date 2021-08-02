@@ -138,8 +138,11 @@ const (
 	TagBytesSent				= "bytesSent"
 	TagBytesReceived			= "bytesReceived"
 	TagRoute				= "route"
-	TagError				= "error"
-	TagHeader				= "header:"     // request header
+	TagError             = "error"
+	// DEPRECATED: Use TagReqHeader instead
+	TagHeader     = "header:"         // request header
+	TagReqHeader  = "reqHeader:"      // request header
+	TagRespHeader = "respHeader:"     // response header
 	TagQuery				= "query:"      // request query
 	TagForm					= "form:"       // request form
 	TagCookie				= "cookie:"     // request cookie
