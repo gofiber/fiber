@@ -324,7 +324,7 @@ func Test_Ctx_Body_With_Compression(t *testing.T) {
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
-func Benchmark_Ctx_Body_With_Compression(b *testing.B){
+func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -340,7 +340,7 @@ func Benchmark_Ctx_Body_With_Compression(b *testing.B){
 
 	c.Request().SetBody(buf.Bytes())
 
-	for i := 0; i < b.N; i++{
+	for i := 0; i < b.N; i++ {
 		_ = c.Body()
 	}
 
@@ -1784,7 +1784,6 @@ func Test_Ctx_Render(t *testing.T) {
 	utils.AssertEqual(t, false, err == nil)
 }
 
-
 type testTemplateEngine struct {
 	mu        sync.Mutex
 	templates *template.Template
@@ -2348,7 +2347,6 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 	}
 }
 
-
 func Test_Ctx_String(t *testing.T) {
 	t.Parallel()
 
@@ -2410,4 +2408,16 @@ func TestCtx_ParamsInt(t *testing.T) {
 	app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
 	app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
 
+}
+
+// go test -run Test_Ctx_GetRespHeader
+func Test_Ctx_GetRespHeader(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Set("test", "Hello, World 👋!")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+	utils.AssertEqual(t, c.GetRespHeader("test"), "Hello, World 👋!")
+	utils.AssertEqual(t, c.GetRespHeader(HeaderContentType), "application/json")
 }

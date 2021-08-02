@@ -313,3 +313,47 @@ func Test_Response_Header(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	utils.AssertEqual(t, "Hello fiber!", buf.String())
 }
+
+// go test -run Test_Req_Header
+func Test_Req_Header(t *testing.T) {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${header:test}",
+		Output: buf,
+	}))
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello fiber!")
+	})
+	headerReq := httptest.NewRequest("GET", "/", nil)
+	headerReq.Header.Add("test", "Hello fiber!")
+	resp, err := app.Test(headerReq)
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "Hello fiber!", buf.String())
+}
+
+// go test -run Test_ReqHeader_Header
+func Test_ReqHeader_Header(t *testing.T) {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${reqHeader:test}",
+		Output: buf,
+	}))
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello fiber!")
+	})
+	reqHeaderReq := httptest.NewRequest("GET", "/", nil)
+	reqHeaderReq.Header.Add("test", "Hello fiber!")
+	resp, err := app.Test(reqHeaderReq)
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "Hello fiber!", buf.String())
+}

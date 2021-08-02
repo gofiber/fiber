@@ -40,21 +40,23 @@ const (
 	TagBytesReceived     = "bytesReceived"
 	TagRoute             = "route"
 	TagError             = "error"
-	TagReqHeader         = "reqHeader:"
-	TagRespHeader        = "respHeader:"
-	TagLocals            = "locals:"
-	TagQuery             = "query:"
-	TagForm              = "form:"
-	TagCookie            = "cookie:"
-	TagBlack             = "black"
-	TagRed               = "red"
-	TagGreen             = "green"
-	TagYellow            = "yellow"
-	TagBlue              = "blue"
-	TagMagenta           = "magenta"
-	TagCyan              = "cyan"
-	TagWhite             = "white"
-	TagReset             = "reset"
+	// DEPRECATED: Use TagReqHeader instead
+	TagHeader     = "header:"
+	TagReqHeader  = "reqHeader:"
+	TagRespHeader = "respHeader:"
+	TagLocals     = "locals:"
+	TagQuery      = "query:"
+	TagForm       = "form:"
+	TagCookie     = "cookie:"
+	TagBlack      = "black"
+	TagRed        = "red"
+	TagGreen      = "green"
+	TagYellow     = "yellow"
+	TagBlue       = "blue"
+	TagMagenta    = "magenta"
+	TagCyan       = "cyan"
+	TagWhite      = "white"
+	TagReset      = "reset"
 )
 
 // Color values
@@ -268,6 +270,8 @@ func New(config ...Config) fiber.Handler {
 				switch {
 				case strings.HasPrefix(tag, TagReqHeader):
 					return buf.WriteString(c.Get(tag[10:]))
+				case strings.HasPrefix(tag, TagHeader):
+					return buf.WriteString(c.Get(tag[7:]))
 				case strings.HasPrefix(tag, TagRespHeader):
 					return buf.WriteString(c.GetRespHeader(tag[11:]))
 				case strings.HasPrefix(tag, TagQuery):
