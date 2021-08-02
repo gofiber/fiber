@@ -18,7 +18,7 @@ func Test_Skip(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 }
 
 // go test -run Test_SkipFalse
@@ -30,7 +30,7 @@ func Test_SkipFalse(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
 // go test -run Test_SkipNilFunc
@@ -42,7 +42,7 @@ func Test_SkipNilFunc(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
 func helloWorldHandler(c *fiber.Ctx) error {
