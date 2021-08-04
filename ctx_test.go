@@ -2565,3 +2565,15 @@ func TestCtx_ParamsInt(t *testing.T) {
 	app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
 
 }
+
+// go test -run Test_Ctx_GetRespHeader
+func Test_Ctx_GetRespHeader(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Set("test", "Hello, World 👋!")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+	utils.AssertEqual(t, c.GetRespHeader("test"), "Hello, World 👋!")
+	utils.AssertEqual(t, c.GetRespHeader(HeaderContentType), "application/json")
+}
