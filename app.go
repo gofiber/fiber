@@ -420,8 +420,8 @@ func New(config ...Config) *App {
 		},
 		// Create config
 		config:    Config{},
-		getBytes:  utils.GetBytes,
-		getString: utils.GetString,
+		getBytes:  utils.UnsafeBytes,
+		getString: utils.UnsafeString,
 	}
 	// Override config if provided
 	if len(config) > 0 {
