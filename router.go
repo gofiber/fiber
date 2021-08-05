@@ -200,7 +200,7 @@ func (app *App) copyRoute(route *Route) *Route {
 		Params:      route.Params,
 
 		// Public data
-		Path:     route.path,
+		Path:     route.Path,
 		Method:   route.Method,
 		Handlers: route.Handlers,
 	}
