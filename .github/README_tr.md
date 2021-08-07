@@ -170,7 +170,7 @@ func main() {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
-    
+
     // GET /john
     app.Get("/:name", func(c *fiber.Ctx) error {
         msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
@@ -238,9 +238,9 @@ func main() {
 
 ### Views engines
 
-📖 [Config](https://docs.gofiber.io/fiber#config)
+📖 [Config](https://docs.gofiber.io/api/fiber#config)
 📖 [Engines](https://github.com/gofiber/template)
-📖 [Render](https://docs.gofiber.io/context#render)
+📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
 Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
 
@@ -276,7 +276,7 @@ func main() {
 
 ### Rotaları Zincirlere Gruplama
 
-📖 [Grup](https://docs.gofiber.io/application#group)
+📖 [Grup](https://docs.gofiber.io/api/app#group)
 
 ```go
 func middleware(c *fiber.Ctx) error {
@@ -310,7 +310,7 @@ func main() {
 
 ### Ara Katman Günlükcüsü(Logger)
 
-📖 [Günlükcü](https://docs.gofiber.io/middleware/logger)
+📖 [Günlükcü](https://docs.gofiber.io/api/middleware/logger)
 
 ```go
 package main
@@ -335,7 +335,7 @@ func main() {
 
 ### Farklı Merkezler Arası Kaynak Paylaşımı (CORS)
 
-📖 [CORS](https://docs.gofiber.io/middleware/cors)
+📖 [CORS](https://docs.gofiber.io/api/middleware/cors)
 
 ```go
 import (
@@ -364,7 +364,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Özelleştirilebilir 404 yanıtları
 
-📖 [HTTP Methodlari](https://docs.gofiber.io/application#http-methods)
+📖 [HTTP Methodlari](https://docs.gofiber.io/api/ctx#status)
 
 ```go
 func main() {
@@ -456,7 +456,7 @@ func main() {
 
 ### Recover middleware
 
-📖 [Recover](https://docs.gofiber.io/middleware/recover)
+📖 [Recover](https://docs.gofiber.io/api/middleware/recover)
 
 ```go
 import (

@@ -218,7 +218,7 @@ func main() {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
-    
+
     // GET /john
     app.Get("/:name", func(c *fiber.Ctx) error {
         msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
@@ -300,9 +300,9 @@ func main() {
 
 </br>
 
-📖 [پیکربندی](https://docs.gofiber.io/fiber#config)
+📖 [پیکربندی](https://docs.gofiber.io/api/fiber#config)
 📖 [موتورها](https://github.com/gofiber/template)
-📖 [رندر](https://docs.gofiber.io/context#render)
+📖 [رندر](https://docs.gofiber.io/api/ctx#render)
 
 <br>
 <p align="center">
@@ -346,7 +346,7 @@ func main() {
 
 ### Grouping routes into chains
 
-📖 [Group](https://docs.gofiber.io/application#group)
+📖 [Group](https://docs.gofiber.io/api/app#group)
 
 <div dir="ltr">
 
@@ -385,7 +385,7 @@ func main() {
 
 ### Middleware logger
 
-📖 [Logger](https://docs.gofiber.io/middleware/logger)
+📖 [Logger](https://docs.gofiber.io/api/middleware/logger)
 
 <div dir="ltr">
 
@@ -414,7 +414,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 [CORS](https://docs.gofiber.io/middleware/cors)
+📖 [CORS](https://docs.gofiber.io/api/middleware/cors)
 
 <div dir="ltr">
 
@@ -451,7 +451,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Custom 404 response
 
-📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)
+📖 [HTTP Methods](https://docs.gofiber.io/api/ctx#status)
 
 <div dir="ltr">
 
@@ -555,7 +555,7 @@ func main() {
 
 ### Recover middleware
 
-📖 [Recover](https://docs.gofiber.io/middleware/recover)
+📖 [Recover](https://docs.gofiber.io/api/middleware/recover)
 
 <div dir="ltr">
 
