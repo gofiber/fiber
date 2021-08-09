@@ -37,6 +37,13 @@ proxy.WithTlsConfig(&tls.Config{
     InsecureSkipVerify: true,
 })
 
+// If you wish to dial the request through a custom HTTP proxy, you should
+// call WithHttpProxy before Do and Forward
+proxy.WithHttpProxy("example.com:1337")
+
+// If your HTTP proxy requires authentication, you should format as so
+proxy.WithHttpProxy("user:pass@example.com:1337")
+
 // Forward to url
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
@@ -122,6 +129,9 @@ type Config struct {
 
 	// tls config for the http client
 	TlsConfig *tls.Config
+
+	// Proxy specifies an http proxy to dial http client requests through
+	Proxy string
 }
 ```
 

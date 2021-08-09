@@ -49,6 +49,9 @@ type Config struct {
 
 	// tls config for the http client
 	TlsConfig *tls.Config
+
+	// Proxy is a custom HTTP proxy to dial requests through
+	Proxy string
 }
 
 // ConfigDefault is the default config
