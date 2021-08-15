@@ -308,6 +308,13 @@ type Config struct {
 	// Default: json.Marshal
 	JSONEncoder utils.JSONMarshal `json:"-"`
 
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// JSONUnmarshal
+	//
+	// Allowing for flexibility in using another json library for encoding
+	// Default: json.Unmarshal
+	JSONDecoder utils.JSONUnmarshal `json:"-"`
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
 	//
@@ -458,6 +465,9 @@ func New(config ...Config) *App {
 	}
 	if app.config.JSONEncoder == nil {
 		app.config.JSONEncoder = json.Marshal
+	}
+	if app.config.JSONDecoder == nil {
+		app.config.JSONDecoder = json.Unmarshal
 	}
 	if app.config.Network == "" {
 		app.config.Network = NetworkTCP4
