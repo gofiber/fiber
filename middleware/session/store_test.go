@@ -63,7 +63,7 @@ func TestStore_Get(t *testing.T) {
 	unexpectedID := "test-session-id"
 	// fiber instance
 	app := fiber.New()
-	t.Run("regenerate a session when session is invalid", func(t *testing.T) {
+	t.Run("session should persisted even session is invalid", func(t *testing.T) {
 		// session store
 		store := New()
 		// fiber context
@@ -75,7 +75,7 @@ func TestStore_Get(t *testing.T) {
 		acquiredSession, err := store.Get(ctx)
 		utils.AssertEqual(t, err, nil)
 
-		if acquiredSession.ID() == unexpectedID {
+		if acquiredSession.ID() != unexpectedID {
 			t.Fatal("server should not accept the unexpectedID which is not in the store")
 		}
 	})

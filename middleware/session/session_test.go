@@ -64,8 +64,8 @@ func Test_Session(t *testing.T) {
 	// we do not get id here
 	// since the original id is not in the db
 	// sess.id must be a new-generated uuid, which is not equivalent to "123"
-	// id := sess.ID()
-	// utils.AssertEqual(t, "123", id)
+	id := sess.ID()
+	utils.AssertEqual(t, "123", id)
 
 	// delete cookie
 	ctx.Request().Header.Del(fiber.HeaderCookie)
@@ -76,8 +76,8 @@ func Test_Session(t *testing.T) {
 	utils.AssertEqual(t, true, sess.Fresh())
 
 	// get id
-	id := sess.ID()
-	utils.AssertEqual(t, 36, len(id))
+	// id := sess.ID()
+	// utils.AssertEqual(t, 36, len(id))
 
 	// when we use the session for the second time
 	// the session be should be same if the session is not expired
@@ -124,7 +124,7 @@ func Test_Session_Types(t *testing.T) {
 		Name string
 	}
 	store.RegisterType(User{})
-	var vuser = User{
+	vuser := User{
 		Name: "John",
 	}
 	// set value
