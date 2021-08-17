@@ -69,10 +69,7 @@ func Test_Session(t *testing.T) {
 	err = sess.Save()
 	utils.AssertEqual(t, nil, err)
 
-	// delete cookie
-	ctx.Request().Header.Del(fiber.HeaderCookie)
-
-	// manually release context so that it has to be renewed from pool - preventing falsy tests
+	// requesting entirely new context to prevent falsy tests
 	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(ctx)
 
