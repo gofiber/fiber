@@ -291,7 +291,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
 		schemaDecoder.SetAliasTag("json")
-		return json.Unmarshal(c.Body(), out)
+		return c.app.config.JSONDecoder(c.Body(), out)
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
 		schemaDecoder.SetAliasTag("form")
