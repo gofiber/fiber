@@ -34,7 +34,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.14.0"
+const Version = "2.17.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -147,7 +147,7 @@ type Config struct {
 	// When set to true, converts all encoded characters in the route back
 	// before setting the path for the context, so that the routing,
 	// the returning of the current url from the context `ctx.Path()`
-	// and the paramters `ctx.Params(%key%)` with decoded characters will work
+	// and the parameters `ctx.Params(%key%)` with decoded characters will work
 	//
 	// Default: false
 	UnescapePath bool `json:"unescape_path"`
@@ -308,6 +308,13 @@ type Config struct {
 	// Default: json.Marshal
 	JSONEncoder utils.JSONMarshal `json:"-"`
 
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// JSONUnmarshal
+	//
+	// Allowing for flexibility in using another json library for encoding
+	// Default: json.Unmarshal
+	JSONDecoder utils.JSONUnmarshal `json:"-"`
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
 	//
@@ -420,8 +427,8 @@ func New(config ...Config) *App {
 		},
 		// Create config
 		config:    Config{},
-		getBytes:  utils.GetBytes,
-		getString: utils.GetString,
+		getBytes:  utils.UnsafeBytes,
+		getString: utils.UnsafeString,
 	}
 	// Override config if provided
 	if len(config) > 0 {
@@ -458,6 +465,9 @@ func New(config ...Config) *App {
 	}
 	if app.config.JSONEncoder == nil {
 		app.config.JSONEncoder = json.Marshal
+	}
+	if app.config.JSONDecoder == nil {
+		app.config.JSONDecoder = json.Unmarshal
 	}
 	if app.config.Network == "" {
 		app.config.Network = NetworkTCP4

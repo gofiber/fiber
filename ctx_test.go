@@ -358,6 +358,22 @@ func Test_Ctx_BodyParser(t *testing.T) {
 		Name string `json:"name" xml:"name" form:"name" query:"name"`
 	}
 
+	 {
+		 var gzipJSON bytes.Buffer
+		 w := gzip.NewWriter(&gzipJSON)
+		 _, _ = w.Write([]byte(`{"name":"john"}`))
+		 _ = w.Close()
+
+		 c.Request().Header.SetContentType(MIMEApplicationJSON)
+		 c.Request().Header.Set(HeaderContentEncoding, "gzip")
+		 c.Request().SetBody(gzipJSON.Bytes())
+		 c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
+		 d := new(Demo)
+		 utils.AssertEqual(t, nil, c.BodyParser(d))
+		 utils.AssertEqual(t, "john", d.Name)
+		 c.Request().Header.Del(HeaderContentEncoding)
+	 }
+
 	testDecodeParser := func(contentType, body string) {
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody([]byte(body))
@@ -524,16 +540,31 @@ func Test_Ctx_Cookie(t *testing.T) {
 	var dst []byte
 	dst = expire.In(time.UTC).AppendFormat(dst, time.RFC1123)
 	httpdate := strings.Replace(string(dst), "UTC", "GMT", -1)
-	c.Cookie(&Cookie{
+	cookie := &Cookie{
 		Name:    "username",
 		Value:   "john",
 		Expires: expire,
-	})
+		//SameSite: CookieSameSiteStrictMode, // default is "lax"
+	}
+	c.Cookie(cookie)
 	expect := "username=john; expires=" + httpdate + "; path=/; SameSite=Lax"
 	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 
-	c.Cookie(&Cookie{SameSite: "strict"})
-	c.Cookie(&Cookie{SameSite: "none"})
+	expect = "username=john; expires=" + httpdate + "; path=/"
+	cookie.SameSite = CookieSameSiteDisabled
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	expect = "username=john; expires=" + httpdate + "; path=/; SameSite=Strict"
+	cookie.SameSite = CookieSameSiteStrictMode
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	expect = "username=john; expires=" + httpdate + "; path=/; secure; SameSite=None"
+	cookie.Secure = true
+	cookie.SameSite = CookieSameSiteNoneMode
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
@@ -859,6 +890,15 @@ func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
 		utils.AssertEqual(t, "google1.com", c.Hostname())
 		app.ReleaseCtx(c)
 	}
+}
+
+// go test -run Test_Ctx_Port
+func Test_Ctx_Port(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, "0", c.Port())
 }
 
 // go test -run Test_Ctx_IP
@@ -2479,7 +2519,61 @@ func TestCtx_ParamsInt(t *testing.T) {
 		return nil
 	})
 
+	// For the user id I will use the number 2222, so I should be able to get the number
+	// 2222 from the Ctx even when the default value is specified
+	app.Get("/testignoredefault/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user", 1111)
+
+		// Check the number matches
+		if num != 2222 {
+			t.Fatalf("Expected number 2222 from the path, got %d", num)
+		}
+
+		// Check no errors are returned, because we want NO errors in this one
+		if err != nil {
+			t.Fatalf("Expected nil error for 2222 test, got " + err.Error())
+		}
+
+		return nil
+	})
+
+	// In this test case, there will be a bad request where the expected number is NOT
+	// a number in the path, default value of 1111 should be used instead
+	app.Get("/testdefault/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user", 1111)
+
+		// Check the number matches
+		if num != 1111 {
+			t.Fatalf("Expected number 1111 from the path, got %d", num)
+		}
+
+		// Check an error is returned, because we want NO errors in this one
+		if err != nil {
+			t.Fatalf("Expected nil error for 1111 test, got " + err.Error())
+		}
+
+		return nil
+	})
+
 	app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
 	app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
 
+}
+
+// go test -run Test_Ctx_GetRespHeader
+func Test_Ctx_GetRespHeader(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Set("test", "Hello, World 👋!")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+	utils.AssertEqual(t, c.GetRespHeader("test"), "Hello, World 👋!")
+	utils.AssertEqual(t, c.GetRespHeader(HeaderContentType), "application/json")
 }

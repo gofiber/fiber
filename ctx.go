@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -32,7 +33,6 @@ import (
 const maxParams = 30
 
 const queryTag = "query"
-
 
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
@@ -291,7 +291,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
 		schemaDecoder.SetAliasTag("json")
-		return json.Unmarshal(c.fasthttp.Request.Body(), out)
+		return c.app.config.JSONDecoder(c.Body(), out)
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
 		schemaDecoder.SetAliasTag("form")
@@ -311,7 +311,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	}
 	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
 		schemaDecoder.SetAliasTag("xml")
-		return xml.Unmarshal(c.fasthttp.Request.Body(), out)
+		return xml.Unmarshal(c.Body(), out)
 	}
 	// No suitable content type found
 	return ErrUnprocessableEntity
@@ -364,10 +364,12 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
 
 	switch utils.ToLower(cookie.SameSite) {
-	case "strict":
+	case CookieSameSiteStrictMode:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-	case "none":
+	case CookieSameSiteNoneMode:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+	case CookieSameSiteDisabled:
+		fcookie.SetSameSite(fasthttp.CookieSameSiteDisabled)
 	default:
 		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
 	}
@@ -526,6 +528,15 @@ func (c *Ctx) Get(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
 }
 
+// GetRespHeader returns the HTTP response header specified by field.
+// Field names are case-insensitive
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *Ctx) GetRespHeader(key string, defaultValue ...string) string {
+	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
+
+}
+
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
@@ -537,6 +548,12 @@ func (c *Ctx) Hostname() string {
 		}
 	}
 	return c.app.getString(c.fasthttp.Request.URI().Host())
+}
+
+// Port returns the remote port of the request.
+func (c *Ctx) Port() string {
+	port := c.fasthttp.RemoteAddr().(*net.TCPAddr).Port
+	return strconv.Itoa(port)
 }
 
 // IP returns the remote IP address of the request.
@@ -726,9 +743,20 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 // ParamsInt is used to get an integer from the route parameters
 // it defaults to zero if the parameter is not found or if the
 // parameter cannot be converted to an integer
-func (c *Ctx) ParamsInt(key string) (int, error) {
+// If a default value is given, it will returb that value in case the param
+// doesn't exist or cannot be converted to an integrer
+func (c *Ctx) ParamsInt(key string, defaultValue ...int) (int, error) {
 	// Use Atoi to convert the param to an int or return zero and an error
-	return strconv.Atoi(c.Params(key))
+	value, err := strconv.Atoi(c.Params(key))
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0], nil
+		} else {
+			return 0, err
+		}
+	}
+
+	return value, nil
 }
 
 // Path returns the path part of the request URL.

@@ -164,7 +164,7 @@ type Config struct {
 ```go
 var ConfigDefault = Config{
 	Expiration:   24 * time.Hour,
-	KeyLookUp:    "cookie:session_id",
+	KeyLookup:    "cookie:session_id",
 	KeyGenerator: utils.UUID,
 }
 ```
