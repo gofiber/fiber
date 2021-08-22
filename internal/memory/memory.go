@@ -13,8 +13,8 @@ type Storage struct {
 }
 
 type item struct {
-	v interface{} // val
 	e uint64      // exp
+	v interface{} // val
 }
 
 func New() *Storage {
@@ -45,7 +45,7 @@ func (s *Storage) Set(key string, val interface{}, ttl time.Duration) {
 		exp = uint64(ttl.Seconds()) + atomic.LoadUint64(&s.ts)
 	}
 	s.Lock()
-	s.data[key] = item{val, exp}
+	s.data[key] = item{exp, val}
 	s.Unlock()
 }
 
