@@ -288,6 +288,8 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	// Get content-type
 	ctype := utils.ToLower(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()))
 
+	ctype = utils.ParseVendorSpecificContentType(ctype)
+
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
 		schemaDecoder.SetAliasTag("json")

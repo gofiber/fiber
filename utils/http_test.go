@@ -53,6 +53,42 @@ func Benchmark_GetMIME(b *testing.B) {
 	})
 }
 
+func Test_ParseVendorSpecificContentType(t *testing.T) {
+	t.Parallel()
+
+	cType := ParseVendorSpecificContentType("application/json")
+	AssertEqual(t, "application/json", cType)
+
+	cType = ParseVendorSpecificContentType("application/vnd.api+json; version=1")
+	AssertEqual(t, "application/json", cType)
+
+	cType = ParseVendorSpecificContentType("application/vnd.api+json")
+	AssertEqual(t, "application/json", cType)
+
+	cType = ParseVendorSpecificContentType("application/vnd.dummy+x-www-form-urlencoded")
+	AssertEqual(t, "application/x-www-form-urlencoded", cType)
+
+	cType = ParseVendorSpecificContentType("something invalid")
+	AssertEqual(t, "something invalid", cType)
+}
+
+func Benchmark_ParseVendorSpecificContentType(b *testing.B) {
+	var cType string
+	b.Run("vendorContentType", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cType = ParseVendorSpecificContentType("application/vnd.api+json; version=1")
+		}
+		AssertEqual(b, "application/json", cType)
+	})
+
+	b.Run("defaultContentType", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			cType = ParseVendorSpecificContentType("application/json")
+		}
+		AssertEqual(b, "application/json", cType)
+	})
+}
+
 func Test_StatusMessage(t *testing.T) {
 	t.Parallel()
 	res := StatusMessage(204)
