@@ -589,22 +589,22 @@ func Test_App_Static_Direct(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/FUNDING.yml", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/testdata/testRoutes.json", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get("Content-Type"))
+	utils.AssertEqual(t, MIMEApplicationJSON, resp.Header.Get("Content-Type"))
 	utils.AssertEqual(t, "", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "testRoutes"))
 }
 
 // go test -run Test_App_Static_MaxAge
@@ -630,99 +630,99 @@ func Test_App_Static_Group(t *testing.T) {
 		return c.Next()
 	})
 
-	grp.Static("/v2", "./.github/FUNDING.yml")
+	grp.Static("/v2", "./.github/index.html")
 
 	req := httptest.NewRequest(MethodGet, "/v1/v2", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 	utils.AssertEqual(t, "123", resp.Header.Get("Test-Header"))
 
 	grp = app.Group("/v2")
-	grp.Static("/v3*", "./.github/FUNDING.yml")
+	grp.Static("/v3*", "./.github/index.html")
 
 	req = httptest.NewRequest(MethodGet, "/v2/v3/john/doe", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 }
 
 func Test_App_Static_Wildcard(t *testing.T) {
 	app := New()
 
-	app.Static("*", "./.github/FUNDING.yml")
+	app.Static("*", "./.github/index.html")
 
 	req := httptest.NewRequest(MethodGet, "/yesyes/john/doe", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "Test file"))
 
 }
 
 func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 	app := New()
 
-	app.Static("/test/*", "./.github/FUNDING.yml")
+	app.Static("/test/*", "./.github/index.html")
 
 	req := httptest.NewRequest(MethodGet, "/test/john/doe", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	app.Static("/my/nameisjohn*", "./.github/FUNDING.yml")
+	app.Static("/my/nameisjohn*", "./.github/index.html")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/my/nameisjohn/no/its/not", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "Test file"))
 }
 
 func Test_App_Static_Prefix(t *testing.T) {
 	app := New()
 	app.Static("/john", "./.github")
 
-	req := httptest.NewRequest(MethodGet, "/john/config.yml", nil)
+	req := httptest.NewRequest(MethodGet, "/john/index.html", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	app.Static("/prefix", "./.github/workflows")
+	app.Static("/prefix", "./.github/testdata")
 
-	req = httptest.NewRequest(MethodGet, "/prefix/test.yml", nil)
+	req = httptest.NewRequest(MethodGet, "/prefix/template.html", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	app.Static("/single", "./.github/workflows/test.yml")
+	app.Static("/single", "./.github/testdata/testRoutes.json")
 
 	req = httptest.NewRequest(MethodGet, "/single", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMEApplicationJSON, resp.Header.Get(HeaderContentType))
 }
 
 func Test_App_Static_Trailing_Slash(t *testing.T) {
