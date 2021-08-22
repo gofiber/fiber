@@ -14,8 +14,8 @@ type Storage struct {
 }
 
 type entry struct {
-	data   []byte
 	expiry int64
+	data   []byte
 }
 
 // New creates a new memory storage
@@ -61,7 +61,7 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	}
 
 	s.mux.Lock()
-	s.db[key] = entry{val, expire}
+	s.db[key] = entry{expire, val}
 	s.mux.Unlock()
 	return nil
 }
