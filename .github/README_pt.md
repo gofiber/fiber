@@ -172,7 +172,7 @@ func main() {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
-    
+
     // GET /john
     app.Get("/:name", func(c *fiber.Ctx) error {
         msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
@@ -240,9 +240,9 @@ func main() {
 
 ### Engines de visualização
 
-📖 [Config](https://docs.gofiber.io/fiber#config)
+📖 [Config](https://docs.gofiber.io/api/fiber#config)
 📖 [Engines](https://github.com/gofiber/template)
-📖 [Render](https://docs.gofiber.io/context#render)
+📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
 O Fiber usa por padrão o [html/template](https://golang.org/pkg/html/template/) quando nenhuma engine é selecionada.
 
@@ -276,7 +276,7 @@ func main() {
 
 ### Agrupamento de rotas
 
-📖 [Group](https://docs.gofiber.io/application#group)
+📖 [Group](https://docs.gofiber.io/api/app#group)
 
 ```go
 func middleware(c *fiber.Ctx) error {
@@ -311,7 +311,7 @@ func main() {
 
 ### Middleware Logger
 
-📖 [Logger](https://docs.gofiber.io/middleware/logger)
+📖 [Logger](https://docs.gofiber.io/api/middleware/logger)
 
 ```go
 package main
@@ -336,7 +336,7 @@ func main() {
 
 ### Cross-Origin Resource Sharing (CORS)
 
-📖 [CORS](https://docs.gofiber.io/middleware/cors)
+📖 [CORS](https://docs.gofiber.io/api/middleware/cors)
 
 ```go
 import (
@@ -365,7 +365,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### Resposta 404 customizada
 
-📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)
+📖 [HTTP Methods](https://docs.gofiber.io/api/ctx#status)
 
 ```go
 func main() {
@@ -457,7 +457,7 @@ func main() {
 
 ### Middleware Recover
 
-📖 [Recover](https://docs.gofiber.io/middleware/recover)
+📖 [Recover](https://docs.gofiber.io/api/middleware/recover)
 
 ```go
 import (

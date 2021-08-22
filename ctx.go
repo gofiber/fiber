@@ -291,7 +291,7 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
 		schemaDecoder.SetAliasTag("json")
-		return json.Unmarshal(c.Body(), out)
+		return c.app.config.JSONDecoder(c.Body(), out)
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
 		schemaDecoder.SetAliasTag("form")
@@ -526,6 +526,15 @@ func (c *Ctx) Fresh() bool {
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) Get(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
+}
+
+// GetRespHeader returns the HTTP response header specified by field.
+// Field names are case-insensitive
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *Ctx) GetRespHeader(key string, defaultValue ...string) string {
+	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
+
 }
 
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.

@@ -12,13 +12,13 @@ import (
 )
 
 // #nosec G103
-// GetString returns a string pointer without allocation
+// UnsafeString returns a string pointer without allocation
 func UnsafeString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
 // #nosec G103
-// GetBytes returns a byte pointer without allocation
+// UnsafeBytes returns a byte pointer without allocation
 func UnsafeBytes(s string) (bs []byte) {
 	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
 	bh := (*reflect.SliceHeader)(unsafe.Pointer(&bs))

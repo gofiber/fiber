@@ -172,7 +172,7 @@ func main() {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
-    
+
     // GET /john
     app.Get("/:name", func(c *fiber.Ctx) error {
         msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
@@ -240,9 +240,9 @@ func main() {
 
 ### 模版引擎
 
-📖 [配置](https://docs.gofiber.io/fiber#config)
+📖 [配置](https://docs.gofiber.io/api/fiber#config)
 📖 [模版引擎](https://github.com/gofiber/template)
-📖 [渲染](https://docs.gofiber.io/context#render)
+📖 [渲染](https://docs.gofiber.io/api/ctx#render)
 
 如果未设置模版引擎，则`Fiber`默认使用[html/template](https://golang.org/pkg/html/template/)。
 
@@ -278,7 +278,7 @@ func main() {
 
 ### 组合路由链
 
-📖 [路由分组](https://docs.gofiber.io/application#group)
+📖 [路由分组](https://docs.gofiber.io/api/app#group)
 
 ```go
 func middleware(c *fiber.Ctx) error {
@@ -313,7 +313,7 @@ func main() {
 
 ### 日志中间件
 
-📖 [Logger](https://docs.gofiber.io/middleware/logger)
+📖 [Logger](https://docs.gofiber.io/api/middleware/logger)
 
 ```go
 package main
@@ -338,7 +338,7 @@ func main() {
 
 ### 跨域资源共享(CORS)中间件
 
-📖 [CORS](https://docs.gofiber.io/middleware/cors)
+📖 [CORS](https://docs.gofiber.io/api/middleware/cors)
 
 ```go
 import (
@@ -367,7 +367,7 @@ curl -H "Origin: http://example.com" --verbose http://localhost:3000
 
 ### 自定义 404 响应
 
-📖 [HTTP Methods](https://docs.gofiber.io/application#http-methods)
+📖 [HTTP Methods](https://docs.gofiber.io/api/ctx#status)
 
 ```go
 func main() {
@@ -459,7 +459,7 @@ func main() {
 
 ### 恢复(panic)中间件
 
-📖 [Recover](https://docs.gofiber.io/middleware/recover)
+📖 [Recover](https://docs.gofiber.io/api/middleware/recover)
 
 ```go
 import (
