@@ -2,6 +2,12 @@
 
 Encrypt middleware for [Fiber](https://github.com/gofiber/fiber) which encrypts cookie values. Note: this middleware does not encrypt cookie names.
 
+## Table of Contents
+
+* [Signatures](encryptcookie.md#signatures)
+* [Setup](encryptcookie.md#setup)
+* [Config](encryptcookie.md#config)
+* [Default Config](encryptcookie.md#default-config)
 
 ## Signaures
 
@@ -13,26 +19,38 @@ func New(config ...Config) fiber.Handler
 func GenerateKey() string
 ```
 
-## Setup
+## Examples
 
-First import the middleware from Fiber,
-
-import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/cache"
-)
-
-Then create a Fiber app with `app := fiber.New()`.
-
-## Minimum Config
+Import the middleware package that is part of the Fiber web framework
 
 ```go
-// `Key` must be a 32 character string. It's used to encrpyt the values, so make sure it is random and keep it secret.
-// You can call `encryptcookie.GenerateKey()` to create a random key for you.
-// Make sure not to set `Key` to `encryptcookie.GenerateKey()` because that will create a new key every run.
+import (
+  "github.com/gofiber/fiber/v2"
+  "github.com/gofiber/fiber/v2/middleware/encryptcookie"
+)
+```
+
+After you initiate your Fiber app, you can use the following possibilities:
+
+```go
+// Default middleware config
 app.Use(encryptcookie.New(encryptcookie.Config{
     Key: "secret-thirty-2-character-string",
 }))
+
+// Get / reading out the encrypted cookie
+app.Get("/", func(c *fiber.Ctx) error {
+    return c.SendString("value=" + c.Cookies("test"))
+})
+
+// Post / create the encrypted cookie
+app.Post("/", func(c *fiber.Ctx) error {
+    c.Cookie(&fiber.Cookie{
+        Name:  "test",
+        Value: "SomeThing",
+    })
+    return nil
+})
 ```
 
 ## Config
@@ -65,4 +83,15 @@ type Config struct {
 	// Optional. Default: DecryptCookie
 	Decryptor func(encryptedString, key string) (string, error)
 }
+```
+
+## Default Config
+
+```go
+// `Key` must be a 32 character string. It's used to encrpyt the values, so make sure it is random and keep it secret.
+// You can call `encryptcookie.GenerateKey()` to create a random key for you.
+// Make sure not to set `Key` to `encryptcookie.GenerateKey()` because that will create a new key every run.
+app.Use(encryptcookie.New(encryptcookie.Config{
+    Key: "secret-thirty-2-character-string",
+}))
 ```
