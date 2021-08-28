@@ -137,6 +137,10 @@ Os novos gophers que mudaram do [Node.js](https://nodejs.org/en/about/) para o [
 
 O Fiber é **inspirado** no Express, o framework web mais popular da Internet. Combinamos a **facilidade** do Express e com o **desempenho bruto** do Go. Se você já implementou um aplicativo web com Node.js ( _usando Express.js ou similar_ ), então muitos métodos e princípios parecerão **muito familiares** para você.
 
+## Limitations
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.18.0 has been tested with Go versions 1.14 to 1.17.
+* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+
 ## 👀 Exemplos
 
 Listados abaixo estão alguns exemplos comuns. Se você quiser ver mais exemplos de código,
