@@ -139,6 +139,10 @@ Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에�
 
 우리는 **어떤한** 작업, **마감일정**, 개발자의 **기술**이던간에 **빠르고**, **유연하고**, **익숙한** Go 웹 프레임워크를 만들기 위해 사용자들의 [이슈들](https://github.com/gofiber/fiber/issues)을(그리고 모든 인터넷을 통해) **듣고 있습니다**! Express가 자바스크립트 세계에서 하는 것 처럼요.
 
+## Limitations
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.18.0 has been tested with Go versions 1.14 to 1.17.
+* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+
 ## 👀 예제
 
 다음은 일반적인 예제들 입니다.

@@ -142,6 +142,10 @@ Fiber は人気の高い Web フレームワークである Expressjs に**イ�
 わたしたちは Express の**手軽さ**と Go の**パフォーマンス**を組み合わせました。
 もしも、Web アプリケーションを Express 等の Node.js フレームワークで実装した経験があれば、多くの方法や原理がとても**馴染み深い**でしょう。
 
+## Limitations
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.18.0 has been tested with Go versions 1.14 to 1.17.
+* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+
 ## 👀 例
 
 以下に一般的な例をいくつか示します。他のコード例をご覧になりたい場合は、 [Recipes リポジトリ](https://github.com/gofiber/recipes)または[API ドキュメント](https://docs.gofiber.io)にアクセスしてください。

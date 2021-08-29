@@ -139,6 +139,10 @@ Fiber terinspirasi dari Express, salah satu web framework yang paling terkenal d
 
 Kami **mendengarkan** para pengguna di [GitHub Issues](https://github.com/gofiber/fiber/issues) (_dan berbagai platform lainnya_) untuk menciptakan web framework yang **cepat**, **fleksibel** dan **bersahabat** untuk berbagai macam keperluan, **tenggat waktu** dan **keahlian** para pengguna! Sama halnya seperti yang dilakukan Express di dunia JavaScript.
 
+## Limitations
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.18.0 has been tested with Go versions 1.14 to 1.17.
+* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+
 ## 👀 Contoh
 
 Dibawah ini terdapat beberapa contoh penggunaan. Jika anda ingin melihat contoh lainnya, silahkan kunjungi [Gudang resep](https://github.com/gofiber/recipes) atau kunjungi [Dokumentasi API](https://docs.gofiber.io) kami.

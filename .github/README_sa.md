@@ -153,6 +153,10 @@ Fiber هو **مستوحى** من Express, إطار الويب الأكثر شع�
 نحن **نصغي** لمستخدمينا [issues](https://github.com/gofiber/fiber/issues), نناقش [channel](https://gofiber.io/discord) _وفي جميع أنحاء الإنترنت_ لإنشاء **سريع**, **مرن** و **مألوف** Go إطار الويب لـ **لأي** مهمة, **الموعد الأخير
 ** و تطوير **مهارات**! فقط مثل Express تفعل لـ JavaScript عالم.
 
+## Limitations
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.18.0 has been tested with Go versions 1.14 to 1.17.
+* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+
 ## 👀 أمثلة
 
 فيما يلي بعض الأمثلة الشائعة. إذا كنت ترغب في رؤية المزيد من أمثلة التعليمات البرمجية, يرجى زيارة [Recipes repository](https://github.com/gofiber/recipes) او زيارة [API documentation](https://docs.gofiber.io).
