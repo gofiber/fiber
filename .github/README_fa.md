@@ -177,13 +177,14 @@ Fiber از Express <b>الهام گرفته</b>, که محبوب ترین فری
 <br>
 </p>
 
-## Limitations
-* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.18.0 has been tested with Go versions 1.14 to 1.17.
-* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+## محدودیت ها
+* به دلیل استفاده ناامن از Fiber, ممکن است کتابخانه همیشه با آخرین نسخه Go سازگار نباشد. Fiber 2.18.0 با زبان گو نسخه ۱.۱۴ تا ۱.۱۷ تست شده است.
+* فریمورک Fiber با پکیج net/http سازگار نیست. این بدان معناست شما نمی توانید از پکیج های مانند go-swagger, gqlgen یا سایر پروژه هایی که بخشی از اکوسیستم net/http هستند استفاده کنید.
+
+<br>
 
 ## 👀 مثال ها
 
-<br>
 <p align="center">
 <div dir="rtl">
 در پایین تعدادی نمونه مثال هستش. اگر شما مثال های بیشتر می خواهید ببینید, لطفا <a href="https://github.com/gofiber/recipes">مخزن کد</a> و <a href="https://docs.gofiber.io/">داکیومنت های</a> ما را بازدید کنید.
