@@ -6,10 +6,14 @@ _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) pa
 
 ## Table of Contents
 
-- [Signatures](#signatures)
-- [Examples](#examples)
-- [Config](#config)
-- [Default Config](#default-config)
+- [Session](#session)
+	- [Table of Contents](#table-of-contents)
+	- [Signatures](#signatures)
+		- [Examples](#examples)
+		- [Default Configuration](#default-configuration)
+		- [Custom Storage/Database](#custom-storagedatabase)
+	- [Config](#config)
+	- [Default Config](#default-config)
 
 ## Signatures
 
@@ -27,6 +31,8 @@ func (s *Session) Regenerate() error
 func (s *Session) Save() error
 func (s *Session) Fresh() bool
 func (s *Session) ID() string
+func (s *Session) Keys() []string
+func (s *Session) SetExpiry(time.Duration) 
 ```
 
 **⚠ _Storing `interface{}` values are limited to built-ins Go types_**
@@ -51,7 +57,7 @@ store := session.New()
 
 // This panic will be catch by the middleware
 app.Get("/", func(c *fiber.Ctx) error {
-	// get session from storage
+	// Get session from storage
 	sess, err := store.Get(c)
 	if err != nil {
 		panic(err)
@@ -63,15 +69,21 @@ app.Get("/", func(c *fiber.Ctx) error {
 	// Set key/value
 	sess.Set("name", "john")
 
+	// Get all Keys
+	keys := sess.Keys()
+
 	// Delete key
 	sess.Delete("name")
 
-	// Destry session
+	// Destroy session
 	if err := sess.Destroy(); err != nil {
 		panic(err)
 	}
 
-	// save session
+	// Sets a specific expiration for this session
+	sess.SetExpiry(time.Second * 2)
+
+	// Save session
 	if err := sess.Save(); err != nil {
 		panic(err)
 	}
@@ -106,9 +118,11 @@ type Config struct {
 	// Optional. Default value memory.New()
 	Storage fiber.Storage
 
-	// Name of the session cookie. This cookie will store session key.
-	// Optional. Default value "session_id".
-	CookieName string
+	// KeyLookup is a string in the form of "<source>:<name>" that is used
+	// to extract session id from the request.
+	// Possible values: "header:<name>", "query:<name>" or "cookie:<name>"
+	// Optional. Default value "cookie:session_id".
+	KeyLookup string
 
 	// Domain of the CSRF cookie.
 	// Optional. Default value "".
@@ -133,6 +147,15 @@ type Config struct {
 	// KeyGenerator generates the session key.
 	// Optional. Default value utils.UUID
 	KeyGenerator func() string
+
+	// Deprecated, please use KeyLookup
+	CookieName string
+
+	// Source defines where to obtain the session id
+	source      Source
+
+	// The session name
+	sessionName string
 }
 ```
 
@@ -141,7 +164,7 @@ type Config struct {
 ```go
 var ConfigDefault = Config{
 	Expiration:   24 * time.Hour,
-	CookieName:   "session_id",
+	KeyLookup:    "cookie:session_id",
 	KeyGenerator: utils.UUID,
 }
 ```

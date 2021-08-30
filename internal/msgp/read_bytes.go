@@ -699,7 +699,7 @@ func ReadBytesBytes(b []byte, scratch []byte) (v []byte, o []byte, err error) {
 	return readBytesBytes(b, scratch, false)
 }
 
-func readBytesBytes(b []byte, scratch []byte, zc bool) (v []byte, o []byte, err error) {
+func readBytesBytes(b, scratch []byte, zc bool) (v, o []byte, err error) {
 	l := len(b)
 	if l < 1 {
 		return nil, nil, ErrShortBytes
@@ -766,7 +766,7 @@ func readBytesBytes(b []byte, scratch []byte, zc bool) (v []byte, o []byte, err 
 // Possible errors:
 // - ErrShortBytes (b not long enough)
 // - TypeError{} (object not 'bin')
-func ReadBytesZC(b []byte) (v []byte, o []byte, err error) {
+func ReadBytesZC(b []byte) (v, o []byte, err error) {
 	return readBytesBytes(b, nil, true)
 }
 

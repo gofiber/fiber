@@ -43,7 +43,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, ":param", getString(body))
+	utils.AssertEqual(t, ":param", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
@@ -52,7 +52,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	utils.AssertEqual(t, "test", app.getString(body))
 }
 
 func Test_Route_Match_Star(t *testing.T) {
@@ -68,7 +68,7 @@ func Test_Route_Match_Star(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "*", getString(body))
+	utils.AssertEqual(t, "*", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
@@ -77,7 +77,7 @@ func Test_Route_Match_Star(t *testing.T) {
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	utils.AssertEqual(t, "test", app.getString(body))
 
 	// without parameter
 	route := Route{
@@ -114,7 +114,7 @@ func Test_Route_Match_Root(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "root", getString(body))
+	utils.AssertEqual(t, "root", app.getString(body))
 }
 
 func Test_Route_Match_Parser(t *testing.T) {
@@ -132,7 +132,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "bar", getString(body))
+	utils.AssertEqual(t, "bar", app.getString(body))
 
 	// with star
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", nil))
@@ -141,7 +141,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	utils.AssertEqual(t, "test", app.getString(body))
 }
 
 func Test_Route_Match_Middleware(t *testing.T) {
@@ -157,7 +157,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "*", getString(body))
+	utils.AssertEqual(t, "*", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", nil))
@@ -166,7 +166,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "bar/fasel", getString(body))
+	utils.AssertEqual(t, "bar/fasel", app.getString(body))
 }
 
 func Test_Route_Match_UnescapedPath(t *testing.T) {
@@ -182,7 +182,7 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	utils.AssertEqual(t, "test", app.getString(body))
 	// without special chars
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -193,6 +193,50 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+func Test_Route_Match_WithEscapeChar(t *testing.T) {
+	app := New()
+	// static route and escaped part
+	app.Get("/v1/some/resource/name\\:customVerb", func(c *Ctx) error {
+		return c.SendString("static")
+	})
+	// group route
+	group := app.Group("/v2/\\:firstVerb")
+	group.Get("/\\:customVerb", func(c *Ctx) error {
+		return c.SendString("group")
+	})
+	// route with resource param and escaped part
+	app.Get("/v3/:resource/name\\:customVerb", func(c *Ctx) error {
+		return c.SendString(c.Params("resource"))
+	})
+
+	// check static route
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "static", app.getString(body))
+
+	// check group route
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "group", app.getString(body))
+
+	// check param route
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "awesome", app.getString(body))
 }
 
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
@@ -208,7 +252,7 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "middleware", getString(body))
+	utils.AssertEqual(t, "middleware", app.getString(body))
 }
 
 func Test_Route_Match_Middleware_Root(t *testing.T) {
@@ -224,7 +268,7 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "middleware", getString(body))
+	utils.AssertEqual(t, "middleware", app.getString(body))
 }
 
 func Test_Router_Register_Missing_Handler(t *testing.T) {

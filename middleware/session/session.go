@@ -18,6 +18,7 @@ type Session struct {
 	config     *Store        // store configuration
 	data       *data         // key value data
 	byteBuffer *bytes.Buffer // byte buffer for the en- and decode
+	exp        time.Duration // expiration of this session
 }
 
 var sessionPool = sync.Pool{
@@ -40,6 +41,7 @@ func acquireSession() *Session {
 
 func releaseSession(s *Session) {
 	s.id = ""
+	s.exp = 0
 	s.ctx = nil
 	s.config = nil
 	if s.data != nil {
@@ -103,8 +105,8 @@ func (s *Session) Destroy() error {
 		return err
 	}
 
-	// Expire cookie
-	s.delCookie()
+	// Expire session
+	s.delSession()
 	return nil
 }
 
@@ -116,10 +118,19 @@ func (s *Session) Regenerate() error {
 		return err
 	}
 
-	// Create new ID
-	s.id = s.config.KeyGenerator()
+	// Generate a new session, and set session.fresh to true
+	s.refresh()
 
 	return nil
+}
+
+// refresh generates a new session, and set session.fresh to be true
+func (s *Session) refresh() {
+	// Create a new id
+	s.id = s.config.KeyGenerator()
+
+	// We assign a new id to the session, so the session must be fresh
+	s.fresh = true
 }
 
 // Save will update the storage and client cookie
@@ -130,27 +141,31 @@ func (s *Session) Save() error {
 		return nil
 	}
 
-	// Create cookie with the session ID if fresh
-	if s.fresh {
-		s.setCookie()
+	// Check if session has your own expiration, otherwise use default value
+	if s.exp <= 0 {
+		s.exp = s.config.Expiration
 	}
 
-	// Don't save to Storage if no data is available
-	if s.data.Len() <= 0 {
-		return nil
+	// Create session with the session ID if fresh
+	if s.fresh {
+		s.setSession()
 	}
 
 	// Convert data to bytes
 	mux.Lock()
+	defer mux.Unlock()
 	encCache := gob.NewEncoder(s.byteBuffer)
 	err := encCache.Encode(&s.data.Data)
 	if err != nil {
 		return err
 	}
-	mux.Unlock()
 
-	// pass raw bytes with session id to provider
-	if err := s.config.Storage.Set(s.id, s.byteBuffer.Bytes(), s.config.Expiration); err != nil {
+	// copy the data in buffer
+	encodedBytes := make([]byte, s.byteBuffer.Len())
+	copy(encodedBytes, s.byteBuffer.Bytes())
+
+	// pass copied bytes with session id to provider
+	if err := s.config.Storage.Set(s.id, encodedBytes, s.exp); err != nil {
 		return err
 	}
 
@@ -161,53 +176,75 @@ func (s *Session) Save() error {
 	return nil
 }
 
-func (s *Session) setCookie() {
-	fcookie := fasthttp.AcquireCookie()
-	fcookie.SetKey(s.config.CookieName)
-	fcookie.SetValue(s.id)
-	fcookie.SetPath(s.config.CookiePath)
-	fcookie.SetDomain(s.config.CookieDomain)
-	fcookie.SetMaxAge(int(s.config.Expiration.Seconds()))
-	fcookie.SetExpire(time.Now().Add(s.config.Expiration))
-	fcookie.SetSecure(s.config.CookieSecure)
-	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
-
-	// TODO Default value should be set to `strict` in fiber v3.
-	switch utils.ToLower(s.config.CookieSameSite) {
-	case "strict":
-		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-	case "none":
-		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-	default:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+// Keys will retrive all keys in current session
+func (s *Session) Keys() []string {
+	if s.data == nil {
+		return []string{}
 	}
-
-	s.ctx.Response().Header.SetCookie(fcookie)
-	fasthttp.ReleaseCookie(fcookie)
+	return s.data.Keys()
 }
 
-func (s *Session) delCookie() {
-	s.ctx.Request().Header.DelCookie(s.config.CookieName)
-	s.ctx.Response().Header.DelCookie(s.config.CookieName)
+// SetExpiry sets a specific expiration for this session
+func (s *Session) SetExpiry(exp time.Duration) {
+	s.exp = exp
+}
 
-	fcookie := fasthttp.AcquireCookie()
-	fcookie.SetKey(s.config.CookieName)
-	fcookie.SetPath(s.config.CookiePath)
-	fcookie.SetDomain(s.config.CookieDomain)
-	fcookie.SetMaxAge(-1)
-	fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
-	fcookie.SetSecure(s.config.CookieSecure)
-	fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
+func (s *Session) setSession() {
+	if s.config.source == SourceHeader {
+		s.ctx.Request().Header.SetBytesV(s.config.sessionName, []byte(s.id))
+		s.ctx.Response().Header.SetBytesV(s.config.sessionName, []byte(s.id))
+	} else {
+		fcookie := fasthttp.AcquireCookie()
+		fcookie.SetKey(s.config.sessionName)
+		fcookie.SetValue(s.id)
+		fcookie.SetPath(s.config.CookiePath)
+		fcookie.SetDomain(s.config.CookieDomain)
+		fcookie.SetMaxAge(int(s.exp.Seconds()))
+		fcookie.SetExpire(time.Now().Add(s.exp))
+		fcookie.SetSecure(s.config.CookieSecure)
+		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 
-	switch utils.ToLower(s.config.CookieSameSite) {
-	case "strict":
-		fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
-	case "none":
-		fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
-	default:
-		fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+		// TODO Default value should be set to `strict` in fiber v3.
+		switch utils.ToLower(s.config.CookieSameSite) {
+		case "strict":
+			fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+		case "none":
+			fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+		default:
+			fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+		}
+		s.ctx.Response().Header.SetCookie(fcookie)
+		fasthttp.ReleaseCookie(fcookie)
 	}
+}
 
-	s.ctx.Response().Header.SetCookie(fcookie)
-	fasthttp.ReleaseCookie(fcookie)
+func (s *Session) delSession() {
+	if s.config.source == SourceHeader {
+		s.ctx.Request().Header.Del(s.config.sessionName)
+		s.ctx.Response().Header.Del(s.config.sessionName)
+	} else {
+		s.ctx.Request().Header.DelCookie(s.config.sessionName)
+		s.ctx.Response().Header.DelCookie(s.config.sessionName)
+
+		fcookie := fasthttp.AcquireCookie()
+		fcookie.SetKey(s.config.sessionName)
+		fcookie.SetPath(s.config.CookiePath)
+		fcookie.SetDomain(s.config.CookieDomain)
+		fcookie.SetMaxAge(-1)
+		fcookie.SetExpire(time.Now().Add(-1 * time.Minute))
+		fcookie.SetSecure(s.config.CookieSecure)
+		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
+
+		switch utils.ToLower(s.config.CookieSameSite) {
+		case "strict":
+			fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)
+		case "none":
+			fcookie.SetSameSite(fasthttp.CookieSameSiteNoneMode)
+		default:
+			fcookie.SetSameSite(fasthttp.CookieSameSiteLaxMode)
+		}
+
+		s.ctx.Response().Header.SetCookie(fcookie)
+		fasthttp.ReleaseCookie(fcookie)
+	}
 }

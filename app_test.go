@@ -11,12 +11,16 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -270,6 +274,7 @@ func Test_App_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, uint32(2), app.handlerCount)
 }
 
 func Test_App_Use_Params(t *testing.T) {
@@ -334,7 +339,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	// check the param result
-	utils.AssertEqual(t, "اختبار", getString(body))
+	utils.AssertEqual(t, "اختبار", app.getString(body))
 
 	// with lowercase letters
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1", nil))
@@ -369,7 +374,7 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	// check the detected path result
-	utils.AssertEqual(t, "/AbC", getString(body))
+	utils.AssertEqual(t, "/AbC", app.getString(body))
 }
 
 func Test_App_Add_Method_Test(t *testing.T) {
@@ -587,22 +592,22 @@ func Test_App_Static_Direct(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/FUNDING.yml", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/testdata/testRoutes.json", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get("Content-Type"))
+	utils.AssertEqual(t, MIMEApplicationJSON, resp.Header.Get("Content-Type"))
 	utils.AssertEqual(t, "", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "testRoutes"))
 }
 
 // go test -run Test_App_Static_MaxAge
@@ -628,99 +633,99 @@ func Test_App_Static_Group(t *testing.T) {
 		return c.Next()
 	})
 
-	grp.Static("/v2", "./.github/FUNDING.yml")
+	grp.Static("/v2", "./.github/index.html")
 
 	req := httptest.NewRequest(MethodGet, "/v1/v2", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 	utils.AssertEqual(t, "123", resp.Header.Get("Test-Header"))
 
 	grp = app.Group("/v2")
-	grp.Static("/v3*", "./.github/FUNDING.yml")
+	grp.Static("/v3*", "./.github/index.html")
 
 	req = httptest.NewRequest(MethodGet, "/v2/v3/john/doe", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 }
 
 func Test_App_Static_Wildcard(t *testing.T) {
 	app := New()
 
-	app.Static("*", "./.github/FUNDING.yml")
+	app.Static("*", "./.github/index.html")
 
 	req := httptest.NewRequest(MethodGet, "/yesyes/john/doe", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "Test file"))
 
 }
 
 func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 	app := New()
 
-	app.Static("/test/*", "./.github/FUNDING.yml")
+	app.Static("/test/*", "./.github/index.html")
 
 	req := httptest.NewRequest(MethodGet, "/test/john/doe", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	app.Static("/my/nameisjohn*", "./.github/FUNDING.yml")
+	app.Static("/my/nameisjohn*", "./.github/index.html")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/my/nameisjohn/no/its/not", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), "gofiber.io/support"))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "Test file"))
 }
 
 func Test_App_Static_Prefix(t *testing.T) {
 	app := New()
 	app.Static("/john", "./.github")
 
-	req := httptest.NewRequest(MethodGet, "/john/stale.yml", nil)
+	req := httptest.NewRequest(MethodGet, "/john/index.html", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	app.Static("/prefix", "./.github/workflows")
+	app.Static("/prefix", "./.github/testdata")
 
-	req = httptest.NewRequest(MethodGet, "/prefix/test.yml", nil)
+	req = httptest.NewRequest(MethodGet, "/prefix/template.html", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	app.Static("/single", "./.github/workflows/test.yml")
+	app.Static("/single", "./.github/testdata/testRoutes.json")
 
 	req = httptest.NewRequest(MethodGet, "/single", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, MIMEApplicationJSON, resp.Header.Get(HeaderContentType))
 }
 
 func Test_App_Static_Trailing_Slash(t *testing.T) {
@@ -844,6 +849,7 @@ func Test_App_Group_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, uint32(2), app.handlerCount)
 }
 
 func Test_App_Group(t *testing.T) {
@@ -965,6 +971,35 @@ func Test_App_Listen_Prefork(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(":99999"))
 }
 
+// go test -run Test_App_ListenTLS
+func Test_App_ListenTLS(t *testing.T) {
+	app := New()
+
+	// invalid port
+	utils.AssertEqual(t, false, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key") == nil)
+	// missing perm/cert file
+	utils.AssertEqual(t, false, app.ListenTLS(":0", "", "./.github/testdata/ssl.key") == nil)
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
+}
+
+// go test -run Test_App_ListenTLS_Prefork
+func Test_App_ListenTLS_Prefork(t *testing.T) {
+	testPreforkMaster = true
+
+	app := New(Config{DisableStartupMessage: true, Prefork: true})
+
+	// invalid key file content
+	utils.AssertEqual(t, false, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html") == nil)
+
+	utils.AssertEqual(t, nil, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
+}
+
 // go test -run Test_App_Listener
 func Test_App_Listener(t *testing.T) {
 	app := New()
@@ -988,7 +1023,7 @@ func Test_App_Listener_Prefork(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
-func Test_App_Listener_TLS(t *testing.T) {
+func Test_App_Listener_TLS_Listener(t *testing.T) {
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
@@ -1225,9 +1260,57 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(":4006"))
 }
 
+func captureOutput(f func()) string {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		panic(err)
+	}
+	stdout := os.Stdout
+	stderr := os.Stderr
+	defer func() {
+		os.Stdout = stdout
+		os.Stderr = stderr
+		log.SetOutput(os.Stderr)
+	}()
+	os.Stdout = writer
+	os.Stderr = writer
+	log.SetOutput(writer)
+	out := make(chan string)
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go func() {
+		var buf bytes.Buffer
+		wg.Done()
+		io.Copy(&buf, reader)
+		out <- buf.String()
+	}()
+	wg.Wait()
+	f()
+	writer.Close()
+	return <-out
+}
+
 func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
-	New(Config{Prefork: true}).
-		startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
+	startupMessage := captureOutput(func() {
+		New(Config{Prefork: true}).
+			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
+	})
+	fmt.Println(startupMessage)
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "https://127.0.0.1:3000"))
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "Child PIDs"))
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "11111, 22222, 33333, 44444, 55555, 60000"))
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "Prefork ........ Enabled"))
+}
+
+func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
+	app := New(Config{Prefork: true, AppName: "Test App v1.0.1"})
+	startupMessage := captureOutput(func() {
+		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
+	})
+	fmt.Println(startupMessage)
+	utils.AssertEqual(t, "Test App v1.0.1", app.Config().AppName)
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, app.Config().AppName))
 }
 
 func Test_App_Server(t *testing.T) {
@@ -1246,4 +1329,79 @@ func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 500, resp.StatusCode)
+}
+
+// go test -race -run Test_App_New_Test_Parallel
+func Test_App_New_Test_Parallel(t *testing.T) {
+	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{Immutable: true})
+		app.Test(httptest.NewRequest("GET", "/", nil))
+	})
+	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
+		t.Parallel()
+		app := New(Config{Immutable: true})
+		app.Test(httptest.NewRequest("GET", "/", nil))
+	})
+}
+
+func Test_App_ReadBodyStream(t *testing.T) {
+	app := New(Config{StreamRequestBody: true})
+	app.Post("/", func(c *Ctx) error {
+		// Calling c.Body() automatically reads the entire stream.
+		return c.SendString(fmt.Sprintf("%v %s", c.Request().IsBodyStream(), c.Body()))
+	})
+	testString := "this is a test"
+	resp, err := app.Test(httptest.NewRequest("POST", "/", bytes.NewBufferString(testString)))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "ioutil.ReadAll(resp.Body)")
+	utils.AssertEqual(t, fmt.Sprintf("true %s", testString), string(body))
+}
+
+func Test_App_DisablePreParseMultipartForm(t *testing.T) {
+	// Must be used with both otherwise there is no point.
+	testString := "this is a test"
+
+	app := New(Config{DisablePreParseMultipartForm: true, StreamRequestBody: true})
+	app.Post("/", func(c *Ctx) error {
+		req := c.Request()
+		mpf, err := req.MultipartForm()
+		if err != nil {
+			return err
+		}
+		if !req.IsBodyStream() {
+			return fmt.Errorf("not a body stream")
+		}
+		file, err := mpf.File["test"][0].Open()
+		if err != nil {
+			return err
+		}
+		buffer := make([]byte, len(testString))
+		n, err := file.Read(buffer)
+		if err != nil {
+			return err
+		}
+		if n != len(testString) {
+			return fmt.Errorf("bad read length")
+		}
+		return c.Send(buffer)
+	})
+	b := &bytes.Buffer{}
+	w := multipart.NewWriter(b)
+	writer, err := w.CreateFormFile("test", "test")
+	utils.AssertEqual(t, nil, err, "w.CreateFormFile")
+	n, err := writer.Write([]byte(testString))
+	utils.AssertEqual(t, nil, err, "writer.Write")
+	utils.AssertEqual(t, len(testString), n, "writer n")
+	utils.AssertEqual(t, nil, w.Close(), "w.Close()")
+
+	req := httptest.NewRequest("POST", "/", b)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "ioutil.ReadAll(resp.Body)")
+
+	utils.AssertEqual(t, testString, string(body))
 }

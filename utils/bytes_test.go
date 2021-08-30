@@ -31,13 +31,13 @@ func Benchmark_ToLowerBytes(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToLowerBytes(path)
 		}
-		AssertEqual(b, bytes.Equal(GetBytes("/repos/gofiber/fiber/issues/187643/comments"), res), true)
+		AssertEqual(b, bytes.Equal(UnsafeBytes("/repos/gofiber/fiber/issues/187643/comments"), res), true)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = bytes.ToLower(path)
 		}
-		AssertEqual(b, bytes.Equal(GetBytes("/repos/gofiber/fiber/issues/187643/comments"), res), true)
+		AssertEqual(b, bytes.Equal(UnsafeBytes("/repos/gofiber/fiber/issues/187643/comments"), res), true)
 	})
 }
 
@@ -63,13 +63,13 @@ func Benchmark_ToUpperBytes(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToUpperBytes(path)
 		}
-		AssertEqual(b, bytes.Equal(GetBytes("/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS"), res), true)
+		AssertEqual(b, bytes.Equal(UnsafeBytes("/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS"), res), true)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = bytes.ToUpper(path)
 		}
-		AssertEqual(b, bytes.Equal(GetBytes("/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS"), res), true)
+		AssertEqual(b, bytes.Equal(UnsafeBytes("/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS"), res), true)
 	})
 }
 

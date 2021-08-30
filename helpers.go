@@ -95,10 +95,10 @@ func readContent(rf io.ReaderFrom, name string) (n int64, err error) {
 }
 
 // quoteString escape special characters in a given string
-func quoteString(raw string) string {
+func (app *App) quoteString(raw string) string {
 	bb := bytebufferpool.Get()
 	// quoted := string(fasthttp.AppendQuotedArg(bb.B, getBytes(raw)))
-	quoted := getString(fasthttp.AppendQuotedArg(bb.B, getBytes(raw)))
+	quoted := app.getString(fasthttp.AppendQuotedArg(bb.B, app.getBytes(raw)))
 	bytebufferpool.Put(bb)
 	return quoted
 }
@@ -272,7 +272,7 @@ func matchEtag(s string, etag string) bool {
 	return false
 }
 
-func isEtagStale(etag string, noneMatchBytes []byte) bool {
+func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	var start, end int
 
 	// Adapted from:
@@ -285,7 +285,7 @@ func isEtagStale(etag string, noneMatchBytes []byte) bool {
 				end = i + 1
 			}
 		case 0x2c:
-			if matchEtag(getString(noneMatchBytes[start:end]), etag) {
+			if matchEtag(app.getString(noneMatchBytes[start:end]), etag) {
 				return false
 			}
 			start = i + 1
@@ -295,7 +295,7 @@ func isEtagStale(etag string, noneMatchBytes []byte) bool {
 		}
 	}
 
-	return !matchEtag(getString(noneMatchBytes[start:end]), etag)
+	return !matchEtag(app.getString(noneMatchBytes[start:end]), etag)
 }
 
 func parseAddr(raw string) (host, port string) {
@@ -359,14 +359,10 @@ func (c *testConn) SetDeadline(_ time.Time) error      { return nil }
 func (c *testConn) SetReadDeadline(_ time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
-// getString converts byte slice to a string without memory allocation.
-var getString = utils.UnsafeString
 var getStringImmutable = func(b []byte) string {
 	return string(b)
 }
 
-// getBytes converts string to a byte slice without memory allocation.
-var getBytes = utils.UnsafeBytes
 var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
 }
@@ -634,50 +630,52 @@ const (
 	HeaderContentSecurityPolicyReportOnly = "Content-Security-Policy-Report-Only"
 	HeaderCrossOriginResourcePolicy       = "Cross-Origin-Resource-Policy"
 	HeaderExpectCT                        = "Expect-CT"
-	HeaderFeaturePolicy                   = "Feature-Policy"
-	HeaderPublicKeyPins                   = "Public-Key-Pins"
-	HeaderPublicKeyPinsReportOnly         = "Public-Key-Pins-Report-Only"
-	HeaderStrictTransportSecurity         = "Strict-Transport-Security"
-	HeaderUpgradeInsecureRequests         = "Upgrade-Insecure-Requests"
-	HeaderXContentTypeOptions             = "X-Content-Type-Options"
-	HeaderXDownloadOptions                = "X-Download-Options"
-	HeaderXFrameOptions                   = "X-Frame-Options"
-	HeaderXPoweredBy                      = "X-Powered-By"
-	HeaderXXSSProtection                  = "X-XSS-Protection"
-	HeaderLastEventID                     = "Last-Event-ID"
-	HeaderNEL                             = "NEL"
-	HeaderPingFrom                        = "Ping-From"
-	HeaderPingTo                          = "Ping-To"
-	HeaderReportTo                        = "Report-To"
-	HeaderTE                              = "TE"
-	HeaderTrailer                         = "Trailer"
-	HeaderTransferEncoding                = "Transfer-Encoding"
-	HeaderSecWebSocketAccept              = "Sec-WebSocket-Accept"
-	HeaderSecWebSocketExtensions          = "Sec-WebSocket-Extensions"
-	HeaderSecWebSocketKey                 = "Sec-WebSocket-Key"
-	HeaderSecWebSocketProtocol            = "Sec-WebSocket-Protocol"
-	HeaderSecWebSocketVersion             = "Sec-WebSocket-Version"
-	HeaderAcceptPatch                     = "Accept-Patch"
-	HeaderAcceptPushPolicy                = "Accept-Push-Policy"
-	HeaderAcceptSignature                 = "Accept-Signature"
-	HeaderAltSvc                          = "Alt-Svc"
-	HeaderDate                            = "Date"
-	HeaderIndex                           = "Index"
-	HeaderLargeAllocation                 = "Large-Allocation"
-	HeaderLink                            = "Link"
-	HeaderPushPolicy                      = "Push-Policy"
-	HeaderRetryAfter                      = "Retry-After"
-	HeaderServerTiming                    = "Server-Timing"
-	HeaderSignature                       = "Signature"
-	HeaderSignedHeaders                   = "Signed-Headers"
-	HeaderSourceMap                       = "SourceMap"
-	HeaderUpgrade                         = "Upgrade"
-	HeaderXDNSPrefetchControl             = "X-DNS-Prefetch-Control"
-	HeaderXPingback                       = "X-Pingback"
-	HeaderXRequestID                      = "X-Request-ID"
-	HeaderXRequestedWith                  = "X-Requested-With"
-	HeaderXRobotsTag                      = "X-Robots-Tag"
-	HeaderXUACompatible                   = "X-UA-Compatible"
+	// Deprecated: use HeaderPermissionsPolicy instead
+	HeaderFeaturePolicy           = "Feature-Policy"
+	HeaderPermissionsPolicy       = "Permissions-Policy"
+	HeaderPublicKeyPins           = "Public-Key-Pins"
+	HeaderPublicKeyPinsReportOnly = "Public-Key-Pins-Report-Only"
+	HeaderStrictTransportSecurity = "Strict-Transport-Security"
+	HeaderUpgradeInsecureRequests = "Upgrade-Insecure-Requests"
+	HeaderXContentTypeOptions     = "X-Content-Type-Options"
+	HeaderXDownloadOptions        = "X-Download-Options"
+	HeaderXFrameOptions           = "X-Frame-Options"
+	HeaderXPoweredBy              = "X-Powered-By"
+	HeaderXXSSProtection          = "X-XSS-Protection"
+	HeaderLastEventID             = "Last-Event-ID"
+	HeaderNEL                     = "NEL"
+	HeaderPingFrom                = "Ping-From"
+	HeaderPingTo                  = "Ping-To"
+	HeaderReportTo                = "Report-To"
+	HeaderTE                      = "TE"
+	HeaderTrailer                 = "Trailer"
+	HeaderTransferEncoding        = "Transfer-Encoding"
+	HeaderSecWebSocketAccept      = "Sec-WebSocket-Accept"
+	HeaderSecWebSocketExtensions  = "Sec-WebSocket-Extensions"
+	HeaderSecWebSocketKey         = "Sec-WebSocket-Key"
+	HeaderSecWebSocketProtocol    = "Sec-WebSocket-Protocol"
+	HeaderSecWebSocketVersion     = "Sec-WebSocket-Version"
+	HeaderAcceptPatch             = "Accept-Patch"
+	HeaderAcceptPushPolicy        = "Accept-Push-Policy"
+	HeaderAcceptSignature         = "Accept-Signature"
+	HeaderAltSvc                  = "Alt-Svc"
+	HeaderDate                    = "Date"
+	HeaderIndex                   = "Index"
+	HeaderLargeAllocation         = "Large-Allocation"
+	HeaderLink                    = "Link"
+	HeaderPushPolicy              = "Push-Policy"
+	HeaderRetryAfter              = "Retry-After"
+	HeaderServerTiming            = "Server-Timing"
+	HeaderSignature               = "Signature"
+	HeaderSignedHeaders           = "Signed-Headers"
+	HeaderSourceMap               = "SourceMap"
+	HeaderUpgrade                 = "Upgrade"
+	HeaderXDNSPrefetchControl     = "X-DNS-Prefetch-Control"
+	HeaderXPingback               = "X-Pingback"
+	HeaderXRequestID              = "X-Request-ID"
+	HeaderXRequestedWith          = "X-Requested-With"
+	HeaderXRobotsTag              = "X-Robots-Tag"
+	HeaderXUACompatible           = "X-UA-Compatible"
 )
 
 // Network types that are commonly used
@@ -685,4 +683,21 @@ const (
 	NetworkTCP  = "tcp"
 	NetworkTCP4 = "tcp4"
 	NetworkTCP6 = "tcp6"
+)
+
+//Compression types
+const (
+	StrGzip    = "gzip"
+	StrBr      = "br"
+	StrDeflate = "deflate"
+	StrBrotli  = "brotli"
+)
+
+// Cookie SameSite
+// https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-03#section-4.1.2.7
+const (
+	CookieSameSiteDisabled   = "disabled" // not in RFC, just control "SameSite" attribute will not be set.
+	CookieSameSiteLaxMode    = "lax"
+	CookieSameSiteStrictMode = "strict"
+	CookieSameSiteNoneMode   = "none"
 )

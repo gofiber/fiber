@@ -140,7 +140,7 @@ func IOCountersByFileWithContext(ctx context.Context, pernic bool, filename stri
 		ret = append(ret, nic)
 	}
 
-	if pernic == false {
+	if !pernic {
 		return getIOCountersAll(ret)
 	}
 

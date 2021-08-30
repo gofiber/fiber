@@ -38,10 +38,9 @@ func (s *Store) RegisterType(i interface{}) {
 // Get will get/create a session
 func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	var fresh bool
-	var loadDada = true
+	loadData := true
 
-	// Get key from cookie
-	id := c.Cookies(s.CookieName)
+	id := s.getSessionID(c)
 
 	if len(id) == 0 {
 		fresh = true
@@ -53,7 +52,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 
 	// If no key exist, create new one
 	if len(id) == 0 {
-		loadDada = false
+		loadData = false
 		id = s.KeyGenerator()
 	}
 
@@ -65,21 +64,22 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	sess.fresh = fresh
 
 	// Fetch existing data
-	if loadDada {
+	if loadData {
 		raw, err := s.Storage.Get(id)
 		// Unmashal if we found data
 		if raw != nil && err == nil {
 			mux.Lock()
+			defer mux.Unlock()
 			_, _ = sess.byteBuffer.Write(raw)
 			encCache := gob.NewDecoder(sess.byteBuffer)
 			err := encCache.Decode(&sess.data.Data)
 			if err != nil {
 				return nil, err
 			}
-			mux.Unlock()
 		} else if err != nil {
 			return nil, err
 		} else {
+			// both raw and err is nil, which means id is not in the storage
 			sess.fresh = true
 		}
 	}
@@ -87,14 +87,42 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	return sess, nil
 }
 
+// getSessionID will return the session id from:
+// 1. cookie
+// 2. http headers
+// 3. query string
+func (s *Store) getSessionID(c *fiber.Ctx) string {
+	id := c.Cookies(s.sessionName)
+	if len(id) > 0 {
+		return id
+	}
+
+	if s.source == SourceHeader {
+		id = string(c.Request().Header.Peek(s.sessionName))
+		if len(id) > 0 {
+			return id
+		}
+	}
+
+	if s.source == SourceURLQuery {
+		id = c.Query(s.sessionName)
+		if len(id) > 0 {
+			return id
+		}
+	}
+
+	return ""
+}
+
 func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 	// Get key from response cookie
-	cookieValue := c.Response().Header.PeekCookie(s.CookieName)
+	cookieValue := c.Response().Header.PeekCookie(s.sessionName)
 	if len(cookieValue) == 0 {
 		return "", nil
 	}
 
 	cookie := fasthttp.AcquireCookie()
+	defer fasthttp.ReleaseCookie(cookie)
 	err := cookie.ParseBytes(cookieValue)
 	if err != nil {
 		return "", err
@@ -103,7 +131,6 @@ func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 	value := make([]byte, len(cookie.Value()))
 	copy(value, cookie.Value())
 	id := utils.UnsafeString(value)
-	fasthttp.ReleaseCookie(cookie)
 	return id, nil
 }
 

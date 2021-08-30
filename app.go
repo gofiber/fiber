@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/colorable"
@@ -33,7 +34,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.6.0"
+const Version = "2.18.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -95,15 +96,19 @@ type App struct {
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
 	// Amount of registered routes
-	routesCount int
+	routesCount uint32
 	// Amount of registered handlers
-	handlerCount int
+	handlerCount uint32
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
 	server *fasthttp.Server
 	// App config
 	config Config
+	// Converts string to a byte slice
+	getBytes func(s string) (b []byte)
+	// Converts byte slice to a string
+	getString func(b []byte) string
 }
 
 // Config is a struct holding the server settings.
@@ -142,7 +147,7 @@ type Config struct {
 	// When set to true, converts all encoded characters in the route back
 	// before setting the path for the context, so that the routing,
 	// the returning of the current url from the context `ctx.Path()`
-	// and the paramters `ctx.Params(%key%)` with decoded characters will work
+	// and the parameters `ctx.Params(%key%)` with decoded characters will work
 	//
 	// Default: false
 	UnescapePath bool `json:"unescape_path"`
@@ -168,6 +173,11 @@ type Config struct {
 	//
 	// Default: nil
 	Views Views `json:"-"`
+
+	// Views Layout is the global layout for all template render until override on Render function.
+	//
+	// Default: ""
+	ViewsLayout string `json:"views_layout"`
 
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
@@ -255,6 +265,24 @@ type Config struct {
 	// Default: false
 	DisableStartupMessage bool `json:"disable_startup_message"`
 
+	// This function allows to setup app name for the app
+	//
+	// Default: nil
+	AppName string `json:"app_name"`
+
+	// StreamRequestBody enables request body streaming,
+	// and calls the handler sooner when given body is
+	// larger then the current limit.
+	StreamRequestBody bool
+
+	// Will not pre parse Multipart Form data if set to true.
+	//
+	// This option is useful for servers that desire to treat
+	// multipart form data as a binary blob, or choose when to parse the data.
+	//
+	// Server pre parses multipart form data by default.
+	DisablePreParseMultipartForm bool
+
 	// Aggressively reduces memory usage at the cost of higher CPU usage
 	// if set to true.
 	//
@@ -280,11 +308,46 @@ type Config struct {
 	// Default: json.Marshal
 	JSONEncoder utils.JSONMarshal `json:"-"`
 
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// JSONUnmarshal
+	//
+	// Allowing for flexibility in using another json library for encoding
+	// Default: json.Unmarshal
+	JSONDecoder utils.JSONUnmarshal `json:"-"`
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
 	//
 	// Default: NetworkTCP4
 	Network string
+
+	// If you find yourself behind some sort of proxy, like a load balancer,
+	// then certain header information may be sent to you using special X-Forwarded-* headers or the Forwarded header.
+	// For example, the Host HTTP header is usually used to return the requested host.
+	// But when you’re behind a proxy, the actual host may be stored in an X-Forwarded-Host header.
+	//
+	// If you are behind a proxy, you should enable TrustedProxyCheck to prevent header spoofing.
+	// If you enable EnableTrustedProxyCheck and leave TrustedProxies empty Fiber will skip
+	// all headers that could be spoofed.
+	// If request ip in TrustedProxies whitelist then:
+	//   1. c.Protocol() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
+	//   2. c.IP() get value from ProxyHeader header.
+	//   3. c.Hostname() get value from X-Forwarded-Host header
+	// But if request ip NOT in Trusted Proxies whitelist then:
+	//   1. c.Protocol() WON't get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
+	//    will return https in case when tls connection is handled by the app, of http otherwise
+	//   2. c.IP() WON'T get value from ProxyHeader header, will return RemoteIP() from fasthttp context
+	//   3. c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
+	//    will be used to get the hostname.
+	//
+	// Default: false
+	EnableTrustedProxyCheck bool `json:"enable_trusted_proxy_check"`
+
+	// Read EnableTrustedProxyCheck doc.
+	//
+	// Default: []string
+	TrustedProxies    []string `json:"trusted_proxies"`
+	trustedProxiesMap map[string]struct{}
 }
 
 // Static defines configuration options when defining static assets.
@@ -363,7 +426,9 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config: Config{},
+		config:    Config{},
+		getBytes:  utils.UnsafeBytes,
+		getString: utils.UnsafeString,
 	}
 	// Override config if provided
 	if len(config) > 0 {
@@ -393,7 +458,7 @@ func New(config ...Config) *App {
 		app.config.CompressedFileSuffix = DefaultCompressedFileSuffix
 	}
 	if app.config.Immutable {
-		getBytes, getString = getBytesImmutable, getStringImmutable
+		app.getBytes, app.getString = getBytesImmutable, getStringImmutable
 	}
 	if app.config.ErrorHandler == nil {
 		app.config.ErrorHandler = DefaultErrorHandler
@@ -401,8 +466,16 @@ func New(config ...Config) *App {
 	if app.config.JSONEncoder == nil {
 		app.config.JSONEncoder = json.Marshal
 	}
+	if app.config.JSONDecoder == nil {
+		app.config.JSONDecoder = json.Unmarshal
+	}
 	if app.config.Network == "" {
 		app.config.Network = NetworkTCP4
+	}
+
+	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
+	for _, ip := range app.config.TrustedProxies {
+		app.config.trustedProxiesMap[ip] = struct{}{}
 	}
 
 	// Init app
@@ -423,6 +496,9 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
 		}
 	}
+
+	atomic.AddUint32(&app.handlerCount, fiber.handlerCount)
+
 	return app
 }
 
@@ -796,6 +872,8 @@ func (app *App) init() *App {
 	app.server.WriteBufferSize = app.config.WriteBufferSize
 	app.server.GetOnly = app.config.GETOnly
 	app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
+	app.server.StreamRequestBody = app.config.StreamRequestBody
+	app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm
 
 	// unlock application
 	app.mutex.Unlock()
@@ -894,9 +972,11 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		procs = "1"
 	}
 
-	mainLogo := cBlack +
-		" ┌───────────────────────────────────────────────────┐\n" +
-		" │ " + centerValue(" Fiber v"+Version, 49) + " │\n"
+	mainLogo := cBlack + " ┌───────────────────────────────────────────────────┐\n"
+	if app.config.AppName != "" {
+		mainLogo += " │ " + centerValue(app.config.AppName, 49) + " │\n"
+	}
+	mainLogo += " │ " + centerValue(" Fiber v"+Version, 49) + " │\n"
 
 	if host == "0.0.0.0" {
 		mainLogo +=
@@ -913,7 +993,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			" │ Prefork .%s  PID ....%s │\n"+
 			" └───────────────────────────────────────────────────┘"+
 			cReset,
-		value(strconv.Itoa(app.handlerCount), 14), value(procs, 12),
+		value(strconv.Itoa(int(app.handlerCount)), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 	)
 

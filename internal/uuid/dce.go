@@ -6,8 +6,9 @@ package uuid
 
 import (
 	"encoding/binary"
-	"fmt"
 	"os"
+	"strconv"
+	"strings"
 )
 
 // A Domain represents a Version 2 domain
@@ -76,5 +77,5 @@ func (d Domain) String() string {
 	case Org:
 		return "Org"
 	}
-	return fmt.Sprintf("Domain%d", int(d))
+	return strings.Join([]string{"Domain", strconv.Itoa(int(d))}, "")
 }

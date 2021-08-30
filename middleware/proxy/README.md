@@ -31,6 +31,12 @@ import (
 After you initiate your Fiber app, you can use the following possibilities:
 
 ```go
+// if target https site uses a self-signed certificate, you should
+// call WithTlsConfig before Do and Forward
+proxy.WithTlsConfig(&tls.Config{
+    InsecureSkipVerify: true,
+})
+
 // Forward to url
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
@@ -99,6 +105,23 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	ModifyResponse fiber.Handler
+	
+	// Timeout is the request timeout used when calling the proxy client
+	//
+	// Optional. Default: 1 second
+	Timeout time.Duration
+
+	// Per-connection buffer size for requests' reading.
+	// This also limits the maximum header size.
+	// Increase this buffer if your clients send multi-KB RequestURIs
+	// and/or multi-KB headers (for example, BIG cookies).
+	ReadBufferSize int
+    
+	// Per-connection buffer size for responses' writing.
+	WriteBufferSize int
+
+	// tls config for the http client
+	TlsConfig *tls.Config
 }
 ```
 
@@ -107,6 +130,9 @@ type Config struct {
 ```go
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next: nil,
+    Next:           nil,
+    ModifyRequest:  nil,
+    ModifyResponse: nil,
+    Timeout:        fasthttp.DefaultLBClientTimeout,
 }
 ```

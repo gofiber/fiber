@@ -12,7 +12,7 @@ func ToLower(b string) string {
 		res[i] = toLowerTable[res[i]]
 	}
 
-	return GetString(res)
+	return UnsafeString(res)
 }
 
 // ToUpper is the equivalent of strings.ToUpper
@@ -23,7 +23,7 @@ func ToUpper(b string) string {
 		res[i] = toUpperTable[res[i]]
 	}
 
-	return GetString(res)
+	return UnsafeString(res)
 }
 
 // TrimLeft is the equivalent of strings.TrimLeft

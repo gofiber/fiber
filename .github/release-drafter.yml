@@ -4,13 +4,13 @@ categories:
     - title: '🚀 New'
       labels:
           - '✏️ Feature'
-    - title: '🐛 Fixes'
-      labels:
-          - '☢️ Bug'
     - title: '🧹 Updates'
       labels:
           - '🧹 Updates'
           - '🤖 Dependencies'
+    - title: '🐛 Fixes'
+      labels:
+          - '☢️ Bug'
     - title: '📚 Documentation'
       labels:
           - '📒 Documentation'
@@ -42,32 +42,51 @@ autolabeler:
           - '/typos/i'
           - '/comment/i'
           - '/📚/i'
+          - '/📒/i'
+          - '/📝/i'
+          - '/documentation/i'
     - label: '☢️ Bug'
-      branch:
-          - '/fix\/.+/'
       title:
           - '/fix/i'
           - '/race/i'
           - '/bug/i'
+          - '/missing/i'
+          - '/correct/i'
           - '/🐛/i'
+          - '/☢/i'
+          - '/🩹/i'
+          - '/🚨/i'
     - label: '🧹 Updates'
       title:
           - '/improve/i'
           - '/update/i'
           - '/refactor/i'
+          - '/deprecated/i'
+          - '/remove/i'
+          - '/unused/i'
+          - '/test/i'
           - '/⚡/i'
+          - '/👷/i'
+          - '/🚧/i'
+          - '/♻️/i'
+          - '/🎨/i'
+          - '/🧪/i'
           - '/🧹/i'
-    - label: '🤖 dependencies'
+    - label: '🤖 Dependencies'
       title:
           - '/bumb/i'
           - '/dependencies/i'
+          - '/📦/i'
+          - '/🤖/i'
     - label: '✏️ Feature'
-      branch:
-          - '/feature\/.+/'
-      body:
+      title:
           - '/feature/i'
+          - '/create/i'
+          - '/implement/i'
           - '/add/i'
           - '/🚀/i'
+          - '/✨/i'
+          - '/🔥/i'
 template: |
     $CHANGES
 
