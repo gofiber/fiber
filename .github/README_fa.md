@@ -179,7 +179,7 @@ Fiber از Express <b>الهام گرفته</b>, که محبوب ترین فری
 
 ## محدودیت ها
 * به دلیل استفاده ناامن از Fiber, ممکن است کتابخانه همیشه با آخرین نسخه Go سازگار نباشد. Fiber 2.18.0 با زبان گو نسخه ۱.۱۴ تا ۱.۱۷ تست شده است.
-* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+* فریمورک Fiber با پکیج net/http سازگار نیست. این بدان معناست شما نمی توانید از پکیج های مانند go-swagger, gqlgen یا سایر پروژه هایی که بخشی از اکوسیستم net/http هستند استفاده کنید.
 
 <br>
 
