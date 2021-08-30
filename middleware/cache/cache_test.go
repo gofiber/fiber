@@ -37,14 +37,10 @@ func Test_Cache_CacheControl(t *testing.T) {
 }
 
 func Test_Cache_Expired(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
-
-	// To avoid test failure we should set expiration time > 1s since the timer error in the cache middleware is 1s
-	expiration := 1*time.Second + 500*time.Millisecond
-
-	app.Use(New(Config{
-		Expiration: expiration,
-	}))
+	app.Use(New(Config{Expiration: 2 * time.Second}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString(fmt.Sprintf("%d", time.Now().UnixNano()))
@@ -56,7 +52,7 @@ func Test_Cache_Expired(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	// Sleep until the cache is expired
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)

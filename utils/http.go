@@ -4,6 +4,8 @@
 
 package utils
 
+import "strings"
+
 const MIMEOctetStream = "application/octet-stream"
 
 // GetMIME returns the content-type of a file extension
@@ -20,6 +22,32 @@ func GetMIME(extension string) (mime string) {
 		return MIMEOctetStream
 	}
 	return mime
+}
+
+// ParseVendorSpecificContentType check if content type is vendor specific and
+// if it is parsable to any known types. If its not vendor specific then returns
+// the original content type.
+func ParseVendorSpecificContentType(cType string) string {
+	plusIndex := strings.Index(cType, "+")
+
+	if plusIndex == -1 {
+		return cType
+	}
+
+	var parsableType string
+	if semiColonIndex := strings.Index(cType, ";"); semiColonIndex == -1 {
+		parsableType = cType[plusIndex+1:]
+	} else {
+		parsableType = cType[plusIndex+1 : semiColonIndex]
+	}
+
+	slashIndex := strings.Index(cType, "/")
+
+	if slashIndex == -1 {
+		return cType
+	}
+
+	return cType[0:slashIndex+1] + parsableType
 }
 
 // limits for HTTP statuscodes

@@ -38,7 +38,7 @@ func (s *Store) RegisterType(i interface{}) {
 // Get will get/create a session
 func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	var fresh bool
-	var loadData = true
+	loadData := true
 
 	id := s.getSessionID(c)
 
@@ -79,6 +79,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 		} else if err != nil {
 			return nil, err
 		} else {
+			// both raw and err is nil, which means id is not in the storage
 			sess.fresh = true
 		}
 	}

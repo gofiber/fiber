@@ -65,17 +65,32 @@ func Test_Session(t *testing.T) {
 	id := sess.ID()
 	utils.AssertEqual(t, "123", id)
 
-	// delete cookie
-	ctx.Request().Header.Del(fiber.HeaderCookie)
+	// save the old session first
+	err = sess.Save()
+	utils.AssertEqual(t, nil, err)
 
-	// get session
+	// requesting entirely new context to prevent falsy tests
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
 	sess, err = store.Get(ctx)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, sess.Fresh())
 
-	// get id
-	id = sess.ID()
-	utils.AssertEqual(t, 36, len(id))
+	// this id should be randomly generated as session key was deleted
+	utils.AssertEqual(t, 36, len(sess.ID()))
+
+	// when we use the original session for the second time
+	// the session be should be same if the session is not expired
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	// request the server with the old session
+	ctx.Request().Header.SetCookie(store.sessionName, id)
+	sess, err = store.Get(ctx)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, false, sess.Fresh())
+	utils.AssertEqual(t, sess.id, id)
 }
 
 // go test -run Test_Session_Types
@@ -100,11 +115,15 @@ func Test_Session_Types(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, sess.Fresh())
 
+	// the session string is no longer be 123
+	newSessionIDString := sess.ID()
+	ctx.Request().Header.SetCookie(store.sessionName, newSessionIDString)
+
 	type User struct {
 		Name string
 	}
 	store.RegisterType(User{})
-	var vuser = User{
+	vuser := User{
 		Name: "John",
 	}
 	// set value
@@ -418,6 +437,48 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, false, sess.Fresh())
 	utils.AssertEqual(t, nil, sess.Get("id"))
+}
+
+// go test -run Test_Session_Regenerate
+// Regression: https://github.com/gofiber/fiber/issues/1395
+func Test_Session_Regenerate(t *testing.T) {
+	// fiber instance
+	app := fiber.New()
+	t.Run("set fresh to be true when regenerating a session", func(t *testing.T) {
+		// session store
+		store := New()
+		// a random session uuid
+		originalSessionUUIDString := ""
+		// fiber context
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
+
+		// now the session is in the storage
+		freshSession, err := store.Get(ctx)
+		utils.AssertEqual(t, nil, err)
+
+		originalSessionUUIDString = freshSession.ID()
+
+		err = freshSession.Save()
+		utils.AssertEqual(t, nil, err)
+
+		// set cookie
+		ctx.Request().Header.SetCookie(store.sessionName, originalSessionUUIDString)
+
+		// as the session is in the storage, session.fresh should be false
+		acquiredSession, err := store.Get(ctx)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, false, acquiredSession.Fresh())
+
+		err = acquiredSession.Regenerate()
+		utils.AssertEqual(t, nil, err)
+
+		if acquiredSession.ID() == originalSessionUUIDString {
+			t.Fatal("regenerate should generate another different id")
+		}
+		// acquiredSession.fresh should be true after regenerating
+		utils.AssertEqual(t, true, acquiredSession.Fresh())
+	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_Session -benchmem -count=4

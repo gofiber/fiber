@@ -118,10 +118,19 @@ func (s *Session) Regenerate() error {
 		return err
 	}
 
-	// Create new ID
-	s.id = s.config.KeyGenerator()
+	// Generate a new session, and set session.fresh to true
+	s.refresh()
 
 	return nil
+}
+
+// refresh generates a new session, and set session.fresh to be true
+func (s *Session) refresh() {
+	// Create a new id
+	s.id = s.config.KeyGenerator()
+
+	// We assign a new id to the session, so the session must be fresh
+	s.fresh = true
 }
 
 // Save will update the storage and client cookie
@@ -151,8 +160,12 @@ func (s *Session) Save() error {
 		return err
 	}
 
-	// pass raw bytes with session id to provider
-	if err := s.config.Storage.Set(s.id, s.byteBuffer.Bytes(), s.exp); err != nil {
+	// copy the data in buffer
+	encodedBytes := make([]byte, s.byteBuffer.Len())
+	copy(encodedBytes, s.byteBuffer.Bytes())
+
+	// pass copied bytes with session id to provider
+	if err := s.config.Storage.Set(s.id, encodedBytes, s.exp); err != nil {
 		return err
 	}
 

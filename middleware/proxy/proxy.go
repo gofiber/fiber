@@ -1,13 +1,13 @@
 package proxy
 
 import (
+	"crypto/tls"
 	"fmt"
-	"net/url"
-	"strings"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
+	"net/url"
+	"strings"
 )
 
 // New is deprecated
@@ -45,6 +45,8 @@ func Balancer(config Config) fiber.Handler {
 
 			ReadBufferSize:  config.ReadBufferSize,
 			WriteBufferSize: config.WriteBufferSize,
+
+			TLSConfig: config.TlsConfig,
 		}
 
 		lbc.Clients = append(lbc.Clients, client)
@@ -96,6 +98,12 @@ func Balancer(config Config) fiber.Handler {
 var client = fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
+}
+
+// WithTlsConfig update http client with a user specified tls.config
+// This function should be called before Do and Forward.
+func WithTlsConfig(tlsConfig *tls.Config) {
+	client.TLSConfig = tlsConfig
 }
 
 // Forward performs the given http request and fills the given http response.
