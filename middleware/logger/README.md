@@ -145,28 +145,28 @@ const (
 	TagResBody				= "resBody"	// response body
 	TagQueryStringParams			= "queryParams"	// request query parameters
 	TagBody					= "body"	// request body
-	TagBytesSent			= "bytesSent"
-	TagBytesReceived		= "bytesReceived"
+	TagBytesSent				= "bytesSent"
+	TagBytesReceived			= "bytesReceived"
 	TagRoute				= "route"
-	TagError                = "error"
+	TagError                		= "error"
 	// DEPRECATED: Use TagReqHeader instead
-	TagHeader               = "header:"     // request header
-	TagReqHeader            = "reqHeader:"  // request header
-	TagRespHeader           = "respHeader:" // response header
+	TagHeader               		= "header:"     // request header
+	TagReqHeader            		= "reqHeader:"  // request header
+	TagRespHeader           		= "respHeader:" // response header
 	TagQuery				= "query:"      // request query
 	TagForm					= "form:"       // request form
 	TagCookie				= "cookie:"     // request cookie
 	TagLocals				= "locals:"
 
 	// colors
-	TagBlack         = "black"
-	TagRed           = "red"
-	TagGreen         = "green"
-	TagYellow        = "yellow"
-	TagBlue          = "blue"
-	TagMagenta       = "magenta"
-	TagCyan          = "cyan"
-	TagWhite         = "white"
-	TagReset         = "reset"
+	TagBlack        			= "black"
+	TagRed           			= "red"
+	TagGreen        			= "green"
+	TagYellow        			= "yellow"
+	TagBlue          			= "blue"
+	TagMagenta       			= "magenta"
+	TagCyan          			= "cyan"
+	TagWhite         			= "white"
+	TagReset         			= "reset"
 )
 ```
