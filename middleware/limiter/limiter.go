@@ -86,8 +86,8 @@ func New(config ...Config) fiber.Handler {
 		// Calculate when it resets in seconds
 		expire := e.exp - ts
 
-		// weight = time elapsed in current window / total window length
-		weight := float64(expiration-expire) / float64(expiration)
+		// weight = time until current window reset / total window length
+		weight := float64(expire) / float64(expiration)
 
 		// rate = request count in previous window - weight + request count in current window
 		rate := int(float64(e.prevHits)*weight) + e.currHits
@@ -95,8 +95,19 @@ func New(config ...Config) fiber.Handler {
 		// Calculate how many hits can be made based on the current rate
 		remaining := cfg.Max - rate
 
-		// Update storage. Garbage collect after 2 windows
-		manager.set(key, e, cfg.Expiration*2)
+		// Update storage. Garbage collect when the next window ends.
+		// |-------------------------|-------------------------|
+		//               ^           ^              ^          ^
+		//              ts        e.exp  End sample window   End next window
+		//               <----------->
+		// 				    expire
+		// expire = e.exp - ts - time until end of current window.
+		// duration + expiration = end of next window.
+		// Because we don't want to garbage collect in the middle of a window
+		// we add the expiration to the duration.
+		// Otherwise after the end of "sample window", attackers could launch
+		// a new request with the full window length.
+		manager.set(key, e, time.Duration(expire+expiration)*time.Second)
 
 		// Unlock entry
 		mux.Unlock()

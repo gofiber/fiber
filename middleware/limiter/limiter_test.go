@@ -243,7 +243,7 @@ func Test_Limiter_Cheat(t *testing.T) {
 	wg.Wait()
 
 	// wait until the current window is finished and we are into the next window
-	t2 := t1.Add(time.Millisecond * 3250).Sub(time.Now())
+	t2 := t1.Add(time.Millisecond * 3000).Sub(time.Now())
 	time.Sleep(t2)
 
 	// Send more requests
