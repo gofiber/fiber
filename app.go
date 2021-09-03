@@ -954,8 +954,13 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 
 	host, port := parseAddr(addr)
 	if host == "" {
-		host = "0.0.0.0"
+		if app.config.Network == NetworkTCP6 {
+			host = "[::1]"
+		} else {
+			host = "0.0.0.0"
+		}
 	}
+
 
 	scheme := "http"
 	if tls {
