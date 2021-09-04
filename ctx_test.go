@@ -358,21 +358,21 @@ func Test_Ctx_BodyParser(t *testing.T) {
 		Name string `json:"name" xml:"name" form:"name" query:"name"`
 	}
 
-	 {
-		 var gzipJSON bytes.Buffer
-		 w := gzip.NewWriter(&gzipJSON)
-		 _, _ = w.Write([]byte(`{"name":"john"}`))
-		 _ = w.Close()
+	{
+		var gzipJSON bytes.Buffer
+		w := gzip.NewWriter(&gzipJSON)
+		_, _ = w.Write([]byte(`{"name":"john"}`))
+		_ = w.Close()
 
-		 c.Request().Header.SetContentType(MIMEApplicationJSON)
-		 c.Request().Header.Set(HeaderContentEncoding, "gzip")
-		 c.Request().SetBody(gzipJSON.Bytes())
-		 c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
-		 d := new(Demo)
-		 utils.AssertEqual(t, nil, c.BodyParser(d))
-		 utils.AssertEqual(t, "john", d.Name)
-		 c.Request().Header.Del(HeaderContentEncoding)
-	 }
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.Set(HeaderContentEncoding, "gzip")
+		c.Request().SetBody(gzipJSON.Bytes())
+		c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
+		d := new(Demo)
+		utils.AssertEqual(t, nil, c.BodyParser(d))
+		utils.AssertEqual(t, "john", d.Name)
+		c.Request().Header.Del(HeaderContentEncoding)
+	}
 
 	testDecodeParser := func(contentType, body string) {
 		c.Request().Header.SetContentType(contentType)
@@ -518,16 +518,19 @@ func Test_Ctx_UserContext(t *testing.T) {
 		testKey := "Test Key"
 		testValue := "Test Value"
 		ctx := context.WithValue(context.Background(), testKey, testValue)
-		utils.AssertEqual(t, ctx.Value(testKey), testValue)
+		utils.AssertEqual(t, testValue, ctx.Value(testKey))
 	})
 
 }
 
-// go test -run Test_Ctx_UserContext
+// go test -run Test_Ctx_SetUserContext
 func Test_Ctx_SetUserContext(t *testing.T) {
 	c := Ctx{}
-	c.SetUserContext(context.Background())
-	utils.AssertEqual(t, c.UserContext(), context.Background())
+	testKey := "Test Key"
+	testValue := "Test Value"
+	ctx := context.WithValue(context.Background(), testKey, testValue)
+	c.SetUserContext(ctx)
+	utils.AssertEqual(t, testValue, c.UserContext().Value(testKey))
 }
 
 // go test -run Test_Ctx_Cookie
