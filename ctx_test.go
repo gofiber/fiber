@@ -520,7 +520,6 @@ func Test_Ctx_UserContext(t *testing.T) {
 		ctx := context.WithValue(context.Background(), testKey, testValue)
 		utils.AssertEqual(t, testValue, ctx.Value(testKey))
 	})
-
 }
 
 // go test -run Test_Ctx_SetUserContext
@@ -531,6 +530,36 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), testKey, testValue)
 	c.SetUserContext(ctx)
 	utils.AssertEqual(t, testValue, c.UserContext().Value(testKey))
+}
+
+// go test -run Test_Ctx_UserContext_Multiple_Requests
+func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
+	testKey := "foobar-key"
+	testValue := "foobar-value"
+
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		ctx := c.UserContext()
+
+		if ctx.Value(testKey) != nil {
+			return c.SendStatus(StatusInternalServerError)
+		}
+
+		input := utils.CopyString(c.Query("input", "NO_VALUE"))
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
+		c.SetUserContext(ctx)
+
+		return c.SendStatus(StatusOK)
+	})
+
+	for i := 1; i <= 5; i++ {
+		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
+			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
+
+			utils.AssertEqual(t, nil, err, "app.Test(req)")
+			utils.AssertEqual(t, StatusOK, resp.StatusCode, "c.UserContext() reused")
+		})
+	}
 }
 
 // go test -run Test_Ctx_Cookie
