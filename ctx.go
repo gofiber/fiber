@@ -53,7 +53,7 @@ type Ctx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
-	userContext         context.Context
+	userContext         context.Context      // User-defined context.Context
 }
 
 // Range data for c.Range
