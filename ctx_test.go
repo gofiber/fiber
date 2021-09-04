@@ -508,7 +508,10 @@ func Test_Ctx_Context(t *testing.T) {
 
 // go test -run Test_Ctx_UserContext
 func Test_Ctx_UserContext(t *testing.T) {
-	c := Ctx{}
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
 	t.Run("Nil_Context", func(t *testing.T) {
 		ctx := c.UserContext()
 		utils.AssertEqual(t, ctx, context.Background())
@@ -524,7 +527,10 @@ func Test_Ctx_UserContext(t *testing.T) {
 
 // go test -run Test_Ctx_SetUserContext
 func Test_Ctx_SetUserContext(t *testing.T) {
-	c := Ctx{}
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
 	testKey := "Test Key"
 	testValue := "Test Value"
 	ctx := context.WithValue(context.Background(), testKey, testValue)
@@ -549,15 +555,20 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
 		c.SetUserContext(ctx)
 
-		return c.SendStatus(StatusOK)
+		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
 	})
 
-	for i := 1; i <= 5; i++ {
+	// Consecutive Requests
+	for i := 1; i <= 10; i++ {
 		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
 			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
 
-			utils.AssertEqual(t, nil, err, "app.Test(req)")
-			utils.AssertEqual(t, StatusOK, resp.StatusCode, "c.UserContext() reused")
+			utils.AssertEqual(t, nil, err, "Unexpected error from response")
+			utils.AssertEqual(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
+
+			b, err := ioutil.ReadAll(resp.Body)
+			utils.AssertEqual(t, nil, err, "Unexpected error from reading response body")
+			utils.AssertEqual(t, fmt.Sprintf("resp_%d_returned", i), string(b), "response text incorrect")
 		})
 	}
 }
