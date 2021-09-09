@@ -34,6 +34,9 @@ const maxParams = 30
 
 const queryTag = "query"
 
+// userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
+const userContextKey = "__local_user_context__"
+
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
@@ -53,7 +56,6 @@ type Ctx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
-	userContext         context.Context
 }
 
 // Range data for c.Range
@@ -342,15 +344,18 @@ func (c *Ctx) Context() *fasthttp.RequestCtx {
 // UserContext returns a context implementation that was set by
 // user earlier or returns a non-nil, empty context,if it was not set earlier.
 func (c *Ctx) UserContext() context.Context {
-	if c.userContext == nil {
-		c.userContext = context.Background()
+	ctx, ok := c.fasthttp.UserValue(userContextKey).(context.Context)
+	if !ok {
+		ctx = context.Background()
+		c.SetUserContext(ctx)
 	}
-	return c.userContext
+
+	return ctx
 }
 
 // SetUserContext sets a context implementation by user.
 func (c *Ctx) SetUserContext(ctx context.Context) {
-	c.userContext = ctx
+	c.fasthttp.SetUserValue(userContextKey, ctx)
 }
 
 // Cookie sets a cookie by passing a cookie struct.
