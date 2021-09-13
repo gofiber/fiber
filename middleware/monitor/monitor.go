@@ -48,7 +48,10 @@ var (
 )
 
 // New creates a new middleware handler
-func New() fiber.Handler {
+func New(config ...Config) fiber.Handler {
+	// Set default config
+	cfg := configDefault(config...)
+
 	// Start routine to update statistics
 	once.Do(func() {
 		p, _ := process.NewProcess(int32(os.Getpid()))
@@ -66,6 +69,11 @@ func New() fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
+		// Don't execute middleware if Next returns true
+		if cfg.Next != nil && cfg.Next(c) {
+			return c.Next()
+		}
+
 		if c.Method() != fiber.MethodGet {
 			return fiber.ErrMethodNotAllowed
 		}
@@ -86,6 +94,7 @@ func New() fiber.Handler {
 		return c.Status(fiber.StatusOK).Send(index)
 	}
 }
+
 
 func updateStatistics(p *process.Process) {
 	pidCpu, _ := p.CPUPercent()
