@@ -3,7 +3,7 @@ Monitor middleware for [Fiber](https://github.com/gofiber/fiber) that reports se
 
 :warning: **Warning:** Monitor is still in beta, API might change in the future!
 
-![](https://i.imgur.com/4NfRCDm.gif)
+![](https://i.imgur.com/nHAtBpJ.gif)
 
 ### Signatures
 ```go
