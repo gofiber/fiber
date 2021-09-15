@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -99,54 +101,38 @@ func Test_Cache(t *testing.T) {
 	utils.AssertEqual(t, cachedBody, body)
 }
 
-// // go test -run Test_Cache_Concurrency_Storage -race -v
-// func Test_Cache_Concurrency_Storage(t *testing.T) {
-// 	// Test concurrency using a custom store
+func Test_Cache_WithSeveralRequests(t *testing.T) {
+	app := fiber.New()
 
-// 	app := fiber.New()
+	app.Use(New(Config{
+		CacheControl: true,
+		Expiration:   10 * time.Second,
+	}))
 
-// 	app.Use(New(Config{
-// 		Storage: memory.New(),
-// 	}))
+	app.Get("/:id", func(c *fiber.Ctx) error {
+		return c.SendString(c.Params("id"))
+	})
 
-// 	app.Get("/", func(c *fiber.Ctx) error {
-// 		return c.SendString("Hello tester!")
-// 	})
+	for runs := 0; runs < 10; runs++ {
+		for i := 0; i < 10; i++ {
+			func(id int) {
+				rsp, err := app.Test(httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%d", id), nil))
+				utils.AssertEqual(t, nil, err)
 
-// 	var wg sync.WaitGroup
-// 	singleRequest := func(wg *sync.WaitGroup) {
-// 		defer wg.Done()
-// 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-// 		utils.AssertEqual(t, nil, err)
-// 		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+				defer rsp.Body.Close()
 
-// 		body, err := ioutil.ReadAll(resp.Body)
-// 		utils.AssertEqual(t, nil, err)
-// 		utils.AssertEqual(t, "Hello tester!", string(body))
-// 	}
+				idFromServ, err := ioutil.ReadAll(rsp.Body)
+				utils.AssertEqual(t, nil, err)
 
-// 	for i := 0; i <= 49; i++ {
-// 		wg.Add(1)
-// 		go singleRequest(&wg)
-// 	}
+				a, err := strconv.Atoi(string(idFromServ))
+				utils.AssertEqual(t, nil, err)
 
-// 	wg.Wait()
-
-// 	req := httptest.NewRequest("GET", "/", nil)
-// 	resp, err := app.Test(req)
-// 	utils.AssertEqual(t, nil, err)
-
-// 	cachedReq := httptest.NewRequest("GET", "/", nil)
-// 	cachedResp, err := app.Test(cachedReq)
-// 	utils.AssertEqual(t, nil, err)
-
-// 	body, err := ioutil.ReadAll(resp.Body)
-// 	utils.AssertEqual(t, nil, err)
-// 	cachedBody, err := ioutil.ReadAll(cachedResp.Body)
-// 	utils.AssertEqual(t, nil, err)
-
-// 	utils.AssertEqual(t, cachedBody, body)
-// }
+				// SomeTimes,The id is not equal with a
+				utils.AssertEqual(t, id, a)
+			}(i)
+		}
+	}
+}
 
 func Test_Cache_Invalid_Expiration(t *testing.T) {
 	app := fiber.New()
