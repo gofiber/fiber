@@ -1872,7 +1872,7 @@ type testTemplateEngine struct {
 	templates *template.Template
 }
 
-func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
+func (t *testTemplateEngine) Render(w io.Writer, name string, bind Map, layout ...string) error {
 	if len(layout) == 0 {
 		return t.templates.ExecuteTemplate(w, name, bind)
 	}
@@ -1937,7 +1937,7 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 
 type errorTemplateEngine struct{}
 
-func (t errorTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
+func (t errorTemplateEngine) Render(w io.Writer, name string, bind Map, layout ...string) error {
 	return errors.New("errorTemplateEngine")
 }
 

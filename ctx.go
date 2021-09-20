@@ -56,6 +56,7 @@ type Ctx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
+	viewVarMap          Map                  // Default view var map for binding to template engine
 }
 
 // Range data for c.Range
@@ -83,7 +84,7 @@ type Cookie struct {
 // Views is the interface that wraps the Render function.
 type Views interface {
 	Load() error
-	Render(io.Writer, string, interface{}, ...string) error
+	Render(io.Writer, string, Map, ...string) error
 }
 
 // AcquireCtx retrieves a new Ctx from the pool.
@@ -236,6 +237,11 @@ func (c *Ctx) BaseURL() string {
 	}
 	c.baseURI = c.Protocol() + "://" + c.Hostname()
 	return c.baseURI
+}
+
+// Set default view var map for binding to template engine
+func (c *Ctx) Bind(viewVarMap Map) {
+	c.viewVarMap = viewVarMap
 }
 
 // Body contains the raw body submitted in a POST request.
@@ -954,11 +960,19 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
+func (c *Ctx) Render(name string, bind Map, layouts ...string) error {
 	var err error
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
+
+	if c.viewVarMap != nil {
+		for k, v := range bind {
+			c.viewVarMap[k] = v
+		}
+	} else {
+		c.viewVarMap = bind
+	}
 
 	if c.app.config.Views != nil {
 		// Render template based on global layout if exists
@@ -968,7 +982,7 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 			}
 		}
 		// Render template from Views
-		if err := c.app.config.Views.Render(buf, name, bind, layouts...); err != nil {
+		if err := c.app.config.Views.Render(buf, name, c.viewVarMap, layouts...); err != nil {
 			return err
 		}
 	} else {
@@ -983,7 +997,7 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 		}
 		buf.Reset()
 		// Render template
-		if err = tmpl.Execute(buf, bind); err != nil {
+		if err = tmpl.Execute(buf, c.viewVarMap); err != nil {
 			return err
 		}
 	}
