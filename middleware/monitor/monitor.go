@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
+	"github.com/gofiber/fiber/v2/internal/gopsutil/load"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/mem"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/net"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/process"
@@ -27,6 +28,7 @@ type statsOS struct {
 	CPU      float64 `json:"cpu"`
 	RAM      uint64  `json:"ram"`
 	TotalRAM uint64  `json:"total_ram"`
+	LoadAvg  float64 `json:"load_avg"`
 	Conns    int     `json:"conns"`
 }
 
@@ -38,6 +40,7 @@ var (
 	monitOsCpu      atomic.Value
 	monitOsRam      atomic.Value
 	monitOsTotalRam atomic.Value
+	monitOsLoadAvg  atomic.Value
 	monitOsConns    atomic.Value
 )
 
@@ -86,6 +89,7 @@ func New(config ...Config) fiber.Handler {
 			data.OS.CPU = monitOsCpu.Load().(float64)
 			data.OS.RAM = monitOsRam.Load().(uint64)
 			data.OS.TotalRAM = monitOsTotalRam.Load().(uint64)
+			data.OS.LoadAvg = monitOsLoadAvg.Load().(float64)
 			data.OS.Conns = monitOsConns.Load().(int)
 			mutex.Unlock()
 			return c.Status(fiber.StatusOK).JSON(data)
@@ -94,7 +98,6 @@ func New(config ...Config) fiber.Handler {
 		return c.Status(fiber.StatusOK).Send(index)
 	}
 }
-
 
 func updateStatistics(p *process.Process) {
 	pidCpu, _ := p.CPUPercent()
@@ -111,6 +114,10 @@ func updateStatistics(p *process.Process) {
 	if osMem, _ := mem.VirtualMemory(); osMem != nil {
 		monitOsRam.Store(osMem.Used)
 		monitOsTotalRam.Store(osMem.Total)
+	}
+
+	if loadAvg, _ := load.Avg(); loadAvg != nil {
+		monitOsLoadAvg.Store(loadAvg.Load1)
 	}
 
 	pidConns, _ := net.ConnectionsPid("tcp", p.Pid)
