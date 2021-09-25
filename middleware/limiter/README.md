@@ -109,6 +109,16 @@ type Config struct {
 	// }
 	LimitReached fiber.Handler
 
+	// When set to true, requests with StatusCode >= 400 won't be counted.
+	//
+	// Default: false
+	SkipFailedRequests bool
+
+	// When set to true, requests with StatusCode < 400 won't be counted.
+	//
+	// Default: false
+	SkipSuccessfulRequests bool
+
 	// Store is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
@@ -130,5 +140,7 @@ var ConfigDefault = Config{
 	LimitReached: func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTooManyRequests)
 	},
+	SkipFailedRequests: false,
+	SkipSuccessfulRequests: false,
 }
 ```
