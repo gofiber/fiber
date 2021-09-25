@@ -10,8 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gofiber/fiber/v2/utils"
@@ -321,6 +324,112 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 	app.Handler()(c)
 
 	utils.AssertEqual(t, StatusInternalServerError, c.Response.Header.StatusCode())
+}
+
+func Test_Route_Static_Root(t *testing.T) {
+	rootDir, _ := os.Getwd()
+	f, err := os.CreateTemp(rootDir, "")
+	if err != nil {
+		t.Error(err)
+	}
+	defer func() {
+		_ = os.Remove(f.Name())
+	}()
+
+	_, err = f.WriteString("Fiber")
+	utils.AssertEqual(t, nil, err)
+	_ = f.Close()
+
+	dir, filename := filepath.Split(f.Name())
+
+	app := New()
+	app.Static("/", dir, Static{
+		Browse: true,
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/"+filename, nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "Fiber", app.getString(body))
+
+	app = New()
+	app.Static("/", dir)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/"+filename, nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "Fiber", app.getString(body))
+}
+
+func Test_Route_Static_HasPrefix(t *testing.T) {
+	rootDir, _ := os.Getwd()
+	f, err := os.CreateTemp(rootDir, "")
+	if err != nil {
+		t.Error(err)
+	}
+	defer func() {
+		_ = os.Remove(f.Name())
+	}()
+
+	_, err = f.WriteString("Fiber")
+	utils.AssertEqual(t, nil, err)
+	_ = f.Close()
+
+	dir, filename := filepath.Split(f.Name())
+
+	app := New()
+	app.Static("/static", dir, Static{
+		Browse: true,
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/"+filename, nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "Fiber", app.getString(body))
+
+	app = New()
+	app.Static("/static", dir)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/"+filename, nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "Fiber", app.getString(body))
 }
 
 //////////////////////////////////////////////
