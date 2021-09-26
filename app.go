@@ -348,6 +348,8 @@ type Config struct {
 	// Default: []string
 	TrustedProxies    []string `json:"trusted_proxies"`
 	trustedProxiesMap map[string]struct{}
+
+	ExternalStorage Storage
 }
 
 // Static defines configuration options when defining static assets.

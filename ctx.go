@@ -1010,9 +1010,13 @@ func (c *Ctx) Route() *Route {
 	return c.route
 }
 
-// SaveFile saves any multipart file to disk.
+// SaveFile saves any multipart file to disk or an external storage system if defined.
 func (c *Ctx) SaveFile(fileheader *multipart.FileHeader, path string) error {
-	return fasthttp.SaveMultipartFile(fileheader, path)
+	if storage == nil {
+		return fasthttp.SaveMultipartFile(fileheader, path)
+	}
+
+	return c.app.config.ExternalStorage.Set(path, fileheader, nil)
 }
 
 // Secure returns a boolean property, that is true, if a TLS connection is established.
