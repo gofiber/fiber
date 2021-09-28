@@ -44,7 +44,7 @@ Then create a Fiber app with `app := fiber.New()`.
 ```go
 // Provide a minimal config
 app.Use(filesystem.New(filesystem.Config{
-	Root: http.Dir("./assets")
+	Root: http.Dir("./assets"),
 }))
 
 // Or extend your config for customization
@@ -96,7 +96,7 @@ func main() {
 	// `http://<server>/static/static/image.png`.
 	app.Use("/static", filesystem.New(filesystem.Config{
 		Root: http.FS(embedDirStatic),
-		PathPrefix: "static"
+		PathPrefix: "static",
 		Browse: true,
 	}))
 

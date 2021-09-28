@@ -40,7 +40,7 @@ func dirList(c *fiber.Ctx, f http.File) error {
 	fmt.Fprint(c, "<ul>")
 
 	if len(basePathEscaped) > 1 {
-		parentPathEscaped := html.EscapeString(c.Path() + "/..")
+		parentPathEscaped := html.EscapeString(strings.TrimSuffix(c.Path(), "/") + "/..")
 		fmt.Fprintf(c, `<li><a href="%s" class="dir">..</a></li>`, parentPathEscaped)
 	}
 

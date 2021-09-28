@@ -131,6 +131,9 @@ func New(config ...Config) fiber.Handler {
 			stat os.FileInfo
 		)
 
+		if len(path) > 1 {
+			path = strings.TrimSuffix(path, "/")
+		}
 		file, err = cfg.Root.Open(path)
 		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
 			file, err = cfg.Root.Open(cfg.NotFoundFile)
