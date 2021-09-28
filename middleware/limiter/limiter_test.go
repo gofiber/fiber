@@ -14,7 +14,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// go test -run Test_Limiter_Concurrency -race -v
+// go test -run Test_Limiter_Concurrency_Store -race -v
 func Test_Limiter_Concurrency_Store(t *testing.T) {
 	// Test concurrency using a custom store
 
@@ -104,6 +104,84 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
+
+}
+
+// go test -run Test_Limiter_Skip_Failed_Requests -v
+func Test_Limiter_Skip_Failed_Requests(t *testing.T) {
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:                1,
+		Expiration:         2 * time.Second,
+		SkipFailedRequests: true,
+	}))
+
+	app.Get("/:status", func(c *fiber.Ctx) error {
+		if c.Params("status") == "fail" {
+			return c.SendStatus(400)
+		}
+		return c.SendStatus(200)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 400, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 429, resp.StatusCode)
+
+	time.Sleep(3 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+
+}
+
+// go test -run Test_Limiter_Skip_Successful_Requests -v
+func Test_Limiter_Skip_Successful_Requests(t *testing.T) {
+
+	// Test concurrency using a default store
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Max:                    1,
+		Expiration:             2 * time.Second,
+		SkipSuccessfulRequests: true,
+	}))
+
+	app.Get("/:status", func(c *fiber.Ctx) error {
+		if c.Params("status") == "fail" {
+			return c.SendStatus(400)
+		}
+		return c.SendStatus(200)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 400, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 429, resp.StatusCode)
+
+	time.Sleep(3 * time.Second)
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 400, resp.StatusCode)
 
 }
 
