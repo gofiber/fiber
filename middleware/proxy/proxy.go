@@ -1,12 +1,13 @@
 package proxy
 
 import (
+	"crypto/tls"
 	"fmt"
-	"strings"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
+	"net/url"
+	"strings"
 )
 
 // New is deprecated
@@ -20,19 +21,36 @@ func Balancer(config Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config)
 
-	client := fasthttp.Client{
-		NoDefaultUserAgentHeader: true,
-		DisablePathNormalizing:   true,
-	}
+	// Load balanced client
+	var lbc fasthttp.LBClient
+	// Set timeout
+	lbc.Timeout = cfg.Timeout
 
 	// Scheme must be provided, falls back to http
-	for i := 0; i < len(cfg.Servers); i++ {
-		if !strings.HasPrefix(cfg.Servers[i], "http") {
-			cfg.Servers[i] = "http://" + cfg.Servers[i]
+	// TODO add https support
+	for _, server := range cfg.Servers {
+		if !strings.HasPrefix(server, "http") {
+			server = "http://" + server
 		}
-	}
 
-	var counter = 0
+		u, err := url.Parse(server)
+		if err != nil {
+			panic(err)
+		}
+
+		client := &fasthttp.HostClient{
+			NoDefaultUserAgentHeader: true,
+			DisablePathNormalizing:   true,
+			Addr:                     u.Host,
+
+			ReadBufferSize:  config.ReadBufferSize,
+			WriteBufferSize: config.WriteBufferSize,
+
+			TLSConfig: config.TlsConfig,
+		}
+
+		lbc.Clients = append(lbc.Clients, client)
+	}
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
@@ -55,11 +73,10 @@ func Balancer(config Config) fiber.Handler {
 			}
 		}
 
-		req.SetRequestURI(cfg.Servers[counter] + utils.UnsafeString(req.RequestURI()))
-		counter = (counter + 1) % len(cfg.Servers)
+		req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
 
 		// Forward request
-		if err = client.Do(req, res); err != nil {
+		if err = lbc.Do(req, res); err != nil {
 			return err
 		}
 
@@ -81,6 +98,12 @@ func Balancer(config Config) fiber.Handler {
 var client = fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
+}
+
+// WithTlsConfig update http client with a user specified tls.config
+// This function should be called before Do and Forward.
+func WithTlsConfig(tlsConfig *tls.Config) {
+	client.TLSConfig = tlsConfig
 }
 
 // Forward performs the given http request and fills the given http response.

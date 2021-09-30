@@ -10,11 +10,25 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
+
+	// EnableStackTrace enables handling stack trace
+	//
+	// Optional. Default: false
+	EnableStackTrace bool
+
+	// StackTraceHandler defines a function to handle stack trace
+	//
+	// Optional. Default: defaultStackTraceHandler
+	StackTraceHandler func(e interface{})
 }
+
+var defaultStackTraceBufLen = 1024
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next: nil,
+	Next:              nil,
+	EnableStackTrace:  false,
+	StackTraceHandler: defaultStackTraceHandler,
 }
 
 // Helper function to set default values
@@ -26,6 +40,10 @@ func configDefault(config ...Config) Config {
 
 	// Override default config
 	cfg := config[0]
+
+	if cfg.EnableStackTrace && cfg.StackTraceHandler == nil {
+		cfg.StackTraceHandler = defaultStackTraceHandler
+	}
 
 	return cfg
 }

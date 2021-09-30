@@ -27,7 +27,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 // Default middleware config
 app.Use(recover.New())
 
-// This panic will be catch by the middleware
+// This panic will be caught by the middleware
 app.Get("/", func(c *fiber.Ctx) error {
 	panic("I'm an error")
 })
@@ -41,12 +41,24 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
+
+	// EnableStackTrace enables handling stack trace
+	//
+	// Optional. Default: false
+	EnableStackTrace bool
+
+	// StackTraceHandler defines a function to handle stack trace
+	//
+	// Optional. Default: defaultStackTraceHandler
+	StackTraceHandler func(e interface{})
 }
 ```
 
 ### Default Config
 ```go
 var ConfigDefault = Config{
-	Next: nil,
+	Next:              nil,
+	EnableStackTrace:  false,
+	StackTraceHandler: defaultStackTraceHandler,
 }
 ```

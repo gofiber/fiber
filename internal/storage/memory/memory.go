@@ -14,8 +14,9 @@ type Storage struct {
 }
 
 type entry struct {
+	// max value is 4294967295 -> Sun Feb 07 2106 06:28:15 GMT+0000
+	expiry uint32
 	data   []byte
-	expiry int64
 }
 
 // New creates a new memory storage
@@ -41,7 +42,7 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	s.mux.RLock()
 	v, ok := s.db[key]
 	s.mux.RUnlock()
-	if !ok || v.expiry != 0 && v.expiry <= time.Now().Unix() {
+	if !ok || v.expiry != 0 && v.expiry <= uint32(time.Now().Unix()) {
 		return nil, nil
 	}
 
@@ -49,20 +50,19 @@ func (s *Storage) Get(key string) ([]byte, error) {
 }
 
 // Set key with value
-// Set key with value
 func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 	// Ain't Nobody Got Time For That
 	if len(key) <= 0 || len(val) <= 0 {
 		return nil
 	}
 
-	var expire int64
+	var expire uint32
 	if exp != 0 {
-		expire = time.Now().Add(exp).Unix()
+		expire = uint32(time.Now().Add(exp).Unix())
 	}
 
 	s.mux.Lock()
-	s.db[key] = entry{val, expire}
+	s.db[key] = entry{expire, val}
 	s.mux.Unlock()
 	return nil
 }
@@ -102,7 +102,7 @@ func (s *Storage) gc() {
 		case <-s.done:
 			return
 		case t := <-ticker.C:
-			now := t.Unix()
+			now := uint32(t.Unix())
 			s.mux.Lock()
 			for id, v := range s.db {
 				if v.expiry != 0 && v.expiry < now {

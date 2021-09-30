@@ -4,7 +4,10 @@
 
 package uuid
 
-import "fmt"
+import (
+	"errors"
+	"strconv"
+)
 
 // MarshalText implements encoding.TextMarshaler.
 func (uuid UUID) MarshalText() ([]byte, error) {
@@ -31,7 +34,7 @@ func (uuid UUID) MarshalBinary() ([]byte, error) {
 // UnmarshalBinary implements encoding.BinaryUnmarshaler.
 func (uuid *UUID) UnmarshalBinary(data []byte) error {
 	if len(data) != 16 {
-		return fmt.Errorf("invalid UUID (got %d bytes)", len(data))
+		return errors.New("invalid UUID (got " + strconv.Itoa(len(data)) + " bytes)")
 	}
 	copy(uuid[:], data)
 	return nil

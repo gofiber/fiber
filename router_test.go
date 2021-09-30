@@ -43,7 +43,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, ":param", getString(body))
+	utils.AssertEqual(t, ":param", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
@@ -52,7 +52,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	utils.AssertEqual(t, "test", app.getString(body))
 }
 
 func Test_Route_Match_Star(t *testing.T) {
@@ -68,7 +68,7 @@ func Test_Route_Match_Star(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "*", getString(body))
+	utils.AssertEqual(t, "*", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
@@ -77,7 +77,7 @@ func Test_Route_Match_Star(t *testing.T) {
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	utils.AssertEqual(t, "test", app.getString(body))
 
 	// without parameter
 	route := Route{
@@ -114,7 +114,7 @@ func Test_Route_Match_Root(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "root", getString(body))
+	utils.AssertEqual(t, "root", app.getString(body))
 }
 
 func Test_Route_Match_Parser(t *testing.T) {
@@ -132,7 +132,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "bar", getString(body))
+	utils.AssertEqual(t, "bar", app.getString(body))
 
 	// with star
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", nil))
@@ -141,7 +141,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	utils.AssertEqual(t, "test", app.getString(body))
 }
 
 func Test_Route_Match_Middleware(t *testing.T) {
@@ -157,7 +157,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "*", getString(body))
+	utils.AssertEqual(t, "*", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", nil))
@@ -166,7 +166,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "bar/fasel", getString(body))
+	utils.AssertEqual(t, "bar/fasel", app.getString(body))
 }
 
 func Test_Route_Match_UnescapedPath(t *testing.T) {
@@ -182,7 +182,7 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "test", getString(body))
+	utils.AssertEqual(t, "test", app.getString(body))
 	// without special chars
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -193,6 +193,50 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+}
+
+func Test_Route_Match_WithEscapeChar(t *testing.T) {
+	app := New()
+	// static route and escaped part
+	app.Get("/v1/some/resource/name\\:customVerb", func(c *Ctx) error {
+		return c.SendString("static")
+	})
+	// group route
+	group := app.Group("/v2/\\:firstVerb")
+	group.Get("/\\:customVerb", func(c *Ctx) error {
+		return c.SendString("group")
+	})
+	// route with resource param and escaped part
+	app.Get("/v3/:resource/name\\:customVerb", func(c *Ctx) error {
+		return c.SendString(c.Params("resource"))
+	})
+
+	// check static route
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "static", app.getString(body))
+
+	// check group route
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "group", app.getString(body))
+
+	// check param route
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "awesome", app.getString(body))
 }
 
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
@@ -208,7 +252,7 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "middleware", getString(body))
+	utils.AssertEqual(t, "middleware", app.getString(body))
 }
 
 func Test_Route_Match_Middleware_Root(t *testing.T) {
@@ -224,7 +268,7 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "middleware", getString(body))
+	utils.AssertEqual(t, "middleware", app.getString(body))
 }
 
 func Test_Router_Register_Missing_Handler(t *testing.T) {
@@ -257,7 +301,7 @@ func Test_Router_Handler_SetETag(t *testing.T) {
 
 	c := &fasthttp.RequestCtx{}
 
-	app.handler(c)
+	app.Handler()(c)
 
 	utils.AssertEqual(t, `"13-1831710635"`, string(c.Response.Header.Peek(HeaderETag)))
 }
@@ -274,7 +318,7 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 
 	c := &fasthttp.RequestCtx{}
 
-	app.handler(c)
+	app.Handler()(c)
 
 	utils.AssertEqual(t, StatusInternalServerError, c.Response.Header.StatusCode())
 }
@@ -300,6 +344,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	}
 	app.All("/this/is/a/", h)
 	app.Get("/this/is/a/dummy/route/oke", h)
+	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
@@ -307,7 +352,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 	b.StopTimer()
 	utils.AssertEqual(b, 405, c.Response.StatusCode())
@@ -322,6 +367,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 		return c.Next()
 	})
 	registerDummyRoutes(app)
+	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("DELETE")
@@ -329,7 +375,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 	utils.AssertEqual(b, 404, c.Response.StatusCode())
 	utils.AssertEqual(b, "Cannot DELETE /this/route/does/not/exist", string(c.Response.Body()))
@@ -339,6 +385,7 @@ func Benchmark_Router_NotFound(b *testing.B) {
 func Benchmark_Router_Handler(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	appHandler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -348,7 +395,7 @@ func Benchmark_Router_Handler(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -358,6 +405,7 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 		CaseSensitive: true,
 	})
 	registerDummyRoutes(app)
+	appHandler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -367,7 +415,7 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -379,13 +427,15 @@ func Benchmark_Router_Chain(b *testing.B) {
 	}
 	app.Get("/", handler, handler, handler, handler, handler, handler)
 
+	appHandler := app.Handler()
+
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("GET")
 	c.URI().SetPath("/")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -402,13 +452,14 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	app.Get("/", handler)
 	app.Get("/", handler)
 
+	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod("GET")
 	c.URI().SetPath("/")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -416,6 +467,7 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 func Benchmark_Router_Next(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	app.startupProcess()
 
 	request := &fasthttp.RequestCtx{}
 
@@ -532,6 +584,7 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	app := New()
 	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
+	appHandler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -541,7 +594,7 @@ func Benchmark_Router_Handler_CaseSensitive(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -554,6 +607,8 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 		return nil
 	})
 
+	appHandler := app.Handler()
+
 	c := &fasthttp.RequestCtx{}
 
 	c.Request.Header.SetMethod(MethodDelete)
@@ -563,7 +618,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		c.URI().SetPath("/cr%C3%A9er")
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -572,6 +627,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	app := New()
 	app.config.CaseSensitive = true
 	registerDummyRoutes(app)
+	appHandler := app.Handler()
 
 	c := &fasthttp.RequestCtx{}
 
@@ -581,7 +637,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		app.handler(c)
+		appHandler(c)
 	}
 }
 
@@ -589,6 +645,7 @@ func Benchmark_Router_Handler_StrictRouting(b *testing.B) {
 func Benchmark_Router_Github_API(b *testing.B) {
 	app := New()
 	registerDummyRoutes(app)
+	app.startupProcess()
 
 	c := &fasthttp.RequestCtx{}
 	var match bool

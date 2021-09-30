@@ -20,38 +20,44 @@ import (
 
 // Logger variables
 const (
-	TagPid           = "pid"
-	TagTime          = "time"
-	TagReferer       = "referer"
-	TagProtocol      = "protocol"
-	TagIP            = "ip"
-	TagIPs           = "ips"
-	TagHost          = "host"
-	TagMethod        = "method"
-	TagPath          = "path"
-	TagURL           = "url"
-	TagUA            = "ua"
-	TagLatency       = "latency"
-	TagStatus        = "status"
-	TagBody          = "body"
-	TagBytesSent     = "bytesSent"
-	TagBytesReceived = "bytesReceived"
-	TagRoute         = "route"
-	TagError         = "error"
-	TagHeader        = "header:"
-	TagLocals        = "locals:"
-	TagQuery         = "query:"
-	TagForm          = "form:"
-	TagCookie        = "cookie:"
-	TagBlack         = "black"
-	TagRed           = "red"
-	TagGreen         = "green"
-	TagYellow        = "yellow"
-	TagBlue          = "blue"
-	TagMagenta       = "magenta"
-	TagCyan          = "cyan"
-	TagWhite         = "white"
-	TagReset         = "reset"
+	TagPid               = "pid"
+	TagTime              = "time"
+	TagReferer           = "referer"
+	TagProtocol          = "protocol"
+	TagPort              = "port"
+	TagIP                = "ip"
+	TagIPs               = "ips"
+	TagHost              = "host"
+	TagMethod            = "method"
+	TagPath              = "path"
+	TagURL               = "url"
+	TagUA                = "ua"
+	TagLatency           = "latency"
+	TagStatus            = "status"
+	TagResBody           = "resBody"
+	TagQueryStringParams = "queryParams"
+	TagBody              = "body"
+	TagBytesSent         = "bytesSent"
+	TagBytesReceived     = "bytesReceived"
+	TagRoute             = "route"
+	TagError             = "error"
+	// DEPRECATED: Use TagReqHeader instead
+	TagHeader     = "header:"
+	TagReqHeader  = "reqHeader:"
+	TagRespHeader = "respHeader:"
+	TagLocals     = "locals:"
+	TagQuery      = "query:"
+	TagForm       = "form:"
+	TagCookie     = "cookie:"
+	TagBlack      = "black"
+	TagRed        = "red"
+	TagGreen      = "green"
+	TagYellow     = "yellow"
+	TagBlue       = "blue"
+	TagMagenta    = "magenta"
+	TagCyan       = "cyan"
+	TagWhite      = "white"
+	TagReset      = "reset"
 )
 
 // Color values
@@ -105,10 +111,9 @@ func New(config ...Config) fiber.Handler {
 
 	// Set variables
 	var (
-		start, stop time.Time
-		once        sync.Once
-		mu          sync.Mutex
-		errHandler  fiber.ErrorHandler
+		once       sync.Once
+		mu         sync.Mutex
+		errHandler fiber.ErrorHandler
 	)
 
 	// If colors are enabled, check terminal compatibility
@@ -142,6 +147,8 @@ func New(config ...Config) fiber.Handler {
 			// override error handler
 			errHandler = c.App().Config().ErrorHandler
 		})
+
+		var start, stop time.Time
 
 		// Set latency start time
 		if cfg.enableLatency {
@@ -206,6 +213,8 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(c.Protocol())
 			case TagPid:
 				return buf.WriteString(pid)
+			case TagPort:
+				return buf.WriteString(c.Port())
 			case TagIP:
 				return buf.WriteString(c.IP())
 			case TagIPs:
@@ -230,6 +239,10 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(c.Route().Path)
 			case TagStatus:
 				return appendInt(buf, c.Response().StatusCode())
+			case TagResBody:
+				return buf.Write(c.Response().Body())
+			case TagQueryStringParams:
+				return buf.WriteString(c.Request().URI().QueryArgs().String())
 			case TagMethod:
 				return buf.WriteString(c.Method())
 			case TagBlack:
@@ -256,10 +269,14 @@ func New(config ...Config) fiber.Handler {
 				}
 				return buf.WriteString("-")
 			default:
-				// Check if we have a value tag i.e.: "header:x-key"
+				// Check if we have a value tag i.e.: "reqHeader:x-key"
 				switch {
+				case strings.HasPrefix(tag, TagReqHeader):
+					return buf.WriteString(c.Get(tag[10:]))
 				case strings.HasPrefix(tag, TagHeader):
 					return buf.WriteString(c.Get(tag[7:]))
+				case strings.HasPrefix(tag, TagRespHeader):
+					return buf.WriteString(c.GetRespHeader(tag[11:]))
 				case strings.HasPrefix(tag, TagQuery):
 					return buf.WriteString(c.Query(tag[6:]))
 				case strings.HasPrefix(tag, TagForm):
@@ -291,7 +308,7 @@ func New(config ...Config) fiber.Handler {
 			// Write error to output
 			if _, err := cfg.Output.Write([]byte(err.Error())); err != nil {
 				// There is something wrong with the given io.Writer
-				// TODO: What should we do here?
+				fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
 			}
 		}
 		mu.Unlock()

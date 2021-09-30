@@ -63,6 +63,14 @@
             color: #777;
         }
 
+        h2 span.ram_os {
+            color: rgba(255, 150, 0, .8);
+        }
+
+        h2 span.ram_total {
+            color: rgba(0, 200, 0, .8);
+        }
+
         canvas {
             width: 200px;
             height: 180px;
@@ -90,10 +98,20 @@
                 <div class="row">
                     <div class="column">
                         <div class="metric">Memory Usage</div>
-                        <h2 id="ramMetric">0.00 MB</h2>
+                        <h2 id="ramMetric" title="PID used / OS used / OS total">0.00 MB</h2>
                     </div>
                     <div class="column">
                         <canvas id="ramChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="column">
+                        <div class="metric">One Minute Load Avg</div>
+                        <h2 id="loadavgMetric">0.00</h2>
+                    </div>
+                    <div class="column">
+                        <canvas id="loadavgChart"></canvas>
                     </div>
                 </div>
 
@@ -167,20 +185,23 @@
 
         const cpuMetric = document.querySelector('#cpuMetric');
         const ramMetric = document.querySelector('#ramMetric');
+        const loadavgMetric = document.querySelector('#loadavgMetric');
         const rtimeMetric = document.querySelector('#rtimeMetric');
         const connsMetric = document.querySelector('#connsMetric');
 
         const cpuChartCtx = document.querySelector('#cpuChart').getContext('2d');
         const ramChartCtx = document.querySelector('#ramChart').getContext('2d');
+        const loadavgChartCtx = document.querySelector('#loadavgChart').getContext('2d');
         const rtimeChartCtx = document.querySelector('#rtimeChart').getContext('2d');
         const connsChartCtx = document.querySelector('#connsChart').getContext('2d');
 
         const cpuChart = createChart(cpuChartCtx);
         const ramChart = createChart(ramChartCtx);
+        const loadavgChart = createChart(loadavgChartCtx);
         const rtimeChart = createChart(rtimeChartCtx);
         const connsChart = createChart(connsChartCtx);
 
-        const charts = [cpuChart, ramChart, rtimeChart, connsChart];
+        const charts = [cpuChart, ramChart, loadavgChart, rtimeChart, connsChart];
 
         function createChart(ctx) {
             return new Chart(ctx, {
@@ -198,6 +219,21 @@
             });
         }
 
+        ramChart.data.datasets.push({
+            data: [],
+            lineTension: 0.2,
+            pointRadius: 0,
+            backgroundColor: 'rgba(255, 200, 0, .6)',
+            borderColor: 'rgba(255, 150, 0, .8)',
+        })
+        ramChart.data.datasets.push({
+            data: [],
+            lineTension: 0.2,
+            pointRadius: 0,
+            backgroundColor: 'rgba(0, 255, 0, .4)',
+            borderColor: 'rgba(0, 200, 0, .8)',
+        })
+
         // function init() {
         //     charts.forEach(chart => {
         //         chart.data.datasets[0].data = JSON.parse(localStorage.getItem(chart.canvas.id)) || []
@@ -208,14 +244,19 @@
         function update(json, rtime) {
             cpu = json.pid.cpu.toFixed(1);
             cpuOS = json.os.cpu.toFixed(1);
+            loadavg = json.os.load_avg.toFixed(1)
 
             cpuMetric.innerHTML = cpu + '% <span>' + cpuOS + '%</span>';
-            ramMetric.innerHTML = formatBytes(json.pid.ram) + ' <span>' + formatBytes(json.os.ram) + '</span>';
+            ramMetric.innerHTML = formatBytes(json.pid.ram) + '<span> / </span><span class="ram_os">' + formatBytes(json.os.ram) + '<span><span> / </span><span class="ram_total">' + formatBytes(json.os.total_ram) + '</span>';
+            loadavgMetric.innerHTML = loadavg;
             rtimeMetric.innerHTML = rtime + 'ms <span>client</span>';
             connsMetric.innerHTML = json.pid.conns + ' <span>' + json.os.conns + '</span>';
 
             cpuChart.data.datasets[0].data.push(cpu);
+            ramChart.data.datasets[2].data.push((json.os.total_ram / 1e6).toFixed(2));
+            ramChart.data.datasets[1].data.push((json.os.ram / 1e6).toFixed(2));
             ramChart.data.datasets[0].data.push((json.pid.ram / 1e6).toFixed(2));
+            loadavgChart.data.datasets[0].data.push(loadavg);
             rtimeChart.data.datasets[0].data.push(rtime);
             connsChart.data.datasets[0].data.push(json.pid.conns);
 

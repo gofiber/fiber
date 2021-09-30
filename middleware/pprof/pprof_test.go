@@ -2,11 +2,12 @@ package pprof
 
 import (
 	"bytes"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
 	"io/ioutil"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 func Test_Non_Pprof_Path(t *testing.T) {

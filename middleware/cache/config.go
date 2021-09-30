@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // Config defines the config for middleware.
@@ -19,6 +20,13 @@ type Config struct {
 	// Optional. Default: 1 * time.Minute
 	Expiration time.Duration
 
+	// CacheHeader header on response header, indicate cache status, with the following possible return value
+	//
+	// hit, miss, unreachable
+	//
+	// Optional. Default: X-Cache
+	CacheHeader string
+
 	// CacheControl enables client side caching if set to true
 	//
 	// Optional. Default: false
@@ -27,7 +35,7 @@ type Config struct {
 	// Key allows you to generate custom keys, by default c.Path() is used
 	//
 	// Default: func(c *fiber.Ctx) string {
-	//   return c.Path()
+	//   return utils.CopyString(c.Path())
 	// }
 	KeyGenerator func(*fiber.Ctx) string
 
@@ -47,9 +55,10 @@ type Config struct {
 var ConfigDefault = Config{
 	Next:         nil,
 	Expiration:   1 * time.Minute,
+	CacheHeader:  "X-Cache",
 	CacheControl: false,
 	KeyGenerator: func(c *fiber.Ctx) string {
-		return c.Path()
+		return utils.CopyString(c.Path())
 	},
 	Storage: nil,
 }
@@ -78,6 +87,9 @@ func configDefault(config ...Config) Config {
 	}
 	if int(cfg.Expiration.Seconds()) == 0 {
 		cfg.Expiration = ConfigDefault.Expiration
+	}
+	if cfg.CacheHeader == "" {
+		cfg.CacheHeader = ConfigDefault.CacheHeader
 	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator

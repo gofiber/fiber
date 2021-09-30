@@ -1,7 +1,6 @@
 package monitor
 
 import (
-	"fmt"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/cpu"
+	"github.com/gofiber/fiber/v2/internal/gopsutil/load"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/mem"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/net"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/process"
@@ -25,9 +25,11 @@ type statsPID struct {
 	Conns int     `json:"conns"`
 }
 type statsOS struct {
-	CPU   float64 `json:"cpu"`
-	RAM   uint64  `json:"ram"`
-	Conns int     `json:"conns"`
+	CPU      float64 `json:"cpu"`
+	RAM      uint64  `json:"ram"`
+	TotalRAM uint64  `json:"total_ram"`
+	LoadAvg  float64 `json:"load_avg"`
+	Conns    int     `json:"conns"`
 }
 
 var (
@@ -35,9 +37,11 @@ var (
 	monitPidRam   atomic.Value
 	monitPidConns atomic.Value
 
-	monitOsCpu   atomic.Value
-	monitOsRam   atomic.Value
-	monitOsConns atomic.Value
+	monitOsCpu      atomic.Value
+	monitOsRam      atomic.Value
+	monitOsTotalRam atomic.Value
+	monitOsLoadAvg  atomic.Value
+	monitOsConns    atomic.Value
 )
 
 var (
@@ -47,11 +51,12 @@ var (
 )
 
 // New creates a new middleware handler
-func New() fiber.Handler {
+func New(config ...Config) fiber.Handler {
+	// Set default config
+	cfg := configDefault(config...)
+
 	// Start routine to update statistics
 	once.Do(func() {
-		fmt.Println("[Warning] monitor is still in beta, API might change in the future!")
-
 		p, _ := process.NewProcess(int32(os.Getpid()))
 
 		updateStatistics(p)
@@ -67,6 +72,11 @@ func New() fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
+		// Don't execute middleware if Next returns true
+		if cfg.Next != nil && cfg.Next(c) {
+			return c.Next()
+		}
+
 		if c.Method() != fiber.MethodGet {
 			return fiber.ErrMethodNotAllowed
 		}
@@ -78,6 +88,8 @@ func New() fiber.Handler {
 
 			data.OS.CPU = monitOsCpu.Load().(float64)
 			data.OS.RAM = monitOsRam.Load().(uint64)
+			data.OS.TotalRAM = monitOsTotalRam.Load().(uint64)
+			data.OS.LoadAvg = monitOsLoadAvg.Load().(float64)
 			data.OS.Conns = monitOsConns.Load().(int)
 			mutex.Unlock()
 			return c.Status(fiber.StatusOK).JSON(data)
@@ -101,6 +113,11 @@ func updateStatistics(p *process.Process) {
 
 	if osMem, _ := mem.VirtualMemory(); osMem != nil {
 		monitOsRam.Store(osMem.Used)
+		monitOsTotalRam.Store(osMem.Total)
+	}
+
+	if loadAvg, _ := load.Avg(); loadAvg != nil {
+		monitOsLoadAvg.Store(loadAvg.Load1)
 	}
 
 	pidConns, _ := net.ConnectionsPid("tcp", p.Pid)

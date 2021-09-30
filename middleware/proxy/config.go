@@ -1,7 +1,11 @@
 package proxy
 
 import (
+	"crypto/tls"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/valyala/fasthttp"
 )
 
 // Config defines the config for middleware.
@@ -28,6 +32,23 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	ModifyResponse fiber.Handler
+
+	// Timeout is the request timeout used when calling the proxy client
+	//
+	// Optional. Default: 1 second
+	Timeout time.Duration
+
+	// Per-connection buffer size for requests' reading.
+	// This also limits the maximum header size.
+	// Increase this buffer if your clients send multi-KB RequestURIs
+	// and/or multi-KB headers (for example, BIG cookies).
+	ReadBufferSize int
+
+	// Per-connection buffer size for responses' writing.
+	WriteBufferSize int
+
+	// tls config for the http client
+	TlsConfig *tls.Config
 }
 
 // ConfigDefault is the default config
@@ -35,9 +56,10 @@ var ConfigDefault = Config{
 	Next:           nil,
 	ModifyRequest:  nil,
 	ModifyResponse: nil,
+	Timeout:        fasthttp.DefaultLBClientTimeout,
 }
 
-// Helper function to set default values
+// configDefault function to set default values
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
 	if len(config) < 1 {
@@ -46,6 +68,11 @@ func configDefault(config ...Config) Config {
 
 	// Override default config
 	cfg := config[0]
+
+	// Set default values
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = ConfigDefault.Timeout
+	}
 
 	// Set default values
 	if len(cfg.Servers) == 0 {

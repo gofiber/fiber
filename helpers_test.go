@@ -182,9 +182,9 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		source := "/cr%C3%A9er"
-		pathBytes := getBytes(source)
+		pathBytes := utils.UnsafeBytes(source)
 		pathBytes = fasthttp.AppendUnquotedArg(dst[:0], pathBytes)
-		unescaped = getString(pathBytes)
+		unescaped = utils.UnsafeString(pathBytes)
 	}
 
 	utils.AssertEqual(b, "/créer", unescaped)
@@ -194,7 +194,7 @@ func Test_Utils_Parse_Address(t *testing.T) {
 	testCases := []struct {
 		addr, host, port string
 	}{
-		{"[::]:3000", "[::]", "3000"},
+		{"[::1]:3000", "[::1]", "3000"},
 		{"127.0.0.1:3000", "127.0.0.1", "3000"},
 		{"/path/to/unix/socket", "/path/to/unix/socket", ""},
 	}
@@ -262,23 +262,23 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 
 func Test_Utils_lnMetadata(t *testing.T) {
 	t.Run("closed listen", func(t *testing.T) {
-		ln, err := net.Listen("tcp", ":0")
+		ln, err := net.Listen(NetworkTCP, ":0")
 		utils.AssertEqual(t, nil, err)
 
 		utils.AssertEqual(t, nil, ln.Close())
 
-		addr, config := lnMetadata(ln)
+		addr, config := lnMetadata(NetworkTCP, ln)
 
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config == nil)
 	})
 
 	t.Run("non tls", func(t *testing.T) {
-		ln, err := net.Listen("tcp", ":0")
+		ln, err := net.Listen(NetworkTCP, ":0")
 
 		utils.AssertEqual(t, nil, err)
 
-		addr, config := lnMetadata(ln)
+		addr, config := lnMetadata(NetworkTCP4, ln)
 
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config == nil)
@@ -290,12 +290,12 @@ func Test_Utils_lnMetadata(t *testing.T) {
 
 		config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
-		ln, err := net.Listen("tcp4", ":0")
+		ln, err := net.Listen(NetworkTCP4, ":0")
 		utils.AssertEqual(t, nil, err)
 
 		ln = tls.NewListener(ln, config)
 
-		addr, config := lnMetadata(ln)
+		addr, config := lnMetadata(NetworkTCP4, ln)
 
 		utils.AssertEqual(t, ln.Addr().String(), addr)
 		utils.AssertEqual(t, true, config != nil)

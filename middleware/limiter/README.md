@@ -53,14 +53,14 @@ app.Use(limiter.New(limiter.Config{
 		return c.IP() == "127.0.0.1"
 	},
 	Max:          20,
-	Duration:     30 * time.Second,
+	Expiration:     30 * time.Second,
 	KeyGenerator: func(c *fiber.Ctx) string{
   		return "key"
 	}
 	LimitReached: func(c *fiber.Ctx) error {
 		return c.SendFile("./toofast.html")
 	},
-	Store: myCustomStore{}
+	Storage: myCustomStore{}
 }))
 ```
 
@@ -109,6 +109,16 @@ type Config struct {
 	// }
 	LimitReached fiber.Handler
 
+	// When set to true, requests with StatusCode >= 400 won't be counted.
+	//
+	// Default: false
+	SkipFailedRequests bool
+
+	// When set to true, requests with StatusCode < 400 won't be counted.
+	//
+	// Default: false
+	SkipSuccessfulRequests bool
+
 	// Store is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
@@ -130,5 +140,7 @@ var ConfigDefault = Config{
 	LimitReached: func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTooManyRequests)
 	},
+	SkipFailedRequests: false,
+	SkipSuccessfulRequests: false,
 }
 ```

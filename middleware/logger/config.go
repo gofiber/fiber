@@ -3,6 +3,7 @@ package logger
 import (
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -56,6 +57,20 @@ var ConfigDefault = Config{
 	enableColors: true,
 }
 
+// Function to check if the logger format is compatible for coloring
+func validCustomFormat(format string) bool {
+	var validTemplates = []string{"${status}", "${method}"}
+	if format == "" {
+		return true
+	}
+	for _, template := range validTemplates {
+		if !strings.Contains(format, template) {
+			return false
+		}
+	}
+	return true
+}
+
 // Helper function to set default values
 func configDefault(config ...Config) Config {
 	// Return default config if nothing provided
@@ -67,7 +82,7 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Enable colors if no custom format or output is given
-	if cfg.Format == "" && cfg.Output == nil {
+	if validCustomFormat(cfg.Format) && cfg.Output == nil {
 		cfg.enableColors = true
 	}
 

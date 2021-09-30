@@ -10,6 +10,8 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -229,7 +231,7 @@ func Benchmark_Ctx_Append(b *testing.B) {
 		c.Append("X-Custom-Header", "World")
 		c.Append("X-Custom-Header", "Hello")
 	}
-	utils.AssertEqual(b, "Hello, World", getString(c.Response().Header.Peek("X-Custom-Header")))
+	utils.AssertEqual(b, "Hello, World", app.getString(c.Response().Header.Peek("X-Custom-Header")))
 }
 
 // go test -run Test_Ctx_Attachment
@@ -302,6 +304,49 @@ func Test_Ctx_Body(t *testing.T) {
 	utils.AssertEqual(t, []byte("john=doe"), c.Body())
 }
 
+// go test -run Test_Ctx_Body_With_Compression
+func Test_Ctx_Body_With_Compression(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set("Content-Encoding", "gzip")
+	var b bytes.Buffer
+	gz := gzip.NewWriter(&b)
+	_, err := gz.Write([]byte("john=doe"))
+	utils.AssertEqual(t, nil, err)
+	err = gz.Flush()
+	utils.AssertEqual(t, nil, err)
+	err = gz.Close()
+	utils.AssertEqual(t, nil, err)
+	c.Request().SetBody(b.Bytes())
+	utils.AssertEqual(t, []byte("john=doe"), c.Body())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Body_With_Compression -benchmem -count=4
+func Benchmark_Ctx_Body_With_Compression(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set("Content-Encoding", "gzip")
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	_, err := gz.Write([]byte("john=doe"))
+	utils.AssertEqual(b, nil, err)
+	err = gz.Flush()
+	utils.AssertEqual(b, nil, err)
+	err = gz.Close()
+	utils.AssertEqual(b, nil, err)
+
+	c.Request().SetBody(buf.Bytes())
+
+	for i := 0; i < b.N; i++ {
+		_ = c.Body()
+	}
+
+	utils.AssertEqual(b, []byte("john=doe"), c.Body())
+}
+
 // go test -run Test_Ctx_BodyParser
 func Test_Ctx_BodyParser(t *testing.T) {
 	t.Parallel()
@@ -311,6 +356,22 @@ func Test_Ctx_BodyParser(t *testing.T) {
 
 	type Demo struct {
 		Name string `json:"name" xml:"name" form:"name" query:"name"`
+	}
+
+	{
+		var gzipJSON bytes.Buffer
+		w := gzip.NewWriter(&gzipJSON)
+		_, _ = w.Write([]byte(`{"name":"john"}`))
+		_ = w.Close()
+
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.Set(HeaderContentEncoding, "gzip")
+		c.Request().SetBody(gzipJSON.Bytes())
+		c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
+		d := new(Demo)
+		utils.AssertEqual(t, nil, c.BodyParser(d))
+		utils.AssertEqual(t, "john", d.Name)
+		c.Request().Header.Del(HeaderContentEncoding)
 	}
 
 	testDecodeParser := func(contentType, body string) {
@@ -324,7 +385,6 @@ func Test_Ctx_BodyParser(t *testing.T) {
 
 	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
 	testDecodeParser(MIMEApplicationXML, `<Demo><name>john</name></Demo>`)
-	testDecodeParser(MIMEApplicationJSON, `{"name":"john"}`)
 	testDecodeParser(MIMEApplicationForm, "name=john")
 	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\njohn\r\n--b--")
 
@@ -500,6 +560,73 @@ func Test_Ctx_Context(t *testing.T) {
 	utils.AssertEqual(t, "*fasthttp.RequestCtx", fmt.Sprintf("%T", c.Context()))
 }
 
+// go test -run Test_Ctx_UserContext
+func Test_Ctx_UserContext(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	t.Run("Nil_Context", func(t *testing.T) {
+		ctx := c.UserContext()
+		utils.AssertEqual(t, ctx, context.Background())
+
+	})
+	t.Run("ValueContext", func(t *testing.T) {
+		testKey := "Test Key"
+		testValue := "Test Value"
+		ctx := context.WithValue(context.Background(), testKey, testValue)
+		utils.AssertEqual(t, testValue, ctx.Value(testKey))
+	})
+}
+
+// go test -run Test_Ctx_SetUserContext
+func Test_Ctx_SetUserContext(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	testKey := "Test Key"
+	testValue := "Test Value"
+	ctx := context.WithValue(context.Background(), testKey, testValue)
+	c.SetUserContext(ctx)
+	utils.AssertEqual(t, testValue, c.UserContext().Value(testKey))
+}
+
+// go test -run Test_Ctx_UserContext_Multiple_Requests
+func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
+	testKey := "foobar-key"
+	testValue := "foobar-value"
+
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		ctx := c.UserContext()
+
+		if ctx.Value(testKey) != nil {
+			return c.SendStatus(StatusInternalServerError)
+		}
+
+		input := utils.CopyString(c.Query("input", "NO_VALUE"))
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
+		c.SetUserContext(ctx)
+
+		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
+	})
+
+	// Consecutive Requests
+	for i := 1; i <= 10; i++ {
+		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
+			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
+
+			utils.AssertEqual(t, nil, err, "Unexpected error from response")
+			utils.AssertEqual(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
+
+			b, err := ioutil.ReadAll(resp.Body)
+			utils.AssertEqual(t, nil, err, "Unexpected error from reading response body")
+			utils.AssertEqual(t, fmt.Sprintf("resp_%d_returned", i), string(b), "response text incorrect")
+		})
+	}
+}
+
 // go test -run Test_Ctx_Cookie
 func Test_Ctx_Cookie(t *testing.T) {
 	t.Parallel()
@@ -510,16 +637,31 @@ func Test_Ctx_Cookie(t *testing.T) {
 	var dst []byte
 	dst = expire.In(time.UTC).AppendFormat(dst, time.RFC1123)
 	httpdate := strings.Replace(string(dst), "UTC", "GMT", -1)
-	c.Cookie(&Cookie{
+	cookie := &Cookie{
 		Name:    "username",
 		Value:   "john",
 		Expires: expire,
-	})
+		//SameSite: CookieSameSiteStrictMode, // default is "lax"
+	}
+	c.Cookie(cookie)
 	expect := "username=john; expires=" + httpdate + "; path=/; SameSite=Lax"
 	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 
-	c.Cookie(&Cookie{SameSite: "strict"})
-	c.Cookie(&Cookie{SameSite: "none"})
+	expect = "username=john; expires=" + httpdate + "; path=/"
+	cookie.SameSite = CookieSameSiteDisabled
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	expect = "username=john; expires=" + httpdate + "; path=/; SameSite=Strict"
+	cookie.SameSite = CookieSameSiteStrictMode
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	expect = "username=john; expires=" + httpdate + "; path=/; secure; SameSite=None"
+	cookie.Secure = true
+	cookie.SameSite = CookieSameSiteNoneMode
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
@@ -535,7 +677,7 @@ func Benchmark_Ctx_Cookie(b *testing.B) {
 			Value: "Doe",
 		})
 	}
-	utils.AssertEqual(b, "John=Doe; path=/; SameSite=Lax", getString(c.Response().Header.Peek("Set-Cookie")))
+	utils.AssertEqual(b, "John=Doe; path=/; SameSite=Lax", app.getString(c.Response().Header.Peek("Set-Cookie")))
 }
 
 // go test -run Test_Ctx_Cookies
@@ -811,6 +953,51 @@ func Test_Ctx_Hostname(t *testing.T) {
 	utils.AssertEqual(t, "google.com", c.Hostname())
 }
 
+// go test -run Test_Ctx_Hostname_Untrusted
+func Test_Ctx_Hostname_UntrustedProxy(t *testing.T) {
+	t.Parallel()
+	// Don't trust any proxy
+	{
+		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{}})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		utils.AssertEqual(t, "google.com", c.Hostname())
+		app.ReleaseCtx(c)
+	}
+	// Trust to specific proxy list
+	{
+		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.0", "0.8.0.1"}})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		utils.AssertEqual(t, "google.com", c.Hostname())
+		app.ReleaseCtx(c)
+	}
+}
+
+// go test -run Test_Ctx_Hostname_Trusted
+func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
+	t.Parallel()
+	{
+		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "0.8.0.1"}})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+		utils.AssertEqual(t, "google1.com", c.Hostname())
+		app.ReleaseCtx(c)
+	}
+}
+
+// go test -run Test_Ctx_Port
+func Test_Ctx_Port(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, "0", c.Port())
+}
+
 // go test -run Test_Ctx_IP
 func Test_Ctx_IP(t *testing.T) {
 	t.Parallel()
@@ -827,6 +1014,26 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	utils.AssertEqual(t, "", c.IP())
+}
+
+// go test -run Test_Ctx_IP_UntrustedProxy
+func Test_Ctx_IP_UntrustedProxy(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.1"}, ProxyHeader: HeaderXForwardedFor})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, "0.0.0.0", c.IP())
+}
+
+// go test -run Test_Ctx_IP_TrustedProxy
+func Test_Ctx_IP_TrustedProxy(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0"}, ProxyHeader: HeaderXForwardedFor})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, "0.0.0.1", c.IP())
 }
 
 // go test -run Test_Ctx_IPs  -parallel
@@ -955,7 +1162,7 @@ func Test_Ctx_InvalidMethod(t *testing.T) {
 	fctx.Request.Header.SetMethod("InvalidMethod")
 	fctx.Request.SetRequestURI("/")
 
-	app.handler(fctx)
+	app.Handler()(fctx)
 
 	utils.AssertEqual(t, 400, fctx.Response.StatusCode())
 	utils.AssertEqual(t, []byte("Invalid http method"), fctx.Response.Body())
@@ -1092,15 +1299,23 @@ func Benchmark_Ctx_Params(b *testing.B) {
 // go test -run Test_Ctx_Path
 func Test_Ctx_Path(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{UnescapePath: true})
 	app.Get("/test/:user", func(c *Ctx) error {
-		utils.AssertEqual(t, "/test/john", c.Path())
+		utils.AssertEqual(t, "/Test/John", c.Path())
 		// not strict && case insensitive
 		utils.AssertEqual(t, "/ABC/", c.Path("/ABC/"))
 		utils.AssertEqual(t, "/test/john/", c.Path("/test/john/"))
 		return nil
 	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+
+	// test with special chars
+	app.Get("/specialChars/:name", func(c *Ctx) error {
+		utils.AssertEqual(t, "/specialChars/créer", c.Path())
+		// unescape is also working if you set the path afterwards
+		utils.AssertEqual(t, "/اختبار/", c.Path("/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1/"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
@@ -1145,6 +1360,58 @@ func Benchmark_Ctx_Protocol(b *testing.B) {
 		res = c.Protocol()
 	}
 	utils.AssertEqual(b, "http", res)
+}
+
+// go test -run Test_Ctx_Protocol_TrustedProxy
+func Test_Ctx_Protocol_TrustedProxy(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0"}})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderXForwardedProto, "https")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedSsl, "on")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXUrlScheme, "https")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	utils.AssertEqual(t, "http", c.Protocol())
+}
+
+// go test -run Test_Ctx_Protocol_UnTrustedProxy
+func Test_Ctx_Protocol_UnTrustedProxy(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.1"}})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderXForwardedProto, "https")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedSsl, "on")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXUrlScheme, "https")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	utils.AssertEqual(t, "http", c.Protocol())
 }
 
 // go test -run Test_Ctx_Query
@@ -1660,7 +1927,11 @@ type testTemplateEngine struct {
 }
 
 func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
-	return t.templates.ExecuteTemplate(w, name, bind)
+	if len(layout) == 0 {
+		return t.templates.ExecuteTemplate(w, name, bind)
+	}
+	_ = t.templates.ExecuteTemplate(w, name, bind)
+	return t.templates.ExecuteTemplate(w, layout[0], bind)
 }
 
 func (t *testTemplateEngine) Load() error {
@@ -1681,6 +1952,21 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 	})
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
+// go test -run Test_Ctx_Render_Engine_With_View_Layout
+func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
+	engine := &testTemplateEngine{}
+	engine.Load()
+	app := New(Config{ViewsLayout: "main.tmpl"})
+	app.config.Views = engine
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	err := c.Render("index.tmpl", Map{
+		"Title": "Hello, World!",
+	})
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World!</h1><h1>I'm main</h1>", string(c.Response().Body()))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Render_Engine -benchmem -count=4
@@ -2049,23 +2335,110 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	utils.AssertEqual(t, 0, len(empty.Hobby))
 
 	type Query2 struct {
-		ID    int
-		Name  string
-		Hobby string
+		Bool            bool
+		ID              int
+		Name            string
+		Hobby           string
+		FavouriteDrinks []string
+		Empty           []string
+		Alloc           []string
+		No              []int64
 	}
 
-	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 	q2 := new(Query2)
+	q2.Bool = true
+	q2.Name = "hello world"
 	utils.AssertEqual(t, nil, c.QueryParser(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
+	utils.AssertEqual(t, true, q2.Bool)
+	utils.AssertEqual(t, "tom", q2.Name) // check value get overwritten
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, q2.FavouriteDrinks)
+	var nilSlice []string
+	utils.AssertEqual(t, nilSlice, q2.Empty)
+	utils.AssertEqual(t, []string{""}, q2.Alloc)
+	utils.AssertEqual(t, []int64{1}, q2.No)
 
 	type RequiredQuery struct {
 		Name string `query:"name,required"`
 	}
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
-	fmt.Println(c.QueryParser(rq))
 	utils.AssertEqual(t, "name is empty", c.QueryParser(rq).Error())
+}
+
+// go test -run Test_Ctx_QueryParser_Schema -v
+func Test_Ctx_QueryParser_Schema(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Query1 struct {
+		Name   string `query:"name,required"`
+		Nested struct {
+			Age int `query:"age"`
+		} `query:"nested,required"`
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("name=tom&nested.age=10")
+	q := new(Query1)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+
+	c.Request().URI().SetQueryString("namex=tom&nested.age=10")
+	q = new(Query1)
+	utils.AssertEqual(t, "name is empty", c.QueryParser(q).Error())
+
+	c.Request().URI().SetQueryString("name=tom&nested.agex=10")
+	q = new(Query1)
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+
+	c.Request().URI().SetQueryString("name=tom&test.age=10")
+	q = new(Query1)
+	utils.AssertEqual(t, "nested is empty", c.QueryParser(q).Error())
+
+	type Query2 struct {
+		Name   string `query:"name"`
+		Nested struct {
+			Age int `query:"age,required"`
+		} `query:"nested"`
+	}
+	c.Request().URI().SetQueryString("name=tom&nested.age=10")
+	q2 := new(Query2)
+	utils.AssertEqual(t, nil, c.QueryParser(q2))
+
+	c.Request().URI().SetQueryString("nested.age=10")
+	q2 = new(Query2)
+	utils.AssertEqual(t, nil, c.QueryParser(q2))
+
+	c.Request().URI().SetQueryString("nested.agex=10")
+	q2 = new(Query2)
+	utils.AssertEqual(t, "nested.age is empty", c.QueryParser(q2).Error())
+
+	c.Request().URI().SetQueryString("nested.agex=10")
+	q2 = new(Query2)
+	utils.AssertEqual(t, "nested.age is empty", c.QueryParser(q2).Error())
+
+	type Node struct {
+		Value int   `query:"val,required"`
+		Next  *Node `query:"next,required"`
+	}
+	c.Request().URI().SetQueryString("val=1&next.val=3")
+	n := new(Node)
+	utils.AssertEqual(t, nil, c.QueryParser(n))
+	utils.AssertEqual(t, 1, n.Value)
+	utils.AssertEqual(t, 3, n.Next.Value)
+
+	c.Request().URI().SetQueryString("next.val=2")
+	n = new(Node)
+	utils.AssertEqual(t, "val is empty", c.QueryParser(n).Error())
+
+	c.Request().URI().SetQueryString("val=3&next.value=2")
+	n = new(Node)
+	n.Next = new(Node)
+	utils.AssertEqual(t, nil, c.QueryParser(n))
+	utils.AssertEqual(t, 3, n.Value)
+	utils.AssertEqual(t, 0, n.Next.Value)
 }
 
 func Test_Ctx_EqualFieldType(t *testing.T) {
@@ -2074,6 +2447,21 @@ func Test_Ctx_EqualFieldType(t *testing.T) {
 
 	var dummy struct{ f string }
 	utils.AssertEqual(t, false, equalFieldType(&dummy, reflect.String, "key"))
+
+	var dummy2 struct{ f string }
+	utils.AssertEqual(t, false, equalFieldType(&dummy2, reflect.String, "f"))
+
+	var user struct {
+		Name    string
+		Address string `query:"address"`
+		Age     int    `query:"AGE"`
+	}
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "name"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Name"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "address"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.String, "Address"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "AGE"))
+	utils.AssertEqual(t, true, equalFieldType(&user, reflect.Int, "age"))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser -benchmem -count=4
@@ -2178,4 +2566,111 @@ func Test_Ctx_String(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	utils.AssertEqual(t, "#0000000000000000 - 0.0.0.0:0 <-> 0.0.0.0:0 - GET http:///", c.String())
+}
+
+func TestCtx_ParamsInt(t *testing.T) {
+	// Create a test context and set some strings (or params)
+
+	// create a fake app to be used within this test
+	app := New()
+
+	// Create some test endpoints
+
+	// For the user id I will use the number 1111, so I should be able to get the number
+	// 1111 from the Ctx
+	app.Get("/test/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user")
+
+		// Check the number matches
+		if num != 1111 {
+			t.Fatalf("Expected number 1111 from the path, got %d", num)
+		}
+
+		// Check no errors are returned, because we want NO errors in this one
+		if err != nil {
+			t.Fatalf("Expected nil error for 1111 test, got " + err.Error())
+		}
+
+		return nil
+	})
+
+	// In this test case, there will be a bad request where the expected number is NOT
+	// a number in the path
+	app.Get("/testnoint/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user")
+
+		// Check the number matches
+		if num != 0 {
+			t.Fatalf("Expected number 0 from the path, got %d", num)
+		}
+
+		// Check an error is returned, because we want NO errors in this one
+		if err == nil {
+			t.Fatal("Expected non nil error for bad req test, got nil")
+		}
+
+		return nil
+	})
+
+	// For the user id I will use the number 2222, so I should be able to get the number
+	// 2222 from the Ctx even when the default value is specified
+	app.Get("/testignoredefault/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user", 1111)
+
+		// Check the number matches
+		if num != 2222 {
+			t.Fatalf("Expected number 2222 from the path, got %d", num)
+		}
+
+		// Check no errors are returned, because we want NO errors in this one
+		if err != nil {
+			t.Fatalf("Expected nil error for 2222 test, got " + err.Error())
+		}
+
+		return nil
+	})
+
+	// In this test case, there will be a bad request where the expected number is NOT
+	// a number in the path, default value of 1111 should be used instead
+	app.Get("/testdefault/:user", func(c *Ctx) error {
+		// utils.AssertEqual(t, "john", c.Params("user"))
+
+		num, err := c.ParamsInt("user", 1111)
+
+		// Check the number matches
+		if num != 1111 {
+			t.Fatalf("Expected number 1111 from the path, got %d", num)
+		}
+
+		// Check an error is returned, because we want NO errors in this one
+		if err != nil {
+			t.Fatalf("Expected nil error for 1111 test, got " + err.Error())
+		}
+
+		return nil
+	})
+
+	app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
+
+}
+
+// go test -run Test_Ctx_GetRespHeader
+func Test_Ctx_GetRespHeader(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Set("test", "Hello, World 👋!")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+	utils.AssertEqual(t, c.GetRespHeader("test"), "Hello, World 👋!")
+	utils.AssertEqual(t, c.GetRespHeader(HeaderContentType), "application/json")
 }

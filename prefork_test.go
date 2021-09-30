@@ -23,7 +23,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 
 	app := New()
 
-	err := app.prefork("invalid", nil)
+	err := app.prefork(NetworkTCP4, "invalid", nil)
 	utils.AssertEqual(t, false, err == nil)
 
 	go func() {
@@ -31,7 +31,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork("[::]:", nil))
+	utils.AssertEqual(t, nil, app.prefork(NetworkTCP6, "[::1]:", nil))
 
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
@@ -45,7 +45,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:", config))
+	utils.AssertEqual(t, nil, app.prefork(NetworkTCP4, "127.0.0.1:", config))
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
@@ -59,11 +59,11 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork(":3000", nil))
+	utils.AssertEqual(t, nil, app.prefork(NetworkTCP4, ":3000", nil))
 
 	dummyChildCmd = "invalid"
 
-	err := app.prefork("127.0.0.1:", nil)
+	err := app.prefork(NetworkTCP4, "127.0.0.1:", nil)
 	utils.AssertEqual(t, false, err == nil)
 }
 
@@ -79,7 +79,7 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 
 	os.Stdout = w
 
-	New().startupMessage(":3000", false, "")
+	New().startupProcess().startupMessage(":3000", false, "")
 
 	utils.AssertEqual(t, nil, w.Close())
 

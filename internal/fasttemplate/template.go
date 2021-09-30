@@ -258,7 +258,7 @@ func (t *Template) Reset(template, startTag, endTag string) error {
 		s = s[n+len(a):]
 		n = bytes.Index(s, b)
 		if n < 0 {
-			return fmt.Errorf("Cannot find end tag=%q in the template=%q starting from %q", endTag, template, s)
+			return fmt.Errorf("cannot find end tag=%q in the template=%q starting from %q", endTag, template, s)
 		}
 
 		t.tags = append(t.tags, unsafeBytes2String(s[:n]))

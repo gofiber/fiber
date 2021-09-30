@@ -62,7 +62,7 @@ func UUID() string {
 	b[23] = '-'
 	hex.Encode(b[24:], uuid[10:16])
 
-	return GetString(b)
+	return UnsafeString(b)
 }
 
 // UUIDv4 returns a Random (Version 4) UUID.

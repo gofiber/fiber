@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 func getFileExtension(path string) string {
@@ -40,7 +41,7 @@ func dirList(c *fiber.Ctx, f http.File) error {
 	fmt.Fprint(c, "<ul>")
 
 	if len(basePathEscaped) > 1 {
-		parentPathEscaped := html.EscapeString(c.Path() + "/..")
+		parentPathEscaped := html.EscapeString(utils.TrimRight(c.Path(), '/') + "/..")
 		fmt.Fprintf(c, `<li><a href="%s" class="dir">..</a></li>`, parentPathEscaped)
 	}
 

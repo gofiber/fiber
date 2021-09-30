@@ -50,6 +50,10 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
+		// Continue stack for reaching c.Response().StatusCode()
+		// Store err for returning
+		err := c.Next()
+
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
@@ -72,8 +76,12 @@ func New(config ...Config) fiber.Handler {
 			e.exp = ts + expiration
 		}
 
-		// Increment hits
-		e.hits++
+		// Check for SkipFailedRequests and SkipSuccessfulRequests
+		if (!cfg.SkipSuccessfulRequests || c.Response().StatusCode() >= 400) &&
+			(!cfg.SkipFailedRequests || c.Response().StatusCode() < 400) {
+			// Increment hits
+			e.hits++
+		}
 
 		// Calculate when it resets in seconds
 		expire := e.exp - ts
@@ -102,7 +110,6 @@ func New(config ...Config) fiber.Handler {
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
 		c.Set(xRateLimitReset, strconv.FormatUint(expire, 10))
 
-		// Continue stack
-		return c.Next()
+		return err
 	}
 }
