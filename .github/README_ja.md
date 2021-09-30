@@ -142,15 +142,15 @@ Fiber は人気の高い Web フレームワークである Expressjs に**イ�
 わたしたちは Express の**手軽さ**と Go の**パフォーマンス**を組み合わせました。
 もしも、Web アプリケーションを Express 等の Node.js フレームワークで実装した経験があれば、多くの方法や原理がとても**馴染み深い**でしょう。
 
-## Limitations
-* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.18.0 has been tested with Go versions 1.14 to 1.17.
-* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+## 制限時効
+* Fiberはunsafeパッケージを使用しているため、最新のGoバージョンと互換性がない場合があります。Fiber 2.18.0 は、Go のバージョン 1.14 から 1.17 でテストされています。
+* Fiberはnet/httpインターフェースと互換性がありません。つまり、gqlgenやgo-swaggerなど、net/httpのエコシステムの一部であるプロジェクトを使用することができません。
 
 ## 👀 例
 
 以下に一般的な例をいくつか示します。他のコード例をご覧になりたい場合は、 [Recipes リポジトリ](https://github.com/gofiber/recipes)または[API ドキュメント](https://docs.gofiber.io)にアクセスしてください。
 
-#### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
+#### 📖 [**基本的なルーティング**](https://docs.gofiber.io/#basic-routing)
 
 ```go
 func main() {
@@ -191,7 +191,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
+#### 📖 [**静的ファイルの提供**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -213,7 +213,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
+#### 📖 [**ミドルウェア & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {
@@ -243,7 +243,7 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 その他のコード例を見る</summary>
 
 ### Views engines
 
@@ -251,11 +251,11 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
+view engineが設定されていない時は、Fiberのデフォルトは[html/template](https://golang.org/pkg/html/template/) になります。
 
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+パーシャルを実行したい場合や、[amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) ,[pug](https://github.com/Joker/jade) などの別のエンジンを使用したい場合など、
 
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
+複数のview engineをサポートする [Template](https://github.com/gofiber/template) パッケージをご覧ください。
 
 ```go
 package main
@@ -366,7 +366,7 @@ func main() {
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+`Origin`ヘッダーに任意のドメインを渡してCORSのチェックをします:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -489,7 +489,7 @@ func main() {
 
 </details>
 
-## 🧬 Internal Middleware
+## 🧬 内部ミドルウェア
 
 以下は Fiber フレームワークに含まれるミドルウェアの一覧です。
 
@@ -510,7 +510,7 @@ func main() {
 | [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling). |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                                |
 
-## 🧬 External Middleware
+## 🧬 外部ミドルウェア
 
 [Fiber team](https://github.com/orgs/gofiber/people) により管理・運用されているミドルウェアの一覧です。
 
@@ -525,7 +525,7 @@ func main() {
 | [template](https://github.com/gofiber/template)   | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required.                                               |
 | [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support!                                                                                                          |
 
-## 🌱 Third Party Middlewares
+## 🌱 サードパーティのミドルウェア
 
 This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
 これらは Fiber のコミュニティーによって作成されたミドルウェアの一覧です。もしあなたのミドルウェアを掲載したい場合は PR を作成してください！
@@ -557,7 +557,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 3. [Medium](https://medium.com/) 、 [Dev.to、](https://dev.to/)または個人のブログでレビューまたはチュートリアルを書いてください。
 4. [cup of coffee](https://buymeacoff.ee/fenny)の寄付でプロジェクトを支援しましょう。
 
-## ☕ Supporters
+## ☕ サポーター
 
 Fiber はオープンソースプロジェクトで、寄付によってドメイン名や gitbook、 netlify、そしてサーバーレスホスティングなどの費用を賄っています。もし Fiber を支援したければ ☕ [**こちらから**](https://buymeacoff.ee/fenny)。
 
