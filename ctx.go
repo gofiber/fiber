@@ -254,25 +254,30 @@ func (c *Ctx) Body() []byte {
 
 // decoderPool helps to improve BodyParser's and QueryParser's performance
 var decoderPool = &sync.Pool{New: func() interface{} {
-	var decoder = schema.NewDecoder()
-	decoder.IgnoreUnknownKeys(true)
-	return decoder
+	return decoderBuilder(BodyParserConfig{
+		IgnoreUnknownKeys: true,
+		ZeroEmpty:         true,
+	})
 }}
 
 // SetBodyParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetBodyParserDecoder(bodyParserConfig BodyParserConfig) {
 	decoderPool = &sync.Pool{New: func() interface{} {
-		var decoder = schema.NewDecoder()
-		decoder.IgnoreUnknownKeys(bodyParserConfig.IgnoreUnknownKeys)
-		if bodyParserConfig.SetAliasTag != "" {
-			decoder.SetAliasTag(bodyParserConfig.SetAliasTag)
-		}
-		for _, v := range bodyParserConfig.BodyParserType {
-			decoder.RegisterConverter(reflect.ValueOf(v.Customtype).Interface(), v.Converter)
-		}
-		decoder.ZeroEmpty(bodyParserConfig.ZeroEmpty)
-		return decoder
+		return decoderBuilder(bodyParserConfig)
 	}}
+}
+
+func decoderBuilder(bodyParserConfig BodyParserConfig) interface{} {
+	var decoder = schema.NewDecoder()
+	decoder.IgnoreUnknownKeys(bodyParserConfig.IgnoreUnknownKeys)
+	if bodyParserConfig.SetAliasTag != "" {
+		decoder.SetAliasTag(bodyParserConfig.SetAliasTag)
+	}
+	for _, v := range bodyParserConfig.BodyParserType {
+		decoder.RegisterConverter(reflect.ValueOf(v.Customtype).Interface(), v.Converter)
+	}
+	decoder.ZeroEmpty(bodyParserConfig.ZeroEmpty)
+	return decoder
 }
 
 // BodyParser binds the request body to a struct.
