@@ -12,8 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2/utils"
@@ -326,21 +325,7 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 }
 
 func Test_Route_Static_Root(t *testing.T) {
-	rootDir, _ := os.Getwd()
-	f, err := ioutil.TempFile(rootDir, "")
-	if err != nil {
-		t.Error(err)
-	}
-	defer func() {
-		_ = os.Remove(f.Name())
-	}()
-
-	_, err = f.WriteString("Fiber")
-	utils.AssertEqual(t, nil, err)
-	_ = f.Close()
-
-	dir, filename := filepath.Split(f.Name())
-
+	dir := "./.github/testdata/fs/css"
 	app := New()
 	app.Static("/", dir, Static{
 		Browse: true,
@@ -350,13 +335,13 @@ func Test_Route_Static_Root(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/"+filename, nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "Fiber", app.getString(body))
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
 	app.Static("/", dir)
@@ -365,31 +350,17 @@ func Test_Route_Static_Root(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/"+filename, nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "Fiber", app.getString(body))
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 }
 
 func Test_Route_Static_HasPrefix(t *testing.T) {
-	rootDir, _ := os.Getwd()
-	f, err := ioutil.TempFile(rootDir, "")
-	if err != nil {
-		t.Error(err)
-	}
-	defer func() {
-		_ = os.Remove(f.Name())
-	}()
-
-	_, err = f.WriteString("Fiber")
-	utils.AssertEqual(t, nil, err)
-	_ = f.Close()
-
-	dir, filename := filepath.Split(f.Name())
-
+	dir := "./.github/testdata/fs/css"
 	app := New()
 	app.Static("/static", dir, Static{
 		Browse: true,
@@ -403,13 +374,13 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/"+filename, nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "Fiber", app.getString(body))
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
 	app.Static("/static", dir)
@@ -422,13 +393,13 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/"+filename, nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "Fiber", app.getString(body))
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 }
 
 //////////////////////////////////////////////
