@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http/httptest"
 	"os"
@@ -328,7 +327,7 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 
 func Test_Route_Static_Root(t *testing.T) {
 	rootDir, _ := os.Getwd()
-	f, err := os.CreateTemp(rootDir, "")
+	f, err := ioutil.TempFile(rootDir, "")
 	if err != nil {
 		t.Error(err)
 	}
@@ -355,7 +354,7 @@ func Test_Route_Static_Root(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "Fiber", app.getString(body))
 
@@ -370,14 +369,14 @@ func Test_Route_Static_Root(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err = io.ReadAll(resp.Body)
+	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "Fiber", app.getString(body))
 }
 
 func Test_Route_Static_HasPrefix(t *testing.T) {
 	rootDir, _ := os.Getwd()
-	f, err := os.CreateTemp(rootDir, "")
+	f, err := ioutil.TempFile(rootDir, "")
 	if err != nil {
 		t.Error(err)
 	}
@@ -408,7 +407,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "Fiber", app.getString(body))
 
@@ -427,7 +426,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err = io.ReadAll(resp.Body)
+	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "Fiber", app.getString(body))
 }
