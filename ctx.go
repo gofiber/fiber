@@ -86,18 +86,18 @@ type Views interface {
 	Render(io.Writer, string, interface{}, ...string) error
 }
 
-// BodyParserType require two element, type and converter for register.
-// Use BodyParserType with BodyParser for parsing custom type in form data.
-type BodyParserType struct {
+// ParserType require two element, type and converter for register.
+// Use ParserType with BodyParser for parsing custom type in form data.
+type ParserType struct {
 	Customtype interface{}
 	Converter  func(string) reflect.Value
 }
 
-// BodyParserConfig form decoder config for SetBodyParserDecoder
-type BodyParserConfig struct {
+// ParserConfig form decoder config for SetParserDecoder
+type ParserConfig struct {
 	IgnoreUnknownKeys bool
 	SetAliasTag       string
-	BodyParserType    []BodyParserType
+	ParserType        []ParserType
 	ZeroEmpty         bool
 }
 
@@ -287,29 +287,29 @@ func (c *Ctx) Body() []byte {
 
 // decoderPool helps to improve BodyParser's and QueryParser's performance
 var decoderPool = &sync.Pool{New: func() interface{} {
-	return decoderBuilder(BodyParserConfig{
+	return decoderBuilder(ParserConfig{
 		IgnoreUnknownKeys: true,
 		ZeroEmpty:         true,
 	})
 }}
 
-// SetBodyParserDecoder allow globally change the option of form decoder, update decoderPool
-func SetBodyParserDecoder(bodyParserConfig BodyParserConfig) {
+// SetParserDecoder allow globally change the option of form decoder, update decoderPool
+func SetParserDecoder(parserConfig ParserConfig) {
 	decoderPool = &sync.Pool{New: func() interface{} {
-		return decoderBuilder(bodyParserConfig)
+		return decoderBuilder(parserConfig)
 	}}
 }
 
-func decoderBuilder(bodyParserConfig BodyParserConfig) interface{} {
+func decoderBuilder(parserConfig ParserConfig) interface{} {
 	var decoder = schema.NewDecoder()
-	decoder.IgnoreUnknownKeys(bodyParserConfig.IgnoreUnknownKeys)
-	if bodyParserConfig.SetAliasTag != "" {
-		decoder.SetAliasTag(bodyParserConfig.SetAliasTag)
+	decoder.IgnoreUnknownKeys(parserConfig.IgnoreUnknownKeys)
+	if parserConfig.SetAliasTag != "" {
+		decoder.SetAliasTag(parserConfig.SetAliasTag)
 	}
-	for _, v := range bodyParserConfig.BodyParserType {
+	for _, v := range parserConfig.ParserType {
 		decoder.RegisterConverter(reflect.ValueOf(v.Customtype).Interface(), v.Converter)
 	}
-	decoder.ZeroEmpty(bodyParserConfig.ZeroEmpty)
+	decoder.ZeroEmpty(parserConfig.ZeroEmpty)
 	return decoder
 }
 
