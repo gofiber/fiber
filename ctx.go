@@ -1074,6 +1074,9 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 			file += "/"
 		}
 	}
+	// Restore the original requested URL
+	originalURL := c.OriginalURL()
+	defer c.fasthttp.Request.SetRequestURI(originalURL)
 	// Set new URI for fileHandler
 	c.fasthttp.Request.SetRequestURI(file)
 	// Save status code
