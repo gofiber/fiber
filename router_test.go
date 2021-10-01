@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2/utils"
@@ -321,6 +322,84 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 	app.Handler()(c)
 
 	utils.AssertEqual(t, StatusInternalServerError, c.Response.Header.StatusCode())
+}
+
+func Test_Route_Static_Root(t *testing.T) {
+	dir := "./.github/testdata/fs/css"
+	app := New()
+	app.Static("/", dir, Static{
+		Browse: true,
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
+
+	app = New()
+	app.Static("/", dir)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
+}
+
+func Test_Route_Static_HasPrefix(t *testing.T) {
+	dir := "./.github/testdata/fs/css"
+	app := New()
+	app.Static("/static", dir, Static{
+		Browse: true,
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
+
+	app = New()
+	app.Static("/static", dir)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 }
 
 //////////////////////////////////////////////

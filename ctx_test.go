@@ -410,10 +410,12 @@ func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
 		return reflect.Value{}
 	}
 
+
 	customTime := ParserType{
 		Customtype: CustomTime{},
 		Converter:  timeConverter,
 	}
+
 
 	SetParserDecoder(ParserConfig{
 		IgnoreUnknownKeys: true,
@@ -1708,6 +1710,21 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest("GET", "/index", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, StatusOK, resp.StatusCode)
+}
+
+// go test -race -run Test_Ctx_SendFile_RestoreOriginalURL
+func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		originalURL := c.OriginalURL()
+		err := c.SendFile("ctx.go")
+		utils.AssertEqual(t, originalURL, c.OriginalURL())
+		return err
+	})
+
+	_, err := app.Test(httptest.NewRequest("GET", "/?test=true", nil))
+	utils.AssertEqual(t, nil, err)
 }
 
 // go test -run Test_Ctx_JSON
