@@ -154,7 +154,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Find match in stack
 	match, err := app.next(c)
 	if err != nil {
-		if catch := c.app.config.ErrorHandler(c, err); catch != nil {
+		if catch := c.app.ErrorHandler(c, err); catch != nil {
 			_ = c.SendStatus(StatusInternalServerError)
 		}
 	}
