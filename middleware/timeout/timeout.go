@@ -23,12 +23,12 @@ func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 	// logic is from fasthttp.TimeoutWithCodeHandler https://github.com/valyala/fasthttp/blob/master/server.go#L418
 	return func(ctx *fiber.Ctx) error {
 		ch := make(chan struct{}, 1)
-
+		var err error
 		go func() {
 			defer func() {
 				_ = recover()
 			}()
-			_ = handler(ctx)
+			err = handler(ctx)
 			ch <- struct{}{}
 		}()
 
@@ -38,6 +38,6 @@ func New(handler fiber.Handler, timeout time.Duration) fiber.Handler {
 			return fiber.ErrRequestTimeout
 		}
 
-		return nil
+		return err
 	}
 }
