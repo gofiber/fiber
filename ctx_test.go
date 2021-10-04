@@ -422,7 +422,6 @@ func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
 		SetAliasTag:       "form",
 	})
 
-	// t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -2404,7 +2403,6 @@ func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
 		SetAliasTag:       "query",
 	})
 
-	// t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
