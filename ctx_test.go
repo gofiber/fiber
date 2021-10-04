@@ -2383,23 +2383,23 @@ func Test_Ctx_QueryParser(t *testing.T) {
 
 // go test -run Test_Ctx_QueryParser_WithSetParserDecoder -v
 func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
-	type CustomTime time.Time
+	type NonRFCTime time.Time
 
-	var timeConverter = func(value string) reflect.Value {
+	var NonRFCConverter = func(value string) reflect.Value {
 		if v, err := time.Parse("2006-01-02", value); err == nil {
 			return reflect.ValueOf(v)
 		}
 		return reflect.Value{}
 	}
 
-	customTime := ParserType{
-		Customtype: CustomTime{},
-		Converter:  timeConverter,
+	nonRFCTime := ParserType{
+		Customtype: NonRFCTime{},
+		Converter:  NonRFCConverter,
 	}
 
 	SetParserDecoder(ParserConfig{
 		IgnoreUnknownKeys: true,
-		ParserType:        []ParserType{customTime},
+		ParserType:        []ParserType{nonRFCTime},
 		ZeroEmpty:         true,
 		SetAliasTag:       "query",
 	})
@@ -2409,15 +2409,15 @@ func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	type Demo struct {
-		Date  CustomTime `query:"date"`
+	type NonRFCTimeInput struct {
+		Date  NonRFCTime `query:"date"`
 		Title string     `query:"title"`
 		Body  string     `query:"body"`
 	}
 
 	c.Request().SetBody([]byte(``))
 	c.Request().Header.SetContentType("")
-	q := new(Demo)
+	q := new(NonRFCTimeInput)
 
 	c.Request().URI().SetQueryString("date=2021-04-10&title=CustomDateTest&Body=October")
 	utils.AssertEqual(t, nil, c.QueryParser(q))
@@ -2428,7 +2428,7 @@ func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
 	utils.AssertEqual(t, "October", q.Body)
 
 	c.Request().URI().SetQueryString("date=2021-04-10&title&Body=October")
-	q = &Demo{
+	q = &NonRFCTimeInput{
 		Title: "Existing title",
 		Body:  "Existing Body",
 	}
