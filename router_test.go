@@ -383,7 +383,48 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
+	app.Static("/static/", dir, Static{
+		Browse: true,
+	})
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
+
+	app = New()
 	app.Static("/static", dir)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
+
+
+	app = New()
+	app.Static("/static/", dir)
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")

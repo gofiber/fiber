@@ -313,6 +313,11 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		// Fix this later
 	}
 	prefixLen := len(prefix)
+	if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
+		// /john/ -> /john
+		prefixLen--
+		prefix = prefix[:prefixLen]
+	}
 	// Fileserver settings
 	fs := &fasthttp.FS{
 		Root:                 root,

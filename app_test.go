@@ -747,6 +747,31 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
 	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
+
+	app.Static("/john/", "./.github")
+
+	req = httptest.NewRequest(MethodGet, "/john/", nil)
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
+
+	req = httptest.NewRequest(MethodGet, "/john", nil)
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
+
+	app.Static("/john_without_index/", "./.github/testdata/fs/css")
+
+	req = httptest.NewRequest(MethodGet, "/john_without_index/", nil)
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 }
 
 func Test_App_Static_Next(t *testing.T) {
