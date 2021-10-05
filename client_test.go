@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/internal/encoding/json"
+	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
