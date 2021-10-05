@@ -109,6 +109,8 @@ type App struct {
 	getBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	getString func(b []byte) string
+	// mount prefix -> error handler
+	errorHandlers map[string]ErrorHandler
 }
 
 // Config is a struct holding the server settings.
@@ -426,9 +428,10 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config:    Config{},
-		getBytes:  utils.UnsafeBytes,
-		getString: utils.UnsafeString,
+		config:        Config{},
+		getBytes:      utils.UnsafeBytes,
+		getString:     utils.UnsafeString,
+		errorHandlers: make(map[string]ErrorHandler),
 	}
 	// Override config if provided
 	if len(config) > 0 {
@@ -460,9 +463,11 @@ func New(config ...Config) *App {
 	if app.config.Immutable {
 		app.getBytes, app.getString = getBytesImmutable, getStringImmutable
 	}
+
 	if app.config.ErrorHandler == nil {
 		app.config.ErrorHandler = DefaultErrorHandler
 	}
+
 	if app.config.JSONEncoder == nil {
 		app.config.JSONEncoder = json.Marshal
 	}
@@ -487,7 +492,9 @@ func New(config ...Config) *App {
 
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
-// compose them as a single service using Mount.
+// compose them as a single service using Mount. The fiber's error handler and
+// any of the fiber's sub apps are added to the application's error handlers
+// to be invoked on errors that happen within the prefix route.
 func (app *App) Mount(prefix string, fiber *App) Router {
 	stack := fiber.Stack()
 	for m := range stack {
@@ -495,6 +502,15 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 			route := app.copyRoute(stack[m][r])
 			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
 		}
+	}
+
+	// Save the fiber's error handler and its sub apps
+	prefix = strings.TrimRight(prefix, "/")
+	if fiber.config.ErrorHandler != nil {
+		app.errorHandlers[prefix] = fiber.config.ErrorHandler
+	}
+	for mountedPrefixes, errHandler := range fiber.errorHandlers {
+		app.errorHandlers[prefix+mountedPrefixes] = errHandler
 	}
 
 	atomic.AddUint32(&app.handlerCount, fiber.handlerCount)
@@ -822,7 +838,7 @@ func (app *App) init() *App {
 	// lock application
 	app.mutex.Lock()
 
-	// Only load templates if an view engine is specified
+	// Only load templates if a view engine is specified
 	if app.config.Views != nil {
 		if err := app.config.Views.Load(); err != nil {
 			fmt.Printf("views: %v\n", err)
@@ -833,26 +849,7 @@ func (app *App) init() *App {
 	app.server = &fasthttp.Server{
 		Logger:       &disableLogger{},
 		LogAllErrors: false,
-		ErrorHandler: func(fctx *fasthttp.RequestCtx, err error) {
-			c := app.AcquireCtx(fctx)
-			if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
-				err = ErrRequestHeaderFieldsTooLarge
-			} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
-				err = ErrRequestTimeout
-			} else if err == fasthttp.ErrBodyTooLarge {
-				err = ErrRequestEntityTooLarge
-			} else if err == fasthttp.ErrGetOnly {
-				err = ErrMethodNotAllowed
-			} else if strings.Contains(err.Error(), "timeout") {
-				err = ErrRequestTimeout
-			} else {
-				err = ErrBadRequest
-			}
-			if catch := app.config.ErrorHandler(c, err); catch != nil {
-				_ = c.SendStatus(StatusInternalServerError)
-			}
-			app.ReleaseCtx(c)
-		},
+		ErrorHandler: app.serverErrorHandler,
 	}
 
 	// fasthttp server settings
@@ -878,6 +875,60 @@ func (app *App) init() *App {
 	// unlock application
 	app.mutex.Unlock()
 	return app
+}
+
+// ErrorHandler is the application's method in charge of finding the
+// appropiate handler for the given request. It searches any mounted
+// sub fibers by their prefixes and if it finds a match, it uses that
+// error handler. Otherwise it uses the configured error handler for
+// the app, which if not set is the DefaultErrorHandler.
+func (app *App) ErrorHandler(ctx *Ctx, err error) error {
+	var (
+		mountedErrHandler  ErrorHandler
+		mountedPrefixParts int
+	)
+
+	for prefix, errHandler := range app.errorHandlers {
+		if strings.HasPrefix(ctx.path, prefix) {
+			parts := len(strings.Split(prefix, "/"))
+			if mountedPrefixParts <= parts {
+				mountedErrHandler = errHandler
+				mountedPrefixParts = parts
+			}
+		}
+	}
+
+	if mountedErrHandler != nil {
+		return mountedErrHandler(ctx, err)
+	}
+
+	return app.config.ErrorHandler(ctx, err)
+}
+
+// serverErrorHandler is a wrapper around the application's error handler method
+// user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
+// errors before calling the application's error handler method.
+func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
+	c := app.AcquireCtx(fctx)
+	if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
+		err = ErrRequestHeaderFieldsTooLarge
+	} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
+		err = ErrRequestTimeout
+	} else if err == fasthttp.ErrBodyTooLarge {
+		err = ErrRequestEntityTooLarge
+	} else if err == fasthttp.ErrGetOnly {
+		err = ErrMethodNotAllowed
+	} else if strings.Contains(err.Error(), "timeout") {
+		err = ErrRequestTimeout
+	} else {
+		err = ErrBadRequest
+	}
+
+	if catch := app.ErrorHandler(c, err); catch != nil {
+		_ = c.SendStatus(StatusInternalServerError)
+	}
+
+	app.ReleaseCtx(c)
 }
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
@@ -960,7 +1011,6 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			host = "0.0.0.0"
 		}
 	}
-
 
 	scheme := "http"
 	if tls {

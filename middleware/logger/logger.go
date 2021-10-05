@@ -145,7 +145,7 @@ func New(config ...Config) fiber.Handler {
 				}
 			}
 			// override error handler
-			errHandler = c.App().Config().ErrorHandler
+			errHandler = c.App().ErrorHandler
 		})
 
 		var start, stop time.Time

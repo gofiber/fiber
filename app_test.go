@@ -1439,3 +1439,80 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 
 	utils.AssertEqual(t, testString, string(body))
 }
+
+func Test_App_UseMountedErrorHandler(t *testing.T) {
+	app := New()
+
+	fiber := New(Config{
+		ErrorHandler: func(ctx *Ctx, err error) error {
+			return ctx.Status(200).SendString("hi, i'm a custom error")
+		},
+	})
+	fiber.Get("/", func(c *Ctx) error {
+		return errors.New("something happened")
+	})
+
+	app.Mount("/api", fiber)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	b, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
+	utils.AssertEqual(t, "hi, i'm a custom error", string(b), "Response body")
+}
+
+func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
+	app := New()
+
+	tsf := func(ctx *Ctx, err error) error {
+		return ctx.Status(200).SendString("hi, i'm a custom sub sub fiber error")
+	}
+	tripleSubFiber := New(Config{
+		ErrorHandler: tsf,
+	})
+	tripleSubFiber.Get("/", func(c *Ctx) error {
+		return errors.New("something happened")
+	})
+
+	sf := func(ctx *Ctx, err error) error {
+		return ctx.Status(200).SendString("hi, i'm a custom sub fiber error")
+	}
+	subfiber := New(Config{
+		ErrorHandler: sf,
+	})
+	subfiber.Get("/", func(c *Ctx) error {
+		return errors.New("something happened")
+	})
+	subfiber.Mount("/third", tripleSubFiber)
+
+	f := func(ctx *Ctx, err error) error {
+		return ctx.Status(200).SendString("hi, i'm a custom error")
+	}
+	fiber := New(Config{
+		ErrorHandler: f,
+	})
+	fiber.Get("/", func(c *Ctx) error {
+		return errors.New("something happened")
+	})
+	fiber.Mount("/sub", subfiber)
+
+	app.Mount("/api", fiber)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub", nil))
+	utils.AssertEqual(t, nil, err, "/api/sub req")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	b, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
+	utils.AssertEqual(t, "hi, i'm a custom sub fiber error", string(b), "Response body")
+
+	resp2, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub/third", nil))
+	utils.AssertEqual(t, nil, err, "/api/sub/third req")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	b, err = ioutil.ReadAll(resp2.Body)
+	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
+	utils.AssertEqual(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
+}
