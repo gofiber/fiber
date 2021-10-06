@@ -1039,7 +1039,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		utils.AssertEqual(t, StatusOK, code)
 		utils.AssertEqual(t, `{"success"`, string(body))
 		utils.AssertEqual(t, 1, len(errs))
-		utils.AssertEqual(t, "json: unexpected end of JSON input after object field key: ", errs[0].Error())
+		utils.AssertEqual(t, "expected colon after object key", errs[0].Error())
 	})
 }
 
