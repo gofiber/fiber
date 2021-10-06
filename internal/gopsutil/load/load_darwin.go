@@ -1,3 +1,4 @@
+//go:build darwin
 // +build darwin
 
 package load
@@ -8,8 +9,11 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	"golang.org/x/sys/unix"
 )
+
+var invoke common.Invoker = common.Invoke{}
 
 func Avg() (*AvgStat, error) {
 	return AvgWithContext(context.Background())
