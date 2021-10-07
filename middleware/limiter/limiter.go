@@ -106,7 +106,7 @@ func New(config ...Config) fiber.Handler {
 			(cfg.SkipFailedRequests && c.Response().StatusCode() >= 400) {
 			mux.Lock()
 			e.hits--
-			remaining--
+			remaining++
 			mux.Unlock()
 		}
 
