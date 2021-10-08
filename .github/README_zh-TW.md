@@ -128,7 +128,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [樣板引擎](https://github.com/gofiber/template)
 -   支援[WebSocket](https://github.com/gofiber/websocket)
 -   支援[限速](https://docs.gofiber.io/api/middleware/limiter)
--   被翻譯成[15]國語言(https://docs.gofiber.io/)
+-   被翻譯成[15種語言](https://docs.gofiber.io/)
 -   豐富的[文件](https://docs.gofiber.io/)
 
 ## 💡 理念
