@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"github.com/gofiber/fiber/v2"
 	"sync"
 	"time"
 )
@@ -43,7 +44,7 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	v, ok := s.db[key]
 	s.mux.RUnlock()
 	if !ok || v.expiry != 0 && v.expiry <= uint32(time.Now().Unix()) {
-		return nil, nil
+		return nil, fiber.ErrNotFound
 	}
 
 	return v.data, nil
