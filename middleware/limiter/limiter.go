@@ -102,8 +102,8 @@ func New(config ...Config) fiber.Handler {
 		err := c.Next()
 
 		// Check for SkipFailedRequests and SkipSuccessfulRequests
-		if (cfg.SkipSuccessfulRequests && c.Response().StatusCode() < 400) ||
-			(cfg.SkipFailedRequests && c.Response().StatusCode() >= 400) {
+		if (cfg.SkipSuccessfulRequests && c.Response().StatusCode() < fiber.StatusBadRequest) ||
+			(cfg.SkipFailedRequests && c.Response().StatusCode() >= fiber.StatusBadRequest) {
 			mux.Lock()
 			e.hits--
 			remaining++
