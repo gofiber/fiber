@@ -50,10 +50,6 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
-		// Continue stack for reaching c.Response().StatusCode()
-		// Store err for returning
-		err := c.Next()
-
 		// Get key from request
 		key := cfg.KeyGenerator(c)
 
@@ -76,12 +72,8 @@ func New(config ...Config) fiber.Handler {
 			e.exp = ts + expiration
 		}
 
-		// Check for SkipFailedRequests and SkipSuccessfulRequests
-		if (!cfg.SkipSuccessfulRequests || c.Response().StatusCode() >= 400) &&
-			(!cfg.SkipFailedRequests || c.Response().StatusCode() < 400) {
-			// Increment hits
-			e.hits++
-		}
+		// Increment hits
+		e.hits++
 
 		// Calculate when it resets in seconds
 		expire := e.exp - ts
@@ -103,6 +95,19 @@ func New(config ...Config) fiber.Handler {
 
 			// Call LimitReached handler
 			return cfg.LimitReached(c)
+		}
+
+		// Continue stack for reaching c.Response().StatusCode()
+		// Store err for returning
+		err := c.Next()
+
+		// Check for SkipFailedRequests and SkipSuccessfulRequests
+		if (cfg.SkipSuccessfulRequests && c.Response().StatusCode() < fiber.StatusBadRequest) ||
+			(cfg.SkipFailedRequests && c.Response().StatusCode() >= fiber.StatusBadRequest) {
+			mux.Lock()
+			e.hits--
+			remaining++
+			mux.Unlock()
 		}
 
 		// We can continue, update RateLimit headers
