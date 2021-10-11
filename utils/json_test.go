@@ -4,7 +4,7 @@ import (
 	goJson "encoding/json"
 	"testing"
 
-	"github.com/gofiber/fiber/v2/internal/encoding/json"
+	"github.com/gofiber/fiber/v2/internal/go-json"
 )
 
 type sampleStructure struct {

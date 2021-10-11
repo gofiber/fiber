@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/internal/encoding/json"
+	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -1039,7 +1039,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		utils.AssertEqual(t, StatusOK, code)
 		utils.AssertEqual(t, `{"success"`, string(body))
 		utils.AssertEqual(t, 1, len(errs))
-		utils.AssertEqual(t, "json: unexpected end of JSON input after object field key: ", errs[0].Error())
+		utils.AssertEqual(t, "expected colon after object key", errs[0].Error())
 	})
 }
 
