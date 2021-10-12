@@ -1010,11 +1010,17 @@ func (c *Ctx) Route() *Route {
 	return c.route
 }
 
-// SaveFile saves any multipart file to disk or an external storage system if defined.
+// SaveFile saves any multipart file to disk.
 func (c *Ctx) SaveFile(fileheader *multipart.FileHeader, path string) error {
+	return fasthttp.SaveMultipartFile(fileheader, path)
+}
+
+// SaveFileToStorage saves any multipart file to an external storage system if defined.
+func (c *Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string) error {
 	if c.app.config.ExternalStorage == nil {
-		return fasthttp.SaveMultipartFile(fileheader, path)
+		return NewError(StatusExpectationFailed, "External Storage is not configured")
 	}
+
 	file, err := fileheader.Open()
 	if err != nil {
 		return err
