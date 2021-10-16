@@ -49,7 +49,7 @@ app.Use(requestid.New())
 
 app.Use(logger.New(logger.Config{
 	// For more options, see the Config section
-  Format: "${pid} ${locals:requestid} ${status} - ${method} ${path}​\n�?",
+  Format: "${pid} ${locals:requestid} ${status} - ${method} ${path}​\n",
 }))
 ```
 
