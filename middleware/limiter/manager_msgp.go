@@ -24,10 +24,16 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "hits":
-			z.hits, err = dc.ReadInt()
+		case "currHits":
+			z.currHits, err = dc.ReadInt()
 			if err != nil {
-				err = msgp.WrapError(err, "hits")
+				err = msgp.WrapError(err, "currHits")
+				return
+			}
+		case "prevHits":
+			z.prevHits, err = dc.ReadInt()
+			if err != nil {
+				err = msgp.WrapError(err, "prevHits")
 				return
 			}
 		case "exp":
@@ -49,15 +55,25 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z item) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 2
-	// write "hits"
-	err = en.Append(0x82, 0xa4, 0x68, 0x69, 0x74, 0x73)
+	// map header, size 3
+	// write "currHits"
+	err = en.Append(0x83, 0xa8, 0x63, 0x75, 0x72, 0x72, 0x48, 0x69, 0x74, 0x73)
 	if err != nil {
 		return
 	}
-	err = en.WriteInt(z.hits)
+	err = en.WriteInt(z.currHits)
 	if err != nil {
-		err = msgp.WrapError(err, "hits")
+		err = msgp.WrapError(err, "currHits")
+		return
+	}
+	// write "prevHits"
+	err = en.Append(0xa8, 0x70, 0x72, 0x65, 0x76, 0x48, 0x69, 0x74, 0x73)
+	if err != nil {
+		return
+	}
+	err = en.WriteInt(z.prevHits)
+	if err != nil {
+		err = msgp.WrapError(err, "prevHits")
 		return
 	}
 	// write "exp"
@@ -76,10 +92,13 @@ func (z item) EncodeMsg(en *msgp.Writer) (err error) {
 // MarshalMsg implements msgp.Marshaler
 func (z item) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 2
-	// string "hits"
-	o = append(o, 0x82, 0xa4, 0x68, 0x69, 0x74, 0x73)
-	o = msgp.AppendInt(o, z.hits)
+	// map header, size 3
+	// string "currHits"
+	o = append(o, 0x83, 0xa8, 0x63, 0x75, 0x72, 0x72, 0x48, 0x69, 0x74, 0x73)
+	o = msgp.AppendInt(o, z.currHits)
+	// string "prevHits"
+	o = append(o, 0xa8, 0x70, 0x72, 0x65, 0x76, 0x48, 0x69, 0x74, 0x73)
+	o = msgp.AppendInt(o, z.prevHits)
 	// string "exp"
 	o = append(o, 0xa3, 0x65, 0x78, 0x70)
 	o = msgp.AppendUint64(o, z.exp)
@@ -104,10 +123,16 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			return
 		}
 		switch msgp.UnsafeString(field) {
-		case "hits":
-			z.hits, bts, err = msgp.ReadIntBytes(bts)
+		case "currHits":
+			z.currHits, bts, err = msgp.ReadIntBytes(bts)
 			if err != nil {
-				err = msgp.WrapError(err, "hits")
+				err = msgp.WrapError(err, "currHits")
+				return
+			}
+		case "prevHits":
+			z.prevHits, bts, err = msgp.ReadIntBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "prevHits")
 				return
 			}
 		case "exp":
@@ -130,6 +155,6 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
 func (z item) Msgsize() (s int) {
-	s = 1 + 5 + msgp.IntSize + 4 + msgp.Uint64Size
+	s = 1 + 9 + msgp.IntSize + 9 + msgp.IntSize + 4 + msgp.Uint64Size
 	return
 }

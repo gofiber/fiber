@@ -53,6 +53,11 @@ type Config struct {
 	// Default: an in memory store for this process only
 	Storage fiber.Storage
 
+	// LimiterMiddleware is the struct that implements a limiter middleware.
+	//
+	// Default: a new Fixed Window Rate Limiter
+	LimiterMiddleware LimiterHandler
+
 	// DEPRECATED: Use Expiration instead
 	Duration time.Duration
 
@@ -75,6 +80,7 @@ var ConfigDefault = Config{
 	},
 	SkipFailedRequests:     false,
 	SkipSuccessfulRequests: false,
+	LimiterMiddleware:      FixedWindow{},
 }
 
 // Helper function to set default values
@@ -114,6 +120,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.LimitReached == nil {
 		cfg.LimitReached = ConfigDefault.LimitReached
+	}
+	if cfg.LimiterMiddleware == nil {
+		cfg.LimiterMiddleware = ConfigDefault.LimiterMiddleware
 	}
 	return cfg
 }
