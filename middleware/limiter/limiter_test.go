@@ -311,3 +311,125 @@ func Benchmark_Limiter(b *testing.B) {
 		h(fctx)
 	}
 }
+
+// go test -run Test_Limiter_Cheat -race -v
+// Attempt to cheat the rate limiter by waiting until the window ends and sending more requests
+func Test_Limiter_Cheat(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Max:               10,
+		Expiration:        4 * time.Second,
+		Storage:           memory.New(),
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	var wg sync.WaitGroup
+	singleRequest := func(wg *sync.WaitGroup, shouldFail bool) {
+		if wg != nil {
+			defer wg.Done()
+		}
+		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		if shouldFail {
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, 429, resp.StatusCode)
+		} else {
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+		}
+	}
+
+	t1 := time.Now()
+	singleRequest(nil, false)           // one request to start our window
+	time.Sleep(1000 * time.Millisecond) // Wait to make sure we are well into the current window
+
+	// Send requests
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go singleRequest(&wg, false)
+	}
+
+	wg.Wait()
+
+	// wait until the current window is finished and we are into the next window
+	t2 := time.Until(t1.Add(time.Millisecond * 5250))
+	time.Sleep(t2)
+
+	// Send more requests
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go singleRequest(&wg, false)
+	}
+	wg.Wait()
+
+	// these should fail
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go singleRequest(&wg, true)
+	}
+
+	wg.Wait()
+
+	time.Sleep(8 * time.Second) // wait 2 windows to ensure our rate has
+	// Verify that we are able to send requests again
+	for i := 0; i < 9; i++ {
+		wg.Add(1)
+		go singleRequest(&wg, false)
+	}
+	wg.Wait()
+}
+
+// go test -run Test_Sliding_Window -race -v
+func Test_Sliding_Window(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Max:               10,
+		Expiration:        2 * time.Second,
+		Storage:           memory.New(),
+		LimiterMiddleware: SlidingWindow{},
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello tester!")
+	})
+
+	//var wg sync.WaitGroup
+	singleRequest := func(wg *sync.WaitGroup, shouldFail bool) {
+		if wg != nil {
+			defer wg.Done()
+		}
+		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		if shouldFail {
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, 429, resp.StatusCode)
+		} else {
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+		}
+	}
+
+	for i := 0; i < 5; i++ {
+		singleRequest(nil, false)
+	}
+
+	time.Sleep(2 * time.Second)
+
+	for i := 0; i < 5; i++ {
+		singleRequest(nil, false)
+	}
+
+	time.Sleep(3 * time.Second)
+
+	for i := 0; i < 5; i++ {
+		singleRequest(nil, false)
+	}
+
+	time.Sleep(4 * time.Second)
+
+	for i := 0; i < 9; i++ {
+		singleRequest(nil, false)
+	}
+}

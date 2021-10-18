@@ -13,8 +13,9 @@ import (
 // don't forget to replace the msgp import path to:
 // "github.com/gofiber/fiber/v2/internal/msgp"
 type item struct {
-	hits int
-	exp  uint64
+	currHits int
+	prevHits int
+	exp      uint64
 }
 
 //msgp:ignore manager
@@ -50,7 +51,8 @@ func (m *manager) acquire() *item {
 
 // release and reset *entry to sync.Pool
 func (m *manager) release(e *item) {
-	e.hits = 0
+	e.prevHits = 0
+	e.currHits = 0
 	e.exp = 0
 	m.pool.Put(e)
 }
