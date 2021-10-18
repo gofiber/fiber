@@ -89,6 +89,7 @@ func readContent(rf io.ReaderFrom, name string) (n int64, err error) {
 	if err != nil {
 		return 0, err
 	}
+	// #nosec G307
 	defer func() {
 		if err = f.Close(); err != nil {
 			log.Printf("Error closing file: %s\n", err)
