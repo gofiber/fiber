@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -89,7 +90,9 @@ func readContent(rf io.ReaderFrom, name string) (n int64, err error) {
 		return 0, err
 	}
 	defer func() {
-		err = f.Close()
+		if err = f.Close(); err != nil {
+			log.Printf("Error closing file: %s\n", err)
+		}
 	}()
 	return rf.ReadFrom(f)
 }
