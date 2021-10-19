@@ -21,7 +21,7 @@ func New(config ...Config) fiber.Handler
 
 ## Examples
 
-First import the middleware from Fiber,
+Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
@@ -30,7 +30,7 @@ import (
 )
 ```
 
-Then create a Fiber app with `app := fiber.New()`.
+After you initiate your Fiber app, you can use the following possibilities:
 
 ### Default Config
 
