@@ -9,7 +9,7 @@ ETag middleware for [Fiber](https://github.com/gofiber/fiber) that lets caches b
 	- [Signatures](#signatures)
 	- [Examples](#examples)
 		- [Default Config](#default-config)
-		- [Default Config](#default-config-1)
+		- [Custom Config](#custom-config)
 	- [Config](#config)
 	- [Default Config](#default-config-2)
 
@@ -43,12 +43,14 @@ app.Get("/", func(c *fiber.Ctx) error {
 })
 ```
 
-### Default Config
+### Custom Config
 
 ```go
-app.Use(etag.New())
+app.Use(etag.New(etag.Config{
+    Weak: true,
+}))
 
-// Get / receives Etag: "13-1831710635" in response header
+// Get / receives Etag: "W/"13-1831710635" in response header
 app.Get("/", func(c *fiber.Ctx) error {
 	return c.SendString("Hello, World!")
 })
