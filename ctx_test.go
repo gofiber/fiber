@@ -30,6 +30,8 @@ import (
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
+	"google.golang.org/grpc/examples/helloworld/helloworld"
+	"google.golang.org/protobuf/proto"
 )
 
 // go test -run Test_Ctx_Accepts
@@ -546,6 +548,51 @@ func Benchmark_Ctx_BodyParser_MultipartForm(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, c.BodyParser(d))
 	utils.AssertEqual(b, "john", d.Name)
+}
+
+func Benchmark_Ctx_BodyParser_JSON_Protobuf(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	body := []byte(`{"name":"john"}`)
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEApplicationJSON)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(helloworld.HelloRequest)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = c.BodyParser(d)
+	}
+	utils.AssertEqual(b, nil, c.BodyParser(d))
+	utils.AssertEqual(b, "john", d.Name)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_Protobuf -benchmem -count=4
+func Benchmark_Ctx_BodyParser_Protobuf(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	message := &helloworld.HelloRequest{Name: "test"}
+	body, _ := proto.Marshal(message)
+
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEApplicationProtobuf)
+	c.Request().Header.SetContentLength(len(body))
+	d := new(helloworld.HelloRequest)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = c.BodyParser(d)
+	}
+	utils.AssertEqual(b, nil, c.BodyParser(d))
+	utils.AssertEqual(b, "test", d.Name)
 }
 
 // go test -run Test_Ctx_Context

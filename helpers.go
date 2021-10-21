@@ -433,6 +433,7 @@ const (
 	MIMEApplicationJSON       = "application/json"
 	MIMEApplicationJavaScript = "application/javascript"
 	MIMEApplicationForm       = "application/x-www-form-urlencoded"
+	MIMEApplicationProtobuf   = "application/x-protobuf"
 	MIMEOctetStream           = "application/octet-stream"
 	MIMEMultipartForm         = "multipart/form-data"
 

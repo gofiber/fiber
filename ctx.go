@@ -27,6 +27,8 @@ import (
 	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // maxParams defines the maximum number of parameters per route.
@@ -330,6 +332,11 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
 		schemaDecoder.SetAliasTag("json")
+		// Support proto json unmarshal
+		m, ok := out.(proto.Message)
+		if ok {
+			return protojson.Unmarshal(c.Body(), m)
+		}
 		return c.app.config.JSONDecoder(c.Body(), out)
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
@@ -351,6 +358,14 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
 		schemaDecoder.SetAliasTag("xml")
 		return xml.Unmarshal(c.Body(), out)
+	}
+	if strings.HasPrefix(ctype, MIMEApplicationProtobuf) {
+		schemaDecoder.SetAliasTag("protobuf")
+		m, ok := out.(proto.Message)
+		if !ok {
+			return fmt.Errorf("must be proto.Mssage type")
+		}
+		return proto.Unmarshal(c.Body(), m)
 	}
 	// No suitable content type found
 	return ErrUnprocessableEntity
