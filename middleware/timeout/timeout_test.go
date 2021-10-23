@@ -17,35 +17,64 @@ import (
 	and timeout value are same OR close enough.
 */
 
-func TestNewWithDefaultTimeout(t *testing.T) {
-	const defaultTimeout = 10 * time.Millisecond
+type (
+	args struct {
+		sleepTime string
+	}
 
-	th := New(func(c *fiber.Ctx) error {
+	expected struct {
+		reqErr     error
+		bdyErr     error
+		body       string
+		statusCode int
+	}
+
+	test struct {
+		name     string
+		args     args
+		expected expected
+	}
+)
+
+func newTimeoutHandler(t time.Duration, err error) fiber.Handler {
+	return New(func(c *fiber.Ctx) error {
 		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
 
 		time.Sleep(sleepTime)
 
-		return nil
-	}, defaultTimeout)
+		return err
+	}, t)
+}
 
+func newApp(th fiber.Handler) *fiber.App {
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 	app.Get("/test/:sleepTime", th)
 
-	type args struct {
-		sleepTime string
-	}
+	return app
+}
 
-	type expected struct {
-		reqErr     error
-		bdyErr     error
-		statusCode int
-	}
+func run(t *testing.T, tests []test, app *fiber.App) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resp, err := app.Test(httptest.NewRequest("GET", "/test/"+test.args.sleepTime, nil), -1)
+			utils.AssertEqual(t, test.expected.reqErr, err, "app.Test(req)")
+			utils.AssertEqual(t, test.expected.statusCode, resp.StatusCode, "Status code")
 
-	tests := []struct {
-		name     string
-		args     args
-		expected expected
-	}{
+			body, err := ioutil.ReadAll(resp.Body)
+			utils.AssertEqual(t, test.expected.bdyErr, err)
+			utils.AssertEqual(t, test.expected.body, string(body))
+		})
+	}
+}
+
+func TestNewWithDefaultTimeout(t *testing.T) {
+	const defaultTimeout = 10 * time.Millisecond
+
+	th := newTimeoutHandler(defaultTimeout, nil)
+
+	app := newApp(th)
+
+	tests := []test{
 		{
 			name: "Execution time > timeout",
 			args: args{sleepTime: "30"},
@@ -53,6 +82,7 @@ func TestNewWithDefaultTimeout(t *testing.T) {
 				reqErr:     nil,
 				bdyErr:     nil,
 				statusCode: fiber.StatusRequestTimeout,
+				body:       fiber.ErrRequestTimeout.Error(),
 			},
 		},
 		{
@@ -62,52 +92,24 @@ func TestNewWithDefaultTimeout(t *testing.T) {
 				reqErr:     nil,
 				bdyErr:     nil,
 				statusCode: fiber.StatusOK,
+				body:       "",
 			},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp, err := app.Test(httptest.NewRequest("GET", "/test/"+tt.args.sleepTime, nil), -1)
-			utils.AssertEqual(t, tt.expected.reqErr, err, "app.Test(req)")
-			utils.AssertEqual(t, tt.expected.statusCode, resp.StatusCode, "Status code")
 
-			_, err = ioutil.ReadAll(resp.Body)
-			utils.AssertEqual(t, tt.expected.bdyErr, err)
-		})
-	}
+	run(t, tests, app)
 }
 
 func TestNewWithDefaultTimeoutAndError(t *testing.T) {
 	const defaultTimeout = 30 * time.Millisecond
+
 	funcErr := errors.New("something went wrong")
 
-	th := New(func(c *fiber.Ctx) error {
-		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+	th := newTimeoutHandler(defaultTimeout, funcErr)
 
-		time.Sleep(sleepTime)
+	app := newApp(th)
 
-		return funcErr
-	}, defaultTimeout)
-
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	app.Get("/test/:sleepTime", th)
-
-	type args struct {
-		sleepTime string
-	}
-
-	type expected struct {
-		reqErr     error
-		bdyErr     error
-		body       string
-		statusCode int
-	}
-
-	tests := []struct {
-		name     string
-		args     args
-		expected expected
-	}{
+	tests := []test{
 		{
 			name: "Error in actual handler",
 			args: args{sleepTime: "1"},
@@ -120,46 +122,15 @@ func TestNewWithDefaultTimeoutAndError(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp, err := app.Test(httptest.NewRequest("GET", "/test/"+tt.args.sleepTime, nil), -1)
-			utils.AssertEqual(t, tt.expected.reqErr, err, "app.Test(req)")
-			utils.AssertEqual(t, tt.expected.statusCode, resp.StatusCode, "Status code")
-
-			body, err := ioutil.ReadAll(resp.Body)
-			utils.AssertEqual(t, tt.expected.bdyErr, err)
-			utils.AssertEqual(t, tt.expected.body, string(body))
-		})
-	}
+	run(t, tests, app)
 }
 
 func TestNewWithNoTimeout(t *testing.T) {
-	th := New(func(c *fiber.Ctx) error {
-		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+	th := newTimeoutHandler(0, nil)
 
-		time.Sleep(sleepTime)
+	app := newApp(th)
 
-		return nil
-	}, 0)
-
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-	app.Get("/test/:sleepTime", th)
-
-	type args struct {
-		sleepTime string
-	}
-
-	type expected struct {
-		reqErr     error
-		bdyErr     error
-		statusCode int
-	}
-
-	tests := []struct {
-		name     string
-		args     args
-		expected expected
-	}{
+	tests := []test{
 		{
 			name: "No Timeout",
 			args: args{sleepTime: "15"},
@@ -170,14 +141,6 @@ func TestNewWithNoTimeout(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resp, err := app.Test(httptest.NewRequest("GET", "/test/"+tt.args.sleepTime, nil), -1)
-			utils.AssertEqual(t, tt.expected.reqErr, err, "app.Test(req)")
-			utils.AssertEqual(t, tt.expected.statusCode, resp.StatusCode, "Status code")
 
-			_, err = ioutil.ReadAll(resp.Body)
-			utils.AssertEqual(t, tt.expected.bdyErr, err)
-		})
-	}
+	run(t, tests, app)
 }
