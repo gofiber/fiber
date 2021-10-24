@@ -420,7 +420,9 @@ func Test_Path_matchParams(t *testing.T) {
 
 func Test_Utils_GetTrimmedParam(t *testing.T) {
 	t.Parallel()
-	res := GetTrimmedParam("*")
+	res := GetTrimmedParam("")
+	utils.AssertEqual(t, "", res)
+	res = GetTrimmedParam("*")
 	utils.AssertEqual(t, "*", res)
 	res = GetTrimmedParam(":param")
 	utils.AssertEqual(t, "param", res)
