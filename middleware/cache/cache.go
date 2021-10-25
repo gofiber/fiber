@@ -48,7 +48,7 @@ func New(config ...Config) fiber.Handler {
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
 
-	// Update timestamp every second
+	// Update timestamp in the configured interval
 	go func() {
 		for {
 			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
