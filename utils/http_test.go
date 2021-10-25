@@ -59,6 +59,12 @@ func Test_ParseVendorSpecificContentType(t *testing.T) {
 	cType := ParseVendorSpecificContentType("application/json")
 	AssertEqual(t, "application/json", cType)
 
+	cType = ParseVendorSpecificContentType("multipart/form-data; boundary=dart-http-boundary-ZnVy.ICWq+7HOdsHqWxCFa8g3D.KAhy+Y0sYJ_lBADypu8po3_X")
+	AssertEqual(t, "multipart/form-data", cType)
+
+	cType = ParseVendorSpecificContentType("multipart/form-data")
+	AssertEqual(t, "multipart/form-data", cType)
+
 	cType = ParseVendorSpecificContentType("application/vnd.api+json; version=1")
 	AssertEqual(t, "application/json", cType)
 
