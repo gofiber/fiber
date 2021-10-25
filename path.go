@@ -350,7 +350,7 @@ func GetTrimmedParam(param string) string {
 	start := 0
 	end := len(param)
 
-	if param[start] != paramStarterChar { // is not a param
+	if end == 0 || param[start] != paramStarterChar { // is not a param
 		return param
 	}
 	start++
