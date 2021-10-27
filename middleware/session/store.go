@@ -94,7 +94,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 func (s *Store) getSessionID(c *fiber.Ctx) string {
 	id := c.Cookies(s.sessionName)
 	if len(id) > 0 {
-		return id
+		return utils.CopyString(id)
 	}
 
 	if s.source == SourceHeader {
@@ -107,7 +107,7 @@ func (s *Store) getSessionID(c *fiber.Ctx) string {
 	if s.source == SourceURLQuery {
 		id = c.Query(s.sessionName)
 		if len(id) > 0 {
-			return id
+			return utils.CopyString(id)
 		}
 	}
 
@@ -130,7 +130,7 @@ func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 
 	value := make([]byte, len(cookie.Value()))
 	copy(value, cookie.Value())
-	id := utils.UnsafeString(value)
+	id := string(value)
 	return id, nil
 }
 
