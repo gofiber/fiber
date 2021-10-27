@@ -1034,6 +1034,22 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	utils.AssertEqual(t, "0.0.0.1", c.IP())
 }
 
+// go test -run Test_Ctx_IP_Range_TrustedProxy
+func Test_Ctx_IP_Range_TrustedProxy(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30", "1.1.1.1/100"}, ProxyHeader: HeaderXForwardedFor})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	expected := map[string]struct{}{
+		"0.0.0.0": {},
+		"1.1.1.0": {},
+		"1.1.1.1": {},
+		"1.1.1.2": {},
+		"1.1.1.3": {},
+	}
+	utils.AssertEqual(t, expected, app.config.trustedProxiesMap)
+}
+
 // go test -run Test_Ctx_IPs  -parallel
 func Test_Ctx_IPs(t *testing.T) {
 	t.Parallel()
