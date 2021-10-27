@@ -501,7 +501,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 			return
 		}
 		// Iterates IP address which is between range
-		for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); incrementIPRange(ip) {
+		for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); utils.IncrementIPRange(ip) {
 			app.config.trustedProxiesMap[ip.String()] = struct{}{}
 		}
 		return
@@ -1160,14 +1160,4 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	_, _ = fmt.Fprintln(out, output)
-}
-
-// Find available next IP address
-func incrementIPRange(ip net.IP) {
-	for j := len(ip) - 1; j >= 0; j-- {
-		ip[j]++
-		if ip[j] > 0 {
-			break
-		}
-	}
 }
