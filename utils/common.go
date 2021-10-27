@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"net"
 	"os"
 	"reflect"
 	"runtime"
@@ -92,4 +93,14 @@ func GetArgument(arg string) bool {
 		}
 	}
 	return false
+}
+
+// IncrementIPRange Find available next IP address
+func IncrementIPRange(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
+	}
 }
