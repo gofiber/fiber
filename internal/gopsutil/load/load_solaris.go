@@ -1,3 +1,4 @@
+//go:build solaris
 // +build solaris
 
 package load
@@ -7,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/shirou/gopsutil/internal/common"
+	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 )
 
 func Avg() (*AvgStat, error) {
