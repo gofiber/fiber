@@ -167,7 +167,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
-	prefixedPath := getGroupPath(prefix, route.Path)
+	prefixedPath := getGroupPath(prefix, route.Path, app.config.IsSkipBeginPathSlash)
 	prettyPath := prefixedPath
 	// Case sensitive routing, all to lowercase
 	if !app.config.CaseSensitive {
@@ -222,7 +222,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		pathRaw = "/"
 	}
 	// Path always start with a '/'
-	if pathRaw[0] != '/' {
+	if pathRaw[0] != '/' && !app.config.IsSkipBeginPathSlash {
 		pathRaw = "/" + pathRaw
 	}
 	// Create a stripped path in-case sensitive / trailing slashes

@@ -115,6 +115,11 @@ type App struct {
 
 // Config is a struct holding the server settings.
 type Config struct {
+	// When enabled, no leading slash is added to the path
+	//
+	// Default: false
+	IsSkipBeginPathSlash bool `json:"is_skip_begin_path_slash"`
+
 	// When set to true, this will spawn multiple Go processes listening on the same port.
 	//
 	// Default: false

@@ -220,12 +220,12 @@ func setETag(c *Ctx, weak bool) {
 	c.setCanonical(normalizedHeaderETag, etag)
 }
 
-func getGroupPath(prefix, path string) string {
+func getGroupPath(prefix, path string, skipBeginSlash bool) string {
 	if len(path) == 0 || path == "/" {
 		return prefix
 	}
 
-	if path[0] != '/' {
+	if path[0] != '/' && !skipBeginSlash {
 		path = "/" + path
 	}
 

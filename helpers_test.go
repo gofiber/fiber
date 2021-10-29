@@ -141,25 +141,25 @@ func Benchmark_Utils_ETag_Weak(b *testing.B) {
 
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
-	res := getGroupPath("/v1", "/")
+	res := getGroupPath("/v1", "/", false)
 	utils.AssertEqual(t, "/v1", res)
 
-	res = getGroupPath("/v1/", "/")
+	res = getGroupPath("/v1/", "/", false)
 	utils.AssertEqual(t, "/v1/", res)
 
-	res = getGroupPath("/v1", "/")
+	res = getGroupPath("/v1", "/", false)
 	utils.AssertEqual(t, "/v1", res)
 
-	res = getGroupPath("/", "/")
+	res = getGroupPath("/", "/", false)
 	utils.AssertEqual(t, "/", res)
 
-	res = getGroupPath("/v1/api/", "/")
+	res = getGroupPath("/v1/api/", "/", false)
 	utils.AssertEqual(t, "/v1/api/", res)
 
-	res = getGroupPath("/v1/api", "group")
+	res = getGroupPath("/v1/api", "group", false)
 	utils.AssertEqual(t, "/v1/api/group", res)
 
-	res = getGroupPath("/v1/api", "")
+	res = getGroupPath("/v1/api", "", false)
 	utils.AssertEqual(t, "/v1/api", res)
 }
 
@@ -168,10 +168,10 @@ func Test_Utils_getGroupPath(t *testing.T) {
 func Benchmark_Utils_getGroupPath(b *testing.B) {
 	var res string
 	for n := 0; n < b.N; n++ {
-		_ = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome")
-		_ = getGroupPath("/v1", "/")
-		_ = getGroupPath("/v1", "/api")
-		res = getGroupPath("/v1", "/api/register/:project")
+		_ = getGroupPath("/v1/long/path/john/doe", "/why/this/name/is/so/awesome", false)
+		_ = getGroupPath("/v1", "/", false)
+		_ = getGroupPath("/v1", "/api", false)
+		res = getGroupPath("/v1", "/api/register/:project", false)
 	}
 	utils.AssertEqual(b, "/v1/api/register/:project", res)
 }

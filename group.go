@@ -24,7 +24,7 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 	for m := range stack {
 		for r := range stack[m] {
 			route := grp.app.copyRoute(stack[m][r])
-			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(getGroupPath(grp.prefix, prefix), route))
+			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(getGroupPath(grp.prefix, prefix, grp.app.config.IsSkipBeginPathSlash), route))
 		}
 	}
 
@@ -60,14 +60,14 @@ func (grp *Group) Use(args ...interface{}) Router {
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	grp.app.register(methodUse, getGroupPath(grp.prefix, prefix), handlers...)
+	grp.app.register(methodUse, getGroupPath(grp.prefix, prefix, grp.app.config.IsSkipBeginPathSlash), handlers...)
 	return grp
 }
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (grp *Group) Get(path string, handlers ...Handler) Router {
-	path = getGroupPath(grp.prefix, path)
+	path = getGroupPath(grp.prefix, path, grp.app.config.IsSkipBeginPathSlash)
 	return grp.app.Add(MethodHead, path, handlers...).Add(MethodGet, path, handlers...)
 }
 
@@ -120,12 +120,12 @@ func (grp *Group) Patch(path string, handlers ...Handler) Router {
 
 // Add allows you to specify a HTTP method to register a route
 func (grp *Group) Add(method, path string, handlers ...Handler) Router {
-	return grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
+	return grp.app.register(method, getGroupPath(grp.prefix, path, grp.app.config.IsSkipBeginPathSlash), handlers...)
 }
 
 // Static will create a file server serving static files
 func (grp *Group) Static(prefix, root string, config ...Static) Router {
-	return grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
+	return grp.app.registerStatic(getGroupPath(grp.prefix, prefix, grp.app.config.IsSkipBeginPathSlash), root, config...)
 }
 
 // All will register the handler on all HTTP methods
@@ -140,7 +140,7 @@ func (grp *Group) All(path string, handlers ...Handler) Router {
 //  api := app.Group("/api")
 //  api.Get("/users", handler)
 func (grp *Group) Group(prefix string, handlers ...Handler) Router {
-	prefix = getGroupPath(grp.prefix, prefix)
+	prefix = getGroupPath(grp.prefix, prefix, grp.app.config.IsSkipBeginPathSlash)
 	if len(handlers) > 0 {
 		_ = grp.app.register(methodUse, prefix, handlers...)
 	}

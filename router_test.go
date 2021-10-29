@@ -787,6 +787,43 @@ func Benchmark_Router_Github_API(b *testing.B) {
 
 }
 
+func Test_Router_Without_Required_Slash(t *testing.T) {
+	app := New()
+	app.config.IsSkipBeginPathSlash = true
+
+	module := app.Group("/module.")
+	module.Get("getAnyMethod", func(c *Ctx) error {
+		return c.SendString("you are here: module.getAnyMethod")
+	})
+
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod("GET")
+	c.URI().SetPath("/module.getAnyMethod")
+	appHandler(c)
+
+	utils.AssertEqual(t, 200, c.Response.StatusCode())
+	utils.AssertEqual(t, "you are here: module.getAnyMethod", string(c.Response.Body()))
+}
+
+func Test_Router_With_Required_Slash(t *testing.T) {
+	app := New()
+
+	module := app.Group("/module.")
+	module.Get("getAnyMethod", func(c *Ctx) error {
+		return c.SendString("you are here: module.getAnyMethod")
+	})
+
+	appHandler := app.Handler()
+	c := &fasthttp.RequestCtx{}
+	c.Request.Header.SetMethod("GET")
+	c.URI().SetPath("/module.getAnyMethod")
+	appHandler(c)
+
+	utils.AssertEqual(t, 404, c.Response.StatusCode())
+	utils.AssertEqual(t, "Cannot GET /module.getAnyMethod", string(c.Response.Body()))
+}
+
 type testRoute struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
