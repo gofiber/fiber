@@ -101,7 +101,7 @@ var ConfigDefault = Config{
 	CacheHeader:  "X-Cache",
 	CacheControl: false,
 	KeyGenerator: func(c *fiber.Ctx) string {
-		return c.Path()
+		return utils.CopyString(c.Path())
 	},
 	Storage:      nil,
 }
