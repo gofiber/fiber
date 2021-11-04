@@ -183,7 +183,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	} else if parameterEndPosition == -1 {
 		parameterEndPosition = len(pattern) - 1
 	} else if !isInCharset(pattern[parameterEndPosition+1], parameterDelimiterChars) {
-		parameterEndPosition = parameterEndPosition + 1
+		parameterEndPosition++
 	}
 	// cut params part
 	processedPart := pattern[0 : parameterEndPosition+1]
