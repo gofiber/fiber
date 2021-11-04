@@ -746,6 +746,8 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 }
 
 func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
+	t.Helper()
+
 	basename := filepath.Base(filename)
 	utils.AssertEqual(t, fh.Filename, basename)
 
@@ -1057,6 +1059,7 @@ func Test_AddMissingPort_TLS(t *testing.T) {
 }
 
 func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), excepted string, count ...int) {
+	t.Helper()
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()

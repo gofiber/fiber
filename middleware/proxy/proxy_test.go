@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"crypto/tls"
-	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"io/ioutil"
 	"net"
 	"net/http/httptest"
@@ -11,10 +10,13 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
 )
 
 func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, string) {
+	t.Helper()
+
 	target := fiber.New(fiber.Config{DisableStartupMessage: true})
 	target.Get("/", handler)
 

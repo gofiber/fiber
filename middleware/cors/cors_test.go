@@ -24,6 +24,8 @@ func Test_CORS_Empty_Config(t *testing.T) {
 }
 
 func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
+	t.Helper()
+
 	h := app.Handler()
 
 	// Test default GET response headers

@@ -16,7 +16,9 @@ import (
 )
 
 // AssertEqual checks if values are equal
-func AssertEqual(t testing.TB, expected, actual interface{}, description ...string) {
+func AssertEqual(tb testing.TB, expected, actual interface{}, description ...string) {
+	tb.Helper()
+
 	if reflect.DeepEqual(expected, actual) {
 		return
 	}
@@ -32,8 +34,8 @@ func AssertEqual(t testing.TB, expected, actual interface{}, description ...stri
 	}
 
 	testName := "AssertEqual"
-	if t != nil {
-		testName = t.Name()
+	if tb != nil {
+		testName = tb.Name()
 	}
 
 	_, file, line, _ := runtime.Caller(1)
@@ -55,8 +57,8 @@ func AssertEqual(t testing.TB, expected, actual interface{}, description ...stri
 		result = buf.String()
 	}
 
-	if t != nil {
-		t.Fatal(result)
+	if tb != nil {
+		tb.Fatal(result)
 	} else {
 		log.Fatal(result)
 	}
