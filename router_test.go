@@ -422,7 +422,6 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
-
 	app = New()
 	app.Static("/static/", dir)
 
