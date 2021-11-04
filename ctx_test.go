@@ -1452,19 +1452,19 @@ func Test_Ctx_Range(t *testing.T) {
 		err    error
 	)
 
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500")
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500=")
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500-300")
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	testRange := func(header string, start, end int) {

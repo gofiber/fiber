@@ -90,7 +90,7 @@ func Test_Proxy(t *testing.T) {
 func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	t.Parallel()
 
-	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+	serverTLSConf, _, err := tlstest.GetTLSConfigs()
 	utils.AssertEqual(t, nil, err)
 
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
@@ -105,7 +105,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	})
 
 	addr := ln.Addr().String()
-	clientTLSConf = &tls.Config{InsecureSkipVerify: true}
+	clientTLSConf := &tls.Config{InsecureSkipVerify: true}
 
 	// disable certificate verification in Balancer
 	app.Use(Balancer(Config{
@@ -147,7 +147,7 @@ func Test_Proxy_Forward(t *testing.T) {
 func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 	t.Parallel()
 
-	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+	serverTLSConf, _, err := tlstest.GetTLSConfigs()
 	utils.AssertEqual(t, nil, err)
 
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
@@ -162,7 +162,7 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 	})
 
 	addr := ln.Addr().String()
-	clientTLSConf = &tls.Config{InsecureSkipVerify: true}
+	clientTLSConf := &tls.Config{InsecureSkipVerify: true}
 
 	// disable certificate verification
 	WithTlsConfig(clientTLSConf)
