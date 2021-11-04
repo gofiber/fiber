@@ -23,8 +23,8 @@ func AssertEqual(tb testing.TB, expected, actual interface{}, description ...str
 		return
 	}
 
-	var aType = "<nil>"
-	var bType = "<nil>"
+	aType := "<nil>"
+	bType := "<nil>"
 
 	if expected != nil {
 		aType = reflect.TypeOf(expected).String()

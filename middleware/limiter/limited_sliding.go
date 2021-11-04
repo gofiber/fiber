@@ -54,7 +54,6 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// Set expiration if entry does not exist
 		if e.exp == 0 {
 			e.exp = ts + expiration
-
 		} else if ts >= e.exp {
 			// The entry has expired, handle the expiration.
 			// Set the prevHits to the current hits and reset the hits to 0.

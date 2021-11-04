@@ -122,7 +122,7 @@ func methodExist(ctx *Ctx) (exist bool) {
 		}
 		// Get stack length
 		lenr := len(tree) - 1
-		//Loop over the route stack starting from previous index
+		// Loop over the route stack starting from previous index
 		for ctx.indexRoute < lenr {
 			// Increment route index
 			ctx.indexRoute++
@@ -344,6 +344,7 @@ type testAddr string
 func (a testAddr) Network() string {
 	return string(a)
 }
+
 func (a testAddr) String() string {
 	return string(a)
 }
@@ -689,7 +690,7 @@ const (
 	NetworkTCP6 = "tcp6"
 )
 
-//Compression types
+// Compression types
 const (
 	StrGzip    = "gzip"
 	StrBr      = "br"

@@ -62,7 +62,6 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 
 // go test -run Test_Limiter_Concurrency -race -v
 func Test_Limiter_Concurrency(t *testing.T) {
-
 	// Test concurrency using a default store
 
 	app := fiber.New()
@@ -104,12 +103,10 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
-
 }
 
 // go test -run Test_Limiter_No_Skip_Choices -v
 func Test_Limiter_No_Skip_Choices(t *testing.T) {
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -137,12 +134,10 @@ func Test_Limiter_No_Skip_Choices(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
-
 }
 
 // go test -run Test_Limiter_Skip_Failed_Requests -v
 func Test_Limiter_Skip_Failed_Requests(t *testing.T) {
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -175,12 +170,10 @@ func Test_Limiter_Skip_Failed_Requests(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
-
 }
 
 // go test -run Test_Limiter_Skip_Successful_Requests -v
 func Test_Limiter_Skip_Successful_Requests(t *testing.T) {
-
 	// Test concurrency using a default store
 
 	app := fiber.New()
@@ -215,7 +208,6 @@ func Test_Limiter_Skip_Successful_Requests(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 400, resp.StatusCode)
-
 }
 
 // go test -v -run=^$ -bench=Benchmark_Limiter_Custom_Store -benchmem -count=4

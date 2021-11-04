@@ -19,9 +19,7 @@ const (
 	envPreforkChildVal = "1"
 )
 
-var (
-	testPreforkMaster = false
-)
+var testPreforkMaster = false
 
 // IsChild determines if the current process is a child of Prefork
 func IsChild() bool {
@@ -64,9 +62,9 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 		err error
 	}
 	// create variables
-	var max = runtime.GOMAXPROCS(0)
-	var childs = make(map[int]*exec.Cmd)
-	var channel = make(chan child, max)
+	max := runtime.GOMAXPROCS(0)
+	childs := make(map[int]*exec.Cmd)
+	channel := make(chan child, max)
 
 	// kill child procs when master exits
 	defer func() {

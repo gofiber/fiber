@@ -84,7 +84,6 @@ func Test_CORS_Wildcard(t *testing.T) {
 
 	utils.AssertEqual(t, "true", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	utils.AssertEqual(t, "X-Request-ID", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlExposeHeaders)))
-
 }
 
 // go test -run -v Test_CORS_Subdomain

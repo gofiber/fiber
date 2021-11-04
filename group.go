@@ -48,7 +48,7 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (grp *Group) Use(args ...interface{}) Router {
-	var prefix = ""
+	prefix := ""
 	var handlers []Handler
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {

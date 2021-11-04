@@ -307,7 +307,6 @@ func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
 			AddBytesKV([]byte("k1"), []byte("v33")).
 			SetBytesKV([]byte("k2"), []byte("v2")).
 			Add("k2", "v22")
-
 	}
 
 	testAgent(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")

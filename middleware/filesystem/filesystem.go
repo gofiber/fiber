@@ -95,7 +95,7 @@ func New(config ...Config) fiber.Handler {
 
 	var once sync.Once
 	var prefix string
-	var cacheControlStr = "public, max-age=" + strconv.Itoa(cfg.MaxAge)
+	cacheControlStr := "public, max-age=" + strconv.Itoa(cfg.MaxAge)
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
