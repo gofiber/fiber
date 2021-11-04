@@ -632,7 +632,7 @@ func Test_Ctx_Cookie(t *testing.T) {
 	expire := time.Now().Add(24 * time.Hour)
 	var dst []byte
 	dst = expire.In(time.UTC).AppendFormat(dst, time.RFC1123)
-	httpdate := strings.Replace(string(dst), "UTC", "GMT", -1)
+	httpdate := strings.ReplaceAll(string(dst), "UTC", "GMT")
 	cookie := &Cookie{
 		Name:    "username",
 		Value:   "john",
