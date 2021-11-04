@@ -17,7 +17,9 @@ import (
 
 // AssertEqual checks if values are equal
 func AssertEqual(tb testing.TB, expected, actual interface{}, description ...string) {
-	tb.Helper()
+	if tb != nil {
+		tb.Helper()
+	}
 
 	if reflect.DeepEqual(expected, actual) {
 		return
