@@ -174,7 +174,7 @@ func (s *Session) Save() error {
 	return nil
 }
 
-// Keys will retrive all keys in current session
+// Keys will retrieve all keys in current session
 func (s *Session) Keys() []string {
 	if s.data == nil {
 		return []string{}
