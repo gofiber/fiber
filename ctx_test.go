@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"text/template"
 	"time"
@@ -1951,7 +1950,6 @@ func Test_Ctx_Render(t *testing.T) {
 }
 
 type testTemplateEngine struct {
-	mu        sync.Mutex
 	templates *template.Template
 }
 
