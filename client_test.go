@@ -700,7 +700,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 		fh1, err := c.FormFile("field1")
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fh1.Filename, "name")
-		buf := make([]byte, fh1.Size, fh1.Size)
+		buf := make([]byte, fh1.Size)
 		f, err := fh1.Open()
 		utils.AssertEqual(t, nil, err)
 		defer func() { _ = f.Close() }()
@@ -754,7 +754,7 @@ func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 	b1, err := ioutil.ReadFile(filename)
 	utils.AssertEqual(t, nil, err)
 
-	b2 := make([]byte, fh.Size, fh.Size)
+	b2 := make([]byte, fh.Size)
 	f, err := fh.Open()
 	utils.AssertEqual(t, nil, err)
 	defer func() { _ = f.Close() }()
