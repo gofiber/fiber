@@ -182,7 +182,7 @@ func setETag(c *Ctx, weak bool) {
 	}
 	body := c.fasthttp.Response.Body()
 	// Skips ETag if no response body is present
-	if len(body) <= 0 {
+	if len(body) == 0 {
 		return
 	}
 	// Get ETag header from request

@@ -1094,7 +1094,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	// Keep original path for mutable params
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
 	// Disable compression
-	if len(compress) <= 0 || !compress[0] {
+	if len(compress) == 0 || !compress[0] {
 		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
 		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}

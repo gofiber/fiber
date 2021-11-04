@@ -38,7 +38,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		body := c.Response().Body()
 		// Skips ETag if no response body is present
-		if len(body) <= 0 {
+		if len(body) == 0 {
 			return
 		}
 		// Skip ETag if header is already present
