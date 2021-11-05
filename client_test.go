@@ -999,6 +999,8 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		a := Get("http://example.com")
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
@@ -1014,6 +1016,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	t.Run("pre error", func(t *testing.T) {
+		t.Parallel()
 		a := Get("http://example.com")
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
@@ -1058,7 +1061,6 @@ func Test_AddMissingPort_TLS(t *testing.T) {
 }
 
 func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), excepted string, count ...int) {
-	t.Helper()
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()
