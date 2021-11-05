@@ -72,7 +72,6 @@ func (m *manager) get(key string) (it *item) {
 		it = m.acquire()
 	}
 	return
-
 }
 
 // get raw data from storage or memory

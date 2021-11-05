@@ -301,7 +301,7 @@ func SetParserDecoder(parserConfig ParserConfig) {
 }
 
 func decoderBuilder(parserConfig ParserConfig) interface{} {
-	var decoder = schema.NewDecoder()
+	decoder := schema.NewDecoder()
 	decoder.IgnoreUnknownKeys(parserConfig.IgnoreUnknownKeys)
 	if parserConfig.SetAliasTag != "" {
 		decoder.SetAliasTag(parserConfig.SetAliasTag)
@@ -518,8 +518,8 @@ func (c *Ctx) FormValue(key string, defaultValue ...string) string {
 // https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
 func (c *Ctx) Fresh() bool {
 	// fields
-	var modifiedSince = c.Get(HeaderIfModifiedSince)
-	var noneMatch = c.Get(HeaderIfNoneMatch)
+	modifiedSince := c.Get(HeaderIfModifiedSince)
+	noneMatch := c.Get(HeaderIfNoneMatch)
 
 	// unconditional request
 	if modifiedSince == "" && noneMatch == "" {
@@ -536,7 +536,7 @@ func (c *Ctx) Fresh() bool {
 
 	// if-none-match
 	if noneMatch != "" && noneMatch != "*" {
-		var etag = c.app.getString(c.fasthttp.Response.Header.Peek(HeaderETag))
+		etag := c.app.getString(c.fasthttp.Response.Header.Peek(HeaderETag))
 		if etag == "" {
 			return false
 		}
@@ -545,7 +545,7 @@ func (c *Ctx) Fresh() bool {
 		}
 
 		if modifiedSince != "" {
-			var lastModified = c.app.getString(c.fasthttp.Response.Header.Peek(HeaderLastModified))
+			lastModified := c.app.getString(c.fasthttp.Response.Header.Peek(HeaderLastModified))
 			if lastModified != "" {
 				lastModifiedTime, err := http.ParseTime(lastModified)
 				if err != nil {
@@ -576,7 +576,6 @@ func (c *Ctx) Get(key string, defaultValue ...string) string {
 // Make copies or use the Immutable setting instead.
 func (c *Ctx) GetRespHeader(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
-
 }
 
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
@@ -662,7 +661,6 @@ func (c *Ctx) JSON(data interface{}) error {
 // By default, the callback name is simply callback.
 func (c *Ctx) JSONP(data interface{}, callback ...string) error {
 	raw, err := json.Marshal(data)
-
 	if err != nil {
 		return err
 	}
@@ -856,7 +854,7 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
 	// Get decoder from pool
-	var decoder = decoderPool.Get().(*schema.Decoder)
+	decoder := decoderPool.Get().(*schema.Decoder)
 	defer decoderPool.Put(decoder)
 
 	// Set correct alias tag
@@ -1063,9 +1061,11 @@ func (c *Ctx) Send(body []byte) error {
 	return nil
 }
 
-var sendFileOnce sync.Once
-var sendFileFS *fasthttp.FS
-var sendFileHandler fasthttp.RequestHandler
+var (
+	sendFileOnce    sync.Once
+	sendFileFS      *fasthttp.FS
+	sendFileHandler fasthttp.RequestHandler
+)
 
 // SendFile transfers the file from the given path.
 // The file is not compressed by default, enable this by passing a 'true' argument
@@ -1094,7 +1094,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	// Keep original path for mutable params
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
 	// Disable compression
-	if len(compress) <= 0 || !compress[0] {
+	if len(compress) == 0 || !compress[0] {
 		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
 		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}

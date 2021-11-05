@@ -307,7 +307,6 @@ func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
 			AddBytesKV([]byte("k1"), []byte("v33")).
 			SetBytesKV([]byte("k2"), []byte("v2")).
 			Add("k2", "v22")
-
 	}
 
 	testAgent(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
@@ -700,7 +699,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 		fh1, err := c.FormFile("field1")
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fh1.Filename, "name")
-		buf := make([]byte, fh1.Size, fh1.Size)
+		buf := make([]byte, fh1.Size)
 		f, err := fh1.Open()
 		utils.AssertEqual(t, nil, err)
 		defer func() { _ = f.Close() }()
@@ -746,13 +745,15 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 }
 
 func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
+	t.Helper()
+
 	basename := filepath.Base(filename)
 	utils.AssertEqual(t, fh.Filename, basename)
 
 	b1, err := ioutil.ReadFile(filename)
 	utils.AssertEqual(t, nil, err)
 
-	b2 := make([]byte, fh.Size, fh.Size)
+	b2 := make([]byte, fh.Size)
 	f, err := fh.Open()
 	utils.AssertEqual(t, nil, err)
 	defer func() { _ = f.Close() }()
@@ -998,6 +999,8 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		a := Get("http://example.com")
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
@@ -1013,6 +1016,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	t.Run("pre error", func(t *testing.T) {
+		t.Parallel()
 		a := Get("http://example.com")
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }

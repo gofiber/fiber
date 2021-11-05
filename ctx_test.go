@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"text/template"
 	"time"
@@ -403,7 +402,7 @@ func Test_Ctx_BodyParser(t *testing.T) {
 func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
 	type CustomTime time.Time
 
-	var timeConverter = func(value string) reflect.Value {
+	timeConverter := func(value string) reflect.Value {
 		if v, err := time.Parse("2006-01-02", value); err == nil {
 			return reflect.ValueOf(v)
 		}
@@ -567,7 +566,6 @@ func Test_Ctx_UserContext(t *testing.T) {
 	t.Run("Nil_Context", func(t *testing.T) {
 		ctx := c.UserContext()
 		utils.AssertEqual(t, ctx, context.Background())
-
 	})
 	t.Run("ValueContext", func(t *testing.T) {
 		testKey := "Test Key"
@@ -634,12 +632,12 @@ func Test_Ctx_Cookie(t *testing.T) {
 	expire := time.Now().Add(24 * time.Hour)
 	var dst []byte
 	dst = expire.In(time.UTC).AppendFormat(dst, time.RFC1123)
-	httpdate := strings.Replace(string(dst), "UTC", "GMT", -1)
+	httpdate := strings.ReplaceAll(string(dst), "UTC", "GMT")
 	cookie := &Cookie{
 		Name:    "username",
 		Value:   "john",
 		Expires: expire,
-		//SameSite: CookieSameSiteStrictMode, // default is "lax"
+		// SameSite: CookieSameSiteStrictMode, // default is "lax"
 	}
 	c.Cookie(cookie)
 	expect := "username=john; expires=" + httpdate + "; path=/; SameSite=Lax"
@@ -1233,7 +1231,6 @@ func Benchmark_Ctx_MultipartForm(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		h(c)
 	}
-
 }
 
 // go test -run Test_Ctx_OriginalURL
@@ -1452,19 +1449,19 @@ func Test_Ctx_Range(t *testing.T) {
 		err    error
 	)
 
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500")
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500=")
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500-300")
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	testRange := func(header string, start, end int) {
@@ -1827,7 +1824,7 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 		Name: "Grame",
 		Age:  20,
 	}
-	var callback = "emit"
+	callback := "emit"
 	var err error
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -1951,7 +1948,6 @@ func Test_Ctx_Render(t *testing.T) {
 }
 
 type testTemplateEngine struct {
-	mu        sync.Mutex
 	templates *template.Template
 }
 
@@ -2077,7 +2073,7 @@ func Benchmark_Ctx_Send(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	var byt = []byte("Hello, World!")
+	byt := []byte("Hello, World!")
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -2158,7 +2154,6 @@ func Test_Ctx_Set_Splitter(t *testing.T) {
 	c.Set("Location", "foo\nSet-Cookie:%20SESSIONID=MaliciousValue\n")
 	h = string(c.Response().Header.Peek("Location"))
 	utils.AssertEqual(t, false, strings.Contains(h, "\n"), h)
-
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Set -benchmem -count=4
@@ -2166,7 +2161,7 @@ func Benchmark_Ctx_Set(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	var val = "1431-15132-3423"
+	val := "1431-15132-3423"
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -2272,7 +2267,7 @@ func Benchmark_Ctx_Write(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	var byt = []byte("Hello, World!")
+	byt := []byte("Hello, World!")
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -2400,7 +2395,7 @@ func Test_Ctx_QueryParser(t *testing.T) {
 func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
 
-	var NonRFCConverter = func(value string) reflect.Value {
+	NonRFCConverter := func(value string) reflect.Value {
 		if v, err := time.Parse("2006-01-02", value); err == nil {
 			return reflect.ValueOf(v)
 		}
@@ -2743,7 +2738,6 @@ func TestCtx_ParamsInt(t *testing.T) {
 	app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
 	app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
 	app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
-
 }
 
 // go test -run Test_Ctx_GetRespHeader

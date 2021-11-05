@@ -28,8 +28,6 @@ func Test_CSRF(t *testing.T) {
 		// Generate CSRF token
 		ctx.Request.Header.SetMethod(method)
 		h(ctx)
-		token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-		token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
 		// Without CSRF cookie
 		ctx.Request.Reset()
@@ -51,7 +49,7 @@ func Test_CSRF(t *testing.T) {
 		ctx.Response.Reset()
 		ctx.Request.Header.SetMethod(method)
 		h(ctx)
-		token = string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+		token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 		token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
 		ctx.Request.Reset()

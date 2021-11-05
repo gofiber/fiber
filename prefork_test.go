@@ -89,9 +89,13 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 }
 
 func setupIsChild(t *testing.T) {
+	t.Helper()
+
 	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
 }
 
 func teardownIsChild(t *testing.T) {
+	t.Helper()
+
 	utils.AssertEqual(t, nil, os.Setenv(envPreforkChildKey, ""))
 }

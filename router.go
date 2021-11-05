@@ -236,14 +236,14 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		pathPretty = utils.TrimRight(pathPretty, '/')
 	}
 	// Is layer a middleware?
-	var isUse = method == methodUse
+	isUse := method == methodUse
 	// Is path a direct wildcard?
-	var isStar = pathPretty == "/*"
+	isStar := pathPretty == "/*"
 	// Is path a root slash?
-	var isRoot = pathPretty == "/"
+	isRoot := pathPretty == "/"
 	// Parse path parameters
-	var parsedRaw = parseRoute(pathRaw)
-	var parsedPretty = parseRoute(pathPretty)
+	parsedRaw := parseRoute(pathRaw)
+	parsedPretty := parseRoute(pathPretty)
 
 	// Create route metadata without pointer
 	route := Route{
@@ -302,9 +302,9 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		root = root[:len(root)-1]
 	}
 	// Is prefix a direct wildcard?
-	var isStar = prefix == "/*"
+	isStar := prefix == "/*"
 	// Is prefix a root slash?
-	var isRoot = prefix == "/"
+	isRoot := prefix == "/"
 	// Is prefix a partial wildcard?
 	if strings.Contains(prefix, "*") {
 		// /john* -> /john

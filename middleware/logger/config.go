@@ -59,7 +59,7 @@ var ConfigDefault = Config{
 
 // Function to check if the logger format is compatible for coloring
 func validCustomFormat(format string) bool {
-	var validTemplates = []string{"${status}", "${method}"}
+	validTemplates := []string{"${status}", "${method}"}
 	if format == "" {
 		return true
 	}

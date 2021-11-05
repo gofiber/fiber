@@ -422,7 +422,6 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
-
 	app = New()
 	app.Static("/static/", dir)
 
@@ -784,13 +783,13 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		utils.AssertEqual(b, nil, err)
 		utils.AssertEqual(b, true, match)
 	}
-
 }
 
 type testRoute struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
 }
+
 type routeJSON struct {
 	TestRoutes []testRoute `json:"testRoutes"`
 	GithubAPI  []testRoute `json:"githubAPI"`

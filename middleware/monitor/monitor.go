@@ -24,6 +24,7 @@ type statsPID struct {
 	RAM   uint64  `json:"ram"`
 	Conns int     `json:"conns"`
 }
+
 type statsOS struct {
 	CPU      float64 `json:"cpu"`
 	RAM      uint64  `json:"ram"`

@@ -82,10 +82,8 @@ func New(config ...Config) fiber.Handler {
 			if icon, err = ioutil.ReadAll(f); err != nil {
 				panic(err)
 			}
-		} else {
-			if icon, err = ioutil.ReadFile(cfg.File); err != nil {
-				panic(err)
-			}
+		} else if icon, err = ioutil.ReadFile(cfg.File); err != nil {
+			panic(err)
 		}
 
 		iconLen = strconv.Itoa(len(icon))

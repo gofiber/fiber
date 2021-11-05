@@ -54,7 +54,6 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		// Set expiration if entry does not exist
 		if e.exp == 0 {
 			e.exp = ts + expiration
-
 		} else if ts >= e.exp {
 			// Check if entry is expired
 			e.currHits = 0

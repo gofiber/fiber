@@ -278,7 +278,6 @@ func Test_CustomKey(t *testing.T) {
 	_, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, called)
-
 }
 
 func Test_CacheHeader(t *testing.T) {

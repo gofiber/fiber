@@ -232,11 +232,11 @@ func Test_Path_matchParams(t *testing.T) {
 	// optional parameters are not greedy
 	testCase("/:param1:param2?:param3", []testparams{
 		{url: "/abbbc", params: []string{"a", "b", "bbc"}, match: true},
-		//{url: "/ac", params: []string{"a", "", "c"}, match: true}, // TODO: fix it
+		// {url: "/ac", params: []string{"a", "", "c"}, match: true}, // TODO: fix it
 		{url: "/test", params: []string{"t", "e", "st"}, match: true},
 	})
 	testCase("/test:optional?:mandatory", []testparams{
-		//{url: "/testo", params: []string{"", "o"}, match: true}, // TODO: fix it
+		// {url: "/testo", params: []string{"", "o"}, match: true}, // TODO: fix it
 		{url: "/testoaaa", params: []string{"o", "aaa"}, match: true},
 		{url: "/test", params: nil, match: false},
 	})
@@ -325,7 +325,7 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/1-", params: nil, match: false},
 		{url: "/api/1--", params: []string{"1", "", ""}, match: true},
 		{url: "/api/1-/", params: nil, match: false},
-		//{url: "/api/1-/-", params: nil, match: false}, // TODO: fix this part
+		// {url: "/api/1-/-", params: nil, match: false}, // TODO: fix this part
 		{url: "/api/1-2", params: nil, match: false},
 		{url: "/api/1-2-", params: []string{"1", "2", ""}, match: true},
 		{url: "/api/1-2-3", params: []string{"1", "2", "3"}, match: true},

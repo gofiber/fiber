@@ -90,12 +90,12 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Convert string to slice
-	allowOrigins := strings.Split(strings.Replace(cfg.AllowOrigins, " ", "", -1), ",")
+	allowOrigins := strings.Split(strings.ReplaceAll(cfg.AllowOrigins, " ", ""), ",")
 
 	// Strip white spaces
-	allowMethods := strings.Replace(cfg.AllowMethods, " ", "", -1)
-	allowHeaders := strings.Replace(cfg.AllowHeaders, " ", "", -1)
-	exposeHeaders := strings.Replace(cfg.ExposeHeaders, " ", "", -1)
+	allowMethods := strings.ReplaceAll(cfg.AllowMethods, " ", "")
+	allowHeaders := strings.ReplaceAll(cfg.AllowHeaders, " ", "")
+	exposeHeaders := strings.ReplaceAll(cfg.ExposeHeaders, " ", "")
 
 	// Convert int to string
 	maxAge := strconv.Itoa(cfg.MaxAge)

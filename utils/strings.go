@@ -6,7 +6,7 @@ package utils
 
 // ToLower is the equivalent of strings.ToLower
 func ToLower(b string) string {
-	var res = make([]byte, len(b))
+	res := make([]byte, len(b))
 	copy(res, b)
 	for i := 0; i < len(res); i++ {
 		res[i] = toLowerTable[res[i]]
@@ -17,7 +17,7 @@ func ToLower(b string) string {
 
 // ToUpper is the equivalent of strings.ToUpper
 func ToUpper(b string) string {
-	var res = make([]byte, len(b))
+	res := make([]byte, len(b))
 	copy(res, b)
 	for i := 0; i < len(res); i++ {
 		res[i] = toUpperTable[res[i]]

@@ -15,7 +15,7 @@ func Test_UnsafeString(t *testing.T) {
 // go test -v -run=^$ -bench=UnsafeString -benchmem -count=2
 
 func Benchmark_UnsafeString(b *testing.B) {
-	var hello = []byte("Hello, World!")
+	hello := []byte("Hello, World!")
 	var res string
 	b.Run("unsafe", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
@@ -40,7 +40,7 @@ func Test_UnsafeBytes(t *testing.T) {
 // go test -v -run=^$ -bench=UnsafeBytes -benchmem -count=4
 
 func Benchmark_UnsafeBytes(b *testing.B) {
-	var hello = "Hello, World!"
+	hello := "Hello, World!"
 	var res []byte
 	b.Run("unsafe", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
