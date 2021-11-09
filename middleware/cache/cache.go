@@ -41,9 +41,8 @@ func New(config ...Config) fiber.Handler {
 
 	var (
 		// Cache settings
-		mux        = &sync.RWMutex{}
-		timestamp  = uint64(time.Now().Unix())
-		expiration = uint64(cfg.Expiration.Seconds())
+		mux       = &sync.RWMutex{}
+		timestamp = uint64(time.Now().Unix())
 	)
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
@@ -125,6 +124,13 @@ func New(config ...Config) fiber.Handler {
 		e.status = c.Response().StatusCode()
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
+
+		// default cache expiration
+		expiration := uint64(cfg.Expiration.Seconds())
+		// Calculate expiration by response header or other setting
+		if cfg.ExpirationGenerator != nil {
+			expiration = uint64(cfg.ExpirationGenerator(c, &cfg).Seconds())
+		}
 		e.exp = ts + expiration
 
 		// For external Storage we store raw body separated
