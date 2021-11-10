@@ -39,11 +39,9 @@ type Config struct {
 	// }
 	KeyGenerator func(*fiber.Ctx) string
 
-	// allows you to generate custom Expiration Key By Key, default is Expiration
+	// allows you to generate custom Expiration Key By Key, default is Expiration (Optional)
 	//
-	// Default: func(c *fiber.Ctx, cfg Config) time.Duration {
-	//   return config.Expiration
-	// }
+	// Default: nil
 	ExpirationGenerator func(*fiber.Ctx, *Config) time.Duration
 
 	// Store is used to store the state of the middleware
