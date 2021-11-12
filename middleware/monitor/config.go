@@ -4,6 +4,11 @@ import "github.com/gofiber/fiber/v2"
 
 // Config defines the config for middleware.
 type Config struct {
+	// To disable serving HTML, you can make true this option.
+	//
+	// Optional. Default: false
+	DisableHTML bool
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
@@ -11,7 +16,8 @@ type Config struct {
 }
 
 var ConfigDefault = Config{
-	Next: nil,
+	DisableHTML: false,
+	Next:        nil,
 }
 
 func configDefault(config ...Config) Config {
@@ -26,6 +32,10 @@ func configDefault(config ...Config) Config {
 	// Set default values
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
+	}
+
+	if !cfg.DisableHTML {
+		cfg.DisableHTML = ConfigDefault.DisableHTML
 	}
 
 	return cfg
