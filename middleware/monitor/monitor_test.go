@@ -61,14 +61,14 @@ func Test_Monitor_JSON(t *testing.T) {
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("os")))
 }
 
-// go test -run Test_Monitor_DisableHTML_JSON -race
-func Test_Monitor_DisableHTML_JSON(t *testing.T) {
+// go test -run Test_Monitor_APIOnly -race
+func Test_Monitor_APIOnly(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
 
 	app.Get("/", New(Config{
-		DisableHTML: true,
+		APIOnly: true,
 	}))
 
 	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
