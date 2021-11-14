@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func defaultStackTraceHandler(e interface{}) {
+func defaultStackTraceHandler(c *fiber.Ctx, e interface{}) {
 	buf := make([]byte, defaultStackTraceBufLen)
 	buf = buf[:runtime.Stack(buf, false)]
 	_, _ = os.Stderr.WriteString(fmt.Sprintf("panic: %v\n%s\n", e, buf))
@@ -30,7 +30,7 @@ func New(config ...Config) fiber.Handler {
 		defer func() {
 			if r := recover(); r != nil {
 				if cfg.EnableStackTrace {
-					cfg.StackTraceHandler(r)
+					cfg.StackTraceHandler(c, r)
 				}
 
 				var ok bool
