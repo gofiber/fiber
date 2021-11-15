@@ -39,7 +39,7 @@ type Config struct {
 	// To disable serving HTML, you can make true this option.
 	//
 	// Optional. Default: false
-	DisableHTML bool
+	APIOnly bool
 	
 	// Next defines a function to skip this middleware when returned true.
 	//
@@ -52,7 +52,7 @@ type Config struct {
 
 ```go
 var ConfigDefault = Config{
-	DisableHTML: false,
+	APIOnly: false,
 	Next: nil,
 }
 ```
