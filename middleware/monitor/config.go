@@ -4,7 +4,7 @@ import "github.com/gofiber/fiber/v2"
 
 // Config defines the config for middleware.
 type Config struct {
-	// To disable serving HTML, you can make true this option.
+	// Whether the service should expose only the monitoring API.
 	//
 	// Optional. Default: false
 	APIOnly bool
