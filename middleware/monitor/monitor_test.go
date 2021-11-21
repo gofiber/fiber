@@ -88,3 +88,20 @@ func Benchmark_Monitor(b *testing.B) {
 		fiber.MIMEApplicationJSON,
 		string(fctx.Response.Header.Peek(fiber.HeaderContentType)))
 }
+
+// go test -run Test_Monitor_Next
+func Test_Monitor_Next(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use("/", New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 404, resp.StatusCode)
+}

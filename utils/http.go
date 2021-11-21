@@ -37,8 +37,10 @@ func ParseVendorSpecificContentType(cType string) string {
 	var parsableType string
 	if semiColonIndex := strings.Index(cType, ";"); semiColonIndex == -1 {
 		parsableType = cType[plusIndex+1:]
-	} else {
+	} else if plusIndex < semiColonIndex {
 		parsableType = cType[plusIndex+1 : semiColonIndex]
+	} else {
+		return cType[:semiColonIndex]
 	}
 
 	slashIndex := strings.Index(cType, "/")

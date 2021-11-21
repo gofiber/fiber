@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"text/template"
 	"time"
@@ -358,21 +357,21 @@ func Test_Ctx_BodyParser(t *testing.T) {
 		Name string `json:"name" xml:"name" form:"name" query:"name"`
 	}
 
-	 {
-		 var gzipJSON bytes.Buffer
-		 w := gzip.NewWriter(&gzipJSON)
-		 _, _ = w.Write([]byte(`{"name":"john"}`))
-		 _ = w.Close()
+	{
+		var gzipJSON bytes.Buffer
+		w := gzip.NewWriter(&gzipJSON)
+		_, _ = w.Write([]byte(`{"name":"john"}`))
+		_ = w.Close()
 
-		 c.Request().Header.SetContentType(MIMEApplicationJSON)
-		 c.Request().Header.Set(HeaderContentEncoding, "gzip")
-		 c.Request().SetBody(gzipJSON.Bytes())
-		 c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
-		 d := new(Demo)
-		 utils.AssertEqual(t, nil, c.BodyParser(d))
-		 utils.AssertEqual(t, "john", d.Name)
-		 c.Request().Header.Del(HeaderContentEncoding)
-	 }
+		c.Request().Header.SetContentType(MIMEApplicationJSON)
+		c.Request().Header.Set(HeaderContentEncoding, "gzip")
+		c.Request().SetBody(gzipJSON.Bytes())
+		c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
+		d := new(Demo)
+		utils.AssertEqual(t, nil, c.BodyParser(d))
+		utils.AssertEqual(t, "john", d.Name)
+		c.Request().Header.Del(HeaderContentEncoding)
+	}
 
 	testDecodeParser := func(contentType, body string) {
 		c.Request().Header.SetContentType(contentType)
@@ -397,6 +396,58 @@ func Test_Ctx_BodyParser(t *testing.T) {
 
 	testDecodeParserError("invalid-content-type", "")
 	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
+}
+
+// go test -run Test_Ctx_BodyParser_WithSetParserDecoder
+func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
+	type CustomTime time.Time
+
+	timeConverter := func(value string) reflect.Value {
+		if v, err := time.Parse("2006-01-02", value); err == nil {
+			return reflect.ValueOf(v)
+		}
+		return reflect.Value{}
+	}
+
+	customTime := ParserType{
+		Customtype: CustomTime{},
+		Converter:  timeConverter,
+	}
+
+	SetParserDecoder(ParserConfig{
+		IgnoreUnknownKeys: true,
+		ParserType:        []ParserType{customTime},
+		ZeroEmpty:         true,
+		SetAliasTag:       "form",
+	})
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	type Demo struct {
+		Date  CustomTime `form:"date"`
+		Title string     `form:"title"`
+		Body  string     `form:"body"`
+	}
+
+	testDecodeParser := func(contentType, body string) {
+		c.Request().Header.SetContentType(contentType)
+		c.Request().SetBody([]byte(body))
+		c.Request().Header.SetContentLength(len(body))
+		d := Demo{
+			Title: "Existing title",
+			Body:  "Existing Body",
+		}
+		utils.AssertEqual(t, nil, c.BodyParser(&d))
+		date := fmt.Sprintf("%v", d.Date)
+		utils.AssertEqual(t, "{0 63743587200 <nil>}", date)
+		utils.AssertEqual(t, "", d.Title)
+		utils.AssertEqual(t, "New Body", d.Body)
+	}
+
+	testDecodeParser(MIMEApplicationForm, "date=2020-12-15&title=&body=New Body")
+	testDecodeParser(MIMEMultipartForm+`; boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"date\"\r\n\r\n2020-12-15\r\n--b\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\n\r\n--b\r\nContent-Disposition: form-data; name=\"body\"\r\n\r\nNew Body\r\n--b--")
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_BodyParser_JSON -benchmem -count=4
@@ -508,26 +559,68 @@ func Test_Ctx_Context(t *testing.T) {
 
 // go test -run Test_Ctx_UserContext
 func Test_Ctx_UserContext(t *testing.T) {
-	c := Ctx{}
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
 	t.Run("Nil_Context", func(t *testing.T) {
 		ctx := c.UserContext()
 		utils.AssertEqual(t, ctx, context.Background())
-
 	})
 	t.Run("ValueContext", func(t *testing.T) {
 		testKey := "Test Key"
 		testValue := "Test Value"
 		ctx := context.WithValue(context.Background(), testKey, testValue)
-		utils.AssertEqual(t, ctx.Value(testKey), testValue)
+		utils.AssertEqual(t, testValue, ctx.Value(testKey))
 	})
-
 }
 
-// go test -run Test_Ctx_UserContext
+// go test -run Test_Ctx_SetUserContext
 func Test_Ctx_SetUserContext(t *testing.T) {
-	c := Ctx{}
-	c.SetUserContext(context.Background())
-	utils.AssertEqual(t, c.UserContext(), context.Background())
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	testKey := "Test Key"
+	testValue := "Test Value"
+	ctx := context.WithValue(context.Background(), testKey, testValue)
+	c.SetUserContext(ctx)
+	utils.AssertEqual(t, testValue, c.UserContext().Value(testKey))
+}
+
+// go test -run Test_Ctx_UserContext_Multiple_Requests
+func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
+	testKey := "foobar-key"
+	testValue := "foobar-value"
+
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		ctx := c.UserContext()
+
+		if ctx.Value(testKey) != nil {
+			return c.SendStatus(StatusInternalServerError)
+		}
+
+		input := utils.CopyString(c.Query("input", "NO_VALUE"))
+		ctx = context.WithValue(ctx, testKey, fmt.Sprintf("%s_%s", testValue, input))
+		c.SetUserContext(ctx)
+
+		return c.Status(StatusOK).SendString(fmt.Sprintf("resp_%s_returned", input))
+	})
+
+	// Consecutive Requests
+	for i := 1; i <= 10; i++ {
+		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
+			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
+
+			utils.AssertEqual(t, nil, err, "Unexpected error from response")
+			utils.AssertEqual(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
+
+			b, err := ioutil.ReadAll(resp.Body)
+			utils.AssertEqual(t, nil, err, "Unexpected error from reading response body")
+			utils.AssertEqual(t, fmt.Sprintf("resp_%d_returned", i), string(b), "response text incorrect")
+		})
+	}
 }
 
 // go test -run Test_Ctx_Cookie
@@ -539,12 +632,12 @@ func Test_Ctx_Cookie(t *testing.T) {
 	expire := time.Now().Add(24 * time.Hour)
 	var dst []byte
 	dst = expire.In(time.UTC).AppendFormat(dst, time.RFC1123)
-	httpdate := strings.Replace(string(dst), "UTC", "GMT", -1)
+	httpdate := strings.ReplaceAll(string(dst), "UTC", "GMT")
 	cookie := &Cookie{
 		Name:    "username",
 		Value:   "john",
 		Expires: expire,
-		//SameSite: CookieSameSiteStrictMode, // default is "lax"
+		// SameSite: CookieSameSiteStrictMode, // default is "lax"
 	}
 	c.Cookie(cookie)
 	expect := "username=john; expires=" + httpdate + "; path=/; SameSite=Lax"
@@ -939,6 +1032,22 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	utils.AssertEqual(t, "0.0.0.1", c.IP())
 }
 
+// go test -run Test_Ctx_IP_Range_TrustedProxy
+func Test_Ctx_IP_Range_TrustedProxy(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30", "1.1.1.1/100"}, ProxyHeader: HeaderXForwardedFor})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	expected := map[string]struct{}{
+		"0.0.0.0": {},
+		"1.1.1.0": {},
+		"1.1.1.1": {},
+		"1.1.1.2": {},
+		"1.1.1.3": {},
+	}
+	utils.AssertEqual(t, expected, app.config.trustedProxiesMap)
+}
+
 // go test -run Test_Ctx_IPs  -parallel
 func Test_Ctx_IPs(t *testing.T) {
 	t.Parallel()
@@ -1122,7 +1231,6 @@ func Benchmark_Ctx_MultipartForm(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		h(c)
 	}
-
 }
 
 // go test -run Test_Ctx_OriginalURL
@@ -1341,19 +1449,19 @@ func Test_Ctx_Range(t *testing.T) {
 		err    error
 	)
 
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500")
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500=")
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500-300")
-	result, err = c.Range(1000)
+	_, err = c.Range(1000)
 	utils.AssertEqual(t, true, err != nil)
 
 	testRange := func(header string, start, end int) {
@@ -1613,6 +1721,21 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode)
 }
 
+// go test -race -run Test_Ctx_SendFile_RestoreOriginalURL
+func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		originalURL := c.OriginalURL()
+		err := c.SendFile("ctx.go")
+		utils.AssertEqual(t, originalURL, c.OriginalURL())
+		return err
+	})
+
+	_, err := app.Test(httptest.NewRequest("GET", "/?test=true", nil))
+	utils.AssertEqual(t, nil, err)
+}
+
 // go test -run Test_Ctx_JSON
 func Test_Ctx_JSON(t *testing.T) {
 	t.Parallel()
@@ -1701,7 +1824,7 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 		Name: "Grame",
 		Age:  20,
 	}
-	var callback = "emit"
+	callback := "emit"
 	var err error
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -1825,7 +1948,6 @@ func Test_Ctx_Render(t *testing.T) {
 }
 
 type testTemplateEngine struct {
-	mu        sync.Mutex
 	templates *template.Template
 }
 
@@ -1951,7 +2073,7 @@ func Benchmark_Ctx_Send(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	var byt = []byte("Hello, World!")
+	byt := []byte("Hello, World!")
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -2032,7 +2154,6 @@ func Test_Ctx_Set_Splitter(t *testing.T) {
 	c.Set("Location", "foo\nSet-Cookie:%20SESSIONID=MaliciousValue\n")
 	h = string(c.Response().Header.Peek("Location"))
 	utils.AssertEqual(t, false, strings.Contains(h, "\n"), h)
-
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Set -benchmem -count=4
@@ -2040,7 +2161,7 @@ func Benchmark_Ctx_Set(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	var val = "1431-15132-3423"
+	val := "1431-15132-3423"
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -2146,7 +2267,7 @@ func Benchmark_Ctx_Write(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	var byt = []byte("Hello, World!")
+	byt := []byte("Hello, World!")
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -2268,6 +2389,60 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
 	utils.AssertEqual(t, "name is empty", c.QueryParser(rq).Error())
+}
+
+// go test -run Test_Ctx_QueryParser_WithSetParserDecoder -v
+func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
+	type NonRFCTime time.Time
+
+	NonRFCConverter := func(value string) reflect.Value {
+		if v, err := time.Parse("2006-01-02", value); err == nil {
+			return reflect.ValueOf(v)
+		}
+		return reflect.Value{}
+	}
+
+	nonRFCTime := ParserType{
+		Customtype: NonRFCTime{},
+		Converter:  NonRFCConverter,
+	}
+
+	SetParserDecoder(ParserConfig{
+		IgnoreUnknownKeys: true,
+		ParserType:        []ParserType{nonRFCTime},
+		ZeroEmpty:         true,
+		SetAliasTag:       "query",
+	})
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	type NonRFCTimeInput struct {
+		Date  NonRFCTime `query:"date"`
+		Title string     `query:"title"`
+		Body  string     `query:"body"`
+	}
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	q := new(NonRFCTimeInput)
+
+	c.Request().URI().SetQueryString("date=2021-04-10&title=CustomDateTest&Body=October")
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	fmt.Println(q.Date, "q.Date")
+	utils.AssertEqual(t, "CustomDateTest", q.Title)
+	date := fmt.Sprintf("%v", q.Date)
+	utils.AssertEqual(t, "{0 63753609600 <nil>}", date)
+	utils.AssertEqual(t, "October", q.Body)
+
+	c.Request().URI().SetQueryString("date=2021-04-10&title&Body=October")
+	q = &NonRFCTimeInput{
+		Title: "Existing title",
+		Body:  "Existing Body",
+	}
+	utils.AssertEqual(t, nil, c.QueryParser(q))
+	utils.AssertEqual(t, "", q.Title)
 }
 
 // go test -run Test_Ctx_QueryParser_Schema -v
@@ -2563,7 +2738,6 @@ func TestCtx_ParamsInt(t *testing.T) {
 	app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
 	app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
 	app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
-
 }
 
 // go test -run Test_Ctx_GetRespHeader

@@ -24,7 +24,7 @@ func Test_ToLowerBytes(t *testing.T) {
 }
 
 func Benchmark_ToLowerBytes(b *testing.B) {
-	var path = []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
+	path := []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
 	var res []byte
 
 	b.Run("fiber", func(b *testing.B) {
@@ -56,7 +56,7 @@ func Test_ToUpperBytes(t *testing.T) {
 }
 
 func Benchmark_ToUpperBytes(b *testing.B) {
-	var path = []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
+	path := []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
 	var res []byte
 
 	b.Run("fiber", func(b *testing.B) {
@@ -107,6 +107,7 @@ func Test_TrimLeftBytes(t *testing.T) {
 	res = TrimLeftBytes([]byte("test/"), '/')
 	AssertEqual(t, []byte("test/"), res)
 }
+
 func Benchmark_TrimLeftBytes(b *testing.B) {
 	var res []byte
 
@@ -123,6 +124,7 @@ func Benchmark_TrimLeftBytes(b *testing.B) {
 		AssertEqual(b, []byte("foobar"), res)
 	})
 }
+
 func Test_TrimBytes(t *testing.T) {
 	t.Parallel()
 	res := TrimBytes([]byte("   test  "), ' ')
@@ -134,6 +136,7 @@ func Test_TrimBytes(t *testing.T) {
 	res = TrimBytes([]byte(".test"), '.')
 	AssertEqual(t, []byte("test"), res)
 }
+
 func Benchmark_TrimBytes(b *testing.B) {
 	var res []byte
 
@@ -152,8 +155,8 @@ func Benchmark_TrimBytes(b *testing.B) {
 }
 
 func Benchmark_EqualFoldBytes(b *testing.B) {
-	var left = []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
-	var right = []byte("/RePos/goFiber/Fiber/issues/187643/COMMENTS")
+	left := []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
+	right := []byte("/RePos/goFiber/Fiber/issues/187643/COMMENTS")
 	var res bool
 
 	b.Run("fiber", func(b *testing.B) {

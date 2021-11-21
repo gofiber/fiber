@@ -9,7 +9,7 @@ Encrypt middleware for [Fiber](https://github.com/gofiber/fiber) which encrypts 
 * [Config](encryptcookie.md#config)
 * [Default Config](encryptcookie.md#default-config)
 
-## Signaures
+## Signatures
 
 ```go
 // Intitializes the middleware

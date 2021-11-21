@@ -154,7 +154,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Find match in stack
 	match, err := app.next(c)
 	if err != nil {
-		if catch := c.app.config.ErrorHandler(c, err); catch != nil {
+		if catch := c.app.ErrorHandler(c, err); catch != nil {
 			_ = c.SendStatus(StatusInternalServerError)
 		}
 	}
@@ -236,14 +236,14 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		pathPretty = utils.TrimRight(pathPretty, '/')
 	}
 	// Is layer a middleware?
-	var isUse = method == methodUse
+	isUse := method == methodUse
 	// Is path a direct wildcard?
-	var isStar = pathPretty == "/*"
+	isStar := pathPretty == "/*"
 	// Is path a root slash?
-	var isRoot = pathPretty == "/"
+	isRoot := pathPretty == "/"
 	// Parse path parameters
-	var parsedRaw = parseRoute(pathRaw)
-	var parsedPretty = parseRoute(pathPretty)
+	parsedRaw := parseRoute(pathRaw)
+	parsedPretty := parseRoute(pathPretty)
 
 	// Create route metadata without pointer
 	route := Route{
@@ -302,9 +302,9 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		root = root[:len(root)-1]
 	}
 	// Is prefix a direct wildcard?
-	var isStar = prefix == "/*"
+	isStar := prefix == "/*"
 	// Is prefix a root slash?
-	var isRoot = prefix == "/"
+	isRoot := prefix == "/"
 	// Is prefix a partial wildcard?
 	if strings.Contains(prefix, "*") {
 		// /john* -> /john
@@ -313,6 +313,11 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		// Fix this later
 	}
 	prefixLen := len(prefix)
+	if prefixLen > 1 && prefix[prefixLen-1:] == "/" {
+		// /john/ -> /john
+		prefixLen--
+		prefix = prefix[:prefixLen]
+	}
 	// Fileserver settings
 	fs := &fasthttp.FS{
 		Root:                 root,
@@ -327,8 +332,11 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 			if len(path) >= prefixLen {
 				if isStar && app.getString(path[0:prefixLen]) == prefix {
 					path = append(path[0:0], '/')
-				} else if len(path) > 0 && path[len(path)-1] != '/' {
-					path = append(path[prefixLen:], '/')
+				} else {
+					path = path[prefixLen:]
+					if len(path) == 0 || path[len(path)-1] != '/' {
+						path = append(path, '/')
+					}
 				}
 			}
 			if len(path) > 0 && path[0] != '/' {

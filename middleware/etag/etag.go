@@ -8,15 +8,17 @@ import (
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 )
 
-var normalizedHeaderETag = []byte("Etag")
-var weakPrefix = []byte("W/")
+var (
+	normalizedHeaderETag = []byte("Etag")
+	weakPrefix           = []byte("W/")
+)
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
-	var crc32q = crc32.MakeTable(0xD5828281)
+	crc32q := crc32.MakeTable(0xD5828281)
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
@@ -36,7 +38,7 @@ func New(config ...Config) fiber.Handler {
 		}
 		body := c.Response().Body()
 		// Skips ETag if no response body is present
-		if len(body) <= 0 {
+		if len(body) == 0 {
 			return
 		}
 		// Skip ETag if header is already present
