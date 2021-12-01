@@ -202,7 +202,6 @@ func (s *Session) setSession() {
 		fcookie.SetSecure(s.config.CookieSecure)
 		fcookie.SetHTTPOnly(s.config.CookieHTTPOnly)
 
-		// TODO Default value should be set to `strict` in fiber v3.
 		switch utils.ToLower(s.config.CookieSameSite) {
 		case "strict":
 			fcookie.SetSameSite(fasthttp.CookieSameSiteStrictMode)

@@ -141,7 +141,7 @@ type Config struct {
 	CookieHTTPOnly bool
 
 	// Indicates if CSRF cookie is HTTP only.
-	// Optional. Default value false.
+	// Optional. Default value "Lax".
 	CookieSameSite string
 
 	// KeyGenerator generates the session key.
