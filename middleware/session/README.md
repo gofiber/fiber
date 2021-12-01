@@ -140,7 +140,7 @@ type Config struct {
 	// Optional. Default value false.
 	CookieHTTPOnly bool
 
-	// Indicates if CSRF cookie is HTTP only.
+	// Sets the CSRF cookie SameSite attribute.
 	// Optional. Default value "Lax".
 	CookieSameSite string
 
