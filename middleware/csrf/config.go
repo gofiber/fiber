@@ -50,7 +50,7 @@ type Config struct {
 	CookieHTTPOnly bool
 
 	// Value of SameSite cookie.
-	// Optional. Default value "Strict".
+	// Optional. Default value "Lax".
 	CookieSameSite string
 
 	// Expiration is the duration before csrf token will expire
@@ -96,7 +96,7 @@ type Config struct {
 var ConfigDefault = Config{
 	KeyLookup:      "header:X-Csrf-Token",
 	CookieName:     "csrf_",
-	CookieSameSite: "Strict",
+	CookieSameSite: "Lax",
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
 	ErrorHandler:   defaultErrorHandler,
