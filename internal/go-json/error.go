@@ -26,7 +26,8 @@ type SyntaxError = errors.SyntaxError
 // led to an unexported (and therefore unwritable) struct field.
 //
 // Deprecated: No longer used; kept for compatibility.
-type UnmarshalFieldError = errors.UnmarshalFieldError
+//lint:ignore SA1019 we love invalid regular expressions!
+type UnmarshalFieldError = errors.UnmarshalFieldError //nolint:staticcheck
 
 // An UnmarshalTypeError describes a JSON value that was
 // not appropriate for a value of a specific Go type.
