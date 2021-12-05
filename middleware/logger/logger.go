@@ -118,9 +118,9 @@ func New(config ...Config) fiber.Handler {
 
 	// If colors are enabled, check terminal compatibility
 	if cfg.enableColors {
-		cfg.Output = colorable.NewColorableStderr()
-		if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stderr.Fd()) && !isatty.IsCygwinTerminal(os.Stderr.Fd())) {
-			cfg.Output = colorable.NewNonColorable(os.Stderr)
+		cfg.Output = colorable.NewColorableStdout()
+		if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+			cfg.Output = colorable.NewNonColorable(os.Stdout)
 		}
 	}
 	errPadding := 15
