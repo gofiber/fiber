@@ -61,29 +61,6 @@ func Test_Monitor_JSON(t *testing.T) {
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("os")))
 }
 
-// go test -run Test_Monitor_APIOnly -race
-func Test_Monitor_APIOnly(t *testing.T) {
-	t.Parallel()
-
-	app := fiber.New()
-
-	app.Get("/", New(Config{
-		APIOnly: true,
-	}))
-
-	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
-	req.Header.Set(fiber.HeaderAccept, fiber.MIMEApplicationJSON)
-	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
-	utils.AssertEqual(t, fiber.MIMEApplicationJSON, resp.Header.Get(fiber.HeaderContentType))
-
-	b, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, bytes.Contains(b, []byte("pid")))
-	utils.AssertEqual(t, true, bytes.Contains(b, []byte("os")))
-}
-
 // go test -v -run=^$ -bench=Benchmark_Monitor -benchmem -count=4
 func Benchmark_Monitor(b *testing.B) {
 	app := fiber.New()
@@ -127,4 +104,27 @@ func Test_Monitor_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 404, resp.StatusCode)
+}
+
+// go test -run Test_Monitor_APIOnly -race
+func Test_Monitor_APIOnly(t *testing.T) {
+	//t.Parallel()
+
+	app := fiber.New()
+
+	app.Get("/", New(Config{
+		APIOnly: true,
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set(fiber.HeaderAccept, fiber.MIMEApplicationJSON)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+	utils.AssertEqual(t, fiber.MIMEApplicationJSON, resp.Header.Get(fiber.HeaderContentType))
+
+	b, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, bytes.Contains(b, []byte("pid")))
+	utils.AssertEqual(t, true, bytes.Contains(b, []byte("os")))
 }
