@@ -5,9 +5,6 @@ package encoder
 
 import (
 	"sync"
-	"unsafe"
-
-	"github.com/gofiber/fiber/v2/internal/go-json/runtime"
 )
 
 var setsMu sync.RWMutex
@@ -24,40 +21,9 @@ func CompileToGetCodeSet(typeptr uintptr) (*OpcodeSet, error) {
 	}
 	setsMu.RUnlock()
 
-	// noescape trick for header.typ ( reflect.*rtype )
-	copiedType := *(**runtime.Type)(unsafe.Pointer(&typeptr))
-
-	noescapeKeyCode, err := compileHead(&compileContext{
-		typ:                      copiedType,
-		structTypeToCompiledCode: map[uintptr]*CompiledCode{},
-	})
+	codeSet, err := newCompiler().compile(typeptr)
 	if err != nil {
 		return nil, err
-	}
-	escapeKeyCode, err := compileHead(&compileContext{
-		typ:                      copiedType,
-		structTypeToCompiledCode: map[uintptr]*CompiledCode{},
-		escapeKey:                true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	noescapeKeyCode = copyOpcode(noescapeKeyCode)
-	escapeKeyCode = copyOpcode(escapeKeyCode)
-	setTotalLengthToInterfaceOp(noescapeKeyCode)
-	setTotalLengthToInterfaceOp(escapeKeyCode)
-	interfaceNoescapeKeyCode := copyToInterfaceOpcode(noescapeKeyCode)
-	interfaceEscapeKeyCode := copyToInterfaceOpcode(escapeKeyCode)
-	codeLength := noescapeKeyCode.TotalLength()
-	codeSet := &OpcodeSet{
-		Type:                     copiedType,
-		NoescapeKeyCode:          noescapeKeyCode,
-		EscapeKeyCode:            escapeKeyCode,
-		InterfaceNoescapeKeyCode: interfaceNoescapeKeyCode,
-		InterfaceEscapeKeyCode:   interfaceEscapeKeyCode,
-		CodeLength:               codeLength,
-		EndCode:                  ToEndCode(interfaceNoescapeKeyCode),
 	}
 	setsMu.Lock()
 	cachedOpcodeSets[index] = codeSet

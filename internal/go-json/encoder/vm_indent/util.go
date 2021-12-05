@@ -70,7 +70,19 @@ func loadNPtr(base uintptr, idx uint32, ptrNum uint8) uintptr {
 	return p
 }
 
-func ptrToUint64(p uintptr) uint64              { return **(**uint64)(unsafe.Pointer(&p)) }
+func ptrToUint64(p uintptr, bitSize uint8) uint64 {
+	switch bitSize {
+	case 8:
+		return (uint64)(**(**uint8)(unsafe.Pointer(&p)))
+	case 16:
+		return (uint64)(**(**uint16)(unsafe.Pointer(&p)))
+	case 32:
+		return (uint64)(**(**uint32)(unsafe.Pointer(&p)))
+	case 64:
+		return **(**uint64)(unsafe.Pointer(&p))
+	}
+	return 0
+}
 func ptrToFloat32(p uintptr) float32            { return **(**float32)(unsafe.Pointer(&p)) }
 func ptrToFloat64(p uintptr) float64            { return **(**float64)(unsafe.Pointer(&p)) }
 func ptrToBool(p uintptr) bool                  { return **(**bool)(unsafe.Pointer(&p)) }
@@ -114,6 +126,10 @@ func appendNull(_ *encoder.RuntimeContext, b []byte) []byte {
 
 func appendComma(_ *encoder.RuntimeContext, b []byte) []byte {
 	return append(b, ',', '\n')
+}
+
+func appendNullComma(_ *encoder.RuntimeContext, b []byte) []byte {
+	return append(b, "null,\n"...)
 }
 
 func appendColon(_ *encoder.RuntimeContext, b []byte) []byte {
