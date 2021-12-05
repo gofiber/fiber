@@ -64,11 +64,11 @@ func validCustomFormat(format string) bool {
 		return true
 	}
 	for _, template := range validTemplates {
-		if !strings.Contains(format, template) {
-			return false
+		if strings.Contains(format, template) {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // Helper function to set default values

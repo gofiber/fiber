@@ -174,7 +174,7 @@ func New(config ...Config) fiber.Handler {
 		buf := bytebufferpool.Get()
 
 		// Default output when no custom Format or io.Writer is given
-		if cfg.enableColors {
+		if cfg.enableColors && cfg.Format == ConfigDefault.Format {
 			// Format error if exist
 			formatErr := ""
 			if chainErr != nil {
@@ -238,13 +238,13 @@ func New(config ...Config) fiber.Handler {
 			case TagRoute:
 				return buf.WriteString(c.Route().Path)
 			case TagStatus:
-				return appendInt(buf, c.Response().StatusCode())
+				return buf.WriteString(fmt.Sprintf("%s %3d %s", statusColor(c.Response().StatusCode(), cfg), c.Response().StatusCode(), cReset))
 			case TagResBody:
 				return buf.Write(c.Response().Body())
 			case TagQueryStringParams:
 				return buf.WriteString(c.Request().URI().QueryArgs().String())
 			case TagMethod:
-				return buf.WriteString(c.Method())
+				return buf.WriteString(fmt.Sprintf("%s %-7s %s", methodColor(c.Method(), cfg), c.Method(), cReset))
 			case TagBlack:
 				return buf.WriteString(cBlack)
 			case TagRed:
