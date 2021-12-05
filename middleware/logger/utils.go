@@ -4,43 +4,29 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func methodColor(method string, config ...Config) string {
-	cfg := ConfigDefault
-	if len(config) >= 1 {
-		cfg = config[0]
-	}
-
-	switch {
-	case !cfg.enableColors:
-		return ""
-	case method == fiber.MethodGet:
+func methodColor(method string) string {
+	switch method {
+	case fiber.MethodGet:
 		return cCyan
-	case method == fiber.MethodPost:
+	case fiber.MethodPost:
 		return cGreen
-	case method == fiber.MethodPut:
+	case fiber.MethodPut:
 		return cYellow
-	case method == fiber.MethodDelete:
+	case fiber.MethodDelete:
 		return cRed
-	case method == fiber.MethodPatch:
+	case fiber.MethodPatch:
 		return cWhite
-	case method == fiber.MethodHead:
+	case fiber.MethodHead:
 		return cMagenta
-	case method == fiber.MethodOptions:
+	case fiber.MethodOptions:
 		return cBlue
 	default:
 		return cReset
 	}
 }
 
-func statusColor(code int, config ...Config) string {
-	cfg := ConfigDefault
-	if len(config) >= 1 {
-		cfg = config[0]
-	}
-
+func statusColor(code int) string {
 	switch {
-	case !cfg.enableColors:
-		return ""
 	case code >= fiber.StatusOK && code < fiber.StatusMultipleChoices:
 		return cGreen
 	case code >= fiber.StatusMultipleChoices && code < fiber.StatusBadRequest:

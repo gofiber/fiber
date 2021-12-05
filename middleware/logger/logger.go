@@ -238,13 +238,19 @@ func New(config ...Config) fiber.Handler {
 			case TagRoute:
 				return buf.WriteString(c.Route().Path)
 			case TagStatus:
-				return buf.WriteString(fmt.Sprintf("%s %3d %s", statusColor(c.Response().StatusCode(), cfg), c.Response().StatusCode(), cReset))
+				if cfg.enableColors {
+					return buf.WriteString(fmt.Sprintf("%s %3d %s", statusColor(c.Response().StatusCode()), c.Response().StatusCode(), cReset))
+				}
+				return appendInt(buf, c.Response().StatusCode())
 			case TagResBody:
 				return buf.Write(c.Response().Body())
 			case TagQueryStringParams:
 				return buf.WriteString(c.Request().URI().QueryArgs().String())
 			case TagMethod:
-				return buf.WriteString(fmt.Sprintf("%s %-7s %s", methodColor(c.Method(), cfg), c.Method(), cReset))
+				if cfg.enableColors {
+					return buf.WriteString(fmt.Sprintf("%s %-7s %s", methodColor(c.Method()), c.Method(), cReset))
+				}
+				return buf.WriteString(c.Method())
 			case TagBlack:
 				return buf.WriteString(cBlack)
 			case TagRed:
