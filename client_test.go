@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	stdjson "encoding/json"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -558,6 +559,38 @@ func Test_Client_Agent_Dest(t *testing.T) {
 		utils.AssertEqual(t, "destar", string(dest))
 		utils.AssertEqual(t, 0, len(errs))
 	})
+}
+
+func Test_Client_Stdjson_Gojson(t *testing.T) {
+	type User struct {
+		Account  *string `json:"account"`
+		Password *string `json:"password"`
+		Nickname *string `json:"nickname"`
+		Address  *string `json:"address,omitempty"`
+		Friends  []*User `json:"friends,omitempty"`
+	}
+	user1Account, user1Password, user1Nickname := "abcdef", "123456", "user1"
+	user1 := &User{
+		Account:  &user1Account,
+		Password: &user1Password,
+		Nickname: &user1Nickname,
+		Address:  nil,
+	}
+	user2Account, user2Password, user2Nickname := "ghijkl", "123456", "user2"
+	user2 := &User{
+		Account:  &user2Account,
+		Password: &user2Password,
+		Nickname: &user2Nickname,
+		Address:  nil,
+	}
+	user1.Friends = []*User{user2}
+	expected, err := stdjson.Marshal(user1)
+	utils.AssertEqual(t, nil, err)
+
+	got, err := json.Marshal(user1)
+	utils.AssertEqual(t, nil, err)
+
+	utils.AssertEqual(t, expected, got)
 }
 
 func Test_Client_Agent_Json(t *testing.T) {
