@@ -79,7 +79,7 @@
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b>是一个受到<a href="https://github.com/expressjs/express">Express</a>启发的<b>Web框架</b>，建立在<a href="https://golang.org/doc/">Go</a>语言写的<b>最快的</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>HTTP引擎的基础上。旨在<b>简化</b> <b>零内存分配</b>和<b>提高性能</b>，以便<b>快速</b>开发。
+  <b>Fiber</b>是一个受到<a href="https://github.com/expressjs/express">Express</a>启发的<b>Web框架</b>，基于使用<a href="https://golang.org/doc/">Go</a>语言编写的<b>最快的HTTP引擎</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>构建。旨在通过<b>零内存分配</b>和<b>高性能服务</b>，使<b>快速</b>开发更加简便。
 </p>
 
 ## ⚡️ 快速入门
@@ -100,9 +100,9 @@ func main() {
 }
 ```
 
-## 🤖 性能
+## 🤖 基准测试
 
-这些测试由[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)和[Go Web](https://github.com/smallnest/go-web-framework-benchmark) 执行。如果要查看所有结果，请访问我们的[Wiki](https://docs.gofiber.io/extra/benchmarks) 。
+这些测试由[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)和[Go Web](https://github.com/smallnest/go-web-framework-benchmark) 完成。如果您想查看所有结果，请访问我们的[Wiki](https://docs.gofiber.io/extra/benchmarks) 。
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
@@ -123,20 +123,20 @@ go get -u github.com/gofiber/fiber/v2
 
 -   强大的[路由](https://docs.gofiber.io/routing)
 -   [静态文件](https://docs.gofiber.io/api/app#static)服务
--   极限[表现](https://docs.gofiber.io/extra/benchmarks)
--   [内存占用低](https://docs.gofiber.io/extra/benchmarks)
+-   极限[性能](https://docs.gofiber.io/extra/benchmarks)
+-   [低内存占用](https://docs.gofiber.io/extra/benchmarks)
 -   [API 接口](https://docs.gofiber.io/api/ctx)
 -   [中间件](https://docs.gofiber.io/middleware)和[Next](https://docs.gofiber.io/api/ctx#next)支持
 -   [快速](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)服务器端编程
 -   [模版引擎](https://github.com/gofiber/template)
 -   [WebSocket 支持](https://github.com/gofiber/websocket)
--   [频率限制器](https://docs.gofiber.io/api/middleware/limiter)
+-   [频率限制](https://docs.gofiber.io/api/middleware/limiter)
 -   [15 种语言](https://docs.gofiber.io/)
--   以及更多请[探索文档](https://docs.gofiber.io/)
+-   更多请[探索文档](https://docs.gofiber.io/)
 
 ## 💡 哲学
 
-从[Node.js](https://nodejs.org/en/about/)切换到[Go](https://golang.org/doc/)的新`gopher`在开始构建`Web`应用程序或微服务之前正在应对学习曲线。 `Fiber`作为一个**Web 框架** ，是按照**极简主义**的思想并遵循**UNIX 方式**创建的，因此新的`gopher`可以在热烈和可信赖的欢迎中迅速进入`Go`的世界。
+从[Node.js](https://nodejs.org/en/about/)切换到[Go](https://golang.org/doc/)的新`gopher`在开始构建`Web`应用程序或微服务之前需要经历学习过程。 `Fiber`作为一个**Web 框架** ，是按照**极简主义**的思想并遵循**UNIX 方式**创建的，因此新的`gopher`可以在热烈和可信赖的欢迎中迅速进入`Go`的世界。
 
 `Fiber`受到了互联网上最流行的`Web`框架`Express`的**启发** 。我们结合了`Express`的**易用性**和`Go`的**原始性能** 。如果您曾经在`Node.js`上实现过`Web`应用程序(_使用 Express 或类似工具_)，那么许多方法和原理对您来说应该**非常易懂**。
 
