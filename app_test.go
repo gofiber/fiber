@@ -240,6 +240,30 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	utils.AssertEqual(t, "1: USE error", string(body))
 }
 
+func Test_App_ErrorHandler_GroupMount(t *testing.T) {
+	micro := New(Config{
+		ErrorHandler: func(c *Ctx, err error) error {
+			utils.AssertEqual(t, "0: GET error", err.Error())
+			return c.Status(500).SendString("1: custom error")
+		},
+	})
+	micro.Get("/doe", func(c *Ctx) error {
+		return errors.New("0: GET error")
+	})
+
+	app := New()
+	v1 := app.Group("/v1")
+	v1.Mount("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "1: custom error", string(body))
+}
+
 func Test_App_Nested_Params(t *testing.T) {
 	app := New()
 
