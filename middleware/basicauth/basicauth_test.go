@@ -30,7 +30,7 @@ func Test_BasicAuth_Next(t *testing.T) {
 }
 
 func Test_Middleware_BasicAuth(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
