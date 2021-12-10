@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -517,6 +518,34 @@ func Test_App_Methods(t *testing.T) {
 
 	app.Use("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodGet)
+}
+
+func Test_App_Route_Naming(t *testing.T) {
+	app := New()
+	handler := func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	}
+	app.Get("/john", handler).RouteName("john")
+	app.Delete("/doe", handler)
+	app.RouteName("doe")
+
+	jane := app.Group("/jane").RouteName("jane.")
+	jane.Get("/test", handler).RouteName("test")
+	jane.Trace("/trace", handler).RouteName("trace")
+
+	group := app.Group("/group")
+	group.Get("/test", handler).RouteName("test")
+
+	app.Post("/post", handler).RouteName("post")
+
+	data, _ := json.MarshalIndent(app.Stack(), "", "  ")
+	fmt.Print(string(data))
+
+	utils.AssertEqual(t, "post", app.GetRoute("post").Name)
+	utils.AssertEqual(t, "john", app.GetRoute("john").Name)
+	utils.AssertEqual(t, "jane.test", app.GetRoute("jane.test").Name)
+	utils.AssertEqual(t, "jane.trace", app.GetRoute("jane.trace").Name)
+	utils.AssertEqual(t, "test", app.GetRoute("test").Name)
 }
 
 func Test_App_New(t *testing.T) {
