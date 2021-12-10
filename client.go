@@ -656,7 +656,7 @@ func (a *Agent) Reuse() *Agent {
 func (a *Agent) InsecureSkipVerify() *Agent {
 	if a.HostClient.TLSConfig == nil {
 		/* #nosec G402 */
-		a.HostClient.TLSConfig = &tls.Config{InsecureSkipVerify: true}
+		a.HostClient.TLSConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402
 	} else {
 		/* #nosec G402 */
 		a.HostClient.TLSConfig.InsecureSkipVerify = true

@@ -7,7 +7,6 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -537,9 +536,6 @@ func Test_App_Route_Naming(t *testing.T) {
 	group.Get("/test", handler).RouteName("test")
 
 	app.Post("/post", handler).RouteName("post")
-
-	data, _ := json.MarshalIndent(app.Stack(), "", "  ")
-	fmt.Print(string(data))
 
 	utils.AssertEqual(t, "post", app.GetRoute("post").Name)
 	utils.AssertEqual(t, "john", app.GetRoute("john").Name)
