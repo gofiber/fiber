@@ -399,7 +399,11 @@ const (
 )
 
 // Variables for Name & GetRoute
-var latestRoute *Route
+var latestRoute struct {
+	route *Route
+	mu    sync.Mutex
+}
+
 var latestGroup Group
 
 // DefaultErrorHandler that process return errors from handlers
@@ -543,10 +547,10 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 
 // Assign name to specific route.
 func (app *App) Name(name string) Router {
-	if strings.HasPrefix(latestRoute.path, latestGroup.prefix) {
-		latestRoute.Name = latestGroup.name + name
+	if strings.HasPrefix(latestRoute.route.path, latestGroup.prefix) {
+		latestRoute.route.Name = latestGroup.name + name
 	} else {
-		latestRoute.Name = name
+		latestRoute.route.Name = name
 	}
 
 	return app
