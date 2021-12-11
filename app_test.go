@@ -524,18 +524,18 @@ func Test_App_Route_Naming(t *testing.T) {
 	handler := func(c *Ctx) error {
 		return c.SendStatus(StatusOK)
 	}
-	app.Get("/john", handler).RouteName("john")
+	app.Get("/john", handler).Name("john")
 	app.Delete("/doe", handler)
-	app.RouteName("doe")
+	app.Name("doe")
 
-	jane := app.Group("/jane").RouteName("jane.")
-	jane.Get("/test", handler).RouteName("test")
-	jane.Trace("/trace", handler).RouteName("trace")
+	jane := app.Group("/jane").Name("jane.")
+	jane.Get("/test", handler).Name("test")
+	jane.Trace("/trace", handler).Name("trace")
 
 	group := app.Group("/group")
-	group.Get("/test", handler).RouteName("test")
+	group.Get("/test", handler).Name("test")
 
-	app.Post("/post", handler).RouteName("post")
+	app.Post("/post", handler).Name("post")
 
 	utils.AssertEqual(t, "post", app.GetRoute("post").Name)
 	utils.AssertEqual(t, "john", app.GetRoute("john").Name)

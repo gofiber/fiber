@@ -38,7 +38,7 @@ type Router interface {
 
 	Mount(prefix string, fiber *App) Router
 
-	RouteName(name string) Router
+	Name(name string) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler

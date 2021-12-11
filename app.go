@@ -398,7 +398,7 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-// Variables for RouteName & GetRoute
+// Variables for Name & GetRoute
 var latestRoute *Route
 var latestGroup Group
 
@@ -542,7 +542,7 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 }
 
 // Assign name to specific route.
-func (app *App) RouteName(name string) Router {
+func (app *App) Name(name string) Router {
 	if strings.HasPrefix(latestRoute.path, latestGroup.prefix) {
 		latestRoute.Name = latestGroup.name + name
 	} else {

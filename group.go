@@ -35,7 +35,7 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 }
 
 // Assign name to specific route.
-func (grp *Group) RouteName(name string) Router {
+func (grp *Group) Name(name string) Router {
 	grp.name = name
 	latestGroup = *grp
 
