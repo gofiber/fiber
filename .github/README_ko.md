@@ -111,7 +111,7 @@ func main() {
 
 ## ⚙️ 설치
 
-Make sure you have Go installed ([download](https://golang.org/dl/)). Version `1.14` or higher is required.
+Go가 설치되어 있는 것을 확인해 주세요 ([download](https://golang.org/dl/)). 버전 1.14 또는 그 이상이어야 합니다.
 
 Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 
@@ -143,8 +143,8 @@ Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에�
 우리는 **어떤한** 작업, **마감일정**, 개발자의 **기술**이던간에 **빠르고**, **유연하고**, **익숙한** Go 웹 프레임워크를 만들기 위해 사용자들의 [이슈들](https://github.com/gofiber/fiber/issues)을(그리고 모든 인터넷을 통해) **듣고 있습니다**! Express가 자바스크립트 세계에서 하는 것 처럼요.
 
 ## Limitations
-* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.18.0 has been tested with Go versions 1.14 to 1.17.
-* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+* Fiber는 unsafe 패키지를 사용하기 때문에 최신 Go버전과 호환되지 않을 수 있습니다.Fiber 2.18.0은 Go 버전 1.14에서 1.17로 테스트되고 있습니다.
+* Fiber는 net/http 인터페이스와 호환되지 않습니다.즉, gqlgen이나 go-swagger 등 net/http 생태계의 일부인 프로젝트를 사용할 수 없습니다.
 
 ## 👀 예제
 
@@ -495,7 +495,7 @@ func main() {
 
 ## 🧬 Internal Middleware
 
-Here is a list of middleware that are included within the Fiber framework.
+Fiber 프레임워크에 포함되는 미들웨어 목록입니다.
 
 | Middleware                                                                       | Description                                                                                                                                                                  |
 | :------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -516,7 +516,7 @@ Here is a list of middleware that are included within the Fiber framework.
 
 ## 🧬 External Middleware
 
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+[Fiber team](https://github.com/orgs/gofiber/people)에 의해 관리 및 운용되고 있는 미들웨어 목록입니다.
 
 | Middleware                                        | Description                                                                                                                                                         |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -531,7 +531,7 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 
 ## 🌱 Third Party Middlewares
 
-This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
+모두 Fiber 커뮤니티에 의해 작성된 미들웨어 목록입니다.만약 당신의 미들웨어를 올리고 싶다면 PR을 작성해주세요!
 
 -   [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
 -   [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
