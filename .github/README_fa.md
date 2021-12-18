@@ -240,6 +240,41 @@ func main() {
 
 </div>
 
+<div dir="ltr" >
+
+#### 📖 [**Route Naming**](https://docs.gofiber.io/api/app#name)
+
+```go
+func main() {
+    app := fiber.New()
+
+    // GET /api/register
+    app.Get("/api/*", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("✋ %s", c.Params("*"))
+        return c.SendString(msg) // => ✋ register
+    }).Name("api")
+
+    data, _ := json.MarshalIndent(app.GetRoute("api"), "", "  ")
+	fmt.Print(string(data))
+    // Prints:
+    // {
+    //    "method": "GET",
+    //    "name": "api",
+    //    "path": "/api/*",
+    //    "params": [
+    //      "*1"
+    //    ]
+    // }
+
+
+    log.Fatal(app.Listen(":3000"))
+}
+
+```
+
+</div>
+
+
 #### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 <div dir="ltr">

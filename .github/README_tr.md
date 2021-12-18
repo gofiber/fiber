@@ -190,6 +190,36 @@ func main() {
 
 ```
 
+#### 📖 [**Route İsimlendirmesi**](https://docs.gofiber.io/api/app#name)
+
+```go
+func main() {
+    app := fiber.New()
+
+    // GET /api/register
+    app.Get("/api/*", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("✋ %s", c.Params("*"))
+        return c.SendString(msg) // => ✋ kayit
+    }).Name("api")
+
+    data, _ := json.MarshalIndent(app.GetRoute("api"), "", "  ")
+	fmt.Print(string(data))
+    // Cikti:
+    // {
+    //    "method": "GET",
+    //    "name": "api",
+    //    "path": "/api/*",
+    //    "params": [
+    //      "*1"
+    //    ]
+    // }
+
+
+    log.Fatal(app.Listen(":3000"))
+}
+
+```
+
 #### 📖 [**Statik Dosya Sunumu**](https://docs.gofiber.io/api/app#static)
 
 ```go
