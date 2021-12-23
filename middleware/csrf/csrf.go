@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -51,6 +52,7 @@ func New(config ...Config) fiber.Handler {
 					HTTPOnly: cfg.CookieHTTPOnly,
 					SameSite: cfg.CookieSameSite,
 				})
+				err = errors.New("csrf token not found")
 				return cfg.ErrorHandler(c, err)
 			}
 		}
