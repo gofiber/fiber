@@ -7,6 +7,7 @@ package fiber
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"sync/atomic"
 )
 
@@ -22,11 +23,22 @@ type Group struct {
 // compose them as a single service using Mount.
 func (grp *Group) Mount(prefix string, fiber *App) Router {
 	stack := fiber.Stack()
+	groupPath := getGroupPath(grp.prefix, prefix)
+
 	for m := range stack {
 		for r := range stack[m] {
 			route := grp.app.copyRoute(stack[m][r])
-			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(getGroupPath(grp.prefix, prefix), route))
+			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(groupPath, route))
 		}
+	}
+
+	// Save the fiber's error handler and its sub apps
+	groupPath = strings.TrimRight(groupPath, "/")
+	if fiber.config.ErrorHandler != nil {
+		grp.app.errorHandlers[groupPath] = fiber.config.ErrorHandler
+	}
+	for mountedPrefixes, errHandler := range fiber.errorHandlers {
+		grp.app.errorHandlers[groupPath+mountedPrefixes] = errHandler
 	}
 
 	atomic.AddUint32(&grp.app.handlerCount, fiber.handlerCount)
