@@ -13,7 +13,7 @@ import (
 func Test_CSRF(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New(Config{}))
+	app.Use(New())
 
 	app.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
