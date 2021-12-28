@@ -37,6 +37,8 @@ type Router interface {
 	Group(prefix string, handlers ...Handler) Router
 
 	Mount(prefix string, fiber *App) Router
+
+	Name(name string) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler
@@ -51,6 +53,7 @@ type Route struct {
 
 	// Public fields
 	Method   string    `json:"method"` // HTTP method
+	Name     string    `json:"name"`   // Route's name
 	Path     string    `json:"path"`   // Original registered route path
 	Params   []string  `json:"params"` // Case sensitive param keys
 	Handlers []Handler `json:"-"`      // Ctx handlers
@@ -425,6 +428,10 @@ func (app *App) addRoute(method string, route *Route) {
 		app.stack[m] = append(app.stack[m], route)
 		app.routesRefreshed = true
 	}
+
+	latestRoute.mu.Lock()
+	latestRoute.route = route
+	latestRoute.mu.Unlock()
 }
 
 // buildTree build the prefix tree from the previously registered routes

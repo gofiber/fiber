@@ -14,6 +14,7 @@ import (
 type Group struct {
 	app    *App
 	prefix string
+	name   string
 }
 
 // Mount attaches another app instance as a sub-router along a routing path.
@@ -29,6 +30,14 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 	}
 
 	atomic.AddUint32(&grp.app.handlerCount, fiber.handlerCount)
+
+	return grp
+}
+
+// Assign name to specific route.
+func (grp *Group) Name(name string) Router {
+	grp.name = name
+	latestGroup = *grp
 
 	return grp
 }

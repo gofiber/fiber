@@ -519,6 +519,31 @@ func Test_App_Methods(t *testing.T) {
 	testStatus200(t, app, "/john/doe", MethodGet)
 }
 
+func Test_App_Route_Naming(t *testing.T) {
+	app := New()
+	handler := func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	}
+	app.Get("/john", handler).Name("john")
+	app.Delete("/doe", handler)
+	app.Name("doe")
+
+	jane := app.Group("/jane").Name("jane.")
+	jane.Get("/test", handler).Name("test")
+	jane.Trace("/trace", handler).Name("trace")
+
+	group := app.Group("/group")
+	group.Get("/test", handler).Name("test")
+
+	app.Post("/post", handler).Name("post")
+
+	utils.AssertEqual(t, "post", app.GetRoute("post").Name)
+	utils.AssertEqual(t, "john", app.GetRoute("john").Name)
+	utils.AssertEqual(t, "jane.test", app.GetRoute("jane.test").Name)
+	utils.AssertEqual(t, "jane.trace", app.GetRoute("jane.trace").Name)
+	utils.AssertEqual(t, "test", app.GetRoute("test").Name)
+}
+
 func Test_App_New(t *testing.T) {
 	app := New()
 	app.Get("/", testEmptyHandler)

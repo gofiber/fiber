@@ -398,6 +398,14 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
+// Variables for Name & GetRoute
+var latestRoute struct {
+	route *Route
+	mu    sync.Mutex
+}
+
+var latestGroup Group
+
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
@@ -535,6 +543,30 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 	atomic.AddUint32(&app.handlerCount, fiber.handlerCount)
 
 	return app
+}
+
+// Assign name to specific route.
+func (app *App) Name(name string) Router {
+	if strings.HasPrefix(latestRoute.route.path, latestGroup.prefix) {
+		latestRoute.route.Name = latestGroup.name + name
+	} else {
+		latestRoute.route.Name = name
+	}
+
+	return app
+}
+
+// Get route by name
+func (app *App) GetRoute(name string) Route {
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route.Name == name {
+				return *route
+			}
+		}
+	}
+
+	return Route{}
 }
 
 // Use registers a middleware route that will match requests

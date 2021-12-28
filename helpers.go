@@ -68,7 +68,8 @@ func getTlsConfig(ln net.Listener) *tls.Config {
 			// Get private field from value
 			if field := val.FieldByName("config"); field.Type() != nil {
 				// Copy value from pointer field (unsafe)
-				if newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())); newval.Type() != nil {
+				newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) // #nosec G103
+				if newval.Type() != nil {
 					// Get element from pointer
 					if elem := newval.Elem(); elem.Type() != nil {
 						// Cast value to *tls.Config
