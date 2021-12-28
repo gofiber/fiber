@@ -10,10 +10,31 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// ErrorHandler that passes ErrInternalServerError
+// if erris nil or not a valid csrf err message.
+func errorHandler(c *fiber.Ctx, err error) error {
+	if err == nil {
+		// called with err = nil
+		return fiber.ErrInternalServerError
+	}
+	switch err.Error() {
+	case "missing csrf token in header",
+		"missing csrf token in query",
+		"missing csrf token in param",
+		"missing csrf token in form",
+		"missing csrf token in cookie",
+		"csrf token not found":
+		return fiber.ErrForbidden
+	default:
+		// not a valid err
+		return fiber.ErrInternalServerError
+	}
+}
+
 func Test_CSRF(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New())
+	app.Use(New(Config{ErrorHandler: errorHandler}))
 
 	app.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -65,6 +86,7 @@ func Test_CSRF(t *testing.T) {
 func Test_CSRF_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
+		ErrorHandler: errorHandler,
 		Next: func(_ *fiber.Ctx) bool {
 			return true
 		},
@@ -81,7 +103,7 @@ func Test_CSRF_Invalid_KeyLookup(t *testing.T) {
 	}()
 	app := fiber.New()
 
-	app.Use(New(Config{KeyLookup: "I:am:invalid"}))
+	app.Use(New(Config{ErrorHandler: errorHandler, KeyLookup: "I:am:invalid"}))
 
 	app.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -96,7 +118,7 @@ func Test_CSRF_Invalid_KeyLookup(t *testing.T) {
 func Test_CSRF_From_Form(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New(Config{KeyLookup: "form:_csrf"}))
+	app.Use(New(Config{ErrorHandler: errorHandler, KeyLookup: "form:_csrf"}))
 
 	app.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -129,7 +151,7 @@ func Test_CSRF_From_Form(t *testing.T) {
 func Test_CSRF_From_Query(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(New(Config{KeyLookup: "query:_csrf"}))
+	app.Use(New(Config{ErrorHandler: errorHandler, KeyLookup: "query:_csrf"}))
 
 	app.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -165,7 +187,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 func Test_CSRF_From_Param(t *testing.T) {
 	app := fiber.New()
 
-	csrfGroup := app.Group("/:csrf", New(Config{KeyLookup: "param:csrf"}))
+	csrfGroup := app.Group("/:csrf", New(Config{ErrorHandler: errorHandler, KeyLookup: "param:csrf"}))
 
 	csrfGroup.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -201,7 +223,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 func Test_CSRF_From_Cookie(t *testing.T) {
 	app := fiber.New()
 
-	csrfGroup := app.Group("/", New(Config{KeyLookup: "cookie:csrf"}))
+	csrfGroup := app.Group("/", New(Config{ErrorHandler: errorHandler, KeyLookup: "cookie:csrf"}))
 
 	csrfGroup.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
