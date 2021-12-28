@@ -403,48 +403,41 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				break
 			}
 			b = appendStructHead(ctx, b)
-			iter := mapiterinit(code.Type, uptr)
-			ctx.KeepRefs = append(ctx.KeepRefs, iter)
-			store(ctxptr, code.ElemIdx, 0)
-			store(ctxptr, code.Length, uintptr(mlen))
-			store(ctxptr, code.MapIter, uintptr(iter))
+			mapCtx := encoder.NewMapContext(mlen)
+			mapiterinit(code.Type, uptr, &mapCtx.Iter)
+			store(ctxptr, code.Idx, uintptr(unsafe.Pointer(mapCtx)))
+			ctx.KeepRefs = append(ctx.KeepRefs, unsafe.Pointer(mapCtx))
 			if (ctx.Option.Flag & encoder.UnorderedMapOption) != 0 {
 				b = appendMapKeyIndent(ctx, code.Next, b)
 			} else {
-				mapCtx := encoder.NewMapContext(mlen)
-				mapCtx.Pos = append(mapCtx.Pos, len(b))
-				ctx.KeepRefs = append(ctx.KeepRefs, unsafe.Pointer(mapCtx))
-				store(ctxptr, code.End.MapPos, uintptr(unsafe.Pointer(mapCtx)))
+				mapCtx.Start = len(b)
+				mapCtx.First = len(b)
 			}
-			key := mapiterkey(iter)
+			key := mapiterkey(&mapCtx.Iter)
 			store(ctxptr, code.Next.Idx, uintptr(key))
 			code = code.Next
 		case encoder.OpMapKey:
-			idx := load(ctxptr, code.ElemIdx)
-			length := load(ctxptr, code.Length)
+			mapCtx := (*encoder.MapContext)(ptrToUnsafePtr(load(ctxptr, code.Idx)))
+			idx := mapCtx.Idx
 			idx++
 			if (ctx.Option.Flag & encoder.UnorderedMapOption) != 0 {
-				if idx < length {
+				if idx < mapCtx.Len {
 					b = appendMapKeyIndent(ctx, code, b)
-					store(ctxptr, code.ElemIdx, idx)
-					ptr := load(ctxptr, code.MapIter)
-					iter := ptrToUnsafePtr(ptr)
-					key := mapiterkey(iter)
+					mapCtx.Idx = int(idx)
+					key := mapiterkey(&mapCtx.Iter)
 					store(ctxptr, code.Next.Idx, uintptr(key))
 					code = code.Next
 				} else {
 					b = appendObjectEnd(ctx, code, b)
+					encoder.ReleaseMapContext(mapCtx)
 					code = code.End.Next
 				}
 			} else {
-				ptr := load(ctxptr, code.End.MapPos)
-				mapCtx := (*encoder.MapContext)(ptrToUnsafePtr(ptr))
-				mapCtx.Pos = append(mapCtx.Pos, len(b))
-				if idx < length {
-					ptr := load(ctxptr, code.MapIter)
-					iter := ptrToUnsafePtr(ptr)
-					store(ctxptr, code.ElemIdx, idx)
-					key := mapiterkey(iter)
+				mapCtx.Slice.Items[mapCtx.Idx].Value = b[mapCtx.Start:len(b)]
+				if idx < mapCtx.Len {
+					mapCtx.Idx = int(idx)
+					mapCtx.Start = len(b)
+					key := mapiterkey(&mapCtx.Iter)
 					store(ctxptr, code.Next.Idx, uintptr(key))
 					code = code.Next
 				} else {
@@ -452,46 +445,27 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				}
 			}
 		case encoder.OpMapValue:
+			mapCtx := (*encoder.MapContext)(ptrToUnsafePtr(load(ctxptr, code.Idx)))
 			if (ctx.Option.Flag & encoder.UnorderedMapOption) != 0 {
 				b = appendColon(ctx, b)
 			} else {
-				ptr := load(ctxptr, code.End.MapPos)
-				mapCtx := (*encoder.MapContext)(ptrToUnsafePtr(ptr))
-				mapCtx.Pos = append(mapCtx.Pos, len(b))
+				mapCtx.Slice.Items[mapCtx.Idx].Key = b[mapCtx.Start:len(b)]
+				mapCtx.Start = len(b)
 			}
-			ptr := load(ctxptr, code.MapIter)
-			iter := ptrToUnsafePtr(ptr)
-			value := mapitervalue(iter)
+			value := mapitervalue(&mapCtx.Iter)
 			store(ctxptr, code.Next.Idx, uintptr(value))
-			mapiternext(iter)
+			mapiternext(&mapCtx.Iter)
 			code = code.Next
 		case encoder.OpMapEnd:
 			// this operation only used by sorted map.
-			length := int(load(ctxptr, code.Length))
-			ptr := load(ctxptr, code.MapPos)
-			mapCtx := (*encoder.MapContext)(ptrToUnsafePtr(ptr))
-			pos := mapCtx.Pos
-			for i := 0; i < length; i++ {
-				startKey := pos[i*2]
-				startValue := pos[i*2+1]
-				var endValue int
-				if i+1 < length {
-					endValue = pos[i*2+2]
-				} else {
-					endValue = len(b)
-				}
-				mapCtx.Slice.Items = append(mapCtx.Slice.Items, encoder.MapItem{
-					Key:   b[startKey:startValue],
-					Value: b[startValue:endValue],
-				})
-			}
+			mapCtx := (*encoder.MapContext)(ptrToUnsafePtr(load(ctxptr, code.Idx)))
 			sort.Sort(mapCtx.Slice)
 			buf := mapCtx.Buf
 			for _, item := range mapCtx.Slice.Items {
 				buf = appendMapKeyValue(ctx, code, buf, item.Key, item.Value)
 			}
 			buf = appendMapEnd(ctx, code, buf)
-			b = b[:pos[0]]
+			b = b[:mapCtx.First]
 			b = append(b, buf...)
 			mapCtx.Buf = buf
 			encoder.ReleaseMapContext(mapCtx)

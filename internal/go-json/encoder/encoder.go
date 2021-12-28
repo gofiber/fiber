@@ -222,33 +222,54 @@ func (m *Mapslice) Swap(i, j int) {
 	m.Items[i], m.Items[j] = m.Items[j], m.Items[i]
 }
 
+//nolint:structcheck,unused
+type mapIter struct {
+	key         unsafe.Pointer
+	elem        unsafe.Pointer
+	t           unsafe.Pointer
+	h           unsafe.Pointer
+	buckets     unsafe.Pointer
+	bptr        unsafe.Pointer
+	overflow    unsafe.Pointer
+	oldoverflow unsafe.Pointer
+	startBucket uintptr
+	offset      uint8
+	wrapped     bool
+	B           uint8
+	i           uint8
+	bucket      uintptr
+	checkBucket uintptr
+}
+
 type MapContext struct {
-	Pos   []int
+	Start int
+	First int
+	Idx   int
 	Slice *Mapslice
 	Buf   []byte
+	Len   int
+	Iter  mapIter
 }
 
 var mapContextPool = sync.Pool{
 	New: func() interface{} {
-		return &MapContext{}
+		return &MapContext{
+			Slice: &Mapslice{},
+		}
 	},
 }
 
 func NewMapContext(mapLen int) *MapContext {
 	ctx := mapContextPool.Get().(*MapContext)
-	if ctx.Slice == nil {
-		ctx.Slice = &Mapslice{
-			Items: make([]MapItem, 0, mapLen),
-		}
-	}
-	if cap(ctx.Pos) < (mapLen*2 + 1) {
-		ctx.Pos = make([]int, 0, mapLen*2+1)
-		ctx.Slice.Items = make([]MapItem, 0, mapLen)
+	if len(ctx.Slice.Items) < mapLen {
+		ctx.Slice.Items = make([]MapItem, mapLen)
 	} else {
-		ctx.Pos = ctx.Pos[:0]
-		ctx.Slice.Items = ctx.Slice.Items[:0]
+		ctx.Slice.Items = ctx.Slice.Items[:mapLen]
 	}
 	ctx.Buf = ctx.Buf[:0]
+	ctx.Iter = mapIter{}
+	ctx.Idx = 0
+	ctx.Len = mapLen
 	return ctx
 }
 
@@ -256,17 +277,17 @@ func ReleaseMapContext(c *MapContext) {
 	mapContextPool.Put(c)
 }
 
-//go:linkname MapIterInit reflect.mapiterinit
+//go:linkname MapIterInit runtime.mapiterinit
 //go:noescape
-func MapIterInit(mapType *runtime.Type, m unsafe.Pointer) unsafe.Pointer
+func MapIterInit(mapType *runtime.Type, m unsafe.Pointer, it *mapIter)
 
 //go:linkname MapIterKey reflect.mapiterkey
 //go:noescape
-func MapIterKey(it unsafe.Pointer) unsafe.Pointer
+func MapIterKey(it *mapIter) unsafe.Pointer
 
 //go:linkname MapIterNext reflect.mapiternext
 //go:noescape
-func MapIterNext(it unsafe.Pointer)
+func MapIterNext(it *mapIter)
 
 //go:linkname MapLen reflect.maplen
 //go:noescape
