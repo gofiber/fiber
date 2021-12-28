@@ -2751,3 +2751,58 @@ func Test_Ctx_GetRespHeader(t *testing.T) {
 	utils.AssertEqual(t, c.GetRespHeader("test"), "Hello, World 👋!")
 	utils.AssertEqual(t, c.GetRespHeader(HeaderContentType), "application/json")
 }
+
+// go test -run Test_Ctx_IsFromLocal
+func Test_Ctx_IsFromLocal(t *testing.T) {
+	t.Parallel()
+	// Test "0.0.0.0", "127.0.0.1" and "::1".
+	{
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, true, c.IsFromLocal())
+	}
+	// This is a test for "0.0.0.0"
+	{
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.0")
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, true, c.IsFromLocal())
+	}
+
+	// This is a test for "127.0.0.1"
+	{
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, true, c.IsFromLocal())
+	}
+
+	// This is a test for "localhost"
+	{
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, true, c.IsFromLocal())
+	}
+
+	// This is testing "::1", it is the compressed format IPV6 loopback address 0:0:0:0:0:0:0:1.
+	// It is the equivalent of the IPV4 address 127.0.0.1.
+	{
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderXForwardedFor, "::1")
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, true, c.IsFromLocal())
+	}
+
+	{
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderXForwardedFor, "93.46.8.90")
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, false, c.IsFromLocal())
+	}
+}
