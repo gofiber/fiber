@@ -2797,4 +2797,12 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		defer app.ReleaseCtx(c)
 		utils.AssertEqual(t, true, c.IsFromLocal())
 	}
+
+	{
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().Header.Set(HeaderXForwardedFor, "93.46.8.90")
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, false, c.IsFromLocal())
+	}
 }
