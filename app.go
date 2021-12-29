@@ -798,6 +798,11 @@ func (app *App) Stack() [][]*Route {
 	return app.stack
 }
 
+// HandlersCount returns the amount of registered handlers.
+func (app *App) HandlersCount() uint32 {
+	return app.handlerCount
+}
+
 // Shutdown gracefully shuts down the server without interrupting any active connections.
 // Shutdown works by first closing all open listeners and then waiting indefinitely for all connections to return to idle and then shut down.
 //

@@ -1250,6 +1250,18 @@ func Test_App_Stack(t *testing.T) {
 	utils.AssertEqual(t, 1, len(stack[methodInt(MethodTrace)]))
 }
 
+// go test -run Test_App_HandlersCount
+func Test_App_HandlersCount(t *testing.T) {
+	app := New()
+
+	app.Use("/path0", testEmptyHandler)
+	app.Get("/path2", testEmptyHandler)
+	app.Post("/path3", testEmptyHandler)
+
+	count := app.HandlersCount()
+	utils.AssertEqual(t, uint32(4), count)
+}
+
 // go test -run Test_App_ReadTimeout
 func Test_App_ReadTimeout(t *testing.T) {
 	app := New(Config{
