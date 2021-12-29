@@ -240,6 +240,7 @@ func Test_CSRF_ErrorHandler_InvalidToken(t *testing.T) {
 	app := fiber.New()
 
 	errHandler := func(ctx *fiber.Ctx, err error) error {
+		utils.AssertEqual(t, errTokenNotFound, err)
 		return ctx.Status(419).Send([]byte("invalid CSRF token"))
 	}
 
@@ -270,6 +271,7 @@ func Test_CSRF_ErrorHandler_EmptyToken(t *testing.T) {
 	app := fiber.New()
 
 	errHandler := func(ctx *fiber.Ctx, err error) error {
+		utils.AssertEqual(t, errMissingHeader, err)
 		return ctx.Status(419).Send([]byte("empty CSRF token"))
 	}
 
