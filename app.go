@@ -98,7 +98,7 @@ type App struct {
 	// Amount of registered routes
 	routesCount uint32
 	// Amount of registered handlers
-	handlerCount uint32
+	handlersCount uint32
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -540,7 +540,7 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 		app.errorHandlers[prefix+mountedPrefixes] = errHandler
 	}
 
-	atomic.AddUint32(&app.handlerCount, fiber.handlerCount)
+	atomic.AddUint32(&app.handlersCount, fiber.handlersCount)
 
 	return app
 }
@@ -800,7 +800,7 @@ func (app *App) Stack() [][]*Route {
 
 // HandlersCount returns the amount of registered handlers.
 func (app *App) HandlersCount() uint32 {
-	return app.handlerCount
+	return app.handlersCount
 }
 
 // Shutdown gracefully shuts down the server without interrupting any active connections.
@@ -1104,7 +1104,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			" │ Prefork .%s  PID ....%s │\n"+
 			" └───────────────────────────────────────────────────┘"+
 			cReset,
-		value(strconv.Itoa(int(app.handlerCount)), 14), value(procs, 12),
+		value(strconv.Itoa(int(app.handlersCount)), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 	)
 

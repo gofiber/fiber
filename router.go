@@ -266,7 +266,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		Handlers: handlers,
 	}
 	// Increment global handler count
-	atomic.AddUint32(&app.handlerCount, uint32(len(handlers)))
+	atomic.AddUint32(&app.handlersCount, uint32(len(handlers)))
 
 	// Middleware route matches all HTTP methods
 	if isUse {
@@ -403,7 +403,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		Handlers: []Handler{handler},
 	}
 	// Increment global handler count
-	atomic.AddUint32(&app.handlerCount, 1)
+	atomic.AddUint32(&app.handlersCount, 1)
 	// Add route to stack
 	app.addRoute(MethodGet, &route)
 	// Add HEAD route
