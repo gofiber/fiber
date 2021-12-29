@@ -3,7 +3,6 @@ package encoder
 import (
 	"math/bits"
 	"reflect"
-	"unicode/utf8"
 	"unsafe"
 )
 
@@ -349,53 +348,6 @@ var needEscape = [256]bool{
 
 var hex = "0123456789abcdef"
 
-// escapeIndex finds the index of the first char in `s` that requires escaping.
-// A char requires escaping if it's outside of the range of [0x20, 0x7F] or if
-// it includes a double quote or backslash.
-// If no chars in `s` require escaping, the return value is -1.
-func escapeIndex(s string) int {
-	chunks := stringToUint64Slice(s)
-	for _, n := range chunks {
-		// combine masks before checking for the MSB of each byte. We include
-		// `n` in the mask to check whether any of the *input* byte MSBs were
-		// set (i.e. the byte was outside the ASCII range).
-		mask := n | below(n, 0x20) | contains(n, '"') | contains(n, '\\')
-		if (mask & msb) != 0 {
-			return bits.TrailingZeros64(mask&msb) / 8
-		}
-	}
-
-	valLen := len(s)
-	for i := len(chunks) * 8; i < valLen; i++ {
-		if needEscape[s[i]] {
-			return i
-		}
-	}
-
-	return -1
-}
-
-// below return a mask that can be used to determine if any of the bytes
-// in `n` are below `b`. If a byte's MSB is set in the mask then that byte was
-// below `b`. The result is only valid if `b`, and each byte in `n`, is below
-// 0x80.
-func below(n uint64, b byte) uint64 {
-	return n - expand(b)
-}
-
-// contains returns a mask that can be used to determine if any of the
-// bytes in `n` are equal to `b`. If a byte's MSB is set in the mask then
-// that byte is equal to `b`. The result is only valid if `b`, and each
-// byte in `n`, is below 0x80.
-func contains(n uint64, b byte) uint64 {
-	return (n ^ expand(b)) - lsb
-}
-
-// expand puts the specified byte into each of the 8 bytes of a uint64.
-func expand(b byte) uint64 {
-	return lsb * uint64(b)
-}
-
 //nolint:govet
 func stringToUint64Slice(s string) []uint64 {
 	return *(*[]uint64)(unsafe.Pointer(&reflect.SliceHeader{
@@ -489,10 +441,9 @@ ESCAPE_END:
 			i = j + 1
 			j = j + 1
 			continue
-		}
 
-		// This encodes bytes < 0x20 except for \t, \n and \r.
-		if c < 0x20 {
+		case 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x0B, 0x0C, 0x0E, 0x0F, // 0x00-0x0F
+			0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F: // 0x10-0x1F
 			buf = append(buf, s[i:j]...)
 			buf = append(buf, `\u00`...)
 			buf = append(buf, hex[c>>4], hex[c&0xF])
@@ -501,18 +452,14 @@ ESCAPE_END:
 			continue
 		}
 
-		r, size := utf8.DecodeRuneInString(s[j:])
-
-		if r == utf8.RuneError && size == 1 {
+		state, size := decodeRuneInString(s[j:])
+		switch state {
+		case runeErrorState:
 			buf = append(buf, s[i:j]...)
 			buf = append(buf, `\ufffd`...)
-			i = j + size
-			j = j + size
+			i = j + 1
+			j = j + 1
 			continue
-		}
-
-		switch r {
-		case '\u2028', '\u2029':
 			// U+2028 is LINE SEPARATOR.
 			// U+2029 is PARAGRAPH SEPARATOR.
 			// They are both technically valid characters in JSON strings,
@@ -520,14 +467,19 @@ ESCAPE_END:
 			// and can lead to security holes there. It is valid JSON to
 			// escape them, so we do so unconditionally.
 			// See http://timelessrepo.com/json-isnt-a-javascript-subset for discussion.
+		case lineSepState:
 			buf = append(buf, s[i:j]...)
-			buf = append(buf, `\u202`...)
-			buf = append(buf, hex[r&0xF])
-			i = j + size
-			j = j + size
+			buf = append(buf, `\u2028`...)
+			i = j + 3
+			j = j + 3
+			continue
+		case paragraphSepState:
+			buf = append(buf, s[i:j]...)
+			buf = append(buf, `\u2029`...)
+			i = j + 3
+			j = j + 3
 			continue
 		}
-
 		j += size
 	}
 
@@ -540,19 +492,37 @@ func appendString(buf []byte, s string) []byte {
 		return append(buf, `""`...)
 	}
 	buf = append(buf, '"')
-	var escapeIdx int
+	var (
+		i, j int
+	)
 	if valLen >= 8 {
-		if escapeIdx = escapeIndex(s); escapeIdx < 0 {
-			return append(append(buf, s...), '"')
+		chunks := stringToUint64Slice(s)
+		for _, n := range chunks {
+			// combine masks before checking for the MSB of each byte. We include
+			// `n` in the mask to check whether any of the *input* byte MSBs were
+			// set (i.e. the byte was outside the ASCII range).
+			mask := n | (n - (lsb * 0x20)) |
+				((n ^ (lsb * '"')) - lsb) |
+				((n ^ (lsb * '\\')) - lsb)
+			if (mask & msb) != 0 {
+				j = bits.TrailingZeros64(mask&msb) / 8
+				goto ESCAPE_END
+			}
 		}
+		valLen := len(s)
+		for i := len(chunks) * 8; i < valLen; i++ {
+			if needEscape[s[i]] {
+				j = i
+				goto ESCAPE_END
+			}
+		}
+		return append(append(buf, s...), '"')
 	}
-
-	i := 0
-	j := escapeIdx
+ESCAPE_END:
 	for j < valLen {
 		c := s[j]
 
-		if c >= 0x20 && c <= 0x7f && c != '\\' && c != '"' {
+		if !needEscape[c] {
 			// fast path: most of the time, printable ascii characters are used
 			j++
 			continue
@@ -594,10 +564,9 @@ func appendString(buf []byte, s string) []byte {
 			i = j + 1
 			j = j + 1
 			continue
-		}
 
-		// This encodes bytes < 0x20 except for \t, \n and \r.
-		if c < 0x20 {
+		case 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x0B, 0x0C, 0x0E, 0x0F, // 0x00-0x0F
+			0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F: // 0x10-0x1F
 			buf = append(buf, s[i:j]...)
 			buf = append(buf, `\u00`...)
 			buf = append(buf, hex[c>>4], hex[c&0xF])
@@ -606,18 +575,14 @@ func appendString(buf []byte, s string) []byte {
 			continue
 		}
 
-		r, size := utf8.DecodeRuneInString(s[j:])
-
-		if r == utf8.RuneError && size == 1 {
+		state, size := decodeRuneInString(s[j:])
+		switch state {
+		case runeErrorState:
 			buf = append(buf, s[i:j]...)
 			buf = append(buf, `\ufffd`...)
-			i = j + size
-			j = j + size
+			i = j + 1
+			j = j + 1
 			continue
-		}
-
-		switch r {
-		case '\u2028', '\u2029':
 			// U+2028 is LINE SEPARATOR.
 			// U+2029 is PARAGRAPH SEPARATOR.
 			// They are both technically valid characters in JSON strings,
@@ -625,14 +590,19 @@ func appendString(buf []byte, s string) []byte {
 			// and can lead to security holes there. It is valid JSON to
 			// escape them, so we do so unconditionally.
 			// See http://timelessrepo.com/json-isnt-a-javascript-subset for discussion.
+		case lineSepState:
 			buf = append(buf, s[i:j]...)
-			buf = append(buf, `\u202`...)
-			buf = append(buf, hex[r&0xF])
-			i = j + size
-			j = j + size
+			buf = append(buf, `\u2028`...)
+			i = j + 3
+			j = j + 3
+			continue
+		case paragraphSepState:
+			buf = append(buf, s[i:j]...)
+			buf = append(buf, `\u2029`...)
+			i = j + 3
+			j = j + 3
 			continue
 		}
-
 		j += size
 	}
 
