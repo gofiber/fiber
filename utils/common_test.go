@@ -5,13 +5,8 @@
 package utils
 
 import (
-	"bytes"
 	"crypto/rand"
 	"fmt"
-	"io"
-	"log"
-	"os"
-	"sync"
 	"testing"
 )
 
@@ -93,43 +88,4 @@ func Benchmark_UUID(b *testing.B) {
 		}
 		AssertEqual(b, 36, len(res))
 	})
-}
-
-
-var DefaultWriter io.Writer = os.Stdout
-var DefaultErrorWriter io.Writer = os.Stderr
-// captureOutput will capture the output in the command line.
-func captureOutput(t *testing.T, f func()) string {
-	reader, writer, err := os.Pipe()
-	if err != nil {
-		panic(err)
-	}
-	defaultWriter := DefaultWriter
-	defaultErrorWriter := DefaultErrorWriter
-	defer func() {
-		DefaultWriter = defaultWriter
-		DefaultErrorWriter = defaultErrorWriter
-		log.SetOutput(os.Stderr)
-	}()
-	DefaultWriter = writer
-	DefaultErrorWriter = writer
-	log.SetOutput(writer)
-	out := make(chan string)
-	wg := new(sync.WaitGroup)
-	wg.Add(1)
-	go func() {
-		var buf bytes.Buffer
-		wg.Done()
-		_, err := io.Copy(&buf, reader)
-		AssertEqual(t, err, nil)
-		out <- buf.String()
-	}()
-	wg.Wait()
-	f()
-	writer.Close()
-	return <-out
-}
-
-func Test_print_routes(t *testing.T) {
-
 }
