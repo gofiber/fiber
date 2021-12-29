@@ -989,11 +989,11 @@ func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
 func Test_Ctx_Hostname_TrustedProxyRange(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"1.0.0.0/30"}})
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0/30"}})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().SetRequestURI("http://google.com/test")
 	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-	utils.AssertEqual(t, "google.com", c.Hostname())
+	utils.AssertEqual(t, "google1.com", c.Hostname())
 	app.ReleaseCtx(c)
 }
 
