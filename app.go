@@ -397,11 +397,12 @@ type Static struct {
 
 // RouteMessage is some message need to be print when server starts
 type RouteMessage struct {
-	name string
-	method string
-	path string
+	name     string
+	method   string
+	path     string
 	handlers string
 }
+
 // Default Config values
 const (
 	DefaultBodyLimit            = 4 * 1024 * 1024
@@ -1225,12 +1226,12 @@ func (app *App) printRoutesMessage() {
 	const (
 		// cBlack = "\u001b[90m"
 		// cRed   = "\u001b[91m"
-		cCyan = "\u001b[96m"
-		cGreen = "\u001b[92m"
-		cYellow  = "\u001b[93m"
-		cBlue    = "\u001b[94m"
+		cCyan   = "\u001b[96m"
+		cGreen  = "\u001b[92m"
+		cYellow = "\u001b[93m"
+		cBlue   = "\u001b[94m"
 		// cMagenta = "\u001b[95m"
-		cWhite   = "\u001b[97m"
+		cWhite = "\u001b[97m"
 		// cReset = "\u001b[0m"
 	)
 	var routes []RouteMessage
@@ -1251,9 +1252,9 @@ func (app *App) printRoutesMessage() {
 	sort.Slice(routes, func(i, j int) bool {
 		return routes[i].path < routes[j].path
 	})
-	fmt.Fprintf( w,"%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
+	fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
 	for _, route := range routes {
-		fmt.Fprintf( w,"%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", cBlue, route.method, cWhite, cGreen, route.path, cWhite, cCyan, route.name, cWhite, cYellow, route.handlers)
+		fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", cBlue, route.method, cWhite, cGreen, route.path, cWhite, cCyan, route.name, cWhite, cYellow, route.handlers)
 	}
 	w.Flush()
 }

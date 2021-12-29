@@ -1583,7 +1583,7 @@ func emptyHandler(c *Ctx) error {
 func Test_App_print_Route(t *testing.T) {
 	app := New(Config{EnablePrintRoutes: true})
 	app.Get("/", emptyHandler).Name("routeName")
-	printRoutesMessage :=  captureOutput(func() {
+	printRoutesMessage := captureOutput(func() {
 		app.printRoutesMessage()
 	})
 	fmt.Println(printRoutesMessage)
@@ -1600,7 +1600,7 @@ func Test_App_print_Route_with_group(t *testing.T) {
 	v1.Get("/test", emptyHandler).Name("v1")
 	v1.Post("/test/fiber", emptyHandler)
 	v1.Put("/test/fiber/*", emptyHandler)
-	printRoutesMessage :=  captureOutput(func() {
+	printRoutesMessage := captureOutput(func() {
 		app.printRoutesMessage()
 	})
 	fmt.Println(printRoutesMessage)

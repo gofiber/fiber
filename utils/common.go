@@ -8,13 +8,15 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
-	googleuuid "github.com/gofiber/fiber/v2/internal/uuid"
+
 	"net"
 	"os"
 	"reflect"
 	"runtime"
 	"sync"
 	"sync/atomic"
+
+	googleuuid "github.com/gofiber/fiber/v2/internal/uuid"
 )
 
 const (
