@@ -2752,6 +2752,40 @@ func Test_Ctx_GetRespHeader(t *testing.T) {
 	utils.AssertEqual(t, c.GetRespHeader(HeaderContentType), "application/json")
 }
 
+// go test -run Test_Ctx_GetRespHeaders
+func Test_Ctx_GetRespHeaders(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Set("test", "Hello, World 👋!")
+	c.Set("foo", "bar")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+
+	utils.AssertEqual(t, c.GetRespHeaders(), map[string]string{
+		"Content-Type": "application/json",
+		"Foo":          "bar",
+		"Test":         "Hello, World 👋!",
+	})
+}
+
+// go test -run Test_Ctx_GetReqHeaders
+func Test_Ctx_GetReqHeaders(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set("test", "Hello, World 👋!")
+	c.Request().Header.Set("foo", "bar")
+	c.Request().Header.Set(HeaderContentType, "application/json")
+
+	utils.AssertEqual(t, c.GetReqHeaders(), map[string]string{
+		"Content-Type": "application/json",
+		"Foo":          "bar",
+		"Test":         "Hello, World 👋!",
+	})
+}
+
 // go test -run Test_Ctx_IsFromLocal
 func Test_Ctx_IsFromLocal(t *testing.T) {
 	t.Parallel()
