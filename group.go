@@ -41,7 +41,7 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 		grp.app.errorHandlers[groupPath+mountedPrefixes] = errHandler
 	}
 
-	atomic.AddUint32(&grp.app.handlerCount, fiber.handlerCount)
+	atomic.AddUint32(&grp.app.handlersCount, fiber.handlersCount)
 
 	return grp
 }
