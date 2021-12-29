@@ -1291,8 +1291,9 @@ func (c *Ctx) IsProxyTrusted() bool {
 		return trusted
 	}
 
-	for _, ipNet := range c.app.config.trustedProxyRangesMap {
-		if ipNet.Contains(c.fasthttp.RemoteIP()) {
+	rip := c.fasthttp.RemoteIP()
+	for _, ipNet := range c.app.config.trustedProxyRanges {
+		if ipNet.Contains(rip) {
 			return true
 		}
 	}

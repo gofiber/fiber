@@ -348,9 +348,9 @@ type Config struct {
 	// Read EnableTrustedProxyCheck doc.
 	//
 	// Default: []string
-	TrustedProxies        []string `json:"trusted_proxies"`
-	trustedProxiesMap     map[string]struct{}
-	trustedProxyRangesMap []*net.IPNet
+	TrustedProxies     []string `json:"trusted_proxies"`
+	trustedProxiesMap  map[string]struct{}
+	trustedProxyRanges []*net.IPNet
 }
 
 // Static defines configuration options when defining static assets.
@@ -491,7 +491,7 @@ func New(config ...Config) *App {
 	return app
 }
 
-// Adds an ip address to trustedProxyRangesMap or trustedProxiesMap based on whether it is an IP range or not
+// Adds an ip address to trustedProxyRanges or trustedProxiesMap based on whether it is an IP range or not
 func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
@@ -500,7 +500,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 			fmt.Printf("[Warning] IP range `%s` could not be parsed. \n", ipAddress)
 		}
 
-		app.config.trustedProxyRangesMap = append(app.config.trustedProxyRangesMap, ipNet)
+		app.config.trustedProxyRanges = append(app.config.trustedProxyRanges, ipNet)
 	} else {
 		app.config.trustedProxiesMap[ipAddress] = struct{}{}
 	}
