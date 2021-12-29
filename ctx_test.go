@@ -17,7 +17,6 @@ import (
 	"io"
 	"io/ioutil"
 	"mime/multipart"
-	"net"
 	"net/http/httptest"
 	"os"
 	"reflect"
@@ -1047,18 +1046,6 @@ func Test_Ctx_IP_UntrustedProxy(t *testing.T) {
 	utils.AssertEqual(t, "0.0.0.0", c.IP())
 }
 
-func Test_aaa(t *testing.T) {
-	t.Parallel()
-
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0"}, ProxyHeader: HeaderXForwardedFor})
-
-	fr := fasthttp.RequestCtx{}
-	fr.SetRemoteAddr(&net.IPAddr{IP: net.ParseIP("0.0.0.0")})
-	c := app.AcquireCtx(&fr)
-
-	utils.AssertEqual(t, "1.2.3.4", c.fasthttp.RemoteIP())
-}
-
 // go test -run Test_Ctx_IP_TrustedProxy
 func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	t.Parallel()
@@ -1067,22 +1054,6 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
 	defer app.ReleaseCtx(c)
 	utils.AssertEqual(t, "0.0.0.1", c.IP())
-}
-
-// go test -run Test_Ctx_IP_Range_TrustedProxy
-func Test_Ctx_IP_Range_TrustedProxy(t *testing.T) {
-	t.Parallel()
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30", "1.1.1.1/100"}, ProxyHeader: HeaderXForwardedFor})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	expected := map[string]struct{}{
-		"0.0.0.0": {},
-		"1.1.1.0": {},
-		"1.1.1.1": {},
-		"1.1.1.2": {},
-		"1.1.1.3": {},
-	}
-	utils.AssertEqual(t, expected, app.config.trustedProxiesMap)
 }
 
 // go test -run Test_Ctx_IPs  -parallel
