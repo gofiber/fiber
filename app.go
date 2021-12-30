@@ -1260,7 +1260,13 @@ func (app *App) printRoutesMessage() {
 			routes = append(routes, newRoute)
 		}
 	}
-	w := tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)
+
+	out := colorable.NewColorableStdout()
+	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+		out = colorable.NewNonColorable(os.Stdout)
+	}
+
+	w := tabwriter.NewWriter(out, 1, 1, 1, ' ', 0)
 	// Sort routes by path
 	sort.Slice(routes, func(i, j int) bool {
 		return routes[i].path < routes[j].path
@@ -1270,5 +1276,6 @@ func (app *App) printRoutesMessage() {
 	for _, route := range routes {
 		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", cBlue, route.method, cWhite, cGreen, route.path, cWhite, cCyan, route.name, cWhite, cYellow, route.handlers)
 	}
+
 	_ = w.Flush()
 }
