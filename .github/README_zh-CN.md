@@ -111,7 +111,7 @@ func main() {
 
 ## ⚙️ 安装
 
-确保已安装 ([下载](https://golang.org/dl/)) `1.14` 或更高版本的 Go。
+确保已安装`1.14`或更高版本的 Go([下载](https://golang.org/dl/))。
 
 通过创建文件夹并在文件夹内运行 `go mod init github.com/your/repo` ([了解更多](https://blog.golang.org/using-go-modules)) 来初始化项目，然后使用 [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 命令安装 Fiber：
 
@@ -123,7 +123,7 @@ go get -u github.com/gofiber/fiber/v2
 
 -   强大的[路由](https://docs.gofiber.io/routing)
 -   [静态文件](https://docs.gofiber.io/api/app#static)服务
--   极限[性能](https://docs.gofiber.io/extra/benchmarks)
+-   极致[性能](https://docs.gofiber.io/extra/benchmarks)
 -   [低内存占用](https://docs.gofiber.io/extra/benchmarks)
 -   [API 接口](https://docs.gofiber.io/api/ctx)
 -   [中间件](https://docs.gofiber.io/middleware)和[Next](https://docs.gofiber.io/api/ctx#next)支持
@@ -136,15 +136,15 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 💡 哲学
 
-从[Node.js](https://nodejs.org/en/about/)切换到[Go](https://golang.org/doc/)的新`gopher`在开始构建`Web`应用程序或微服务之前需要经历学习过程。 `Fiber`作为一个**Web 框架** ，是按照**极简主义**的思想并遵循**UNIX 方式**创建的，因此新的`gopher`可以在热烈和可信赖的欢迎中迅速进入`Go`的世界。
+从[Node.js](https://nodejs.org/en/about/)切换到[Go](https://golang.org/doc/)的新`gopher`在开始构建`Web`应用程序或微服务之前需要经历一段艰难的学习过程。 而`Fiber`，一个遵循**极简主义**和**UNIX 方式**创建的**Web 框架**，使新的`gopher`可以在热烈和可信赖的欢迎中迅速进入`Go`的世界。
 
-`Fiber`受到了互联网上最流行的`Web`框架`Express`的**启发** 。我们结合了`Express`的**易用性**和`Go`的**原始性能** 。如果您曾经在`Node.js`上实现过`Web`应用程序(_使用 Express 或类似工具_)，那么许多方法和原理对您来说应该**非常易懂**。
+`Fiber`受到了互联网上最流行的`Web`框架`Express`的**启发** 。我们结合了`Express`的**易用性**和`Go`的**原始性能** 。如果您曾经使用`Node.js`构建`Web`应用程序(_使用 Express 或类似框架_)，那么许多方法和原理对您来说应该**非常易懂**。
 
-我们**关注** _整个互联网_ 用户在[issues](https://github.com/gofiber/fiber/issues)和 Discord [channel](https://gofiber.io/discord)的消息，为了创建一个**迅速**，**灵活**以及**友好**的`Go web`框架，满足**任何**任务，**最后期限**和开发者**技能**。就像`Express`在`JavaScript`世界中一样。
+我们会**倾听**用户在[issues](https://github.com/gofiber/fiber/issues)和 Discord [channel](https://gofiber.io/discord)和在互联网上的所有诉求，为了创建一个能让有着任何技术栈的开发者都能在deadline前完成任务的**迅速**，**灵活**以及**友好**的`Go web`框架，就像`Express`在`JavaScript`世界中一样。
 
 ## 限制
-* 由于 Fiber 使用了 unsafe 特性，导致其可能与最新的 Go 版本不兼容。Fiber 2.18.0 已经在 Go 1.14 到 1.17 上验证过。
-* Fiber 与 net/http 接口不兼容。这意味着你无法使用 gqlen，go-swagger 或者任何其他属于 net/http 生态的项目。
+* 由于 Fiber 使用了 unsafe 特性，导致其可能与最新的 Go 版本不兼容。Fiber 2.18.0 已经在 Go 1.14 到 1.17 上测试过。
+* Fiber 与 net/http 接口不兼容。也就是说你无法使用 gqlen，go-swagger 或者任何其他属于 net/http 生态的项目。
 
 ## 👀 示例
 
@@ -191,7 +191,7 @@ func main() {
 
 ```
 
-#### 📖 [**Route Naming**](https://docs.gofiber.io/api/app#name)
+#### 📖 [**路由命名**](https://docs.gofiber.io/api/app#name)
 
 ```go
 func main() {
@@ -579,7 +579,7 @@ func main() {
 
 ## 👍 贡献
 
-如果您要说声**谢谢**或支持`Fiber`的积极发展：
+如果想**感谢**我们或支持`Fiber`的积极发展：
 
 1. 为`Fiber`[GitHub Star](https://github.com/gofiber/fiber/stargazers)点个 ⭐ 星星。
 2. 在[Twitter](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)上发布有关项目的[推文](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)。
@@ -612,11 +612,11 @@ func main() {
 | ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/thomasvvugt)  | ☕ x 1   |
 | ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1   |
 
-## ‎‍💻 Code Contributors
+## ‎‍💻 贡献者
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
-## ⭐️ Stargazers
+## ⭐️ 星星数增长情况
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
