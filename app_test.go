@@ -1576,3 +1576,40 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
 	utils.AssertEqual(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
 }
+
+func emptyHandler(c *Ctx) error {
+	return nil
+}
+func Test_App_print_Route(t *testing.T) {
+	app := New(Config{EnablePrintRoutes: true})
+	app.Get("/", emptyHandler).Name("routeName")
+	printRoutesMessage := captureOutput(func() {
+		app.printRoutesMessage()
+	})
+	fmt.Println(printRoutesMessage)
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "GET"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "routeName"))
+}
+
+func Test_App_print_Route_with_group(t *testing.T) {
+	app := New(Config{EnablePrintRoutes: true})
+	app.Get("/", emptyHandler)
+	v1 := app.Group("v1")
+	v1.Get("/test", emptyHandler).Name("v1")
+	v1.Post("/test/fiber", emptyHandler)
+	v1.Put("/test/fiber/*", emptyHandler)
+	printRoutesMessage := captureOutput(func() {
+		app.printRoutesMessage()
+	})
+	fmt.Println(printRoutesMessage)
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "GET"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "POST"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "PUT"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
+}

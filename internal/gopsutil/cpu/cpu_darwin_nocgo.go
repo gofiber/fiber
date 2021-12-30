@@ -1,5 +1,5 @@
-// +build darwin
-// +build !cgo
+//go:build darwin && !cgo
+// +build darwin,!cgo
 
 package cpu
 

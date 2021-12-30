@@ -20,10 +20,12 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"text/tabwriter"
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/colorable"
@@ -350,6 +352,10 @@ type Config struct {
 	// Default: []string
 	TrustedProxies    []string `json:"trusted_proxies"`
 	trustedProxiesMap map[string]struct{}
+
+	//If set to true, will print all routes with their method, path and handler.
+	// Default: false
+	EnablePrintRoutes bool `json:"print_routes"`
 }
 
 // Static defines configuration options when defining static assets.
@@ -387,6 +393,14 @@ type Static struct {
 	//
 	// Optional. Default: nil
 	Next func(c *Ctx) bool
+}
+
+// RouteMessage is some message need to be print when server starts
+type RouteMessage struct {
+	name     string
+	method   string
+	path     string
+	handlers string
 }
 
 // Default Config values
@@ -713,6 +727,10 @@ func (app *App) Listener(ln net.Listener) error {
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
 	}
+	// Print routes
+	if app.config.EnablePrintRoutes {
+		app.printRoutesMessage()
+	}
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -736,6 +754,10 @@ func (app *App) Listen(addr string) error {
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
+	}
+	// Print routes
+	if app.config.EnablePrintRoutes {
+		app.printRoutesMessage()
 	}
 	// Start listening
 	return app.server.Serve(ln)
@@ -776,6 +798,10 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), true, "")
+	}
+	// Print routes
+	if app.config.EnablePrintRoutes {
+		app.printRoutesMessage()
 	}
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
@@ -1197,4 +1223,52 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	_, _ = fmt.Fprintln(out, output)
+}
+
+// printRoutesMessage print all routes with method, path, name and handlers
+// in a format of table, like this:
+// method | path | name      | handlers
+// GET    | /    | routeName | github.com/gofiber/fiber/v2.emptyHandler
+// HEAD   | /    |           | github.com/gofiber/fiber/v2.emptyHandler
+func (app *App) printRoutesMessage() {
+	// ignore child processes
+	if IsChild() {
+		return
+	}
+
+	const (
+		// cBlack = "\u001b[90m"
+		// cRed   = "\u001b[91m"
+		cCyan   = "\u001b[96m"
+		cGreen  = "\u001b[92m"
+		cYellow = "\u001b[93m"
+		cBlue   = "\u001b[94m"
+		// cMagenta = "\u001b[95m"
+		cWhite = "\u001b[97m"
+		// cReset = "\u001b[0m"
+	)
+	var routes []RouteMessage
+	for _, routeStack := range app.stack {
+		for _, route := range routeStack {
+			var newRoute = RouteMessage{}
+			newRoute.name = route.Name
+			newRoute.method = route.Method
+			newRoute.path = route.Path
+			for _, handler := range route.Handlers {
+				newRoute.handlers += runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name() + " "
+			}
+			routes = append(routes, newRoute)
+		}
+	}
+	w := tabwriter.NewWriter(os.Stdout, 1, 1, 1, ' ', 0)
+	// Sort routes by path
+	sort.Slice(routes, func(i, j int) bool {
+		return routes[i].path < routes[j].path
+	})
+	_, _ = fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
+	_, _ = fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
+	for _, route := range routes {
+		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", cBlue, route.method, cWhite, cGreen, route.path, cWhite, cCyan, route.name, cWhite, cYellow, route.handlers)
+	}
+	_ = w.Flush()
 }
