@@ -727,6 +727,10 @@ func (app *App) Listener(ln net.Listener) error {
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
 	}
+	// Print routes
+	if app.config.EnablePrintRoutes {
+		app.printRoutesMessage()
+	}
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -794,6 +798,10 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), true, "")
+	}
+	// Print routes
+	if app.config.EnablePrintRoutes {
+		app.printRoutesMessage()
 	}
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
