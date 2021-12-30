@@ -204,7 +204,7 @@ func main() {
     }).Name("api")
 
     data, _ := json.MarshalIndent(app.GetRoute("api"), "", "  ")
-	fmt.Print(string(data))
+    fmt.Print(string(data))
     // Prints:
     // {
     //    "method": "GET",
