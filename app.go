@@ -1223,6 +1223,11 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 // GET    | /    | routeName | github.com/gofiber/fiber/v2.emptyHandler
 // HEAD   | /    |           | github.com/gofiber/fiber/v2.emptyHandler
 func (app *App) printRoutesMessage() {
+	// ignore child processes
+	if IsChild() {
+		return
+	}
+
 	const (
 		// cBlack = "\u001b[90m"
 		// cRed   = "\u001b[91m"
@@ -1253,6 +1258,7 @@ func (app *App) printRoutesMessage() {
 		return routes[i].path < routes[j].path
 	})
 	_, _ = fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
+	_, _ = fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
 	for _, route := range routes {
 		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", cBlue, route.method, cWhite, cGreen, route.path, cWhite, cCyan, route.name, cWhite, cYellow, route.handlers)
 	}
