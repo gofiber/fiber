@@ -350,8 +350,9 @@ type Config struct {
 	// Read EnableTrustedProxyCheck doc.
 	//
 	// Default: []string
-	TrustedProxies    []string `json:"trusted_proxies"`
-	trustedProxiesMap map[string]struct{}
+	TrustedProxies     []string `json:"trusted_proxies"`
+	trustedProxiesMap  map[string]struct{}
+	trustedProxyRanges []*net.IPNet
 
 	//If set to true, will print all routes with their method, path and handler.
 	// Default: false
@@ -501,8 +502,8 @@ func New(config ...Config) *App {
 	}
 
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
-	for _, ip := range app.config.TrustedProxies {
-		app.handleTrustedProxy(ip)
+	for _, ipAddress := range app.config.TrustedProxies {
+		app.handleTrustedProxy(ipAddress)
 	}
 
 	// Init app
@@ -512,23 +513,19 @@ func New(config ...Config) *App {
 	return app
 }
 
-// Checks if the given IP address is a range whether or not, adds it to the trustedProxiesMap
+// Adds an ip address to trustedProxyRanges or trustedProxiesMap based on whether it is an IP range or not
 func (app *App) handleTrustedProxy(ipAddress string) {
-	// Detects IP address is range whether or not
 	if strings.Contains(ipAddress, "/") {
-		// Parsing IP address
-		ip, ipnet, err := net.ParseCIDR(ipAddress)
+		_, ipNet, err := net.ParseCIDR(ipAddress)
+
 		if err != nil {
 			fmt.Printf("[Warning] IP range `%s` could not be parsed. \n", ipAddress)
-			return
 		}
-		// Iterates IP address which is between range
-		for ip := ip.Mask(ipnet.Mask); ipnet.Contains(ip); utils.IncrementIPRange(ip) {
-			app.config.trustedProxiesMap[ip.String()] = struct{}{}
-		}
-		return
+
+		app.config.trustedProxyRanges = append(app.config.trustedProxyRanges, ipNet)
+	} else {
+		app.config.trustedProxiesMap[ipAddress] = struct{}{}
 	}
-	app.config.trustedProxiesMap[ipAddress] = struct{}{}
 }
 
 // Mount attaches another app instance as a sub-router along a routing path.

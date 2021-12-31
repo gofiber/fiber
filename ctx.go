@@ -1310,8 +1310,18 @@ func (c *Ctx) IsProxyTrusted() bool {
 		return true
 	}
 
-	_, trustProxy := c.app.config.trustedProxiesMap[c.fasthttp.RemoteIP().String()]
-	return trustProxy
+	_, trusted := c.app.config.trustedProxiesMap[c.fasthttp.RemoteIP().String()]
+	if trusted {
+		return trusted
+	}
+
+	for _, ipNet := range c.app.config.trustedProxyRanges {
+		if ipNet.Contains(c.fasthttp.RemoteIP()) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // IsLocalHost will return true if address is a localhost address.

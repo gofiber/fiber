@@ -985,6 +985,30 @@ func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
 	}
 }
 
+// go test -run Test_Ctx_Hostname_UntrustedProxyRange
+func Test_Ctx_Hostname_TrustedProxyRange(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0/30"}})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().SetRequestURI("http://google.com/test")
+	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+	utils.AssertEqual(t, "google1.com", c.Hostname())
+	app.ReleaseCtx(c)
+}
+
+// go test -run Test_Ctx_Hostname_UntrustedProxyRange
+func Test_Ctx_Hostname_UntrustedProxyRange(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"1.0.0.0/30"}})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().SetRequestURI("http://google.com/test")
+	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
+	utils.AssertEqual(t, "google.com", c.Hostname())
+	app.ReleaseCtx(c)
+}
+
 // go test -run Test_Ctx_Port
 func Test_Ctx_Port(t *testing.T) {
 	t.Parallel()
@@ -1030,22 +1054,6 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
 	defer app.ReleaseCtx(c)
 	utils.AssertEqual(t, "0.0.0.1", c.IP())
-}
-
-// go test -run Test_Ctx_IP_Range_TrustedProxy
-func Test_Ctx_IP_Range_TrustedProxy(t *testing.T) {
-	t.Parallel()
-	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30", "1.1.1.1/100"}, ProxyHeader: HeaderXForwardedFor})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	expected := map[string]struct{}{
-		"0.0.0.0": {},
-		"1.1.1.0": {},
-		"1.1.1.1": {},
-		"1.1.1.2": {},
-		"1.1.1.3": {},
-	}
-	utils.AssertEqual(t, expected, app.config.trustedProxiesMap)
 }
 
 // go test -run Test_Ctx_IPs  -parallel
@@ -1394,6 +1402,58 @@ func Test_Ctx_Protocol_TrustedProxy(t *testing.T) {
 
 	c.Request().Header.Set(HeaderXUrlScheme, "https")
 	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	utils.AssertEqual(t, "http", c.Protocol())
+}
+
+// go test -run Test_Ctx_Protocol_TrustedProxyRange
+func Test_Ctx_Protocol_TrustedProxyRange(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0/30"}})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderXForwardedProto, "https")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedSsl, "on")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXUrlScheme, "https")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	utils.AssertEqual(t, "http", c.Protocol())
+}
+
+// go test -run Test_Ctx_Protocol_UntrustedProxyRange
+func Test_Ctx_Protocol_UntrustedProxyRange(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"1.1.1.1/30"}})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.Request().Header.Set(HeaderXForwardedProto, "https")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedSsl, "on")
+	utils.AssertEqual(t, "http", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXUrlScheme, "https")
+	utils.AssertEqual(t, "http", c.Protocol())
 	c.Request().Header.Reset()
 
 	utils.AssertEqual(t, "http", c.Protocol())
