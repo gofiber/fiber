@@ -35,6 +35,7 @@ const (
 	TagLatency           = "latency"
 	TagStatus            = "status"
 	TagResBody           = "resBody"
+	TagReqHeaders        = "reqHeaders"
 	TagQueryStringParams = "queryParams"
 	TagBody              = "body"
 	TagBytesSent         = "bytesSent"
@@ -244,6 +245,12 @@ func New(config ...Config) fiber.Handler {
 				return appendInt(buf, c.Response().StatusCode())
 			case TagResBody:
 				return buf.Write(c.Response().Body())
+			case TagReqHeaders:
+				reqHeaders := make([]string, 0)
+				for k, v := range c.GetReqHeaders() {
+					reqHeaders = append(reqHeaders, k+"="+v)
+				}
+				return buf.Write([]byte(strings.Join(reqHeaders, "&")))
 			case TagQueryStringParams:
 				return buf.WriteString(c.Request().URI().QueryArgs().String())
 			case TagMethod:
