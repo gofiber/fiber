@@ -120,7 +120,7 @@ func (t OpType) HeadToOmitEmptyHead() OpType {
 }
 
 func (t OpType) PtrHeadToHead() OpType {
-  idx := strings.Index(t.String(), "Ptr")
+  idx := strings.Index(t.String(), "PtrHead")
   if idx == -1 {
     return t
   }
@@ -201,7 +201,6 @@ func (t OpType) FieldToOmitEmptyField() OpType {
 		createOpType("RecursivePtr", "Op"),
 		createOpType("RecursiveEnd", "Op"),
 		createOpType("InterfaceEnd", "Op"),
-		createOpType("StructAnonymousEnd", "StructEnd"),
 	}
 	for _, typ := range primitiveTypesUpper {
 		typ := typ

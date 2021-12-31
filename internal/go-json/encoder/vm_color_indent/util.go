@@ -63,7 +63,20 @@ func loadNPtr(base uintptr, idx uint32, ptrNum uint8) uintptr {
 	return p
 }
 
-func ptrToUint64(p uintptr) uint64              { return **(**uint64)(unsafe.Pointer(&p)) }
+func ptrToUint64(p uintptr, bitSize uint8) uint64 {
+	switch bitSize {
+	case 8:
+		return (uint64)(**(**uint8)(unsafe.Pointer(&p)))
+	case 16:
+		return (uint64)(**(**uint16)(unsafe.Pointer(&p)))
+	case 32:
+		return (uint64)(**(**uint32)(unsafe.Pointer(&p)))
+	case 64:
+		return **(**uint64)(unsafe.Pointer(&p))
+	}
+	return 0
+}
+
 func ptrToFloat32(p uintptr) float32            { return **(**float32)(unsafe.Pointer(&p)) }
 func ptrToFloat64(p uintptr) float64            { return **(**float64)(unsafe.Pointer(&p)) }
 func ptrToBool(p uintptr) bool                  { return **(**bool)(unsafe.Pointer(&p)) }
@@ -94,17 +107,17 @@ func ptrToInterface(code *encoder.Opcode, p uintptr) interface{} {
 	}))
 }
 
-func appendInt(ctx *encoder.RuntimeContext, b []byte, v uint64, code *encoder.Opcode) []byte {
+func appendInt(ctx *encoder.RuntimeContext, b []byte, p uintptr, code *encoder.Opcode) []byte {
 	format := ctx.Option.ColorScheme.Int
 	b = append(b, format.Header...)
-	b = encoder.AppendInt(ctx, b, v, code)
+	b = encoder.AppendInt(ctx, b, p, code)
 	return append(b, format.Footer...)
 }
 
-func appendUint(ctx *encoder.RuntimeContext, b []byte, v uint64, code *encoder.Opcode) []byte {
+func appendUint(ctx *encoder.RuntimeContext, b []byte, p uintptr, code *encoder.Opcode) []byte {
 	format := ctx.Option.ColorScheme.Uint
 	b = append(b, format.Header...)
-	b = encoder.AppendUint(ctx, b, v, code)
+	b = encoder.AppendUint(ctx, b, p, code)
 	return append(b, format.Footer...)
 }
 
@@ -166,6 +179,13 @@ func appendNull(ctx *encoder.RuntimeContext, b []byte) []byte {
 
 func appendComma(_ *encoder.RuntimeContext, b []byte) []byte {
 	return append(b, ',', '\n')
+}
+
+func appendNullComma(ctx *encoder.RuntimeContext, b []byte) []byte {
+	format := ctx.Option.ColorScheme.Null
+	b = append(b, format.Header...)
+	b = append(b, "null"...)
+	return append(append(b, format.Footer...), ',', '\n')
 }
 
 func appendColon(_ *encoder.RuntimeContext, b []byte) []byte {

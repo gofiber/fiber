@@ -20,10 +20,12 @@ import (
 	"os"
 	"reflect"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"text/tabwriter"
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/colorable"
@@ -34,7 +36,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.21.0"
+const Version = "2.23.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -98,7 +100,7 @@ type App struct {
 	// Amount of registered routes
 	routesCount uint32
 	// Amount of registered handlers
-	handlerCount uint32
+	handlersCount uint32
 	// Ctx pool
 	pool sync.Pool
 	// Fasthttp server
@@ -351,6 +353,10 @@ type Config struct {
 	TrustedProxies     []string `json:"trusted_proxies"`
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
+
+	//If set to true, will print all routes with their method, path and handler.
+	// Default: false
+	EnablePrintRoutes bool `json:"print_routes"`
 }
 
 // Static defines configuration options when defining static assets.
@@ -390,6 +396,14 @@ type Static struct {
 	Next func(c *Ctx) bool
 }
 
+// RouteMessage is some message need to be print when server starts
+type RouteMessage struct {
+	name     string
+	method   string
+	path     string
+	handlers string
+}
+
 // Default Config values
 const (
 	DefaultBodyLimit            = 4 * 1024 * 1024
@@ -398,6 +412,14 @@ const (
 	DefaultWriteBufferSize      = 4096
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
+
+// Variables for Name & GetRoute
+var latestRoute struct {
+	route *Route
+	mu    sync.Mutex
+}
+
+var latestGroup Group
 
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
@@ -529,9 +551,33 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 		app.errorHandlers[prefix+mountedPrefixes] = errHandler
 	}
 
-	atomic.AddUint32(&app.handlerCount, fiber.handlerCount)
+	atomic.AddUint32(&app.handlersCount, fiber.handlersCount)
 
 	return app
+}
+
+// Assign name to specific route.
+func (app *App) Name(name string) Router {
+	if strings.HasPrefix(latestRoute.route.path, latestGroup.prefix) {
+		latestRoute.route.Name = latestGroup.name + name
+	} else {
+		latestRoute.route.Name = name
+	}
+
+	return app
+}
+
+// Get route by name
+func (app *App) GetRoute(name string) Route {
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if route.Name == name {
+				return *route
+			}
+		}
+	}
+
+	return Route{}
 }
 
 // Use registers a middleware route that will match requests
@@ -678,6 +724,10 @@ func (app *App) Listener(ln net.Listener) error {
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
 	}
+	// Print routes
+	if app.config.EnablePrintRoutes {
+		app.printRoutesMessage()
+	}
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -701,6 +751,10 @@ func (app *App) Listen(addr string) error {
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
+	}
+	// Print routes
+	if app.config.EnablePrintRoutes {
+		app.printRoutesMessage()
 	}
 	// Start listening
 	return app.server.Serve(ln)
@@ -742,6 +796,10 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), true, "")
 	}
+	// Print routes
+	if app.config.EnablePrintRoutes {
+		app.printRoutesMessage()
+	}
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
 }
@@ -761,6 +819,11 @@ func (app *App) Handler() fasthttp.RequestHandler {
 // Stack returns the raw router stack.
 func (app *App) Stack() [][]*Route {
 	return app.stack
+}
+
+// HandlersCount returns the amount of registered handlers.
+func (app *App) HandlersCount() uint32 {
+	return app.handlersCount
 }
 
 // Shutdown gracefully shuts down the server without interrupting any active connections.
@@ -1064,7 +1127,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			" │ Prefork .%s  PID ....%s │\n"+
 			" └───────────────────────────────────────────────────┘"+
 			cReset,
-		value(strconv.Itoa(int(app.handlerCount)), 14), value(procs, 12),
+		value(strconv.Itoa(int(app.handlersCount)), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 	)
 
@@ -1152,9 +1215,64 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	out := colorable.NewColorableStdout()
-	if os.Getenv("TERM") == "dumb" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
 	_, _ = fmt.Fprintln(out, output)
+}
+
+// printRoutesMessage print all routes with method, path, name and handlers
+// in a format of table, like this:
+// method | path | name      | handlers
+// GET    | /    | routeName | github.com/gofiber/fiber/v2.emptyHandler
+// HEAD   | /    |           | github.com/gofiber/fiber/v2.emptyHandler
+func (app *App) printRoutesMessage() {
+	// ignore child processes
+	if IsChild() {
+		return
+	}
+
+	const (
+		// cBlack = "\u001b[90m"
+		// cRed   = "\u001b[91m"
+		cCyan   = "\u001b[96m"
+		cGreen  = "\u001b[92m"
+		cYellow = "\u001b[93m"
+		cBlue   = "\u001b[94m"
+		// cMagenta = "\u001b[95m"
+		cWhite = "\u001b[97m"
+		// cReset = "\u001b[0m"
+	)
+	var routes []RouteMessage
+	for _, routeStack := range app.stack {
+		for _, route := range routeStack {
+			var newRoute = RouteMessage{}
+			newRoute.name = route.Name
+			newRoute.method = route.Method
+			newRoute.path = route.Path
+			for _, handler := range route.Handlers {
+				newRoute.handlers += runtime.FuncForPC(reflect.ValueOf(handler).Pointer()).Name() + " "
+			}
+			routes = append(routes, newRoute)
+		}
+	}
+
+	out := colorable.NewColorableStdout()
+	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+		out = colorable.NewNonColorable(os.Stdout)
+	}
+
+	w := tabwriter.NewWriter(out, 1, 1, 1, ' ', 0)
+	// Sort routes by path
+	sort.Slice(routes, func(i, j int) bool {
+		return routes[i].path < routes[j].path
+	})
+	_, _ = fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
+	_, _ = fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
+	for _, route := range routes {
+		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", cBlue, route.method, cWhite, cGreen, route.path, cWhite, cCyan, route.name, cWhite, cYellow, route.handlers)
+	}
+
+	_ = w.Flush()
 }

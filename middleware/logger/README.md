@@ -143,8 +143,9 @@ const (
 	TagLatency				= "latency"
 	TagStatus				= "status"	// response status
 	TagResBody				= "resBody"	// response body
-	TagQueryStringParams			= "queryParams"	// request query parameters
-	TagBody					= "body"	// request body
+	TagReqHeaders                           = "reqHeaders"
+        TagQueryStringParams			= "queryParams"	// request query parameters
+        TagBody					= "body"	// request body
 	TagBytesSent				= "bytesSent"
 	TagBytesReceived			= "bytesReceived"
 	TagRoute				= "route"

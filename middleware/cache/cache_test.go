@@ -280,6 +280,28 @@ func Test_CustomKey(t *testing.T) {
 	utils.AssertEqual(t, true, called)
 }
 
+func Test_CustomExpiration(t *testing.T) {
+	app := fiber.New()
+	var called bool
+	var newCacheTime int
+	app.Use(New(Config{ExpirationGenerator: func(c *fiber.Ctx, cfg *Config) time.Duration {
+		called = true
+		newCacheTime, _ = strconv.Atoi(c.GetRespHeader("Cache-Time", "600"))
+		return time.Second * time.Duration(newCacheTime)
+	}}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		c.Response().Header.Add("Cache-Time", "6000")
+		return c.SendString("hi")
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	_, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, called)
+	utils.AssertEqual(t, 6000, newCacheTime)
+}
+
 func Test_CacheHeader(t *testing.T) {
 	app := fiber.New()
 

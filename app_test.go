@@ -240,6 +240,30 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	utils.AssertEqual(t, "1: USE error", string(body))
 }
 
+func Test_App_ErrorHandler_GroupMount(t *testing.T) {
+	micro := New(Config{
+		ErrorHandler: func(c *Ctx, err error) error {
+			utils.AssertEqual(t, "0: GET error", err.Error())
+			return c.Status(500).SendString("1: custom error")
+		},
+	})
+	micro.Get("/doe", func(c *Ctx) error {
+		return errors.New("0: GET error")
+	})
+
+	app := New()
+	v1 := app.Group("/v1")
+	v1.Mount("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "1: custom error", string(body))
+}
+
 func Test_App_Nested_Params(t *testing.T) {
 	app := New()
 
@@ -276,7 +300,7 @@ func Test_App_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, uint32(2), app.handlerCount)
+	utils.AssertEqual(t, uint32(2), app.handlersCount)
 }
 
 func Test_App_Use_Params(t *testing.T) {
@@ -517,6 +541,31 @@ func Test_App_Methods(t *testing.T) {
 
 	app.Use("/:john?/:doe?", dummyHandler)
 	testStatus200(t, app, "/john/doe", MethodGet)
+}
+
+func Test_App_Route_Naming(t *testing.T) {
+	app := New()
+	handler := func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	}
+	app.Get("/john", handler).Name("john")
+	app.Delete("/doe", handler)
+	app.Name("doe")
+
+	jane := app.Group("/jane").Name("jane.")
+	jane.Get("/test", handler).Name("test")
+	jane.Trace("/trace", handler).Name("trace")
+
+	group := app.Group("/group")
+	group.Get("/test", handler).Name("test")
+
+	app.Post("/post", handler).Name("post")
+
+	utils.AssertEqual(t, "post", app.GetRoute("post").Name)
+	utils.AssertEqual(t, "john", app.GetRoute("john").Name)
+	utils.AssertEqual(t, "jane.test", app.GetRoute("jane.test").Name)
+	utils.AssertEqual(t, "jane.trace", app.GetRoute("jane.trace").Name)
+	utils.AssertEqual(t, "test", app.GetRoute("test").Name)
 }
 
 func Test_App_New(t *testing.T) {
@@ -882,7 +931,7 @@ func Test_App_Group_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, uint32(2), app.handlerCount)
+	utils.AssertEqual(t, uint32(2), app.handlersCount)
 }
 
 func Test_App_Group(t *testing.T) {
@@ -1201,6 +1250,18 @@ func Test_App_Stack(t *testing.T) {
 	utils.AssertEqual(t, 1, len(stack[methodInt(MethodTrace)]))
 }
 
+// go test -run Test_App_HandlersCount
+func Test_App_HandlersCount(t *testing.T) {
+	app := New()
+
+	app.Use("/path0", testEmptyHandler)
+	app.Get("/path2", testEmptyHandler)
+	app.Post("/path3", testEmptyHandler)
+
+	count := app.HandlersCount()
+	utils.AssertEqual(t, uint32(4), count)
+}
+
 // go test -run Test_App_ReadTimeout
 func Test_App_ReadTimeout(t *testing.T) {
 	app := New(Config{
@@ -1514,4 +1575,41 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	b, err = ioutil.ReadAll(resp2.Body)
 	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
 	utils.AssertEqual(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
+}
+
+func emptyHandler(c *Ctx) error {
+	return nil
+}
+func Test_App_print_Route(t *testing.T) {
+	app := New(Config{EnablePrintRoutes: true})
+	app.Get("/", emptyHandler).Name("routeName")
+	printRoutesMessage := captureOutput(func() {
+		app.printRoutesMessage()
+	})
+	fmt.Println(printRoutesMessage)
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "GET"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "routeName"))
+}
+
+func Test_App_print_Route_with_group(t *testing.T) {
+	app := New(Config{EnablePrintRoutes: true})
+	app.Get("/", emptyHandler)
+	v1 := app.Group("v1")
+	v1.Get("/test", emptyHandler).Name("v1")
+	v1.Post("/test/fiber", emptyHandler)
+	v1.Put("/test/fiber/*", emptyHandler)
+	printRoutesMessage := captureOutput(func() {
+		app.printRoutesMessage()
+	})
+	fmt.Println(printRoutesMessage)
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "GET"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "POST"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "PUT"))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
 }
