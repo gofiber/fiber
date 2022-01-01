@@ -140,7 +140,7 @@ go get -u github.com/gofiber/fiber/v2
 
 Fiber internet üzerinde en popüler olan Express web frameworkünden **esinlenmiştir**. Biz Express'in **kolaylığını** ve Go'nun **ham performansını** birleştirdik. Daha önce Node.js üzerinde (Express veya benzerini kullanarak) bir web uygulaması geliştirdiyseniz, pek çok metod ve prensip size **çok tanıdık** gelecektir.
 
-## Sınırlamalar
+## ⚠️ Sınırlamalar
 
 -   Fiber unsafe kullanımı sebebiyle her zaman Go'nun son sürümüyle uyumlu olmayabilir. Fiber 2.18.0, Go 1.14 ile 1.17 sürümleriyle test edildi.
 -   Fiber net/http arabirimiyle uyumlu değildir. Yani gqlgen veya go-swagger gibi net/http ekosisteminin parçası olan projeleri kullanamazsınız.

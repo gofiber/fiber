@@ -142,7 +142,7 @@ go get -u github.com/gofiber/fiber/v2
 
 我们会**倾听**用户在[issues](https://github.com/gofiber/fiber/issues)和 Discord [channel](https://gofiber.io/discord)和在互联网上的所有诉求，为了创建一个能让有着任何技术栈的开发者都能在deadline前完成任务的**迅速**，**灵活**以及**友好**的`Go web`框架，就像`Express`在`JavaScript`世界中一样。
 
-## 限制
+## ⚠️ 限制
 * 由于 Fiber 使用了 unsafe 特性，导致其可能与最新的 Go 版本不兼容。Fiber 2.18.0 已经在 Go 1.14 到 1.17 上测试过。
 * Fiber 与 net/http 接口不兼容。也就是说你无法使用 gqlen，go-swagger 或者任何其他属于 net/http 生态的项目。
 
