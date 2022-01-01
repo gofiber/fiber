@@ -2,7 +2,6 @@ package encryptcookie
 
 import (
 	"encoding/base64"
-	"github.com/gofiber/fiber/v2/middleware/csrf"
 	"net/http/httptest"
 	"testing"
 
@@ -15,7 +14,7 @@ var testKey = GenerateKey()
 
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 	app := fiber.New()
-	app.Use(csrf.New())
+
 	app.Use(New(Config{
 		Key: testKey,
 	}))
