@@ -7,6 +7,7 @@ package utils
 import (
 	"crypto/rand"
 	"fmt"
+	"os"
 	"testing"
 )
 
@@ -71,7 +72,6 @@ func Test_UUIDv4_Concurrency(t *testing.T) {
 }
 
 // go test -v -run=^$ -bench=Benchmark_UUID -benchmem -count=2
-
 func Benchmark_UUID(b *testing.B) {
 	var res string
 	b.Run("fiber", func(b *testing.B) {
@@ -88,4 +88,15 @@ func Benchmark_UUID(b *testing.B) {
 		}
 		AssertEqual(b, 36, len(res))
 	})
+}
+
+func Test_resolve_address(t *testing.T) {
+	addr := []string{":3000"}
+	AssertEqual(t, ResolveAddress(addr), ":3000")
+	addr = []string{}
+	os.Setenv("PORT", "8080")
+	port := os.Getenv("PORT")
+	AssertEqual(t, ResolveAddress(addr), ":" + port)
+	os.Unsetenv("PORT")
+	AssertEqual(t, ResolveAddress(addr), ":8080")
 }

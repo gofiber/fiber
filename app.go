@@ -733,16 +733,21 @@ func (app *App) Listener(ln net.Listener) error {
 }
 
 // Listen serves HTTP requests from the given addr.
+// If there is no given address, it will use environment
+// variable or serve at port ":8080" by defautl.
 //
+//  app.Listen()
 //  app.Listen(":8080")
 //  app.Listen("127.0.0.1:8080")
-func (app *App) Listen(addr string) error {
+func (app *App) Listen(addr ...string) error {
+	// Resolve address
+	address := utils.ResolveAddress(addr)
 	// Start prefork
 	if app.config.Prefork {
-		return app.prefork(app.config.Network, addr, nil)
+		return app.prefork(app.config.Network, address, nil)
 	}
 	// Setup listener
-	ln, err := net.Listen(app.config.Network, addr)
+	ln, err := net.Listen(app.config.Network, address)
 	if err != nil {
 		return err
 	}

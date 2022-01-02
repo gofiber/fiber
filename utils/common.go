@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 
 	"net"
 	"os"
@@ -107,5 +108,24 @@ func IncrementIPRange(ip net.IP) {
 		if ip[j] > 0 {
 			break
 		}
+	}
+}
+
+// ResolveAddress return true address from the given address slice.
+// If the slice is nil, it returns a environment variable or the
+// default address ":8080"
+func ResolveAddress(addr []string) string {
+	switch len(addr) {
+	case 0:
+		if port := os.Getenv("PORT"); port != "" {
+			fmt.Sprintf("Environment variable PORT=\"%s\"", port)
+			return ":" + port
+		}
+		fmt.Sprintf("Environment variable PORT is undefined. A port number is automatically chosen.")
+		return ":8080"
+	case 1:
+		return addr[0]
+	default:
+		panic("too many parameters")
 	}
 }

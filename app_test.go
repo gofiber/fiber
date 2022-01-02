@@ -1044,6 +1044,13 @@ func Test_App_Listen(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(":4003"))
 }
 
+// go test -run Test_App_Listen_with_empty_address
+func Test_App_Listen_with_empty_address(t *testing.T) {
+	app := New(Config{DisableStartupMessage: true})
+
+	utils.AssertEqual(t, nil, app.Listen())
+}
+
 // go test -run Test_App_Listen_Prefork
 func Test_App_Listen_Prefork(t *testing.T) {
 	testPreforkMaster = true
