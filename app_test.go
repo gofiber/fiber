@@ -1619,5 +1619,10 @@ func Test_App_ListenTLS_With_HTTP2(t *testing.T) {
 		HTTP2: true,
 	})
 
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
 	utils.AssertEqual(t, nil, app.ListenTLS(":8080", ".github/public.crt", ".github/private.key"))
 }
