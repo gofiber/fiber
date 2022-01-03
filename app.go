@@ -28,6 +28,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/dgrr/http2"
 	"github.com/gofiber/fiber/v2/internal/colorable"
 	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/isatty"
@@ -354,9 +355,17 @@ type Config struct {
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
 
-	//If set to true, will print all routes with their method, path and handler.
+	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"print_routes"`
+
+	// FEATURE: v2.25.x
+	// If set to true, will use HTTP/2 for app.
+	// WARNING: HTTP/2 support is still in beta. Some features may not be working.
+	// NOTE: You can't use HTTP/2 with Listen() method. You should use Listener() or ListenTLS()
+	//
+	// Default: false
+	EnableHTTP2 bool `json:"enable_http2"`
 }
 
 // Static defines configuration options when defining static assets.
@@ -718,16 +727,23 @@ func (app *App) Listener(ln net.Listener) error {
 		addr, tlsConfig := lnMetadata(app.config.Network, ln)
 		return app.prefork(app.config.Network, addr, tlsConfig)
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
+	// prepare the server for http/2
+	app.enableHTTP2(ln, getTlsConfig(ln))
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -770,38 +786,55 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
 	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+	}
+	config := &tls.Config{
+		MinVersion:               tls.VersionTLS12,
+		PreferServerCipherSuites: true,
+		Certificates: []tls.Certificate{
+			cert,
+		},
+	}
+
 	// Prefork is supported
 	if app.config.Prefork {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-		if err != nil {
-			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
-		}
-		config := &tls.Config{
-			MinVersion:               tls.VersionTLS12,
-			PreferServerCipherSuites: true,
-			Certificates: []tls.Certificate{
-				cert,
-			},
-		}
 		return app.prefork(app.config.Network, addr, config)
 	}
+
 	// Setup listener
-	ln, err := net.Listen(app.config.Network, addr)
+	ln, err := tls.Listen(app.config.Network, addr, config)
 	if err != nil {
 		return err
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
+	// prepare the server for http/2
+	app.enableHTTP2(ln, config)
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), true, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
-	return app.server.ServeTLS(ln, certFile, keyFile)
+	return app.server.Serve(ln)
+}
+
+// HTTP/2 Configuration
+func (app *App) enableHTTP2(ln net.Listener, cfg *tls.Config) {
+	if app.config.EnableHTTP2 {
+		http2.ConfigureServerAndConfig(app.server, cfg)
+	}
 }
 
 // Config returns the app config as value ( read-only ).
