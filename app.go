@@ -762,6 +762,11 @@ func (app *App) Listen(addr string) error {
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+	//The server can only be used if your server supports TLS
+	if app.config.EnableHTTP2 {
+		http2.ConfigureServer(app.Server())
+		return app.server.Serve(ln)
+	}
 	// Start listening
 	return app.server.Serve(ln)
 }
