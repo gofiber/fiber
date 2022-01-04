@@ -37,6 +37,12 @@ const queryTag = "query"
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey = "__local_user_context__"
 
+// HTTP/2 protocol
+const HTTP2 string = "HTTP/2"
+
+// HTTP/1.1 protocol
+const HTTP11 string = "HTTP/1.1"
+
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
@@ -1342,4 +1348,14 @@ func (c *Ctx) IsFromLocal() bool {
 		ips = append(ips, c.IP())
 	}
 	return c.isLocalHost(ips[0])
+}
+
+//IsHTTP2 will return true if request's header protocol equals to 'HTTP/2'
+func (c *Ctx) IsHTTP2() bool {
+	return string(c.Request().Header.Protocol()) == HTTP2
+}
+
+//IsHTTP11 will return true if request's header protocol equals to 'HTTP/1.1'
+func (c *Ctx) IsHTTP11() bool {
+	return string(c.Request().Header.Protocol()) == HTTP11
 }
