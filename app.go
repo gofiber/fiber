@@ -360,8 +360,9 @@ type Config struct {
 	EnablePrintRoutes bool `json:"print_routes"`
 
 	//Enable HTTP2 Protocol (Early Access)
+	//
 	//Default: false
-	HTTP2 bool `json:"http2"`
+	EnableHTTP2 bool `json:"enable_http2"`
 }
 
 // Static defines configuration options when defining static assets.
@@ -807,14 +808,14 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 		app.printRoutesMessage()
 	}
 	//Serve With HTTP2
-	if app.config.HTTP2 {
+	if app.config.EnableHTTP2 {
 		cer, err := tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
 			return err
 		}
 		config := &tls.Config{Certificates: []tls.Certificate{cer}}
 		http2.ConfigureServerAndConfig(app.Server(), config)
-		return app.server.Serve(tls.NewListener(ln, config))
+		return app.server.ServeTLS(ln, certFile, keyFile)
 	}
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
