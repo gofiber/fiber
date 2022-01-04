@@ -1351,11 +1351,11 @@ func (c *Ctx) IsFromLocal() bool {
 }
 
 //IsHTTP2 will return true if request's header protocol equals to 'HTTP/2'
-func (c *Ctx) IsHTTP2() bool {
+func (c *Ctx) IsRequestHTTP2() bool {
 	return string(c.Request().Header.Protocol()) == HTTP2
 }
 
 //IsHTTP11 will return true if request's header protocol equals to 'HTTP/1.1'
-func (c *Ctx) IsHTTP11() bool {
+func (c *Ctx) IsRequestHTTP11() bool {
 	return string(c.Request().Header.Protocol()) == HTTP11
 }
