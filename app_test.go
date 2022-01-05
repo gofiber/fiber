@@ -1616,7 +1616,7 @@ func Test_App_print_Route_with_group(t *testing.T) {
 
 func Test_App_ListenTLS_With_HTTP2(t *testing.T) {
 	app := New(Config{
-		HTTP2: true,
+		EnableHTTP2: true,
 	})
 
 	go func() {
@@ -1624,5 +1624,5 @@ func Test_App_ListenTLS_With_HTTP2(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.ListenTLS(":8080", ".github/public.crt", ".github/private.key"))
+	utils.AssertEqual(t, nil, app.ListenTLS(":8080", ".github/testdata/ssl.pem", ".github/testdata/ssl.key"))
 }
