@@ -722,6 +722,9 @@ func (app *App) Listener(ln net.Listener) error {
 	// Prefork is supported for custom listeners
 	if app.config.Prefork {
 		addr, tlsConfig := lnMetadata(app.config.Network, ln)
+		if app.config.EnableHTTP2 {
+			http2.ConfigureServerAndConfig(app.Server(), tlsConfig)
+		}
 		return app.prefork(app.config.Network, addr, tlsConfig)
 	}
 	// prepare the server for the start
@@ -745,6 +748,9 @@ func (app *App) Listener(ln net.Listener) error {
 func (app *App) Listen(addr string) error {
 	// Start prefork
 	if app.config.Prefork {
+		if app.config.EnableHTTP2 {
+			http2.ConfigureServerAndConfig(app.Server(), nil)
+		}
 		return app.prefork(app.config.Network, addr, nil)
 	}
 	// Setup listener
@@ -794,7 +800,9 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 				cert,
 			},
 		}
-
+		if app.config.EnableHTTP2 {
+			http2.ConfigureServerAndConfig(app.Server(), config)
+		}
 		return app.prefork(app.config.Network, addr, config)
 	}
 	// Setup listener
