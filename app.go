@@ -722,6 +722,7 @@ func (app *App) Listener(ln net.Listener) error {
 	// Prefork is supported for custom listeners
 	if app.config.Prefork {
 		addr, tlsConfig := lnMetadata(app.config.Network, ln)
+		// Configure Server With HTTP2
 		if app.config.EnableHTTP2 {
 			http2.ConfigureServerAndConfig(app.Server(), tlsConfig)
 		}
@@ -748,8 +749,9 @@ func (app *App) Listener(ln net.Listener) error {
 func (app *App) Listen(addr string) error {
 	// Start prefork
 	if app.config.Prefork {
+		// Configure Server With HTTP2
 		if app.config.EnableHTTP2 {
-			http2.ConfigureServerAndConfig(app.Server(), nil)
+			http2.ConfigureServer(app.Server())
 		}
 		return app.prefork(app.config.Network, addr, nil)
 	}
@@ -768,7 +770,7 @@ func (app *App) Listen(addr string) error {
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
-	//The server can only be used if your server supports TLS
+	// Configure Server With HTTP2
 	if app.config.EnableHTTP2 {
 		http2.ConfigureServer(app.Server())
 		return app.server.Serve(ln)
@@ -800,6 +802,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 				cert,
 			},
 		}
+		// Configure Server With HTTP2
 		if app.config.EnableHTTP2 {
 			http2.ConfigureServer(app.Server())
 		}
@@ -820,7 +823,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
-	//Serve With HTTP2
+	// Configure Server With HTTP2
 	if app.config.EnableHTTP2 {
 		http2.ConfigureServer(app.Server())
 	}
