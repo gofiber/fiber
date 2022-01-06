@@ -801,7 +801,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 			},
 		}
 		if app.config.EnableHTTP2 {
-			http2.ConfigureServerAndConfig(app.Server(), config)
+			http2.ConfigureServer(app.Server())
 		}
 		return app.prefork(app.config.Network, addr, config)
 	}
