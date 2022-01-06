@@ -724,7 +724,7 @@ func (app *App) Listener(ln net.Listener) error {
 		addr, tlsConfig := lnMetadata(app.config.Network, ln)
 		// Configure Server With HTTP2
 		if app.config.EnableHTTP2 {
-			http2.ConfigureServerAndConfig(app.Server(), tlsConfig)
+			http2.ConfigureServer(app.Server())
 		}
 		return app.prefork(app.config.Network, addr, tlsConfig)
 	}
@@ -773,7 +773,6 @@ func (app *App) Listen(addr string) error {
 	// Configure Server With HTTP2
 	if app.config.EnableHTTP2 {
 		http2.ConfigureServer(app.Server())
-		return app.server.Serve(ln)
 	}
 	// Start listening
 	return app.server.Serve(ln)
