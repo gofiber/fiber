@@ -770,10 +770,6 @@ func (app *App) Listen(addr string) error {
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
-	// Configure Server With HTTP2
-	if app.config.EnableHTTP2 {
-		http2.ConfigureServer(app.Server())
-	}
 	// Start listening
 	return app.server.Serve(ln)
 }
