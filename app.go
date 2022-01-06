@@ -823,7 +823,6 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	//Serve With HTTP2
 	if app.config.EnableHTTP2 {
 		http2.ConfigureServer(app.Server())
-		return app.server.ServeTLS(ln, certFile, keyFile)
 	}
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
