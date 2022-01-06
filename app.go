@@ -822,12 +822,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	}
 	//Serve With HTTP2
 	if app.config.EnableHTTP2 {
-		cer, err := tls.LoadX509KeyPair(certFile, keyFile)
-		if err != nil {
-			return err
-		}
-		config := &tls.Config{Certificates: []tls.Certificate{cer}}
-		http2.ConfigureServerAndConfig(app.Server(), config)
+		http2.ConfigureServer(app.Server())
 		return app.server.ServeTLS(ln, certFile, keyFile)
 	}
 	// Start listening
