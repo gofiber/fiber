@@ -726,7 +726,7 @@ func (app *App) Listener(ln net.Listener) error {
 	if app.config.Prefork {
 		addr, tlsConfig := lnMetadata(app.config.Network, ln)
 		// Configure Server With HTTP2
-		app.enableHTTP2()
+		app.configureServerHTTP2()
 		return app.prefork(app.config.Network, addr, tlsConfig)
 	}
 
@@ -805,7 +805,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 			},
 		}
 		// Configure Server With HTTP2
-		app.enableHTTP2()
+		app.configureServerHTTP2()
 		return app.prefork(app.config.Network, addr, config)
 	}
 	// Setup listener
@@ -828,7 +828,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	}
 
 	// Configure Server With HTTP2
-	app.enableHTTP2()
+	app.configureServerHTTP2()
 
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
@@ -1308,7 +1308,7 @@ func (app *App) printRoutesMessage() {
 }
 
 // HTTP/2 Configuration
-func (app *App) enableHTTP2() {
+func (app *App) configureServerHTTP2() {
 	if app.config.EnableHTTP2 {
 		http2.ConfigureServer(app.server)
 	}
