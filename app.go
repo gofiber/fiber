@@ -355,13 +355,16 @@ type Config struct {
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
 
-	//If set to true, will print all routes with their method, path and handler.
+	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"print_routes"`
 
-	//Enable HTTP2 Protocol (Early Access)
+	// FEATURE: v2.25.x
+	// If set to true, will use HTTP/2 for app.
+	// WARNING: HTTP/2 support is still in early access. Some features may not be working.
+	// NOTE: You can't use HTTP/2 with Listen() method. You should use Listener() or ListenTLS()
 	//
-	//Default: false
+	// Default: false
 	EnableHTTP2 bool `json:"enable_http2"`
 }
 
@@ -723,21 +726,23 @@ func (app *App) Listener(ln net.Listener) error {
 	if app.config.Prefork {
 		addr, tlsConfig := lnMetadata(app.config.Network, ln)
 		// Configure Server With HTTP2
-		if app.config.EnableHTTP2 {
-			http2.ConfigureServer(app.server)
-		}
+		app.enableHTTP2()
 		return app.prefork(app.config.Network, addr, tlsConfig)
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -749,27 +754,28 @@ func (app *App) Listener(ln net.Listener) error {
 func (app *App) Listen(addr string) error {
 	// Start prefork
 	if app.config.Prefork {
-		// Configure Server With HTTP2
-		if app.config.EnableHTTP2 {
-			http2.ConfigureServer(app.server)
-		}
 		return app.prefork(app.config.Network, addr, nil)
 	}
+
 	// Setup listener
 	ln, err := net.Listen(app.config.Network, addr)
 	if err != nil {
 		return err
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -784,6 +790,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
 	}
+
 	// Prefork is supported
 	if app.config.Prefork {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
@@ -798,9 +805,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 			},
 		}
 		// Configure Server With HTTP2
-		if app.config.EnableHTTP2 {
-			http2.ConfigureServer(app.server)
-		}
+		app.enableHTTP2()
 		return app.prefork(app.config.Network, addr, config)
 	}
 	// Setup listener
@@ -808,20 +813,23 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if err != nil {
 		return err
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), true, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Configure Server With HTTP2
-	if app.config.EnableHTTP2 {
-		http2.ConfigureServer(app.server)
-	}
+	app.enableHTTP2()
+
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
 }
@@ -1297,4 +1305,11 @@ func (app *App) printRoutesMessage() {
 	}
 
 	_ = w.Flush()
+}
+
+// HTTP/2 Configuration
+func (app *App) enableHTTP2() {
+	if app.config.EnableHTTP2 {
+		http2.ConfigureServer(app.server)
+	}
 }
