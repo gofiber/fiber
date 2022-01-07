@@ -286,7 +286,7 @@ Fiber mengalihkan ke [html/template](https://golang.org/pkg/html/template/) saat
 
 Jika kamu ingin menjalankan sebagian atau menggunakan mesin yang berbeda seperti [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) atau [pug](https://github.com/Joker/jade) dan lain-lain..
 
-Lihat [Template](https://github.com/gofiber/template) kami paket yang mendukung beberapa mesin tampilan.
+Lihat paket [contoh](https://github.com/gofiber/template) kami yang mendukung beberapa mesin tampilan.
 
 ```go
 package main
@@ -522,7 +522,7 @@ func main() {
 
 ## 🧬 Middleware Internal
 
-Kumpulan `middleware` yang ada didalam kerangkaa kerja Fiber.
+Kumpulan `middleware` yang ada didalam kerangka kerja Fiber.
 
 | Middleware                                                                       | Description                                                                                                                                                                                |
 | :------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
