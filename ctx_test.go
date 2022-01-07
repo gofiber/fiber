@@ -2006,9 +2006,30 @@ func Test_Ctx_Render(t *testing.T) {
 	err = c.Render("./.github/testdata/template-invalid.html", nil)
 	utils.AssertEqual(t, false, err == nil)
 }
-func Test_Ctx_RenderLocals(t *testing.T) {
+func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 	t.Parallel()
-	app := New()
+	app := New(Config{
+		PassLocalsToViews: false,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Locals("Title", "Hello, World!")
+	defer app.ReleaseCtx(c)
+	err := c.Render("./.github/testdata/template.html", Map{})
+
+	buf := bytebufferpool.Get()
+	_, _ = buf.WriteString("overwrite")
+	defer bytebufferpool.Put(buf)
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1><no value></h1>", string(c.Response().Body()))
+}
+
+func Test_Ctx_RenderWithLocals(t *testing.T) {
+	t.Parallel()
+	app := New(Config{
+		PassLocalsToViews: true,
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Locals("Title", "Hello, World!")
