@@ -239,15 +239,13 @@ func (c *Ctx) BaseURL() string {
 	return c.baseURI
 }
 
-// Set or combine default view var map for binding to template engine
-func (c *Ctx) Bind(viewVarMap Map) {
-	if c.viewVarMap != nil {
-		for k, v := range viewVarMap {
-			c.viewVarMap[k] = v
-		}
-	} else {
-		c.viewVarMap = viewVarMap
+// Set or get default view var map for binding to template engine
+func (c *Ctx) Bind(key string, value ...interface{}) interface{} {
+	if len(value) == 0 {
+		return c.viewVarMap[key]
 	}
+	c.viewVarMap[key] = value[0]
+	return value[0]
 }
 
 // Body contains the raw body submitted in a POST request.
