@@ -2916,6 +2916,8 @@ func Test_Ctx_IsRequestHTTP11(t *testing.T) {
 	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/public.crt", ".github/testdata/private.key"))
 }
 
+// You have to approve public certificate in your computer.
+// While you were creating certificate, certificate's common name must be equal to server's ip address.
 func Test_Ctx_IsRequestHTTP2(t *testing.T) {
 	app := New(Config{
 		EnableHTTP2: true,
