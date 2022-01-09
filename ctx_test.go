@@ -26,7 +26,9 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/dgrr/http2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -2899,4 +2901,51 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		defer app.ReleaseCtx(c)
 		utils.AssertEqual(t, false, c.IsFromLocal())
 	}
+}
+
+func Test_Ctx_IsRequestHTTP11(t *testing.T) {
+	app := New(Config{EnableHTTP2: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	utils.AssertEqual(t, true, c.IsRequestHTTP11())
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/public.crt", ".github/testdata/private.key"))
+}
+
+func Test_Ctx_IsRequestHTTP2(t *testing.T) {
+	app := New(Config{
+		EnableHTTP2: true,
+	})
+
+	app.Get("/", func(c *Ctx) error {
+		return c.JSON(c.IsRequestHTTP2())
+	})
+
+	go func() {
+		hc := &fasthttp.HostClient{
+			Addr: "127.0.0.1:8080",
+		}
+		err := http2.ConfigureClient(hc, http2.ClientOpts{})
+		utils.AssertEqual(t, nil, err)
+
+		statusCode, body, err := hc.Get(nil, "https://127.0.0.1:8080")
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, 200, statusCode)
+
+		var isHTTP2 bool
+		json.Unmarshal(body, &isHTTP2)
+		utils.AssertEqual(t, true, isHTTP2)
+
+	}()
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/public.crt", ".github/testdata/private.key"))
 }
