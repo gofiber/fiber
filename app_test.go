@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgrr/http2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -1624,5 +1626,70 @@ func Test_App_ListenTLS_With_HTTP2(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.ListenTLS(":8080", ".github/testdata/ssl.pem", ".github/testdata/ssl.key"))
+	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/public.crt", ".github/testdata/private.key"))
+}
+
+func Test_App_IsRequestHTTP11(t *testing.T) {
+	app := New(Config{
+		EnableHTTP2: true,
+	})
+
+	app.Get("/", func(c *Ctx) error {
+		return c.JSON(c.IsRequestHTTP11())
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+
+	b, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	var isHTTP11 bool
+	err = json.Unmarshal(b, &isHTTP11)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, isHTTP11)
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/public.crt", ".github/testdata/private.key"))
+
+}
+
+// You have to approve public certificate (public.crt) in your computer for testing.
+// While you were creating certificate, certificate common name must be equal to server's ip
+func Test_App_IsRequestHTTP2(t *testing.T) {
+	app := New(Config{
+		EnableHTTP2: true,
+	})
+
+	app.Get("/", func(c *Ctx) error {
+		return c.JSON(c.IsRequestHTTP2())
+	})
+
+	go func() {
+		hc := &fasthttp.HostClient{
+			Addr: "127.0.0.1:8080",
+		}
+		err := http2.ConfigureClient(hc, http2.ClientOpts{})
+		utils.AssertEqual(t, nil, err)
+
+		statusCode, body, err := hc.Get(nil, "https://127.0.0.1:8080")
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, 200, statusCode)
+
+		var isHTTP2 bool
+		json.Unmarshal(body, &isHTTP2)
+		utils.AssertEqual(t, true, isHTTP2)
+
+	}()
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/public.crt", ".github/testdata/private.key"))
 }
