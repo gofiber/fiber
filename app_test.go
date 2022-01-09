@@ -1624,5 +1624,5 @@ func Test_App_ListenTLS_With_HTTP2(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.ListenTLS(":8080", ".github/testdata/ssl.pem", ".github/testdata/ssl.key"))
+	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/public.crt", ".github/testdata/private.key"))
 }
