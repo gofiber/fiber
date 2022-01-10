@@ -356,7 +356,7 @@ type Config struct {
 
 	//If set to true, will print all routes with their method, path and handler.
 	// Default: false
-	EnablePrintRoutes bool `json:"print_routes"`
+	EnablePrintRoutes bool `json:"enable_print_routes"`
 }
 
 // Static defines configuration options when defining static assets.
