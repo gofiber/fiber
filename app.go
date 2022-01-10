@@ -711,6 +711,29 @@ func NewError(code int, message ...string) *Error {
 	return e
 }
 
+// NewErrors creates multiple new Errors instance with some message
+func NewErrors(code int, messages ...string) []*Error {
+	var errors []*Error
+	if len(messages) > 0 {
+		for _, message := range messages {
+			e := &Error{
+				Code: code,
+			}
+			e.Message = message
+			errors = append(errors, e)
+		}
+	} else {
+		// Use default messages
+		e := &Error{
+			Code: code,
+		}
+		e.Message = utils.StatusMessage(code)
+		errors = append(errors, e)
+	}
+
+	return errors
+}
+
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
 	// Prefork is supported for custom listeners
