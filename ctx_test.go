@@ -2901,17 +2901,17 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 	}
 }
 
-func Test_Ctx_IsRequestHTTP11(t *testing.T) {
+func Test_Ctx_IsReqHTTP11(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	utils.AssertEqual(t, true, c.IsRequestHTTP11())
+	utils.AssertEqual(t, true, c.IsReqHTTP11())
 }
 
-func Test_Ctx_IsRequestHTTP2(t *testing.T) {
+func Test_Ctx_IsReqHTTP2(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.SetProtocol(HTTP2)
 	defer app.ReleaseCtx(c)
-	utils.AssertEqual(t, true, c.IsRequestHTTP2())
+	utils.AssertEqual(t, true, c.IsReqHTTP2())
 }
