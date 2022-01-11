@@ -39,6 +39,7 @@ type Opcode struct {
 
 	Type       *runtime.Type // go type
 	Jmp        *CompiledCode // for recursive call
+	FieldQuery *FieldQuery   // field query for Interface / MarshalJSON / MarshalText
 	ElemIdx    uint32        // offset to access array/slice elem
 	Length     uint32        // offset to access slice length or array length
 	Indent     uint32        // indent number
@@ -333,6 +334,7 @@ func copyOpcode(code *Opcode) *Opcode {
 			Idx:        c.Idx,
 			Offset:     c.Offset,
 			Type:       c.Type,
+			FieldQuery: c.FieldQuery,
 			DisplayIdx: c.DisplayIdx,
 			DisplayKey: c.DisplayKey,
 			ElemIdx:    c.ElemIdx,

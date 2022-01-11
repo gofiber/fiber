@@ -15,6 +15,23 @@ func UnorderedMap() EncodeOptionFunc {
 	}
 }
 
+// DisableHTMLEscape disables escaping of HTML characters ( '&', '<', '>' ) when encoding string.
+func DisableHTMLEscape() EncodeOptionFunc {
+	return func(opt *EncodeOption) {
+		opt.Flag &= ^encoder.HTMLEscapeOption
+	}
+}
+
+// DisableNormalizeUTF8
+// By default, when encoding string, UTF8 characters in the range of 0x80 - 0xFF are processed by applying \ufffd for invalid code and escaping for \u2028 and \u2029.
+// This option disables this behaviour. You can expect faster speeds by applying this option, but be careful.
+// encoding/json implements here: https://github.com/golang/go/blob/6178d25fc0b28724b1b5aec2b1b74fc06d9294c7/src/encoding/json/encode.go#L1067-L1093.
+func DisableNormalizeUTF8() EncodeOptionFunc {
+	return func(opt *EncodeOption) {
+		opt.Flag &= ^encoder.NormalizeUTF8Option
+	}
+}
+
 // Debug outputs debug information when panic occurs during encoding.
 func Debug() EncodeOptionFunc {
 	return func(opt *EncodeOption) {

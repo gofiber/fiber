@@ -364,3 +364,8 @@ func Valid(data []byte) bool {
 	}
 	return decoder.InputOffset() >= int64(len(data))
 }
+
+func init() {
+	encoder.Marshal = Marshal
+	encoder.Unmarshal = Unmarshal
+}
