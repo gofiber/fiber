@@ -63,6 +63,27 @@ func compileToGetCodeSetSlowPath(typeptr uintptr) (*OpcodeSet, error) {
 	return codeSet, nil
 }
 
+func getFilteredCodeSetIfNeeded(ctx *RuntimeContext, codeSet *OpcodeSet) (*OpcodeSet, error) {
+	if (ctx.Option.Flag & ContextOption) == 0 {
+		return codeSet, nil
+	}
+	query := FieldQueryFromContext(ctx.Option.Context)
+	if query == nil {
+		return codeSet, nil
+	}
+	ctx.Option.Flag |= FieldQueryOption
+	cacheCodeSet := codeSet.getQueryCache(query.Hash())
+	if cacheCodeSet != nil {
+		return cacheCodeSet, nil
+	}
+	queryCodeSet, err := newCompiler().codeToOpcodeSet(codeSet.Type, codeSet.Code.Filter(query))
+	if err != nil {
+		return nil, err
+	}
+	codeSet.setQueryCache(query.Hash(), queryCodeSet)
+	return queryCodeSet, nil
+}
+
 type Compiler struct {
 	structTypeToCode map[uintptr]*StructCode
 }
@@ -80,6 +101,10 @@ func (c *Compiler) compile(typeptr uintptr) (*OpcodeSet, error) {
 	if err != nil {
 		return nil, err
 	}
+	return c.codeToOpcodeSet(typ, code)
+}
+
+func (c *Compiler) codeToOpcodeSet(typ *runtime.Type, code Code) (*OpcodeSet, error) {
 	noescapeKeyCode := c.codeToOpcode(&compileContext{
 		structTypeToCodes: map[uintptr]Opcodes{},
 		recursiveCodes:    &Opcodes{},
@@ -107,6 +132,8 @@ func (c *Compiler) compile(typeptr uintptr) (*OpcodeSet, error) {
 		InterfaceEscapeKeyCode:   interfaceEscapeKeyCode,
 		CodeLength:               codeLength,
 		EndCode:                  ToEndCode(interfaceNoescapeKeyCode),
+		Code:                     code,
+		QueryCache:               map[string]*OpcodeSet{},
 	}, nil
 }
 
