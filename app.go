@@ -722,11 +722,14 @@ func NewError(code int, message ...string) *Error {
 
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
+	// Configure server with HTTP2
+	if app.config.EnableHTTP2 {
+		app.configureServerHTTP2()
+	}
+
 	// Prefork is supported for custom listeners
 	if app.config.Prefork {
 		addr, tlsConfig := lnMetadata(app.config.Network, ln)
-		// Configure Server With HTTP2
-		app.configureServerHTTP2()
 		return app.prefork(app.config.Network, addr, tlsConfig)
 	}
 
@@ -791,6 +794,11 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 		return errors.New("tls: provide a valid cert or key path")
 	}
 
+	// Configure server with HTTP2
+	if app.config.EnableHTTP2 {
+		app.configureServerHTTP2()
+	}
+
 	// Prefork is supported
 	if app.config.Prefork {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
@@ -804,10 +812,10 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 				cert,
 			},
 		}
-		// Configure Server With HTTP2
-		app.configureServerHTTP2()
+
 		return app.prefork(app.config.Network, addr, config)
 	}
+
 	// Setup listener
 	ln, err := net.Listen(app.config.Network, addr)
 	if err != nil {
@@ -826,9 +834,6 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
-
-	// Configure Server With HTTP2
-	app.configureServerHTTP2()
 
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
@@ -1309,7 +1314,5 @@ func (app *App) printRoutesMessage() {
 
 // HTTP/2 Configuration
 func (app *App) configureServerHTTP2() {
-	if app.config.EnableHTTP2 {
-		http2.ConfigureServer(app.server)
-	}
+	http2.ConfigureServer(app.server)
 }
