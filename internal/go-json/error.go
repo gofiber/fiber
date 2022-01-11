@@ -27,7 +27,7 @@ type SyntaxError = errors.SyntaxError
 //
 // Deprecated: No longer used; kept for compatibility.
 //lint:ignore SA1019 we love invalid regular expressions!
-type UnmarshalFieldError = errors.UnmarshalFieldError
+type UnmarshalFieldError = errors.UnmarshalFieldError //nolint:staticcheck
 
 // An UnmarshalTypeError describes a JSON value that was
 // not appropriate for a value of a specific Go type.
