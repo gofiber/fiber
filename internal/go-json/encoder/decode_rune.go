@@ -44,13 +44,6 @@ var first = [256]uint8{
 	s5, s6, s6, s6, s7, xx, xx, xx, xx, xx, xx, xx, xx, xx, xx, xx, // 0xF0-0xFF
 }
 
-// acceptRange gives the range of valid values for the second byte in a UTF-8
-// sequence.
-type acceptRange struct {
-	lo uint8 // lowest value for second byte.
-	hi uint8 // highest value for second byte.
-}
-
 const (
 	lineSep      = byte(168) //'\u2028'
 	paragraphSep = byte(169) //'\u2029'
@@ -80,25 +73,31 @@ func decodeRuneInString(s string) (decodeRuneState, int) {
 		return validUTF8State, 1
 	}
 	sz := int(x & 7)
-	var accept acceptRange
-	switch x >> 4 {
-	case 0:
-		accept = acceptRange{locb, hicb}
-	case 1:
-		accept = acceptRange{0xA0, hicb}
-	case 2:
-		accept = acceptRange{locb, 0x9F}
-	case 3:
-		accept = acceptRange{0x90, hicb}
-	case 4:
-		accept = acceptRange{locb, 0x8F}
-	}
 	if n < sz {
 		return runeErrorState, 1
 	}
 	s1 := s[1]
-	if s1 < accept.lo || accept.hi < s1 {
-		return runeErrorState, 1
+	switch x >> 4 {
+	case 0:
+		if s1 < locb || hicb < s1 {
+			return runeErrorState, 1
+		}
+	case 1:
+		if s1 < 0xA0 || hicb < s1 {
+			return runeErrorState, 1
+		}
+	case 2:
+		if s1 < locb || 0x9F < s1 {
+			return runeErrorState, 1
+		}
+	case 3:
+		if s1 < 0x90 || hicb < s1 {
+			return runeErrorState, 1
+		}
+	case 4:
+		if s1 < locb || 0x8F < s1 {
+			return runeErrorState, 1
+		}
 	}
 	if sz <= 2 {
 		return validUTF8State, 2

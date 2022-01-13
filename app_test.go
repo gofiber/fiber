@@ -1166,6 +1166,15 @@ func Test_NewError(t *testing.T) {
 	utils.AssertEqual(t, "permission denied", e.Message)
 }
 
+func Test_NewErrors(t *testing.T) {
+	errors := NewErrors(StatusBadRequest, []string{"error 1", "error 2"}...)
+	utils.AssertEqual(t, StatusBadRequest, errors[0].Code)
+	utils.AssertEqual(t, "error 1", errors[0].Message)
+
+	utils.AssertEqual(t, StatusBadRequest, errors[1].Code)
+	utils.AssertEqual(t, "error 2", errors[1].Message)
+}
+
 // go test -run Test_Test_Timeout
 func Test_Test_Timeout(t *testing.T) {
 	app := New()

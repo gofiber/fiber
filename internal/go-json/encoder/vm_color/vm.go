@@ -199,7 +199,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				break
 			}
 			ctx.KeepRefs = append(ctx.KeepRefs, up)
-			ifaceCodeSet, err := encoder.CompileToGetCodeSet(uintptr(unsafe.Pointer(typ)))
+			ifaceCodeSet, err := encoder.CompileToGetCodeSet(ctx, uintptr(unsafe.Pointer(typ)))
 			if err != nil {
 				return nil, err
 			}
@@ -218,8 +218,7 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			oldOffset := ptrOffset
 			ptrOffset += totalLength * uintptrSize
 			oldBaseIndent := ctx.BaseIndent
-			indentDiffFromTop := c.Indent - 1
-			ctx.BaseIndent += code.Indent - indentDiffFromTop
+			ctx.BaseIndent += code.Indent
 
 			newLen := offsetNum + totalLength + nextTotalLength
 			if curlen < newLen {
@@ -403,11 +402,12 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				break
 			}
 			b = appendStructHead(ctx, b)
-			mapCtx := encoder.NewMapContext(mlen)
+			unorderedMap := (ctx.Option.Flag & encoder.UnorderedMapOption) != 0
+			mapCtx := encoder.NewMapContext(mlen, unorderedMap)
 			mapiterinit(code.Type, uptr, &mapCtx.Iter)
 			store(ctxptr, code.Idx, uintptr(unsafe.Pointer(mapCtx)))
 			ctx.KeepRefs = append(ctx.KeepRefs, unsafe.Pointer(mapCtx))
-			if (ctx.Option.Flag & encoder.UnorderedMapOption) != 0 {
+			if unorderedMap {
 				b = appendMapKeyIndent(ctx, code.Next, b)
 			} else {
 				mapCtx.Start = len(b)
@@ -705,14 +705,15 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if code.Flags&encoder.AnonymousHeadFlags == 0 {
 				b = appendStructHead(ctx, b)
 			}
-			u64 := ptrToUint64(p+uintptr(code.Offset), code.NumBitSize)
+			p += uintptr(code.Offset)
+			u64 := ptrToUint64(p, code.NumBitSize)
 			v := u64 & ((1 << code.NumBitSize) - 1)
 			if v == 0 {
 				code = code.NextField
 			} else {
 				b = appendStructKey(ctx, code, b)
 				b = append(b, '"')
-				b = appendInt(ctx, b, p+uintptr(code.Offset), code)
+				b = appendInt(ctx, b, p, code)
 				b = append(b, '"')
 				b = appendComma(ctx, b)
 				code = code.Next
@@ -2953,9 +2954,10 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructHead(ctx, b)
 			}
 			b = appendStructKey(ctx, code, b)
+			p += uintptr(code.Offset)
 			if (code.Flags & encoder.IsNilableTypeFlags) != 0 {
 				if (code.Flags&encoder.IndirectFlags) != 0 || code.Op == encoder.OpStructPtrHeadMarshalJSON {
-					p = ptrToPtr(p + uintptr(code.Offset))
+					p = ptrToPtr(p)
 				}
 			}
 			if p == 0 && (code.Flags&encoder.NilCheckFlags) != 0 {
@@ -2994,9 +2996,10 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if code.Flags&encoder.AnonymousHeadFlags == 0 {
 				b = appendStructHead(ctx, b)
 			}
+			p += uintptr(code.Offset)
 			if (code.Flags & encoder.IsNilableTypeFlags) != 0 {
 				if (code.Flags&encoder.IndirectFlags) != 0 || code.Op == encoder.OpStructPtrHeadOmitEmptyMarshalJSON {
-					p = ptrToPtr(p + uintptr(code.Offset))
+					p = ptrToPtr(p)
 				}
 			}
 			iface := ptrToInterface(code, p)
@@ -3114,9 +3117,10 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 				b = appendStructHead(ctx, b)
 			}
 			b = appendStructKey(ctx, code, b)
+			p += uintptr(code.Offset)
 			if (code.Flags & encoder.IsNilableTypeFlags) != 0 {
 				if (code.Flags&encoder.IndirectFlags) != 0 || code.Op == encoder.OpStructPtrHeadMarshalText {
-					p = ptrToPtr(p + uintptr(code.Offset))
+					p = ptrToPtr(p)
 				}
 			}
 			if p == 0 && (code.Flags&encoder.NilCheckFlags) != 0 {
@@ -3155,9 +3159,10 @@ func Run(ctx *encoder.RuntimeContext, b []byte, codeSet *encoder.OpcodeSet) ([]b
 			if code.Flags&encoder.AnonymousHeadFlags == 0 {
 				b = appendStructHead(ctx, b)
 			}
+			p += uintptr(code.Offset)
 			if (code.Flags & encoder.IsNilableTypeFlags) != 0 {
 				if (code.Flags&encoder.IndirectFlags) != 0 || code.Op == encoder.OpStructPtrHeadOmitEmptyMarshalText {
-					p = ptrToPtr(p + uintptr(code.Offset))
+					p = ptrToPtr(p)
 				}
 			}
 			if p == 0 && (code.Flags&encoder.NilCheckFlags) != 0 {
