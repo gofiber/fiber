@@ -1360,7 +1360,8 @@ func (app *App) configureServerHTTP2(conf ...HTTP2Config) {
 			MaxConcurrentStreams: conf[0].MaxConcurrentStreams,
 			Debug:                conf[0].Debug,
 		})
+	} else {
+		// Default Config
+		http2.ConfigureServer(app.server, http2.ServerConfig{})
 	}
-
-	http2.ConfigureServer(app.server, http2.ServerConfig{})
 }
