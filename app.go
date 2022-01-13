@@ -365,7 +365,10 @@ type Config struct {
 	// NOTE: You can't use HTTP/2 with Listen() method. You should use Listener() or ListenTLS()
 	//
 	// Default: false
-	EnableHTTP2 bool `json:"enable_http2"`
+	HTTP2 bool `json:"http2"`
+
+	// HTTP/2 Config
+	HTTP2Config HTTP2Config `json:"http2_config"`
 }
 
 // Static defines configuration options when defining static assets.
@@ -723,8 +726,8 @@ func NewError(code int, message ...string) *Error {
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
 	// Configure server with HTTP2
-	if app.config.EnableHTTP2 {
-		app.configureServerHTTP2()
+	if app.config.HTTP2 {
+		app.configureServerHTTP2(app.config.HTTP2Config)
 	}
 
 	// Prefork is supported for custom listeners
@@ -795,8 +798,8 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	}
 
 	// Configure server with HTTP2
-	if app.config.EnableHTTP2 {
-		app.configureServerHTTP2()
+	if app.config.HTTP2 {
+		app.configureServerHTTP2(app.config.HTTP2Config)
 	}
 
 	// Prefork is supported
@@ -1312,7 +1315,29 @@ func (app *App) printRoutesMessage() {
 	_ = w.Flush()
 }
 
+type HTTP2Config struct {
+	// PingInterval is the interval at which the server will send a
+	// ping message to a client.
+	//
+	// To disable pings set the PingInterval to a negative value.
+	PingInterval time.Duration
+
+	// ...
+	MaxConcurrentStreams int
+
+	// Debug is a flag that will allow the library to print debugging information.
+	Debug bool
+}
+
 // HTTP/2 Configuration
-func (app *App) configureServerHTTP2() {
-	http2.ConfigureServer(app.server)
+func (app *App) configureServerHTTP2(conf ...HTTP2Config) {
+	if len(conf) > 0 {
+		http2.ConfigureServer(app.server, http2.ServerConfig{
+			PingInterval:         conf[0].PingInterval,
+			MaxConcurrentStreams: conf[0].MaxConcurrentStreams,
+			Debug:                conf[0].Debug,
+		})
+	}
+
+	http2.ConfigureServer(app.server, http2.ServerConfig{})
 }
