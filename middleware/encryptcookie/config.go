@@ -34,7 +34,7 @@ type Config struct {
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:      nil,
-	Except:    make([]string, 0),
+	Except:    []string{"csrf_"},
 	Key:       "",
 	Encryptor: EncryptCookie,
 	Decryptor: DecryptCookie,

@@ -357,7 +357,7 @@ type Config struct {
 
 	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
-	EnablePrintRoutes bool `json:"print_routes"`
+	EnablePrintRoutes bool `json:"enable_print_routes"`
 
 	// FEATURE: v2.25.x
 	// If set to true, will use HTTP/2 for app.
@@ -721,6 +721,29 @@ func NewError(code int, message ...string) *Error {
 		e.Message = utils.StatusMessage(code)
 	}
 	return e
+}
+
+// NewErrors creates multiple new Errors instance with some message
+func NewErrors(code int, messages ...string) []*Error {
+	var errors []*Error
+	if len(messages) > 0 {
+		for _, message := range messages {
+			e := &Error{
+				Code: code,
+			}
+			e.Message = message
+			errors = append(errors, e)
+		}
+	} else {
+		// Use default messages
+		e := &Error{
+			Code: code,
+		}
+		e.Message = utils.StatusMessage(code)
+		errors = append(errors, e)
+	}
+
+	return errors
 }
 
 // Listener can be used to pass a custom listener.

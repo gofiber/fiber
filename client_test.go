@@ -18,6 +18,7 @@ import (
 
 	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/tlstest"
+	"github.com/gofiber/fiber/v2/internal/uuid"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -588,6 +589,32 @@ func Test_Client_Stdjson_Gojson(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 
 	got, err := json.Marshal(user1)
+	utils.AssertEqual(t, nil, err)
+
+	utils.AssertEqual(t, expected, got)
+
+	type config struct {
+		// debug enable a debug logging.
+		debug bool
+		// log used for logging on debug mode.
+		log func(...interface{})
+	}
+
+	type res struct {
+		config `json:"-"`
+		// ID of the ent.
+		ID uuid.UUID `json:"id,omitempty"`
+	}
+
+	u := uuid.New()
+	test := res{
+		ID: u,
+	}
+
+	expected, err = stdjson.Marshal(test)
+	utils.AssertEqual(t, nil, err)
+
+	got, err = json.Marshal(test)
 	utils.AssertEqual(t, nil, err)
 
 	utils.AssertEqual(t, expected, got)

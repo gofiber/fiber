@@ -9,15 +9,20 @@ import (
 
 var setsMu sync.RWMutex
 
-func CompileToGetCodeSet(typeptr uintptr) (*OpcodeSet, error) {
+func CompileToGetCodeSet(ctx *RuntimeContext, typeptr uintptr) (*OpcodeSet, error) {
 	if typeptr > typeAddr.MaxTypeAddr {
 		return compileToGetCodeSetSlowPath(typeptr)
 	}
 	index := (typeptr - typeAddr.BaseTypeAddr) >> typeAddr.AddrShift
 	setsMu.RLock()
 	if codeSet := cachedOpcodeSets[index]; codeSet != nil {
+		filtered, err := getFilteredCodeSetIfNeeded(ctx, codeSet)
+		if err != nil {
+			setsMu.RUnlock()
+			return nil, err
+		}
 		setsMu.RUnlock()
-		return codeSet, nil
+		return filtered, nil
 	}
 	setsMu.RUnlock()
 
@@ -25,8 +30,12 @@ func CompileToGetCodeSet(typeptr uintptr) (*OpcodeSet, error) {
 	if err != nil {
 		return nil, err
 	}
+	filtered, err := getFilteredCodeSetIfNeeded(ctx, codeSet)
+	if err != nil {
+		return nil, err
+	}
 	setsMu.Lock()
 	cachedOpcodeSets[index] = codeSet
 	setsMu.Unlock()
-	return codeSet, nil
+	return filtered, nil
 }

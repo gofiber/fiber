@@ -64,7 +64,7 @@ type Config struct {
 
 	// Array of cookie keys that should not be encrypted.
 	//
-	// Optional. Default: []
+	// Optional. Default: ["csrf_"]
 	Except []string
 
 	// Base64 encoded unique key to encode & decode cookies.
