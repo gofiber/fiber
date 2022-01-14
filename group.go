@@ -167,3 +167,18 @@ func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 	}
 	return grp.app.Group(prefix)
 }
+
+// Route is used to define routes with a common prefix inside the common function.
+// Uses Group method to define new sub-router.
+func (grp *Group) Route(prefix string, fn func(router Router), name ...string) Router {
+	// Create new group
+	group := grp.Group(prefix)
+	if len(name) > 0 {
+		group.Name(name[0])
+	}
+
+	// Define routes
+	fn(group)
+
+	return group
+}
