@@ -1,5 +1,5 @@
 # RequestID
-RequestID middleware for [Fiber](https://github.com/gofiber/fiber) that adds an indentifier to the response.
+RequestID middleware for [Fiber](https://github.com/gofiber/fiber) that adds an identifier to the response.
 
 ### Table of Contents
 - [Signatures](#signatures)

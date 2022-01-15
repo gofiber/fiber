@@ -105,7 +105,7 @@ type Config struct {
 	// Optional. Default: 500 * time.Millisecond
 	TimeInterval time.Duration
 
-	// Output is a writter where logs are written
+	// Output is a writer where logs are written
 	//
 	// Default: os.Stderr
 	Output io.Writer
