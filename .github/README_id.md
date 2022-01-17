@@ -111,7 +111,7 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmar
 
 ## ⚙️ Instalasi
 
-Pastikan kamu sudah menginstalasi Golang ([download](https://golang.org/dl/)). Dengan versi `1.14` atau lebih tinggi [ Direkomendasikan ].
+Pastikan kamu sudah menginstalasi Golang ([unduh](https://golang.org/dl/)). Dengan versi `1.14` atau lebih tinggi [ Direkomendasikan ].
 
 Inisialisasi proyek kamu dengan membuat folder lalu jalankan `go mod init github.com/nama-kamu/repo` ([belajar lebih banyak](https://blog.golang.org/using-go-modules)) di dalam folder. Kemudian instal Fiber dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
@@ -129,7 +129,7 @@ go get -u github.com/gofiber/fiber/v2
 -   Mendukung Middleware & [Next](https://docs.gofiber.io/api/ctx#next) seperti Express
 -   Kembangkan aplikasi dengan [Cepat](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 -   [Template engines](https://github.com/gofiber/template)
--   [WebSocket support](https://github.com/gofiber/websocket)
+-   [Mendukung WebSocket](https://github.com/gofiber/websocket)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Tersedia dalam [15 bahasa](https://docs.gofiber.io/)
 -   Dan masih banyak lagi, [kunjungi Fiber](https://docs.gofiber.io/)
@@ -192,7 +192,7 @@ func main() {
 
 ```
 
-#### 📖 [**Route Naming**](https://docs.gofiber.io/api/app#name)
+#### 📖 [**Penamaan Route**](https://docs.gofiber.io/api/app#name)
 
 ```go
 func main() {
@@ -527,7 +527,7 @@ Kumpulan `middleware` yang ada didalam kerangka kerja Fiber.
 | Middleware                                                                       | Description                                                                                                                                                                                |
 | :------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Middleware Basic auth menyediakan Autentikasi dasar HTTP. Ia memanggil handler selanjutnya untuk kredensial yang valid dan 401 unathorized untuk kredential yang hilang atau tidak valid. |
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Kompresi middleware untuk fiber, ia mendukung `deflate`, `gzip` and `brotli` secara default                                                                                                |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Kompresi middleware untuk fiber, ia mendukung `deflate`, `gzip` and `brotli` secara bawaan                                                                                                |
 | [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)           | Mencegat dan respond cache                                                                                                                                                                 |
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)             | Memungkinkan cross-origin resource sharing \(CORS\) dengan berbagai pilihan.                                                                                                               |
 | [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)             | Melindungi dari eksploitasi CSRF.                                                                                                                                                          |
