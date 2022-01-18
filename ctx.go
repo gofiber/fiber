@@ -33,6 +33,7 @@ import (
 const maxParams = 30
 
 const queryTag = "query"
+const reqHeaderTag = "reqHeader"
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey = "__local_user_context__"
@@ -285,7 +286,7 @@ func (c *Ctx) Body() []byte {
 	return body
 }
 
-// decoderPool helps to improve BodyParser's and QueryParser's performance
+// decoderPool helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
 var decoderPool = &sync.Pool{New: func() interface{} {
 	return decoderBuilder(ParserConfig{
 		IgnoreUnknownKeys: true,
@@ -896,6 +897,34 @@ func (c *Ctx) QueryParser(out interface{}) error {
 		} else {
 			data[k] = append(data[k], v)
 		}
+	})
+
+	return decoder.Decode(out, data)
+}
+
+// ReqHeaderParser binds the request header strings to a struct.
+func (c *Ctx) ReqHeaderParser(out interface{}) error {
+	// Get decoder from pool
+	decoder := decoderPool.Get().(*schema.Decoder)
+	defer decoderPool.Put(decoder)
+
+	// Set correct alias tag
+	decoder.SetAliasTag(reqHeaderTag)
+
+	data := make(map[string][]string)
+	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
+		k := utils.UnsafeString(key)
+		v := utils.UnsafeString(val)
+
+		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+			values := strings.Split(v, ",")
+			for i := 0; i < len(values); i++ {
+				data[k] = append(data[k], values[i])
+			}
+		} else {
+			data[k] = append(data[k], v)
+		}
+
 	})
 
 	return decoder.Decode(out, data)
