@@ -2861,6 +2861,32 @@ func Benchmark_Ctx_QueryParser_Comma(b *testing.B) {
 	utils.AssertEqual(b, nil, c.QueryParser(q))
 }
 
+// go test -v  -run=^$ -bench=Benchmark_Ctx_ReqHeaderParser -benchmem -count=4
+func Benchmark_Ctx_ReqHeaderParser(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type ReqHeader struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.Add("id", "1")
+	c.Request().Header.Add("Name", "John Doe")
+	c.Request().Header.Add("Hobby", "golang,fiber")
+
+	q := new(ReqHeader)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.ReqHeaderParser(q)
+	}
+	utils.AssertEqual(b, nil, c.ReqHeaderParser(q))
+}
+
 // go test -run Test_Ctx_BodyStreamWriter
 func Test_Ctx_BodyStreamWriter(t *testing.T) {
 	t.Parallel()
