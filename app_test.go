@@ -1168,11 +1168,9 @@ func Test_NewError(t *testing.T) {
 
 func Test_NewErrors(t *testing.T) {
 	errors := NewErrors(StatusBadRequest, []string{"error 1", "error 2"}...)
-	utils.AssertEqual(t, StatusBadRequest, errors[0].Code)
-	utils.AssertEqual(t, "error 1", errors[0].Message)
-
-	utils.AssertEqual(t, StatusBadRequest, errors[1].Code)
-	utils.AssertEqual(t, "error 2", errors[1].Message)
+	utils.AssertEqual(t, StatusBadRequest, errors.Code)
+	utils.AssertEqual(t, "error 1", errors.Messages[0])
+	utils.AssertEqual(t, "error 2", errors.Messages[1])
 }
 
 // go test -run Test_Test_Timeout
