@@ -1025,7 +1025,11 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 		if ok {
 			// Loop through each local and set it in the map
 			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
-				bindMap[string(key)] = val
+				// check if bindMap doesn't contain the key
+				if _, ok := bindMap[string(key)]; !ok {
+					// Set the key and value in the bindMap
+					bindMap[string(key)] = val
+				}
 			})
 			// set the original bind to the map
 			bind = bindMap
