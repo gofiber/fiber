@@ -1163,7 +1163,7 @@ func Benchmark_App_ETag_Weak(b *testing.B) {
 func Test_NewError(t *testing.T) {
 	e := NewError(StatusForbidden, "permission denied")
 	utils.AssertEqual(t, StatusForbidden, e.Code)
-	utils.AssertEqual(t, "permission denied", e.Message)
+	utils.AssertEqual(t, "permission denied", fmt.Sprintf("%v", e.Message))
 }
 
 // go test -run Test_Test_Timeout
