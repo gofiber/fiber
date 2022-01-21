@@ -88,6 +88,11 @@ type Error struct {
 	Message string `json:"message"`
 }
 
+type Errors struct {
+	Code     int      `json:"code"`
+	Messages []string `json:"messages"`
+}
+
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
@@ -698,6 +703,11 @@ func (e *Error) Error() string {
 	return e.Message
 }
 
+// Errors make it compatible with the `multiple errors` interface.
+func (e *Errors) Errors() []string {
+	return e.Messages
+}
+
 // NewError creates a new Error instance with an optional message
 func NewError(code int, message ...string) *Error {
 	e := &Error{
@@ -711,27 +721,15 @@ func NewError(code int, message ...string) *Error {
 	return e
 }
 
-// NewErrors creates multiple new Errors instance with some message
-func NewErrors(code int, messages ...string) []*Error {
-	var errors []*Error
-	if len(messages) > 0 {
-		for _, message := range messages {
-			e := &Error{
-				Code: code,
-			}
-			e.Message = message
-			errors = append(errors, e)
-		}
-	} else {
-		// Use default messages
-		e := &Error{
-			Code: code,
-		}
-		e.Message = utils.StatusMessage(code)
-		errors = append(errors, e)
+// NewErrors creates multiple new Error messages
+func NewErrors(code int, messages ...string) *Errors {
+	e := &Errors{
+		Code: code,
 	}
-
-	return errors
+	if len(messages) > 0 {
+		e.Messages = append(e.Messages, messages...)
+	}
+	return e
 }
 
 // Listener can be used to pass a custom listener.
