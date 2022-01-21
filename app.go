@@ -705,7 +705,18 @@ func NewError(code int, message ...interface{}) *Error {
 		Message: utils.StatusMessage(code),
 	}
 	if len(message) > 0 {
-		e.Message = message
+		e.Message = message[0]
+	}
+	return e
+}
+
+func NewErrors(code int, messages ...interface{}) *Error {
+	e := &Error{
+		Code:    code,
+		Message: utils.StatusMessage(code),
+	}
+	if len(messages) > 0 {
+		e.Message = messages
 	}
 	return e
 }
