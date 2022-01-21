@@ -710,6 +710,7 @@ func NewError(code int, message ...interface{}) *Error {
 	return e
 }
 
+// NewErrors creates multiple new Error messages
 func NewErrors(code int, messages ...interface{}) *Error {
 	e := &Error{
 		Code:    code,
