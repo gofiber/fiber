@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	stdjson "encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
@@ -560,6 +561,66 @@ func Test_Client_Agent_Dest(t *testing.T) {
 		utils.AssertEqual(t, "destar", string(dest))
 		utils.AssertEqual(t, 0, len(errs))
 	})
+}
+
+// readErrorConn is a struct for testing retryIf
+type readErrorConn struct {
+	net.Conn
+}
+
+func (r *readErrorConn) Read(p []byte) (int, error) {
+	return 0, fmt.Errorf("error")
+}
+
+func (r *readErrorConn) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func (r *readErrorConn) Close() error {
+	return nil
+}
+
+func (r *readErrorConn) LocalAddr() net.Addr {
+	return nil
+}
+
+func (r *readErrorConn) RemoteAddr() net.Addr {
+	return nil
+}
+func Test_Client_Agent_RetryIf(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+
+	a := Post("http://example.com").
+		RetryIf(func(req *Request) bool {
+			return true
+		})
+	dialsCount := 0
+	a.HostClient.Dial = func(addr string) (net.Conn, error) {
+		dialsCount++
+		switch dialsCount {
+		case 1:
+			return &readErrorConn{}, nil
+		case 2:
+			return &readErrorConn{}, nil
+		case 3:
+			return &readErrorConn{}, nil
+		case 4:
+			return ln.Dial()
+		default:
+			t.Fatalf("unexpected number of dials: %d", dialsCount)
+		}
+		panic("unreachable")
+	}
+
+	_, _, errs := a.String()
+	utils.AssertEqual(t, dialsCount, 4)
+	utils.AssertEqual(t, 0, len(errs))
 }
 
 func Test_Client_Stdjson_Gojson(t *testing.T) {
