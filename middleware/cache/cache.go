@@ -58,7 +58,7 @@ func New(config ...Config) fiber.Handler {
 	// Return new handler
 	return func(c *fiber.Ctx) error {
 		// Only cache GET methods
-		if c.Method() != fiber.MethodGet {
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
