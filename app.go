@@ -695,7 +695,7 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 
 // Error makes it compatible with the `error` interface.
 func (e *Error) Error() string {
-	return fmt.Sprintf("%v", e.Message)
+	return fmt.Sprint(e.Message)
 }
 
 // NewError creates a new Error instance with an optional message
