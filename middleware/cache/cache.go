@@ -64,7 +64,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get key from request
-		key := cfg.KeyGenerator(c)
+		key := cfg.KeyGenerator(c) + "_" + c.Method()
 
 		// Get entry from pool
 		e := manager.get(key)

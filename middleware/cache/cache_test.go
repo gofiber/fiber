@@ -366,6 +366,42 @@ func Test_Cache_WithHead(t *testing.T) {
 	utils.AssertEqual(t, cachedBody, body)
 }
 
+func Test_Cache_WithHeadThenGet(t *testing.T) {
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/get", func(c *fiber.Ctx) error {
+		return c.SendString(c.Query("cache"))
+	})
+
+	headResp, err := app.Test(httptest.NewRequest("HEAD", "/head?cache=123", nil))
+	utils.AssertEqual(t, nil, err)
+	headBody, err := ioutil.ReadAll(headResp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "", string(headBody))
+	utils.AssertEqual(t, cacheMiss, headResp.Header.Get("X-Cache"))
+
+	headResp, err = app.Test(httptest.NewRequest("HEAD", "/head?cache=123", nil))
+	utils.AssertEqual(t, nil, err)
+	headBody, err = ioutil.ReadAll(headResp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "", string(headBody))
+	utils.AssertEqual(t, cacheHit, headResp.Header.Get("X-Cache"))
+
+	getResp, err := app.Test(httptest.NewRequest("GET", "/get?cache=123", nil))
+	utils.AssertEqual(t, nil, err)
+	getBody, err := ioutil.ReadAll(getResp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "123", string(getBody))
+	utils.AssertEqual(t, cacheMiss, getResp.Header.Get("X-Cache"))
+
+	getResp, err = app.Test(httptest.NewRequest("GET", "/get?cache=123", nil))
+	utils.AssertEqual(t, nil, err)
+	getBody, err = ioutil.ReadAll(getResp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "123", string(getBody))
+	utils.AssertEqual(t, cacheHit, getResp.Header.Get("X-Cache"))
+}
+
 func Test_CustomCacheHeader(t *testing.T) {
 	app := fiber.New()
 
