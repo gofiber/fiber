@@ -333,8 +333,21 @@ func (c *Ctx) BodyParser(out interface{}) error {
 		return c.app.config.JSONDecoder(c.Body(), out)
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
-		fn, data := collectVisitAllData(out)
-		c.fasthttp.PostArgs().VisitAll(fn)
+		data := make(map[string][]string)
+		c.fasthttp.PostArgs().VisitAll(func(key, val []byte) {
+			k := utils.UnsafeString(key)
+			v := utils.UnsafeString(val)
+
+			if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+				values := strings.Split(v, ",")
+				for i := 0; i < len(values); i++ {
+					data[k] = append(data[k], values[i])
+				}
+			} else {
+				data[k] = append(data[k], v)
+			}
+
+		})
 
 		return c.parseToStruct(bodyTag, out, data)
 	}
@@ -873,16 +886,42 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
-	fn, data := collectVisitAllData(out)
-	c.fasthttp.QueryArgs().VisitAll(fn)
+	data := make(map[string][]string)
+	c.fasthttp.QueryArgs().VisitAll(func(key, val []byte) {
+		k := utils.UnsafeString(key)
+		v := utils.UnsafeString(val)
+
+		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+			values := strings.Split(v, ",")
+			for i := 0; i < len(values); i++ {
+				data[k] = append(data[k], values[i])
+			}
+		} else {
+			data[k] = append(data[k], v)
+		}
+
+	})
 
 	return c.parseToStruct(queryTag, out, data)
 }
 
 // ReqHeaderParser binds the request header strings to a struct.
 func (c *Ctx) ReqHeaderParser(out interface{}) error {
-	fn, data := collectVisitAllData(out)
-	c.fasthttp.Request.Header.VisitAll(fn)
+	data := make(map[string][]string)
+	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
+		k := utils.UnsafeString(key)
+		v := utils.UnsafeString(val)
+
+		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+			values := strings.Split(v, ",")
+			for i := 0; i < len(values); i++ {
+				data[k] = append(data[k], values[i])
+			}
+		} else {
+			data[k] = append(data[k], v)
+		}
+
+	})
 
 	return c.parseToStruct(reqHeaderTag, out, data)
 }
@@ -896,25 +935,6 @@ func (c *Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]
 	schemaDecoder.SetAliasTag(aliasTag)
 
 	return schemaDecoder.Decode(out, data)
-}
-
-func collectVisitAllData(out interface{}) (func(key, val []byte), map[string][]string) {
-	data := make(map[string][]string)
-
-	return func(key, val []byte) {
-		k := utils.UnsafeString(key)
-		v := utils.UnsafeString(val)
-
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-			values := strings.Split(v, ",")
-			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
-			}
-		} else {
-			data[k] = append(data[k], v)
-		}
-
-	}, data
 }
 
 func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
