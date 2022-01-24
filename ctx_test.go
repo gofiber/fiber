@@ -2637,6 +2637,220 @@ func Test_Ctx_QueryParser_Schema(t *testing.T) {
 	utils.AssertEqual(t, 0, n.Next.Value)
 }
 
+// go test -run Test_Ctx_ReqHeaderParser -v
+func Test_Ctx_ReqHeaderParser(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Header struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.Add("id", "1")
+	c.Request().Header.Add("Name", "John Doe")
+	c.Request().Header.Add("Hobby", "golang,fiber")
+	q := new(Header)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
+
+	c.Request().Header.Del("hobby")
+	c.Request().Header.Add("Hobby", "golang,fiber,go")
+	q = new(Header)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+	utils.AssertEqual(t, 3, len(q.Hobby))
+
+	empty := new(Header)
+	c.Request().Header.Del("hobby")
+	utils.AssertEqual(t, nil, c.QueryParser(empty))
+	utils.AssertEqual(t, 0, len(empty.Hobby))
+
+	type Header2 struct {
+		Bool            bool
+		ID              int
+		Name            string
+		Hobby           string
+		FavouriteDrinks []string
+		Empty           []string
+		Alloc           []string
+		No              []int64
+	}
+
+	c.Request().Header.Add("id", "2")
+	c.Request().Header.Add("Name", "Jane Doe")
+	c.Request().Header.Del("hobby")
+	c.Request().Header.Add("Hobby", "go,fiber")
+	c.Request().Header.Add("favouriteDrinks", "milo,coke,pepsi")
+	c.Request().Header.Add("alloc", "")
+	c.Request().Header.Add("no", "1")
+
+	h2 := new(Header2)
+	h2.Bool = true
+	h2.Name = "hello world"
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
+	utils.AssertEqual(t, "go,fiber", h2.Hobby)
+	utils.AssertEqual(t, true, h2.Bool)
+	utils.AssertEqual(t, "Jane Doe", h2.Name) // check value get overwritten
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
+	var nilSlice []string
+	utils.AssertEqual(t, nilSlice, h2.Empty)
+	utils.AssertEqual(t, []string{""}, h2.Alloc)
+	utils.AssertEqual(t, []int64{1}, h2.No)
+
+	type RequiredHeader struct {
+		Name string `reqHeader:"name,required"`
+	}
+	rh := new(RequiredHeader)
+	c.Request().Header.Del("name")
+	utils.AssertEqual(t, "name is empty", c.ReqHeaderParser(rh).Error())
+}
+
+// go test -run Test_Ctx_ReqHeaderParser_WithSetParserDecoder -v
+func Test_Ctx_ReqHeaderParser_WithSetParserDecoder(t *testing.T) {
+	type NonRFCTime time.Time
+
+	NonRFCConverter := func(value string) reflect.Value {
+		if v, err := time.Parse("2006-01-02", value); err == nil {
+			return reflect.ValueOf(v)
+		}
+		return reflect.Value{}
+	}
+
+	nonRFCTime := ParserType{
+		Customtype: NonRFCTime{},
+		Converter:  NonRFCConverter,
+	}
+
+	SetParserDecoder(ParserConfig{
+		IgnoreUnknownKeys: true,
+		ParserType:        []ParserType{nonRFCTime},
+		ZeroEmpty:         true,
+		SetAliasTag:       "req",
+	})
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	type NonRFCTimeInput struct {
+		Date  NonRFCTime `req:"date"`
+		Title string     `req:"title"`
+		Body  string     `req:"body"`
+	}
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	r := new(NonRFCTimeInput)
+
+	c.Request().Header.Add("Date", "2021-04-10")
+	c.Request().Header.Add("Title", "CustomDateTest")
+	c.Request().Header.Add("Body", "October")
+
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(r))
+	fmt.Println(r.Date, "q.Date")
+	utils.AssertEqual(t, "CustomDateTest", r.Title)
+	date := fmt.Sprintf("%v", r.Date)
+	utils.AssertEqual(t, "{0 63753609600 <nil>}", date)
+	utils.AssertEqual(t, "October", r.Body)
+
+	c.Request().Header.Add("Title", "")
+	r = &NonRFCTimeInput{
+		Title: "Existing title",
+		Body:  "Existing Body",
+	}
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(r))
+	utils.AssertEqual(t, "", r.Title)
+}
+
+// go test -run Test_Ctx_ReqHeaderParser_Schema -v
+func Test_Ctx_ReqHeaderParser_Schema(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Header1 struct {
+		Name   string `reqHeader:"Name,required"`
+		Nested struct {
+			Age int `reqHeader:"Age"`
+		} `reqHeader:"Nested,required"`
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.Add("Name", "tom")
+	c.Request().Header.Add("Nested.Age", "10")
+	q := new(Header1)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+
+	c.Request().Header.Del("Name")
+	q = new(Header1)
+	utils.AssertEqual(t, "Name is empty", c.ReqHeaderParser(q).Error())
+
+	c.Request().Header.Add("Name", "tom")
+	c.Request().Header.Del("Nested.Age")
+	c.Request().Header.Add("Nested.Agex", "10")
+	q = new(Header1)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(q))
+
+	c.Request().Header.Del("Nested.Agex")
+	q = new(Header1)
+	utils.AssertEqual(t, "Nested is empty", c.ReqHeaderParser(q).Error())
+
+	c.Request().Header.Del("Nested.Agex")
+	c.Request().Header.Del("Name")
+
+	type Header2 struct {
+		Name   string `reqHeader:"Name"`
+		Nested struct {
+			Age int `reqHeader:"age,required"`
+		} `reqHeader:"Nested"`
+	}
+
+	c.Request().Header.Add("Name", "tom")
+	c.Request().Header.Add("Nested.Age", "10")
+
+	h2 := new(Header2)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
+
+	c.Request().Header.Del("Name")
+	h2 = new(Header2)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(h2))
+
+	c.Request().Header.Del("Name")
+	c.Request().Header.Del("Nested.Age")
+	c.Request().Header.Add("Nested.Agex", "10")
+	h2 = new(Header2)
+	utils.AssertEqual(t, "Nested.age is empty", c.ReqHeaderParser(h2).Error())
+
+	type Node struct {
+		Value int   `reqHeader:"Val,required"`
+		Next  *Node `reqHeader:"Next,required"`
+	}
+	c.Request().Header.Add("Val", "1")
+	c.Request().Header.Add("Next.Val", "3")
+	n := new(Node)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(n))
+	utils.AssertEqual(t, 1, n.Value)
+	utils.AssertEqual(t, 3, n.Next.Value)
+
+	c.Request().Header.Del("Val")
+	n = new(Node)
+	utils.AssertEqual(t, "Val is empty", c.ReqHeaderParser(n).Error())
+
+	c.Request().Header.Add("Val", "3")
+	c.Request().Header.Del("Next.Val")
+	c.Request().Header.Add("Next.Value", "2")
+	n = new(Node)
+	n.Next = new(Node)
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(n))
+	utils.AssertEqual(t, 3, n.Value)
+	utils.AssertEqual(t, 0, n.Next.Value)
+}
+
 func Test_Ctx_EqualFieldType(t *testing.T) {
 	var out int
 	utils.AssertEqual(t, false, equalFieldType(&out, reflect.Int, "key"))
@@ -2703,6 +2917,32 @@ func Benchmark_Ctx_QueryParser_Comma(b *testing.B) {
 		c.QueryParser(q)
 	}
 	utils.AssertEqual(b, nil, c.QueryParser(q))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_ReqHeaderParser -benchmem -count=4
+func Benchmark_Ctx_ReqHeaderParser(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type ReqHeader struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.Add("id", "1")
+	c.Request().Header.Add("Name", "John Doe")
+	c.Request().Header.Add("Hobby", "golang,fiber")
+
+	q := new(ReqHeader)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.ReqHeaderParser(q)
+	}
+	utils.AssertEqual(b, nil, c.ReqHeaderParser(q))
 }
 
 // go test -run Test_Ctx_BodyStreamWriter

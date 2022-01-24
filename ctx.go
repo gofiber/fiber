@@ -32,7 +32,12 @@ import (
 // maxParams defines the maximum number of parameters per route.
 const maxParams = 30
 
-const queryTag = "query"
+// Some constants for BodyParser, QueryParser and ReqHeaderParser.
+const (
+	queryTag     = "query"
+	reqHeaderTag = "reqHeader"
+	bodyTag      = "form"
+)
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey = "__local_user_context__"
@@ -285,7 +290,7 @@ func (c *Ctx) Body() []byte {
 	return body
 }
 
-// decoderPool helps to improve BodyParser's and QueryParser's performance
+// decoderPool helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
 var decoderPool = &sync.Pool{New: func() interface{} {
 	return decoderBuilder(ParserConfig{
 		IgnoreUnknownKeys: true,
@@ -318,10 +323,6 @@ func decoderBuilder(parserConfig ParserConfig) interface{} {
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 // If none of the content types above are matched, it will return a ErrUnprocessableEntity error
 func (c *Ctx) BodyParser(out interface{}) error {
-	// Get decoder from pool
-	schemaDecoder := decoderPool.Get().(*schema.Decoder)
-	defer decoderPool.Put(schemaDecoder)
-
 	// Get content-type
 	ctype := utils.ToLower(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()))
 
@@ -329,27 +330,35 @@ func (c *Ctx) BodyParser(out interface{}) error {
 
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
-		schemaDecoder.SetAliasTag("json")
 		return c.app.config.JSONDecoder(c.Body(), out)
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
-		schemaDecoder.SetAliasTag("form")
 		data := make(map[string][]string)
-		c.fasthttp.PostArgs().VisitAll(func(key []byte, val []byte) {
-			data[utils.UnsafeString(key)] = append(data[utils.UnsafeString(key)], utils.UnsafeString(val))
+		c.fasthttp.PostArgs().VisitAll(func(key, val []byte) {
+			k := utils.UnsafeString(key)
+			v := utils.UnsafeString(val)
+
+			if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+				values := strings.Split(v, ",")
+				for i := 0; i < len(values); i++ {
+					data[k] = append(data[k], values[i])
+				}
+			} else {
+				data[k] = append(data[k], v)
+			}
+
 		})
-		return schemaDecoder.Decode(out, data)
+
+		return c.parseToStruct(bodyTag, out, data)
 	}
 	if strings.HasPrefix(ctype, MIMEMultipartForm) {
-		schemaDecoder.SetAliasTag("form")
 		data, err := c.fasthttp.MultipartForm()
 		if err != nil {
 			return err
 		}
-		return schemaDecoder.Decode(out, data.Value)
+		return c.parseToStruct(bodyTag, out, data.Value)
 	}
 	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
-		schemaDecoder.SetAliasTag("xml")
 		return xml.Unmarshal(c.Body(), out)
 	}
 	// No suitable content type found
@@ -877,17 +886,11 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
-	// Get decoder from pool
-	decoder := decoderPool.Get().(*schema.Decoder)
-	defer decoderPool.Put(decoder)
-
-	// Set correct alias tag
-	decoder.SetAliasTag(queryTag)
-
 	data := make(map[string][]string)
-	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
+	c.fasthttp.QueryArgs().VisitAll(func(key, val []byte) {
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
+
 		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
@@ -896,9 +899,42 @@ func (c *Ctx) QueryParser(out interface{}) error {
 		} else {
 			data[k] = append(data[k], v)
 		}
+
 	})
 
-	return decoder.Decode(out, data)
+	return c.parseToStruct(queryTag, out, data)
+}
+
+// ReqHeaderParser binds the request header strings to a struct.
+func (c *Ctx) ReqHeaderParser(out interface{}) error {
+	data := make(map[string][]string)
+	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
+		k := utils.UnsafeString(key)
+		v := utils.UnsafeString(val)
+
+		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+			values := strings.Split(v, ",")
+			for i := 0; i < len(values); i++ {
+				data[k] = append(data[k], values[i])
+			}
+		} else {
+			data[k] = append(data[k], v)
+		}
+
+	})
+
+	return c.parseToStruct(reqHeaderTag, out, data)
+}
+
+func (c *Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
+	// Get decoder from pool
+	schemaDecoder := decoderPool.Get().(*schema.Decoder)
+	defer decoderPool.Put(schemaDecoder)
+
+	// Set alias tag
+	schemaDecoder.SetAliasTag(aliasTag)
+
+	return schemaDecoder.Decode(out, data)
 }
 
 func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
