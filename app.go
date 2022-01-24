@@ -183,6 +183,11 @@ type Config struct {
 	// Default: ""
 	ViewsLayout string `json:"views_layout"`
 
+	// PassLocalsToViews Enables passing of the locals set on a fiber.Ctx to the template engine
+	//
+	// Default: false
+	PassLocalsToViews bool `json:"pass_locals_to_views"`
+
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
 	// The connection's read deadline is reset when the connection opens.
