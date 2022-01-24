@@ -698,6 +698,21 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 	return &Group{prefix: prefix, app: app}
 }
 
+// Route is used to define routes with a common prefix inside the common function.
+// Uses Group method to define new sub-router.
+func (app *App) Route(prefix string, fn func(router Router), name ...string) Router {
+	// Create new group
+	group := app.Group(prefix)
+	if len(name) > 0 {
+		group.Name(name[0])
+	}
+
+	// Define routes
+	fn(group)
+
+	return group
+}
+
 // Error makes it compatible with the `error` interface.
 func (e *Error) Error() string {
 	return e.Message

@@ -994,6 +994,55 @@ func Test_App_Group(t *testing.T) {
 	// utils.AssertEqual(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
 }
 
+func Test_App_Route(t *testing.T) {
+	dummyHandler := testEmptyHandler
+
+	app := New()
+
+	grp := app.Route("/test", func(grp Router) {
+		grp.Get("/", dummyHandler)
+		grp.Get("/:demo?", dummyHandler)
+		grp.Connect("/CONNECT", dummyHandler)
+		grp.Put("/PUT", dummyHandler)
+		grp.Post("/POST", dummyHandler)
+		grp.Delete("/DELETE", dummyHandler)
+		grp.Head("/HEAD", dummyHandler)
+		grp.Patch("/PATCH", dummyHandler)
+		grp.Options("/OPTIONS", dummyHandler)
+		grp.Trace("/TRACE", dummyHandler)
+		grp.All("/ALL", dummyHandler)
+		grp.Use(dummyHandler)
+		grp.Use("/USE", dummyHandler)
+	})
+
+	testStatus200(t, app, "/test", MethodGet)
+	testStatus200(t, app, "/test/john", MethodGet)
+	testStatus200(t, app, "/test/CONNECT", MethodConnect)
+	testStatus200(t, app, "/test/PUT", MethodPut)
+	testStatus200(t, app, "/test/POST", MethodPost)
+	testStatus200(t, app, "/test/DELETE", MethodDelete)
+	testStatus200(t, app, "/test/HEAD", MethodHead)
+	testStatus200(t, app, "/test/PATCH", MethodPatch)
+	testStatus200(t, app, "/test/OPTIONS", MethodOptions)
+	testStatus200(t, app, "/test/TRACE", MethodTrace)
+	testStatus200(t, app, "/test/ALL", MethodPost)
+	testStatus200(t, app, "/test/oke", MethodGet)
+	testStatus200(t, app, "/test/USE/oke", MethodGet)
+
+	grp.Route("/v1", func(grp Router) {
+		grp.Post("/", dummyHandler)
+		grp.Get("/users", dummyHandler)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+}
+
 func Test_App_Deep_Group(t *testing.T) {
 	runThroughCount := 0
 	dummyHandler := func(c *Ctx) error {
