@@ -64,6 +64,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Get key from request
+		// TODO(allocation optimization): try to minimize the allocation from 2 to 1
 		key := cfg.KeyGenerator(c) + "_" + c.Method()
 
 		// Get entry from pool
