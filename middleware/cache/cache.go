@@ -57,14 +57,15 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
-		// Only cache GET methods
-		if c.Method() != fiber.MethodGet {
+		// Only cache GET and HEAD methods
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
 
 		// Get key from request
-		key := cfg.KeyGenerator(c)
+		// TODO(allocation optimization): try to minimize the allocation from 2 to 1
+		key := cfg.KeyGenerator(c) + "_" + c.Method()
 
 		// Get entry from pool
 		e := manager.get(key)
