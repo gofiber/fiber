@@ -84,8 +84,8 @@ type ErrorHandler = func(*Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int         `json:"code"`
+	Message interface{} `json:"message"`
 }
 
 // App denotes the Fiber application.
@@ -715,43 +715,31 @@ func (app *App) Route(prefix string, fn func(router Router), name ...string) Rou
 
 // Error makes it compatible with the `error` interface.
 func (e *Error) Error() string {
-	return e.Message
+	return fmt.Sprint(e.Message)
 }
 
 // NewError creates a new Error instance with an optional message
-func NewError(code int, message ...string) *Error {
+func NewError(code int, message ...interface{}) *Error {
 	e := &Error{
-		Code: code,
+		Code:    code,
+		Message: utils.StatusMessage(code),
 	}
 	if len(message) > 0 {
 		e.Message = message[0]
-	} else {
-		e.Message = utils.StatusMessage(code)
 	}
 	return e
 }
 
-// NewErrors creates multiple new Errors instance with some message
-func NewErrors(code int, messages ...string) []*Error {
-	var errors []*Error
-	if len(messages) > 0 {
-		for _, message := range messages {
-			e := &Error{
-				Code: code,
-			}
-			e.Message = message
-			errors = append(errors, e)
-		}
-	} else {
-		// Use default messages
-		e := &Error{
-			Code: code,
-		}
-		e.Message = utils.StatusMessage(code)
-		errors = append(errors, e)
+// NewErrors creates multiple new Error messages
+func NewErrors(code int, messages ...interface{}) *Error {
+	e := &Error{
+		Code:    code,
+		Message: utils.StatusMessage(code),
 	}
-
-	return errors
+	if len(messages) > 0 {
+		e.Message = messages
+	}
+	return e
 }
 
 // Listener can be used to pass a custom listener.
