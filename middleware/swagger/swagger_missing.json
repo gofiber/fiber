@@ -1,0 +1,18 @@
+{
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "schemes": [
+    "http"
+  ],
+  "swagger":
+  "info": {
+    "description": "Documentation for TestApi",
+    "title": "TestApi",
+    "version": "1.0.0"
+  },
+  "basePath": "/"
+}
