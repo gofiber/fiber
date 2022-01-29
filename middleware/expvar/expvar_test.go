@@ -81,3 +81,20 @@ func Test_Expvar_Other_Path(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 302, resp.StatusCode)
 }
+
+// go test -run Test_Expvar_Next
+func Test_Expvar_Next(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 404, resp.StatusCode)
+}

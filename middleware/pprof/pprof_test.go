@@ -87,3 +87,20 @@ func Test_Pprof_Other(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 302, resp.StatusCode)
 }
+
+// go test -run Test_Pprof_Next
+func Test_Pprof_Next(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Next: func(_ *fiber.Ctx) bool {
+			return true
+		},
+	}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 404, resp.StatusCode)
+}
