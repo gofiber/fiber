@@ -561,10 +561,14 @@ func Test_App_Route_Naming(t *testing.T) {
 
 	app.Post("/post", handler).Name("post")
 
+	subGroup := jane.Group("/sub-group").Name("sub.")
+	subGroup.Get("/done", handler).Name("done")
+
 	utils.AssertEqual(t, "post", app.GetRoute("post").Name)
 	utils.AssertEqual(t, "john", app.GetRoute("john").Name)
 	utils.AssertEqual(t, "jane.test", app.GetRoute("jane.test").Name)
 	utils.AssertEqual(t, "jane.trace", app.GetRoute("jane.trace").Name)
+	utils.AssertEqual(t, "jane.sub.done", app.GetRoute("jane.sub.done").Name)
 	utils.AssertEqual(t, "test", app.GetRoute("test").Name)
 }
 

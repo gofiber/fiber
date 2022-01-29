@@ -48,7 +48,12 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 
 // Assign name to specific route.
 func (grp *Group) Name(name string) Router {
-	grp.name = name
+	if strings.HasPrefix(grp.prefix, latestGroup.prefix) {
+		grp.name = latestGroup.name + name
+	} else {
+		grp.name = name
+	}
+
 	latestGroup = *grp
 
 	return grp
