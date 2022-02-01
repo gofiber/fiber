@@ -320,7 +320,7 @@ type Config struct {
 	// When set by an external client of Fiber it will use the provided implementation of a
 	// JSONUnmarshal
 	//
-	// Allowing for flexibility in using another json library for encoding
+	// Allowing for flexibility in using another json library for decoding
 	// Default: json.Unmarshal
 	JSONDecoder utils.JSONUnmarshal `json:"-"`
 
