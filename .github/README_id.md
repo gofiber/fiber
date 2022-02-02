@@ -52,6 +52,9 @@
          <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fa.md">
      <img height="20px" src="https://img.shields.io/badge/IR-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMTAwMCIgaGVpZ2h0PSI1NzIuMiIgdmlld0JveD0iLTcuMjE3IC00LjEyOSAxMDAwIDU3Mi4yIj48cGF0aCBkPSJNLTcuMjE3LTQuMTI5aDEwMDB2NTcyLjJoLTEwMDB6IiBmaWxsPSIjMjM5ZjQwIi8+PHBhdGggZD0iTS03LjIxNyAyODEuOTcxaDEwMDB2Mjg2LjFoLTEwMDB6IiBmaWxsPSIjZGEwMDAwIi8+PHBhdGggZD0iTS03LjIxNyAxODYuNTcxaDEwMDB2MTkwLjc1aC0xMDAweiIgZmlsbD0iI2ZmZiIvPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC03LjIxNyAxNTUuNDcxKSBzY2FsZSg0LjQ0NDUpIj48ZyBpZD0iZSI+PGcgaWQ9ImMiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiI+PHBhdGggaWQ9ImIiIGQ9Ik0zIC41aDEzTTMuNSA1VjIuNWg0djJoNHYtMkg5bS00IDJoMW0xMCAwaC0yLjV2LTJoNG0wLTIuNXY0LjVoNFYwbS0yIDB2NC41Ii8+PHBhdGggaWQ9ImEiIGQ9Ik0zIDdoOW0xIDBoOSIgc3Ryb2tlLXdpZHRoPSIyIi8+PHVzZSB4bGluazpocmVmPSIjYSIgeT0iNDIuOTEzIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjYiIgeT0iNTEuOTEzIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9nPjxnIGlkPSJkIj48dXNlIHhsaW5rOmhyZWY9IiNjIiB4PSIyMCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIvPjx1c2UgeGxpbms6aHJlZj0iI2MiIHg9IjQwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjYyIgeD0iNjAiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L2c+PC9nPjx1c2UgeGxpbms6aHJlZj0iI2QiIHg9IjYwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjZSIgeD0iMTQwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9nPjxnIHRyYW5zZm9ybT0ibWF0cml4KDY5LjI4NSAwIDAgNjkuMjg1IDQ5Mi43ODMgMjgxLjk3MSkiIGZpbGw9IiNkYTAwMDAiPjxnIGlkPSJmIj48cGF0aCBkPSJNLS41NDguODM2QS45MTIuOTEyIDAgMCAwIC4zMjktLjcyMiAxIDEgMCAwIDEtLjU0OC44MzYiLz48cGF0aCBkPSJNLjYxOC42NjFBLjc2NC43NjQgMCAwIDAgLjQyMi0uNzQgMSAxIDAgMCAxIC42MTguNjYxTTAgMWwtLjA1LTFMMC0uNzg3YS4zMS4zMSAwIDAgMCAuMTE4LjA5OVYtLjFsLS4wNC45OTN6TS0uMDItLjg1TDAtLjgzMWEuMTQ0LjE0NCAwIDAgMCAuMjUyLS4xMzdBLjEzNi4xMzYgMCAwIDEgMC0uOTI1Ii8+PC9nPjx1c2UgeGxpbms6aHJlZj0iI2YiIHRyYW5zZm9ybT0ic2NhbGUoLTEgMSkiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L2c+PC9zdmc+">
    </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_it.md">
+    <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
+  </a>
   <br>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
@@ -76,7 +79,7 @@
   </a>
 </p>
 <p align="center">
-	<b>Fiber</b> adalah <b>web framework</b> yang terinspirasi dari <a href="https://github.com/expressjs/express">Express</a> yang berbasiskan <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, HTTP engine paling <b>cepat</b> untuk <a href="https://golang.org/doc/">Go</a>. Dirancang untuk <b>mempermudah</b>, <b>mempercepat</b> pengembangan aplikasi dengan <b>alokasi memori nol-nya</b> serta <b>kinerja</b> yang selalu diperhatikan.
+	<b>Fiber</b> adalah <b>kerangka kerja web</b> yang terinspirasi dari <a href="https://github.com/expressjs/express">Express</a> yang berbasiskan <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, HTTP engine paling <b>cepat</b> untuk <a href="https://golang.org/doc/">Go</a>. Dirancang untuk <b>mempermudah</b>, <b>mempercepat</b> pengembangan aplikasi dengan <b>alokasi memori nol-nya</b> serta <b>kinerja</b> yang selalu diperhatikan.
 </p>
 
 ## ⚡️ Cara Memulai
@@ -108,9 +111,9 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmar
 
 ## ⚙️ Instalasi
 
-Pastikan kamu sudah menginstall Golang ([download](https://golang.org/dl/)). Dengan versi `1.14` atau lebih tinggi [ Direkomendasikan ].
+Pastikan kamu sudah menginstalasi Golang ([unduh](https://golang.org/dl/)). Dengan versi `1.14` atau lebih tinggi [ Direkomendasikan ].
 
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://blog.golang.org/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+Inisialisasi proyek kamu dengan membuat folder lalu jalankan `go mod init github.com/nama-kamu/repo` ([belajar lebih banyak](https://blog.golang.org/using-go-modules)) di dalam folder. Kemudian instal Fiber dengan perintah [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -118,7 +121,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 Fitur
 
--   Sistem [Routing](https://docs.gofiber.io/routing) yang solid
+-   Sistem [Routing](https://docs.gofiber.io/routing) yang padu
 -   Serve [file statis](https://docs.gofiber.io/api/app#static)
 -   [Kinerja](https://docs.gofiber.io/extra/benchmarks) ekstrim
 -   [Penggunaan memori](https://docs.gofiber.io/extra/benchmarks) yang kecil
@@ -126,22 +129,23 @@ go get -u github.com/gofiber/fiber/v2
 -   Mendukung Middleware & [Next](https://docs.gofiber.io/api/ctx#next) seperti Express
 -   Kembangkan aplikasi dengan [Cepat](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 -   [Template engines](https://github.com/gofiber/template)
--   [WebSocket support](https://github.com/gofiber/websocket)
+-   [Mendukung WebSocket](https://github.com/gofiber/websocket)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   Tersedia dalam [15 bahasa](https://docs.gofiber.io/)
 -   Dan masih banyak lagi, [kunjungi Fiber](https://docs.gofiber.io/)
 
 ## 💡 Filosofi
 
-Bagi yang baru yang beralih dari [Node.js](https://nodejs.org/en/about/) ke [Go](https://golang.org/doc/) terkadang perlu waktu yang cukup lama sebelum mereka mampu membuat aplikasi web dengan Go. Fiber, sebagai **web framework** dirancang secara **minimalis** dan mengikuti filosofi dari **UNIX**, sehingga pengguna baru dapat dengan cepat memasuki dunia Go dengan sambutan yang hangat dan dapat diandalkan.
+Bagi yang baru yang beralih dari [Node.js](https://nodejs.org/en/about/) ke [Go](https://golang.org/doc/) terkadang perlu waktu yang cukup lama sebelum mereka mampu membuat aplikasi web dengan Go. Fiber, sebagai **kerangka kerja web** dirancang secara **minimalis** dan mengikuti filosofi dari **UNIX**, sehingga pengguna baru dapat dengan cepat memasuki dunia Go dengan sambutan yang hangat dan dapat diandalkan.
 
-Fiber terinspirasi dari Express, salah satu web framework yang paling terkenal di Internet. Kami menggabungkan **kemudahan** dari Express dan **kinerja luar biasa** dari Go. Apabila anda pernah membuat aplikasi dengan Node.js (_dengan Express atau yang lainnya_), maka banyak metode dan prinsip yang akan terasa **sangat umum** bagi anda.
+Fiber terinspirasi dari Express, salah satu kerangka kerja web yang paling terkenal di Internet. Kami menggabungkan **kemudahan** dari Express dan **kinerja luar biasa** dari Go. Apabila anda pernah membuat aplikasi dengan Node.js (_dengan Express atau yang lainnya_), maka banyak metode dan prinsip yang akan terasa **sangat umum** bagi anda.
 
-Kami **mendengarkan** para pengguna di [GitHub Issues](https://github.com/gofiber/fiber/issues) (_dan berbagai platform lainnya_) untuk menciptakan web framework yang **cepat**, **fleksibel** dan **bersahabat** untuk berbagai macam keperluan, **tenggat waktu** dan **keahlian** para pengguna! Sama halnya seperti yang dilakukan Express di dunia JavaScript.
+Kami **mendengarkan** para pengguna di [GitHub Issues](https://github.com/gofiber/fiber/issues) (_dan berbagai platform lainnya_) untuk menciptakan kerangka kerja web yang **cepat**, **fleksibel** dan **bersahabat** untuk berbagai macam keperluan, **tenggat waktu** dan **keahlian** para pengguna! Sama halnya seperti yang dilakukan Express di dunia JavaScript.
 
-## Limitations
-* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.18.0 has been tested with Go versions 1.14 to 1.17.
-* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+## ⚠️ Limitasi
+
+* Karena penggunaan Fiber yang tidak aman, perpustakaan mungkin tidak selalu kompatibel dengan versi Go terbaru. Fiber 2.18.0 telah diuji dengan Go versi 1.14 hingga 1.17.
+* Fiber tidak kompatibel dengan antarmuka net/http. Ini berarti kamu tidak akan dapat menggunakan proyek seperti gqlgen, go-swagger, atau lainnya yang merupakan bagian dari ekosistem net/http.
 
 ## 👀 Contoh
 
@@ -182,6 +186,36 @@ func main() {
         msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
         return c.SendString(msg) // => Hello john 👋!
     })
+
+    log.Fatal(app.Listen(":3000"))
+}
+
+```
+
+#### 📖 [**Penamaan Route**](https://docs.gofiber.io/api/app#name)
+
+```go
+func main() {
+    app := fiber.New()
+
+    // GET /api/register
+    app.Get("/api/*", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("✋ %s", c.Params("*"))
+        return c.SendString(msg) // => ✋ register
+    }).Name("api")
+
+    data, _ := json.MarshalIndent(app.GetRoute("api"), "", "  ")
+    fmt.Print(string(data))
+    // Prints:
+    // {
+    //    "method": "GET",
+    //    "name": "api",
+    //    "path": "/api/*",
+    //    "params": [
+    //      "*1"
+    //    ]
+    // }
+
 
     log.Fatal(app.Listen(":3000"))
 }
@@ -248,11 +282,11 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
+Fiber mengalihkan ke [html/template](https://golang.org/pkg/html/template/) saat tidak ada mesin tampilan yang disetel.
 
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+Jika kamu ingin menjalankan sebagian atau menggunakan mesin yang berbeda seperti [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) atau [pug](https://github.com/Joker/jade) dan lain-lain..
 
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
+Lihat paket [contoh](https://github.com/gofiber/template) kami yang mendukung beberapa mesin tampilan.
 
 ```go
 package main
@@ -488,12 +522,12 @@ func main() {
 
 ## 🧬 Middleware Internal
 
-Kumpulan `middleware` yang ada didalam framework Fiber.
+Kumpulan `middleware` yang ada didalam kerangka kerja Fiber.
 
 | Middleware                                                                       | Description                                                                                                                                                                                |
 | :------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Middleware Basic auth menyediakan Authentikasi dasar HTTP. Ia memanggil handler selanjutnya untuk kredensial yang valid dan 401 unathorized untuk kredential yang hilang atau tidak valid. |
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Kompresi middleware untuk fiber, ia mendukung `deflate`, `gzip` and `brotli` secara default                                                                                                |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Middleware Basic auth menyediakan Autentikasi dasar HTTP. Ia memanggil handler selanjutnya untuk kredensial yang valid dan 401 unathorized untuk kredential yang hilang atau tidak valid. |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Kompresi middleware untuk fiber, ia mendukung `deflate`, `gzip` and `brotli` secara bawaan                                                                                                |
 | [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)           | Mencegat dan respond cache                                                                                                                                                                 |
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)             | Memungkinkan cross-origin resource sharing \(CORS\) dengan berbagai pilihan.                                                                                                               |
 | [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)             | Melindungi dari eksploitasi CSRF.                                                                                                                                                          |
@@ -542,6 +576,7 @@ Berikut adalah kumpulan _middlewares_ yang dibuat oleh komunitas Fiber, silahkan
 -   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
 -   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
 -   [aschenmaker/fiber-health-check](https://github.com/aschenmaker/fiber-health-check)
+-   [elastic/apmfiber](https://github.com/elastic/apm-agent-go/tree/master/module/apmfiber)
 
 ## 👍 Berkontribusi
 
@@ -550,11 +585,11 @@ Apabila anda ingin mengucapkan **terima kasih** dan/atau mendukung pengembangan 
 1. Berikan bintang atau [GitHub Star](https://github.com/gofiber/fiber/stargazers) ke proyek ini.
 2. Bagikan [di Twitter anda](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
 3. Buat ulasan atau tutorial di [Medium](https://medium.com/), [Dev.to](https://dev.to/) atau blog pribadi anda.
-4. Dukung project ini dengan membelikan [secangkir kopi](https://buymeacoff.ee/fenny).
+4. Dukung proyek ini dengan membelikan [secangkir kopi](https://buymeacoff.ee/fenny).
 
 ## ☕ Pendukung
 
-Fiber adalah projek open source yang beroperasi dalam donasi untuk membayar tagihan, seperti nama domain, _gitbook, netlify_ dan _serverless hosting_. Jika anda mau mendukung Fiber, anda dapat [**membeli kami kopi disini**](https://buymeacoff.ee/fenny).
+Fiber adalah proyek sumber terbuka yang beroperasi dalam donasi untuk membayar tagihan, seperti nama domain, _gitbook, netlify_ dan _serverless hosting_. Jika anda mau mendukung Fiber, anda dapat [**membeli kami kopi disini**](https://buymeacoff.ee/fenny).
 
 |                                                            | User                                             | Donation |
 | :--------------------------------------------------------- | :----------------------------------------------- | :------- |
@@ -582,20 +617,20 @@ Fiber adalah projek open source yang beroperasi dalam donasi untuk membayar tagi
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
-## ⭐️ Stargazers
+## ⭐️ Pengamat bintang
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
 ## ⚠️ Lisensi
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` adalah project gratis dan open-source dibawah [lisensi MIT](https://github.com/gofiber/fiber/blob/master/LICENSE). Logo resmi diciptakan oleh [Vic Shóstak](https://github.com/koddr) dan didistribusikan dalam lisensi [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0 International).
+Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` adalah proyek gratis dan open-source dibawah [lisensi MIT](https://github.com/gofiber/fiber/blob/master/LICENSE). Logo resmi diciptakan oleh [Vic Shóstak](https://github.com/koddr) dan didistribusikan dalam lisensi [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) (CC BY-SA 4.0 International).
 
-**Lisensi Third-party library**
+**Lisensi perpustakaan pihak-ketiga**
 
 -   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 -   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
--   [encoding](https://github.com/segmentio/encoding/blob/master/LICENSE)
+-   [go-json](https://github.com/goccy/go-json/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 -   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)

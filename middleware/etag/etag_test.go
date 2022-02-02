@@ -84,6 +84,8 @@ func Test_ETag_NewEtag(t *testing.T) {
 }
 
 func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
+	t.Helper()
+
 	app := fiber.New()
 
 	app.Use(New())
@@ -132,6 +134,8 @@ func Test_ETag_WeakEtag(t *testing.T) {
 }
 
 func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
+	t.Helper()
+
 	app := fiber.New()
 
 	app.Use(New(Config{Weak: true}))
@@ -180,6 +184,8 @@ func Test_ETag_CustomEtag(t *testing.T) {
 }
 
 func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
+	t.Helper()
+
 	app := fiber.New()
 
 	app.Use(New())

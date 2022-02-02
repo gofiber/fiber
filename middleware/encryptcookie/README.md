@@ -9,7 +9,7 @@ Encrypt middleware for [Fiber](https://github.com/gofiber/fiber) which encrypts 
 * [Config](encryptcookie.md#config)
 * [Default Config](encryptcookie.md#default-config)
 
-## Signaures
+## Signatures
 
 ```go
 // Intitializes the middleware
@@ -64,7 +64,7 @@ type Config struct {
 
 	// Array of cookie keys that should not be encrypted.
 	//
-	// Optional. Default: []
+	// Optional. Default: ["csrf_"]
 	Except []string
 
 	// Base64 encoded unique key to encode & decode cookies.

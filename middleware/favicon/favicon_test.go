@@ -78,8 +78,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 // mockFS wraps local filesystem for the purposes of
 // Test_Middleware_Favicon_FileSystem located below
 // TODO use os.Dir if fiber upgrades to 1.16
-type mockFS struct {
-}
+type mockFS struct{}
 
 func (m mockFS) Open(name string) (http.File, error) {
 	if name == "/" {

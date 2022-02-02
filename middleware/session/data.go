@@ -25,11 +25,6 @@ func acquireData() *data {
 	return dataPool.Get().(*data)
 }
 
-func releaseData(d *data) {
-	d.Reset()
-	dataPool.Put(d)
-}
-
 func (d *data) Reset() {
 	d.Lock()
 	for key := range d.Data {

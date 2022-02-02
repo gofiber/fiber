@@ -1,9 +1,14 @@
 package csrf
 
 import (
+	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+)
+
+var (
+	errTokenNotFound = errors.New("csrf token not found")
 )
 
 // New creates a new middleware handler
@@ -51,7 +56,7 @@ func New(config ...Config) fiber.Handler {
 					HTTPOnly: cfg.CookieHTTPOnly,
 					SameSite: cfg.CookieSameSite,
 				})
-				return cfg.ErrorHandler(c, err)
+				return cfg.ErrorHandler(c, errTokenNotFound)
 			}
 		}
 

@@ -24,6 +24,7 @@ type statsPID struct {
 	RAM   uint64  `json:"ram"`
 	Conns int     `json:"conns"`
 }
+
 type statsOS struct {
 	CPU      float64 `json:"cpu"`
 	RAM      uint64  `json:"ram"`
@@ -80,7 +81,7 @@ func New(config ...Config) fiber.Handler {
 		if c.Method() != fiber.MethodGet {
 			return fiber.ErrMethodNotAllowed
 		}
-		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON {
+		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON || cfg.APIOnly {
 			mutex.Lock()
 			data.PID.CPU = monitPidCpu.Load().(float64)
 			data.PID.RAM = monitPidRam.Load().(uint64)

@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	stdjson "encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
@@ -15,8 +17,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/internal/encoding/json"
+	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/tlstest"
+	"github.com/gofiber/fiber/v2/internal/uuid"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -307,7 +310,6 @@ func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
 			AddBytesKV([]byte("k1"), []byte("v33")).
 			SetBytesKV([]byte("k2"), []byte("v2")).
 			Add("k2", "v22")
-
 	}
 
 	testAgent(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
@@ -561,6 +563,124 @@ func Test_Client_Agent_Dest(t *testing.T) {
 	})
 }
 
+// readErrorConn is a struct for testing retryIf
+type readErrorConn struct {
+	net.Conn
+}
+
+func (r *readErrorConn) Read(p []byte) (int, error) {
+	return 0, fmt.Errorf("error")
+}
+
+func (r *readErrorConn) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func (r *readErrorConn) Close() error {
+	return nil
+}
+
+func (r *readErrorConn) LocalAddr() net.Addr {
+	return nil
+}
+
+func (r *readErrorConn) RemoteAddr() net.Addr {
+	return nil
+}
+func Test_Client_Agent_RetryIf(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := New(Config{DisableStartupMessage: true})
+
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+
+	a := Post("http://example.com").
+		RetryIf(func(req *Request) bool {
+			return true
+		})
+	dialsCount := 0
+	a.HostClient.Dial = func(addr string) (net.Conn, error) {
+		dialsCount++
+		switch dialsCount {
+		case 1:
+			return &readErrorConn{}, nil
+		case 2:
+			return &readErrorConn{}, nil
+		case 3:
+			return &readErrorConn{}, nil
+		case 4:
+			return ln.Dial()
+		default:
+			t.Fatalf("unexpected number of dials: %d", dialsCount)
+		}
+		panic("unreachable")
+	}
+
+	_, _, errs := a.String()
+	utils.AssertEqual(t, dialsCount, 4)
+	utils.AssertEqual(t, 0, len(errs))
+}
+
+func Test_Client_Stdjson_Gojson(t *testing.T) {
+	type User struct {
+		Account  *string `json:"account"`
+		Password *string `json:"password"`
+		Nickname *string `json:"nickname"`
+		Address  *string `json:"address,omitempty"`
+		Friends  []*User `json:"friends,omitempty"`
+	}
+	user1Account, user1Password, user1Nickname := "abcdef", "123456", "user1"
+	user1 := &User{
+		Account:  &user1Account,
+		Password: &user1Password,
+		Nickname: &user1Nickname,
+		Address:  nil,
+	}
+	user2Account, user2Password, user2Nickname := "ghijkl", "123456", "user2"
+	user2 := &User{
+		Account:  &user2Account,
+		Password: &user2Password,
+		Nickname: &user2Nickname,
+		Address:  nil,
+	}
+	user1.Friends = []*User{user2}
+	expected, err := stdjson.Marshal(user1)
+	utils.AssertEqual(t, nil, err)
+
+	got, err := json.Marshal(user1)
+	utils.AssertEqual(t, nil, err)
+
+	utils.AssertEqual(t, expected, got)
+
+	type config struct {
+		// debug enable a debug logging.
+		debug bool
+		// log used for logging on debug mode.
+		log func(...interface{})
+	}
+
+	type res struct {
+		config `json:"-"`
+		// ID of the ent.
+		ID uuid.UUID `json:"id,omitempty"`
+	}
+
+	u := uuid.New()
+	test := res{
+		ID: u,
+	}
+
+	expected, err = stdjson.Marshal(test)
+	utils.AssertEqual(t, nil, err)
+
+	got, err = json.Marshal(test)
+	utils.AssertEqual(t, nil, err)
+
+	utils.AssertEqual(t, expected, got)
+}
+
 func Test_Client_Agent_Json(t *testing.T) {
 	handler := func(c *Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationJSON, string(c.Request().Header.ContentType()))
@@ -700,7 +820,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 		fh1, err := c.FormFile("field1")
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fh1.Filename, "name")
-		buf := make([]byte, fh1.Size, fh1.Size)
+		buf := make([]byte, fh1.Size)
 		f, err := fh1.Open()
 		utils.AssertEqual(t, nil, err)
 		defer func() { _ = f.Close() }()
@@ -746,13 +866,15 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 }
 
 func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
+	t.Helper()
+
 	basename := filepath.Base(filename)
 	utils.AssertEqual(t, fh.Filename, basename)
 
 	b1, err := ioutil.ReadFile(filename)
 	utils.AssertEqual(t, nil, err)
 
-	b2 := make([]byte, fh.Size, fh.Size)
+	b2 := make([]byte, fh.Size)
 	f, err := fh.Open()
 	utils.AssertEqual(t, nil, err)
 	defer func() { _ = f.Close() }()
@@ -998,6 +1120,8 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
 		a := Get("http://example.com")
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
@@ -1013,6 +1137,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	t.Run("pre error", func(t *testing.T) {
+		t.Parallel()
 		a := Get("http://example.com")
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
@@ -1039,7 +1164,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		utils.AssertEqual(t, StatusOK, code)
 		utils.AssertEqual(t, `{"success"`, string(body))
 		utils.AssertEqual(t, 1, len(errs))
-		utils.AssertEqual(t, "json: unexpected end of JSON input after object field key: ", errs[0].Error())
+		utils.AssertEqual(t, "expected colon after object key", errs[0].Error())
 	})
 }
 

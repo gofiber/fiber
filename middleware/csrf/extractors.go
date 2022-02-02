@@ -2,6 +2,7 @@ package csrf
 
 import (
 	"errors"
+
 	"github.com/gofiber/fiber/v2"
 )
 

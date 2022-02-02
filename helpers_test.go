@@ -333,7 +333,6 @@ func Benchmark_SlashRecognition(b *testing.B) {
 		c := int32(slashDelimiter)
 		for i := 0; i < b.N; i++ {
 			result = IndexRune(search, c)
-
 		}
 		utils.AssertEqual(b, true, result)
 	})
