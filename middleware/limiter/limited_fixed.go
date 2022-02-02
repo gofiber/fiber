@@ -64,7 +64,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		e.currHits++
 
 		// Calculate when it resets in seconds
-		expire := e.exp - ts
+		resetInSec := e.exp - ts
 
 		// Set how many hits we have left
 		remaining := cfg.Max - e.currHits
@@ -79,7 +79,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		if remaining < 0 {
 			// Return response with Retry-After header
 			// https://tools.ietf.org/html/rfc6584
-			c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(expire, 10))
+			c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(resetInSec, 10))
 
 			// Call LimitReached handler
 			return cfg.LimitReached(c)
@@ -101,7 +101,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		// We can continue, update RateLimit headers
 		c.Set(xRateLimitLimit, max)
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
-		c.Set(xRateLimitReset, strconv.FormatUint(expire, 10))
+		c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
 
 		return err
 	}
