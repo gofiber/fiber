@@ -358,15 +358,10 @@ type Config struct {
 	TrustedProxies     []string `json:"trusted_proxies"`
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
-  
-  // If set to true, will print all routes with their method, path and handler.
+
+	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
-
-  // ExternalStorage is the interface that wraps the storage methods.
-	//
-  // Default: nil
-  ExternalStorage Storage `json:"external_storage"`
 }
 
 // Static defines configuration options when defining static assets.
