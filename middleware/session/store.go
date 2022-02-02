@@ -67,7 +67,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	if loadData {
 		raw, err := s.Storage.Get(id)
 		// Unmashal if we found data
-		if raw != nil && err == nil {
+		if raw != nil && (err == nil || err == fiber.ErrNotFound) {
 			mux.Lock()
 			defer mux.Unlock()
 			_, _ = sess.byteBuffer.Write(raw)
@@ -76,7 +76,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 			if err != nil {
 				return nil, err
 			}
-		} else if err != nil {
+		} else if err != nil && err != fiber.ErrNotFound {
 			return nil, err
 		} else {
 			// both raw and err is nil, which means id is not in the storage

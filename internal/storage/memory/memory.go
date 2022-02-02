@@ -1,9 +1,10 @@
 package memory
 
 import (
-	"github.com/gofiber/fiber/v2"
 	"sync"
 	"time"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 // Storage interface that is implemented by storage providers
@@ -45,6 +46,7 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	s.mux.RUnlock()
 	if !ok || v.expiry != 0 && v.expiry <= uint32(time.Now().Unix()) {
 		return nil, fiber.ErrNotFound
+		//return nil, nil
 	}
 
 	return v.data, nil
