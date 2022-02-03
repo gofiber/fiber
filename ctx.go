@@ -255,7 +255,7 @@ func (c *Ctx) BaseURL() string {
 	if c.baseURI != "" {
 		return c.baseURI
 	}
-	c.baseURI = c.Protocol() + "://" + c.Hostname()
+	c.baseURI = c.Scheme() + "://" + c.Hostname()
 	return c.baseURI
 }
 
@@ -848,9 +848,9 @@ func (c *Ctx) Path(override ...string) string {
 	return c.path
 }
 
-// Protocol contains the request protocol string: http or https for TLS requests.
+// Scheme contains the request scheme: http or https for TLS requests.
 // Use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
-func (c *Ctx) Protocol() string {
+func (c *Ctx) Scheme() string {
 	if c.fasthttp.IsTLS() {
 		return "https"
 	}
