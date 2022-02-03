@@ -1415,3 +1415,8 @@ func (c *Ctx) IsFromLocal() bool {
 	}
 	return c.isLocalHost(ips[0])
 }
+
+// Protocol returns the request's HTTP protocol: HTTP/1.1,  HTTP/1.0
+func (c *Ctx) Protocol() string {
+	return string(c.fasthttp.Request.Header.Protocol())
+}
