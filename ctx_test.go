@@ -1486,6 +1486,39 @@ func Test_Ctx_Scheme_UnTrustedProxy(t *testing.T) {
 	utils.AssertEqual(t, "http", c.Scheme())
 }
 
+// go test -run Test_Ctx_Protocol
+func Test_Ctx_Protocol(t *testing.T) {
+	app := New()
+
+	freq := &fasthttp.RequestCtx{}
+
+	c := app.AcquireCtx(freq)
+	defer app.ReleaseCtx(c)
+
+	utils.AssertEqual(t, "HTTP/1.1", c.Protocol())
+
+	protocols := []string{"HTTP/1.0", "HTTP/1.1", "HTTP/2"}
+
+	for _, protocol := range protocols {
+		freq.Request.Header.SetProtocol(protocol)
+		utils.AssertEqual(t, protocol, c.Protocol())
+	}
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
+func Benchmark_Ctx_Protocol(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.Protocol()
+	}
+	utils.AssertEqual(b, "HTTP/1.1", res)
+}
+
 // go test -run Test_Ctx_Query
 func Test_Ctx_Query(t *testing.T) {
 	t.Parallel()
