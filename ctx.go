@@ -783,6 +783,14 @@ func (c *Ctx) Next() (err error) {
 	return err
 }
 
+// RestartRouting instead of going to the next handler. This may be usefull after
+// changing the request path. Note that handlers might be executed again.
+func (c *Ctx) RestartRouting() error {
+	c.indexRoute = -1
+	_, err := c.app.next(c)
+	return err
+}
+
 // OriginalURL contains the original request URL.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.

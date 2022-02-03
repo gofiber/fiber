@@ -2108,6 +2108,69 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
+// go test -run Test_Ctx_RestartRouting
+func Test_Ctx_RestartRouting(t *testing.T) {
+	app := New()
+	calls := 0
+	app.Get("/", func(c *Ctx) error {
+		calls++
+		if calls < 3 {
+			return c.RestartRouting()
+		}
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, 3, calls, "Number of calls")
+}
+
+// go test -run Test_Ctx_RestartRoutingWithChangedPath
+func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
+	app := New()
+	executedOldHandler := false
+	executedNewHandler := false
+
+	app.Get("/old", func(c *Ctx) error {
+		c.Path("/new")
+		return c.RestartRouting()
+	})
+	app.Get("/old", func(c *Ctx) error {
+		executedOldHandler = true
+		return nil
+	})
+	app.Get("/new", func(c *Ctx) error {
+		executedNewHandler = true
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, executedOldHandler, "Executed old handler")
+	utils.AssertEqual(t, true, executedNewHandler, "Executed new handler")
+}
+
+// go test -run Test_Ctx_RestartRoutingWithChangedPathAnd404
+func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
+	app := New()
+	app.Get("/new", func(c *Ctx) error {
+		return nil
+	})
+	app.Use(func(c *Ctx) error {
+		c.Path("/new")
+		// c.Next() would fail this test as a 404 is returned from the next handler
+		return c.RestartRouting()
+	})
+	app.Use(func(c *Ctx) error {
+		return ErrNotFound
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 type testTemplateEngine struct {
 	templates *template.Template
 }
