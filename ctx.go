@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -1126,6 +1127,21 @@ func (c *Ctx) Route() *Route {
 // SaveFile saves any multipart file to disk.
 func (c *Ctx) SaveFile(fileheader *multipart.FileHeader, path string) error {
 	return fasthttp.SaveMultipartFile(fileheader, path)
+}
+
+// SaveFileToStorage saves any multipart file to an external storage system.
+func (c *Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
+	file, err := fileheader.Open()
+	if err != nil {
+		return err
+	}
+
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		return err
+	}
+
+	return storage.Set(path, content, 0)
 }
 
 // Secure returns a boolean property, that is true, if a TLS connection is established.

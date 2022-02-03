@@ -359,7 +359,7 @@ type Config struct {
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
 
-	//If set to true, will print all routes with their method, path and handler.
+	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
 }

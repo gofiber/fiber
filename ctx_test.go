@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/gofiber/fiber/v2/internal/storage/memory"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -1592,6 +1593,48 @@ func Test_Ctx_SaveFile(t *testing.T) {
 		bs, err := ioutil.ReadFile(tempFile.Name())
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "hello world", string(bs))
+		return nil
+	})
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	ioWriter, err := writer.CreateFormFile("file", "test")
+	utils.AssertEqual(t, nil, err)
+
+	_, err = ioWriter.Write([]byte("hello world"))
+	utils.AssertEqual(t, nil, err)
+	writer.Close()
+
+	req := httptest.NewRequest(MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
+
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+// go test -run Test_Ctx_SaveFileToStorage
+func Test_Ctx_SaveFileToStorage(t *testing.T) {
+	t.Parallel()
+	app := New()
+	storage := memory.New()
+
+	app.Post("/test", func(c *Ctx) error {
+		fh, err := c.FormFile("file")
+		utils.AssertEqual(t, nil, err)
+
+		err = c.SaveFileToStorage(fh, "test", storage)
+		utils.AssertEqual(t, nil, err)
+
+		file, err := storage.Get("test")
+		utils.AssertEqual(t, []byte("hello world"), file)
+		utils.AssertEqual(t, nil, err)
+
+		err = storage.Delete("test")
+		utils.AssertEqual(t, nil, err)
+
 		return nil
 	})
 
