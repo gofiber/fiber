@@ -2065,8 +2065,8 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-// go test -run Test_Ctx_Restart
-func Test_Ctx_Restart(t *testing.T) {
+// go test -run Test_Ctx_RestartRouting
+func Test_Ctx_RestartRouting(t *testing.T) {
 	app := New()
 	calls := 0
 	app.Get("/", func(c *Ctx) error {
@@ -2082,8 +2082,8 @@ func Test_Ctx_Restart(t *testing.T) {
 	utils.AssertEqual(t, 3, calls, "Number of calls")
 }
 
-// go test -run Test_Ctx_RestartWithChangedPath
-func Test_Ctx_RestartWithChangedPath(t *testing.T) {
+// go test -run Test_Ctx_RestartRoutingWithChangedPath
+func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 	app := New()
 	executedOldHandler := false
 	executedNewHandler := false
@@ -2108,8 +2108,8 @@ func Test_Ctx_RestartWithChangedPath(t *testing.T) {
 	utils.AssertEqual(t, true, executedNewHandler, "Executed new handler")
 }
 
-// go test -run Test_Ctx_RestartWithChangedPathAnd404
-func Test_Ctx_RestartWithChangedPathAndCatchAll(t *testing.T) {
+// go test -run Test_Ctx_RestartRoutingWithChangedPathAnd404
+func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 	app := New()
 	app.Get("/new", func(c *Ctx) error {
 		return nil
