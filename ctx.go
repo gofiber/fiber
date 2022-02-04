@@ -1093,6 +1093,20 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 		if err := c.app.config.Views.Render(buf, name, bind, layouts...); err != nil {
 			return err
 		}
+	} else if len(c.app.mountedViews) != 0 {
+		for prefix, view := range c.app.mountedViews {
+			if strings.Contains(c.OriginalURL(), prefix) {
+				// Load
+				if err := view.Load(); err != nil {
+					return err
+				}
+
+				// Render
+				if err := c.app.mountedViews[prefix].Render(buf, name, bind, layouts...); err != nil {
+					return err
+				}
+			}
+		}
 	} else {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template

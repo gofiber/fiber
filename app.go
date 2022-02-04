@@ -113,6 +113,8 @@ type App struct {
 	getString func(b []byte) string
 	// mount prefix -> error handler
 	errorHandlers map[string]ErrorHandler
+	// mount prefix -> sub-views
+	mountedViews map[string]Views
 }
 
 // Config is a struct holding the server settings.
@@ -464,6 +466,7 @@ func New(config ...Config) *App {
 		getBytes:      utils.UnsafeBytes,
 		getString:     utils.UnsafeString,
 		errorHandlers: make(map[string]ErrorHandler),
+		mountedViews:  make(map[string]Views),
 	}
 	// Override config if provided
 	if len(config) > 0 {
@@ -544,6 +547,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // to be invoked on errors that happen within the prefix route.
 func (app *App) Mount(prefix string, fiber *App) Router {
 	stack := fiber.Stack()
+	prefix = strings.TrimRight(prefix, "/")
 	for m := range stack {
 		for r := range stack[m] {
 			route := app.copyRoute(stack[m][r])
@@ -551,8 +555,12 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 		}
 	}
 
+	// Support for mounted-views
+	if fiber.config.Views != nil {
+		app.mountedViews[prefix] = fiber.config.Views
+	}
+
 	// Save the fiber's error handler and its sub apps
-	prefix = strings.TrimRight(prefix, "/")
 	if fiber.config.ErrorHandler != nil {
 		app.errorHandlers[prefix] = fiber.config.ErrorHandler
 	}
