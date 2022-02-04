@@ -1054,6 +1054,46 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 	return nil
 }
 
+// RedirectToRoute to the Route registered in the app with appropriate parameters
+// If status is not specified, status defaults to 302 Found.
+func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error {
+	route := c.App().GetRoute(routeName)
+	location := ""
+	for _, segment := range route.routeParser.segs {
+		location = fmt.Sprintf("%s%s", location, segment.Const)
+		if segment.IsParam {
+			if val, ok := params[segment.ParamName]; ok {
+				location = fmt.Sprintf("%s%s", location, val)
+			} else {
+				return errors.New(fmt.Sprintf("redirection failed. No value for param: `%s`", segment.ParamName))
+			}
+		}
+	}
+	c.setCanonical(HeaderLocation, location)
+	if len(status) > 0 {
+		c.Status(status[0])
+	} else {
+		c.Status(StatusFound)
+	}
+	return nil
+}
+
+// RedirectBack to the URL to referer
+// If status is not specified, status defaults to 302 Found.
+func (c *Ctx) RedirectBack(fallback string, status ...int) error {
+	location := c.Get(HeaderReferer)
+	if location == "" {
+		location = fallback
+	}
+	c.setCanonical(HeaderLocation, location)
+	if len(status) > 0 {
+		c.Status(status[0])
+	} else {
+		c.Status(StatusFound)
+	}
+	return nil
+}
+
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
 func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
