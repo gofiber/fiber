@@ -132,6 +132,7 @@ const (
 	TagTime					= "time"
 	TagReferer				= "referer"
 	TagProtocol				= "protocol"
+	TagScheme				= "scheme"
 	TagPort                                 = "port"
 	TagIP					= "ip"
 	TagIPs					= "ips"
