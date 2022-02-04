@@ -23,6 +23,7 @@ const (
 	TagPid               = "pid"
 	TagTime              = "time"
 	TagReferer           = "referer"
+	TagScheme            = "scheme"
 	TagProtocol          = "protocol"
 	TagPort              = "port"
 	TagIP                = "ip"
@@ -210,6 +211,8 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(timestamp.Load().(string))
 			case TagReferer:
 				return buf.WriteString(c.Get(fiber.HeaderReferer))
+			case TagScheme:
+				return buf.WriteString(c.Scheme())
 			case TagProtocol:
 				return buf.WriteString(c.Protocol())
 			case TagPid:
