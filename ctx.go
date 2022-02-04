@@ -1418,5 +1418,5 @@ func (c *Ctx) IsFromLocal() bool {
 
 // Protocol returns the request's HTTP protocol: HTTP/1.1,  HTTP/1.0
 func (c *Ctx) Protocol() string {
-	return string(c.fasthttp.Request.Header.Protocol())
+	return utils.UnsafeString(c.fasthttp.Request.Header.Protocol())
 }
