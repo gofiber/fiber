@@ -1065,7 +1065,7 @@ func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error
 			if val, ok := params[segment.ParamName]; ok {
 				location = fmt.Sprintf("%s%s", location, val)
 			} else {
-				return errors.New(fmt.Sprintf("redirection failed. No value for param: `%s`", segment.ParamName))
+				return fmt.Errorf("redirection failed. No value for param: `%s`", segment.ParamName)
 			}
 		}
 	}
