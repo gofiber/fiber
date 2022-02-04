@@ -52,6 +52,9 @@
          <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fa.md">
      <img height="20px" src="https://img.shields.io/badge/IR-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMTAwMCIgaGVpZ2h0PSI1NzIuMiIgdmlld0JveD0iLTcuMjE3IC00LjEyOSAxMDAwIDU3Mi4yIj48cGF0aCBkPSJNLTcuMjE3LTQuMTI5aDEwMDB2NTcyLjJoLTEwMDB6IiBmaWxsPSIjMjM5ZjQwIi8+PHBhdGggZD0iTS03LjIxNyAyODEuOTcxaDEwMDB2Mjg2LjFoLTEwMDB6IiBmaWxsPSIjZGEwMDAwIi8+PHBhdGggZD0iTS03LjIxNyAxODYuNTcxaDEwMDB2MTkwLjc1aC0xMDAweiIgZmlsbD0iI2ZmZiIvPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC03LjIxNyAxNTUuNDcxKSBzY2FsZSg0LjQ0NDUpIj48ZyBpZD0iZSI+PGcgaWQ9ImMiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiI+PHBhdGggaWQ9ImIiIGQ9Ik0zIC41aDEzTTMuNSA1VjIuNWg0djJoNHYtMkg5bS00IDJoMW0xMCAwaC0yLjV2LTJoNG0wLTIuNXY0LjVoNFYwbS0yIDB2NC41Ii8+PHBhdGggaWQ9ImEiIGQ9Ik0zIDdoOW0xIDBoOSIgc3Ryb2tlLXdpZHRoPSIyIi8+PHVzZSB4bGluazpocmVmPSIjYSIgeT0iNDIuOTEzIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjYiIgeT0iNTEuOTEzIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9nPjxnIGlkPSJkIj48dXNlIHhsaW5rOmhyZWY9IiNjIiB4PSIyMCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIvPjx1c2UgeGxpbms6aHJlZj0iI2MiIHg9IjQwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjYyIgeD0iNjAiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L2c+PC9nPjx1c2UgeGxpbms6aHJlZj0iI2QiIHg9IjYwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjZSIgeD0iMTQwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9nPjxnIHRyYW5zZm9ybT0ibWF0cml4KDY5LjI4NSAwIDAgNjkuMjg1IDQ5Mi43ODMgMjgxLjk3MSkiIGZpbGw9IiNkYTAwMDAiPjxnIGlkPSJmIj48cGF0aCBkPSJNLS41NDguODM2QS45MTIuOTEyIDAgMCAwIC4zMjktLjcyMiAxIDEgMCAwIDEtLjU0OC44MzYiLz48cGF0aCBkPSJNLjYxOC42NjFBLjc2NC43NjQgMCAwIDAgLjQyMi0uNzQgMSAxIDAgMCAxIC42MTguNjYxTTAgMWwtLjA1LTFMMC0uNzg3YS4zMS4zMSAwIDAgMCAuMTE4LjA5OVYtLjFsLS4wNC45OTN6TS0uMDItLjg1TDAtLjgzMWEuMTQ0LjE0NCAwIDAgMCAuMjUyLS4xMzdBLjEzNi4xMzYgMCAwIDEgMC0uOTI1Ii8+PC9nPjx1c2UgeGxpbms6aHJlZj0iI2YiIHRyYW5zZm9ybT0ic2NhbGUoLTEgMSkiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L2c+PC9zdmc+">
    </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_it.md">
+    <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
+  </a>
   <br>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
@@ -142,11 +145,15 @@ Fiber は人気の高い Web フレームワークである Expressjs に**イ�
 わたしたちは Express の**手軽さ**と Go の**パフォーマンス**を組み合わせました。
 もしも、Web アプリケーションを Express 等の Node.js フレームワークで実装した経験があれば、多くの方法や原理がとても**馴染み深い**でしょう。
 
+## ⚠️ 制限時効
+* Fiberはunsafeパッケージを使用しているため、最新のGoバージョンと互換性がない場合があります。Fiber 2.18.0 は、Go のバージョン 1.14 から 1.17 でテストされています。
+* Fiberはnet/httpインターフェースと互換性がありません。つまり、gqlgenやgo-swaggerなど、net/httpのエコシステムの一部であるプロジェクトを使用することができません。
+
 ## 👀 例
 
 以下に一般的な例をいくつか示します。他のコード例をご覧になりたい場合は、 [Recipes リポジトリ](https://github.com/gofiber/recipes)または[API ドキュメント](https://docs.gofiber.io)にアクセスしてください。
 
-#### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
+#### 📖 [**基本的なルーティング**](https://docs.gofiber.io/#basic-routing)
 
 ```go
 func main() {
@@ -187,7 +194,37 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
+#### 📖 [**Route Naming**](https://docs.gofiber.io/api/app#name)
+
+```go
+func main() {
+    app := fiber.New()
+
+    // GET /api/register
+    app.Get("/api/*", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("✋ %s", c.Params("*"))
+        return c.SendString(msg) // => ✋ register
+    }).Name("api")
+
+    data, _ := json.MarshalIndent(app.GetRoute("api"), "", "  ")
+    fmt.Print(string(data))
+    // Prints:
+    // {
+    //    "method": "GET",
+    //    "name": "api",
+    //    "path": "/api/*",
+    //    "params": [
+    //      "*1"
+    //    ]
+    // }
+
+
+    log.Fatal(app.Listen(":3000"))
+}
+
+```
+
+#### 📖 [**静的ファイルの提供**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -209,7 +246,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
+#### 📖 [**ミドルウェア & Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {
@@ -239,7 +276,7 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 その他のコード例を見る</summary>
 
 ### Views engines
 
@@ -247,11 +284,11 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
+view engineが設定されていない時は、Fiberのデフォルトは[html/template](https://golang.org/pkg/html/template/) になります。
 
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+パーシャルを実行したい場合や、[amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) ,[pug](https://github.com/Joker/jade) などの別のエンジンを使用したい場合など、
 
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
+複数のview engineをサポートする [Template](https://github.com/gofiber/template) パッケージをご覧ください。
 
 ```go
 package main
@@ -362,7 +399,7 @@ func main() {
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+`Origin`ヘッダーに任意のドメインを渡してCORSのチェックをします:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -485,7 +522,7 @@ func main() {
 
 </details>
 
-## 🧬 Internal Middleware
+## 🧬 内部ミドルウェア
 
 以下は Fiber フレームワークに含まれるミドルウェアの一覧です。
 
@@ -506,7 +543,7 @@ func main() {
 | [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling). |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                                |
 
-## 🧬 External Middleware
+## 🧬 外部ミドルウェア
 
 [Fiber team](https://github.com/orgs/gofiber/people) により管理・運用されているミドルウェアの一覧です。
 
@@ -521,7 +558,7 @@ func main() {
 | [template](https://github.com/gofiber/template)   | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required.                                               |
 | [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support!                                                                                                          |
 
-## 🌱 Third Party Middlewares
+## 🌱 サードパーティのミドルウェア
 
 This is a list of middlewares that are created by the Fiber community, please create a PR if you want to see yours!
 これらは Fiber のコミュニティーによって作成されたミドルウェアの一覧です。もしあなたのミドルウェアを掲載したい場合は PR を作成してください！
@@ -542,6 +579,8 @@ This is a list of middlewares that are created by the Fiber community, please cr
 -   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
 -   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
 -   [aschenmaker/fiber-health-check](https://github.com/aschenmaker/fiber-health-check)
+-   [elastic/apmfiber](https://github.com/elastic/apm-agent-go/tree/master/module/apmfiber)
+-   [eozer/fiber_ldapauth](https://github.com/eozer/fiber_ldapauth)
 
 ## 👍 貢献する
 
@@ -552,7 +591,7 @@ This is a list of middlewares that are created by the Fiber community, please cr
 3. [Medium](https://medium.com/) 、 [Dev.to、](https://dev.to/)または個人のブログでレビューまたはチュートリアルを書いてください。
 4. [cup of coffee](https://buymeacoff.ee/fenny)の寄付でプロジェクトを支援しましょう。
 
-## ☕ Supporters
+## ☕ サポーター
 
 Fiber はオープンソースプロジェクトで、寄付によってドメイン名や gitbook、 netlify、そしてサーバーレスホスティングなどの費用を賄っています。もし Fiber を支援したければ ☕ [**こちらから**](https://buymeacoff.ee/fenny)。
 
@@ -595,7 +634,7 @@ Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](
 -   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 -   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
--   [encoding](https://github.com/segmentio/encoding/blob/master/LICENSE)
+-   [go-json](https://github.com/goccy/go-json/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 -   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)

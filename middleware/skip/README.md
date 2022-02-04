@@ -22,5 +22,5 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-app.Use(skip.New(handler), func(ctx *fiber.Ctx) bool { return ctx.Method() == fiber.MethodOptions })
+app.Use(skip.New(handler, func(ctx *fiber.Ctx) bool { return ctx.Method() == fiber.MethodOptions }))
 ```

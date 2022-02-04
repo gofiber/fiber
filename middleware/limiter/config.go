@@ -38,10 +38,25 @@ type Config struct {
 	// }
 	LimitReached fiber.Handler
 
+	// When set to true, requests with StatusCode >= 400 won't be counted.
+	//
+	// Default: false
+	SkipFailedRequests bool
+
+	// When set to true, requests with StatusCode < 400 won't be counted.
+	//
+	// Default: false
+	SkipSuccessfulRequests bool
+
 	// Store is used to store the state of the middleware
 	//
 	// Default: an in memory store for this process only
 	Storage fiber.Storage
+
+	// LimiterMiddleware is the struct that implements a limiter middleware.
+	//
+	// Default: a new Fixed Window Rate Limiter
+	LimiterMiddleware LimiterHandler
 
 	// DEPRECATED: Use Expiration instead
 	Duration time.Duration
@@ -63,6 +78,9 @@ var ConfigDefault = Config{
 	LimitReached: func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTooManyRequests)
 	},
+	SkipFailedRequests:     false,
+	SkipSuccessfulRequests: false,
+	LimiterMiddleware:      FixedWindow{},
 }
 
 // Helper function to set default values
@@ -102,6 +120,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.LimitReached == nil {
 		cfg.LimitReached = ConfigDefault.LimitReached
+	}
+	if cfg.LimiterMiddleware == nil {
+		cfg.LimiterMiddleware = ConfigDefault.LimiterMiddleware
 	}
 	return cfg
 }

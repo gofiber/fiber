@@ -61,30 +61,29 @@ func Test_Session(t *testing.T) {
 	keys = sess.Keys()
 	utils.AssertEqual(t, []string{}, keys)
 
-	// we do not get id here
-	// since the original id is not in the db
-	// sess.id must be a new-generated uuid, which is not equivalent to "123"
-	// id := sess.ID()
-	// utils.AssertEqual(t, "123", id)
-
-	// delete cookie
-	ctx.Request().Header.Del(fiber.HeaderCookie)
-
-	// get session
-	sess, err = store.Get(ctx)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, sess.Fresh())
-
 	// get id
 	id := sess.ID()
-	utils.AssertEqual(t, 36, len(id))
-
-	// when we use the session for the second time
-	// the session be should be same if the session is not expired
+	utils.AssertEqual(t, "123", id)
 
 	// save the old session first
 	err = sess.Save()
 	utils.AssertEqual(t, nil, err)
+
+	// requesting entirely new context to prevent falsy tests
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
+
+	sess, err = store.Get(ctx)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, sess.Fresh())
+
+	// this id should be randomly generated as session key was deleted
+	utils.AssertEqual(t, 36, len(sess.ID()))
+
+	// when we use the original session for the second time
+	// the session be should be same if the session is not expired
+	ctx = app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(ctx)
 
 	// request the server with the old session
 	ctx.Request().Header.SetCookie(store.sessionName, id)
@@ -124,7 +123,7 @@ func Test_Session_Types(t *testing.T) {
 		Name string
 	}
 	store.RegisterType(User{})
-	var vuser = User{
+	vuser := User{
 		Name: "John",
 	}
 	// set value

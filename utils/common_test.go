@@ -16,7 +16,7 @@ func Test_FunctionName(t *testing.T) {
 
 	AssertEqual(t, "github.com/gofiber/fiber/v2/utils.Test_FunctionName.func1", FunctionName(func() {}))
 
-	var dummyint = 20
+	dummyint := 20
 	AssertEqual(t, "int", FunctionName(dummyint))
 }
 
@@ -51,6 +51,7 @@ func Test_UUIDv4(t *testing.T) {
 	AssertEqual(t, 36, len(res))
 	AssertEqual(t, true, res != "00000000-0000-0000-0000-000000000000")
 }
+
 func Test_UUIDv4_Concurrency(t *testing.T) {
 	t.Parallel()
 	iterations := 1000

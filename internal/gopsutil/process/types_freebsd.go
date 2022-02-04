@@ -1,3 +1,4 @@
+//go:build ignore
 // +build ignore
 
 // We still need editing by hands.

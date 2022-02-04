@@ -33,7 +33,7 @@ func Test_FileSystem(t *testing.T) {
 	}))
 
 	app.Use("/prefix", New(Config{
-		Root: http.Dir("../../.github/testdata/fs"),
+		Root:       http.Dir("../../.github/testdata/fs"),
 		PathPrefix: "img",
 	}))
 
@@ -90,6 +90,12 @@ func Test_FileSystem(t *testing.T) {
 			contentType: "text/html",
 		},
 		{
+			name:        "Should list the directory contents",
+			url:         "/dir/img/",
+			statusCode:  200,
+			contentType: "text/html",
+		},
+		{
 			name:        "Should be returns status 200",
 			url:         "/dir/img/fiber.png",
 			statusCode:  200,
@@ -102,9 +108,9 @@ func Test_FileSystem(t *testing.T) {
 			contentType: "text/html",
 		},
 		{
-			name: "PathPrefix should be applied",
-			url: "/prefix/fiber.png",
-			statusCode: 200,
+			name:        "PathPrefix should be applied",
+			url:         "/prefix/fiber.png",
+			statusCode:  200,
 			contentType: "image/png",
 		},
 	}

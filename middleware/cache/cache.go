@@ -41,14 +41,13 @@ func New(config ...Config) fiber.Handler {
 
 	var (
 		// Cache settings
-		mux        = &sync.RWMutex{}
-		timestamp  = uint64(time.Now().Unix())
-		expiration = uint64(cfg.Expiration.Seconds())
+		mux       = &sync.RWMutex{}
+		timestamp = uint64(time.Now().Unix())
 	)
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
 
-	// Update timestamp every second
+	// Update timestamp in the configured interval
 	go func() {
 		for {
 			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
@@ -58,14 +57,15 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
-		// Only cache GET methods
-		if c.Method() != fiber.MethodGet {
+		// Only cache GET and HEAD methods
+		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
 
 		// Get key from request
-		key := cfg.KeyGenerator(c)
+		// TODO(allocation optimization): try to minimize the allocation from 2 to 1
+		key := cfg.KeyGenerator(c) + "_" + c.Method()
 
 		// Get entry from pool
 		e := manager.get(key)
@@ -125,6 +125,13 @@ func New(config ...Config) fiber.Handler {
 		e.status = c.Response().StatusCode()
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
+
+		// default cache expiration
+		expiration := uint64(cfg.Expiration.Seconds())
+		// Calculate expiration by response header or other setting
+		if cfg.ExpirationGenerator != nil {
+			expiration = uint64(cfg.ExpirationGenerator(c, &cfg).Seconds())
+		}
 		e.exp = ts + expiration
 
 		// For external Storage we store raw body separated

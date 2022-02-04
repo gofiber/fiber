@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // Config defines the config for middleware.
@@ -34,9 +35,14 @@ type Config struct {
 	// Key allows you to generate custom keys, by default c.Path() is used
 	//
 	// Default: func(c *fiber.Ctx) string {
-	//   return c.Path()
+	//   return utils.CopyString(c.Path())
 	// }
 	KeyGenerator func(*fiber.Ctx) string
+
+	// allows you to generate custom Expiration Key By Key, default is Expiration (Optional)
+	//
+	// Default: nil
+	ExpirationGenerator func(*fiber.Ctx, *Config) time.Duration
 
 	// Store is used to store the state of the middleware
 	//
@@ -57,9 +63,10 @@ var ConfigDefault = Config{
 	CacheHeader:  "X-Cache",
 	CacheControl: false,
 	KeyGenerator: func(c *fiber.Ctx) string {
-		return c.Path()
+		return utils.CopyString(c.Path())
 	},
-	Storage: nil,
+	ExpirationGenerator: nil,
+	Storage:             nil,
 }
 
 // Helper function to set default values

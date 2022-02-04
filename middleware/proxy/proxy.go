@@ -3,11 +3,12 @@ package proxy
 import (
 	"crypto/tls"
 	"fmt"
+	"net/url"
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
-	"net/url"
-	"strings"
 )
 
 // New is deprecated

@@ -9,18 +9,19 @@ import (
 type Storage struct {
 	sync.RWMutex
 	data map[string]item // data
-	ts   uint64          // timestamp
+	ts   uint32          // timestamp
 }
 
 type item struct {
+	// max value is 4294967295 -> Sun Feb 07 2106 06:28:15 GMT+0000
+	e uint32      // exp
 	v interface{} // val
-	e uint64      // exp
 }
 
 func New() *Storage {
 	store := &Storage{
 		data: make(map[string]item),
-		ts:   uint64(time.Now().Unix()),
+		ts:   uint32(time.Now().Unix()),
 	}
 	go store.gc(10 * time.Millisecond)
 	go store.updater(1 * time.Second)
@@ -32,7 +33,7 @@ func (s *Storage) Get(key string) interface{} {
 	s.RLock()
 	v, ok := s.data[key]
 	s.RUnlock()
-	if !ok || v.e != 0 && v.e <= atomic.LoadUint64(&s.ts) {
+	if !ok || v.e != 0 && v.e <= atomic.LoadUint32(&s.ts) {
 		return nil
 	}
 	return v.v
@@ -40,12 +41,12 @@ func (s *Storage) Get(key string) interface{} {
 
 // Set key with value
 func (s *Storage) Set(key string, val interface{}, ttl time.Duration) {
-	var exp uint64
+	var exp uint32
 	if ttl > 0 {
-		exp = uint64(ttl.Seconds()) + atomic.LoadUint64(&s.ts)
+		exp = uint32(ttl.Seconds()) + atomic.LoadUint32(&s.ts)
 	}
 	s.Lock()
-	s.data[key] = item{val, exp}
+	s.data[key] = item{exp, val}
 	s.Unlock()
 }
 
@@ -66,7 +67,7 @@ func (s *Storage) Reset() {
 func (s *Storage) updater(sleep time.Duration) {
 	for {
 		time.Sleep(sleep)
-		atomic.StoreUint64(&s.ts, uint64(time.Now().Unix()))
+		atomic.StoreUint32(&s.ts, uint32(time.Now().Unix()))
 	}
 }
 func (s *Storage) gc(sleep time.Duration) {
@@ -76,7 +77,7 @@ func (s *Storage) gc(sleep time.Duration) {
 		expired = expired[:0]
 		s.RLock()
 		for key, v := range s.data {
-			if v.e != 0 && v.e <= atomic.LoadUint64(&s.ts) {
+			if v.e != 0 && v.e <= atomic.LoadUint32(&s.ts) {
 				expired = append(expired, key)
 			}
 		}

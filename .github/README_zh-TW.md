@@ -52,6 +52,9 @@
          <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fa.md">
      <img height="20px" src="https://img.shields.io/badge/IR-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMTAwMCIgaGVpZ2h0PSI1NzIuMiIgdmlld0JveD0iLTcuMjE3IC00LjEyOSAxMDAwIDU3Mi4yIj48cGF0aCBkPSJNLTcuMjE3LTQuMTI5aDEwMDB2NTcyLjJoLTEwMDB6IiBmaWxsPSIjMjM5ZjQwIi8+PHBhdGggZD0iTS03LjIxNyAyODEuOTcxaDEwMDB2Mjg2LjFoLTEwMDB6IiBmaWxsPSIjZGEwMDAwIi8+PHBhdGggZD0iTS03LjIxNyAxODYuNTcxaDEwMDB2MTkwLjc1aC0xMDAweiIgZmlsbD0iI2ZmZiIvPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC03LjIxNyAxNTUuNDcxKSBzY2FsZSg0LjQ0NDUpIj48ZyBpZD0iZSI+PGcgaWQ9ImMiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiI+PHBhdGggaWQ9ImIiIGQ9Ik0zIC41aDEzTTMuNSA1VjIuNWg0djJoNHYtMkg5bS00IDJoMW0xMCAwaC0yLjV2LTJoNG0wLTIuNXY0LjVoNFYwbS0yIDB2NC41Ii8+PHBhdGggaWQ9ImEiIGQ9Ik0zIDdoOW0xIDBoOSIgc3Ryb2tlLXdpZHRoPSIyIi8+PHVzZSB4bGluazpocmVmPSIjYSIgeT0iNDIuOTEzIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjYiIgeT0iNTEuOTEzIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9nPjxnIGlkPSJkIj48dXNlIHhsaW5rOmhyZWY9IiNjIiB4PSIyMCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIvPjx1c2UgeGxpbms6aHJlZj0iI2MiIHg9IjQwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjYyIgeD0iNjAiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L2c+PC9nPjx1c2UgeGxpbms6aHJlZj0iI2QiIHg9IjYwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjZSIgeD0iMTQwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9nPjxnIHRyYW5zZm9ybT0ibWF0cml4KDY5LjI4NSAwIDAgNjkuMjg1IDQ5Mi43ODMgMjgxLjk3MSkiIGZpbGw9IiNkYTAwMDAiPjxnIGlkPSJmIj48cGF0aCBkPSJNLS41NDguODM2QS45MTIuOTEyIDAgMCAwIC4zMjktLjcyMiAxIDEgMCAwIDEtLjU0OC44MzYiLz48cGF0aCBkPSJNLjYxOC42NjFBLjc2NC43NjQgMCAwIDAgLjQyMi0uNzQgMSAxIDAgMCAxIC42MTguNjYxTTAgMWwtLjA1LTFMMC0uNzg3YS4zMS4zMSAwIDAgMCAuMTE4LjA5OVYtLjFsLS4wNC45OTN6TS0uMDItLjg1TDAtLjgzMWEuMTQ0LjE0NCAwIDAgMCAuMjUyLS4xMzdBLjEzNi4xMzYgMCAwIDEgMC0uOTI1Ii8+PC9nPjx1c2UgeGxpbms6aHJlZj0iI2YiIHRyYW5zZm9ybT0ic2NhbGUoLTEgMSkiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L2c+PC9zdmc+">
    </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_it.md">
+    <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
+  </a>
   <br>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
@@ -128,7 +131,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [樣板引擎](https://github.com/gofiber/template)
 -   支援[WebSocket](https://github.com/gofiber/websocket)
 -   支援[限速](https://docs.gofiber.io/api/middleware/limiter)
--   被翻譯成[15]國語言(https://docs.gofiber.io/)
+-   被翻譯成[15種語言](https://docs.gofiber.io/)
 -   豐富的[文件](https://docs.gofiber.io/)
 
 ## 💡 理念
@@ -138,6 +141,10 @@ go get -u github.com/gofiber/fiber/v2
 Fiber **受到** 網路上最流行的 Web 框架 ExpressJS**啟發**，結合 Express 的**易用性**和 Go 的**高效能**。若你之前用過 Node.js 寫 Web 應用(_使用 ExpressJS/Koa 或類似工具_)，那你已經**上手**了。
 
 有什麼問題請發[issues](https://github.com/gofiber/fiber/issues)或加入 Discord [channel](https://gofiber.io/discord)討論，我們想要創造**快速**、**彈性**、**友善**的社群給**任何人**使用！就像 Express 那樣。
+
+## 限制
+* 由於 Fiber 使用了 unsafe，該庫可能並不總是與最新的 Go 版本兼容。 Fiber 2.18.0 已經用 Go 版本 1.14 到 1.17 進行了測試。
+* Fiber 與 net/http 接口不兼容。 這意味著您將無法使用 gqlgen、go-swagger 或任何其他屬於 net/http 生態系統的項目。
 
 ## 👀 範例
 
@@ -186,7 +193,37 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
+#### 📖 [**路線命名**](https://docs.gofiber.io/api/app#name)
+
+```go
+func main() {
+    app := fiber.New()
+
+    // GET /api/register
+    app.Get("/api/*", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("✋ %s", c.Params("*"))
+        return c.SendString(msg) // => ✋ register
+    }).Name("api")
+
+    data, _ := json.MarshalIndent(app.GetRoute("api"), "", "  ")
+    fmt.Print(string(data))
+    // Prints:
+    // {
+    //    "method": "GET",
+    //    "name": "api",
+    //    "path": "/api/*",
+    //    "params": [
+    //      "*1"
+    //    ]
+    // }
+
+
+    log.Fatal(app.Listen(":3000"))
+}
+
+```
+
+#### 📖 [**提供靜態文件**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -277,7 +314,7 @@ func main() {
 
 ```
 
-### Grouping routes into chains
+### 鏈式路線分組
 
 📖 [Group](https://docs.gofiber.io/api/app#group)
 
@@ -483,41 +520,38 @@ func main() {
 
 </details>
 
-## 🧬 Internal Middleware
-
-Here is a list of middleware that are included within the Fiber framework.
-
-| Middleware                                                                       | Description                                                                                                                                                                  |
+## 🧬 内部中間件
+以下為包含在Fiber框架中的中間件列表.
+| 中間件                                                                       | 描述                                                                                                                                                                  |
 | :------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials.        |
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default.                                                                                     |
-| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)           | Intercept and cache responses                                                                                                                                                |
-| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)             | Enable cross-origin resource sharing \(CORS\) with various options.                                                                                                          |
-| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)             | Protect from CSRF exploits.                                                                                                                                                  |
-| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary                                                                                                |
-| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)       | Ignore favicon from logs or serve from memory if a file path is provided.                                                                                                    |
-| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)       | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset.                                                   |
-| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)         | HTTP request/response logger.                                                                                                                                                |
-| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | Special thanks to Matthew Lee \(@mthli\)                                                                                                                                     |
-| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | Allows you to proxy requests to a multiple servers                                                                                                                           |
-| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | Adds a requestid to every request.                                                                                                                                           |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling). |
-| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                                |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | 基本身份驗證中間件提供 HTTP 基本身份驗證。 它為有效憑據調用下一個處理程序，並為丟失或無效憑據調用 401 Unauthorized。        |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | CFiber的壓縮中間件，默認支持`deflate`、`gzip`和`brotli`。                                                                                     |
+| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)           | 攔截和緩存響應                                                                                                                                               |
+| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)             | 使用各種選項啟用跨域資源共享 \(CORS\)。                                                                                  |
+| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)             | 防止 CSRF 漏洞利用。                                                                                                                          |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | 用於 Fiber 的 FileSystem 中間件，特別感謝 Alireza Salary                                                                                                |
+| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)       | 如果提供了文件路徑，則忽略日誌中的網站圖標或從內存中提供服務。                                                                                                    |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)       | Fiber 的限速中間件。 用於限制對公共 API 和/或端點的重複請求，例如密碼重置。                                              |
+| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)         | HTTP 請求/響應 logger.                                                                                                                                                |
+| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | 特別感謝 Matthew Lee \(@mthli\)                                                                                                               |
+| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | 允許您將請求代理到多個服務器                                                                                                   |
+| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | 為每個請求添加一個 requestid。                                                                                                                        |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | 恢復中間件從堆棧鏈中任何地方的恐慌中恢復，並將控制權交給集中式[ ErrorHandler](https://docs.gofiber.io/guide/error-handling). |
+| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | 添加請求的最大時間，如果超過則轉發給 ErrorHandler。                                                                            |
 
-## 🧬 External Middleware
+## 🧬 外部中間件
 
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
-
+由 [Fiber 團隊] (https://github.com/orgs/gofiber/people) 維護的外部託管中間件模塊列表。
 | Middleware                                        | Description                                                                                                                                                         |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [adaptor](https://github.com/gofiber/adaptor)     | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn!                                                                           |
-| [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
-| [jwt](https://github.com/gofiber/jwt)             | JWT returns a JSON Web Token \(JWT\) auth middleware.                                                                                                               |
-| [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware provides a key based authentication.                                                                                                            |
-| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. |
-| [session](https://github.com/gofiber/session)     | This session middleware is build on top of fasthttp/session by @savsgio MIT. Special thanks to @thomasvvugt for helping with this middleware.                       |
-| [template](https://github.com/gofiber/template)   | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required.                                               |
-| [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support!                                                                                                          |
+| [adaptor](https://github.com/gofiber/adaptor)     | net/http 處理程序與 Fiber 請求處理程序之間的轉換器，特別感謝 @arsmn！                                                                         |
+| [helmet](https://github.com/gofiber/helmet)       | 通過設置各種 HTTP 標頭來幫助保護您的應用程序。                                                              |
+| [jwt](https://github.com/gofiber/jwt)             | JWT 返回一個 JSON Web Token \(JWT\) 身份驗證中間件。                                                                    |
+| [keyauth](https://github.com/gofiber/keyauth)     | Key auth 中間件提供基於密鑰的身份驗證。                                                                     |
+| [rewrite](https://github.com/gofiber/rewrite)     | 重寫中間件根據提供的規則重寫 URL 路徑。 它有助於向後兼容或只是創建更清晰和更具描述性的鏈接。 |
+| [session](https://github.com/gofiber/session)     | 這個會話中間件建立在 @savsgio MIT 的 fasthttp/session 之上。 特別感謝 @thomasvvugt 對這個中間件的幫助。                      |
+| [template](https://github.com/gofiber/template)   |該軟件包包含 8 個模板引擎，可用於 Fiber `v1.10.x` Go 版本 1.13 或更高版本。                                             |
+| [websocket](https://github.com/gofiber/websocket) | 基於 Fasthttp WebSocket for Fiber，支持 Locals！                                                             |
 
 ## 🌱 第三方中介器
 
@@ -539,6 +573,8 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 -   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
 -   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
 -   [aschenmaker/fiber-health-check](https://github.com/aschenmaker/fiber-health-check)
+-   [elastic/apmfiber](https://github.com/elastic/apm-agent-go/tree/master/module/apmfiber)
+-   [eozer/fiber_ldapauth](https://github.com/eozer/fiber_ldapauth)
 
 ## 👍 貢獻
 
@@ -585,14 +621,14 @@ Fiber 是一個以贊助維生的開源專案，像是: 網域、gitbook、netli
 
 ## ⚠️ 授權
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+版權所有 (c) 2019 年至今 [Fenny](https://github.com/fenny) 和 [貢獻者](https://github.com/gofiber/fiber/graphs/contributors)。 `Fiber` 是根據 [MIT 許可證] (https://github.com/gofiber/fiber/blob/master/LICENSE) 許可的免費開源軟件。 官方徽標由 [Vic Shóstak](https://github.com/koddr) 創建並在 [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) 許可下分發 (CC BY- SA 4.0 國際）。
 
 **Third-party library licenses**
 
 -   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 -   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
--   [encoding](https://github.com/segmentio/encoding/blob/master/LICENSE)
+-   [go-json](https://github.com/goccy/go-json/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 -   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
