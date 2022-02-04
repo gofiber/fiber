@@ -1505,7 +1505,7 @@ func Test_Ctx_Protocol(t *testing.T) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
+// go test -v -run=^$ -bench=Benchmark_Ctx_Protocol -benchmem -count=4
 func Benchmark_Ctx_Protocol(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
