@@ -1082,32 +1082,28 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 
 	}
 
-	if c.app.config.Views != nil {
-		// Render template based on global layout if exists
-		if len(layouts) == 0 && c.app.config.ViewsLayout != "" {
-			layouts = []string{
-				c.app.config.ViewsLayout,
+	rendered := false
+	for prefix, app := range c.app.appList {
+		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
+			if len(layouts) == 0 && app.config.ViewsLayout != "" {
+				layouts = []string{
+					app.config.ViewsLayout,
+				}
 			}
-		}
-		// Render template from Views
-		if err := c.app.config.Views.Render(buf, name, bind, layouts...); err != nil {
-			return err
-		}
-	} else if len(c.app.mountedViews) != 0 {
-		for prefix, view := range c.app.mountedViews {
-			if strings.Contains(c.OriginalURL(), prefix) {
-				// Load
-				if err := view.Load(); err != nil {
+
+			// Render template from Views
+			if app.config.Views != nil {
+				if err := app.config.Views.Render(buf, name, bind, layouts...); err != nil {
 					return err
 				}
 
-				// Render
-				if err := c.app.mountedViews[prefix].Render(buf, name, bind, layouts...); err != nil {
-					return err
-				}
+				rendered = true
+				break
 			}
 		}
-	} else {
+	}
+
+	if !rendered {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
 		if _, err = readContent(buf, name); err != nil {
@@ -1123,6 +1119,7 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 			return err
 		}
 	}
+
 	// Set Content-Type to text/html
 	c.fasthttp.Response.Header.SetContentType(MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body

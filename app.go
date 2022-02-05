@@ -111,10 +111,9 @@ type App struct {
 	getBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	getString func(b []byte) string
-	// mount prefix -> error handler
-	errorHandlers map[string]ErrorHandler
-	// mount prefix -> sub-views
-	mountedViews map[string]Views
+
+	// Mounted and main apps
+	appList map[string]*App
 }
 
 // Config is a struct holding the server settings.
@@ -462,11 +461,10 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config:        Config{},
-		getBytes:      utils.UnsafeBytes,
-		getString:     utils.UnsafeString,
-		errorHandlers: make(map[string]ErrorHandler),
-		mountedViews:  make(map[string]Views),
+		config:    Config{},
+		getBytes:  utils.UnsafeBytes,
+		getString: utils.UnsafeString,
+		appList:   make(map[string]*App),
 	}
 	// Override config if provided
 	if len(config) > 0 {
@@ -518,6 +516,9 @@ func New(config ...Config) *App {
 		app.handleTrustedProxy(ipAddress)
 	}
 
+	// Init appList
+	app.appList[""] = app
+
 	// Init app
 	app.init()
 
@@ -555,17 +556,13 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 		}
 	}
 
-	// Support for mounted-views
-	if fiber.config.Views != nil {
-		app.mountedViews[prefix] = fiber.config.Views
-	}
+	// Support for configs of mounted-apps and sub-mounted-apps
+	app.appList[prefix] = fiber
+	fiber.init()
 
-	// Save the fiber's error handler and its sub apps
-	if fiber.config.ErrorHandler != nil {
-		app.errorHandlers[prefix] = fiber.config.ErrorHandler
-	}
-	for mountedPrefixes, errHandler := range fiber.errorHandlers {
-		app.errorHandlers[prefix+mountedPrefixes] = errHandler
+	for mountedPrefixes, subApp := range fiber.appList {
+		app.appList[prefix+mountedPrefixes] = subApp
+		subApp.init()
 	}
 
 	atomic.AddUint32(&app.handlersCount, fiber.handlersCount)
@@ -1010,11 +1007,11 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
-	for prefix, errHandler := range app.errorHandlers {
-		if strings.HasPrefix(ctx.path, prefix) {
+	for prefix, subApp := range app.appList {
+		if strings.HasPrefix(ctx.path, prefix) && prefix != "" {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
-				mountedErrHandler = errHandler
+				mountedErrHandler = subApp.config.ErrorHandler
 				mountedPrefixParts = parts
 			}
 		}
