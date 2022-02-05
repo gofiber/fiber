@@ -32,12 +32,8 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 		}
 	}
 
-	// Save the fiber's error handler and its sub apps
-	groupPath = strings.TrimRight(groupPath, "/")
 	// Support for configs of mounted-apps and sub-mounted-apps
-	grp.app.appList[groupPath] = fiber
-	fiber.init()
-
+	groupPath = strings.TrimRight(groupPath, "/")
 	for mountedPrefixes, subApp := range fiber.appList {
 		grp.app.appList[groupPath+mountedPrefixes] = subApp
 		subApp.init()
