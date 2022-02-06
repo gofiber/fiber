@@ -2087,6 +2087,55 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 
 }
+
+func Test_Ctx_RenderWithBind(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Bind(Map{
+		"Title": "Hello, World!",
+	})
+	defer app.ReleaseCtx(c)
+	err := c.Render("./.github/testdata/template.html", Map{})
+
+	buf := bytebufferpool.Get()
+	_, _ = buf.WriteString("overwrite")
+	defer bytebufferpool.Put(buf)
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+
+}
+
+func Test_Ctx_RenderWithBindLocals(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		PassLocalsToViews: true,
+	})
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Bind(Map{
+		"Title": "Hello, World!",
+	})
+
+	c.Locals("Summary", "Test")
+
+	defer app.ReleaseCtx(c)
+	err := c.Render("./.github/testdata/template2.html", Map{})
+
+	buf := bytebufferpool.Get()
+	_, _ = buf.WriteString("overwrite")
+	defer bytebufferpool.Put(buf)
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
+
+}
+
 func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	t.Parallel()
 	app := New(Config{

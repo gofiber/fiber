@@ -62,6 +62,7 @@ type Ctx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
+	viewBindMap         Map                  //	Default view map to bind template engine
 }
 
 // Range data for c.Range
@@ -126,6 +127,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	c.fasthttp = fctx
 	// reset base uri
 	c.baseURI = ""
+	// init viewBindMap
+	c.viewBindMap = make(Map)
 	// Prettify path
 	c.configDependentPaths()
 	return c
@@ -1054,6 +1057,15 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 	return nil
 }
 
+// Add vars to defult view var map binding to template engine
+func (c *Ctx) Bind(vars Map) error {
+	for k, v := range vars {
+		c.viewBindMap[k] = v
+	}
+
+	return nil
+}
+
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
 func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
@@ -1061,6 +1073,17 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
+
+	// Bind view map
+	bindMap, ok := bind.(Map)
+	if ok {
+		for k, v := range c.viewBindMap {
+			bindMap[k] = v
+		}
+
+		// set the original bind to the map
+		bind = bindMap
+	}
 
 	// Check if the PassLocalsToViews option is enabled (By default it is disabled)
 	if c.app.config.PassLocalsToViews {
