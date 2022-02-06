@@ -23,7 +23,7 @@ func New() *Storage {
 		data: make(map[string]item),
 		ts:   uint32(time.Now().Unix()),
 	}
-	go store.gc(10 * time.Millisecond)
+	go store.gc(1 * time.Second)
 	go store.updater(1 * time.Second)
 	return store
 }
