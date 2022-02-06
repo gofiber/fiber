@@ -62,7 +62,7 @@ type Ctx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
-	viewBindMap         Map                  //	Default view map to bind template engine
+	viewBindMap         Map                  // Default view map to bind template engine
 }
 
 // Range data for c.Range
@@ -1075,8 +1075,7 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	defer bytebufferpool.Put(buf)
 
 	// Bind view map
-	bindMap, ok := bind.(Map)
-	if ok {
+	if bindMap, ok := bind.(Map); ok {
 		for k, v := range c.viewBindMap {
 			bindMap[k] = v
 		}
