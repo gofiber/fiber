@@ -678,6 +678,22 @@ func Test_App_Static_MaxAge(t *testing.T) {
 	utils.AssertEqual(t, "public, max-age=100", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 }
 
+// go test -run Test_App_Static_Download
+func Test_App_Static_Download(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	app.Static("/fiber.png", "./.github/testdata/fs/img/fiber.png", Static{Download: true})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/fiber.png", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+	utils.AssertEqual(t, "image/png", resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, `attachment`, resp.Header.Get(HeaderContentDisposition))
+}
+
 // go test -run Test_App_Static_Group
 func Test_App_Static_Group(t *testing.T) {
 	app := New()

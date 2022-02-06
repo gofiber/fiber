@@ -379,6 +379,10 @@ type Static struct {
 	// Optional. Default value false.
 	Browse bool `json:"browse"`
 
+	// When set to true, enables direct download.
+	// Optional. Default value false.
+	Download bool `json:"download"`
+
 	// The name of the index file for serving a directory.
 	// Optional. Default value "index.html".
 	Index string `json:"index"`
