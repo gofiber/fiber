@@ -1074,35 +1074,8 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// Bind view map
-	if bindMap, ok := bind.(Map); ok {
-		for k, v := range c.viewBindMap {
-			bindMap[k] = v
-		}
-
-		// set the original bind to the map
-		bind = bindMap
-	}
-
-	// Check if the PassLocalsToViews option is enabled (By default it is disabled)
-	if c.app.config.PassLocalsToViews {
-		// Safely cast the bind interface to a map
-		bindMap, ok := bind.(Map)
-		// Check if the bind is a map
-		if ok {
-			// Loop through each local and set it in the map
-			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
-				// check if bindMap doesn't contain the key
-				if _, ok := bindMap[string(key)]; !ok {
-					// Set the key and value in the bindMap
-					bindMap[string(key)] = val
-				}
-			})
-			// set the original bind to the map
-			bind = bindMap
-		}
-
-	}
+	// Pass-locals-to-views & Bind
+	c.renderExtensions(bind)
 
 	if c.app.config.Views != nil {
 		// Render template based on global layout if exists
@@ -1137,6 +1110,37 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	c.fasthttp.Response.SetBody(buf.Bytes())
 	// Return err if exist
 	return err
+}
+
+func (c *Ctx) renderExtensions(bind interface{}) {
+	// Bind view map
+	if bindMap, ok := bind.(Map); ok {
+		for k, v := range c.viewBindMap {
+			bindMap[k] = v
+		}
+
+		// set the original bind to the map
+		bind = bindMap
+	}
+
+	// Check if the PassLocalsToViews option is enabled (By default it is disabled)
+	if c.app.config.PassLocalsToViews {
+		// Safely cast the bind interface to a map
+		bindMap, ok := bind.(Map)
+		// Check if the bind is a map
+		if ok {
+			// Loop through each local and set it in the map
+			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
+				// check if bindMap doesn't contain the key
+				if _, ok := bindMap[string(key)]; !ok {
+					// Set the key and value in the bindMap
+					bindMap[string(key)] = val
+				}
+			})
+			// set the original bind to the map
+			bind = bindMap
+		}
+	}
 }
 
 // Route returns the matched Route struct.
