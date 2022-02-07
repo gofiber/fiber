@@ -2075,6 +2075,23 @@ func Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue(t *testing.T) {
 	utils.AssertEqual(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
+// go test -run Test_Ctx_RedirectToRoute
+func Test_Ctx_RedirectToRouteWithGreedyParameters(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/+", func(c *Ctx) error {
+		return c.JSON(c.Params("+"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.RedirectToRoute("user", Map{
+		"+": "test/routes",
+	})
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
 // go test -run Test_Ctx_RedirectBack
 func Test_Ctx_RedirectBack(t *testing.T) {
 	t.Parallel()
@@ -2318,6 +2335,19 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Location_From_Route -benchmem -count=4
+func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	app.Get("/user/:name", func(c *Ctx) error {
+		return c.SendString(c.Params("name"))
+	}).Name("User")
+	for n := 0; n < b.N; n++ {
+		c.getLocationFromRoute(app.GetRoute("User"), Map{"name": "fiber"})
+	}
 }
 
 type errorTemplateEngine struct{}
