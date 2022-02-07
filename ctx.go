@@ -75,15 +75,16 @@ type Range struct {
 
 // Cookie data for c.Cookie
 type Cookie struct {
-	Name     string    `json:"name"`
-	Value    string    `json:"value"`
-	Path     string    `json:"path"`
-	Domain   string    `json:"domain"`
-	MaxAge   int       `json:"max_age"`
-	Expires  time.Time `json:"expires"`
-	Secure   bool      `json:"secure"`
-	HTTPOnly bool      `json:"http_only"`
-	SameSite string    `json:"same_site"`
+	Name        string    `json:"name"`
+	Value       string    `json:"value"`
+	Path        string    `json:"path"`
+	Domain      string    `json:"domain"`
+	MaxAge      int       `json:"max_age"`
+	Expires     time.Time `json:"expires"`
+	Secure      bool      `json:"secure"`
+	HTTPOnly    bool      `json:"http_only"`
+	SameSite    string    `json:"same_site"`
+	SessionOnly bool      `json:"session_only"`
 }
 
 // Views is the interface that wraps the Render function.
@@ -410,8 +411,13 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetValue(cookie.Value)
 	fcookie.SetPath(cookie.Path)
 	fcookie.SetDomain(cookie.Domain)
-	fcookie.SetMaxAge(cookie.MaxAge)
-	fcookie.SetExpire(cookie.Expires)
+	// only set max age and expiry when SessionOnly is false
+	// i.e. cookie supposed to last beyond browser session
+	// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
+	if !cookie.SessionOnly {
+		fcookie.SetMaxAge(cookie.MaxAge)
+		fcookie.SetExpire(cookie.Expires)
+	}
 	fcookie.SetSecure(cookie.Secure)
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
 

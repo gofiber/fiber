@@ -53,6 +53,10 @@ type Config struct {
 	// Optional. Default value "Lax".
 	CookieSameSite string
 
+	// Decides whether cookie should last for only the browser sesison.
+	// Ignores Expiration if set to true
+	CookieSessionOnly bool
+
 	// Expiration is the duration before csrf token will expire
 	//
 	// Optional. Default: 1 * time.Hour
