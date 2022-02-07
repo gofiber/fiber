@@ -1056,19 +1056,21 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 
 // get URL location from route using parameters
 func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
-	var locationBuilder strings.Builder
+	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
 		if segment.IsParam {
 			for key, val := range params {
 				if key == segment.ParamName || segment.IsGreedy {
-					locationBuilder.WriteString(fmt.Sprintf("%s", val))
+					buf.WriteString(utils.ToString(val))
 				}
 			}
 		} else {
-			locationBuilder.WriteString(segment.Const)
+			buf.WriteString(segment.Const)
 		}
 	}
-	return locationBuilder.String(), nil
+	location := buf.String()
+	bytebufferpool.Put(buf)
+	return location, nil
 }
 
 // RedirectToRoute to the Route registered in the app with appropriate parameters
