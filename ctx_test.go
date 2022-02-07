@@ -2027,7 +2027,7 @@ func Test_Ctx_Redirect(t *testing.T) {
 }
 
 // go test -run Test_Ctx_RedirectToRoute
-func Test_Ctx_RedirectToRoute(t *testing.T) {
+func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/user/:name", func(c *Ctx) error {
@@ -2043,6 +2043,38 @@ func Test_Ctx_RedirectToRoute(t *testing.T) {
 	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
+// go test -run Test_Ctx_RedirectToRoute
+func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/:name?", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.RedirectToRoute("user", Map{
+		"name": "fiber",
+	})
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+// go test -run Test_Ctx_RedirectToRoute
+func Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/:name?", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.RedirectToRoute("user", Map{})
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
 // go test -run Test_Ctx_RedirectBack
 func Test_Ctx_RedirectBack(t *testing.T) {
 	t.Parallel()
@@ -2055,6 +2087,25 @@ func Test_Ctx_RedirectBack(t *testing.T) {
 	c.RedirectBack("/")
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+// go test -run Test_Ctx_RedirectBack
+func Test_Ctx_RedirectBackWithReferer(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		return c.JSON("Home")
+	}).Name("home")
+	app.Get("/back", func(c *Ctx) error {
+		return c.JSON("Back")
+	}).Name("back")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderReferer, "/back")
+	c.RedirectBack("/")
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/back", c.Get(HeaderReferer))
+	utils.AssertEqual(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Ctx_Render

@@ -1044,7 +1044,7 @@ func (c *Ctx) Range(size int) (rangeData Range, err error) {
 
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found.
-func (c *Ctx) redirect(location string, status ...int) error {
+func (c *Ctx) Redirect(location string, status ...int) error {
 	c.setCanonical(HeaderLocation, location)
 	if len(status) > 0 {
 		c.Status(status[0])
@@ -1052,12 +1052,6 @@ func (c *Ctx) redirect(location string, status ...int) error {
 		c.Status(StatusFound)
 	}
 	return nil
-}
-
-// Redirect to the URL derived from the specified path, with specified status.
-// If status is not specified, status defaults to 302 Found.
-func (c *Ctx) Redirect(location string, status ...int) error {
-	return c.redirect(location, status...)
 }
 
 // RedirectToRoute to the Route registered in the app with appropriate parameters
@@ -1071,11 +1065,13 @@ func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error
 			if val, ok := params[segment.ParamName]; ok {
 				location = fmt.Sprintf("%s%s", location, val)
 			} else {
-				return fmt.Errorf("redirection failed. No value for param: `%s`", segment.ParamName)
+				if !segment.IsOptional || !segment.IsGreedy {
+					return fmt.Errorf("redirection failed. No value for param: `%s`", segment.ParamName)
+				}
 			}
 		}
 	}
-	return c.redirect(location, status...)
+	return c.Redirect(location, status...)
 }
 
 // RedirectBack to the URL to referer
@@ -1085,7 +1081,7 @@ func (c *Ctx) RedirectBack(fallback string, status ...int) error {
 	if location == "" {
 		location = fallback
 	}
-	return c.redirect(location, status...)
+	return c.Redirect(location, status...)
 }
 
 // Render a template with data and sends a text/html response.
