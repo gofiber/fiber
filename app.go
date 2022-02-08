@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"sort"
@@ -858,7 +859,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 	}
 
-	clientCACert, err := ioutil.ReadFile(clientCertFile)
+	clientCACert, err := ioutil.ReadFile(filepath.Clean(clientCertFile))
 	if err != nil {
 		return err
 	}
