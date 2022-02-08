@@ -1061,11 +1061,15 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 		if segment.IsParam {
 			for key, val := range params {
 				if key == segment.ParamName || segment.IsGreedy {
-					buf.WriteString(utils.ToString(val))
+					_, err := buf.WriteString(utils.ToString(val))
+					if err != nil {
+						return "", err
+					}
 				}
 			}
 		} else {
-			buf.WriteString(segment.Const)
+			_, err := buf.WriteString(segment.Const)
+			return "", err
 		}
 	}
 	location := buf.String()
