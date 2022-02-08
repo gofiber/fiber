@@ -32,13 +32,11 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 		}
 	}
 
-	// Save the fiber's error handler and its sub apps
+	// Support for configs of mounted-apps and sub-mounted-apps
 	groupPath = strings.TrimRight(groupPath, "/")
-	if fiber.config.ErrorHandler != nil {
-		grp.app.errorHandlers[groupPath] = fiber.config.ErrorHandler
-	}
-	for mountedPrefixes, errHandler := range fiber.errorHandlers {
-		grp.app.errorHandlers[groupPath+mountedPrefixes] = errHandler
+	for mountedPrefixes, subApp := range fiber.appList {
+		grp.app.appList[groupPath+mountedPrefixes] = subApp
+		subApp.init()
 	}
 
 	atomic.AddUint32(&grp.app.handlersCount, fiber.handlersCount)
