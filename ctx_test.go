@@ -2026,7 +2026,7 @@ func Test_Ctx_Redirect(t *testing.T) {
 	utils.AssertEqual(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Ctx_RedirectToRoute
+// go test -run Test_Ctx_RedirectToRouteWithParams
 func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2043,7 +2043,7 @@ func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
 	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Ctx_RedirectToRoute
+// go test -run Test_Ctx_RedirectToRouteWithOptionalParams
 func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2060,7 +2060,7 @@ func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
 	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Ctx_RedirectToRoute
+// go test -run Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue
 func Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2075,7 +2075,7 @@ func Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue(t *testing.T) {
 	utils.AssertEqual(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Ctx_RedirectToRoute
+// go test -run Test_Ctx_RedirectToRouteWithGreedyParameters
 func Test_Ctx_RedirectToRouteWithGreedyParameters(t *testing.T) {
 	t.Parallel()
 	app := New()
@@ -2106,7 +2106,7 @@ func Test_Ctx_RedirectBack(t *testing.T) {
 	utils.AssertEqual(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Ctx_RedirectBack
+// go test -run Test_Ctx_RedirectBackWithReferer
 func Test_Ctx_RedirectBackWithReferer(t *testing.T) {
 	t.Parallel()
 	app := New()
