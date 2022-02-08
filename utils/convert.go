@@ -5,7 +5,6 @@
 package utils
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -92,7 +91,7 @@ func ByteSize(bytes uint64) string {
 func ToString(arg interface{}, timeFormat ...string) string {
 	if len(timeFormat) > 1 {
 		log.SetFlags(log.Llongfile | log.LstdFlags)
-		log.Println(errors.New(fmt.Sprintf("timeFormat's length should be one")))
+		log.Println(fmt.Errorf("timeFormat's length should be one"))
 	}
 	var tmp = reflect.Indirect(reflect.ValueOf(arg)).Interface()
 	switch v := tmp.(type) {
@@ -131,10 +130,10 @@ func ToString(arg interface{}, timeFormat ...string) string {
 			return v.Format(timeFormat[0])
 		}
 		return v.Format("2006-01-02 15:04:05")
-	case fmt.Stringer:
-		return v.String()
 	case reflect.Value:
 		return ToString(v.Interface(), timeFormat...)
+	case fmt.Stringer:
+		return v.String()
 	default:
 		return ""
 	}
