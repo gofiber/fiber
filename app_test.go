@@ -1156,7 +1156,7 @@ func Test_App_ListenMutualTLS(t *testing.T) {
 	app := New()
 
 	// invalid port
-	utils.AssertEqual(t, false, app.ListenMutualTLS(":99999", "./.github/testdata/mtls/ssl.cert.pem", "./.github/testdata/mtls/ssl.key.pem", "./.github/testdata/mtls/ca-chain.cert.pem") == nil)
+	utils.AssertEqual(t, false, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem") == nil)
 	// missing perm/cert file
 	utils.AssertEqual(t, false, app.ListenMutualTLS(":0", "", "./.github/testdata/ssl.key", "") == nil)
 
@@ -1165,7 +1165,7 @@ func Test_App_ListenMutualTLS(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.ListenMutualTLS(":0", "./.github/testdata/mtls/ssl.cert.pem", "./.github/testdata/mtls/ssl.key.pem", "./.github/testdata/mtls/ca-chain.cert.pem"))
+	utils.AssertEqual(t, nil, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
 }
 
 // go test -run Test_App_ListenMutualTLS_Prefork
@@ -1175,9 +1175,9 @@ func Test_App_ListenMutualTLS_Prefork(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
 
 	// invalid key file content
-	utils.AssertEqual(t, false, app.ListenMutualTLS(":0", "./.github/testdata/mtls/ssl.cert.pem", "./.github/testdata/template.html", "") == nil)
+	utils.AssertEqual(t, false, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html", "") == nil)
 
-	utils.AssertEqual(t, nil, app.ListenMutualTLS(":99999", "./.github/testdata/mtls/ssl.cert.pem", "./.github/testdata/mtls/ssl.key.pem", "./.github/testdata/mtls/ca-chain.cert.pem"))
+	utils.AssertEqual(t, nil, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
 }
 
 // go test -run Test_App_Listener
