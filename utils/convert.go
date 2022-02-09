@@ -6,7 +6,6 @@ package utils
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"strconv"
 	"strings"
@@ -89,10 +88,6 @@ func ByteSize(bytes uint64) string {
 
 // ToString Change arg to string
 func ToString(arg interface{}, timeFormat ...string) string {
-	if len(timeFormat) > 1 {
-		log.SetFlags(log.Llongfile | log.LstdFlags)
-		log.Println(fmt.Errorf("timeFormat's length should be one"))
-	}
 	var tmp = reflect.Indirect(reflect.ValueOf(arg)).Interface()
 	switch v := tmp.(type) {
 	case int:
@@ -126,7 +121,7 @@ func ToString(arg interface{}, timeFormat ...string) string {
 	case float64:
 		return strconv.FormatFloat(v, 'f', -1, 64)
 	case time.Time:
-		if len(timeFormat) == 1 {
+		if len(timeFormat) > 0 {
 			return v.Format(timeFormat[0])
 		}
 		return v.Format("2006-01-02 15:04:05")
