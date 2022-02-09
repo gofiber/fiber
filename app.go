@@ -569,12 +569,13 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 
 // Assign name to specific route.
 func (app *App) Name(name string) Router {
+	latestRoute.mu.Lock()
 	if strings.HasPrefix(latestRoute.route.path, latestGroup.prefix) {
 		latestRoute.route.Name = latestGroup.name + name
 	} else {
 		latestRoute.route.Name = name
 	}
-
+	latestRoute.mu.Unlock()
 	return app
 }
 

@@ -1060,6 +1060,51 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 	return nil
 }
 
+// get URL location from route using parameters
+func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
+	buf := bytebufferpool.Get()
+	for _, segment := range route.routeParser.segs {
+		if segment.IsParam {
+			for key, val := range params {
+				if key == segment.ParamName || segment.IsGreedy {
+					_, err := buf.WriteString(utils.ToString(val))
+					if err != nil {
+						return "", err
+					}
+				}
+			}
+		} else {
+			_, err := buf.WriteString(segment.Const)
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+	location := buf.String()
+	bytebufferpool.Put(buf)
+	return location, nil
+}
+
+// RedirectToRoute to the Route registered in the app with appropriate parameters
+// If status is not specified, status defaults to 302 Found.
+func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error {
+	location, err := c.getLocationFromRoute(c.App().GetRoute(routeName), params)
+	if err != nil {
+		return err
+	}
+	return c.Redirect(location, status...)
+}
+
+// RedirectBack to the URL to referer
+// If status is not specified, status defaults to 302 Found.
+func (c *Ctx) RedirectBack(fallback string, status ...int) error {
+	location := c.Get(HeaderReferer)
+	if location == "" {
+		location = fallback
+	}
+	return c.Redirect(location, status...)
+}
+
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
 func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {

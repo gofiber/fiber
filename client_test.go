@@ -953,7 +953,7 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	a := Get("http://example.com").
-		Timeout(time.Millisecond * 100)
+		Timeout(time.Millisecond * 50)
 
 	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 
