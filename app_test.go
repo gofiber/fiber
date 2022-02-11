@@ -1230,15 +1230,15 @@ func Benchmark_App_ETag_Weak(b *testing.B) {
 
 // go test -run Test_NewError
 func Test_NewError(t *testing.T) {
-	e := NewError(StatusForbidden, "permission denied")
-	utils.AssertEqual(t, StatusForbidden, e.Code)
-	utils.AssertEqual(t, "permission denied", fmt.Sprint(e.Message))
+	err := NewError(StatusForbidden, "permission denied")
+	utils.AssertEqual(t, StatusForbidden, err.Code)
+	utils.AssertEqual(t, "permission denied", err.Message)
 }
 
 func Test_NewErrors(t *testing.T) {
-	e := NewErrors(StatusBadRequest, "error 1", "error 2")
-	messages := e.Message.([]interface{})
-	utils.AssertEqual(t, StatusBadRequest, e.Code)
+	err := NewErrors(StatusBadRequest, "error 1", "error 2")
+	messages := err.AnyMessage.([]interface{})
+	utils.AssertEqual(t, StatusBadRequest, err.Code)
 	utils.AssertEqual(t, "error 1", fmt.Sprint(messages[0]))
 	utils.AssertEqual(t, "error 2", fmt.Sprint(messages[1]))
 }
