@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -554,6 +555,7 @@ var (
 	ErrLoopDetected                  = NewError(StatusLoopDetected)                  // RFC 5842, 7.2
 	ErrNotExtended                   = NewError(StatusNotExtended)                   // RFC 2774, 7
 	ErrNetworkAuthenticationRequired = NewError(StatusNetworkAuthenticationRequired) // RFC 6585, 6
+	ErrValidatorNotRegistered        = errors.New("validator not registered")
 )
 
 // HTTP Headers were copied from net/http.
