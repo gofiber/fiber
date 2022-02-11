@@ -2288,10 +2288,6 @@ func Test_Ctx_RenderWithBindLocals(t *testing.T) {
 	defer app.ReleaseCtx(c)
 	err := c.Render("./.github/testdata/template2.html", Map{})
 
-	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite")
-	defer bytebufferpool.Put(buf)
-
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
 
@@ -2310,12 +2306,77 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 		"Title": "Hello, World!",
 	})
 
-	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite")
-	defer bytebufferpool.Put(buf)
-
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
+func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
+	var err error
+	app := New(Config{
+		PassLocalsToViews: true,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Bind(Map{
+		"Title": "Hello, World!",
+	})
+	c.Locals("Summary", "Test")
+
+	defer app.ReleaseCtx(c)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Render("./.github/testdata/template2.html", Map{})
+	}
+
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
+}
+
+func Benchmark_Ctx_RenderLocals(b *testing.B) {
+	var err error
+	app := New(Config{
+		PassLocalsToViews: true,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Locals("Title", "Hello, World!")
+
+	defer app.ReleaseCtx(c)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Render("./.github/testdata/template.html", Map{})
+	}
+
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
+func Benchmark_Ctx_RenderBind(b *testing.B) {
+	var err error
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Bind(Map{
+		"Title": "Hello, World!",
+	})
+
+	defer app.ReleaseCtx(c)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Render("./.github/testdata/template.html", Map{})
+	}
+
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
 // go test -run Test_Ctx_RestartRouting
