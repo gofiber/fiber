@@ -28,6 +28,7 @@ import (
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/internal/storage/memory"
+	"github.com/gofiber/fiber/v2/internal/template/html"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -657,6 +658,14 @@ func Test_Ctx_Cookie(t *testing.T) {
 	expect = "username=john; expires=" + httpdate + "; path=/; secure; SameSite=None"
 	cookie.Secure = true
 	cookie.SameSite = CookieSameSiteNoneMode
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	expect = "username=john; path=/; secure; SameSite=None"
+	// should remove expires and max-age headers
+	cookie.SessionOnly = true
+	cookie.Expires = expire
+	cookie.MaxAge = 10000
 	c.Cookie(cookie)
 	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 }
@@ -2026,6 +2035,105 @@ func Test_Ctx_Redirect(t *testing.T) {
 	utils.AssertEqual(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
+// go test -run Test_Ctx_RedirectToRouteWithParams
+func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/:name", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.RedirectToRoute("user", Map{
+		"name": "fiber",
+	})
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+// go test -run Test_Ctx_RedirectToRouteWithOptionalParams
+func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/:name?", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.RedirectToRoute("user", Map{
+		"name": "fiber",
+	})
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+// go test -run Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue
+func Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/:name?", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.RedirectToRoute("user", Map{})
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+// go test -run Test_Ctx_RedirectToRouteWithGreedyParameters
+func Test_Ctx_RedirectToRouteWithGreedyParameters(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/+", func(c *Ctx) error {
+		return c.JSON(c.Params("+"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.RedirectToRoute("user", Map{
+		"+": "test/routes",
+	})
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+// go test -run Test_Ctx_RedirectBack
+func Test_Ctx_RedirectBack(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		return c.JSON("Home")
+	}).Name("home")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.RedirectBack("/")
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+// go test -run Test_Ctx_RedirectBackWithReferer
+func Test_Ctx_RedirectBackWithReferer(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		return c.JSON("Home")
+	}).Name("home")
+	app.Get("/back", func(c *Ctx) error {
+		return c.JSON("Back")
+	}).Name("back")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderReferer, "/back")
+	c.RedirectBack("/")
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/back", c.Get(HeaderReferer))
+	utils.AssertEqual(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
 // go test -run Test_Ctx_Render
 func Test_Ctx_Render(t *testing.T) {
 	t.Parallel()
@@ -2049,6 +2157,59 @@ func Test_Ctx_Render(t *testing.T) {
 	err = c.Render("./.github/testdata/template-invalid.html", nil)
 	utils.AssertEqual(t, false, err == nil)
 }
+
+// go test -run Test_Ctx_Render_Mount
+func Test_Ctx_Render_Mount(t *testing.T) {
+	t.Parallel()
+
+	sub := New(Config{
+		Views: html.New("./.github/testdata/template", ".gohtml"),
+	})
+
+	sub.Get("/:name", func(ctx *Ctx) error {
+		return ctx.Render("hello_world", Map{
+			"Name": ctx.Params("name"),
+		})
+	})
+
+	app := New()
+	app.Mount("/hello", sub)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", nil))
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello a!</h1>", string(body))
+}
+
+func Test_Ctx_Render_MountGroup(t *testing.T) {
+	t.Parallel()
+
+	micro := New(Config{
+		Views: html.New("./.github/testdata/template", ".gohtml"),
+	})
+
+	micro.Get("/doe", func(c *Ctx) error {
+		return c.Render("hello_world", Map{
+			"Name": "doe",
+		})
+	})
+
+	app := New()
+	v1 := app.Group("/v1")
+	v1.Mount("/john", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello doe!</h1>", string(body))
+}
+
 func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -2285,6 +2446,19 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Location_From_Route -benchmem -count=4
+func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	app.Get("/user/:name", func(c *Ctx) error {
+		return c.SendString(c.Params("name"))
+	}).Name("User")
+	for n := 0; n < b.N; n++ {
+		c.getLocationFromRoute(app.GetRoute("User"), Map{"name": "fiber"})
+	}
 }
 
 type errorTemplateEngine struct{}

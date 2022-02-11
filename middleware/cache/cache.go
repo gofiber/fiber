@@ -70,9 +70,8 @@ func New(config ...Config) fiber.Handler {
 		// Get entry from pool
 		e := manager.get(key)
 
-		// Lock entry and unlock when finished
+		// Lock entry
 		mux.Lock()
-		defer mux.Unlock()
 
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
@@ -105,14 +104,23 @@ func New(config ...Config) fiber.Handler {
 
 			c.Set(cfg.CacheHeader, cacheHit)
 
+			mux.Unlock()
+
 			// Return response
 			return nil
 		}
+
+		// make sure we're not blocking concurrent requests - do unlock
+		mux.Unlock()
 
 		// Continue stack, return err to Fiber if exist
 		if err := c.Next(); err != nil {
 			return err
 		}
+
+		// lock entry back and unlock on finish
+		mux.Lock()
+		defer mux.Unlock()
 
 		// Don't cache response if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {

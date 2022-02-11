@@ -76,15 +76,16 @@ type Range struct {
 
 // Cookie data for c.Cookie
 type Cookie struct {
-	Name     string    `json:"name"`
-	Value    string    `json:"value"`
-	Path     string    `json:"path"`
-	Domain   string    `json:"domain"`
-	MaxAge   int       `json:"max_age"`
-	Expires  time.Time `json:"expires"`
-	Secure   bool      `json:"secure"`
-	HTTPOnly bool      `json:"http_only"`
-	SameSite string    `json:"same_site"`
+	Name        string    `json:"name"`
+	Value       string    `json:"value"`
+	Path        string    `json:"path"`
+	Domain      string    `json:"domain"`
+	MaxAge      int       `json:"max_age"`
+	Expires     time.Time `json:"expires"`
+	Secure      bool      `json:"secure"`
+	HTTPOnly    bool      `json:"http_only"`
+	SameSite    string    `json:"same_site"`
+	SessionOnly bool      `json:"session_only"`
 }
 
 // Views is the interface that wraps the Render function.
@@ -413,8 +414,13 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetValue(cookie.Value)
 	fcookie.SetPath(cookie.Path)
 	fcookie.SetDomain(cookie.Domain)
-	fcookie.SetMaxAge(cookie.MaxAge)
-	fcookie.SetExpire(cookie.Expires)
+	// only set max age and expiry when SessionOnly is false
+	// i.e. cookie supposed to last beyond browser session
+	// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
+	if !cookie.SessionOnly {
+		fcookie.SetMaxAge(cookie.MaxAge)
+		fcookie.SetExpire(cookie.Expires)
+	}
 	fcookie.SetSecure(cookie.Secure)
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
 
@@ -1067,6 +1073,51 @@ func (c *Ctx) Bind(vars Map) error {
 	return nil
 }
 
+// get URL location from route using parameters
+func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
+	buf := bytebufferpool.Get()
+	for _, segment := range route.routeParser.segs {
+		if segment.IsParam {
+			for key, val := range params {
+				if key == segment.ParamName || segment.IsGreedy {
+					_, err := buf.WriteString(utils.ToString(val))
+					if err != nil {
+						return "", err
+					}
+				}
+			}
+		} else {
+			_, err := buf.WriteString(segment.Const)
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+	location := buf.String()
+	bytebufferpool.Put(buf)
+	return location, nil
+}
+
+// RedirectToRoute to the Route registered in the app with appropriate parameters
+// If status is not specified, status defaults to 302 Found.
+func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error {
+	location, err := c.getLocationFromRoute(c.App().GetRoute(routeName), params)
+	if err != nil {
+		return err
+	}
+	return c.Redirect(location, status...)
+}
+
+// RedirectBack to the URL to referer
+// If status is not specified, status defaults to 302 Found.
+func (c *Ctx) RedirectBack(fallback string, status ...int) error {
+	location := c.Get(HeaderReferer)
+	if location == "" {
+		location = fallback
+	}
+	return c.Redirect(location, status...)
+}
+
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
 func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
@@ -1078,18 +1129,28 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	// Pass-locals-to-views & Bind
 	c.renderExtensions(bind)
 
-	if c.app.config.Views != nil {
-		// Render template based on global layout if exists
-		if len(layouts) == 0 && c.app.config.ViewsLayout != "" {
-			layouts = []string{
-				c.app.config.ViewsLayout,
+	rendered := false
+	for prefix, app := range c.app.appList {
+		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
+			if len(layouts) == 0 && app.config.ViewsLayout != "" {
+				layouts = []string{
+					app.config.ViewsLayout,
+				}
+			}
+
+			// Render template from Views
+			if app.config.Views != nil {
+				if err := app.config.Views.Render(buf, name, bind, layouts...); err != nil {
+					return err
+				}
+
+				rendered = true
+				break
 			}
 		}
-		// Render template from Views
-		if err := c.app.config.Views.Render(buf, name, bind, layouts...); err != nil {
-			return err
-		}
-	} else {
+	}
+
+	if !rendered {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
 		if _, err = readContent(buf, name); err != nil {
@@ -1105,6 +1166,7 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 			return err
 		}
 	}
+
 	// Set Content-Type to text/html
 	c.fasthttp.Response.Header.SetContentType(MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
