@@ -3478,3 +3478,18 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		utils.AssertEqual(t, false, c.IsFromLocal())
 	}
 }
+
+type validator struct{}
+
+func (*validator) Validate(i interface{}) error {
+	return nil
+}
+func Test_Ctx_Validate(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	utils.AssertEqual(t, c.Validate(struct{}{}), ErrValidatorNotRegistered)
+
+	app.config.Validator = &validator{}
+	utils.AssertEqual(t, c.Validate(struct{}{}), nil)
+}
