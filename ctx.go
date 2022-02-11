@@ -1485,3 +1485,10 @@ func (c *Ctx) IsFromLocal() bool {
 	}
 	return c.isLocalHost(ips[0])
 }
+
+func (c *Ctx) Validate(i interface{}) error {
+	if c.app.config.Validator == nil {
+		return ErrValidatorNotRegistered
+	}
+	return c.app.config.Validator.Validate(i)
+}
