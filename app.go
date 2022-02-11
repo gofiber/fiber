@@ -88,6 +88,11 @@ type Error struct {
 	Message interface{} `json:"message"`
 }
 
+// Validator is the interface that wraps the Validate function.
+type Validator interface {
+	Validate(i interface{}) error
+}
+
 // App denotes the Fiber application.
 type App struct {
 	mutex sync.Mutex
@@ -363,6 +368,9 @@ type Config struct {
 	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
+
+	// Register custom validator
+	Validator Validator
 }
 
 // Static defines configuration options when defining static assets.
