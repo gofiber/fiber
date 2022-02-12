@@ -2140,7 +2140,7 @@ func Test_Ctx_Render(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	err := c.Render("./.github/testdata/template.html", Map{
+	err := c.Render("./.github/testdata/index.tmpl", Map{
 		"Title": "Hello, World!",
 	})
 
@@ -2219,7 +2219,7 @@ func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 
 	c.Locals("Title", "Hello, World!")
 	defer app.ReleaseCtx(c)
-	err := c.Render("./.github/testdata/template.html", Map{})
+	err := c.Render("./.github/testdata/index.tmpl", Map{})
 
 	buf := bytebufferpool.Get()
 	_, _ = buf.WriteString("overwrite")
@@ -2238,7 +2238,7 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 
 	c.Locals("Title", "Hello, World!")
 	defer app.ReleaseCtx(c)
-	err := c.Render("./.github/testdata/template.html", Map{})
+	err := c.Render("./.github/testdata/index.tmpl", Map{})
 
 	buf := bytebufferpool.Get()
 	_, _ = buf.WriteString("overwrite")
@@ -2248,18 +2248,18 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 
 }
-func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
+
+func Test_Ctx_RenderWithBind(t *testing.T) {
 	t.Parallel()
-	app := New(Config{
-		PassLocalsToViews: true,
-	})
+
+	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Locals("Title", "This is a test.")
-	defer app.ReleaseCtx(c)
-	err := c.Render("./.github/testdata/template.html", Map{
+	c.Bind(Map{
 		"Title": "Hello, World!",
 	})
+	defer app.ReleaseCtx(c)
+	err := c.Render("./.github/testdata/index.tmpl", Map{})
 
 	buf := bytebufferpool.Get()
 	_, _ = buf.WriteString("overwrite")
@@ -2267,6 +2267,128 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+
+}
+
+func Test_Ctx_RenderWithBindLocals(t *testing.T) {
+	t.Parallel()
+
+	app := New(Config{
+		PassLocalsToViews: true,
+	})
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Bind(Map{
+		"Title": "Hello, World!",
+	})
+
+	c.Locals("Summary", "Test")
+
+	defer app.ReleaseCtx(c)
+	err := c.Render("./.github/testdata/template.tmpl", Map{})
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
+
+}
+
+func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
+	t.Parallel()
+	engine := &testTemplateEngine{}
+	err := engine.Load()
+	app := New(Config{
+		PassLocalsToViews: true,
+		Views:             engine,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Locals("Title", "This is a test.")
+	defer app.ReleaseCtx(c)
+	err = c.Render("index.tmpl", Map{
+		"Title": "Hello, World!",
+	})
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
+func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
+	engine := &testTemplateEngine{}
+	err := engine.Load()
+	utils.AssertEqual(b, nil, err)
+	app := New(Config{
+		PassLocalsToViews: true,
+		Views:             engine,
+	})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Bind(Map{
+		"Title": "Hello, World!",
+	})
+	c.Locals("Summary", "Test")
+
+	defer app.ReleaseCtx(c)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Render("template.tmpl", Map{})
+	}
+
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
+}
+
+func Benchmark_Ctx_RenderLocals(b *testing.B) {
+	engine := &testTemplateEngine{}
+	err := engine.Load()
+	utils.AssertEqual(b, nil, err)
+	app := New(Config{
+		PassLocalsToViews: true,
+	})
+	app.config.Views = engine
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Locals("Title", "Hello, World!")
+
+	defer app.ReleaseCtx(c)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Render("index.tmpl", Map{})
+	}
+
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
+
+func Benchmark_Ctx_RenderBind(b *testing.B) {
+	engine := &testTemplateEngine{}
+	err := engine.Load()
+	utils.AssertEqual(b, nil, err)
+	app := New()
+	app.config.Views = engine
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	c.Bind(Map{
+		"Title": "Hello, World!",
+	})
+
+	defer app.ReleaseCtx(c)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		err = c.Render("index.tmpl", Map{})
+	}
+
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
 // go test -run Test_Ctx_RestartRouting

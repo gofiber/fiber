@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/gofiber/fiber/v2/internal/dictpool"
 	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/utils"
@@ -62,6 +63,7 @@ type Ctx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
+	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
 }
 
 // Range data for c.Range
@@ -137,6 +139,9 @@ func (app *App) ReleaseCtx(c *Ctx) {
 	// Reset values
 	c.route = nil
 	c.fasthttp = nil
+	if c.viewBindMap != nil {
+		dictpool.ReleaseDict(c.viewBindMap)
+	}
 	app.pool.Put(c)
 }
 
@@ -1060,6 +1065,20 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 	return nil
 }
 
+// Add vars to default view var map binding to template engine.
+// Variables are read by the Render method and may be overwritten.
+func (c *Ctx) Bind(vars Map) error {
+	// init viewBindMap - lazy map
+	if c.viewBindMap == nil {
+		c.viewBindMap = dictpool.AcquireDict()
+	}
+	for k, v := range vars {
+		c.viewBindMap.Set(k, v)
+	}
+
+	return nil
+}
+
 // get URL location from route using parameters
 func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
@@ -1113,25 +1132,8 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// Check if the PassLocalsToViews option is enabled (By default it is disabled)
-	if c.app.config.PassLocalsToViews {
-		// Safely cast the bind interface to a map
-		bindMap, ok := bind.(Map)
-		// Check if the bind is a map
-		if ok {
-			// Loop through each local and set it in the map
-			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
-				// check if bindMap doesn't contain the key
-				if _, ok := bindMap[string(key)]; !ok {
-					// Set the key and value in the bindMap
-					bindMap[string(key)] = val
-				}
-			})
-			// set the original bind to the map
-			bind = bindMap
-		}
-
-	}
+	// Pass-locals-to-views & bind
+	c.renderExtensions(bind)
 
 	rendered := false
 	for prefix, app := range c.app.appList {
@@ -1177,6 +1179,29 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	c.fasthttp.Response.SetBody(buf.Bytes())
 	// Return err if exist
 	return err
+}
+
+func (c *Ctx) renderExtensions(bind interface{}) {
+	if bindMap, ok := bind.(Map); ok {
+		// Bind view map
+		if c.viewBindMap != nil {
+			for _, v := range c.viewBindMap.D {
+				bindMap[v.Key] = v.Value
+			}
+		}
+
+		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
+		if c.app.config.PassLocalsToViews {
+			// Loop through each local and set it in the map
+			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
+				// check if bindMap doesn't contain the key
+				if _, ok := bindMap[utils.UnsafeString(key)]; !ok {
+					// Set the key and value in the bindMap
+					bindMap[utils.UnsafeString(key)] = val
+				}
+			})
+		}
+	}
 }
 
 // Route returns the matched Route struct.

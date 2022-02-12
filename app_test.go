@@ -779,7 +779,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 
 	app.Static("/prefix", "./.github/testdata")
 
-	req = httptest.NewRequest(MethodGet, "/prefix/template.html", nil)
+	req = httptest.NewRequest(MethodGet, "/prefix/index.html", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -1146,7 +1146,7 @@ func Test_App_ListenTLS_Prefork(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
 
 	// invalid key file content
-	utils.AssertEqual(t, false, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html") == nil)
+	utils.AssertEqual(t, false, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.tmpl") == nil)
 
 	utils.AssertEqual(t, nil, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
 }
