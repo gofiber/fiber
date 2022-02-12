@@ -637,3 +637,4 @@ O logo oficial foi criado por [Vic Shóstak](https://github.com/koddr) e distrib
 -   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
 -   [go-ole](https://github.com/go-ole/go-ole)
 -   [wmi](https://github.com/StackExchange/wmi)
+-   [dictpool](https://github.com/savsgio/dictpool)

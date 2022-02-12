@@ -665,3 +665,4 @@ func main() {
 -   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
 -   [go-ole](https://github.com/go-ole/go-ole)
 -   [wmi](https://github.com/StackExchange/wmi)
+-   [dictpool](https://github.com/savsgio/dictpool)

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/gofiber/fiber/v2/internal/dictpool"
 	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/utils"
@@ -62,8 +63,7 @@ type Ctx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
-	viewBindMap         Map                  // Default view map to bind template engine
-	once                sync.Once
+	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
 }
 
 // Range data for c.Range
@@ -130,7 +130,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	// reset base uri
 	c.baseURI = ""
 	// init viewBindMap
-	//c.viewBindMap = make(Map)
+	c.viewBindMap = dictpool.AcquireDict()
 	// Prettify path
 	c.configDependentPaths()
 	return c
@@ -141,6 +141,7 @@ func (app *App) ReleaseCtx(c *Ctx) {
 	// Reset values
 	c.route = nil
 	c.fasthttp = nil
+	dictpool.ReleaseDict(c.viewBindMap)
 	app.pool.Put(c)
 }
 
@@ -1067,12 +1068,8 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 // Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
 func (c *Ctx) Bind(vars Map) error {
-	c.once.Do(func() {
-		c.viewBindMap = make(Map)
-	})
-
 	for k, v := range vars {
-		c.viewBindMap[k] = v
+		c.viewBindMap.Set(k, v)
 	}
 
 	return nil
@@ -1183,8 +1180,8 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 func (c *Ctx) renderExtensions(bind interface{}) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
-		for k, v := range c.viewBindMap {
-			bindMap[k] = v
+		for _, v := range c.viewBindMap.D {
+			bindMap[v.Key] = v.Value
 		}
 
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)

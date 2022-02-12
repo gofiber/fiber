@@ -635,3 +635,4 @@ Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](
 -   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
 -   [go-ole](https://github.com/go-ole/go-ole)
 -   [wmi](https://github.com/StackExchange/wmi)
+-   [dictpool](https://github.com/savsgio/dictpool)
