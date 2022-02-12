@@ -1182,7 +1182,7 @@ func (c *Ctx) renderExtensions(bind interface{}) {
 			bindMap[k] = v
 		}
 
-		// Check if the PassLocalsToViews option is enabled (By default it is disabled)
+		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 		if c.app.config.PassLocalsToViews {
 			// Loop through each local and set it in the map
 			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
