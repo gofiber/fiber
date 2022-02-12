@@ -436,12 +436,13 @@ func (c *StructCode) ToOpcode(ctx *compileContext) Opcodes {
 		}
 		if isEndField {
 			endField := fieldCodes.Last()
-			if len(codes) > 0 {
-				codes.First().End = endField
-			} else if field.isAnonymous {
+			if field.isAnonymous {
 				firstField.End = endField
 				lastField := c.lastAnonymousFieldCode(firstField)
 				lastField.NextField = endField
+			}
+			if len(codes) > 0 {
+				codes.First().End = endField
 			} else {
 				firstField.End = endField
 			}

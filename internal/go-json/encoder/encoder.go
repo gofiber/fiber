@@ -589,6 +589,8 @@ func IsNilForMarshaler(v interface{}) bool {
 		return rv.IsNil()
 	case reflect.Slice:
 		return rv.IsNil() || rv.Len() == 0
+	case reflect.String:
+		return rv.Len() == 0
 	}
 	return false
 }
