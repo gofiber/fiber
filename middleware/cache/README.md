@@ -59,7 +59,7 @@ app.Use(New(Config{
 		return time.Second * time.Duration(newCacheTime)
 	},
 	KeyGenerator: func(c *fiber.Ctx) string {
-		return c.Path()
+		return utils.CopyString(c.Path())
 	}
 }))
 
@@ -99,7 +99,7 @@ type Config struct {
 	// Key allows you to generate custom keys, by default c.Path() is used
 	//
 	// Default: func(c *fiber.Ctx) string {
-	//   return c.Path()
+	//   return utils.CopyString(c.Path())
 	// }
 	KeyGenerator func(*fiber.Ctx) string
 
