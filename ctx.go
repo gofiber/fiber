@@ -129,8 +129,6 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	c.fasthttp = fctx
 	// reset base uri
 	c.baseURI = ""
-	// init viewBindMap
-	c.viewBindMap = dictpool.AcquireDict()
 	// Prettify path
 	c.configDependentPaths()
 	return c
@@ -141,7 +139,9 @@ func (app *App) ReleaseCtx(c *Ctx) {
 	// Reset values
 	c.route = nil
 	c.fasthttp = nil
-	dictpool.ReleaseDict(c.viewBindMap)
+	if c.viewBindMap != nil {
+		dictpool.ReleaseDict(c.viewBindMap)
+	}
 	app.pool.Put(c)
 }
 
@@ -1068,6 +1068,10 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 // Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
 func (c *Ctx) Bind(vars Map) error {
+	// init viewBindMap - lazy map
+	if c.viewBindMap == nil {
+		c.viewBindMap = dictpool.AcquireDict()
+	}
 	for k, v := range vars {
 		c.viewBindMap.Set(k, v)
 	}
@@ -1180,8 +1184,10 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 func (c *Ctx) renderExtensions(bind interface{}) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
-		for _, v := range c.viewBindMap.D {
-			bindMap[v.Key] = v.Value
+		if c.viewBindMap != nil {
+			for _, v := range c.viewBindMap.D {
+				bindMap[v.Key] = v.Value
+			}
 		}
 
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
