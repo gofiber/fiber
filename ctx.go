@@ -63,6 +63,7 @@ type Ctx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
 	viewBindMap         Map                  // Default view map to bind template engine
+	once                sync.Once
 }
 
 // Range data for c.Range
@@ -129,7 +130,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	// reset base uri
 	c.baseURI = ""
 	// init viewBindMap
-	c.viewBindMap = make(Map)
+	//c.viewBindMap = make(Map)
 	// Prettify path
 	c.configDependentPaths()
 	return c
@@ -1066,6 +1067,10 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 // Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
 func (c *Ctx) Bind(vars Map) error {
+	c.once.Do(func() {
+		c.viewBindMap = make(Map)
+	})
+
 	for k, v := range vars {
 		c.viewBindMap[k] = v
 	}
