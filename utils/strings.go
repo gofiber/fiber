@@ -49,6 +49,12 @@ func Trim(s string, cutset byte) string {
 		}
 	}
 
+	if i == j {
+		if s[i] == cutset {
+			return ""
+		}
+	}
+
 	return s[i : j+1]
 }
 
