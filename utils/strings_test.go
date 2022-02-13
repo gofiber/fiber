@@ -132,6 +132,9 @@ func Test_Trim(t *testing.T) {
 
 	res = Trim("  ", ' ')
 	AssertEqual(t, "", res)
+
+	res = Trim("", ' ')
+	AssertEqual(t, "", res)
 }
 
 func Benchmark_Trim(b *testing.B) {
