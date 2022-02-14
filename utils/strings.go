@@ -43,7 +43,7 @@ func Trim(s string, cutset byte) string {
 			break
 		}
 	}
-	for ; i < j; j-- {
+	for ; i <= j; j-- {
 		if s[j] != cutset {
 			break
 		}
