@@ -167,6 +167,9 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	if match && app.config.ETag {
 		setETag(c, false)
 	}
+
+	app.executeOnRequestHooks(c)
+
 	// Release Ctx
 	app.ReleaseCtx(c)
 }
@@ -438,6 +441,8 @@ func (app *App) addRoute(method string, route *Route) {
 	latestRoute.mu.Lock()
 	latestRoute.route = route
 	latestRoute.mu.Unlock()
+
+	app.executeOnRouteHooks(*route)
 }
 
 // buildTree build the prefix tree from the previously registered routes

@@ -41,6 +41,9 @@ const Version = "2.26.0"
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
 
+// Handler defines a function to create hooks for Fibe.
+type HookHandler = func(*Ctx, Map) error
+
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
@@ -114,6 +117,9 @@ type App struct {
 
 	// Mounted and main apps
 	appList map[string]*App
+
+	// hooks
+	hookList map[string][]HookHandler
 }
 
 // Config is a struct holding the server settings.
@@ -465,6 +471,7 @@ func New(config ...Config) *App {
 		getBytes:  utils.UnsafeBytes,
 		getString: utils.UnsafeString,
 		appList:   make(map[string]*App),
+		hookList:  map[string][]HookHandler{"onRoute": {}, "onName": {}, "onReady": {}, "onShutdown": {}, "onRequest": {}, "onResponse": {}},
 	}
 	// Override config if provided
 	if len(config) > 0 {
@@ -576,6 +583,9 @@ func (app *App) Name(name string) Router {
 		latestRoute.route.Name = name
 	}
 	latestRoute.mu.Unlock()
+
+	app.executeOnNameHooks(*latestRoute.route)
+
 	return app
 }
 
@@ -871,6 +881,8 @@ func (app *App) HandlersCount() uint32 {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
+	defer app.executeOnShutdownHooks()
+
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 	if app.server == nil {
@@ -1050,6 +1062,8 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
+	app.executeOnReadyHooks()
+
 	app.mutex.Lock()
 	app.buildTree()
 	app.mutex.Unlock()
@@ -1313,4 +1327,73 @@ func (app *App) printRoutesMessage() {
 	}
 
 	_ = w.Flush()
+}
+
+// Hook System
+func (app *App) OnRoute(handler ...HookHandler) {
+	app.hookList["onRoute"] = append(app.hookList["onRoute"], handler...)
+}
+
+func (app *App) OnName(handler ...HookHandler) {
+	app.hookList["onName"] = append(app.hookList["onName"], handler...)
+}
+
+func (app *App) OnReady(handler ...HookHandler) {
+	app.hookList["onReady"] = append(app.hookList["onReady"], handler...)
+}
+
+func (app *App) OnShutdown(handler ...HookHandler) {
+	app.hookList["onShutdown"] = append(app.hookList["onShutdown"], handler...)
+}
+
+func (app *App) OnResponse(handler ...HookHandler) {
+	app.hookList["onResponse"] = append(app.hookList["onResponse"], handler...)
+}
+
+func (app *App) OnRequest(handler ...HookHandler) {
+	app.hookList["onRequest"] = append(app.hookList["onRequest"], handler...)
+}
+
+func (app *App) executeOnRouteHooks(route Route) {
+	for _, v := range app.hookList["onRoute"] {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+		v(ctx, Map{"route": route})
+	}
+}
+
+func (app *App) executeOnNameHooks(route Route) {
+	for _, v := range app.hookList["onName"] {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+		v(ctx, Map{"route": route})
+	}
+}
+
+func (app *App) executeOnReadyHooks() {
+	for _, v := range app.hookList["onReady"] {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+		v(ctx, Map{})
+	}
+}
+
+func (app *App) executeOnShutdownHooks() {
+	for _, v := range app.hookList["onShutdown"] {
+		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+		v(ctx, Map{})
+	}
+}
+
+func (app *App) executeOnRequestHooks(c *Ctx) {
+	for _, v := range app.hookList["onRequest"] {
+		v(c, Map{})
+	}
+}
+
+func (app *App) executeOnResponseHooks(c *Ctx) {
+	for _, v := range app.hookList["onResponse"] {
+		v(c, Map{})
+	}
 }

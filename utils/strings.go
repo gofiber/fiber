@@ -74,3 +74,13 @@ func EqualFold(b, s string) (equals bool) {
 	}
 	return
 }
+
+func ContainsSlice(str string, slice []string) bool {
+	for _, v := range slice {
+		if str == v {
+			return true
+		}
+	}
+
+	return false
+}
