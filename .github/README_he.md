@@ -153,6 +153,7 @@ go get -u github.com/gofiber/fiber/v2
 -   תכנות [מהיר](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) של צד שרת
 -   [מנועי תבניות](https://docs.gofiber.io/middleware#template)
 -   [תמיכה ב-WebSocket](https://github.com/gofiber/websocket)
+-   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [הגבלת קצבים ובקשות](https://docs.gofiber.io/api/middleware/limiter)
 -   Available in [12 languages](https://docs.gofiber.io/)
 -   והרבה יותר, [חקור את Fiber](https://docs.gofiber.io/)
@@ -587,6 +588,51 @@ func main() {
 
   log.Fatal(app.Listen(":3000"))
   // ws://localhost:3000/ws
+}
+```
+
+</div>
+
+### Server-Sent Events
+
+📖 [More Info](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
+
+<div dir="ltr">
+
+```go
+import (
+    "github.com/gofiber/fiber/v2"
+    "github.com/valyala/fasthttp"
+)
+
+func main() {
+  app := fiber.New()
+
+  app.Get("/sse", func(c *fiber.Ctx) error {
+    c.Set("Content-Type", "text/event-stream")
+    c.Set("Cache-Control", "no-cache")
+    c.Set("Connection", "keep-alive")
+    c.Set("Transfer-Encoding", "chunked")
+
+    c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
+      fmt.Println("WRITER")
+      var i int
+      
+      for {
+        i++
+        msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
+        fmt.Fprintf(w, "data: Message: %s\n\n", msg)
+        fmt.Println(msg)
+
+        w.Flush()
+        time.Sleep(5 * time.Second)
+      }
+    }))
+
+    return nil
+  })
+
+  log.Fatal(app.Listen(":3000"))
 }
 ```
 
