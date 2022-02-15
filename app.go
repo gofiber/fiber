@@ -817,7 +817,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 		}
 		config := &tls.Config{
-			MinVersion: tls.VersionTLS13,
+			MinVersion: tls.VersionTLS12,
 			Certificates: []tls.Certificate{
 				cert,
 			},
@@ -867,7 +867,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	clientCertPool.AppendCertsFromPEM(clientCACert)
 
 	config := &tls.Config{
-		MinVersion: tls.VersionTLS13,
+		MinVersion: tls.VersionTLS12,
 		ClientAuth: tls.RequireAndVerifyClientCert,
 		ClientCAs:  clientCertPool,
 		Certificates: []tls.Certificate{
