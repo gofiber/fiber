@@ -36,6 +36,8 @@ type Router interface {
 
 	Group(prefix string, handlers ...Handler) Router
 
+	Route(prefix string, fn func(router Router), name ...string) Router
+
 	Mount(prefix string, fiber *App) Router
 
 	Name(name string) Router
@@ -375,6 +377,10 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		}
 		// Serve file
 		fileHandler(c.fasthttp)
+		// Sets the response Content-Disposition header to attachment if the Download option is true
+		if len(config) > 0 && config[0].Download {
+			c.Attachment()
+		}
 		// Return request if found and not forbidden
 		status := c.fasthttp.Response.StatusCode()
 		if status != StatusNotFound && status != StatusForbidden {

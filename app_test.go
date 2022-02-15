@@ -561,10 +561,14 @@ func Test_App_Route_Naming(t *testing.T) {
 
 	app.Post("/post", handler).Name("post")
 
+	subGroup := jane.Group("/sub-group").Name("sub.")
+	subGroup.Get("/done", handler).Name("done")
+
 	utils.AssertEqual(t, "post", app.GetRoute("post").Name)
 	utils.AssertEqual(t, "john", app.GetRoute("john").Name)
 	utils.AssertEqual(t, "jane.test", app.GetRoute("jane.test").Name)
 	utils.AssertEqual(t, "jane.trace", app.GetRoute("jane.trace").Name)
+	utils.AssertEqual(t, "jane.sub.done", app.GetRoute("jane.sub.done").Name)
 	utils.AssertEqual(t, "test", app.GetRoute("test").Name)
 }
 
@@ -674,6 +678,22 @@ func Test_App_Static_MaxAge(t *testing.T) {
 	utils.AssertEqual(t, "public, max-age=100", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 }
 
+// go test -run Test_App_Static_Download
+func Test_App_Static_Download(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	app.Static("/fiber.png", "./.github/testdata/fs/img/fiber.png", Static{Download: true})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/fiber.png", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+	utils.AssertEqual(t, "image/png", resp.Header.Get(HeaderContentType))
+	utils.AssertEqual(t, `attachment`, resp.Header.Get(HeaderContentDisposition))
+}
+
 // go test -run Test_App_Static_Group
 func Test_App_Static_Group(t *testing.T) {
 	app := New()
@@ -759,7 +779,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 
 	app.Static("/prefix", "./.github/testdata")
 
-	req = httptest.NewRequest(MethodGet, "/prefix/template.html", nil)
+	req = httptest.NewRequest(MethodGet, "/prefix/index.html", nil)
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -994,6 +1014,55 @@ func Test_App_Group(t *testing.T) {
 	// utils.AssertEqual(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
 }
 
+func Test_App_Route(t *testing.T) {
+	dummyHandler := testEmptyHandler
+
+	app := New()
+
+	grp := app.Route("/test", func(grp Router) {
+		grp.Get("/", dummyHandler)
+		grp.Get("/:demo?", dummyHandler)
+		grp.Connect("/CONNECT", dummyHandler)
+		grp.Put("/PUT", dummyHandler)
+		grp.Post("/POST", dummyHandler)
+		grp.Delete("/DELETE", dummyHandler)
+		grp.Head("/HEAD", dummyHandler)
+		grp.Patch("/PATCH", dummyHandler)
+		grp.Options("/OPTIONS", dummyHandler)
+		grp.Trace("/TRACE", dummyHandler)
+		grp.All("/ALL", dummyHandler)
+		grp.Use(dummyHandler)
+		grp.Use("/USE", dummyHandler)
+	})
+
+	testStatus200(t, app, "/test", MethodGet)
+	testStatus200(t, app, "/test/john", MethodGet)
+	testStatus200(t, app, "/test/CONNECT", MethodConnect)
+	testStatus200(t, app, "/test/PUT", MethodPut)
+	testStatus200(t, app, "/test/POST", MethodPost)
+	testStatus200(t, app, "/test/DELETE", MethodDelete)
+	testStatus200(t, app, "/test/HEAD", MethodHead)
+	testStatus200(t, app, "/test/PATCH", MethodPatch)
+	testStatus200(t, app, "/test/OPTIONS", MethodOptions)
+	testStatus200(t, app, "/test/TRACE", MethodTrace)
+	testStatus200(t, app, "/test/ALL", MethodPost)
+	testStatus200(t, app, "/test/oke", MethodGet)
+	testStatus200(t, app, "/test/USE/oke", MethodGet)
+
+	grp.Route("/v1", func(grp Router) {
+		grp.Post("/", dummyHandler)
+		grp.Get("/users", dummyHandler)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+}
+
 func Test_App_Deep_Group(t *testing.T) {
 	runThroughCount := 0
 	dummyHandler := func(c *Ctx) error {
@@ -1077,7 +1146,7 @@ func Test_App_ListenTLS_Prefork(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
 
 	// invalid key file content
-	utils.AssertEqual(t, false, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html") == nil)
+	utils.AssertEqual(t, false, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.tmpl") == nil)
 
 	utils.AssertEqual(t, nil, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
 }
@@ -1161,18 +1230,9 @@ func Benchmark_App_ETag_Weak(b *testing.B) {
 
 // go test -run Test_NewError
 func Test_NewError(t *testing.T) {
-	e := NewError(StatusForbidden, "permission denied")
-	utils.AssertEqual(t, StatusForbidden, e.Code)
-	utils.AssertEqual(t, "permission denied", e.Message)
-}
-
-func Test_NewErrors(t *testing.T) {
-	errors := NewErrors(StatusBadRequest, []string{"error 1", "error 2"}...)
-	utils.AssertEqual(t, StatusBadRequest, errors[0].Code)
-	utils.AssertEqual(t, "error 1", errors[0].Message)
-
-	utils.AssertEqual(t, StatusBadRequest, errors[1].Code)
-	utils.AssertEqual(t, "error 2", errors[1].Message)
+	err := NewError(StatusForbidden, "permission denied")
+	utils.AssertEqual(t, StatusForbidden, err.Code)
+	utils.AssertEqual(t, "permission denied", err.Message)
 }
 
 // go test -run Test_Test_Timeout

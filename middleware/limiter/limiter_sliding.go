@@ -9,10 +9,10 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-type FixedWindow struct{}
+type SlidingWindow struct{}
 
-// New creates a new fixed window middleware handler
-func (FixedWindow) New(cfg Config) fiber.Handler {
+// New creates a new sliding window middleware handler
+func (SlidingWindow) New(cfg Config) fiber.Handler {
 	var (
 		// Limiter variables
 		mux        = &sync.RWMutex{}
@@ -55,22 +55,52 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		if e.exp == 0 {
 			e.exp = ts + expiration
 		} else if ts >= e.exp {
-			// Check if entry is expired
+			// The entry has expired, handle the expiration.
+			// Set the prevHits to the current hits and reset the hits to 0.
+			e.prevHits = e.currHits
+
+			// Reset the current hits to 0.
 			e.currHits = 0
-			e.exp = ts + expiration
+
+			// Check how much into the current window it currently is and sets the
+			// expiry based on that, otherwise this would only reset on
+			// the next request and not show the correct expiry.
+			elapsed := ts - e.exp
+			if elapsed >= expiration {
+				e.exp = ts + expiration
+			} else {
+				e.exp = ts + expiration - elapsed
+			}
 		}
 
 		// Increment hits
 		e.currHits++
 
 		// Calculate when it resets in seconds
-		expire := e.exp - ts
+		resetInSec := e.exp - ts
 
-		// Set how many hits we have left
-		remaining := cfg.Max - e.currHits
+		// weight = time until current window reset / total window length
+		weight := float64(resetInSec) / float64(expiration)
 
-		// Update storage
-		manager.set(key, e, cfg.Expiration)
+		// rate = request count in previous window - weight + request count in current window
+		rate := int(float64(e.prevHits)*weight) + e.currHits
+
+		// Calculate how many hits can be made based on the current rate
+		remaining := cfg.Max - rate
+
+		// Update storage. Garbage collect when the next window ends.
+		// |--------------------------|--------------------------|
+		//               ^            ^               ^          ^
+		//              ts         e.exp   End sample window   End next window
+		//               <------------>
+		// 				   resetInSec
+		// resetInSec = e.exp - ts - time until end of current window.
+		// duration + expiration = end of next window.
+		// Because we don't want to garbage collect in the middle of a window
+		// we add the expiration to the duration.
+		// Otherwise after the end of "sample window", attackers could launch
+		// a new request with the full window length.
+		manager.set(key, e, time.Duration(resetInSec+expiration)*time.Second)
 
 		// Unlock entry
 		mux.Unlock()
@@ -79,7 +109,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		if remaining < 0 {
 			// Return response with Retry-After header
 			// https://tools.ietf.org/html/rfc6584
-			c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(expire, 10))
+			c.Set(fiber.HeaderRetryAfter, strconv.FormatUint(resetInSec, 10))
 
 			// Call LimitReached handler
 			return cfg.LimitReached(c)
@@ -101,7 +131,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		// We can continue, update RateLimit headers
 		c.Set(xRateLimitLimit, max)
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
-		c.Set(xRateLimitReset, strconv.FormatUint(expire, 10))
+		c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
 
 		return err
 	}

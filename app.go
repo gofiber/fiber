@@ -36,7 +36,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.24.0"
+const Version = "2.27.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -111,8 +111,9 @@ type App struct {
 	getBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	getString func(b []byte) string
-	// mount prefix -> error handler
-	errorHandlers map[string]ErrorHandler
+
+	// Mounted and main apps
+	appList map[string]*App
 }
 
 // Config is a struct holding the server settings.
@@ -182,6 +183,11 @@ type Config struct {
 	//
 	// Default: ""
 	ViewsLayout string `json:"views_layout"`
+
+	// PassLocalsToViews Enables passing of the locals set on a fiber.Ctx to the template engine
+	//
+	// Default: false
+	PassLocalsToViews bool `json:"pass_locals_to_views"`
 
 	// The amount of time allowed to read the full request including body.
 	// It is reset after the request handler has returned.
@@ -315,7 +321,7 @@ type Config struct {
 	// When set by an external client of Fiber it will use the provided implementation of a
 	// JSONUnmarshal
 	//
-	// Allowing for flexibility in using another json library for encoding
+	// Allowing for flexibility in using another json library for decoding
 	// Default: json.Unmarshal
 	JSONDecoder utils.JSONUnmarshal `json:"-"`
 
@@ -354,7 +360,7 @@ type Config struct {
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
 
-	//If set to true, will print all routes with their method, path and handler.
+	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
 }
@@ -373,6 +379,10 @@ type Static struct {
 	// When set to true, enables directory browsing.
 	// Optional. Default value false.
 	Browse bool `json:"browse"`
+
+	// When set to true, enables direct download.
+	// Optional. Default value false.
+	Download bool `json:"download"`
 
 	// The name of the index file for serving a directory.
 	// Optional. Default value "index.html".
@@ -451,10 +461,10 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config:        Config{},
-		getBytes:      utils.UnsafeBytes,
-		getString:     utils.UnsafeString,
-		errorHandlers: make(map[string]ErrorHandler),
+		config:    Config{},
+		getBytes:  utils.UnsafeBytes,
+		getString: utils.UnsafeString,
+		appList:   make(map[string]*App),
 	}
 	// Override config if provided
 	if len(config) > 0 {
@@ -506,6 +516,9 @@ func New(config ...Config) *App {
 		app.handleTrustedProxy(ipAddress)
 	}
 
+	// Init appList
+	app.appList[""] = app
+
 	// Init app
 	app.init()
 
@@ -535,6 +548,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // to be invoked on errors that happen within the prefix route.
 func (app *App) Mount(prefix string, fiber *App) Router {
 	stack := fiber.Stack()
+	prefix = strings.TrimRight(prefix, "/")
 	for m := range stack {
 		for r := range stack[m] {
 			route := app.copyRoute(stack[m][r])
@@ -542,13 +556,10 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 		}
 	}
 
-	// Save the fiber's error handler and its sub apps
-	prefix = strings.TrimRight(prefix, "/")
-	if fiber.config.ErrorHandler != nil {
-		app.errorHandlers[prefix] = fiber.config.ErrorHandler
-	}
-	for mountedPrefixes, errHandler := range fiber.errorHandlers {
-		app.errorHandlers[prefix+mountedPrefixes] = errHandler
+	// Support for configs of mounted-apps and sub-mounted-apps
+	for mountedPrefixes, subApp := range fiber.appList {
+		app.appList[prefix+mountedPrefixes] = subApp
+		subApp.init()
 	}
 
 	atomic.AddUint32(&app.handlersCount, fiber.handlersCount)
@@ -558,12 +569,13 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 
 // Assign name to specific route.
 func (app *App) Name(name string) Router {
+	latestRoute.mu.Lock()
 	if strings.HasPrefix(latestRoute.route.path, latestGroup.prefix) {
 		latestRoute.route.Name = latestGroup.name + name
 	} else {
 		latestRoute.route.Name = name
 	}
-
+	latestRoute.mu.Unlock()
 	return app
 }
 
@@ -693,6 +705,21 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 	return &Group{prefix: prefix, app: app}
 }
 
+// Route is used to define routes with a common prefix inside the common function.
+// Uses Group method to define new sub-router.
+func (app *App) Route(prefix string, fn func(router Router), name ...string) Router {
+	// Create new group
+	group := app.Group(prefix)
+	if len(name) > 0 {
+		group.Name(name[0])
+	}
+
+	// Define routes
+	fn(group)
+
+	return group
+}
+
 // Error makes it compatible with the `error` interface.
 func (e *Error) Error() string {
 	return e.Message
@@ -700,38 +727,14 @@ func (e *Error) Error() string {
 
 // NewError creates a new Error instance with an optional message
 func NewError(code int, message ...string) *Error {
-	e := &Error{
-		Code: code,
+	err := &Error{
+		Code:    code,
+		Message: utils.StatusMessage(code),
 	}
 	if len(message) > 0 {
-		e.Message = message[0]
-	} else {
-		e.Message = utils.StatusMessage(code)
+		err.Message = message[0]
 	}
-	return e
-}
-
-// NewErrors creates multiple new Errors instance with some message
-func NewErrors(code int, messages ...string) []*Error {
-	var errors []*Error
-	if len(messages) > 0 {
-		for _, message := range messages {
-			e := &Error{
-				Code: code,
-			}
-			e.Message = message
-			errors = append(errors, e)
-		}
-	} else {
-		// Use default messages
-		e := &Error{
-			Code: code,
-		}
-		e.Message = utils.StatusMessage(code)
-		errors = append(errors, e)
-	}
-
-	return errors
+	return err
 }
 
 // Listener can be used to pass a custom listener.
@@ -990,11 +993,11 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
-	for prefix, errHandler := range app.errorHandlers {
-		if strings.HasPrefix(ctx.path, prefix) {
+	for prefix, subApp := range app.appList {
+		if strings.HasPrefix(ctx.path, prefix) && prefix != "" {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
-				mountedErrHandler = errHandler
+				mountedErrHandler = subApp.config.ErrorHandler
 				mountedPrefixParts = parts
 			}
 		}
