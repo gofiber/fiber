@@ -71,6 +71,15 @@ func Test_TrimRight(t *testing.T) {
 
 	res = TrimRight("/test", '/')
 	AssertEqual(t, "/test", res)
+
+	res = TrimRight(" ", ' ')
+	AssertEqual(t, "", res)
+
+	res = TrimRight("  ", ' ')
+	AssertEqual(t, "", res)
+
+	res = TrimRight("", ' ')
+	AssertEqual(t, "", res)
 }
 
 func Benchmark_TrimRight(b *testing.B) {
@@ -97,6 +106,15 @@ func Test_TrimLeft(t *testing.T) {
 
 	res = TrimLeft("test/", '/')
 	AssertEqual(t, "test/", res)
+
+	res = TrimLeft(" ", ' ')
+	AssertEqual(t, "", res)
+
+	res = TrimLeft("  ", ' ')
+	AssertEqual(t, "", res)
+
+	res = TrimLeft("", ' ')
+	AssertEqual(t, "", res)
 }
 
 func Benchmark_TrimLeft(b *testing.B) {
