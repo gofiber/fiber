@@ -122,7 +122,7 @@ go get -u github.com/gofiber/fiber/v2
 ## 🎯 Fitur
 
 -   Sistem [Routing](https://docs.gofiber.io/routing) yang padu
--   Serve [file statis](https://docs.gofiber.io/api/app#static)
+-   Menyajikan [file statis](https://docs.gofiber.io/api/app#static)
 -   [Kinerja](https://docs.gofiber.io/extra/benchmarks) ekstrim
 -   [Penggunaan memori](https://docs.gofiber.io/extra/benchmarks) yang kecil
 -   Cocok untuk [API](https://docs.gofiber.io/api/ctx)
@@ -223,7 +223,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving File Static**](https://docs.gofiber.io/api/app#static)
+#### 📖 [**Menyajikan File Statis**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -398,7 +398,7 @@ func main() {
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+Periksa CORS dengan meneruskan domain apa pun di `Origin` header:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -498,7 +498,7 @@ func main() {
 
 ### Server-Sent Events
 
-📖 [More Info](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
+📖 [Informasi lebih lanjut](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
 
 ```go
 import (
