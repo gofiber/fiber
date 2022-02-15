@@ -41,7 +41,7 @@ func TrimLeftBytes(b []byte, cutset byte) []byte {
 // TrimBytes is the equivalent of bytes.Trim
 func TrimBytes(b []byte, cutset byte) []byte {
 	i, j := 0, len(b)-1
-	for ; i < j; i++ {
+	for ; i <= j; i++ {
 		if b[i] != cutset {
 			break
 		}
