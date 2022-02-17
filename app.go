@@ -1331,32 +1331,45 @@ func (app *App) printRoutesMessage() {
 
 // Hook System
 func (app *App) OnRoute(handler ...HookHandler) {
+	app.mutex.Lock()
 	app.hookList["onRoute"] = append(app.hookList["onRoute"], handler...)
+	app.mutex.Unlock()
 }
 
 func (app *App) OnName(handler ...HookHandler) {
+	app.mutex.Lock()
 	app.hookList["onName"] = append(app.hookList["onName"], handler...)
+	app.mutex.Unlock()
 }
 
 func (app *App) OnReady(handler ...HookHandler) {
+	app.mutex.Lock()
 	app.hookList["onReady"] = append(app.hookList["onReady"], handler...)
+	app.mutex.Unlock()
 }
 
 func (app *App) OnShutdown(handler ...HookHandler) {
+	app.mutex.Lock()
 	app.hookList["onShutdown"] = append(app.hookList["onShutdown"], handler...)
+	app.mutex.Unlock()
 }
 
 func (app *App) OnResponse(handler ...HookHandler) {
+	app.mutex.Lock()
 	app.hookList["onResponse"] = append(app.hookList["onResponse"], handler...)
+	app.mutex.Unlock()
 }
 
 func (app *App) OnRequest(handler ...HookHandler) {
+	app.mutex.Lock()
 	app.hookList["onRequest"] = append(app.hookList["onRequest"], handler...)
+	app.mutex.Unlock()
 }
 
 func (app *App) executeOnRouteHooks(route Route) {
 	for _, v := range app.hookList["onRoute"] {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
 		v(ctx, Map{"route": route})
 	}
@@ -1365,6 +1378,7 @@ func (app *App) executeOnRouteHooks(route Route) {
 func (app *App) executeOnNameHooks(route Route) {
 	for _, v := range app.hookList["onName"] {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
 		v(ctx, Map{"route": route})
 	}
@@ -1373,6 +1387,7 @@ func (app *App) executeOnNameHooks(route Route) {
 func (app *App) executeOnReadyHooks() {
 	for _, v := range app.hookList["onReady"] {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
 		v(ctx, Map{})
 	}
@@ -1381,6 +1396,7 @@ func (app *App) executeOnReadyHooks() {
 func (app *App) executeOnShutdownHooks() {
 	for _, v := range app.hookList["onShutdown"] {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(ctx)
 
 		v(ctx, Map{})
 	}
