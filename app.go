@@ -1062,7 +1062,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
-	app.executeOnReadyHooks()
+	app.executeOnListenHooks()
 
 	app.mutex.Lock()
 	app.buildTree()
@@ -1342,9 +1342,9 @@ func (app *App) OnName(handler ...HookHandler) {
 	app.mutex.Unlock()
 }
 
-func (app *App) OnReady(handler ...HookHandler) {
+func (app *App) OnListen(handler ...HookHandler) {
 	app.mutex.Lock()
-	app.hookList["onReady"] = append(app.hookList["onReady"], handler...)
+	app.hookList["onListen"] = append(app.hookList["onListen"], handler...)
 	app.mutex.Unlock()
 }
 
@@ -1384,8 +1384,8 @@ func (app *App) executeOnNameHooks(route Route) {
 	}
 }
 
-func (app *App) executeOnReadyHooks() {
-	for _, v := range app.hookList["onReady"] {
+func (app *App) executeOnListenHooks() {
+	for _, v := range app.hookList["onListen"] {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
