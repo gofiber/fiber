@@ -471,7 +471,7 @@ func New(config ...Config) *App {
 		getBytes:  utils.UnsafeBytes,
 		getString: utils.UnsafeString,
 		appList:   make(map[string]*App),
-		hookList:  map[string][]HookHandler{"onRoute": {}, "onName": {}, "onReady": {}, "onShutdown": {}, "onRequest": {}, "onResponse": {}},
+		hookList:  make(map[string][]HookHandler),
 	}
 	// Override config if provided
 	if len(config) > 0 {
