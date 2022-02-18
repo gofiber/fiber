@@ -1329,37 +1329,48 @@ func (app *App) printRoutesMessage() {
 	_ = w.Flush()
 }
 
-// Hook System
+// OnRoute is a hook to execute user functions on each route registeration.
 func (app *App) OnRoute(handler ...HookHandler) {
 	app.mutex.Lock()
 	app.hookList["onRoute"] = append(app.hookList["onRoute"], handler...)
 	app.mutex.Unlock()
 }
 
+// OnName is a hook to execute user functions on each route naming.
+//
+// WARN: OnName only works with naming routes, not groups.
 func (app *App) OnName(handler ...HookHandler) {
 	app.mutex.Lock()
 	app.hookList["onName"] = append(app.hookList["onName"], handler...)
 	app.mutex.Unlock()
 }
 
+// OnListen is a hook to execute user functions on Listen, ListenTLS, Listener.
 func (app *App) OnListen(handler ...HookHandler) {
 	app.mutex.Lock()
 	app.hookList["onListen"] = append(app.hookList["onListen"], handler...)
 	app.mutex.Unlock()
 }
 
+// OnShutdown is a hook to execute user functions after Shutdown.
 func (app *App) OnShutdown(handler ...HookHandler) {
 	app.mutex.Lock()
 	app.hookList["onShutdown"] = append(app.hookList["onShutdown"], handler...)
 	app.mutex.Unlock()
 }
 
+// OnResponse is a hook to execute user functions after a response.
+//
+// WARN: You can't edit response with OnResponse hook.
 func (app *App) OnResponse(handler ...HookHandler) {
 	app.mutex.Lock()
 	app.hookList["onResponse"] = append(app.hookList["onResponse"], handler...)
 	app.mutex.Unlock()
 }
 
+// OnRequest is a hook to execute user functions after a request.
+//
+// WARN: You can edit response with OnRequest hook.
 func (app *App) OnRequest(handler ...HookHandler) {
 	app.mutex.Lock()
 	app.hookList["onRequest"] = append(app.hookList["onRequest"], handler...)
