@@ -1330,6 +1330,7 @@ func (app *App) printRoutesMessage() {
 }
 
 // OnRoute is a hook to execute user functions on each route registeration.
+// Also you can get route properties by "route" key of map.
 func (app *App) OnRoute(handler ...HookHandler) {
 	app.mutex.Lock()
 	app.hookList["onRoute"] = append(app.hookList["onRoute"], handler...)
@@ -1337,6 +1338,7 @@ func (app *App) OnRoute(handler ...HookHandler) {
 }
 
 // OnName is a hook to execute user functions on each route naming.
+// Also you can get route properties by "route" key of map.
 //
 // WARN: OnName only works with naming routes, not groups.
 func (app *App) OnName(handler ...HookHandler) {
