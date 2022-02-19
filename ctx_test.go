@@ -1028,6 +1028,24 @@ func Test_Ctx_Port(t *testing.T) {
 	utils.AssertEqual(t, "0", c.Port())
 }
 
+// go test -run Test_Ctx_PortInHandler
+func Test_Ctx_PortInHandler(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	app.Get("/port", func(c *Ctx) error {
+		return c.SendString(c.Port())
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/port", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "0", string(body))
+}
+
 // go test -run Test_Ctx_IP
 func Test_Ctx_IP(t *testing.T) {
 	t.Parallel()
