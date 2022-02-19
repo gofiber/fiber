@@ -80,6 +80,15 @@ func Test_TrimRightBytes(t *testing.T) {
 
 	res = TrimRightBytes([]byte("/test"), '/')
 	AssertEqual(t, []byte("/test"), res)
+
+	res = TrimRightBytes([]byte(" "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = TrimRightBytes([]byte("  "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = TrimRightBytes([]byte(""), ' ')
+	AssertEqual(t, 0, len(res))
 }
 
 func Benchmark_TrimRightBytes(b *testing.B) {
@@ -106,6 +115,15 @@ func Test_TrimLeftBytes(t *testing.T) {
 
 	res = TrimLeftBytes([]byte("test/"), '/')
 	AssertEqual(t, []byte("test/"), res)
+
+	res = TrimLeftBytes([]byte(" "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = TrimLeftBytes([]byte("  "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = TrimLeftBytes([]byte(""), ' ')
+	AssertEqual(t, 0, len(res))
 }
 
 func Benchmark_TrimLeftBytes(b *testing.B) {
@@ -135,6 +153,15 @@ func Test_TrimBytes(t *testing.T) {
 
 	res = TrimBytes([]byte(".test"), '.')
 	AssertEqual(t, []byte("test"), res)
+
+	res = TrimBytes([]byte(" "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = TrimBytes([]byte("  "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = TrimBytes([]byte(""), ' ')
+	AssertEqual(t, 0, len(res))
 }
 
 func Benchmark_TrimBytes(b *testing.B) {

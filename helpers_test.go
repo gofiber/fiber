@@ -212,11 +212,6 @@ func Test_Utils_GetOffset(t *testing.T) {
 	utils.AssertEqual(t, "", getOffer("2", "1"))
 }
 
-func Test_Utils_TestAddr_Network(t *testing.T) {
-	var addr testAddr = "addr"
-	utils.AssertEqual(t, "addr", addr.Network())
-}
-
 func Test_Utils_TestConn_Deadline(t *testing.T) {
 	conn := &testConn{}
 	utils.AssertEqual(t, nil, conn.SetDeadline(time.Time{}))

@@ -38,7 +38,7 @@ func TrimLeft(s string, cutset byte) string {
 // Trim is the equivalent of strings.Trim
 func Trim(s string, cutset byte) string {
 	i, j := 0, len(s)-1
-	for ; i < j; i++ {
+	for ; i <= j; i++ {
 		if s[i] != cutset {
 			break
 		}
