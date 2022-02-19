@@ -438,10 +438,9 @@ func (app *App) addRoute(method string, route *Route) {
 		app.routesRefreshed = true
 	}
 
-	app.executeOnRouteHooks(*route)
-
 	latestRoute.mu.Lock()
 	latestRoute.route = route
+	app.executeOnRouteHooks(*route)
 	latestRoute.mu.Unlock()
 }
 

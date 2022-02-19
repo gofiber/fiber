@@ -582,9 +582,8 @@ func (app *App) Name(name string) Router {
 	} else {
 		latestRoute.route.Name = name
 	}
-	latestRoute.mu.Unlock()
-
 	app.executeOnNameHooks(*latestRoute.route)
+	latestRoute.mu.Unlock()
 
 	return app
 }
