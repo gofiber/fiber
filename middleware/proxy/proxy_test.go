@@ -122,6 +122,40 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	utils.AssertEqual(t, "tls balancer", body)
 }
 
+// go test -run Test_Proxy_Forward_WithTlsConfig_To_Http
+func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
+	t.Parallel()
+
+	_, targetAddr := createProxyTestServer(func(c *fiber.Ctx) error {
+		return c.SendString("hello from target")
+	}, t)
+
+	proxyServerTLSConf, _, err := tlstest.GetTLSConfigs()
+	utils.AssertEqual(t, nil, err)
+
+	proxyServerLn, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
+	proxyServerLn = tls.NewListener(proxyServerLn, proxyServerTLSConf)
+
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+
+	proxyAddr := proxyServerLn.Addr().String()
+
+	app.Use(Forward("http://" + targetAddr))
+
+	go func() { utils.AssertEqual(t, nil, app.Listener(proxyServerLn)) }()
+
+	code, body, errs := fiber.Get("https://" + proxyAddr).
+		InsecureSkipVerify().
+		Timeout(5 * time.Second).
+		String()
+
+	utils.AssertEqual(t, 0, len(errs))
+	utils.AssertEqual(t, fiber.StatusOK, code)
+	utils.AssertEqual(t, "hello from target", body)
+}
+
 // go test -run Test_Proxy_Forward
 func Test_Proxy_Forward(t *testing.T) {
 	t.Parallel()
