@@ -438,11 +438,11 @@ func (app *App) addRoute(method string, route *Route) {
 		app.routesRefreshed = true
 	}
 
+	app.executeOnRouteHooks(*route)
+
 	latestRoute.mu.Lock()
 	latestRoute.route = route
 	latestRoute.mu.Unlock()
-
-	app.executeOnRouteHooks(*route)
 }
 
 // buildTree build the prefix tree from the previously registered routes
