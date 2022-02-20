@@ -1412,9 +1412,7 @@ func (app *App) executeOnShutdownHooks() error {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
-		if err := v(ctx, Map{}); err != nil {
-			return err
-		}
+		_ = v(ctx, Map{})
 	}
 
 	return nil
@@ -1432,9 +1430,7 @@ func (app *App) executeOnRequestHooks(c *Ctx) error {
 
 func (app *App) executeOnResponseHooks(c *Ctx) error {
 	for _, v := range app.hookList["onResponse"] {
-		if err := v(c, Map{}); err != nil {
-			return err
-		}
+		_ = v(c, Map{})
 	}
 
 	return nil
