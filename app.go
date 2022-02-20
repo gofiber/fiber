@@ -582,7 +582,7 @@ func (app *App) Name(name string) Router {
 	} else {
 		latestRoute.route.Name = name
 	}
-	app.executeOnNameHooks(*latestRoute.route)
+	_ = app.executeOnNameHooks(*latestRoute.route)
 	latestRoute.mu.Unlock()
 
 	return app
@@ -1049,7 +1049,9 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
-	app.executeOnListenHooks()
+	if err := app.executeOnListenHooks(); err != nil {
+		panic(err)
+	}
 
 	app.mutex.Lock()
 	app.buildTree()
@@ -1366,50 +1368,74 @@ func (app *App) OnRequest(handler ...HookHandler) {
 	app.mutex.Unlock()
 }
 
-func (app *App) executeOnRouteHooks(route Route) {
+func (app *App) executeOnRouteHooks(route Route) error {
 	for _, v := range app.hookList["onRoute"] {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
-		v(ctx, Map{"route": route})
+		if err := v(ctx, Map{"route": route}); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func (app *App) executeOnNameHooks(route Route) {
+func (app *App) executeOnNameHooks(route Route) error {
 	for _, v := range app.hookList["onName"] {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
-		v(ctx, Map{"route": route})
+		if err := v(ctx, Map{"route": route}); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func (app *App) executeOnListenHooks() {
+func (app *App) executeOnListenHooks() error {
 	for _, v := range app.hookList["onListen"] {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
-		v(ctx, Map{})
+		if err := v(ctx, Map{}); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func (app *App) executeOnShutdownHooks() {
+func (app *App) executeOnShutdownHooks() error {
 	for _, v := range app.hookList["onShutdown"] {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
-		v(ctx, Map{})
+		if err := v(ctx, Map{}); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func (app *App) executeOnRequestHooks(c *Ctx) {
+func (app *App) executeOnRequestHooks(c *Ctx) error {
 	for _, v := range app.hookList["onRequest"] {
-		v(c, Map{})
+		if err := v(c, Map{}); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
-func (app *App) executeOnResponseHooks(c *Ctx) {
+func (app *App) executeOnResponseHooks(c *Ctx) error {
 	for _, v := range app.hookList["onResponse"] {
-		v(c, Map{})
+		if err := v(c, Map{}); err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
