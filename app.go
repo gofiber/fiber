@@ -1407,15 +1407,13 @@ func (app *App) executeOnListenHooks() error {
 	return nil
 }
 
-func (app *App) executeOnShutdownHooks() error {
+func (app *App) executeOnShutdownHooks() {
 	for _, v := range app.hookList["onShutdown"] {
 		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(ctx)
 
 		_ = v(ctx, Map{})
 	}
-
-	return nil
 }
 
 func (app *App) executeOnRequestHooks(c *Ctx) error {
@@ -1428,10 +1426,8 @@ func (app *App) executeOnRequestHooks(c *Ctx) error {
 	return nil
 }
 
-func (app *App) executeOnResponseHooks(c *Ctx) error {
+func (app *App) executeOnResponseHooks(c *Ctx) {
 	for _, v := range app.hookList["onResponse"] {
 		_ = v(c, Map{})
 	}
-
-	return nil
 }
