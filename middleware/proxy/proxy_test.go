@@ -348,7 +348,7 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 		return c.SendString("ok")
 	})
 	app.Get("/test", func(c *fiber.Ctx) error {
-		originalURL := utils.ImmutableString(c.OriginalURL())
+		originalURL := utils.CopyString(c.OriginalURL())
 		if err := Do(c, "/proxy"); err != nil {
 			return err
 		}

@@ -121,7 +121,7 @@ func Forward(addr string) fiber.Handler {
 func Do(c *fiber.Ctx, addr string) error {
 	req := c.Request()
 	res := c.Response()
-	originalURL := utils.ImmutableString(c.OriginalURL())
+	originalURL := utils.CopyString(c.OriginalURL())
 	defer req.SetRequestURI(originalURL)
 	req.SetRequestURI(addr)
 	// NOTE: if req.isTLS is true, SetRequestURI keeps the scheme as https.
