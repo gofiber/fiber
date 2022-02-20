@@ -1856,14 +1856,18 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/", func(c *Ctx) error {
-		originalURL := c.OriginalURL()
+		originalURL := utils.CopyString(c.OriginalURL())
 		err := c.SendFile("ctx.go")
 		utils.AssertEqual(t, originalURL, c.OriginalURL())
 		return err
 	})
 
-	_, err := app.Test(httptest.NewRequest("GET", "/?test=true", nil))
-	utils.AssertEqual(t, nil, err)
+	_, err1 := app.Test(httptest.NewRequest("GET", "/?test=true", nil))
+	// second request required to confirm with zero allocation
+	_, err2 := app.Test(httptest.NewRequest("GET", "/?test=true", nil))
+
+	utils.AssertEqual(t, nil, err1)
+	utils.AssertEqual(t, nil, err2)
 }
 
 // go test -run Test_Ctx_JSON

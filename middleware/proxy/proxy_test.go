@@ -339,3 +339,26 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 }
+
+// go test -race -run Test_Proxy_Do_RestoreOriginalURL
+func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/proxy", func(c *fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+	app.Get("/test", func(c *fiber.Ctx) error {
+		originalURL := utils.CopyString(c.OriginalURL())
+		if err := Do(c, "/proxy"); err != nil {
+			return err
+		}
+		utils.AssertEqual(t, originalURL, c.OriginalURL())
+		return c.SendString("ok")
+	})
+	_, err1 := app.Test(httptest.NewRequest("GET", "/test", nil))
+	// This test requires multiple requests due to zero allocation used in fiber
+	_, err2 := app.Test(httptest.NewRequest("GET", "/test", nil))
+
+	utils.AssertEqual(t, nil, err1)
+	utils.AssertEqual(t, nil, err2)
+}
