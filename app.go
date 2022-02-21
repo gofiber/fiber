@@ -41,9 +41,6 @@ const Version = "2.27.0"
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
 
-// Handler defines a function to create hooks for Fibe.
-type HookHandler = func(*Ctx, Map) error
-
 // Map is a shortcut for map[string]interface{}, useful for JSON returns
 type Map map[string]interface{}
 
@@ -119,7 +116,7 @@ type App struct {
 	appList map[string]*App
 
 	// hooks
-	hookList map[string][]HookHandler
+	Hooks hooks
 }
 
 // Config is a struct holding the server settings.
@@ -471,8 +468,14 @@ func New(config ...Config) *App {
 		getBytes:  utils.UnsafeBytes,
 		getString: utils.UnsafeString,
 		appList:   make(map[string]*App),
-		hookList:  make(map[string][]HookHandler),
 	}
+
+	// Define hooks
+	app.Hooks = hooks{
+		app:      app,
+		hookList: make(map[string][]HookHandler),
+	}
+
 	// Override config if provided
 	if len(config) > 0 {
 		app.config = config[0]
@@ -582,7 +585,7 @@ func (app *App) Name(name string) Router {
 	} else {
 		latestRoute.route.Name = name
 	}
-	_ = app.executeOnNameHooks(*latestRoute.route)
+	_ = app.Hooks.executeOnNameHooks(*latestRoute.route)
 	latestRoute.mu.Unlock()
 
 	return app
@@ -868,7 +871,7 @@ func (app *App) HandlersCount() uint32 {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
-	defer app.executeOnShutdownHooks()
+	defer app.Hooks.executeOnShutdownHooks()
 
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -1049,7 +1052,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
-	if err := app.executeOnListenHooks(); err != nil {
+	if err := app.Hooks.executeOnListenHooks(); err != nil {
 		panic(err)
 	}
 
@@ -1316,118 +1319,4 @@ func (app *App) printRoutesMessage() {
 	}
 
 	_ = w.Flush()
-}
-
-// OnRoute is a hook to execute user functions on each route registeration.
-// Also you can get route properties by "route" key of map.
-func (app *App) OnRoute(handler ...HookHandler) {
-	app.mutex.Lock()
-	app.hookList["onRoute"] = append(app.hookList["onRoute"], handler...)
-	app.mutex.Unlock()
-}
-
-// OnName is a hook to execute user functions on each route naming.
-// Also you can get route properties by "route" key of map.
-//
-// WARN: OnName only works with naming routes, not groups.
-func (app *App) OnName(handler ...HookHandler) {
-	app.mutex.Lock()
-	app.hookList["onName"] = append(app.hookList["onName"], handler...)
-	app.mutex.Unlock()
-}
-
-// OnListen is a hook to execute user functions on Listen, ListenTLS, Listener.
-func (app *App) OnListen(handler ...HookHandler) {
-	app.mutex.Lock()
-	app.hookList["onListen"] = append(app.hookList["onListen"], handler...)
-	app.mutex.Unlock()
-}
-
-// OnShutdown is a hook to execute user functions after Shutdown.
-func (app *App) OnShutdown(handler ...HookHandler) {
-	app.mutex.Lock()
-	app.hookList["onShutdown"] = append(app.hookList["onShutdown"], handler...)
-	app.mutex.Unlock()
-}
-
-// OnResponse is a hook to execute user functions after a response.
-//
-// WARN: You can't edit response with OnResponse hook.
-func (app *App) OnResponse(handler ...HookHandler) {
-	app.mutex.Lock()
-	app.hookList["onResponse"] = append(app.hookList["onResponse"], handler...)
-	app.mutex.Unlock()
-}
-
-// OnRequest is a hook to execute user functions after a request.
-//
-// WARN: You can edit response with OnRequest hook.
-func (app *App) OnRequest(handler ...HookHandler) {
-	app.mutex.Lock()
-	app.hookList["onRequest"] = append(app.hookList["onRequest"], handler...)
-	app.mutex.Unlock()
-}
-
-func (app *App) executeOnRouteHooks(route Route) error {
-	for _, v := range app.hookList["onRoute"] {
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		if err := v(ctx, Map{"route": route}); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (app *App) executeOnNameHooks(route Route) error {
-	for _, v := range app.hookList["onName"] {
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		if err := v(ctx, Map{"route": route}); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (app *App) executeOnListenHooks() error {
-	for _, v := range app.hookList["onListen"] {
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		if err := v(ctx, Map{}); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (app *App) executeOnShutdownHooks() {
-	for _, v := range app.hookList["onShutdown"] {
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
-
-		_ = v(ctx, Map{})
-	}
-}
-
-func (app *App) executeOnRequestHooks(c *Ctx) error {
-	for _, v := range app.hookList["onRequest"] {
-		if err := v(c, Map{}); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (app *App) executeOnResponseHooks(c *Ctx) {
-	for _, v := range app.hookList["onResponse"] {
-		_ = v(c, Map{})
-	}
 }

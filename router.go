@@ -168,7 +168,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		setETag(c, false)
 	}
 
-	if err := app.executeOnRequestHooks(c); err != nil {
+	if err := app.Hooks.executeOnRequestHooks(c); err != nil {
 		_ = c.Status(StatusInternalServerError).SendString(err.Error())
 		app.ReleaseCtx(c)
 		return
@@ -444,7 +444,7 @@ func (app *App) addRoute(method string, route *Route) {
 
 	latestRoute.mu.Lock()
 	latestRoute.route = route
-	if err := app.executeOnRouteHooks(*route); err != nil {
+	if err := app.Hooks.executeOnRouteHooks(*route); err != nil {
 		panic(err)
 	}
 	latestRoute.mu.Unlock()

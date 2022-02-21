@@ -507,7 +507,7 @@ func (c *Ctx) Format(body interface{}) error {
 	case "txt":
 		return c.SendString(b)
 	case "xml":
-		defer c.app.executeOnResponseHooks(c)
+		defer c.app.Hooks.executeOnResponseHooks(c)
 		raw, err := xml.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("error serializing xml: %v", body)
@@ -693,7 +693,7 @@ func (c *Ctx) Is(extension string) bool {
 // and a nil slice encodes as the null JSON value.
 // This method also sets the content header to application/json.
 func (c *Ctx) JSON(data interface{}) error {
-	defer c.app.executeOnResponseHooks(c)
+	defer c.app.Hooks.executeOnResponseHooks(c)
 	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
@@ -1129,7 +1129,7 @@ func (c *Ctx) RedirectBack(fallback string, status ...int) error {
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
 func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
-	defer c.app.executeOnResponseHooks(c)
+	defer c.app.Hooks.executeOnResponseHooks(c)
 	var err error
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
@@ -1250,7 +1250,7 @@ func (c *Ctx) Secure() bool {
 // Send sets the HTTP response body without copying it.
 // From this point onward the body argument must not be changed.
 func (c *Ctx) Send(body []byte) error {
-	defer c.app.executeOnResponseHooks(c)
+	defer c.app.Hooks.executeOnResponseHooks(c)
 	// Write response body
 	c.fasthttp.Response.SetBodyRaw(body)
 	return nil
@@ -1342,7 +1342,7 @@ func (c *Ctx) SendStatus(status int) error {
 // SendString sets the HTTP response body for string types.
 // This means no type assertion, recommended for faster performance
 func (c *Ctx) SendString(body string) error {
-	defer c.app.executeOnResponseHooks(c)
+	defer c.app.Hooks.executeOnResponseHooks(c)
 	c.fasthttp.Response.SetBodyString(body)
 
 	return nil
@@ -1350,7 +1350,7 @@ func (c *Ctx) SendString(body string) error {
 
 // SendStream sets response body stream and optional body size.
 func (c *Ctx) SendStream(stream io.Reader, size ...int) error {
-	defer c.app.executeOnResponseHooks(c)
+	defer c.app.Hooks.executeOnResponseHooks(c)
 	if len(size) > 0 && size[0] >= 0 {
 		c.fasthttp.Response.SetBodyStream(stream, size[0])
 	} else {
