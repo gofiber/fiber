@@ -13,7 +13,7 @@ import (
 func Test_Hook_OnRoute(t *testing.T) {
 	app := New()
 
-	app.Hooks.OnRoute(func(c *Ctx, m Map) error {
+	app.Hooks().OnRoute(func(c *Ctx, m Map) error {
 		utils.AssertEqual(t, "", m["route"].(Route).Name)
 
 		return nil
@@ -33,7 +33,7 @@ func Test_Hook_OnName(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks.OnName(func(c *Ctx, m Map) error {
+	app.Hooks().OnName(func(c *Ctx, m Map) error {
 		buf.WriteString(m["route"].(Route).Name)
 
 		return nil
@@ -56,7 +56,7 @@ func Test_Hook_OnShutdown(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks.OnShutdown(func(c *Ctx, m Map) error {
+	app.Hooks().OnShutdown(func(c *Ctx, m Map) error {
 		buf.WriteString("shutdowning")
 
 		return nil
@@ -69,7 +69,7 @@ func Test_Hook_OnShutdown(t *testing.T) {
 func Test_Hook_OnRequest(t *testing.T) {
 	app := New()
 
-	app.Hooks.OnRequest(func(c *Ctx, m Map) error {
+	app.Hooks().OnRequest(func(c *Ctx, m Map) error {
 		return c.SendString("-")
 	})
 
@@ -94,7 +94,7 @@ func Test_Hook_OnResponse(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks.OnResponse(func(c *Ctx, m Map) error {
+	app.Hooks().OnResponse(func(c *Ctx, m Map) error {
 		buf.WriteString(c.Path() + "-")
 
 		return nil
@@ -124,7 +124,7 @@ func Test_Hook_OnListen(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks.OnListen(func(c *Ctx, m Map) error {
+	app.Hooks().OnListen(func(c *Ctx, m Map) error {
 		buf.WriteString("ready")
 
 		return nil

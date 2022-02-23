@@ -1,18 +1,20 @@
 package fiber
 
-import "github.com/valyala/fasthttp"
+import (
+	"github.com/valyala/fasthttp"
+)
 
 // Handler defines a function to create hooks for Fibe.
 type HookHandler = func(*Ctx, Map) error
 
-type hooks struct {
+type Hooks struct {
 	app      *App
 	hookList map[string][]HookHandler
 }
 
 // OnRoute is a hook to execute user functions on each route registeration.
 // Also you can get route properties by "route" key of map.
-func (h *hooks) OnRoute(handler ...HookHandler) {
+func (h *Hooks) OnRoute(handler ...HookHandler) {
 	h.app.mutex.Lock()
 	h.hookList["onRoute"] = append(h.hookList["onRoute"], handler...)
 	h.app.mutex.Unlock()
@@ -22,21 +24,21 @@ func (h *hooks) OnRoute(handler ...HookHandler) {
 // Also you can get route properties by "route" key of map.
 //
 // WARN: OnName only works with naming routes, not groups.
-func (h *hooks) OnName(handler ...HookHandler) {
+func (h *Hooks) OnName(handler ...HookHandler) {
 	h.app.mutex.Lock()
 	h.hookList["onName"] = append(h.hookList["onName"], handler...)
 	h.app.mutex.Unlock()
 }
 
 // OnListen is a hook to execute user functions on Listen, ListenTLS, Listener.
-func (h *hooks) OnListen(handler ...HookHandler) {
+func (h *Hooks) OnListen(handler ...HookHandler) {
 	h.app.mutex.Lock()
 	h.hookList["onListen"] = append(h.hookList["onListen"], handler...)
 	h.app.mutex.Unlock()
 }
 
 // OnShutdown is a hook to execute user functions after Shutdown.
-func (h *hooks) OnShutdown(handler ...HookHandler) {
+func (h *Hooks) OnShutdown(handler ...HookHandler) {
 	h.app.mutex.Lock()
 	h.hookList["onShutdown"] = append(h.hookList["onShutdown"], handler...)
 	h.app.mutex.Unlock()
@@ -45,7 +47,7 @@ func (h *hooks) OnShutdown(handler ...HookHandler) {
 // OnResponse is a hook to execute user functions after a response.
 //
 // WARN: You can't edit response with OnResponse hook.
-func (h *hooks) OnResponse(handler ...HookHandler) {
+func (h *Hooks) OnResponse(handler ...HookHandler) {
 	h.app.mutex.Lock()
 	h.hookList["onResponse"] = append(h.hookList["onResponse"], handler...)
 	h.app.mutex.Unlock()
@@ -54,13 +56,13 @@ func (h *hooks) OnResponse(handler ...HookHandler) {
 // OnRequest is a hook to execute user functions after a request.
 //
 // WARN: You can edit response with OnRequest hook.
-func (h *hooks) OnRequest(handler ...HookHandler) {
+func (h *Hooks) OnRequest(handler ...HookHandler) {
 	h.app.mutex.Lock()
 	h.hookList["onRequest"] = append(h.hookList["onRequest"], handler...)
 	h.app.mutex.Unlock()
 }
 
-func (h *hooks) executeOnRouteHooks(route Route) error {
+func (h *Hooks) executeOnRouteHooks(route Route) error {
 	for _, v := range h.hookList["onRoute"] {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
@@ -73,7 +75,7 @@ func (h *hooks) executeOnRouteHooks(route Route) error {
 	return nil
 }
 
-func (h *hooks) executeOnNameHooks(route Route) error {
+func (h *Hooks) executeOnNameHooks(route Route) error {
 	for _, v := range h.hookList["onName"] {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
@@ -86,7 +88,7 @@ func (h *hooks) executeOnNameHooks(route Route) error {
 	return nil
 }
 
-func (h *hooks) executeOnListenHooks() error {
+func (h *Hooks) executeOnListenHooks() error {
 	for _, v := range h.hookList["onListen"] {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
@@ -99,16 +101,18 @@ func (h *hooks) executeOnListenHooks() error {
 	return nil
 }
 
-func (h *hooks) executeOnShutdownHooks() {
-	for _, v := range h.hookList["onShutdown"] {
-		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer h.app.ReleaseCtx(ctx)
+func (h *Hooks) executeOnShutdownHooks() {
+	if len(h.hookList["onShutdown"]) > 0 {
+		for _, v := range h.hookList["onShutdown"] {
+			ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
+			defer h.app.ReleaseCtx(ctx)
 
-		_ = v(ctx, Map{})
+			_ = v(ctx, Map{})
+		}
 	}
 }
 
-func (h *hooks) executeOnRequestHooks(c *Ctx) error {
+func (h *Hooks) executeOnRequestHooks(c *Ctx) error {
 	for _, v := range h.hookList["onRequest"] {
 		if err := v(c, Map{}); err != nil {
 			return err
@@ -118,7 +122,7 @@ func (h *hooks) executeOnRequestHooks(c *Ctx) error {
 	return nil
 }
 
-func (h *hooks) executeOnResponseHooks(c *Ctx) {
+func (h *Hooks) executeOnResponseHooks(c *Ctx) {
 	for _, v := range h.hookList["onResponse"] {
 		_ = v(c, Map{})
 	}

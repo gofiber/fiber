@@ -115,8 +115,8 @@ type App struct {
 	// Mounted and main apps
 	appList map[string]*App
 
-	// hooks
-	Hooks hooks
+	// Hooks
+	hooks Hooks
 }
 
 // Config is a struct holding the server settings.
@@ -471,7 +471,7 @@ func New(config ...Config) *App {
 	}
 
 	// Define hooks
-	app.Hooks = hooks{
+	app.hooks = Hooks{
 		app:      app,
 		hookList: make(map[string][]HookHandler),
 	}
@@ -585,7 +585,7 @@ func (app *App) Name(name string) Router {
 	} else {
 		latestRoute.route.Name = name
 	}
-	_ = app.Hooks.executeOnNameHooks(*latestRoute.route)
+	_ = app.hooks.executeOnNameHooks(*latestRoute.route)
 	latestRoute.mu.Unlock()
 
 	return app
@@ -871,7 +871,7 @@ func (app *App) HandlersCount() uint32 {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
-	defer app.Hooks.executeOnShutdownHooks()
+	defer app.hooks.executeOnShutdownHooks()
 
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -884,6 +884,11 @@ func (app *App) Shutdown() error {
 // Server returns the underlying fasthttp server
 func (app *App) Server() *fasthttp.Server {
 	return app.server
+}
+
+// Hooks returns the hook struct to register hooks.
+func (app *App) Hooks() *Hooks {
+	return &app.hooks
 }
 
 // Test is used for internal debugging by passing a *http.Request.
@@ -1052,7 +1057,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
-	if err := app.Hooks.executeOnListenHooks(); err != nil {
+	if err := app.hooks.executeOnListenHooks(); err != nil {
 		panic(err)
 	}
 
