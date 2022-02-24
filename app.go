@@ -12,12 +12,15 @@ package fiber
 import (
 	"bufio"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"sort"
@@ -803,8 +806,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 		}
 		config := &tls.Config{
-			MinVersion:               tls.VersionTLS12,
-			PreferServerCipherSuites: true,
+			MinVersion: tls.VersionTLS12,
 			Certificates: []tls.Certificate{
 				cert,
 			},
@@ -828,6 +830,66 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	}
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
+}
+
+// ListenMutualTLS serves HTTPs requests from the given addr.
+// certFile, keyFile and clientCertFile are the paths to TLS certificate and key file.
+
+//  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
+//  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
+func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
+	// Check for valid cert/key path
+	if len(certFile) == 0 || len(keyFile) == 0 {
+		return errors.New("tls: provide a valid cert or key path")
+	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+	}
+
+	clientCACert, err := ioutil.ReadFile(filepath.Clean(clientCertFile))
+	if err != nil {
+		return err
+	}
+	clientCertPool := x509.NewCertPool()
+	clientCertPool.AppendCertsFromPEM(clientCACert)
+
+	config := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		ClientCAs:  clientCertPool,
+		Certificates: []tls.Certificate{
+			cert,
+		},
+	}
+
+	// Prefork is supported
+	if app.config.Prefork {
+		return app.prefork(app.config.Network, addr, config)
+	}
+
+	// Setup listener
+	ln, err := tls.Listen(app.config.Network, addr, config)
+	if err != nil {
+		return err
+	}
+
+	// prepare the server for the start
+	app.startupProcess()
+
+	// Print startup message
+	if !app.config.DisableStartupMessage {
+		app.startupMessage(ln.Addr().String(), true, "")
+	}
+
+	// Print routes
+	if app.config.EnablePrintRoutes {
+		app.printRoutesMessage()
+	}
+
+	// Start listening
+	return app.server.Serve(ln)
 }
 
 // Config returns the app config as value ( read-only ).

@@ -1151,6 +1151,35 @@ func Test_App_ListenTLS_Prefork(t *testing.T) {
 	utils.AssertEqual(t, nil, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
 }
 
+// go test -run Test_App_ListenMutualTLS
+func Test_App_ListenMutualTLS(t *testing.T) {
+	app := New()
+
+	// invalid port
+	utils.AssertEqual(t, false, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem") == nil)
+	// missing perm/cert file
+	utils.AssertEqual(t, false, app.ListenMutualTLS(":0", "", "./.github/testdata/ssl.key", "") == nil)
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
+}
+
+// go test -run Test_App_ListenMutualTLS_Prefork
+func Test_App_ListenMutualTLS_Prefork(t *testing.T) {
+	testPreforkMaster = true
+
+	app := New(Config{DisableStartupMessage: true, Prefork: true})
+
+	// invalid key file content
+	utils.AssertEqual(t, false, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html", "") == nil)
+
+	utils.AssertEqual(t, nil, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
+}
+
 // go test -run Test_App_Listener
 func Test_App_Listener(t *testing.T) {
 	app := New()
