@@ -30,6 +30,16 @@ func (h *Hooks) OnName(handler ...HookHandler) {
 	h.app.mutex.Unlock()
 }
 
+// OnGroupName is a hook to execute user functions on each group naming.
+// Also you can get group properties by "group" key of map.
+//
+// WARN: OnGroupName only works with naming groups, not routes.
+func (h *Hooks) OnGroupName(handler ...HookHandler) {
+	h.app.mutex.Lock()
+	h.hookList["onGroupName"] = append(h.hookList["onGroupName"], handler...)
+	h.app.mutex.Unlock()
+}
+
 // OnListen is a hook to execute user functions on Listen, ListenTLS, Listener.
 func (h *Hooks) OnListen(handler ...HookHandler) {
 	h.app.mutex.Lock()
@@ -63,6 +73,19 @@ func (h *Hooks) executeOnNameHooks(route Route) error {
 		defer h.app.ReleaseCtx(ctx)
 
 		if err := v(ctx, Map{"route": route}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *Hooks) executeOnGroupNameHooks(group Group) error {
+	for _, v := range h.hookList["onGroupName"] {
+		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer h.app.ReleaseCtx(ctx)
+
+		if err := v(ctx, Map{"group": group}); err != nil {
 			return err
 		}
 	}

@@ -48,6 +48,25 @@ func Test_Hook_OnName(t *testing.T) {
 	utils.AssertEqual(t, "index", buf.String())
 }
 
+func Test_Hook_OnGroupName(t *testing.T) {
+	app := New()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app.Hooks().OnGroupName(func(c *Ctx, m Map) error {
+		buf.WriteString(m["group"].(Group).name)
+
+		return nil
+	})
+
+	grp := app.Group("/x").Name("x.")
+	grp.Get("/test", testSimpleHandler)
+	grp.Get("/test2", testSimpleHandler)
+
+	utils.AssertEqual(t, "x.", buf.String())
+}
+
 func Test_Hook_OnShutdown(t *testing.T) {
 	app := New()
 
