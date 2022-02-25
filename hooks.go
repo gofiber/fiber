@@ -44,24 +44,6 @@ func (h *Hooks) OnShutdown(handler ...HookHandler) {
 	h.app.mutex.Unlock()
 }
 
-// OnResponse is a hook to execute user functions after a response.
-//
-// WARN: You can't edit response with OnResponse hook.
-func (h *Hooks) OnResponse(handler ...HookHandler) {
-	h.app.mutex.Lock()
-	h.hookList["onResponse"] = append(h.hookList["onResponse"], handler...)
-	h.app.mutex.Unlock()
-}
-
-// OnRequest is a hook to execute user functions after a request.
-//
-// WARN: You can edit response with OnRequest hook.
-func (h *Hooks) OnRequest(handler ...HookHandler) {
-	h.app.mutex.Lock()
-	h.hookList["onRequest"] = append(h.hookList["onRequest"], handler...)
-	h.app.mutex.Unlock()
-}
-
 func (h *Hooks) executeOnRouteHooks(route Route) error {
 	for _, v := range h.hookList["onRoute"] {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -109,21 +91,5 @@ func (h *Hooks) executeOnShutdownHooks() {
 
 			_ = v(ctx, Map{})
 		}
-	}
-}
-
-func (h *Hooks) executeOnRequestHooks(c *Ctx) error {
-	for _, v := range h.hookList["onRequest"] {
-		if err := v(c, Map{}); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (h *Hooks) executeOnResponseHooks(c *Ctx) {
-	for _, v := range h.hookList["onResponse"] {
-		_ = v(c, Map{})
 	}
 }

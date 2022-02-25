@@ -168,12 +168,6 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		setETag(c, false)
 	}
 
-	if err := app.hooks.executeOnRequestHooks(c); err != nil {
-		_ = c.Status(StatusInternalServerError).SendString(err.Error())
-		app.ReleaseCtx(c)
-		return
-	}
-
 	// Release Ctx
 	app.ReleaseCtx(c)
 }

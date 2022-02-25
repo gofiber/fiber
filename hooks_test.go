@@ -1,8 +1,6 @@
 package fiber
 
 import (
-	"io/ioutil"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -64,56 +62,6 @@ func Test_Hook_OnShutdown(t *testing.T) {
 
 	utils.AssertEqual(t, nil, app.Shutdown())
 	utils.AssertEqual(t, "shutdowning", buf.String())
-}
-
-func Test_Hook_OnRequest(t *testing.T) {
-	app := New()
-
-	app.Hooks().OnRequest(func(c *Ctx, m Map) error {
-		return c.SendString("-")
-	})
-
-	app.Get("/", testSimpleHandler)
-
-	subApp := New()
-	subApp.Get("/test", testSimpleHandler)
-
-	app.Mount("/sub", subApp)
-
-	resp, err := app.Test(httptest.NewRequest("GET", "/sub/test", nil))
-	utils.AssertEqual(t, nil, err)
-
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "-", string(body))
-}
-
-func Test_Hook_OnResponse(t *testing.T) {
-	app := New()
-
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
-
-	app.Hooks().OnResponse(func(c *Ctx, m Map) error {
-		buf.WriteString(c.Path() + "-")
-
-		return nil
-	})
-
-	app.Get("/", testSimpleHandler)
-
-	subApp := New()
-	subApp.Get("/test", testSimpleHandler)
-
-	app.Mount("/sub", subApp)
-
-	_, err := app.Test(httptest.NewRequest("GET", "/sub/test", nil))
-	utils.AssertEqual(t, nil, err)
-
-	_, err = app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-
-	utils.AssertEqual(t, "/sub/test-/-", buf.String())
 }
 
 func Test_Hook_OnListen(t *testing.T) {
