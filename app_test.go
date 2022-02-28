@@ -1714,7 +1714,11 @@ func Test_App_print_Route_with_group(t *testing.T) {
 
 func Test_App_ListenTLS_With_HTTP2(t *testing.T) {
 	app := New(Config{
+<<<<<<< HEAD
 		EnableHTTP2: true,
+=======
+		HTTP2: true,
+>>>>>>> bfa6bff5fdffb4549a720276a69e820443bcaf5b
 	})
 
 	go func() {
@@ -1722,5 +1726,26 @@ func Test_App_ListenTLS_With_HTTP2(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
+<<<<<<< HEAD
 	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/ssl.pem", ".github/testdata/ssl.key"))
+=======
+	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/public.crt", ".github/testdata/private.key"))
+}
+
+func Test_App_HTTP2Config(t *testing.T) {
+	app := New(Config{
+		HTTP2: true,
+		HTTP2Config: HTTP2Config{
+			Debug: true,
+		},
+	})
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, true, app.config.HTTP2Config.Debug)
+	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/public.crt", ".github/testdata/private.key"))
+>>>>>>> bfa6bff5fdffb4549a720276a69e820443bcaf5b
 }

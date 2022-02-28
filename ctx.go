@@ -44,6 +44,12 @@ const (
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey = "__local_user_context__"
 
+// HTTP/2 protocol
+const HTTP2 string = "HTTP/2"
+
+// HTTP/1.1 protocol
+const HTTP11 string = "HTTP/1.1"
+
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
@@ -1513,10 +1519,18 @@ func (c *Ctx) IsFromLocal() bool {
 
 //IsHTTP2 will return true if request's header protocol equals to 'HTTP/2'
 func (c *Ctx) IsHTTP2() bool {
+<<<<<<< HEAD
 	return utils.UnsafeString(c.Request().Header.Protocol()) == "HTTP/2"
+=======
+	return utils.UnsafeString(c.Request().Header.Protocol()) == HTTP2
+>>>>>>> bfa6bff5fdffb4549a720276a69e820443bcaf5b
 }
 
 //IsHTTP11 will return true if request's header protocol equals to 'HTTP/1.1'
 func (c *Ctx) IsHTTP11() bool {
+<<<<<<< HEAD
 	return utils.UnsafeString(c.Request().Header.Protocol()) == "HTTP/1.1"
+=======
+	return utils.UnsafeString(c.Request().Header.Protocol()) == HTTP11
+>>>>>>> bfa6bff5fdffb4549a720276a69e820443bcaf5b
 }

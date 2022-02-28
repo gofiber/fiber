@@ -3633,7 +3633,11 @@ func Test_Ctx_IsHTTP11(t *testing.T) {
 func Test_Ctx_IsHTTP2(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+<<<<<<< HEAD
 	c.Request().Header.SetProtocol("HTTP/2")
+=======
+	c.Request().Header.SetProtocol(HTTP2)
+>>>>>>> bfa6bff5fdffb4549a720276a69e820443bcaf5b
 	defer app.ReleaseCtx(c)
 	utils.AssertEqual(t, true, c.IsHTTP2())
 }
