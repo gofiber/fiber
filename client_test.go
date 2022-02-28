@@ -1235,3 +1235,16 @@ func (e *errorMultipartWriter) Close() error                 { return errors.New
 type errorWriter struct{}
 
 func (errorWriter) Write(_ []byte) (int, error) { return 0, errors.New("Write error") }
+
+func Test_HostClient_With_HTTP2(t *testing.T) {
+	a := AcquireAgent()
+	a.Host("example.com:443")
+
+	utils.AssertEqual(t, nil, a.Parse())
+	utils.AssertEqual(t, nil, a.EnableHTTP2())
+
+	statusCode, _, err := a.Get(nil, "https://example.com")
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, statusCode)
+
+}
