@@ -31,6 +31,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/dgrr/http2"
 	"github.com/gofiber/fiber/v2/internal/colorable"
 	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/isatty"
@@ -366,6 +367,11 @@ type Config struct {
 	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
+
+	// Enable HTTP/2 Protocol
+	//
+	// Default: false
+	EnableHTTP2 bool `json:"enable_http2"`
 }
 
 // Static defines configuration options when defining static assets.
@@ -740,8 +746,18 @@ func NewError(code int, message ...string) *Error {
 	return err
 }
 
+func (app *App) configureHTTP2() {
+	app.mutex.Lock()
+	http2.ConfigureServer(app.server, http2.ServerConfig{})
+	app.mutex.Unlock()
+}
+
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
+	// Configure HTTP2 protocol
+	if app.config.EnableHTTP2 {
+		app.configureHTTP2()
+	}
 	// Prefork is supported for custom listeners
 	if app.config.Prefork {
 		addr, tlsConfig := lnMetadata(app.config.Network, ln)
@@ -795,6 +811,11 @@ func (app *App) Listen(addr string) error {
 //  app.ListenTLS(":8080", "./cert.pem", "./cert.key")
 //  app.ListenTLS(":8080", "./cert.pem", "./cert.key")
 func (app *App) ListenTLS(addr, certFile, keyFile string) error {
+	// Configure HTTP2 protocol
+	if app.config.EnableHTTP2 {
+		app.configureHTTP2()
+	}
+
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
@@ -838,6 +859,11 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 //  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
 //  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
 func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
+	// Configure HTTP2 protocol
+	if app.config.EnableHTTP2 {
+		app.configureHTTP2()
+	}
+
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
