@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dgrr/http2"
 	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
@@ -673,6 +674,17 @@ func (a *Agent) InsecureSkipVerify() *Agent {
 // TLSConfig sets tls config.
 func (a *Agent) TLSConfig(config *tls.Config) *Agent {
 	a.HostClient.TLSConfig = config
+
+	return a
+}
+
+// FEATURE: v2.28.x
+// Enable HTTP/2 support for client.
+// WARNING: HTTP/2 support is still in early access. Some features may not be working.
+func (a *Agent) EnableHTTP2() *Agent {
+	if err := http2.ConfigureClient(a.HostClient, http2.ClientOpts{}); err != nil {
+		fmt.Printf("[Warning] %s doesn't support http/2\n", a.HostClient.Addr)
+	}
 
 	return a
 }
