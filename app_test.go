@@ -1711,3 +1711,16 @@ func Test_App_print_Route_with_group(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "PUT"))
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
 }
+
+func Test_App_ListenTLS_With_HTTP2(t *testing.T) {
+	app := New(Config{
+		EnableHTTP2: true,
+	})
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/ssl.pem", ".github/testdata/ssl.key"))
+}
