@@ -746,6 +746,7 @@ func NewError(code int, message ...string) *Error {
 	return err
 }
 
+//Configure fasthttp server with http2.
 func (app *App) configureHTTP2() {
 	app.mutex.Lock()
 	http2.ConfigureServer(app.server, http2.ServerConfig{})
@@ -758,7 +759,6 @@ func (app *App) Listener(ln net.Listener) error {
 	if app.config.EnableHTTP2 {
 		app.configureHTTP2()
 	}
-
 	// Prefork is supported for custom listeners
 	if app.config.Prefork {
 		addr, tlsConfig := lnMetadata(app.config.Network, ln)
@@ -816,7 +816,6 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if app.config.EnableHTTP2 {
 		app.configureHTTP2()
 	}
-
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
