@@ -53,7 +53,10 @@ func (grp *Group) Name(name string) Router {
 	}
 
 	latestGroup = *grp
-	_ = grp.app.hooks.executeOnGroupNameHooks(latestGroup)
+
+	if err := grp.app.hooks.executeOnGroupNameHooks(latestGroup); err != nil {
+		panic(err)
+	}
 
 	return grp
 }

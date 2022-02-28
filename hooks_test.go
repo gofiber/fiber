@@ -1,6 +1,8 @@
 package fiber
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -48,6 +50,21 @@ func Test_Hook_OnName(t *testing.T) {
 	utils.AssertEqual(t, "index", buf.String())
 }
 
+func Test_Hook_OnName_Error(t *testing.T) {
+	app := New()
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "unknown error", fmt.Sprintf("%v", err))
+		}
+	}()
+
+	app.Hooks().OnName(func(c *Ctx, m Map) error {
+		return errors.New("unknown error")
+	})
+
+	app.Get("/", testSimpleHandler).Name("index")
+}
+
 func Test_Hook_OnGroupName(t *testing.T) {
 	app := New()
 
@@ -65,6 +82,22 @@ func Test_Hook_OnGroupName(t *testing.T) {
 	grp.Get("/test2", testSimpleHandler)
 
 	utils.AssertEqual(t, "x.", buf.String())
+}
+
+func Test_Hook_OnGroupName_Error(t *testing.T) {
+	app := New()
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "unknown error", fmt.Sprintf("%v", err))
+		}
+	}()
+
+	app.Hooks().OnGroupName(func(c *Ctx, m Map) error {
+		return errors.New("unknown error")
+	})
+
+	grp := app.Group("/x").Name("x.")
+	grp.Get("/test", testSimpleHandler)
 }
 
 func Test_Hook_OnShutdown(t *testing.T) {

@@ -585,7 +585,10 @@ func (app *App) Name(name string) Router {
 	} else {
 		latestRoute.route.Name = name
 	}
-	_ = app.hooks.executeOnNameHooks(*latestRoute.route)
+
+	if err := app.hooks.executeOnNameHooks(*latestRoute.route); err != nil {
+		panic(err)
+	}
 	latestRoute.mu.Unlock()
 
 	return app
