@@ -368,10 +368,23 @@ type Config struct {
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
 
+<<<<<<< HEAD
 	// Enable HTTP/2 Protocol
 	//
 	// Default: false
 	EnableHTTP2 bool `json:"enable_http2"`
+=======
+	// FEATURE: v2.25.x
+	// If set to true, will use HTTP/2 for app.
+	// WARNING: HTTP/2 support is still in early access. Some features may not be working.
+	// NOTE: You can't use HTTP/2 with Listen() method. You should use Listener() or ListenTLS()
+	//
+	// Default: false
+	HTTP2 bool `json:"http2"`
+
+	// HTTP/2 Config
+	HTTP2Config HTTP2Config `json:"http2_config"`
+>>>>>>> bfa6bff5fdffb4549a720276a69e820443bcaf5b
 }
 
 // Static defines configuration options when defining static assets.
@@ -754,25 +767,37 @@ func (app *App) configureHTTP2() {
 
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
+<<<<<<< HEAD
 	// Configure HTTP2 protocol
 	if app.config.EnableHTTP2 {
 		app.configureHTTP2()
 	}
+=======
+	// Configure server with HTTP2
+	if app.config.HTTP2 {
+		app.configureServerHTTP2(app.config.HTTP2Config)
+	}
+
+>>>>>>> bfa6bff5fdffb4549a720276a69e820443bcaf5b
 	// Prefork is supported for custom listeners
 	if app.config.Prefork {
 		addr, tlsConfig := lnMetadata(app.config.Network, ln)
 		return app.prefork(app.config.Network, addr, tlsConfig)
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -786,21 +811,26 @@ func (app *App) Listen(addr string) error {
 	if app.config.Prefork {
 		return app.prefork(app.config.Network, addr, nil)
 	}
+
 	// Setup listener
 	ln, err := net.Listen(app.config.Network, addr)
 	if err != nil {
 		return err
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -820,6 +850,12 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
 	}
+
+	// Configure server with HTTP2
+	if app.config.HTTP2 {
+		app.configureServerHTTP2(app.config.HTTP2Config)
+	}
+
 	// Prefork is supported
 	if app.config.Prefork {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
@@ -832,23 +868,29 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 				cert,
 			},
 		}
+
 		return app.prefork(app.config.Network, addr, config)
 	}
+
 	// Setup listener
 	ln, err := net.Listen(app.config.Network, addr)
 	if err != nil {
 		return err
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), true, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
 }
@@ -1389,4 +1431,32 @@ func (app *App) printRoutesMessage() {
 	}
 
 	_ = w.Flush()
+}
+
+type HTTP2Config struct {
+	// PingInterval is the interval at which the server will send a
+	// ping message to a client.
+	//
+	// To disable pings set the PingInterval to a negative value.
+	PingInterval time.Duration
+
+	// ...
+	MaxConcurrentStreams int
+
+	// Debug is a flag that will allow the library to print debugging information.
+	Debug bool
+}
+
+// HTTP/2 Configuration
+func (app *App) configureServerHTTP2(conf ...HTTP2Config) {
+	if len(conf) > 0 {
+		http2.ConfigureServer(app.server, http2.ServerConfig{
+			PingInterval:         conf[0].PingInterval,
+			MaxConcurrentStreams: conf[0].MaxConcurrentStreams,
+			Debug:                conf[0].Debug,
+		})
+	} else {
+		// Default Config
+		http2.ConfigureServer(app.server, http2.ServerConfig{})
+	}
 }
