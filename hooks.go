@@ -4,7 +4,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Handler defines a function to create hooks for Fibe.
+// Handler defines a function to create hooks for Fiber.
 type HookHandler = func(*Ctx, Map) error
 
 type Hooks struct {
