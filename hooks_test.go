@@ -10,7 +10,13 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
+var testSimpleHandler = func(c *Ctx) error {
+	return c.SendString("simple")
+}
+
 func Test_Hook_OnRoute(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Hooks().OnRoute(func(c *Ctx, m Map) error {
@@ -28,6 +34,8 @@ func Test_Hook_OnRoute(t *testing.T) {
 }
 
 func Test_Hook_OnName(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	buf := bytebufferpool.Get()
@@ -51,6 +59,8 @@ func Test_Hook_OnName(t *testing.T) {
 }
 
 func Test_Hook_OnName_Error(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
@@ -66,6 +76,8 @@ func Test_Hook_OnName_Error(t *testing.T) {
 }
 
 func Test_Hook_OnGroupName(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	buf := bytebufferpool.Get()
@@ -85,6 +97,8 @@ func Test_Hook_OnGroupName(t *testing.T) {
 }
 
 func Test_Hook_OnGroupName_Error(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
@@ -101,6 +115,8 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 }
 
 func Test_Hook_OnShutdown(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	buf := bytebufferpool.Get()
@@ -117,6 +133,8 @@ func Test_Hook_OnShutdown(t *testing.T) {
 }
 
 func Test_Hook_OnListen(t *testing.T) {
+	t.Parallel()
+
 	app := New(Config{
 		DisableStartupMessage: true,
 	})

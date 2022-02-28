@@ -33,10 +33,6 @@ var testEmptyHandler = func(c *Ctx) error {
 	return nil
 }
 
-var testSimpleHandler = func(c *Ctx) error {
-	return c.SendString("simple")
-}
-
 func testStatus200(t *testing.T, app *App, url string, method string) {
 	t.Helper()
 

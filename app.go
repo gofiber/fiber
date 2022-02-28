@@ -111,12 +111,13 @@ type App struct {
 	getBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	getString func(b []byte) string
-
 	// Mounted and main apps
 	appList map[string]*App
-
 	// Hooks
 	hooks Hooks
+	// latest route & group
+	latestRoute *Route
+	latestGroup *Group
 }
 
 // Config is a struct holding the server settings.
@@ -426,14 +427,6 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-// Variables for Name & GetRoute
-var latestRoute struct {
-	route *Route
-	mu    sync.Mutex
-}
-
-var latestGroup Group
-
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
@@ -464,10 +457,12 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config:    Config{},
-		getBytes:  utils.UnsafeBytes,
-		getString: utils.UnsafeString,
-		appList:   make(map[string]*App),
+		config:      Config{},
+		getBytes:    utils.UnsafeBytes,
+		getString:   utils.UnsafeString,
+		appList:     make(map[string]*App),
+		latestRoute: &Route{},
+		latestGroup: &Group{},
 	}
 
 	// Define hooks
@@ -579,17 +574,17 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 
 // Assign name to specific route.
 func (app *App) Name(name string) Router {
-	latestRoute.mu.Lock()
-	if strings.HasPrefix(latestRoute.route.path, latestGroup.prefix) {
-		latestRoute.route.Name = latestGroup.name + name
+	app.mutex.Lock()
+	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.prefix) {
+		app.latestRoute.Name = app.latestGroup.name + name
 	} else {
-		latestRoute.route.Name = name
+		app.latestRoute.Name = name
 	}
 
-	if err := app.hooks.executeOnNameHooks(*latestRoute.route); err != nil {
+	if err := app.hooks.executeOnNameHooks(*app.latestRoute); err != nil {
 		panic(err)
 	}
-	latestRoute.mu.Unlock()
+	app.mutex.Unlock()
 
 	return app
 }

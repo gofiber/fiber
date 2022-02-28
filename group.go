@@ -46,17 +46,19 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 
 // Assign name to specific route.
 func (grp *Group) Name(name string) Router {
-	if strings.HasPrefix(grp.prefix, latestGroup.prefix) {
-		grp.name = latestGroup.name + name
+	grp.app.mutex.Lock()
+	if strings.HasPrefix(grp.prefix, grp.app.latestGroup.prefix) {
+		grp.name = grp.app.latestGroup.name + name
 	} else {
 		grp.name = name
 	}
 
-	latestGroup = *grp
+	grp.app.latestGroup = grp
 
-	if err := grp.app.hooks.executeOnGroupNameHooks(latestGroup); err != nil {
+	if err := grp.app.hooks.executeOnGroupNameHooks(*grp.app.latestGroup); err != nil {
 		panic(err)
 	}
+	grp.app.mutex.Unlock()
 
 	return grp
 }
