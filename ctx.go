@@ -1510,3 +1510,13 @@ func (c *Ctx) IsFromLocal() bool {
 	}
 	return c.isLocalHost(ips[0])
 }
+
+//IsHTTP2 will return true if request's header protocol equals to 'HTTP/2'
+func (c *Ctx) IsHTTP2() bool {
+	return utils.UnsafeString(c.Request().Header.Protocol()) == "HTTP/2"
+}
+
+//IsHTTP11 will return true if request's header protocol equals to 'HTTP/1.1'
+func (c *Ctx) IsHTTP11() bool {
+	return utils.UnsafeString(c.Request().Header.Protocol()) == "HTTP/1.1"
+}
