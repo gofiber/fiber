@@ -681,12 +681,8 @@ func (a *Agent) TLSConfig(config *tls.Config) *Agent {
 // Enable HTTP/2 support for client.
 //
 // WARNING: HTTP/2 support is still in early access. Some features may not be working.
-func (a *Agent) EnableHTTP2() *Agent {
-	if err := http2.ConfigureClient(a.HostClient, http2.ClientOpts{}); err != nil {
-		fmt.Printf("[Warning] %s doesn't support http/2\n", a.HostClient.Addr)
-	}
-
-	return a
+func (a *Agent) EnableHTTP2() error {
+	return http2.ConfigureClient(a.HostClient, http2.ClientOpts{})
 }
 
 // MaxRedirectsCount sets max redirect count for GET and HEAD.
