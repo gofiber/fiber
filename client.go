@@ -678,7 +678,6 @@ func (a *Agent) TLSConfig(config *tls.Config) *Agent {
 	return a
 }
 
-// FEATURE: v2.28.x
 // Enable HTTP/2 support for client.
 // WARNING: HTTP/2 support is still in early access. Some features may not be working.
 func (a *Agent) EnableHTTP2() *Agent {
