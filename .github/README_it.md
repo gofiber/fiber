@@ -628,7 +628,7 @@ La lista dei moduli middleware hostati esternamente e mantenuti dal [team di Fib
 
 ## 🕶️ Awesome List
 
-For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber)
+For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
 
 ## 👍 Contribuire
 

@@ -740,7 +740,7 @@ Here is a list of middleware that are included within the Fiber framework.
 
 <div dir="rtl">
 
-For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber)
+For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
 
 </div>
 

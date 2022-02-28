@@ -602,7 +602,7 @@ Lista de módulos de middleware alojados externamente, y mantenidos por el [equi
 
 ## 🕶️ Awesome List
 
-For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber)
+For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
 
 ## 👍 Contribuir
 

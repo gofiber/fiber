@@ -602,7 +602,7 @@ Liste der extern gehosteten Middleware-Module, die vom [Fiber team](https://gith
 
 ## 🕶️ Awesome List
 
-Weitere Artikel, Middlewares, Beispiele oder Tools finden Sie in unserer [awesome list](https://github.com/gofiber/awesome-fiber)
+Weitere Artikel, Middlewares, Beispiele oder Tools finden Sie in unserer [awesome list](https://github.com/gofiber/awesome-fiber).
 
 ## 👍 Mitwirken
 

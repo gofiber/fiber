@@ -608,7 +608,7 @@ Fiber 프레임워크에 포함되는 미들웨어 목록입니다.
 
 ## 🕶️ Awesome List
 
-For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber)
+For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
 
 ## 👍 기여
 
