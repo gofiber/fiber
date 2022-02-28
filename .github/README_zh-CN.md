@@ -598,7 +598,9 @@ func main() {
 | [helmet](https://github.com/gofiber/helmet)       | 通过设置各种HTTP头帮助保护您的应用程序。                                                                                                                                  |
 | [jwt](https://github.com/gofiber/jwt)             | JWT返回一个JSON Web Token\(JWT\)身份验证中间件。                                                                                                                        |
 | [keyauth](https://github.com/gofiber/keyauth)     | Key auth中间件提供基于密钥的身份验证。                                                                                                                                  |
+| [redirect](https://github.com/gofiber/redirect)   | Redirect middleware                                                                                                                                                 |
 | [rewrite](https://github.com/gofiber/rewrite)     | Rewrite中间件根据提供的规则重写URL路径。它有助于向后兼容或者创建更清晰、更具描述性的链接。                                                                                      |
+| [storage](https://github.com/gofiber/storage)     | Premade storage drivers that implement the Storage interface, designed to be used with various Fiber middlewares.                                                   |
 | [template](https://github.com/gofiber/template)   | 该软件包包含8个模板引擎，可与Fiber `v1.10.x` Go 1.13或更高版本一起使用。                                                                                                    |
 | [websocket](https://github.com/gofiber/websocket) | 基于 Fasthttp WebSocket for Fiber与Locals支持！                                                                                                                      |
 
