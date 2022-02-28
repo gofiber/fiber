@@ -563,22 +563,28 @@ func main() {
 
 Fibera dahil edilen middlewareların bir listesi aşağıda verilmiştir.
 
-| Middleware                                                                       | Açıklama                                                                                                                                                                               |
-| :------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Basic auth middleware'i, bir HTTP Basic auth sağlar. Geçerli kimlik bilgileri için sonraki handlerı ve eksik veya geçersiz kimlik bilgileri için 401 döndürür.                         |
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Fiber için sıkıştırma middleware, varsayılan olarak `deflate`, `gzip` ve `brotli`yi destekler.                                                                                         |
-| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)           | Reponseları durdur ve önbelleğe al                                                                                                                                                     |
-| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)             | Çeşitli seçeneklerle başlangıçlar arası kaynak paylaşımını \(CORS\) etkinleştirin.                                                                                                     |
-| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)             | CSRF exploitlerinden korunun.                                                                                                                                                          |
-| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | Fiber için FileSystem middleware, Alireza Salary'e özel teşekkürler                                                                                                                    |
-| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)       | Bir dosya yolu sağlanmışsa, loglardaki favicon'u yoksayar veya bellekten sunar.                                                                                                       |
-| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)       | Fiber için hız sınırlayıcı middleware'i. Açık API'lere ve/veya parola sıfırlama gibi endpointlere yönelik tekrarlanan istekleri sınırlamak için kullanın.                              |
-| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)         | HTTP istek/yanıt logger'ı.                                                                                                                                                          |
-| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | Matthew Lee'ye özel teşekkürler \(@mthli\)                                                                                                                                              |
-| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | Birden çok sunucuya proxy istekleri yapmanızı sağlar                                                                                                                                   |
-| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | Her requeste id verir                                                                                                                                                                  |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware'i, stack chain'ini herhangi bir yerindeki paniklerden kurtulur ve kontrolü merkezileştirilmiş [ErrorHandler'e](https://docs.gofiber.io/guide/error-handling) verir. |
-| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Bir request için maksimum süre ekler ve aşılırsa ErrorHandler'a iletir.                                                                                                                |
+| Middleware                                                                             | Açıklama                                                                                                                                                                               |
+| :------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | Basic auth middleware'i, bir HTTP Basic auth sağlar. Geçerli kimlik bilgileri için sonraki handlerı ve eksik veya geçersiz kimlik bilgileri için 401 döndürür.                         |
+| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 | Reponseları durdur ve önbelleğe al                                                                                                                                                     |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)           | Fiber için sıkıştırma middleware, varsayılan olarak `deflate`, `gzip` ve `brotli`yi destekler.                                                                                         |
+| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | Çeşitli seçeneklerle başlangıçlar arası kaynak paylaşımını \(CORS\) etkinleştirin.                                                                                                     |
+| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | CSRF exploitlerinden korunun.                                                                                                                                                          |
+| [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware which encrypts cookie values.                                                                                                                                       |
+| [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | ETag middleware that lets caches be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.                         |
+| [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware that serves via its HTTP server runtime exposed variants in the JSON format.                                                                                         |
+| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | Bir dosya yolu sağlanmışsa, loglardaki favicon'u yoksayar veya bellekten sunar.                                                                                                        |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem)       | Fiber için FileSystem middleware, Alireza Salary'e özel teşekkürler                                                                                                                    |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)             | Fiber için hız sınırlayıcı middleware'i. Açık API'lere ve/veya parola sıfırlama gibi endpointlere yönelik tekrarlanan istekleri sınırlamak için kullanın.                              |
+| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)               | HTTP istek/yanıt logger'ı.                                                                                                                                                             |
+| [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             | Monitor middleware that reports server metrics, inspired by express-status-monitor                                                                                                     |
+| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)                 | Matthew Lee'ye özel teşekkürler \(@mthli\)                                                                                                                                             |
+| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)                 | Birden çok sunucuya proxy istekleri yapmanızı sağlar                                                                                                                                   |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)             | Recover middleware'i, stack chain'ini herhangi bir yerindeki paniklerden kurtulur ve kontrolü merkezileştirilmiş [ErrorHandler'e](https://docs.gofiber.io/guide/error-handling) verir. |
+| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)         | Her requeste id verir                                                                                                                                                                  |
+| [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Session middleware. NOTE: This middleware uses our Storage package.                                                                                                                    |
+| [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Skip middleware that skips a wrapped handler is a predicate is true.                                                                                                                   |
+| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Bir request için maksimum süre ekler ve aşılırsa ErrorHandler'a iletir.                                                                                                                |
 
 ## 🧬 Harici Middlewarelar
 
@@ -590,33 +596,15 @@ Harici olarak barındırılan middlewareların modüllerinin listesi [Fiber ekib
 | [helmet](https://github.com/gofiber/helmet)       | Çeşitli HTTP headerları ayarlayarak uygulamalarınızın güvenliğini sağlamaya yardımcı olur.                                                                                                   |
 | [jwt](https://github.com/gofiber/jwt)             | JWT, bir JSON Web Token \(JWT\) yetkilendirmesi döndüren middleware.                                                                                                                         |
 | [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware, key tabanlı bir authentication sağlar.                                                                                                                                  |
+| [redirect](https://github.com/gofiber/redirect)   | Redirect middleware                                                                                                                                                 |
 | [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware, sağlanan kurallara göre URL yolunu yeniden yazar. Geriye dönük uyumluluk için veya yalnızca daha temiz ve daha açıklayıcı bağlantılar oluşturmak için yardımcı olabilir. |
-| [session](https://github.com/gofiber/session)     | Bu session middleware'i, @savsgio MIT tarafından fasthttp/session üzerine inşa edilmiştir. Bu middleware'a yardımcı olduğu için @thomasvvugt'a özel teşekkürler.                             |
+| [storage](https://github.com/gofiber/storage)     | Premade storage drivers that implement the Storage interface, designed to be used with various Fiber middlewares.                                                   |
 | [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v1.10.x`, Go sürüm 1.13 veya üzeri gerekli olduğunda kullanılabilecek 8 template engine içerir.                                                                             |
 | [websocket](https://github.com/gofiber/websocket) | Yereller desteğiyle Fiber için Fasthttp WebSocket'a dayalıdır!                                                                                                                               |
 
-## 🌱 Üçüncü Parti Middlewarelar
+## 🕶️ Awesome List
 
-Bu, Fiber topluluğu tarafından oluşturulan middleware'lerin bir listesidir, sizinkini görmek istiyorsanız lütfen bir PR oluşturun!
-
--   [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
--   [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
--   [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
--   [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
--   [codemicro/fiber-cache](https://github.com/codemicro/fiber-cache)
--   [sujit-baniya/fiber-boilerplate](https://github.com/sujit-baniya/fiber-boilerplate)
--   [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
--   [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
--   [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
--   [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
--   [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
--   [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
--   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
--   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
--   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
--   [aschenmaker/fiber-health-check](https://github.com/aschenmaker/fiber-health-check)
--   [elastic/apmfiber](https://github.com/elastic/apm-agent-go/tree/master/module/apmfiber)
--   [eozer/fiber_ldapauth](https://github.com/eozer/fiber_ldapauth)
+For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
 
 ## 👍 Destek
 
