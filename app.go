@@ -368,7 +368,9 @@ type Config struct {
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
 
-	// Enable HTTP2 protocl
+	// Enable HTTP2 protocol
+	//
+	// WARNING: HTTP/2 support is still in early access. Some features may not be working.
 	//
 	// Default: false
 	EnableHTTP2 bool `json:"enable_http2"`
