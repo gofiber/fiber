@@ -2,11 +2,9 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-// Package fiber
-// Fiber is an Express inspired web framework built on top of Fasthttp,
+// Package fiber is an Express inspired web framework built on top of Fasthttp,
 // the fastest HTTP engine for Go. Designed to ease things up for fast
 // development with zero memory allocation and performance in mind.
-
 package fiber
 
 import (
