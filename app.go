@@ -115,7 +115,7 @@ type App struct {
 	appList map[string]*App
 	// Hooks
 	hooks Hooks
-	// latest route & group
+	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
 }
