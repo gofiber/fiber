@@ -79,7 +79,7 @@
   </a>
 </p>
 <p align="center" dir="rtl">
-  <b>فایبەر</b> فرەیموۆرکێکی هاوشێوەی <a href="https://github.com/expressjs/express">Express</a>ـە کە لەسەر <a href="https://github.com/valyala/fasthttp">Fasthttp</a> دروست کراوە و <b>خێراترین</b> مەکینەی HTTPـە بۆ <a href="https://golang.org/doc/">Go</a>. دیزاین کراوە بۆ <b>بەفیڕۆنەدانی میمۆری</b> و گوێدانە <b>کارکردن بەخێرایی</b>.
+  <b>فایبەر</b> فرەیموۆرکێکی هاوشێوەی <a href="https://github.com/expressjs/express">Express</a>ـە کە لەسەر <a href="https://github.com/valyala/fasthttp">Fasthttp</a> دروست کراوە و <b>خێراترین</b> مەکینەی HTTPـە بۆ <a href="https://go.dev/doc/">Go</a>. دیزاین کراوە بۆ <b>بەفیڕۆنەدانی میمۆری</b> و گوێدانە <b>کارکردن بەخێرایی</b>.
 </p>
 
 ## ⚡️ دەستپێکێکی خێرا
@@ -111,9 +111,9 @@ func main() {
 
 ## ⚙️ دامەزراندن
 
-دڵنیا بە لەوەی کە لەناو ئامێرەکەت Go دامەزراوە ([دای بگرە](https://golang.org/dl/)). دەبێت وەشانەکەشی `1.14` یان سەرووتر بێت.
+دڵنیا بە لەوەی کە لەناو ئامێرەکەت Go دامەزراوە ([دای بگرە](https://go.dev/dl/)). دەبێت وەشانەکەشی `1.14` یان سەرووتر بێت.
 
-پڕۆژەکەت دەست پێ بکە بە دروستکردنی بوخچەیەک و کار پێ کردنی فەرمانی `go mod init github.com/your/repo` ([زیاتر](https://blog.golang.org/using-go-modules)) لەناو بوخچەکە. دواتریش بەم فەرمانەی خوارەوە فایبەر دامەزرێنە:
+پڕۆژەکەت دەست پێ بکە بە دروستکردنی بوخچەیەک و کار پێ کردنی فەرمانی `go mod init github.com/your/repo` ([زیاتر](https://go.dev/blog/using-go-modules)) لەناو بوخچەکە. دواتریش بەم فەرمانەی خوارەوە فایبەر دامەزرێنە:
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -285,7 +285,7 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-ئەگەر هیچ داڕێژەیەکت دەستنیشان نەکردبێت، [html/template](https://golang.org/pkg/html/template/) خۆکارانە دەستنیشان دەکرێت بۆ بەکارهێنان.
+ئەگەر هیچ داڕێژەیەکت دەستنیشان نەکردبێت، [html/template](https://pkg.go.dev/html/template/) خۆکارانە دەستنیشان دەکرێت بۆ بەکارهێنان.
 
 بۆ تایبەتمەندیی زیاتر، ئەمانە ببینە: [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache), [pug](https://github.com/Joker/jade).
 

@@ -81,7 +81,7 @@
 <br>
 <p align="center">
 <div dir="rtl">
-  <b>Fiber</b> الهام گرفته از <b>فریمورک وب</b> <a href="https://github.com/expressjs/express">Express</a> است که برپایه <a href="https://github.com/valyala/fasthttp">Fasthttp</a> ساخته شده است, که سریعترین موتور HTTP برای زبان <a href="https://golang.org/doc/">Go</a> است. طراحی شده است تا با تخصیص حافظه و عملکرد صفر ، کارها را برای توسعه سریع آسان کند.
+  <b>Fiber</b> الهام گرفته از <b>فریمورک وب</b> <a href="https://github.com/expressjs/express">Express</a> است که برپایه <a href="https://github.com/valyala/fasthttp">Fasthttp</a> ساخته شده است, که سریعترین موتور HTTP برای زبان <a href="https://go.dev/doc/">Go</a> است. طراحی شده است تا با تخصیص حافظه و عملکرد صفر ، کارها را برای توسعه سریع آسان کند.
 <div dir="rtl"><br>
 </p>
 
@@ -130,8 +130,8 @@ func main() {
 <br>
 <p align="center">
 <div dir="rtl">
-مطمئن شوید Go را نصب (<a href="https://golang.org/dl/">دانلود</a>) کرده اید. نسخه 1.14 یا بیشتر مورد نیاز است.<br>
-پروژه خود را با ساختن یک پوشه و سپس اجرای <code>go mod init github.com/your/repo</code> داخل پوشه (<a href="https://blog.golang.org/using-go-modules">یادگیری بیشتر</a>) راه اندازی کنید. سپس Fiber را با دستور <code><a href="https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them">go get</a></code> نصب کنید :
+مطمئن شوید Go را نصب (<a href="https://go.dev/dl/">دانلود</a>) کرده اید. نسخه 1.14 یا بیشتر مورد نیاز است.<br>
+پروژه خود را با ساختن یک پوشه و سپس اجرای <code>go mod init github.com/your/repo</code> داخل پوشه (<a href="https://go.dev/blog/using-go-modules">یادگیری بیشتر</a>) راه اندازی کنید. سپس Fiber را با دستور <code><a href="https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them">go get</a></code> نصب کنید :
 <div dir="rtl">
 <br>
 </p>
@@ -171,7 +171,7 @@ go get -u github.com/gofiber/fiber/v2
 <br>
 <p align="center">
 <div dir="rtl">
-گوفر های جدیدی که از <a href="https://nodejs.org/en/about/">Node.js</a> به <a href="https://golang.org/doc/">Go</a> تغییر می دهند قبل از شروع ساخت برنامه های وب یا میکروسرویس ها با یک منحنی یادگیری رو به رو هستند. Fiber, یک <b>فریمورک وب</b> است و با ایده <b>مینیمالیسم</b> ایجاد شده است و <b>روش های unix</b>  را دنبال می کند, بنابرین با استقبال گرم و اعتماد کامل وارد دنیای Go شده است.<br>
+گوفر های جدیدی که از <a href="https://nodejs.org/en/about/">Node.js</a> به <a href="https://go.dev/doc/">Go</a> تغییر می دهند قبل از شروع ساخت برنامه های وب یا میکروسرویس ها با یک منحنی یادگیری رو به رو هستند. Fiber, یک <b>فریمورک وب</b> است و با ایده <b>مینیمالیسم</b> ایجاد شده است و <b>روش های unix</b>  را دنبال می کند, بنابرین با استقبال گرم و اعتماد کامل وارد دنیای Go شده است.<br>
 
 Fiber از Express <b>الهام گرفته</b>, که محبوب ترین فریمورک وب روی اینترنت است. ما <b>سادگی</b> Express را با <b>عملکرد بالا</b> زبان Go ترکیب کردیم. اگر شما قبلا یک برنامه وب را در Node.js (با استفاده از Express یا موارد مشابه) پیاده سازی کرده اید. بسیاری از روش ها و اصول ها برای شما ساده به نظر خواهد رسید.<br>
 
@@ -351,7 +351,7 @@ func main() {
 <br>
 <p align="center">
 <div dir="rtl">
-Fiber زمانیکه view engine تنظیم نشده باشد بطور پیش فرض از <a href="https://golang.org/pkg/html/template/">html/template</a> استفاده می کند.<br>
+Fiber زمانیکه view engine تنظیم نشده باشد بطور پیش فرض از <a href="https://pkg.go.dev/html/template/">html/template</a> استفاده می کند.<br>
 شما می توانید از موتورهای مختلفی نظیر <a href="https://github.com/eknkc/amber">amber</a>, <a href="https://github.com/aymerick/raymond">handlebars</a>, <a href="https://github.com/cbroglie/mustache">mustache</a> یا <a href="https://github.com/Joker/jade">pug</a> استفاده کنید.<br>
 پکیج موتورهای پشتیبانی شده را می توانید در <a href="https://github.com/gofiber/template">اینجا</a> ببینید.
 <div dir="rtl">
