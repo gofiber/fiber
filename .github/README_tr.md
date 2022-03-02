@@ -79,7 +79,7 @@
   </a>
 </p>
 <p align="center">
-    <b>Fiber</b>, <a href="https://golang.org/doc/">Go</a> için <b>en hızlı</b> HTTP sunucusu olan <a href="https://github.com/valyala/fasthttp">Fasthttp</a> üzerine inşa edilmiş, <a href="https://github.com/expressjs/express">Express</a>'ten ilham alan bir <b>web frameworküdür</b>. <b>Sıfır bellek ataması</b> ve <b>performans</b> göz önünde bulundurularak <b>hızlı</b> geliştirme için işleri <b>kolaylaştırmak</b> üzere tasarlanmıştır.
+    <b>Fiber</b>, <a href="https://golang.org/doc/">Go</a> için <b>en hızlı</b> HTTP sunucusu olan <a href="https://github.com/valyala/fasthttp">Fasthttp</a> üzerine inşa edilmiş ve <a href="https://github.com/expressjs/express">Express</a>'ten ilham almış bir <b>web framework'üdür</b>. <b>Sıfır bellek ataması</b> ve <b>performans</b> göz önünde bulundurularak <b>hızlı</b> geliştirme ve <b>kolay</b> geliştirme için tasarlanmıştır.
 </p>
 
 ## ⚡️ Hızlı Başlangıç
@@ -111,9 +111,9 @@ Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r1
 
 ## ⚙️ Kurulum
 
-Go'nun `1.14` sürümü ([indir](https://golang.org/dl/)) ya da daha yüksek bir sürüm gerekli.
+Go'nun `1.14` sürümü ([indir](https://golang.org/dl/)) veya daha yüksek bir sürüm gerekli.
 
-Bir klasör oluşturup klasörün içinde `go mod init github.com/your/repo` komutunu yazarak projenizi geliştirmeye başlayın ([daha fazla öğren](https://blog.golang.org/using-go-modules)). Ardından Fiber'ı kurmak için [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu çalıştırın:
+Bir dizin oluşturup dizinin içinde `go mod init github.com/your/repo` komutunu yazarak projenizi geliştirmeye başlayın ([daha fazla öğren](https://blog.golang.org/using-go-modules)). Ardından Fiber'ı kurmak için [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu çalıştırın:
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -121,16 +121,16 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 Özellikler
 
--   Güçlü [rotalar](https://docs.gofiber.io/routing)
+-   Güçlü [routing](https://docs.gofiber.io/routing)
 -   [Statik dosya](https://docs.gofiber.io/api/app#static) sunumu
 -   Olağanüstü [performans](https://docs.gofiber.io/extra/benchmarks)
--   [Düşük bellek](https://docs.gofiber.io/extra/benchmarks) tüketimi
+-   [Düşük bellek](https://docs.gofiber.io/extra/benchmarks) kullanımı
 -   [API uç noktaları](https://docs.gofiber.io/api/ctx)
--   Ara katman & [Sonraki](https://docs.gofiber.io/api/ctx#next) desteği
+-   Middleware'lar & [Next](https://docs.gofiber.io/api/ctx#next) desteği
 -   [Hızlı](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) sunucu taraflı programlama
--   [Template engines](https://github.com/gofiber/template)
--   [WebSocket support](https://github.com/gofiber/websocket)
--   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
+-   [Template motorları](https://github.com/gofiber/template)
+-   [WebSocket desteği](https://github.com/gofiber/websocket)
+-   [Server-Sent eventler](https://github.com/gofiber/recipes/tree/master/sse)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   [15 dilde](https://docs.gofiber.io/) mevcut
 -   Ve daha fazlası, [Fiber'ı keşfet](https://docs.gofiber.io/)
@@ -139,11 +139,11 @@ go get -u github.com/gofiber/fiber/v2
 
 [Node.js](https://nodejs.org/en/about/)'ten [Go](https://golang.org/doc/)'ya geçen yeni gopherlar kendi web uygulamalarını ve mikroservislerini yazmaya başlamadan önce dili öğrenmek ile uğraşıyorlar. Fiber, bir **framework** olarak, **minimalizm** ve **UNIX yolu**nu izleme fikri ile oluşturuldu. Böylece yeni gopherlar sıcak ve güvenilir bir hoş geldin ile Go dünyasına giriş yapabilirler.
 
-Fiber internet üzerinde en popüler olan Express web frameworkünden **esinlenmiştir**. Biz Express'in **kolaylığını** ve Go'nun **ham performansını** birleştirdik. Daha önce Node.js üzerinde (Express veya benzerini kullanarak) bir web uygulaması geliştirdiyseniz, pek çok metod ve prensip size **çok tanıdık** gelecektir.
+Fiber, internet üzerinde en popüler web framework'ü olan Express'ten **esinlenmiştir**. Biz Express'in **kolaylığını** ve Go'nun **ham performansını** birleştirdik. Daha önce Node.js üzerinde (Express veya benzerini kullanarak) bir web uygulaması geliştirdiyseniz, pek çok metod ve prensip size **oldukça tanıdık** gelecektir.
 
 ## ⚠️ Sınırlamalar
 
--   Fiber unsafe kullanımı sebebiyle her zaman Go'nun son sürümüyle uyumlu olmayabilir. Fiber 2.18.0, Go 1.14 ile 1.17 sürümleriyle test edildi.
+-   Fiber unsafe kullanımı sebebiyle Go'nun son sürümüyle her zaman uyumlu olmayabilir. Fiber 2.18.0, Go 1.14 ile 1.17 sürümleriyle test edildi.
 -   Fiber net/http arabirimiyle uyumlu değildir. Yani gqlgen veya go-swagger gibi net/http ekosisteminin parçası olan projeleri kullanamazsınız.
 
 ## 👀 Örnekler
@@ -275,15 +275,15 @@ func main() {
 <details>
   <summary>📚 Daha fazla kod örneği göster</summary>
 
-### Views Engines
+### View Motorları
 
-📖 [Config](https://docs.gofiber.io/api/fiber#config)
-📖 [Engines](https://github.com/gofiber/template)
+📖 [Yapılandırma](https://docs.gofiber.io/api/fiber#config)
+📖 [Motorlar](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-Hiçbir View Engine ayarlanmadığında Fiber varsayılan olarak [html/template'a](https://golang.org/pkg/html/template/) geçer.
+Hiçbir View Motoru ayarlanmadığında Fiber varsayılan olarak [html/template'a](https://golang.org/pkg/html/template/) geçer.
 
-Kısmi yürütmek istiyorsanız veya [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) veya [pug](https://github.com/Joker/jade) gibi farklı engine'ler kullanmak istiyorsanız
+Kısmi yürütmek istiyorsanız veya [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) veya [pug](https://github.com/Joker/jade) gibi farklı motorlar kullanmak istiyorsanız
 
 Çoklu View Engine destekleyen [Template'ımıza](https://github.com/gofiber/template göz atın.
 
@@ -459,7 +459,7 @@ func main() {
 }
 ```
 
-### WebSocket Yükseltmesi
+### WebSocket Desteği
 
 📖 [Websocket](https://github.com/gofiber/websocket)
 
@@ -493,9 +493,9 @@ func main() {
 }
 ```
 
-### Server-Sent Events
+### Server-Sent Eventler
 
-📖 [More Info](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
+📖 [Daha Fazla Bilgi](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
 
 ```go
 import (
@@ -561,7 +561,7 @@ func main() {
 
 ## 🧬 Dahili Middlewarelar
 
-Fibera dahil edilen middlewareların bir listesi aşağıda verilmiştir.
+Fiber'a dahil edilen middlewareların bir listesi aşağıda verilmiştir.
 
 | Middleware                                                                             | Açıklama                                                                                                                                                                               |
 | :------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -588,7 +588,7 @@ Fibera dahil edilen middlewareların bir listesi aşağıda verilmiştir.
 
 ## 🧬 Harici Middlewarelar
 
-Harici olarak barındırılan middlewareların modüllerinin listesi [Fiber ekibi](https://github.com/orgs/gofiber/people) tarafından korunur.
+Harici olarak barındırılan middlewareların modüllerinin listesi. Bu middlewarelar, [Fiber ekibi](https://github.com/orgs/gofiber/people) tarafından geliştirilir.
 
 | Middleware                                        | Açıklama                                                                                                                                                                                     |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -602,22 +602,21 @@ Harici olarak barındırılan middlewareların modüllerinin listesi [Fiber ekib
 | [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v1.10.x`, Go sürüm 1.13 veya üzeri gerekli olduğunda kullanılabilecek 8 template engine içerir.                                                                             |
 | [websocket](https://github.com/gofiber/websocket) | Yereller desteğiyle Fiber için Fasthttp WebSocket'a dayalıdır!                                                                                                                               |
 
-## 🕶️ Awesome List
-
-For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
+## 🕶️ Awesome Listesi
+Daha fazla yazı, middleware, örnek veya araç için [awesome list](https://github.com/gofiber/awesome-fiber) reposunu kontrol etmeyi unutmayın.
 
 ## 👍 Destek
 
 Eğer **teşekkür etmek** veya `Fiber`'ın aktif geliştirilmesini desteklemek istiyorsanız:
 
 1. Projeye [yıldız](https://github.com/gofiber/fiber/stargazers) verebilirsiniz.
-2. [Twitter hesabınızdan](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) proje hakkında tweet atabilirsinşz.
+2. [Twitter hesabınızdan](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber) proje hakkında tweet atabilirsiniz.
 3. [Medium](https://medium.com/), [Dev.to](https://dev.to/) veya kişisel blogunuz üzerinden bir inceleme veya eğitici yazı yazabilirsiniz.
-4. Projeye [bir fincan kahve](https://buymeacoff.ee/fenny) ısmarlayarak destek olabilirsiniz.
+4. Projeye [bir fincan kahve](https://buymeacoff.ee/fenny) bağışlayarak destek olabilirsiniz.
 
 ## ☕ Destekçiler
 
-Fiber; alan adı, gitbook, netlify, serverless yer sağlayıcısı giderleri ve benzeri şeyleri ödemek için bağışlarla yaşayan bir açık kaynaklı projedir. Eğer Fiber'e destek olmak isterseniz, ☕ [**buradan kahve ısmarlayabilirsiniz**](https://buymeacoff.ee/fenny).
+Fiber; alan adı, gitbook, netlify, serverless yer sağlayıcısı giderleri ve benzeri şeyleri ödemek için bağışlarla yaşayan bir açık kaynaklı projedir. Eğer Fiber'a destek olmak isterseniz, ☕ [**buradan kahve ısmarlayabilirsiniz**](https://buymeacoff.ee/fenny).
 
 |                                                            | User                                             | Donation |
 | :--------------------------------------------------------- | :----------------------------------------------- | :------- |
@@ -651,9 +650,9 @@ Fiber; alan adı, gitbook, netlify, serverless yer sağlayıcısı giderleri ve 
 
 ## ⚠️ Lisans
 
-Telif (c) 2019-günümüz [Fenny](https://github.com/fenny) ve [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber`, [MIT Lisansı](https://github.com/gofiber/fiber/blob/master/LICENSE) altında özgür ve açık kaynaklı bir yazılımdır. Resmi logosu [Vic Shóstak](https://github.com/koddr) tarafında tasarlanmıştır ve [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) lisansı altında dağıtımı yapılır. (CC BY-SA 4.0 International).
+Telif (c) 2019-günümüz [Fenny](https://github.com/fenny) ve [katkıda bulunanlar](https://github.com/gofiber/fiber/graphs/contributors). `Fiber`, [MIT Lisansı](https://github.com/gofiber/fiber/blob/master/LICENSE) altında özgür ve açık kaynaklı bir yazılımdır. Resmî logosu [Vic Shóstak](https://github.com/koddr) tarafından tasarlanmıştır ve [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) lisansı altında dağıtımı yapılıyor. (CC BY-SA 4.0 International).
 
-**Üçüncü Parti Library Lisansları**
+**Üçüncü Parti Kütüphane Lisansları**
 
 -   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
