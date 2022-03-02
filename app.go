@@ -468,11 +468,11 @@ func New(config ...Config) *App {
 	// Define hooks
 	app.hooks = Hooks{
 		app:         app,
-		onRoute:     make([]HookHandler, 0),
-		onGroupName: make([]HookHandler, 0),
-		onName:      make([]HookHandler, 0),
-		onListen:    make([]HookHandler, 0),
-		onShutdown:  make([]HookHandler, 0),
+		onRoute:     make([]OnRouteHandler, 0),
+		onGroupName: make([]OnGroupNameHandler, 0),
+		onName:      make([]OnNameHandler, 0),
+		onListen:    make([]OnListenHandler, 0),
+		onShutdown:  make([]OnShutdownHandler, 0),
 	}
 
 	// Override config if provided

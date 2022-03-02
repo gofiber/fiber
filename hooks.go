@@ -4,24 +4,28 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Handler defines a function to create hooks for Fiber.
-type HookHandler = func(*Ctx, Map) error
+// Handlers define a function to create hooks for Fiber.
+type OnRouteHandler = func(*Ctx, Route) error
+type OnNameHandler = func(*Ctx, Route) error
+type OnGroupNameHandler = func(*Ctx, Group) error
+type OnListenHandler = Handler
+type OnShutdownHandler = Handler
 
 type Hooks struct {
 	// Embed app
 	app *App
 
 	// Hooks
-	onRoute     []HookHandler
-	onName      []HookHandler
-	onGroupName []HookHandler
-	onListen    []HookHandler
-	onShutdown  []HookHandler
+	onRoute     []OnRouteHandler
+	onName      []OnNameHandler
+	onGroupName []OnGroupNameHandler
+	onListen    []OnListenHandler
+	onShutdown  []OnShutdownHandler
 }
 
 // OnRoute is a hook to execute user functions on each route registeration.
 // Also you can get route properties by "route" key of map.
-func (h *Hooks) OnRoute(handler ...HookHandler) {
+func (h *Hooks) OnRoute(handler ...OnRouteHandler) {
 	h.app.mutex.Lock()
 	h.onRoute = append(h.onRoute, handler...)
 	h.app.mutex.Unlock()
@@ -31,7 +35,7 @@ func (h *Hooks) OnRoute(handler ...HookHandler) {
 // Also you can get route properties by "route" key of map.
 //
 // WARN: OnName only works with naming routes, not groups.
-func (h *Hooks) OnName(handler ...HookHandler) {
+func (h *Hooks) OnName(handler ...OnNameHandler) {
 	h.app.mutex.Lock()
 	h.onName = append(h.onName, handler...)
 	h.app.mutex.Unlock()
@@ -41,21 +45,21 @@ func (h *Hooks) OnName(handler ...HookHandler) {
 // Also you can get group properties by "group" key of map.
 //
 // WARN: OnGroupName only works with naming groups, not routes.
-func (h *Hooks) OnGroupName(handler ...HookHandler) {
+func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler) {
 	h.app.mutex.Lock()
 	h.onGroupName = append(h.onGroupName, handler...)
 	h.app.mutex.Unlock()
 }
 
 // OnListen is a hook to execute user functions on Listen, ListenTLS, Listener.
-func (h *Hooks) OnListen(handler ...HookHandler) {
+func (h *Hooks) OnListen(handler ...OnListenHandler) {
 	h.app.mutex.Lock()
 	h.onListen = append(h.onListen, handler...)
 	h.app.mutex.Unlock()
 }
 
 // OnShutdown is a hook to execute user functions after Shutdown.
-func (h *Hooks) OnShutdown(handler ...HookHandler) {
+func (h *Hooks) OnShutdown(handler ...OnShutdownHandler) {
 	h.app.mutex.Lock()
 	h.onShutdown = append(h.onShutdown, handler...)
 	h.app.mutex.Unlock()
@@ -66,7 +70,7 @@ func (h *Hooks) executeOnRouteHooks(route Route) error {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
 
-		if err := v(ctx, Map{"route": route}); err != nil {
+		if err := v(ctx, route); err != nil {
 			return err
 		}
 	}
@@ -79,7 +83,7 @@ func (h *Hooks) executeOnNameHooks(route Route) error {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
 
-		if err := v(ctx, Map{"route": route}); err != nil {
+		if err := v(ctx, route); err != nil {
 			return err
 		}
 	}
@@ -92,7 +96,7 @@ func (h *Hooks) executeOnGroupNameHooks(group Group) error {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
 
-		if err := v(ctx, Map{"group": group}); err != nil {
+		if err := v(ctx, group); err != nil {
 			return err
 		}
 	}
@@ -105,7 +109,7 @@ func (h *Hooks) executeOnListenHooks() error {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
 
-		if err := v(ctx, Map{}); err != nil {
+		if err := v(ctx); err != nil {
 			return err
 		}
 	}
@@ -118,6 +122,6 @@ func (h *Hooks) executeOnShutdownHooks() {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
 
-		_ = v(ctx, Map{})
+		_ = v(ctx)
 	}
 }

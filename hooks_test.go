@@ -19,8 +19,8 @@ func Test_Hook_OnRoute(t *testing.T) {
 
 	app := New()
 
-	app.Hooks().OnRoute(func(c *Ctx, m Map) error {
-		utils.AssertEqual(t, "", m["route"].(Route).Name)
+	app.Hooks().OnRoute(func(c *Ctx, r Route) error {
+		utils.AssertEqual(t, "", r.Name)
 
 		return nil
 	})
@@ -41,8 +41,8 @@ func Test_Hook_OnName(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnName(func(c *Ctx, m Map) error {
-		buf.WriteString(m["route"].(Route).Name)
+	app.Hooks().OnName(func(c *Ctx, r Route) error {
+		buf.WriteString(r.Name)
 
 		return nil
 	})
@@ -68,7 +68,7 @@ func Test_Hook_OnName_Error(t *testing.T) {
 		}
 	}()
 
-	app.Hooks().OnName(func(c *Ctx, m Map) error {
+	app.Hooks().OnName(func(c *Ctx, r Route) error {
 		return errors.New("unknown error")
 	})
 
@@ -83,8 +83,8 @@ func Test_Hook_OnGroupName(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnGroupName(func(c *Ctx, m Map) error {
-		buf.WriteString(m["group"].(Group).name)
+	app.Hooks().OnGroupName(func(c *Ctx, g Group) error {
+		buf.WriteString(g.name)
 
 		return nil
 	})
@@ -106,7 +106,7 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 		}
 	}()
 
-	app.Hooks().OnGroupName(func(c *Ctx, m Map) error {
+	app.Hooks().OnGroupName(func(c *Ctx, g Group) error {
 		return errors.New("unknown error")
 	})
 
@@ -122,7 +122,7 @@ func Test_Hook_OnShutdown(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnShutdown(func(c *Ctx, m Map) error {
+	app.Hooks().OnShutdown(func(c *Ctx) error {
 		buf.WriteString("shutdowning")
 
 		return nil
@@ -142,7 +142,7 @@ func Test_Hook_OnListen(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnListen(func(c *Ctx, m Map) error {
+	app.Hooks().OnListen(func(c *Ctx) error {
 		buf.WriteString("ready")
 
 		return nil
