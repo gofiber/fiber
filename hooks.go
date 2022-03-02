@@ -6,8 +6,9 @@ import (
 
 // Handlers define a function to create hooks for Fiber.
 type OnRouteHandler = func(*Ctx, Route) error
-type OnNameHandler = func(*Ctx, Route) error
-type OnGroupNameHandler = func(*Ctx, Group) error
+type OnNameHandler = OnRouteHandler
+type OnGroupHandler = func(*Ctx, Group) error
+type OnGroupNameHandler = OnGroupHandler
 type OnListenHandler = Handler
 type OnShutdownHandler = Handler
 
@@ -18,13 +19,14 @@ type Hooks struct {
 	// Hooks
 	onRoute     []OnRouteHandler
 	onName      []OnNameHandler
+	onGroup     []OnGroupHandler
 	onGroupName []OnGroupNameHandler
 	onListen    []OnListenHandler
 	onShutdown  []OnShutdownHandler
 }
 
 // OnRoute is a hook to execute user functions on each route registeration.
-// Also you can get route properties by "route" key of map.
+// Also you can get route properties by route parameter.
 func (h *Hooks) OnRoute(handler ...OnRouteHandler) {
 	h.app.mutex.Lock()
 	h.onRoute = append(h.onRoute, handler...)
@@ -32,7 +34,7 @@ func (h *Hooks) OnRoute(handler ...OnRouteHandler) {
 }
 
 // OnName is a hook to execute user functions on each route naming.
-// Also you can get route properties by "route" key of map.
+// Also you can get route properties by route parameter.
 //
 // WARN: OnName only works with naming routes, not groups.
 func (h *Hooks) OnName(handler ...OnNameHandler) {
@@ -41,8 +43,16 @@ func (h *Hooks) OnName(handler ...OnNameHandler) {
 	h.app.mutex.Unlock()
 }
 
+// OnGroup is a hook to execute user functions on each group registeration.
+// Also you can get route properties by group parameter.
+func (h *Hooks) OnGroup(handler ...OnGroupHandler) {
+	h.app.mutex.Lock()
+	h.onGroup = append(h.onGroup, handler...)
+	h.app.mutex.Unlock()
+}
+
 // OnGroupName is a hook to execute user functions on each group naming.
-// Also you can get group properties by "group" key of map.
+// Also you can get group properties by group parameter.
 //
 // WARN: OnGroupName only works with naming groups, not routes.
 func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler) {
@@ -84,6 +94,19 @@ func (h *Hooks) executeOnNameHooks(route Route) error {
 		defer h.app.ReleaseCtx(ctx)
 
 		if err := v(ctx, route); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (h *Hooks) executeOnGroupHooks(group Group) error {
+	for _, v := range h.onGroup {
+		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer h.app.ReleaseCtx(ctx)
+
+		if err := v(ctx, group); err != nil {
 			return err
 		}
 	}

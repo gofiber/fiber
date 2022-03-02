@@ -469,6 +469,7 @@ func New(config ...Config) *App {
 	app.hooks = Hooks{
 		app:         app,
 		onRoute:     make([]OnRouteHandler, 0),
+		onGroup:     make([]OnGroupHandler, 0),
 		onGroupName: make([]OnGroupNameHandler, 0),
 		onName:      make([]OnNameHandler, 0),
 		onListen:    make([]OnListenHandler, 0),
@@ -579,7 +580,7 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 // Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
-	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.prefix) {
+	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.Prefix) {
 		app.latestRoute.Name = app.latestGroup.name + name
 	} else {
 		app.latestRoute.Name = name
@@ -716,7 +717,12 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
 		app.register(methodUse, prefix, handlers...)
 	}
-	return &Group{prefix: prefix, app: app}
+	grp := &Group{Prefix: prefix, app: app}
+	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
+		panic(err)
+	}
+
+	return grp
 }
 
 // Route is used to define routes with a common prefix inside the common function.

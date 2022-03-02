@@ -75,6 +75,26 @@ func Test_Hook_OnName_Error(t *testing.T) {
 	app.Get("/", testSimpleHandler).Name("index")
 }
 
+func Test_Hook_OnGroup(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app.Hooks().OnGroup(func(c *Ctx, g Group) error {
+		buf.WriteString(g.Prefix)
+
+		return nil
+	})
+
+	grp := app.Group("/x").Name("x.")
+	grp.Group("/a")
+
+	utils.AssertEqual(t, "/x/x/a", buf.String())
+}
+
 func Test_Hook_OnGroupName(t *testing.T) {
 	t.Parallel()
 
