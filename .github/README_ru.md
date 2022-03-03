@@ -56,10 +56,10 @@
     <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
   </a>
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -79,7 +79,7 @@
   </a>
 </p>
 <p align="center">
-  <strong>Fiber</strong> — это <strong>веб фреймворк</strong>, который был вдохновлен <a href="https://github.com/expressjs/express">Express</a> и основан на <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, самом быстром HTTP-движке написанном на <a href="https://golang.org/doc/">Go</a>. Фреймворк был разработан с целью <strong>упростить</strong> процесс <strong>быстрой</strong> разработки <strong>высокопроизводительных</strong> веб-приложений с <strong>нулевым распределением памяти</strong>.
+  <strong>Fiber</strong> — это <strong>веб фреймворк</strong>, который был вдохновлен <a href="https://github.com/expressjs/express">Express</a> и основан на <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, самом быстром HTTP-движке написанном на <a href="https://go.dev/doc/">Go</a>. Фреймворк был разработан с целью <strong>упростить</strong> процесс <strong>быстрой</strong> разработки <strong>высокопроизводительных</strong> веб-приложений с <strong>нулевым распределением памяти</strong>.
 </p>
 
 ## ⚡️ Быстрый старт
@@ -111,9 +111,9 @@ func main() {
 
 ## ⚙️ Установка
 
-Убедитесь, что Go установлен ([скачать](https://golang.org/dl/)). Требуется версия `1.14` или выше.
+Убедитесь, что Go установлен ([скачать](https://go.dev/dl/)). Требуется версия `1.14` или выше.
 
-Инициализируйте проект, создав папку, а затем запустив `go mod init github.com/your/repo` ([подробнее](https://blog.golang.org/using-go-modules)) внутри этой папки. Далее, установите Fiber с помощью команды [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
+Инициализируйте проект, создав папку, а затем запустив `go mod init github.com/your/repo` ([подробнее](https://go.dev/blog/using-go-modules)) внутри этой папки. Далее, установите Fiber с помощью команды [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -137,7 +137,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 💡 Философия
 
-Новые Go-программисты, которые переключаются с [Node.js](https://nodejs.org/en/about/) на [Go](https://golang.org/doc/), имеют дело с очень извилистой кривой обучения, прежде чем они смогут начать создавать свои веб-приложения или микросервисы. Fiber, как **веб-фреймворк**, был создан с идеей **минимализма** и следовал **принципу UNIX**, так что новички смогут быстро войти в мир Go без особых проблем.
+Новые Go-программисты, которые переключаются с [Node.js](https://nodejs.org/en/about/) на [Go](https://go.dev/doc/), имеют дело с очень извилистой кривой обучения, прежде чем они смогут начать создавать свои веб-приложения или микросервисы. Fiber, как **веб-фреймворк**, был создан с идеей **минимализма** и следовал **принципу UNIX**, так что новички смогут быстро войти в мир Go без особых проблем.
 
 Fiber **вдохновлен** Express, самым популярным веб фреймворком в Интернете. Мы объединили **простоту** Express и **чистую производительность** Go. Если вы когда-либо реализовывали веб-приложение на Node.js (_с использованием Express или аналогичного фреймворка_), то многие методы и принципы покажутся вам **очень знакомыми**.
 
@@ -282,7 +282,7 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-Если не указано ни одного движка для views, Fiber использует [html/template](https://golang.org/pkg/html/template/).
+Если не указано ни одного движка для views, Fiber использует [html/template](https://pkg.go.dev/html/template/).
 
 Вы можете использовать движки [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) или [pug](https://github.com/Joker/jade) и другие...
 

@@ -56,10 +56,10 @@
     <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
   </a>
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -80,7 +80,7 @@
 </p>
 <p align="center">
  <div dir="rtl">
-  <b>Fiber</b> هو <b>إطار ويب</b>  مستوحى من <a href="https://github.com/expressjs/express">Express</a>   مبني على <a href="https://github.com/valyala/fasthttp">Fasthttp</a>,  <b>اسرع</b> محرك HTTP  لـ <a href="https://golang.org/doc/">Go</a>. مصمم ليكون <b>سهل</b> لأغراض <b>السرعة</b> مع عدم  <b>تخصيص ذاكرة والأداء</b> و <b>الاداء العالي</b> دائما.
+  <b>Fiber</b> هو <b>إطار ويب</b>  مستوحى من <a href="https://github.com/expressjs/express">Express</a>   مبني على <a href="https://github.com/valyala/fasthttp">Fasthttp</a>,  <b>اسرع</b> محرك HTTP  لـ <a href="https://go.dev/doc/">Go</a>. مصمم ليكون <b>سهل</b> لأغراض <b>السرعة</b> مع عدم  <b>تخصيص ذاكرة والأداء</b> و <b>الاداء العالي</b> دائما.
  <div dir="rtl">
 </p>
 
@@ -117,10 +117,10 @@ func main() {
 
 ## ⚙️ تثبيت
 
-تأكد من تثبيت Go ([تحميل](https://golang.org/dl/)). الإصدار `1.14` أو أعلى مطلوب.
+تأكد من تثبيت Go ([تحميل](https://go.dev/dl/)). الإصدار `1.14` أو أعلى مطلوب.
 
-ابدأ مشروعك بإنشاء مجلد ثم تشغيله `go mod init github.com/your/repo` ([أعرف أكثر](https://blog.golang.org/using-go-modules))
-داخل المجلد. ثم قم بتثبيت Fiber باستخدام ملف [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) أمر:
+ابدأ مشروعك بإنشاء مجلد ثم تشغيله `go mod init github.com/your/repo` ([أعرف أكثر](https://go.dev/blog/using-go-modules))
+داخل المجلد. ثم قم بتثبيت Fiber باستخدام ملف [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) أمر:
 
 </div>
 
@@ -150,7 +150,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 💡 فلسفة
 
-قوفر(مستخدمي لغة Go الجدد) جديد يجعل التبديل من [Node.js](https://nodejs.org/en/about/) الى [Go](https://golang.org/doc/)تتعامل مع منحنى التعلم قبل أن يتمكنوا من البدء في بناءتطبيقات الويب . Fiber, كـ **إطار الويب**, تم إنشاؤه بفكرة **minimalism** ويتبع **UNIX way**, حتى يتمكن القوفرون الجدد من دخول عالم Go بترحيب حار وموثوق.
+قوفر(مستخدمي لغة Go الجدد) جديد يجعل التبديل من [Node.js](https://nodejs.org/en/about/) الى [Go](https://go.dev/doc/)تتعامل مع منحنى التعلم قبل أن يتمكنوا من البدء في بناءتطبيقات الويب . Fiber, كـ **إطار الويب**, تم إنشاؤه بفكرة **minimalism** ويتبع **UNIX way**, حتى يتمكن القوفرون الجدد من دخول عالم Go بترحيب حار وموثوق.
 
 Fiber هو **مستوحى** من Express, إطار الويب الأكثر شعبية على الإنترنت. قمنا بدمج **سهولة** الـ Express و **الأداء الخام** لـ Go. إذا كنت قد قمت بتطبيق تطبيق ويب في Node.js (_using Express or similar_), ستظهر العديد من الأساليب والمبادئ **الاكثر شيوعاً** لك.
 
@@ -312,7 +312,7 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
+Fiber defaults to the [html/template](https://pkg.go.dev/html/template/) when no view engine is set.
 
 If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
 

@@ -56,10 +56,10 @@
     <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
   </a> -->
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -79,7 +79,7 @@
   </a>
 </p>
 <p align="center">
-<strong>Fiber</strong> è un <strong>framework web</strong> inspirato a <a href="https://github.com/expressjs/express">Express</a> costruito sopra <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, un motore HTTP <strong>molto veloce</strong> per <a href="https://golang.org/doc/">Go</a>. Progettato per <strong>semplificare</strong> le cose per uno sviluppo <strong>veloce</strong> con <strong>zero allocazione di memoria</strong> e le <strong>prestazioni</strong> in mente.
+<strong>Fiber</strong> è un <strong>framework web</strong> inspirato a <a href="https://github.com/expressjs/express">Express</a> costruito sopra <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, un motore HTTP <strong>molto veloce</strong> per <a href="https://go.dev/doc/">Go</a>. Progettato per <strong>semplificare</strong> le cose per uno sviluppo <strong>veloce</strong> con <strong>zero allocazione di memoria</strong> e le <strong>prestazioni</strong> in mente.
 </p>
 
 ## ⚡️ Avvio rapido
@@ -111,9 +111,9 @@ Questi test sono stati eseguiti da [TechEmpower](https://www.techempower.com/ben
 
 ## ⚙️ Installazione
 
-Assicurati di avere Go ([download](https://golang.org/dl/)) installato. Versione `1.14` o superiore.
+Assicurati di avere Go ([download](https://go.dev/dl/)) installato. Versione `1.14` o superiore.
 
-Inizializza il tuo progetto creando una cartella e successivamente lanciando `go mod init github.com/your/repo` ([per maggiori info](https://blog.golang.org/using-go-modules)) da dentro la cartella. Dopo installa Fiber con il comando [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
+Inizializza il tuo progetto creando una cartella e successivamente lanciando `go mod init github.com/your/repo` ([per maggiori info](https://go.dev/blog/using-go-modules)) da dentro la cartella. Dopo installa Fiber con il comando [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -137,7 +137,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 💡 Filosofia
 
-I nuovi gopher che passano da [Node.js](https://nodejs.org/en/about/) a [Go](https://golang.org/doc/) hanno a che fare con una curva di apprendimento prima di poter iniziare a creare le proprie applicazioni web o microservizi. Fiber, come **web framework** , è stato creato con l'idea di **minimalismo** e seguendo lo '**UNIX way**' , così i nuovi gopher posso entrare rapidamente nel mondo di Go con un caldo e fidato benvenuto.
+I nuovi gopher che passano da [Node.js](https://nodejs.org/en/about/) a [Go](https://go.dev/doc/) hanno a che fare con una curva di apprendimento prima di poter iniziare a creare le proprie applicazioni web o microservizi. Fiber, come **web framework** , è stato creato con l'idea di **minimalismo** e seguendo lo '**UNIX way**' , così i nuovi gopher posso entrare rapidamente nel mondo di Go con un caldo e fidato benvenuto.
 
 Fiber è **inspirato** da Express, il web framework più popolare su internet. Abbiamo combiniamo la **facilità** di Express e **le pure prestazioni** di Go. Se hai mai implementato una applicazione web in Node.js (_utilizzando Express o simili_), allora i tanti metodi e principi ti saranno **molto familiari**.
 
@@ -281,7 +281,7 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-Fiber usa di default [html/template](https://golang.org/pkg/html/template/) quando nessun view engine è stato impostato.
+Fiber usa di default [html/template](https://pkg.go.dev/html/template/) quando nessun view engine è stato impostato.
 
 Se vuoi eseguire parzialmente o utilizzare un engine differente come [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) o [pug](https://github.com/Joker/jade) ecc..
 

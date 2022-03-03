@@ -56,10 +56,10 @@
     <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
   </a>
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -79,7 +79,7 @@
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b>是移植NodeJS的<a href="https://github.com/expressjs/express">Express</a><b>框架</b>改以<a href="https://golang.org/doc/">Go</a>語言編寫。<b>本套件基於</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>，Fasthttp有<b>不分配記憶體空間</b>和<b>Request Pool</b>的特性，在網路效能方面有著顯著的效能。
+  <b>Fiber</b>是移植NodeJS的<a href="https://github.com/expressjs/express">Express</a><b>框架</b>改以<a href="https://go.dev/doc/">Go</a>語言編寫。<b>本套件基於</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>，Fasthttp有<b>不分配記憶體空間</b>和<b>Request Pool</b>的特性，在網路效能方面有著顯著的效能。
 </p>
 
 ## ⚡️ 快速入門
@@ -111,9 +111,9 @@ func main() {
 
 ## ⚙️ 安裝
 
-確保已安裝 Go 版本 `1.14` 或以上 ([下載](https://golang.org/dl/))。
+確保已安裝 Go 版本 `1.14` 或以上 ([下載](https://go.dev/dl/))。
 
-建立文件夾並在文件夾內執行 `go mod init github.com/your/repo` ([了解更多](https://blog.golang.org/using-go-modules)) 指令建立專案，然後使用 [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 指令下載 fiber :
+建立文件夾並在文件夾內執行 `go mod init github.com/your/repo` ([了解更多](https://go.dev/blog/using-go-modules)) 指令建立專案，然後使用 [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 指令下載 fiber :
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -137,7 +137,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 💡 理念
 
-不少[Node.js](https://nodejs.org/en/about/)的工程師跳到[Go](https://golang.org/doc/)必須學習一些知識，因此做了一個跟 Express 一樣的 Fiber 省這些麻煩。設計還是照原本的**極簡主義**還有遵循**UNIX 慣例**，因此新手們可以**無痛**迅速進入 Go 的世界。
+不少[Node.js](https://nodejs.org/en/about/)的工程師跳到[Go](https://go.dev/doc/)必須學習一些知識，因此做了一個跟 Express 一樣的 Fiber 省這些麻煩。設計還是照原本的**極簡主義**還有遵循**UNIX 慣例**，因此新手們可以**無痛**迅速進入 Go 的世界。
 
 Fiber **受到** 網路上最流行的 Web 框架 ExpressJS**啟發**，結合 Express 的**易用性**和 Go 的**高效能**。若你之前用過 Node.js 寫 Web 應用(_使用 ExpressJS/Koa 或類似工具_)，那你已經**上手**了。
 
@@ -284,7 +284,7 @@ func main() {
 📖 [引擎](https://github.com/gofiber/template)
 📖 [渲染](https://docs.gofiber.io/api/ctx#render)
 
-當不指定樣板引擎時 Fiber 預設用[html/template](https://golang.org/pkg/html/template/)。
+當不指定樣板引擎時 Fiber 預設用[html/template](https://pkg.go.dev/html/template/)。
 
 如果你想要執行部份或用別的樣板引擎[amber](https://github.com/eknkc/amber)、[handlebars](https://github.com/aymerick/raymond)、[mustache](https://github.com/cbroglie/mustache)、[pug](https://github.com/Joker/jade)之類…請參考符合多樣板引擎的[樣板](https://github.com/gofiber/template)套件。
 
