@@ -1,6 +1,7 @@
 package decoder
 
 import (
+	"bytes"
 	"reflect"
 	"unicode"
 	"unicode/utf16"
@@ -308,49 +309,30 @@ func (d *stringDecoder) decodeByte(buf []byte, cursor int64) ([]byte, int64, err
 			cursor++
 			start := cursor
 			b := (*sliceHeader)(unsafe.Pointer(&buf)).data
+			escaped := 0
 			for {
 				switch char(b, cursor) {
 				case '\\':
+					escaped++
 					cursor++
 					switch char(b, cursor) {
-					case '"':
-						buf[cursor] = '"'
-						buf = append(buf[:cursor-1], buf[cursor:]...)
-					case '\\':
-						buf[cursor] = '\\'
-						buf = append(buf[:cursor-1], buf[cursor:]...)
-					case '/':
-						buf[cursor] = '/'
-						buf = append(buf[:cursor-1], buf[cursor:]...)
-					case 'b':
-						buf[cursor] = '\b'
-						buf = append(buf[:cursor-1], buf[cursor:]...)
-					case 'f':
-						buf[cursor] = '\f'
-						buf = append(buf[:cursor-1], buf[cursor:]...)
-					case 'n':
-						buf[cursor] = '\n'
-						buf = append(buf[:cursor-1], buf[cursor:]...)
-					case 'r':
-						buf[cursor] = '\r'
-						buf = append(buf[:cursor-1], buf[cursor:]...)
-					case 't':
-						buf[cursor] = '\t'
-						buf = append(buf[:cursor-1], buf[cursor:]...)
+					case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
+						cursor++
 					case 'u':
 						buflen := int64(len(buf))
 						if cursor+5 >= buflen {
 							return nil, 0, errors.ErrUnexpectedEndOfJSON("escaped string", cursor)
 						}
-						code := unicodeToRune(buf[cursor+1 : cursor+5])
-						unicode := []byte(string(code))
-						buf = append(append(buf[:cursor-1], unicode...), buf[cursor+5:]...)
+						cursor += 5
 					default:
 						return nil, 0, errors.ErrUnexpectedEndOfJSON("escaped string", cursor)
 					}
 					continue
 				case '"':
 					literal := buf[start:cursor]
+					if escaped > 0 {
+						literal = literal[:unescapeString(literal, escaped)]
+					}
 					cursor++
 					return literal, cursor, nil
 				case nul:
@@ -368,4 +350,34 @@ func (d *stringDecoder) decodeByte(buf []byte, cursor int64) ([]byte, int64, err
 			return nil, 0, errors.ErrInvalidBeginningOfValue(buf[cursor], cursor)
 		}
 	}
+}
+
+var unescapeMap = [256]byte{
+	'"':  '"',
+	'\\': '\\',
+	'/':  '/',
+	'b':  '\b',
+	'f':  '\f',
+	'n':  '\n',
+	'r':  '\r',
+	't':  '\t',
+}
+
+func unescapeString(buf []byte, escaped int) int {
+	cursor := 0
+	for i := 0; i < escaped; i++ {
+		cursor += bytes.IndexByte(buf[cursor:], '\\')
+		c := buf[cursor+1]
+		if c == 'u' {
+			code := unicodeToRune(buf[cursor+2 : cursor+6])
+			unicode := []byte(string(code))
+			buf = append(append(buf[:cursor], unicode...), buf[cursor+6:]...)
+			cursor += len(unicode)
+		} else {
+			buf[cursor+1] = unescapeMap[c]
+			buf = append(buf[:cursor], buf[cursor+1:]...)
+			cursor++
+		}
+	}
+	return len(buf)
 }
