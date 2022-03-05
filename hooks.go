@@ -44,7 +44,7 @@ func (h *Hooks) OnName(handler ...OnNameHandler) {
 }
 
 // OnGroup is a hook to execute user functions on each group registeration.
-// Also you can get route properties by group parameter.
+// Also you can get group properties by group parameter.
 func (h *Hooks) OnGroup(handler ...OnGroupHandler) {
 	h.app.mutex.Lock()
 	h.onGroup = append(h.onGroup, handler...)
