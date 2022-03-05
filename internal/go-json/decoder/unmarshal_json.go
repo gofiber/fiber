@@ -1,6 +1,7 @@
 package decoder
 
 import (
+	"context"
 	"encoding/json"
 	"unsafe"
 
@@ -46,13 +47,20 @@ func (d *unmarshalJSONDecoder) DecodeStream(s *Stream, depth int64, p unsafe.Poi
 		typ: d.typ,
 		ptr: p,
 	}))
-	if (s.Option.Flags & ContextOption) != 0 {
-		if err := v.(unmarshalerContext).UnmarshalJSON(s.Option.Context, dst); err != nil {
+	switch v := v.(type) {
+	case unmarshalerContext:
+		var ctx context.Context
+		if (s.Option.Flags & ContextOption) != 0 {
+			ctx = s.Option.Context
+		} else {
+			ctx = context.Background()
+		}
+		if err := v.UnmarshalJSON(ctx, dst); err != nil {
 			d.annotateError(s.cursor, err)
 			return err
 		}
-	} else {
-		if err := v.(json.Unmarshaler).UnmarshalJSON(dst); err != nil {
+	case json.Unmarshaler:
+		if err := v.UnmarshalJSON(dst); err != nil {
 			d.annotateError(s.cursor, err)
 			return err
 		}
