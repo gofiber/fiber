@@ -153,14 +153,16 @@ func New(config ...Config) fiber.Handler {
 
 		// Store all end-to-end headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
-		c.Response().Header.VisitAll(
-			func(key []byte, value []byte) {
-				keyS := string(key)
-				if _, isHopbyHop := ignoreHeaders[keyS]; !isHopbyHop {
-					e.e2eHeaders[keyS] = value
-				}
-			},
-		)
+		if cfg.E2EHeaders {
+			c.Response().Header.VisitAll(
+				func(key []byte, value []byte) {
+					keyS := string(key)
+					if _, isHopbyHop := ignoreHeaders[keyS]; !isHopbyHop {
+						e.e2eHeaders[keyS] = value
+					}
+				},
+			)
+		}
 
 		// default cache expiration
 		expiration := uint64(cfg.Expiration.Seconds())

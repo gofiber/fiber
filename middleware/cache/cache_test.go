@@ -304,7 +304,9 @@ func Test_CustomExpiration(t *testing.T) {
 
 func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 	app := fiber.New()
-	app.Use(New())
+	app.Use(New(Config{
+		E2EHeaders: true,
+	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		c.Response().Header.Add("X-Foobar", "foobar")
