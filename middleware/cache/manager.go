@@ -40,7 +40,7 @@ func newManager(storage fiber.Storage) *manager {
 		// Use provided storage if provided
 		manager.storage = storage
 	} else {
-		// Fallback too memory storage
+		// Fallback to memory storage
 		manager.memory = memory.New()
 	}
 	return manager
