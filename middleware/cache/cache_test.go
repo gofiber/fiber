@@ -302,6 +302,26 @@ func Test_CustomExpiration(t *testing.T) {
 	utils.AssertEqual(t, 6000, newCacheTime)
 }
 
+func Test_AdditionalE2EResponseHeaders(t *testing.T) {
+	app := fiber.New()
+	app.Use(New())
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		c.Response().Header.Add("X-Foobar", "foobar")
+		return c.SendString("hi")
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "foobar", resp.Header.Get("X-Foobar"))
+
+	req = httptest.NewRequest("GET", "/", nil)
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "foobar", resp.Header.Get("X-Foobar"))
+}
+
 func Test_CacheHeader(t *testing.T) {
 	app := fiber.New()
 
