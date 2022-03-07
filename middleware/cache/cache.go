@@ -149,11 +149,11 @@ func New(config ...Config) fiber.Handler {
 		e.status = c.Response().StatusCode()
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
-		e.headers = make(map[string][]byte)
 
 		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
 		if cfg.StoreResponseHeaders {
+			e.headers = make(map[string][]byte)
 			c.Response().Header.VisitAll(
 				func(key []byte, value []byte) {
 					keyS := string(key)
