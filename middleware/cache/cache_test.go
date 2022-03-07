@@ -305,7 +305,7 @@ func Test_CustomExpiration(t *testing.T) {
 func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
-		E2EHeaders: true,
+		StoreResponseHeaders: true,
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -501,7 +501,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 	app := fiber.New()
 	app.Use(New(Config{
-		E2EHeaders: true,
+		StoreResponseHeaders: true,
 	}))
 
 	app.Get("/demo", func(c *fiber.Ctx) error {

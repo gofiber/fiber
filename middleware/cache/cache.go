@@ -109,7 +109,7 @@ func New(config ...Config) fiber.Handler {
 			if len(e.cencoding) > 0 {
 				c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
 			}
-			for k, v := range e.e2eHeaders {
+			for k, v := range e.headers {
 				c.Response().Header.AddBytesV(k, v)
 			}
 			// Set Cache-Control header if enabled
@@ -149,16 +149,16 @@ func New(config ...Config) fiber.Handler {
 		e.status = c.Response().StatusCode()
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
-		e.e2eHeaders = make(map[string][]byte)
+		e.headers = make(map[string][]byte)
 
-		// Store all end-to-end headers
+		// Store all response headers
 		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
-		if cfg.E2EHeaders {
+		if cfg.StoreResponseHeaders {
 			c.Response().Header.VisitAll(
 				func(key []byte, value []byte) {
 					keyS := string(key)
 					if _, isHopbyHop := ignoreHeaders[keyS]; !isHopbyHop {
-						e.e2eHeaders[keyS] = value
+						e.headers[keyS] = value
 					}
 				},
 			)

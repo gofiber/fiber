@@ -13,12 +13,12 @@ import (
 // don't forget to replace the msgp import path to:
 // "github.com/gofiber/fiber/v2/internal/msgp"
 type item struct {
-	body       []byte
-	ctype      []byte
-	cencoding  []byte
-	status     int
-	exp        uint64
-	e2eHeaders map[string][]byte
+	body      []byte
+	ctype     []byte
+	cencoding []byte
+	status    int
+	exp       uint64
+	headers   map[string][]byte
 }
 
 //msgp:ignore manager
@@ -62,7 +62,7 @@ func (m *manager) release(e *item) {
 	e.ctype = nil
 	e.status = 0
 	e.exp = 0
-	e.e2eHeaders = nil
+	e.headers = nil
 	m.pool.Put(e)
 }
 
