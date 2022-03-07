@@ -447,27 +447,28 @@ func (app *App) buildTree() *App {
 	}
 	// loop all the methods and stacks and create the prefix tree
 	for m := range intMethod {
-		app.treeStack[m] = make(map[string][]*Route)
+		tsMap := make(map[string][]*Route)
 		for _, route := range app.stack[m] {
 			treePath := ""
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
 				treePath = route.routeParser.segs[0].Const[:3]
 			}
 			// create tree stack
-			app.treeStack[m][treePath] = append(app.treeStack[m][treePath], route)
+			tsMap[treePath] = append(tsMap[treePath], route)
 		}
+		app.treeStack[m] = tsMap
 	}
 	// loop the methods and tree stacks and add global stack and sort everything
 	for m := range intMethod {
-		for treePart := range app.treeStack[m] {
+		tsMap := app.treeStack[m]
+		for treePart := range tsMap {
 			if treePart != "" {
 				// merge global tree routes in current tree stack
-				app.treeStack[m][treePart] = uniqueRouteStack(append(app.treeStack[m][treePart], app.treeStack[m][""]...))
+				tsMap[treePart] = uniqueRouteStack(append(tsMap[treePart], tsMap[""]...))
 			}
 			// sort tree slices with the positions
-			sort.Slice(app.treeStack[m][treePart], func(i, j int) bool {
-				return app.treeStack[m][treePart][i].pos < app.treeStack[m][treePart][j].pos
-			})
+			slc := tsMap[treePart]
+			sort.Slice(slc, func(i, j int) bool { return slc[i].pos < slc[j].pos })
 		}
 	}
 	app.routesRefreshed = false
