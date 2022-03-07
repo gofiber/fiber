@@ -582,6 +582,15 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	}
 }
 
+// go test -run=^$ -bench=Benchmark_Startup_Process -benchmem -count=9
+func Benchmark_Startup_Process(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		app := New()
+		registerDummyRoutes(app)
+		app.startupProcess()
+	}
+}
+
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Next -benchmem -count=4
 func Benchmark_Router_Next(b *testing.B) {
 	app := New()
