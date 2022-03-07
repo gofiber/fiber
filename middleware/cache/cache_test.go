@@ -497,3 +497,31 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 	utils.AssertEqual(b, true, len(fctx.Response.Body()) > 30000)
 }
+
+func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{
+		E2EHeaders: true,
+	}))
+
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		c.Response().Header.Add("X-Foobar", "foobar")
+		return c.SendStatus(418)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/demo")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, []byte("foobar"), fctx.Response.Header.Peek("X-Foobar"))
+}
