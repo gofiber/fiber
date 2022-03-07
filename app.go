@@ -114,7 +114,7 @@ type App struct {
 	// Mounted and main apps
 	appList map[string]*App
 	// Hooks
-	hooks Hooks
+	hooks hooks
 	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
@@ -466,15 +466,7 @@ func New(config ...Config) *App {
 	}
 
 	// Define hooks
-	app.hooks = Hooks{
-		app:         app,
-		onRoute:     make([]OnRouteHandler, 0),
-		onGroup:     make([]OnGroupHandler, 0),
-		onGroupName: make([]OnGroupNameHandler, 0),
-		onName:      make([]OnNameHandler, 0),
-		onListen:    make([]OnListenHandler, 0),
-		onShutdown:  make([]OnShutdownHandler, 0),
-	}
+	app.hooks = newHooks(app)
 
 	// Override config if provided
 	if len(config) > 0 {
@@ -895,7 +887,7 @@ func (app *App) Server() *fasthttp.Server {
 }
 
 // Hooks returns the hook struct to register hooks.
-func (app *App) Hooks() *Hooks {
+func (app *App) Hooks() *hooks {
 	return &app.hooks
 }
 

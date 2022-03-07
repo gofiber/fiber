@@ -12,7 +12,7 @@ type OnGroupNameHandler = OnGroupHandler
 type OnListenHandler = Handler
 type OnShutdownHandler = Handler
 
-type Hooks struct {
+type hooks struct {
 	// Embed app
 	app *App
 
@@ -25,9 +25,21 @@ type Hooks struct {
 	onShutdown  []OnShutdownHandler
 }
 
+func newHooks(app *App) hooks {
+	return hooks{
+		app:         app,
+		onRoute:     make([]OnRouteHandler, 0),
+		onGroup:     make([]OnGroupHandler, 0),
+		onGroupName: make([]OnGroupNameHandler, 0),
+		onName:      make([]OnNameHandler, 0),
+		onListen:    make([]OnListenHandler, 0),
+		onShutdown:  make([]OnShutdownHandler, 0),
+	}
+}
+
 // OnRoute is a hook to execute user functions on each route registeration.
 // Also you can get route properties by route parameter.
-func (h *Hooks) OnRoute(handler ...OnRouteHandler) {
+func (h *hooks) OnRoute(handler ...OnRouteHandler) {
 	h.app.mutex.Lock()
 	h.onRoute = append(h.onRoute, handler...)
 	h.app.mutex.Unlock()
@@ -37,7 +49,7 @@ func (h *Hooks) OnRoute(handler ...OnRouteHandler) {
 // Also you can get route properties by route parameter.
 //
 // WARN: OnName only works with naming routes, not groups.
-func (h *Hooks) OnName(handler ...OnNameHandler) {
+func (h *hooks) OnName(handler ...OnNameHandler) {
 	h.app.mutex.Lock()
 	h.onName = append(h.onName, handler...)
 	h.app.mutex.Unlock()
@@ -45,7 +57,7 @@ func (h *Hooks) OnName(handler ...OnNameHandler) {
 
 // OnGroup is a hook to execute user functions on each group registeration.
 // Also you can get group properties by group parameter.
-func (h *Hooks) OnGroup(handler ...OnGroupHandler) {
+func (h *hooks) OnGroup(handler ...OnGroupHandler) {
 	h.app.mutex.Lock()
 	h.onGroup = append(h.onGroup, handler...)
 	h.app.mutex.Unlock()
@@ -55,27 +67,27 @@ func (h *Hooks) OnGroup(handler ...OnGroupHandler) {
 // Also you can get group properties by group parameter.
 //
 // WARN: OnGroupName only works with naming groups, not routes.
-func (h *Hooks) OnGroupName(handler ...OnGroupNameHandler) {
+func (h *hooks) OnGroupName(handler ...OnGroupNameHandler) {
 	h.app.mutex.Lock()
 	h.onGroupName = append(h.onGroupName, handler...)
 	h.app.mutex.Unlock()
 }
 
 // OnListen is a hook to execute user functions on Listen, ListenTLS, Listener.
-func (h *Hooks) OnListen(handler ...OnListenHandler) {
+func (h *hooks) OnListen(handler ...OnListenHandler) {
 	h.app.mutex.Lock()
 	h.onListen = append(h.onListen, handler...)
 	h.app.mutex.Unlock()
 }
 
 // OnShutdown is a hook to execute user functions after Shutdown.
-func (h *Hooks) OnShutdown(handler ...OnShutdownHandler) {
+func (h *hooks) OnShutdown(handler ...OnShutdownHandler) {
 	h.app.mutex.Lock()
 	h.onShutdown = append(h.onShutdown, handler...)
 	h.app.mutex.Unlock()
 }
 
-func (h *Hooks) executeOnRouteHooks(route Route) error {
+func (h *hooks) executeOnRouteHooks(route Route) error {
 	for _, v := range h.onRoute {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
@@ -88,7 +100,7 @@ func (h *Hooks) executeOnRouteHooks(route Route) error {
 	return nil
 }
 
-func (h *Hooks) executeOnNameHooks(route Route) error {
+func (h *hooks) executeOnNameHooks(route Route) error {
 	for _, v := range h.onName {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
@@ -101,7 +113,7 @@ func (h *Hooks) executeOnNameHooks(route Route) error {
 	return nil
 }
 
-func (h *Hooks) executeOnGroupHooks(group Group) error {
+func (h *hooks) executeOnGroupHooks(group Group) error {
 	for _, v := range h.onGroup {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
@@ -114,7 +126,7 @@ func (h *Hooks) executeOnGroupHooks(group Group) error {
 	return nil
 }
 
-func (h *Hooks) executeOnGroupNameHooks(group Group) error {
+func (h *hooks) executeOnGroupNameHooks(group Group) error {
 	for _, v := range h.onGroupName {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
@@ -127,7 +139,7 @@ func (h *Hooks) executeOnGroupNameHooks(group Group) error {
 	return nil
 }
 
-func (h *Hooks) executeOnListenHooks() error {
+func (h *hooks) executeOnListenHooks() error {
 	for _, v := range h.onListen {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
@@ -140,7 +152,7 @@ func (h *Hooks) executeOnListenHooks() error {
 	return nil
 }
 
-func (h *Hooks) executeOnShutdownHooks() {
+func (h *hooks) executeOnShutdownHooks() {
 	for _, v := range h.onShutdown {
 		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
