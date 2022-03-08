@@ -27,6 +27,19 @@ const (
 	cacheMiss        = "miss"
 )
 
+var ignoreHeaders = map[string]interface{}{
+	"Connection":          nil,
+	"Keep-Alive":          nil,
+	"Proxy-Authenticate":  nil,
+	"Proxy-Authorization": nil,
+	"TE":                  nil,
+	"Trailers":            nil,
+	"Transfer-Encoding":   nil,
+	"Upgrade":             nil,
+	"Content-Type":        nil, // already stored explicitely by the cache manager
+	"Content-Encoding":    nil, // already stored explicitely by the cache manager
+}
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -96,6 +109,11 @@ func New(config ...Config) fiber.Handler {
 			if len(e.cencoding) > 0 {
 				c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
 			}
+			if e.headers != nil {
+				for k, v := range e.headers {
+					c.Response().Header.SetBytesV(k, v)
+				}
+			}
 			// Set Cache-Control header if enabled
 			if cfg.CacheControl {
 				maxAge := strconv.FormatUint(e.exp-ts, 10)
@@ -133,6 +151,21 @@ func New(config ...Config) fiber.Handler {
 		e.status = c.Response().StatusCode()
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
+
+		// Store all response headers
+		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
+		if cfg.StoreResponseHeaders {
+			e.headers = make(map[string][]byte)
+			c.Response().Header.VisitAll(
+				func(key []byte, value []byte) {
+					// create real copy
+					keyS := string(key)
+					if _, ok := ignoreHeaders[keyS]; !ok {
+						e.headers[keyS] = utils.CopyBytes(value)
+					}
+				},
+			)
+		}
 
 		// default cache expiration
 		expiration := uint64(cfg.Expiration.Seconds())
