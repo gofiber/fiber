@@ -25,8 +25,8 @@ type hooks struct {
 	onShutdown  []OnShutdownHandler
 }
 
-func newHooks(app *App) hooks {
-	return hooks{
+func newHooks(app *App) *hooks {
+	return &hooks{
 		app:         app,
 		onRoute:     make([]OnRouteHandler, 0),
 		onGroup:     make([]OnGroupHandler, 0),
@@ -88,10 +88,12 @@ func (h *hooks) OnShutdown(handler ...OnShutdownHandler) {
 }
 
 func (h *hooks) executeOnRouteHooks(route Route) error {
-	for _, v := range h.onRoute {
-		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
+	var ctx *Ctx
+	if len(h.onRoute) > 0 {
+		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
-
+	}
+	for _, v := range h.onRoute {
 		if err := v(ctx, route); err != nil {
 			return err
 		}
@@ -101,10 +103,12 @@ func (h *hooks) executeOnRouteHooks(route Route) error {
 }
 
 func (h *hooks) executeOnNameHooks(route Route) error {
-	for _, v := range h.onName {
-		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
+	var ctx *Ctx
+	if len(h.onName) > 0 {
+		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
-
+	}
+	for _, v := range h.onName {
 		if err := v(ctx, route); err != nil {
 			return err
 		}
@@ -114,10 +118,12 @@ func (h *hooks) executeOnNameHooks(route Route) error {
 }
 
 func (h *hooks) executeOnGroupHooks(group Group) error {
-	for _, v := range h.onGroup {
-		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
+	var ctx *Ctx
+	if len(h.onGroup) > 0 {
+		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
-
+	}
+	for _, v := range h.onGroup {
 		if err := v(ctx, group); err != nil {
 			return err
 		}
@@ -127,10 +133,12 @@ func (h *hooks) executeOnGroupHooks(group Group) error {
 }
 
 func (h *hooks) executeOnGroupNameHooks(group Group) error {
-	for _, v := range h.onGroupName {
-		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
+	var ctx *Ctx
+	if len(h.onGroupName) > 0 {
+		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
-
+	}
+	for _, v := range h.onGroupName {
 		if err := v(ctx, group); err != nil {
 			return err
 		}
@@ -140,10 +148,12 @@ func (h *hooks) executeOnGroupNameHooks(group Group) error {
 }
 
 func (h *hooks) executeOnListenHooks() error {
-	for _, v := range h.onListen {
-		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
+	var ctx *Ctx
+	if len(h.onListen) > 0 {
+		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
-
+	}
+	for _, v := range h.onListen {
 		if err := v(ctx); err != nil {
 			return err
 		}
@@ -153,10 +163,12 @@ func (h *hooks) executeOnListenHooks() error {
 }
 
 func (h *hooks) executeOnShutdownHooks() {
-	for _, v := range h.onShutdown {
-		ctx := h.app.AcquireCtx(&fasthttp.RequestCtx{})
+	var ctx *Ctx
+	if len(h.onShutdown) > 0 {
+		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer h.app.ReleaseCtx(ctx)
-
+	}
+	for _, v := range h.onShutdown {
 		_ = v(ctx)
 	}
 }

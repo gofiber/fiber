@@ -114,7 +114,7 @@ type App struct {
 	// Mounted and main apps
 	appList map[string]*App
 	// Hooks
-	hooks hooks
+	hooks *hooks
 	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
@@ -871,7 +871,9 @@ func (app *App) HandlersCount() uint32 {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
-	defer app.hooks.executeOnShutdownHooks()
+	if app.hooks != nil {
+		defer app.hooks.executeOnShutdownHooks()
+	}
 
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -888,7 +890,7 @@ func (app *App) Server() *fasthttp.Server {
 
 // Hooks returns the hook struct to register hooks.
 func (app *App) Hooks() *hooks {
-	return &app.hooks
+	return app.hooks
 }
 
 // Test is used for internal debugging by passing a *http.Request.
