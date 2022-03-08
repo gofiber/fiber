@@ -111,7 +111,7 @@ func New(config ...Config) fiber.Handler {
 			}
 			if e.headers != nil {
 				for k, v := range e.headers {
-					c.Response().Header.AddBytesV(k, v)
+					c.Response().Header.SetBytesV(k, v)
 				}
 			}
 			// Set Cache-Control header if enabled
@@ -158,9 +158,10 @@ func New(config ...Config) fiber.Handler {
 			e.headers = make(map[string][]byte)
 			c.Response().Header.VisitAll(
 				func(key []byte, value []byte) {
+					// create real copy
 					keyS := string(key)
-					if _, isHopbyHop := ignoreHeaders[keyS]; !isHopbyHop {
-						e.headers[keyS] = value
+					if _, ok := ignoreHeaders[keyS]; !ok {
+						e.headers[keyS] = utils.CopyBytes(value)
 					}
 				},
 			)
