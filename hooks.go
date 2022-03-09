@@ -1,16 +1,12 @@
 package fiber
 
-import (
-	"github.com/valyala/fasthttp"
-)
-
 // Handlers define a function to create hooks for Fiber.
-type OnRouteHandler = func(*Ctx, Route) error
+type OnRouteHandler = func(Route) error
 type OnNameHandler = OnRouteHandler
-type OnGroupHandler = func(*Ctx, Group) error
+type OnGroupHandler = func(Group) error
 type OnGroupNameHandler = OnGroupHandler
-type OnListenHandler = Handler
-type OnShutdownHandler = Handler
+type OnListenHandler = func() error
+type OnShutdownHandler = OnListenHandler
 
 type hooks struct {
 	// Embed app
@@ -88,13 +84,8 @@ func (h *hooks) OnShutdown(handler ...OnShutdownHandler) {
 }
 
 func (h *hooks) executeOnRouteHooks(route Route) error {
-	var ctx *Ctx
-	if len(h.onRoute) > 0 {
-		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer h.app.ReleaseCtx(ctx)
-	}
 	for _, v := range h.onRoute {
-		if err := v(ctx, route); err != nil {
+		if err := v(route); err != nil {
 			return err
 		}
 	}
@@ -103,13 +94,9 @@ func (h *hooks) executeOnRouteHooks(route Route) error {
 }
 
 func (h *hooks) executeOnNameHooks(route Route) error {
-	var ctx *Ctx
-	if len(h.onName) > 0 {
-		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer h.app.ReleaseCtx(ctx)
-	}
+
 	for _, v := range h.onName {
-		if err := v(ctx, route); err != nil {
+		if err := v(route); err != nil {
 			return err
 		}
 	}
@@ -118,13 +105,8 @@ func (h *hooks) executeOnNameHooks(route Route) error {
 }
 
 func (h *hooks) executeOnGroupHooks(group Group) error {
-	var ctx *Ctx
-	if len(h.onGroup) > 0 {
-		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer h.app.ReleaseCtx(ctx)
-	}
 	for _, v := range h.onGroup {
-		if err := v(ctx, group); err != nil {
+		if err := v(group); err != nil {
 			return err
 		}
 	}
@@ -133,13 +115,8 @@ func (h *hooks) executeOnGroupHooks(group Group) error {
 }
 
 func (h *hooks) executeOnGroupNameHooks(group Group) error {
-	var ctx *Ctx
-	if len(h.onGroupName) > 0 {
-		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer h.app.ReleaseCtx(ctx)
-	}
 	for _, v := range h.onGroupName {
-		if err := v(ctx, group); err != nil {
+		if err := v(group); err != nil {
 			return err
 		}
 	}
@@ -148,13 +125,8 @@ func (h *hooks) executeOnGroupNameHooks(group Group) error {
 }
 
 func (h *hooks) executeOnListenHooks() error {
-	var ctx *Ctx
-	if len(h.onListen) > 0 {
-		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer h.app.ReleaseCtx(ctx)
-	}
 	for _, v := range h.onListen {
-		if err := v(ctx); err != nil {
+		if err := v(); err != nil {
 			return err
 		}
 	}
@@ -163,12 +135,7 @@ func (h *hooks) executeOnListenHooks() error {
 }
 
 func (h *hooks) executeOnShutdownHooks() {
-	var ctx *Ctx
-	if len(h.onShutdown) > 0 {
-		ctx = h.app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer h.app.ReleaseCtx(ctx)
-	}
 	for _, v := range h.onShutdown {
-		_ = v(ctx)
+		_ = v()
 	}
 }
