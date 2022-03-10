@@ -112,9 +112,13 @@ type App struct {
 	getBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	getString func(b []byte) string
-
 	// Mounted and main apps
 	appList map[string]*App
+	// Hooks
+	hooks *hooks
+	// Latest route & group
+	latestRoute *Route
+	latestGroup *Group
 }
 
 // Config is a struct holding the server settings.
@@ -424,14 +428,6 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-// Variables for Name & GetRoute
-var latestRoute struct {
-	route *Route
-	mu    sync.Mutex
-}
-
-var latestGroup Group
-
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
@@ -462,11 +458,17 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config:    Config{},
-		getBytes:  utils.UnsafeBytes,
-		getString: utils.UnsafeString,
-		appList:   make(map[string]*App),
+		config:      Config{},
+		getBytes:    utils.UnsafeBytes,
+		getString:   utils.UnsafeString,
+		appList:     make(map[string]*App),
+		latestRoute: &Route{},
+		latestGroup: &Group{},
 	}
+
+	// Define hooks
+	app.hooks = newHooks(app)
+
 	// Override config if provided
 	if len(config) > 0 {
 		app.config = config[0]
@@ -570,13 +572,18 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 
 // Assign name to specific route.
 func (app *App) Name(name string) Router {
-	latestRoute.mu.Lock()
-	if strings.HasPrefix(latestRoute.route.path, latestGroup.prefix) {
-		latestRoute.route.Name = latestGroup.name + name
+	app.mutex.Lock()
+	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.Prefix) {
+		app.latestRoute.Name = app.latestGroup.name + name
 	} else {
-		latestRoute.route.Name = name
+		app.latestRoute.Name = name
 	}
-	latestRoute.mu.Unlock()
+
+	if err := app.hooks.executeOnNameHooks(*app.latestRoute); err != nil {
+		panic(err)
+	}
+	app.mutex.Unlock()
+
 	return app
 }
 
@@ -703,7 +710,12 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
 		app.register(methodUse, prefix, handlers...)
 	}
-	return &Group{prefix: prefix, app: app}
+	grp := &Group{Prefix: prefix, app: app}
+	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
+		panic(err)
+	}
+
+	return grp
 }
 
 // Route is used to define routes with a common prefix inside the common function.
@@ -919,6 +931,10 @@ func (app *App) HandlersCount() uint32 {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
+	if app.hooks != nil {
+		defer app.hooks.executeOnShutdownHooks()
+	}
+
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 	if app.server == nil {
@@ -930,6 +946,11 @@ func (app *App) Shutdown() error {
 // Server returns the underlying fasthttp server
 func (app *App) Server() *fasthttp.Server {
 	return app.server
+}
+
+// Hooks returns the hook struct to register hooks.
+func (app *App) Hooks() *hooks {
+	return app.hooks
 }
 
 // Test is used for internal debugging by passing a *http.Request.
@@ -1098,6 +1119,10 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
+	if err := app.hooks.executeOnListenHooks(); err != nil {
+		panic(err)
+	}
+
 	app.mutex.Lock()
 	app.buildTree()
 	app.mutex.Unlock()
