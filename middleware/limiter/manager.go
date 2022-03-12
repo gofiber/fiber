@@ -49,6 +49,14 @@ func (m *manager) acquire() *item {
 	return m.pool.Get().(*item)
 }
 
+// release and reset *entry to sync.Pool
+func (m *manager) release(e *item) {
+	e.prevHits = 0
+	e.currHits = 0
+	e.exp = 0
+	m.pool.Put(e)
+}
+
 // get data from storage or memory
 func (m *manager) get(key string) (it *item) {
 	if m.storage != nil {
@@ -82,6 +90,8 @@ func (m *manager) set(key string, it *item, exp time.Duration) {
 		if raw, err := it.MarshalMsg(nil); err == nil {
 			_ = m.storage.Set(key, raw, exp)
 		}
+		// we can release data because it's serialized to database
+		m.release(it)
 	} else {
 		m.memory.Set(key, it, exp)
 	}
