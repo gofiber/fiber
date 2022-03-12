@@ -18,6 +18,7 @@ type item struct {
 	cencoding []byte
 	status    int
 	exp       uint64
+	headers   map[string][]byte
 }
 
 //msgp:ignore manager
@@ -61,6 +62,7 @@ func (m *manager) release(e *item) {
 	e.ctype = nil
 	e.status = 0
 	e.exp = 0
+	e.headers = nil
 	m.pool.Put(e)
 }
 
