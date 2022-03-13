@@ -907,9 +907,19 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
 	data := make(map[string][]string)
+	var err error
+
 	c.fasthttp.QueryArgs().VisitAll(func(key, val []byte) {
+		if err != nil {
+			return
+		}
+
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
+
+		if strings.Contains(k, "[") {
+			k, err = parseQuery(k)
+		}
 
 		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
@@ -922,7 +932,37 @@ func (c *Ctx) QueryParser(out interface{}) error {
 
 	})
 
+	if err != nil {
+		return err
+	}
+
 	return c.parseToStruct(queryTag, out, data)
+}
+
+func parseQuery(k string) (string, error) {
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
+
+	kbytes := []byte(k)
+
+	for i, b := range kbytes {
+
+		if b == '[' && kbytes[i+1] != ']' {
+			if err := bb.WriteByte('.'); err != nil {
+				return "", err
+			}
+		}
+
+		if b == '[' || b == ']' {
+			continue
+		}
+
+		if err := bb.WriteByte(b); err != nil {
+			return "", err
+		}
+	}
+
+	return bb.String(), nil
 }
 
 // ReqHeaderParser binds the request header strings to a struct.
