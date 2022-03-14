@@ -44,9 +44,6 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 
 		// Lock entry
 		mux.Lock()
-		defer func() {
-			mux.Unlock()
-		}()
 
 		// Get entry from pool and release when finished
 		e := manager.get(key)
@@ -72,6 +69,11 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		// Set how many hits we have left
 		remaining := cfg.Max - e.currHits
 
+		// Update storage
+		manager.set(key, e, cfg.Expiration)
+
+		mux.Unlock()
+
 		// Check if hits exceed the cfg.Max
 		if remaining < 0 {
 			// Return response with Retry-After header
@@ -89,17 +91,20 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		// Check for SkipFailedRequests and SkipSuccessfulRequests
 		if (cfg.SkipSuccessfulRequests && c.Response().StatusCode() < fiber.StatusBadRequest) ||
 			(cfg.SkipFailedRequests && c.Response().StatusCode() >= fiber.StatusBadRequest) {
+			mux.Lock()
+
+			e = manager.get(key)
 			e.currHits--
 			remaining++
+			manager.set(key, e, cfg.Expiration)
+
+			mux.Unlock()
 		}
 
 		// We can continue, update RateLimit headers
 		c.Set(xRateLimitLimit, max)
 		c.Set(xRateLimitRemaining, strconv.Itoa(remaining))
 		c.Set(xRateLimitReset, strconv.FormatUint(resetInSec, 10))
-
-		// Update storage
-		manager.set(key, e, cfg.Expiration)
 
 		return err
 	}
