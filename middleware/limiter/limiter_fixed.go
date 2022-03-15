@@ -72,6 +72,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		// Update storage
 		manager.set(key, e, cfg.Expiration)
 
+		// Unlock entry
 		mux.Unlock()
 
 		// Check if hits exceed the cfg.Max
@@ -91,13 +92,13 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		// Check for SkipFailedRequests and SkipSuccessfulRequests
 		if (cfg.SkipSuccessfulRequests && c.Response().StatusCode() < fiber.StatusBadRequest) ||
 			(cfg.SkipFailedRequests && c.Response().StatusCode() >= fiber.StatusBadRequest) {
+			// Lock entry
 			mux.Lock()
-
 			e = manager.get(key)
 			e.currHits--
 			remaining++
 			manager.set(key, e, cfg.Expiration)
-
+			// Unlock entry
 			mux.Unlock()
 		}
 
