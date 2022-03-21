@@ -2,22 +2,23 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
-// Package fiber
-// Fiber is an Express inspired web framework built on top of Fasthttp,
+// Package fiber is an Express inspired web framework built on top of Fasthttp,
 // the fastest HTTP engine for Go. Designed to ease things up for fast
 // development with zero memory allocation and performance in mind.
-
 package fiber
 
 import (
 	"bufio"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"sort"
@@ -36,7 +37,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.26.0"
+const Version = "2.30.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -48,13 +49,13 @@ type Map map[string]interface{}
 // providers
 type Storage interface {
 	// Get gets the value for the given key.
-	// It returns ErrNotFound if the storage does not contain the key.
+	// `nil, nil` is returned when the key does not exist
 	Get(key string) ([]byte, error)
 
-	// Set stores the given value for the given key along with a
-	// time-to-live expiration value, 0 means live for ever
+	// Set stores the given value for the given key along
+	// with an expiration value, 0 means no expiration.
 	// Empty key or value will be ignored without an error.
-	Set(key string, val []byte, ttl time.Duration) error
+	Set(key string, val []byte, exp time.Duration) error
 
 	// Delete deletes the value for the given key.
 	// It returns no error if the storage does not contain the key,
@@ -84,8 +85,8 @@ type ErrorHandler = func(*Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
-	Code    int         `json:"code"`
-	Message interface{} `json:"message"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 // App denotes the Fiber application.
@@ -111,9 +112,13 @@ type App struct {
 	getBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	getString func(b []byte) string
-
 	// Mounted and main apps
 	appList map[string]*App
+	// Hooks
+	hooks *hooks
+	// Latest route & group
+	latestRoute *Route
+	latestGroup *Group
 }
 
 // Config is a struct holding the server settings.
@@ -423,14 +428,6 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
-// Variables for Name & GetRoute
-var latestRoute struct {
-	route *Route
-	mu    sync.Mutex
-}
-
-var latestGroup Group
-
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
@@ -461,11 +458,17 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config:    Config{},
-		getBytes:  utils.UnsafeBytes,
-		getString: utils.UnsafeString,
-		appList:   make(map[string]*App),
+		config:      Config{},
+		getBytes:    utils.UnsafeBytes,
+		getString:   utils.UnsafeString,
+		appList:     make(map[string]*App),
+		latestRoute: &Route{},
+		latestGroup: &Group{},
 	}
+
+	// Define hooks
+	app.hooks = newHooks(app)
+
 	// Override config if provided
 	if len(config) > 0 {
 		app.config = config[0]
@@ -569,13 +572,18 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 
 // Assign name to specific route.
 func (app *App) Name(name string) Router {
-	latestRoute.mu.Lock()
-	if strings.HasPrefix(latestRoute.route.path, latestGroup.prefix) {
-		latestRoute.route.Name = latestGroup.name + name
+	app.mutex.Lock()
+	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.Prefix) {
+		app.latestRoute.Name = app.latestGroup.name + name
 	} else {
-		latestRoute.route.Name = name
+		app.latestRoute.Name = name
 	}
-	latestRoute.mu.Unlock()
+
+	if err := app.hooks.executeOnNameHooks(*app.latestRoute); err != nil {
+		panic(err)
+	}
+	app.mutex.Unlock()
+
 	return app
 }
 
@@ -702,7 +710,12 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
 		app.register(methodUse, prefix, handlers...)
 	}
-	return &Group{prefix: prefix, app: app}
+	grp := &Group{Prefix: prefix, app: app}
+	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
+		panic(err)
+	}
+
+	return grp
 }
 
 // Route is used to define routes with a common prefix inside the common function.
@@ -722,31 +735,19 @@ func (app *App) Route(prefix string, fn func(router Router), name ...string) Rou
 
 // Error makes it compatible with the `error` interface.
 func (e *Error) Error() string {
-	return fmt.Sprint(e.Message)
+	return e.Message
 }
 
 // NewError creates a new Error instance with an optional message
-func NewError(code int, message ...interface{}) *Error {
-	e := &Error{
+func NewError(code int, message ...string) *Error {
+	err := &Error{
 		Code:    code,
 		Message: utils.StatusMessage(code),
 	}
 	if len(message) > 0 {
-		e.Message = message[0]
+		err.Message = message[0]
 	}
-	return e
-}
-
-// NewErrors creates multiple new Error messages
-func NewErrors(code int, messages ...interface{}) *Error {
-	e := &Error{
-		Code:    code,
-		Message: utils.StatusMessage(code),
-	}
-	if len(messages) > 0 {
-		e.Message = messages
-	}
-	return e
+	return err
 }
 
 // Listener can be used to pass a custom listener.
@@ -815,8 +816,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 		}
 		config := &tls.Config{
-			MinVersion:               tls.VersionTLS12,
-			PreferServerCipherSuites: true,
+			MinVersion: tls.VersionTLS12,
 			Certificates: []tls.Certificate{
 				cert,
 			},
@@ -840,6 +840,66 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	}
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
+}
+
+// ListenMutualTLS serves HTTPs requests from the given addr.
+// certFile, keyFile and clientCertFile are the paths to TLS certificate and key file.
+
+//  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
+//  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
+func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
+	// Check for valid cert/key path
+	if len(certFile) == 0 || len(keyFile) == 0 {
+		return errors.New("tls: provide a valid cert or key path")
+	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+	}
+
+	clientCACert, err := ioutil.ReadFile(filepath.Clean(clientCertFile))
+	if err != nil {
+		return err
+	}
+	clientCertPool := x509.NewCertPool()
+	clientCertPool.AppendCertsFromPEM(clientCACert)
+
+	config := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		ClientCAs:  clientCertPool,
+		Certificates: []tls.Certificate{
+			cert,
+		},
+	}
+
+	// Prefork is supported
+	if app.config.Prefork {
+		return app.prefork(app.config.Network, addr, config)
+	}
+
+	// Setup listener
+	ln, err := tls.Listen(app.config.Network, addr, config)
+	if err != nil {
+		return err
+	}
+
+	// prepare the server for the start
+	app.startupProcess()
+
+	// Print startup message
+	if !app.config.DisableStartupMessage {
+		app.startupMessage(ln.Addr().String(), true, "")
+	}
+
+	// Print routes
+	if app.config.EnablePrintRoutes {
+		app.printRoutesMessage()
+	}
+
+	// Start listening
+	return app.server.Serve(ln)
 }
 
 // Config returns the app config as value ( read-only ).
@@ -871,6 +931,10 @@ func (app *App) HandlersCount() uint32 {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
+	if app.hooks != nil {
+		defer app.hooks.executeOnShutdownHooks()
+	}
+
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 	if app.server == nil {
@@ -882,6 +946,11 @@ func (app *App) Shutdown() error {
 // Server returns the underlying fasthttp server
 func (app *App) Server() *fasthttp.Server {
 	return app.server
+}
+
+// Hooks returns the hook struct to register hooks.
+func (app *App) Hooks() *hooks {
+	return app.hooks
 }
 
 // Test is used for internal debugging by passing a *http.Request.
@@ -1050,6 +1119,10 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
+	if err := app.hooks.executeOnListenHooks(); err != nil {
+		panic(err)
+	}
+
 	app.mutex.Lock()
 	app.buildTree()
 	app.mutex.Unlock()

@@ -268,7 +268,7 @@ func (t OpType) FieldToOmitEmptyField() OpType {
 	}); err != nil {
 		return err
 	}
-	path := filepath.Join(repoRoot(), "internal", "encoder", "optype.go")
+	path := filepath.Join(repoRoot(), "internal", "go-json", "encoder", "optype.go")
 	buf, err := format.Source(b.Bytes())
 	if err != nil {
 		return err
@@ -290,7 +290,7 @@ func generateVM() error {
 		f.Name.Name = pkg
 		var buf bytes.Buffer
 		printer.Fprint(&buf, fset, f)
-		path := filepath.Join(repoRoot(), "internal", "encoder", pkg, "vm.go")
+		path := filepath.Join(repoRoot(), "internal", "go-json", "encoder", pkg, "vm.go")
 		source, err := format.Source(buf.Bytes())
 		if err != nil {
 			return err
@@ -304,7 +304,7 @@ func generateVM() error {
 
 func repoRoot() string {
 	_, file, _, _ := runtime.Caller(0)
-	relativePathFromRepoRoot := filepath.Join("internal", "cmd", "generator")
+	relativePathFromRepoRoot := filepath.Join("internal", "go-json", "cmd", "generator")
 	return strings.TrimSuffix(filepath.Dir(file), relativePathFromRepoRoot)
 }
 

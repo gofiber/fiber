@@ -87,13 +87,13 @@ func (d *mapDecoder) DecodeStream(s *Stream, depth int64, p unsafe.Pointer) erro
 	if mapValue == nil {
 		mapValue = makemap(d.mapType, 0)
 	}
-	if s.buf[s.cursor+1] == '}' {
+	s.cursor++
+	if s.equalChar('}') {
 		*(*unsafe.Pointer)(p) = mapValue
-		s.cursor += 2
+		s.cursor++
 		return nil
 	}
 	for {
-		s.cursor++
 		k := unsafe_New(d.keyType)
 		if err := d.keyDecoder.DecodeStream(s, depth, k); err != nil {
 			return err
@@ -117,6 +117,7 @@ func (d *mapDecoder) DecodeStream(s *Stream, depth int64, p unsafe.Pointer) erro
 		if !s.equalChar(',') {
 			return errors.ErrExpected("comma after object value", s.totalOffset())
 		}
+		s.cursor++
 	}
 }
 

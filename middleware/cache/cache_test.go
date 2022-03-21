@@ -267,7 +267,7 @@ func Test_CustomKey(t *testing.T) {
 	var called bool
 	app.Use(New(Config{KeyGenerator: func(c *fiber.Ctx) string {
 		called = true
-		return c.Path()
+		return utils.CopyString(c.Path())
 	}}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -300,6 +300,28 @@ func Test_CustomExpiration(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, called)
 	utils.AssertEqual(t, 6000, newCacheTime)
+}
+
+func Test_AdditionalE2EResponseHeaders(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		StoreResponseHeaders: true,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		c.Response().Header.Add("X-Foobar", "foobar")
+		return c.SendString("hi")
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "foobar", resp.Header.Get("X-Foobar"))
+
+	req = httptest.NewRequest("GET", "/", nil)
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "foobar", resp.Header.Get("X-Foobar"))
 }
 
 func Test_CacheHeader(t *testing.T) {
@@ -474,4 +496,32 @@ func Benchmark_Cache_Storage(b *testing.B) {
 
 	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 	utils.AssertEqual(b, true, len(fctx.Response.Body()) > 30000)
+}
+
+func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
+	app := fiber.New()
+	app.Use(New(Config{
+		StoreResponseHeaders: true,
+	}))
+
+	app.Get("/demo", func(c *fiber.Ctx) error {
+		c.Response().Header.Add("X-Foobar", "foobar")
+		return c.SendStatus(418)
+	})
+
+	h := app.Handler()
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.SetRequestURI("/demo")
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	utils.AssertEqual(b, []byte("foobar"), fctx.Response.Header.Peek("X-Foobar"))
 }
