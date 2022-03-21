@@ -1079,8 +1079,8 @@ func (c *Ctx) Bind(vars Map) error {
 	return nil
 }
 
-// get URL location from route using parameters
-func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
+// GetRouteURL get URL location from route using parameters
+func (c *Ctx) GetRouteURL(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
 		if segment.IsParam {
@@ -1107,7 +1107,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 // RedirectToRoute to the Route registered in the app with appropriate parameters
 // If status is not specified, status defaults to 302 Found.
 func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error {
-	location, err := c.getLocationFromRoute(c.App().GetRoute(routeName), params)
+	location, err := c.GetRouteURL(c.App().GetRoute(routeName), params)
 	if err != nil {
 		return err
 	}

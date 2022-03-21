@@ -2552,7 +2552,7 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 		return c.SendString(c.Params("name"))
 	}).Name("User")
 	for n := 0; n < b.N; n++ {
-		c.getLocationFromRoute(app.GetRoute("User"), Map{"name": "fiber"})
+		c.GetRouteURL(app.GetRoute("User"), Map{"name": "fiber"})
 	}
 }
 
