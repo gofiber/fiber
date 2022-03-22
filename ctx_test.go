@@ -2556,6 +2556,20 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	}
 }
 
+// go test -run Test_Ctx_Get_Location_From_Route_name
+func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	app.Get("/user/:name", func(c *Ctx) error {
+		return c.SendString(c.Params("name"))
+	}).Name("User")
+
+	location, err := c.GetRouteURL("User", Map{"name": "fiber"})
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "/user/fiber", location)
+}
+
 type errorTemplateEngine struct{}
 
 func (t errorTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {

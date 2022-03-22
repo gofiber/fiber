@@ -1079,7 +1079,7 @@ func (c *Ctx) Bind(vars Map) error {
 	return nil
 }
 
-// get URL location from route using parameters
+// getLocationFromRoute get URL location from route using parameters
 func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
@@ -1102,6 +1102,11 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	location := buf.String()
 	bytebufferpool.Put(buf)
 	return location, nil
+}
+
+// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
+func (c *Ctx) GetRouteURL(routeName string, params Map) (string, error) {
+	return c.getLocationFromRoute(c.App().GetRoute(routeName), params)
 }
 
 // RedirectToRoute to the Route registered in the app with appropriate parameters
