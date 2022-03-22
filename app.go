@@ -792,9 +792,9 @@ func (app *App) Listen(addr string) error {
 	// prepare the server for the start
 	app.startupProcess()
 
-	sigint := make(chan os.Signal)
-	signal.Notify(sigint, syscall.SIGINT, syscall.SIGTERM)
-	go app.callShutdownHooksOnSigInt(sigint)
+	sigChan := make(chan os.Signal)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go app.callShutdownHooksOnSigInt(sigChan)
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -845,9 +845,9 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// prepare the server for the start
 	app.startupProcess()
 
-	sigint := make(chan os.Signal)
-	signal.Notify(sigint, syscall.SIGINT, syscall.SIGTERM)
-	go app.callShutdownHooksOnSigInt(sigint)
+	sigChan := make(chan os.Signal)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go app.callShutdownHooksOnSigInt(sigChan)
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -909,9 +909,9 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	// prepare the server for the start
 	app.startupProcess()
 
-	sigint := make(chan os.Signal)
-	signal.Notify(sigint, syscall.SIGINT, syscall.SIGTERM)
-	go app.callShutdownHooksOnSigInt(sigint)
+	sigChan := make(chan os.Signal)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go app.callShutdownHooksOnSigInt(sigChan)
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
@@ -957,7 +957,7 @@ func (app *App) HandlersCount() uint32 {
 // Shutdown does not close keepalive connections, so it's recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
 	if app.hooks != nil {
-		defer app.hooks.executeOnShutdownHooks()
+		defer app.hooks.executeOnShutdownHooks(nil)
 	}
 
 	app.mutex.Lock()
@@ -1413,8 +1413,8 @@ func (app *App) printRoutesMessage() {
 	_ = w.Flush()
 }
 
-func (app *App) callShutdownHooksOnSigInt(sigint chan os.Signal) {
-	<-sigint
-	app.hooks.executeOnShutdownHooks()
+func (app *App) callShutdownHooksOnSigInt(sigChan chan os.Signal) {
+	sig := <-sigChan
+	app.hooks.executeOnShutdownHooks(&sig)
 	os.Exit(0)
 }

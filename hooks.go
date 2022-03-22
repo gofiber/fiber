@@ -1,12 +1,14 @@
 package fiber
 
+import "os"
+
 // Handlers define a function to create hooks for Fiber.
 type OnRouteHandler = func(Route) error
 type OnNameHandler = OnRouteHandler
 type OnGroupHandler = func(Group) error
 type OnGroupNameHandler = OnGroupHandler
 type OnListenHandler = func() error
-type OnShutdownHandler = OnListenHandler
+type OnShutdownHandler = func(*os.Signal)
 
 type hooks struct {
 	// Embed app
@@ -76,7 +78,7 @@ func (h *hooks) OnListen(handler ...OnListenHandler) {
 	h.app.mutex.Unlock()
 }
 
-// OnShutdown is a hook to execute user functions after Shutdown.
+// OnShutdown is a hook to execute user functions before Shutdown.
 func (h *hooks) OnShutdown(handler ...OnShutdownHandler) {
 	h.app.mutex.Lock()
 	h.onShutdown = append(h.onShutdown, handler...)
@@ -133,8 +135,8 @@ func (h *hooks) executeOnListenHooks() error {
 	return nil
 }
 
-func (h *hooks) executeOnShutdownHooks() {
+func (h *hooks) executeOnShutdownHooks(signal *os.Signal) {
 	for _, v := range h.onShutdown {
-		_ = v()
+		v(signal)
 	}
 }
