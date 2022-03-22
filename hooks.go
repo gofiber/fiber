@@ -94,7 +94,6 @@ func (h *hooks) executeOnRouteHooks(route Route) error {
 }
 
 func (h *hooks) executeOnNameHooks(route Route) error {
-
 	for _, v := range h.onName {
 		if err := v(route); err != nil {
 			return err

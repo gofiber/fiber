@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -26,6 +27,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -780,21 +782,30 @@ func (app *App) Listen(addr string) error {
 	if app.config.Prefork {
 		return app.prefork(app.config.Network, addr, nil)
 	}
+
 	// Setup listener
 	ln, err := net.Listen(app.config.Network, addr)
 	if err != nil {
 		return err
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
+	sigint := make(chan os.Signal)
+	signal.Notify(sigint, syscall.SIGINT, syscall.SIGTERM)
+	go app.callShutdownHooksOnSigInt(sigint)
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -809,6 +820,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
 	}
+
 	// Prefork is supported
 	if app.config.Prefork {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
@@ -823,21 +835,30 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 		}
 		return app.prefork(app.config.Network, addr, config)
 	}
+
 	// Setup listener
 	ln, err := net.Listen(app.config.Network, addr)
 	if err != nil {
 		return err
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
+	sigint := make(chan os.Signal)
+	signal.Notify(sigint, syscall.SIGINT, syscall.SIGTERM)
+	go app.callShutdownHooksOnSigInt(sigint)
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), true, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
 }
@@ -888,6 +909,10 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	// prepare the server for the start
 	app.startupProcess()
 
+	sigint := make(chan os.Signal)
+	signal.Notify(sigint, syscall.SIGINT, syscall.SIGTERM)
+	go app.callShutdownHooksOnSigInt(sigint)
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), true, "")
@@ -929,7 +954,7 @@ func (app *App) HandlersCount() uint32 {
 //
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
 //
-// Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
+// Shutdown does not close keepalive connections, so it's recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
 	if app.hooks != nil {
 		defer app.hooks.executeOnShutdownHooks()
@@ -1386,4 +1411,10 @@ func (app *App) printRoutesMessage() {
 	}
 
 	_ = w.Flush()
+}
+
+func (app *App) callShutdownHooksOnSigInt(sigint chan os.Signal) {
+	<-sigint
+	app.hooks.executeOnShutdownHooks()
+	os.Exit(0)
 }
