@@ -1104,7 +1104,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	return location, nil
 }
 
-// GetRouteURL get URL location from route using parameters
+// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 func (c *Ctx) GetRouteURL(routeName string, params Map) (string, error) {
 	return c.getLocationFromRoute(c.App().GetRoute(routeName), params)
 }
