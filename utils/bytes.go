@@ -4,7 +4,7 @@
 
 package utils
 
-// ToLowerBytes is the equivalent of bytes.ToLower
+// ToLowerBytes converts ascii slice to lower-case
 func ToLowerBytes(b []byte) []byte {
 	for i := 0; i < len(b); i++ {
 		b[i] = toLowerTable[b[i]]
@@ -12,7 +12,7 @@ func ToLowerBytes(b []byte) []byte {
 	return b
 }
 
-// ToUpperBytes is the equivalent of bytes.ToUpper
+// ToUpperBytes converts ascii slice to upper-case
 func ToUpperBytes(b []byte) []byte {
 	for i := 0; i < len(b); i++ {
 		b[i] = toUpperTable[b[i]]
@@ -55,16 +55,15 @@ func TrimBytes(b []byte, cutset byte) []byte {
 	return b[i : j+1]
 }
 
-// EqualFold the equivalent of bytes.EqualFold
-func EqualFoldBytes(b, s []byte) (equals bool) {
-	n := len(b)
-	equals = n == len(s)
-	if equals {
-		for i := 0; i < n; i++ {
-			if equals = b[i]|0x20 == s[i]|0x20; !equals {
-				break
-			}
+// EqualFoldBytes tests ascii slices for equality case-insensitively
+func EqualFoldBytes(b, s []byte) bool {
+	if len(b) != len(s) {
+		return false
+	}
+	for i := len(b) - 1; i >= 0; i-- {
+		if toUpperTable[b[i]] != toUpperTable[s[i]] {
+			return false
 		}
 	}
-	return
+	return true
 }
