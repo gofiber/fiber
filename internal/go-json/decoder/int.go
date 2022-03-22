@@ -192,15 +192,15 @@ func (d *intDecoder) DecodeStream(s *Stream, depth int64, p unsafe.Pointer) erro
 	}
 	switch d.kind {
 	case reflect.Int8:
-		if i64 <= -1*(1<<7) || (1<<7) <= i64 {
+		if i64 < -1*(1<<7) || (1<<7) <= i64 {
 			return d.typeError(bytes, s.totalOffset())
 		}
 	case reflect.Int16:
-		if i64 <= -1*(1<<15) || (1<<15) <= i64 {
+		if i64 < -1*(1<<15) || (1<<15) <= i64 {
 			return d.typeError(bytes, s.totalOffset())
 		}
 	case reflect.Int32:
-		if i64 <= -1*(1<<31) || (1<<31) <= i64 {
+		if i64 < -1*(1<<31) || (1<<31) <= i64 {
 			return d.typeError(bytes, s.totalOffset())
 		}
 	}
@@ -225,15 +225,15 @@ func (d *intDecoder) Decode(ctx *RuntimeContext, cursor, depth int64, p unsafe.P
 	}
 	switch d.kind {
 	case reflect.Int8:
-		if i64 <= -1*(1<<7) || (1<<7) <= i64 {
+		if i64 < -1*(1<<7) || (1<<7) <= i64 {
 			return 0, d.typeError(bytes, cursor)
 		}
 	case reflect.Int16:
-		if i64 <= -1*(1<<15) || (1<<15) <= i64 {
+		if i64 < -1*(1<<15) || (1<<15) <= i64 {
 			return 0, d.typeError(bytes, cursor)
 		}
 	case reflect.Int32:
-		if i64 <= -1*(1<<31) || (1<<31) <= i64 {
+		if i64 < -1*(1<<31) || (1<<31) <= i64 {
 			return 0, d.typeError(bytes, cursor)
 		}
 	}

@@ -4,7 +4,7 @@
 package encoder
 
 func CompileToGetCodeSet(ctx *RuntimeContext, typeptr uintptr) (*OpcodeSet, error) {
-	if typeptr > typeAddr.MaxTypeAddr {
+	if typeptr > typeAddr.MaxTypeAddr || typeptr < typeAddr.BaseTypeAddr {
 		return compileToGetCodeSetSlowPath(typeptr)
 	}
 	index := (typeptr - typeAddr.BaseTypeAddr) >> typeAddr.AddrShift
