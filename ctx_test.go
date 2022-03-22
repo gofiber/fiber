@@ -2945,6 +2945,14 @@ func Test_Ctx_QueryParser(t *testing.T) {
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
 	utils.AssertEqual(t, "name is empty", c.QueryParser(rq).Error())
+
+	type ArrayQuery struct {
+		Data []string
+	}
+	aq := new(ArrayQuery)
+	c.Request().URI().SetQueryString("data[]=john&data[]=doe")
+	utils.AssertEqual(t, nil, c.QueryParser(aq))
+	utils.AssertEqual(t, 2, len(aq.Data))
 }
 
 // go test -run Test_Ctx_QueryParser_WithSetParserDecoder -v
@@ -3073,6 +3081,33 @@ func Test_Ctx_QueryParser_Schema(t *testing.T) {
 	utils.AssertEqual(t, nil, c.QueryParser(n))
 	utils.AssertEqual(t, 3, n.Value)
 	utils.AssertEqual(t, 0, n.Next.Value)
+
+	type Person struct {
+		Name string `query:"name"`
+		Age  int    `query:"age"`
+	}
+
+	type CollectionQuery struct {
+		Data []Person `query:"data"`
+	}
+
+	c.Request().URI().SetQueryString("data[0][name]=john&data[0][age]=10&data[1][name]=doe&data[1][age]=12")
+	cq := new(CollectionQuery)
+	utils.AssertEqual(t, nil, c.QueryParser(cq))
+	utils.AssertEqual(t, 2, len(cq.Data))
+	utils.AssertEqual(t, "john", cq.Data[0].Name)
+	utils.AssertEqual(t, 10, cq.Data[0].Age)
+	utils.AssertEqual(t, "doe", cq.Data[1].Name)
+	utils.AssertEqual(t, 12, cq.Data[1].Age)
+
+	c.Request().URI().SetQueryString("data.0.name=john&data.0.age=10&data.1.name=doe&data.1.age=12")
+	cq = new(CollectionQuery)
+	utils.AssertEqual(t, nil, c.QueryParser(cq))
+	utils.AssertEqual(t, 2, len(cq.Data))
+	utils.AssertEqual(t, "john", cq.Data[0].Name)
+	utils.AssertEqual(t, 10, cq.Data[0].Age)
+	utils.AssertEqual(t, "doe", cq.Data[1].Name)
+	utils.AssertEqual(t, 12, cq.Data[1].Age)
 }
 
 // go test -run Test_Ctx_ReqHeaderParser -v
@@ -3332,6 +3367,34 @@ func Benchmark_Ctx_QueryParser(b *testing.B) {
 		c.QueryParser(q)
 	}
 	utils.AssertEqual(b, nil, c.QueryParser(q))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Ctx_parseQuery -benchmem -count=4
+func Benchmark_Ctx_parseQuery(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type Person struct {
+		Name string `query:"name"`
+		Age  int    `query:"age"`
+	}
+
+	type CollectionQuery struct {
+		Data []Person `query:"data"`
+	}
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("data[0][name]=john&data[0][age]=10")
+	cq := new(CollectionQuery)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.QueryParser(cq)
+	}
+
+	utils.AssertEqual(b, nil, c.QueryParser(cq))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_QueryParser_Comma -benchmem -count=4
