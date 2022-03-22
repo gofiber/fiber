@@ -331,7 +331,7 @@ func (d *stringDecoder) decodeByte(buf []byte, cursor int64) ([]byte, int64, err
 				case '"':
 					literal := buf[start:cursor]
 					if escaped > 0 {
-						literal = literal[:unescapeString(literal, escaped)]
+						literal = literal[:unescapeString(literal)]
 					}
 					cursor++
 					return literal, cursor, nil
@@ -363,21 +363,52 @@ var unescapeMap = [256]byte{
 	't':  '\t',
 }
 
-func unescapeString(buf []byte, escaped int) int {
-	cursor := 0
-	for i := 0; i < escaped; i++ {
-		cursor += bytes.IndexByte(buf[cursor:], '\\')
-		c := buf[cursor+1]
-		if c == 'u' {
-			code := unicodeToRune(buf[cursor+2 : cursor+6])
-			unicode := []byte(string(code))
-			buf = append(append(buf[:cursor], unicode...), buf[cursor+6:]...)
-			cursor += len(unicode)
+func unsafeAdd(ptr unsafe.Pointer, offset int) unsafe.Pointer {
+	return unsafe.Pointer(uintptr(ptr) + uintptr(offset))
+}
+
+func unescapeString(buf []byte) int {
+	p := (*sliceHeader)(unsafe.Pointer(&buf)).data
+	end := unsafeAdd(p, len(buf))
+	src := unsafeAdd(p, bytes.IndexByte(buf, '\\'))
+	dst := src
+	for src != end {
+		c := char(src, 0)
+		if c == '\\' {
+			escapeChar := char(src, 1)
+			if escapeChar != 'u' {
+				*(*byte)(dst) = unescapeMap[escapeChar]
+				src = unsafeAdd(src, 2)
+				dst = unsafeAdd(dst, 1)
+			} else {
+				v1 := hexToInt[char(src, 2)]
+				v2 := hexToInt[char(src, 3)]
+				v3 := hexToInt[char(src, 4)]
+				v4 := hexToInt[char(src, 5)]
+				code := rune((v1 << 12) | (v2 << 8) | (v3 << 4) | v4)
+				var b [utf8.UTFMax]byte
+				n := utf8.EncodeRune(b[:], code)
+				switch n {
+				case 4:
+					*(*byte)(unsafeAdd(dst, 3)) = b[3]
+					fallthrough
+				case 3:
+					*(*byte)(unsafeAdd(dst, 2)) = b[2]
+					fallthrough
+				case 2:
+					*(*byte)(unsafeAdd(dst, 1)) = b[1]
+					fallthrough
+				case 1:
+					*(*byte)(unsafeAdd(dst, 0)) = b[0]
+				}
+				src = unsafeAdd(src, 6)
+				dst = unsafeAdd(dst, n)
+			}
 		} else {
-			buf[cursor+1] = unescapeMap[c]
-			buf = append(buf[:cursor], buf[cursor+1:]...)
-			cursor++
+			*(*byte)(dst) = c
+			src = unsafeAdd(src, 1)
+			dst = unsafeAdd(dst, 1)
 		}
 	}
-	return len(buf)
+	return int(uintptr(dst) - uintptr(p))
 }

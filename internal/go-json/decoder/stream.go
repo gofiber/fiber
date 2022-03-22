@@ -103,7 +103,7 @@ func (s *Stream) statForRetry() ([]byte, int64, unsafe.Pointer) {
 
 func (s *Stream) Reset() {
 	s.reset()
-	s.bufSize = initBufSize
+	s.bufSize = int64(len(s.buf))
 }
 
 func (s *Stream) More() bool {
