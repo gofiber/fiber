@@ -1474,6 +1474,11 @@ func (c *Ctx) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Writef appends f & a into response body writer.
+func (c *Ctx) Writef(f string, a ...interface{}) (int, error) {
+	return fmt.Fprintf(c.fasthttp.Response.BodyWriter(), f, a...)
+}
+
 // WriteString appends s to response body.
 func (c *Ctx) WriteString(s string) (int, error) {
 	c.fasthttp.Response.AppendBodyString(s)

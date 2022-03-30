@@ -2831,6 +2831,30 @@ func Benchmark_Ctx_Write(b *testing.B) {
 	}
 }
 
+// go test -run Test_Ctx_Writef
+func Test_Ctx_Writef(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	world := "World!"
+	c.Writef("Hello, %s", world)
+	utils.AssertEqual(t, "Hello, World!", string(c.Response().Body()))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Writef -benchmem -count=4
+func Benchmark_Ctx_Writef(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	world := "World!"
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.Writef("Hello, %s", world)
+	}
+}
+
 // go test -run Test_Ctx_WriteString
 func Test_Ctx_WriteString(t *testing.T) {
 	t.Parallel()
