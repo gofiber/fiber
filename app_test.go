@@ -1089,9 +1089,9 @@ func Test_App_Next_Method(t *testing.T) {
 
 	app.Use(func(c *Ctx) error {
 		utils.AssertEqual(t, MethodGet, c.Method())
-		c.Next()
+		err := c.Next()
 		utils.AssertEqual(t, MethodGet, c.Method())
-		return nil
+		return err
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
