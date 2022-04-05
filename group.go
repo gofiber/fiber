@@ -25,6 +25,10 @@ type Group struct {
 func (grp *Group) Mount(prefix string, fiber *App) Router {
 	stack := fiber.Stack()
 	groupPath := getGroupPath(grp.Prefix, prefix)
+	groupPath = strings.TrimRight(groupPath, "/")
+	if groupPath == "" {
+		groupPath = "/"
+	}
 
 	for m := range stack {
 		for r := range stack[m] {
@@ -34,7 +38,6 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 	}
 
 	// Support for configs of mounted-apps and sub-mounted-apps
-	groupPath = strings.TrimRight(groupPath, "/")
 	for mountedPrefixes, subApp := range fiber.appList {
 		grp.app.appList[groupPath+mountedPrefixes] = subApp
 		subApp.init()

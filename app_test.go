@@ -43,6 +43,15 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 }
 
+func testErrorResponse(t *testing.T, err error, resp *http.Response, expectedBodyError string) {
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, expectedBodyError, string(body), "Response body")
+}
+
 func Test_App_MethodNotAllowed(t *testing.T) {
 	app := New()
 
@@ -256,12 +265,26 @@ func Test_App_ErrorHandler_GroupMount(t *testing.T) {
 	v1.Mount("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
+	testErrorResponse(t, err, resp, "1: custom error")
+}
 
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "1: custom error", string(body))
+func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
+	micro := New(Config{
+		ErrorHandler: func(c *Ctx, err error) error {
+			utils.AssertEqual(t, "0: GET error", err.Error())
+			return c.Status(500).SendString("1: custom error")
+		},
+	})
+	micro.Get("/john/doe", func(c *Ctx) error {
+		return errors.New("0: GET error")
+	})
+
+	app := New()
+	v1 := app.Group("/v1")
+	v1.Mount("/", micro)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
+	testErrorResponse(t, err, resp, "1: custom error")
 }
 
 func Test_App_Nested_Params(t *testing.T) {
@@ -1603,7 +1626,7 @@ func Test_App_UseMountedErrorHandler(t *testing.T) {
 
 	fiber := New(Config{
 		ErrorHandler: func(ctx *Ctx, err error) error {
-			return ctx.Status(200).SendString("hi, i'm a custom error")
+			return ctx.Status(500).SendString("hi, i'm a custom error")
 		},
 	})
 	fiber.Get("/", func(c *Ctx) error {
@@ -1613,12 +1636,25 @@ func Test_App_UseMountedErrorHandler(t *testing.T) {
 	app.Mount("/api", fiber)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	testErrorResponse(t, err, resp, "hi, i'm a custom error")
+}
 
-	b, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
-	utils.AssertEqual(t, "hi, i'm a custom error", string(b), "Response body")
+func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
+	app := New()
+
+	fiber := New(Config{
+		ErrorHandler: func(ctx *Ctx, err error) error {
+			return ctx.Status(500).SendString("hi, i'm a custom error")
+		},
+	})
+	fiber.Get("/api", func(c *Ctx) error {
+		return errors.New("something happened")
+	})
+
+	app.Mount("/", fiber)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
+	testErrorResponse(t, err, resp, "hi, i'm a custom error")
 }
 
 func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
