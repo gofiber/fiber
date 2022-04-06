@@ -37,7 +37,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.30.0"
+const Version = "2.31.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -552,6 +552,10 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 func (app *App) Mount(prefix string, fiber *App) Router {
 	stack := fiber.Stack()
 	prefix = strings.TrimRight(prefix, "/")
+	if prefix == "" {
+		prefix = "/"
+	}
+
 	for m := range stack {
 		for r := range stack[m] {
 			route := app.copyRoute(stack[m][r])
@@ -1075,7 +1079,7 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 	)
 
 	for prefix, subApp := range app.appList {
-		if strings.HasPrefix(ctx.path, prefix) && prefix != "" {
+		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
 				mountedErrHandler = subApp.config.ErrorHandler
