@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
-	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/internal/go-json"
+	"encoding/json"
+
 	"github.com/gofiber/fiber/v2/internal/tlstest"
-	"github.com/gofiber/fiber/v2/internal/uuid"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
@@ -621,64 +620,6 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 	_, _, errs := a.String()
 	utils.AssertEqual(t, dialsCount, 4)
 	utils.AssertEqual(t, 0, len(errs))
-}
-
-func Test_Client_Stdjson_Gojson(t *testing.T) {
-	type User struct {
-		Account  *string `json:"account"`
-		Password *string `json:"password"`
-		Nickname *string `json:"nickname"`
-		Address  *string `json:"address,omitempty"`
-		Friends  []*User `json:"friends,omitempty"`
-	}
-	user1Account, user1Password, user1Nickname := "abcdef", "123456", "user1"
-	user1 := &User{
-		Account:  &user1Account,
-		Password: &user1Password,
-		Nickname: &user1Nickname,
-		Address:  nil,
-	}
-	user2Account, user2Password, user2Nickname := "ghijkl", "123456", "user2"
-	user2 := &User{
-		Account:  &user2Account,
-		Password: &user2Password,
-		Nickname: &user2Nickname,
-		Address:  nil,
-	}
-	user1.Friends = []*User{user2}
-	expected, err := stdjson.Marshal(user1)
-	utils.AssertEqual(t, nil, err)
-
-	got, err := json.Marshal(user1)
-	utils.AssertEqual(t, nil, err)
-
-	utils.AssertEqual(t, expected, got)
-
-	type config struct {
-		// debug enable a debug logging.
-		debug bool
-		// log used for logging on debug mode.
-		log func(...interface{})
-	}
-
-	type res struct {
-		config `json:"-"`
-		// ID of the ent.
-		ID uuid.UUID `json:"id,omitempty"`
-	}
-
-	u := uuid.New()
-	test := res{
-		ID: u,
-	}
-
-	expected, err = stdjson.Marshal(test)
-	utils.AssertEqual(t, nil, err)
-
-	got, err = json.Marshal(test)
-	utils.AssertEqual(t, nil, err)
-
-	utils.AssertEqual(t, expected, got)
 }
 
 func Test_Client_Agent_Json(t *testing.T) {

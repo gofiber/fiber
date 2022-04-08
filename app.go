@@ -29,8 +29,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"encoding/json"
+
 	"github.com/gofiber/fiber/v2/internal/colorable"
-	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/isatty"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"

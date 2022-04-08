@@ -4,7 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	jerrors "github.com/gofiber/fiber/v2/internal/go-json/errors"
+	jerrors "encoding/json"
+
 	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/utils"
 )
