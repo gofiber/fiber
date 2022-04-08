@@ -1906,7 +1906,7 @@ func Test_Ctx_SendFileWithConfig(t *testing.T) {
 	// test not modified
 	c = app.AcquireCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderIfModifiedSince, fI.ModTime().Format(time.RFC1123))
-	err = c.SendFile("ctx.go")
+	err = c.SendFileWithConfig("ctx.go")
 	// check expectation
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, StatusNotModified, c.Response().StatusCode())
@@ -1951,7 +1951,7 @@ func Test_Ctx_SendFileWithConfig_Immutable(t *testing.T) {
 	app := New()
 	app.Get("/:file", func(c *Ctx) error {
 		file := c.Params("file")
-		if err := c.SendFile("./.github/" + file + ".html"); err != nil {
+		if err := c.SendFileWithConfig("./.github/" + file + ".html"); err != nil {
 			utils.AssertEqual(t, nil, err)
 		}
 		utils.AssertEqual(t, "index", file)
