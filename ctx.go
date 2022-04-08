@@ -1298,9 +1298,12 @@ func (c *Ctx) Send(body []byte) error {
 }
 
 var (
-	sendFileOnce    sync.Once
-	sendFileFS      *fasthttp.FS
-	sendFileHandler fasthttp.RequestHandler
+	sendFileOnce              sync.Once
+	sendFileFS                *fasthttp.FS
+	sendFileHandler           fasthttp.RequestHandler
+	SendFileWithConfigOnce    sync.Once
+	SendFileWithConfigFS      *fasthttp.FS
+	SendFileWithConfigHandler fasthttp.RequestHandler
 )
 
 // SendFile transfers the file from the given path.
@@ -1359,6 +1362,81 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	// Set the status code set by the user if it is different from the fasthttp status code and 200
 	if status != fsStatus && status != StatusOK {
 		c.Status(status)
+	}
+	// Check for error
+	if status != StatusNotFound && fsStatus == StatusNotFound {
+		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
+	}
+	return nil
+}
+
+// SendFileWithConfig transfers the file from the given path.
+// Some config fields are overwritten. You can change them by config parameter.
+// Sets the Content-Type response HTTP header field based on the filenames extension.
+func (c *Ctx) SendFileWithConfig(file string, config ...SendFile) error {
+	// Save the filename, we will need it in the error message if the file isn't found
+	filename := file
+
+	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
+	SendFileWithConfigOnce.Do(func() {
+		SendFileWithConfigFS = &fasthttp.FS{
+			Root:                 "/",
+			GenerateIndexPages:   false,
+			AcceptByteRange:      true,
+			Compress:             true,
+			CompressedFileSuffix: c.app.config.CompressedFileSuffix,
+			CacheDuration:        10 * time.Second,
+			IndexNames:           []string{"index.html"},
+			PathNotFound: func(ctx *fasthttp.RequestCtx) {
+				ctx.Response.SetStatusCode(StatusNotFound)
+			},
+		}
+		SendFileWithConfigHandler = SendFileWithConfigFS.NewRequestHandler()
+	})
+
+	// Keep original path for mutable params
+	c.pathOriginal = utils.CopyString(c.pathOriginal)
+	// Disable compression
+	// Set config if provided
+	var cacheControlValue string
+	if len(config) > 0 {
+		maxAge := config[0].MaxAge
+		if maxAge > 0 {
+			cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
+		}
+		SendFileWithConfigFS.CacheDuration = config[0].CacheDuration
+		SendFileWithConfigFS.Compress = config[0].Compress
+		SendFileWithConfigFS.AcceptByteRange = config[0].ByteRange
+	}
+
+	// https://github.com/valyala/fasthttp/blob/master/fs.go#L85
+	if len(file) == 0 || file[0] != '/' {
+		hasTrailingSlash := len(file) > 0 && file[len(file)-1] == '/'
+		var err error
+		if file, err = filepath.Abs(file); err != nil {
+			return err
+		}
+		if hasTrailingSlash {
+			file += "/"
+		}
+	}
+	// Restore the original requested URL
+	originalURL := utils.CopyString(c.OriginalURL())
+	defer c.fasthttp.Request.SetRequestURI(originalURL)
+	// Set new URI for fileHandler
+	c.fasthttp.Request.SetRequestURI(file)
+	// Save status code
+	status := c.fasthttp.Response.StatusCode()
+	// Serve file
+	SendFileWithConfigHandler(c.fasthttp)
+	// Get the status code which is set by fasthttp
+	fsStatus := c.fasthttp.Response.StatusCode()
+	// Set the status code set by the user if it is different from the fasthttp status code and 200
+	if status != fsStatus && status != StatusOK {
+		c.Status(status)
+	}
+	if status != StatusNotFound && status != StatusForbidden && len(cacheControlValue) > 0 {
+		c.fasthttp.Response.Header.Set(HeaderCacheControl, cacheControlValue)
 	}
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
