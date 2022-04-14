@@ -1177,10 +1177,10 @@ func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error
 
 		i := 1
 		for k, v := range queries {
-			queryText.WriteString(k + "=" + v)
+			_, _ = queryText.WriteString(k + "=" + v)
 
 			if i != len(queries) {
-				queryText.WriteString("&")
+				_, _ = queryText.WriteString("&")
 			}
 			i++
 		}
