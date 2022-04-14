@@ -869,10 +869,8 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	return app.server.ServeTLS(ln, certFile, keyFile)
 }
 
-// ListenMutualTLS serves HTTPs requests from the given addr.
-// certFile, keyFile and clientCertFile are the paths to TLS certificate and key file.
-
-//  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
+// ListenMutualTLS serves HTTPS requests from the given addr.
+// certFile, keyFile and clientCertFile are the paths to TLS certificate and key file:
 //  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
 func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
 	// Check for valid cert/key path
