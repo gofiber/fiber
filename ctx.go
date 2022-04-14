@@ -1362,6 +1362,10 @@ func (c *Ctx) SendFileWithConfig(file string, config ...SendFile) error {
 		}
 		sendFileFS.CacheDuration = config[0].CacheDuration
 		sendFileFS.Compress = config[0].Compress
+		if config[0].Compress {
+			// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
+			c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
+		}
 		sendFileFS.AcceptByteRange = config[0].ByteRange
 	}
 
