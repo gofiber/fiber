@@ -1934,6 +1934,122 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 	utils.AssertEqual(t, nil, err2)
 }
 
+// go test -race -run Test_Ctx_SendFileWithConfig
+func Test_Ctx_SendFileWithConfig(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	// fetch file content
+	f, err := os.Open("./ctx.go")
+	utils.AssertEqual(t, nil, err)
+	defer f.Close()
+	expectFileContent, err := ioutil.ReadAll(f)
+	utils.AssertEqual(t, nil, err)
+	// fetch file info for the not modified test case
+	fI, err := os.Stat("./ctx.go")
+	utils.AssertEqual(t, nil, err)
+
+	// simple test case
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.SendFileWithConfig("ctx.go")
+	// check expectation
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, expectFileContent, c.Response().Body())
+	utils.AssertEqual(t, StatusOK, c.Response().StatusCode())
+	app.ReleaseCtx(c)
+
+	// test with custom error code
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	err = c.Status(StatusInternalServerError).SendFileWithConfig("ctx.go")
+	// check expectation
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, expectFileContent, c.Response().Body())
+	utils.AssertEqual(t, StatusInternalServerError, c.Response().StatusCode())
+	app.ReleaseCtx(c)
+
+	// test not modified
+	c = app.AcquireCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderIfModifiedSince, fI.ModTime().Format(time.RFC1123))
+	err = c.SendFileWithConfig("ctx.go")
+	// check expectation
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusNotModified, c.Response().StatusCode())
+	utils.AssertEqual(t, []byte(nil), c.Response().Body())
+	app.ReleaseCtx(c)
+}
+
+// go test -race -run Test_Ctx_SendFileWithConfig_404
+func Test_Ctx_SendFileWithConfig_404(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		err := c.SendFileWithConfig("./john_dow.go/")
+		utils.AssertEqual(t, false, err == nil)
+		return err
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode)
+}
+
+// go test -race -run Test_Ctx_SendFileWithConfig_MaxAge
+func Test_Ctx_SendFileWithConfig_MaxAge(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		err := c.SendFileWithConfig("./john_dow.go/", SendFile{MaxAge: 100})
+		utils.AssertEqual(t, false, err == nil)
+		return err
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode)
+	utils.AssertEqual(t, "public, max-age=100", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
+}
+
+// go test -race -run Test_Ctx_SendFileWithConfig_Immutable
+func Test_Ctx_SendFileWithConfig_Immutable(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/:file", func(c *Ctx) error {
+		file := c.Params("file")
+		if err := c.SendFileWithConfig("./.github/" + file + ".html"); err != nil {
+			utils.AssertEqual(t, nil, err)
+		}
+		utils.AssertEqual(t, "index", file)
+		return c.SendString(file)
+	})
+	// 1st try
+	resp, err := app.Test(httptest.NewRequest("GET", "/index", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode)
+	// 2nd try
+	resp, err = app.Test(httptest.NewRequest("GET", "/index", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode)
+}
+
+// go test -race -run Test_Ctx_SendFileWithConfig_RestoreOriginalURL
+func Test_Ctx_SendFileWithConfig_RestoreOriginalURL(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/", func(c *Ctx) error {
+		originalURL := utils.CopyString(c.OriginalURL())
+		err := c.SendFileWithConfig("ctx.go")
+		utils.AssertEqual(t, originalURL, c.OriginalURL())
+		return err
+	})
+
+	_, err1 := app.Test(httptest.NewRequest("GET", "/?test=true", nil))
+	// second request required to confirm with zero allocation
+	_, err2 := app.Test(httptest.NewRequest("GET", "/?test=true", nil))
+
+	utils.AssertEqual(t, nil, err1)
+	utils.AssertEqual(t, nil, err2)
+}
+
 // go test -run Test_Ctx_JSON
 func Test_Ctx_JSON(t *testing.T) {
 	t.Parallel()

@@ -412,6 +412,30 @@ type Static struct {
 	Next func(c *Ctx) bool
 }
 
+// SendFile defines configuration options when to transfer file with SendFileWithConfig.
+type SendFile struct {
+	// When set to true, the server tries minimizing CPU usage by caching compressed files.
+	// This works differently than the github.com/gofiber/compression middleware.
+	// Optional. Default value false
+	Compress bool `json:"compress"`
+
+	// When set to true, enables byte range requests.
+	// Optional. Default value false
+	ByteRange bool `json:"byte_range"`
+
+	// Expiration duration for inactive file handlers.
+	// Use a negative time.Duration to disable it.
+	//
+	// Optional. Default value 10 * time.Second.
+	CacheDuration time.Duration `json:"cache_duration"`
+
+	// The value for the Cache-Control HTTP-header
+	// that is set on the file response. MaxAge is defined in seconds.
+	//
+	// Optional. Default value 0.
+	MaxAge int `json:"max_age"`
+}
+
 // RouteMessage is some message need to be print when server starts
 type RouteMessage struct {
 	name     string

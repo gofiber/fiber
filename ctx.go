@@ -1319,6 +1319,17 @@ var (
 // The file is not compressed by default, enable this by passing a 'true' argument
 // Sets the Content-Type response HTTP header field based on the filenames extension.
 func (c *Ctx) SendFile(file string, compress ...bool) error {
+	if len(compress) > 0 {
+		return c.SendFileWithConfig(file, SendFile{Compress: compress[0]})
+	}
+
+	return c.SendFileWithConfig(file)
+}
+
+// SendFileWithConfig transfers the file from the given path.
+// Some config fields are overwritten. You can change them by config parameter.
+// Sets the Content-Type response HTTP header field based on the filenames extension.
+func (c *Ctx) SendFileWithConfig(file string, config ...SendFile) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
 
@@ -1342,10 +1353,18 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	// Keep original path for mutable params
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
 	// Disable compression
-	if len(compress) == 0 || !compress[0] {
-		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
-		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
+	// Set config if provided
+	var cacheControlValue string
+	if len(config) > 0 {
+		maxAge := config[0].MaxAge
+		if maxAge > 0 {
+			cacheControlValue = "public, max-age=" + strconv.Itoa(maxAge)
+		}
+		sendFileFS.CacheDuration = config[0].CacheDuration
+		sendFileFS.Compress = config[0].Compress
+		sendFileFS.AcceptByteRange = config[0].ByteRange
 	}
+
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L85
 	if len(file) == 0 || file[0] != '/' {
 		hasTrailingSlash := len(file) > 0 && file[len(file)-1] == '/'
@@ -1371,6 +1390,9 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	// Set the status code set by the user if it is different from the fasthttp status code and 200
 	if status != fsStatus && status != StatusOK {
 		c.Status(status)
+	}
+	if status != StatusNotFound && status != StatusForbidden && len(cacheControlValue) > 0 {
+		c.fasthttp.Response.Header.Set(HeaderCacheControl, cacheControlValue)
 	}
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
