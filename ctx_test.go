@@ -1318,6 +1318,44 @@ func Test_Ctx_Params(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -race -run Test_Ctx_AllParams
+func Test_Ctx_AllParams(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test/:user", func(c *Ctx) error {
+		utils.AssertEqual(t, map[string]string{"user": "john"}, c.AllParams())
+		return nil
+	})
+	app.Get("/test2/*", func(c *Ctx) error {
+		utils.AssertEqual(t, map[string]string{"*1": "im/a/cookie"}, c.AllParams())
+		return nil
+	})
+	app.Get("/test3/*/blafasel/*", func(c *Ctx) error {
+		utils.AssertEqual(t, map[string]string{"*1": "1111", "*2": "2222"}, c.AllParams())
+		return nil
+	})
+	app.Get("/test4/:optional?", func(c *Ctx) error {
+		utils.AssertEqual(t, map[string]string{"optional": ""}, c.AllParams())
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=4
 func Benchmark_Ctx_Params(b *testing.B) {
 	app := New()
@@ -1341,6 +1379,32 @@ func Benchmark_Ctx_Params(b *testing.B) {
 		res = c.Params("param4")
 	}
 	utils.AssertEqual(b, "awesome", res)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_AllParams -benchmem -count=4
+func Benchmark_Ctx_AllParams(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.route = &Route{
+		Params: []string{
+			"param1", "param2", "param3", "param4",
+		},
+	}
+	c.values = [maxParams]string{
+		"john", "doe", "is", "awesome",
+	}
+	var res map[string]string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.AllParams()
+	}
+	utils.AssertEqual(b, map[string]string{"param1": "john",
+		"param2": "doe",
+		"param3": "is",
+		"param4": "awesome"},
+		res)
 }
 
 // go test -run Test_Ctx_Path
