@@ -1363,7 +1363,7 @@ func (c *Ctx) SendFileWithConfig(file string, config ...SendFile) error {
 		sendFileFS.AcceptByteRange = config[0].ByteRange
 	}
 	// Disable compression
-	if sendFileFS.Compress == false {
+	if !sendFileFS.Compress {
 		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
 		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}
