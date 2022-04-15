@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -22,8 +23,6 @@ import (
 	"sync"
 	"text/template"
 	"time"
-
-	"encoding/json"
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/internal/dictpool"
