@@ -18,6 +18,7 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"strconv"
@@ -2254,6 +2255,28 @@ func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
 	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
+// go test -run Test_Ctx_RedirectToRouteWithParams
+func Test_Ctx_RedirectToRouteWithQueries(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/:name", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.RedirectToRoute("user", Map{
+		"name":    "fiber",
+		"queries": map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
+	})
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
+	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
+	utils.AssertEqual(t, nil, err, "url.Parse(location)")
+	utils.AssertEqual(t, "/user/fiber", location.Path)
+	utils.AssertEqual(t, url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}}, location.Query())
+}
+
 // go test -run Test_Ctx_RedirectToRouteWithOptionalParams
 func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
 	t.Parallel()
@@ -2541,6 +2564,55 @@ func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
 
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
+}
+
+func Benchmark_Ctx_RedirectToRoute(b *testing.B) {
+	app := New()
+	app.Get("/user/:name", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c.RedirectToRoute("user", Map{
+			"name": "fiber",
+		})
+	}
+
+	utils.AssertEqual(b, 302, c.Response().StatusCode())
+	utils.AssertEqual(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+func Benchmark_Ctx_RedirectToRouteWithQueries(b *testing.B) {
+	app := New()
+	app.Get("/user/:name", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c.RedirectToRoute("user", Map{
+			"name":    "fiber",
+			"queries": map[string]string{"a": "a", "b": "b"},
+		})
+	}
+
+	utils.AssertEqual(b, 302, c.Response().StatusCode())
+	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
+	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
+	utils.AssertEqual(b, nil, err, "url.Parse(location)")
+	utils.AssertEqual(b, "/user/fiber", location.Path)
+	utils.AssertEqual(b, url.Values{"a": []string{"a"}, "b": []string{"b"}}, location.Query())
 }
 
 func Benchmark_Ctx_RenderLocals(b *testing.B) {

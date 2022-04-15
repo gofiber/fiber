@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -22,8 +23,6 @@ import (
 	"sync"
 	"text/template"
 	"time"
-
-	"encoding/json"
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/internal/dictpool"
@@ -1163,10 +1162,29 @@ func (c *Ctx) GetRouteURL(routeName string, params Map) (string, error) {
 
 // RedirectToRoute to the Route registered in the app with appropriate parameters
 // If status is not specified, status defaults to 302 Found.
+// If you want to send queries to route, you must add "queries" key typed as map[string]string to params.
 func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error {
 	location, err := c.getLocationFromRoute(c.App().GetRoute(routeName), params)
 	if err != nil {
 		return err
+	}
+
+	// Check queries
+	if queries, ok := params["queries"].(map[string]string); ok {
+		queryText := bytebufferpool.Get()
+		defer bytebufferpool.Put(queryText)
+
+		i := 1
+		for k, v := range queries {
+			_, _ = queryText.WriteString(k + "=" + v)
+
+			if i != len(queries) {
+				_, _ = queryText.WriteString("&")
+			}
+			i++
+		}
+
+		return c.Redirect(location+"?"+queryText.String(), status...)
 	}
 	return c.Redirect(location, status...)
 }
