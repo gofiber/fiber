@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -22,8 +23,6 @@ import (
 	"sync"
 	"text/template"
 	"time"
-
-	"encoding/json"
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/internal/dictpool"
@@ -1352,7 +1351,6 @@ func (c *Ctx) SendFileWithConfig(file string, config ...SendFile) error {
 
 	// Keep original path for mutable params
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
-	// Disable compression
 	// Set config if provided
 	var cacheControlValue string
 	if len(config) > 0 {
@@ -1362,11 +1360,12 @@ func (c *Ctx) SendFileWithConfig(file string, config ...SendFile) error {
 		}
 		sendFileFS.CacheDuration = config[0].CacheDuration
 		sendFileFS.Compress = config[0].Compress
-		if !config[0].Compress {
-			// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
-			c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
-		}
 		sendFileFS.AcceptByteRange = config[0].ByteRange
+	}
+	// Disable compression
+	if sendFileFS.Compress == false {
+		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
+		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}
 
 	// https://github.com/valyala/fasthttp/blob/master/fs.go#L85
