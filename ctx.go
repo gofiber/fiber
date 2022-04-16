@@ -847,7 +847,7 @@ func (c *Ctx) AllParams() map[string]string {
 // ParamsInt is used to get an integer from the route parameters
 // it defaults to zero if the parameter is not found or if the
 // parameter cannot be converted to an integer
-// If a default value is given, it will returb that value in case the param
+// If a default value is given, it will return that value in case the param
 // doesn't exist or cannot be converted to an integrer
 func (c *Ctx) ParamsInt(key string, defaultValue ...int) (int, error) {
 	// Use Atoi to convert the param to an int or return zero and an error
