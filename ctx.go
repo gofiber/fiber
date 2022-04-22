@@ -929,7 +929,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 		v := utils.UnsafeString(val)
 
 		if strings.Contains(k, "[") {
-			k, err = parseQuery(k)
+			k, err = parseParamSquareBrackets(k)
 		}
 
 		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
@@ -950,7 +950,7 @@ func (c *Ctx) QueryParser(out interface{}) error {
 	return c.parseToStruct(queryTag, out, data)
 }
 
-func parseQuery(k string) (string, error) {
+func parseParamSquareBrackets(k string) (string, error) {
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
 
