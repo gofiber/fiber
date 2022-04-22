@@ -56,10 +56,10 @@
     <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
   </a>
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -79,7 +79,7 @@
   </a>
 </p>
 <p align="center">
-<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Express</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, el motor HTTP <strong>más rápido</strong> para <a href="https://golang.org/doc/">Go</a>. Diseñado para <strong>facilitar</strong> las cosas para <strong>un</strong> desarrollo <strong>rápido</strong> con <strong>cero asignación de memoria</strong> y <strong>rendimiento</strong> en mente.
+<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Express</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, el motor HTTP <strong>más rápido</strong> para <a href="https://go.dev/doc/">Go</a>. Diseñado para <strong>facilitar</strong> las cosas para <strong>un</strong> desarrollo <strong>rápido</strong> con <strong>cero asignación de memoria</strong> y <strong>rendimiento</strong> en mente.
 </p>
 
 ## ⚡️ Inicio rápido
@@ -111,9 +111,9 @@ Estas pruebas son realizadas por [TechEmpower](https://www.techempower.com/bench
 
 ## ⚙️ Instalación
 
-Asegúrese de tener instalado Go ([descargar](https://golang.org/dl/)). Versión `1.14` o superior.
+Asegúrese de tener instalado Go ([descargar](https://go.dev/dl/)). Versión `1.14` o superior.
 
-Arranque su proyecto creando una nueva carpeta y ejecutando `go mod init github.com/your/repo` ([mas información](https://blog.golang.org/using-go-modules)) dentro del mismo directorio. Después instale Fiber mediante el comando [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
+Arranque su proyecto creando una nueva carpeta y ejecutando `go mod init github.com/your/repo` ([mas información](https://go.dev/blog/using-go-modules)) dentro del mismo directorio. Después instale Fiber mediante el comando [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -137,12 +137,12 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 💡 Filosofía
 
-Los nuevos gophers que hacen el cambio de [Node.js](https://nodejs.org/en/about/) a [Go](https://golang.org/doc/) están lidiando con una curva de aprendizaje antes de que puedan comenzar a construir sus aplicaciones web o micro-servicios. Fiber, como un **marco web** , fue creado con la idea del **minimalismo** y sigue el **camino de UNIX** , para que los nuevos gophers puedan ingresar rápidamente al mundo de Go con una cálida y confiable bienvenida.
+Los nuevos gophers que hacen el cambio de [Node.js](https://nodejs.org/en/about/) a [Go](https://go.dev/doc/) están lidiando con una curva de aprendizaje antes de que puedan comenzar a construir sus aplicaciones web o micro-servicios. Fiber, como un **marco web** , fue creado con la idea del **minimalismo** y sigue el **camino de UNIX** , para que los nuevos gophers puedan ingresar rápidamente al mundo de Go con una cálida y confiable bienvenida.
 
 Fiber está **inspirado** en Expressjs, el framework web más popular en Internet. Combinamos la **facilidad** de Express y **el rendimiento bruto** de Go. Si alguna vez ha implementado una aplicación web en Node.js ( _utilizando Express.js o similar_ ), muchos métodos y principios le parecerán **muy comunes** .
 
 ## ⚠️ Limitantes
-* Debido a que Fiber utiliza unsafe, la biblioteca no siempre será compatible con la última versión de Go. Fiber 2.18.0 ha sido probado con las versiones de Go 1.14 a 1.17.
+* Debido a que Fiber utiliza unsafe, la biblioteca no siempre será compatible con la última versión de Go. Fiber 2.29.0 ha sido probado con las versiones de Go 1.14 a 1.18.
 * Fiber no es compatible con interfaces net/http. Esto significa que no lo podrá usar en proyectos como qglgen, go-swagger, u otros que son parte del ecosistema net/http.
 
 ## 👀 Ejemplos
@@ -280,7 +280,7 @@ func main() {
 📖 [Motores](https://github.com/gofiber/template)
 📖 [Renderizado](https://docs.gofiber.io/api/ctx#render)
 
-El motor por defecto de Fiber, cuando no es especificado, es [html/template](https://golang.org/pkg/html/template/).
+El motor por defecto de Fiber, cuando no es especificado, es [html/template](https://pkg.go.dev/html/template/).
 
 Si quiere ejecutar vistas parciales, o usar un motor diferente (como [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) o [pug](https://github.com/Joker/jade), etc).
 
@@ -629,7 +629,6 @@ Fiber es un proyecto de código abierto que se mantiene a través de donaciones 
 | ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5   |
 | ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5   |
 | ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3   |
-| ![](https://avatars.githubusercontent.com/u/59947262?s=25) | [@ankush](https://github.com/ankush)             | ☕ x 3   |
 | ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3   |
 | ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3   |
 | ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1   |
@@ -658,7 +657,6 @@ Copyright (c) 2019-presente [Fenny](https://github.com/fenny) y [contribuyentes]
 -   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 -   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
--   [go-json](https://github.com/goccy/go-json/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 -   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)

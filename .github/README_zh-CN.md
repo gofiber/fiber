@@ -56,10 +56,10 @@
     <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
   </a>
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -79,7 +79,7 @@
   </a>
 </p>
 <p align="center">
-  <b>Fiber</b>是一个受到<a href="https://github.com/expressjs/express">Express</a>启发的<b>Web框架</b>，基于使用<a href="https://golang.org/doc/">Go</a>语言编写的<b>最快的HTTP引擎</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>构建。旨在通过<b>零内存分配</b>和<b>高性能服务</b>，使<b>快速</b>开发更加简便。
+  <b>Fiber</b>是一个受到<a href="https://github.com/expressjs/express">Express</a>启发的<b>Web框架</b>，基于使用<a href="https://go.dev/doc/">Go</a>语言编写的<b>最快的HTTP引擎</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>构建。旨在通过<b>零内存分配</b>和<b>高性能服务</b>，使<b>快速</b>开发更加简便。
 </p>
 
 ## ⚡️ 快速入门
@@ -111,9 +111,9 @@ func main() {
 
 ## ⚙️ 安装
 
-确保已安装`1.14`或更高版本的 Go([下载](https://golang.org/dl/))。
+确保已安装`1.14`或更高版本的 Go([下载](https://go.dev/dl/))。
 
-通过创建文件夹并在文件夹内运行 `go mod init github.com/your/repo` ([了解更多](https://blog.golang.org/using-go-modules)) 来初始化项目，然后使用 [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 命令安装 Fiber：
+通过创建文件夹并在文件夹内运行 `go mod init github.com/your/repo` ([了解更多](https://go.dev/blog/using-go-modules)) 来初始化项目，然后使用 [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 命令安装 Fiber：
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
@@ -137,14 +137,14 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 💡 哲学
 
-从[Node.js](https://nodejs.org/en/about/)切换到[Go](https://golang.org/doc/)的新`gopher`在开始构建`Web`应用程序或微服务之前需要经历一段艰难的学习过程。 而`Fiber`，一个遵循**极简主义**和**UNIX 方式**创建的**Web 框架**，使新的`gopher`可以在热烈和可信赖的欢迎中迅速进入`Go`的世界。
+从[Node.js](https://nodejs.org/en/about/)切换到[Go](https://go.dev/doc/)的新`gopher`在开始构建`Web`应用程序或微服务之前需要经历一段艰难的学习过程。 而`Fiber`，一个遵循**极简主义**和**UNIX 方式**创建的**Web 框架**，使新的`gopher`可以在热烈和可信赖的欢迎中迅速进入`Go`的世界。
 
 `Fiber`受到了互联网上最流行的`Web`框架`Express`的**启发** 。我们结合了`Express`的**易用性**和`Go`的**原始性能** 。如果您曾经使用`Node.js`构建`Web`应用程序(_使用 Express 或类似框架_)，那么许多方法和原理对您来说应该**非常易懂**。
 
 我们会**倾听**用户在[issues](https://github.com/gofiber/fiber/issues)和 Discord [channel](https://gofiber.io/discord)和在互联网上的所有诉求，为了创建一个能让有着任何技术栈的开发者都能在deadline前完成任务的**迅速**，**灵活**以及**友好**的`Go web`框架，就像`Express`在`JavaScript`世界中一样。
 
 ## ⚠️ 限制
-* 由于 Fiber 使用了 unsafe 特性，导致其可能与最新的 Go 版本不兼容。Fiber 2.18.0 已经在 Go 1.14 到 1.17 上测试过。
+* 由于 Fiber 使用了 unsafe 特性，导致其可能与最新的 Go 版本不兼容。Fiber 2.29.0 已经在 Go 1.14 到 1.18 上测试过。
 * Fiber 与 net/http 接口不兼容。也就是说你无法使用 gqlen，go-swagger 或者任何其他属于 net/http 生态的项目。
 
 ## 👀 示例
@@ -282,7 +282,7 @@ func main() {
 📖 [模版引擎](https://github.com/gofiber/template)
 📖 [渲染](https://docs.gofiber.io/api/ctx#render)
 
-如果未设置模版引擎，则`Fiber`默认使用[html/template](https://golang.org/pkg/html/template/)。
+如果未设置模版引擎，则`Fiber`默认使用[html/template](https://pkg.go.dev/html/template/)。
 
 如果您要执行部分模版或使用其他引擎，例如[amber](https://github.com/eknkc/amber)，[handlebars](https://github.com/aymerick/raymond)，[mustache](https://github.com/cbroglie/mustache)或者[pug](https://github.com/Joker/jade)等等...
 
@@ -572,19 +572,19 @@ func main() {
 | [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Fiber的压缩中间件，默认支持' deflate '， ' gzip '和' brotli '.                                                                                    |
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)             | 使用各种选项启用跨源资源共享\(CORS\).                                                                                                          |
 | [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)             | 保护来自CSRF的漏洞.                                                                                                                                                  |
-| [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware which encrypts cookie values.                                                                                                                             |
-| [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | ETag middleware that lets caches be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.               |
-| [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware that serves via its HTTP server runtime exposed variants in the JSON format.                                                                               |
+| [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | 加密 cookie 值的加密中间件.                                                                                                                             |
+| [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | 让缓存更加高效并且节省带宽,让web服务不再需要重新响应整个响应体如果响应内容未变更.               |
+| [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | 通过其HTTP服务器运行时间提供JSON格式的暴露变体.                                                                               |
 | [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)       | 如果提供了文件路径，则忽略日志中的图标或从内存中服务.                                                                                                    |
-| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | 光纤文件系统中间件，特别感谢 Alireza Salary.                                                                                                |
-| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)       | 用于光纤的限速中间件。 用于限制对公共api和/或端点的重复请求，如密码重置.                                                   |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | Fiber文件系统中间件，特别感谢 Alireza Salary.                                                                                                |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)       | 用于Fiber的限速中间件。 用于限制对公共api和/或端点的重复请求，如密码重置.                                                   |
 | [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)         | HTTP请求/响应日志.                                                                                                                                                |
-| [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             | Monitor middleware that reports server metrics, inspired by express-status-monitor                                                                                           |
+| [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             | 报告服务器指标，受Express-status-monitor启发.                                                                                           |
 | [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | 特别感谢 Matthew Lee \(@mthli\)                                                                                                                                     |
 | [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | 允许您将请求proxy到多个服务器                                                                                                                           |
 | [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | 恢复中间件从堆栈链中的任何位置的恐慌中恢复，并将控制处理到集中式. [ ErrorHandler](https://docs.gofiber.io/guide/error-handling). |
 | [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | 为每个请求添加一个requesttid.                                                                                                                                           |
-| [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Session middleware. NOTE: This middleware uses our Storage package.                                                                                                          |
+| [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Session 中间件. 注意: 此中间件使用了我们的存储包.                                                                                                          |
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Skip middleware that skips a wrapped handler is a predicate is true.                                                                                                         |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | 添加请求的最大时间，如果超过了，则发送给ErrorHandler.                                                                                                |
 
@@ -631,7 +631,6 @@ For more articles, middlewares, examples or tools check our [awesome list](https
 | ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5   |
 | ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5   |
 | ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3   |
-| ![](https://avatars.githubusercontent.com/u/59947262?s=25) | [@ankush](https://github.com/ankush)             | ☕ x 3   |
 | ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3   |
 | ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3   |
 | ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1   |
@@ -660,7 +659,6 @@ Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](
 -   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 -   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
--   [go-json](https://github.com/goccy/go-json/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 -   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)

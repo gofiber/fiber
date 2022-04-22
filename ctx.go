@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -25,7 +26,6 @@ import (
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/internal/dictpool"
-	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
@@ -833,10 +833,21 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 	return defaultString("", defaultValue)
 }
 
+// Params is used to get all route parameters.
+// Using Params method to get params.
+func (c *Ctx) AllParams() map[string]string {
+	params := make(map[string]string, len(c.route.Params))
+	for _, param := range c.route.Params {
+		params[param] = c.Params(param)
+	}
+
+	return params
+}
+
 // ParamsInt is used to get an integer from the route parameters
 // it defaults to zero if the parameter is not found or if the
 // parameter cannot be converted to an integer
-// If a default value is given, it will returb that value in case the param
+// If a default value is given, it will return that value in case the param
 // doesn't exist or cannot be converted to an integrer
 func (c *Ctx) ParamsInt(key string, defaultValue ...int) (int, error) {
 	// Use Atoi to convert the param to an int or return zero and an error
@@ -907,9 +918,19 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
 	data := make(map[string][]string)
+	var err error
+
 	c.fasthttp.QueryArgs().VisitAll(func(key, val []byte) {
+		if err != nil {
+			return
+		}
+
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
+
+		if strings.Contains(k, "[") {
+			k, err = parseQuery(k)
+		}
 
 		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
@@ -922,7 +943,37 @@ func (c *Ctx) QueryParser(out interface{}) error {
 
 	})
 
+	if err != nil {
+		return err
+	}
+
 	return c.parseToStruct(queryTag, out, data)
+}
+
+func parseQuery(k string) (string, error) {
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
+
+	kbytes := []byte(k)
+
+	for i, b := range kbytes {
+
+		if b == '[' && kbytes[i+1] != ']' {
+			if err := bb.WriteByte('.'); err != nil {
+				return "", err
+			}
+		}
+
+		if b == '[' || b == ']' {
+			continue
+		}
+
+		if err := bb.WriteByte(b); err != nil {
+			return "", err
+		}
+	}
+
+	return bb.String(), nil
 }
 
 // ReqHeaderParser binds the request header strings to a struct.
@@ -1079,7 +1130,7 @@ func (c *Ctx) Bind(vars Map) error {
 	return nil
 }
 
-// get URL location from route using parameters
+// getLocationFromRoute get URL location from route using parameters
 func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
@@ -1104,12 +1155,36 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	return location, nil
 }
 
+// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
+func (c *Ctx) GetRouteURL(routeName string, params Map) (string, error) {
+	return c.getLocationFromRoute(c.App().GetRoute(routeName), params)
+}
+
 // RedirectToRoute to the Route registered in the app with appropriate parameters
 // If status is not specified, status defaults to 302 Found.
+// If you want to send queries to route, you must add "queries" key typed as map[string]string to params.
 func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error {
 	location, err := c.getLocationFromRoute(c.App().GetRoute(routeName), params)
 	if err != nil {
 		return err
+	}
+
+	// Check queries
+	if queries, ok := params["queries"].(map[string]string); ok {
+		queryText := bytebufferpool.Get()
+		defer bytebufferpool.Put(queryText)
+
+		i := 1
+		for k, v := range queries {
+			_, _ = queryText.WriteString(k + "=" + v)
+
+			if i != len(queries) {
+				_, _ = queryText.WriteString("&")
+			}
+			i++
+		}
+
+		return c.Redirect(location+"?"+queryText.String(), status...)
 	}
 	return c.Redirect(location, status...)
 }
@@ -1427,6 +1502,11 @@ func (c *Ctx) Vary(fields ...string) {
 func (c *Ctx) Write(p []byte) (int, error) {
 	c.fasthttp.Response.AppendBody(p)
 	return len(p), nil
+}
+
+// Writef appends f & a into response body writer.
+func (c *Ctx) Writef(f string, a ...interface{}) (int, error) {
+	return fmt.Fprintf(c.fasthttp.Response.BodyWriter(), f, a...)
 }
 
 // WriteString appends s to response body.

@@ -15,9 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+	"encoding/json"
 	"github.com/dgrr/http2"
-	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )

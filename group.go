@@ -13,9 +13,10 @@ import (
 
 // Group struct
 type Group struct {
-	app    *App
-	prefix string
-	name   string
+	app  *App
+	name string
+
+	Prefix string
 }
 
 // Mount attaches another app instance as a sub-router along a routing path.
@@ -23,7 +24,11 @@ type Group struct {
 // compose them as a single service using Mount.
 func (grp *Group) Mount(prefix string, fiber *App) Router {
 	stack := fiber.Stack()
-	groupPath := getGroupPath(grp.prefix, prefix)
+	groupPath := getGroupPath(grp.Prefix, prefix)
+	groupPath = strings.TrimRight(groupPath, "/")
+	if groupPath == "" {
+		groupPath = "/"
+	}
 
 	for m := range stack {
 		for r := range stack[m] {
@@ -33,7 +38,6 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 	}
 
 	// Support for configs of mounted-apps and sub-mounted-apps
-	groupPath = strings.TrimRight(groupPath, "/")
 	for mountedPrefixes, subApp := range fiber.appList {
 		grp.app.appList[groupPath+mountedPrefixes] = subApp
 		subApp.init()
@@ -46,13 +50,19 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 
 // Assign name to specific route.
 func (grp *Group) Name(name string) Router {
-	if strings.HasPrefix(grp.prefix, latestGroup.prefix) {
-		grp.name = latestGroup.name + name
+	grp.app.mutex.Lock()
+	if strings.HasPrefix(grp.Prefix, grp.app.latestGroup.Prefix) {
+		grp.name = grp.app.latestGroup.name + name
 	} else {
 		grp.name = name
 	}
 
-	latestGroup = *grp
+	grp.app.latestGroup = grp
+
+	if err := grp.app.hooks.executeOnGroupNameHooks(*grp.app.latestGroup); err != nil {
+		panic(err)
+	}
+	grp.app.mutex.Unlock()
 
 	return grp
 }
@@ -84,14 +94,14 @@ func (grp *Group) Use(args ...interface{}) Router {
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	grp.app.register(methodUse, getGroupPath(grp.prefix, prefix), handlers...)
+	grp.app.register(methodUse, getGroupPath(grp.Prefix, prefix), handlers...)
 	return grp
 }
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (grp *Group) Get(path string, handlers ...Handler) Router {
-	path = getGroupPath(grp.prefix, path)
+	path = getGroupPath(grp.Prefix, path)
 	return grp.app.Add(MethodHead, path, handlers...).Add(MethodGet, path, handlers...)
 }
 
@@ -144,12 +154,12 @@ func (grp *Group) Patch(path string, handlers ...Handler) Router {
 
 // Add allows you to specify a HTTP method to register a route
 func (grp *Group) Add(method, path string, handlers ...Handler) Router {
-	return grp.app.register(method, getGroupPath(grp.prefix, path), handlers...)
+	return grp.app.register(method, getGroupPath(grp.Prefix, path), handlers...)
 }
 
 // Static will create a file server serving static files
 func (grp *Group) Static(prefix, root string, config ...Static) Router {
-	return grp.app.registerStatic(getGroupPath(grp.prefix, prefix), root, config...)
+	return grp.app.registerStatic(getGroupPath(grp.Prefix, prefix), root, config...)
 }
 
 // All will register the handler on all HTTP methods
@@ -164,7 +174,7 @@ func (grp *Group) All(path string, handlers ...Handler) Router {
 //  api := app.Group("/api")
 //  api.Get("/users", handler)
 func (grp *Group) Group(prefix string, handlers ...Handler) Router {
-	prefix = getGroupPath(grp.prefix, prefix)
+	prefix = getGroupPath(grp.Prefix, prefix)
 	if len(handlers) > 0 {
 		_ = grp.app.register(methodUse, prefix, handlers...)
 	}
