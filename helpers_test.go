@@ -194,7 +194,7 @@ func Test_Utils_Parse_Address(t *testing.T) {
 	testCases := []struct {
 		addr, host, port string
 	}{
-		{"[::]:3000", "[::]", "3000"},
+		{"[::1]:3000", "[::1]", "3000"},
 		{"127.0.0.1:3000", "127.0.0.1", "3000"},
 		{"/path/to/unix/socket", "/path/to/unix/socket", ""},
 	}
@@ -210,11 +210,6 @@ func Test_Utils_GetOffset(t *testing.T) {
 	utils.AssertEqual(t, "", getOffer("hello"))
 	utils.AssertEqual(t, "1", getOffer("", "1"))
 	utils.AssertEqual(t, "", getOffer("2", "1"))
-}
-
-func Test_Utils_TestAddr_Network(t *testing.T) {
-	var addr testAddr = "addr"
-	utils.AssertEqual(t, "addr", addr.Network())
 }
 
 func Test_Utils_TestConn_Deadline(t *testing.T) {
@@ -333,7 +328,6 @@ func Benchmark_SlashRecognition(b *testing.B) {
 		c := int32(slashDelimiter)
 		for i := 0; i < b.N; i++ {
 			result = IndexRune(search, c)
-
 		}
 		utils.AssertEqual(b, true, result)
 	})

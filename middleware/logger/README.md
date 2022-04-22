@@ -47,9 +47,9 @@ app.Use(logger.New(logger.Config{
 ```go
 app.Use(requestid.New())
 
-​app​.​Use​(​logger​.​New​(logger.​Config​{
+app.Use(logger.New(logger.Config{
 	// For more options, see the Config section
-  Format​: "${pid} ${locals:requestid} ${status} - ${method} ${path}​\n​"​,
+	Format: "${pid} ${locals:requestid} ${status} - ${method} ${path}​\n",
 }))
 ```
 
@@ -105,7 +105,7 @@ type Config struct {
 	// Optional. Default: 500 * time.Millisecond
 	TimeInterval time.Duration
 
-	// Output is a writter where logs are written
+	// Output is a writer where logs are written
 	//
 	// Default: os.Stderr
 	Output io.Writer
@@ -143,30 +143,31 @@ const (
 	TagLatency				= "latency"
 	TagStatus				= "status"	// response status
 	TagResBody				= "resBody"	// response body
-	TagQueryStringParams			= "queryParams"	// request query parameters
-	TagBody					= "body"	// request body
-	TagBytesSent			= "bytesSent"
-	TagBytesReceived		= "bytesReceived"
+	TagReqHeaders                           = "reqHeaders"
+        TagQueryStringParams			= "queryParams"	// request query parameters
+        TagBody					= "body"	// request body
+	TagBytesSent				= "bytesSent"
+	TagBytesReceived			= "bytesReceived"
 	TagRoute				= "route"
-	TagError                = "error"
+	TagError                		= "error"
 	// DEPRECATED: Use TagReqHeader instead
-	TagHeader               = "header:"     // request header
-	TagReqHeader            = "reqHeader:"  // request header
-	TagRespHeader           = "respHeader:" // response header
+	TagHeader               		= "header:"     // request header
+	TagReqHeader            		= "reqHeader:"  // request header
+	TagRespHeader           		= "respHeader:" // response header
 	TagQuery				= "query:"      // request query
 	TagForm					= "form:"       // request form
 	TagCookie				= "cookie:"     // request cookie
 	TagLocals				= "locals:"
 
 	// colors
-	TagBlack         = "black"
-	TagRed           = "red"
-	TagGreen         = "green"
-	TagYellow        = "yellow"
-	TagBlue          = "blue"
-	TagMagenta       = "magenta"
-	TagCyan          = "cyan"
-	TagWhite         = "white"
-	TagReset         = "reset"
+	TagBlack        			= "black"
+	TagRed           			= "red"
+	TagGreen        			= "green"
+	TagYellow        			= "yellow"
+	TagBlue          			= "blue"
+	TagMagenta       			= "magenta"
+	TagCyan          			= "cyan"
+	TagWhite         			= "white"
+	TagReset         			= "reset"
 )
 ```

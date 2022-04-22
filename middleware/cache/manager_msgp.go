@@ -54,6 +54,36 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 				err = msgp.WrapError(err, "exp")
 				return
 			}
+		case "headers":
+			var zb0002 uint32
+			zb0002, err = dc.ReadMapHeader()
+			if err != nil {
+				err = msgp.WrapError(err, "headers")
+				return
+			}
+			if z.headers == nil {
+				z.headers = make(map[string][]byte, zb0002)
+			} else if len(z.headers) > 0 {
+				for key := range z.headers {
+					delete(z.headers, key)
+				}
+			}
+			for zb0002 > 0 {
+				zb0002--
+				var za0001 string
+				var za0002 []byte
+				za0001, err = dc.ReadString()
+				if err != nil {
+					err = msgp.WrapError(err, "headers")
+					return
+				}
+				za0002, err = dc.ReadBytes(za0002)
+				if err != nil {
+					err = msgp.WrapError(err, "headers", za0001)
+					return
+				}
+				z.headers[za0001] = za0002
+			}
 		default:
 			err = dc.Skip()
 			if err != nil {
@@ -67,9 +97,9 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 
 // EncodeMsg implements msgp.Encodable
 func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
-	// map header, size 5
+	// map header, size 6
 	// write "body"
-	err = en.Append(0x85, 0xa4, 0x62, 0x6f, 0x64, 0x79)
+	err = en.Append(0x86, 0xa4, 0x62, 0x6f, 0x64, 0x79)
 	if err != nil {
 		return
 	}
@@ -118,15 +148,37 @@ func (z *item) EncodeMsg(en *msgp.Writer) (err error) {
 		err = msgp.WrapError(err, "exp")
 		return
 	}
+	// write "headers"
+	err = en.Append(0xaa, 0x65, 0x32, 0x65, 0x48, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	if err != nil {
+		return
+	}
+	err = en.WriteMapHeader(uint32(len(z.headers)))
+	if err != nil {
+		err = msgp.WrapError(err, "headers")
+		return
+	}
+	for za0001, za0002 := range z.headers {
+		err = en.WriteString(za0001)
+		if err != nil {
+			err = msgp.WrapError(err, "headers")
+			return
+		}
+		err = en.WriteBytes(za0002)
+		if err != nil {
+			err = msgp.WrapError(err, "headers", za0001)
+			return
+		}
+	}
 	return
 }
 
 // MarshalMsg implements msgp.Marshaler
 func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	o = msgp.Require(b, z.Msgsize())
-	// map header, size 5
+	// map header, size 6
 	// string "body"
-	o = append(o, 0x85, 0xa4, 0x62, 0x6f, 0x64, 0x79)
+	o = append(o, 0x86, 0xa4, 0x62, 0x6f, 0x64, 0x79)
 	o = msgp.AppendBytes(o, z.body)
 	// string "ctype"
 	o = append(o, 0xa5, 0x63, 0x74, 0x79, 0x70, 0x65)
@@ -140,6 +192,13 @@ func (z *item) MarshalMsg(b []byte) (o []byte, err error) {
 	// string "exp"
 	o = append(o, 0xa3, 0x65, 0x78, 0x70)
 	o = msgp.AppendUint64(o, z.exp)
+	// string "headers"
+	o = append(o, 0xaa, 0x65, 0x32, 0x65, 0x48, 0x65, 0x61, 0x64, 0x65, 0x72, 0x73)
+	o = msgp.AppendMapHeader(o, uint32(len(z.headers)))
+	for za0001, za0002 := range z.headers {
+		o = msgp.AppendString(o, za0001)
+		o = msgp.AppendBytes(o, za0002)
+	}
 	return
 }
 
@@ -191,6 +250,36 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 				err = msgp.WrapError(err, "exp")
 				return
 			}
+		case "headers":
+			var zb0002 uint32
+			zb0002, bts, err = msgp.ReadMapHeaderBytes(bts)
+			if err != nil {
+				err = msgp.WrapError(err, "headers")
+				return
+			}
+			if z.headers == nil {
+				z.headers = make(map[string][]byte, zb0002)
+			} else if len(z.headers) > 0 {
+				for key := range z.headers {
+					delete(z.headers, key)
+				}
+			}
+			for zb0002 > 0 {
+				var za0001 string
+				var za0002 []byte
+				zb0002--
+				za0001, bts, err = msgp.ReadStringBytes(bts)
+				if err != nil {
+					err = msgp.WrapError(err, "headers")
+					return
+				}
+				za0002, bts, err = msgp.ReadBytesBytes(bts, za0002)
+				if err != nil {
+					err = msgp.WrapError(err, "headers", za0001)
+					return
+				}
+				z.headers[za0001] = za0002
+			}
 		default:
 			bts, err = msgp.Skip(bts)
 			if err != nil {
@@ -205,6 +294,12 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 
 // Msgsize returns an upper bound estimate of the number of bytes occupied by the serialized message
 func (z *item) Msgsize() (s int) {
-	s = 1 + 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 7 + msgp.IntSize + 4 + msgp.Uint64Size
+	s = 1 + 5 + msgp.BytesPrefixSize + len(z.body) + 6 + msgp.BytesPrefixSize + len(z.ctype) + 10 + msgp.BytesPrefixSize + len(z.cencoding) + 7 + msgp.IntSize + 4 + msgp.Uint64Size + 11 + msgp.MapHeaderSize
+	if z.headers != nil {
+		for za0001, za0002 := range z.headers {
+			_ = za0002
+			s += msgp.StringPrefixSize + len(za0001) + msgp.BytesPrefixSize + len(za0002)
+		}
+	}
 	return
 }

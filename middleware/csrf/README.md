@@ -46,7 +46,7 @@ app.Use(csrf.New()) // Default config
 app.Use(csrf.New(csrf.Config{
 	KeyLookup:      "header:X-Csrf-Token",
 	CookieName:     "csrf_",
-	CookieSameSite: "Strict",
+	CookieSameSite: "Lax",
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
 }))
@@ -106,8 +106,12 @@ type Config struct {
 	CookieHTTPOnly bool
 
 	// Indicates if CSRF cookie is requested by SameSite.
-	// Optional. Default value "Strict".
+	// Optional. Default value "Lax".
 	CookieSameSite string
+
+	// Decides whether cookie should last for only the browser sesison.
+	// Ignores Expiration if set to true
+	CookieSessionOnly bool
 
 	// Expiration is the duration before csrf token will expire
 	//
@@ -138,7 +142,7 @@ type Config struct {
 var ConfigDefault = Config{
 	KeyLookup:      "header:X-Csrf-Token",
 	CookieName:     "csrf_",
-	CookieSameSite: "Strict",
+	CookieSameSite: "Lax",
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
 }

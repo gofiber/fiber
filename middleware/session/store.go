@@ -38,7 +38,7 @@ func (s *Store) RegisterType(i interface{}) {
 // Get will get/create a session
 func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	var fresh bool
-	var loadData = true
+	loadData := true
 
 	id := s.getSessionID(c)
 
@@ -79,10 +79,8 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 		} else if err != nil {
 			return nil, err
 		} else {
-			// raw is nil, which means id is not in the storage
-			// so it means that id is not valid (mainly because of id is expired or user provides an invalid id)
-			// therefore, we regenerate a id
-			sess.refresh()
+			// both raw and err is nil, which means id is not in the storage
+			sess.fresh = true
 		}
 	}
 
@@ -96,7 +94,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 func (s *Store) getSessionID(c *fiber.Ctx) string {
 	id := c.Cookies(s.sessionName)
 	if len(id) > 0 {
-		return id
+		return utils.CopyString(id)
 	}
 
 	if s.source == SourceHeader {
@@ -109,7 +107,7 @@ func (s *Store) getSessionID(c *fiber.Ctx) string {
 	if s.source == SourceURLQuery {
 		id = c.Query(s.sessionName)
 		if len(id) > 0 {
-			return id
+			return utils.CopyString(id)
 		}
 	}
 
@@ -132,7 +130,7 @@ func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 
 	value := make([]byte, len(cookie.Value()))
 	copy(value, cookie.Value())
-	id := utils.UnsafeString(value)
+	id := string(value)
 	return id, nil
 }
 

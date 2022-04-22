@@ -52,11 +52,14 @@
          <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fa.md">
      <img height="20px" src="https://img.shields.io/badge/IR-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMTAwMCIgaGVpZ2h0PSI1NzIuMiIgdmlld0JveD0iLTcuMjE3IC00LjEyOSAxMDAwIDU3Mi4yIj48cGF0aCBkPSJNLTcuMjE3LTQuMTI5aDEwMDB2NTcyLjJoLTEwMDB6IiBmaWxsPSIjMjM5ZjQwIi8+PHBhdGggZD0iTS03LjIxNyAyODEuOTcxaDEwMDB2Mjg2LjFoLTEwMDB6IiBmaWxsPSIjZGEwMDAwIi8+PHBhdGggZD0iTS03LjIxNyAxODYuNTcxaDEwMDB2MTkwLjc1aC0xMDAweiIgZmlsbD0iI2ZmZiIvPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC03LjIxNyAxNTUuNDcxKSBzY2FsZSg0LjQ0NDUpIj48ZyBpZD0iZSI+PGcgaWQ9ImMiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiI+PHBhdGggaWQ9ImIiIGQ9Ik0zIC41aDEzTTMuNSA1VjIuNWg0djJoNHYtMkg5bS00IDJoMW0xMCAwaC0yLjV2LTJoNG0wLTIuNXY0LjVoNFYwbS0yIDB2NC41Ii8+PHBhdGggaWQ9ImEiIGQ9Ik0zIDdoOW0xIDBoOSIgc3Ryb2tlLXdpZHRoPSIyIi8+PHVzZSB4bGluazpocmVmPSIjYSIgeT0iNDIuOTEzIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjYiIgeT0iNTEuOTEzIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9nPjxnIGlkPSJkIj48dXNlIHhsaW5rOmhyZWY9IiNjIiB4PSIyMCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIvPjx1c2UgeGxpbms6aHJlZj0iI2MiIHg9IjQwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjYyIgeD0iNjAiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L2c+PC9nPjx1c2UgeGxpbms6aHJlZj0iI2QiIHg9IjYwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjZSIgeD0iMTQwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9nPjxnIHRyYW5zZm9ybT0ibWF0cml4KDY5LjI4NSAwIDAgNjkuMjg1IDQ5Mi43ODMgMjgxLjk3MSkiIGZpbGw9IiNkYTAwMDAiPjxnIGlkPSJmIj48cGF0aCBkPSJNLS41NDguODM2QS45MTIuOTEyIDAgMCAwIC4zMjktLjcyMiAxIDEgMCAwIDEtLjU0OC44MzYiLz48cGF0aCBkPSJNLjYxOC42NjFBLjc2NC43NjQgMCAwIDAgLjQyMi0uNzQgMSAxIDAgMCAxIC42MTguNjYxTTAgMWwtLjA1LTFMMC0uNzg3YS4zMS4zMSAwIDAgMCAuMTE4LjA5OVYtLjFsLS4wNC45OTN6TS0uMDItLjg1TDAtLjgzMWEuMTQ0LjE0NCAwIDAgMCAuMjUyLS4xMzdBLjEzNi4xMzYgMCAwIDEgMC0uOTI1Ii8+PC9nPjx1c2UgeGxpbms6aHJlZj0iI2YiIHRyYW5zZm9ybT0ic2NhbGUoLTEgMSkiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L2c+PC9zdmc+">
    </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_it.md">
+    <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
+  </a>
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2?tab=doc">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -77,7 +80,7 @@
 </p>
 <p align="center">
  <div dir="rtl">
-  <b>Fiber</b> هو <b>إطار ويب</b>  مستوحى من <a href="https://github.com/expressjs/express">Express</a>   مبني على <a href="https://github.com/valyala/fasthttp">Fasthttp</a>,  <b>اسرع</b> محرك HTTP  لـ <a href="https://golang.org/doc/">Go</a>. مصمم ليكون <b>سهل</b> لأغراض <b>السرعة</b> مع عدم  <b>تخصيص ذاكرة والأداء</b> و <b>الاداء العالي</b> دائما.
+  <b>Fiber</b> هو <b>إطار ويب</b>  مستوحى من <a href="https://github.com/expressjs/express">Express</a>   مبني على <a href="https://github.com/valyala/fasthttp">Fasthttp</a>,  <b>اسرع</b> محرك HTTP  لـ <a href="https://go.dev/doc/">Go</a>. مصمم ليكون <b>سهل</b> لأغراض <b>السرعة</b> مع عدم  <b>تخصيص ذاكرة والأداء</b> و <b>الاداء العالي</b> دائما.
  <div dir="rtl">
 </p>
 
@@ -114,10 +117,10 @@ func main() {
 
 ## ⚙️ تثبيت
 
-تأكد من تثبيت Go ([تحميل](https://golang.org/dl/)). الإصدار `1.14` أو أعلى مطلوب.
+تأكد من تثبيت Go ([تحميل](https://go.dev/dl/)). الإصدار `1.14` أو أعلى مطلوب.
 
-ابدأ مشروعك بإنشاء مجلد ثم تشغيله `go mod init github.com/your/repo` ([أعرف أكثر](https://blog.golang.org/using-go-modules))
-داخل المجلد. ثم قم بتثبيت Fiber باستخدام ملف [`go get`](https://golang.org/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) أمر:
+ابدأ مشروعك بإنشاء مجلد ثم تشغيله `go mod init github.com/your/repo` ([أعرف أكثر](https://go.dev/blog/using-go-modules))
+داخل المجلد. ثم قم بتثبيت Fiber باستخدام ملف [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) أمر:
 
 </div>
 
@@ -140,18 +143,23 @@ go get -u github.com/gofiber/fiber/v2
 -   [سريع](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket دعم](https://github.com/gofiber/websocket)
+-   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
 -   ترجم الى [15 لغة أخرى](https://docs.gofiber.io/)
 -   وأكثر بكثير, [استكشف Fiber](https://docs.gofiber.io/)
 
 ## 💡 فلسفة
 
-قوفر(مستخدمي لغة Go الجدد) جديد يجعل التبديل من [Node.js](https://nodejs.org/en/about/) الى [Go](https://golang.org/doc/)تتعامل مع منحنى التعلم قبل أن يتمكنوا من البدء في بناءتطبيقات الويب . Fiber, كـ **إطار الويب**, تم إنشاؤه بفكرة **minimalism** ويتبع **UNIX way**, حتى يتمكن القوفرون الجدد من دخول عالم Go بترحيب حار وموثوق.
+قوفر(مستخدمي لغة Go الجدد) جديد يجعل التبديل من [Node.js](https://nodejs.org/en/about/) الى [Go](https://go.dev/doc/)تتعامل مع منحنى التعلم قبل أن يتمكنوا من البدء في بناءتطبيقات الويب . Fiber, كـ **إطار الويب**, تم إنشاؤه بفكرة **minimalism** ويتبع **UNIX way**, حتى يتمكن القوفرون الجدد من دخول عالم Go بترحيب حار وموثوق.
 
 Fiber هو **مستوحى** من Express, إطار الويب الأكثر شعبية على الإنترنت. قمنا بدمج **سهولة** الـ Express و **الأداء الخام** لـ Go. إذا كنت قد قمت بتطبيق تطبيق ويب في Node.js (_using Express or similar_), ستظهر العديد من الأساليب والمبادئ **الاكثر شيوعاً** لك.
 
 نحن **نصغي** لمستخدمينا [issues](https://github.com/gofiber/fiber/issues), نناقش [channel](https://gofiber.io/discord) _وفي جميع أنحاء الإنترنت_ لإنشاء **سريع**, **مرن** و **مألوف** Go إطار الويب لـ **لأي** مهمة, **الموعد الأخير
 ** و تطوير **مهارات**! فقط مثل Express تفعل لـ JavaScript عالم.
+
+## ⚠️ Limitations
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.29.0 has been tested with Go versions 1.14 to 1.18.
+* Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 أمثلة
 
@@ -194,6 +202,40 @@ func main() {
         msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
         return c.SendString(msg) // => Hello john 👋!
     })
+
+    log.Fatal(app.Listen(":3000"))
+}
+
+```
+
+</div>
+
+<div dir="ltr" >
+
+#### 📖 [**Route Naming**](https://docs.gofiber.io/api/app#name)
+
+```go
+func main() {
+    app := fiber.New()
+
+    // GET /api/register
+    app.Get("/api/*", func(c *fiber.Ctx) error {
+        msg := fmt.Sprintf("✋ %s", c.Params("*"))
+        return c.SendString(msg) // => ✋ register
+    }).Name("api")
+
+    data, _ := json.MarshalIndent(app.GetRoute("api"), "", "  ")
+    fmt.Print(string(data))
+    // Prints:
+    // {
+    //    "method": "GET",
+    //    "name": "api",
+    //    "path": "/api/*",
+    //    "params": [
+    //      "*1"
+    //    ]
+    // }
+
 
     log.Fatal(app.Listen(":3000"))
 }
@@ -270,7 +312,7 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-Fiber defaults to the [html/template](https://golang.org/pkg/html/template/) when no view engine is set.
+Fiber defaults to the [html/template](https://pkg.go.dev/html/template/) when no view engine is set.
 
 If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
 
@@ -515,6 +557,51 @@ func main() {
 
 </div>
 
+### Server-Sent Events
+
+📖 [More Info](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
+
+<div dir="ltr">
+
+```go
+import (
+    "github.com/gofiber/fiber/v2"
+    "github.com/valyala/fasthttp"
+)
+
+func main() {
+  app := fiber.New()
+
+  app.Get("/sse", func(c *fiber.Ctx) error {
+    c.Set("Content-Type", "text/event-stream")
+    c.Set("Cache-Control", "no-cache")
+    c.Set("Connection", "keep-alive")
+    c.Set("Transfer-Encoding", "chunked")
+
+    c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
+      fmt.Println("WRITER")
+      var i int
+      
+      for {
+        i++
+        msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
+        fmt.Fprintf(w, "data: Message: %s\n\n", msg)
+        fmt.Println(msg)
+
+        w.Flush()
+        time.Sleep(5 * time.Second)
+      }
+    }))
+
+    return nil
+  })
+
+  log.Fatal(app.Listen(":3000"))
+}
+```
+
+</div>
+
 ### Recover middleware
 
 📖 [Recover](https://docs.gofiber.io/api/middleware/recover)
@@ -547,22 +634,28 @@ func main() {
 
 Here is a list of middleware that are included within the Fiber framework.
 
-| Middleware                                                                       | Description                                                                                                                                                                  |
-| :------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)   | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials.        |
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)     | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default.                                                                                     |
-| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)           | Intercept and cache responses                                                                                                                                                |
-| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)             | Enable cross-origin resource sharing \(CORS\) with various options.                                                                                                          |
-| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)             | Protect from CSRF exploits.                                                                                                                                                  |
-| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem) | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary                                                                                                |
-| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)       | Ignore favicon from logs or serve from memory if a file path is provided.                                                                                                    |
-| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)       | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset.                                                   |
-| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)         | HTTP request/response logger.                                                                                                                                                |
-| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)           | Special thanks to Matthew Lee \(@mthli\)                                                                                                                                     |
-| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)           | Allows you to proxy requests to a multiple servers                                                                                                                           |
-| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)   | Adds a requestid to every request.                                                                                                                                           |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)       | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling). |
-| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)       | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                                |
+| Middleware                                                                             | Description                                                                                                                                                                  |
+| :------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials.        |
+| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 | Intercept and cache responses                                                                                                                                                |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)           | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default.                                                                                     |
+| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | Enable cross-origin resource sharing \(CORS\) with various options.                                                                                                          |
+| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | Protect from CSRF exploits.                                                                                                                                                  |
+| [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware which encrypts cookie values.                                                                                                                             |
+| [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | ETag middleware that lets caches be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.               |
+| [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware that serves via its HTTP server runtime exposed variants in the JSON format.                                                                               |
+| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | Ignore favicon from logs or serve from memory if a file path is provided.                                                                                                    |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem)       | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary                                                                                                |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)             | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset.                                                   |
+| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)               | HTTP request/response logger.                                                                                                                                                |
+| [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             | Monitor middleware that reports server metrics, inspired by express-status-monitor                                                                                           |
+| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)                 | Special thanks to Matthew Lee \(@mthli\)                                                                                                                                     |
+| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)                 | Allows you to proxy requests to a multiple servers                                                                                                                           |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)             | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling). |
+| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)         | Adds a requestid to every request.                                                                                                                                           |
+| [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Session middleware. NOTE: This middleware uses our Storage package.                                                                                                          |
+| [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Skip middleware that skips a wrapped handler is a predicate is true.                                                                                                         |
+| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                                |
 
 ## 🧬 External Middleware
 
@@ -574,31 +667,15 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 | [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
 | [jwt](https://github.com/gofiber/jwt)             | JWT returns a JSON Web Token \(JWT\) auth middleware.                                                                                                               |
 | [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware provides a key based authentication.                                                                                                            |
+| [redirect](https://github.com/gofiber/redirect)   | Redirect middleware                                                                                                                                                 |
 | [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. |
-| [session](https://github.com/gofiber/session)     | This session middleware is build on top of fasthttp/session by @savsgio MIT. Special thanks to @thomasvvugt for helping with this middleware.                       |
+| [storage](https://github.com/gofiber/storage)     | Premade storage drivers that implement the Storage interface, designed to be used with various Fiber middlewares.                                                   |
 | [template](https://github.com/gofiber/template)   | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required.                                               |
 | [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support!                                                                                                          |
 
-## 🌱 Third Party Middlewares
+## 🕶️ Awesome List
 
-هذه قائمة middlewares التي تم إنشاؤها من قبل المجتمع Fiber , الرجاء إنشاءPR إذا كنت تريد أن ترى ذلك!
-
--   [arsmn/fiber-casbin](https://github.com/arsmn/fiber-casbin)
--   [arsmn/fiber-introspect](https://github.com/arsmn/fiber-introspect)
--   [arsmn/fiber-swagger](https://github.com/arsmn/fiber-swagger)
--   [arsmn/gqlgen](https://github.com/arsmn/gqlgen)
--   [codemicro/fiber-cache](https://github.com/codemicro/fiber-cache)
--   [sujit-baniya/fiber-boilerplate](https://github.com/sujit-baniya/fiber-boilerplate)
--   [juandiii/go-jwk-security](https://github.com/juandiii/go-jwk-security)
--   [kiyonlin/fiber_limiter](https://github.com/kiyonlin/fiber_limiter)
--   [shareed2k/fiber_limiter](https://github.com/shareed2k/fiber_limiter)
--   [shareed2k/fiber_tracing](https://github.com/shareed2k/fiber_tracing)
--   [thomasvvugt/fiber-boilerplate](https://github.com/thomasvvugt/fiber-boilerplate)
--   [ansrivas/fiberprometheus](https://github.com/ansrivas/fiberprometheus)
--   [LdDl/fiber-long-poll](https://github.com/LdDl/fiber-long-poll)
--   [K0enM/fiber_vhost](https://github.com/K0enM/fiber_vhost)
--   [theArtechnology/fiber-inertia](https://github.com/theArtechnology/fiber-inertia)
--   [aschenmaker/fiber-health-check](https://github.com/aschenmaker/fiber-health-check)
+For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
 
 ## 👍 مساهمة
 
@@ -623,7 +700,6 @@ Fiber هو مشروع مفتوح المصدر يعمل على التبرعات �
 | ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5  |
 | ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5  |
 | ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3  |
-| ![](https://avatars.githubusercontent.com/u/59947262?s=25) | [@ankush](https://github.com/ankush)             | ☕ x 3  |
 | ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3  |
 | ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3  |
 | ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1  |
@@ -652,10 +728,10 @@ Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](
 -   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 -   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
--   [encoding](https://github.com/segmentio/encoding/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 -   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
 -   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
 -   [go-ole](https://github.com/go-ole/go-ole)
 -   [wmi](https://github.com/StackExchange/wmi)
+-   [dictpool](https://github.com/savsgio/dictpool)

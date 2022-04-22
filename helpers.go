@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -67,7 +68,8 @@ func getTlsConfig(ln net.Listener) *tls.Config {
 			// Get private field from value
 			if field := val.FieldByName("config"); field.Type() != nil {
 				// Copy value from pointer field (unsafe)
-				if newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())); newval.Type() != nil {
+				newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) // #nosec G103
+				if newval.Type() != nil {
 					// Get element from pointer
 					if elem := newval.Elem(); elem.Type() != nil {
 						// Cast value to *tls.Config
@@ -88,8 +90,11 @@ func readContent(rf io.ReaderFrom, name string) (n int64, err error) {
 	if err != nil {
 		return 0, err
 	}
+	// #nosec G307
 	defer func() {
-		err = f.Close()
+		if err = f.Close(); err != nil {
+			log.Printf("Error closing file: %s\n", err)
+		}
 	}()
 	return rf.ReadFrom(f)
 }
@@ -118,7 +123,7 @@ func methodExist(ctx *Ctx) (exist bool) {
 		}
 		// Get stack length
 		lenr := len(tree) - 1
-		//Loop over the route stack starting from previous index
+		// Loop over the route stack starting from previous index
 		for ctx.indexRoute < lenr {
 			// Increment route index
 			ctx.indexRoute++
@@ -178,7 +183,7 @@ func setETag(c *Ctx, weak bool) {
 	}
 	body := c.fasthttp.Response.Body()
 	// Skips ETag if no response body is present
-	if len(body) <= 0 {
+	if len(body) == 0 {
 		return
 	}
 	// Get ETag header from request
@@ -333,17 +338,6 @@ func isNoCache(cacheControl string) bool {
 	return true
 }
 
-// https://golang.org/src/net/net.go#L113
-// Helper methods for application#test
-type testAddr string
-
-func (a testAddr) Network() string {
-	return string(a)
-}
-func (a testAddr) String() string {
-	return string(a)
-}
-
 type testConn struct {
 	r bytes.Buffer
 	w bytes.Buffer
@@ -353,8 +347,8 @@ func (c *testConn) Read(b []byte) (int, error)  { return c.r.Read(b) }
 func (c *testConn) Write(b []byte) (int, error) { return c.w.Write(b) }
 func (c *testConn) Close() error                { return nil }
 
-func (c *testConn) LocalAddr() net.Addr                { return testAddr("local-addr") }
-func (c *testConn) RemoteAddr() net.Addr               { return testAddr("remote-addr") }
+func (c *testConn) LocalAddr() net.Addr                { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
+func (c *testConn) RemoteAddr() net.Addr               { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
 func (c *testConn) SetDeadline(_ time.Time) error      { return nil }
 func (c *testConn) SetReadDeadline(_ time.Time) error  { return nil }
 func (c *testConn) SetWriteDeadline(_ time.Time) error { return nil }
@@ -685,7 +679,7 @@ const (
 	NetworkTCP6 = "tcp6"
 )
 
-//Compression types
+// Compression types
 const (
 	StrGzip    = "gzip"
 	StrBr      = "br"
