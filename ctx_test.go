@@ -399,6 +399,30 @@ func Test_Ctx_BodyParser(t *testing.T) {
 
 	testDecodeParserError("invalid-content-type", "")
 	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
+
+	type CollectionQuery struct {
+		Data []Demo `query:"data"`
+	}
+
+	c.Request().Reset()
+	c.Request().Header.SetContentType(MIMEApplicationForm)
+	c.Request().SetBody([]byte("data[0][name]=john&data[1][name]=doe"))
+	c.Request().Header.SetContentLength(len(c.Body()))
+	cq := new(CollectionQuery)
+	utils.AssertEqual(t, nil, c.BodyParser(cq))
+	utils.AssertEqual(t, 2, len(cq.Data))
+	utils.AssertEqual(t, "john", cq.Data[0].Name)
+	utils.AssertEqual(t, "doe", cq.Data[1].Name)
+
+	c.Request().Reset()
+	c.Request().Header.SetContentType(MIMEApplicationForm)
+	c.Request().SetBody([]byte("data.0.name=john&data.1.name=doe"))
+	c.Request().Header.SetContentLength(len(c.Body()))
+	cq = new(CollectionQuery)
+	utils.AssertEqual(t, nil, c.BodyParser(cq))
+	utils.AssertEqual(t, 2, len(cq.Data))
+	utils.AssertEqual(t, "john", cq.Data[0].Name)
+	utils.AssertEqual(t, "doe", cq.Data[1].Name)
 }
 
 // go test -run Test_Ctx_BodyParser_WithSetParserDecoder
