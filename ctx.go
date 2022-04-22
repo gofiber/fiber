@@ -341,9 +341,19 @@ func (c *Ctx) BodyParser(out interface{}) error {
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
 		data := make(map[string][]string)
+		var err error
+
 		c.fasthttp.PostArgs().VisitAll(func(key, val []byte) {
+			if err != nil {
+				return
+			}
+
 			k := utils.UnsafeString(key)
 			v := utils.UnsafeString(val)
+
+			if strings.Contains(k, "[") {
+				k, err = parseParamSquareBrackets(k)
+			}
 
 			if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 				values := strings.Split(v, ",")
