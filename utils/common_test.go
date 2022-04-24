@@ -89,3 +89,37 @@ func Benchmark_UUID(b *testing.B) {
 		AssertEqual(b, 36, len(res))
 	})
 }
+
+func Test_ConvertToBytes(t *testing.T) {
+	t.Parallel()
+	AssertEqual(t, 42, ConvertToBytes("42"))
+	AssertEqual(t, 42, ConvertToBytes("42b"))
+	AssertEqual(t, 42, ConvertToBytes("42B"))
+	AssertEqual(t, 42, ConvertToBytes("42 b"))
+	AssertEqual(t, 42, ConvertToBytes("42 B"))
+
+	AssertEqual(t, 42*1000, ConvertToBytes("42k"))
+	AssertEqual(t, 42*1000, ConvertToBytes("42K"))
+	AssertEqual(t, 42*1000, ConvertToBytes("42kb"))
+	AssertEqual(t, 42*1000, ConvertToBytes("42KB"))
+	AssertEqual(t, 42*1000, ConvertToBytes("42 kb"))
+	AssertEqual(t, 42*1000, ConvertToBytes("42 KB"))
+
+	AssertEqual(t, 42*1000000, ConvertToBytes("42M"))
+	AssertEqual(t, int(42.5*1000000), ConvertToBytes("42.5MB"))
+	AssertEqual(t, 42*1000000000, ConvertToBytes("42G"))
+
+	AssertEqual(t, 0, ConvertToBytes("string"))
+	AssertEqual(t, 0, ConvertToBytes("MB"))
+}
+
+// go test -v -run=^$ -bench=Benchmark_ConvertToBytes -benchmem -count=2
+func Benchmark_ConvertToBytes(b *testing.B) {
+	var res int
+	b.Run("fiber", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = ConvertToBytes("42B")
+		}
+		AssertEqual(b, 42, res)
+	})
+}
