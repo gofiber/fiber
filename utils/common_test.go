@@ -124,10 +124,4 @@ func Benchmark_ConvertToBytes(b *testing.B) {
 		}
 		AssertEqual(b, 42, res)
 	})
-	b.Run("default", func(b *testing.B) {
-		for n := 0; n < b.N; n++ {
-			res, _ = strconv.Atoi("42")
-		}
-		AssertEqual(b, 42, res)
-	})
 }
