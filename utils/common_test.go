@@ -114,7 +114,6 @@ func Test_ConvertToBytes(t *testing.T) {
 }
 
 // go test -v -run=^$ -bench=Benchmark_ConvertToBytes -benchmem -count=2
-
 func Benchmark_ConvertToBytes(b *testing.B) {
 	var res int
 	b.Run("fiber", func(b *testing.B) {

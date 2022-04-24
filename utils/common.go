@@ -8,16 +8,14 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
-	"regexp"
-	"strconv"
-	"strings"
-
 	"net"
 	"os"
 	"reflect"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
+	"unicode"
 
 	googleuuid "github.com/gofiber/fiber/v2/internal/uuid"
 )
@@ -40,8 +38,7 @@ var (
 	uuidSeed    [24]byte
 	uuidCounter uint64
 	uuidSetup   sync.Once
-	unitsMap    = map[string]int64{"k": kb, "m": mb, "g": gb, "t": tb, "p": pb}
-	sizeRegex   = regexp.MustCompile(`(?i)^(\d+(\.\d+)*) ?([kmgtp])?b?$`)
+	unitsMap    = map[byte]int64{'k': kb, 'm': mb, 'g': gb, 't': tb, 'p': pb}
 )
 
 // UUID generates an universally unique identifier (UUID)
@@ -123,19 +120,34 @@ func IncrementIPRange(ip net.IP) {
 // ConvertToBytes returns integer size of bytes from human-readable string, ex. 42kb, 42M
 // Returns 0 if string is unrecognized
 func ConvertToBytes(humanReadableString string) int {
-	matches := sizeRegex.FindStringSubmatch(humanReadableString)
-	if len(matches) != 4 {
-		return 0
+	var unitPrefixPos, lastNumberPos int
+	strLen := len(humanReadableString)
+	// loop the string
+	for i := strLen - 1; i >= 0; i-- {
+		// check if the char is a number
+		if unicode.IsDigit(rune(humanReadableString[i])) {
+			lastNumberPos = i
+			break
+		} else if humanReadableString[i] != ' ' {
+			unitPrefixPos = i
+		}
 	}
 
-	size, err := strconv.ParseFloat(matches[1], 64)
+	if lastNumberPos < 0 {
+		return 0
+	}
+	// fetch the number part and parse it to float
+	size, err := strconv.ParseFloat(humanReadableString[:lastNumberPos+1], 64)
 	if err != nil {
 		return 0
 	}
 
-	unitPrefix := strings.ToLower(matches[3])
-	if mul, ok := unitsMap[unitPrefix]; ok {
-		size *= float64(mul)
+	// check the muliplicator from the string and use it
+	if unitPrefixPos > 0 {
+		// convert multiplication char to lowercase and check the table
+		if mul, ok := unitsMap[toLowerTable[humanReadableString[unitPrefixPos]]]; ok {
+			size *= float64(mul)
+		}
 	}
 
 	return int(size)
