@@ -7,7 +7,6 @@ package utils
 import (
 	"crypto/rand"
 	"fmt"
-	"strconv"
 	"testing"
 )
 
