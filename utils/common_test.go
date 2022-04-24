@@ -92,6 +92,7 @@ func Benchmark_UUID(b *testing.B) {
 
 func Test_ConvertToBytes(t *testing.T) {
 	t.Parallel()
+	AssertEqual(t, 0, ConvertToBytes(""))
 	AssertEqual(t, 42, ConvertToBytes("42"))
 	AssertEqual(t, 42, ConvertToBytes("42b"))
 	AssertEqual(t, 42, ConvertToBytes("42B"))
