@@ -168,23 +168,23 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// default cache expiration
-		expiration := uint64(cfg.Expiration.Seconds())
+		expiration := cfg.Expiration
 		// Calculate expiration by response header or other setting
 		if cfg.ExpirationGenerator != nil {
-			expiration = uint64(cfg.ExpirationGenerator(c, &cfg).Seconds())
+			expiration = cfg.ExpirationGenerator(c, &cfg)
 		}
-		e.exp = ts + expiration
+		e.exp = ts + uint64(expiration.Seconds())
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			manager.setRaw(key+"_body", e.body, cfg.Expiration)
+			manager.setRaw(key+"_body", e.body, expiration)
 			// avoid body msgp encoding
 			e.body = nil
-			manager.set(key, e, cfg.Expiration)
+			manager.set(key, e, expiration)
 			manager.release(e)
 		} else {
 			// Store entry in memory
-			manager.set(key, e, cfg.Expiration)
+			manager.set(key, e, expiration)
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
