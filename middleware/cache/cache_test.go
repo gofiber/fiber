@@ -291,15 +291,40 @@ func Test_CustomExpiration(t *testing.T) {
 	}}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
-		c.Response().Header.Add("Cache-Time", "6000")
-		return c.SendString("hi")
+		c.Response().Header.Add("Cache-Time", "2")
+		now := fmt.Sprintf("%d", time.Now().UnixNano())
+		return c.SendString(now)
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
-	_, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, called)
-	utils.AssertEqual(t, 6000, newCacheTime)
+	utils.AssertEqual(t, 2, newCacheTime)
+
+	// Sleep until the cache is expired
+	time.Sleep(3 * time.Second)
+
+	cachedResp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	cachedBody, err := ioutil.ReadAll(cachedResp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	if bytes.Equal(body, cachedBody) {
+		t.Errorf("Cache should have expired: %s, %s", body, cachedBody)
+	}
+
+	// Next response should be cached
+	cachedRespNextRound, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	cachedBodyNextRound, err := ioutil.ReadAll(cachedRespNextRound.Body)
+	utils.AssertEqual(t, nil, err)
+
+	if !bytes.Equal(cachedBodyNextRound, cachedBody) {
+		t.Errorf("Cache should not have expired: %s, %s", cachedBodyNextRound, cachedBody)
+	}
 }
 
 func Test_AdditionalE2EResponseHeaders(t *testing.T) {
