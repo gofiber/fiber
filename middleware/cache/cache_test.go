@@ -19,6 +19,8 @@ import (
 )
 
 func Test_Cache_CacheControl(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -77,6 +79,8 @@ func Test_Cache_Expired(t *testing.T) {
 }
 
 func Test_Cache(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Use(New())
 
@@ -102,6 +106,8 @@ func Test_Cache(t *testing.T) {
 }
 
 func Test_Cache_WithSeveralRequests(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -135,6 +141,8 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 }
 
 func Test_Cache_Invalid_Expiration(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	cache := New(Config{Expiration: 0 * time.Second})
 	app.Use(cache)
@@ -161,6 +169,8 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 }
 
 func Test_Cache_Invalid_Method(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New())
@@ -199,6 +209,8 @@ func Test_Cache_Invalid_Method(t *testing.T) {
 }
 
 func Test_Cache_NothingToCache(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{Expiration: -(time.Second * 1)}))
@@ -225,6 +237,8 @@ func Test_Cache_NothingToCache(t *testing.T) {
 }
 
 func Test_Cache_CustomNext(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -263,6 +277,8 @@ func Test_Cache_CustomNext(t *testing.T) {
 }
 
 func Test_CustomKey(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	var called bool
 	app.Use(New(Config{KeyGenerator: func(c *fiber.Ctx) string {
@@ -281,6 +297,8 @@ func Test_CustomKey(t *testing.T) {
 }
 
 func Test_CustomExpiration(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	var called bool
 	var newCacheTime int
@@ -291,7 +309,7 @@ func Test_CustomExpiration(t *testing.T) {
 	}}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
-		c.Response().Header.Add("Cache-Time", "2")
+		c.Response().Header.Add("Cache-Time", "1")
 		now := fmt.Sprintf("%d", time.Now().UnixNano())
 		return c.SendString(now)
 	})
@@ -299,10 +317,10 @@ func Test_CustomExpiration(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, called)
-	utils.AssertEqual(t, 2, newCacheTime)
+	utils.AssertEqual(t, 1, newCacheTime)
 
 	// Sleep until the cache is expired
-	time.Sleep(3 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	cachedResp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
@@ -328,6 +346,8 @@ func Test_CustomExpiration(t *testing.T) {
 }
 
 func Test_AdditionalE2EResponseHeaders(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Use(New(Config{
 		StoreResponseHeaders: true,
@@ -350,6 +370,8 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 }
 
 func Test_CacheHeader(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -389,6 +411,8 @@ func Test_CacheHeader(t *testing.T) {
 }
 
 func Test_Cache_WithHead(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Use(New())
 
@@ -414,6 +438,8 @@ func Test_Cache_WithHead(t *testing.T) {
 }
 
 func Test_Cache_WithHeadThenGet(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 	app.Use(New())
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -450,6 +476,8 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 }
 
 func Test_CustomCacheHeader(t *testing.T) {
+	t.Parallel()
+
 	app := fiber.New()
 
 	app.Use(New(Config{
