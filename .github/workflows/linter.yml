@@ -7,6 +7,6 @@ jobs:
       - name: Fetch Repository
         uses: actions/checkout@v2
       - name: Run Golint
-        uses: reviewdog/action-golangci-lint@v1
+        uses: reviewdog/action-golangci-lint@v2
         with:
           golangci_lint_flags: "--tests=false"
