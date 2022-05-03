@@ -59,6 +59,8 @@ func New(config ...Config) fiber.Handler {
 	)
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
+	// Create indexed heap for tracking expirations ( see heap.go )
+	heap := &indexedHeap{}
 
 	// Update timestamp in the configured interval
 	go func() {
@@ -67,6 +69,15 @@ func New(config ...Config) fiber.Handler {
 			time.Sleep(timestampUpdatePeriod)
 		}
 	}()
+
+	// Delete key from both manager and storage
+	deleteKey := func(dkey string) {
+		manager.delete(dkey)
+		// External storage saves body data with different key
+		if cfg.Storage != nil {
+			manager.delete(dkey + "_body")
+		}
+	}
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
@@ -89,12 +100,11 @@ func New(config ...Config) fiber.Handler {
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
+		// Check if entry is expired
 		if e.exp != 0 && ts >= e.exp {
-			// Check if entry is expired
-			manager.delete(key)
-			// External storage saves body data with different key
-			if cfg.Storage != nil {
-				manager.delete(key + "_body")
+			deleteKey(key)
+			if cfg.MaxSize > 0 {
+				heap.remove(e.heapidx)
 			}
 		} else if e.exp != 0 {
 			// Separate body value to avoid msgp serialization
@@ -146,6 +156,11 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// remove oldest if exceeding maxsize
+		if cfg.MaxSize > 0 && heap.Len() >= cfg.MaxSize {
+			deleteKey(heap.removeFirst())
+		}
+
 		// Cache response
 		e.body = utils.CopyBytes(c.Response().Body())
 		e.status = c.Response().StatusCode()
@@ -174,6 +189,11 @@ func New(config ...Config) fiber.Handler {
 			expiration = cfg.ExpirationGenerator(c, &cfg)
 		}
 		e.exp = ts + uint64(expiration.Seconds())
+
+		// Store entry in heap
+		if cfg.MaxSize > 0 {
+			e.heapidx = heap.put(key, e.exp)
+		}
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {

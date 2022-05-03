@@ -19,6 +19,8 @@ type item struct {
 	status    int
 	exp       uint64
 	headers   map[string][]byte
+	// used for finding the item in an indexed heap
+	heapidx int
 }
 
 //msgp:ignore manager

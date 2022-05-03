@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -493,6 +494,42 @@ func Test_CustomCacheHeader(t *testing.T) {
 	utils.AssertEqual(t, cacheMiss, resp.Header.Get("Cache-Status"))
 }
 
+func Test_CacheMaxSize(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New(Config{
+		MaxSize: 2,
+	}))
+
+	app.Get("/*", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+
+	cases := [][]string{
+		// Insert a, b into cache of size 2
+		{"/a", cacheMiss},
+		{"/b", cacheMiss},
+		{"/a", cacheHit},
+		{"/b", cacheHit},
+		// Add c -> a evicted
+		{"/c", cacheMiss},
+		{"/b", cacheHit},
+		// Add a again -> b evicted
+		{"/a", cacheMiss},
+		{"/c", cacheHit},
+		// Add b -> c evicted
+		{"/b", cacheMiss},
+		{"/c", cacheMiss},
+	}
+
+	for idx, tcase := range cases {
+		rsp, err := app.Test(httptest.NewRequest("GET", tcase[0], nil))
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, tcase[1], rsp.Header.Get("X-Cache"), fmt.Sprintf("Case %v", idx))
+	}
+}
+
 // go test -v -run=^$ -bench=Benchmark_Cache -benchmem -count=4
 func Benchmark_Cache(b *testing.B) {
 	app := fiber.New()
@@ -577,4 +614,33 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 
 	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 	utils.AssertEqual(b, []byte("foobar"), fctx.Response.Header.Peek("X-Foobar"))
+}
+
+func Benchmark_Cache_MaxSize(b *testing.B) {
+	cases := []int{0, math.MaxInt, 100}
+	names := []string{"Disabled", "Unlim", "LowBounded"}
+	for i, size := range cases {
+		b.Run(names[i], func(b *testing.B) {
+			app := fiber.New()
+			app.Use(New(Config{MaxSize: size}))
+
+			app.Get("/*", func(c *fiber.Ctx) error {
+				return c.Status(fiber.StatusTeapot).SendString("response")
+			})
+
+			h := app.Handler()
+			fctx := &fasthttp.RequestCtx{}
+			fctx.Request.Header.SetMethod("GET")
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for n := 0; n < b.N; n++ {
+				fctx.Request.SetRequestURI(fmt.Sprintf("/%v", n))
+				h(fctx)
+			}
+
+			utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+		})
+	}
 }
