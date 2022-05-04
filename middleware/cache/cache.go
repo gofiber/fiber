@@ -157,7 +157,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// remove oldest if exceeding maxsize
-		if cfg.MaxSize > 0 && heap.Len() >= cfg.MaxSize {
+		if cfg.MaxSize > 0 && uint(heap.Len()) >= cfg.MaxSize {
 			deleteKey(heap.removeFirst())
 		}
 

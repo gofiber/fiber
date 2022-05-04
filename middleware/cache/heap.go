@@ -4,7 +4,7 @@ import (
 	"container/heap"
 )
 
-type heapentry struct {
+type heapEntry struct {
 	key string
 	exp uint64
 	idx int
@@ -18,7 +18,7 @@ type heapentry struct {
 // expiration timestamp and deleting arbitrary entries.
 type indexedHeap struct {
 	// Slice the heap is built on
-	entries []heapentry
+	entries []heapEntry
 	// Mapping "index" to position in heap slice
 	indices []int
 	// Max index handed out
@@ -40,15 +40,18 @@ func (h indexedHeap) Swap(i, j int) {
 }
 
 func (h *indexedHeap) Push(x interface{}) {
-	entry := x.(heapentry)
-	h.indices[entry.idx] = len(h.entries)
-	h.entries = append(h.entries, entry)
+	h.pushInternal(x.(heapEntry))
 }
 
 func (h *indexedHeap) Pop() interface{} {
 	n := len(h.entries)
 	h.entries = h.entries[0 : n-1]
 	return h.entries[0:n][n-1]
+}
+
+func (h *indexedHeap) pushInternal(entry heapEntry) {
+	h.indices[entry.idx] = len(h.entries)
+	h.entries = append(h.entries, entry)
 }
 
 // Returns index to track entry
@@ -64,14 +67,16 @@ func (h *indexedHeap) put(key string, exp uint64) int {
 		h.maxidx += 1
 		h.indices = append(h.indices, idx)
 	}
-	heap.Push(h, heapentry{
+	// Push manually to avoid allocation
+	h.pushInternal(heapEntry{
 		key: key, exp: exp, idx: idx,
 	})
+	heap.Fix(h, h.Len()-1)
 	return idx
 }
 
 func (h *indexedHeap) removeInternal(realIdx int) string {
-	x := heap.Remove(h, realIdx).(heapentry)
+	x := heap.Remove(h, realIdx).(heapEntry)
 	return x.key
 }
 

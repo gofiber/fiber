@@ -494,7 +494,7 @@ func Test_CustomCacheHeader(t *testing.T) {
 	utils.AssertEqual(t, cacheMiss, resp.Header.Get("Cache-Status"))
 }
 
-func Test_CacheMaxSize(t *testing.T) {
+func Test_Cache_MaxSize(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -621,7 +621,7 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 	// 1) 0:        Tracking is disabled = no overhead
 	// 2) MaxInt32: Enough to store all entries = no removals
 	// 3) 100:      Small size = constant insertions and removals
-	cases := []int{0, math.MaxInt32, 100}
+	cases := []uint{0, math.MaxUint32, 100}
 	names := []string{"Disabled", "Unlim", "LowBounded"}
 	for i, size := range cases {
 		b.Run(names[i], func(b *testing.B) {

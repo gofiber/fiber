@@ -65,7 +65,7 @@ type Config struct {
 	// 0 means no limit
 	//
 	// Default: 0
-	MaxSize int
+	MaxSize uint
 }
 
 // ConfigDefault is the default config
