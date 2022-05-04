@@ -617,7 +617,11 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 }
 
 func Benchmark_Cache_MaxSize(b *testing.B) {
-	cases := []int{0, math.MaxInt, 100}
+	// The benchmark is run with three different MaxSize parameters
+	// 1) 0:        Tracking is disabled = no overhead
+	// 2) MaxInt32: Enough to store all entries = no removals
+	// 3) 100:      Small size = constant insertions and removals
+	cases := []int{0, math.MaxInt32, 100}
 	names := []string{"Disabled", "Unlim", "LowBounded"}
 	for i, size := range cases {
 		b.Run(names[i], func(b *testing.B) {
