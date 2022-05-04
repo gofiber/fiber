@@ -37,7 +37,7 @@ func Test_Monitor_Html(t *testing.T) {
 
 	b, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, bytes.Contains(b, []byte("<title>Fiber Monitor</title>")))
+	utils.AssertEqual(t, true, bytes.Contains(b, []byte("<title>"+defaultTitle+"</title>")))
 }
 
 // go test -run Test_Monitor_JSON -race
