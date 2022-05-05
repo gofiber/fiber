@@ -1909,7 +1909,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/", func(c *Ctx) error {
-		err := c.SendFile(filepath.FromSlash("./john_dow.go/"))
+		err := c.SendFile(filepath.FromSlash("john_dow.go/"))
 		utils.AssertEqual(t, false, err == nil)
 		return err
 	})
@@ -1925,7 +1925,7 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	app := New()
 	app.Get("/:file", func(c *Ctx) error {
 		file := c.Params("file")
-		if err := c.SendFile(filepath.FromSlash("./.github/" + file + ".html")); err != nil {
+		if err := c.SendFile(filepath.FromSlash(".github/" + file + ".html")); err != nil {
 			utils.AssertEqual(t, nil, err)
 		}
 		utils.AssertEqual(t, "index", file)
