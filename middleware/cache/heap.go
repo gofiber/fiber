@@ -5,9 +5,10 @@ import (
 )
 
 type heapEntry struct {
-	key string
-	exp uint64
-	idx int
+	key   string
+	exp   uint64
+	bytes uint
+	idx   int
 }
 
 // indexedHeap is a regular min-heap that allows finding
@@ -55,7 +56,7 @@ func (h *indexedHeap) pushInternal(entry heapEntry) {
 }
 
 // Returns index to track entry
-func (h *indexedHeap) put(key string, exp uint64) int {
+func (h *indexedHeap) put(key string, exp uint64, bytes uint) int {
 	idx := 0
 	if len(h.entries) < h.maxidx {
 		// Steal index from previously removed entry
@@ -69,23 +70,23 @@ func (h *indexedHeap) put(key string, exp uint64) int {
 	}
 	// Push manually to avoid allocation
 	h.pushInternal(heapEntry{
-		key: key, exp: exp, idx: idx,
+		key: key, exp: exp, idx: idx, bytes: bytes,
 	})
 	heap.Fix(h, h.Len()-1)
 	return idx
 }
 
-func (h *indexedHeap) removeInternal(realIdx int) string {
+func (h *indexedHeap) removeInternal(realIdx int) (string, uint) {
 	x := heap.Remove(h, realIdx).(heapEntry)
-	return x.key
+	return x.key, x.bytes
 }
 
 // Remove entry by index
-func (h *indexedHeap) remove(idx int) string {
+func (h *indexedHeap) remove(idx int) (string, uint) {
 	return h.removeInternal(h.indices[idx])
 }
 
 // Remove entry with lowest expiration time
-func (h *indexedHeap) removeFirst() string {
+func (h *indexedHeap) removeFirst() (string, uint) {
 	return h.removeInternal(0)
 }

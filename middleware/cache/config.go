@@ -60,12 +60,12 @@ type Config struct {
 	// Default: false
 	StoreResponseHeaders bool
 
-	// Max number of entries simultaneously stored in cache. When limit is reached,
+	// Max number of bytes of response bodies simultaneously stored in cache. When limit is reached,
 	// entries with the nearest expiration are deleted to make room for new.
 	// 0 means no limit
 	//
 	// Default: 0
-	MaxSize uint
+	MaxBytes uint
 }
 
 // ConfigDefault is the default config
@@ -80,7 +80,7 @@ var ConfigDefault = Config{
 	ExpirationGenerator:  nil,
 	StoreResponseHeaders: false,
 	Storage:              nil,
-	MaxSize:              0,
+	MaxBytes:             0,
 }
 
 // Helper function to set default values

@@ -494,20 +494,32 @@ func Test_CustomCacheHeader(t *testing.T) {
 	utils.AssertEqual(t, cacheMiss, resp.Header.Get("Cache-Status"))
 }
 
-func Test_Cache_MaxSize(t *testing.T) {
+// Because time points are updated once every X milliseconds, entries in tests can often have
+// equal expiration times and thus be in an random order. This closure hands out increasing
+// time intervals to maintain strong ascending order of expiration
+func stableAscendingExpiration() func(c1 *fiber.Ctx, c2 *Config) time.Duration {
+	i := 0
+	return func(c1 *fiber.Ctx, c2 *Config) time.Duration {
+		i += 1
+		return time.Hour * time.Duration(i)
+	}
+}
+
+func Test_Cache_MaxBytesOrder(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
 	app.Use(New(Config{
-		MaxSize: 2,
+		MaxBytes:            2,
+		ExpirationGenerator: stableAscendingExpiration(),
 	}))
 
 	app.Get("/*", func(c *fiber.Ctx) error {
-		return c.SendString("Hello, World!")
+		return c.SendString("1")
 	})
 
 	cases := [][]string{
-		// Insert a, b into cache of size 2
+		// Insert a, b into cache of size 2 bytes (responses are 1 byte)
 		{"/a", cacheMiss},
 		{"/b", cacheMiss},
 		{"/a", cacheHit},
@@ -521,6 +533,40 @@ func Test_Cache_MaxSize(t *testing.T) {
 		// Add b -> c evicted
 		{"/b", cacheMiss},
 		{"/c", cacheMiss},
+	}
+
+	for idx, tcase := range cases {
+		rsp, err := app.Test(httptest.NewRequest("GET", tcase[0], nil))
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, tcase[1], rsp.Header.Get("X-Cache"), fmt.Sprintf("Case %v", idx))
+	}
+}
+
+func Test_Cache_MaxBytesSizes(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		MaxBytes:            7,
+		ExpirationGenerator: stableAscendingExpiration(),
+	}))
+
+	app.Get("/*", func(c *fiber.Ctx) error {
+		path := c.Context().URI().LastPathSegment()
+		size, _ := strconv.Atoi(string(path))
+		return c.Send(make([]byte, size))
+	})
+
+	cases := [][]string{
+		{"/1", cacheMiss},
+		{"/2", cacheMiss},
+		{"/3", cacheMiss},
+		{"/4", cacheMiss}, // 1+2+3+4 > 7 => 1,2 are evicted now
+		{"/3", cacheHit},
+		{"/1", cacheMiss},
+		{"/2", cacheMiss},
+		{"/8", cacheUnreachable}, // too big to cache -> unreachable
 	}
 
 	for idx, tcase := range cases {
@@ -626,10 +672,10 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 	for i, size := range cases {
 		b.Run(names[i], func(b *testing.B) {
 			app := fiber.New()
-			app.Use(New(Config{MaxSize: size}))
+			app.Use(New(Config{MaxBytes: size}))
 
 			app.Get("/*", func(c *fiber.Ctx) error {
-				return c.Status(fiber.StatusTeapot).SendString("response")
+				return c.Status(fiber.StatusTeapot).SendString("1")
 			})
 
 			h := app.Handler()
