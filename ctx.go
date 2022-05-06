@@ -1350,10 +1350,14 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
 
-	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
+	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
 	sendFileOnce.Do(func() {
+		// change it to absolute
+		path, _ := filepath.Abs("/")
 		sendFileFS = &fasthttp.FS{
-			Root:                 "/",
+			// fasthttp will change it to absolute path
+			// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L390-L395
+			Root:                 path,
 			GenerateIndexPages:   false,
 			AcceptByteRange:      true,
 			Compress:             true,
@@ -1374,7 +1378,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 		// https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L55
 		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}
-	// https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121
+	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
 	if len(file) == 0 || !filepath.IsAbs(file) {
 		// extend relative path to absolute path
 		hasTrailingSlash := len(file) > 0 && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
@@ -1386,6 +1390,10 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 		}
 		if hasTrailingSlash {
 			file += "/"
+		}
+		// remove the relative data with dot as they are not necessary
+		if len(file) > 2 && strings.HasPrefix(file, "."+string(filepath.Separator)) {
+			file = file[2:]
 		}
 	}
 	// convert the path to forward slashes regardless the OS in order to set the URI properly
