@@ -345,6 +345,38 @@ func Test_CustomExpiration(t *testing.T) {
 	}
 }
 
+func Test_NothingToCache_CustomExpiration(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{ExpirationGenerator: func(c *fiber.Ctx, cfg *Config) time.Duration {
+		newCacheTime, _ := strconv.Atoi(c.GetRespHeader("Cache-Time", "600"))
+		return time.Second * time.Duration(newCacheTime)
+	}}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		c.Response().Header.Add("Cache-Time", "-1")
+		return c.SendString(time.Now().String())
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	time.Sleep(500 * time.Millisecond)
+
+	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	bodyCached, err := ioutil.ReadAll(respCached.Body)
+	utils.AssertEqual(t, nil, err)
+
+	if bytes.Equal(body, bodyCached) {
+		t.Errorf("Cache should have expired: %s, %s", body, bodyCached)
+	}
+}
+
 func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 	t.Parallel()
 

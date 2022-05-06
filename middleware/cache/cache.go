@@ -46,7 +46,7 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	// Nothing to cache
-	if int(cfg.Expiration.Seconds()) < 0 {
+	if cfg.ExpirationGenerator == nil && int(cfg.Expiration.Seconds()) < 0 {
 		return func(c *fiber.Ctx) error {
 			return c.Next()
 		}
@@ -70,6 +70,12 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
+		// Nothing to cache
+		if cfg.ExpirationGenerator != nil && int(cfg.ExpirationGenerator.Seconds()) < 0 {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return c.Next()
+		}
+
 		// Only cache GET and HEAD methods
 		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
