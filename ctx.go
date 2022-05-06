@@ -1352,12 +1352,8 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 
 	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
 	sendFileOnce.Do(func() {
-		// change it to absolute
-		path, _ := filepath.Abs("/")
 		sendFileFS = &fasthttp.FS{
-			// fasthttp will change it to absolute path
-			// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L390-L395
-			Root:                 path,
+			Root:                 "/",
 			GenerateIndexPages:   false,
 			AcceptByteRange:      true,
 			Compress:             true,
