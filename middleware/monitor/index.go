@@ -1,8 +1,32 @@
 package monitor
 
+import (
+	"strconv"
+	"strings"
+	"time"
+)
+
+// returns index with new title/refresh
+func newIndex(title string, refresh time.Duration) string {
+
+	timeout := refresh.Milliseconds() - timeoutDiff
+	if timeout < timeoutDiff {
+		timeout = timeoutDiff
+	}
+	ts := strconv.FormatInt(timeout, 10)
+
+	index := strings.ReplaceAll(indexHtml, "$TITLE", title)
+	return strings.ReplaceAll(index, "$TIMEOUT", ts)
+}
+
 const (
 	defaultTitle = "Fiber Monitor"
 
+	defaultRefresh = 3 * time.Second
+	timeoutDiff    = 200 // timeout will be Refresh (in millisconds) - timeoutDiff
+	minRefresh     = timeoutDiff * time.Millisecond
+
+	// parametrized by $TITLE and $TIMEOUT
 	indexHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,7 +34,7 @@ const (
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;900&display=swap" rel="stylesheet">
 	<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js"></script>
-	<title>` + defaultTitle + `</title>
+	<title>$TITLE</title>
 <style>
 	body {
 		margin: 0;
@@ -35,12 +59,8 @@ const (
 		margin-bottom: 20px;
 		align-items: center;
 	}
-	.row .column:first-child {
-		width: 35%;
-	}
-	.row .column:last-child {
-		width: 65%;
-	}
+	.row .column:first-child { width: 35%; }
+	.row .column:last-child { width: 65%; }
 	.metric {
 		color: #777;
 		font-weight: 900;
@@ -54,12 +74,8 @@ const (
 		font-size: 12px;
 		color: #777;
 	}
-	h2 span.ram_os {
-		color: rgba(255, 150, 0, .8);
-	}
-	h2 span.ram_total {
-		color: rgba(0, 200, 0, .8);
-	}
+	h2 span.ram_os { color: rgba(255, 150, 0, .8); }
+	h2 span.ram_total { color: rgba(0, 200, 0, .8); }
 	canvas {
 		width: 200px;
 		height: 180px;
@@ -68,7 +84,7 @@ const (
 </head>
 <body>
 	<section class="wrapper">
-	<div class="title"><h1>` + defaultTitle + `</h1></div>
+	<div class="title"><h1>$TITLE</h1></div>
 	<section class="charts">
 		<div class="row">
 			<div class="column">
@@ -130,25 +146,17 @@ const (
 
 	const options = {
 		scales: {
-			yAxes: [{
-				ticks: {
-					beginAtZero: true
-				}
-			}],
+			yAxes: [{ ticks: { beginAtZero: true }}],
 			xAxes: [{
 				type: 'time',
 				time: {
 					unitStepSize: 30,
 					unit: 'second'
 				},
-				gridlines: {
-					display: false
-				}
+				gridlines: { display: false }
 			}]
 		},
-		tooltips: {
-			enabled: false
-		},
+		tooltips: {	enabled: false },
 		responsive: true,
 		maintainAspectRatio: false,
 		animation: false
@@ -204,7 +212,8 @@ const (
 		cpuOS = json.os.cpu.toFixed(1);
 
 		cpuMetric.innerHTML = cpu + '% <span>' + cpuOS + '%</span>';
-		ramMetric.innerHTML = formatBytes(json.pid.ram) + '<span> / </span><span class="ram_os">' + formatBytes(json.os.ram) + '<span><span> / </span><span class="ram_total">' + formatBytes(json.os.total_ram) + '</span>';
+		ramMetric.innerHTML = formatBytes(json.pid.ram) + '<span> / </span><span class="ram_os">' + formatBytes(json.os.ram) +
+			'<span><span> / </span><span class="ram_total">' + formatBytes(json.os.total_ram) + '</span>';
 		rtimeMetric.innerHTML = rtime + 'ms <span>client</span>';
 		connsMetric.innerHTML = json.pid.conns + ' <span>' + json.os.conns + '</span>';
 
@@ -219,33 +228,26 @@ const (
 
 		charts.forEach(chart => {
 			if (chart.data.labels.length > 50) {
-				chart.data.datasets.forEach(function (dataset) {
-					dataset.data.shift();
-				});
+				chart.data.datasets.forEach(function (dataset) { dataset.data.shift(); });
 				chart.data.labels.shift();
 			}
-
 			chart.data.labels.push(timestamp);
 			chart.update();
 		});
-		setTimeout(fetchJSON, 750)
+		setTimeout(fetchJSON, $TIMEOUT)
 	}
 	function fetchJSON() {
 		var t1 = ''
 		var t0 = performance.now()
 		fetch(window.location.href, {
-				headers: {
-					'Accept': 'application/json'
-				},
+				headers: { 'Accept': 'application/json' },
 				credentials: 'same-origin'
 			})
 			.then(res => {
 				t1 = performance.now()
 				return res.json()
 			})
-			.then(res => {
-				update(res, Math.round(t1 - t0))
-			})
+			.then(res => { update(res, Math.round(t1 - t0)) })
 			.catch(console.error);
 	}
 	fetchJSON()
