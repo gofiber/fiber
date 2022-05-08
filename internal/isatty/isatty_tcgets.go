@@ -1,5 +1,5 @@
-//go:build (linux || aix) && !appengine
-// +build linux aix
+//go:build (linux || aix || zos) && !appengine
+// +build linux aix zos
 // +build !appengine
 
 package isatty
