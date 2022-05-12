@@ -24,11 +24,18 @@ import (
 
 func main() {
 	app := fiber.New()
-	
-	app.Get("/dashboard", monitor.New())
-	
+
+	app.Get("/metrics", monitor.New(monitor.Config{Title: "MyService Metrics Page"}))
+
 	log.Fatal(app.Listen(":3000"))
 }
+```
+You can also access the API endpoint with
+`curl -X GET -H "Accept: application/json" http://localhost:3000/metrics` which returns:
+```json
+{"pid":{ "cpu":0.4568381746582226, "ram":20516864,   "conns":3 },
+ "os": { "cpu":8.759124087593099,  "ram":3997155328, "conns":44,
+	"total_ram":8245489664, "load_avg":0.51 }}
 ```
 
 ## Config
@@ -36,11 +43,16 @@ func main() {
 ```go
 // Config defines the config for middleware.
 type Config struct {
+	// Metrics page title
+	//
+	// Optional. Default: "Fiber Monitor"
+	Title string
+
 	// To disable serving HTML, you can make true this option.
 	//
 	// Optional. Default: false
 	APIOnly bool
-	
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
@@ -52,7 +64,8 @@ type Config struct {
 
 ```go
 var ConfigDefault = Config{
+	Title:   "Fiber Monitor",
 	APIOnly: false,
-	Next: nil,
+	Next:    nil,
 }
 ```

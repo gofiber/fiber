@@ -18,6 +18,7 @@ import (
 	"io/ioutil"
 	"mime/multipart"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"strconv"
@@ -398,6 +399,30 @@ func Test_Ctx_BodyParser(t *testing.T) {
 
 	testDecodeParserError("invalid-content-type", "")
 	testDecodeParserError(MIMEMultipartForm+`;boundary="b"`, "--b")
+
+	type CollectionQuery struct {
+		Data []Demo `query:"data"`
+	}
+
+	c.Request().Reset()
+	c.Request().Header.SetContentType(MIMEApplicationForm)
+	c.Request().SetBody([]byte("data[0][name]=john&data[1][name]=doe"))
+	c.Request().Header.SetContentLength(len(c.Body()))
+	cq := new(CollectionQuery)
+	utils.AssertEqual(t, nil, c.BodyParser(cq))
+	utils.AssertEqual(t, 2, len(cq.Data))
+	utils.AssertEqual(t, "john", cq.Data[0].Name)
+	utils.AssertEqual(t, "doe", cq.Data[1].Name)
+
+	c.Request().Reset()
+	c.Request().Header.SetContentType(MIMEApplicationForm)
+	c.Request().SetBody([]byte("data.0.name=john&data.1.name=doe"))
+	c.Request().Header.SetContentLength(len(c.Body()))
+	cq = new(CollectionQuery)
+	utils.AssertEqual(t, nil, c.BodyParser(cq))
+	utils.AssertEqual(t, 2, len(cq.Data))
+	utils.AssertEqual(t, "john", cq.Data[0].Name)
+	utils.AssertEqual(t, "doe", cq.Data[1].Name)
 }
 
 // go test -run Test_Ctx_BodyParser_WithSetParserDecoder
@@ -1318,6 +1343,44 @@ func Test_Ctx_Params(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+// go test -race -run Test_Ctx_AllParams
+func Test_Ctx_AllParams(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test/:user", func(c *Ctx) error {
+		utils.AssertEqual(t, map[string]string{"user": "john"}, c.AllParams())
+		return nil
+	})
+	app.Get("/test2/*", func(c *Ctx) error {
+		utils.AssertEqual(t, map[string]string{"*1": "im/a/cookie"}, c.AllParams())
+		return nil
+	})
+	app.Get("/test3/*/blafasel/*", func(c *Ctx) error {
+		utils.AssertEqual(t, map[string]string{"*1": "1111", "*2": "2222"}, c.AllParams())
+		return nil
+	})
+	app.Get("/test4/:optional?", func(c *Ctx) error {
+		utils.AssertEqual(t, map[string]string{"optional": ""}, c.AllParams())
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+}
+
 // go test -v -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=4
 func Benchmark_Ctx_Params(b *testing.B) {
 	app := New()
@@ -1341,6 +1404,32 @@ func Benchmark_Ctx_Params(b *testing.B) {
 		res = c.Params("param4")
 	}
 	utils.AssertEqual(b, "awesome", res)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_AllParams -benchmem -count=4
+func Benchmark_Ctx_AllParams(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.route = &Route{
+		Params: []string{
+			"param1", "param2", "param3", "param4",
+		},
+	}
+	c.values = [maxParams]string{
+		"john", "doe", "is", "awesome",
+	}
+	var res map[string]string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.AllParams()
+	}
+	utils.AssertEqual(b, map[string]string{"param1": "john",
+		"param2": "doe",
+		"param3": "is",
+		"param4": "awesome"},
+		res)
 }
 
 // go test -run Test_Ctx_Path
@@ -2074,6 +2163,28 @@ func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
 	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
+// go test -run Test_Ctx_RedirectToRouteWithParams
+func Test_Ctx_RedirectToRouteWithQueries(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/user/:name", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	c.RedirectToRoute("user", Map{
+		"name":    "fiber",
+		"queries": map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
+	})
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
+	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
+	utils.AssertEqual(t, nil, err, "url.Parse(location)")
+	utils.AssertEqual(t, "/user/fiber", location.Path)
+	utils.AssertEqual(t, url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}}, location.Query())
+}
+
 // go test -run Test_Ctx_RedirectToRouteWithOptionalParams
 func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
 	t.Parallel()
@@ -2361,6 +2472,55 @@ func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
 
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
+}
+
+func Benchmark_Ctx_RedirectToRoute(b *testing.B) {
+	app := New()
+	app.Get("/user/:name", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c.RedirectToRoute("user", Map{
+			"name": "fiber",
+		})
+	}
+
+	utils.AssertEqual(b, 302, c.Response().StatusCode())
+	utils.AssertEqual(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
+}
+
+func Benchmark_Ctx_RedirectToRouteWithQueries(b *testing.B) {
+	app := New()
+	app.Get("/user/:name", func(c *Ctx) error {
+		return c.JSON(c.Params("name"))
+	}).Name("user")
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c.RedirectToRoute("user", Map{
+			"name":    "fiber",
+			"queries": map[string]string{"a": "a", "b": "b"},
+		})
+	}
+
+	utils.AssertEqual(b, 302, c.Response().StatusCode())
+	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
+	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
+	utils.AssertEqual(b, nil, err, "url.Parse(location)")
+	utils.AssertEqual(b, "/user/fiber", location.Path)
+	utils.AssertEqual(b, url.Values{"a": []string{"a"}, "b": []string{"b"}}, location.Query())
 }
 
 func Benchmark_Ctx_RenderLocals(b *testing.B) {

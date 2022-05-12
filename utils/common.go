@@ -5,16 +5,19 @@
 package utils
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
-
+	"math"
 	"net"
 	"os"
 	"reflect"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
+	"unicode"
 
 	googleuuid "github.com/gofiber/fiber/v2/internal/uuid"
 )
@@ -32,6 +35,7 @@ var (
 	uuidSeed    [24]byte
 	uuidCounter uint64
 	uuidSetup   sync.Once
+	unitsSlice  = []byte("kmgtp")
 )
 
 // UUID generates an universally unique identifier (UUID)
@@ -108,4 +112,44 @@ func IncrementIPRange(ip net.IP) {
 			break
 		}
 	}
+}
+
+// ConvertToBytes returns integer size of bytes from human-readable string, ex. 42kb, 42M
+// Returns 0 if string is unrecognized
+func ConvertToBytes(humanReadableString string) int {
+	strLen := len(humanReadableString)
+	if strLen == 0 {
+		return 0
+	}
+	var unitPrefixPos, lastNumberPos int
+	// loop the string
+	for i := strLen - 1; i >= 0; i-- {
+		// check if the char is a number
+		if unicode.IsDigit(rune(humanReadableString[i])) {
+			lastNumberPos = i
+			break
+		} else if humanReadableString[i] != ' ' {
+			unitPrefixPos = i
+		}
+	}
+
+	if lastNumberPos < 0 {
+		return 0
+	}
+	// fetch the number part and parse it to float
+	size, err := strconv.ParseFloat(humanReadableString[:lastNumberPos+1], 64)
+	if err != nil {
+		return 0
+	}
+
+	// check the multiplier from the string and use it
+	if unitPrefixPos > 0 {
+		// convert multiplier char to lowercase and check if exists in units slice
+		index := bytes.IndexByte(unitsSlice, toLowerTable[humanReadableString[unitPrefixPos]])
+		if index != -1 {
+			size *= math.Pow(1000, float64(index+1))
+		}
+	}
+
+	return int(size)
 }

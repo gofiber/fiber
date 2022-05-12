@@ -29,15 +29,16 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"encoding/json"
+
 	"github.com/gofiber/fiber/v2/internal/colorable"
-	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/internal/isatty"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
 
 // Version of current fiber package
-const Version = "2.31.0"
+const Version = "2.33.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -639,7 +640,7 @@ func (app *App) Use(args ...interface{}) Router {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (app *App) Get(path string, handlers ...Handler) Router {
-	return app.Add(MethodHead, path, handlers...).Add(MethodGet, path, handlers...)
+	return app.Head(path, handlers...).Add(MethodGet, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -803,10 +804,8 @@ func (app *App) Listen(addr string) error {
 	return app.server.Serve(ln)
 }
 
-// ListenTLS serves HTTPs requests from the given addr.
-// certFile and keyFile are the paths to TLS certificate and key file.
-
-//  app.ListenTLS(":8080", "./cert.pem", "./cert.key")
+// ListenTLS serves HTTPS requests from the given addr.
+// certFile and keyFile are the paths to TLS certificate and key file:
 //  app.ListenTLS(":8080", "./cert.pem", "./cert.key")
 func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Check for valid cert/key path
@@ -846,10 +845,8 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	return app.server.ServeTLS(ln, certFile, keyFile)
 }
 
-// ListenMutualTLS serves HTTPs requests from the given addr.
-// certFile, keyFile and clientCertFile are the paths to TLS certificate and key file.
-
-//  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
+// ListenMutualTLS serves HTTPS requests from the given addr.
+// certFile, keyFile and clientCertFile are the paths to TLS certificate and key file:
 //  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
 func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
 	// Check for valid cert/key path

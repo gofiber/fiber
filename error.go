@@ -1,7 +1,8 @@
 package fiber
 
 import (
-	"github.com/gofiber/fiber/v2/internal/go-json/errors"
+	errors "encoding/json"
+
 	"github.com/gofiber/fiber/v2/internal/schema"
 )
 

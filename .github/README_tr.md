@@ -628,7 +628,6 @@ Fiber; alan adı, gitbook, netlify, serverless yer sağlayıcısı giderleri ve 
 | ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5   |
 | ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5   |
 | ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3   |
-| ![](https://avatars.githubusercontent.com/u/59947262?s=25) | [@ankush](https://github.com/ankush)             | ☕ x 3   |
 | ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3   |
 | ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3   |
 | ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1   |
@@ -657,7 +656,6 @@ Telif (c) 2019-günümüz [Fenny](https://github.com/fenny) ve [katkıda bulunan
 -   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
 -   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
--   [go-json](https://github.com/goccy/go-json/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 -   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
