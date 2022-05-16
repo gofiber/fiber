@@ -64,9 +64,9 @@ func New(config ...Config) fiber.Handler {
 
 		go func() {
 			for {
-				updateStatistics(p)
+				time.Sleep(cfg.Refresh)
 
-				time.Sleep(1 * time.Second)
+				updateStatistics(p)
 			}
 		}()
 	})
