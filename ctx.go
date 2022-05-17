@@ -1353,7 +1353,8 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
 	sendFileOnce.Do(func() {
 		sendFileFS = &fasthttp.FS{
-			Root:                 "/",
+			Root:                 "",
+			AllowEmptyRoot:       true,
 			GenerateIndexPages:   false,
 			AcceptByteRange:      true,
 			Compress:             true,
@@ -1386,10 +1387,6 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 		}
 		if hasTrailingSlash {
 			file += "/"
-		}
-		// remove the relative data with dot as they are not necessary
-		if len(file) > 2 && strings.HasPrefix(file, "."+string(filepath.Separator)) {
-			file = file[2:]
 		}
 	}
 	// convert the path to forward slashes regardless the OS in order to set the URI properly
