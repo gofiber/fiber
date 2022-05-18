@@ -1350,10 +1350,11 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
 
-	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
+	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
 	sendFileOnce.Do(func() {
 		sendFileFS = &fasthttp.FS{
-			Root:                 "/",
+			Root:                 "",
+			AllowEmptyRoot:       true,
 			GenerateIndexPages:   false,
 			AcceptByteRange:      true,
 			Compress:             true,
@@ -1371,13 +1372,16 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
 	// Disable compression
 	if len(compress) == 0 || !compress[0] {
-		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
+		// https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L55
 		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}
-	// https://github.com/valyala/fasthttp/blob/master/fs.go#L85
-	if len(file) == 0 || file[0] != '/' {
-		hasTrailingSlash := len(file) > 0 && file[len(file)-1] == '/'
+	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
+	if len(file) == 0 || !filepath.IsAbs(file) {
+		// extend relative path to absolute path
+		hasTrailingSlash := len(file) > 0 && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
+
 		var err error
+		file = filepath.FromSlash(file)
 		if file, err = filepath.Abs(file); err != nil {
 			return err
 		}
@@ -1385,6 +1389,10 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 			file += "/"
 		}
 	}
+	// convert the path to forward slashes regardless the OS in order to set the URI properly
+	// the handler will convert back to OS path separator before opening the file
+	file = filepath.ToSlash(file)
+
 	// Restore the original requested URL
 	originalURL := utils.CopyString(c.OriginalURL())
 	defer c.fasthttp.Request.SetRequestURI(originalURL)

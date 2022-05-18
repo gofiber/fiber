@@ -20,6 +20,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -1908,7 +1909,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	t.Parallel()
 	app := New()
 	app.Get("/", func(c *Ctx) error {
-		err := c.SendFile("./john_dow.go/")
+		err := c.SendFile(filepath.FromSlash("john_dow.go/"))
 		utils.AssertEqual(t, false, err == nil)
 		return err
 	})
@@ -1922,22 +1923,44 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/:file", func(c *Ctx) error {
-		file := c.Params("file")
-		if err := c.SendFile("./.github/" + file + ".html"); err != nil {
+	var endpointsForTest []string
+	addEndpoint := func(file, endpoint string) {
+		endpointsForTest = append(endpointsForTest, endpoint)
+		app.Get(endpoint, func(c *Ctx) error {
+			if err := c.SendFile(file); err != nil {
+				utils.AssertEqual(t, nil, err)
+				return err
+			}
+			return c.SendStatus(200)
+		})
+	}
+
+	// relative paths
+	addEndpoint("./.github/index.html", "/relativeWithDot")
+	addEndpoint(filepath.FromSlash("./.github/index.html"), "/relativeOSWithDot")
+	addEndpoint(".github/index.html", "/relative")
+	addEndpoint(filepath.FromSlash(".github/index.html"), "/relativeOS")
+
+	// absolute paths
+	if path, err := filepath.Abs(".github/index.html"); err != nil {
+		utils.AssertEqual(t, nil, err)
+	} else {
+		addEndpoint(path, "/absolute")
+		addEndpoint(filepath.FromSlash(path), "/absoluteOS") // os related
+	}
+
+	for _, endpoint := range endpointsForTest {
+		t.Run(endpoint, func(t *testing.T) {
+			// 1st try
+			resp, err := app.Test(httptest.NewRequest("GET", endpoint, nil))
 			utils.AssertEqual(t, nil, err)
-		}
-		utils.AssertEqual(t, "index", file)
-		return c.SendString(file)
-	})
-	// 1st try
-	resp, err := app.Test(httptest.NewRequest("GET", "/index", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, StatusOK, resp.StatusCode)
-	// 2nd try
-	resp, err = app.Test(httptest.NewRequest("GET", "/index", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, StatusOK, resp.StatusCode)
+			utils.AssertEqual(t, StatusOK, resp.StatusCode)
+			// 2nd try
+			resp, err = app.Test(httptest.NewRequest("GET", endpoint, nil))
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, StatusOK, resp.StatusCode)
+		})
+	}
 }
 
 // go test -race -run Test_Ctx_SendFile_RestoreOriginalURL
