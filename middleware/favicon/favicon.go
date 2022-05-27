@@ -97,7 +97,8 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Only respond to favicon requests
-		if len(c.Path()) != 12 || c.Path() != "/favicon.ico" {
+		standardPath := "/favicon.ico"
+		if len(c.Path()) != len(standardPath) || c.Path() != standardPath {
 			return c.Next()
 		}
 
