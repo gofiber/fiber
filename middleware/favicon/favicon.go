@@ -40,6 +40,7 @@ var ConfigDefault = Config{
 }
 
 const (
+	fPath  = "/favicon.ico"
 	hType  = "image/x-icon"
 	hAllow = "GET, HEAD, OPTIONS"
 	hZero  = "0"
@@ -97,8 +98,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Only respond to favicon requests
-		standardPath := "/favicon.ico"
-		if len(c.Path()) != len(standardPath) || c.Path() != standardPath {
+		if c.Path() != fPath {
 			return c.Next()
 		}
 
