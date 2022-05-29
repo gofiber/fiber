@@ -48,6 +48,11 @@ type Config struct {
 	// Optional. Default: "Fiber Monitor"
 	Title string
 
+	// Refresh period
+	//
+	// Optional. Default: 3 seconds
+	Refresh time.Duration
+
 	// To disable serving HTML, you can make true this option.
 	//
 	// Optional. Default: false
@@ -65,6 +70,7 @@ type Config struct {
 ```go
 var ConfigDefault = Config{
 	Title:   "Fiber Monitor",
+	Refresh: 3 * time.Second,
 	APIOnly: false,
 	Next:    nil,
 }

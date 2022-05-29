@@ -2,9 +2,11 @@ package monitor
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
@@ -28,16 +30,36 @@ func Test_Monitor_Html(t *testing.T) {
 
 	app := fiber.New()
 
+	// defaults
 	app.Get("/", New())
-
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
-	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
-
-	b, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8,
+		resp.Header.Get(fiber.HeaderContentType))
+	buf, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, bytes.Contains(b, []byte("<title>"+defaultTitle+"</title>")))
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("<title>"+defaultTitle+"</title>")))
+	timeoutLine := fmt.Sprintf("setTimeout(fetchJSON, %d)",
+		defaultRefresh.Milliseconds()-timeoutDiff)
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte(timeoutLine)))
+
+	// custom config
+	conf := Config{Title: "New " + defaultTitle, Refresh: defaultRefresh + time.Second}
+	app.Get("/custom", New(conf))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/custom", nil))
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8,
+		resp.Header.Get(fiber.HeaderContentType))
+	buf, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("<title>"+conf.Title+"</title>")))
+	timeoutLine = fmt.Sprintf("setTimeout(fetchJSON, %d)",
+		conf.Refresh.Milliseconds()-timeoutDiff)
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte(timeoutLine)))
 }
 
 // go test -run Test_Monitor_JSON -race
