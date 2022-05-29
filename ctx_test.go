@@ -2753,6 +2753,41 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 	utils.AssertEqual(t, "/user/fiber", location)
 }
 
+// go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy
+func Test_Ctx_Get_Location_From_Route_name_Optional_greedy(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	app.Get("/:phone/*/send/*", func(c *Ctx) error {
+		return c.SendString("Phone: " + c.Params("phone") + "\nFirst Param: " + c.Params("*1") + "\nSecond Param: " + c.Params("*2"))
+	}).Name("SendSms")
+
+	location, err := c.GetRouteURL("SendSms", Map{
+		"phone": "23456789",
+		"*1":    "sms",
+		"*2":    "test-msg",
+	})
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "/23456789/sms/send/test-msg", location)
+}
+
+// go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param
+func Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	app.Get("/:phone/*/send", func(c *Ctx) error {
+		return c.SendString("Phone: " + c.Params("phone") + "\nFirst Param: " + c.Params("*1"))
+	}).Name("SendSms")
+
+	location, err := c.GetRouteURL("SendSms", Map{
+		"phone": "23456789",
+		"*":     "sms",
+	})
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "/23456789/sms/send", location)
+}
+
 type errorTemplateEngine struct{}
 
 func (t errorTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
