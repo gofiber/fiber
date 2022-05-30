@@ -61,7 +61,7 @@ type Route struct {
 	Handlers []Handler `json:"-"`      // Ctx handlers
 }
 
-func (r *Route) match(detectionPath, path string, params *[maxParams]string) (match bool) {
+func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
 	// root detectionPath check
 	if r.root && detectionPath == "/" {
 		return true
@@ -96,7 +96,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) (ma
 	return false
 }
 
-func (app *App) next(c *Ctx) (match bool, err error) {
+func (app *App) next(c *Ctx) (bool, error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.methodINT][c.treePath]
 	if !ok {
@@ -105,6 +105,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 	lenr := len(tree) - 1
 
 	// Loop over the route stack starting from previous index
+	var match bool = false
 	for c.indexRoute < lenr {
 		// Increment route index
 		c.indexRoute++
@@ -129,19 +130,21 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 
 		// Execute first handler of route
 		c.indexHandler = 0
-		err = route.Handlers[0](c)
+		err := route.Handlers[0](c)
+
 		return match, err // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
-	err = NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
+	err := NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
 	if !c.matched && methodExist(c) {
 		err = ErrMethodNotAllowed
 	}
-	return
+
+	return match, err
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
