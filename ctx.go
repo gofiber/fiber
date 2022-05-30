@@ -1145,7 +1145,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	optionalParamCount := 0
 	for key, val := range params {
-		if key == "*" {
+		if key == "*" || key == "+" {
 			optionalParamCount++
 			key = key + utils.ToString(optionalParamCount)
 			params[key] = val
