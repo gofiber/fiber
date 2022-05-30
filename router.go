@@ -130,9 +130,8 @@ func (app *App) next(c *Ctx) (bool, error) {
 
 		// Execute first handler of route
 		c.indexHandler = 0
-		err := route.Handlers[0](c)
 
-		return match, err // Stop scanning the stack
+		return match, route.Handlers[0](c) // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
