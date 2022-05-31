@@ -1145,7 +1145,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
 		for key, val := range params {
-			if (segment.IsParam && key == segment.ParamName) || (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters)) {
+			if segment.IsParam && (key == segment.ParamName || (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))) {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
 					return "", err
