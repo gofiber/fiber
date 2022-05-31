@@ -1143,17 +1143,9 @@ func (c *Ctx) Bind(vars Map) error {
 // getLocationFromRoute get URL location from route using parameters
 func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
-	optionalParamCount := 0
-	for key, val := range params {
-		if key == "*" || key == "+" {
-			optionalParamCount++
-			key = key + utils.ToString(optionalParamCount)
-			params[key] = val
-		}
-	}
 	for _, segment := range route.routeParser.segs {
 		for key, val := range params {
-			if segment.IsParam && key == segment.ParamName {
+			if (segment.IsParam && key == segment.ParamName) || (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters)) {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
 					return "", err
