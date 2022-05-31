@@ -1144,16 +1144,15 @@ func (c *Ctx) Bind(vars Map) error {
 func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
-		if segment.IsParam {
-			for key, val := range params {
-				if key == segment.ParamName || segment.IsGreedy {
-					_, err := buf.WriteString(utils.ToString(val))
-					if err != nil {
-						return "", err
-					}
+		for key, val := range params {
+			if segment.IsParam && (key == segment.ParamName || (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))) {
+				_, err := buf.WriteString(utils.ToString(val))
+				if err != nil {
+					return "", err
 				}
 			}
-		} else {
+		}
+		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
 				return "", err
@@ -1161,6 +1160,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 		}
 	}
 	location := buf.String()
+	// release buffer
 	bytebufferpool.Put(buf)
 	return location, nil
 }
