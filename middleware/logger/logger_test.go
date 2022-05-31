@@ -321,7 +321,7 @@ func Test_Req_Header(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Format: "${header:test}",
+		Format: "${reqHeader:test}",
 		Output: buf,
 	}))
 	app.Get("/", func(c *fiber.Ctx) error {
