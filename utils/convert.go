@@ -87,7 +87,7 @@ func ByteSize(bytes uint64) string {
 }
 
 // ToString Change arg to string
-func ToString(arg interface{}, timeFormat ...string) string {
+func ToString(arg any, timeFormat ...string) string {
 	var tmp = reflect.Indirect(reflect.ValueOf(arg)).Interface()
 	switch v := tmp.(type) {
 	case int:

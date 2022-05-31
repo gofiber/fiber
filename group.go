@@ -81,7 +81,7 @@ func (grp *Group) Name(name string) Router {
 //  })
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (grp *Group) Use(args ...interface{}) Router {
+func (grp *Group) Use(args ...any) Router {
 	prefix := ""
 	var handlers []Handler
 	for i := 0; i < len(args); i++ {

@@ -1335,7 +1335,7 @@ type invalidView struct{}
 
 func (invalidView) Load() error { return errors.New("invalid view") }
 
-func (i invalidView) Render(io.Writer, string, interface{}, ...string) error { panic("implement me") }
+func (i invalidView) Render(io.Writer, string, any, ...string) error { panic("implement me") }
 
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {

@@ -43,8 +43,8 @@ const Version = "2.34.0"
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
 
-// Map is a shortcut for map[string]interface{}, useful for JSON returns
-type Map map[string]interface{}
+// Map is a shortcut for map[string]any, useful for JSON returns
+type Map map[string]any
 
 // Storage interface for communicating with different database/key-value
 // providers
@@ -454,7 +454,7 @@ func New(config ...Config) *App {
 		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create Ctx pool
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return new(Ctx)
 			},
 		},
@@ -619,7 +619,7 @@ func (app *App) GetRoute(name string) Route {
 //  })
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (app *App) Use(args ...interface{}) Router {
+func (app *App) Use(args ...any) Router {
 	var prefix string
 	var handlers []Handler
 
@@ -1017,7 +1017,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 
 type disableLogger struct{}
 
-func (dl *disableLogger) Printf(_ string, _ ...interface{}) {
+func (dl *disableLogger) Printf(_ string, _ ...any) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 

@@ -40,11 +40,11 @@ func (h indexedHeap) Swap(i, j int) {
 	h.indices[h.entries[j].idx] = j
 }
 
-func (h *indexedHeap) Push(x interface{}) {
+func (h *indexedHeap) Push(x any) {
 	h.pushInternal(x.(heapEntry))
 }
 
-func (h *indexedHeap) Pop() interface{} {
+func (h *indexedHeap) Pop() any {
 	n := len(h.entries)
 	h.entries = h.entries[0 : n-1]
 	return h.entries[0:n][n-1]

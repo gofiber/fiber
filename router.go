@@ -18,7 +18,7 @@ import (
 
 // Router defines all router handle interface includes app and group router.
 type Router interface {
-	Use(args ...interface{}) Router
+	Use(args ...any) Router
 
 	Get(path string, handlers ...Handler) Router
 	Head(path string, handlers ...Handler) Router

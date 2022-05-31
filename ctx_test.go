@@ -1998,7 +1998,7 @@ func Test_Ctx_JSON(t *testing.T) {
 	utils.AssertEqual(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	utils.AssertEqual(t, "application/json", string(c.Response().Header.Peek("content-type")))
 
-	testEmpty := func(v interface{}, r string) {
+	testEmpty := func(v any, r string) {
 		err := c.JSON(v)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, r, string(c.Response().Body()))
@@ -2663,7 +2663,7 @@ type testTemplateEngine struct {
 	templates *template.Template
 }
 
-func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
+func (t *testTemplateEngine) Render(w io.Writer, name string, bind any, layout ...string) error {
 	if len(layout) == 0 {
 		return t.templates.ExecuteTemplate(w, name, bind)
 	}
@@ -2790,7 +2790,7 @@ func Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param(t *testing.
 
 type errorTemplateEngine struct{}
 
-func (t errorTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
+func (t errorTemplateEngine) Render(w io.Writer, name string, bind any, layout ...string) error {
 	return errors.New("errorTemplateEngine")
 }
 
