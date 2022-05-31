@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/tlstest"
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/tlstest"
+	"github.com/gofiber/fiber/v3/utils"
 )
 
 func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, string) {

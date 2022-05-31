@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v3/utils"
 )
 
 // go test -run Test_Memory -v -race

@@ -3,7 +3,7 @@ package dictpool
 import (
 	"sort"
 
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v3/utils"
 )
 
 func (d *Dict) allocKV() *KV {

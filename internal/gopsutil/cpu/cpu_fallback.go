@@ -7,7 +7,7 @@ import (
 	"context"
 	"runtime"
 
-	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
+	"github.com/gofiber/fiber/v3/internal/gopsutil/common"
 )
 
 func Times(percpu bool) ([]TimesStat, error) {

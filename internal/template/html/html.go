@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gofiber/fiber/v2/internal/template/utils"
+	"github.com/gofiber/fiber/v3/internal/template/utils"
 )
 
 // Engine struct

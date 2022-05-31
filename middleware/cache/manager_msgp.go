@@ -5,7 +5,7 @@ package cache
 // DO NOT EDIT
 
 import (
-	"github.com/gofiber/fiber/v2/internal/msgp"
+	"github.com/gofiber/fiber/v3/internal/msgp"
 )
 
 // DecodeMsg implements msgp.Decodable

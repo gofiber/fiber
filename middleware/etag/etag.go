@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"hash/crc32"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/bytebufferpool"
 )
 
 var (

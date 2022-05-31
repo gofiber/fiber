@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
+	"github.com/gofiber/fiber/v3/internal/gopsutil/common"
 )
 
 func Avg() (*AvgStat, error) {

@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"unicode"
 
-	googleuuid "github.com/gofiber/fiber/v2/internal/uuid"
+	googleuuid "github.com/gofiber/fiber/v3/internal/uuid"
 )
 
 const (

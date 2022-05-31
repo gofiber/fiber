@@ -3,7 +3,7 @@ package fiber
 import (
 	errors "encoding/json"
 
-	"github.com/gofiber/fiber/v2/internal/schema"
+	"github.com/gofiber/fiber/v3/internal/schema"
 )
 
 type (
