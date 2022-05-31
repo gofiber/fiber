@@ -3,7 +3,6 @@ package proxy
 import (
 	"bytes"
 	"crypto/tls"
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -11,12 +10,6 @@ import (
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
 )
-
-// New is deprecated
-func New(config Config) fiber.Handler {
-	fmt.Println("proxy.New is deprecated, please use proxy.Balancer instead")
-	return Balancer(config)
-}
 
 // Balancer creates a load balancer among multiple upstream servers
 func Balancer(config Config) fiber.Handler {

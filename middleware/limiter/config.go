@@ -1,7 +1,6 @@
 package limiter
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -57,15 +56,6 @@ type Config struct {
 	//
 	// Default: a new Fixed Window Rate Limiter
 	LimiterMiddleware LimiterHandler
-
-	// DEPRECATED: Use Expiration instead
-	Duration time.Duration
-
-	// DEPRECATED, use Storage instead
-	Store fiber.Storage
-
-	// DEPRECATED, use KeyGenerator instead
-	Key func(*fiber.Ctx) string
 }
 
 // ConfigDefault is the default config
@@ -94,18 +84,6 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if int(cfg.Duration.Seconds()) > 0 {
-		fmt.Println("[LIMITER] Duration is deprecated, please use Expiration")
-		cfg.Expiration = cfg.Duration
-	}
-	if cfg.Key != nil {
-		fmt.Println("[LIMITER] Key is deprecated, please us KeyGenerator")
-		cfg.KeyGenerator = cfg.Key
-	}
-	if cfg.Store != nil {
-		fmt.Println("[LIMITER] Store is deprecated, please use Storage")
-		cfg.Storage = cfg.Store
-	}
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
 	}

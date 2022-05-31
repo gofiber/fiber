@@ -163,12 +163,6 @@ type Config struct {
 	// Default: false
 	UnescapePath bool `json:"unescape_path"`
 
-	// Enable or disable ETag header generation, since both weak and strong etags are generated
-	// using the same hashing method (CRC-32). Weak ETags are the default when enabled.
-	//
-	// Default: false
-	ETag bool `json:"etag"`
-
 	// Max body size that the server accepts.
 	// -1 will decline any body size
 	//
@@ -473,12 +467,6 @@ func New(config ...Config) *App {
 	// Override config if provided
 	if len(config) > 0 {
 		app.config = config[0]
-	}
-
-	if app.config.ETag {
-		if !IsChild() {
-			fmt.Println("[Warning] Config.ETag is deprecated since v2.0.6, please use 'middleware/etag'.")
-		}
 	}
 
 	// Override default values

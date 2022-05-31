@@ -42,8 +42,6 @@ const (
 	TagBytesReceived     = "bytesReceived"
 	TagRoute             = "route"
 	TagError             = "error"
-	// DEPRECATED: Use TagReqHeader instead
-	TagHeader     = "header:"
 	TagReqHeader  = "reqHeader:"
 	TagRespHeader = "respHeader:"
 	TagLocals     = "locals:"
@@ -286,8 +284,6 @@ func New(config ...Config) fiber.Handler {
 				switch {
 				case strings.HasPrefix(tag, TagReqHeader):
 					return buf.WriteString(c.Get(tag[10:]))
-				case strings.HasPrefix(tag, TagHeader):
-					return buf.WriteString(c.Get(tag[7:]))
 				case strings.HasPrefix(tag, TagRespHeader):
 					return buf.WriteString(c.GetRespHeader(tag[11:]))
 				case strings.HasPrefix(tag, TagQuery):

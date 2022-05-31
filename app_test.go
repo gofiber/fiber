@@ -1256,30 +1256,6 @@ func Benchmark_AcquireCtx(b *testing.B) {
 	}
 }
 
-// go test -v -run=^$ -bench=Benchmark_App_ETag -benchmem -count=4
-func Benchmark_App_ETag(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	c.Send([]byte("Hello, World!"))
-	for n := 0; n < b.N; n++ {
-		setETag(c, false)
-	}
-	utils.AssertEqual(b, `"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
-}
-
-// go test -v -run=^$ -bench=Benchmark_App_ETag_Weak -benchmem -count=4
-func Benchmark_App_ETag_Weak(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	c.Send([]byte("Hello, World!"))
-	for n := 0; n < b.N; n++ {
-		setETag(c, true)
-	}
-	utils.AssertEqual(b, `W/"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
-}
-
 // go test -run Test_NewError
 func Test_NewError(t *testing.T) {
 	err := NewError(StatusForbidden, "permission denied")

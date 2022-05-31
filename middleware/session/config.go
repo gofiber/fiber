@@ -1,7 +1,6 @@
 package session
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -49,9 +48,6 @@ type Config struct {
 	// Optional. Default value utils.UUIDv4
 	KeyGenerator func() string
 
-	// Deprecated, please use KeyLookup
-	CookieName string
-
 	// Source defines where to obtain the session id
 	source Source
 
@@ -89,10 +85,6 @@ func configDefault(config ...Config) Config {
 	// Set default values
 	if int(cfg.Expiration.Seconds()) <= 0 {
 		cfg.Expiration = ConfigDefault.Expiration
-	}
-	if cfg.CookieName != "" {
-		fmt.Println("[session] CookieName is deprecated, please use KeyLookup")
-		cfg.KeyLookup = fmt.Sprintf("cookie:%s", cfg.CookieName)
 	}
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup

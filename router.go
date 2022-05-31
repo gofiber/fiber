@@ -18,7 +18,7 @@ import (
 
 // Router defines all router handle interface includes app and group router.
 type Router interface {
-	Use(args ...any) Router
+	Use(args ...interface{}) Router
 
 	Get(path string, handlers ...Handler) Router
 	Head(path string, handlers ...Handler) Router
@@ -156,15 +156,11 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Find match in stack
-	match, err := app.next(c)
+	_, err := app.next(c)
 	if err != nil {
 		if catch := c.app.ErrorHandler(c, err); catch != nil {
 			_ = c.SendStatus(StatusInternalServerError)
 		}
-	}
-	// Generate ETag if enabled
-	if match && app.config.ETag {
-		setETag(c, false)
 	}
 
 	// Release Ctx

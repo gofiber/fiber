@@ -1,7 +1,6 @@
 package csrf
 
 import (
-	"fmt"
 	"net/textproto"
 	"strings"
 	"time"
@@ -78,15 +77,6 @@ type Config struct {
 	// Optional. Default: utils.UUID
 	KeyGenerator func() string
 
-	// Deprecated, please use Expiration
-	CookieExpires time.Duration
-
-	// Deprecated, please use Cookie* related fields
-	Cookie *fiber.Cookie
-
-	// Deprecated, please use KeyLookup
-	TokenLookup string
-
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
 	//
 	// Optional. Default: DefaultErrorHandler
@@ -123,31 +113,6 @@ func configDefault(config ...Config) Config {
 	cfg := config[0]
 
 	// Set default values
-	if cfg.TokenLookup != "" {
-		fmt.Println("[CSRF] TokenLookup is deprecated, please use KeyLookup")
-		cfg.KeyLookup = cfg.TokenLookup
-	}
-	if int(cfg.CookieExpires.Seconds()) > 0 {
-		fmt.Println("[CSRF] CookieExpires is deprecated, please use Expiration")
-		cfg.Expiration = cfg.CookieExpires
-	}
-	if cfg.Cookie != nil {
-		fmt.Println("[CSRF] Cookie is deprecated, please use Cookie* related fields")
-		if cfg.Cookie.Name != "" {
-			cfg.CookieName = cfg.Cookie.Name
-		}
-		if cfg.Cookie.Domain != "" {
-			cfg.CookieDomain = cfg.Cookie.Domain
-		}
-		if cfg.Cookie.Path != "" {
-			cfg.CookiePath = cfg.Cookie.Path
-		}
-		cfg.CookieSecure = cfg.Cookie.Secure
-		cfg.CookieHTTPOnly = cfg.Cookie.HTTPOnly
-		if cfg.Cookie.SameSite != "" {
-			cfg.CookieSameSite = cfg.Cookie.SameSite
-		}
-	}
 	if cfg.KeyLookup == "" {
 		cfg.KeyLookup = ConfigDefault.KeyLookup
 	}

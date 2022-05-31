@@ -292,21 +292,6 @@ func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 	utils.AssertEqual(t, true, ok)
 }
 
-func Test_Router_Handler_SetETag(t *testing.T) {
-	app := New()
-	app.config.ETag = true
-
-	app.Get("/", func(c *Ctx) error {
-		return c.SendString("Hello, World!")
-	})
-
-	c := &fasthttp.RequestCtx{}
-
-	app.Handler()(c)
-
-	utils.AssertEqual(t, `"13-1831710635"`, string(c.Response.Header.Peek(HeaderETag)))
-}
-
 func Test_Router_Handler_Catch_Error(t *testing.T) {
 	app := New()
 	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
