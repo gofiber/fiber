@@ -1160,6 +1160,8 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 		}
 	}
 	location := buf.String()
+	// release buffer
+	bytebufferpool.Put(buf)
 	return location, nil
 }
 
