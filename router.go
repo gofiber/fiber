@@ -134,7 +134,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 	}
 
 	// If c.Next() does not match, return 404
-	err = NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
+	err = NewErrors(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
