@@ -731,22 +731,10 @@ func (e *Error) Error() string {
 	return fmt.Sprint(e.Message)
 }
 
-// NewError creates a new Error instance with an optional message
-func NewError(code int, message ...interface{}) *Error {
-	e := &Error{
-		Code:    code,
-		Message: utils.StatusMessage(code),
-	}
-	if len(message) > 0 {
-		e.Message = message[0]
-	}
-	return e
-}
-
 // NewErrors creates multiple/single new Error instances.
 // If you want to pass single message, you have to pass 1 message.
 // To pass multiple error messages, you have to pass +2 messages.
-func NewErrors(code int, messages ...interface{}) *Error {
+func NewErrors(code int, messages ...any) *Error {
 	e := &Error{
 		Code:    code,
 		Message: utils.StatusMessage(code),
