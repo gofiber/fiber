@@ -1,7 +1,7 @@
 package limiter
 
 import (
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -37,7 +37,7 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "Hello tester!", string(body))
 	}
@@ -82,7 +82,7 @@ func Test_Limiter_Concurrency(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "Hello tester!", string(body))
 	}

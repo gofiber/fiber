@@ -13,7 +13,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -38,7 +37,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.34.0"
+const Version = "3.0.0-beta.1"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -847,7 +846,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 	}
 
-	clientCACert, err := ioutil.ReadFile(filepath.Clean(clientCertFile))
+	clientCACert, err := os.ReadFile(filepath.Clean(clientCertFile))
 	if err != nil {
 		return err
 	}

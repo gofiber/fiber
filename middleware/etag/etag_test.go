@@ -2,7 +2,7 @@ package etag
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"net/http/httptest"
 	"testing"
 
@@ -114,7 +114,7 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 	if matched {
 		utils.AssertEqual(t, fiber.StatusNotModified, resp.StatusCode)
-		b, err := ioutil.ReadAll(resp.Body)
+		b, err := io.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, 0, len(b))
 	}
@@ -164,7 +164,7 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 	if matched {
 		utils.AssertEqual(t, fiber.StatusNotModified, resp.StatusCode)
-		b, err := ioutil.ReadAll(resp.Body)
+		b, err := io.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, 0, len(b))
 	}
@@ -218,7 +218,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 	if matched {
 		utils.AssertEqual(t, fiber.StatusNotModified, resp.StatusCode)
-		b, err := ioutil.ReadAll(resp.Body)
+		b, err := io.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, 0, len(b))
 	}

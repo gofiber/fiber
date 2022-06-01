@@ -3,8 +3,9 @@ package compress
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -14,7 +15,7 @@ import (
 var filedata []byte
 
 func init() {
-	dat, err := ioutil.ReadFile("../../.github/README.md")
+	dat, err := os.ReadFile("../../.github/README.md")
 	if err != nil {
 		panic(err)
 	}
@@ -41,7 +42,7 @@ func Test_Compress_Gzip(t *testing.T) {
 	utils.AssertEqual(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate that the file size has shrunk
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
 }
@@ -69,7 +70,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 			utils.AssertEqual(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
 			// Validate that the file size has shrunk
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			utils.AssertEqual(t, nil, err)
 			utils.AssertEqual(t, true, len(body) < len(filedata))
 		})
@@ -94,7 +95,7 @@ func Test_Compress_Deflate(t *testing.T) {
 	utils.AssertEqual(t, "deflate", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate that the file size has shrunk
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
 }
@@ -117,7 +118,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	utils.AssertEqual(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate that the file size has shrunk
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) < len(filedata))
 }
@@ -140,7 +141,7 @@ func Test_Compress_Disabled(t *testing.T) {
 	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate the file size is not shrunk
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(body) == len(filedata))
 }
@@ -162,7 +163,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "next error", string(body))
 }

@@ -16,7 +16,7 @@ package timeout
 // 		utils.AssertEqual(t, nil, err, "app.Test(req)")
 // 		utils.AssertEqual(t, fiber.StatusRequestTimeout, resp.StatusCode, "Status code")
 
-// 		body, err := ioutil.ReadAll(resp.Body)
+// 		body, err := io.ReadAll(resp.Body)
 // 		utils.AssertEqual(t, nil, err)
 // 		utils.AssertEqual(t, "Request Timeout", string(body))
 // 	}
@@ -25,7 +25,7 @@ package timeout
 // 		utils.AssertEqual(t, nil, err, "app.Test(req)")
 // 		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
-// 		body, err := ioutil.ReadAll(resp.Body)
+// 		body, err := io.ReadAll(resp.Body)
 // 		utils.AssertEqual(t, nil, err)
 // 		utils.AssertEqual(t, "After "+timeoutStr+"ms sleeping", string(body))
 // 	}
@@ -49,7 +49,7 @@ package timeout
 // 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 // 	utils.AssertEqual(t, fiber.StatusRequestTimeout, resp.StatusCode, "Status code")
 
-// 	body, err := ioutil.ReadAll(resp.Body)
+// 	body, err := io.ReadAll(resp.Body)
 // 	utils.AssertEqual(t, nil, err)
 // 	utils.AssertEqual(t, "Request Timeout", string(body))
 // }

@@ -3,7 +3,7 @@ package logger
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -265,7 +265,7 @@ func Benchmark_Logger(b *testing.B) {
 
 	app.Use(New(Config{
 		Format: "${bytesReceived} ${bytesSent} ${status}",
-		Output: ioutil.Discard,
+		Output: io.Discard,
 	}))
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("Hello, World!")
