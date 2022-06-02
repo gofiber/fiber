@@ -30,9 +30,9 @@ import (
 
 	"encoding/json"
 
-	"github.com/gofiber/fiber/v3/internal/colorable"
-	"github.com/gofiber/fiber/v3/internal/isatty"
 	"github.com/gofiber/fiber/v3/utils"
+	"github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
 	"github.com/valyala/fasthttp"
 )
 

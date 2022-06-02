@@ -27,10 +27,10 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gofiber/fiber/v3/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/internal/template/html"
 	"github.com/gofiber/fiber/v3/utils"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 

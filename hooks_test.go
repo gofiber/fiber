@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v3/utils"
+	"github.com/valyala/bytebufferpool"
 )
 
 var testSimpleHandler = func(c *Ctx) error {
