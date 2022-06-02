@@ -96,7 +96,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) (ma
 	return false
 }
 
-func (app *App) next(c *Ctx) (match bool, err error) {
+func (app *App) next(c *ctx) (match bool, err error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.methodINT][c.treePath]
 	if !ok {
@@ -367,30 +367,31 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		}
 	}
 	fileHandler := fs.NewRequestHandler()
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		// Don't execute middleware if Next returns true
 		if len(config) != 0 && config[0].Next != nil && config[0].Next(c) {
 			return c.Next()
 		}
 		// Serve file
-		fileHandler(c.fasthttp)
+		fileHandler(c.Context())
 		// Sets the response Content-Disposition header to attachment if the Download option is true
 		if len(config) > 0 && config[0].Download {
 			c.Attachment()
 		}
 		// Return request if found and not forbidden
-		status := c.fasthttp.Response.StatusCode()
+		status := c.Context().Response.StatusCode()
 		if status != StatusNotFound && status != StatusForbidden {
 			if len(cacheControlValue) > 0 {
-				c.fasthttp.Response.Header.Set(HeaderCacheControl, cacheControlValue)
+				c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
 			}
 			return nil
 		}
 		// Reset response to default
-		c.fasthttp.SetContentType("") // Issue #420
-		c.fasthttp.Response.SetStatusCode(StatusOK)
-		c.fasthttp.Response.SetBodyString("")
-		// Next middleware
+		c.Context().SetContentType("") // Issue #420
+		c.Context().Response.SetStatusCode(StatusOK)
+		c.Context().Response.SetBodyString("")
+		
+			// Next middleware
 		return c.Next()
 	}
 

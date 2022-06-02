@@ -29,7 +29,7 @@ func Test_Logger(t *testing.T) {
 		Output: buf,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return errors.New("some random error")
 	})
 
@@ -51,17 +51,17 @@ func Test_Logger_locals(t *testing.T) {
 		Output: buf,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		c.Locals("demo", "johndoe")
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	app.Get("/int", func(c *fiber.Ctx) error {
+	app.Get("/int", func(c fiber.Ctx) error {
 		c.Locals("demo", 55)
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	app.Get("/empty", func(c *fiber.Ctx) error {
+	app.Get("/empty", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -89,7 +89,7 @@ func Test_Logger_locals(t *testing.T) {
 func Test_Logger_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
@@ -182,11 +182,11 @@ func Test_Response_Body(t *testing.T) {
 		Output: buf,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Sample response body")
 	})
 
-	app.Post("/test", func(c *fiber.Ctx) error {
+	app.Post("/test", func(c fiber.Ctx) error {
 		return c.Send([]byte("Post in test"))
 	})
 
@@ -217,7 +217,7 @@ func Test_Logger_AppendUint(t *testing.T) {
 		Output: buf,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("hello")
 	})
 
@@ -236,7 +236,7 @@ func Test_Logger_Data_Race(t *testing.T) {
 
 	app.Use(New(ConfigDefault))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("hello")
 	})
 
@@ -267,7 +267,7 @@ func Benchmark_Logger(b *testing.B) {
 		Format: "${bytesReceived} ${bytesSent} ${status}",
 		Output: io.Discard,
 	}))
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -303,7 +303,7 @@ func Test_Response_Header(t *testing.T) {
 		Format: "${respHeader:X-Request-ID}",
 		Output: buf,
 	}))
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello fiber!")
 	})
 
@@ -324,7 +324,7 @@ func Test_Req_Header(t *testing.T) {
 		Format: "${reqHeader:test}",
 		Output: buf,
 	}))
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello fiber!")
 	})
 	headerReq := httptest.NewRequest("GET", "/", nil)
@@ -346,7 +346,7 @@ func Test_ReqHeader_Header(t *testing.T) {
 		Format: "${reqHeader:test}",
 		Output: buf,
 	}))
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello fiber!")
 	})
 	reqHeaderReq := httptest.NewRequest("GET", "/", nil)

@@ -621,7 +621,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 	testValue := "foobar-value"
 
 	app := New()
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		ctx := c.UserContext()
 
 		if ctx.Value(testKey) != nil {
@@ -823,7 +823,7 @@ func Test_Ctx_FormFile(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Post("/test", func(c *Ctx) error {
+	app.Post("/test", func(c Ctx) error {
 		fh, err := c.FormFile("file")
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "test", fh.Filename)
@@ -865,7 +865,7 @@ func Test_Ctx_FormValue(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Post("/test", func(c *Ctx) error {
+	app.Post("/test", func(c Ctx) error {
 		utils.AssertEqual(t, "john", c.FormValue("name"))
 		return nil
 	})
@@ -1058,7 +1058,7 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Get("/port", func(c *Ctx) error {
+	app.Get("/port", func(c Ctx) error {
 		return c.SendString(c.Port())
 	})
 
@@ -1194,11 +1194,11 @@ func Benchmark_Ctx_Is(b *testing.B) {
 // go test -run Test_Ctx_Locals
 func Test_Ctx_Locals(t *testing.T) {
 	app := New()
-	app.Use(func(c *Ctx) error {
+	app.Use(func(c Ctx) error {
 		c.Locals("john", "doe")
 		return c.Next()
 	})
-	app.Get("/test", func(c *Ctx) error {
+	app.Get("/test", func(c Ctx) error {
 		utils.AssertEqual(t, "doe", c.Locals("john"))
 		return nil
 	})
@@ -1227,7 +1227,7 @@ func Test_Ctx_Method(t *testing.T) {
 func Test_Ctx_InvalidMethod(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return nil
 	})
 
@@ -1246,7 +1246,7 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Post("/test", func(c *Ctx) error {
+	app.Post("/test", func(c Ctx) error {
 		result, err := c.MultipartForm()
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "john", result.Value["name"][0])
@@ -1272,7 +1272,7 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 func Benchmark_Ctx_MultipartForm(b *testing.B) {
 	app := New()
 
-	app.Post("/", func(c *Ctx) error {
+	app.Post("/", func(c Ctx) error {
 		_, _ = c.MultipartForm()
 		return nil
 	})
@@ -1308,21 +1308,21 @@ func Test_Ctx_OriginalURL(t *testing.T) {
 func Test_Ctx_Params(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/test/:user", func(c *Ctx) error {
+	app.Get("/test/:user", func(c Ctx) error {
 		utils.AssertEqual(t, "john", c.Params("user"))
 		return nil
 	})
-	app.Get("/test2/*", func(c *Ctx) error {
+	app.Get("/test2/*", func(c Ctx) error {
 		utils.AssertEqual(t, "im/a/cookie", c.Params("*"))
 		return nil
 	})
-	app.Get("/test3/*/blafasel/*", func(c *Ctx) error {
+	app.Get("/test3/*/blafasel/*", func(c Ctx) error {
 		utils.AssertEqual(t, "1111", c.Params("*1"))
 		utils.AssertEqual(t, "2222", c.Params("*2"))
 		utils.AssertEqual(t, "1111", c.Params("*"))
 		return nil
 	})
-	app.Get("/test4/:optional?", func(c *Ctx) error {
+	app.Get("/test4/:optional?", func(c Ctx) error {
 		utils.AssertEqual(t, "", c.Params("optional"))
 		return nil
 	})
@@ -1347,19 +1347,19 @@ func Test_Ctx_Params(t *testing.T) {
 func Test_Ctx_AllParams(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/test/:user", func(c *Ctx) error {
+	app.Get("/test/:user", func(c Ctx) error {
 		utils.AssertEqual(t, map[string]string{"user": "john"}, c.AllParams())
 		return nil
 	})
-	app.Get("/test2/*", func(c *Ctx) error {
+	app.Get("/test2/*", func(c Ctx) error {
 		utils.AssertEqual(t, map[string]string{"*1": "im/a/cookie"}, c.AllParams())
 		return nil
 	})
-	app.Get("/test3/*/blafasel/*", func(c *Ctx) error {
+	app.Get("/test3/*/blafasel/*", func(c Ctx) error {
 		utils.AssertEqual(t, map[string]string{"*1": "1111", "*2": "2222"}, c.AllParams())
 		return nil
 	})
-	app.Get("/test4/:optional?", func(c *Ctx) error {
+	app.Get("/test4/:optional?", func(c Ctx) error {
 		utils.AssertEqual(t, map[string]string{"optional": ""}, c.AllParams())
 		return nil
 	})
@@ -1436,7 +1436,7 @@ func Benchmark_Ctx_AllParams(b *testing.B) {
 func Test_Ctx_Path(t *testing.T) {
 	t.Parallel()
 	app := New(Config{UnescapePath: true})
-	app.Get("/test/:user", func(c *Ctx) error {
+	app.Get("/test/:user", func(c Ctx) error {
 		utils.AssertEqual(t, "/Test/John", c.Path())
 		// not strict && case insensitive
 		utils.AssertEqual(t, "/ABC/", c.Path("/ABC/"))
@@ -1445,7 +1445,7 @@ func Test_Ctx_Path(t *testing.T) {
 	})
 
 	// test with special chars
-	app.Get("/specialChars/:name", func(c *Ctx) error {
+	app.Get("/specialChars/:name", func(c Ctx) error {
 		utils.AssertEqual(t, "/specialChars/créer", c.Path())
 		// unescape is also working if you set the path afterwards
 		utils.AssertEqual(t, "/اختبار/", c.Path("/%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1/"))
@@ -1660,7 +1660,7 @@ func Test_Ctx_Range(t *testing.T) {
 func Test_Ctx_Route(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/test", func(c *Ctx) error {
+	app.Get("/test", func(c Ctx) error {
 		utils.AssertEqual(t, "/test", c.Route().Path)
 		return nil
 	})
@@ -1680,7 +1680,7 @@ func Test_Ctx_Route(t *testing.T) {
 func Test_Ctx_RouteNormalized(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/test", func(c *Ctx) error {
+	app.Get("/test", func(c Ctx) error {
 		utils.AssertEqual(t, "/test", c.Route().Path)
 		return nil
 	})
@@ -1695,7 +1695,7 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	t.Parallel()
 	app := New()
 
-	app.Post("/test", func(c *Ctx) error {
+	app.Post("/test", func(c Ctx) error {
 		fh, err := c.FormFile("file")
 		utils.AssertEqual(t, nil, err)
 
@@ -1737,7 +1737,7 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	app := New()
 	storage := memory.New()
 
-	app.Post("/test", func(c *Ctx) error {
+	app.Post("/test", func(c Ctx) error {
 		fh, err := c.FormFile("file")
 		utils.AssertEqual(t, nil, err)
 
@@ -1907,7 +1907,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 func Test_Ctx_SendFile_404(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		err := c.SendFile(filepath.FromSlash("john_dow.go/"))
 		utils.AssertEqual(t, false, err == nil)
 		return err
@@ -1925,7 +1925,7 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	var endpointsForTest []string
 	addEndpoint := func(file, endpoint string) {
 		endpointsForTest = append(endpointsForTest, endpoint)
-		app.Get(endpoint, func(c *Ctx) error {
+		app.Get(endpoint, func(c Ctx) error {
 			if err := c.SendFile(file); err != nil {
 				utils.AssertEqual(t, nil, err)
 				return err
@@ -1966,7 +1966,7 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		originalURL := utils.CopyString(c.OriginalURL())
 		err := c.SendFile("ctx.go")
 		utils.AssertEqual(t, originalURL, c.OriginalURL())
@@ -2125,10 +2125,10 @@ func Test_Ctx_Location(t *testing.T) {
 // go test -run Test_Ctx_Next
 func Test_Ctx_Next(t *testing.T) {
 	app := New()
-	app.Use("/", func(c *Ctx) error {
+	app.Use("/", func(c Ctx) error {
 		return c.Next()
 	})
-	app.Get("/test", func(c *Ctx) error {
+	app.Get("/test", func(c Ctx) error {
 		c.Set("X-Next-Result", "Works")
 		return nil
 	})
@@ -2141,7 +2141,7 @@ func Test_Ctx_Next(t *testing.T) {
 // go test -run Test_Ctx_Next_Error
 func Test_Ctx_Next_Error(t *testing.T) {
 	app := New()
-	app.Use("/", func(c *Ctx) error {
+	app.Use("/", func(c Ctx) error {
 		c.Set("X-Next-Result", "Works")
 		return ErrNotFound
 	})
@@ -2172,7 +2172,7 @@ func Test_Ctx_Redirect(t *testing.T) {
 func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/user/:name", func(c *Ctx) error {
+	app.Get("/user/:name", func(c Ctx) error {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2189,7 +2189,7 @@ func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
 func Test_Ctx_RedirectToRouteWithQueries(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/user/:name", func(c *Ctx) error {
+	app.Get("/user/:name", func(c Ctx) error {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2211,7 +2211,7 @@ func Test_Ctx_RedirectToRouteWithQueries(t *testing.T) {
 func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/user/:name?", func(c *Ctx) error {
+	app.Get("/user/:name?", func(c Ctx) error {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2228,7 +2228,7 @@ func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
 func Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/user/:name?", func(c *Ctx) error {
+	app.Get("/user/:name?", func(c Ctx) error {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2243,7 +2243,7 @@ func Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue(t *testing.T) {
 func Test_Ctx_RedirectToRouteWithGreedyParameters(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/user/+", func(c *Ctx) error {
+	app.Get("/user/+", func(c Ctx) error {
 		return c.JSON(c.Params("+"))
 	}).Name("user")
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2260,7 +2260,7 @@ func Test_Ctx_RedirectToRouteWithGreedyParameters(t *testing.T) {
 func Test_Ctx_RedirectBack(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.JSON("Home")
 	}).Name("home")
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2274,10 +2274,10 @@ func Test_Ctx_RedirectBack(t *testing.T) {
 func Test_Ctx_RedirectBackWithReferer(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.JSON("Home")
 	}).Name("home")
-	app.Get("/back", func(c *Ctx) error {
+	app.Get("/back", func(c Ctx) error {
 		return c.JSON("Back")
 	}).Name("back")
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2321,9 +2321,9 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 		Views: html.New("./.github/testdata/template", ".gohtml"),
 	})
 
-	sub.Get("/:name", func(ctx *Ctx) error {
-		return ctx.Render("hello_world", Map{
-			"Name": ctx.Params("name"),
+	sub.Get("/:name", func(c Ctx) error {
+		return c.Render("hello_world", Map{
+			"Name": c.Params("name"),
 		})
 	})
 
@@ -2346,7 +2346,9 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 		Views: html.New("./.github/testdata/template", ".gohtml"),
 	})
 
-	micro.Get("/doe", func(c *Ctx) error {
+	
+
+	micro.Get("/doe", func(c Ctx) error {
 		return c.Render("hello_world", Map{
 			"Name": "doe",
 		})
@@ -2498,7 +2500,7 @@ func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
 
 func Benchmark_Ctx_RedirectToRoute(b *testing.B) {
 	app := New()
-	app.Get("/user/:name", func(c *Ctx) error {
+	app.Get("/user/:name", func(c Ctx) error {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
 
@@ -2520,7 +2522,7 @@ func Benchmark_Ctx_RedirectToRoute(b *testing.B) {
 
 func Benchmark_Ctx_RedirectToRouteWithQueries(b *testing.B) {
 	app := New()
-	app.Get("/user/:name", func(c *Ctx) error {
+	app.Get("/user/:name", func(c Ctx) error {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
 
@@ -2599,7 +2601,7 @@ func Benchmark_Ctx_RenderBind(b *testing.B) {
 func Test_Ctx_RestartRouting(t *testing.T) {
 	app := New()
 	calls := 0
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		calls++
 		if calls < 3 {
 			return c.RestartRouting()
@@ -2618,15 +2620,15 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 	executedOldHandler := false
 	executedNewHandler := false
 
-	app.Get("/old", func(c *Ctx) error {
+	app.Get("/old", func(c Ctx) error {
 		c.Path("/new")
 		return c.RestartRouting()
 	})
-	app.Get("/old", func(c *Ctx) error {
+	app.Get("/old", func(c Ctx) error {
 		executedOldHandler = true
 		return nil
 	})
-	app.Get("/new", func(c *Ctx) error {
+	app.Get("/new", func(c Ctx) error {
 		executedNewHandler = true
 		return nil
 	})
@@ -2641,15 +2643,15 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 // go test -run Test_Ctx_RestartRoutingWithChangedPathAnd404
 func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 	app := New()
-	app.Get("/new", func(c *Ctx) error {
+	app.Get("/new", func(c Ctx) error {
 		return nil
 	})
-	app.Use(func(c *Ctx) error {
+	app.Use(func(c Ctx) error {
 		c.Path("/new")
 		// c.Next() would fail this test as a 404 is returned from the next handler
 		return c.RestartRouting()
 	})
-	app.Use(func(c *Ctx) error {
+	app.Use(func(c Ctx) error {
 		return ErrNotFound
 	})
 
@@ -2730,7 +2732,7 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	app.Get("/user/:name", func(c *Ctx) error {
+	app.Get("/user/:name", func(c Ctx) error {
 		return c.SendString(c.Params("name"))
 	}).Name("User")
 	for n := 0; n < b.N; n++ {
@@ -2743,7 +2745,7 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	app.Get("/user/:name", func(c *Ctx) error {
+	app.Get("/user/:name", func(c Ctx) error {
 		return c.SendString(c.Params("name"))
 	}).Name("User")
 
@@ -2757,7 +2759,7 @@ func Test_Ctx_Get_Location_From_Route_name_Optional_greedy(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	app.Get("/:phone/*/send/*", func(c *Ctx) error {
+	app.Get("/:phone/*/send/*", func(c Ctx) error {
 		return c.SendString("Phone: " + c.Params("phone") + "\nFirst Param: " + c.Params("*1") + "\nSecond Param: " + c.Params("*2"))
 	}).Name("SendSms")
 
@@ -2775,7 +2777,7 @@ func Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param(t *testing.
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	app.Get("/:phone/*/send", func(c *Ctx) error {
+	app.Get("/:phone/*/send", func(c Ctx) error {
 		return c.SendString("Phone: " + c.Params("phone") + "\nFirst Param: " + c.Params("*1"))
 	}).Name("SendSms")
 
@@ -3756,7 +3758,7 @@ func TestCtx_ParamsInt(t *testing.T) {
 
 	// For the user id I will use the number 1111, so I should be able to get the number
 	// 1111 from the Ctx
-	app.Get("/test/:user", func(c *Ctx) error {
+	app.Get("/test/:user", func(c Ctx) error {
 		// utils.AssertEqual(t, "john", c.Params("user"))
 
 		num, err := c.ParamsInt("user")
@@ -3776,7 +3778,7 @@ func TestCtx_ParamsInt(t *testing.T) {
 
 	// In this test case, there will be a bad request where the expected number is NOT
 	// a number in the path
-	app.Get("/testnoint/:user", func(c *Ctx) error {
+	app.Get("/testnoint/:user", func(c Ctx) error {
 		// utils.AssertEqual(t, "john", c.Params("user"))
 
 		num, err := c.ParamsInt("user")
@@ -3796,7 +3798,7 @@ func TestCtx_ParamsInt(t *testing.T) {
 
 	// For the user id I will use the number 2222, so I should be able to get the number
 	// 2222 from the Ctx even when the default value is specified
-	app.Get("/testignoredefault/:user", func(c *Ctx) error {
+	app.Get("/testignoredefault/:user", func(c Ctx) error {
 		// utils.AssertEqual(t, "john", c.Params("user"))
 
 		num, err := c.ParamsInt("user", 1111)
@@ -3816,7 +3818,7 @@ func TestCtx_ParamsInt(t *testing.T) {
 
 	// In this test case, there will be a bad request where the expected number is NOT
 	// a number in the path, default value of 1111 should be used instead
-	app.Get("/testdefault/:user", func(c *Ctx) error {
+	app.Get("/testdefault/:user", func(c Ctx) error {
 		// utils.AssertEqual(t, "john", c.Params("user"))
 
 		num, err := c.ParamsInt("user", 1111)

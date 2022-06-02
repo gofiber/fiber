@@ -13,7 +13,7 @@ import (
 func Test_Skip(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(skip.New(errTeapotHandler, func(*fiber.Ctx) bool { return true }))
+	app.Use(skip.New(errTeapotHandler, func(fiber.Ctx) bool { return true }))
 	app.Get("/", helloWorldHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
@@ -25,7 +25,7 @@ func Test_Skip(t *testing.T) {
 func Test_SkipFalse(t *testing.T) {
 	app := fiber.New()
 
-	app.Use(skip.New(errTeapotHandler, func(*fiber.Ctx) bool { return false }))
+	app.Use(skip.New(errTeapotHandler, func(fiber.Ctx) bool { return false }))
 	app.Get("/", helloWorldHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
@@ -45,10 +45,10 @@ func Test_SkipNilFunc(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
-func helloWorldHandler(c *fiber.Ctx) error {
+func helloWorldHandler(c fiber.Ctx) error {
 	return c.SendString("Hello, World 👋!")
 }
 
-func errTeapotHandler(*fiber.Ctx) error {
+func errTeapotHandler(fiber.Ctx) error {
 	return fiber.ErrTeapot
 }

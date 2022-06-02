@@ -15,7 +15,7 @@ func Test_CSRF(t *testing.T) {
 
 	app.Use(New())
 
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -65,7 +65,7 @@ func Test_CSRF(t *testing.T) {
 func Test_CSRF_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
@@ -83,7 +83,7 @@ func Test_CSRF_Invalid_KeyLookup(t *testing.T) {
 
 	app.Use(New(Config{KeyLookup: "I:am:invalid"}))
 
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -98,7 +98,7 @@ func Test_CSRF_From_Form(t *testing.T) {
 
 	app.Use(New(Config{KeyLookup: "form:_csrf"}))
 
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -131,7 +131,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 
 	app.Use(New(Config{KeyLookup: "query:_csrf"}))
 
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -167,7 +167,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 
 	csrfGroup := app.Group("/:csrf", New(Config{KeyLookup: "param:csrf"}))
 
-	csrfGroup.Post("/", func(c *fiber.Ctx) error {
+	csrfGroup.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -203,7 +203,7 @@ func Test_CSRF_From_Cookie(t *testing.T) {
 
 	csrfGroup := app.Group("/", New(Config{KeyLookup: "cookie:csrf"}))
 
-	csrfGroup.Post("/", func(c *fiber.Ctx) error {
+	csrfGroup.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -239,14 +239,14 @@ func Test_CSRF_From_Cookie(t *testing.T) {
 func Test_CSRF_ErrorHandler_InvalidToken(t *testing.T) {
 	app := fiber.New()
 
-	errHandler := func(ctx *fiber.Ctx, err error) error {
+	errHandler := func(ctx fiber.Ctx, err error) error {
 		utils.AssertEqual(t, errTokenNotFound, err)
 		return ctx.Status(419).Send([]byte("invalid CSRF token"))
 	}
 
 	app.Use(New(Config{ErrorHandler: errHandler}))
 
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -270,14 +270,14 @@ func Test_CSRF_ErrorHandler_InvalidToken(t *testing.T) {
 func Test_CSRF_ErrorHandler_EmptyToken(t *testing.T) {
 	app := fiber.New()
 
-	errHandler := func(ctx *fiber.Ctx, err error) error {
+	errHandler := func(ctx fiber.Ctx, err error) error {
 		utils.AssertEqual(t, errMissingHeader, err)
 		return ctx.Status(419).Send([]byte("empty CSRF token"))
 	}
 
 	app.Use(New(Config{ErrorHandler: errHandler}))
 
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 

@@ -33,7 +33,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 	}()
 
 	// Return new handler
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()

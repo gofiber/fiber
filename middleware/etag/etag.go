@@ -21,7 +21,7 @@ func New(config ...Config) fiber.Handler {
 	crc32q := crc32.MakeTable(0xD5828281)
 
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()

@@ -30,7 +30,7 @@ func Test_Cache_CacheControl(t *testing.T) {
 		Expiration:   10 * time.Second,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -48,7 +48,7 @@ func Test_Cache_Expired(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{Expiration: 2 * time.Second}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(fmt.Sprintf("%d", time.Now().UnixNano()))
 	})
 
@@ -86,7 +86,7 @@ func Test_Cache(t *testing.T) {
 	app := fiber.New()
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		now := fmt.Sprintf("%d", time.Now().UnixNano())
 		return c.SendString(now)
 	})
@@ -117,7 +117,7 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 		Expiration:   10 * time.Second,
 	}))
 
-	app.Get("/:id", func(c *fiber.Ctx) error {
+	app.Get("/:id", func(c fiber.Ctx) error {
 		return c.SendString(c.Params("id"))
 	})
 
@@ -149,7 +149,7 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 	cache := New(Config{Expiration: 0 * time.Second})
 	app.Use(cache)
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		now := fmt.Sprintf("%d", time.Now().UnixNano())
 		return c.SendString(now)
 	})
@@ -177,11 +177,11 @@ func Test_Cache_Invalid_Method(t *testing.T) {
 
 	app.Use(New())
 
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Query("cache"))
 	})
 
-	app.Get("/get", func(c *fiber.Ctx) error {
+	app.Get("/get", func(c fiber.Ctx) error {
 		return c.SendString(c.Query("cache"))
 	})
 
@@ -217,7 +217,7 @@ func Test_Cache_NothingToCache(t *testing.T) {
 
 	app.Use(New(Config{Expiration: -(time.Second * 1)}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(time.Now().String())
 	})
 
@@ -244,17 +244,17 @@ func Test_Cache_CustomNext(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Next: func(c *fiber.Ctx) bool {
+		Next: func(c fiber.Ctx) bool {
 			return c.Response().StatusCode() != fiber.StatusOK
 		},
 		CacheControl: true,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(time.Now().String())
 	})
 
-	app.Get("/error", func(c *fiber.Ctx) error {
+	app.Get("/error", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString(time.Now().String())
 	})
 
@@ -283,12 +283,12 @@ func Test_CustomKey(t *testing.T) {
 
 	app := fiber.New()
 	var called bool
-	app.Use(New(Config{KeyGenerator: func(c *fiber.Ctx) string {
+	app.Use(New(Config{KeyGenerator: func(c fiber.Ctx) string {
 		called = true
 		return utils.CopyString(c.Path())
 	}}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("hi")
 	})
 
@@ -304,13 +304,13 @@ func Test_CustomExpiration(t *testing.T) {
 	app := fiber.New()
 	var called bool
 	var newCacheTime int
-	app.Use(New(Config{ExpirationGenerator: func(c *fiber.Ctx, cfg *Config) time.Duration {
+	app.Use(New(Config{ExpirationGenerator: func(c fiber.Ctx, cfg *Config) time.Duration {
 		called = true
 		newCacheTime, _ = strconv.Atoi(c.GetRespHeader("Cache-Time", "600"))
 		return time.Second * time.Duration(newCacheTime)
 	}}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		c.Response().Header.Add("Cache-Time", "1")
 		now := fmt.Sprintf("%d", time.Now().UnixNano())
 		return c.SendString(now)
@@ -355,7 +355,7 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 		StoreResponseHeaders: true,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		c.Response().Header.Add("X-Foobar", "foobar")
 		return c.SendString("hi")
 	})
@@ -378,20 +378,20 @@ func Test_CacheHeader(t *testing.T) {
 
 	app.Use(New(Config{
 		Expiration: 10 * time.Second,
-		Next: func(c *fiber.Ctx) bool {
+		Next: func(c fiber.Ctx) bool {
 			return c.Response().StatusCode() != fiber.StatusOK
 		},
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Query("cache"))
 	})
 
-	app.Get("/error", func(c *fiber.Ctx) error {
+	app.Get("/error", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).SendString(time.Now().String())
 	})
 
@@ -418,7 +418,7 @@ func Test_Cache_WithHead(t *testing.T) {
 	app := fiber.New()
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		now := fmt.Sprintf("%d", time.Now().UnixNano())
 		return c.SendString(now)
 	})
@@ -444,7 +444,7 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New())
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Query("cache"))
 	})
 
@@ -486,7 +486,7 @@ func Test_CustomCacheHeader(t *testing.T) {
 		CacheHeader: "Cache-Status",
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -498,9 +498,9 @@ func Test_CustomCacheHeader(t *testing.T) {
 // Because time points are updated once every X milliseconds, entries in tests can often have
 // equal expiration times and thus be in an random order. This closure hands out increasing
 // time intervals to maintain strong ascending order of expiration
-func stableAscendingExpiration() func(c1 *fiber.Ctx, c2 *Config) time.Duration {
+func stableAscendingExpiration() func(c1 fiber.Ctx, c2 *Config) time.Duration {
 	i := 0
-	return func(c1 *fiber.Ctx, c2 *Config) time.Duration {
+	return func(c1 fiber.Ctx, c2 *Config) time.Duration {
 		i += 1
 		return time.Hour * time.Duration(i)
 	}
@@ -515,7 +515,7 @@ func Test_Cache_MaxBytesOrder(t *testing.T) {
 		ExpirationGenerator: stableAscendingExpiration(),
 	}))
 
-	app.Get("/*", func(c *fiber.Ctx) error {
+	app.Get("/*", func(c fiber.Ctx) error {
 		return c.SendString("1")
 	})
 
@@ -553,7 +553,7 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 		ExpirationGenerator: stableAscendingExpiration(),
 	}))
 
-	app.Get("/*", func(c *fiber.Ctx) error {
+	app.Get("/*", func(c fiber.Ctx) error {
 		path := c.Context().URI().LastPathSegment()
 		size, _ := strconv.Atoi(string(path))
 		return c.Send(make([]byte, size))
@@ -583,7 +583,7 @@ func Benchmark_Cache(b *testing.B) {
 
 	app.Use(New())
 
-	app.Get("/demo", func(c *fiber.Ctx) error {
+	app.Get("/demo", func(c fiber.Ctx) error {
 		data, _ := os.ReadFile("../../.github/README.md")
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
@@ -613,7 +613,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 		Storage: memory.New(),
 	}))
 
-	app.Get("/demo", func(c *fiber.Ctx) error {
+	app.Get("/demo", func(c fiber.Ctx) error {
 		data, _ := os.ReadFile("../../.github/README.md")
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
@@ -641,7 +641,7 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 		StoreResponseHeaders: true,
 	}))
 
-	app.Get("/demo", func(c *fiber.Ctx) error {
+	app.Get("/demo", func(c fiber.Ctx) error {
 		c.Response().Header.Add("X-Foobar", "foobar")
 		return c.SendStatus(418)
 	})
@@ -675,7 +675,7 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 			app := fiber.New()
 			app.Use(New(Config{MaxBytes: size}))
 
-			app.Get("/*", func(c *fiber.Ctx) error {
+			app.Get("/*", func(c fiber.Ctx) error {
 				return c.Status(fiber.StatusTeapot).SendString("1")
 			})
 

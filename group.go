@@ -70,13 +70,13 @@ func (grp *Group) Name(name string) Router {
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //
-//  app.Use(func(c *fiber.Ctx) error {
+//  app.Use(func(c fiber.Ctx) error {
 //       return c.Next()
 //  })
-//  app.Use("/api", func(c *fiber.Ctx) error {
+//  app.Use("/api", func(c fiber.Ctx) error {
 //       return c.Next()
 //  })
-//  app.Use("/api", handler, func(c *fiber.Ctx) error {
+//  app.Use("/api", handler, func(c fiber.Ctx) error {
 //       return c.Next()
 //  })
 //

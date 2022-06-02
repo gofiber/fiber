@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-func defaultStackTraceHandler(c *fiber.Ctx, e any) {
+func defaultStackTraceHandler(c fiber.Ctx, e any) {
 	buf := make([]byte, defaultStackTraceBufLen)
 	buf = buf[:runtime.Stack(buf, false)]
 	_, _ = os.Stderr.WriteString(fmt.Sprintf("panic: %v\n%s\n", e, buf))
@@ -20,7 +20,7 @@ func New(config ...Config) fiber.Handler {
 	cfg := configDefault(config...)
 
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()

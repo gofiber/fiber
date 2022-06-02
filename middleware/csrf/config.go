@@ -14,7 +14,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// KeyLookup is a string in the form of "<source>:<key>" that is used
 	// to extract token from the request.
@@ -83,7 +83,7 @@ type Config struct {
 	ErrorHandler fiber.ErrorHandler
 
 	// extractor returns the csrf token from the request based on KeyLookup
-	extractor func(c *fiber.Ctx) (string, error)
+	extractor func(c fiber.Ctx) (string, error)
 }
 
 // ConfigDefault is the default config
@@ -98,7 +98,7 @@ var ConfigDefault = Config{
 }
 
 // default ErrorHandler that process return error from fiber.Handler
-var defaultErrorHandler = func(c *fiber.Ctx, err error) error {
+var defaultErrorHandler = func(c fiber.Ctx, err error) error {
 	return fiber.ErrForbidden
 }
 

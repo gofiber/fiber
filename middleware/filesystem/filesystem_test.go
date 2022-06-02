@@ -22,7 +22,7 @@ func Test_FileSystem(t *testing.T) {
 		Browse: true,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -134,7 +134,7 @@ func Test_FileSystem_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
 		Root: http.Dir("../../.github/testdata/fs"),
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
@@ -182,7 +182,7 @@ func Test_FileSystem_NoRoot(t *testing.T) {
 func Test_FileSystem_UsingParam(t *testing.T) {
 	app := fiber.New()
 
-	app.Use("/:path", func(c *fiber.Ctx) error {
+	app.Use("/:path", func(c fiber.Ctx) error {
 		return SendFile(c, http.Dir("../../.github/testdata/fs"), c.Params("path")+".html")
 	})
 
@@ -195,7 +195,7 @@ func Test_FileSystem_UsingParam(t *testing.T) {
 func Test_FileSystem_UsingParam_NonFile(t *testing.T) {
 	app := fiber.New()
 
-	app.Use("/:path", func(c *fiber.Ctx) error {
+	app.Use("/:path", func(c fiber.Ctx) error {
 		return SendFile(c, http.Dir("../../.github/testdata/fs"), c.Params("path")+".html")
 	})
 

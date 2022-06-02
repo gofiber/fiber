@@ -26,7 +26,7 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 		Storage:    memory.New(),
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello tester!")
 	})
 
@@ -71,7 +71,7 @@ func Test_Limiter_Concurrency(t *testing.T) {
 		Expiration: 2 * time.Second,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello tester!")
 	})
 
@@ -116,7 +116,7 @@ func Test_Limiter_No_Skip_Choices(t *testing.T) {
 		SkipSuccessfulRequests: false,
 	}))
 
-	app.Get("/:status", func(c *fiber.Ctx) error {
+	app.Get("/:status", func(c fiber.Ctx) error {
 		if c.Params("status") == "fail" {
 			return c.SendStatus(400)
 		}
@@ -146,7 +146,7 @@ func Test_Limiter_Skip_Failed_Requests(t *testing.T) {
 		SkipFailedRequests: true,
 	}))
 
-	app.Get("/:status", func(c *fiber.Ctx) error {
+	app.Get("/:status", func(c fiber.Ctx) error {
 		if c.Params("status") == "fail" {
 			return c.SendStatus(400)
 		}
@@ -184,7 +184,7 @@ func Test_Limiter_Skip_Successful_Requests(t *testing.T) {
 		SkipSuccessfulRequests: true,
 	}))
 
-	app.Get("/:status", func(c *fiber.Ctx) error {
+	app.Get("/:status", func(c fiber.Ctx) error {
 		if c.Params("status") == "fail" {
 			return c.SendStatus(400)
 		}
@@ -220,7 +220,7 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 		Storage:    memory.New(),
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -241,7 +241,7 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 func Test_Limiter_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
@@ -259,7 +259,7 @@ func Test_Limiter_Headers(t *testing.T) {
 		Expiration: 2 * time.Second,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello tester!")
 	})
 
@@ -287,7 +287,7 @@ func Benchmark_Limiter(b *testing.B) {
 		Expiration: 60 * time.Second,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -314,7 +314,7 @@ func Test_Sliding_Window(t *testing.T) {
 		LimiterMiddleware: SlidingWindow{},
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello tester!")
 	})
 

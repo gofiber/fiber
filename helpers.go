@@ -107,7 +107,7 @@ func (app *App) quoteString(raw string) string {
 }
 
 // Scan stack if other methods match the request
-func methodExist(ctx *Ctx) (exist bool) {
+func methodExist(ctx *ctx) (exist bool) {
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
 		if ctx.methodINT == i {

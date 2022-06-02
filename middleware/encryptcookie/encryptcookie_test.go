@@ -19,10 +19,10 @@ func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 		Key: testKey,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("value=" + c.Cookies("test"))
 	})
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "test",
 			Value: "SomeThing",
@@ -76,12 +76,12 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 
 	app.Use(New(Config{
 		Key: testKey,
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "test",
 			Value: "SomeThing",
@@ -104,7 +104,7 @@ func Test_Encrypt_Cookie_Except(t *testing.T) {
 		},
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "test1",
 			Value: "SomeThing",
@@ -150,10 +150,10 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 		},
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("value=" + c.Cookies("test"))
 	})
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "test",
 			Value: "SomeThing",
