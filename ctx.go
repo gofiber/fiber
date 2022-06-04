@@ -224,7 +224,7 @@ type Ctx interface{
 	RedirectBack(fallback string, status ...int) error
 
 	// Render a template with data and sends a text/html response.
-	Render(name string, bind any, layouts ...string) error
+	Render(name string, bind Map, layouts ...string) error
 
 	// Route returns the matched Route struct.
 	Route() *Route
@@ -1459,7 +1459,7 @@ func (c *ctx) RedirectBack(fallback string, status ...int) error {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-func (c *ctx) Render(name string, bind any, layouts ...string) error {
+func (c *ctx) Render(name string, bind Map, layouts ...string) error {
 	var err error
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
@@ -1514,26 +1514,24 @@ func (c *ctx) Render(name string, bind any, layouts ...string) error {
 	return err
 }
 
-func (c *ctx) renderExtensions(bind any) {
-	if bindMap, ok := bind.(Map); ok {
-		// Bind view map
-		if c.viewBindMap != nil {
-			for _, v := range c.viewBindMap.D {
-				bindMap[v.Key] = v.Value
-			}
+func (c *ctx) renderExtensions(bind Map) {
+	// Bind view map
+	if c.viewBindMap != nil {
+		for _, v := range c.viewBindMap.D {
+			bind[v.Key] = v.Value
 		}
+	}
 
-		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
-		if c.app.config.PassLocalsToViews {
-			// Loop through each local and set it in the map
-			c.fasthttp.VisitUserValues(func(key []byte, val any) {
-				// check if bindMap doesn't contain the key
-				if _, ok := bindMap[utils.UnsafeString(key)]; !ok {
-					// Set the key and value in the bindMap
-					bindMap[utils.UnsafeString(key)] = val
-				}
-			})
-		}
+	// Check if the PassLocalsToViews option is enabled (by default it is disabled)
+	if c.app.config.PassLocalsToViews {
+		// Loop through each local and set it in the map
+		c.fasthttp.VisitUserValues(func(key []byte, val any) {
+			// check if bindMap doesn't contain the key
+			if _, ok := bind[utils.UnsafeString(key)]; !ok {
+				// Set the key and value in the bindMap
+				bind[utils.UnsafeString(key)] = val
+			}
+		})
 	}
 }
 
