@@ -198,7 +198,9 @@ func (app *App) Start(addr any, config ...StartConfig) error {
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
-		cfg.BeforeServeFunc(app)
+		if err := cfg.BeforeServeFunc(app); err != nil {
+			return err
+		}
 	}
 
 	return app.server.Serve(ln)
@@ -504,6 +506,6 @@ func (app *App) gracefulShutdownStart(ctx context.Context, cfg StartConfig) {
 
 	select {
 	case <-shutdownCtx.Done():
-		app.Shutdown()
+		_ = app.Shutdown()
 	}
 }
