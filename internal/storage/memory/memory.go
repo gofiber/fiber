@@ -20,11 +20,17 @@ type entry struct {
 }
 
 // New creates a new memory storage
-func New() *Storage {
+func New(interval ...time.Duration) *Storage {
+	// Custom gc interval
+	var gcInterval time.Duration = 10
+	if len(interval) > 1 {
+		gcInterval = interval[0]
+	}
+
 	// Create storage
 	store := &Storage{
 		db:         make(map[string]entry),
-		gcInterval: 10 * time.Second,
+		gcInterval: gcInterval * time.Second,
 		done:       make(chan struct{}),
 	}
 

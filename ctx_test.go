@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
-	"github.com/gofiber/fiber/v3/internal/template/html"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -2317,12 +2316,15 @@ func Test_Ctx_Render(t *testing.T) {
 func Test_Ctx_Render_Mount(t *testing.T) {
 	t.Parallel()
 
+	engine := &testTemplateEngine{}
+	engine.Load()
+
 	sub := New(Config{
-		Views: html.New("./.github/testdata/template", ".gohtml"),
+		Views: engine,
 	})
 
 	sub.Get("/:name", func(ctx *Ctx) error {
-		return ctx.Render("hello_world", Map{
+		return ctx.Render("hello_world.tmpl", Map{
 			"Name": ctx.Params("name"),
 		})
 	})
@@ -2342,12 +2344,15 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 func Test_Ctx_Render_MountGroup(t *testing.T) {
 	t.Parallel()
 
+	engine := &testTemplateEngine{}
+	engine.Load()
+
 	micro := New(Config{
-		Views: html.New("./.github/testdata/template", ".gohtml"),
+		Views: engine,
 	})
 
 	micro.Get("/doe", func(c *Ctx) error {
-		return c.Render("hello_world", Map{
+		return c.Render("hello_world.tmpl", Map{
 			"Name": "doe",
 		})
 	})
