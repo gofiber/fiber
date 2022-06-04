@@ -27,7 +27,7 @@ func IsChild() bool {
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
-func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error) {
+func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg StartConfig) (err error) {
 	// 👶 child process 👶
 	if IsChild() {
 		// use 1 cpu core per child process
@@ -35,8 +35,8 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 		var ln net.Listener
 		// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
 		// Only tcp4 or tcp6 is supported when preforking, both are not supported
-		if ln, err = reuseport.Listen(network, addr); err != nil {
-			if !app.config.DisableStartupMessage {
+		if ln, err = reuseport.Listen(cfg.ListenerNetwork, addr); err != nil {
+			if !cfg.DisableStartupMessage {
 				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
 			return fmt.Errorf("prefork: %v", err)
@@ -51,6 +51,10 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 
 		// prepare the server for the start
 		app.startupProcess()
+
+		if cfg.ListenerAddrFunc != nil {
+			cfg.ListenerAddrFunc(ln.Addr())
+		}
 
 		// listen for incoming connections
 		return app.server.Serve(ln)
@@ -109,8 +113,13 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 	}
 
 	// Print startup message
-	if !app.config.DisableStartupMessage {
-		app.startupMessage(addr, tlsConfig != nil, ","+strings.Join(pids, ","))
+	if !cfg.DisableStartupMessage {
+		app.startupMessage(addr, tlsConfig != nil, ","+strings.Join(pids, ","), cfg)
+	}
+
+	// Print routes
+	if cfg.EnablePrintRoutes {
+		app.printRoutesMessage()
 	}
 
 	// return error if child crashes

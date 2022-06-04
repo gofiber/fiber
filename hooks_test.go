@@ -155,9 +155,7 @@ func Test_Hook_OnShutdown(t *testing.T) {
 func Test_Hook_OnListen(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{
-		DisableStartupMessage: true,
-	})
+	app := New()
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -172,7 +170,7 @@ func Test_Hook_OnListen(t *testing.T) {
 		time.Sleep(1000 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
-	utils.AssertEqual(t, nil, app.Listen(":9000"))
+	utils.AssertEqual(t, nil, app.Start(":9000", StartConfig{DisableStartupMessage: true}))
 
 	utils.AssertEqual(t, "ready", buf.String())
 }

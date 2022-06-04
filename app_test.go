@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"bytes"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -25,7 +24,6 @@ import (
 
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 var testEmptyHandler = func(c *Ctx) error {
@@ -606,16 +604,14 @@ func Test_App_New(t *testing.T) {
 
 func Test_App_Config(t *testing.T) {
 	app := New(Config{
-		DisableStartupMessage: true,
+		StrictRouting: true,
 	})
-	utils.AssertEqual(t, true, app.Config().DisableStartupMessage)
+	utils.AssertEqual(t, true, app.Config().StrictRouting)
 }
 
 func Test_App_Shutdown(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		app := New(Config{
-			DisableStartupMessage: true,
-		})
+		app := New()
 		utils.AssertEqual(t, true, app.Shutdown() == nil)
 	})
 
@@ -1107,7 +1103,6 @@ func Test_App_Deep_Group(t *testing.T) {
 // go test -run Test_App_Next_Method
 func Test_App_Next_Method(t *testing.T) {
 	app := New()
-	app.config.DisableStartupMessage = true
 
 	app.Use(func(c *Ctx) error {
 		utils.AssertEqual(t, MethodGet, c.Method())
@@ -1119,131 +1114,6 @@ func Test_App_Next_Method(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 404, resp.StatusCode, "Status code")
-}
-
-// go test -run Test_App_Listen
-func Test_App_Listen(t *testing.T) {
-	app := New(Config{DisableStartupMessage: true})
-
-	utils.AssertEqual(t, false, app.Listen(":99999") == nil)
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	utils.AssertEqual(t, nil, app.Listen(":4003"))
-}
-
-// go test -run Test_App_Listen_Prefork
-func Test_App_Listen_Prefork(t *testing.T) {
-	testPreforkMaster = true
-
-	app := New(Config{DisableStartupMessage: true, Prefork: true})
-
-	utils.AssertEqual(t, nil, app.Listen(":99999"))
-}
-
-// go test -run Test_App_ListenTLS
-func Test_App_ListenTLS(t *testing.T) {
-	app := New()
-
-	// invalid port
-	utils.AssertEqual(t, false, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key") == nil)
-	// missing perm/cert file
-	utils.AssertEqual(t, false, app.ListenTLS(":0", "", "./.github/testdata/ssl.key") == nil)
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	utils.AssertEqual(t, nil, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
-}
-
-// go test -run Test_App_ListenTLS_Prefork
-func Test_App_ListenTLS_Prefork(t *testing.T) {
-	testPreforkMaster = true
-
-	app := New(Config{DisableStartupMessage: true, Prefork: true})
-
-	// invalid key file content
-	utils.AssertEqual(t, false, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.tmpl") == nil)
-
-	utils.AssertEqual(t, nil, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
-}
-
-// go test -run Test_App_ListenMutualTLS
-func Test_App_ListenMutualTLS(t *testing.T) {
-	app := New()
-
-	// invalid port
-	utils.AssertEqual(t, false, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem") == nil)
-	// missing perm/cert file
-	utils.AssertEqual(t, false, app.ListenMutualTLS(":0", "", "./.github/testdata/ssl.key", "") == nil)
-
-	go func() {
-		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	utils.AssertEqual(t, nil, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
-}
-
-// go test -run Test_App_ListenMutualTLS_Prefork
-func Test_App_ListenMutualTLS_Prefork(t *testing.T) {
-	testPreforkMaster = true
-
-	app := New(Config{DisableStartupMessage: true, Prefork: true})
-
-	// invalid key file content
-	utils.AssertEqual(t, false, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html", "") == nil)
-
-	utils.AssertEqual(t, nil, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
-}
-
-// go test -run Test_App_Listener
-func Test_App_Listener(t *testing.T) {
-	app := New()
-
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	ln := fasthttputil.NewInmemoryListener()
-	utils.AssertEqual(t, nil, app.Listener(ln))
-}
-
-// go test -run Test_App_Listener_Prefork
-func Test_App_Listener_Prefork(t *testing.T) {
-	testPreforkMaster = true
-
-	app := New(Config{DisableStartupMessage: true, Prefork: true})
-
-	ln := fasthttputil.NewInmemoryListener()
-	utils.AssertEqual(t, nil, app.Listener(ln))
-}
-
-func Test_App_Listener_TLS_Listener(t *testing.T) {
-	// Create tls certificate
-	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	if err != nil {
-		utils.AssertEqual(t, nil, err)
-	}
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
-
-	ln, err := tls.Listen(NetworkTCP4, ":0", config)
-	utils.AssertEqual(t, nil, err)
-
-	app := New()
-
-	go func() {
-		time.Sleep(time.Millisecond * 500)
-		utils.AssertEqual(t, nil, app.Shutdown())
-	}()
-
-	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
 // go test -v -run=^$ -bench=Benchmark_AcquireCtx -benchmem -count=4
@@ -1265,7 +1135,6 @@ func Test_NewError(t *testing.T) {
 // go test -run Test_Test_Timeout
 func Test_Test_Timeout(t *testing.T) {
 	app := New()
-	app.config.DisableStartupMessage = true
 
 	app.Get("/", testEmptyHandler)
 
@@ -1291,7 +1160,6 @@ func (errorReader) Read([]byte) (int, error) {
 // go test -run Test_Test_DumpError
 func Test_Test_DumpError(t *testing.T) {
 	app := New()
-	app.config.DisableStartupMessage = true
 
 	app.Get("/", testEmptyHandler)
 
@@ -1363,7 +1231,6 @@ func Test_App_ReadTimeout(t *testing.T) {
 	app := New(Config{
 		ReadTimeout:           time.Nanosecond,
 		IdleTimeout:           time.Minute,
-		DisableStartupMessage: true,
 		DisableKeepalive:      true,
 	})
 
@@ -1391,14 +1258,12 @@ func Test_App_ReadTimeout(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen(":4004"))
+	utils.AssertEqual(t, nil, app.Start(":4004", StartConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_App_BadRequest
 func Test_App_BadRequest(t *testing.T) {
-	app := New(Config{
-		DisableStartupMessage: true,
-	})
+	app := New()
 
 	app.Get("/bad-request", func(c *Ctx) error {
 		return c.SendString("I should not be sent")
@@ -1423,14 +1288,13 @@ func Test_App_BadRequest(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen(":4005"))
+	utils.AssertEqual(t, nil, app.Start(":4005", StartConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_App_SmallReadBuffer
 func Test_App_SmallReadBuffer(t *testing.T) {
 	app := New(Config{
 		ReadBufferSize:        1,
-		DisableStartupMessage: true,
 	})
 
 	app.Get("/small-read-buffer", func(c *Ctx) error {
@@ -1447,7 +1311,7 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Listen(":4006"))
+	utils.AssertEqual(t, nil, app.Start(":4006", StartConfig{DisableStartupMessage: true}))
 }
 
 func captureOutput(f func()) string {
@@ -1481,9 +1345,13 @@ func captureOutput(f func()) string {
 }
 
 func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
+	cfg := StartConfig{
+		EnablePrefork: true,
+	}
+
 	startupMessage := captureOutput(func() {
-		New(Config{Prefork: true}).
-			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
+		New().
+			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
 	fmt.Println(startupMessage)
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, "https://127.0.0.1:3000"))
@@ -1494,12 +1362,16 @@ func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 }
 
 func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
-	app := New(Config{Prefork: true, AppName: "Test App v1.0.1"})
+	cfg := StartConfig{
+		EnablePrefork: true,
+	}
+
+	app := New(Config{AppName: "Test App v3.0.0"})
 	startupMessage := captureOutput(func() {
-		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
+		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
 	fmt.Println(startupMessage)
-	utils.AssertEqual(t, "Test App v1.0.1", app.Config().AppName)
+	utils.AssertEqual(t, "Test App v3.0.0", app.Config().AppName)
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, app.Config().AppName))
 }
 
@@ -1690,7 +1562,7 @@ func emptyHandler(c *Ctx) error {
 	return nil
 }
 func Test_App_print_Route(t *testing.T) {
-	app := New(Config{EnablePrintRoutes: true})
+	app := New()
 	app.Get("/", emptyHandler).Name("routeName")
 	printRoutesMessage := captureOutput(func() {
 		app.printRoutesMessage()
@@ -1703,7 +1575,7 @@ func Test_App_print_Route(t *testing.T) {
 }
 
 func Test_App_print_Route_with_group(t *testing.T) {
-	app := New(Config{EnablePrintRoutes: true})
+	app := New()
 	app.Get("/", emptyHandler)
 	v1 := app.Group("v1")
 	v1.Get("/test", emptyHandler).Name("v1")
