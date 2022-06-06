@@ -15,10 +15,11 @@ import (
 
 // routeParser holds the path segments and param names
 type routeParser struct {
-	segs          []*routeSegment // the parsed segments of the route
-	params        []string        // that parameter names the parsed route
-	wildCardCount int             // number of wildcard parameters, used internally to give the wildcard parameter its number
-	plusCount     int             // number of plus parameters, used internally to give the plus parameter its number
+	segs              []*routeSegment  // the parsed segments of the route
+	params            []string         // that parameter names the parsed route
+	paramsConstraints []TypeConstraint // the types of each parameter
+	wildCardCount     int              // number of wildcard parameters, used internally to give the wildcard parameter its number
+	plusCount         int              // number of plus parameters, used internally to give the plus parameter its number
 }
 
 // paramsSeg holds the segment metadata
@@ -33,20 +34,46 @@ type routeSegment struct {
 	IsGreedy    bool   // indicates whether the parameter is greedy or not, is used with wildcard and plus
 	IsOptional  bool   // indicates whether the parameter is optional or not
 	// common information
-	IsLast           bool // shows if the segment is the last one for the route
-	HasOptionalSlash bool // segment has the possibility of an optional slash
-	Length           int  // length of the parameter for segment, when its 0 then the length is undetermined
+	IsLast           bool           // shows if the segment is the last one for the route
+	HasOptionalSlash bool           // segment has the possibility of an optional slash
+	Constraint       TypeConstraint // Constraint type if segment is a parameter, if not it will be set to noConstraint by default
+	Length           int            // length of the parameter for segment, when its 0 then the length is undetermined
 	// future TODO: add support for optional groups "/abc(/def)?"
 }
 
 // different special routing signs
 const (
-	wildcardParam    byte = '*'  // indicates a optional greedy parameter
-	plusParam        byte = '+'  // indicates a required greedy parameter
-	optionalParam    byte = '?'  // concludes a parameter by name and makes it optional
-	paramStarterChar byte = ':'  // start character for a parameter with name
-	slashDelimiter   byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
-	escapeChar       byte = '\\' // escape character
+	wildcardParam        byte = '*'  // indicates a optional greedy parameter
+	plusParam            byte = '+'  // indicates a required greedy parameter
+	optionalParam        byte = '?'  // concludes a parameter by name and makes it optional
+	paramStarterChar     byte = ':'  // start character for a parameter with name
+	slashDelimiter       byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
+	escapeChar           byte = '\\' // escape character
+	paramConstraintStart byte = '<'  // start of type constraint for a parameter
+	paramConstraintEnd   byte = '>'  // end of type constraint for a parameter
+
+)
+
+// parameter constraint types
+
+type TypeConstraint int16
+
+const (
+	noConstraint TypeConstraint = iota
+	intConstraint
+	boolConstraint
+	floatConstraint
+	alphaConstraint
+	datetimeConstraint
+	guidConstraint
+	minLengthConstraint
+	maxLengthConstraint
+	exactLengthConstraint
+	BetweenLengthConstraint
+	minConstraint
+	maxConstraint
+	rangeConstraint
+	regexConstraint
 )
 
 // list of possible parameter and segment delimiter
@@ -59,6 +86,10 @@ var (
 	parameterDelimiterChars = append([]byte{paramStarterChar}, routeDelimiter...)
 	// list of chars to find the end of a parameter
 	parameterEndChars = append([]byte{optionalParam}, parameterDelimiterChars...)
+	// list of parameter constraint start
+	parameterConstraintStartChars = []byte{paramConstraintStart}
+	// list of parameter constraint end
+	parameterConstraintEndChars = []byte{paramConstraintEnd}
 )
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
@@ -176,6 +207,8 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
 	parameterEndPosition := findNextNonEscapedCharsetPosition(pattern[1:], parameterEndChars)
+	var parameterConstraintStart int = -1
+	var parameterConstraintEnd int = -1
 
 	// handle wildcard end
 	if isWildCard || isPlusParam {
@@ -185,10 +218,28 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	} else if !isInCharset(pattern[parameterEndPosition+1], parameterDelimiterChars) {
 		parameterEndPosition++
 	}
+
+	// find constraint part if exists in the parameter part and remove it
+	if parameterEndPosition > 0 {
+		parameterConstraintStart = findNextNonEscapedCharsetPosition(pattern[0:parameterEndPosition], parameterConstraintStartChars)
+		parameterConstraintEnd = findNextNonEscapedCharsetPosition(pattern[0:parameterEndPosition+1], parameterConstraintEndChars)
+
+	}
+
+	hasConstraint := (parameterConstraintStart != -1 && parameterConstraintEnd != -1)
+
+	constraintType := noConstraint
 	// cut params part
 	processedPart := pattern[0 : parameterEndPosition+1]
 
+
 	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
+
+	if hasConstraint {
+		constraintType = getParamConstraintType(pattern[parameterConstraintStart+1 : parameterConstraintEnd])
+		paramName = RemoveEscapeChar(GetTrimmedParam(pattern[0:parameterConstraintStart]))
+	}
+
 	// add access iterator to wildcard and plus
 	if isWildCard {
 		routeParser.wildCardCount++
@@ -197,13 +248,51 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 		routeParser.plusCount++
 		paramName += strconv.Itoa(routeParser.plusCount)
 	}
-
 	return processedPart, &routeSegment{
 		ParamName:  paramName,
 		IsParam:    true,
 		IsOptional: isWildCard || pattern[parameterEndPosition] == optionalParam,
 		IsGreedy:   isWildCard || isPlusParam,
+		Constraint: constraintType,
 	}
+}
+
+func getParamConstraintType(constraintPart string) TypeConstraint {
+	switch constraintPart {
+
+	case "int":
+		return intConstraint
+	case "bool":
+		return boolConstraint
+	case "float":
+		return floatConstraint
+	case "datetime":
+		return datetimeConstraint
+	case "alpha":
+		return alphaConstraint
+	case "guid":
+		return guidConstraint
+	case "minlength":
+		return minLengthConstraint
+	case "maxlength":
+		return maxLengthConstraint
+	case "exactlength":
+		return exactLengthConstraint
+	case "betweenlength":
+		return BetweenLengthConstraint
+	case "min":
+		return minConstraint
+	case "max":
+		return maxConstraint
+	case "range":
+		return rangeConstraint
+	case "regex":
+		return regexConstraint
+	default:
+		return noConstraint
+
+	}
+
 }
 
 // isInCharset check is the given character in the charset list
