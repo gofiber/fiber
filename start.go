@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -18,13 +17,14 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
-	"time"
 
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 )
 
 // StartConfig is a struct to customize startup of Fiber.
+//
+// TODO: Add signal and timeout fields to use graceful-shutdown automatically.
 type StartConfig struct {
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
@@ -49,16 +49,6 @@ type StartConfig struct {
 	//
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
-
-	// GracefulContext is a field to shutdown Fiber by given signal gracefully.
-	//
-	// Default: nil
-	GracefulContext context.Context `json:"graceful_context"`
-
-	// GracefulTimeout is a time to close requests before shutdowning the Fiber app.
-	//
-	// Default: 10 * time.Second
-	GracefulTimeout time.Duration `json:"graceful_timeout"`
 
 	// TLSConfigFunc allows customizing tls.Config as you want.
 	//
@@ -95,16 +85,11 @@ type StartConfig struct {
 func startConfigDefault(config ...StartConfig) StartConfig {
 	if len(config) < 1 {
 		return StartConfig{
-			GracefulTimeout: 10 * time.Second,
 			ListenerNetwork: NetworkTCP4,
 		}
 	}
 
 	cfg := config[0]
-	if cfg.GracefulTimeout == 0 {
-		cfg.GracefulTimeout = 10 * time.Second
-	}
-
 	if cfg.ListenerNetwork == "" {
 		cfg.ListenerNetwork = NetworkTCP4
 	}
@@ -187,22 +172,6 @@ func (app *App) Start(addr any, config ...StartConfig) error {
 
 	// Print startup message & routes
 	app.printMessages(cfg, ln)
-
-	// Set graceful shutdown
-	if cfg.GracefulContext != nil {
-		ctx, cancel := context.WithCancel(cfg.GracefulContext)
-		defer cancel()
-
-		errs := make(chan error, 1)
-		go func() {
-			errs <- app.gracefulShutdownStart(ctx, cfg)
-		}()
-
-		// later:
-		if err := <-errs; err != nil {
-			return err
-		}
-	}
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
@@ -504,18 +473,4 @@ func (app *App) printRoutesMessage() {
 	}
 
 	_ = w.Flush()
-}
-
-func (app *App) gracefulShutdownStart(ctx context.Context, cfg StartConfig) error {
-	<-ctx.Done()
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.GracefulTimeout)
-	defer cancel()
-
-	select {
-	case <-shutdownCtx.Done():
-		return app.Shutdown()
-	default:
-		return nil
-	}
 }
