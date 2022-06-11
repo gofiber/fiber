@@ -193,7 +193,15 @@ func (app *App) Start(addr any, config ...StartConfig) error {
 		ctx, cancel := context.WithCancel(cfg.GracefulContext)
 		defer cancel()
 
-		go app.gracefulShutdownStart(ctx, cfg)
+		errs := make(chan error, 1)
+		go func() {
+			errs <- app.gracefulShutdownStart(ctx, cfg)
+		}()
+
+		// later:
+		if err := <-errs; err != nil {
+			return err
+		}
 	}
 
 	// Serve
