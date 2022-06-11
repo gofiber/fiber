@@ -498,7 +498,7 @@ func (app *App) printRoutesMessage() {
 	_ = w.Flush()
 }
 
-func (app *App) gracefulShutdownStart(ctx context.Context, cfg StartConfig) {
+func (app *App) gracefulShutdownStart(ctx context.Context, cfg StartConfig) error {
 	<-ctx.Done()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.GracefulTimeout)
@@ -506,6 +506,8 @@ func (app *App) gracefulShutdownStart(ctx context.Context, cfg StartConfig) {
 
 	select {
 	case <-shutdownCtx.Done():
-		_ = app.Shutdown()
+		return app.Shutdown()
+	default:
+		return nil
 	}
 }

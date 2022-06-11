@@ -1229,9 +1229,9 @@ func Test_App_HandlersCount(t *testing.T) {
 // go test -run Test_App_ReadTimeout
 func Test_App_ReadTimeout(t *testing.T) {
 	app := New(Config{
-		ReadTimeout:           time.Nanosecond,
-		IdleTimeout:           time.Minute,
-		DisableKeepalive:      true,
+		ReadTimeout:      time.Nanosecond,
+		IdleTimeout:      time.Minute,
+		DisableKeepalive: true,
 	})
 
 	app.Get("/read-timeout", func(c *Ctx) error {
@@ -1294,7 +1294,7 @@ func Test_App_BadRequest(t *testing.T) {
 // go test -run Test_App_SmallReadBuffer
 func Test_App_SmallReadBuffer(t *testing.T) {
 	app := New(Config{
-		ReadBufferSize:        1,
+		ReadBufferSize: 1,
 	})
 
 	app.Get("/small-read-buffer", func(c *Ctx) error {
@@ -1342,37 +1342,6 @@ func captureOutput(f func()) string {
 	f()
 	writer.Close()
 	return <-out
-}
-
-func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
-	cfg := StartConfig{
-		EnablePrefork: true,
-	}
-
-	startupMessage := captureOutput(func() {
-		New().
-			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
-	})
-	fmt.Println(startupMessage)
-	utils.AssertEqual(t, true, strings.Contains(startupMessage, "https://127.0.0.1:3000"))
-	utils.AssertEqual(t, true, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
-	utils.AssertEqual(t, true, strings.Contains(startupMessage, "Child PIDs"))
-	utils.AssertEqual(t, true, strings.Contains(startupMessage, "11111, 22222, 33333, 44444, 55555, 60000"))
-	utils.AssertEqual(t, true, strings.Contains(startupMessage, "Prefork ........ Enabled"))
-}
-
-func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
-	cfg := StartConfig{
-		EnablePrefork: true,
-	}
-
-	app := New(Config{AppName: "Test App v3.0.0"})
-	startupMessage := captureOutput(func() {
-		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
-	})
-	fmt.Println(startupMessage)
-	utils.AssertEqual(t, "Test App v3.0.0", app.Config().AppName)
-	utils.AssertEqual(t, true, strings.Contains(startupMessage, app.Config().AppName))
 }
 
 func Test_App_Server(t *testing.T) {
@@ -1556,41 +1525,4 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	b, err = io.ReadAll(resp2.Body)
 	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
 	utils.AssertEqual(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
-}
-
-func emptyHandler(c *Ctx) error {
-	return nil
-}
-func Test_App_print_Route(t *testing.T) {
-	app := New()
-	app.Get("/", emptyHandler).Name("routeName")
-	printRoutesMessage := captureOutput(func() {
-		app.printRoutesMessage()
-	})
-	fmt.Println(printRoutesMessage)
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "GET"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "routeName"))
-}
-
-func Test_App_print_Route_with_group(t *testing.T) {
-	app := New()
-	app.Get("/", emptyHandler)
-	v1 := app.Group("v1")
-	v1.Get("/test", emptyHandler).Name("v1")
-	v1.Post("/test/fiber", emptyHandler)
-	v1.Put("/test/fiber/*", emptyHandler)
-	printRoutesMessage := captureOutput(func() {
-		app.printRoutesMessage()
-	})
-	fmt.Println(printRoutesMessage)
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "GET"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "POST"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "PUT"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
 }
