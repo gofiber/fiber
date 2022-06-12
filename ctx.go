@@ -1407,7 +1407,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	}
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
-		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
+		return NewErrors(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
 	}
 	return nil
 }
