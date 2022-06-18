@@ -739,7 +739,8 @@ func (app *App) HandlersCount() uint32 {
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
 	if app.hooks != nil {
-		defer app.hooks.executeOnShutdownHooks()
+		// TODO: check should be defered?
+		app.hooks.executeOnShutdownHooks()
 	}
 
 	app.mutex.Lock()

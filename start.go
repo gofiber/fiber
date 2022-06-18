@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -50,6 +51,11 @@ type StartConfig struct {
 	// Default : ""
 	CertClientFile string `json:"cert_client_file"`
 
+	// GracefulSignals is a field to shutdown Fiber by given signals gracefully.
+	//
+	// Default: []os.Signal{os.Interrupt}
+	GracefulSignals []os.Signal `json:"graceful_signals"`
+
 	// TLSConfigFunc allows customizing tls.Config as you want.
 	//
 	// Default: nil
@@ -85,11 +91,16 @@ type StartConfig struct {
 func startConfigDefault(config ...StartConfig) StartConfig {
 	if len(config) < 1 {
 		return StartConfig{
+			GracefulSignals: []os.Signal{os.Interrupt},
 			ListenerNetwork: NetworkTCP4,
 		}
 	}
 
 	cfg := config[0]
+	if len(cfg.GracefulSignals) < 1 {
+		cfg.GracefulSignals = []os.Signal{os.Interrupt}
+	}
+
 	if cfg.ListenerNetwork == "" {
 		cfg.ListenerNetwork = NetworkTCP4
 	}
@@ -138,6 +149,17 @@ func (app *App) Start(addr any, config ...StartConfig) error {
 	if cfg.TLSConfigFunc != nil {
 		cfg.TLSConfigFunc(tlsConfig)
 	}
+
+	// Graceful shutdown
+	sigint := make(chan os.Signal)
+	signal.Notify(sigint, cfg.GracefulSignals...)
+
+	go func() {
+		_ = <-sigint
+
+		_ = app.Shutdown()
+		os.Exit(0)
+	}()
 
 	var ln net.Listener
 	var err error
