@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -85,7 +86,7 @@ type ErrorHandler = func(*Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
-	Code    int    `json:"code"`
+	Code    int `json:"code"`
 	Message any `json:"message"`
 }
 
@@ -744,7 +745,7 @@ func NewErrors(code int, messages ...any) *Error {
 	} else if len(messages) > 1 {
 		e.Message = messages
 	}
-	
+
 	return e
 }
 
@@ -966,6 +967,11 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	if err != nil {
 		return nil, err
 	}
+
+	// adding back the query from URL, since dump cleans it
+	dumps := bytes.Split(dump, []byte(" "))
+	dumps[1] = []byte(req.URL.String())
+	dump = bytes.Join(dumps, []byte(" "))
 
 	// Create test connection
 	conn := new(testConn)
