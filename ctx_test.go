@@ -1459,32 +1459,62 @@ func Test_Ctx_Path(t *testing.T) {
 func Test_Ctx_Protocol(t *testing.T) {
 	app := New()
 
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	utils.AssertEqual(t, "HTTP/1.1", c.Protocol())
+
+	c.Request().Header.SetProtocol("HTTP/2")
+	utils.AssertEqual(t, "HTTP/2", c.Protocol())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Protocol -benchmem -count=4
+func Benchmark_Ctx_Protocol(b *testing.B) {
+	app := New()
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.Protocol()
+	}
+
+	utils.AssertEqual(b, "HTTP/1.1", res)
+}
+
+// go test -run Test_Ctx_Scheme
+func Test_Ctx_Scheme(t *testing.T) {
+	app := New()
+
 	freq := &fasthttp.RequestCtx{}
 	freq.Request.Header.Set("X-Forwarded", "invalid")
 
 	c := app.AcquireCtx(freq)
 	defer app.ReleaseCtx(c)
 	c.Request().Header.Set(HeaderXForwardedProto, "https")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Protocol -benchmem -count=4
-func Benchmark_Ctx_Protocol(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
+func Benchmark_Ctx_Scheme(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -1492,113 +1522,113 @@ func Benchmark_Ctx_Protocol(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		res = c.Protocol()
+		res = c.Scheme()
 	}
 	utils.AssertEqual(b, "http", res)
 }
 
-// go test -run Test_Ctx_Protocol_TrustedProxy
-func Test_Ctx_Protocol_TrustedProxy(t *testing.T) {
+// go test -run Test_Ctx_Scheme_TrustedProxy
+func Test_Ctx_Scheme_TrustedProxy(t *testing.T) {
 	t.Parallel()
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0"}})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
 	c.Request().Header.Set(HeaderXForwardedProto, "https")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 }
 
-// go test -run Test_Ctx_Protocol_TrustedProxyRange
-func Test_Ctx_Protocol_TrustedProxyRange(t *testing.T) {
+// go test -run Test_Ctx_Scheme_TrustedProxyRange
+func Test_Ctx_Scheme_TrustedProxyRange(t *testing.T) {
 	t.Parallel()
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0/30"}})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
 	c.Request().Header.Set(HeaderXForwardedProto, "https")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	utils.AssertEqual(t, "https", c.Protocol())
+	utils.AssertEqual(t, "https", c.Scheme())
 	c.Request().Header.Reset()
 
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 }
 
-// go test -run Test_Ctx_Protocol_UntrustedProxyRange
-func Test_Ctx_Protocol_UntrustedProxyRange(t *testing.T) {
+// go test -run Test_Ctx_Scheme_UntrustedProxyRange
+func Test_Ctx_Scheme_UntrustedProxyRange(t *testing.T) {
 	t.Parallel()
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"1.1.1.1/30"}})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
 	c.Request().Header.Set(HeaderXForwardedProto, "https")
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 	c.Request().Header.Reset()
 
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 }
 
-// go test -run Test_Ctx_Protocol_UnTrustedProxy
-func Test_Ctx_Protocol_UnTrustedProxy(t *testing.T) {
+// go test -run Test_Ctx_Scheme_UnTrustedProxy
+func Test_Ctx_Scheme_UnTrustedProxy(t *testing.T) {
 	t.Parallel()
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.1"}})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
 	c.Request().Header.Set(HeaderXForwardedProto, "https")
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 	c.Request().Header.Reset()
 
-	utils.AssertEqual(t, "http", c.Protocol())
+	utils.AssertEqual(t, "http", c.Scheme())
 }
 
 // go test -run Test_Ctx_Query

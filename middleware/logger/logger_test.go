@@ -140,7 +140,7 @@ func Test_Logger_All(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Format: "${pid}${reqHeaders}${referer}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${header:test}${query:test}${form:test}${cookie:test}${non}",
+		Format: "${pid}${reqHeaders}${referer}${scheme}${protocol}${ip}${ips}${host}${url}${ua}${body}${route}${black}${red}${green}${yellow}${blue}${magenta}${cyan}${white}${reset}${error}${header:test}${query:test}${form:test}${cookie:test}${non}",
 		Output: buf,
 	}))
 
@@ -148,7 +148,7 @@ func Test_Logger_All(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 
-	expected := fmt.Sprintf("%dHost=example.comhttp0.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sCannot GET /", os.Getpid(), cBlack, cRed, cGreen, cYellow, cBlue, cMagenta, cCyan, cWhite, cReset)
+	expected := fmt.Sprintf("%dHost=example.comhttpHTTP/1.10.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sCannot GET /", os.Getpid(), cBlack, cRed, cGreen, cYellow, cBlue, cMagenta, cCyan, cWhite, cReset)
 	utils.AssertEqual(t, expected, buf.String())
 }
 
