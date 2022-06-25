@@ -434,10 +434,10 @@ const (
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
-        var e *fiber.Error
-        if errors.As(err, &e) {
-                code = e.Code
-        }
+	var e *Error
+	if errors.As(err, &e) {
+		code = e.Code
+	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	return c.Status(code).SendString(err.Error())
 }
