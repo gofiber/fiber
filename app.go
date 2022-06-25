@@ -76,7 +76,8 @@ type Storage interface {
 //  cfg := fiber.Config{}
 //  cfg.ErrorHandler = func(c *Ctx, err error) error {
 //   code := StatusInternalServerError
-//   if e, ok := err.(*Error); ok {
+//   var e *fiber.Error
+//   if errors.As(err, &e) {
 //     code = e.Code
 //   }
 //   c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
@@ -433,9 +434,10 @@ const (
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
-	if e, ok := err.(*Error); ok {
-		code = e.Code
-	}
+        var e *fiber.Error
+        if errors.As(err, &e) {
+                code = e.Code
+        }
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
 	return c.Status(code).SendString(err.Error())
 }
