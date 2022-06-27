@@ -35,15 +35,7 @@ body:
           4. See '....'
     validations:
       required: true
-  - type: textarea
-    id: expected-behavior
-    attributes:
-      label: "Expected Behavior"
-      description: "A clear and detailed description of what you think should happen."
-      placeholder: "Tell us what Fiber should normally do."
-    validations:
-      required: true
-    - type: input
+  - type: input
     id: version
     attributes:
       label: "Fiber Version"
