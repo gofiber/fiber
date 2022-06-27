@@ -10,7 +10,7 @@ body:
       value: |
         ### Notice
         **This repository is not related to external or third-part Fiber modules. If you have a problem with them, open an issue under their repos. If you think the problem is related to Fiber, open the issue here.**
-        *- Dont't forget you can ask your questions on our [Discord server](https://gofiber.io/discord).
+        - Dont't forget you can ask your questions on our [Discord server](https://gofiber.io/discord).
         - If you think Fiber doesn't have a nice feature that you think, open the issue with **✏️ Feature Request** template.
         - Write your issue with clear and understandable English.
   - type: textarea
