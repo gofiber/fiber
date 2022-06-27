@@ -9,10 +9,10 @@ body:
     attributes:
       value: |
         ### Notice
-        *Dont't forget you can ask your questions on our [Discord server](https://gofiber.io/discord).
-        *If you think this is just a bug, open the issue with **\U0001F41B Bug Report** template.
-        *If you think Fiber doesn't have a nice feature that you think, open the issue with **\U0001F680 Feature Request** template.
-        *Write your issue with clear and understandable English.
+        - Dont't forget you can ask your questions on our [Discord server](https://gofiber.io/discord).
+        - If you think this is just a bug, open the issue with **☢️ Bug Report** template.
+        - If you think Fiber doesn't have a nice feature that you think, open the issue with **✏️ Feature Request** template.
+        - Write your issue with clear and understandable English.
   - type: textarea
     id: description
     attributes:
@@ -47,7 +47,7 @@ body:
       label: "Checklist:"
       description: "By submitting this issue, you confirm that:"
       options:
-        - label: "I agree to follow Fiber's [Code of Conduct](../CODE_OF_CONDUCT.md)"
+        - label: "I agree to follow Fiber's [Code of Conduct](../CODE_OF_CONDUCT.md)."
           required: true
         - label: "I have checked for existing issues that describe my questions prior to opening this one."
           required: true
