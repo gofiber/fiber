@@ -96,49 +96,50 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) (ma
 	return false
 }
 
-func (app *App) next(c *ctx) (match bool, err error) {
+func (app *App) next(c Ctx) (match bool, err error) {
+	ctx := c.(*ctx)
 	// Get stack length
-	tree, ok := app.treeStack[c.methodINT][c.treePath]
+	tree, ok := app.treeStack[ctx.methodINT][ctx.treePath]
 	if !ok {
-		tree = app.treeStack[c.methodINT][""]
+		tree = app.treeStack[ctx.methodINT][""]
 	}
 	lenr := len(tree) - 1
 
 	// Loop over the route stack starting from previous index
-	for c.indexRoute < lenr {
+	for ctx.indexRoute < lenr {
 		// Increment route index
-		c.indexRoute++
+		ctx.indexRoute++
 
 		// Get *Route
-		route := tree[c.indexRoute]
+		route := tree[ctx.indexRoute]
 
 		// Check if it matches the request path
-		match = route.match(c.detectionPath, c.path, &c.values)
+		match = route.match(ctx.detectionPath, ctx.path, &ctx.values)
 
 		// No match, next route
 		if !match {
 			continue
 		}
 		// Pass route reference and param values
-		c.route = route
+		ctx.route = route
 
 		// Non use handler matched
-		if !c.matched && !route.use {
-			c.matched = true
+		if !ctx.matched && !route.use {
+			ctx.matched = true
 		}
 
 		// Execute first handler of route
-		c.indexHandler = 0
-		err = route.Handlers[0](c)
+		ctx.indexHandler = 0
+		err = route.Handlers[0](ctx)
 		return match, err // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
-	err = NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
+	err = NewError(StatusNotFound, "Cannot "+ctx.method+" "+ctx.pathOriginal)
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	if !c.matched && methodExist(c) {
+	if !ctx.matched && methodExist(ctx) {
 		err = ErrMethodNotAllowed
 	}
 	return
@@ -146,7 +147,8 @@ func (app *App) next(c *ctx) (match bool, err error) {
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
-	c := app.AcquireCtx(rctx)
+	c := app.pool.Get().(*ctx)
+	c.Reset(rctx)
 
 	// handle invalid http method directly
 	if c.methodINT == -1 {
@@ -390,8 +392,8 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		c.Context().SetContentType("") // Issue #420
 		c.Context().Response.SetStatusCode(StatusOK)
 		c.Context().Response.SetBodyString("")
-		
-			// Next middleware
+
+		// Next middleware
 		return c.Next()
 	}
 

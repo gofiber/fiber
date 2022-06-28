@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3/utils"
-	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -703,8 +702,6 @@ func Test_App_Static_MaxAge(t *testing.T) {
 // go test -run Test_App_Static_Download
 func Test_App_Static_Download(t *testing.T) {
 	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
 
 	app.Static("/fiber.png", "./.github/testdata/fs/img/fiber.png", Static{Download: true})
 
@@ -1250,7 +1247,7 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 func Benchmark_AcquireCtx(b *testing.B) {
 	app := New()
 	for n := 0; n < b.N; n++ {
-		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c := app.AcquireCtx()
 		app.ReleaseCtx(c)
 	}
 }

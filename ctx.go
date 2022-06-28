@@ -45,7 +45,7 @@ const userContextKey = "__local_user_context__"
 
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
-type Ctx interface{
+type Ctx interface {
 	// Accepts checks if the specified extensions or content types are acceptable.
 	Accepts(offers ...string) string
 
@@ -292,6 +292,8 @@ type Ctx interface{
 	IsFromLocal() bool
 
 	IsProxyTrusted() bool
+
+	Reset(fctx *fasthttp.RequestCtx)
 }
 
 type ctx struct {
@@ -358,39 +360,55 @@ type ParserConfig struct {
 	ZeroEmpty         bool
 }
 
-// AcquireCtx retrieves a new Ctx from the pool.
-func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *ctx {
-	c := app.pool.Get().(*ctx)
-	// Set app reference
-	c.app = app
-	// Reset route and handler index
-	c.indexRoute = -1
-	c.indexHandler = 0
-	// Reset matched flag
-	c.matched = false
-	// Set paths
-	c.pathOriginal = app.getString(fctx.URI().PathOriginal())
+func (app *App) NewCtx(fctx *fasthttp.RequestCtx) Ctx {
+	// create ctx
+	c := &ctx{
+		// Set app reference
+		app: app,
+
+		// Reset route and handler index
+		indexRoute:   -1,
+		indexHandler: 0,
+
+		// Reset matched flag
+		matched: false,
+
+		// Set paths
+		pathOriginal: app.getString(fctx.URI().PathOriginal()),
+
+		// Attach *fasthttp.RequestCtx to ctx
+		fasthttp: fctx,
+
+		// reset base uri
+		baseURI: "",
+	}
+
 	// Set method
 	c.method = app.getString(fctx.Request.Header.Method())
 	c.methodINT = methodInt(c.method)
-	// Attach *fasthttp.RequestCtx to ctx
-	c.fasthttp = fctx
-	// reset base uri
-	c.baseURI = ""
+
 	// Prettify path
 	c.configDependentPaths()
+
 	return c
 }
 
+// AcquireCtx retrieves a new Ctx from the pool.
+func (app *App) AcquireCtx() Ctx {
+	return app.pool.Get().(Ctx)
+}
+
 // ReleaseCtx releases the ctx back into the pool.
-func (app *App) ReleaseCtx(c *ctx) {
+func (app *App) ReleaseCtx(c Ctx) {
 	// Reset values
-	c.route = nil
-	c.fasthttp = nil
-	if c.viewBindMap != nil {
-		dictpool.ReleaseDict(c.viewBindMap)
+	ctx := c.(*ctx)
+	ctx.route = nil
+	ctx.fasthttp = nil
+	if ctx.viewBindMap != nil {
+		dictpool.ReleaseDict(ctx.viewBindMap)
 	}
-	app.pool.Put(c)
+
+	app.pool.Put(ctx)
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
@@ -1853,4 +1871,29 @@ func (c *ctx) IsFromLocal() bool {
 		ips = append(ips, c.IP())
 	}
 	return c.isLocalHost(ips[0])
+}
+
+func (c *ctx) Reset(fctx *fasthttp.RequestCtx) {
+	// Reset route and handler index
+	c.indexRoute = -1
+	c.indexHandler = 0
+
+	// Reset matched flag
+	c.matched = false
+
+	// Set paths
+	c.pathOriginal = c.app.getString(fctx.URI().PathOriginal())
+
+	// Attach *fasthttp.RequestCtx to ctx
+	c.fasthttp = fctx
+
+	// reset base uri
+	c.baseURI = ""
+
+	// Set method
+	c.method = c.app.getString(fctx.Request.Header.Method())
+	c.methodINT = methodInt(c.method)
+
+	// Prettify path
+	c.configDependentPaths()
 }

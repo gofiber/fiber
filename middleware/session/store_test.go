@@ -20,8 +20,8 @@ func TestStore_getSessionID(t *testing.T) {
 		// session store
 		store := New()
 		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+
 		// set cookie
 		ctx.Request().Header.SetCookie(store.sessionName, expectedID)
 
@@ -34,8 +34,8 @@ func TestStore_getSessionID(t *testing.T) {
 			KeyLookup: "header:session_id",
 		})
 		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+
 		// set header
 		ctx.Request().Header.Set(store.sessionName, expectedID)
 
@@ -48,8 +48,8 @@ func TestStore_getSessionID(t *testing.T) {
 			KeyLookup: "query:session_id",
 		})
 		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+
 		// set url parameter
 		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.sessionName, expectedID))
 
@@ -67,8 +67,8 @@ func TestStore_Get(t *testing.T) {
 		// session store
 		store := New()
 		// fiber context
-		ctx := app.AcquireCtx(&fasthttp.RequestCtx{})
-		defer app.ReleaseCtx(ctx)
+		ctx := app.NewCtx(&fasthttp.RequestCtx{})
+
 		// set cookie
 		ctx.Request().Header.SetCookie(store.sessionName, unexpectedID)
 

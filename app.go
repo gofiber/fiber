@@ -445,12 +445,6 @@ func New(config ...Config) *App {
 		// Create router stack
 		stack:     make([][]*Route, len(intMethod)),
 		treeStack: make([]map[string][]*Route, len(intMethod)),
-		// Create Ctx pool
-		pool: sync.Pool{
-			New: func() any {
-				return new(ctx)
-			},
-		},
 		// Create config
 		config:      Config{},
 		getBytes:    utils.UnsafeBytes,
@@ -458,6 +452,13 @@ func New(config ...Config) *App {
 		appList:     make(map[string]*App),
 		latestRoute: &Route{},
 		latestGroup: &Group{},
+	}
+
+	// Create Ctx pool
+	app.pool = sync.Pool{
+		New: func() any {
+			return app.NewCtx(&fasthttp.RequestCtx{})
+		},
 	}
 
 	// Define hooks
@@ -1083,7 +1084,10 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 // user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
-	c := app.AcquireCtx(fctx)
+	// Acquire Ctx with fasthttp request from pool
+	c := app.pool.Get().(*ctx)
+	c.Reset(fctx)
+
 	if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
 		err = ErrRequestHeaderFieldsTooLarge
 	} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
