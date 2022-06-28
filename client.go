@@ -738,14 +738,9 @@ func (a *Agent) RetryIf(retryIf RetryIfFunc) *Agent {
 }
 
 /************************** End Agent Setting **************************/
-var warnOnce sync.Once
 
 // Bytes returns the status code, bytes body and errors of url.
 func (a *Agent) Bytes() (code int, body []byte, errs []error) {
-	warnOnce.Do(func() {
-		fmt.Println("[Warning] client is still in beta, API might change in the future!")
-	})
-
 	defer a.release()
 
 	if errs = append(errs, a.errs...); len(errs) > 0 {
