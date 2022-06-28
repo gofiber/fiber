@@ -23,6 +23,12 @@ type Config struct {
 	// Optional. Default: false
 	APIOnly bool
 
+	// UseCDN is an option to get Chart.js from jsdelivr cdn.
+	// If you dont want to use cdn, Chart.js will be served from another route.
+	//
+	// Optional. Default: false
+	UseCDN bool
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil

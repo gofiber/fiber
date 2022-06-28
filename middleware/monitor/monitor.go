@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -81,6 +82,12 @@ func New(config ...Config) fiber.Handler {
 		if c.Method() != fiber.MethodGet {
 			return fiber.ErrMethodNotAllowed
 		}
+
+		if c.Get("Sec-Fetch-Dest") == "script" {
+			c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJavaScriptCharsetUTF8)
+			return c.Status(fiber.StatusOK).SendString(chartJS)
+		}
+
 		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON || cfg.APIOnly {
 			mutex.Lock()
 			data.PID.CPU = monitPidCpu.Load().(float64)
@@ -95,8 +102,16 @@ func New(config ...Config) fiber.Handler {
 			mutex.Unlock()
 			return c.Status(fiber.StatusOK).JSON(data)
 		}
+
 		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-		return c.Status(fiber.StatusOK).SendString(cfg.index)
+
+		// Return index by check UseCDN config field.
+		if cfg.UseCDN {
+			return c.Status(fiber.StatusOK).SendString(cfg.index)
+		}
+
+		index := strings.ReplaceAll(cfg.index, "https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js", c.OriginalURL())
+		return c.Status(fiber.StatusOK).SendString(index)
 	}
 }
 

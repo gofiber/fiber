@@ -1,8 +1,6 @@
 # Monitor
 Monitor middleware for [Fiber](https://github.com/gofiber/fiber) that reports server metrics, inspired by [express-status-monitor](https://github.com/RafalWilinski/express-status-monitor)
 
-:warning: **Warning:** Monitor is still in beta, API might change in the future!
-
 ![](https://i.imgur.com/nHAtBpJ.gif)
 
 ### Signatures
@@ -57,6 +55,12 @@ type Config struct {
 	//
 	// Optional. Default: false
 	APIOnly bool
+
+	// UseCDN is an option to get Chart.js from jsdelivr cdn.
+	// If you dont want to use cdn, Chart.js will be served from another route.
+	//
+	// Optional. Default: false
+	UseCDN bool
 
 	// Next defines a function to skip this middleware when returned true.
 	//

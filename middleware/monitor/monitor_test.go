@@ -130,7 +130,7 @@ func Test_Monitor_Next(t *testing.T) {
 
 // go test -run Test_Monitor_APIOnly -race
 func Test_Monitor_APIOnly(t *testing.T) {
-	//t.Parallel()
+	t.Parallel()
 
 	app := fiber.New()
 
@@ -149,4 +149,46 @@ func Test_Monitor_APIOnly(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("pid")))
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("os")))
+}
+
+// go test -run Test_Monitor_UseCDN -race
+func Test_Monitor_UseCDN(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Get("/", New(Config{
+		UseCDN: true,
+	}))
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+
+	b, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, bytes.Contains(b, []byte(`<script src="https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js"></script>`)))
+}
+
+// go test -run Test_Monitor_Script -race
+func Test_Monitor_Script(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Get("/", New())
+
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
+	req.Header.Set("Sec-Fetch-Dest", "script")
+	resp, err := app.Test(req)
+	fmt.Print(resp.Header.Get("Sec-Fetch-Dest"))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+	utils.AssertEqual(t, "script", resp.Request.Header.Get("Sec-Fetch-Dest"))
+
+	b, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, bytes.Contains(b, []byte(`Chart.js v2.9.0`)))
 }
