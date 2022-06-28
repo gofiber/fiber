@@ -50,7 +50,7 @@ type Config struct {
 	// StackTraceHandler defines a function to handle stack trace
 	//
 	// Optional. Default: defaultStackTraceHandler
-	StackTraceHandler func(e interface{})
+	StackTraceHandler func(c *fiber.Ctx, e interface{})
 }
 ```
 

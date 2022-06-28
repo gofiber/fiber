@@ -15,21 +15,25 @@ func Test_ToUpper(t *testing.T) {
 	AssertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
 }
 
-func Benchmark_ToUpper(b *testing.B) {
-	path := "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
-	var res string
+const (
+	largeStr = "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts/RePos/GoFiBer/FibEr/iSsues/CoMmEnts"
+	upperStr = "/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS/REPOS/GOFIBER/FIBER/ISSUES/COMMENTS"
+	lowerStr = "/repos/gofiber/fiber/issues/187643/comments/repos/gofiber/fiber/issues/comments"
+)
 
+func Benchmark_ToUpper(b *testing.B) {
+	var res string
 	b.Run("fiber", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			res = ToUpper(path)
+			res = ToUpper(largeStr)
 		}
-		AssertEqual(b, "/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS", res)
+		AssertEqual(b, upperStr, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			res = strings.ToUpper(path)
+			res = strings.ToUpper(largeStr)
 		}
-		AssertEqual(b, "/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS", res)
+		AssertEqual(b, upperStr, res)
 	})
 }
 
@@ -48,19 +52,18 @@ func Test_ToLower(t *testing.T) {
 }
 
 func Benchmark_ToLower(b *testing.B) {
-	path := "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
 	var res string
 	b.Run("fiber", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			res = ToLower(path)
+			res = ToLower(largeStr)
 		}
-		AssertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
+		AssertEqual(b, lowerStr, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			res = strings.ToLower(path)
+			res = strings.ToLower(largeStr)
 		}
-		AssertEqual(b, "/repos/gofiber/fiber/issues/187643/comments", res)
+		AssertEqual(b, lowerStr, res)
 	})
 }
 
@@ -71,6 +74,15 @@ func Test_TrimRight(t *testing.T) {
 
 	res = TrimRight("/test", '/')
 	AssertEqual(t, "/test", res)
+
+	res = TrimRight(" ", ' ')
+	AssertEqual(t, "", res)
+
+	res = TrimRight("  ", ' ')
+	AssertEqual(t, "", res)
+
+	res = TrimRight("", ' ')
+	AssertEqual(t, "", res)
 }
 
 func Benchmark_TrimRight(b *testing.B) {
@@ -97,6 +109,15 @@ func Test_TrimLeft(t *testing.T) {
 
 	res = TrimLeft("test/", '/')
 	AssertEqual(t, "test/", res)
+
+	res = TrimLeft(" ", ' ')
+	AssertEqual(t, "", res)
+
+	res = TrimLeft("  ", ' ')
+	AssertEqual(t, "", res)
+
+	res = TrimLeft("", ' ')
+	AssertEqual(t, "", res)
 }
 
 func Benchmark_TrimLeft(b *testing.B) {
@@ -126,6 +147,15 @@ func Test_Trim(t *testing.T) {
 
 	res = Trim(".test", '.')
 	AssertEqual(t, "test", res)
+
+	res = Trim(" ", ' ')
+	AssertEqual(t, "", res)
+
+	res = Trim("  ", ' ')
+	AssertEqual(t, "", res)
+
+	res = Trim("", ' ')
+	AssertEqual(t, "", res)
 }
 
 func Benchmark_Trim(b *testing.B) {
@@ -153,19 +183,16 @@ func Benchmark_Trim(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_EqualFold -benchmem -count=4
 func Benchmark_EqualFold(b *testing.B) {
-	left := "/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts"
-	right := "/RePos/goFiber/Fiber/issues/187643/COMMENTS"
 	var res bool
-
 	b.Run("fiber", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			res = EqualFold(left, right)
+			res = EqualFold(upperStr, lowerStr)
 		}
 		AssertEqual(b, true, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			res = strings.EqualFold(left, right)
+			res = strings.EqualFold(upperStr, lowerStr)
 		}
 		AssertEqual(b, true, res)
 	})
@@ -180,6 +207,8 @@ func Test_EqualFold(t *testing.T) {
 	res = EqualFold("/my2/name/is/:param/*", "/my2/name")
 	AssertEqual(t, false, res)
 	res = EqualFold("/dddddd", "eeeeee")
+	AssertEqual(t, false, res)
+	res = EqualFold("\na", "*A")
 	AssertEqual(t, false, res)
 	res = EqualFold("/MY3/NAME/IS/:PARAM/*", "/my3/name/is/:param/*")
 	AssertEqual(t, true, res)

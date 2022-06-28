@@ -64,9 +64,9 @@ func New(config ...Config) fiber.Handler {
 
 		go func() {
 			for {
-				updateStatistics(p)
+				time.Sleep(cfg.Refresh)
 
-				time.Sleep(1 * time.Second)
+				updateStatistics(p)
 			}
 		}()
 	})
@@ -81,7 +81,7 @@ func New(config ...Config) fiber.Handler {
 		if c.Method() != fiber.MethodGet {
 			return fiber.ErrMethodNotAllowed
 		}
-		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON {
+		if c.Get(fiber.HeaderAccept) == fiber.MIMEApplicationJSON || cfg.APIOnly {
 			mutex.Lock()
 			data.PID.CPU = monitPidCpu.Load().(float64)
 			data.PID.RAM = monitPidRam.Load().(uint64)
@@ -95,8 +95,8 @@ func New(config ...Config) fiber.Handler {
 			mutex.Unlock()
 			return c.Status(fiber.StatusOK).JSON(data)
 		}
-		c.Response().Header.SetContentType(fiber.MIMETextHTMLCharsetUTF8)
-		return c.Status(fiber.StatusOK).Send(index)
+		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
+		return c.Status(fiber.StatusOK).SendString(cfg.index)
 	}
 }
 

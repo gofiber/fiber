@@ -1,9 +1,14 @@
 package csrf
 
 import (
+	"errors"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+)
+
+var (
+	errTokenNotFound = errors.New("csrf token not found")
 )
 
 // New creates a new middleware handler
@@ -43,15 +48,16 @@ func New(config ...Config) fiber.Handler {
 			if manager.getRaw(token) == nil {
 				// Expire cookie
 				c.Cookie(&fiber.Cookie{
-					Name:     cfg.CookieName,
-					Domain:   cfg.CookieDomain,
-					Path:     cfg.CookiePath,
-					Expires:  time.Now().Add(-1 * time.Minute),
-					Secure:   cfg.CookieSecure,
-					HTTPOnly: cfg.CookieHTTPOnly,
-					SameSite: cfg.CookieSameSite,
+					Name:        cfg.CookieName,
+					Domain:      cfg.CookieDomain,
+					Path:        cfg.CookiePath,
+					Expires:     time.Now().Add(-1 * time.Minute),
+					Secure:      cfg.CookieSecure,
+					HTTPOnly:    cfg.CookieHTTPOnly,
+					SameSite:    cfg.CookieSameSite,
+					SessionOnly: cfg.CookieSessionOnly,
 				})
-				return cfg.ErrorHandler(c, err)
+				return cfg.ErrorHandler(c, errTokenNotFound)
 			}
 		}
 
@@ -66,14 +72,15 @@ func New(config ...Config) fiber.Handler {
 
 		// Create cookie to pass token to client
 		cookie := &fiber.Cookie{
-			Name:     cfg.CookieName,
-			Value:    token,
-			Domain:   cfg.CookieDomain,
-			Path:     cfg.CookiePath,
-			Expires:  time.Now().Add(cfg.Expiration),
-			Secure:   cfg.CookieSecure,
-			HTTPOnly: cfg.CookieHTTPOnly,
-			SameSite: cfg.CookieSameSite,
+			Name:        cfg.CookieName,
+			Value:       token,
+			Domain:      cfg.CookieDomain,
+			Path:        cfg.CookiePath,
+			Expires:     time.Now().Add(cfg.Expiration),
+			Secure:      cfg.CookieSecure,
+			HTTPOnly:    cfg.CookieHTTPOnly,
+			SameSite:    cfg.CookieSameSite,
+			SessionOnly: cfg.CookieSessionOnly,
 		}
 		// Set cookie to response
 		c.Cookie(cookie)

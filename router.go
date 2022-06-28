@@ -36,7 +36,11 @@ type Router interface {
 
 	Group(prefix string, handlers ...Handler) Router
 
+	Route(prefix string, fn func(router Router), name ...string) Router
+
 	Mount(prefix string, fiber *App) Router
+
+	Name(name string) Router
 }
 
 // Route is a struct that holds all metadata for each registered handler
@@ -51,6 +55,7 @@ type Route struct {
 
 	// Public fields
 	Method   string    `json:"method"` // HTTP method
+	Name     string    `json:"name"`   // Route's name
 	Path     string    `json:"path"`   // Original registered route path
 	Params   []string  `json:"params"` // Case sensitive param keys
 	Handlers []Handler `json:"-"`      // Ctx handlers
@@ -129,8 +134,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 	}
 
 	// If c.Next() does not match, return 404
-	_ = c.SendStatus(StatusNotFound)
-	_ = c.SendString("Cannot " + c.method + " " + c.pathOriginal)
+	err = NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
@@ -162,6 +166,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	if match && app.config.ETag {
 		setETag(c, false)
 	}
+
 	// Release Ctx
 	app.ReleaseCtx(c)
 }
@@ -263,7 +268,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		Handlers: handlers,
 	}
 	// Increment global handler count
-	atomic.AddUint32(&app.handlerCount, uint32(len(handlers)))
+	atomic.AddUint32(&app.handlersCount, uint32(len(handlers)))
 
 	// Middleware route matches all HTTP methods
 	if isUse {
@@ -321,6 +326,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	// Fileserver settings
 	fs := &fasthttp.FS{
 		Root:                 root,
+		AllowEmptyRoot:       true,
 		GenerateIndexPages:   false,
 		AcceptByteRange:      false,
 		Compress:             false,
@@ -372,6 +378,10 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		}
 		// Serve file
 		fileHandler(c.fasthttp)
+		// Sets the response Content-Disposition header to attachment if the Download option is true
+		if len(config) > 0 && config[0].Download {
+			c.Attachment()
+		}
 		// Return request if found and not forbidden
 		status := c.fasthttp.Response.StatusCode()
 		if status != StatusNotFound && status != StatusForbidden {
@@ -400,7 +410,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		Handlers: []Handler{handler},
 	}
 	// Increment global handler count
-	atomic.AddUint32(&app.handlerCount, 1)
+	atomic.AddUint32(&app.handlersCount, 1)
 	// Add route to stack
 	app.addRoute(MethodGet, &route)
 	// Add HEAD route
@@ -425,6 +435,13 @@ func (app *App) addRoute(method string, route *Route) {
 		app.stack[m] = append(app.stack[m], route)
 		app.routesRefreshed = true
 	}
+
+	app.mutex.Lock()
+	app.latestRoute = route
+	if err := app.hooks.executeOnRouteHooks(*route); err != nil {
+		panic(err)
+	}
+	app.mutex.Unlock()
 }
 
 // buildTree build the prefix tree from the previously registered routes
@@ -434,27 +451,28 @@ func (app *App) buildTree() *App {
 	}
 	// loop all the methods and stacks and create the prefix tree
 	for m := range intMethod {
-		app.treeStack[m] = make(map[string][]*Route)
+		tsMap := make(map[string][]*Route)
 		for _, route := range app.stack[m] {
 			treePath := ""
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
 				treePath = route.routeParser.segs[0].Const[:3]
 			}
 			// create tree stack
-			app.treeStack[m][treePath] = append(app.treeStack[m][treePath], route)
+			tsMap[treePath] = append(tsMap[treePath], route)
 		}
+		app.treeStack[m] = tsMap
 	}
 	// loop the methods and tree stacks and add global stack and sort everything
 	for m := range intMethod {
-		for treePart := range app.treeStack[m] {
+		tsMap := app.treeStack[m]
+		for treePart := range tsMap {
 			if treePart != "" {
 				// merge global tree routes in current tree stack
-				app.treeStack[m][treePart] = uniqueRouteStack(append(app.treeStack[m][treePart], app.treeStack[m][""]...))
+				tsMap[treePart] = uniqueRouteStack(append(tsMap[treePart], tsMap[""]...))
 			}
 			// sort tree slices with the positions
-			sort.Slice(app.treeStack[m][treePart], func(i, j int) bool {
-				return app.treeStack[m][treePart][i].pos < app.treeStack[m][treePart][j].pos
-			})
+			slc := tsMap[treePart]
+			sort.Slice(slc, func(i, j int) bool { return slc[i].pos < slc[j].pos })
 		}
 	}
 	app.routesRefreshed = false

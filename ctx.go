@@ -7,10 +7,12 @@ package fiber
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -23,7 +25,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
-	"github.com/gofiber/fiber/v2/internal/go-json"
+	"github.com/gofiber/fiber/v2/internal/dictpool"
 	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
@@ -32,7 +34,12 @@ import (
 // maxParams defines the maximum number of parameters per route.
 const maxParams = 30
 
-const queryTag = "query"
+// Some constants for BodyParser, QueryParser and ReqHeaderParser.
+const (
+	queryTag     = "query"
+	reqHeaderTag = "reqHeader"
+	bodyTag      = "form"
+)
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey = "__local_user_context__"
@@ -56,6 +63,7 @@ type Ctx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
+	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
 }
 
 // Range data for c.Range
@@ -69,15 +77,16 @@ type Range struct {
 
 // Cookie data for c.Cookie
 type Cookie struct {
-	Name     string    `json:"name"`
-	Value    string    `json:"value"`
-	Path     string    `json:"path"`
-	Domain   string    `json:"domain"`
-	MaxAge   int       `json:"max_age"`
-	Expires  time.Time `json:"expires"`
-	Secure   bool      `json:"secure"`
-	HTTPOnly bool      `json:"http_only"`
-	SameSite string    `json:"same_site"`
+	Name        string    `json:"name"`
+	Value       string    `json:"value"`
+	Path        string    `json:"path"`
+	Domain      string    `json:"domain"`
+	MaxAge      int       `json:"max_age"`
+	Expires     time.Time `json:"expires"`
+	Secure      bool      `json:"secure"`
+	HTTPOnly    bool      `json:"http_only"`
+	SameSite    string    `json:"same_site"`
+	SessionOnly bool      `json:"session_only"`
 }
 
 // Views is the interface that wraps the Render function.
@@ -130,6 +139,9 @@ func (app *App) ReleaseCtx(c *Ctx) {
 	// Reset values
 	c.route = nil
 	c.fasthttp = nil
+	if c.viewBindMap != nil {
+		dictpool.ReleaseDict(c.viewBindMap)
+	}
 	app.pool.Put(c)
 }
 
@@ -285,7 +297,7 @@ func (c *Ctx) Body() []byte {
 	return body
 }
 
-// decoderPool helps to improve BodyParser's and QueryParser's performance
+// decoderPool helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
 var decoderPool = &sync.Pool{New: func() interface{} {
 	return decoderBuilder(ParserConfig{
 		IgnoreUnknownKeys: true,
@@ -318,10 +330,6 @@ func decoderBuilder(parserConfig ParserConfig) interface{} {
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 // If none of the content types above are matched, it will return a ErrUnprocessableEntity error
 func (c *Ctx) BodyParser(out interface{}) error {
-	// Get decoder from pool
-	schemaDecoder := decoderPool.Get().(*schema.Decoder)
-	defer decoderPool.Put(schemaDecoder)
-
 	// Get content-type
 	ctype := utils.ToLower(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()))
 
@@ -329,27 +337,45 @@ func (c *Ctx) BodyParser(out interface{}) error {
 
 	// Parse body accordingly
 	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
-		schemaDecoder.SetAliasTag("json")
 		return c.app.config.JSONDecoder(c.Body(), out)
 	}
 	if strings.HasPrefix(ctype, MIMEApplicationForm) {
-		schemaDecoder.SetAliasTag("form")
 		data := make(map[string][]string)
-		c.fasthttp.PostArgs().VisitAll(func(key []byte, val []byte) {
-			data[utils.UnsafeString(key)] = append(data[utils.UnsafeString(key)], utils.UnsafeString(val))
+		var err error
+
+		c.fasthttp.PostArgs().VisitAll(func(key, val []byte) {
+			if err != nil {
+				return
+			}
+
+			k := utils.UnsafeString(key)
+			v := utils.UnsafeString(val)
+
+			if strings.Contains(k, "[") {
+				k, err = parseParamSquareBrackets(k)
+			}
+
+			if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+				values := strings.Split(v, ",")
+				for i := 0; i < len(values); i++ {
+					data[k] = append(data[k], values[i])
+				}
+			} else {
+				data[k] = append(data[k], v)
+			}
+
 		})
-		return schemaDecoder.Decode(out, data)
+
+		return c.parseToStruct(bodyTag, out, data)
 	}
 	if strings.HasPrefix(ctype, MIMEMultipartForm) {
-		schemaDecoder.SetAliasTag("form")
 		data, err := c.fasthttp.MultipartForm()
 		if err != nil {
 			return err
 		}
-		return schemaDecoder.Decode(out, data.Value)
+		return c.parseToStruct(bodyTag, out, data.Value)
 	}
 	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
-		schemaDecoder.SetAliasTag("xml")
 		return xml.Unmarshal(c.Body(), out)
 	}
 	// No suitable content type found
@@ -400,8 +426,13 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fcookie.SetValue(cookie.Value)
 	fcookie.SetPath(cookie.Path)
 	fcookie.SetDomain(cookie.Domain)
-	fcookie.SetMaxAge(cookie.MaxAge)
-	fcookie.SetExpire(cookie.Expires)
+	// only set max age and expiry when SessionOnly is false
+	// i.e. cookie supposed to last beyond browser session
+	// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
+	if !cookie.SessionOnly {
+		fcookie.SetMaxAge(cookie.MaxAge)
+		fcookie.SetExpire(cookie.Expires)
+	}
 	fcookie.SetSecure(cookie.Secure)
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
 
@@ -578,6 +609,30 @@ func (c *Ctx) GetRespHeader(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
 }
 
+// GetReqHeaders returns the HTTP request headers.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *Ctx) GetReqHeaders() map[string]string {
+	headers := make(map[string]string)
+	c.Request().Header.VisitAll(func(k, v []byte) {
+		headers[string(k)] = c.app.getString(v)
+	})
+
+	return headers
+}
+
+// GetRespHeaders returns the HTTP response headers.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+func (c *Ctx) GetRespHeaders() map[string]string {
+	headers := make(map[string]string)
+	c.Response().Header.VisitAll(func(k, v []byte) {
+		headers[string(k)] = c.app.getString(v)
+	})
+
+	return headers
+}
+
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
@@ -749,6 +804,14 @@ func (c *Ctx) Next() (err error) {
 	return err
 }
 
+// RestartRouting instead of going to the next handler. This may be usefull after
+// changing the request path. Note that handlers might be executed again.
+func (c *Ctx) RestartRouting() error {
+	c.indexRoute = -1
+	_, err := c.app.next(c)
+	return err
+}
+
 // OriginalURL contains the original request URL.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting to use the value outside the Handler.
@@ -780,11 +843,22 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 	return defaultString("", defaultValue)
 }
 
+// Params is used to get all route parameters.
+// Using Params method to get params.
+func (c *Ctx) AllParams() map[string]string {
+	params := make(map[string]string, len(c.route.Params))
+	for _, param := range c.route.Params {
+		params[param] = c.Params(param)
+	}
+
+	return params
+}
+
 // ParamsInt is used to get an integer from the route parameters
 // it defaults to zero if the parameter is not found or if the
 // parameter cannot be converted to an integer
-// If a default value is given, it will returb that value in case the param
-// doesn't exist or cannot be converted to an integrer
+// If a default value is given, it will return that value in case the param
+// doesn't exist or cannot be converted to an integer
 func (c *Ctx) ParamsInt(key string, defaultValue ...int) (int, error) {
 	// Use Atoi to convert the param to an int or return zero and an error
 	value, err := strconv.Atoi(c.Params(key))
@@ -853,17 +927,21 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
-	// Get decoder from pool
-	decoder := decoderPool.Get().(*schema.Decoder)
-	defer decoderPool.Put(decoder)
-
-	// Set correct alias tag
-	decoder.SetAliasTag(queryTag)
-
 	data := make(map[string][]string)
-	c.fasthttp.QueryArgs().VisitAll(func(key []byte, val []byte) {
+	var err error
+
+	c.fasthttp.QueryArgs().VisitAll(func(key, val []byte) {
+		if err != nil {
+			return
+		}
+
 		k := utils.UnsafeString(key)
 		v := utils.UnsafeString(val)
+
+		if strings.Contains(k, "[") {
+			k, err = parseParamSquareBrackets(k)
+		}
+
 		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
 			for i := 0; i < len(values); i++ {
@@ -872,9 +950,72 @@ func (c *Ctx) QueryParser(out interface{}) error {
 		} else {
 			data[k] = append(data[k], v)
 		}
+
 	})
 
-	return decoder.Decode(out, data)
+	if err != nil {
+		return err
+	}
+
+	return c.parseToStruct(queryTag, out, data)
+}
+
+func parseParamSquareBrackets(k string) (string, error) {
+	bb := bytebufferpool.Get()
+	defer bytebufferpool.Put(bb)
+
+	kbytes := []byte(k)
+
+	for i, b := range kbytes {
+
+		if b == '[' && kbytes[i+1] != ']' {
+			if err := bb.WriteByte('.'); err != nil {
+				return "", err
+			}
+		}
+
+		if b == '[' || b == ']' {
+			continue
+		}
+
+		if err := bb.WriteByte(b); err != nil {
+			return "", err
+		}
+	}
+
+	return bb.String(), nil
+}
+
+// ReqHeaderParser binds the request header strings to a struct.
+func (c *Ctx) ReqHeaderParser(out interface{}) error {
+	data := make(map[string][]string)
+	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
+		k := utils.UnsafeString(key)
+		v := utils.UnsafeString(val)
+
+		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
+			values := strings.Split(v, ",")
+			for i := 0; i < len(values); i++ {
+				data[k] = append(data[k], values[i])
+			}
+		} else {
+			data[k] = append(data[k], v)
+		}
+
+	})
+
+	return c.parseToStruct(reqHeaderTag, out, data)
+}
+
+func (c *Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
+	// Get decoder from pool
+	schemaDecoder := decoderPool.Get().(*schema.Decoder)
+	defer decoderPool.Put(schemaDecoder)
+
+	// Set alias tag
+	schemaDecoder.SetAliasTag(aliasTag)
+
+	return schemaDecoder.Decode(out, data)
 }
 
 func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
@@ -985,6 +1126,89 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 	return nil
 }
 
+// Add vars to default view var map binding to template engine.
+// Variables are read by the Render method and may be overwritten.
+func (c *Ctx) Bind(vars Map) error {
+	// init viewBindMap - lazy map
+	if c.viewBindMap == nil {
+		c.viewBindMap = dictpool.AcquireDict()
+	}
+	for k, v := range vars {
+		c.viewBindMap.Set(k, v)
+	}
+
+	return nil
+}
+
+// getLocationFromRoute get URL location from route using parameters
+func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
+	buf := bytebufferpool.Get()
+	for _, segment := range route.routeParser.segs {
+		for key, val := range params {
+			if segment.IsParam && (key == segment.ParamName || (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))) {
+				_, err := buf.WriteString(utils.ToString(val))
+				if err != nil {
+					return "", err
+				}
+			}
+		}
+		if !segment.IsParam {
+			_, err := buf.WriteString(segment.Const)
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+	location := buf.String()
+	// release buffer
+	bytebufferpool.Put(buf)
+	return location, nil
+}
+
+// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
+func (c *Ctx) GetRouteURL(routeName string, params Map) (string, error) {
+	return c.getLocationFromRoute(c.App().GetRoute(routeName), params)
+}
+
+// RedirectToRoute to the Route registered in the app with appropriate parameters
+// If status is not specified, status defaults to 302 Found.
+// If you want to send queries to route, you must add "queries" key typed as map[string]string to params.
+func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error {
+	location, err := c.getLocationFromRoute(c.App().GetRoute(routeName), params)
+	if err != nil {
+		return err
+	}
+
+	// Check queries
+	if queries, ok := params["queries"].(map[string]string); ok {
+		queryText := bytebufferpool.Get()
+		defer bytebufferpool.Put(queryText)
+
+		i := 1
+		for k, v := range queries {
+			_, _ = queryText.WriteString(k + "=" + v)
+
+			if i != len(queries) {
+				_, _ = queryText.WriteString("&")
+			}
+			i++
+		}
+
+		return c.Redirect(location+"?"+queryText.String(), status...)
+	}
+	return c.Redirect(location, status...)
+}
+
+// RedirectBack to the URL to referer
+// If status is not specified, status defaults to 302 Found.
+func (c *Ctx) RedirectBack(fallback string, status ...int) error {
+	location := c.Get(HeaderReferer)
+	if location == "" {
+		location = fallback
+	}
+	return c.Redirect(location, status...)
+}
+
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
 func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
@@ -993,18 +1217,31 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	if c.app.config.Views != nil {
-		// Render template based on global layout if exists
-		if len(layouts) == 0 && c.app.config.ViewsLayout != "" {
-			layouts = []string{
-				c.app.config.ViewsLayout,
+	// Pass-locals-to-views & bind
+	c.renderExtensions(bind)
+
+	rendered := false
+	for prefix, app := range c.app.appList {
+		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
+			if len(layouts) == 0 && app.config.ViewsLayout != "" {
+				layouts = []string{
+					app.config.ViewsLayout,
+				}
+			}
+
+			// Render template from Views
+			if app.config.Views != nil {
+				if err := app.config.Views.Render(buf, name, bind, layouts...); err != nil {
+					return err
+				}
+
+				rendered = true
+				break
 			}
 		}
-		// Render template from Views
-		if err := c.app.config.Views.Render(buf, name, bind, layouts...); err != nil {
-			return err
-		}
-	} else {
+	}
+
+	if !rendered {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
 		if _, err = readContent(buf, name); err != nil {
@@ -1020,12 +1257,36 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 			return err
 		}
 	}
+
 	// Set Content-Type to text/html
 	c.fasthttp.Response.Header.SetContentType(MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
 	c.fasthttp.Response.SetBody(buf.Bytes())
 	// Return err if exist
 	return err
+}
+
+func (c *Ctx) renderExtensions(bind interface{}) {
+	if bindMap, ok := bind.(Map); ok {
+		// Bind view map
+		if c.viewBindMap != nil {
+			for _, v := range c.viewBindMap.D {
+				bindMap[v.Key] = v.Value
+			}
+		}
+
+		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
+		if c.app.config.PassLocalsToViews {
+			// Loop through each local and set it in the map
+			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
+				// check if bindMap doesn't contain the key
+				if _, ok := bindMap[utils.UnsafeString(key)]; !ok {
+					// Set the key and value in the bindMap
+					bindMap[utils.UnsafeString(key)] = val
+				}
+			})
+		}
+	}
 }
 
 // Route returns the matched Route struct.
@@ -1046,6 +1307,21 @@ func (c *Ctx) Route() *Route {
 // SaveFile saves any multipart file to disk.
 func (c *Ctx) SaveFile(fileheader *multipart.FileHeader, path string) error {
 	return fasthttp.SaveMultipartFile(fileheader, path)
+}
+
+// SaveFileToStorage saves any multipart file to an external storage system.
+func (c *Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
+	file, err := fileheader.Open()
+	if err != nil {
+		return err
+	}
+
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		return err
+	}
+
+	return storage.Set(path, content, 0)
 }
 
 // Secure returns a boolean property, that is true, if a TLS connection is established.
@@ -1074,10 +1350,11 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	// Save the filename, we will need it in the error message if the file isn't found
 	filename := file
 
-	// https://github.com/valyala/fasthttp/blob/master/fs.go#L81
+	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
 	sendFileOnce.Do(func() {
 		sendFileFS = &fasthttp.FS{
-			Root:                 "/",
+			Root:                 "",
+			AllowEmptyRoot:       true,
 			GenerateIndexPages:   false,
 			AcceptByteRange:      true,
 			Compress:             true,
@@ -1095,13 +1372,16 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 	c.pathOriginal = utils.CopyString(c.pathOriginal)
 	// Disable compression
 	if len(compress) == 0 || !compress[0] {
-		// https://github.com/valyala/fasthttp/blob/master/fs.go#L46
+		// https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L55
 		c.fasthttp.Request.Header.Del(HeaderAcceptEncoding)
 	}
-	// https://github.com/valyala/fasthttp/blob/master/fs.go#L85
-	if len(file) == 0 || file[0] != '/' {
-		hasTrailingSlash := len(file) > 0 && file[len(file)-1] == '/'
+	// copy of https://github.com/valyala/fasthttp/blob/7cc6f4c513f9e0d3686142e0a1a5aa2f76b3194a/fs.go#L103-L121 with small adjustments
+	if len(file) == 0 || !filepath.IsAbs(file) {
+		// extend relative path to absolute path
+		hasTrailingSlash := len(file) > 0 && (file[len(file)-1] == '/' || file[len(file)-1] == '\\')
+
 		var err error
+		file = filepath.FromSlash(file)
 		if file, err = filepath.Abs(file); err != nil {
 			return err
 		}
@@ -1109,8 +1389,12 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 			file += "/"
 		}
 	}
+	// convert the path to forward slashes regardless the OS in order to set the URI properly
+	// the handler will convert back to OS path separator before opening the file
+	file = filepath.ToSlash(file)
+
 	// Restore the original requested URL
-	originalURL := c.OriginalURL()
+	originalURL := utils.CopyString(c.OriginalURL())
 	defer c.fasthttp.Request.SetRequestURI(originalURL)
 	// Set new URI for fileHandler
 	c.fasthttp.Request.SetRequestURI(file)
@@ -1238,6 +1522,11 @@ func (c *Ctx) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Writef appends f & a into response body writer.
+func (c *Ctx) Writef(f string, a ...interface{}) (int, error) {
+	return fmt.Fprintf(c.fasthttp.Response.BodyWriter(), f, a...)
+}
+
 // WriteString appends s to response body.
 func (c *Ctx) WriteString(s string) (int, error) {
 	c.fasthttp.Response.AppendBodyString(s)
@@ -1286,6 +1575,36 @@ func (c *Ctx) IsProxyTrusted() bool {
 		return true
 	}
 
-	_, trustProxy := c.app.config.trustedProxiesMap[c.fasthttp.RemoteIP().String()]
-	return trustProxy
+	_, trusted := c.app.config.trustedProxiesMap[c.fasthttp.RemoteIP().String()]
+	if trusted {
+		return trusted
+	}
+
+	for _, ipNet := range c.app.config.trustedProxyRanges {
+		if ipNet.Contains(c.fasthttp.RemoteIP()) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// IsLocalHost will return true if address is a localhost address.
+func (c *Ctx) isLocalHost(address string) bool {
+	localHosts := []string{"127.0.0.1", "0.0.0.0", "::1"}
+	for _, h := range localHosts {
+		if strings.Contains(address, h) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsFromLocal will return true if request came from local.
+func (c *Ctx) IsFromLocal() bool {
+	ips := c.IPs()
+	if len(ips) == 0 {
+		ips = append(ips, c.IP())
+	}
+	return c.isLocalHost(ips[0])
 }

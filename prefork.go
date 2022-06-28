@@ -79,7 +79,7 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 	// launch child procs
 	for i := 0; i < max; i++ {
 		/* #nosec G204 */
-		cmd := exec.Command(os.Args[0], os.Args[1:]...)
+		cmd := exec.Command(os.Args[0], os.Args[1:]...) // #nosec G204
 		if testPreforkMaster {
 			// When test prefork master,
 			// just start the child process with a dummy cmd,

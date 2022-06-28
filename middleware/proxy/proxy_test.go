@@ -122,6 +122,40 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	utils.AssertEqual(t, "tls balancer", body)
 }
 
+// go test -run Test_Proxy_Forward_WithTlsConfig_To_Http
+func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
+	t.Parallel()
+
+	_, targetAddr := createProxyTestServer(func(c *fiber.Ctx) error {
+		return c.SendString("hello from target")
+	}, t)
+
+	proxyServerTLSConf, _, err := tlstest.GetTLSConfigs()
+	utils.AssertEqual(t, nil, err)
+
+	proxyServerLn, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
+	proxyServerLn = tls.NewListener(proxyServerLn, proxyServerTLSConf)
+
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+
+	proxyAddr := proxyServerLn.Addr().String()
+
+	app.Use(Forward("http://" + targetAddr))
+
+	go func() { utils.AssertEqual(t, nil, app.Listener(proxyServerLn)) }()
+
+	code, body, errs := fiber.Get("https://" + proxyAddr).
+		InsecureSkipVerify().
+		Timeout(5 * time.Second).
+		String()
+
+	utils.AssertEqual(t, 0, len(errs))
+	utils.AssertEqual(t, fiber.StatusOK, code)
+	utils.AssertEqual(t, "hello from target", body)
+}
+
 // go test -run Test_Proxy_Forward
 func Test_Proxy_Forward(t *testing.T) {
 	t.Parallel()
@@ -304,4 +338,27 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// go test -race -run Test_Proxy_Do_RestoreOriginalURL
+func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/proxy", func(c *fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+	app.Get("/test", func(c *fiber.Ctx) error {
+		originalURL := utils.CopyString(c.OriginalURL())
+		if err := Do(c, "/proxy"); err != nil {
+			return err
+		}
+		utils.AssertEqual(t, originalURL, c.OriginalURL())
+		return c.SendString("ok")
+	})
+	_, err1 := app.Test(httptest.NewRequest("GET", "/test", nil))
+	// This test requires multiple requests due to zero allocation used in fiber
+	_, err2 := app.Test(httptest.NewRequest("GET", "/test", nil))
+
+	utils.AssertEqual(t, nil, err1)
+	utils.AssertEqual(t, nil, err2)
 }
