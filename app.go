@@ -32,6 +32,7 @@ import (
 
 	"encoding/json"
 
+	"github.com/dgrr/http2"
 	"github.com/gofiber/fiber/v2/internal/colorable"
 	"github.com/gofiber/fiber/v2/internal/isatty"
 	"github.com/gofiber/fiber/v2/utils"
@@ -338,6 +339,12 @@ type Config struct {
 	// Default: NetworkTCP4
 	Network string
 
+	// Known protocols are "ProtoV1", "ProtoV2"
+	// WARNING: ProtoV2 (http2) only will work with TLS.
+	//
+	// Default: ProtoV1
+	HttpProtocolVersion int
+
 	// If you find yourself behind some sort of proxy, like a load balancer,
 	// then certain header information may be sent to you using special X-Forwarded-* headers or the Forwarded header.
 	// For example, the Host HTTP header is usually used to return the requested host.
@@ -430,6 +437,12 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
+// Values for app configurator to specify http protocol
+const (
+	ProtoV1 = 1
+	ProtoV2 = 2
+)
+
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
@@ -514,6 +527,9 @@ func New(config ...Config) *App {
 	}
 	if app.config.Network == "" {
 		app.config.Network = NetworkTCP4
+	}
+	if app.config.HttpProtocolVersion == 0 {
+		app.config.HttpProtocolVersion = ProtoV1
 	}
 
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
@@ -801,6 +817,11 @@ func (app *App) Listen(addr string) error {
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+	if app.config.HttpProtocolVersion == ProtoV2 {
+		if !IsChild() {
+			fmt.Println("[Warning] ProtoV2 should be used with 'ListenTLS' or 'ListenMutualTLS'")
+		}
+	}
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -841,6 +862,10 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
+	}
+	// Configuring http protocol
+	if app.config.HttpProtocolVersion == ProtoV2 {
+		http2.ConfigureServer(app.server, http2.ServerConfig{})
 	}
 	// Start listening
 	return app.server.ServeTLS(ln, certFile, keyFile)
@@ -898,6 +923,11 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
+	}
+
+	// Configuring http protocol
+	if app.config.HttpProtocolVersion == ProtoV2 {
+		http2.ConfigureServer(app.server, http2.ServerConfig{})
 	}
 
 	// Start listening

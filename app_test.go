@@ -1247,6 +1247,33 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
+func Test_App_Http_Proto_Config(t *testing.T) {
+	app := New(Config{
+		HttpProtocolVersion: ProtoV1,
+	})
+
+	go func() {
+		time.Sleep(time.Millisecond * 500)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	app.Get("/", func(c *Ctx) error {
+		return c.Status(200).Send([]byte("Hi there"))
+	})
+
+	if err := app.ListenTLS(":8080", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"); err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	// ProtoV2 test case yet omited, as the cliend yet not configured to support http2
+	// In order to check HTTP/2 - run the server with ProtoV2 and connect with any modern webbrowser
+	utils.AssertEqual(t, "HTTP/1.1", resp.Proto, "Protocol name")
+}
+
 // go test -v -run=^$ -bench=Benchmark_AcquireCtx -benchmem -count=4
 func Benchmark_AcquireCtx(b *testing.B) {
 	app := New()
