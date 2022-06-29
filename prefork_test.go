@@ -65,6 +65,8 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 
 	err := app.prefork("127.0.0.1:", nil, startConfigDefault())
 	utils.AssertEqual(t, false, err == nil)
+
+	dummyChildCmd = "go"
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {

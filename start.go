@@ -108,12 +108,12 @@ func startConfigDefault(config ...StartConfig) StartConfig {
 	return cfg
 }
 
-// Listen serves HTTP requests from the given addr.
+// Start serves HTTP requests from the given addr.
 // You should enter custom StartConfig to customize startup. (TLS, mTLS, prefork...)
 //
-//  app.Listen(":8080")
-//  app.Listen("127.0.0.1:8080")
-//  app.Listen(":8080", StartConfig{EnablePrefork: true})
+//  app.Start(":8080")
+//  app.Start("127.0.0.1:8080")
+//  app.Start(":8080", StartConfig{EnablePrefork: true})
 func (app *App) Start(addr any, config ...StartConfig) error {
 	cfg := startConfigDefault(config...)
 

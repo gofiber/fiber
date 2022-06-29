@@ -97,6 +97,7 @@ func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg StartConfig) (er
 		cmd.Env = append(os.Environ(),
 			fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
 		)
+
 		if err = cmd.Start(); err != nil {
 			return fmt.Errorf("failed to start a child prefork process, error: %v", err)
 		}
