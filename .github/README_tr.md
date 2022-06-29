@@ -92,7 +92,7 @@ import "github.com/gofiber/fiber/v2"
 func main() {
     app := fiber.New()
 
-    app.Get("/", func(c *fiber.Ctx) error {
+    app.Get("/", func(c fiber.Ctx) error {
         return c.SendString("Hello, World 👋!")
     })
 
@@ -157,31 +157,31 @@ func main() {
     app := fiber.New()
 
     // GET /api/kayit
-    app.Get("/api/*", func(c *fiber.Ctx) error {
+    app.Get("/api/*", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("✋ %s", c.Params("*"))
         return c.SendString(msg) // => ✋ kayit
     })
 
     // GET /flights/IST-ESB
-    app.Get("/flights/:kalkis-:inis", func(c *fiber.Ctx) error {
+    app.Get("/flights/:kalkis-:inis", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("💸 Kalkış: %s, İniş: %s", c.Params("kalkis"), c.Params("inis"))
         return c.SendString(msg) // => 💸 Kalkış: IST, İniş: ESB
     })
 
     // GET /sozluk.txt
-    app.Get("/:file.:ext", func(c *fiber.Ctx) error {
+    app.Get("/:file.:ext", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
         return c.SendString(msg) // => 📃 sozluk.txt
     })
 
     // GET /muhittin/75
-    app.Get("/:isim/:yas/:cinsiyet?", func(c *fiber.Ctx) error {
+    app.Get("/:isim/:yas/:cinsiyet?", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("👴 %s %s yaşında", c.Params("isim"), c.Params("yas"))
         return c.SendString(msg) // => 👴 muhittin 75 yaşında
     })
 
     // GET /muhittin
-    app.Get("/:isim", func(c *fiber.Ctx) error {
+    app.Get("/:isim", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("Merhaba, %s 👋!", c.Params("isim"))
         return c.SendString(msg) // => Merhaba Muhittin 👋!
     })
@@ -198,7 +198,7 @@ func main() {
     app := fiber.New()
 
     // GET /api/register
-    app.Get("/api/*", func(c *fiber.Ctx) error {
+    app.Get("/api/*", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("✋ %s", c.Params("*"))
         return c.SendString(msg) // => ✋ kayit
     }).Name("api")
@@ -250,19 +250,19 @@ func main() {
 	app := fiber.New()
 
 	// Bütün routelara etki eder.
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		fmt.Println("🥇 İlk handler")
 		return c.Next()
 	})
 	
 	// /api ile başlayan bütün routelara etki eder.
-	app.Use("/api", func(c *fiber.Ctx) error {
+	app.Use("/api", func(c fiber.Ctx) error {
 		fmt.Println("🥈 İkinci handler")
 		return c.Next()
 	})
 
 	// GET /api/register
-	app.Get("/api/list", func(c *fiber.Ctx) error {
+	app.Get("/api/list", func(c fiber.Ctx) error {
 		fmt.Println("🥉 Son handler")
 		return c.SendString("Merhaba, Dünya 👋!")
 	})
@@ -302,7 +302,7 @@ func main() {
     })
 
     // Ve şimdi `./views/home.pug` templateni şu şekilde çağırabilirsiniz:
-    app.Get("/", func(c *fiber.Ctx) error {
+    app.Get("/", func(c fiber.Ctx) error {
         return c.Render("home", fiber.Map{
             "title": "Homepage",
             "year":  1999,
@@ -318,12 +318,12 @@ func main() {
 📖 [Group](https://docs.gofiber.io/api/app#group)
 
 ```go
-func middleware(c *fiber.Ctx) error {
+func middleware(c fiber.Ctx) error {
     fmt.Println("Beni umursama!")
     return c.Next()
 }
 
-func handler(c *fiber.Ctx) error {
+func handler(c fiber.Ctx) error {
     return c.SendString(c.Path())
 }
 
@@ -411,16 +411,16 @@ func main() {
 
     app.Static("/", "./public")
 
-    app.Get("/demo", func(c *fiber.Ctx) error {
+    app.Get("/demo", func(c fiber.Ctx) error {
         return c.SendString("Bu bir demodur!")
     })
 
-    app.Post("/register", func(c *fiber.Ctx) error {
+    app.Post("/register", func(c fiber.Ctx) error {
         return c.SendString("Hoşgeldiniz!")
     })
 
     // Hiçbir endpointle eşleşmezse gideceği middleware ve yanıtı.
-    app.Use(func(c *fiber.Ctx) error {
+    app.Use(func(c fiber.Ctx) error {
         return c.SendStatus(404)
         // => 404 "Sayfa bulunamadı"
     })
@@ -442,12 +442,12 @@ type User struct {
 func main() {
     app := fiber.New()
 
-    app.Get("/user", func(c *fiber.Ctx) error {
+    app.Get("/user", func(c fiber.Ctx) error {
         return c.JSON(&User{"Muhittin Topalak", 20})
         // => {"Isim":"Muhittin Topalak", "Yas":20}
     })
 
-    app.Get("/json", func(c *fiber.Ctx) error {
+    app.Get("/json", func(c fiber.Ctx) error {
         return c.JSON(fiber.Map{
             "success": true,
             "mesaj": "Merhaba Muhittin Topalak!",
@@ -506,7 +506,7 @@ import (
 func main() {
   app := fiber.New()
 
-  app.Get("/sse", func(c *fiber.Ctx) error {
+  app.Get("/sse", func(c fiber.Ctx) error {
     c.Set("Content-Type", "text/event-stream")
     c.Set("Cache-Control", "no-cache")
     c.Set("Connection", "keep-alive")
@@ -549,7 +549,7 @@ func main() {
 
     app.Use(recover.New())
 
-    app.Get("/", func(c *fiber.Ctx) error {
+    app.Get("/", func(c fiber.Ctx) error {
         panic("normalde bu uygulamanızı çökertir.")
     })
 

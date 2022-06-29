@@ -49,15 +49,15 @@ app.Use(limiter.New())
 ```go
 // Or extend your config for customization
 app.Use(limiter.New(limiter.Config{
-	Next: func(c *fiber.Ctx) bool {
+	Next: func(c fiber.Ctx) bool {
 		return c.IP() == "127.0.0.1"
 	},
 	Max:          20,
 	Expiration:     30 * time.Second,
-	KeyGenerator: func(c *fiber.Ctx) string{
+	KeyGenerator: func(c fiber.Ctx) string{
   		return "key"
 	}
-	LimitReached: func(c *fiber.Ctx) error {
+	LimitReached: func(c fiber.Ctx) error {
 		return c.SendFile("./toofast.html")
 	},
 	Storage: myCustomStore{}
@@ -83,7 +83,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Max number of recent connections during `Duration` seconds before sending a 429 response
 	//
@@ -92,7 +92,7 @@ type Config struct {
 
 	// KeyGenerator allows you to generate custom keys, by default c.IP() is used
 	//
-	// Default: func(c *fiber.Ctx) string {
+	// Default: func(c fiber.Ctx) string {
 	//   return c.IP()
 	// }
 	KeyGenerator func(*fiber.Ctx) string
@@ -104,7 +104,7 @@ type Config struct {
 
 	// LimitReached is called when a request hits the limit
 	//
-	// Default: func(c *fiber.Ctx) error {
+	// Default: func(c fiber.Ctx) error {
 	//   return c.SendStatus(fiber.StatusTooManyRequests)
 	// }
 	LimitReached fiber.Handler
@@ -134,10 +134,10 @@ A custom store can be used if it implements the `Storage` interface - more detai
 var ConfigDefault = Config{
 	Max:        5,
 	Expiration: 1 * time.Minute,
-	KeyGenerator: func(c *fiber.Ctx) string {
+	KeyGenerator: func(c fiber.Ctx) string {
 		return c.IP()
 	},
-	LimitReached: func(c *fiber.Ctx) error {
+	LimitReached: func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTooManyRequests)
 	},
 	SkipFailedRequests: false,

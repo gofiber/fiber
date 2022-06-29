@@ -93,7 +93,7 @@ import "github.com/gofiber/fiber/v2"
 func main() {
     app := fiber.New()
 
-    app.Get("/", func(c *fiber.Ctx) error {
+    app.Get("/", func(c fiber.Ctx) error {
         return c.SendString("Hello, World 👋!")
     })
 
@@ -161,31 +161,31 @@ func main() {
     app := fiber.New()
 
     // GET /api/register
-    app.Get("/api/*", func(c *fiber.Ctx) error {
+    app.Get("/api/*", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("✋ %s", c.Params("*"))
         return c.SendString(msg) // => ✋ register
     })
 
     // GET /flights/LAX-SFO
-    app.Get("/flights/:from-:to", func(c *fiber.Ctx) error {
+    app.Get("/flights/:from-:to", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("💸 From: %s, To: %s", c.Params("from"), c.Params("to"))
         return c.SendString(msg) // => 💸 From: LAX, To: SFO
     })
 
     // GET /dictionary.txt
-    app.Get("/:file.:ext", func(c *fiber.Ctx) error {
+    app.Get("/:file.:ext", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("📃 %s.%s", c.Params("file"), c.Params("ext"))
         return c.SendString(msg) // => 📃 dictionary.txt
     })
 
     // GET /john/75
-    app.Get("/:name/:age/:gender?", func(c *fiber.Ctx) error {
+    app.Get("/:name/:age/:gender?", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("👴 %s is %s years old", c.Params("name"), c.Params("age"))
         return c.SendString(msg) // => 👴 john is 75 years old
     })
 
     // GET /john
-    app.Get("/:name", func(c *fiber.Ctx) error {
+    app.Get("/:name", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("Hello, %s 👋!", c.Params("name"))
         return c.SendString(msg) // => Hello john 👋!
     })
@@ -202,7 +202,7 @@ func main() {
     app := fiber.New()
 
     // GET /api/register
-    app.Get("/api/*", func(c *fiber.Ctx) error {
+    app.Get("/api/*", func(c fiber.Ctx) error {
         msg := fmt.Sprintf("✋ %s", c.Params("*"))
         return c.SendString(msg) // => ✋ register
     }).Name("api")
@@ -254,19 +254,19 @@ func main() {
 	app := fiber.New()
 
 	// Match any route
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		fmt.Println("🥇 First handler")
 		return c.Next()
 	})
 
 	// Match all routes starting with /api
-	app.Use("/api", func(c *fiber.Ctx) error {
+	app.Use("/api", func(c fiber.Ctx) error {
 		fmt.Println("🥈 Second handler")
 		return c.Next()
 	})
 
 	// GET /api/register
-	app.Get("/api/list", func(c *fiber.Ctx) error {
+	app.Get("/api/list", func(c fiber.Ctx) error {
 		fmt.Println("🥉 Last handler")
 		return c.SendString("Hello, World 👋!")
 	})
@@ -306,7 +306,7 @@ func main() {
     })
 
     // And now, you can call template `./views/home.pug` like this:
-    app.Get("/", func(c *fiber.Ctx) error {
+    app.Get("/", func(c fiber.Ctx) error {
         return c.Render("home", fiber.Map{
             "title": "Homepage",
             "year":  1999,
@@ -322,12 +322,12 @@ func main() {
 📖 [Group](https://docs.gofiber.io/api/app#group)
 
 ```go
-func middleware(c *fiber.Ctx) error {
+func middleware(c fiber.Ctx) error {
     fmt.Println("Don't mind me!")
     return c.Next()
 }
 
-func handler(c *fiber.Ctx) error {
+func handler(c fiber.Ctx) error {
     return c.SendString(c.Path())
 }
 
@@ -416,16 +416,16 @@ func main() {
 
     app.Static("/", "./public")
 
-    app.Get("/demo", func(c *fiber.Ctx) error {
+    app.Get("/demo", func(c fiber.Ctx) error {
         return c.SendString("This is a demo!")
     })
 
-    app.Post("/register", func(c *fiber.Ctx) error {
+    app.Post("/register", func(c fiber.Ctx) error {
         return c.SendString("Welcome!")
     })
 
     // Last middleware to match anything
-    app.Use(func(c *fiber.Ctx) error {
+    app.Use(func(c fiber.Ctx) error {
         return c.SendStatus(404)
         // => 404 "Not Found"
     })
@@ -447,12 +447,12 @@ type User struct {
 func main() {
     app := fiber.New()
 
-    app.Get("/user", func(c *fiber.Ctx) error {
+    app.Get("/user", func(c fiber.Ctx) error {
         return c.JSON(&User{"John", 20})
         // => {"name":"John", "age":20}
     })
 
-    app.Get("/json", func(c *fiber.Ctx) error {
+    app.Get("/json", func(c fiber.Ctx) error {
         return c.JSON(fiber.Map{
             "success": true,
             "message": "Hi John!",
@@ -511,7 +511,7 @@ import (
 func main() {
   app := fiber.New()
 
-  app.Get("/sse", func(c *fiber.Ctx) error {
+  app.Get("/sse", func(c fiber.Ctx) error {
     c.Set("Content-Type", "text/event-stream")
     c.Set("Cache-Control", "no-cache")
     c.Set("Connection", "keep-alive")
@@ -554,7 +554,7 @@ func main() {
 
     app.Use(recover.New())
 
-    app.Get("/", func(c *fiber.Ctx) error {
+    app.Get("/", func(c fiber.Ctx) error {
         panic("normally this would crash your app")
     })
 

@@ -19,7 +19,7 @@ var (
 type Config struct {
 	// Filter defines a function to skip middleware.
 	// Optional. Default: nil
-	Filter func(*fiber.Ctx) bool
+	Filter func(fiber.Ctx) bool
 
 	// SuccessHandler defines a function which is executed for a valid key.
 	// Optional. Default: nil
@@ -47,7 +47,7 @@ type Config struct {
 
 	// Validator is a function to validate key.
 	// Optional. Default: nil
-	Validator func(*fiber.Ctx, string) (bool, error)
+	Validator func(fiber.Ctx, string) (bool, error)
 
 	// Context key to store the bearertoken from the token into context.
 	// Optional. Default: "token".
@@ -63,12 +63,12 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	if cfg.SuccessHandler == nil {
-		cfg.SuccessHandler = func(c *fiber.Ctx) error {
+		cfg.SuccessHandler = func(c fiber.Ctx) error {
 			return c.Next()
 		}
 	}
 	if cfg.ErrorHandler == nil {
-		cfg.ErrorHandler = func(c *fiber.Ctx, err error) error {
+		cfg.ErrorHandler = func(c fiber.Ctx, err error) error {
 			if err == ErrMissingOrMalformedAPIKey {
 				return c.Status(fiber.StatusBadRequest).SendString(err.Error())
 			}
@@ -83,7 +83,7 @@ func New(config ...Config) fiber.Handler {
 		}
 	}
 	if cfg.Validator == nil {
-		cfg.Validator = func(c *fiber.Ctx, t string) (bool, error) {
+		cfg.Validator = func(c fiber.Ctx, t string) (bool, error) {
 			return true, nil
 		}
 	}
@@ -106,7 +106,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Return middleware handler
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// Filter request to skip middleware
 		if cfg.Filter != nil && cfg.Filter(c) {
 			return c.Next()
@@ -129,8 +129,8 @@ func New(config ...Config) fiber.Handler {
 }
 
 // keyFromHeader returns a function that extracts api key from the request header.
-func keyFromHeader(header string, authScheme string) func(c *fiber.Ctx) (string, error) {
-	return func(c *fiber.Ctx) (string, error) {
+func keyFromHeader(header string, authScheme string) func(c fiber.Ctx) (string, error) {
+	return func(c fiber.Ctx) (string, error) {
 		auth := c.Get(header)
 		l := len(authScheme)
 		if len(auth) > 0 && l == 0 {
@@ -144,8 +144,8 @@ func keyFromHeader(header string, authScheme string) func(c *fiber.Ctx) (string,
 }
 
 // keyFromQuery returns a function that extracts api key from the query string.
-func keyFromQuery(param string) func(c *fiber.Ctx) (string, error) {
-	return func(c *fiber.Ctx) (string, error) {
+func keyFromQuery(param string) func(c fiber.Ctx) (string, error) {
+	return func(c fiber.Ctx) (string, error) {
 		key := c.Query(param)
 		if key == "" {
 			return "", ErrMissingOrMalformedAPIKey
@@ -155,8 +155,8 @@ func keyFromQuery(param string) func(c *fiber.Ctx) (string, error) {
 }
 
 // keyFromForm returns a function that extracts api key from the form.
-func keyFromForm(param string) func(c *fiber.Ctx) (string, error) {
-	return func(c *fiber.Ctx) (string, error) {
+func keyFromForm(param string) func(c fiber.Ctx) (string, error) {
+	return func(c fiber.Ctx) (string, error) {
 		key := c.FormValue(param)
 		if key == "" {
 			return "", ErrMissingOrMalformedAPIKey
@@ -166,8 +166,8 @@ func keyFromForm(param string) func(c *fiber.Ctx) (string, error) {
 }
 
 // keyFromParam returns a function that extracts api key from the url param string.
-func keyFromParam(param string) func(c *fiber.Ctx) (string, error) {
-	return func(c *fiber.Ctx) (string, error) {
+func keyFromParam(param string) func(c fiber.Ctx) (string, error) {
+	return func(c fiber.Ctx) (string, error) {
 		key := c.Params(param)
 		if key == "" {
 			return "", ErrMissingOrMalformedAPIKey
@@ -177,8 +177,8 @@ func keyFromParam(param string) func(c *fiber.Ctx) (string, error) {
 }
 
 // keyFromCookie returns a function that extracts api key from the named cookie.
-func keyFromCookie(name string) func(c *fiber.Ctx) (string, error) {
-	return func(c *fiber.Ctx) (string, error) {
+func keyFromCookie(name string) func(c fiber.Ctx) (string, error) {
+	return func(c fiber.Ctx) (string, error) {
 		key := c.Cookies(name)
 		if key == "" {
 			return "", ErrMissingOrMalformedAPIKey

@@ -1482,8 +1482,7 @@ func Test_Ctx_Path(t *testing.T) {
 func Test_Ctx_Protocol(t *testing.T) {
 	app := New()
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	utils.AssertEqual(t, "HTTP/1.1", c.Protocol())
 
@@ -1495,8 +1494,7 @@ func Test_Ctx_Protocol(t *testing.T) {
 func Benchmark_Ctx_Protocol(b *testing.B) {
 	app := New()
 
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
+	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	var res string
 	b.ReportAllocs()

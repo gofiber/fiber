@@ -39,12 +39,12 @@ app.Use(encryptcookie.New(encryptcookie.Config{
 }))
 
 // Get / reading out the encrypted cookie
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("value=" + c.Cookies("test"))
 })
 
 // Post / create the encrypted cookie
-app.Post("/", func(c *fiber.Ctx) error {
+app.Post("/", func(c fiber.Ctx) error {
     c.Cookie(&fiber.Cookie{
         Name:  "test",
         Value: "SomeThing",
@@ -60,7 +60,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Array of cookie keys that should not be encrypted.
 	//

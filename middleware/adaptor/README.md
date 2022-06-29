@@ -112,7 +112,7 @@ func main() {
 	http.ListenAndServe(":3000", nil)
 }
 
-func greet(c *fiber.Ctx) error {
+func greet(c fiber.Ctx) error {
 	return c.SendString("Hello World!")
 }
 ```
@@ -135,7 +135,7 @@ func main() {
 	http.ListenAndServe(":3000", adaptor.FiberApp(app))
 }
 
-func greet(c *fiber.Ctx) error {
+func greet(c fiber.Ctx) error {
 	return c.SendString("Hello World!")
 }
 ```

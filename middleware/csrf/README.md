@@ -71,7 +71,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// KeyLookup is a string in the form of "<source>:<key>" that is used
 	// to extract token from the request.

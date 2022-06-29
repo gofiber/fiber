@@ -221,8 +221,11 @@ type Ctx interface {
 	// Optionally, you could override the path.
 	Path(override ...string) string
 
-	// Protocol contains the request protocol string: http or https for TLS requests.
+	// Scheme contains the request scheme string: http or https for TLS requests.
 	// Use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+	Scheme() string
+
+	// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
 	Protocol() string
 
 	// Query returns the query string parameter in the url.

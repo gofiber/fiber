@@ -20,7 +20,7 @@ _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) pa
 ```go
 func New(config ...Config) *Store
 func (s *Store) RegisterType(i interface{})
-func (s *Store) Get(c *fiber.Ctx) (*Session, error)
+func (s *Store) Get(c fiber.Ctx) (*Session, error)
 func (s *Store) Reset() error
 
 func (s *Session) Get(key string) interface{}
@@ -56,7 +56,7 @@ Then create a Fiber app with `app := fiber.New()`.
 store := session.New()
 
 // This panic will be catch by the middleware
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
 	// Get session from storage
 	sess, err := store.Get(c)
 	if err != nil {
