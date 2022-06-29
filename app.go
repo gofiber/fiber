@@ -9,6 +9,7 @@ package fiber
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -85,8 +86,8 @@ type ErrorHandler = func(Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
+	Code    int `json:"code"`
+	Message any `json:"message"`
 }
 
 // App denotes the Fiber application.
@@ -341,11 +342,11 @@ type Config struct {
 	// If you enable EnableTrustedProxyCheck and leave TrustedProxies empty Fiber will skip
 	// all headers that could be spoofed.
 	// If request ip in TrustedProxies whitelist then:
-	//   1. c.Protocol() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
+	//   1. c.Scheme() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
 	//   2. c.IP() get value from ProxyHeader header.
 	//   3. c.Hostname() get value from X-Forwarded-Host header
 	// But if request ip NOT in Trusted Proxies whitelist then:
-	//   1. c.Protocol() WON't get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
+	//   1. c.Scheme() WON't get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
 	//    will return https in case when tls connection is handled by the app, of http otherwise
 	//   2. c.IP() WON'T get value from ProxyHeader header, will return RemoteIP() from fasthttp context
 	//   3. c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
@@ -736,19 +737,25 @@ func (app *App) Route(prefix string, fn func(router Router), name ...string) Rou
 
 // Error makes it compatible with the `error` interface.
 func (e *Error) Error() string {
-	return e.Message
+	return fmt.Sprint(e.Message)
 }
 
-// NewError creates a new Error instance with an optional message
-func NewError(code int, message ...string) *Error {
-	err := &Error{
+// NewErrors creates multiple/single new Error instances.
+// If you want to pass single message, you have to pass 1 message.
+// To pass multiple error messages, you have to pass +2 messages.
+func NewErrors(code int, messages ...any) *Error {
+	e := &Error{
 		Code:    code,
 		Message: utils.StatusMessage(code),
 	}
-	if len(message) > 0 {
-		err.Message = message[0]
+
+	if len(messages) == 1 {
+		e.Message = messages[0]
+	} else if len(messages) > 1 {
+		e.Message = messages
 	}
-	return err
+
+	return e
 }
 
 // Listener can be used to pass a custom listener.
@@ -969,6 +976,11 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	if err != nil {
 		return nil, err
 	}
+
+	// adding back the query from URL, since dump cleans it
+	dumps := bytes.Split(dump, []byte(" "))
+	dumps[1] = []byte(req.URL.String())
+	dump = bytes.Join(dumps, []byte(" "))
 
 	// Create test connection
 	conn := new(testConn)

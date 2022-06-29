@@ -223,7 +223,7 @@ func (c *DefaultCtx) BaseURL() string {
 	if c.baseURI != "" {
 		return c.baseURI
 	}
-	c.baseURI = c.Protocol() + "://" + c.Hostname()
+	c.baseURI = c.Scheme() + "://" + c.Hostname()
 	return c.baseURI
 }
 
@@ -850,9 +850,9 @@ func (c *DefaultCtx) Path(override ...string) string {
 	return c.path
 }
 
-// Protocol contains the request protocol string: http or https for TLS requests.
+// Scheme contains the request scheme string: http or https for TLS requests.
 // Use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
-func (c *DefaultCtx) Protocol() string {
+func (c *DefaultCtx) Scheme() string {
 	if c.fasthttp.IsTLS() {
 		return "https"
 	}
@@ -876,6 +876,11 @@ func (c *DefaultCtx) Protocol() string {
 		}
 	})
 	return scheme
+}
+
+// Protocol returns the HTTP protocol of request: HTTP/1.1 and HTTP/2.
+func (c *DefaultCtx) Protocol() string {
+	return utils.UnsafeString(c.fasthttp.Request.Header.Protocol())
 }
 
 // Query returns the query string parameter in the url.
@@ -1370,7 +1375,7 @@ func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
 	}
 	// Check for error
 	if status != StatusNotFound && fsStatus == StatusNotFound {
-		return NewError(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
+		return NewErrors(StatusNotFound, fmt.Sprintf("sendfile: file %s not found", filename))
 	}
 	return nil
 }

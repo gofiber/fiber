@@ -24,6 +24,7 @@ const (
 	TagTime              = "time"
 	TagReferer           = "referer"
 	TagProtocol          = "protocol"
+	TagScheme            = "scheme"
 	TagPort              = "port"
 	TagIP                = "ip"
 	TagIPs               = "ips"
@@ -42,21 +43,21 @@ const (
 	TagBytesReceived     = "bytesReceived"
 	TagRoute             = "route"
 	TagError             = "error"
-	TagReqHeader  = "reqHeader:"
-	TagRespHeader = "respHeader:"
-	TagLocals     = "locals:"
-	TagQuery      = "query:"
-	TagForm       = "form:"
-	TagCookie     = "cookie:"
-	TagBlack      = "black"
-	TagRed        = "red"
-	TagGreen      = "green"
-	TagYellow     = "yellow"
-	TagBlue       = "blue"
-	TagMagenta    = "magenta"
-	TagCyan       = "cyan"
-	TagWhite      = "white"
-	TagReset      = "reset"
+	TagReqHeader         = "reqHeader:"
+	TagRespHeader        = "respHeader:"
+	TagLocals            = "locals:"
+	TagQuery             = "query:"
+	TagForm              = "form:"
+	TagCookie            = "cookie:"
+	TagBlack             = "black"
+	TagRed               = "red"
+	TagGreen             = "green"
+	TagYellow            = "yellow"
+	TagBlue              = "blue"
+	TagMagenta           = "magenta"
+	TagCyan              = "cyan"
+	TagWhite             = "white"
+	TagReset             = "reset"
 )
 
 // Color values
@@ -210,6 +211,8 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(c.Get(fiber.HeaderReferer))
 			case TagProtocol:
 				return buf.WriteString(c.Protocol())
+			case TagScheme:
+				return buf.WriteString(c.Scheme())
 			case TagPid:
 				return buf.WriteString(pid)
 			case TagPort:
