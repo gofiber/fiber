@@ -590,7 +590,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	var res bool
 	var err error
 
-	c := app.NewCtx(request).(*ctx)
+	c := app.NewCtx(request).(*DefaultCtx)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -771,7 +771,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 			ctx := app.NewCtx(c)
-			match, err = app.next(ctx)
+			match, err = app.next(ctx.(CustomCtx))
 		}
 		utils.AssertEqual(b, nil, err)
 		utils.AssertEqual(b, true, match)

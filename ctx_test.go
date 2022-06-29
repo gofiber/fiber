@@ -75,6 +75,36 @@ func Benchmark_Ctx_Accepts(b *testing.B) {
 	utils.AssertEqual(b, ".xml", res)
 }
 
+type customCtx struct {
+	DefaultCtx
+}
+
+func (c *customCtx) Params(key string, defaultValue ...string) string {
+	return "prefix_" + c.DefaultCtx.Params(key)
+}
+
+// go test -run Test_Ctx_CustomCtx
+func Test_Ctx_CustomCtx(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+
+	app.NewCtxFunc(func(app *App) CustomCtx {
+		return &customCtx{
+			DefaultCtx: *NewDefaultCtx(app),
+		}
+	})
+
+	app.Get("/:id", func(c Ctx) error {
+		return c.SendString(c.Params("id"))
+	})
+	resp, err := app.Test(httptest.NewRequest("GET", "/v3", &bytes.Buffer{}))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "io.ReadAll(resp.Body)")
+	utils.AssertEqual(t, "prefix_v3", string(body))
+}
+
 // go test -run Test_Ctx_Accepts_EmptyAccept
 func Test_Ctx_Accepts_EmptyAccept(t *testing.T) {
 	t.Parallel()
@@ -1376,7 +1406,7 @@ func Test_Ctx_AllParams(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=4
 func Benchmark_Ctx_Params(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*ctx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	c.route = &Route{
 		Params: []string{
@@ -1401,7 +1431,7 @@ func Benchmark_Ctx_Params(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_AllParams -benchmem -count=4
 func Benchmark_Ctx_AllParams(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*ctx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	c.route = &Route{
 		Params: []string{
@@ -2701,7 +2731,7 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Get_Location_From_Route -benchmem -count=4
 func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*ctx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	app.Get("/user/:name", func(c Ctx) error {
 		return c.SendString(c.Params("name"))

@@ -96,62 +96,65 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) (ma
 	return false
 }
 
-func (app *App) next(c Ctx) (match bool, err error) {
-	ctx := c.(*ctx)
+func (app *App) next(c CustomCtx) (match bool, err error) {
 	// Get stack length
-	tree, ok := app.treeStack[ctx.methodINT][ctx.treePath]
+	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
 	if !ok {
-		tree = app.treeStack[ctx.methodINT][""]
+		tree = app.treeStack[c.getMethodINT()][""]
 	}
 	lenr := len(tree) - 1
 
 	// Loop over the route stack starting from previous index
-	for ctx.indexRoute < lenr {
+	for c.getIndexRoute() < lenr {
 		// Increment route index
-		ctx.indexRoute++
+		c.setIndexRoute(c.getIndexRoute() + 1)
 
 		// Get *Route
-		route := tree[ctx.indexRoute]
+		route := tree[c.getIndexRoute()]
 
 		// Check if it matches the request path
-		match = route.match(ctx.detectionPath, ctx.path, &ctx.values)
+		match = route.match(c.getDetectionPath(), c.Path(), c.getValues())
 
 		// No match, next route
 		if !match {
 			continue
 		}
 		// Pass route reference and param values
-		ctx.route = route
+		c.setRoute(route)
 
 		// Non use handler matched
-		if !ctx.matched && !route.use {
-			ctx.matched = true
+		if !c.getMatched() && !route.use {
+			c.setMatched(true)
 		}
 
 		// Execute first handler of route
-		ctx.indexHandler = 0
-		err = route.Handlers[0](ctx)
+		c.setIndexHandler(0)
+		err = route.Handlers[0](c)
 		return match, err // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
-	err = NewError(StatusNotFound, "Cannot "+ctx.method+" "+ctx.pathOriginal)
+	err = NewError(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	if !ctx.matched && methodExist(ctx) {
+	if !c.getMatched() && methodExist(c) {
 		err = ErrMethodNotAllowed
 	}
 	return
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
-	// Acquire Ctx with fasthttp request from pool
-	c := app.pool.Get().(*ctx)
+	var c CustomCtx
+	if app.newCtxFunc != nil {
+		c = app.AcquireCtx().(CustomCtx)
+	} else {
+		c = app.AcquireCtx().(*DefaultCtx)
+	}
 	c.Reset(rctx)
 
 	// handle invalid http method directly
-	if c.methodINT == -1 {
+	if methodInt(c.Method()) == -1 {
 		_ = c.Status(StatusBadRequest).SendString("Invalid http method")
 		app.ReleaseCtx(c)
 		return
@@ -160,7 +163,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Find match in stack
 	_, err := app.next(c)
 	if err != nil {
-		if catch := c.app.ErrorHandler(c, err); catch != nil {
+		if catch := c.App().ErrorHandler(c, err); catch != nil {
 			_ = c.SendStatus(StatusInternalServerError)
 		}
 	}

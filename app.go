@@ -72,7 +72,7 @@ type Storage interface {
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
 //  cfg := fiber.Config{}
-//  cfg.ErrorHandler = func(c *Ctx, err error) error {
+//  cfg.ErrorHandler = func(c *DefaultCtx, err error) error {
 //   code := StatusInternalServerError
 //   if e, ok := err.(*Error); ok {
 //     code = e.Code
@@ -119,6 +119,8 @@ type App struct {
 	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
+	// newCtxFunc
+	newCtxFunc func(app *App) CustomCtx
 }
 
 // Config is a struct holding the server settings.
@@ -531,6 +533,12 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	} else {
 		app.config.trustedProxiesMap[ipAddress] = struct{}{}
 	}
+}
+
+// NewCtxFunc allows to customize ctx methods as we want.
+// Note: It doesn't allow adding new methods, only customizing exist methods.
+func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
+	app.newCtxFunc = function
 }
 
 // Mount attaches another app instance as a sub-router along a routing path.
@@ -1085,7 +1093,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	// Acquire Ctx with fasthttp request from pool
-	c := app.pool.Get().(*ctx)
+	c := app.AcquireCtx().(*DefaultCtx)
 	c.Reset(fctx)
 
 	if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
