@@ -1172,7 +1172,7 @@ func (c *DefaultCtx) RedirectBack(fallback string, status ...int) error {
 }
 
 // Render a template with data and sends a text/html response.
-// We support the following engines: html, amber, handlebars, mustache, pug
+// We support the following engines: https://github.com/gofiber/template
 func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	var err error
 	// Get new buffer from pool
@@ -1530,6 +1530,9 @@ func (c *DefaultCtx) configDependentPaths() {
 	}
 }
 
+// IsProxyTrusted checks trustworthiness of remote ip.
+// If EnableTrustedProxyCheck false, it returns true
+// IsProxyTrusted can check remote ip by proxy ranges and ip map.
 func (c *DefaultCtx) IsProxyTrusted() bool {
 	if !c.app.config.EnableTrustedProxyCheck {
 		return true

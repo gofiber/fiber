@@ -32,6 +32,7 @@ type Ctx interface {
 	App() *App
 
 	// Append the specified value to the HTTP response header field.
+	// If the header is not already set, it creates the header with the specified value.
 	Append(field string, values ...string)
 
 	// Attachment sets the HTTP response Content-Disposition header field to attachment.
@@ -41,12 +42,18 @@ type Ctx interface {
 	BaseURL() string
 
 	// Body contains the raw body submitted in a POST request.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	Body() []byte
 
 	// BodyParser binds the request body to a struct.
+	// It supports decoding the following content types based on the Content-Type header:
+	// application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
+	// If none of the content types above are matched, it will return a ErrUnprocessableEntity error
 	BodyParser(out any) error
 
 	// ClearCookie expires a specific cookie by key on the client side.
+	// If no key is provided it expires all cookies that came with the request.
 	ClearCookie(key ...string)
 
 	// Context returns *fasthttp.RequestCtx that carries a deadline
@@ -64,62 +71,103 @@ type Ctx interface {
 	Cookie(cookie *Cookie)
 
 	// Cookies is used for getting a cookie value by key.
+	// Defaults to the empty string "" if the cookie doesn't exist.
+	// If a default value is given, it will return that value if the cookie doesn't exist.
+	// The returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Cookies(key string, defaultValue ...string) string
 
 	// Download transfers the file from path as an attachment.
+	// Typically, browsers will prompt the user for download.
+	// By default, the Content-Disposition header filename= parameter is the filepath (this typically appears in the browser dialog).
+	// Override this default with the filename parameter.
 	Download(file string, filename ...string) error
 
 	// Request return the *fasthttp.Request object
+	// This allows you to use all fasthttp request methods
+	// https://godoc.org/github.com/valyala/fasthttp#Request
 	Request() *fasthttp.Request
 
 	// Response return the *fasthttp.Response object
+	// This allows you to use all fasthttp response methods
+	// https://godoc.org/github.com/valyala/fasthttp#Response
 	Response() *fasthttp.Response
 
 	// Format performs content-negotiation on the Accept HTTP header.
+	// It uses Accepts to select a proper format.
+	// If the header is not specified or there is no proper format, text/plain is used.
 	Format(body any) error
 
 	// FormFile returns the first file by key from a MultipartForm.
 	FormFile(key string) (*multipart.FileHeader, error)
 
 	// FormValue returns the first value by key from a MultipartForm.
+	// Defaults to the empty string "" if the form value doesn't exist.
+	// If a default value is given, it will return that value if the form value does not exist.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	FormValue(key string, defaultValue ...string) string
 
 	// Fresh returns true when the response is still “fresh” in the client's cache,
 	// otherwise false is returned to indicate that the client cache is now stale
 	// and the full response should be sent.
+	// When a client sends the Cache-Control: no-cache request header to indicate an end-to-end
+	// reload request, this module will return false to make handling these requests transparent.
+	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L33
 	Fresh() bool
 
 	// Get returns the HTTP request header specified by field.
+	// Field names are case-insensitive
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	Get(key string, defaultValue ...string) string
 
 	// GetRespHeader returns the HTTP response header specified by field.
+	// Field names are case-insensitive
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	GetRespHeader(key string, defaultValue ...string) string
 
 	// GetReqHeaders returns the HTTP request headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	GetReqHeaders() map[string]string
 
 	// GetRespHeaders returns the HTTP response headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
 	GetRespHeaders() map[string]string
 
 	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 	Hostname() string
 
 	// Port returns the remote port of the request.
 	Port() string
 
 	// IP returns the remote IP address of the request.
+	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 	IP() string
 
 	// IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
 	IPs() (ips []string)
 
-	// Is returns the matching content type.
+	// Is returns the matching content type,
+	// if the incoming request's Content-Type HTTP header field matches the MIME type specified by the type parameter
 	Is(extension string) bool
 
 	// JSON converts any interface or string to JSON.
+	// Array and slice values encode as JSON arrays,
+	// except that []byte encodes as a base64-encoded string,
+	// and a nil slice encodes as the null JSON value.
+	// This method also sets the content header to application/json.
 	JSON(data any) error
 
 	// JSONP sends a JSON response with JSONP support.
+	// This method is identical to JSON, except that it opts-in to JSONP callback support.
+	// By default, the callback name is simply callback.
 	JSONP(data any, callback ...string) error
 
 	// Links joins the links followed by the property to populate the response's Link HTTP header field.
@@ -136,35 +184,52 @@ type Ctx interface {
 	Method(override ...string) string
 
 	// MultipartForm parse form entries from binary.
+	// This returns a map[string][]string, so given a key the value will be a string slice.
 	MultipartForm() (*multipart.Form, error)
 
 	// Next executes the next method in the stack that matches the current route.
 	Next() (err error)
 
-	// RestartRouting instead of going to the next handler. This may be usefull after changing the request path.
+	// RestartRouting instead of going to the next handler. This may be usefull after
+	// changing the request path. Note that handlers might be executed again.
 	RestartRouting() error
 
 	// OriginalURL contains the original request URL.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
 	OriginalURL() string
 
 	// Params is used to get the route parameters.
+	// Defaults to empty string "" if the param doesn't exist.
+	// If a default value is given, it will return that value if the param doesn't exist.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Params(key string, defaultValue ...string) string
 
 	// Params is used to get all route parameters.
+	// Using Params method to get params.
 	AllParams() map[string]string
 
 	// ParamsInt is used to get an integer from the route parameters
 	// it defaults to zero if the parameter is not found or if the
-	// parameter cannot be converted to an integer.
+	// parameter cannot be converted to an integer
+	// If a default value is given, it will return that value in case the param
+	// doesn't exist or cannot be converted to an integer
 	ParamsInt(key string, defaultValue ...int) (int, error)
 
 	// Path returns the path part of the request URL.
+	// Optionally, you could override the path.
 	Path(override ...string) string
 
 	// Protocol contains the request protocol string: http or https for TLS requests.
+	// Use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 	Protocol() string
 
 	// Query returns the query string parameter in the url.
+	// Defaults to empty string "" if the query doesn't exist.
+	// If a default value is given, it will return that value if the query doesn't exist.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Query(key string, defaultValue ...string) string
 
 	// QueryParser binds the query string to a struct.
@@ -177,9 +242,11 @@ type Ctx interface {
 	Range(size int) (rangeData Range, err error)
 
 	// Redirect to the URL derived from the specified path, with specified status.
+	// If status is not specified, status defaults to 302 Found.
 	Redirect(location string, status ...int) error
 
 	// Add vars to default view var map binding to template engine.
+	// Variables are read by the Render method and may be overwritten.
 	Bind(vars Map) error
 
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
@@ -187,6 +254,7 @@ type Ctx interface {
 
 	// RedirectToRoute to the Route registered in the app with appropriate parameters
 	// If status is not specified, status defaults to 302 Found.
+	// If you want to send queries to route, you must add "queries" key typed as map[string]string to params.
 	RedirectToRoute(routeName string, params Map, status ...int) error
 
 	// RedirectBack to the URL to referer
@@ -194,6 +262,7 @@ type Ctx interface {
 	RedirectBack(fallback string, status ...int) error
 
 	// Render a template with data and sends a text/html response.
+	// We support the following engines: https://github.com/gofiber/template
 	Render(name string, bind Map, layouts ...string) error
 
 	// Route returns the matched Route struct.
@@ -209,12 +278,16 @@ type Ctx interface {
 	Secure() bool
 
 	// Send sets the HTTP response body without copying it.
+	// From this point onward the body argument must not be changed.
 	Send(body []byte) error
 
 	// SendFile transfers the file from the given path.
+	// The file is not compressed by default, enable this by passing a 'true' argument
+	// Sets the Content-Type response HTTP header field based on the filenames extension.
 	SendFile(file string, compress ...bool) error
 
 	// SendStatus sets the HTTP status code and if the response body is empty,
+	// it sets the correct status message in the body.
 	SendStatus(status int) error
 
 	// SendString sets the HTTP response body for string types.
@@ -228,21 +301,26 @@ type Ctx interface {
 	Set(key string, val string)
 
 	// Subdomains returns a string slice of subdomains in the domain name of the request.
+	// The subdomain offset, which defaults to 2, is used for determining the beginning of the subdomain segments.
 	Subdomains(offset ...int) []string
 
 	// Stale is not implemented yet, pull requests are welcome!
 	Stale() bool
 
 	// Status sets the HTTP status for the response.
+	// This method is chainable.
 	Status(status int) Ctx
 
 	// String returns unique string representation of the ctx.
+	//
+	// The returned value may be useful for logging.
 	String() string
 
 	// Type sets the Content-Type HTTP header to the MIME type specified by the file extension.
 	Type(extension string, charset ...string) Ctx
 
 	// Vary adds the given header field to the Vary response header.
+	// This will append the header, if not already listed, otherwise leaves it listed in the current location.
 	Vary(fields ...string)
 
 	// Write appends p into response body.
@@ -258,10 +336,13 @@ type Ctx interface {
 	// indicating that the request was issued by a client library (such as jQuery).
 	XHR() bool
 
+	// IsProxyTrusted checks trustworthiness of remote ip.
+	// If EnableTrustedProxyCheck false, it returns true
+	// IsProxyTrusted can check remote ip by proxy ranges and ip map.
+	IsProxyTrusted() bool
+
 	// IsFromLocal will return true if request came from local.
 	IsFromLocal() bool
-
-	IsProxyTrusted() bool
 
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
