@@ -36,12 +36,11 @@ type Config struct {
 	// FontURL for specify font resource path or URL . also you can use relative path
 	//
 	// Optional. Default: https://fonts.googleapis.com/css2?family=Roboto:wght@400;900&display=swap
-
 	FontURL string
+
 	// ChartJsURL for specify ChartJS library  path or URL . also you can use relative path
 	//
 	// Optional. Default: https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js
-
 	ChartJsURL string
 
 	index string
