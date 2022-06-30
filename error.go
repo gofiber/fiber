@@ -2,8 +2,13 @@ package fiber
 
 import (
 	errors "encoding/json"
+	stdErrors "errors"
 
 	"github.com/gofiber/fiber/v3/internal/schema"
+)
+
+var (
+	ErrGracefulTimeout = stdErrors.New("shutdown: graceful timeout has been reached, exiting!")
 )
 
 type (

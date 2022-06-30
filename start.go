@@ -5,12 +5,13 @@
 package fiber
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"log"
 	"net"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -18,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -56,6 +58,12 @@ type StartConfig struct {
 	// Default: []os.Signal{os.Interrupt}
 	GracefulSignals []os.Signal `json:"graceful_signals"`
 
+	// GracefulTimeout is a max time to close requests before shutdowning the Fiber app.
+	// If the time is exceeded process is exited.
+	//
+	// Default: 10 * time.Second
+	GracefulTimeout time.Duration `json:"graceful_timeout"`
+
 	// TLSConfigFunc allows customizing tls.Config as you want.
 	//
 	// Default: nil
@@ -85,24 +93,43 @@ type StartConfig struct {
 	//
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
+
+	// OnShutdownError allows to customize error behavior when to graceful shutdown server by given signal.
+	//
+	// Default: Print error with log.Fatalf()
+	OnShutdownError func(err error)
 }
 
 // startConfigDefault is a function to set default values of StartConfig.
 func startConfigDefault(config ...StartConfig) StartConfig {
 	if len(config) < 1 {
 		return StartConfig{
+			GracefulTimeout: 10 * time.Second,
 			GracefulSignals: []os.Signal{os.Interrupt},
 			ListenerNetwork: NetworkTCP4,
+			OnShutdownError: func(err error) {
+				log.Fatalf("shutdown: %v", err)
+			},
 		}
 	}
 
 	cfg := config[0]
+	if cfg.GracefulTimeout == 0 {
+		cfg.GracefulTimeout = 10 * time.Second
+	}
+
 	if len(cfg.GracefulSignals) < 1 {
 		cfg.GracefulSignals = []os.Signal{os.Interrupt}
 	}
 
 	if cfg.ListenerNetwork == "" {
 		cfg.ListenerNetwork = NetworkTCP4
+	}
+
+	if cfg.OnShutdownError == nil {
+		cfg.OnShutdownError = func(err error) {
+			log.Fatalf("shutdown: %v", err)
+		}
 	}
 
 	return cfg
@@ -151,15 +178,10 @@ func (app *App) Start(addr any, config ...StartConfig) error {
 	}
 
 	// Graceful shutdown
-	sigint := make(chan os.Signal)
-	signal.Notify(sigint, cfg.GracefulSignals...)
+	/*ctx, cancel := signal.NotifyContext(context.Background(), cfg.GracefulSignals...)
+	defer cancel()
 
-	go func() {
-		_ = <-sigint
-
-		_ = app.Shutdown()
-		os.Exit(0)
-	}()
+	go app.gracefulShutdown(ctx, cfg)*/
 
 	var ln net.Listener
 	var err error
@@ -495,4 +517,24 @@ func (app *App) printRoutesMessage() {
 	}
 
 	_ = w.Flush()
+}
+
+func (app *App) gracefulShutdown(ctx context.Context, cfg StartConfig) {
+	<-ctx.Done()
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), cfg.GracefulTimeout)
+	defer cancel()
+
+	select {
+	case <-timeoutCtx.Done():
+		if cfg.OnShutdownError != nil {
+			cfg.OnShutdownError(ErrGracefulTimeout)
+		}
+		os.Exit(1)
+	default:
+		if err := app.Shutdown(); err != nil && cfg.OnShutdownError != nil {
+			cfg.OnShutdownError(err)
+		}
+		os.Exit(0)
+	}
 }
