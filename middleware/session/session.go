@@ -144,10 +144,8 @@ func (s *Session) Save() error {
 		s.exp = s.config.Expiration
 	}
 
-	// Create session with the session ID if fresh
-	if s.fresh {
-		s.setSession()
-	}
+	// Update client cookie
+	s.setSession()
 
 	// Convert data to bytes
 	mux.Lock()
