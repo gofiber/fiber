@@ -229,7 +229,7 @@ func New(config ...Config) fiber.Handler {
 			case TagUA:
 				return buf.WriteString(c.Get(fiber.HeaderUserAgent))
 			case TagLatency:
-				return buf.WriteString(stop.Sub(start).String())
+				return buf.WriteString(fmt.Sprintf("%7v", stop.Sub(start).Round(time.Millisecond)))
 			case TagBody:
 				return buf.Write(c.Body())
 			case TagBytesReceived:
