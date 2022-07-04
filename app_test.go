@@ -1299,7 +1299,7 @@ func Test_Test_Timeout(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	app.Get("timeout", func(c *Ctx) error {
-		time.Sleep(55 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		return nil
 	})
 
