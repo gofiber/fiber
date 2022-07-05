@@ -426,6 +426,29 @@ func Test_Ctx_BodyParser(t *testing.T) {
 	utils.AssertEqual(t, "doe", cq.Data[1].Name)
 }
 
+func Test_Ctx_ParamParser(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test1/userId/role/:roleId", func(ctx *Ctx) error {
+		type Demo struct {
+			UserID uint `uri:"userId"`
+			RoleID uint `uri:"roleId"`
+		}
+		var (
+			d = new(Demo)
+		)
+		if err := ctx.ParamsParser(d); err != nil {
+			t.Fatal(err)
+		}
+		utils.AssertEqual(t, uint(111), d.UserID)
+		utils.AssertEqual(t, uint(222), d.RoleID)
+		return nil
+	})
+	app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+
+}
+
 // go test -run Test_Ctx_BodyParser_WithSetParserDecoder
 func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
 	type CustomTime time.Time
@@ -1431,6 +1454,36 @@ func Benchmark_Ctx_AllParams(b *testing.B) {
 		"param3": "is",
 		"param4": "awesome"},
 		res)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_ParamsParse -benchmem -count=4
+func Benchmark_Ctx_ParamsParse(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.route = &Route{
+		Params: []string{
+			"param1", "param2", "param3", "param4",
+		},
+	}
+	c.values = [maxParams]string{
+		"john", "doe", "is", "awesome",
+	}
+	var res struct {
+		Param1 string `uri:"param1"`
+		Param2 string `uri:"param2"`
+		Param3 string `uri:"param3"`
+		Param4 string `uri:"param4"`
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.ParamsParser(&res)
+	}
+	utils.AssertEqual(b, "john", res.Param1)
+	utils.AssertEqual(b, "doe", res.Param2)
+	utils.AssertEqual(b, "is", res.Param3)
+	utils.AssertEqual(b, "awesome", res.Param4)
 }
 
 // go test -run Test_Ctx_Path
@@ -2896,7 +2949,7 @@ func Test_Ctx_SendStream(t *testing.T) {
 	file, err := os.Open("./.github/index.html")
 	utils.AssertEqual(t, nil, err)
 	c.SendStream(bufio.NewReader(file))
-	utils.AssertEqual(t, true, (c.Response().Header.ContentLength() > 200))
+	utils.AssertEqual(t, true, c.Response().Header.ContentLength() > 200)
 }
 
 // go test -run Test_Ctx_Set
