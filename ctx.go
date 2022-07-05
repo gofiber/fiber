@@ -39,6 +39,7 @@ const (
 	queryTag     = "query"
 	reqHeaderTag = "reqHeader"
 	bodyTag      = "form"
+	uriTag       = "uri"
 )
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
@@ -852,6 +853,15 @@ func (c *Ctx) AllParams() map[string]string {
 	}
 
 	return params
+}
+
+// ParamsParser binds the param string to a struct.
+func (c *Ctx) ParamsParser(out interface{}) error {
+	params := make(map[string][]string, len(c.route.Params))
+	for _, param := range c.route.Params {
+		params[param] = append(params[param], c.Params(param))
+	}
+	return c.parseToStruct(uriTag, out, params)
 }
 
 // ParamsInt is used to get an integer from the route parameters
