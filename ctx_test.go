@@ -431,8 +431,8 @@ func Test_Ctx_ParamParser(t *testing.T) {
 	app := New()
 	app.Get("/test1/userId/role/:roleId", func(ctx *Ctx) error {
 		type Demo struct {
-			UserID uint `uri:"userId"`
-			RoleID uint `uri:"roleId"`
+			UserID uint `params:"userId"`
+			RoleID uint `params:"roleId"`
 		}
 		var (
 			d = new(Demo)
@@ -1470,10 +1470,10 @@ func Benchmark_Ctx_ParamsParse(b *testing.B) {
 		"john", "doe", "is", "awesome",
 	}
 	var res struct {
-		Param1 string `uri:"param1"`
-		Param2 string `uri:"param2"`
-		Param3 string `uri:"param3"`
-		Param4 string `uri:"param4"`
+		Param1 string `params:"param1"`
+		Param2 string `params:"param2"`
+		Param3 string `params:"param3"`
+		Param4 string `params:"param4"`
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
