@@ -28,28 +28,49 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// customized indexHtml
+	// Custom HTML Code to Head Section(Before End)
+	//
+	// Optional. Default: empty
+	CustomHead string
+
+	// FontURL for specify font resource path or URL . also you can use relative path
+	//
+	// Optional. Default: https://fonts.googleapis.com/css2?family=Roboto:wght@400;900&display=swap
+	FontURL string
+
+	// ChartJsURL for specify ChartJS library  path or URL . also you can use relative path
+	//
+	// Optional. Default: https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js
+	ChartJsURL string
+
 	index string
 }
 
 var ConfigDefault = Config{
-	Title:   defaultTitle,
-	Refresh: defaultRefresh,
-	APIOnly: false,
-	Next:    nil,
-	index:   newIndex(defaultTitle, defaultRefresh),
+	Title:      defaultTitle,
+	Refresh:    defaultRefresh,
+	FontURL:    defaultFontURL,
+	ChartJsURL: defaultChartJsURL,
+	CustomHead: defaultCustomHead,
+	APIOnly:    false,
+	Next:       nil,
+	index: newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, defaultChartJsURL,
+		defaultCustomHead}),
 }
 
 func configDefault(config ...Config) Config {
 	// Users can change ConfigDefault.Title/Refresh which then
 	// become incompatible with ConfigDefault.index
-	if ConfigDefault.Title != defaultTitle || ConfigDefault.Refresh != defaultRefresh {
+	if ConfigDefault.Title != defaultTitle || ConfigDefault.Refresh != defaultRefresh ||
+		ConfigDefault.FontURL != defaultFontURL || ConfigDefault.ChartJsURL != defaultChartJsURL ||
+		ConfigDefault.CustomHead != defaultCustomHead {
 
 		if ConfigDefault.Refresh < minRefresh {
 			ConfigDefault.Refresh = minRefresh
 		}
 		// update default index with new default title/refresh
-		ConfigDefault.index = newIndex(ConfigDefault.Title, ConfigDefault.Refresh)
+		ConfigDefault.index = newIndex(viewBag{ConfigDefault.Title,
+			ConfigDefault.Refresh, ConfigDefault.FontURL, ConfigDefault.ChartJsURL, ConfigDefault.CustomHead})
 	}
 
 	// Return default config if nothing provided
@@ -68,7 +89,13 @@ func configDefault(config ...Config) Config {
 	if cfg.Refresh == 0 {
 		cfg.Refresh = ConfigDefault.Refresh
 	}
+	if cfg.FontURL == "" {
+		cfg.FontURL = defaultFontURL
+	}
 
+	if cfg.ChartJsURL == "" {
+		cfg.ChartJsURL = defaultChartJsURL
+	}
 	if cfg.Title == ConfigDefault.Title && cfg.Refresh == ConfigDefault.Refresh {
 		cfg.index = ConfigDefault.index
 	} else {
@@ -76,7 +103,8 @@ func configDefault(config ...Config) Config {
 			cfg.Refresh = minRefresh
 		}
 		// update cfg.index with custom title/refresh
-		cfg.index = newIndex(cfg.Title, cfg.Refresh)
+		cfg.index = newIndex(viewBag{cfg.Title,
+			cfg.Refresh, cfg.FontURL, cfg.ChartJsURL, cfg.CustomHead})
 	}
 
 	if cfg.Next == nil {

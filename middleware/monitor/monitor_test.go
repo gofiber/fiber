@@ -61,6 +61,50 @@ func Test_Monitor_Html(t *testing.T) {
 		conf.Refresh.Milliseconds()-timeoutDiff)
 	utils.AssertEqual(t, true, bytes.Contains(buf, []byte(timeoutLine)))
 }
+func Test_Monitor_Html_CustomCodes(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	// defaults
+	app.Get("/", New())
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8,
+		resp.Header.Get(fiber.HeaderContentType))
+	buf, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("<title>"+defaultTitle+"</title>")))
+	timeoutLine := fmt.Sprintf("setTimeout(fetchJSON, %d)",
+		defaultRefresh.Milliseconds()-timeoutDiff)
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte(timeoutLine)))
+
+	// custom config
+	conf := Config{Title: "New " + defaultTitle, Refresh: defaultRefresh + time.Second,
+		ChartJsURL: "https://cdnjs.com/libraries/Chart.js",
+		FontURL:    "/public/my-font.css",
+		CustomHead: `<style>body{background:#fff}</style>`,
+	}
+	app.Get("/custom", New(conf))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/custom", nil))
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, resp.StatusCode)
+	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8,
+		resp.Header.Get(fiber.HeaderContentType))
+	buf, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("<title>"+conf.Title+"</title>")))
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("https://cdnjs.com/libraries/Chart.js")))
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("/public/my-font.css")))
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte(conf.CustomHead)))
+
+	timeoutLine = fmt.Sprintf("setTimeout(fetchJSON, %d)",
+		conf.Refresh.Milliseconds()-timeoutDiff)
+	utils.AssertEqual(t, true, bytes.Contains(buf, []byte(timeoutLine)))
+}
 
 // go test -run Test_Monitor_JSON -race
 func Test_Monitor_JSON(t *testing.T) {
