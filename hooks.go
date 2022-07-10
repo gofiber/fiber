@@ -7,6 +7,7 @@ type OnGroupHandler = func(Group) error
 type OnGroupNameHandler = OnGroupHandler
 type OnListenHandler = func() error
 type OnShutdownHandler = OnListenHandler
+type OnForkHandler = func(int) error
 
 type hooks struct {
 	// Embed app
@@ -19,6 +20,7 @@ type hooks struct {
 	onGroupName []OnGroupNameHandler
 	onListen    []OnListenHandler
 	onShutdown  []OnShutdownHandler
+	onFork      []OnForkHandler
 }
 
 func newHooks(app *App) *hooks {
@@ -30,6 +32,7 @@ func newHooks(app *App) *hooks {
 		onName:      make([]OnNameHandler, 0),
 		onListen:    make([]OnListenHandler, 0),
 		onShutdown:  make([]OnShutdownHandler, 0),
+		onFork:      make([]OnForkHandler, 0),
 	}
 }
 
@@ -80,6 +83,13 @@ func (h *hooks) OnListen(handler ...OnListenHandler) {
 func (h *hooks) OnShutdown(handler ...OnShutdownHandler) {
 	h.app.mutex.Lock()
 	h.onShutdown = append(h.onShutdown, handler...)
+	h.app.mutex.Unlock()
+}
+
+// OnFork is a hook to execute user function after fork process.
+func (h *hooks) OnFork(handler ...OnForkHandler) {
+	h.app.mutex.Lock()
+	h.onFork = append(h.onFork, handler...)
 	h.app.mutex.Unlock()
 }
 
@@ -136,5 +146,11 @@ func (h *hooks) executeOnListenHooks() error {
 func (h *hooks) executeOnShutdownHooks() {
 	for _, v := range h.onShutdown {
 		_ = v()
+	}
+}
+
+func (h *hooks) executeOnForkHooks(pid int) {
+	for _, v := range h.onFork {
+		_ = v(pid)
 	}
 }
