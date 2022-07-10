@@ -41,7 +41,7 @@ func NewExponentialBackoff() *ExponentialBackoff {
 // if all function calls are returned error, then the method returns this error.
 func (e *ExponentialBackoff) Retry(f func() error) error {
 	if e.currentInterval <= 0 {
-		e.currentInterval = DefaultInitialInterval
+		e.currentInterval = e.InitialInterval
 	}
 	var err error
 	for i := 0; i < e.MaxRetryCount; i++ {
@@ -60,7 +60,7 @@ func (e *ExponentialBackoff) next() time.Duration {
 	// add random value between [0, 1000)
 	t := e.currentInterval + (time.Duration(rand.Int63n(1000)) * time.Millisecond)
 	e.currentInterval = time.Duration(float64(e.currentInterval) * e.Multiplier)
-	if e.currentInterval >= e.MaxBackoffTime {
+	if t >= e.MaxBackoffTime {
 		e.currentInterval = e.MaxBackoffTime
 		return e.MaxBackoffTime
 	}
