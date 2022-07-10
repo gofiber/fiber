@@ -2,7 +2,7 @@ package retry
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
+	"github.com/gofiber/fiber/v3/utils"
 	"testing"
 	"time"
 )
@@ -60,7 +60,7 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 				tt.expBackoff = NewExponentialBackoff()
 			}
 			err := tt.expBackoff.Retry(tt.f)
-			assert.Equal(t, tt.expErr, err)
+			utils.AssertEqual(t, tt.expErr, err)
 		})
 	}
 }
