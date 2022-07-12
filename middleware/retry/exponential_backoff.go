@@ -14,25 +14,19 @@ type ExponentialBackoff struct {
 	currentInterval time.Duration
 }
 
-const (
-	DefaultInitialInterval = 1 * time.Second
-	DefaultMaxBackoffTime  = 32 * time.Second
-	DefaultMultiplier      = 2.0
-	DefaultMaxRetryCount   = 10
-)
-
 func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
 // NewExponentialBackoff creates a ExponentialBackoff with default values.
-func NewExponentialBackoff() *ExponentialBackoff {
+func NewExponentialBackoff(config ...Config) *ExponentialBackoff {
+	cfg := configDefault(config...)
 	return &ExponentialBackoff{
-		InitialInterval: DefaultInitialInterval,
-		MaxBackoffTime:  DefaultMaxBackoffTime,
-		Multiplier:      DefaultMultiplier,
-		MaxRetryCount:   DefaultMaxRetryCount,
-		currentInterval: DefaultInitialInterval,
+		InitialInterval: cfg.InitialInterval,
+		MaxBackoffTime:  cfg.MaxBackoffTime,
+		Multiplier:      cfg.Multiplier,
+		MaxRetryCount:   cfg.MaxRetryCount,
+		currentInterval: cfg.currentInterval,
 	}
 }
 
