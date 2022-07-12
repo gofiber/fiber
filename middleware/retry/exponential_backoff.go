@@ -1,7 +1,8 @@
 package retry
 
 import (
-	"math/rand"
+	"crypto/rand"
+	"math/big"
 	"time"
 )
 
@@ -12,10 +13,6 @@ type ExponentialBackoff struct {
 	Multiplier      float64
 	MaxRetryCount   int
 	currentInterval time.Duration
-}
-
-func init() {
-	rand.Seed(time.Now().UnixNano())
 }
 
 // NewExponentialBackoff creates a ExponentialBackoff with default values.
@@ -51,8 +48,12 @@ func (e *ExponentialBackoff) Retry(f func() error) error {
 
 // next calculates the next sleeping time interval.
 func (e *ExponentialBackoff) next() time.Duration {
-	// add random value between [0, 1000)
-	t := e.currentInterval + (time.Duration(rand.Int63n(1000)) * time.Millisecond)
+	// generate a random value between [0, 1000)
+	n, err := rand.Int(rand.Reader, big.NewInt(1000))
+	if err != nil {
+		return e.MaxBackoffTime
+	}
+	t := e.currentInterval + (time.Duration(n.Int64()) * time.Millisecond)
 	e.currentInterval = time.Duration(float64(e.currentInterval) * e.Multiplier)
 	if t >= e.MaxBackoffTime {
 		e.currentInterval = e.MaxBackoffTime
