@@ -8,10 +8,20 @@ import (
 
 // ExponentialBackoff is a retry mechanism for retrying some calls.
 type ExponentialBackoff struct {
+	// InitialInterval is the initial time interval for backoff algorithm.
 	InitialInterval time.Duration
-	MaxBackoffTime  time.Duration
-	Multiplier      float64
-	MaxRetryCount   int
+
+	// MaxBackoffTime is the maximum time duration for backoff algorithm. It limits
+	// the maximum sleep time.
+	MaxBackoffTime time.Duration
+
+	// Multiplier is a multiplier number of the backoff algorithm.
+	Multiplier float64
+
+	// MaxRetryCount is the maximum number of retry count.
+	MaxRetryCount int
+
+	// currentInterval tracks the current sleep time.
 	currentInterval time.Duration
 }
 
