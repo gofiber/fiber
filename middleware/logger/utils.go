@@ -4,36 +4,36 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-func methodColor(method string) string {
+func methodColor(method string, colors fiber.Colors) string {
 	switch method {
 	case fiber.MethodGet:
-		return cCyan
+		return colors.Cyan
 	case fiber.MethodPost:
-		return cGreen
+		return colors.Green
 	case fiber.MethodPut:
-		return cYellow
+		return colors.Yellow
 	case fiber.MethodDelete:
-		return cRed
+		return colors.Red
 	case fiber.MethodPatch:
-		return cWhite
+		return colors.White
 	case fiber.MethodHead:
-		return cMagenta
+		return colors.Magenta
 	case fiber.MethodOptions:
-		return cBlue
+		return colors.Blue
 	default:
-		return cReset
+		return colors.Reset
 	}
 }
 
-func statusColor(code int) string {
+func statusColor(code int, colors fiber.Colors) string {
 	switch {
 	case code >= fiber.StatusOK && code < fiber.StatusMultipleChoices:
-		return cGreen
+		return colors.Green
 	case code >= fiber.StatusMultipleChoices && code < fiber.StatusBadRequest:
-		return cBlue
+		return colors.Blue
 	case code >= fiber.StatusBadRequest && code < fiber.StatusInternalServerError:
-		return cYellow
+		return colors.Yellow
 	default:
-		return cRed
+		return colors.Red
 	}
 }

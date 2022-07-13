@@ -371,6 +371,11 @@ type Config struct {
 	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
+
+	// You can define custom color scheme. They'll be used for startup message, route list and some middlewares.
+	//
+	// Optional. Default: DefaultColors
+	ColorScheme Colors `json:"color_scheme"`
 }
 
 // Static defines configuration options when defining static assets.
@@ -414,6 +419,54 @@ type Static struct {
 	Next func(c *Ctx) bool
 }
 
+// Colors is a struct to define custom colors for Fiber app and middlewares.
+type Colors struct {
+	// Black color.
+	//
+	// Optional. Default: \u001b[90m
+	Black string
+
+	// Red color.
+	//
+	// Optional. Default: \u001b[91m
+	Red string
+
+	// Green color.
+	//
+	// Optional. Default: \u001b[92m
+	Green string
+
+	// Yellow color.
+	//
+	// Optional. Default: \u001b[93m
+	Yellow string
+
+	// Blue color.
+	//
+	// Optional. Default: \u001b[94m
+	Blue string
+
+	// Magenta color.
+	//
+	// Optional. Default: \u001b[95m
+	Magenta string
+
+	// Cyan color.
+	//
+	// Optional. Default: \u001b[96m
+	Cyan string
+
+	// White color.
+	//
+	// Optional. Default: \u001b[97m
+	White string
+
+	// Reset color.
+	//
+	// Optional. Default: \u001b[0m
+	Reset string
+}
+
 // RouteMessage is some message need to be print when server starts
 type RouteMessage struct {
 	name     string
@@ -430,6 +483,19 @@ const (
 	DefaultWriteBufferSize      = 4096
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
+
+// Default color codes
+var DefaultColors = Colors{
+	Black:   "\u001b[90m",
+	Red:     "\u001b[91m",
+	Green:   "\u001b[92m",
+	Yellow:  "\u001b[93m",
+	Blue:    "\u001b[94m",
+	Magenta: "\u001b[95m",
+	Cyan:    "\u001b[96m",
+	White:   "\u001b[97m",
+	Reset:   "\u001b[0m",
+}
 
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
@@ -521,6 +587,35 @@ func New(config ...Config) *App {
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
 	for _, ipAddress := range app.config.TrustedProxies {
 		app.handleTrustedProxy(ipAddress)
+	}
+
+	// Override colors
+	if app.config.ColorScheme.Red == "" {
+		app.config.ColorScheme.Red = DefaultColors.Red
+	}
+
+	if app.config.ColorScheme.Green == "" {
+		app.config.ColorScheme.Green = DefaultColors.Green
+	}
+
+	if app.config.ColorScheme.Yellow == "" {
+		app.config.ColorScheme.Yellow = DefaultColors.Yellow
+	}
+
+	if app.config.ColorScheme.Blue == "" {
+		app.config.ColorScheme.Blue = DefaultColors.Blue
+	}
+
+	if app.config.ColorScheme.Magenta == "" {
+		app.config.ColorScheme.Magenta = DefaultColors.Magenta
+	}
+
+	if app.config.ColorScheme.Cyan == "" {
+		app.config.ColorScheme.Cyan = DefaultColors.Cyan
+	}
+
+	if app.config.ColorScheme.Reset == "" {
+		app.config.ColorScheme.Reset = DefaultColors.Reset
 	}
 
 	// Init appList
@@ -1145,17 +1240,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		return
 	}
 
-	const (
-		cBlack = "\u001b[90m"
-		// cRed   = "\u001b[91m"
-		cCyan = "\u001b[96m"
-		// cGreen = "\u001b[92m"
-		// cYellow  = "\u001b[93m"
-		// cBlue    = "\u001b[94m"
-		// cMagenta = "\u001b[95m"
-		// cWhite   = "\u001b[97m"
-		cReset = "\u001b[0m"
-	)
+	// Alias colors
+	colors := app.config.ColorScheme
 
 	value := func(s string, width int) string {
 		pad := width - len(s)
@@ -1166,7 +1252,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		if s == "Disabled" {
 			str += " " + s
 		} else {
-			str += fmt.Sprintf(" %s%s%s", cCyan, s, cBlack)
+			str += fmt.Sprintf(" %s%s%s", colors.Cyan, s, colors.Black)
 		}
 		return str
 	}
@@ -1185,7 +1271,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	centerValue := func(s string, width int) string {
 		pad := strconv.Itoa((width - len(s)) / 2)
 		str := fmt.Sprintf("%"+pad+"s", " ")
-		str += fmt.Sprintf("%s%s%s", cCyan, s, cBlack)
+		str += fmt.Sprintf("%s%s%s", colors.Cyan, s, colors.Black)
 		str += fmt.Sprintf("%"+pad+"s", " ")
 		if len(str)-10 < width {
 			str += " "
@@ -1226,7 +1312,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		procs = "1"
 	}
 
-	mainLogo := cBlack + " ┌───────────────────────────────────────────────────┐\n"
+	mainLogo := colors.Black + " ┌───────────────────────────────────────────────────┐\n"
 	if app.config.AppName != "" {
 		mainLogo += " │ " + centerValue(app.config.AppName, 49) + " │\n"
 	}
@@ -1246,7 +1332,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			" │ Handlers %s  Processes %s │\n"+
 			" │ Prefork .%s  PID ....%s │\n"+
 			" └───────────────────────────────────────────────────┘"+
-			cReset,
+			colors.Reset,
 		value(strconv.Itoa(int(app.handlersCount)), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 	)
@@ -1277,9 +1363,9 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			lines = append(lines,
 				fmt.Sprintf(
 					newLine,
-					cBlack,
-					thisLine+cCyan+pad(strings.Join(itemsOnThisLine, ", "), 49-len(thisLine)),
-					cBlack,
+					colors.Black,
+					thisLine+colors.Cyan+pad(strings.Join(itemsOnThisLine, ", "), 49-len(thisLine)),
+					colors.Black,
 				),
 			)
 		}
@@ -1301,9 +1387,9 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 
 		// Form logo
 		childPidsLogo = fmt.Sprintf(childPidsTemplate,
-			cBlack,
+			colors.Black,
 			strings.Join(lines, "\n")+"\n",
-			cReset,
+			colors.Reset,
 		)
 	}
 
@@ -1331,7 +1417,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	// Combine the two logos, line by line
 	output := "\n"
 	for i := range splitMainLogo {
-		output += cBlack + splitMainLogo[i] + " " + splitChildPidsLogo[i] + "\n"
+		output += colors.Black + splitMainLogo[i] + " " + splitChildPidsLogo[i] + "\n"
 	}
 
 	out := colorable.NewColorableStdout()
@@ -1353,17 +1439,9 @@ func (app *App) printRoutesMessage() {
 		return
 	}
 
-	const (
-		// cBlack = "\u001b[90m"
-		// cRed   = "\u001b[91m"
-		cCyan   = "\u001b[96m"
-		cGreen  = "\u001b[92m"
-		cYellow = "\u001b[93m"
-		cBlue   = "\u001b[94m"
-		// cMagenta = "\u001b[95m"
-		cWhite = "\u001b[97m"
-		// cReset = "\u001b[0m"
-	)
+	// Alias colors
+	colors := app.config.ColorScheme
+
 	var routes []RouteMessage
 	for _, routeStack := range app.stack {
 		for _, route := range routeStack {
@@ -1388,10 +1466,11 @@ func (app *App) printRoutesMessage() {
 	sort.Slice(routes, func(i, j int) bool {
 		return routes[i].path < routes[j].path
 	})
-	_, _ = fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
-	_, _ = fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
+
+	_, _ = fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow)
+	_, _ = fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow)
 	for _, route := range routes {
-		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", cBlue, route.method, cWhite, cGreen, route.path, cWhite, cCyan, route.name, cWhite, cYellow, route.handlers)
+		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers)
 	}
 
 	_ = w.Flush()
