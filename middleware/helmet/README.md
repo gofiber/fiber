@@ -25,7 +25,7 @@ func main() {
 
   app.Use(helmet.New())
 
-  app.Get("/", func(c *fiber.Ctx) error {
+  app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("Welcome!")
   })
 

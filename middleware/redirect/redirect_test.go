@@ -46,11 +46,11 @@ func Test_Redirect(t *testing.T) {
 		StatusCode: 301,
 	}))
 
-	app.Get("/api/*", func(c *fiber.Ctx) error {
+	app.Get("/api/*", func(c fiber.Ctx) error {
 		return c.SendString("API")
 	})
 
-	app.Get("/new", func(c *fiber.Ctx) error {
+	app.Get("/new", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 

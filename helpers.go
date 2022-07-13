@@ -107,38 +107,39 @@ func (app *App) quoteString(raw string) string {
 }
 
 // Scan stack if other methods match the request
-func methodExist(ctx *Ctx) (exist bool) {
+func methodExist(c CustomCtx) (exist bool) {
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
-		if ctx.methodINT == i {
+		if c.getMethodINT() == i {
 			continue
 		}
 		// Reset stack index
-		ctx.indexRoute = -1
-		tree, ok := ctx.app.treeStack[i][ctx.treePath]
+		c.setIndexRoute(-1)
+
+		tree, ok := c.App().treeStack[i][c.getTreePath()]
 		if !ok {
-			tree = ctx.app.treeStack[i][""]
+			tree = c.App().treeStack[i][""]
 		}
 		// Get stack length
 		lenr := len(tree) - 1
 		// Loop over the route stack starting from previous index
-		for ctx.indexRoute < lenr {
+		for c.getIndexRoute() < lenr {
 			// Increment route index
-			ctx.indexRoute++
+			c.setIndexRoute(c.getIndexRoute() + 1)
 			// Get *Route
-			route := tree[ctx.indexRoute]
+			route := tree[c.getIndexRoute()]
 			// Skip use routes
 			if route.use {
 				continue
 			}
 			// Check if it matches the request path
-			match := route.match(ctx.detectionPath, ctx.path, &ctx.values)
+			match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
 			// No match, next route
 			if match {
 				// We matched
 				exist = true
 				// Add method to Allow header
-				ctx.Append(HeaderAllow, intMethod[i])
+				c.Append(HeaderAllow, intMethod[i])
 				// Break stack loop
 				break
 			}
@@ -576,50 +577,50 @@ const (
 	HeaderContentSecurityPolicyReportOnly = "Content-Security-Policy-Report-Only"
 	HeaderCrossOriginResourcePolicy       = "Cross-Origin-Resource-Policy"
 	HeaderExpectCT                        = "Expect-CT"
-	HeaderPermissionsPolicy       = "Permissions-Policy"
-	HeaderPublicKeyPins           = "Public-Key-Pins"
-	HeaderPublicKeyPinsReportOnly = "Public-Key-Pins-Report-Only"
-	HeaderStrictTransportSecurity = "Strict-Transport-Security"
-	HeaderUpgradeInsecureRequests = "Upgrade-Insecure-Requests"
-	HeaderXContentTypeOptions     = "X-Content-Type-Options"
-	HeaderXDownloadOptions        = "X-Download-Options"
-	HeaderXFrameOptions           = "X-Frame-Options"
-	HeaderXPoweredBy              = "X-Powered-By"
-	HeaderXXSSProtection          = "X-XSS-Protection"
-	HeaderLastEventID             = "Last-Event-ID"
-	HeaderNEL                     = "NEL"
-	HeaderPingFrom                = "Ping-From"
-	HeaderPingTo                  = "Ping-To"
-	HeaderReportTo                = "Report-To"
-	HeaderTE                      = "TE"
-	HeaderTrailer                 = "Trailer"
-	HeaderTransferEncoding        = "Transfer-Encoding"
-	HeaderSecWebSocketAccept      = "Sec-WebSocket-Accept"
-	HeaderSecWebSocketExtensions  = "Sec-WebSocket-Extensions"
-	HeaderSecWebSocketKey         = "Sec-WebSocket-Key"
-	HeaderSecWebSocketProtocol    = "Sec-WebSocket-Protocol"
-	HeaderSecWebSocketVersion     = "Sec-WebSocket-Version"
-	HeaderAcceptPatch             = "Accept-Patch"
-	HeaderAcceptPushPolicy        = "Accept-Push-Policy"
-	HeaderAcceptSignature         = "Accept-Signature"
-	HeaderAltSvc                  = "Alt-Svc"
-	HeaderDate                    = "Date"
-	HeaderIndex                   = "Index"
-	HeaderLargeAllocation         = "Large-Allocation"
-	HeaderLink                    = "Link"
-	HeaderPushPolicy              = "Push-Policy"
-	HeaderRetryAfter              = "Retry-After"
-	HeaderServerTiming            = "Server-Timing"
-	HeaderSignature               = "Signature"
-	HeaderSignedHeaders           = "Signed-Headers"
-	HeaderSourceMap               = "SourceMap"
-	HeaderUpgrade                 = "Upgrade"
-	HeaderXDNSPrefetchControl     = "X-DNS-Prefetch-Control"
-	HeaderXPingback               = "X-Pingback"
-	HeaderXRequestID              = "X-Request-ID"
-	HeaderXRequestedWith          = "X-Requested-With"
-	HeaderXRobotsTag              = "X-Robots-Tag"
-	HeaderXUACompatible           = "X-UA-Compatible"
+	HeaderPermissionsPolicy               = "Permissions-Policy"
+	HeaderPublicKeyPins                   = "Public-Key-Pins"
+	HeaderPublicKeyPinsReportOnly         = "Public-Key-Pins-Report-Only"
+	HeaderStrictTransportSecurity         = "Strict-Transport-Security"
+	HeaderUpgradeInsecureRequests         = "Upgrade-Insecure-Requests"
+	HeaderXContentTypeOptions             = "X-Content-Type-Options"
+	HeaderXDownloadOptions                = "X-Download-Options"
+	HeaderXFrameOptions                   = "X-Frame-Options"
+	HeaderXPoweredBy                      = "X-Powered-By"
+	HeaderXXSSProtection                  = "X-XSS-Protection"
+	HeaderLastEventID                     = "Last-Event-ID"
+	HeaderNEL                             = "NEL"
+	HeaderPingFrom                        = "Ping-From"
+	HeaderPingTo                          = "Ping-To"
+	HeaderReportTo                        = "Report-To"
+	HeaderTE                              = "TE"
+	HeaderTrailer                         = "Trailer"
+	HeaderTransferEncoding                = "Transfer-Encoding"
+	HeaderSecWebSocketAccept              = "Sec-WebSocket-Accept"
+	HeaderSecWebSocketExtensions          = "Sec-WebSocket-Extensions"
+	HeaderSecWebSocketKey                 = "Sec-WebSocket-Key"
+	HeaderSecWebSocketProtocol            = "Sec-WebSocket-Protocol"
+	HeaderSecWebSocketVersion             = "Sec-WebSocket-Version"
+	HeaderAcceptPatch                     = "Accept-Patch"
+	HeaderAcceptPushPolicy                = "Accept-Push-Policy"
+	HeaderAcceptSignature                 = "Accept-Signature"
+	HeaderAltSvc                          = "Alt-Svc"
+	HeaderDate                            = "Date"
+	HeaderIndex                           = "Index"
+	HeaderLargeAllocation                 = "Large-Allocation"
+	HeaderLink                            = "Link"
+	HeaderPushPolicy                      = "Push-Policy"
+	HeaderRetryAfter                      = "Retry-After"
+	HeaderServerTiming                    = "Server-Timing"
+	HeaderSignature                       = "Signature"
+	HeaderSignedHeaders                   = "Signed-Headers"
+	HeaderSourceMap                       = "SourceMap"
+	HeaderUpgrade                         = "Upgrade"
+	HeaderXDNSPrefetchControl             = "X-DNS-Prefetch-Control"
+	HeaderXPingback                       = "X-Pingback"
+	HeaderXRequestID                      = "X-Request-ID"
+	HeaderXRequestedWith                  = "X-Requested-With"
+	HeaderXRobotsTag                      = "X-Robots-Tag"
+	HeaderXUACompatible                   = "X-UA-Compatible"
 )
 
 // Network types that are commonly used

@@ -30,7 +30,7 @@ func main() {
     ContextKey: "my_token",
   }))
   
-  app.Get("/", func(c *fiber.Ctx) error {
+  app.Get("/", func(c fiber.Ctx) error {
     token, _ := c.Locals("my_token").(string)
     return c.SendString(token)
   })

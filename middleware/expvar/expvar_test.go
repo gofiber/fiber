@@ -15,7 +15,7 @@ func Test_Non_Expvar_Path(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("escaped")
 	})
 
@@ -33,7 +33,7 @@ func Test_Expvar_Index(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("escaped")
 	})
 
@@ -53,7 +53,7 @@ func Test_Expvar_Filter(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("escaped")
 	})
 
@@ -73,7 +73,7 @@ func Test_Expvar_Other_Path(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("escaped")
 	})
 
@@ -89,7 +89,7 @@ func Test_Expvar_Next(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))

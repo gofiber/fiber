@@ -16,7 +16,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Root is a FileSystem that provides access
 	// to a collection of files and directories.
@@ -98,7 +98,7 @@ func New(config ...Config) fiber.Handler {
 	cacheControlStr := "public, max-age=" + strconv.Itoa(cfg.MaxAge)
 
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -206,7 +206,7 @@ func New(config ...Config) fiber.Handler {
 }
 
 // SendFile ...
-func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) (err error) {
+func SendFile(c fiber.Ctx, fs http.FileSystem, path string) (err error) {
 	var (
 		file http.File
 		stat os.FileInfo

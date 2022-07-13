@@ -35,7 +35,7 @@ func init() {
 func Test_Route_Match_SameLength(t *testing.T) {
 	app := New()
 
-	app.Get("/:param", func(c *Ctx) error {
+	app.Get("/:param", func(c Ctx) error {
 		return c.SendString(c.Params("param"))
 	})
 
@@ -60,7 +60,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 func Test_Route_Match_Star(t *testing.T) {
 	app := New()
 
-	app.Get("/*", func(c *Ctx) error {
+	app.Get("/*", func(c Ctx) error {
 		return c.SendString(c.Params("*"))
 	})
 
@@ -106,7 +106,7 @@ func Test_Route_Match_Star(t *testing.T) {
 func Test_Route_Match_Root(t *testing.T) {
 	app := New()
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString("root")
 	})
 
@@ -122,10 +122,10 @@ func Test_Route_Match_Root(t *testing.T) {
 func Test_Route_Match_Parser(t *testing.T) {
 	app := New()
 
-	app.Get("/foo/:ParamName", func(c *Ctx) error {
+	app.Get("/foo/:ParamName", func(c Ctx) error {
 		return c.SendString(c.Params("ParamName"))
 	})
-	app.Get("/Foobar/*", func(c *Ctx) error {
+	app.Get("/Foobar/*", func(c Ctx) error {
 		return c.SendString(c.Params("*"))
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
@@ -149,7 +149,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 func Test_Route_Match_Middleware(t *testing.T) {
 	app := New()
 
-	app.Use("/foo/*", func(c *Ctx) error {
+	app.Use("/foo/*", func(c Ctx) error {
 		return c.SendString(c.Params("*"))
 	})
 
@@ -174,7 +174,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 func Test_Route_Match_UnescapedPath(t *testing.T) {
 	app := New(Config{UnescapePath: true})
 
-	app.Use("/créer", func(c *Ctx) error {
+	app.Use("/créer", func(c Ctx) error {
 		return c.SendString("test")
 	})
 
@@ -200,16 +200,16 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	app := New()
 	// static route and escaped part
-	app.Get("/v1/some/resource/name\\:customVerb", func(c *Ctx) error {
+	app.Get("/v1/some/resource/name\\:customVerb", func(c Ctx) error {
 		return c.SendString("static")
 	})
 	// group route
 	group := app.Group("/v2/\\:firstVerb")
-	group.Get("/\\:customVerb", func(c *Ctx) error {
+	group.Get("/\\:customVerb", func(c Ctx) error {
 		return c.SendString("group")
 	})
 	// route with resource param and escaped part
-	app.Get("/v3/:resource/name\\:customVerb", func(c *Ctx) error {
+	app.Get("/v3/:resource/name\\:customVerb", func(c Ctx) error {
 		return c.SendString(c.Params("resource"))
 	})
 
@@ -244,7 +244,7 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 	app := New()
 
-	app.Use("/foo", func(c *Ctx) error {
+	app.Use("/foo", func(c Ctx) error {
 		return c.SendString("middleware")
 	})
 
@@ -260,7 +260,7 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 func Test_Route_Match_Middleware_Root(t *testing.T) {
 	app := New()
 
-	app.Use("/", func(c *Ctx) error {
+	app.Use("/", func(c Ctx) error {
 		return c.SendString("middleware")
 	})
 
@@ -295,11 +295,11 @@ func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 
 func Test_Router_Handler_Catch_Error(t *testing.T) {
 	app := New()
-	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
+	app.config.ErrorHandler = func(c Ctx, err error) error {
 		return errors.New("fake error")
 	}
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return ErrForbidden
 	})
 
@@ -433,7 +433,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 //////////////////////////////////////////////
 
 func registerDummyRoutes(app *App) {
-	h := func(c *Ctx) error {
+	h := func(c Ctx) error {
 		return nil
 	}
 	for _, r := range routesFixture.GithubAPI {
@@ -444,7 +444,7 @@ func registerDummyRoutes(app *App) {
 // go test -v -run=^$ -bench=Benchmark_App_MethodNotAllowed -benchmem -count=4
 func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	app := New()
-	h := func(c *Ctx) error {
+	h := func(c Ctx) error {
 		return c.SendString("Hello World!")
 	}
 	app.All("/this/is/a/", h)
@@ -468,7 +468,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Router_NotFound -benchmem -count=4
 func Benchmark_Router_NotFound(b *testing.B) {
 	app := New()
-	app.Use(func(c *Ctx) error {
+	app.Use(func(c Ctx) error {
 		return c.Next()
 	})
 	registerDummyRoutes(app)
@@ -527,7 +527,7 @@ func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Router_Chain -benchmem -count=4
 func Benchmark_Router_Chain(b *testing.B) {
 	app := New()
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Next()
 	}
 	app.Get("/", handler, handler, handler, handler, handler, handler)
@@ -547,7 +547,7 @@ func Benchmark_Router_Chain(b *testing.B) {
 // go test -v ./... -run=^$ -bench=Benchmark_Router_WithCompression -benchmem -count=4
 func Benchmark_Router_WithCompression(b *testing.B) {
 	app := New()
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Next()
 	}
 	app.Get("/", handler)
@@ -590,8 +590,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	var res bool
 	var err error
 
-	c := app.AcquireCtx(request)
-	defer app.ReleaseCtx(c)
+	c := app.NewCtx(request).(*DefaultCtx)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -620,7 +619,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		Path:   "/user/keys/:id",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c *Ctx) error {
+	route.Handlers = append(route.Handlers, func(c Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -649,7 +648,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		Path:   "/user/keys/bla",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c *Ctx) error {
+	route.Handlers = append(route.Handlers, func(c Ctx) error {
 		return nil
 	})
 	b.ResetTimer()
@@ -679,7 +678,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		Path:   "/",
 		Method: "DELETE",
 	}
-	route.Handlers = append(route.Handlers, func(c *Ctx) error {
+	route.Handlers = append(route.Handlers, func(c Ctx) error {
 		return nil
 	})
 
@@ -717,7 +716,7 @@ func Benchmark_Router_Handler_Unescape(b *testing.B) {
 	app := New()
 	app.config.UnescapePath = true
 	registerDummyRoutes(app)
-	app.Delete("/créer", func(c *Ctx) error {
+	app.Delete("/créer", func(c Ctx) error {
 		return nil
 	})
 
@@ -771,9 +770,8 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		c.Request.Header.SetMethod(routesFixture.TestRoutes[i].Method)
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
-			ctx := app.AcquireCtx(c)
-			match, err = app.next(ctx)
-			app.ReleaseCtx(ctx)
+			ctx := app.NewCtx(c)
+			match, err = app.next(ctx.(CustomCtx))
 		}
 		utils.AssertEqual(b, nil, err)
 		utils.AssertEqual(b, true, match)

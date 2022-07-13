@@ -28,7 +28,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 app.Use(recover.New())
 
 // This panic will be caught by the middleware
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
 	panic("I'm an error")
 })
 ```
@@ -40,7 +40,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// EnableStackTrace enables handling stack trace
 	//
@@ -50,7 +50,7 @@ type Config struct {
 	// StackTraceHandler defines a function to handle stack trace
 	//
 	// Optional. Default: defaultStackTraceHandler
-	StackTraceHandler func(c *fiber.Ctx, e interface{})
+	StackTraceHandler func(c fiber.Ctx, e interface{})
 }
 ```
 

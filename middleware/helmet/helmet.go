@@ -14,7 +14,7 @@ import (
 type Config struct {
 	// Filter defines a function to skip middleware.
 	// Optional. Default: nil
-	Filter func(*fiber.Ctx) bool
+	Filter func(fiber.Ctx) bool
 	// XSSProtection
 	// Optional. Default value "1; mode=block".
 	XSSProtection string
@@ -67,7 +67,7 @@ func New(config ...Config) fiber.Handler {
 		cfg.XFrameOptions = "SAMEORIGIN"
 	}
 	// Return middleware handler
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// Filter request to skip middleware
 		if cfg.Filter != nil && cfg.Filter(c) {
 			return c.Next()

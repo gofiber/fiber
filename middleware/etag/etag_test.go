@@ -15,7 +15,7 @@ import (
 func Test_ETag_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
@@ -31,7 +31,7 @@ func Test_ETag_SkipError(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return fiber.ErrForbidden
 	})
 
@@ -46,7 +46,7 @@ func Test_ETag_NotStatusOK(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusCreated)
 	})
 
@@ -61,7 +61,7 @@ func Test_ETag_NoBody(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return nil
 	})
 
@@ -90,7 +90,7 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -140,7 +140,7 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 	app.Use(New(Config{Weak: true}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -190,7 +190,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderETag, `"custom"`)
 		if bytes.Equal(c.Request().Header.Peek(fiber.HeaderIfNoneMatch), []byte(`"custom"`)) {
 			return c.SendStatus(fiber.StatusNotModified)
@@ -230,7 +230,7 @@ func Test_ETag_CustomEtagPut(t *testing.T) {
 
 	app.Use(New())
 
-	app.Put("/", func(c *fiber.Ctx) error {
+	app.Put("/", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderETag, `"custom"`)
 		if !bytes.Equal(c.Request().Header.Peek(fiber.HeaderIfMatch), []byte(`"custom"`)) {
 			return c.SendStatus(fiber.StatusPreconditionFailed)
@@ -251,7 +251,7 @@ func Benchmark_Etag(b *testing.B) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 

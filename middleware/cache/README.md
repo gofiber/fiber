@@ -43,7 +43,7 @@ app.Use(cache.New())
 
 ```go
 app.Use(cache.New(cache.Config{
-	Next: func(c *fiber.Ctx) bool {
+	Next: func(c fiber.Ctx) bool {
 		return c.Query("refresh") == "true"
 	},
 	Expiration: 30 * time.Minute,
@@ -55,16 +55,16 @@ app.Use(cache.New(cache.Config{
 
 ```go
 app.Use(New(Config{
-	ExpirationGenerator: func(c *fiber.Ctx, cfg *Config) time.Duration {
+	ExpirationGenerator: func(c fiber.Ctx, cfg *Config) time.Duration {
 		newCacheTime, _ := strconv.Atoi(c.GetRespHeader("Cache-Time", "600"))
 		return time.Second * time.Duration(newCacheTime)
 	},
-	KeyGenerator: func(c *fiber.Ctx) string {
+	KeyGenerator: func(c fiber.Ctx) string {
 		return utils.CopyString(c.Path())
 	}
 }))
 
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
 	c.Response().Header.Add("Cache-Time", "6000")
 	return c.SendString("hi")
 })
@@ -78,7 +78,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Expiration is the time that an cached response will live
 	//
@@ -99,7 +99,7 @@ type Config struct {
 
 	// Key allows you to generate custom keys, by default c.Path() is used
 	//
-	// Default: func(c *fiber.Ctx) string {
+	// Default: func(c fiber.Ctx) string {
 	//   return utils.CopyString(c.Path())
 	// }
 	KeyGenerator func(*fiber.Ctx) string
@@ -137,7 +137,7 @@ var ConfigDefault = Config{
 	Expiration:   1 * time.Minute,
 	CacheHeader:  "X-Cache",
 	CacheControl: false,
-	KeyGenerator: func(c *fiber.Ctx) string {
+	KeyGenerator: func(c fiber.Ctx) string {
 		return utils.CopyString(c.Path())
 	},
 	ExpirationGenerator:  nil,

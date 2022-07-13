@@ -22,7 +22,7 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-handler := func(ctx *fiber.Ctx) error {
+handler := func(c fiber.Ctx) error {
 	err := ctx.SendString("Hello, World 👋!")
 	if err != nil {
 		return err

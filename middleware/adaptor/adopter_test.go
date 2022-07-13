@@ -117,8 +117,7 @@ func Test_HTTPHandler(t *testing.T) {
 	}
 	fctx.Init(&req, remoteAddr, nil)
 	app := fiber.New()
-	ctx := app.AcquireCtx(&fctx)
-	defer app.ReleaseCtx(ctx)
+	ctx := app.NewCtx(&fctx)
 
 	fiberH(ctx)
 
@@ -182,7 +181,7 @@ func Test_HTTPMiddleware(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(HTTPMiddleware(nethttpMW))
-	app.Post("/", func(c *fiber.Ctx) error {
+	app.Post("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
@@ -235,7 +234,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 	}
 
 	callsCount := 0
-	fiberH := func(c *fiber.Ctx) error {
+	fiberH := func(c fiber.Ctx) error {
 		callsCount++
 		if c.Method() != expectedMethod {
 			t.Fatalf("unexpected method %q. Expecting %q", c.Method(), expectedMethod)
@@ -321,7 +320,7 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 }
 
 func setFiberContextValueMiddleware(next fiber.Handler, key string, value interface{}) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		c.Locals(key, value)
 		return next(c)
 	}
@@ -333,7 +332,7 @@ func Test_FiberHandler_RequestNilBody(t *testing.T) {
 	expectedContentLength := 0
 
 	callsCount := 0
-	fiberH := func(c *fiber.Ctx) error {
+	fiberH := func(c fiber.Ctx) error {
 		callsCount++
 		if c.Method() != expectedMethod {
 			t.Fatalf("unexpected method %q. Expecting %q", c.Method(), expectedMethod)

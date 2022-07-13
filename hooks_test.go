@@ -10,7 +10,7 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-var testSimpleHandler = func(c *Ctx) error {
+var testSimpleHandler = func(c Ctx) error {
 	return c.SendString("simple")
 }
 

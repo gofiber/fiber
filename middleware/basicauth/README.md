@@ -58,7 +58,7 @@ app.Use(basicauth.New(basicauth.Config{
 		}
 		return false
 	},
-	Unauthorized: func(c *fiber.Ctx) error {
+	Unauthorized: func(c fiber.Ctx) error {
 		return c.SendFile("./unauthorized.html")
 	},
 	ContextUsername: "_user",
@@ -74,7 +74,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Users defines the allowed credentials
 	//

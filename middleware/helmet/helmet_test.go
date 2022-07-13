@@ -17,7 +17,7 @@ func Test_Default(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -35,16 +35,16 @@ func Test_Filter(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Filter: func(ctx *fiber.Ctx) bool {
-			return ctx.Path() == "/filter"
+		Filter: func(c fiber.Ctx) bool {
+			return c.Path() == "/filter"
 		},
 		ReferrerPolicy: "no-referrer",
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
-	app.Get("/filter", func(c *fiber.Ctx) error {
+	app.Get("/filter", func(c fiber.Ctx) error {
 		return c.SendString("Skipped!")
 	})
 
@@ -64,7 +64,7 @@ func Test_ContentSecurityPolicy(t *testing.T) {
 		ContentSecurityPolicy: "default-src 'none'",
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -81,7 +81,7 @@ func Test_ContentSecurityPolicyReportOnly(t *testing.T) {
 		CSPReportOnly:         true,
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 
@@ -98,7 +98,7 @@ func Test_PermissionsPolicy(t *testing.T) {
 		PermissionPolicy: "microphone=()",
 	}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World!")
 	})
 

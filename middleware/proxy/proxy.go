@@ -48,7 +48,7 @@ func Balancer(config Config) fiber.Handler {
 	}
 
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -104,14 +104,14 @@ func WithTlsConfig(tlsConfig *tls.Config) {
 // Forward performs the given http request and fills the given http response.
 // This method will return an fiber.Handler
 func Forward(addr string) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		return Do(c, addr)
 	}
 }
 
 // Do performs the given http request and fills the given http response.
 // This method can be used within a fiber.Handler
-func Do(c *fiber.Ctx, addr string) error {
+func Do(c fiber.Ctx, addr string) error {
 	req := c.Request()
 	res := c.Response()
 	originalURL := utils.CopyString(c.OriginalURL())

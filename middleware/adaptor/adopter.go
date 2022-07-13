@@ -22,7 +22,7 @@ func HTTPHandlerFunc(h http.HandlerFunc) fiber.Handler {
 
 // HTTPHandler wraps net/http handler to fiber handler
 func HTTPHandler(h http.Handler) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		handler := fasthttpadaptor.NewFastHTTPHandler(h)
 		handler(c.Context())
 		return nil
@@ -31,7 +31,7 @@ func HTTPHandler(h http.Handler) fiber.Handler {
 
 // HTTPMiddleware wraps net/http middleware to fiber middleware
 func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		var next bool
 		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			next = true
@@ -105,8 +105,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		fctx.Init(req, remoteAddr, nil)
 		if len(h) > 0 {
 			// New fiber Ctx
-			ctx := app.AcquireCtx(&fctx)
-			defer app.ReleaseCtx(ctx)
+			ctx := app.NewCtx(&fctx)
 			// Execute fiber Ctx
 			err := h[0](ctx)
 			if err != nil {

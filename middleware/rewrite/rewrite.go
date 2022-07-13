@@ -16,7 +16,7 @@ import (
 type Config struct {
 	// Filter defines a function to skip middleware.
 	// Optional. Default: nil
-	Filter func(*fiber.Ctx) bool
+	Filter func(fiber.Ctx) bool
 	// Rules defines the URL path rewrite rules. The values captured in asterisk can be
 	// retrieved by index e.g. $1, $2 and so on.
 	// Required. Example:
@@ -55,7 +55,7 @@ func New(config ...Config) fiber.Handler {
 		cfg.rulesRegex[regexp.MustCompile(k)] = v
 	}
 	// Middleware function
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// Filter request to skip middleware
 		if cfg.Filter != nil && cfg.Filter(c) {
 			return c.Next()

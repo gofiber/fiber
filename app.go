@@ -41,7 +41,7 @@ import (
 const Version = "3.0.0-beta.1"
 
 // Handler defines a function to serve HTTP requests.
-type Handler = func(*Ctx) error
+type Handler = func(Ctx) error
 
 // Map is a shortcut for map[string]any, useful for JSON returns
 type Map map[string]any
@@ -73,7 +73,7 @@ type Storage interface {
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
 //  cfg := fiber.Config{}
-//  cfg.ErrorHandler = func(c *Ctx, err error) error {
+//  cfg.ErrorHandler = func(c *DefaultCtx, err error) error {
 //   code := StatusInternalServerError
 //   if e, ok := err.(*Error); ok {
 //     code = e.Code
@@ -82,7 +82,7 @@ type Storage interface {
 //   return c.Status(code).SendString(err.Error())
 //  }
 //  app := fiber.New(cfg)
-type ErrorHandler = func(*Ctx, error) error
+type ErrorHandler = func(Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
@@ -120,6 +120,8 @@ type App struct {
 	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
+	// newCtxFunc
+	newCtxFunc func(app *App) CustomCtx
 }
 
 // Config is a struct holding the server settings.
@@ -403,7 +405,7 @@ type Static struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *Ctx) bool
+	Next func(c Ctx) bool
 }
 
 // RouteMessage is some message need to be print when server starts
@@ -424,7 +426,7 @@ const (
 )
 
 // DefaultErrorHandler that process return errors from handlers
-var DefaultErrorHandler = func(c *Ctx, err error) error {
+var DefaultErrorHandler = func(c Ctx, err error) error {
 	code := StatusInternalServerError
 	if e, ok := err.(*Error); ok {
 		code = e.Code
@@ -446,12 +448,6 @@ func New(config ...Config) *App {
 		// Create router stack
 		stack:     make([][]*Route, len(intMethod)),
 		treeStack: make([]map[string][]*Route, len(intMethod)),
-		// Create Ctx pool
-		pool: sync.Pool{
-			New: func() any {
-				return new(Ctx)
-			},
-		},
 		// Create config
 		config:      Config{},
 		getBytes:    utils.UnsafeBytes,
@@ -459,6 +455,13 @@ func New(config ...Config) *App {
 		appList:     make(map[string]*App),
 		latestRoute: &Route{},
 		latestGroup: &Group{},
+	}
+
+	// Create Ctx pool
+	app.pool = sync.Pool{
+		New: func() any {
+			return app.NewCtx(&fasthttp.RequestCtx{})
+		},
 	}
 
 	// Define hooks
@@ -533,6 +536,12 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	}
 }
 
+// NewCtxFunc allows to customize ctx methods as we want.
+// Note: It doesn't allow adding new methods, only customizing exist methods.
+func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
+	app.newCtxFunc = function
+}
+
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount. The fiber's error handler and
@@ -596,13 +605,13 @@ func (app *App) GetRoute(name string) Route {
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //
-//  app.Use(func(c *fiber.Ctx) error {
+//  app.Use(func(c fiber.Ctx) error {
 //       return c.Next()
 //  })
-//  app.Use("/api", func(c *fiber.Ctx) error {
+//  app.Use("/api", func(c fiber.Ctx) error {
 //       return c.Next()
 //  })
-//  app.Use("/api", handler, func(c *fiber.Ctx) error {
+//  app.Use("/api", handler, func(c fiber.Ctx) error {
 //       return c.Next()
 //  })
 //
@@ -1068,14 +1077,14 @@ func (app *App) init() *App {
 // sub fibers by their prefixes and if it finds a match, it uses that
 // error handler. Otherwise it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
-func (app *App) ErrorHandler(ctx *Ctx, err error) error {
+func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	var (
 		mountedErrHandler  ErrorHandler
 		mountedPrefixParts int
 	)
 
 	for prefix, subApp := range app.appList {
-		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
+		if prefix != "" && strings.HasPrefix(ctx.Path(), prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
 				mountedErrHandler = subApp.config.ErrorHandler
@@ -1095,7 +1104,10 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 // user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
-	c := app.AcquireCtx(fctx)
+	// Acquire Ctx with fasthttp request from pool
+	c := app.AcquireCtx().(*DefaultCtx)
+	c.Reset(fctx)
+
 	if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
 		err = ErrRequestHeaderFieldsTooLarge
 	} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {

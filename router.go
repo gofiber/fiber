@@ -96,60 +96,65 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) (ma
 	return false
 }
 
-func (app *App) next(c *Ctx) (match bool, err error) {
+func (app *App) next(c CustomCtx) (match bool, err error) {
 	// Get stack length
-	tree, ok := app.treeStack[c.methodINT][c.treePath]
+	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
 	if !ok {
-		tree = app.treeStack[c.methodINT][""]
+		tree = app.treeStack[c.getMethodINT()][""]
 	}
 	lenr := len(tree) - 1
 
 	// Loop over the route stack starting from previous index
-	for c.indexRoute < lenr {
+	for c.getIndexRoute() < lenr {
 		// Increment route index
-		c.indexRoute++
+		c.setIndexRoute(c.getIndexRoute() + 1)
 
 		// Get *Route
-		route := tree[c.indexRoute]
+		route := tree[c.getIndexRoute()]
 
 		// Check if it matches the request path
-		match = route.match(c.detectionPath, c.path, &c.values)
+		match = route.match(c.getDetectionPath(), c.Path(), c.getValues())
 
 		// No match, next route
 		if !match {
 			continue
 		}
 		// Pass route reference and param values
-		c.route = route
+		c.setRoute(route)
 
 		// Non use handler matched
-		if !c.matched && !route.use {
-			c.matched = true
+		if !c.getMatched() && !route.use {
+			c.setMatched(true)
 		}
 
 		// Execute first handler of route
-		c.indexHandler = 0
+		c.setIndexHandler(0)
 		err = route.Handlers[0](c)
 		return match, err // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
-	err = NewErrors(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
+	err = NewErrors(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	if !c.matched && methodExist(c) {
+	if !c.getMatched() && methodExist(c) {
 		err = ErrMethodNotAllowed
 	}
 	return
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
-	// Acquire Ctx with fasthttp request from pool
-	c := app.AcquireCtx(rctx)
+	var c CustomCtx
+	if app.newCtxFunc != nil {
+		c = app.AcquireCtx().(CustomCtx)
+	} else {
+		c = app.AcquireCtx().(*DefaultCtx)
+	}
+	c.Reset(rctx)
 
 	// handle invalid http method directly
-	if c.methodINT == -1 {
+	if methodInt(c.Method()) == -1 {
 		_ = c.Status(StatusBadRequest).SendString("Invalid http method")
 		app.ReleaseCtx(c)
 		return
@@ -158,7 +163,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Find match in stack
 	_, err := app.next(c)
 	if err != nil {
-		if catch := c.app.ErrorHandler(c, err); catch != nil {
+		if catch := c.App().ErrorHandler(c, err); catch != nil {
 			_ = c.SendStatus(StatusInternalServerError)
 		}
 	}
@@ -367,29 +372,30 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		}
 	}
 	fileHandler := fs.NewRequestHandler()
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		// Don't execute middleware if Next returns true
 		if len(config) != 0 && config[0].Next != nil && config[0].Next(c) {
 			return c.Next()
 		}
 		// Serve file
-		fileHandler(c.fasthttp)
+		fileHandler(c.Context())
 		// Sets the response Content-Disposition header to attachment if the Download option is true
 		if len(config) > 0 && config[0].Download {
 			c.Attachment()
 		}
 		// Return request if found and not forbidden
-		status := c.fasthttp.Response.StatusCode()
+		status := c.Context().Response.StatusCode()
 		if status != StatusNotFound && status != StatusForbidden {
 			if len(cacheControlValue) > 0 {
-				c.fasthttp.Response.Header.Set(HeaderCacheControl, cacheControlValue)
+				c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
 			}
 			return nil
 		}
 		// Reset response to default
-		c.fasthttp.SetContentType("") // Issue #420
-		c.fasthttp.Response.SetStatusCode(StatusOK)
-		c.fasthttp.Response.SetBodyString("")
+		c.Context().SetContentType("") // Issue #420
+		c.Context().Response.SetStatusCode(StatusOK)
+		c.Context().Response.SetBodyString("")
+
 		// Next middleware
 		return c.Next()
 	}

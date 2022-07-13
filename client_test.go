@@ -30,7 +30,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
@@ -67,7 +67,7 @@ func Test_Client_Get(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
@@ -93,7 +93,7 @@ func Test_Client_Head(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
@@ -119,7 +119,7 @@ func Test_Client_Post(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Post("/", func(c *Ctx) error {
+	app.Post("/", func(c Ctx) error {
 		return c.Status(StatusCreated).
 			SendString(c.FormValue("foo"))
 	})
@@ -153,7 +153,7 @@ func Test_Client_Put(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Put("/", func(c *Ctx) error {
+	app.Put("/", func(c Ctx) error {
 		return c.SendString(c.FormValue("foo"))
 	})
 
@@ -186,7 +186,7 @@ func Test_Client_Patch(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Patch("/", func(c *Ctx) error {
+	app.Patch("/", func(c Ctx) error {
 		return c.SendString(c.FormValue("foo"))
 	})
 
@@ -219,7 +219,7 @@ func Test_Client_Delete(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Delete("/", func(c *Ctx) error {
+	app.Delete("/", func(c Ctx) error {
 		return c.Status(StatusNoContent).
 			SendString("deleted")
 	})
@@ -250,7 +250,7 @@ func Test_Client_UserAgent(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.Send(c.Request().Header.UserAgent())
 	})
 
@@ -290,7 +290,7 @@ func Test_Client_UserAgent(t *testing.T) {
 }
 
 func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, _ = c.Write(key)
@@ -315,7 +315,7 @@ func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
 }
 
 func Test_Client_Agent_Connection_Close(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		if c.Request().Header.ConnectionClose() {
 			return c.SendString("close")
 		}
@@ -330,7 +330,7 @@ func Test_Client_Agent_Connection_Close(t *testing.T) {
 }
 
 func Test_Client_Agent_UserAgent(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Send(c.Request().Header.UserAgent())
 	}
 
@@ -343,7 +343,7 @@ func Test_Client_Agent_UserAgent(t *testing.T) {
 }
 
 func Test_Client_Agent_Cookie(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.SendString(
 			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
 	}
@@ -360,7 +360,7 @@ func Test_Client_Agent_Cookie(t *testing.T) {
 }
 
 func Test_Client_Agent_Referer(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Send(c.Request().Header.Referer())
 	}
 
@@ -373,7 +373,7 @@ func Test_Client_Agent_Referer(t *testing.T) {
 }
 
 func Test_Client_Agent_ContentType(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Send(c.Request().Header.ContentType())
 	}
 
@@ -392,7 +392,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
@@ -414,7 +414,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 }
 
 func Test_Client_Agent_QueryString(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Send(c.Request().URI().QueryString())
 	}
 
@@ -427,7 +427,7 @@ func Test_Client_Agent_QueryString(t *testing.T) {
 }
 
 func Test_Client_Agent_BasicAuth(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		// Get authorization header
 		auth := c.Get(HeaderAuthorization)
 		// Decode the header contents
@@ -446,7 +446,7 @@ func Test_Client_Agent_BasicAuth(t *testing.T) {
 }
 
 func Test_Client_Agent_BodyString(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Send(c.Request().Body())
 	}
 
@@ -458,7 +458,7 @@ func Test_Client_Agent_BodyString(t *testing.T) {
 }
 
 func Test_Client_Agent_Body(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Send(c.Request().Body())
 	}
 
@@ -470,7 +470,7 @@ func Test_Client_Agent_Body(t *testing.T) {
 }
 
 func Test_Client_Agent_BodyStream(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.Send(c.Request().Body())
 	}
 
@@ -488,7 +488,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString("custom")
 	})
 
@@ -525,7 +525,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString("dest")
 	})
 
@@ -623,7 +623,7 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 }
 
 func Test_Client_Agent_Json(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationJSON, string(c.Request().Header.ContentType()))
 
 		return c.Send(c.Request().Body())
@@ -649,7 +649,7 @@ func Test_Client_Agent_Json_Error(t *testing.T) {
 }
 
 func Test_Client_Agent_XML(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationXML, string(c.Request().Header.ContentType()))
 
 		return c.Send(c.Request().Body())
@@ -674,7 +674,7 @@ func Test_Client_Agent_XML_Error(t *testing.T) {
 }
 
 func Test_Client_Agent_Form(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationForm, string(c.Request().Header.ContentType()))
 
 		return c.Send(c.Request().Body())
@@ -700,7 +700,7 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Post("/", func(c *Ctx) error {
+	app.Post("/", func(c Ctx) error {
 		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
 
 		mf, err := c.MultipartForm()
@@ -755,7 +755,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Post("/", func(c *Ctx) error {
+	app.Post("/", func(c Ctx) error {
 		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
 
 		fh1, err := c.FormFile("field1")
@@ -857,7 +857,7 @@ func Test_Client_Agent_SendFile_Error(t *testing.T) {
 }
 
 func Test_Client_Debug(t *testing.T) {
-	handler := func(c *Ctx) error {
+	handler := func(c Ctx) error {
 		return c.SendString("debug")
 	}
 
@@ -886,7 +886,7 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		time.Sleep(time.Millisecond * 200)
 		return c.SendString("timeout")
 	})
@@ -912,7 +912,7 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString("reuse")
 	})
 
@@ -953,7 +953,7 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString("ignore tls")
 	})
 
@@ -982,7 +982,7 @@ func Test_Client_Agent_TLS(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.SendString("tls")
 	})
 
@@ -1004,13 +1004,13 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		if c.Request().URI().QueryArgs().Has("foo") {
 			return c.Redirect("/foo")
 		}
 		return c.Redirect("/")
 	})
-	app.Get("/foo", func(c *Ctx) error {
+	app.Get("/foo", func(c Ctx) error {
 		return c.SendString("redirect")
 	})
 
@@ -1050,11 +1050,11 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c *Ctx) error {
+	app.Get("/", func(c Ctx) error {
 		return c.JSON(data{true})
 	})
 
-	app.Get("/error", func(c *Ctx) error {
+	app.Get("/error", func(c Ctx) error {
 		return c.SendString(`{"success"`)
 	})
 

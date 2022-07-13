@@ -8,7 +8,7 @@ Skip middleware for [Fiber](https://github.com/gofiber/fiber) that skips a wrapp
 
 ### Signatures
 ```go
-func New(handler fiber.Handler, exclude func(c *fiber.Ctx) bool) fiber.Handler
+func New(handler fiber.Handler, exclude func(c fiber.Ctx) bool) fiber.Handler
 ```
 
 ### Examples
@@ -22,5 +22,5 @@ import (
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-app.Use(skip.New(handler, func(ctx *fiber.Ctx) bool { return ctx.Method() == fiber.MethodOptions }))
+app.Use(skip.New(handler, func(c fiber.Ctx) bool { return ctx.Method() == fiber.MethodOptions }))
 ```

@@ -4,7 +4,7 @@ package timeout
 // func Test_Middleware_Timeout(t *testing.T) {
 // 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-// 	h := New(func(c *fiber.Ctx) error {
+// 	h := New(func(c fiber.Ctx) error {
 // 		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
 // 		time.Sleep(sleepTime)
 // 		return c.SendString("After " + c.Params("sleepTime") + "ms sleeping")
@@ -40,7 +40,7 @@ package timeout
 // func Test_Timeout_Panic(t *testing.T) {
 // 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-// 	app.Get("/panic", recover.New(), New(func(c *fiber.Ctx) error {
+// 	app.Get("/panic", recover.New(), New(func(c fiber.Ctx) error {
 // 		c.Set("dummy", "this should not be here")
 // 		panic("panic in timeout handler")
 // 	}, 5*time.Millisecond))

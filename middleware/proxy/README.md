@@ -14,7 +14,7 @@ Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you t
 ```go
 func Balancer(config Config) fiber.Handler
 func Forward(addr string) fiber.Handler
-func Do(c *fiber.Ctx, addr string) error
+func Do(c fiber.Ctx, addr string) error
 ```
 
 ### Examples
@@ -41,7 +41,7 @@ proxy.WithTlsConfig(&tls.Config{
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
 // Make request within handler
-app.Get("/:id", func(c *fiber.Ctx) error {
+app.Get("/:id", func(c fiber.Ctx) error {
 	url := "https://i.imgur.com/"+c.Params("id")+".gif"
 	if err := proxy.Do(c, url); err != nil {
 		return err
@@ -67,11 +67,11 @@ app.Use(proxy.Balancer(proxy.Config{
 		"http://localhost:3002",
 		"http://localhost:3003",
 	},
-	ModifyRequest: func(c *fiber.Ctx) error {
+	ModifyRequest: func(c fiber.Ctx) error {
 		c.Request().Header.Add("X-Real-IP", c.IP())
 		return nil
 	},
-	ModifyResponse: func(c *fiber.Ctx) error {
+	ModifyResponse: func(c fiber.Ctx) error {
 		c.Response().Header.Del(fiber.HeaderServer)
 		return nil
 	},
@@ -86,7 +86,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Servers defines a list of <scheme>://<host> HTTP servers,
 	//

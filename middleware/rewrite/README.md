@@ -30,10 +30,10 @@ func main() {
     },
   }))
   
-  app.Get("/new", func(c *fiber.Ctx) error {
+  app.Get("/new", func(c fiber.Ctx) error {
     return c.SendString("Hello, World!")
   })
-  app.Get("/new/*", func(c *fiber.Ctx) error {
+  app.Get("/new/*", func(c fiber.Ctx) error {
     return c.SendString("Wildcard: " + c.Params("*"))
   })
   

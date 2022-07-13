@@ -9,7 +9,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// EnableStackTrace enables handling stack trace
 	//
@@ -19,7 +19,7 @@ type Config struct {
 	// StackTraceHandler defines a function to handle stack trace
 	//
 	// Optional. Default: defaultStackTraceHandler
-	StackTraceHandler func(c *fiber.Ctx, e any)
+	StackTraceHandler func(c fiber.Ctx, e any)
 }
 
 var defaultStackTraceBufLen = 1024
