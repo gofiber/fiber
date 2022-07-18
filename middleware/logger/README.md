@@ -109,19 +109,38 @@ type Config struct {
 	//
 	// Default: os.Stderr
 	Output io.Writer
+
+	// You can define specific things before the returning the handler: colors, template, etc.
+	//
+	// Optional. Default: beforeHandlerFunc
+	BeforeHandlerFunc func(Config)
+
+	// You can use custom loggers with Fiber by using this field.
+	// This field is really useful if you're using Zerolog, Zap, Logrus, apex/log etc.
+	// If you don't define anything for this field, it'll use classical logger of Fiber.
+	//
+	// Optional. Default: defaultLogger
+	LoggerFunc func(c fiber.Ctx, data LoggerData, cfg Config) error
 }
 ```
 
 ## Default Config
 ```go
+// ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:         nil,
-	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat:   "15:04:05",
-	TimeZone:     "Local",
-	TimeInterval: 500 * time.Millisecond,
-	Output:       os.Stderr,
+	Next:              nil,
+	Format:            defaultFormat,
+	TimeFormat:        "15:04:05",
+	TimeZone:          "Local",
+	TimeInterval:      500 * time.Millisecond,
+	Output:            os.Stdout,
+	BeforeHandlerFunc: beforeHandlerFunc,
+	LoggerFunc:        defaultLogger,
+	enableColors:      true,
 }
+
+// default logging format for Fiber's default logger
+var defaultFormat = "[${time}] ${status} - ${latency} ${method} ${path}\n"
 ```
 
 ## Constants

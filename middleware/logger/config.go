@@ -41,6 +41,18 @@ type Config struct {
 	// Default: os.Stdout
 	Output io.Writer
 
+	// You can define specific things before the returning the handler: colors, template, etc.
+	//
+	// Optional. Default: beforeHandlerFunc
+	BeforeHandlerFunc func(Config)
+
+	// You can use custom loggers with Fiber by using this field.
+	// This field is really useful if you're using Zerolog, Zap, Logrus, apex/log etc.
+	// If you don't define anything for this field, it'll use default logger of Fiber.
+	//
+	// Optional. Default: defaultLogger
+	LoggerFunc func(c fiber.Ctx, data LoggerData, cfg Config) error
+
 	enableColors     bool
 	enableLatency    bool
 	timeZoneLocation *time.Location
@@ -48,14 +60,19 @@ type Config struct {
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:         nil,
-	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat:   "15:04:05",
-	TimeZone:     "Local",
-	TimeInterval: 500 * time.Millisecond,
-	Output:       os.Stdout,
-	enableColors: true,
+	Next:              nil,
+	Format:            defaultFormat,
+	TimeFormat:        "15:04:05",
+	TimeZone:          "Local",
+	TimeInterval:      500 * time.Millisecond,
+	Output:            os.Stdout,
+	BeforeHandlerFunc: beforeHandlerFunc,
+	LoggerFunc:        defaultLogger,
+	enableColors:      true,
 }
+
+// default logging format for Fiber's default logger
+var defaultFormat = "[${time}] ${status} - ${latency} ${method} ${path}\n"
 
 // Function to check if the logger format is compatible for coloring
 func validCustomFormat(format string) bool {
@@ -105,5 +122,14 @@ func configDefault(config ...Config) Config {
 	if cfg.Output == nil {
 		cfg.Output = ConfigDefault.Output
 	}
+
+	if cfg.BeforeHandlerFunc == nil {
+		cfg.BeforeHandlerFunc = ConfigDefault.BeforeHandlerFunc
+	}
+
+	if cfg.LoggerFunc == nil {
+		cfg.LoggerFunc = ConfigDefault.LoggerFunc
+	}
+
 	return cfg
 }
