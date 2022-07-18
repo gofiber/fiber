@@ -9,8 +9,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/valyala/bytebufferpool"
-	"github.com/valyala/fasthttp"
 )
 
 // Logger variables
@@ -173,10 +171,4 @@ func New(config ...Config) fiber.Handler {
 
 		return nil
 	}
-}
-
-func appendInt(buf *bytebufferpool.ByteBuffer, v int) (int, error) {
-	old := len(buf.B)
-	buf.B = fasthttp.AppendUint(buf.B, v)
-	return len(buf.B) - old, nil
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasttemplate"
 )
 
@@ -204,4 +205,10 @@ func beforeHandlerFunc(cfg Config) {
 			cfg.Output = colorable.NewNonColorable(os.Stdout)
 		}
 	}
+}
+
+func appendInt(buf *bytebufferpool.ByteBuffer, v int) (int, error) {
+	old := len(buf.B)
+	buf.B = fasthttp.AppendUint(buf.B, v)
+	return len(buf.B) - old, nil
 }
