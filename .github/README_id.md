@@ -607,7 +607,7 @@ Kumpulan `middleware` yang dihost external dan diurus oleh [Tim Fiber](https://g
 
 ## 🕶️ Awesome List
 
-For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
+Untuk artikel lainnya, middlewares, contoh atau tools check kami [awesome list](https://github.com/gofiber/awesome-fiber).
 
 ## 👍 Berkontribusi
 
