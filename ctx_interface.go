@@ -46,12 +46,6 @@ type Ctx interface {
 	// Make copies or use the Immutable setting instead.
 	Body() []byte
 
-	// BodyParser binds the request body to a struct.
-	// It supports decoding the following content types based on the Content-Type header:
-	// application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
-	// If none of the content types above are matched, it will return a ErrUnprocessableEntity error
-	BodyParser(out any) error
-
 	// ClearCookie expires a specific cookie by key on the client side.
 	// If no key is provided it expires all cookies that came with the request.
 	ClearCookie(key ...string)
@@ -128,16 +122,6 @@ type Ctx interface {
 	// Make copies or use the Immutable setting instead.
 	GetRespHeader(key string, defaultValue ...string) string
 
-	// GetReqHeaders returns the HTTP request headers.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting instead.
-	GetReqHeaders() map[string]string
-
-	// GetRespHeaders returns the HTTP response headers.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting instead.
-	GetRespHeaders() map[string]string
-
 	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
@@ -206,10 +190,6 @@ type Ctx interface {
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Params(key string, defaultValue ...string) string
 
-	// Params is used to get all route parameters.
-	// Using Params method to get params.
-	AllParams() map[string]string
-
 	// ParamsInt is used to get an integer from the route parameters
 	// it defaults to zero if the parameter is not found or if the
 	// parameter cannot be converted to an integer
@@ -234,12 +214,6 @@ type Ctx interface {
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Query(key string, defaultValue ...string) string
-
-	// QueryParser binds the query string to a struct.
-	QueryParser(out any) error
-
-	// ReqHeaderParser binds the request header strings to a struct.
-	ReqHeaderParser(out any) error
 
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (rangeData Range, err error)
@@ -349,6 +323,23 @@ type Ctx interface {
 
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
+
+	// Binding methods
+	Binding() Bind
+
+	// GetReqHeaders returns the HTTP request headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetReqHeaders() map[string]string
+
+	// GetRespHeaders returns the HTTP response headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetRespHeaders() map[string]string
+
+	// Params is used to get all route parameters.
+	// Using Params method to get params.
+	AllParams() map[string]string
 
 	// SetReq resets fields of context that is relating to request.
 	setReq(fctx *fasthttp.RequestCtx)

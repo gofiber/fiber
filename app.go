@@ -122,6 +122,8 @@ type App struct {
 	latestGroup *Group
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
+	// custom binders
+	customBinders []CustomBinder
 }
 
 // Config is a struct holding the server settings.
@@ -449,12 +451,13 @@ func New(config ...Config) *App {
 		stack:     make([][]*Route, len(intMethod)),
 		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create config
-		config:      Config{},
-		getBytes:    utils.UnsafeBytes,
-		getString:   utils.UnsafeString,
-		appList:     make(map[string]*App),
-		latestRoute: &Route{},
-		latestGroup: &Group{},
+		config:        Config{},
+		getBytes:      utils.UnsafeBytes,
+		getString:     utils.UnsafeString,
+		appList:       make(map[string]*App),
+		latestRoute:   &Route{},
+		latestGroup:   &Group{},
+		customBinders: []CustomBinder{},
 	}
 
 	// Create Ctx pool
@@ -540,6 +543,10 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // Note: It doesn't allow adding new methods, only customizing exist methods.
 func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
+}
+
+func (app *App) RegisterCustomBinder(binder CustomBinder) {
+	app.customBinders = append(app.customBinders, binder)
 }
 
 // Mount attaches another app instance as a sub-router along a routing path.
