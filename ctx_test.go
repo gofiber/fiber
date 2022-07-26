@@ -2100,7 +2100,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
 func Benchmark_Ctx_JSONP(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	type SomeStruct struct {
 		Name string
@@ -2140,7 +2140,7 @@ func Test_Ctx_Links(t *testing.T) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Links -benchmem -count=4
 func Benchmark_Ctx_Links(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -2560,7 +2560,7 @@ func Benchmark_Ctx_RedirectToRouteWithQueries(b *testing.B) {
 		return c.JSON(c.Params("name"))
 	}).Name("user")
 
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -3043,7 +3043,7 @@ func Test_Ctx_Vary(t *testing.T) {
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Vary -benchmem -count=4
 func Benchmark_Ctx_Vary(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -3090,7 +3090,7 @@ func Test_Ctx_Writef(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Writef -benchmem -count=4
 func Benchmark_Ctx_Writef(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	world := "World!"
 	b.ReportAllocs()
