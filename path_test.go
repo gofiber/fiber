@@ -47,6 +47,17 @@ func Test_Path_parseRoute(t *testing.T) {
 		},
 		params: nil,
 	}, rp)
+
+	rp = parseRoute("/v1/some/resource/:name\\:customVerb")
+	utils.AssertEqual(t, routeParser{
+		segs: []*routeSegment{
+			{Const: "/v1/some/resource/", Length: 18},
+			{IsParam: true, ParamName: "name", ComparePart: ":customVerb", PartCount: 1},
+			{Const: ":customVerb", Length: 11, IsLast: true},
+		},
+		params: []string{"name"},
+	}, rp)
+
 	// heavy test with escaped charaters
 	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*")
 	utils.AssertEqual(t, routeParser{
@@ -169,6 +180,10 @@ func Test_Path_matchParams(t *testing.T) {
 	testCase("/v1/some/resource/name\\:customVerb", []testparams{
 		{url: "/v1/some/resource/name:customVerb", params: nil, match: true},
 		{url: "/v1/some/resource/name:test", params: nil, match: false},
+	})
+	testCase("/v1/some/resource/:name\\:customVerb", []testparams{
+		{url: "/v1/some/resource/test:customVerb", params: []string{"test"}, match: true},
+		{url: "/v1/some/resource/test:test", params: nil, match: false},
 	})
 	testCase("/v1/some/resource/name\\\\:customVerb?\\?/:param/*", []testparams{
 		{url: "/v1/some/resource/name:customVerb??/test/optionalWildCard/character", params: []string{"test", "optionalWildCard/character"}, match: true},
