@@ -10,11 +10,11 @@ import (
 
 type formBinding struct{}
 
-func (formBinding) Name() string {
+func (*formBinding) Name() string {
 	return "form"
 }
 
-func (b formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
+func (b *formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 	data := make(map[string][]string)
 	var err error
 
@@ -43,7 +43,7 @@ func (b formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 	return parseToStruct(b.Name(), out, data)
 }
 
-func (b formBinding) BindMultipart(reqCtx *fasthttp.RequestCtx, out any) error {
+func (b *formBinding) BindMultipart(reqCtx *fasthttp.RequestCtx, out any) error {
 	data, err := reqCtx.MultipartForm()
 	if err != nil {
 		return err

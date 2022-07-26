@@ -10,11 +10,11 @@ import (
 
 type headerBinding struct{}
 
-func (headerBinding) Name() string {
+func (*headerBinding) Name() string {
 	return "header"
 }
 
-func (b headerBinding) Bind(req *fasthttp.Request, out any) error {
+func (b *headerBinding) Bind(req *fasthttp.Request, out any) error {
 	data := make(map[string][]string)
 	req.Header.VisitAll(func(key, val []byte) {
 		k := utils.UnsafeString(key)

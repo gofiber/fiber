@@ -6,10 +6,10 @@ import (
 
 type jsonBinding struct{}
 
-func (jsonBinding) Name() string {
+func (*jsonBinding) Name() string {
 	return "json"
 }
 
-func (b jsonBinding) Bind(body []byte, jsonDecoder utils.JSONUnmarshal, out any) error {
+func (b *jsonBinding) Bind(body []byte, jsonDecoder utils.JSONUnmarshal, out any) error {
 	return jsonDecoder(body, out)
 }

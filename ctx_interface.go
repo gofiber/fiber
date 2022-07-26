@@ -325,7 +325,7 @@ type Ctx interface {
 	Reset(fctx *fasthttp.RequestCtx)
 
 	// Binding methods
-	Binding() Bind
+	Binding() *Bind
 
 	// GetReqHeaders returns the HTTP request headers.
 	// Returned value is only valid within the handler. Do not store any references.

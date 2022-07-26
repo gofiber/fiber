@@ -17,15 +17,15 @@ type Bind struct {
 	should bool
 }
 
-func (b Bind) Should() {
+func (b *Bind) Should() {
 	b.should = true
 }
 
-func (b Bind) Must() {
+func (b *Bind) Must() {
 	b.should = false
 }
 
-func (b Bind) Custom(name string, dest any) error {
+func (b *Bind) Custom(name string, dest any) error {
 	binders := b.ctx.App().customBinders
 
 	for _, binder := range binders {
@@ -37,31 +37,31 @@ func (b Bind) Custom(name string, dest any) error {
 	return errors.New("fiber: custom binder not found, please be sure to enter right name!")
 }
 
-func (b Bind) Header(out any) error {
+func (b *Bind) Header(out any) error {
 	return binder.HeaderBinder.Bind(b.ctx.Request(), out)
 }
 
-func (b Bind) Query(out any) error {
+func (b *Bind) Query(out any) error {
 	return binder.QueryBinder.Bind(b.ctx.Context(), out)
 }
 
-func (b Bind) JSON(out any) error {
+func (b *Bind) JSON(out any) error {
 	return binder.JSONBinder.Bind(b.ctx.Body(), b.ctx.App().Config().JSONDecoder, out)
 }
 
-func (b Bind) XML(out any) error {
+func (b *Bind) XML(out any) error {
 	return binder.XMLBinder.Bind(b.ctx.Body(), out)
 }
 
-func (b Bind) Form(out any) error {
+func (b *Bind) Form(out any) error {
 	return binder.FormBinder.Bind(b.ctx.Context(), out)
 }
 
-func (b Bind) MultipartForm(out any) error {
+func (b *Bind) MultipartForm(out any) error {
 	return binder.FormBinder.BindMultipart(b.ctx.Context(), out)
 }
 
-func (b Bind) Body(out any) error {
+func (b *Bind) Body(out any) error {
 	// Get content-type
 	ctype := utils.ToLower(utils.UnsafeString(b.ctx.Context().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))

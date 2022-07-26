@@ -1360,8 +1360,8 @@ func (c *DefaultCtx) IsFromLocal() bool {
 	return c.isLocalHost(ips[0])
 }
 
-func (c *DefaultCtx) Binding() Bind {
-	return Bind{
+func (c *DefaultCtx) Binding() *Bind {
+	return &Bind{
 		ctx: c,
 	}
 }

@@ -10,11 +10,11 @@ import (
 
 type queryBinding struct{}
 
-func (queryBinding) Name() string {
+func (*queryBinding) Name() string {
 	return "query"
 }
 
-func (b queryBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
+func (b *queryBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 	data := make(map[string][]string)
 	var err error
 
