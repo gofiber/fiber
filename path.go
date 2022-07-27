@@ -58,7 +58,7 @@ var (
 	// list of chars for the parameter recognising
 	parameterStartChars = []byte{wildcardParam, plusParam, paramStarterChar}
 	// list of chars of delimiters and the starting parameter name char
-	parameterDelimiterChars = append([]byte{paramStarterChar}, routeDelimiter...)
+	parameterDelimiterChars = append([]byte{paramStarterChar, escapeChar}, routeDelimiter...)
 	// list of chars to find the end of a parameter
 	parameterEndChars = append([]byte{optionalParam}, parameterDelimiterChars...)
 )
