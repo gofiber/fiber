@@ -1183,11 +1183,11 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	centerValue := func(s string, width int) string {
-		pad := strconv.Itoa((width - len(s)) / 2)
+		pad := strconv.Itoa((width - len([]rune(s))) / 2)
 		str := fmt.Sprintf("%"+pad+"s", " ")
 		str += fmt.Sprintf("%s%s%s", cCyan, s, cBlack)
 		str += fmt.Sprintf("%"+pad+"s", " ")
-		if len(str)-10 < width {
+		if len([]rune(str))-10 < width {
 			str += " "
 		}
 		return str

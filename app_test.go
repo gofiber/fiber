@@ -1528,6 +1528,16 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, app.Config().AppName))
 }
 
+func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.T) {
+	appName := "Serveur de vérification des données"
+	app := New(Config{Prefork: true, AppName: appName})
+	startupMessage := captureOutput(func() {
+		app.startupMessage(":3000", false, "")
+	})
+	fmt.Println(startupMessage)
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "│        Serveur de vérification des données        │"))
+}
+
 func Test_App_Server(t *testing.T) {
 	app := New()
 
