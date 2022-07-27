@@ -1,4 +1,4 @@
-package fiber
+package client
 
 import (
 	"bytes"
@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -84,7 +85,7 @@ func Get(url string) *Agent { return defaultClient.Get(url) }
 
 // Get returns a agent with http method GET.
 func (c *Client) Get(url string) *Agent {
-	return c.createAgent(MethodGet, url)
+	return c.createAgent(fiber.MethodGet, url)
 }
 
 // Head returns a agent with http method HEAD.
@@ -92,7 +93,7 @@ func Head(url string) *Agent { return defaultClient.Head(url) }
 
 // Head returns a agent with http method GET.
 func (c *Client) Head(url string) *Agent {
-	return c.createAgent(MethodHead, url)
+	return c.createAgent(fiber.MethodHead, url)
 }
 
 // Post sends POST request to the given url.
@@ -100,7 +101,7 @@ func Post(url string) *Agent { return defaultClient.Post(url) }
 
 // Post sends POST request to the given url.
 func (c *Client) Post(url string) *Agent {
-	return c.createAgent(MethodPost, url)
+	return c.createAgent(fiber.MethodPost, url)
 }
 
 // Put sends PUT request to the given url.
@@ -108,7 +109,7 @@ func Put(url string) *Agent { return defaultClient.Put(url) }
 
 // Put sends PUT request to the given url.
 func (c *Client) Put(url string) *Agent {
-	return c.createAgent(MethodPut, url)
+	return c.createAgent(fiber.MethodPut, url)
 }
 
 // Patch sends PATCH request to the given url.
@@ -116,7 +117,7 @@ func Patch(url string) *Agent { return defaultClient.Patch(url) }
 
 // Patch sends PATCH request to the given url.
 func (c *Client) Patch(url string) *Agent {
-	return c.createAgent(MethodPatch, url)
+	return c.createAgent(fiber.MethodPatch, url)
 }
 
 // Delete sends DELETE request to the given url.
@@ -124,7 +125,7 @@ func Delete(url string) *Agent { return defaultClient.Delete(url) }
 
 // Delete sends DELETE request to the given url.
 func (c *Client) Delete(url string) *Agent {
-	return c.createAgent(MethodDelete, url)
+	return c.createAgent(fiber.MethodDelete, url)
 }
 
 func (c *Client) createAgent(method, url string) *Agent {
@@ -478,7 +479,7 @@ func (a *Agent) JSON(v any) *Agent {
 		a.jsonEncoder = json.Marshal
 	}
 
-	a.req.Header.SetContentType(MIMEApplicationJSON)
+	a.req.Header.SetContentType(fiber.MIMEApplicationJSON)
 
 	if body, err := a.jsonEncoder(v); err != nil {
 		a.errs = append(a.errs, err)
@@ -491,7 +492,7 @@ func (a *Agent) JSON(v any) *Agent {
 
 // XML sends an XML request.
 func (a *Agent) XML(v any) *Agent {
-	a.req.Header.SetContentType(MIMEApplicationXML)
+	a.req.Header.SetContentType(fiber.MIMEApplicationXML)
 
 	if body, err := xml.Marshal(v); err != nil {
 		a.errs = append(a.errs, err)
@@ -507,7 +508,7 @@ func (a *Agent) XML(v any) *Agent {
 // It is recommended obtaining args via AcquireArgs and release it
 // manually in performance-critical code.
 func (a *Agent) Form(args *Args) *Agent {
-	a.req.Header.SetContentType(MIMEApplicationForm)
+	a.req.Header.SetContentType(fiber.MIMEApplicationForm)
 
 	if args != nil {
 		a.req.SetBody(args.QueryString())
@@ -785,7 +786,7 @@ func (a *Agent) Bytes() (code int, body []byte, errs []error) {
 			errs = append(errs, err)
 			return
 		}
-	} else if a.maxRedirectsCount > 0 && (string(req.Header.Method()) == MethodGet || string(req.Header.Method()) == MethodHead) {
+	} else if a.maxRedirectsCount > 0 && (string(req.Header.Method()) == fiber.MethodGet || string(req.Header.Method()) == fiber.MethodHead) {
 		if err := a.HostClient.DoRedirects(req, resp, a.maxRedirectsCount); err != nil {
 			errs = append(errs, err)
 			return

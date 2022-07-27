@@ -1,4 +1,4 @@
-package fiber
+package client
 
 import (
 	"bytes"
@@ -18,6 +18,7 @@ import (
 
 	"encoding/json"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -28,9 +29,9 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
@@ -65,9 +66,9 @@ func Test_Client_Get(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
@@ -80,7 +81,7 @@ func Test_Client_Get(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, "example.com", body)
 		utils.AssertEqual(t, 0, len(errs))
 	}
@@ -91,9 +92,9 @@ func Test_Client_Head(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
@@ -106,7 +107,7 @@ func Test_Client_Head(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, "", body)
 		utils.AssertEqual(t, 0, len(errs))
 	}
@@ -117,10 +118,10 @@ func Test_Client_Post(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Post("/", func(c Ctx) error {
-		return c.Status(StatusCreated).
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusCreated).
 			SendString(c.FormValue("foo"))
 	})
 
@@ -138,7 +139,7 @@ func Test_Client_Post(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusCreated, code)
+		utils.AssertEqual(t, fiber.StatusCreated, code)
 		utils.AssertEqual(t, "bar", body)
 		utils.AssertEqual(t, 0, len(errs))
 
@@ -151,9 +152,9 @@ func Test_Client_Put(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Put("/", func(c Ctx) error {
+	app.Put("/", func(c fiber.Ctx) error {
 		return c.SendString(c.FormValue("foo"))
 	})
 
@@ -171,7 +172,7 @@ func Test_Client_Put(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, "bar", body)
 		utils.AssertEqual(t, 0, len(errs))
 
@@ -184,9 +185,9 @@ func Test_Client_Patch(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Patch("/", func(c Ctx) error {
+	app.Patch("/", func(c fiber.Ctx) error {
 		return c.SendString(c.FormValue("foo"))
 	})
 
@@ -204,7 +205,7 @@ func Test_Client_Patch(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, "bar", body)
 		utils.AssertEqual(t, 0, len(errs))
 
@@ -217,10 +218,10 @@ func Test_Client_Delete(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Delete("/", func(c Ctx) error {
-		return c.Status(StatusNoContent).
+	app.Delete("/", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusNoContent).
 			SendString("deleted")
 	})
 
@@ -235,7 +236,7 @@ func Test_Client_Delete(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusNoContent, code)
+		utils.AssertEqual(t, fiber.StatusNoContent, code)
 		utils.AssertEqual(t, "", body)
 		utils.AssertEqual(t, 0, len(errs))
 
@@ -248,9 +249,9 @@ func Test_Client_UserAgent(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.Send(c.Request().Header.UserAgent())
 	})
 
@@ -264,7 +265,7 @@ func Test_Client_UserAgent(t *testing.T) {
 
 			code, body, errs := a.String()
 
-			utils.AssertEqual(t, StatusOK, code)
+			utils.AssertEqual(t, fiber.StatusOK, code)
 			utils.AssertEqual(t, defaultUserAgent, body)
 			utils.AssertEqual(t, 0, len(errs))
 		}
@@ -281,7 +282,7 @@ func Test_Client_UserAgent(t *testing.T) {
 
 			code, body, errs := a.String()
 
-			utils.AssertEqual(t, StatusOK, code)
+			utils.AssertEqual(t, fiber.StatusOK, code)
 			utils.AssertEqual(t, "ua", body)
 			utils.AssertEqual(t, 0, len(errs))
 			ReleaseClient(c)
@@ -290,7 +291,7 @@ func Test_Client_UserAgent(t *testing.T) {
 }
 
 func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, _ = c.Write(key)
@@ -315,7 +316,7 @@ func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
 }
 
 func Test_Client_Agent_Connection_Close(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		if c.Request().Header.ConnectionClose() {
 			return c.SendString("close")
 		}
@@ -330,7 +331,7 @@ func Test_Client_Agent_Connection_Close(t *testing.T) {
 }
 
 func Test_Client_Agent_UserAgent(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().Header.UserAgent())
 	}
 
@@ -343,7 +344,7 @@ func Test_Client_Agent_UserAgent(t *testing.T) {
 }
 
 func Test_Client_Agent_Cookie(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		return c.SendString(
 			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
 	}
@@ -360,7 +361,7 @@ func Test_Client_Agent_Cookie(t *testing.T) {
 }
 
 func Test_Client_Agent_Referer(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().Header.Referer())
 	}
 
@@ -373,7 +374,7 @@ func Test_Client_Agent_Referer(t *testing.T) {
 }
 
 func Test_Client_Agent_ContentType(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().Header.ContentType())
 	}
 
@@ -390,9 +391,9 @@ func Test_Client_Agent_Host(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
@@ -408,13 +409,13 @@ func Test_Client_Agent_Host(t *testing.T) {
 
 	code, body, errs := a.String()
 
-	utils.AssertEqual(t, StatusOK, code)
+	utils.AssertEqual(t, fiber.StatusOK, code)
 	utils.AssertEqual(t, "example.com", body)
 	utils.AssertEqual(t, 0, len(errs))
 }
 
 func Test_Client_Agent_QueryString(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().URI().QueryString())
 	}
 
@@ -427,9 +428,9 @@ func Test_Client_Agent_QueryString(t *testing.T) {
 }
 
 func Test_Client_Agent_BasicAuth(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		// Get authorization header
-		auth := c.Get(HeaderAuthorization)
+		auth := c.Get(fiber.HeaderAuthorization)
 		// Decode the header contents
 		raw, err := base64.StdEncoding.DecodeString(auth[6:])
 		utils.AssertEqual(t, nil, err)
@@ -446,7 +447,7 @@ func Test_Client_Agent_BasicAuth(t *testing.T) {
 }
 
 func Test_Client_Agent_BodyString(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().Body())
 	}
 
@@ -458,7 +459,7 @@ func Test_Client_Agent_BodyString(t *testing.T) {
 }
 
 func Test_Client_Agent_Body(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().Body())
 	}
 
@@ -470,7 +471,7 @@ func Test_Client_Agent_Body(t *testing.T) {
 }
 
 func Test_Client_Agent_BodyStream(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		return c.Send(c.Request().Body())
 	}
 
@@ -486,9 +487,9 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("custom")
 	})
 
@@ -499,7 +500,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 		resp := AcquireResponse()
 
 		req := a.Request()
-		req.Header.SetMethod(MethodGet)
+		req.Header.SetMethod(fiber.MethodGet)
 		req.SetRequestURI("http://example.com")
 
 		utils.AssertEqual(t, nil, a.Parse())
@@ -509,7 +510,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 		code, body, errs := a.SetResponse(resp).
 			String()
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, "custom", body)
 		utils.AssertEqual(t, "custom", string(resp.Body()))
 		utils.AssertEqual(t, 0, len(errs))
@@ -523,9 +524,9 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("dest")
 	})
 
@@ -540,7 +541,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 		code, body, errs := a.Dest(dest[:0]).String()
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, "dest", body)
 		utils.AssertEqual(t, "de", string(dest))
 		utils.AssertEqual(t, 0, len(errs))
@@ -555,7 +556,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 		code, body, errs := a.Dest(dest[:0]).String()
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, "dest", body)
 		utils.AssertEqual(t, "destar", string(dest))
 		utils.AssertEqual(t, 0, len(errs))
@@ -591,7 +592,7 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
@@ -623,8 +624,8 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 }
 
 func Test_Client_Agent_Json(t *testing.T) {
-	handler := func(c Ctx) error {
-		utils.AssertEqual(t, MIMEApplicationJSON, string(c.Request().Header.ContentType()))
+	handler := func(c fiber.Ctx) error {
+		utils.AssertEqual(t, fiber.MIMEApplicationJSON, string(c.Request().Header.ContentType()))
 
 		return c.Send(c.Request().Body())
 	}
@@ -649,8 +650,8 @@ func Test_Client_Agent_Json_Error(t *testing.T) {
 }
 
 func Test_Client_Agent_XML(t *testing.T) {
-	handler := func(c Ctx) error {
-		utils.AssertEqual(t, MIMEApplicationXML, string(c.Request().Header.ContentType()))
+	handler := func(c fiber.Ctx) error {
+		utils.AssertEqual(t, fiber.MIMEApplicationXML, string(c.Request().Header.ContentType()))
 
 		return c.Send(c.Request().Body())
 	}
@@ -674,8 +675,8 @@ func Test_Client_Agent_XML_Error(t *testing.T) {
 }
 
 func Test_Client_Agent_Form(t *testing.T) {
-	handler := func(c Ctx) error {
-		utils.AssertEqual(t, MIMEApplicationForm, string(c.Request().Header.ContentType()))
+	handler := func(c fiber.Ctx) error {
+		utils.AssertEqual(t, fiber.MIMEApplicationForm, string(c.Request().Header.ContentType()))
 
 		return c.Send(c.Request().Body())
 	}
@@ -698,10 +699,10 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Post("/", func(c Ctx) error {
-		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
+	app.Post("/", func(c fiber.Ctx) error {
+		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
 
 		mf, err := c.MultipartForm()
 		utils.AssertEqual(t, nil, err)
@@ -724,7 +725,7 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 
 	code, body, errs := a.String()
 
-	utils.AssertEqual(t, StatusOK, code)
+	utils.AssertEqual(t, fiber.StatusOK, code)
 	utils.AssertEqual(t, "--myBoundary\r\nContent-Disposition: form-data; name=\"foo\"\r\n\r\nbar\r\n--myBoundary--\r\n", body)
 	utils.AssertEqual(t, 0, len(errs))
 	ReleaseArgs(args)
@@ -753,10 +754,10 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Post("/", func(c Ctx) error {
-		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
+	app.Post("/", func(c fiber.Ctx) error {
+		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
 
 		fh1, err := c.FormFile("field1")
 		utils.AssertEqual(t, nil, err)
@@ -798,7 +799,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, "multipart form files", body)
 		utils.AssertEqual(t, 0, len(errs))
 
@@ -832,7 +833,7 @@ func Test_Client_Agent_Multipart_Random_Boundary(t *testing.T) {
 
 	reg := regexp.MustCompile(`multipart/form-data; boundary=\w{30}`)
 
-	utils.AssertEqual(t, true, reg.Match(a.req.Header.Peek(HeaderContentType)))
+	utils.AssertEqual(t, true, reg.Match(a.req.Header.Peek(fiber.HeaderContentType)))
 }
 
 func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
@@ -857,7 +858,7 @@ func Test_Client_Agent_SendFile_Error(t *testing.T) {
 }
 
 func Test_Client_Debug(t *testing.T) {
-	handler := func(c Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		return c.SendString("debug")
 	}
 
@@ -884,9 +885,9 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		time.Sleep(time.Millisecond * 200)
 		return c.SendString("timeout")
 	})
@@ -910,9 +911,9 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("reuse")
 	})
 
@@ -925,13 +926,13 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 
 	code, body, errs := a.String()
 
-	utils.AssertEqual(t, StatusOK, code)
+	utils.AssertEqual(t, fiber.StatusOK, code)
 	utils.AssertEqual(t, "reuse", body)
 	utils.AssertEqual(t, 0, len(errs))
 
 	code, body, errs = a.String()
 
-	utils.AssertEqual(t, StatusOK, code)
+	utils.AssertEqual(t, fiber.StatusOK, code)
 	utils.AssertEqual(t, "reuse", body)
 	utils.AssertEqual(t, 0, len(errs))
 }
@@ -946,14 +947,14 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 		Certificates: []tls.Certificate{cer},
 	}
 
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	utils.AssertEqual(t, nil, err)
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("ignore tls")
 	})
 
@@ -965,7 +966,7 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 		String()
 
 	utils.AssertEqual(t, 0, len(errs))
-	utils.AssertEqual(t, StatusOK, code)
+	utils.AssertEqual(t, fiber.StatusOK, code)
 	utils.AssertEqual(t, "ignore tls", body)
 }
 
@@ -975,14 +976,14 @@ func Test_Client_Agent_TLS(t *testing.T) {
 	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
 	utils.AssertEqual(t, nil, err)
 
-	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	utils.AssertEqual(t, nil, err)
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("tls")
 	})
 
@@ -993,7 +994,7 @@ func Test_Client_Agent_TLS(t *testing.T) {
 		String()
 
 	utils.AssertEqual(t, 0, len(errs))
-	utils.AssertEqual(t, StatusOK, code)
+	utils.AssertEqual(t, fiber.StatusOK, code)
 	utils.AssertEqual(t, "tls", body)
 }
 
@@ -1002,15 +1003,15 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		if c.Request().URI().QueryArgs().Has("foo") {
 			return c.Redirect("/foo")
 		}
 		return c.Redirect("/")
 	})
-	app.Get("/foo", func(c Ctx) error {
+	app.Get("/foo", func(c fiber.Ctx) error {
 		return c.SendString("redirect")
 	})
 
@@ -1048,13 +1049,13 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.JSON(data{true})
 	})
 
-	app.Get("/error", func(c Ctx) error {
+	app.Get("/error", func(c fiber.Ctx) error {
 		return c.SendString(`{"success"`)
 	})
 
@@ -1071,7 +1072,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 		code, body, errs := a.Struct(&d)
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, `{"success":true}`, string(body))
 		utils.AssertEqual(t, 0, len(errs))
 		utils.AssertEqual(t, true, d.Success)
@@ -1102,7 +1103,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 		code, body, errs := a.JSONDecoder(json.Unmarshal).Struct(&d)
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, `{"success"`, string(body))
 		utils.AssertEqual(t, 1, len(errs))
 		utils.AssertEqual(t, "unexpected end of JSON input", errs[0].Error())
@@ -1122,12 +1123,12 @@ func Test_AddMissingPort_TLS(t *testing.T) {
 	utils.AssertEqual(t, "example.com:443", addr)
 }
 
-func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), excepted string, count ...int) {
+func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Agent), excepted string, count ...int) {
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
 	app.Get("/", handler)
 
@@ -1147,7 +1148,7 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, fiber.StatusOK, code)
 		utils.AssertEqual(t, excepted, body)
 		utils.AssertEqual(t, 0, len(errs))
 	}

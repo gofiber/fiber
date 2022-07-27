@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/fiber/v3/utils"
+	fiberClient "github.com/gofiber/fiber/v3/client"
 )
 
 func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, string) {
@@ -115,7 +116,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
-	code, body, errs := fiber.Get("https://" + addr + "/tlsbalaner").TLSConfig(clientTLSConf).String()
+	code, body, errs := fiberClient.Get("https://" + addr + "/tlsbalaner").TLSConfig(clientTLSConf).String()
 
 	utils.AssertEqual(t, 0, len(errs))
 	utils.AssertEqual(t, fiber.StatusOK, code)
@@ -146,7 +147,7 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 
 	go func() { utils.AssertEqual(t, nil, app.Listener(proxyServerLn)) }()
 
-	code, body, errs := fiber.Get("https://" + proxyAddr).
+	code, body, errs := fiberClient.Get("https://" + proxyAddr).
 		InsecureSkipVerify().
 		Timeout(5 * time.Second).
 		String()
@@ -204,7 +205,7 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
-	code, body, errs := fiber.Get("https://" + addr).TLSConfig(clientTLSConf).String()
+	code, body, errs := fiberClient.Get("https://" + addr).TLSConfig(clientTLSConf).String()
 
 	utils.AssertEqual(t, 0, len(errs))
 	utils.AssertEqual(t, fiber.StatusOK, code)
