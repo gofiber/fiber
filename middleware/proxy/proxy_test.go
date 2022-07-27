@@ -124,7 +124,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 
 // go test -run Test_Proxy_Forward_WithTlsConfig_To_Http
 func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	_, targetAddr := createProxyTestServer(func(c *fiber.Ctx) error {
 		return c.SendString("hello from target")
