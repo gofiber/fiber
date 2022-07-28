@@ -7,8 +7,11 @@ import (
 	"github.com/gofiber/fiber/v3/utils"
 )
 
+var ErrCustomBinderNotFound = errors.New("fiber: custom binder not found, please be sure to enter right name!")
+
 type CustomBinder interface {
 	Name() string
+	MIMETypes() []string
 	Parse(Ctx, any) error
 }
 
@@ -27,14 +30,13 @@ func (b *Bind) Must() {
 
 func (b *Bind) Custom(name string, dest any) error {
 	binders := b.ctx.App().customBinders
-
 	for _, binder := range binders {
 		if binder.Name() == name {
 			return binder.Parse(b.ctx, dest)
 		}
 	}
 
-	return errors.New("fiber: custom binder not found, please be sure to enter right name!")
+	return ErrCustomBinderNotFound
 }
 
 func (b *Bind) Header(out any) error {
@@ -88,6 +90,16 @@ func (b *Bind) Body(out any) error {
 		return b.Form(out)
 	case MIMEMultipartForm:
 		return b.MultipartForm(out)
+	}
+
+	// Check custom binders
+	binders := b.ctx.App().customBinders
+	for _, binder := range binders {
+		for _, mime := range binder.MIMETypes() {
+			if mime == ctype {
+				return binder.Parse(b.ctx, out)
+			}
+		}
 	}
 
 	// No suitable content type found

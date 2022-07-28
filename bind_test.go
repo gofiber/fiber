@@ -3,6 +3,7 @@ package fiber
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"reflect"
@@ -1172,4 +1173,43 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 		c.Binding().Cookie(q)
 	}
 	utils.AssertEqual(b, nil, c.Binding().Cookie(q))
+}
+
+// custom binder for testing
+type customBinder struct{}
+
+func (b *customBinder) Name() string {
+	return "custom"
+}
+
+func (b *customBinder) MIMETypes() []string {
+	return []string{"test", "test2"}
+}
+
+func (b *customBinder) Parse(c Ctx, out any) error {
+	return json.Unmarshal(c.Body(), out)
+}
+
+// go test -run Test_Bind_CustomBinder
+func Test_Bind_CustomBinder(b *testing.T) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	// Register binder
+	binder := &customBinder{}
+	app.RegisterCustomBinder(binder)
+
+	type Demo struct {
+		Name string `json:"name"`
+	}
+	body := []byte(`{"name":"john"}`)
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType("test")
+	c.Request().Header.SetContentLength(len(body))
+	d := new(Demo)
+
+	utils.AssertEqual(b, nil, c.Binding().Body(d))
+	utils.AssertEqual(b, nil, c.Binding().Custom("custom", d))
+	utils.AssertEqual(b, ErrCustomBinderNotFound, c.Binding().Custom("not_custom", d))
+	utils.AssertEqual(b, "john", d.Name)
 }
