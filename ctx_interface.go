@@ -442,6 +442,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
+	c.bind = nil
 	if c.viewBindMap != nil {
 		dictpool.ReleaseDict(c.viewBindMap)
 	}

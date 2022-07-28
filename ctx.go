@@ -52,6 +52,7 @@ type DefaultCtx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
+	bind                *Bind                // Default bind reference
 }
 
 // Range data for c.Range
@@ -1361,7 +1362,10 @@ func (c *DefaultCtx) IsFromLocal() bool {
 }
 
 func (c *DefaultCtx) Binding() *Bind {
-	return &Bind{
-		ctx: c,
+	if c.bind == nil {
+		c.bind = &Bind{
+			ctx: c,
+		}
 	}
+	return c.bind
 }
