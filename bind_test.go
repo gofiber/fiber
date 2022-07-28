@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 	"time"
@@ -679,8 +680,8 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 	testDecodeParser(MIMEMultipartForm+`; boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"date\"\r\n\r\n2020-12-15\r\n--b\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\n\r\n--b\r\nContent-Disposition: form-data; name=\"body\"\r\n\r\nNew Body\r\n--b--")
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Body_JSON -benchmem -count=4
-func Benchmark_Ctx_Body_JSON(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_JSON -benchmem -count=4
+func Benchmark_Bind_Body_JSON(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -703,8 +704,8 @@ func Benchmark_Ctx_Body_JSON(b *testing.B) {
 	utils.AssertEqual(b, "john", d.Name)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Body_XML -benchmem -count=4
-func Benchmark_Ctx_Body_XML(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_XML -benchmem -count=4
+func Benchmark_Bind_Body_XML(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -727,8 +728,8 @@ func Benchmark_Ctx_Body_XML(b *testing.B) {
 	utils.AssertEqual(b, "john", d.Name)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Body_Form -benchmem -count=4
-func Benchmark_Ctx_Body_Form(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_Form -benchmem -count=4
+func Benchmark_Bind_Body_Form(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -751,8 +752,8 @@ func Benchmark_Ctx_Body_Form(b *testing.B) {
 	utils.AssertEqual(b, "john", d.Name)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Body_MultipartForm -benchmem -count=4
-func Benchmark_Ctx_Body_MultipartForm(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_MultipartForm -benchmem -count=4
+func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -774,4 +775,61 @@ func Benchmark_Ctx_Body_MultipartForm(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, c.Binding().Body(d))
 	utils.AssertEqual(b, "john", d.Name)
+}
+
+func Test_Bind_URI(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/test1/userId/role/:roleId", func(c Ctx) error {
+		type Demo struct {
+			UserID uint `uri:"userId"`
+			RoleID uint `uri:"roleId"`
+		}
+		var (
+			d = new(Demo)
+		)
+		if err := c.Binding().URI(d); err != nil {
+			t.Fatal(err)
+		}
+		utils.AssertEqual(t, uint(111), d.UserID)
+		utils.AssertEqual(t, uint(222), d.RoleID)
+		return nil
+	})
+	app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_ParamsParse -benchmem -count=4
+func Benchmark_Bind_URI(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	c.route = &Route{
+		Params: []string{
+			"param1", "param2", "param3", "param4",
+		},
+	}
+	c.values = [maxParams]string{
+		"john", "doe", "is", "awesome",
+	}
+
+	var res struct {
+		Param1 string `uri:"param1"`
+		Param2 string `uri:"param2"`
+		Param3 string `uri:"param3"`
+		Param4 string `uri:"param4"`
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c.Binding().URI(&res)
+	}
+
+	utils.AssertEqual(b, "john", res.Param1)
+	utils.AssertEqual(b, "doe", res.Param2)
+	utils.AssertEqual(b, "is", res.Param3)
+	utils.AssertEqual(b, "awesome", res.Param4)
 }

@@ -13,7 +13,7 @@ type CustomBinder interface {
 }
 
 type Bind struct {
-	ctx    Ctx
+	ctx    *DefaultCtx
 	should bool
 }
 
@@ -55,6 +55,10 @@ func (b *Bind) XML(out any) error {
 
 func (b *Bind) Form(out any) error {
 	return binder.FormBinder.Bind(b.ctx.Context(), out)
+}
+
+func (b *Bind) URI(out any) error {
+	return binder.URIBinder.Bind(b.ctx.route.Params, b.ctx.Params, out)
 }
 
 func (b *Bind) MultipartForm(out any) error {
