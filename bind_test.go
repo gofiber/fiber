@@ -455,6 +455,78 @@ func Test_Bind_Header_Schema(t *testing.T) {
 	utils.AssertEqual(t, 0, n.Next.Value)
 }
 
+// go test -run Test_Bind_Resp_Header -v
+func Test_Bind_RespHeader(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	type Header struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Response().Header.Add("id", "1")
+	c.Response().Header.Add("Name", "John Doe")
+	c.Response().Header.Add("Hobby", "golang,fiber")
+	q := new(Header)
+	utils.AssertEqual(t, nil, c.Binding().RespHeader(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
+
+	c.Response().Header.Del("hobby")
+	c.Response().Header.Add("Hobby", "golang,fiber,go")
+	q = new(Header)
+	utils.AssertEqual(t, nil, c.Binding().RespHeader(q))
+	utils.AssertEqual(t, 3, len(q.Hobby))
+
+	empty := new(Header)
+	c.Response().Header.Del("hobby")
+	utils.AssertEqual(t, nil, c.Binding().Query(empty))
+	utils.AssertEqual(t, 0, len(empty.Hobby))
+
+	type Header2 struct {
+		Bool            bool
+		ID              int
+		Name            string
+		Hobby           string
+		FavouriteDrinks []string
+		Empty           []string
+		Alloc           []string
+		No              []int64
+	}
+
+	c.Response().Header.Add("id", "2")
+	c.Response().Header.Add("Name", "Jane Doe")
+	c.Response().Header.Del("hobby")
+	c.Response().Header.Add("Hobby", "go,fiber")
+	c.Response().Header.Add("favouriteDrinks", "milo,coke,pepsi")
+	c.Response().Header.Add("alloc", "")
+	c.Response().Header.Add("no", "1")
+
+	h2 := new(Header2)
+	h2.Bool = true
+	h2.Name = "hello world"
+	utils.AssertEqual(t, nil, c.Binding().RespHeader(h2))
+	utils.AssertEqual(t, "go,fiber", h2.Hobby)
+	utils.AssertEqual(t, true, h2.Bool)
+	utils.AssertEqual(t, "Jane Doe", h2.Name) // check value get overwritten
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
+	var nilSlice []string
+	utils.AssertEqual(t, nilSlice, h2.Empty)
+	utils.AssertEqual(t, []string{""}, h2.Alloc)
+	utils.AssertEqual(t, []int64{1}, h2.No)
+
+	type RequiredHeader struct {
+		Name string `respHeader:"name,required"`
+	}
+	rh := new(RequiredHeader)
+	c.Response().Header.Del("name")
+	utils.AssertEqual(t, "name is empty", c.Binding().RespHeader(rh).Error())
+}
+
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query -benchmem -count=4
 func Benchmark_Bind_Query(b *testing.B) {
 	app := New()

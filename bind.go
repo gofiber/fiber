@@ -41,6 +41,10 @@ func (b *Bind) Header(out any) error {
 	return binder.HeaderBinder.Bind(b.ctx.Request(), out)
 }
 
+func (b *Bind) RespHeader(out any) error {
+	return binder.RespHeaderBinder.Bind(b.ctx.Response(), out)
+}
+
 func (b *Bind) Query(out any) error {
 	return binder.QueryBinder.Bind(b.ctx.Context(), out)
 }

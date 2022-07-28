@@ -15,6 +15,7 @@ var (
 )
 
 var HeaderBinder = &headerBinding{}
+var RespHeaderBinder = &respHeaderBinding{}
 var QueryBinder = &queryBinding{}
 var FormBinder = &formBinding{}
 var URIBinder = &uriBinding{}
