@@ -626,6 +626,32 @@ func Benchmark_Bind_Header(b *testing.B) {
 	utils.AssertEqual(b, nil, c.Binding().Header(q))
 }
 
+// go test -v  -run=^$ -bench=Benchmark_Bind_RespHeader -benchmem -count=4
+func Benchmark_Bind_RespHeader(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	type ReqHeader struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Response().Header.Add("id", "1")
+	c.Response().Header.Add("Name", "John Doe")
+	c.Response().Header.Add("Hobby", "golang,fiber")
+
+	q := new(ReqHeader)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.Binding().RespHeader(q)
+	}
+	utils.AssertEqual(b, nil, c.Binding().RespHeader(q))
+}
+
 // go test -run Test_Bind_Body
 func Test_Bind_Body(t *testing.T) {
 	t.Parallel()
