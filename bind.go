@@ -45,6 +45,10 @@ func (b *Bind) RespHeader(out any) error {
 	return binder.RespHeaderBinder.Bind(b.ctx.Response(), out)
 }
 
+func (b *Bind) Cookie(out any) error {
+	return binder.CookieBinder.Bind(b.ctx.Context(), out)
+}
+
 func (b *Bind) Query(out any) error {
 	return binder.QueryBinder.Bind(b.ctx.Context(), out)
 }

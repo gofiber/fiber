@@ -931,3 +931,245 @@ func Benchmark_Bind_URI(b *testing.B) {
 	utils.AssertEqual(b, "is", res.Param3)
 	utils.AssertEqual(b, "awesome", res.Param4)
 }
+
+// go test -run Test_Bind_Cookie -v
+func Test_Bind_Cookie(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	type Cookie struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.SetCookie("id", "1")
+	c.Request().Header.SetCookie("Name", "John Doe")
+	c.Request().Header.SetCookie("Hobby", "golang,fiber")
+	q := new(Cookie)
+	utils.AssertEqual(t, nil, c.Binding().Cookie(q))
+	utils.AssertEqual(t, 2, len(q.Hobby))
+
+	c.Request().Header.DelCookie("hobby")
+	c.Request().Header.SetCookie("Hobby", "golang,fiber,go")
+	q = new(Cookie)
+	utils.AssertEqual(t, nil, c.Binding().Cookie(q))
+	utils.AssertEqual(t, 3, len(q.Hobby))
+
+	empty := new(Cookie)
+	c.Request().Header.DelCookie("hobby")
+	utils.AssertEqual(t, nil, c.Binding().Query(empty))
+	utils.AssertEqual(t, 0, len(empty.Hobby))
+
+	type Cookie2 struct {
+		Bool            bool
+		ID              int
+		Name            string
+		Hobby           string
+		FavouriteDrinks []string
+		Empty           []string
+		Alloc           []string
+		No              []int64
+	}
+
+	c.Request().Header.SetCookie("id", "2")
+	c.Request().Header.SetCookie("Name", "Jane Doe")
+	c.Request().Header.DelCookie("hobby")
+	c.Request().Header.SetCookie("Hobby", "go,fiber")
+	c.Request().Header.SetCookie("favouriteDrinks", "milo,coke,pepsi")
+	c.Request().Header.SetCookie("alloc", "")
+	c.Request().Header.SetCookie("no", "1")
+
+	h2 := new(Cookie2)
+	h2.Bool = true
+	h2.Name = "hello world"
+	utils.AssertEqual(t, nil, c.Binding().Cookie(h2))
+	utils.AssertEqual(t, "go,fiber", h2.Hobby)
+	utils.AssertEqual(t, true, h2.Bool)
+	utils.AssertEqual(t, "Jane Doe", h2.Name) // check value get overwritten
+	utils.AssertEqual(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
+	var nilSlice []string
+	utils.AssertEqual(t, nilSlice, h2.Empty)
+	utils.AssertEqual(t, []string{""}, h2.Alloc)
+	utils.AssertEqual(t, []int64{1}, h2.No)
+
+	type RequiredCookie struct {
+		Name string `cookie:"name,required"`
+	}
+	rh := new(RequiredCookie)
+	c.Request().Header.DelCookie("name")
+	utils.AssertEqual(t, "name is empty", c.Binding().Cookie(rh).Error())
+}
+
+// go test -run Test_Bind_Cookie_WithSetParserDecoder -v
+func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
+	type NonRFCTime time.Time
+
+	NonRFCConverter := func(value string) reflect.Value {
+		if v, err := time.Parse("2006-01-02", value); err == nil {
+			return reflect.ValueOf(v)
+		}
+		return reflect.Value{}
+	}
+
+	nonRFCTime := binder.ParserType{
+		Customtype: NonRFCTime{},
+		Converter:  NonRFCConverter,
+	}
+
+	binder.SetParserDecoder(binder.ParserConfig{
+		IgnoreUnknownKeys: true,
+		ParserType:        []binder.ParserType{nonRFCTime},
+		ZeroEmpty:         true,
+		SetAliasTag:       "cerez",
+	})
+
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	type NonRFCTimeInput struct {
+		Date  NonRFCTime `cerez:"date"`
+		Title string     `cerez:"title"`
+		Body  string     `cerez:"body"`
+	}
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	r := new(NonRFCTimeInput)
+
+	c.Request().Header.SetCookie("Date", "2021-04-10")
+	c.Request().Header.SetCookie("Title", "CustomDateTest")
+	c.Request().Header.SetCookie("Body", "October")
+
+	utils.AssertEqual(t, nil, c.Binding().Cookie(r))
+	fmt.Println(r.Date, "q.Date")
+	utils.AssertEqual(t, "CustomDateTest", r.Title)
+	date := fmt.Sprintf("%v", r.Date)
+	utils.AssertEqual(t, "{0 63753609600 <nil>}", date)
+	utils.AssertEqual(t, "October", r.Body)
+
+	c.Request().Header.SetCookie("Title", "")
+	r = &NonRFCTimeInput{
+		Title: "Existing title",
+		Body:  "Existing Body",
+	}
+	utils.AssertEqual(t, nil, c.Binding().Cookie(r))
+	utils.AssertEqual(t, "", r.Title)
+}
+
+// go test -run Test_Bind_Cookie_Schema -v
+func Test_Bind_Cookie_Schema(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	type Cookie1 struct {
+		Name   string `cookie:"Name,required"`
+		Nested struct {
+			Age int `cookie:"Age"`
+		} `cookie:"Nested,required"`
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.SetCookie("Name", "tom")
+	c.Request().Header.SetCookie("Nested.Age", "10")
+	q := new(Cookie1)
+	utils.AssertEqual(t, nil, c.Binding().Cookie(q))
+
+	c.Request().Header.DelCookie("Name")
+	q = new(Cookie1)
+	utils.AssertEqual(t, "Name is empty", c.Binding().Cookie(q).Error())
+
+	c.Request().Header.SetCookie("Name", "tom")
+	c.Request().Header.DelCookie("Nested.Age")
+	c.Request().Header.SetCookie("Nested.Agex", "10")
+	q = new(Cookie1)
+	utils.AssertEqual(t, nil, c.Binding().Cookie(q))
+
+	c.Request().Header.DelCookie("Nested.Agex")
+	q = new(Cookie1)
+	utils.AssertEqual(t, "Nested is empty", c.Binding().Cookie(q).Error())
+
+	c.Request().Header.DelCookie("Nested.Agex")
+	c.Request().Header.DelCookie("Name")
+
+	type Cookie2 struct {
+		Name   string `cookie:"Name"`
+		Nested struct {
+			Age int `cookie:"Age,required"`
+		} `cookie:"Nested"`
+	}
+
+	c.Request().Header.SetCookie("Name", "tom")
+	c.Request().Header.SetCookie("Nested.Age", "10")
+
+	h2 := new(Cookie2)
+	utils.AssertEqual(t, nil, c.Binding().Cookie(h2))
+
+	c.Request().Header.DelCookie("Name")
+	h2 = new(Cookie2)
+	utils.AssertEqual(t, nil, c.Binding().Cookie(h2))
+
+	c.Request().Header.DelCookie("Name")
+	c.Request().Header.DelCookie("Nested.Age")
+	c.Request().Header.SetCookie("Nested.Agex", "10")
+	h2 = new(Cookie2)
+	utils.AssertEqual(t, "Nested.Age is empty", c.Binding().Cookie(h2).Error())
+
+	type Node struct {
+		Value int   `cookie:"Val,required"`
+		Next  *Node `cookie:"Next,required"`
+	}
+	c.Request().Header.SetCookie("Val", "1")
+	c.Request().Header.SetCookie("Next.Val", "3")
+	n := new(Node)
+	utils.AssertEqual(t, nil, c.Binding().Cookie(n))
+	utils.AssertEqual(t, 1, n.Value)
+	utils.AssertEqual(t, 3, n.Next.Value)
+
+	c.Request().Header.DelCookie("Val")
+	n = new(Node)
+	utils.AssertEqual(t, "Val is empty", c.Binding().Cookie(n).Error())
+
+	c.Request().Header.SetCookie("Val", "3")
+	c.Request().Header.DelCookie("Next.Val")
+	c.Request().Header.SetCookie("Next.Value", "2")
+	n = new(Node)
+	n.Next = new(Node)
+	utils.AssertEqual(t, nil, c.Binding().Cookie(n))
+	utils.AssertEqual(t, 3, n.Value)
+	utils.AssertEqual(t, 0, n.Next.Value)
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Bind_Cookie -benchmem -count=4
+func Benchmark_Bind_Cookie(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	type Cookie struct {
+		ID    int
+		Name  string
+		Hobby []string
+	}
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.SetCookie("id", "1")
+	c.Request().Header.SetCookie("Name", "John Doe")
+	c.Request().Header.SetCookie("Hobby", "golang,fiber")
+
+	q := new(Cookie)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c.Binding().Cookie(q)
+	}
+	utils.AssertEqual(b, nil, c.Binding().Cookie(q))
+}

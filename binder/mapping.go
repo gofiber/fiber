@@ -10,13 +10,6 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-// Some constants for BodyParser, QueryParser and ReqHeaderParser.
-const (
-	queryTag     = "query"
-	reqHeaderTag = "reqHeader"
-	bodyTag      = "form"
-)
-
 // ParserConfig form decoder config for SetParserDecoder
 type ParserConfig struct {
 	IgnoreUnknownKeys bool
@@ -130,7 +123,7 @@ func equalFieldType(out any, kind reflect.Kind, key string) bool {
 			continue
 		}
 		// Get tag from field if exist
-		inputFieldName := typeField.Tag.Get(queryTag)
+		inputFieldName := typeField.Tag.Get(QueryBinder.Name())
 		if inputFieldName == "" {
 			inputFieldName = typeField.Name
 		} else {
