@@ -1468,7 +1468,7 @@ func (b *customBinder) Parse(c Ctx, out any) error {
 }
 
 // go test -run Test_Bind_CustomBinder
-func Test_Bind_CustomBinder(b *testing.T) {
+func Test_Bind_CustomBinder(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -1485,8 +1485,23 @@ func Test_Bind_CustomBinder(b *testing.T) {
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
-	utils.AssertEqual(b, nil, c.Binding().Body(d))
-	utils.AssertEqual(b, nil, c.Binding().Custom("custom", d))
-	utils.AssertEqual(b, ErrCustomBinderNotFound, c.Binding().Custom("not_custom", d))
-	utils.AssertEqual(b, "john", d.Name)
+	utils.AssertEqual(t, nil, c.Binding().Body(d))
+	utils.AssertEqual(t, nil, c.Binding().Custom("custom", d))
+	utils.AssertEqual(t, ErrCustomBinderNotFound, c.Binding().Custom("not_custom", d))
+	utils.AssertEqual(t, "john", d.Name)
+}
+
+// go test -run Test_Bind_Must
+func Test_Bind_Must(t *testing.T) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	type RequiredQuery struct {
+		Name string `query:"name,required"`
+	}
+	rq := new(RequiredQuery)
+	c.Request().URI().SetQueryString("")
+	err := c.Binding().Must().Query(rq)
+	utils.AssertEqual(t, StatusBadRequest, c.Response().StatusCode())
+	utils.AssertEqual(t, "Bad request: name is empty", err.Error())
 }

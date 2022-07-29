@@ -1,13 +1,9 @@
 package fiber
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/utils"
 )
-
-var ErrCustomBinderNotFound = errors.New("fiber: custom binder not found, please be sure to enter right name!")
 
 type CustomBinder interface {
 	Name() string
@@ -20,19 +16,32 @@ type Bind struct {
 	should bool
 }
 
-func (b *Bind) Should() {
+func (b *Bind) Should() *Bind {
 	b.should = true
+
+	return b
 }
 
-func (b *Bind) Must() {
+func (b *Bind) Must() *Bind {
 	b.should = false
+
+	return b
+}
+
+func (b *Bind) returnErr(err error) error {
+	if !b.should {
+		b.ctx.Status(StatusBadRequest)
+		return NewErrors(StatusBadRequest, "Bad request: "+err.Error())
+	}
+
+	return err
 }
 
 func (b *Bind) Custom(name string, dest any) error {
 	binders := b.ctx.App().customBinders
 	for _, binder := range binders {
 		if binder.Name() == name {
-			return binder.Parse(b.ctx, dest)
+			return b.returnErr(binder.Parse(b.ctx, dest))
 		}
 	}
 
@@ -40,39 +49,39 @@ func (b *Bind) Custom(name string, dest any) error {
 }
 
 func (b *Bind) Header(out any) error {
-	return binder.HeaderBinder.Bind(b.ctx.Request(), out)
+	return b.returnErr(binder.HeaderBinder.Bind(b.ctx.Request(), out))
 }
 
 func (b *Bind) RespHeader(out any) error {
-	return binder.RespHeaderBinder.Bind(b.ctx.Response(), out)
+	return b.returnErr(binder.RespHeaderBinder.Bind(b.ctx.Response(), out))
 }
 
 func (b *Bind) Cookie(out any) error {
-	return binder.CookieBinder.Bind(b.ctx.Context(), out)
+	return b.returnErr(binder.CookieBinder.Bind(b.ctx.Context(), out))
 }
 
 func (b *Bind) Query(out any) error {
-	return binder.QueryBinder.Bind(b.ctx.Context(), out)
+	return b.returnErr(binder.QueryBinder.Bind(b.ctx.Context(), out))
 }
 
 func (b *Bind) JSON(out any) error {
-	return binder.JSONBinder.Bind(b.ctx.Body(), b.ctx.App().Config().JSONDecoder, out)
+	return b.returnErr(binder.JSONBinder.Bind(b.ctx.Body(), b.ctx.App().Config().JSONDecoder, out))
 }
 
 func (b *Bind) XML(out any) error {
-	return binder.XMLBinder.Bind(b.ctx.Body(), out)
+	return b.returnErr(binder.XMLBinder.Bind(b.ctx.Body(), out))
 }
 
 func (b *Bind) Form(out any) error {
-	return binder.FormBinder.Bind(b.ctx.Context(), out)
+	return b.returnErr(binder.FormBinder.Bind(b.ctx.Context(), out))
 }
 
 func (b *Bind) URI(out any) error {
-	return binder.URIBinder.Bind(b.ctx.route.Params, b.ctx.Params, out)
+	return b.returnErr(binder.URIBinder.Bind(b.ctx.route.Params, b.ctx.Params, out))
 }
 
 func (b *Bind) MultipartForm(out any) error {
-	return binder.FormBinder.BindMultipart(b.ctx.Context(), out)
+	return b.returnErr(binder.FormBinder.BindMultipart(b.ctx.Context(), out))
 }
 
 func (b *Bind) Body(out any) error {
@@ -97,7 +106,7 @@ func (b *Bind) Body(out any) error {
 	for _, binder := range binders {
 		for _, mime := range binder.MIMETypes() {
 			if mime == ctype {
-				return binder.Parse(b.ctx, out)
+				return b.returnErr(binder.Parse(b.ctx, out))
 			}
 		}
 	}

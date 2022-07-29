@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -775,11 +774,6 @@ func parseParamSquareBrackets(k string) (string, error) {
 	return bb.String(), nil
 }
 
-var (
-	ErrRangeMalformed     = errors.New("range: malformed range header string")
-	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
-)
-
 // Range returns a struct containing the type and a slice of ranges.
 func (c *DefaultCtx) Range(size int) (rangeData Range, err error) {
 	rangeStr := c.Get(HeaderRange)
@@ -1329,7 +1323,8 @@ func (c *DefaultCtx) IsFromLocal() bool {
 func (c *DefaultCtx) Binding() *Bind {
 	if c.bind == nil {
 		c.bind = &Bind{
-			ctx: c,
+			ctx:    c,
+			should: true,
 		}
 	}
 	return c.bind
