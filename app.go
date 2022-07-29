@@ -369,7 +369,7 @@ type Config struct {
 	EnablePrintRoutes bool `json:"enable_print_routes"`
 
 	// If you want to validate header/form/query... automatically when to bind, you can define struct validator.
-	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator
+	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator.
 	//
 	// Default: nil
 	StructValidator StructValidator
@@ -551,6 +551,8 @@ func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
 }
 
+// You can register custom binders to use as Binding().Custom("name").
+// They should be compatible with CustomBinder interface.
 func (app *App) RegisterCustomBinder(binder CustomBinder) {
 	app.customBinders = append(app.customBinders, binder)
 }

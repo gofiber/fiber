@@ -324,7 +324,9 @@ type Ctx interface {
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
 
-	// Binding methods
+	// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
+	// It gives custom binding support, detailed binding options and more.
+	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
 	Binding() *Bind
 
 	// SetReq resets fields of context that is relating to request.

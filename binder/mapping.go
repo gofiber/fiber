@@ -53,6 +53,7 @@ func decoderBuilder(parserConfig ParserConfig) any {
 	return decoder
 }
 
+// parse data into the map or struct
 func parse(aliasTag string, out any, data map[string][]string) error {
 	ptrVal := reflect.ValueOf(out)
 
@@ -72,6 +73,7 @@ func parse(aliasTag string, out any, data map[string][]string) error {
 	return parseToStruct(aliasTag, out, data)
 }
 
+// Parse data into the struct with gorilla/schema
 func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPool.Get().(*schema.Decoder)
@@ -83,6 +85,7 @@ func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 	return schemaDecoder.Decode(out, data)
 }
 
+// Parse data into the map
 // thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
 func parseToMap(ptr any, data map[string][]string) error {
 	elem := reflect.TypeOf(ptr).Elem()
@@ -187,6 +190,7 @@ func equalFieldType(out any, kind reflect.Kind, key string) bool {
 	return false
 }
 
+// Get content type from content type header
 func FilterFlags(content string) string {
 	for i, char := range content {
 		if char == ' ' || char == ';' {

@@ -1320,6 +1320,9 @@ func (c *DefaultCtx) IsFromLocal() bool {
 	return c.isLocalHost(ips[0])
 }
 
+// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
+// It gives custom binding support, detailed binding options and more.
+// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
 func (c *DefaultCtx) Binding() *Bind {
 	if c.bind == nil {
 		c.bind = &Bind{
