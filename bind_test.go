@@ -369,18 +369,18 @@ func Test_Bind_Header_Map(t *testing.T) {
 	c.Request().Header.Add("Hobby", "golang,fiber")
 	q := make(map[string][]string, 0)
 	utils.AssertEqual(t, nil, c.Binding().Header(&q))
-	utils.AssertEqual(t, 2, len(q["hobby"]))
+	utils.AssertEqual(t, 2, len(q["Hobby"]))
 
 	c.Request().Header.Del("hobby")
 	c.Request().Header.Add("Hobby", "golang,fiber,go")
 	q = make(map[string][]string, 0)
-	utils.AssertEqual(t, nil, c.Binding().Header(q))
-	utils.AssertEqual(t, 3, len(q["hobby"]))
+	utils.AssertEqual(t, nil, c.Binding().Header(&q))
+	utils.AssertEqual(t, 3, len(q["Hobby"]))
 
 	empty := make(map[string][]string, 0)
 	c.Request().Header.Del("hobby")
 	utils.AssertEqual(t, nil, c.Binding().Query(&empty))
-	utils.AssertEqual(t, 0, len(empty["hobby"]))
+	utils.AssertEqual(t, 0, len(empty["Hobby"]))
 }
 
 // go test -run Test_Bind_Header_WithSetParserDecoder -v
