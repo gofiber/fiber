@@ -838,7 +838,7 @@ func (c *DefaultCtx) Redirect(location string, status ...int) error {
 
 // Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
-func (c *DefaultCtx) Bind(vars Map) error {
+func (c *DefaultCtx) BindVars(vars Map) error {
 	// init viewBindMap - lazy map
 	if c.viewBindMap == nil {
 		c.viewBindMap = dictpool.AcquireDict()
@@ -1323,7 +1323,7 @@ func (c *DefaultCtx) IsFromLocal() bool {
 // You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
 // It gives custom binding support, detailed binding options and more.
 // Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
-func (c *DefaultCtx) Binding() *Bind {
+func (c *DefaultCtx) Bind() *Bind {
 	if c.bind == nil {
 		c.bind = &Bind{
 			ctx:    c,

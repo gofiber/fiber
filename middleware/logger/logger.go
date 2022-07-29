@@ -248,7 +248,7 @@ func New(config ...Config) fiber.Handler {
 				return buf.Write(c.Response().Body())
 			case TagReqHeaders:
 				out := make(map[string]string, 0)
-				if err := c.Binding().Header(&out); err != nil {
+				if err := c.Bind().Header(&out); err != nil {
 					return 0, err
 				}
 

@@ -224,7 +224,7 @@ type Ctx interface {
 
 	// Add vars to default view var map binding to template engine.
 	// Variables are read by the Render method and may be overwritten.
-	Bind(vars Map) error
+	BindVars(vars Map) error
 
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
@@ -327,7 +327,7 @@ type Ctx interface {
 	// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
 	// It gives custom binding support, detailed binding options and more.
 	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
-	Binding() *Bind
+	Bind() *Bind
 
 	// SetReq resets fields of context that is relating to request.
 	setReq(fctx *fasthttp.RequestCtx)

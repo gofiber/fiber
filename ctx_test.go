@@ -2156,13 +2156,13 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 
 }
 
-func Test_Ctx_RenderWithBind(t *testing.T) {
+func Test_Ctx_RenderWithBindVars(t *testing.T) {
 	t.Parallel()
 
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Bind(Map{
+	c.BindVars(Map{
 		"Title": "Hello, World!",
 	})
 
@@ -2177,7 +2177,7 @@ func Test_Ctx_RenderWithBind(t *testing.T) {
 
 }
 
-func Test_Ctx_RenderWithBindLocals(t *testing.T) {
+func Test_Ctx_RenderWithBindVarsLocals(t *testing.T) {
 	t.Parallel()
 
 	app := New(Config{
@@ -2186,7 +2186,7 @@ func Test_Ctx_RenderWithBindLocals(t *testing.T) {
 
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Bind(Map{
+	c.BindVars(Map{
 		"Title": "Hello, World!",
 	})
 
@@ -2219,7 +2219,7 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
+func Benchmark_Ctx_RenderWithLocalsAndBindVars(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
@@ -2229,7 +2229,7 @@ func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
 	})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Bind(Map{
+	c.BindVars(Map{
 		"Title": "Hello, World!",
 	})
 	c.Locals("Summary", "Test")
@@ -2315,7 +2315,7 @@ func Benchmark_Ctx_RenderLocals(b *testing.B) {
 	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
-func Benchmark_Ctx_RenderBind(b *testing.B) {
+func Benchmark_Ctx_RenderBindVars(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
@@ -2323,7 +2323,7 @@ func Benchmark_Ctx_RenderBind(b *testing.B) {
 	app.config.Views = engine
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Bind(Map{
+	c.BindVars(Map{
 		"Title": "Hello, World!",
 	})
 

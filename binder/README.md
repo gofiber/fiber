@@ -1,6 +1,6 @@
-# Fiber Binder
+# Fiber Binders
 
-Binder is new request/response binding for Fiber. By aganist old Fiber parsers, it supports custom binder registration, struct validation, **map[string]string**, **map[string][]string** and more. It's introduced in Fiber v3 and a replacement of:
+Binder is new request/response binding feature for Fiber. By aganist old Fiber parsers, it supports custom binder registration, struct validation, **map[string]string**, **map[string][]string** and more. It's introduced in Fiber v3 and a replacement of:
 - BodyParser
 - ParamsParser
 - GetReqHeaders
@@ -34,7 +34,7 @@ type Person struct {
 app.Post("/", func(c fiber.Ctx) error {
         p := new(Person)
 
-        if err := c.Binding().Body(p); err != nil {
+        if err := c.Bind().Body(p); err != nil {
             return err
         }
 
@@ -63,7 +63,7 @@ Fiber supports binding into the **map[string]string** or **map[string][]string**
 app.Get("/", func(c fiber.Ctx) error {
         p := make(map[string][]string)
 
-        if err := c.Binding().Query(p); err != nil {
+        if err := c.Bind().Query(p); err != nil {
             return err
         }
 
@@ -91,7 +91,7 @@ type Person struct {
 app.Get("/", func(c fiber.Ctx) error {
         p := new(Person)
 
-        if err := c.Binding().JSON(p); err != nil {
+        if err := c.Bind().JSON(p); err != nil {
             return err 
             // Status code: 400 
             // Response: Bad request: name is empty
@@ -132,12 +132,12 @@ func main() {
 
 	app.Get("/", func(c fiber.Ctx) error {
 		out := new(Person)
-		if err := c.Binding().Body(out); err != nil {
+		if err := c.Bind().Body(out); err != nil {
 			return err
 		}
 
         // or you can use like:
-        // if err := c.Binding().Custom("toml", out); err != nil {
+        // if err := c.Bind().Custom("toml", out); err != nil {
 		// 	 return err
 		// }
 
@@ -179,7 +179,7 @@ func main() {
 
 	app.Get("/", func(c fiber.Ctx) error {
 		out := new(Query)
-		if err := c.Binding().Query(out); err != nil {
+		if err := c.Bind().Query(out); err != nil {
 			return err // you should have entered right name!
 		}
 		return c.SendString(out.Name)

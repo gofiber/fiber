@@ -551,7 +551,7 @@ func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
 }
 
-// You can register custom binders to use as Binding().Custom("name").
+// You can register custom binders to use as Bind().Custom("name").
 // They should be compatible with CustomBinder interface.
 func (app *App) RegisterCustomBinder(binder CustomBinder) {
 	app.customBinders = append(app.customBinders, binder)

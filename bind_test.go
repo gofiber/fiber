@@ -31,22 +31,22 @@ func Test_Bind_Query(t *testing.T) {
 	c.Request().Header.SetContentType("")
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := new(Query)
-	utils.AssertEqual(t, nil, c.Binding().Query(q))
+	utils.AssertEqual(t, nil, c.Bind().Query(q))
 	utils.AssertEqual(t, 2, len(q.Hobby))
 
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q = new(Query)
-	utils.AssertEqual(t, nil, c.Binding().Query(q))
+	utils.AssertEqual(t, nil, c.Bind().Query(q))
 	utils.AssertEqual(t, 2, len(q.Hobby))
 
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
 	q = new(Query)
-	utils.AssertEqual(t, nil, c.Binding().Query(q))
+	utils.AssertEqual(t, nil, c.Bind().Query(q))
 	utils.AssertEqual(t, 3, len(q.Hobby))
 
 	empty := new(Query)
 	c.Request().URI().SetQueryString("")
-	utils.AssertEqual(t, nil, c.Binding().Query(empty))
+	utils.AssertEqual(t, nil, c.Bind().Query(empty))
 	utils.AssertEqual(t, 0, len(empty.Hobby))
 
 	type Query2 struct {
@@ -64,7 +64,7 @@ func Test_Bind_Query(t *testing.T) {
 	q2 := new(Query2)
 	q2.Bool = true
 	q2.Name = "hello world"
-	utils.AssertEqual(t, nil, c.Binding().Query(q2))
+	utils.AssertEqual(t, nil, c.Bind().Query(q2))
 	utils.AssertEqual(t, "basketball,football", q2.Hobby)
 	utils.AssertEqual(t, true, q2.Bool)
 	utils.AssertEqual(t, "tom", q2.Name) // check value get overwritten
@@ -79,14 +79,14 @@ func Test_Bind_Query(t *testing.T) {
 	}
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
-	utils.AssertEqual(t, "name is empty", c.Binding().Query(rq).Error())
+	utils.AssertEqual(t, "name is empty", c.Bind().Query(rq).Error())
 
 	type ArrayQuery struct {
 		Data []string
 	}
 	aq := new(ArrayQuery)
 	c.Request().URI().SetQueryString("data[]=john&data[]=doe")
-	utils.AssertEqual(t, nil, c.Binding().Query(aq))
+	utils.AssertEqual(t, nil, c.Bind().Query(aq))
 	utils.AssertEqual(t, 2, len(aq.Data))
 }
 
@@ -101,32 +101,32 @@ func Test_Bind_Query_Map(t *testing.T) {
 	c.Request().Header.SetContentType("")
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
 	q := make(map[string][]string)
-	utils.AssertEqual(t, nil, c.Binding().Query(&q))
+	utils.AssertEqual(t, nil, c.Bind().Query(&q))
 	utils.AssertEqual(t, 2, len(q["hobby"]))
 
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
 	q = make(map[string][]string)
-	utils.AssertEqual(t, nil, c.Binding().Query(&q))
+	utils.AssertEqual(t, nil, c.Bind().Query(&q))
 	utils.AssertEqual(t, 2, len(q["hobby"]))
 
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
 	q = make(map[string][]string)
-	utils.AssertEqual(t, nil, c.Binding().Query(&q))
+	utils.AssertEqual(t, nil, c.Bind().Query(&q))
 	utils.AssertEqual(t, 3, len(q["hobby"]))
 
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer")
 	qq := make(map[string]string)
-	utils.AssertEqual(t, nil, c.Binding().Query(&qq))
+	utils.AssertEqual(t, nil, c.Bind().Query(&qq))
 	utils.AssertEqual(t, "1", qq["id"])
 
 	empty := make(map[string][]string)
 	c.Request().URI().SetQueryString("")
-	utils.AssertEqual(t, nil, c.Binding().Query(&empty))
+	utils.AssertEqual(t, nil, c.Bind().Query(&empty))
 	utils.AssertEqual(t, 0, len(empty["hobby"]))
 
 	em := make(map[string][]int)
 	c.Request().URI().SetQueryString("")
-	utils.AssertEqual(t, binder.ErrMapNotConvertable, c.Binding().Query(&em))
+	utils.AssertEqual(t, binder.ErrMapNotConvertable, c.Bind().Query(&em))
 }
 
 // go test -run Test_Bind_Query_WithSetParserDecoder -v
@@ -166,7 +166,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 	q := new(NonRFCTimeInput)
 
 	c.Request().URI().SetQueryString("date=2021-04-10&title=CustomDateTest&Body=October")
-	utils.AssertEqual(t, nil, c.Binding().Query(q))
+	utils.AssertEqual(t, nil, c.Bind().Query(q))
 	fmt.Println(q.Date, "q.Date")
 	utils.AssertEqual(t, "CustomDateTest", q.Title)
 	date := fmt.Sprintf("%v", q.Date)
@@ -178,7 +178,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 		Title: "Existing title",
 		Body:  "Existing Body",
 	}
-	utils.AssertEqual(t, nil, c.Binding().Query(q))
+	utils.AssertEqual(t, nil, c.Bind().Query(q))
 	utils.AssertEqual(t, "", q.Title)
 }
 
@@ -198,19 +198,19 @@ func Test_Bind_Query_Schema(t *testing.T) {
 	c.Request().Header.SetContentType("")
 	c.Request().URI().SetQueryString("name=tom&nested.age=10")
 	q := new(Query1)
-	utils.AssertEqual(t, nil, c.Binding().Query(q))
+	utils.AssertEqual(t, nil, c.Bind().Query(q))
 
 	c.Request().URI().SetQueryString("namex=tom&nested.age=10")
 	q = new(Query1)
-	utils.AssertEqual(t, "name is empty", c.Binding().Query(q).Error())
+	utils.AssertEqual(t, "name is empty", c.Bind().Query(q).Error())
 
 	c.Request().URI().SetQueryString("name=tom&nested.agex=10")
 	q = new(Query1)
-	utils.AssertEqual(t, nil, c.Binding().Query(q))
+	utils.AssertEqual(t, nil, c.Bind().Query(q))
 
 	c.Request().URI().SetQueryString("name=tom&test.age=10")
 	q = new(Query1)
-	utils.AssertEqual(t, "nested is empty", c.Binding().Query(q).Error())
+	utils.AssertEqual(t, "nested is empty", c.Bind().Query(q).Error())
 
 	type Query2 struct {
 		Name   string `query:"name"`
@@ -220,19 +220,19 @@ func Test_Bind_Query_Schema(t *testing.T) {
 	}
 	c.Request().URI().SetQueryString("name=tom&nested.age=10")
 	q2 := new(Query2)
-	utils.AssertEqual(t, nil, c.Binding().Query(q2))
+	utils.AssertEqual(t, nil, c.Bind().Query(q2))
 
 	c.Request().URI().SetQueryString("nested.age=10")
 	q2 = new(Query2)
-	utils.AssertEqual(t, nil, c.Binding().Query(q2))
+	utils.AssertEqual(t, nil, c.Bind().Query(q2))
 
 	c.Request().URI().SetQueryString("nested.agex=10")
 	q2 = new(Query2)
-	utils.AssertEqual(t, "nested.age is empty", c.Binding().Query(q2).Error())
+	utils.AssertEqual(t, "nested.age is empty", c.Bind().Query(q2).Error())
 
 	c.Request().URI().SetQueryString("nested.agex=10")
 	q2 = new(Query2)
-	utils.AssertEqual(t, "nested.age is empty", c.Binding().Query(q2).Error())
+	utils.AssertEqual(t, "nested.age is empty", c.Bind().Query(q2).Error())
 
 	type Node struct {
 		Value int   `query:"val,required"`
@@ -240,18 +240,18 @@ func Test_Bind_Query_Schema(t *testing.T) {
 	}
 	c.Request().URI().SetQueryString("val=1&next.val=3")
 	n := new(Node)
-	utils.AssertEqual(t, nil, c.Binding().Query(n))
+	utils.AssertEqual(t, nil, c.Bind().Query(n))
 	utils.AssertEqual(t, 1, n.Value)
 	utils.AssertEqual(t, 3, n.Next.Value)
 
 	c.Request().URI().SetQueryString("next.val=2")
 	n = new(Node)
-	utils.AssertEqual(t, "val is empty", c.Binding().Query(n).Error())
+	utils.AssertEqual(t, "val is empty", c.Bind().Query(n).Error())
 
 	c.Request().URI().SetQueryString("val=3&next.value=2")
 	n = new(Node)
 	n.Next = new(Node)
-	utils.AssertEqual(t, nil, c.Binding().Query(n))
+	utils.AssertEqual(t, nil, c.Bind().Query(n))
 	utils.AssertEqual(t, 3, n.Value)
 	utils.AssertEqual(t, 0, n.Next.Value)
 
@@ -266,7 +266,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	c.Request().URI().SetQueryString("data[0][name]=john&data[0][age]=10&data[1][name]=doe&data[1][age]=12")
 	cq := new(CollectionQuery)
-	utils.AssertEqual(t, nil, c.Binding().Query(cq))
+	utils.AssertEqual(t, nil, c.Bind().Query(cq))
 	utils.AssertEqual(t, 2, len(cq.Data))
 	utils.AssertEqual(t, "john", cq.Data[0].Name)
 	utils.AssertEqual(t, 10, cq.Data[0].Age)
@@ -275,7 +275,7 @@ func Test_Bind_Query_Schema(t *testing.T) {
 
 	c.Request().URI().SetQueryString("data.0.name=john&data.0.age=10&data.1.name=doe&data.1.age=12")
 	cq = new(CollectionQuery)
-	utils.AssertEqual(t, nil, c.Binding().Query(cq))
+	utils.AssertEqual(t, nil, c.Bind().Query(cq))
 	utils.AssertEqual(t, 2, len(cq.Data))
 	utils.AssertEqual(t, "john", cq.Data[0].Name)
 	utils.AssertEqual(t, 10, cq.Data[0].Age)
@@ -301,18 +301,18 @@ func Test_Bind_Header(t *testing.T) {
 	c.Request().Header.Add("Name", "John Doe")
 	c.Request().Header.Add("Hobby", "golang,fiber")
 	q := new(Header)
-	utils.AssertEqual(t, nil, c.Binding().Header(q))
+	utils.AssertEqual(t, nil, c.Bind().Header(q))
 	utils.AssertEqual(t, 2, len(q.Hobby))
 
 	c.Request().Header.Del("hobby")
 	c.Request().Header.Add("Hobby", "golang,fiber,go")
 	q = new(Header)
-	utils.AssertEqual(t, nil, c.Binding().Header(q))
+	utils.AssertEqual(t, nil, c.Bind().Header(q))
 	utils.AssertEqual(t, 3, len(q.Hobby))
 
 	empty := new(Header)
 	c.Request().Header.Del("hobby")
-	utils.AssertEqual(t, nil, c.Binding().Query(empty))
+	utils.AssertEqual(t, nil, c.Bind().Query(empty))
 	utils.AssertEqual(t, 0, len(empty.Hobby))
 
 	type Header2 struct {
@@ -337,7 +337,7 @@ func Test_Bind_Header(t *testing.T) {
 	h2 := new(Header2)
 	h2.Bool = true
 	h2.Name = "hello world"
-	utils.AssertEqual(t, nil, c.Binding().Header(h2))
+	utils.AssertEqual(t, nil, c.Bind().Header(h2))
 	utils.AssertEqual(t, "go,fiber", h2.Hobby)
 	utils.AssertEqual(t, true, h2.Bool)
 	utils.AssertEqual(t, "Jane Doe", h2.Name) // check value get overwritten
@@ -352,7 +352,7 @@ func Test_Bind_Header(t *testing.T) {
 	}
 	rh := new(RequiredHeader)
 	c.Request().Header.Del("name")
-	utils.AssertEqual(t, "name is empty", c.Binding().Header(rh).Error())
+	utils.AssertEqual(t, "name is empty", c.Bind().Header(rh).Error())
 }
 
 // go test -run Test_Bind_Header_Map -v
@@ -369,18 +369,18 @@ func Test_Bind_Header_Map(t *testing.T) {
 	c.Request().Header.Add("Name", "John Doe")
 	c.Request().Header.Add("Hobby", "golang,fiber")
 	q := make(map[string][]string, 0)
-	utils.AssertEqual(t, nil, c.Binding().Header(&q))
+	utils.AssertEqual(t, nil, c.Bind().Header(&q))
 	utils.AssertEqual(t, 2, len(q["Hobby"]))
 
 	c.Request().Header.Del("hobby")
 	c.Request().Header.Add("Hobby", "golang,fiber,go")
 	q = make(map[string][]string, 0)
-	utils.AssertEqual(t, nil, c.Binding().Header(&q))
+	utils.AssertEqual(t, nil, c.Bind().Header(&q))
 	utils.AssertEqual(t, 3, len(q["Hobby"]))
 
 	empty := make(map[string][]string, 0)
 	c.Request().Header.Del("hobby")
-	utils.AssertEqual(t, nil, c.Binding().Query(&empty))
+	utils.AssertEqual(t, nil, c.Bind().Query(&empty))
 	utils.AssertEqual(t, 0, len(empty["Hobby"]))
 }
 
@@ -424,7 +424,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 	c.Request().Header.Add("Title", "CustomDateTest")
 	c.Request().Header.Add("Body", "October")
 
-	utils.AssertEqual(t, nil, c.Binding().Header(r))
+	utils.AssertEqual(t, nil, c.Bind().Header(r))
 	fmt.Println(r.Date, "q.Date")
 	utils.AssertEqual(t, "CustomDateTest", r.Title)
 	date := fmt.Sprintf("%v", r.Date)
@@ -436,7 +436,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 		Title: "Existing title",
 		Body:  "Existing Body",
 	}
-	utils.AssertEqual(t, nil, c.Binding().Header(r))
+	utils.AssertEqual(t, nil, c.Bind().Header(r))
 	utils.AssertEqual(t, "", r.Title)
 }
 
@@ -458,21 +458,21 @@ func Test_Bind_Header_Schema(t *testing.T) {
 	c.Request().Header.Add("Name", "tom")
 	c.Request().Header.Add("Nested.Age", "10")
 	q := new(Header1)
-	utils.AssertEqual(t, nil, c.Binding().Header(q))
+	utils.AssertEqual(t, nil, c.Bind().Header(q))
 
 	c.Request().Header.Del("Name")
 	q = new(Header1)
-	utils.AssertEqual(t, "Name is empty", c.Binding().Header(q).Error())
+	utils.AssertEqual(t, "Name is empty", c.Bind().Header(q).Error())
 
 	c.Request().Header.Add("Name", "tom")
 	c.Request().Header.Del("Nested.Age")
 	c.Request().Header.Add("Nested.Agex", "10")
 	q = new(Header1)
-	utils.AssertEqual(t, nil, c.Binding().Header(q))
+	utils.AssertEqual(t, nil, c.Bind().Header(q))
 
 	c.Request().Header.Del("Nested.Agex")
 	q = new(Header1)
-	utils.AssertEqual(t, "Nested is empty", c.Binding().Header(q).Error())
+	utils.AssertEqual(t, "Nested is empty", c.Bind().Header(q).Error())
 
 	c.Request().Header.Del("Nested.Agex")
 	c.Request().Header.Del("Name")
@@ -488,17 +488,17 @@ func Test_Bind_Header_Schema(t *testing.T) {
 	c.Request().Header.Add("Nested.Age", "10")
 
 	h2 := new(Header2)
-	utils.AssertEqual(t, nil, c.Binding().Header(h2))
+	utils.AssertEqual(t, nil, c.Bind().Header(h2))
 
 	c.Request().Header.Del("Name")
 	h2 = new(Header2)
-	utils.AssertEqual(t, nil, c.Binding().Header(h2))
+	utils.AssertEqual(t, nil, c.Bind().Header(h2))
 
 	c.Request().Header.Del("Name")
 	c.Request().Header.Del("Nested.Age")
 	c.Request().Header.Add("Nested.Agex", "10")
 	h2 = new(Header2)
-	utils.AssertEqual(t, "Nested.age is empty", c.Binding().Header(h2).Error())
+	utils.AssertEqual(t, "Nested.age is empty", c.Bind().Header(h2).Error())
 
 	type Node struct {
 		Value int   `header:"Val,required"`
@@ -507,20 +507,20 @@ func Test_Bind_Header_Schema(t *testing.T) {
 	c.Request().Header.Add("Val", "1")
 	c.Request().Header.Add("Next.Val", "3")
 	n := new(Node)
-	utils.AssertEqual(t, nil, c.Binding().Header(n))
+	utils.AssertEqual(t, nil, c.Bind().Header(n))
 	utils.AssertEqual(t, 1, n.Value)
 	utils.AssertEqual(t, 3, n.Next.Value)
 
 	c.Request().Header.Del("Val")
 	n = new(Node)
-	utils.AssertEqual(t, "Val is empty", c.Binding().Header(n).Error())
+	utils.AssertEqual(t, "Val is empty", c.Bind().Header(n).Error())
 
 	c.Request().Header.Add("Val", "3")
 	c.Request().Header.Del("Next.Val")
 	c.Request().Header.Add("Next.Value", "2")
 	n = new(Node)
 	n.Next = new(Node)
-	utils.AssertEqual(t, nil, c.Binding().Header(n))
+	utils.AssertEqual(t, nil, c.Bind().Header(n))
 	utils.AssertEqual(t, 3, n.Value)
 	utils.AssertEqual(t, 0, n.Next.Value)
 }
@@ -543,18 +543,18 @@ func Test_Bind_RespHeader(t *testing.T) {
 	c.Response().Header.Add("Name", "John Doe")
 	c.Response().Header.Add("Hobby", "golang,fiber")
 	q := new(Header)
-	utils.AssertEqual(t, nil, c.Binding().RespHeader(q))
+	utils.AssertEqual(t, nil, c.Bind().RespHeader(q))
 	utils.AssertEqual(t, 2, len(q.Hobby))
 
 	c.Response().Header.Del("hobby")
 	c.Response().Header.Add("Hobby", "golang,fiber,go")
 	q = new(Header)
-	utils.AssertEqual(t, nil, c.Binding().RespHeader(q))
+	utils.AssertEqual(t, nil, c.Bind().RespHeader(q))
 	utils.AssertEqual(t, 3, len(q.Hobby))
 
 	empty := new(Header)
 	c.Response().Header.Del("hobby")
-	utils.AssertEqual(t, nil, c.Binding().Query(empty))
+	utils.AssertEqual(t, nil, c.Bind().Query(empty))
 	utils.AssertEqual(t, 0, len(empty.Hobby))
 
 	type Header2 struct {
@@ -579,7 +579,7 @@ func Test_Bind_RespHeader(t *testing.T) {
 	h2 := new(Header2)
 	h2.Bool = true
 	h2.Name = "hello world"
-	utils.AssertEqual(t, nil, c.Binding().RespHeader(h2))
+	utils.AssertEqual(t, nil, c.Bind().RespHeader(h2))
 	utils.AssertEqual(t, "go,fiber", h2.Hobby)
 	utils.AssertEqual(t, true, h2.Bool)
 	utils.AssertEqual(t, "Jane Doe", h2.Name) // check value get overwritten
@@ -594,7 +594,7 @@ func Test_Bind_RespHeader(t *testing.T) {
 	}
 	rh := new(RequiredHeader)
 	c.Response().Header.Del("name")
-	utils.AssertEqual(t, "name is empty", c.Binding().RespHeader(rh).Error())
+	utils.AssertEqual(t, "name is empty", c.Bind().RespHeader(rh).Error())
 }
 
 // go test -run Test_Bind_RespHeader_Map -v
@@ -611,18 +611,18 @@ func Test_Bind_RespHeader_Map(t *testing.T) {
 	c.Response().Header.Add("Name", "John Doe")
 	c.Response().Header.Add("Hobby", "golang,fiber")
 	q := make(map[string][]string, 0)
-	utils.AssertEqual(t, nil, c.Binding().RespHeader(&q))
+	utils.AssertEqual(t, nil, c.Bind().RespHeader(&q))
 	utils.AssertEqual(t, 2, len(q["Hobby"]))
 
 	c.Response().Header.Del("hobby")
 	c.Response().Header.Add("Hobby", "golang,fiber,go")
 	q = make(map[string][]string, 0)
-	utils.AssertEqual(t, nil, c.Binding().RespHeader(&q))
+	utils.AssertEqual(t, nil, c.Bind().RespHeader(&q))
 	utils.AssertEqual(t, 3, len(q["Hobby"]))
 
 	empty := make(map[string][]string, 0)
 	c.Response().Header.Del("hobby")
-	utils.AssertEqual(t, nil, c.Binding().Query(&empty))
+	utils.AssertEqual(t, nil, c.Bind().Query(&empty))
 	utils.AssertEqual(t, 0, len(empty["Hobby"]))
 }
 
@@ -643,9 +643,9 @@ func Benchmark_Bind_Query(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Binding().Query(q)
+		c.Bind().Query(q)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Query(q))
+	utils.AssertEqual(b, nil, c.Bind().Query(q))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query_Map -benchmem -count=4
@@ -660,9 +660,9 @@ func Benchmark_Bind_Query_Map(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Binding().Query(&q)
+		c.Bind().Query(&q)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Query(&q))
+	utils.AssertEqual(b, nil, c.Bind().Query(&q))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query_WithParseParam -benchmem -count=4
@@ -687,10 +687,10 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Binding().Query(cq)
+		c.Bind().Query(cq)
 	}
 
-	utils.AssertEqual(b, nil, c.Binding().Query(cq))
+	utils.AssertEqual(b, nil, c.Bind().Query(cq))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query_Comma -benchmem -count=4
@@ -711,9 +711,9 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Binding().Query(q)
+		c.Bind().Query(q)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Query(q))
+	utils.AssertEqual(b, nil, c.Bind().Query(q))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Header -benchmem -count=4
@@ -737,9 +737,9 @@ func Benchmark_Bind_Header(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Binding().Header(q)
+		c.Bind().Header(q)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Header(q))
+	utils.AssertEqual(b, nil, c.Bind().Header(q))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Header_Map -benchmem -count=4
@@ -758,9 +758,9 @@ func Benchmark_Bind_Header_Map(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Binding().Header(&q)
+		c.Bind().Header(&q)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Header(&q))
+	utils.AssertEqual(b, nil, c.Bind().Header(&q))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_RespHeader -benchmem -count=4
@@ -784,9 +784,9 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Binding().RespHeader(q)
+		c.Bind().RespHeader(q)
 	}
-	utils.AssertEqual(b, nil, c.Binding().RespHeader(q))
+	utils.AssertEqual(b, nil, c.Bind().RespHeader(q))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_RespHeader_Map -benchmem -count=4
@@ -805,9 +805,9 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Binding().RespHeader(&q)
+		c.Bind().RespHeader(&q)
 	}
-	utils.AssertEqual(b, nil, c.Binding().RespHeader(&q))
+	utils.AssertEqual(b, nil, c.Bind().RespHeader(&q))
 }
 
 // go test -run Test_Bind_Body
@@ -831,7 +831,7 @@ func Test_Bind_Body(t *testing.T) {
 		c.Request().SetBody(gzipJSON.Bytes())
 		c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
 		d := new(Demo)
-		utils.AssertEqual(t, nil, c.Binding().Body(d))
+		utils.AssertEqual(t, nil, c.Bind().Body(d))
 		utils.AssertEqual(t, "john", d.Name)
 		c.Request().Header.Del(HeaderContentEncoding)
 	}
@@ -841,7 +841,7 @@ func Test_Bind_Body(t *testing.T) {
 		c.Request().SetBody([]byte(body))
 		c.Request().Header.SetContentLength(len(body))
 		d := new(Demo)
-		utils.AssertEqual(t, nil, c.Binding().Body(d))
+		utils.AssertEqual(t, nil, c.Bind().Body(d))
 		utils.AssertEqual(t, "john", d.Name)
 	}
 
@@ -854,7 +854,7 @@ func Test_Bind_Body(t *testing.T) {
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody([]byte(body))
 		c.Request().Header.SetContentLength(len(body))
-		utils.AssertEqual(t, false, c.Binding().Body(nil) == nil)
+		utils.AssertEqual(t, false, c.Bind().Body(nil) == nil)
 	}
 
 	testDecodeParserError("invalid-content-type", "")
@@ -869,7 +869,7 @@ func Test_Bind_Body(t *testing.T) {
 	c.Request().SetBody([]byte("data[0][name]=john&data[1][name]=doe"))
 	c.Request().Header.SetContentLength(len(c.Body()))
 	cq := new(CollectionQuery)
-	utils.AssertEqual(t, nil, c.Binding().Body(cq))
+	utils.AssertEqual(t, nil, c.Bind().Body(cq))
 	utils.AssertEqual(t, 2, len(cq.Data))
 	utils.AssertEqual(t, "john", cq.Data[0].Name)
 	utils.AssertEqual(t, "doe", cq.Data[1].Name)
@@ -879,7 +879,7 @@ func Test_Bind_Body(t *testing.T) {
 	c.Request().SetBody([]byte("data.0.name=john&data.1.name=doe"))
 	c.Request().Header.SetContentLength(len(c.Body()))
 	cq = new(CollectionQuery)
-	utils.AssertEqual(t, nil, c.Binding().Body(cq))
+	utils.AssertEqual(t, nil, c.Bind().Body(cq))
 	utils.AssertEqual(t, 2, len(cq.Data))
 	utils.AssertEqual(t, "john", cq.Data[0].Name)
 	utils.AssertEqual(t, "doe", cq.Data[1].Name)
@@ -925,7 +925,7 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 			Title: "Existing title",
 			Body:  "Existing Body",
 		}
-		utils.AssertEqual(t, nil, c.Binding().Body(&d))
+		utils.AssertEqual(t, nil, c.Bind().Body(&d))
 		date := fmt.Sprintf("%v", d.Date)
 		utils.AssertEqual(t, "{0 63743587200 <nil>}", date)
 		utils.AssertEqual(t, "", d.Title)
@@ -954,9 +954,9 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.Binding().Body(d)
+		_ = c.Bind().Body(d)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Body(d))
+	utils.AssertEqual(b, nil, c.Bind().Body(d))
 	utils.AssertEqual(b, "john", d.Name)
 }
 
@@ -978,9 +978,9 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.Binding().Body(d)
+		_ = c.Bind().Body(d)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Body(d))
+	utils.AssertEqual(b, nil, c.Bind().Body(d))
 	utils.AssertEqual(b, "john", d.Name)
 }
 
@@ -1002,9 +1002,9 @@ func Benchmark_Bind_Body_Form(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.Binding().Body(d)
+		_ = c.Bind().Body(d)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Body(d))
+	utils.AssertEqual(b, nil, c.Bind().Body(d))
 	utils.AssertEqual(b, "john", d.Name)
 }
 
@@ -1027,9 +1027,9 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.Binding().Body(d)
+		_ = c.Bind().Body(d)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Body(d))
+	utils.AssertEqual(b, nil, c.Bind().Body(d))
 	utils.AssertEqual(b, "john", d.Name)
 }
 
@@ -1048,9 +1048,9 @@ func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.Binding().Body(&d)
+		_ = c.Bind().Body(&d)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Body(&d))
+	utils.AssertEqual(b, nil, c.Bind().Body(&d))
 	utils.AssertEqual(b, "john", d["name"])
 }
 
@@ -1067,7 +1067,7 @@ func Test_Bind_URI(t *testing.T) {
 		var (
 			d = new(Demo)
 		)
-		if err := c.Binding().URI(d); err != nil {
+		if err := c.Bind().URI(d); err != nil {
 			t.Fatal(err)
 		}
 		utils.AssertEqual(t, uint(111), d.UserID)
@@ -1086,7 +1086,7 @@ func Test_Bind_URI_Map(t *testing.T) {
 	app.Get("/test1/userId/role/:roleId", func(c Ctx) error {
 		d := make(map[string]string)
 
-		if err := c.Binding().URI(&d); err != nil {
+		if err := c.Bind().URI(&d); err != nil {
 			t.Fatal(err)
 		}
 		utils.AssertEqual(t, uint(111), d["userId"])
@@ -1122,7 +1122,7 @@ func Benchmark_Bind_URI(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Binding().URI(&res)
+		c.Bind().URI(&res)
 	}
 
 	utils.AssertEqual(b, "john", res.Param1)
@@ -1151,7 +1151,7 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Binding().URI(&res)
+		c.Bind().URI(&res)
 	}
 
 	utils.AssertEqual(b, "john", res["param1"])
@@ -1179,18 +1179,18 @@ func Test_Bind_Cookie(t *testing.T) {
 	c.Request().Header.SetCookie("Name", "John Doe")
 	c.Request().Header.SetCookie("Hobby", "golang,fiber")
 	q := new(Cookie)
-	utils.AssertEqual(t, nil, c.Binding().Cookie(q))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(q))
 	utils.AssertEqual(t, 2, len(q.Hobby))
 
 	c.Request().Header.DelCookie("hobby")
 	c.Request().Header.SetCookie("Hobby", "golang,fiber,go")
 	q = new(Cookie)
-	utils.AssertEqual(t, nil, c.Binding().Cookie(q))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(q))
 	utils.AssertEqual(t, 3, len(q.Hobby))
 
 	empty := new(Cookie)
 	c.Request().Header.DelCookie("hobby")
-	utils.AssertEqual(t, nil, c.Binding().Query(empty))
+	utils.AssertEqual(t, nil, c.Bind().Query(empty))
 	utils.AssertEqual(t, 0, len(empty.Hobby))
 
 	type Cookie2 struct {
@@ -1215,7 +1215,7 @@ func Test_Bind_Cookie(t *testing.T) {
 	h2 := new(Cookie2)
 	h2.Bool = true
 	h2.Name = "hello world"
-	utils.AssertEqual(t, nil, c.Binding().Cookie(h2))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(h2))
 	utils.AssertEqual(t, "go,fiber", h2.Hobby)
 	utils.AssertEqual(t, true, h2.Bool)
 	utils.AssertEqual(t, "Jane Doe", h2.Name) // check value get overwritten
@@ -1230,7 +1230,7 @@ func Test_Bind_Cookie(t *testing.T) {
 	}
 	rh := new(RequiredCookie)
 	c.Request().Header.DelCookie("name")
-	utils.AssertEqual(t, "name is empty", c.Binding().Cookie(rh).Error())
+	utils.AssertEqual(t, "name is empty", c.Bind().Cookie(rh).Error())
 }
 
 // go test -run Test_Bind_Cookie_Map -v
@@ -1247,18 +1247,18 @@ func Test_Bind_Cookie_Map(t *testing.T) {
 	c.Request().Header.SetCookie("Name", "John Doe")
 	c.Request().Header.SetCookie("Hobby", "golang,fiber")
 	q := make(map[string][]string)
-	utils.AssertEqual(t, nil, c.Binding().Cookie(&q))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(&q))
 	utils.AssertEqual(t, 2, len(q["Hobby"]))
 
 	c.Request().Header.DelCookie("hobby")
 	c.Request().Header.SetCookie("Hobby", "golang,fiber,go")
 	q = make(map[string][]string)
-	utils.AssertEqual(t, nil, c.Binding().Cookie(&q))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(&q))
 	utils.AssertEqual(t, 3, len(q["Hobby"]))
 
 	empty := make(map[string][]string)
 	c.Request().Header.DelCookie("hobby")
-	utils.AssertEqual(t, nil, c.Binding().Query(&empty))
+	utils.AssertEqual(t, nil, c.Bind().Query(&empty))
 	utils.AssertEqual(t, 0, len(empty["Hobby"]))
 }
 
@@ -1302,7 +1302,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 	c.Request().Header.SetCookie("Title", "CustomDateTest")
 	c.Request().Header.SetCookie("Body", "October")
 
-	utils.AssertEqual(t, nil, c.Binding().Cookie(r))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(r))
 	fmt.Println(r.Date, "q.Date")
 	utils.AssertEqual(t, "CustomDateTest", r.Title)
 	date := fmt.Sprintf("%v", r.Date)
@@ -1314,7 +1314,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 		Title: "Existing title",
 		Body:  "Existing Body",
 	}
-	utils.AssertEqual(t, nil, c.Binding().Cookie(r))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(r))
 	utils.AssertEqual(t, "", r.Title)
 }
 
@@ -1337,21 +1337,21 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 	c.Request().Header.SetCookie("Name", "tom")
 	c.Request().Header.SetCookie("Nested.Age", "10")
 	q := new(Cookie1)
-	utils.AssertEqual(t, nil, c.Binding().Cookie(q))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(q))
 
 	c.Request().Header.DelCookie("Name")
 	q = new(Cookie1)
-	utils.AssertEqual(t, "Name is empty", c.Binding().Cookie(q).Error())
+	utils.AssertEqual(t, "Name is empty", c.Bind().Cookie(q).Error())
 
 	c.Request().Header.SetCookie("Name", "tom")
 	c.Request().Header.DelCookie("Nested.Age")
 	c.Request().Header.SetCookie("Nested.Agex", "10")
 	q = new(Cookie1)
-	utils.AssertEqual(t, nil, c.Binding().Cookie(q))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(q))
 
 	c.Request().Header.DelCookie("Nested.Agex")
 	q = new(Cookie1)
-	utils.AssertEqual(t, "Nested is empty", c.Binding().Cookie(q).Error())
+	utils.AssertEqual(t, "Nested is empty", c.Bind().Cookie(q).Error())
 
 	c.Request().Header.DelCookie("Nested.Agex")
 	c.Request().Header.DelCookie("Name")
@@ -1367,17 +1367,17 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 	c.Request().Header.SetCookie("Nested.Age", "10")
 
 	h2 := new(Cookie2)
-	utils.AssertEqual(t, nil, c.Binding().Cookie(h2))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(h2))
 
 	c.Request().Header.DelCookie("Name")
 	h2 = new(Cookie2)
-	utils.AssertEqual(t, nil, c.Binding().Cookie(h2))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(h2))
 
 	c.Request().Header.DelCookie("Name")
 	c.Request().Header.DelCookie("Nested.Age")
 	c.Request().Header.SetCookie("Nested.Agex", "10")
 	h2 = new(Cookie2)
-	utils.AssertEqual(t, "Nested.Age is empty", c.Binding().Cookie(h2).Error())
+	utils.AssertEqual(t, "Nested.Age is empty", c.Bind().Cookie(h2).Error())
 
 	type Node struct {
 		Value int   `cookie:"Val,required"`
@@ -1386,20 +1386,20 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 	c.Request().Header.SetCookie("Val", "1")
 	c.Request().Header.SetCookie("Next.Val", "3")
 	n := new(Node)
-	utils.AssertEqual(t, nil, c.Binding().Cookie(n))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(n))
 	utils.AssertEqual(t, 1, n.Value)
 	utils.AssertEqual(t, 3, n.Next.Value)
 
 	c.Request().Header.DelCookie("Val")
 	n = new(Node)
-	utils.AssertEqual(t, "Val is empty", c.Binding().Cookie(n).Error())
+	utils.AssertEqual(t, "Val is empty", c.Bind().Cookie(n).Error())
 
 	c.Request().Header.SetCookie("Val", "3")
 	c.Request().Header.DelCookie("Next.Val")
 	c.Request().Header.SetCookie("Next.Value", "2")
 	n = new(Node)
 	n.Next = new(Node)
-	utils.AssertEqual(t, nil, c.Binding().Cookie(n))
+	utils.AssertEqual(t, nil, c.Bind().Cookie(n))
 	utils.AssertEqual(t, 3, n.Value)
 	utils.AssertEqual(t, 0, n.Next.Value)
 }
@@ -1426,9 +1426,9 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Binding().Cookie(q)
+		c.Bind().Cookie(q)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Cookie(q))
+	utils.AssertEqual(b, nil, c.Bind().Cookie(q))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Cookie_Map -benchmem -count=4
@@ -1448,9 +1448,9 @@ func Benchmark_Bind_Cookie_Map(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Binding().Cookie(&q)
+		c.Bind().Cookie(&q)
 	}
-	utils.AssertEqual(b, nil, c.Binding().Cookie(&q))
+	utils.AssertEqual(b, nil, c.Bind().Cookie(&q))
 }
 
 // custom binder for testing
@@ -1486,9 +1486,9 @@ func Test_Bind_CustomBinder(t *testing.T) {
 	c.Request().Header.SetContentLength(len(body))
 	d := new(Demo)
 
-	utils.AssertEqual(t, nil, c.Binding().Body(d))
-	utils.AssertEqual(t, nil, c.Binding().Custom("custom", d))
-	utils.AssertEqual(t, ErrCustomBinderNotFound, c.Binding().Custom("not_custom", d))
+	utils.AssertEqual(t, nil, c.Bind().Body(d))
+	utils.AssertEqual(t, nil, c.Bind().Custom("custom", d))
+	utils.AssertEqual(t, ErrCustomBinderNotFound, c.Bind().Custom("not_custom", d))
 	utils.AssertEqual(t, "john", d.Name)
 }
 
@@ -1502,7 +1502,7 @@ func Test_Bind_Must(t *testing.T) {
 	}
 	rq := new(RequiredQuery)
 	c.Request().URI().SetQueryString("")
-	err := c.Binding().Must().Query(rq)
+	err := c.Bind().Must().Query(rq)
 	utils.AssertEqual(t, StatusBadRequest, c.Response().StatusCode())
 	utils.AssertEqual(t, "Bad request: name is empty", err.Error())
 }
@@ -1536,9 +1536,9 @@ func Test_Bind_StructValidator(t *testing.T) {
 
 	rq := new(simpleQuery)
 	c.Request().URI().SetQueryString("name=efe")
-	utils.AssertEqual(t, "you should have entered right name!", c.Binding().Query(rq).Error())
+	utils.AssertEqual(t, "you should have entered right name!", c.Bind().Query(rq).Error())
 
 	rq = new(simpleQuery)
 	c.Request().URI().SetQueryString("name=john")
-	utils.AssertEqual(t, nil, c.Binding().Query(rq))
+	utils.AssertEqual(t, nil, c.Bind().Query(rq))
 }
