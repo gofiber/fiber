@@ -30,5 +30,5 @@ func (b *headerBinding) Bind(req *fasthttp.Request, out any) error {
 		}
 	})
 
-	return parseToStruct(b.Name(), out, data)
+	return parse(b.Name(), out, data)
 }

@@ -89,6 +89,45 @@ func Test_Bind_Query(t *testing.T) {
 	utils.AssertEqual(t, 2, len(aq.Data))
 }
 
+// go test -run Test_Bind_Query_Map -v
+func Test_Bind_Query_Map(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	q := make(map[string][]string)
+	utils.AssertEqual(t, nil, c.Binding().Query(&q))
+	utils.AssertEqual(t, 2, len(q["hobby"]))
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football")
+	q = make(map[string][]string)
+	utils.AssertEqual(t, nil, c.Binding().Query(&q))
+	utils.AssertEqual(t, 2, len(q["hobby"]))
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer&hobby=basketball,football")
+	q = make(map[string][]string)
+	utils.AssertEqual(t, nil, c.Binding().Query(&q))
+	utils.AssertEqual(t, 3, len(q["hobby"]))
+
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=scoccer")
+	qq := make(map[string]string)
+	utils.AssertEqual(t, nil, c.Binding().Query(&qq))
+	utils.AssertEqual(t, "1", qq["id"])
+
+	empty := make(map[string][]string)
+	c.Request().URI().SetQueryString("")
+	utils.AssertEqual(t, nil, c.Binding().Query(&empty))
+	utils.AssertEqual(t, 0, len(empty["hobby"]))
+
+	em := make(map[string][]int)
+	c.Request().URI().SetQueryString("")
+	utils.AssertEqual(t, binder.ErrMapNotConvertable, c.Binding().Query(&em))
+}
+
 // go test -run Test_Bind_Query_WithSetParserDecoder -v
 func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
@@ -315,6 +354,35 @@ func Test_Bind_Header(t *testing.T) {
 	utils.AssertEqual(t, "name is empty", c.Binding().Header(rh).Error())
 }
 
+// go test -run Test_Bind_Header_Map -v
+func Test_Bind_Header_Map(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.Add("id", "1")
+	c.Request().Header.Add("Name", "John Doe")
+	c.Request().Header.Add("Hobby", "golang,fiber")
+	q := make(map[string][]string, 0)
+	utils.AssertEqual(t, nil, c.Binding().Header(&q))
+	utils.AssertEqual(t, 2, len(q["hobby"]))
+
+	c.Request().Header.Del("hobby")
+	c.Request().Header.Add("Hobby", "golang,fiber,go")
+	q = make(map[string][]string, 0)
+	utils.AssertEqual(t, nil, c.Binding().Header(q))
+	utils.AssertEqual(t, 3, len(q["hobby"]))
+
+	empty := make(map[string][]string, 0)
+	c.Request().Header.Del("hobby")
+	utils.AssertEqual(t, nil, c.Binding().Query(&empty))
+	utils.AssertEqual(t, 0, len(empty["hobby"]))
+}
+
 // go test -run Test_Bind_Header_WithSetParserDecoder -v
 func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
@@ -528,6 +596,35 @@ func Test_Bind_RespHeader(t *testing.T) {
 	utils.AssertEqual(t, "name is empty", c.Binding().RespHeader(rh).Error())
 }
 
+// go test -run Test_Bind_RespHeader_Map -v
+func Test_Bind_RespHeader_Map(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Response().Header.Add("id", "1")
+	c.Response().Header.Add("Name", "John Doe")
+	c.Response().Header.Add("Hobby", "golang,fiber")
+	q := make(map[string][]string, 0)
+	utils.AssertEqual(t, nil, c.Binding().RespHeader(&q))
+	utils.AssertEqual(t, 2, len(q["Hobby"]))
+
+	c.Response().Header.Del("hobby")
+	c.Response().Header.Add("Hobby", "golang,fiber,go")
+	q = make(map[string][]string, 0)
+	utils.AssertEqual(t, nil, c.Binding().RespHeader(&q))
+	utils.AssertEqual(t, 3, len(q["Hobby"]))
+
+	empty := make(map[string][]string, 0)
+	c.Response().Header.Del("hobby")
+	utils.AssertEqual(t, nil, c.Binding().Query(&empty))
+	utils.AssertEqual(t, 0, len(empty["Hobby"]))
+}
+
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query -benchmem -count=4
 func Benchmark_Bind_Query(b *testing.B) {
 	app := New()
@@ -548,6 +645,23 @@ func Benchmark_Bind_Query(b *testing.B) {
 		c.Binding().Query(q)
 	}
 	utils.AssertEqual(b, nil, c.Binding().Query(q))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Bind_Query_Map -benchmem -count=4
+func Benchmark_Bind_Query_Map(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball&hobby=football")
+	q := make(map[string][]string)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.Binding().Query(&q)
+	}
+	utils.AssertEqual(b, nil, c.Binding().Query(&q))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query_WithParseParam -benchmem -count=4
@@ -627,6 +741,27 @@ func Benchmark_Bind_Header(b *testing.B) {
 	utils.AssertEqual(b, nil, c.Binding().Header(q))
 }
 
+// go test -v  -run=^$ -bench=Benchmark_Bind_Header_Map -benchmem -count=4
+func Benchmark_Bind_Header_Map(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.Add("id", "1")
+	c.Request().Header.Add("Name", "John Doe")
+	c.Request().Header.Add("Hobby", "golang,fiber")
+
+	q := make(map[string][]string)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.Binding().Header(&q)
+	}
+	utils.AssertEqual(b, nil, c.Binding().Header(&q))
+}
+
 // go test -v  -run=^$ -bench=Benchmark_Bind_RespHeader -benchmem -count=4
 func Benchmark_Bind_RespHeader(b *testing.B) {
 	app := New()
@@ -651,6 +786,27 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 		c.Binding().RespHeader(q)
 	}
 	utils.AssertEqual(b, nil, c.Binding().RespHeader(q))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Bind_RespHeader_Map -benchmem -count=4
+func Benchmark_Bind_RespHeader_Map(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Response().Header.Add("id", "1")
+	c.Response().Header.Add("Name", "John Doe")
+	c.Response().Header.Add("Hobby", "golang,fiber")
+
+	q := make(map[string][]string)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		c.Binding().RespHeader(&q)
+	}
+	utils.AssertEqual(b, nil, c.Binding().RespHeader(&q))
 }
 
 // go test -run Test_Bind_Body
@@ -876,6 +1032,28 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	utils.AssertEqual(b, "john", d.Name)
 }
 
+// go test -v -run=^$ -bench=Benchmark_Bind_Body_Form_Map -benchmem -count=4
+func Benchmark_Bind_Body_Form_Map(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	body := []byte("name=john")
+	c.Request().SetBody(body)
+	c.Request().Header.SetContentType(MIMEApplicationForm)
+	c.Request().Header.SetContentLength(len(body))
+	d := make(map[string]string)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_ = c.Binding().Body(&d)
+	}
+	utils.AssertEqual(b, nil, c.Binding().Body(&d))
+	utils.AssertEqual(b, "john", d["name"])
+}
+
+// go test -run Test_Bind_URI
 func Test_Bind_URI(t *testing.T) {
 	t.Parallel()
 
@@ -899,7 +1077,26 @@ func Test_Bind_URI(t *testing.T) {
 	app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Bind_ParamsParse -benchmem -count=4
+// go test -run Test_Bind_URI_Map
+func Test_Bind_URI_Map(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/test1/userId/role/:roleId", func(c Ctx) error {
+		d := make(map[string]string)
+
+		if err := c.Binding().URI(&d); err != nil {
+			t.Fatal(err)
+		}
+		utils.AssertEqual(t, uint(111), d["userId"])
+		utils.AssertEqual(t, uint(222), d["roleId"])
+		return nil
+	})
+	app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_URI -benchmem -count=4
 func Benchmark_Bind_URI(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
@@ -931,6 +1128,35 @@ func Benchmark_Bind_URI(b *testing.B) {
 	utils.AssertEqual(b, "doe", res.Param2)
 	utils.AssertEqual(b, "is", res.Param3)
 	utils.AssertEqual(b, "awesome", res.Param4)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Bind_URI_Map -benchmem -count=4
+func Benchmark_Bind_URI_Map(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	c.route = &Route{
+		Params: []string{
+			"param1", "param2", "param3", "param4",
+		},
+	}
+	c.values = [maxParams]string{
+		"john", "doe", "is", "awesome",
+	}
+
+	res := make(map[string]string)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c.Binding().URI(&res)
+	}
+
+	utils.AssertEqual(b, "john", res["param1"])
+	utils.AssertEqual(b, "doe", res["param2"])
+	utils.AssertEqual(b, "is", res["param3"])
+	utils.AssertEqual(b, "awesome", res["param4"])
 }
 
 // go test -run Test_Bind_Cookie -v
@@ -1004,6 +1230,35 @@ func Test_Bind_Cookie(t *testing.T) {
 	rh := new(RequiredCookie)
 	c.Request().Header.DelCookie("name")
 	utils.AssertEqual(t, "name is empty", c.Binding().Cookie(rh).Error())
+}
+
+// go test -run Test_Bind_Cookie_Map -v
+func Test_Bind_Cookie_Map(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.SetCookie("id", "1")
+	c.Request().Header.SetCookie("Name", "John Doe")
+	c.Request().Header.SetCookie("Hobby", "golang,fiber")
+	q := make(map[string][]string)
+	utils.AssertEqual(t, nil, c.Binding().Cookie(&q))
+	utils.AssertEqual(t, 2, len(q["Hobby"]))
+
+	c.Request().Header.DelCookie("hobby")
+	c.Request().Header.SetCookie("Hobby", "golang,fiber,go")
+	q = make(map[string][]string)
+	utils.AssertEqual(t, nil, c.Binding().Cookie(&q))
+	utils.AssertEqual(t, 3, len(q["Hobby"]))
+
+	empty := make(map[string][]string)
+	c.Request().Header.DelCookie("hobby")
+	utils.AssertEqual(t, nil, c.Binding().Query(&empty))
+	utils.AssertEqual(t, 0, len(empty["Hobby"]))
 }
 
 // go test -run Test_Bind_Cookie_WithSetParserDecoder -v
@@ -1173,6 +1428,28 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 		c.Binding().Cookie(q)
 	}
 	utils.AssertEqual(b, nil, c.Binding().Cookie(q))
+}
+
+// go test -v  -run=^$ -bench=Benchmark_Bind_Cookie_Map -benchmem -count=4
+func Benchmark_Bind_Cookie_Map(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+
+	c.Request().Header.SetCookie("id", "1")
+	c.Request().Header.SetCookie("Name", "John Doe")
+	c.Request().Header.SetCookie("Hobby", "golang,fiber")
+
+	q := make(map[string][]string)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		c.Binding().Cookie(&q)
+	}
+	utils.AssertEqual(b, nil, c.Binding().Cookie(&q))
 }
 
 // custom binder for testing

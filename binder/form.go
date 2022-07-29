@@ -40,7 +40,7 @@ func (b *formBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 		}
 	})
 
-	return parseToStruct(b.Name(), out, data)
+	return parse(b.Name(), out, data)
 }
 
 func (b *formBinding) BindMultipart(reqCtx *fasthttp.RequestCtx, out any) error {
@@ -49,5 +49,5 @@ func (b *formBinding) BindMultipart(reqCtx *fasthttp.RequestCtx, out any) error 
 		return err
 	}
 
-	return parseToStruct(b.Name(), out, data.Value)
+	return parse(b.Name(), out, data.Value)
 }

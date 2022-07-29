@@ -12,5 +12,5 @@ func (b *uriBinding) Bind(params []string, paramsFunc func(key string, defaultVa
 		data[param] = append(data[param], paramsFunc(param))
 	}
 
-	return parseToStruct(b.Name(), out, data)
+	return parse(b.Name(), out, data)
 }

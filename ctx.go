@@ -463,30 +463,6 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
 }
 
-// GetReqHeaders returns the HTTP request headers.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
-func (c *DefaultCtx) GetReqHeaders() map[string]string {
-	headers := make(map[string]string)
-	c.Request().Header.VisitAll(func(k, v []byte) {
-		headers[string(k)] = c.app.getString(v)
-	})
-
-	return headers
-}
-
-// GetRespHeaders returns the HTTP response headers.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
-func (c *DefaultCtx) GetRespHeaders() map[string]string {
-	headers := make(map[string]string)
-	c.Response().Header.VisitAll(func(k, v []byte) {
-		headers[string(k)] = c.app.getString(v)
-	})
-
-	return headers
-}
-
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
@@ -695,17 +671,6 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 		}
 	}
 	return defaultString("", defaultValue)
-}
-
-// Params is used to get all route parameters.
-// Using Params method to get params.
-func (c *DefaultCtx) AllParams() map[string]string {
-	params := make(map[string]string, len(c.route.Params))
-	for _, param := range c.route.Params {
-		params[param] = c.Params(param)
-	}
-
-	return params
 }
 
 // ParamsInt is used to get an integer from the route parameters

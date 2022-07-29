@@ -327,20 +327,6 @@ type Ctx interface {
 	// Binding methods
 	Binding() *Bind
 
-	// GetReqHeaders returns the HTTP request headers.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting instead.
-	GetReqHeaders() map[string]string
-
-	// GetRespHeaders returns the HTTP response headers.
-	// Returned value is only valid within the handler. Do not store any references.
-	// Make copies or use the Immutable setting instead.
-	GetRespHeaders() map[string]string
-
-	// Params is used to get all route parameters.
-	// Using Params method to get params.
-	AllParams() map[string]string
-
 	// SetReq resets fields of context that is relating to request.
 	setReq(fctx *fasthttp.RequestCtx)
 

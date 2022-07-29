@@ -53,13 +53,26 @@ func decoderBuilder(parserConfig ParserConfig) any {
 	return decoder
 }
 
-func parseToStruct(aliasTag string, out any, data map[string][]string) error {
+func parse(aliasTag string, out any, data map[string][]string) error {
 	ptrVal := reflect.ValueOf(out)
 
-	if ptrVal.Kind() == reflect.Map && ptrVal.Type().Key().Kind() == reflect.String {
-		//
+	// Get pointer value
+	var ptr any
+	if ptrVal.Kind() == reflect.Ptr {
+		ptrVal = ptrVal.Elem()
+		ptr = ptrVal.Interface()
 	}
 
+	// Parse into the map
+	if ptrVal.Kind() == reflect.Map && ptrVal.Type().Key().Kind() == reflect.String {
+		return parseToMap(ptr, data)
+	}
+
+	// Parse into the struct
+	return parseToStruct(aliasTag, out, data)
+}
+
+func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPool.Get().(*schema.Decoder)
 	defer decoderPool.Put(schemaDecoder)
@@ -68,6 +81,37 @@ func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 	schemaDecoder.SetAliasTag(aliasTag)
 
 	return schemaDecoder.Decode(out, data)
+}
+
+// thanks to https://github.com/gin-gonic/gin/blob/master/binding/binding.go
+func parseToMap(ptr any, data map[string][]string) error {
+	elem := reflect.TypeOf(ptr).Elem()
+
+	// map[string][]string
+	if elem.Kind() == reflect.Slice {
+		newMap, ok := ptr.(map[string][]string)
+		if !ok {
+			return ErrMapNotConvertable
+		}
+
+		for k, v := range data {
+			newMap[k] = v
+		}
+
+		return nil
+	}
+
+	// map[string]string
+	newMap, ok := ptr.(map[string]string)
+	if !ok {
+		return ErrMapNotConvertable
+	}
+
+	for k, v := range data {
+		newMap[k] = v[len(v)-1]
+	}
+
+	return nil
 }
 
 func parseParamSquareBrackets(k string) (string, error) {
@@ -100,6 +144,12 @@ func equalFieldType(out any, kind reflect.Kind, key string) bool {
 	// Get type of interface
 	outTyp := reflect.TypeOf(out).Elem()
 	key = utils.ToLower(key)
+
+	// Support maps
+	if outTyp.Kind() == reflect.Map && outTyp.Key().Kind() == reflect.String {
+		return true
+	}
+
 	// Must be a struct to match a field
 	if outTyp.Kind() != reflect.Struct {
 		return false
