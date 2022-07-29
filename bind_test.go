@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"reflect"
@@ -1504,4 +1505,40 @@ func Test_Bind_Must(t *testing.T) {
 	err := c.Binding().Must().Query(rq)
 	utils.AssertEqual(t, StatusBadRequest, c.Response().StatusCode())
 	utils.AssertEqual(t, "Bad request: name is empty", err.Error())
+}
+
+// simple struct validator for testing
+type structValidator struct{}
+
+func (v *structValidator) Engine() any {
+	return ""
+}
+
+func (v *structValidator) ValidateStruct(out any) error {
+	out = reflect.ValueOf(out).Elem().Interface()
+	sq := out.(simpleQuery)
+
+	if sq.Name != "john" {
+		return errors.New("you should have entered right name!")
+	}
+
+	return nil
+}
+
+type simpleQuery struct {
+	Name string `query:"name"`
+}
+
+// go test -run Test_Bind_StructValidator
+func Test_Bind_StructValidator(t *testing.T) {
+	app := New(Config{StructValidator: &structValidator{}})
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	rq := new(simpleQuery)
+	c.Request().URI().SetQueryString("name=efe")
+	utils.AssertEqual(t, "you should have entered right name!", c.Binding().Query(rq).Error())
+
+	rq = new(simpleQuery)
+	c.Request().URI().SetQueryString("name=john")
+	utils.AssertEqual(t, nil, c.Binding().Query(rq))
 }

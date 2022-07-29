@@ -11,6 +11,11 @@ type CustomBinder interface {
 	Parse(Ctx, any) error
 }
 
+type StructValidator interface {
+	Engine() any
+	ValidateStruct(any) error
+}
+
 type Bind struct {
 	ctx    *DefaultCtx
 	should bool
@@ -37,6 +42,15 @@ func (b *Bind) returnErr(err error) error {
 	return err
 }
 
+func (b *Bind) validateStruct(out any) error {
+	validator := b.ctx.app.config.StructValidator
+	if validator != nil {
+		return validator.ValidateStruct(out)
+	}
+
+	return nil
+}
+
 func (b *Bind) Custom(name string, dest any) error {
 	binders := b.ctx.App().customBinders
 	for _, binder := range binders {
@@ -49,39 +63,75 @@ func (b *Bind) Custom(name string, dest any) error {
 }
 
 func (b *Bind) Header(out any) error {
-	return b.returnErr(binder.HeaderBinder.Bind(b.ctx.Request(), out))
+	if err := b.returnErr(binder.HeaderBinder.Bind(b.ctx.Request(), out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
 }
 
 func (b *Bind) RespHeader(out any) error {
-	return b.returnErr(binder.RespHeaderBinder.Bind(b.ctx.Response(), out))
+	if err := b.returnErr(binder.RespHeaderBinder.Bind(b.ctx.Response(), out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
 }
 
 func (b *Bind) Cookie(out any) error {
-	return b.returnErr(binder.CookieBinder.Bind(b.ctx.Context(), out))
+	if err := b.returnErr(binder.CookieBinder.Bind(b.ctx.Context(), out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
 }
 
 func (b *Bind) Query(out any) error {
-	return b.returnErr(binder.QueryBinder.Bind(b.ctx.Context(), out))
+	if err := b.returnErr(binder.QueryBinder.Bind(b.ctx.Context(), out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
 }
 
 func (b *Bind) JSON(out any) error {
-	return b.returnErr(binder.JSONBinder.Bind(b.ctx.Body(), b.ctx.App().Config().JSONDecoder, out))
+	if err := b.returnErr(binder.JSONBinder.Bind(b.ctx.Body(), b.ctx.App().Config().JSONDecoder, out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
 }
 
 func (b *Bind) XML(out any) error {
-	return b.returnErr(binder.XMLBinder.Bind(b.ctx.Body(), out))
+	if err := b.returnErr(binder.XMLBinder.Bind(b.ctx.Body(), out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
 }
 
 func (b *Bind) Form(out any) error {
-	return b.returnErr(binder.FormBinder.Bind(b.ctx.Context(), out))
+	if err := b.returnErr(binder.FormBinder.Bind(b.ctx.Context(), out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
 }
 
 func (b *Bind) URI(out any) error {
-	return b.returnErr(binder.URIBinder.Bind(b.ctx.route.Params, b.ctx.Params, out))
+	if err := b.returnErr(binder.URIBinder.Bind(b.ctx.route.Params, b.ctx.Params, out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
 }
 
 func (b *Bind) MultipartForm(out any) error {
-	return b.returnErr(binder.FormBinder.BindMultipart(b.ctx.Context(), out))
+	if err := b.returnErr(binder.FormBinder.BindMultipart(b.ctx.Context(), out)); err != nil {
+		return err
+	}
+
+	return b.validateStruct(out)
 }
 
 func (b *Bind) Body(out any) error {

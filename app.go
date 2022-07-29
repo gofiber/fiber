@@ -367,6 +367,12 @@ type Config struct {
 	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
+
+	// If you want to validate header/form/query... automatically when to bind, you can define struct validator.
+	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator
+	//
+	// Default: nil
+	StructValidator StructValidator
 }
 
 // Static defines configuration options when defining static assets.
