@@ -91,7 +91,7 @@ type Person struct {
 app.Get("/", func(c fiber.Ctx) error {
         p := new(Person)
 
-        if err := c.Bind().JSON(p); err != nil {
+        if err := c.Bind().Must().JSON(p); err != nil {
             return err 
             // Status code: 400 
             // Response: Bad request: name is empty
@@ -137,7 +137,7 @@ func main() {
 		}
 
         // or you can use like:
-        // if err := c.Bind().Custom("toml", out); err != nil {
+		// if err := c.Bind().Custom("toml", out); err != nil {
 		// 	 return err
 		// }
 
