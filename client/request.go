@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
 )
 
@@ -45,6 +46,8 @@ func (r *Request) SetContext(ctx context.Context) *Request {
 // Reset clear Request object, used by ReleaseRequest method.
 func (r *Request) Reset() {
 	r.url = ""
+	r.method = fiber.MethodGet
+	r.ctx = nil
 
 	r.rawRequest.Reset()
 }
