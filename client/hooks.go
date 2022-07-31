@@ -27,8 +27,8 @@ func parserURL(c *Client, req *Request) error {
 		return fmt.Errorf("unsupported protocol %q. http and https are supported", scheme)
 	}
 
-	c.client.Addr = addMissingPort(string(uri.Host()), isTLS)
-	c.client.IsTLS = isTLS
+	c.core.client.Addr = addMissingPort(string(uri.Host()), isTLS)
+	c.core.client.IsTLS = isTLS
 
 	return nil
 }

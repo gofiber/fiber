@@ -17,9 +17,9 @@ func (r *Response) Reset() {
 
 var responsePool sync.Pool
 
-// AcquireResponse returns an empty core object from the pool.
+// AcquireResponse returns an empty response object from the pool.
 //
-// The returned core may be returned to the pool with ReleaseResponse when no longer needed.
+// The returned response may be returned to the pool with ReleaseResponse when no longer needed.
 // This allows reducing GC load.
 func AcquireResponse() (resp *Response) {
 	respv := responsePool.Get()
@@ -36,7 +36,7 @@ func AcquireResponse() (resp *Response) {
 
 // ReleaseResponse returns the object acquired via AcquireResponse to the pool.
 //
-// Do not access the released core object, otherwise data races may occur.
+// Do not access the released Response object, otherwise data races may occur.
 func ReleaseResponse(resp *Response) {
 	resp.Reset()
 	responsePool.Put(resp)

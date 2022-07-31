@@ -39,9 +39,9 @@ type Plugin interface {
 	GenerateExecute(ExecuteFunc) (ExecuteFunc, error)
 }
 
-// `core` stores middleware and plugin definitions,
+// `Core` stores middleware and plugin definitions,
 // and defines the execution process
-type core struct {
+type Core struct {
 	client *fasthttp.HostClient
 
 	// user defined request hooks
@@ -67,7 +67,7 @@ type core struct {
 }
 
 // execute will exec each hooks and plugins.
-func (c *core) execute(ctx context.Context, agent *Client, req *Request) (*Response, error) {
+func (c *Core) execute(ctx context.Context, agent *Client, req *Request) (*Response, error) {
 	var execFunc ExecuteFunc = func(ctx context.Context, a *Client, r *Request) (*Response, error) {
 		resp := AcquireResponse()
 
@@ -159,7 +159,7 @@ func (c *core) execute(ctx context.Context, agent *Client, req *Request) (*Respo
 
 // reset clears core object.
 // It will not clear buildin hooks.
-func (c *core) reset() {
+func (c *Core) reset() {
 	c.userRequestHooks = c.userRequestHooks[:0]
 	c.userResponseHooks = c.userResponseHooks[:0]
 	c.plugins = c.plugins[:0]
@@ -194,17 +194,17 @@ func releaseErrChan(ch chan error) {
 
 var corePool sync.Pool
 
-// acquireCore returns an empty core object from the pool.
+// AcquireCore returns an empty core object from the pool.
 //
-// The returned core may be returned to the pool with releaseCore when no longer needed.
+// The returned core may be returned to the pool with ReleaseCore when no longer needed.
 // This allows reducing GC load.
-func acquireCore() (c *core) {
+func AcquireCore() (c *Core) {
 	cv := corePool.Get()
 	if cv != nil {
-		c = cv.(*core)
+		c = cv.(*Core)
 		return
 	}
-	c = &core{
+	c = &Core{
 		client:              &fasthttp.HostClient{},
 		userRequestHooks:    []RequestHook{},
 		buildinRequestHooks: []RequestHook{parserURL},
@@ -221,10 +221,10 @@ func acquireCore() (c *core) {
 	return
 }
 
-// releaseCore returns the object acquired via acquireCore to the pool.
+// ReleaseCore returns the object acquired via AcquireCore to the pool.
 //
 // Do not access the released core object, otherwise data races may occur.
-func releaseCore(c *core) {
+func ReleaseCore(c *Core) {
 	c.reset()
 	corePool.Put(c)
 }

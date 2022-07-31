@@ -15,13 +15,16 @@ type Request struct {
 	rawRequest *fasthttp.Request
 }
 
-func (r *Request) SetURL(url string) *Request {
-	r.url = url
+// setMethod will set method for Request object,
+// user should use request method to set method.
+func (r *Request) setMethod(method string) *Request {
+	r.method = method
 	return r
 }
 
-func (r *Request) SetMethod(method string) *Request {
-	r.method = method
+// SetURL will set url for Request object.
+func (r *Request) SetURL(url string) *Request {
+	r.url = url
 	return r
 }
 
@@ -54,9 +57,9 @@ func (r *Request) Reset() {
 
 var requestPool sync.Pool
 
-// AcquireRequest returns an empty core object from the pool.
+// AcquireRequest returns an empty request object from the pool.
 //
-// The returned core may be returned to the pool with ReleaseRequest when no longer needed.
+// The returned request may be returned to the pool with ReleaseRequest when no longer needed.
 // This allows reducing GC load.
 func AcquireRequest() (req *Request) {
 	reqv := requestPool.Get()
@@ -73,7 +76,7 @@ func AcquireRequest() (req *Request) {
 
 // ReleaseRequest returns the object acquired via AcquireRequest to the pool.
 //
-// Do not access the released core object, otherwise data races may occur.
+// Do not access the released Request object, otherwise data races may occur.
 func ReleaseRequest(req *Request) {
 	req.Reset()
 	requestPool.Put(req)
