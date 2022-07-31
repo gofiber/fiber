@@ -1,6 +1,7 @@
 package client
 
 import (
+	"net/http"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -12,7 +13,7 @@ type Client struct {
 	core *Core
 
 	baseUrl string
-	header  map[string][]string
+	header  *Header
 }
 
 // Add user-defined request hooks.
@@ -58,10 +59,51 @@ func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 	return c
 }
 
+// Set baseUrl which is prefix of real url.
+func (c *Client) SetBaseURL(url string) *Client {
+	c.baseUrl = url
+	return c
+}
+
+// AddHeader method adds a single header field and its value in the client instance.
+// These headers will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level header options.
+func (c *Client) AddHeader(key, val string) *Client {
+	c.header.Add(key, val)
+	return c
+}
+
+// SetHeader method sets a single header field and its value in the client instance.
+// These headers will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level header options.
+func (c *Client) SetHeader(key, val string) *Client {
+	c.header.Set(key, val)
+	return c
+}
+
+// AddHeaders method adds multiple headers field and its values at one go in the client instance.
+// These headers will be applied to all requests raised from this client instance. Also it can be
+// overridden at request level headers options.
+func (c *Client) AddHeaders(h map[string][]string) *Client {
+	c.header.AddHeaders(h)
+	return c
+}
+
+// SetHeaders method sets multiple headers field and its values at one go in the client instance.
+// These headers will be applied to all requests raised from this client instance. Also it can be
+// overridden at request level headers options.
+func (c *Client) SetHeaders(h map[string]string) *Client {
+	c.header.SetHeaders(h)
+	return c
+}
+
 // Reset clear Client object.
 func (c *Client) Reset() {
 	c.baseUrl = ""
-	c.header = map[string][]string{}
+
+	for k := range c.header.Header {
+		delete(c.header.Header, k)
+	}
 
 	c.core.reset()
 }
@@ -95,8 +137,10 @@ func AcquireClient() (c *Client) {
 		return
 	}
 	c = &Client{
-		core:   AcquireCore(),
-		header: map[string][]string{},
+		core: AcquireCore(),
+		header: &Header{
+			Header: make(http.Header),
+		},
 	}
 	return
 }

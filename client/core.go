@@ -207,7 +207,7 @@ func AcquireCore() (c *Core) {
 	c = &Core{
 		client:              &fasthttp.HostClient{},
 		userRequestHooks:    []RequestHook{},
-		buildinRequestHooks: []RequestHook{parserURL},
+		buildinRequestHooks: []RequestHook{parserURL, parserHeader},
 		userResponseHooks:   []ResponseHook{},
 		buildinResposeHooks: []ResponseHook{},
 		plugins:             []Plugin{},

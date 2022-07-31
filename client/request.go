@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"net/http"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -12,6 +13,7 @@ type Request struct {
 	url        string
 	method     string
 	ctx        context.Context
+	header     *Header
 	rawRequest *fasthttp.Request
 }
 
@@ -46,13 +48,63 @@ func (r *Request) SetContext(ctx context.Context) *Request {
 	return r
 }
 
+// AddHeader method adds a single header field and its value in the request instance.
+// It will override header which set in client instance.
+func (r *Request) AddHeader(key, val string) *Request {
+	r.header.Add(key, val)
+	return r
+}
+
+// SetHeader method sets a single header field and its value in the request instance.
+// It will override header which set in client instance.
+func (r *Request) SetHeader(key, val string) *Request {
+	r.header.Set(key, val)
+	return r
+}
+
+// AddHeaders method adds multiple headers field and its values at one go in the request instance.
+// It will override header which set in client instance.
+func (r *Request) AddHeaders(h map[string][]string) *Request {
+	r.header.AddHeaders(h)
+	return r
+}
+
+// SetHeaders method sets multiple headers field and its values at one go in the request instance.
+// It will override header which set in client instance.
+func (r *Request) SetHeaders(h map[string]string) *Request {
+	r.header.SetHeaders(h)
+	return r
+}
+
 // Reset clear Request object, used by ReleaseRequest method.
 func (r *Request) Reset() {
 	r.url = ""
 	r.method = fiber.MethodGet
 	r.ctx = nil
 
+	for k := range r.header.Header {
+		delete(r.header.Header, k)
+	}
+
 	r.rawRequest.Reset()
+}
+
+type Header struct {
+	http.Header
+}
+
+func (h *Header) AddHeaders(r map[string][]string) {
+	for k, v := range r {
+		for _, vv := range v {
+			h.Header.Add(k, vv)
+		}
+	}
+}
+
+func (h *Header) SetHeaders(r map[string]string) {
+	for k, v := range r {
+		h.Header.Set(k, v)
+	}
 }
 
 var requestPool sync.Pool
@@ -69,6 +121,7 @@ func AcquireRequest() (req *Request) {
 	}
 
 	req = &Request{
+		header:     &Header{Header: make(http.Header)},
 		rawRequest: fasthttp.AcquireRequest(),
 	}
 	return
