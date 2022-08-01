@@ -11,6 +11,7 @@ Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP r
 		- [Logging Request ID](#logging-request-id)
 		- [Changing TimeZone & TimeFormat](#changing-timezone--timeformat)
 		- [Custom File Writer](#custom-file-writer)
+		- [Logging with Zerolog](#logging-with-zerolog)
 	- [Config](#config)
 	- [Default Config](#default-config-1)
 	- [Constants](#constants)
