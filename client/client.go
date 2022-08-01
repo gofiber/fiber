@@ -2,6 +2,7 @@ package client
 
 import (
 	"net/http"
+	"net/url"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -14,6 +15,7 @@ type Client struct {
 
 	baseUrl string
 	header  *Header
+	params  *Params
 }
 
 // Add user-defined request hooks.
@@ -97,12 +99,64 @@ func (c *Client) SetHeaders(h map[string]string) *Client {
 	return c
 }
 
+// AddParam method adds a single query param field and its value in the client instance.
+// These params will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level param options.
+func (c *Client) AddParam(key, val string) *Client {
+	c.params.Add(key, val)
+	return c
+}
+
+// SetParam method sets a single query param field and its value in the client instance.
+// These params will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level param options.
+func (c *Client) SetParam(key, val string) *Client {
+	c.params.Set(key, val)
+	return c
+}
+
+// AddParams method adds multiple query params field and its values at one go in the client instance.
+// These params will be applied to all requests raised from this client instance. Also it can be
+// overridden at request level params options.
+func (c *Client) AddParams(m map[string][]string) *Client {
+	c.params.AddParams(m)
+	return c
+}
+
+// SetParams method sets multiple params field and its values at one go in the client instance.
+// These params will be applied to all requests raised from this client instance. Also it can be
+// overridden at request level params options.
+func (c *Client) SetParams(m map[string]string) *Client {
+	c.params.SetParams(m)
+	return c
+}
+
+// SetParamsWithStruct method sets multiple params field and its values at one go in the client instance.
+// These params will be applied to all requests raised from this client instance. Also it can be
+// overridden at request level params options.
+func (c *Client) SetParamsWithStruct(v any) *Client {
+	c.params.SetParamsWithStruct(v)
+	return c
+}
+
+// DelParams method deletes single or multiple params field and its valus in client.
+func (c *Client) DelParams(key ...string) *Client {
+	for _, v := range key {
+		c.params.Del(v)
+	}
+	return c
+}
+
 // Reset clear Client object.
 func (c *Client) Reset() {
 	c.baseUrl = ""
 
 	for k := range c.header.Header {
 		delete(c.header.Header, k)
+	}
+
+	for k := range c.params.Values {
+		delete(c.params.Values, k)
 	}
 
 	c.core.reset()
@@ -140,6 +194,9 @@ func AcquireClient() (c *Client) {
 		core: AcquireCore(),
 		header: &Header{
 			Header: make(http.Header),
+		},
+		params: &Params{
+			Values: make(url.Values),
 		},
 	}
 	return

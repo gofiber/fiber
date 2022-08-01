@@ -3,6 +3,9 @@ package client
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"reflect"
+	"strconv"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -14,6 +17,7 @@ type Request struct {
 	method     string
 	ctx        context.Context
 	header     *Header
+	params     *Params
 	rawRequest *fasthttp.Request
 }
 
@@ -76,6 +80,49 @@ func (r *Request) SetHeaders(h map[string]string) *Request {
 	return r
 }
 
+// AddParam method adds a single param field and its value in the request instance.
+// It will override param which set in client instance.
+func (r *Request) AddParam(key, val string) *Request {
+	r.params.Add(key, val)
+	return r
+}
+
+// SetParam method sets a single param field and its value in the request instance.
+// It will override param which set in client instance.
+func (r *Request) SetParam(key, val string) *Request {
+	r.params.Set(key, val)
+	return r
+}
+
+// AddParams method adds multiple params field and its values at one go in the request instance.
+// It will override param which set in client instance.
+func (r *Request) AddParams(m map[string][]string) *Request {
+	r.params.AddParams(m)
+	return r
+}
+
+// SetParams method sets multiple params field and its values at one go in the request instance.
+// It will override param which set in client instance.
+func (r *Request) SetParams(m map[string]string) *Request {
+	r.params.SetParams(m)
+	return r
+}
+
+// SetParamWithStruct method sets multiple params field and its values at one go in the request instance.
+// It will override param which set in client instance.
+func (r *Request) SetParamsWithStruct(v any) *Request {
+	r.params.SetParamsWithStruct(v)
+	return r
+}
+
+// DelParams method deletes single or multiple params field ant its values.
+func (r *Request) DelParams(key ...string) *Request {
+	for _, v := range key {
+		r.params.Del(v)
+	}
+	return r
+}
+
 // Reset clear Request object, used by ReleaseRequest method.
 func (r *Request) Reset() {
 	r.url = ""
@@ -86,24 +133,111 @@ func (r *Request) Reset() {
 		delete(r.header.Header, k)
 	}
 
+	for k := range r.params.Values {
+		delete(r.params.Values, k)
+	}
+
 	r.rawRequest.Reset()
 }
 
+// Header is a wrapper which wrap http.Header,
+// the header in client and request will store in it.
 type Header struct {
 	http.Header
 }
 
+// AddHeaders receive a map and add each value to header.
 func (h *Header) AddHeaders(r map[string][]string) {
 	for k, v := range r {
 		for _, vv := range v {
-			h.Header.Add(k, vv)
+			h.Add(k, vv)
 		}
 	}
 }
 
+// SetHeaders will override all headers.
 func (h *Header) SetHeaders(r map[string]string) {
 	for k, v := range r {
-		h.Header.Set(k, v)
+		h.Set(k, v)
+	}
+}
+
+// Params is a wrapper which wrap url.Values,
+// the query string and formdata in client and request will store in it.
+type Params struct {
+	url.Values
+}
+
+// AddParams receive a map and add each value to param.
+func (p *Params) AddParams(r map[string][]string) {
+	for k, v := range r {
+		for _, vv := range v {
+			p.Add(k, vv)
+		}
+	}
+}
+
+// SetParams will override all params.
+func (p *Params) SetParams(r map[string]string) {
+	for k, v := range r {
+		p.Set(k, v)
+	}
+}
+
+func (p *Params) SetParamsWithStruct(v any) {
+	valueOfV := reflect.ValueOf(v)
+	typeOfV := reflect.TypeOf(v)
+	// The v should be struct or point of struct
+
+	if typeOfV.Kind() == reflect.Pointer && typeOfV.Elem().Kind() == reflect.Struct {
+		valueOfV = valueOfV.Elem()
+		typeOfV = typeOfV.Elem()
+	} else if typeOfV.Kind() != reflect.Struct {
+		return
+	}
+
+	// Boring type judge.
+	// TODO: cover more types and complex data structure.
+	var setVal func(name string, value reflect.Value)
+	setVal = func(name string, val reflect.Value) {
+		switch val.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			p.Add(name, strconv.Itoa(int(val.Int())))
+		case reflect.Bool:
+			if val.Bool() {
+				p.Add(name, "true")
+			} else {
+				p.Add(name, "false")
+			}
+		case reflect.String:
+			p.Add(name, val.String())
+		case reflect.Float32, reflect.Float64:
+			p.Add(name, strconv.FormatFloat(val.Float(), 'f', -1, 64))
+		case reflect.Slice, reflect.Array:
+			for i := 0; i < val.Len(); i++ {
+				setVal(name, val.Index(i))
+			}
+		default:
+		}
+	}
+
+	for i := 0; i < typeOfV.NumField(); i++ {
+		field := typeOfV.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+
+		name := field.Tag.Get("param")
+		if name == "" {
+			name = field.Name
+		}
+		val := valueOfV.Field(i)
+		if val.IsZero() {
+			continue
+		}
+		// To cover slice and array, we delete the val then add it.
+		p.Del(name)
+		setVal(name, val)
 	}
 }
 
@@ -122,6 +256,7 @@ func AcquireRequest() (req *Request) {
 
 	req = &Request{
 		header:     &Header{Header: make(http.Header)},
+		params:     &Params{Values: make(url.Values)},
 		rawRequest: fasthttp.AcquireRequest(),
 	}
 	return
