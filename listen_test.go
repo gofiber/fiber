@@ -5,9 +5,14 @@
 package fiber
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
+	"io"
+	"log"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -138,6 +143,69 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 	}()
 
 	utils.AssertEqual(t, nil, app.Listener(ln))
+}
+
+func captureOutput(f func()) string {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		panic(err)
+	}
+	stdout := os.Stdout
+	stderr := os.Stderr
+	defer func() {
+		os.Stdout = stdout
+		os.Stderr = stderr
+		log.SetOutput(os.Stderr)
+	}()
+	os.Stdout = writer
+	os.Stderr = writer
+	log.SetOutput(writer)
+	out := make(chan string)
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go func() {
+		var buf bytes.Buffer
+		wg.Done()
+		io.Copy(&buf, reader)
+		out <- buf.String()
+	}()
+	wg.Wait()
+	f()
+	writer.Close()
+	return <-out
+}
+
+func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
+	startupMessage := captureOutput(func() {
+		New(Config{Prefork: true}).
+			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
+	})
+	fmt.Println(startupMessage)
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "https://127.0.0.1:3000"))
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "Child PIDs"))
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "11111, 22222, 33333, 44444, 55555, 60000"))
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "Prefork ........ Enabled"))
+}
+
+func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
+	app := New(Config{Prefork: true, AppName: "Test App v1.0.1"})
+	startupMessage := captureOutput(func() {
+		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
+	})
+	fmt.Println(startupMessage)
+	utils.AssertEqual(t, "Test App v1.0.1", app.Config().AppName)
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, app.Config().AppName))
+}
+
+func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.T) {
+	appName := "Serveur de vérification des données"
+	app := New(Config{Prefork: true, AppName: appName})
+	startupMessage := captureOutput(func() {
+		app.startupMessage(":3000", false, "")
+	})
+	fmt.Println(startupMessage)
+	utils.AssertEqual(t, true, strings.Contains(startupMessage, "│        Serveur de vérification des données        │"))
 }
 
 func Test_App_print_Route(t *testing.T) {

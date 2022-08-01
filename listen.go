@@ -208,11 +208,12 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	centerValue := func(s string, width int) string {
-		pad := strconv.Itoa((width - len(s)) / 2)
+		pad := strconv.Itoa((width - len([]rune(s))) / 2)
 		str := fmt.Sprintf("%"+pad+"s", " ")
 		str += fmt.Sprintf("%s%s%s", colors.Cyan, s, colors.Black)
 		str += fmt.Sprintf("%"+pad+"s", " ")
-		if len(str)-10 < width {
+		if len([]rune(str))-10 < width && len([]rune(str))%2 != 0 {
+			// add an ending space if the length of str is odd and str is not too long
 			str += " "
 		}
 		return str
