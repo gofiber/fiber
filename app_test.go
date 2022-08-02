@@ -1169,11 +1169,11 @@ func Test_Test_Timeout(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	app.Get("timeout", func(c *Ctx) error {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		return nil
 	})
 
-	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), 50)
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), 20)
 	utils.AssertEqual(t, true, err != nil, "app.Test(req)")
 }
 
