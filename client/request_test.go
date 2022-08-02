@@ -1,10 +1,10 @@
 package client
 
 import (
-	"net/url"
 	"testing"
 
 	"github.com/gofiber/fiber/v3/utils"
+	"github.com/valyala/fasthttp"
 )
 
 func TestParamsSetParamsWithStruct(t *testing.T) {
@@ -21,7 +21,7 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 
 	t.Run("the struct should be applied", func(t *testing.T) {
 		p := &Params{
-			Values: make(url.Values),
+			Args: fasthttp.AcquireArgs(),
 		}
 		p.SetParamsWithStruct(args{
 			TInt:      5,
@@ -31,36 +31,36 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 			TIntSlice: []int{1, 2},
 		})
 
-		utils.AssertEqual(t, "5", p.Get("TInt"))
-		utils.AssertEqual(t, "string", p.Get("TString"))
-		utils.AssertEqual(t, "3.1", p.Get("TFloat"))
+		utils.AssertEqual(t, []byte("5"), p.Peek("TInt"))
+		utils.AssertEqual(t, []byte("string"), p.Peek("TString"))
+		utils.AssertEqual(t, []byte("3.1"), p.Peek("TFloat"))
 		utils.AssertEqual(t, true, func() bool {
-			for _, v := range p.Values["TSlice"] {
-				if v == "foo" {
+			for _, v := range p.PeekMulti("TSlice") {
+				if string(v) == "foo" {
 					return true
 				}
 			}
 			return false
 		}())
 		utils.AssertEqual(t, true, func() bool {
-			for _, v := range p.Values["TSlice"] {
-				if v == "bar" {
+			for _, v := range p.PeekMulti("TSlice") {
+				if string(v) == "bar" {
 					return true
 				}
 			}
 			return false
 		}())
 		utils.AssertEqual(t, true, func() bool {
-			for _, v := range p.Values["int_slice"] {
-				if v == "1" {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "1" {
 					return true
 				}
 			}
 			return false
 		}())
 		utils.AssertEqual(t, true, func() bool {
-			for _, v := range p.Values["int_slice"] {
-				if v == "2" {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "2" {
 					return true
 				}
 			}
@@ -70,7 +70,7 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 
 	t.Run("the pointer of a struct should be applied", func(t *testing.T) {
 		p := &Params{
-			Values: make(url.Values),
+			Args: fasthttp.AcquireArgs(),
 		}
 		p.SetParamsWithStruct(&args{
 			TInt:      5,
@@ -80,36 +80,36 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 			TIntSlice: []int{1, 2},
 		})
 
-		utils.AssertEqual(t, "5", p.Get("TInt"))
-		utils.AssertEqual(t, "string", p.Get("TString"))
-		utils.AssertEqual(t, "3.1", p.Get("TFloat"))
+		utils.AssertEqual(t, []byte("5"), p.Peek("TInt"))
+		utils.AssertEqual(t, []byte("string"), p.Peek("TString"))
+		utils.AssertEqual(t, []byte("3.1"), p.Peek("TFloat"))
 		utils.AssertEqual(t, true, func() bool {
-			for _, v := range p.Values["TSlice"] {
-				if v == "foo" {
+			for _, v := range p.PeekMulti("TSlice") {
+				if string(v) == "foo" {
 					return true
 				}
 			}
 			return false
 		}())
 		utils.AssertEqual(t, true, func() bool {
-			for _, v := range p.Values["TSlice"] {
-				if v == "bar" {
+			for _, v := range p.PeekMulti("TSlice") {
+				if string(v) == "bar" {
 					return true
 				}
 			}
 			return false
 		}())
 		utils.AssertEqual(t, true, func() bool {
-			for _, v := range p.Values["int_slice"] {
-				if v == "1" {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "1" {
 					return true
 				}
 			}
 			return false
 		}())
 		utils.AssertEqual(t, true, func() bool {
-			for _, v := range p.Values["int_slice"] {
-				if v == "2" {
+			for _, v := range p.PeekMulti("int_slice") {
+				if string(v) == "2" {
 					return true
 				}
 			}
@@ -119,7 +119,7 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 
 	t.Run("the zero val should be ignore", func(t *testing.T) {
 		p := &Params{
-			Values: make(url.Values),
+			Args: fasthttp.AcquireArgs(),
 		}
 		p.SetParamsWithStruct(&args{
 			TInt:    0,
@@ -127,10 +127,10 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 			TFloat:  0.0,
 		})
 
-		utils.AssertEqual(t, "", p.Get("TInt"))
-		utils.AssertEqual(t, "", p.Get("TString"))
-		utils.AssertEqual(t, "", p.Get("TFloat"))
-		utils.AssertEqual(t, 0, len(p.Values["TSlice"]))
-		utils.AssertEqual(t, 0, len(p.Values["int_slice"]))
+		utils.AssertEqual(t, "", string(p.Peek("TInt")))
+		utils.AssertEqual(t, "", string(p.Peek("TString")))
+		utils.AssertEqual(t, "", string(p.Peek("TFloat")))
+		utils.AssertEqual(t, 0, len(p.PeekMulti("TSlice")))
+		utils.AssertEqual(t, 0, len(p.PeekMulti("int_slice")))
 	})
 }

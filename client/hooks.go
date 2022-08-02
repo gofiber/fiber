@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"net"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/gofiber/fiber/v3/utils"
+	"github.com/valyala/fasthttp"
 )
 
 var (
@@ -65,23 +67,19 @@ func parserURL(c *Client, req *Request) error {
 	// merge query params
 	hashSplit := strings.Split(splitUrl[1], "#")
 	hashSplit = append(hashSplit, "")
-	queryParams, err := url.ParseQuery(hashSplit[0])
-	if err != nil {
-		return err
-	}
-	for k, v := range c.params.Values {
-		for _, vv := range v {
-			queryParams.Add(k, vv)
-		}
-	}
+	args := fasthttp.AcquireArgs()
+	defer func() {
+		fasthttp.ReleaseArgs(args)
+	}()
 
-	for k, v := range req.params.Values {
-		for _, vv := range v {
-			queryParams.Add(k, vv)
-		}
-	}
-
-	req.rawRequest.URI().SetQueryString(queryParams.Encode())
+	args.Parse(hashSplit[0])
+	c.params.VisitAll(func(key, value []byte) {
+		args.AddBytesKV(key, value)
+	})
+	req.params.VisitAll(func(key, value []byte) {
+		args.AddBytesKV(key, value)
+	})
+	req.rawRequest.URI().SetQueryStringBytes(utils.CopyBytes(args.QueryString()))
 	req.rawRequest.URI().SetHash(hashSplit[1])
 
 	return nil
@@ -92,13 +90,13 @@ func parserURL(c *Client, req *Request) error {
 // TODO: Header should be set automatically based on data.
 // TODO: User-Agent should be set?
 func parserHeader(c *Client, req *Request) error {
-	for k, v := range c.header.Header {
-		req.rawRequest.Header.Set(k, strings.Join(v, ", "))
-	}
+	c.header.VisitAll(func(key, value []byte) {
+		req.rawRequest.Header.SetBytesKV(key, value)
+	})
 
-	for k, v := range req.header.Header {
-		req.rawRequest.Header.Set(k, strings.Join(v, ", "))
-	}
+	req.header.VisitAll(func(key, value []byte) {
+		req.rawRequest.Header.SetBytesKV(key, value)
+	})
 
 	return nil
 }

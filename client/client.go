@@ -1,8 +1,6 @@
 package client
 
 import (
-	"net/http"
-	"net/url"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -151,15 +149,9 @@ func (c *Client) DelParams(key ...string) *Client {
 func (c *Client) Reset() {
 	c.baseUrl = ""
 
-	for k := range c.header.Header {
-		delete(c.header.Header, k)
-	}
-
-	for k := range c.params.Values {
-		delete(c.params.Values, k)
-	}
-
 	c.core.reset()
+	c.header.Reset()
+	c.params.Reset()
 }
 
 // Get provide a API like axios which send get request.
@@ -193,10 +185,10 @@ func AcquireClient() (c *Client) {
 	c = &Client{
 		core: AcquireCore(),
 		header: &Header{
-			Header: make(http.Header),
+			RequestHeader: &fasthttp.RequestHeader{},
 		},
 		params: &Params{
-			Values: make(url.Values),
+			Args: fasthttp.AcquireArgs(),
 		},
 	}
 	return

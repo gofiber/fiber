@@ -2,8 +2,6 @@ package client
 
 import (
 	"context"
-	"net/http"
-	"net/url"
 	"reflect"
 	"strconv"
 	"sync"
@@ -129,21 +127,15 @@ func (r *Request) Reset() {
 	r.method = fiber.MethodGet
 	r.ctx = nil
 
-	for k := range r.header.Header {
-		delete(r.header.Header, k)
-	}
-
-	for k := range r.params.Values {
-		delete(r.params.Values, k)
-	}
-
+	r.header.Reset()
+	r.params.Reset()
 	r.rawRequest.Reset()
 }
 
 // Header is a wrapper which wrap http.Header,
 // the header in client and request will store in it.
 type Header struct {
-	http.Header
+	*fasthttp.RequestHeader
 }
 
 // AddHeaders receive a map and add each value to header.
@@ -165,7 +157,7 @@ func (h *Header) SetHeaders(r map[string]string) {
 // Params is a wrapper which wrap url.Values,
 // the query string and formdata in client and request will store in it.
 type Params struct {
-	url.Values
+	*fasthttp.Args
 }
 
 // AddParams receive a map and add each value to param.
@@ -255,8 +247,8 @@ func AcquireRequest() (req *Request) {
 	}
 
 	req = &Request{
-		header:     &Header{Header: make(http.Header)},
-		params:     &Params{Values: make(url.Values)},
+		header:     &Header{RequestHeader: &fasthttp.RequestHeader{}},
+		params:     &Params{Args: fasthttp.AcquireArgs()},
 		rawRequest: fasthttp.AcquireRequest(),
 	}
 	return

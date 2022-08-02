@@ -2,13 +2,11 @@ package client
 
 import (
 	"fmt"
-	"net/http"
 	"net/url"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/utils"
-	"github.com/valyala/fasthttp"
 )
 
 func TestParserURL(t *testing.T) {
@@ -111,20 +109,12 @@ func TestParserHeader(t *testing.T) {
 	t.Parallel()
 
 	t.Run("client header should be set", func(t *testing.T) {
-		client := &Client{
-			header: &Header{
-				Header: map[string][]string{
-					fiber.HeaderContentType: {"application/json"},
-				},
-			},
-		}
+		client := AcquireClient().
+			SetHeaders(map[string]string{
+				fiber.HeaderContentType: "application/json",
+			})
 
-		req := &Request{
-			header: &Header{
-				Header: make(http.Header),
-			},
-			rawRequest: fasthttp.AcquireRequest(),
-		}
+		req := AcquireRequest()
 
 		err := parserHeader(client, req)
 		utils.AssertEqual(t, nil, err)
@@ -132,20 +122,12 @@ func TestParserHeader(t *testing.T) {
 	})
 
 	t.Run("request header should be set", func(t *testing.T) {
-		client := &Client{
-			header: &Header{
-				Header: make(http.Header),
-			},
-		}
+		client := AcquireClient()
 
-		req := &Request{
-			header: &Header{
-				Header: map[string][]string{
-					fiber.HeaderContentType: {"application/json", "utf-8"},
-				},
-			},
-			rawRequest: fasthttp.AcquireRequest(),
-		}
+		req := AcquireRequest().
+			SetHeaders(map[string]string{
+				fiber.HeaderContentType: "application/json, utf-8",
+			})
 
 		err := parserHeader(client, req)
 		utils.AssertEqual(t, nil, err)
@@ -153,22 +135,11 @@ func TestParserHeader(t *testing.T) {
 	})
 
 	t.Run("request header should override client header", func(t *testing.T) {
-		client := &Client{
-			header: &Header{
-				Header: map[string][]string{
-					fiber.HeaderContentType: {"application/xml"},
-				},
-			},
-		}
+		client := AcquireClient().
+			SetHeader(fiber.HeaderContentType, "application/xml")
 
-		req := &Request{
-			header: &Header{
-				Header: map[string][]string{
-					fiber.HeaderContentType: {"application/json", "utf-8"},
-				},
-			},
-			rawRequest: fasthttp.AcquireRequest(),
-		}
+		req := AcquireRequest().
+			SetHeader(fiber.HeaderContentType, "application/json, utf-8")
 
 		err := parserHeader(client, req)
 		utils.AssertEqual(t, nil, err)
