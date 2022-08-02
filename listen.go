@@ -212,8 +212,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		str := fmt.Sprintf("%"+pad+"s", " ")
 		str += fmt.Sprintf("%s%s%s", colors.Cyan, s, colors.Black)
 		str += fmt.Sprintf("%"+pad+"s", " ")
-		if len([]rune(str))-10 < width && len([]rune(str))%2 != 0 {
-			// add an ending space if the length of str is odd and str is not too long
+		if len([]rune(s))-10 < width && len([]rune(s))%2 == 0 {
+			// add an ending space if the length of str is even and str is not too long
 			str += " "
 		}
 		return str
@@ -256,7 +256,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	if app.config.AppName != "" {
 		mainLogo += " │ " + centerValue(app.config.AppName, 49) + " │\n"
 	}
-	mainLogo += " │ " + centerValue(" Fiber v"+Version, 49) + " │\n"
+	mainLogo += " │ " + centerValue("Fiber v"+Version, 49) + " │\n"
 
 	if host == "0.0.0.0" {
 		mainLogo +=
