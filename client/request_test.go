@@ -11,6 +11,7 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 	t.Parallel()
 
 	type args struct {
+		unexport  int
 		TInt      int
 		TString   string
 		TFloat    float64
@@ -24,16 +25,20 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 			Args: fasthttp.AcquireArgs(),
 		}
 		p.SetParamsWithStruct(args{
+			unexport:  5,
 			TInt:      5,
 			TString:   "string",
 			TFloat:    3.1,
+			TBool:     false,
 			TSlice:    []string{"foo", "bar"},
 			TIntSlice: []int{1, 2},
 		})
 
+		utils.AssertEqual(t, "", string(p.Peek("unexport")))
 		utils.AssertEqual(t, []byte("5"), p.Peek("TInt"))
 		utils.AssertEqual(t, []byte("string"), p.Peek("TString"))
 		utils.AssertEqual(t, []byte("3.1"), p.Peek("TFloat"))
+		utils.AssertEqual(t, "", string(p.Peek("TBool")))
 		utils.AssertEqual(t, true, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "foo" {
@@ -76,6 +81,7 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 			TInt:      5,
 			TString:   "string",
 			TFloat:    3.1,
+			TBool:     true,
 			TSlice:    []string{"foo", "bar"},
 			TIntSlice: []int{1, 2},
 		})
@@ -83,6 +89,7 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 		utils.AssertEqual(t, []byte("5"), p.Peek("TInt"))
 		utils.AssertEqual(t, []byte("string"), p.Peek("TString"))
 		utils.AssertEqual(t, []byte("3.1"), p.Peek("TFloat"))
+		utils.AssertEqual(t, "true", string(p.Peek("TBool")))
 		utils.AssertEqual(t, true, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "foo" {
@@ -132,5 +139,13 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 		utils.AssertEqual(t, "", string(p.Peek("TFloat")))
 		utils.AssertEqual(t, 0, len(p.PeekMulti("TSlice")))
 		utils.AssertEqual(t, 0, len(p.PeekMulti("int_slice")))
+	})
+
+	t.Run("error type should ignore", func(t *testing.T) {
+		p := &Params{
+			Args: fasthttp.AcquireArgs(),
+		}
+		p.SetParamsWithStruct(5)
+		utils.AssertEqual(t, 0, p.Len())
 	})
 }

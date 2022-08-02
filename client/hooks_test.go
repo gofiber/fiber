@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/xml"
 	"fmt"
 	"net/url"
 	"testing"
@@ -8,6 +9,46 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/utils"
 )
+
+func TestAddMissingPort(t *testing.T) {
+	type args struct {
+		addr  string
+		isTLS bool
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "do anything",
+			args: args{
+				addr: "example.com:1234",
+			},
+			want: "example.com:1234",
+		},
+		{
+			name: "add 80 port",
+			args: args{
+				addr: "example.com",
+			},
+			want: "example.com:80",
+		},
+		{
+			name: "add 443 port",
+			args: args{
+				addr:  "example.com",
+				isTLS: true,
+			},
+			want: "example.com:443",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			utils.AssertEqual(t, tt.want, addMissingPort(tt.args.addr, tt.args.isTLS))
+		})
+	}
+}
 
 func TestParserURL(t *testing.T) {
 	t.Parallel()
@@ -144,5 +185,108 @@ func TestParserHeader(t *testing.T) {
 		err := parserHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("application/json, utf-8"), req.rawRequest.Header.ContentType())
+	})
+
+	t.Run("auto set json header", func(t *testing.T) {
+		type jsonData struct {
+			Name string `json:"name"`
+		}
+		client := AcquireClient()
+		req := AcquireRequest().
+			SetJSON(jsonData{
+				Name: "foo",
+			})
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte(applicationJSON), req.rawRequest.Header.ContentType())
+	})
+
+	t.Run("auto set xml header", func(t *testing.T) {
+		type xmlData struct {
+			XMLName xml.Name `xml:"body"`
+			Name    string   `xml:"name"`
+		}
+		client := AcquireClient()
+		req := AcquireRequest().
+			SetXML(xmlData{
+				Name: "foo",
+			})
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte(applicationXML), req.rawRequest.Header.ContentType())
+	})
+
+	t.Run("ua should have default value", func(t *testing.T) {
+		client := AcquireClient()
+		req := AcquireRequest()
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte("fiber"), req.rawRequest.Header.UserAgent())
+	})
+
+	t.Run("ua in client should be set", func(t *testing.T) {
+		client := AcquireClient().SetUserAgent("foo")
+		req := AcquireRequest()
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte("foo"), req.rawRequest.Header.UserAgent())
+	})
+
+	t.Run("ua in request should have higher level", func(t *testing.T) {
+		client := AcquireClient().SetUserAgent("foo")
+		req := AcquireRequest().SetUserAgent("bar")
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte("bar"), req.rawRequest.Header.UserAgent())
+	})
+}
+
+func TestParserBody(t *testing.T) {
+	t.Parallel()
+
+	t.Run("json body", func(t *testing.T) {
+		type jsonData struct {
+			Name string `json:"name"`
+		}
+		client := AcquireClient()
+		req := AcquireRequest().
+			SetJSON(jsonData{
+				Name: "foo",
+			})
+
+		err := parserBody(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte("{\"name\":\"foo\"}"), req.rawRequest.Body())
+	})
+
+	t.Run("xml body", func(t *testing.T) {
+		type xmlData struct {
+			XMLName xml.Name `xml:"body"`
+			Name    string   `xml:"name"`
+		}
+		client := AcquireClient()
+		req := AcquireRequest().
+			SetXML(xmlData{
+				Name: "foo",
+			})
+
+		err := parserBody(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte("<body><name>foo</name></body>"), req.rawRequest.Body())
+	})
+
+	t.Run("raw body", func(t *testing.T) {
+		client := AcquireClient()
+		req := AcquireRequest().
+			SetRawBody([]byte("hello world"))
+
+		err := parserBody(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte("hello world"), req.rawRequest.Body())
 	})
 }

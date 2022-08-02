@@ -10,12 +10,28 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+type bodyType int
+
+const (
+	noBody bodyType = iota
+	jsonBody
+	xmlBody
+	formBody
+	filesBody
+	rawBody
+)
+
 type Request struct {
-	url        string
-	method     string
-	ctx        context.Context
-	header     *Header
-	params     *Params
+	url       string
+	method    string
+	ctx       context.Context
+	userAgent string
+	header    *Header
+	params    *Params
+
+	body     any
+	bodyType bodyType
+
 	rawRequest *fasthttp.Request
 }
 
@@ -121,11 +137,42 @@ func (r *Request) DelParams(key ...string) *Request {
 	return r
 }
 
+// SetUserAgent method sets user agent in request.
+// It will override user agent which set in client instance.
+func (r *Request) SetUserAgent(ua string) *Request {
+	r.userAgent = ua
+	return r
+}
+
+// SetJSON method sets json body in request.
+func (r *Request) SetJSON(v any) *Request {
+	r.body = v
+	r.bodyType = jsonBody
+	return r
+}
+
+// SetXML method sets xml body in request.
+func (r *Request) SetXML(v any) *Request {
+	r.body = v
+	r.bodyType = xmlBody
+	return r
+}
+
+// SetRawBody method sets body with raw data in request.
+func (r *Request) SetRawBody(v []byte) *Request {
+	r.body = v
+	r.bodyType = rawBody
+	return r
+}
+
 // Reset clear Request object, used by ReleaseRequest method.
 func (r *Request) Reset() {
 	r.url = ""
 	r.method = fiber.MethodGet
 	r.ctx = nil
+	r.userAgent = ""
+	r.body = nil
+	r.bodyType = noBody
 
 	r.header.Reset()
 	r.params.Reset()
@@ -198,8 +245,6 @@ func (p *Params) SetParamsWithStruct(v any) {
 		case reflect.Bool:
 			if val.Bool() {
 				p.Add(name, "true")
-			} else {
-				p.Add(name, "false")
 			}
 		case reflect.String:
 			p.Add(name, val.String())

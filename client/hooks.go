@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,6 +18,13 @@ var (
 	httpsBytes = []byte("https")
 
 	protocolCheck = regexp.MustCompile(`^https?://.*$`)
+
+	headerAccept = "Accept"
+
+	applicationJSON   = "application/json"
+	applicationXML    = "application/xml"
+	applicationForm   = "application/x-www-form-urlencoded"
+	multipartFormData = "multipart/form-data"
 )
 
 // addMissingPort will add the corresponding port number for host.
@@ -87,9 +95,10 @@ func parserURL(c *Client, req *Request) error {
 
 // parserHeader will make request header up.
 // It will merge headers from client and request.
-// TODO: Header should be set automatically based on data.
-// TODO: User-Agent should be set?
+// Header should be set automatically based on data.
+// User-Agent should be set.
 func parserHeader(c *Client, req *Request) error {
+	// merge header
 	c.header.VisitAll(func(key, value []byte) {
 		req.rawRequest.Header.SetBytesKV(key, value)
 	})
@@ -98,5 +107,56 @@ func parserHeader(c *Client, req *Request) error {
 		req.rawRequest.Header.SetBytesKV(key, value)
 	})
 
+	// according to data set content-type
+	switch req.bodyType {
+	case jsonBody:
+		req.rawRequest.Header.SetContentType(applicationJSON)
+		req.rawRequest.Header.Set(headerAccept, applicationJSON)
+	case xmlBody:
+		req.rawRequest.Header.SetContentType(applicationXML)
+	case formBody:
+		req.rawRequest.Header.SetContentType(applicationForm)
+	case filesBody:
+		req.rawRequest.Header.SetContentType(multipartFormData)
+	default:
+	}
+
+	// set useragent
+	req.rawRequest.Header.SetUserAgent(defaultUserAgent)
+	if c.userAgent != "" {
+		req.rawRequest.Header.SetUserAgent(c.userAgent)
+	}
+	if req.userAgent != "" {
+		req.rawRequest.Header.SetUserAgent(req.userAgent)
+	}
+
+	return nil
+}
+
+// parserBody automatically serializes the data according to
+// the data type and stores it in the body of the rawRequest
+func parserBody(c *Client, req *Request) error {
+	switch req.bodyType {
+	case jsonBody:
+		body, err := c.core.jsonMarshal(req.body)
+		if err != nil {
+			return err
+		}
+		req.rawRequest.SetBody(body)
+	case xmlBody:
+		body, err := c.core.xmlMarshal(req.body)
+		if err != nil {
+			return err
+		}
+		req.rawRequest.SetBody(body)
+	case formBody:
+	case filesBody:
+	case rawBody:
+		if body, ok := req.body.([]byte); ok {
+			req.rawRequest.SetBody(body)
+		} else {
+			return fmt.Errorf("the raw body should be []byte, but we receive %s", reflect.TypeOf(req.body).Kind().String())
+		}
+	}
 	return nil
 }

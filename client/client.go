@@ -11,9 +11,10 @@ import (
 type Client struct {
 	core *Core
 
-	baseUrl string
-	header  *Header
-	params  *Params
+	baseUrl   string
+	header    *Header
+	params    *Params
+	userAgent string
 }
 
 // Add user-defined request hooks.
@@ -145,9 +146,18 @@ func (c *Client) DelParams(key ...string) *Client {
 	return c
 }
 
+// SetUserAgent method sets userAgent field and its value in the client instance.
+// This ua will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level ua options.
+func (c *Client) SetUserAgent(ua string) *Client {
+	c.userAgent = ua
+	return c
+}
+
 // Reset clear Client object.
 func (c *Client) Reset() {
 	c.baseUrl = ""
+	c.userAgent = ""
 
 	c.core.reset()
 	c.header.Reset()
@@ -164,8 +174,9 @@ func (c *Client) Get(url string) (*Response, error) {
 }
 
 var (
-	defaultClient *Client
-	clientPool    sync.Pool
+	defaultClient    *Client
+	defaultUserAgent = "fiber"
+	clientPool       sync.Pool
 )
 
 func init() {
