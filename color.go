@@ -67,6 +67,10 @@ var DefaultColors = Colors{
 
 // defaultColors is a function to override default colors to config
 func defaultColors(colors Colors) Colors {
+	if colors.Black == "" {
+		colors.Black = DefaultColors.Black
+	}
+
 	if colors.Red == "" {
 		colors.Red = DefaultColors.Red
 	}
