@@ -21,7 +21,7 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 	}
 
 	t.Run("the struct should be applied", func(t *testing.T) {
-		p := &Params{
+		p := &QueryParam{
 			Args: fasthttp.AcquireArgs(),
 		}
 		p.SetParamsWithStruct(args{
@@ -74,7 +74,7 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 	})
 
 	t.Run("the pointer of a struct should be applied", func(t *testing.T) {
-		p := &Params{
+		p := &QueryParam{
 			Args: fasthttp.AcquireArgs(),
 		}
 		p.SetParamsWithStruct(&args{
@@ -125,7 +125,7 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 	})
 
 	t.Run("the zero val should be ignore", func(t *testing.T) {
-		p := &Params{
+		p := &QueryParam{
 			Args: fasthttp.AcquireArgs(),
 		}
 		p.SetParamsWithStruct(&args{
@@ -142,7 +142,7 @@ func TestParamsSetParamsWithStruct(t *testing.T) {
 	})
 
 	t.Run("error type should ignore", func(t *testing.T) {
-		p := &Params{
+		p := &QueryParam{
 			Args: fasthttp.AcquireArgs(),
 		}
 		p.SetParamsWithStruct(5)

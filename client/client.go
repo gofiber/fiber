@@ -13,9 +13,10 @@ type Client struct {
 
 	baseUrl   string
 	header    *Header
-	params    *Params
+	params    *QueryParam
 	userAgent string
 	cookies   *Cookie
+	path      *PathParam
 }
 
 // Add user-defined request hooks.
@@ -155,6 +156,36 @@ func (c *Client) SetUserAgent(ua string) *Client {
 	return c
 }
 
+// SetPathParam method sets a single path param field and its value in the client instance.
+// These path params will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level path params options.
+func (c *Client) SetPathParam(key, val string) *Client {
+	c.path.SetParam(key, val)
+	return c
+}
+
+// SetPathParams method sets multiple path params field and its values at one go in the client instance.
+// These path params will be applied to all requests raised from this client instance. Also it can be
+// overridden at request level path params options.
+func (c *Client) SetPathParams(m map[string]string) *Client {
+	c.path.SetParams(m)
+	return c
+}
+
+// SetPathParamsWithStruct method sets multiple path params field and its values at one go in the client instance.
+// These path params will be applied to all requests raised from this client instance. Also it can be
+// overridden at request level path params options.
+func (c *Client) SetPathParamsWithStruct(v any) *Client {
+	c.path.SetParamsWithStruct(v)
+	return c
+}
+
+// DelPathParams method deletes single or multiple path params field and its valus in client.
+func (c *Client) DelPathParams(key ...string) *Client {
+	c.path.DelParams(key...)
+	return c
+}
+
 // SetCookie method sets a single cookie field and its value in the client instance.
 // These cookies will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level cookie options.
@@ -190,6 +221,7 @@ func (c *Client) Reset() {
 	c.baseUrl = ""
 	c.userAgent = ""
 
+	c.path.Reset()
 	c.cookies.Reset()
 	c.core.reset()
 	c.header.Reset()
@@ -230,10 +262,11 @@ func AcquireClient() (c *Client) {
 		header: &Header{
 			RequestHeader: &fasthttp.RequestHeader{},
 		},
-		params: &Params{
+		params: &QueryParam{
 			Args: fasthttp.AcquireArgs(),
 		},
 		cookies: &Cookie{},
+		path: &PathParam{},
 	}
 	return
 }

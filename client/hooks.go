@@ -59,6 +59,14 @@ func parserURL(c *Client, req *Request) error {
 		}
 	}
 
+	// set path params
+	req.path.VisitAll(func(key, val string) {
+		uri = strings.Replace(uri, "{"+key+"}", val, -1)
+	})
+	c.path.VisitAll(func(key, val string) {
+		uri = strings.Replace(uri, "{"+key+"}", val, -1)
+	})
+
 	// set uri to request and orther related setting
 	req.rawRequest.SetRequestURI(uri)
 	rawUri := req.rawRequest.URI()

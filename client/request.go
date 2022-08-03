@@ -35,8 +35,9 @@ type Request struct {
 	ctx       context.Context
 	userAgent string
 	header    *Header
-	params    *Params
+	params    *QueryParam
 	cookies   *Cookie
+	path      *PathParam
 
 	body     any
 	bodyType bodyType
@@ -174,9 +175,36 @@ func (r *Request) SetCookiesWithStruct(v any) *Request {
 	return r
 }
 
-// DelParams method deletes single or multiple cookies field ant its values.
+// DelCookies method deletes single or multiple cookies field ant its values.
 func (r *Request) DelCookies(key ...string) *Request {
 	r.cookies.DelCookies(key...)
+	return r
+}
+
+// SetPathParam method sets a single path param field and its value in the request instance.
+// It will override path param which set in client instance.
+func (r *Request) SetPathParam(key, val string) *Request {
+	r.path.SetParam(key, val)
+	return r
+}
+
+// SetPathParams method sets multiple path params field and its values at one go in the request instance.
+// It will override path param which set in client instance.
+func (r *Request) SetPathParams(m map[string]string) *Request {
+	r.path.SetParams(m)
+	return r
+}
+
+// SetParamsWithStruct method sets multiple path params field and its values at one go in the request instance.
+// It will override path param which set in client instance.
+func (r *Request) SetPathParamsWithStruct(v any) *Request {
+	r.path.SetParamsWithStruct(v)
+	return r
+}
+
+// DelPathParams method deletes single or multiple path params field ant its values.
+func (r *Request) DelPathParams(key ...string) *Request {
+	r.path.DelParams(key...)
 	return r
 }
 
@@ -210,6 +238,7 @@ func (r *Request) Reset() {
 	r.body = nil
 	r.bodyType = noBody
 
+	r.path.Reset()
 	r.cookies.Reset()
 	r.header.Reset()
 	r.params.Reset()
@@ -238,14 +267,14 @@ func (h *Header) SetHeaders(r map[string]string) {
 	}
 }
 
-// Params is a wrapper which wrap url.Values,
+// QueryParam is a wrapper which wrap url.Values,
 // the query string and formdata in client and request will store in it.
-type Params struct {
+type QueryParam struct {
 	*fasthttp.Args
 }
 
 // AddParams receive a map and add each value to param.
-func (p *Params) AddParams(r map[string][]string) {
+func (p *QueryParam) AddParams(r map[string][]string) {
 	for k, v := range r {
 		for _, vv := range v {
 			p.Add(k, vv)
@@ -254,7 +283,7 @@ func (p *Params) AddParams(r map[string][]string) {
 }
 
 // SetParams will override all params.
-func (p *Params) SetParams(r map[string]string) {
+func (p *QueryParam) SetParams(r map[string]string) {
 	for k, v := range r {
 		p.Set(k, v)
 	}
@@ -262,7 +291,7 @@ func (p *Params) SetParams(r map[string]string) {
 
 // SetParamsWithStruct will override all params with struct or pointer of struct.
 // Now nested structs are not currently supported.
-func (p *Params) SetParamsWithStruct(v any) {
+func (p *QueryParam) SetParamsWithStruct(v any) {
 	SetValWithStruct(p, "param", v)
 }
 
@@ -317,6 +346,57 @@ func (c Cookie) Reset() {
 	}
 }
 
+// PathParam is a map which to store the cookies.
+type PathParam map[string]string
+
+// Add method impl the method in WithStruct interface.
+func (p PathParam) Add(key, val string) {
+	p[key] = val
+}
+
+// Del method impl the method in WithStruct interface.
+func (p PathParam) Del(key string) {
+	delete(p, key)
+}
+
+// SetParam method sets a signle val in PathParam.
+func (p PathParam) SetParam(key, val string) {
+	p[key] = val
+}
+
+// SetParams method sets multiple val in PathParam.
+func (p PathParam) SetParams(m map[string]string) {
+	for k, v := range m {
+		p[k] = v
+	}
+}
+
+// SetParamsWithStruct method sets multiple val in PathParam via a struct.
+func (p PathParam) SetParamsWithStruct(v any) {
+	SetValWithStruct(p, "path", v)
+}
+
+// DelParams method deletes mutiple val in PathParams.
+func (p PathParam) DelParams(key ...string) {
+	for _, v := range key {
+		p.Del(v)
+	}
+}
+
+// VisitAll method receive a function which can travel the all val.
+func (p PathParam) VisitAll(f func(key, val string)) {
+	for k, v := range p {
+		f(k, v)
+	}
+}
+
+// Reset clear the PathParams object.
+func (p PathParam) Reset() {
+	for k := range p {
+		delete(p, k)
+	}
+}
+
 var requestPool sync.Pool
 
 // AcquireRequest returns an empty request object from the pool.
@@ -332,8 +412,9 @@ func AcquireRequest() (req *Request) {
 
 	req = &Request{
 		header:     &Header{RequestHeader: &fasthttp.RequestHeader{}},
-		params:     &Params{Args: fasthttp.AcquireArgs()},
+		params:     &QueryParam{Args: fasthttp.AcquireArgs()},
 		cookies:    &Cookie{},
+		path:       &PathParam{},
 		rawRequest: fasthttp.AcquireRequest(),
 	}
 	return

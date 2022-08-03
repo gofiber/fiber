@@ -97,6 +97,51 @@ func TestParserURL(t *testing.T) {
 		utils.AssertEqual(t, fmt.Errorf("url format error"), err)
 	})
 
+	t.Run("the path param from client", func(t *testing.T) {
+		client := AcquireClient().
+			SetBaseURL("http://example.com/api/{id}").
+			SetPathParam("id", "5")
+		req := AcquireRequest()
+
+		err := parserURL(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "http://example.com/api/5", req.rawRequest.URI().String())
+	})
+
+	t.Run("the path param from request", func(t *testing.T) {
+		client := AcquireClient().
+			SetBaseURL("http://example.com/api/{id}/{name}").
+			SetPathParam("id", "5")
+		req := AcquireRequest().
+			SetURL("/{key}").
+			SetPathParams(map[string]string{
+				"name": "fiber",
+				"key":  "val",
+			}).
+			DelPathParams("key")
+
+		err := parserURL(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "http://example.com/api/5/fiber/%7Bkey%7D", req.rawRequest.URI().String())
+	})
+
+	t.Run("the path param from request and client", func(t *testing.T) {
+		client := AcquireClient().
+			SetBaseURL("http://example.com/api/{id}/{name}").
+			SetPathParam("id", "5")
+		req := AcquireRequest().
+			SetURL("/{key}").
+			SetPathParams(map[string]string{
+				"name": "fiber",
+				"key":  "val",
+				"id":   "12",
+			})
+
+		err := parserURL(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "http://example.com/api/12/fiber/%7Bkey%7D", req.rawRequest.URI().String())
+	})
+
 	t.Run("query params from client should be set", func(t *testing.T) {
 		client := AcquireClient().
 			SetParam("foo", "bar")
