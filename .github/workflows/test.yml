@@ -3,8 +3,6 @@ on:
     branches:
       - master
   pull_request:
-    branches:
-      - master
 name: Test
 jobs:
   Build:
