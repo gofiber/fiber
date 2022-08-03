@@ -139,7 +139,7 @@ func TestParserURL(t *testing.T) {
 
 		err := parserURL(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "http://example.com/api/12/fiber/%7Bkey%7D", req.rawRequest.URI().String())
+		utils.AssertEqual(t, "http://example.com/api/12/fiber/val", req.rawRequest.URI().String())
 	})
 
 	t.Run("query params from client should be set", func(t *testing.T) {
