@@ -130,6 +130,15 @@ func parserHeader(c *Client, req *Request) error {
 		req.rawRequest.Header.SetUserAgent(req.userAgent)
 	}
 
+	// set cookie
+	c.cookies.VisitAll(func(key, val string) {
+		req.rawRequest.Header.SetCookie(key, val)
+	})
+
+	req.cookies.VisitAll(func(key, val string) {
+		req.rawRequest.Header.SetCookie(key, val)
+	})
+
 	return nil
 }
 

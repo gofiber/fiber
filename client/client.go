@@ -15,6 +15,7 @@ type Client struct {
 	header    *Header
 	params    *Params
 	userAgent string
+	cookies   *Cookie
 }
 
 // Add user-defined request hooks.
@@ -154,11 +155,42 @@ func (c *Client) SetUserAgent(ua string) *Client {
 	return c
 }
 
+// SetCookie method sets a single cookie field and its value in the client instance.
+// These cookies will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level cookie options.
+func (c *Client) SetCookie(key, val string) *Client {
+	c.cookies.SetCookie(key, val)
+	return c
+}
+
+// SetCookies method sets multiple cookies field and its values at one go in the client instance.
+// These cookies will be applied to all requests raised from this client instance. Also it can be
+// overridden at request level cookie options.
+func (c *Client) SetCookies(m map[string]string) *Client {
+	c.cookies.SetCookies(m)
+	return c
+}
+
+// SetCookiesWithStruct method sets multiple cookies field and its values at one go in the client instance.
+// These cookies will be applied to all requests raised from this client instance. Also it can be
+// overridden at request level cookies options.
+func (c *Client) SetCookiesWithStruct(v any) *Client {
+	c.cookies.SetCookiesWithStruct(v)
+	return c
+}
+
+// DelCookies method deletes single or multiple cookies field and its valus in client.
+func (c *Client) DelCookies(key ...string) *Client {
+	c.cookies.DelCookies(key...)
+	return c
+}
+
 // Reset clear Client object.
 func (c *Client) Reset() {
 	c.baseUrl = ""
 	c.userAgent = ""
 
+	c.cookies.Reset()
 	c.core.reset()
 	c.header.Reset()
 	c.params.Reset()
@@ -201,6 +233,7 @@ func AcquireClient() (c *Client) {
 		params: &Params{
 			Args: fasthttp.AcquireArgs(),
 		},
+		cookies: &Cookie{},
 	}
 	return
 }
@@ -216,6 +249,16 @@ func ReleaseClient(c *Client) {
 // Get default client.
 func C() *Client {
 	return defaultClient
+}
+
+// Replce the defaultClient, the returned function can undo.
+func Replace(c *Client) func() {
+	oldClient := defaultClient
+	defaultClient = c
+
+	return func() {
+		defaultClient = oldClient
+	}
 }
 
 // Get send a get request use defaultClient, a convenient method.

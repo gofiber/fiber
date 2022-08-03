@@ -244,6 +244,71 @@ func TestParserHeader(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("bar"), req.rawRequest.Header.UserAgent())
 	})
+
+	t.Run("client cookie should be set", func(t *testing.T) {
+		client := AcquireClient().
+			SetCookie("foo", "bar").
+			SetCookies(map[string]string{
+				"bar":  "foo",
+				"bar1": "foo1",
+			}).
+			DelCookies("bar1")
+
+		req := AcquireRequest()
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "bar", string(req.rawRequest.Header.Cookie("foo")))
+		utils.AssertEqual(t, "foo", string(req.rawRequest.Header.Cookie("bar")))
+		utils.AssertEqual(t, "", string(req.rawRequest.Header.Cookie("bar1")))
+	})
+
+	t.Run("request cookie should be set", func(t *testing.T) {
+		type cookies struct {
+			Foo string `cookie:"foo"`
+			Bar int    `cookie:"bar"`
+		}
+
+		client := AcquireClient()
+
+		req := AcquireRequest().
+			SetCookiesWithStruct(&cookies{
+				Foo: "bar",
+				Bar: 67,
+			})
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "bar", string(req.rawRequest.Header.Cookie("foo")))
+		utils.AssertEqual(t, "67", string(req.rawRequest.Header.Cookie("bar")))
+		utils.AssertEqual(t, "", string(req.rawRequest.Header.Cookie("bar1")))
+	})
+
+	t.Run("request cookie will override client cookie", func(t *testing.T) {
+		type cookies struct {
+			Foo string `cookie:"foo"`
+			Bar int    `cookie:"bar"`
+		}
+
+		client := AcquireClient().
+			SetCookie("foo", "bar").
+			SetCookies(map[string]string{
+				"bar":  "foo",
+				"bar1": "foo1",
+			})
+
+		req := AcquireRequest().
+			SetCookiesWithStruct(&cookies{
+				Foo: "bar",
+				Bar: 67,
+			})
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "bar", string(req.rawRequest.Header.Cookie("foo")))
+		utils.AssertEqual(t, "67", string(req.rawRequest.Header.Cookie("bar")))
+		utils.AssertEqual(t, "foo1", string(req.rawRequest.Header.Cookie("bar1")))
+	})
 }
 
 func TestParserBody(t *testing.T) {

@@ -10,8 +10,16 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Implementing this interface allows data to be passed through the structure.
+type WithStruct interface {
+	Add(string, string)
+	Del(string)
+}
+
+// Types of request bodies.
 type bodyType int
 
+// Enumeration definition of the request body type.
 const (
 	noBody bodyType = iota
 	jsonBody
@@ -28,6 +36,7 @@ type Request struct {
 	userAgent string
 	header    *Header
 	params    *Params
+	cookies   *Cookie
 
 	body     any
 	bodyType bodyType
@@ -144,6 +153,33 @@ func (r *Request) SetUserAgent(ua string) *Request {
 	return r
 }
 
+// SetCookie method sets a single cookie field and its value in the request instance.
+// It will override cookie which set in client instance.
+func (r *Request) SetCookie(key, val string) *Request {
+	r.cookies.SetCookie(key, val)
+	return r
+}
+
+// SetCookies method sets multiple cookie field and its values at one go in the request instance.
+// It will override cookie which set in client instance.
+func (r *Request) SetCookies(m map[string]string) *Request {
+	r.cookies.SetCookies(m)
+	return r
+}
+
+// SetCookiesWithStruct method sets multiple cookies field and its values at one go in the request instance.
+// It will override cookie which set in client instance.
+func (r *Request) SetCookiesWithStruct(v any) *Request {
+	r.cookies.SetCookiesWithStruct(v)
+	return r
+}
+
+// DelParams method deletes single or multiple cookies field ant its values.
+func (r *Request) DelCookies(key ...string) *Request {
+	r.cookies.DelCookies(key...)
+	return r
+}
+
 // SetJSON method sets json body in request.
 func (r *Request) SetJSON(v any) *Request {
 	r.body = v
@@ -174,6 +210,7 @@ func (r *Request) Reset() {
 	r.body = nil
 	r.bodyType = noBody
 
+	r.cookies.Reset()
 	r.header.Reset()
 	r.params.Reset()
 	r.rawRequest.Reset()
@@ -223,11 +260,102 @@ func (p *Params) SetParams(r map[string]string) {
 	}
 }
 
+// SetParamsWithStruct will override all params with struct or pointer of struct.
+// Now nested structs are not currently supported.
 func (p *Params) SetParamsWithStruct(v any) {
+	SetValWithStruct(p, "param", v)
+}
+
+// Cookie is a map which to store the cookies.
+type Cookie map[string]string
+
+// Add method impl the method in WithStruct interface.
+func (c Cookie) Add(key, val string) {
+	c[key] = val
+}
+
+// Del method impl the method in WithStruct interface.
+func (c Cookie) Del(key string) {
+	delete(c, key)
+}
+
+// SetCookie method sets a signle val in Cookie.
+func (c Cookie) SetCookie(key, val string) {
+	c[key] = val
+}
+
+// SetCookies method sets multiple val in Cookie.
+func (c Cookie) SetCookies(m map[string]string) {
+	for k, v := range m {
+		c[k] = v
+	}
+}
+
+// SetCookiesWithStruct method sets multiple val in Cookie via a struct.
+func (c Cookie) SetCookiesWithStruct(v any) {
+	SetValWithStruct(c, "cookie", v)
+}
+
+// DelCookies method deletes mutiple val in Cookie.
+func (c Cookie) DelCookies(key ...string) {
+	for _, v := range key {
+		c.Del(v)
+	}
+}
+
+// VisitAll method receive a function which can travel the all val.
+func (c Cookie) VisitAll(f func(key, val string)) {
+	for k, v := range c {
+		f(k, v)
+	}
+}
+
+// Reset clear the Cookie object.
+func (c Cookie) Reset() {
+	for k := range c {
+		delete(c, k)
+	}
+}
+
+var requestPool sync.Pool
+
+// AcquireRequest returns an empty request object from the pool.
+//
+// The returned request may be returned to the pool with ReleaseRequest when no longer needed.
+// This allows reducing GC load.
+func AcquireRequest() (req *Request) {
+	reqv := requestPool.Get()
+	if reqv != nil {
+		req = reqv.(*Request)
+		return
+	}
+
+	req = &Request{
+		header:     &Header{RequestHeader: &fasthttp.RequestHeader{}},
+		params:     &Params{Args: fasthttp.AcquireArgs()},
+		cookies:    &Cookie{},
+		rawRequest: fasthttp.AcquireRequest(),
+	}
+	return
+}
+
+// ReleaseRequest returns the object acquired via AcquireRequest to the pool.
+//
+// Do not access the released Request object, otherwise data races may occur.
+func ReleaseRequest(req *Request) {
+	req.Reset()
+	requestPool.Put(req)
+}
+
+// Set some values using structs.
+// `p` is a structure that implements the WithStruct interface,
+// The field name can be specified by `tagName`.
+// `v` is a struct include some data.
+func SetValWithStruct(p WithStruct, tagName string, v any) {
 	valueOfV := reflect.ValueOf(v)
 	typeOfV := reflect.TypeOf(v)
-	// The v should be struct or point of struct
 
+	// The v should be struct or point of struct
 	if typeOfV.Kind() == reflect.Pointer && typeOfV.Elem().Kind() == reflect.Struct {
 		valueOfV = valueOfV.Elem()
 		typeOfV = typeOfV.Elem()
@@ -264,7 +392,7 @@ func (p *Params) SetParamsWithStruct(v any) {
 			continue
 		}
 
-		name := field.Tag.Get("param")
+		name := field.Tag.Get(tagName)
 		if name == "" {
 			name = field.Name
 		}
@@ -276,33 +404,4 @@ func (p *Params) SetParamsWithStruct(v any) {
 		p.Del(name)
 		setVal(name, val)
 	}
-}
-
-var requestPool sync.Pool
-
-// AcquireRequest returns an empty request object from the pool.
-//
-// The returned request may be returned to the pool with ReleaseRequest when no longer needed.
-// This allows reducing GC load.
-func AcquireRequest() (req *Request) {
-	reqv := requestPool.Get()
-	if reqv != nil {
-		req = reqv.(*Request)
-		return
-	}
-
-	req = &Request{
-		header:     &Header{RequestHeader: &fasthttp.RequestHeader{}},
-		params:     &Params{Args: fasthttp.AcquireArgs()},
-		rawRequest: fasthttp.AcquireRequest(),
-	}
-	return
-}
-
-// ReleaseRequest returns the object acquired via AcquireRequest to the pool.
-//
-// Do not access the released Request object, otherwise data races may occur.
-func ReleaseRequest(req *Request) {
-	req.Reset()
-	requestPool.Put(req)
 }
