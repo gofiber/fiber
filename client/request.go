@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"io"
 	"reflect"
 	"strconv"
 	"sync"
@@ -34,12 +35,15 @@ type Request struct {
 	method    string
 	ctx       context.Context
 	userAgent string
+	boundary  string
 	header    *Header
 	params    *QueryParam
 	cookies   *Cookie
 	path      *PathParam
 
 	body     any
+	formData *FormData
+	files    []*File
 	bodyType bodyType
 
 	rawRequest *fasthttp.Request
@@ -90,14 +94,14 @@ func (r *Request) SetHeader(key, val string) *Request {
 	return r
 }
 
-// AddHeaders method adds multiple headers field and its values at one go in the request instance.
+// AddHeaders method adds multiple header fields and its values at one go in the request instance.
 // It will override header which set in client instance.
 func (r *Request) AddHeaders(h map[string][]string) *Request {
 	r.header.AddHeaders(h)
 	return r
 }
 
-// SetHeaders method sets multiple headers field and its values at one go in the request instance.
+// SetHeaders method sets multiple header fields and its values at one go in the request instance.
 // It will override header which set in client instance.
 func (r *Request) SetHeaders(h map[string]string) *Request {
 	r.header.SetHeaders(h)
@@ -118,28 +122,28 @@ func (r *Request) SetParam(key, val string) *Request {
 	return r
 }
 
-// AddParams method adds multiple params field and its values at one go in the request instance.
+// AddParams method adds multiple param fields and its values at one go in the request instance.
 // It will override param which set in client instance.
 func (r *Request) AddParams(m map[string][]string) *Request {
 	r.params.AddParams(m)
 	return r
 }
 
-// SetParams method sets multiple params field and its values at one go in the request instance.
+// SetParams method sets multiple param fields and its values at one go in the request instance.
 // It will override param which set in client instance.
 func (r *Request) SetParams(m map[string]string) *Request {
 	r.params.SetParams(m)
 	return r
 }
 
-// SetParamWithStruct method sets multiple params field and its values at one go in the request instance.
+// SetParamWithStruct method sets multiple param fields and its values at one go in the request instance.
 // It will override param which set in client instance.
 func (r *Request) SetParamsWithStruct(v any) *Request {
 	r.params.SetParamsWithStruct(v)
 	return r
 }
 
-// DelParams method deletes single or multiple params field ant its values.
+// DelParams method deletes single or multiple param fields ant its values.
 func (r *Request) DelParams(key ...string) *Request {
 	for _, v := range key {
 		r.params.Del(v)
@@ -161,21 +165,21 @@ func (r *Request) SetCookie(key, val string) *Request {
 	return r
 }
 
-// SetCookies method sets multiple cookie field and its values at one go in the request instance.
+// SetCookies method sets multiple cookie fields and its values at one go in the request instance.
 // It will override cookie which set in client instance.
 func (r *Request) SetCookies(m map[string]string) *Request {
 	r.cookies.SetCookies(m)
 	return r
 }
 
-// SetCookiesWithStruct method sets multiple cookies field and its values at one go in the request instance.
+// SetCookiesWithStruct method sets multiple cookie fields and its values at one go in the request instance.
 // It will override cookie which set in client instance.
 func (r *Request) SetCookiesWithStruct(v any) *Request {
 	r.cookies.SetCookiesWithStruct(v)
 	return r
 }
 
-// DelCookies method deletes single or multiple cookies field ant its values.
+// DelCookies method deletes single or multiple cookie fields ant its values.
 func (r *Request) DelCookies(key ...string) *Request {
 	r.cookies.DelCookies(key...)
 	return r
@@ -188,21 +192,21 @@ func (r *Request) SetPathParam(key, val string) *Request {
 	return r
 }
 
-// SetPathParams method sets multiple path params field and its values at one go in the request instance.
+// SetPathParams method sets multiple path param fields and its values at one go in the request instance.
 // It will override path param which set in client instance.
 func (r *Request) SetPathParams(m map[string]string) *Request {
 	r.path.SetParams(m)
 	return r
 }
 
-// SetParamsWithStruct method sets multiple path params field and its values at one go in the request instance.
+// SetParamsWithStruct method sets multiple path param fields and its values at one go in the request instance.
 // It will override path param which set in client instance.
 func (r *Request) SetPathParamsWithStruct(v any) *Request {
 	r.path.SetParamsWithStruct(v)
 	return r
 }
 
-// DelPathParams method deletes single or multiple path params field ant its values.
+// DelPathParams method deletes single or multiple path param fields ant its values.
 func (r *Request) DelPathParams(key ...string) *Request {
 	r.path.DelParams(key...)
 	return r
@@ -229,6 +233,84 @@ func (r *Request) SetRawBody(v []byte) *Request {
 	return r
 }
 
+// resetBody will clear body object and set bodyType
+func (r *Request) resetBody(t bodyType) {
+	r.body = nil
+
+	// Set form data after set file ignore.
+	if r.bodyType == filesBody && t == formBody {
+		return
+	}
+	r.bodyType = t
+}
+
+// AddFormData method adds a single form data field and its value in the request instance.
+func (r *Request) AddFormData(key, val string) *Request {
+	r.formData.AddData(key, val)
+	r.resetBody(formBody)
+	return r
+}
+
+// SetFormData method sets a single form data field and its value in the request instance.
+func (r *Request) SetFormData(key, val string) *Request {
+	r.formData.SetData(key, val)
+	r.resetBody(formBody)
+	return r
+}
+
+// AddFormDatas method adds multiple form data fields and its values in the request instance.
+func (r *Request) AddFormDatas(m map[string][]string) *Request {
+	r.formData.AddDatas(m)
+	r.resetBody(formBody)
+	return r
+}
+
+// SetFormDatas method sets multiple form data fields and its values in the request instance.
+func (r *Request) SetFormDatas(m map[string]string) *Request {
+	r.formData.SetDatas(m)
+	r.resetBody(formBody)
+	return r
+}
+
+// SetFormDatasWithStruct method sets multiple form data fields
+// and its values in the request instance via struct.
+func (r *Request) SetFormDatasWithStruct(v any) *Request {
+	r.formData.SetDatasWithStruct(v)
+	r.resetBody(formBody)
+	return r
+}
+
+// DelFormDatas method deletes multiple form data fields and its value in the request instance.
+func (r *Request) DelFormDatas(key ...string) *Request {
+	r.formData.DelDatas(key...)
+	r.resetBody(formBody)
+	return r
+}
+
+// AddFile method adds single file field
+// and its value in the request instance via file path.
+func (r *Request) AddFile(path string) *Request {
+	r.files = append(r.files, AcquireFile(SetFilePath(path)))
+	r.resetBody(filesBody)
+	return r
+}
+
+// AddFileWithReader method adds single field
+// and its value in the request instance via reader.
+func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request {
+	r.files = append(r.files, AcquireFile(SetFileName(name), SetFileReader(reader)))
+	r.resetBody(filesBody)
+	return r
+}
+
+// AddFile method adds multiple file fields
+// and its value in the request instance via File instance.
+func (r *Request) AddFiles(files ...*File) *Request {
+	r.files = append(r.files, files...)
+	r.resetBody(filesBody)
+	return r
+}
+
 // Reset clear Request object, used by ReleaseRequest method.
 func (r *Request) Reset() {
 	r.url = ""
@@ -238,6 +320,13 @@ func (r *Request) Reset() {
 	r.body = nil
 	r.bodyType = noBody
 
+	copiedFile := r.files
+	r.files = r.files[0:0]
+	for _, v := range copiedFile {
+		ReleaseFile(v)
+	}
+
+	r.formData.Reset()
 	r.path.Reset()
 	r.cookies.Reset()
 	r.header.Reset()
@@ -397,6 +486,92 @@ func (p PathParam) Reset() {
 	}
 }
 
+// FormData is a wrapper of fasthttp.Args,
+// and it be used for url encode body and file body.
+type FormData struct {
+	*fasthttp.Args
+}
+
+// AddData method is a wrapper of Args's Add method.
+func (f *FormData) AddData(key, val string) {
+	f.Add(key, val)
+}
+
+// SetData method is a wrapper of Args's Set method.
+func (f *FormData) SetData(key, val string) {
+	f.Set(key, val)
+}
+
+// AddDatas method supports add multiple fields.
+func (f *FormData) AddDatas(m map[string][]string) {
+	for k, v := range m {
+		for _, vv := range v {
+			f.Add(k, vv)
+		}
+	}
+}
+
+// SetDatas method supports set multiple fields.
+func (f *FormData) SetDatas(m map[string]string) {
+	for k, v := range m {
+		f.Set(k, v)
+	}
+}
+
+// SetDatasWithStruct method supports set mutiple fields via a struct.
+func (f *FormData) SetDatasWithStruct(v any) {
+	SetValWithStruct(f, "form", v)
+}
+
+// DelDatas method deletes multiple fields.
+func (f *FormData) DelDatas(key ...string) {
+	for _, v := range key {
+		f.Del(v)
+	}
+}
+
+// Reset clear the FormData object.
+func (f *FormData) Reset() {
+	f.Args.Reset()
+}
+
+// File is a struct which support send files via request.
+type File struct {
+	name      string
+	paramName string
+	path      string
+	reader    io.ReadCloser
+}
+
+// SetName method sets file name.
+func (f *File) SetName(n string) {
+	f.name = n
+}
+
+// SetParamName method sets key of file in the body.
+func (f *File) SetParamName(n string) {
+	f.paramName = n
+}
+
+// SetPath method set file path.
+func (f *File) SetPath(p string) {
+	f.path = p
+}
+
+// SetReader method can reveive a io.ReadCloser
+// which will be closed in parserBody hook.
+func (f *File) SetReader(r io.ReadCloser) {
+	f.reader = r
+}
+
+// Reset clear the File object.
+func (f *File) Reset() {
+	f.name = ""
+	f.paramName = ""
+	f.path = ""
+	f.reader = nil
+}
+
 var requestPool sync.Pool
 
 // AcquireRequest returns an empty request object from the pool.
@@ -415,6 +590,9 @@ func AcquireRequest() (req *Request) {
 		params:     &QueryParam{Args: fasthttp.AcquireArgs()},
 		cookies:    &Cookie{},
 		path:       &PathParam{},
+		boundary:   "--FiberFormBoundary" + randString(16),
+		formData:   &FormData{Args: fasthttp.AcquireArgs()},
+		files:      make([]*File, 0),
 		rawRequest: fasthttp.AcquireRequest(),
 	}
 	return
@@ -426,6 +604,65 @@ func AcquireRequest() (req *Request) {
 func ReleaseRequest(req *Request) {
 	req.Reset()
 	requestPool.Put(req)
+}
+
+var filePool sync.Pool
+
+// The methods as follows is used by AcquireFile method.
+// You can set file field via these method.
+type SetFileFunc func(f *File)
+
+func SetFileName(n string) SetFileFunc {
+	return func(f *File) {
+		f.SetName(n)
+	}
+}
+
+func SetFileParamName(p string) SetFileFunc {
+	return func(f *File) {
+		f.SetParamName(p)
+	}
+}
+
+func SetFilePath(p string) SetFileFunc {
+	return func(f *File) {
+		f.SetPath(p)
+	}
+}
+
+func SetFileReader(r io.ReadCloser) SetFileFunc {
+	return func(f *File) {
+		f.SetReader(r)
+	}
+}
+
+// AcquireFile returns an File object from the pool.
+// And you can set field in the File with SetFileFunc.
+//
+// The returned file may be returned to the pool with ReleaseFile when no longer needed.
+// This allows reducing GC load.
+func AcquireFile(setter ...SetFileFunc) (f *File) {
+	fv := filePool.Get()
+	if fv != nil {
+		f = fv.(*File)
+		for _, v := range setter {
+			v(f)
+		}
+		return
+	}
+	f = &File{}
+	for _, v := range setter {
+		v(f)
+	}
+	return
+}
+
+// ReleaseFile returns the object acquired via AcquireFile to the pool.
+//
+// Do not access the released File object, otherwise data races may occur.
+func ReleaseFile(f *File) {
+	f.Reset()
+	filePool.Put(f)
 }
 
 // Set some values using structs.

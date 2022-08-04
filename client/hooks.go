@@ -3,11 +3,17 @@ package client
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"math/rand"
+	"mime/multipart"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
@@ -25,6 +31,12 @@ var (
 	applicationXML    = "application/xml"
 	applicationForm   = "application/x-www-form-urlencoded"
 	multipartFormData = "multipart/form-data"
+
+	src           = rand.NewSource(time.Now().UnixNano())
+	letterBytes   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	letterIdxBits = 6                    // 6 bits to represent a letter index
+	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
+	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
 )
 
 // addMissingPort will add the corresponding port number for host.
@@ -38,6 +50,25 @@ func addMissingPort(addr string, isTLS bool) string {
 		port = 443
 	}
 	return net.JoinHostPort(addr, strconv.Itoa(port))
+}
+
+func randString(n int) string {
+	b := make([]byte, n)
+	length := len(letterBytes)
+	for i, cache, remain := n-1, src.Int63(), letterIdxMax; i >= 0; {
+		if remain == 0 {
+			cache, remain = src.Int63(), letterIdxMax
+		}
+
+		if idx := int(cache & int64(letterIdxMask)); idx < length {
+			b[i] = letterBytes[idx]
+			i--
+		}
+		cache >>= int64(letterIdxBits)
+		remain--
+	}
+
+	return utils.UnsafeString(b)
 }
 
 // parserURL will set the options for the hostclient
@@ -126,6 +157,8 @@ func parserHeader(c *Client, req *Request) error {
 		req.rawRequest.Header.SetContentType(applicationForm)
 	case filesBody:
 		req.rawRequest.Header.SetContentType(multipartFormData)
+		// set boundary
+		req.rawRequest.Header.SetMultipartFormBoundary(req.boundary)
 	default:
 	}
 
@@ -152,7 +185,7 @@ func parserHeader(c *Client, req *Request) error {
 
 // parserBody automatically serializes the data according to
 // the data type and stores it in the body of the rawRequest
-func parserBody(c *Client, req *Request) error {
+func parserBody(c *Client, req *Request) (err error) {
 	switch req.bodyType {
 	case jsonBody:
 		body, err := c.core.jsonMarshal(req.body)
@@ -167,7 +200,76 @@ func parserBody(c *Client, req *Request) error {
 		}
 		req.rawRequest.SetBody(body)
 	case formBody:
+		req.rawRequest.SetBody(req.formData.QueryString())
 	case filesBody:
+		mw := multipart.NewWriter(req.rawRequest.BodyWriter())
+		mw.SetBoundary(req.boundary)
+		defer func() {
+			err = mw.Close()
+			if err != nil {
+				return
+			}
+		}()
+
+		// add formdata
+		req.formData.VisitAll(func(key, value []byte) {
+			if err != nil {
+				return
+			}
+			err = mw.WriteField(utils.UnsafeString(key), utils.UnsafeString(value))
+		})
+		if err != nil {
+			return
+		}
+
+		// add file
+		b := make([]byte, 512)
+		for i, v := range req.files {
+			if v.name == "" && v.path == "" {
+				return fmt.Errorf("the file should have a name")
+			}
+
+			// if name is not exist, set name
+			if v.name == "" && v.path != "" {
+				v.path = filepath.Clean(v.path)
+				v.name = filepath.Base(v.name)
+			}
+
+			// if param is not exist, set it
+			if v.paramName == "" {
+				v.paramName = "file" + fmt.Sprint(i)
+			}
+
+			// check the reader
+			if v.reader == nil {
+				v.reader, err = os.Open(v.path)
+				if err != nil {
+					return
+				}
+			}
+
+			// wirte file
+			w, err := mw.CreateFormFile(v.paramName, v.name)
+			if err != nil {
+				return err
+			}
+
+			for {
+				_, err := v.reader.Read(b)
+				if err != nil && err != io.EOF {
+					return err
+				}
+
+				if err == io.EOF {
+					break
+				}
+
+				w.Write(b)
+			}
+
+			// ignore err
+			v.reader.Close()
+		}
 	case rawBody:
 		if body, ok := req.body.([]byte); ok {
 			req.rawRequest.SetBody(body)

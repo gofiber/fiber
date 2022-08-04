@@ -3,7 +3,9 @@ package client
 import (
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -46,6 +48,24 @@ func TestAddMissingPort(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			utils.AssertEqual(t, tt.want, addMissingPort(tt.args.addr, tt.args.isTLS))
+		})
+	}
+}
+
+func TestRandString(t *testing.T) {
+	tests := []struct {
+		name string
+		args int
+	}{
+		{
+			name: "test generate",
+			args: 16,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := randString(tt.args)
+			utils.AssertEqual(t, 16, len(got))
 		})
 	}
 }
@@ -263,6 +283,31 @@ func TestParserHeader(t *testing.T) {
 		utils.AssertEqual(t, []byte(applicationXML), req.rawRequest.Header.ContentType())
 	})
 
+	t.Run("auto set form data header", func(t *testing.T) {
+		client := AcquireClient()
+		req := AcquireRequest().
+			SetFormDatas(map[string]string{
+				"foo":  "bar",
+				"ball": "cricle and square",
+			})
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, applicationForm, string(req.rawRequest.Header.ContentType()))
+	})
+
+	t.Run("auto set file header", func(t *testing.T) {
+		client := AcquireClient()
+		req := AcquireRequest().
+			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
+			SetFormData("foo", "bar")
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Header.MultipartFormBoundary()), "--FiberFormBoundary"))
+		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Header.ContentType()), multipartFormData))
+	})
+
 	t.Run("ua should have default value", func(t *testing.T) {
 		client := AcquireClient()
 		req := AcquireRequest()
@@ -388,6 +433,42 @@ func TestParserBody(t *testing.T) {
 		err := parserBody(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("<body><name>foo</name></body>"), req.rawRequest.Body())
+	})
+
+	t.Run("form data body", func(t *testing.T) {
+		client := AcquireClient()
+		req := AcquireRequest().
+			SetFormDatas(map[string]string{
+				"ball": "cricle and square",
+			})
+
+		err := parserBody(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "ball=cricle+and+square", string(req.rawRequest.Body()))
+	})
+
+	t.Run("file body", func(t *testing.T) {
+		client := AcquireClient()
+		req := AcquireRequest().
+			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world")))
+
+		err := parserBody(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "----FiberFormBoundary"))
+		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "world"))
+	})
+
+	t.Run("file and form data", func(t *testing.T) {
+		client := AcquireClient()
+		req := AcquireRequest().
+			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
+			SetFormData("foo", "bar")
+
+		err := parserBody(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "----FiberFormBoundary"))
+		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "world"))
+		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "bar"))
 	})
 
 	t.Run("raw body", func(t *testing.T) {
