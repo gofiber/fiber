@@ -95,6 +95,10 @@ func defaultColors(colors Colors) Colors {
 		colors.Cyan = DefaultColors.Cyan
 	}
 
+	if colors.White == "" {
+		colors.White = DefaultColors.White
+	}
+
 	if colors.Reset == "" {
 		colors.Reset = DefaultColors.Reset
 	}
