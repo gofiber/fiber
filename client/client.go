@@ -12,9 +12,10 @@ type Client struct {
 	core *Core
 
 	baseUrl   string
+	userAgent string
+	referer   string
 	header    *Header
 	params    *QueryParam
-	userAgent string
 	cookies   *Cookie
 	path      *PathParam
 }
@@ -156,6 +157,14 @@ func (c *Client) SetUserAgent(ua string) *Client {
 	return c
 }
 
+// SetReferer method sets referer field and its value in the client instance.
+// This referer will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level referer options.
+func (c *Client) SetReferer(r string) *Client {
+	c.referer = r
+	return c
+}
+
 // SetPathParam method sets a single path param field and its value in the client instance.
 // These path params will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level path params options.
@@ -220,6 +229,7 @@ func (c *Client) DelCookies(key ...string) *Client {
 func (c *Client) Reset() {
 	c.baseUrl = ""
 	c.userAgent = ""
+	c.referer = ""
 
 	c.path.Reset()
 	c.cookies.Reset()
@@ -266,7 +276,7 @@ func AcquireClient() (c *Client) {
 			Args: fasthttp.AcquireArgs(),
 		},
 		cookies: &Cookie{},
-		path: &PathParam{},
+		path:    &PathParam{},
 	}
 	return
 }

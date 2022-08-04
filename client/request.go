@@ -33,9 +33,10 @@ const (
 type Request struct {
 	url       string
 	method    string
-	ctx       context.Context
 	userAgent string
 	boundary  string
+	referer   string
+	ctx       context.Context
 	header    *Header
 	params    *QueryParam
 	cookies   *Cookie
@@ -155,6 +156,13 @@ func (r *Request) DelParams(key ...string) *Request {
 // It will override user agent which set in client instance.
 func (r *Request) SetUserAgent(ua string) *Request {
 	r.userAgent = ua
+	return r
+}
+
+// SetReferer method sets referer in request.
+// It will override referer which set in client instance.
+func (r *Request) SetReferer(referer string) *Request {
+	r.referer = referer
 	return r
 }
 
@@ -315,8 +323,9 @@ func (r *Request) AddFiles(files ...*File) *Request {
 func (r *Request) Reset() {
 	r.url = ""
 	r.method = fiber.MethodGet
-	r.ctx = nil
 	r.userAgent = ""
+	r.referer = ""
+	r.ctx = nil
 	r.body = nil
 	r.bodyType = noBody
 

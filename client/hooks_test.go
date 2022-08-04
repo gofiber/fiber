@@ -335,6 +335,24 @@ func TestParserHeader(t *testing.T) {
 		utils.AssertEqual(t, []byte("bar"), req.rawRequest.Header.UserAgent())
 	})
 
+	t.Run("referer in client should be set", func(t *testing.T) {
+		client := AcquireClient().SetReferer("https://example.com")
+		req := AcquireRequest()
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte("https://example.com"), req.rawRequest.Header.Referer())
+	})
+
+	t.Run("referer in request should have higher level", func(t *testing.T) {
+		client := AcquireClient().SetReferer("http://example.com")
+		req := AcquireRequest().SetReferer("https://example.com")
+
+		err := parserHeader(client, req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte("https://example.com"), req.rawRequest.Header.Referer())
+	})
+
 	t.Run("client cookie should be set", func(t *testing.T) {
 		client := AcquireClient().
 			SetCookie("foo", "bar").

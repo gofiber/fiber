@@ -74,7 +74,7 @@ func randString(n int) string {
 // parserURL will set the options for the hostclient
 // and normalize the url.
 // The baseUrl will be merge with request uri.
-// TODO: Query params and path params should be deal in this function.
+// Query params and path params deal in this function.
 func parserURL(c *Client, req *Request) error {
 	splitUrl := strings.Split(req.url, "?")
 	// I don't want to judege splitUrl length.
@@ -169,6 +169,12 @@ func parserHeader(c *Client, req *Request) error {
 	}
 	if req.userAgent != "" {
 		req.rawRequest.Header.SetUserAgent(req.userAgent)
+	}
+
+	// set referer
+	req.rawRequest.Header.SetReferer(c.referer)
+	if req.referer != "" {
+		req.rawRequest.Header.SetReferer(req.referer)
 	}
 
 	// set cookie
