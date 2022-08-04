@@ -71,11 +71,11 @@ func randString(n int) string {
 	return utils.UnsafeString(b)
 }
 
-// parserURL will set the options for the hostclient
+// parserRequestURL will set the options for the hostclient
 // and normalize the url.
 // The baseUrl will be merge with request uri.
 // Query params and path params deal in this function.
-func parserURL(c *Client, req *Request) error {
+func parserRequestURL(c *Client, req *Request) error {
 	splitUrl := strings.Split(req.url, "?")
 	// I don't want to judege splitUrl length.
 	splitUrl = append(splitUrl, "")
@@ -132,11 +132,11 @@ func parserURL(c *Client, req *Request) error {
 	return nil
 }
 
-// parserHeader will make request header up.
+// parserRequestHeader will make request header up.
 // It will merge headers from client and request.
 // Header should be set automatically based on data.
 // User-Agent should be set.
-func parserHeader(c *Client, req *Request) error {
+func parserRequestHeader(c *Client, req *Request) error {
 	// merge header
 	c.header.VisitAll(func(key, value []byte) {
 		req.rawRequest.Header.SetBytesKV(key, value)
@@ -189,9 +189,9 @@ func parserHeader(c *Client, req *Request) error {
 	return nil
 }
 
-// parserBody automatically serializes the data according to
+// parserRequestBody automatically serializes the data according to
 // the data type and stores it in the body of the rawRequest
-func parserBody(c *Client, req *Request) (err error) {
+func parserRequestBody(c *Client, req *Request) (err error) {
 	switch req.bodyType {
 	case jsonBody:
 		body, err := c.core.jsonMarshal(req.body)
@@ -284,4 +284,17 @@ func parserBody(c *Client, req *Request) (err error) {
 		}
 	}
 	return nil
+}
+
+func parserResponseCookie(c *Client, resp *Response, req *Request) (err error) {
+	resp.rawResponse.Header.VisitAllCookie(func(key, value []byte) {
+		cookie := fasthttp.AcquireCookie()
+		err = cookie.ParseBytes(value)
+		if err != nil {
+			return
+		}
+		cookie.SetKeyBytes(key)
+	})
+
+	return
 }

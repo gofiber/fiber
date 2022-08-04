@@ -70,6 +70,8 @@ type Core struct {
 func (c *Core) execute(ctx context.Context, agent *Client, req *Request) (*Response, error) {
 	var execFunc ExecuteFunc = func(ctx context.Context, a *Client, r *Request) (*Response, error) {
 		resp := AcquireResponse()
+		resp.setClient(a)
+		resp.setRequest(r)
 
 		// To avoid memory allocation reuse of data structures such as errch.
 		errCh, reqv, respv := acquireErrChan(), fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
@@ -99,7 +101,7 @@ func (c *Core) execute(ctx context.Context, agent *Client, req *Request) (*Respo
 			}
 			return resp, nil
 		case <-ctx.Done():
-			return nil, fmt.Errorf("timeout error")
+			return nil, fmt.Errorf("timeout or cancel error")
 		}
 	}
 
@@ -207,9 +209,9 @@ func AcquireCore() (c *Core) {
 	c = &Core{
 		client:              &fasthttp.HostClient{},
 		userRequestHooks:    []RequestHook{},
-		buildinRequestHooks: []RequestHook{parserURL, parserHeader, parserBody},
+		buildinRequestHooks: []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
 		userResponseHooks:   []ResponseHook{},
-		buildinResposeHooks: []ResponseHook{},
+		buildinResposeHooks: []ResponseHook{parserResponseCookie},
 		plugins:             []Plugin{},
 		pluginMap:           map[string]Plugin{},
 		jsonMarshal:         json.Marshal,

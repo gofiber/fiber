@@ -70,14 +70,14 @@ func TestRandString(t *testing.T) {
 	}
 }
 
-func TestParserURL(t *testing.T) {
+func TestParserRequestURL(t *testing.T) {
 	t.Parallel()
 
 	t.Run("client baseurl should be set", func(t *testing.T) {
 		client := AcquireClient().SetBaseURL("http://example.com/api")
 		req := AcquireRequest().SetURL("")
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "http://example.com/api", req.rawRequest.URI().String())
 	})
@@ -86,7 +86,7 @@ func TestParserURL(t *testing.T) {
 		client := AcquireClient()
 		req := AcquireRequest().SetURL("http://example.com/api")
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "http://example.com/api", req.rawRequest.URI().String())
 	})
@@ -95,7 +95,7 @@ func TestParserURL(t *testing.T) {
 		client := AcquireClient().SetBaseURL("http://example.com/api")
 		req := AcquireRequest().SetURL("http://example.com/api/v1")
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "http://example.com/api/v1", req.rawRequest.URI().String())
 	})
@@ -104,7 +104,7 @@ func TestParserURL(t *testing.T) {
 		client := AcquireClient().SetBaseURL("http://example.com/api")
 		req := AcquireRequest().SetURL("/v1")
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "http://example.com/api/v1", req.rawRequest.URI().String())
 	})
@@ -113,7 +113,7 @@ func TestParserURL(t *testing.T) {
 		client := AcquireClient().SetBaseURL("example.com/api")
 		req := AcquireRequest().SetURL("/v1")
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, fmt.Errorf("url format error"), err)
 	})
 
@@ -123,7 +123,7 @@ func TestParserURL(t *testing.T) {
 			SetPathParam("id", "5")
 		req := AcquireRequest()
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "http://example.com/api/5", req.rawRequest.URI().String())
 	})
@@ -140,7 +140,7 @@ func TestParserURL(t *testing.T) {
 			}).
 			DelPathParams("key")
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "http://example.com/api/5/fiber/%7Bkey%7D", req.rawRequest.URI().String())
 	})
@@ -157,7 +157,7 @@ func TestParserURL(t *testing.T) {
 				"id":   "12",
 			})
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "http://example.com/api/12/fiber/val", req.rawRequest.URI().String())
 	})
@@ -167,7 +167,7 @@ func TestParserURL(t *testing.T) {
 			SetParam("foo", "bar")
 		req := AcquireRequest().SetURL("http://example.com/api/v1")
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("foo=bar"), req.rawRequest.URI().QueryString())
 	})
@@ -178,7 +178,7 @@ func TestParserURL(t *testing.T) {
 			SetURL("http://example.com/api/v1").
 			SetParam("bar", "foo")
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("bar=foo"), req.rawRequest.URI().QueryString())
 	})
@@ -190,7 +190,7 @@ func TestParserURL(t *testing.T) {
 			SetURL("http://example.com/api/v1?bar=foo2").
 			SetParam("bar", "foo")
 
-		err := parserURL(client, req)
+		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 
 		values, _ := url.ParseQuery(string(req.rawRequest.URI().QueryString()))
@@ -211,7 +211,7 @@ func TestParserURL(t *testing.T) {
 	})
 }
 
-func TestParserHeader(t *testing.T) {
+func TestParserRequestHeader(t *testing.T) {
 	t.Parallel()
 
 	t.Run("client header should be set", func(t *testing.T) {
@@ -222,7 +222,7 @@ func TestParserHeader(t *testing.T) {
 
 		req := AcquireRequest()
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("application/json"), req.rawRequest.Header.ContentType())
 	})
@@ -235,7 +235,7 @@ func TestParserHeader(t *testing.T) {
 				fiber.HeaderContentType: "application/json, utf-8",
 			})
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("application/json, utf-8"), req.rawRequest.Header.ContentType())
 	})
@@ -247,7 +247,7 @@ func TestParserHeader(t *testing.T) {
 		req := AcquireRequest().
 			SetHeader(fiber.HeaderContentType, "application/json, utf-8")
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("application/json, utf-8"), req.rawRequest.Header.ContentType())
 	})
@@ -262,7 +262,7 @@ func TestParserHeader(t *testing.T) {
 				Name: "foo",
 			})
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte(applicationJSON), req.rawRequest.Header.ContentType())
 	})
@@ -278,7 +278,7 @@ func TestParserHeader(t *testing.T) {
 				Name: "foo",
 			})
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte(applicationXML), req.rawRequest.Header.ContentType())
 	})
@@ -291,7 +291,7 @@ func TestParserHeader(t *testing.T) {
 				"ball": "cricle and square",
 			})
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, applicationForm, string(req.rawRequest.Header.ContentType()))
 	})
@@ -302,7 +302,7 @@ func TestParserHeader(t *testing.T) {
 			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
 			SetFormData("foo", "bar")
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Header.MultipartFormBoundary()), "--FiberFormBoundary"))
 		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Header.ContentType()), multipartFormData))
@@ -312,7 +312,7 @@ func TestParserHeader(t *testing.T) {
 		client := AcquireClient()
 		req := AcquireRequest()
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("fiber"), req.rawRequest.Header.UserAgent())
 	})
@@ -321,7 +321,7 @@ func TestParserHeader(t *testing.T) {
 		client := AcquireClient().SetUserAgent("foo")
 		req := AcquireRequest()
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("foo"), req.rawRequest.Header.UserAgent())
 	})
@@ -330,7 +330,7 @@ func TestParserHeader(t *testing.T) {
 		client := AcquireClient().SetUserAgent("foo")
 		req := AcquireRequest().SetUserAgent("bar")
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("bar"), req.rawRequest.Header.UserAgent())
 	})
@@ -339,7 +339,7 @@ func TestParserHeader(t *testing.T) {
 		client := AcquireClient().SetReferer("https://example.com")
 		req := AcquireRequest()
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("https://example.com"), req.rawRequest.Header.Referer())
 	})
@@ -348,7 +348,7 @@ func TestParserHeader(t *testing.T) {
 		client := AcquireClient().SetReferer("http://example.com")
 		req := AcquireRequest().SetReferer("https://example.com")
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("https://example.com"), req.rawRequest.Header.Referer())
 	})
@@ -364,7 +364,7 @@ func TestParserHeader(t *testing.T) {
 
 		req := AcquireRequest()
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "bar", string(req.rawRequest.Header.Cookie("foo")))
 		utils.AssertEqual(t, "foo", string(req.rawRequest.Header.Cookie("bar")))
@@ -385,7 +385,7 @@ func TestParserHeader(t *testing.T) {
 				Bar: 67,
 			})
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "bar", string(req.rawRequest.Header.Cookie("foo")))
 		utils.AssertEqual(t, "67", string(req.rawRequest.Header.Cookie("bar")))
@@ -411,7 +411,7 @@ func TestParserHeader(t *testing.T) {
 				Bar: 67,
 			})
 
-		err := parserHeader(client, req)
+		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "bar", string(req.rawRequest.Header.Cookie("foo")))
 		utils.AssertEqual(t, "67", string(req.rawRequest.Header.Cookie("bar")))
@@ -419,7 +419,7 @@ func TestParserHeader(t *testing.T) {
 	})
 }
 
-func TestParserBody(t *testing.T) {
+func TestParserRequestBody(t *testing.T) {
 	t.Parallel()
 
 	t.Run("json body", func(t *testing.T) {
@@ -432,7 +432,7 @@ func TestParserBody(t *testing.T) {
 				Name: "foo",
 			})
 
-		err := parserBody(client, req)
+		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("{\"name\":\"foo\"}"), req.rawRequest.Body())
 	})
@@ -448,7 +448,7 @@ func TestParserBody(t *testing.T) {
 				Name: "foo",
 			})
 
-		err := parserBody(client, req)
+		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("<body><name>foo</name></body>"), req.rawRequest.Body())
 	})
@@ -460,7 +460,7 @@ func TestParserBody(t *testing.T) {
 				"ball": "cricle and square",
 			})
 
-		err := parserBody(client, req)
+		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "ball=cricle+and+square", string(req.rawRequest.Body()))
 	})
@@ -470,7 +470,7 @@ func TestParserBody(t *testing.T) {
 		req := AcquireRequest().
 			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world")))
 
-		err := parserBody(client, req)
+		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "----FiberFormBoundary"))
 		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "world"))
@@ -482,7 +482,7 @@ func TestParserBody(t *testing.T) {
 			AddFileWithReader("hello", io.NopCloser(strings.NewReader("world"))).
 			SetFormData("foo", "bar")
 
-		err := parserBody(client, req)
+		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "----FiberFormBoundary"))
 		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "world"))
@@ -494,7 +494,7 @@ func TestParserBody(t *testing.T) {
 		req := AcquireRequest().
 			SetRawBody([]byte("hello world"))
 
-		err := parserBody(client, req)
+		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, []byte("hello world"), req.rawRequest.Body())
 	})
