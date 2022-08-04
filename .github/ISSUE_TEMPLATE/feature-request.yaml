@@ -52,7 +52,7 @@ body:
       label: "Checklist:"
       description: "By submitting this issue, you confirm that:"
       options:
-        - label: "I agree to follow Fiber's [Code of Conduct](../CODE_OF_CONDUCT.md)."
+        - label: "I agree to follow Fiber's [Code of Conduct](https://github.com/gofiber/fiber/blob/master/.github/CODE_OF_CONDUCT.md)."
           required: true
         - label: "I have checked for existing issues that describe my suggestion prior to opening this one."
           required: true
