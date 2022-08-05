@@ -23,22 +23,6 @@ type RequestHook func(*Client, *Request) error
 // Called after a respose has been received.
 type ResponseHook func(*Client, *Response, *Request) error
 
-// ExecuteFunc will actually execute the request via fasthttp.
-type ExecuteFunc func(context.Context, *Client, *Request) (*Response, error)
-
-// Plugin can change the execution flow of requests.
-type Plugin interface {
-	// Return the plugin name and the name should be different.
-	Name() string
-
-	// Determine if the plugin should be executed based on the conditions.
-	Check() bool
-
-	// Modify specific request execution methods,
-	// such as adding timeouts, cancellations, retries and other operations.
-	GenerateExecute(ExecuteFunc) (ExecuteFunc, error)
-}
-
 // `Core` stores middleware and plugin definitions,
 // and defines the execution process
 type Core struct {
@@ -56,10 +40,6 @@ type Core struct {
 	// client package defined respose hooks
 	buildinResposeHooks []ResponseHook
 
-	// store plugins
-	plugins   []Plugin
-	pluginMap map[string]Plugin
-
 	jsonMarshal   utils.JSONMarshal
 	jsonUnmarshal utils.JSONUnmarshal
 	xmlMarshal    utils.XMLMarshal
@@ -68,7 +48,7 @@ type Core struct {
 
 // execute will exec each hooks and plugins.
 func (c *Core) execute(ctx context.Context, agent *Client, req *Request) (*Response, error) {
-	var execFunc ExecuteFunc = func(ctx context.Context, a *Client, r *Request) (*Response, error) {
+	execFunc := func(ctx context.Context, a *Client, r *Request) (*Response, error) {
 		resp := AcquireResponse()
 		resp.setClient(a)
 		resp.setRequest(r)
@@ -121,19 +101,6 @@ func (c *Core) execute(ctx context.Context, agent *Client, req *Request) (*Respo
 		}
 	}
 
-	// Call the plugins to generate the real request function.
-	for _, p := range c.plugins {
-		if !p.Check() {
-			continue
-		}
-
-		var err error
-		execFunc, err = p.GenerateExecute(execFunc)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	// Do http request
 	resp, err := execFunc(ctx, agent, req)
 	if err != nil {
@@ -164,11 +131,6 @@ func (c *Core) execute(ctx context.Context, agent *Client, req *Request) (*Respo
 func (c *Core) reset() {
 	c.userRequestHooks = c.userRequestHooks[:0]
 	c.userResponseHooks = c.userResponseHooks[:0]
-	c.plugins = c.plugins[:0]
-
-	for k := range c.pluginMap {
-		delete(c.pluginMap, k)
-	}
 }
 
 var errChanPool sync.Pool
@@ -212,8 +174,6 @@ func AcquireCore() (c *Core) {
 		buildinRequestHooks: []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
 		userResponseHooks:   []ResponseHook{},
 		buildinResposeHooks: []ResponseHook{parserResponseCookie},
-		plugins:             []Plugin{},
-		pluginMap:           map[string]Plugin{},
 		jsonMarshal:         json.Marshal,
 		jsonUnmarshal:       json.Unmarshal,
 		xmlMarshal:          xml.Marshal,

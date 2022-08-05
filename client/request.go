@@ -401,7 +401,7 @@ func (r *Request) Reset() {
 	r.bodyType = noBody
 
 	copiedFile := r.files
-	r.files = r.files[0:0]
+	r.files = r.files[:0]
 	for _, v := range copiedFile {
 		ReleaseFile(v)
 	}
