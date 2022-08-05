@@ -3,7 +3,6 @@ package client
 import (
 	"sync"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -18,6 +17,10 @@ type Client struct {
 	params    *QueryParam
 	cookies   *Cookie
 	path      *PathParam
+}
+
+func (c *Client) R() *Request {
+	return AcquireRequest().SetClient(c)
 }
 
 // Add user-defined request hooks.
@@ -225,7 +228,84 @@ func (c *Client) DelCookies(key ...string) *Client {
 	return c
 }
 
-// Reset clear Client object.
+// Get provide a API like axios which send get request.
+func (c *Client) Get(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	req := AcquireRequest().SetClient(c)
+
+	for _, v := range setter {
+		v(req)
+	}
+
+	return req.Get(url)
+}
+
+// Post provide a API like axios which send post request.
+func (c *Client) Post(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	req := AcquireRequest().SetClient(c)
+
+	for _, v := range setter {
+		v(req)
+	}
+
+	return req.Post(url)
+}
+
+// Head provide a API like axios which send head request.
+func (c *Client) Head(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	req := AcquireRequest().SetClient(c)
+
+	for _, v := range setter {
+		v(req)
+	}
+
+	return req.Head(url)
+}
+
+// Put provide a API like axios which send put request.
+func (c *Client) Put(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	req := AcquireRequest().SetClient(c)
+
+	for _, v := range setter {
+		v(req)
+	}
+
+	return req.Put(url)
+}
+
+// Delete provide a API like axios which send delete request.
+func (c *Client) Delete(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	req := AcquireRequest().SetClient(c)
+
+	for _, v := range setter {
+		v(req)
+	}
+
+	return req.Delete(url)
+}
+
+// Options provide a API like axios which send options request.
+func (c *Client) Options(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	req := AcquireRequest().SetClient(c)
+
+	for _, v := range setter {
+		v(req)
+	}
+
+	return req.Options(url)
+}
+
+// Patch provide a API like axios which send patch request.
+func (c *Client) Patch(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	req := AcquireRequest().SetClient(c)
+
+	for _, v := range setter {
+		v(req)
+	}
+
+	return req.Patch(url)
+}
+
+// Reset clear Client object
 func (c *Client) Reset() {
 	c.baseUrl = ""
 	c.userAgent = ""
@@ -238,13 +318,54 @@ func (c *Client) Reset() {
 	c.params.Reset()
 }
 
-// Get provide a API like axios which send get request.
-func (c *Client) Get(url string) (*Response, error) {
-	req := AcquireRequest().
-		setMethod(fiber.MethodGet).
-		SetURL(url)
+type SetRequestOptionFunc func(r *Request)
 
-	return c.core.execute(req.Context(), c, req)
+func SetRequestHeaders(m map[string]string) SetRequestOptionFunc {
+	return func(r *Request) {
+		r.SetHeaders(m)
+	}
+}
+
+func SetRequestQueryParams(m map[string]string) SetRequestOptionFunc {
+	return func(r *Request) {
+		r.SetParams(m)
+	}
+}
+
+func SetRequestUserAgent(ua string) SetRequestOptionFunc {
+	return func(r *Request) {
+		r.SetUserAgent(ua)
+	}
+}
+
+func SetRequestReferer(referer string) SetRequestOptionFunc {
+	return func(r *Request) {
+		r.SetReferer(referer)
+	}
+}
+
+func SetRequestData(v any) SetRequestOptionFunc {
+	return func(r *Request) {
+		r.SetJSON(v)
+	}
+}
+
+func SetRequestFormDatas(m map[string]string) SetRequestOptionFunc {
+	return func(r *Request) {
+		r.SetFormDatas(m)
+	}
+}
+
+func SetRequestPathParams(m map[string]string) SetRequestOptionFunc {
+	return func(r *Request) {
+		r.SetPathParams(m)
+	}
+}
+
+func SetRequestFiles(files ...*File) SetRequestOptionFunc {
+	return func(r *Request) {
+		r.AddFiles(files...)
+	}
 }
 
 var (
@@ -305,6 +426,36 @@ func Replace(c *Client) func() {
 }
 
 // Get send a get request use defaultClient, a convenient method.
-func Get(url string) (*Response, error) {
-	return defaultClient.Get(url)
+func Get(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	return defaultClient.Get(url, setter...)
+}
+
+// Post send a post request use defaultClient, a convenient method.
+func Post(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	return defaultClient.Post(url, setter...)
+}
+
+// Head send a head request use defaultClient, a convenient method.
+func Head(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	return defaultClient.Head(url, setter...)
+}
+
+// Put send a put request use defaultClient, a convenient method.
+func Put(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	return defaultClient.Put(url, setter...)
+}
+
+// Delete send a delete request use defaultClient, a convenient method.
+func Delete(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	return defaultClient.Delete(url, setter...)
+}
+
+// Options send a options request use defaultClient, a convenient method.
+func Options(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	return defaultClient.Options(url, setter...)
+}
+
+// Patch send a patch request use defaultClient, a convenient method.
+func Patch(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+	return defaultClient.Patch(url, setter...)
 }

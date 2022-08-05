@@ -42,6 +42,8 @@ type Request struct {
 	cookies   *Cookie
 	path      *PathParam
 
+	client *Client
+
 	body     any
 	formData *FormData
 	files    []*File
@@ -50,9 +52,9 @@ type Request struct {
 	rawRequest *fasthttp.Request
 }
 
-// setMethod will set method for Request object,
+// SetMethod will set method for Request object,
 // user should use request method to set method.
-func (r *Request) setMethod(method string) *Request {
+func (r *Request) SetMethod(method string) *Request {
 	r.method = method
 	return r
 }
@@ -60,6 +62,12 @@ func (r *Request) setMethod(method string) *Request {
 // SetURL will set url for Request object.
 func (r *Request) SetURL(url string) *Request {
 	r.url = url
+	return r
+}
+
+// SetClient method sets client in request instance.
+func (r *Request) SetClient(c *Client) *Request {
+	r.client = c
 	return r
 }
 
@@ -317,6 +325,69 @@ func (r *Request) AddFiles(files ...*File) *Request {
 	r.files = append(r.files, files...)
 	r.resetBody(filesBody)
 	return r
+}
+
+// checkClient method checks whether the client has been set in request.
+func (r *Request) checkClient() {
+	if r.client == nil {
+		r.SetClient(defaultClient)
+	}
+}
+
+// Send get request.
+func (r *Request) Get(url string) (*Response, error) {
+	r.SetURL(url).SetMethod(fiber.MethodGet).checkClient()
+
+	return r.client.core.execute(r.Context(), r.client, r)
+}
+
+// Send post request.
+func (r *Request) Post(url string) (*Response, error) {
+	r.SetURL(url).SetMethod(fiber.MethodPost).checkClient()
+
+	return r.client.core.execute(r.Context(), r.client, r)
+}
+
+// Send head request.
+func (r *Request) Head(url string) (*Response, error) {
+	r.SetURL(url).SetMethod(fiber.MethodHead).checkClient()
+
+	return r.client.core.execute(r.Context(), r.client, r)
+}
+
+// Send put request.
+func (r *Request) Put(url string) (*Response, error) {
+	r.SetURL(url).SetMethod(fiber.MethodPut).checkClient()
+
+	return r.client.core.execute(r.Context(), r.client, r)
+}
+
+// Send Delete request.
+func (r *Request) Delete(url string) (*Response, error) {
+	r.SetURL(url).SetMethod(fiber.MethodDelete).checkClient()
+
+	return r.client.core.execute(r.Context(), r.client, r)
+}
+
+// Send Options reuqest.
+func (r *Request) Options(url string) (*Response, error) {
+	r.SetURL(url).SetMethod(fiber.MethodOptions).checkClient()
+
+	return r.client.core.execute(r.Context(), r.client, r)
+}
+
+// Send patch request.
+func (r *Request) Patch(url string) (*Response, error) {
+	r.SetURL(url).SetMethod(fiber.MethodPatch).checkClient()
+
+	return r.client.core.execute(r.Context(), r.client, r)
+}
+
+// Send a request.
+func (r *Request) Send() (*Response, error) {
+	r.checkClient()
+
+	return r.client.core.execute(r.Context(), r.client, r)
 }
 
 // Reset clear Request object, used by ReleaseRequest method.
