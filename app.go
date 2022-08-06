@@ -852,9 +852,8 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 			}
 		}()
 
-		r := app.server.ServeConn(conn)
+		channel <- app.server.ServeConn(conn)
 		returned = true
-		channel <- r
 	}()
 
 	// Wait for callback
