@@ -46,63 +46,80 @@ type Core struct {
 	xmlUnmarshal  utils.XMLUnmarshal
 }
 
-// execute will exec each hooks and plugins.
-func (c *Core) execute(ctx context.Context, agent *Client, req *Request) (*Response, error) {
-	execFunc := func(ctx context.Context, a *Client, r *Request) (*Response, error) {
-		resp := AcquireResponse()
-		resp.setClient(a)
-		resp.setRequest(r)
+func (c *Core) execFunc(ctx context.Context, client *Client, req *Request) (*Response, error) {
+	resp := AcquireResponse()
+	resp.setClient(client)
+	resp.setRequest(req)
 
-		// To avoid memory allocation reuse of data structures such as errch.
-		errCh, reqv, respv := acquireErrChan(), fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
-		defer func() {
-			releaseErrChan(errCh)
-			fasthttp.ReleaseRequest(reqv)
-			fasthttp.ReleaseResponse(respv)
-		}()
+	// To avoid memory allocation reuse of data structures such as errch.
+	errCh, reqv, respv := acquireErrChan(), fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+	defer func() {
+		releaseErrChan(errCh)
+		fasthttp.ReleaseRequest(reqv)
+		fasthttp.ReleaseResponse(respv)
+	}()
 
-		req.rawRequest.CopyTo(reqv)
-		go func() {
-			err := c.client.Do(reqv, respv)
-			if err != nil {
-				errCh <- err
-				return
-			}
-			respv.CopyTo(resp.rawResponse)
-			errCh <- nil
-		}()
-
-		select {
-		case err := <-errCh:
-			if err != nil {
-				// When get error should release Response
-				ReleaseResponse(resp)
-				return nil, err
-			}
-			return resp, nil
-		case <-ctx.Done():
-			return nil, fmt.Errorf("timeout or cancel error")
+	req.rawRequest.CopyTo(reqv)
+	go func() {
+		err := c.client.Do(reqv, respv)
+		if err != nil {
+			errCh <- err
+			return
 		}
-	}
+		respv.CopyTo(resp.rawResponse)
+		errCh <- nil
+	}()
 
+	select {
+	case err := <-errCh:
+		if err != nil {
+			// When get error should release Response
+			ReleaseResponse(resp)
+			return nil, err
+		}
+		return resp, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("timeout or cancel error")
+	}
+}
+
+// execute will exec each hooks and plugins.
+func (c *Core) execute(ctx context.Context, client *Client, req *Request) (*Response, error) {
 	// The built-in hooks will be executed only
 	// after the user-defined hooks are executed。
 	for _, f := range c.userRequestHooks {
-		err := f(agent, req)
+		err := f(client, req)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	for _, f := range c.buildinRequestHooks {
-		err := f(agent, req)
+		err := f(client, req)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	// deal with timeout
+	if req.timeout != 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, req.timeout)
+		defer func() {
+			cancel()
+		}()
+	} else {
+		if client.timeout != 0 {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, client.timeout)
+			defer func() {
+				cancel()
+			}()
+		}
+	}
+
 	// Do http request
-	resp, err := execFunc(ctx, agent, req)
+	resp, err := c.execFunc(ctx, client, req)
 	if err != nil {
 		return nil, err
 	}
@@ -110,14 +127,14 @@ func (c *Core) execute(ctx context.Context, agent *Client, req *Request) (*Respo
 	// The built-in hooks will be executed only
 	// before the user-defined hooks are executed.
 	for _, f := range c.buildinResposeHooks {
-		err := f(agent, resp, req)
+		err := f(client, resp, req)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	for _, f := range c.userResponseHooks {
-		err := f(agent, resp, req)
+		err := f(client, resp, req)
 		if err != nil {
 			return nil, err
 		}

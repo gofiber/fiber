@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp"
@@ -41,6 +42,8 @@ type Request struct {
 	params    *QueryParam
 	cookies   *Cookie
 	path      *PathParam
+
+	timeout time.Duration
 
 	client *Client
 
@@ -324,6 +327,13 @@ func (r *Request) AddFileWithReader(name string, reader io.ReadCloser) *Request 
 func (r *Request) AddFiles(files ...*File) *Request {
 	r.files = append(r.files, files...)
 	r.resetBody(filesBody)
+	return r
+}
+
+// SetTimeout method sets timeout field and its values at one go in the request instance.
+// It will override timeout which set in client instance.
+func (r *Request) SetTimeout(t time.Duration) *Request {
+	r.timeout = t
 	return r
 }
 

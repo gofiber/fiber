@@ -2,6 +2,7 @@ package client
 
 import (
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
@@ -17,6 +18,8 @@ type Client struct {
 	params    *QueryParam
 	cookies   *Cookie
 	path      *PathParam
+
+	timeout time.Duration
 }
 
 func (c *Client) R() *Request {
@@ -228,6 +231,14 @@ func (c *Client) DelCookies(key ...string) *Client {
 	return c
 }
 
+// SetTimeout method sets timeout val in client instance.
+// This value will be applied to all requests raised from this client instance.
+// Also it can be overridden at request level timeout options.
+func (c *Client) SetTimeout(t time.Duration) *Client {
+	c.timeout = t
+	return c
+}
+
 // Get provide a API like axios which send get request.
 func (c *Client) Get(url string, setter ...SetRequestOptionFunc) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
@@ -308,6 +319,7 @@ func (c *Client) Patch(url string, setter ...SetRequestOptionFunc) (*Response, e
 // Reset clear Client object
 func (c *Client) Reset() {
 	c.baseUrl = ""
+	c.timeout = 0
 	c.userAgent = ""
 	c.referer = ""
 
