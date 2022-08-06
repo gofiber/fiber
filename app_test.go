@@ -1531,13 +1531,8 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 
 func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 	var err error
-	start := time.Now()
 	c := make(chan int)
 
-	go func() {
-		time.Sleep(5 * time.Second)
-		c <- 0
-	}()
 	go func() {
 		defer func() { c <- 0 }()
 		app := New()
@@ -1550,12 +1545,16 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 		_, err = app.Test(req, -1)
 	}()
 
-	<-c
+	tk := time.NewTimer(5 * time.Second)
+	defer tk.Stop()
 
-	if time.Since(start) >= time.Second {
+	select {
+	case <-tk.C:
 		t.Error("hanging test")
 		t.FailNow()
+	case <-c:
 	}
+
 	if err == nil {
 		t.Error("unexpected success request")
 		t.FailNow()
