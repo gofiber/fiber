@@ -1533,13 +1533,13 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 	var err error
 	start := time.Now()
 	c := make(chan bool)
-	
+
 	go func() {
 		time.Sleep(5 * time.Second)
 		c <- true
 	}()
 	go func() {
-		defer close(c)
+		defer func() { c <- 0 }()
 		app := New()
 		app.Get("/", func(c *Ctx) error {
 			runtime.Goexit()
