@@ -1530,9 +1530,10 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 }
 
 func Test_App_Test_no_timeout_infinitely(t *testing.T) {
-	start := time.Now()
 	var err error
+	start := time.Now()
 	c := make(chan bool)
+	
 	go func() {
 		time.Sleep(5 * time.Second)
 		c <- true
