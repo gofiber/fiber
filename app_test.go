@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1526,4 +1527,36 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	b, err = ioutil.ReadAll(resp2.Body)
 	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
 	utils.AssertEqual(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
+}
+
+func Test_App_Test_no_timeout_infinitely(t *testing.T) {
+	start := time.Now()
+	var err error
+	c := make(chan bool)
+	go func() {
+		time.Sleep(5 * time.Second)
+		c <- true
+	}()
+	go func() {
+		defer close(c)
+		app := New()
+		app.Get("/", func(c *Ctx) error {
+			runtime.Goexit()
+			return nil
+		})
+
+		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		_, err = app.Test(req, -1)
+	}()
+
+	<-c
+
+	if time.Since(start) >= time.Second {
+		t.Error("hanging test")
+		t.FailNow()
+	}
+	if err == nil {
+		t.Error("unexpected success request")
+		t.FailNow()
+	}
 }

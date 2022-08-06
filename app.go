@@ -845,7 +845,16 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
-		channel <- app.server.ServeConn(conn)
+		var returned bool
+		defer func() {
+			if !returned {
+				channel <- fmt.Errorf("runtime.Goexit() called in handler")
+			}
+		}()
+
+		r := app.server.ServeConn(conn)
+		returned = true
+		channel <- r
 	}()
 
 	// Wait for callback
