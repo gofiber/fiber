@@ -234,16 +234,13 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 
 	}
 
-	// Some vars for constraint feature
-	constraint := &Constraint{
-		ID: noConstraint,
-	}
-
 	// cut params part
 	processedPart := pattern[0 : parameterEndPosition+1]
 	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
 
 	// Check has constraint
+	var constraint *Constraint
+
 	if hasConstraint := (parameterConstraintStart != -1 && parameterConstraintEnd != -1); hasConstraint {
 		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd]
 
@@ -263,11 +260,12 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 			}
 		}
 
+		constraint = &Constraint{
+			ID: getParamConstraintType(constraintString[:start-1]),
+		}
+
 		if haveData {
-			constraint.ID = getParamConstraintType(constraintString[:start-1])
 			constraint.Data = strings.Split(constraintString[start:end], ",")
-		} else {
-			constraint.ID = getParamConstraintType(pattern[parameterConstraintStart+1 : parameterConstraintEnd])
 		}
 
 		paramName = RemoveEscapeChar(GetTrimmedParam(pattern[0:parameterConstraintStart]))
@@ -281,13 +279,19 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 		routeParser.plusCount++
 		paramName += strconv.Itoa(routeParser.plusCount)
 	}
-	return processedPart, &routeSegment{
+
+	segment := &routeSegment{
 		ParamName:  paramName,
 		IsParam:    true,
 		IsOptional: isWildCard || pattern[parameterEndPosition] == optionalParam,
 		IsGreedy:   isWildCard || isPlusParam,
-		Constraint: constraint,
 	}
+
+	if constraint != nil {
+		segment.Constraint = constraint
+	}
+
+	return processedPart, segment
 }
 
 func getParamConstraintType(constraintPart string) TypeConstraint {
