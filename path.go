@@ -242,7 +242,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	var constraint *Constraint
 
 	if hasConstraint := (parameterConstraintStart != -1 && parameterConstraintEnd != -1); hasConstraint {
-		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd]
+		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd+1]
 
 		start := 0
 		end := 0
@@ -253,19 +253,20 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 				continue
 			}
 
-			if v == rune(')') && start != 0 {
+			if v == rune(')') && start != 0 && constraintString[k+1] == '>' {
 				end = k
 				haveData = true
 				break
 			}
 		}
 
-		constraint = &Constraint{
-			ID: getParamConstraintType(constraintString[:start-1]),
-		}
-
+		// Assign constraint
+		constraint = &Constraint{}
 		if haveData {
+			constraint.ID = getParamConstraintType(constraintString[:start-1])
 			constraint.Data = strings.Split(constraintString[start:end], ",")
+		} else {
+			constraint.ID = getParamConstraintType(pattern[parameterConstraintStart+1 : parameterConstraintEnd])
 		}
 
 		paramName = RemoveEscapeChar(GetTrimmedParam(pattern[0:parameterConstraintStart]))
@@ -292,44 +293,6 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	}
 
 	return processedPart, segment
-}
-
-func getParamConstraintType(constraintPart string) TypeConstraint {
-	switch constraintPart {
-
-	case "int":
-		return intConstraint
-	case "bool":
-		return boolConstraint
-	case "float":
-		return floatConstraint
-	case "datetime":
-		return datetimeConstraint
-	case "alpha":
-		return alphaConstraint
-	case "guid":
-		return guidConstraint
-	case "minlength":
-		return minLengthConstraint
-	case "maxlength":
-		return maxLengthConstraint
-	case "exactlength":
-		return exactLengthConstraint
-	case "betweenlength":
-		return BetweenLengthConstraint
-	case "min":
-		return minConstraint
-	case "max":
-		return maxConstraint
-	case "range":
-		return rangeConstraint
-	case "regex":
-		return regexConstraint
-	default:
-		return noConstraint
-
-	}
-
 }
 
 // isInCharset check is the given character in the charset list
@@ -398,8 +361,10 @@ func (routeParser *routeParser) getMatch(detectionPath, path string, params *[ma
 			params[paramsIterator] = path[:i]
 
 			// check constraint
-			if matched := segment.Constraint.CheckConstraint(params[paramsIterator]); !matched {
-				return false
+			if segment.Constraint != nil {
+				if matched := segment.Constraint.CheckConstraint(params[paramsIterator]); !matched {
+					return false
+				}
 			}
 
 			paramsIterator++
@@ -501,9 +466,61 @@ func RemoveEscapeChar(word string) string {
 	return word
 }
 
+func getParamConstraintType(constraintPart string) TypeConstraint {
+	switch constraintPart {
+	case "int":
+		return intConstraint
+	case "bool":
+		return boolConstraint
+	case "float":
+		return floatConstraint
+	case "alpha":
+		return alphaConstraint
+	case "guid":
+		return guidConstraint
+	case "minLen":
+		return minLengthConstraint
+	case "maxLen":
+		return maxLengthConstraint
+	case "exactLen":
+		return exactLengthConstraint
+	case "betweenLen":
+		return BetweenLengthConstraint
+	case "min":
+		return minConstraint
+	case "max":
+		return maxConstraint
+	case "range":
+		return rangeConstraint
+	case "datetime":
+		return datetimeConstraint
+	case "regex":
+		return regexConstraint
+	default:
+		return noConstraint
+	}
+
+}
+
 func (c *Constraint) CheckConstraint(param string) bool {
 	var err error
 	var num int
+
+	// check data exists
+	needOneData := []TypeConstraint{minLengthConstraint, maxLengthConstraint, exactLengthConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
+	needTwoData := []TypeConstraint{BetweenLengthConstraint, rangeConstraint}
+
+	for _, data := range needOneData {
+		if c.ID == data && len(c.Data) == 0 {
+			return false
+		}
+	}
+
+	for _, data := range needTwoData {
+		if c.ID == data && len(c.Data) < 2 {
+			return false
+		}
+	}
 
 	switch c.ID {
 	case intConstraint:
@@ -569,7 +586,7 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			err = errors.New("")
 		}
 	case datetimeConstraint:
-		_, err = time.Parse(param, c.Data[0])
+		_, err = time.Parse(c.Data[0], param)
 	case regexConstraint:
 		match, _ := regexp.MatchString(c.Data[0], param)
 		if !match {
