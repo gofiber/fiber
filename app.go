@@ -848,7 +848,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 		var returned bool
 		defer func() {
 			if !returned {
-				channel <- fmt.Errorf("runtime.Goexit() called in handler")
+				channel <- fmt.Errorf("runtime.Goexit() called in handler or server panic")
 			}
 		}()
 
