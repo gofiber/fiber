@@ -505,11 +505,34 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/8728382", params: []string{"8728382"}, match: false},
 		{url: "/api/v1/2005-11-01", params: []string{"2005-11-01"}, match: true},
 	})
-	testCase("/api/v1/:param<regex(p([a\\-z]\\+)ch)>", []testparams{
+	testCase("/api/v1/:param<regex(p\\([a\\-z]\\+\\)ch)>", []testparams{
 		{url: "/api/v1/ent", params: []string{"ent"}, match: false},
 		{url: "/api/v1/15", params: []string{"15"}, match: false},
 		{url: "/api/v1/peach", params: []string{"peach"}, match: true},
 		{url: "/api/v1/p34ch", params: []string{"p34ch"}, match: false},
+	})
+	testCase("/api/v1/:param<int;bool((>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
+	})
+	testCase("/api/v1/:param<int;max(3000)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/8728382", params: []string{"8728382"}, match: false},
+		{url: "/api/v1/123", params: []string{"123"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
+	})
+	testCase("/api/v1/:param<int;maxLen(10)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/87283827683", params: []string{"8728382"}, match: false},
+		{url: "/api/v1/123", params: []string{"123"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
+	})
+	testCase("/api/v1/:param<int;range(10,30)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/87283827683", params: []string{"8728382"}, match: false},
+		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
 	})
 }
 
@@ -688,7 +711,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v1/8728382", params: []string{"8728382"}, match: false},
 		{url: "/api/v1/2005-11-01", params: []string{"2005-11-01"}, match: true},
 	})
-	benchCase("/api/v1/:param<regex(p([a\\-z]\\+)ch)>", []testparams{
+	benchCase("/api/v1/:param<regex(p\\([a\\-z]\\+\\)ch)>", []testparams{
 		{url: "/api/v1/ent", params: []string{"ent"}, match: false},
 		{url: "/api/v1/15", params: []string{"15"}, match: false},
 		{url: "/api/v1/peach", params: []string{"peach"}, match: true},

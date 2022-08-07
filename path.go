@@ -38,24 +38,27 @@ type routeSegment struct {
 	IsGreedy    bool   // indicates whether the parameter is greedy or not, is used with wildcard and plus
 	IsOptional  bool   // indicates whether the parameter is optional or not
 	// common information
-	IsLast           bool        // shows if the segment is the last one for the route
-	HasOptionalSlash bool        // segment has the possibility of an optional slash
-	Constraint       *Constraint // Constraint type if segment is a parameter, if not it will be set to noConstraint by default
-	Length           int         // length of the parameter for segment, when its 0 then the length is undetermined
+	IsLast           bool          // shows if the segment is the last one for the route
+	HasOptionalSlash bool          // segment has the possibility of an optional slash
+	Constraints      []*Constraint // Constraint type if segment is a parameter, if not it will be set to noConstraint by default
+	Length           int           // length of the parameter for segment, when its 0 then the length is undetermined
 	// future TODO: add support for optional groups "/abc(/def)?"
 }
 
 // different special routing signs
 const (
-	wildcardParam        byte = '*'  // indicates a optional greedy parameter
-	plusParam            byte = '+'  // indicates a required greedy parameter
-	optionalParam        byte = '?'  // concludes a parameter by name and makes it optional
-	paramStarterChar     byte = ':'  // start character for a parameter with name
-	slashDelimiter       byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
-	escapeChar           byte = '\\' // escape character
-	paramConstraintStart byte = '<'  // start of type constraint for a parameter
-	paramConstraintEnd   byte = '>'  // end of type constraint for a parameter
-
+	wildcardParam                byte = '*'  // indicates a optional greedy parameter
+	plusParam                    byte = '+'  // indicates a required greedy parameter
+	optionalParam                byte = '?'  // concludes a parameter by name and makes it optional
+	paramStarterChar             byte = ':'  // start character for a parameter with name
+	slashDelimiter               byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
+	escapeChar                   byte = '\\' // escape character
+	paramConstraintStart         byte = '<'  // start of type constraint for a parameter
+	paramConstraintEnd           byte = '>'  // end of type constraint for a parameter
+	paramConstraintSeparator     byte = ';'  // separator of type constraints for a parameter
+	paramConstraintDataStart     byte = '('  // start of data of type constraint for a parameter
+	paramConstraintDataEnd       byte = ')'  // end of data of type constraint for a parameter
+	paramConstraintDataSeparator byte = ','  // separator of datas of type constraint for a parameter
 )
 
 // parameter constraint types
@@ -98,6 +101,14 @@ var (
 	parameterConstraintStartChars = []byte{paramConstraintStart}
 	// list of parameter constraint end
 	parameterConstraintEndChars = []byte{paramConstraintEnd}
+	// list of parameter separator
+	parameterConstraintSeparatorChars = []byte{paramConstraintSeparator}
+	// list of parameter constraint data start
+	parameterConstraintDataStartChars = []byte{paramConstraintDataStart}
+	// list of parameter constraint data end
+	parameterConstraintDataEndChars = []byte{paramConstraintDataEnd}
+	// list of parameter constraint data separator
+	parameterConstraintDataSeparatorChars = []byte{paramConstraintDataSeparator}
 )
 
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
@@ -239,33 +250,29 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	paramName := RemoveEscapeChar(GetTrimmedParam(processedPart))
 
 	// Check has constraint
-	var constraint *Constraint
+	var constraints []*Constraint
 
 	if hasConstraint := (parameterConstraintStart != -1 && parameterConstraintEnd != -1); hasConstraint {
-		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd+1]
-		start := 0
-		end := 0
-		haveData := false
-		for k, v := range constraintString {
-			if v == rune('(') && start == 0 {
-				start = k + 1
-				continue
-			}
+		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd]
+		userconstraints := strings.Split(constraintString, string(parameterConstraintSeparatorChars))
+		constraints = make([]*Constraint, 0, len(userconstraints))
 
-			if v == rune(')') && start != 0 && constraintString[k+1] == '>' {
-				end = k
-				haveData = true
-				break
-			}
-		}
+		for _, c := range userconstraints {
+			start := findNextNonEscapedCharsetPosition(c, parameterConstraintDataStartChars)
+			end := findNextNonEscapedCharsetPosition(c, parameterConstraintDataEndChars)
 
-		// Assign constraint
-		constraint = &Constraint{}
-		if haveData {
-			constraint.ID = getParamConstraintType(constraintString[:start-1])
-			constraint.Data = strings.Split(RemoveEscapeChar(constraintString[start:end]), ",")
-		} else {
-			constraint.ID = getParamConstraintType(pattern[parameterConstraintStart+1 : parameterConstraintEnd])
+			// Assign constraint
+			if start != -1 && end != -1 {
+				constraints = append(constraints, &Constraint{
+					ID:   getParamConstraintType(c[:start]),
+					Data: strings.Split(RemoveEscapeChar(c[start+1:end]), string(parameterConstraintDataSeparatorChars)),
+				})
+			} else {
+				constraints = append(constraints, &Constraint{
+					ID:   getParamConstraintType(c),
+					Data: []string{},
+				})
+			}
 		}
 
 		paramName = RemoveEscapeChar(GetTrimmedParam(pattern[0:parameterConstraintStart]))
@@ -287,8 +294,8 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 		IsGreedy:   isWildCard || isPlusParam,
 	}
 
-	if constraint != nil {
-		segment.Constraint = constraint
+	if len(constraints) > 0 {
+		segment.Constraints = constraints
 	}
 
 	return processedPart, segment
@@ -360,8 +367,8 @@ func (routeParser *routeParser) getMatch(detectionPath, path string, params *[ma
 			params[paramsIterator] = path[:i]
 
 			// check constraint
-			if segment.Constraint != nil {
-				if matched := segment.Constraint.CheckConstraint(params[paramsIterator]); !matched {
+			for _, c := range segment.Constraints {
+				if matched := c.CheckConstraint(params[paramsIterator]); !matched {
 					return false
 				}
 			}
