@@ -243,12 +243,11 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 
 	if hasConstraint := (parameterConstraintStart != -1 && parameterConstraintEnd != -1); hasConstraint {
 		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd+1]
-
 		start := 0
 		end := 0
 		haveData := false
 		for k, v := range constraintString {
-			if v == rune('(') {
+			if v == rune('(') && start == 0 {
 				start = k + 1
 				continue
 			}
@@ -264,7 +263,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 		constraint = &Constraint{}
 		if haveData {
 			constraint.ID = getParamConstraintType(constraintString[:start-1])
-			constraint.Data = strings.Split(constraintString[start:end], ",")
+			constraint.Data = strings.Split(RemoveEscapeChar(constraintString[start:end]), ",")
 		} else {
 			constraint.ID = getParamConstraintType(pattern[parameterConstraintStart+1 : parameterConstraintEnd])
 		}
