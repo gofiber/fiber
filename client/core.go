@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
-	"fmt"
+	"errors"
 	"sync"
 
 	"github.com/gofiber/fiber/v3/utils"
@@ -23,9 +23,9 @@ type RequestHook func(*Client, *Request) error
 // Called after a respose has been received.
 type ResponseHook func(*Client, *Response, *Request) error
 
-// `Core` stores middleware and plugin definitions,
+// `core` stores middleware and plugin definitions,
 // and defines the execution process
-type Core struct {
+type core struct {
 	client *fasthttp.HostClient
 
 	// user defined request hooks
@@ -46,7 +46,7 @@ type Core struct {
 	xmlUnmarshal  utils.XMLUnmarshal
 }
 
-func (c *Core) execFunc(ctx context.Context, client *Client, req *Request) (*Response, error) {
+func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Response, error) {
 	resp := AcquireResponse()
 	resp.setClient(client)
 	resp.setRequest(req)
@@ -79,12 +79,13 @@ func (c *Core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 		}
 		return resp, nil
 	case <-ctx.Done():
-		return nil, fmt.Errorf("timeout or cancel error")
+		ReleaseResponse(resp)
+		return nil, ErrTimeoutOrCancel
 	}
 }
 
 // execute will exec each hooks and plugins.
-func (c *Core) execute(ctx context.Context, client *Client, req *Request) (*Response, error) {
+func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Response, error) {
 	// The built-in hooks will be executed only
 	// after the user-defined hooks are executed。
 	for _, f := range c.userRequestHooks {
@@ -102,14 +103,14 @@ func (c *Core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	}
 
 	// deal with timeout
-	if req.timeout != 0 {
+	if req.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, req.timeout)
 		defer func() {
 			cancel()
 		}()
 	} else {
-		if client.timeout != 0 {
+		if client.timeout > 0 {
 			var cancel context.CancelFunc
 			ctx, cancel = context.WithTimeout(ctx, client.timeout)
 			defer func() {
@@ -143,13 +144,6 @@ func (c *Core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	return resp, nil
 }
 
-// reset clears core object.
-// It will not clear buildin hooks.
-func (c *Core) reset() {
-	c.userRequestHooks = c.userRequestHooks[:0]
-	c.userResponseHooks = c.userResponseHooks[:0]
-}
-
 var errChanPool sync.Pool
 
 // acquireErrChan returns an empty error chan from the pool.
@@ -173,19 +167,9 @@ func releaseErrChan(ch chan error) {
 	errChanPool.Put(ch)
 }
 
-var corePool sync.Pool
-
-// AcquireCore returns an empty core object from the pool.
-//
-// The returned core may be returned to the pool with ReleaseCore when no longer needed.
-// This allows reducing GC load.
-func AcquireCore() (c *Core) {
-	cv := corePool.Get()
-	if cv != nil {
-		c = cv.(*Core)
-		return
-	}
-	c = &Core{
+// newCore returns an empty core object.
+func newCore() (c *core) {
+	c = &core{
 		client:              &fasthttp.HostClient{},
 		userRequestHooks:    []RequestHook{},
 		buildinRequestHooks: []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
@@ -200,10 +184,10 @@ func AcquireCore() (c *Core) {
 	return
 }
 
-// ReleaseCore returns the object acquired via AcquireCore to the pool.
-//
-// Do not access the released core object, otherwise data races may occur.
-func ReleaseCore(c *Core) {
-	c.reset()
-	corePool.Put(c)
-}
+var (
+	ErrTimeoutOrCancel  = errors.New("timeout or cancel")
+	ErrURLForamt        = errors.New("the url is a mistake")
+	ErrNotSupportSchema = errors.New("the protocol is not support, only http or https")
+	ErrFileNoName       = errors.New("the file should have name")
+	ErrBodyType         = errors.New("the body type should be []byte")
+)

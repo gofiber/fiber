@@ -9,7 +9,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -86,16 +85,16 @@ func parserRequestURL(c *Client, req *Request) error {
 	if !protocolCheck.MatchString(uri) {
 		uri = c.baseUrl + uri
 		if !protocolCheck.MatchString(uri) {
-			return fmt.Errorf("url format error")
+			return ErrURLForamt
 		}
 	}
 
 	// set path params
 	req.path.VisitAll(func(key, val string) {
-		uri = strings.Replace(uri, "{"+key+"}", val, -1)
+		uri = strings.Replace(uri, ":"+key, val, -1)
 	})
 	c.path.VisitAll(func(key, val string) {
-		uri = strings.Replace(uri, "{"+key+"}", val, -1)
+		uri = strings.Replace(uri, ":"+key, val, -1)
 	})
 
 	// set uri to request and orther related setting
@@ -105,7 +104,7 @@ func parserRequestURL(c *Client, req *Request) error {
 	if bytes.Equal(httpsBytes, scheme) {
 		isTLS = true
 	} else if !bytes.Equal(httpBytes, scheme) {
-		return fmt.Errorf("unsupported protocol %q. http and https are supported", scheme)
+		return ErrNotSupportSchema
 	}
 
 	c.core.client.Addr = addMissingPort(string(rawUri.Host()), isTLS)
@@ -232,7 +231,7 @@ func parserRequestBody(c *Client, req *Request) (err error) {
 		b := make([]byte, 512)
 		for i, v := range req.files {
 			if v.name == "" && v.path == "" {
-				return fmt.Errorf("the file should have a name")
+				return ErrFileNoName
 			}
 
 			// if name is not exist, set name
@@ -280,7 +279,7 @@ func parserRequestBody(c *Client, req *Request) (err error) {
 		if body, ok := req.body.([]byte); ok {
 			req.rawRequest.SetBody(body)
 		} else {
-			return fmt.Errorf("the raw body should be []byte, but we receive %s", reflect.TypeOf(req.body).Kind().String())
+			return ErrBodyType
 		}
 	}
 	return nil

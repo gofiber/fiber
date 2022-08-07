@@ -2,7 +2,6 @@ package client
 
 import (
 	"encoding/xml"
-	"fmt"
 	"io"
 	"net/url"
 	"strings"
@@ -114,12 +113,12 @@ func TestParserRequestURL(t *testing.T) {
 		req := AcquireRequest().SetURL("/v1")
 
 		err := parserRequestURL(client, req)
-		utils.AssertEqual(t, fmt.Errorf("url format error"), err)
+		utils.AssertEqual(t, ErrURLForamt, err)
 	})
 
 	t.Run("the path param from client", func(t *testing.T) {
 		client := AcquireClient().
-			SetBaseURL("http://example.com/api/{id}").
+			SetBaseURL("http://example.com/api/:id").
 			SetPathParam("id", "5")
 		req := AcquireRequest()
 
@@ -130,7 +129,7 @@ func TestParserRequestURL(t *testing.T) {
 
 	t.Run("the path param from request", func(t *testing.T) {
 		client := AcquireClient().
-			SetBaseURL("http://example.com/api/{id}/{name}").
+			SetBaseURL("http://example.com/api/:id/:name").
 			SetPathParam("id", "5")
 		req := AcquireRequest().
 			SetURL("/{key}").
@@ -147,10 +146,10 @@ func TestParserRequestURL(t *testing.T) {
 
 	t.Run("the path param from request and client", func(t *testing.T) {
 		client := AcquireClient().
-			SetBaseURL("http://example.com/api/{id}/{name}").
+			SetBaseURL("http://example.com/api/:id/:name").
 			SetPathParam("id", "5")
 		req := AcquireRequest().
-			SetURL("/{key}").
+			SetURL("/:key").
 			SetPathParams(map[string]string{
 				"name": "fiber",
 				"key":  "val",
