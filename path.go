@@ -8,6 +8,7 @@ package fiber
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -592,6 +593,7 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			err = errors.New("")
 		}
 	case datetimeConstraint:
+		fmt.Print(time.Parse(c.Data[0], param))
 		_, err = time.Parse(c.Data[0], param)
 	case regexConstraint:
 		match, _ := regexp.MatchString(c.Data[0], param)
