@@ -96,7 +96,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) (ma
 	return false
 }
 
-func (app *App) next(c CustomCtx) (match bool, err error) {
+func (app *App) next(c CustomCtx, customCtx bool) (match bool, err error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
 	if !ok {
@@ -136,9 +136,16 @@ func (app *App) next(c CustomCtx) (match bool, err error) {
 	// If c.Next() does not match, return 404
 	err = NewErrors(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
 
+	var isMethodExist bool
+	if customCtx {
+		isMethodExist = methodExistCustom(c)
+	} else {
+		isMethodExist = methodExist(c.(*DefaultCtx))
+	}
+
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	if !c.getMatched() && methodExist(c) {
+	if !c.getMatched() && isMethodExist {
 		err = ErrMethodNotAllowed
 	}
 	return
@@ -161,7 +168,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Find match in stack
-	_, err := app.next(c)
+	_, err := app.next(c, app.newCtxFunc != nil)
 	if err != nil {
 		if catch := c.App().ErrorHandler(c, err); catch != nil {
 			_ = c.SendStatus(StatusInternalServerError)
