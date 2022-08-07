@@ -39,6 +39,7 @@ const (
 	queryTag     = "query"
 	reqHeaderTag = "reqHeader"
 	bodyTag      = "form"
+	paramsTag    = "params"
 )
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
@@ -854,6 +855,15 @@ func (c *Ctx) AllParams() map[string]string {
 	return params
 }
 
+// ParamsParser binds the param string to a struct.
+func (c *Ctx) ParamsParser(out interface{}) error {
+	params := make(map[string][]string, len(c.route.Params))
+	for _, param := range c.route.Params {
+		params[param] = append(params[param], c.Params(param))
+	}
+	return c.parseToStruct(paramsTag, out, params)
+}
+
 // ParamsInt is used to get an integer from the route parameters
 // it defaults to zero if the parameter is not found or if the
 // parameter cannot be converted to an integer
@@ -1144,16 +1154,15 @@ func (c *Ctx) Bind(vars Map) error {
 func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
-		if segment.IsParam {
-			for key, val := range params {
-				if key == segment.ParamName || segment.IsGreedy {
-					_, err := buf.WriteString(utils.ToString(val))
-					if err != nil {
-						return "", err
-					}
+		for key, val := range params {
+			if segment.IsParam && (key == segment.ParamName || (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))) {
+				_, err := buf.WriteString(utils.ToString(val))
+				if err != nil {
+					return "", err
 				}
 			}
-		} else {
+		}
+		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
 				return "", err
@@ -1161,6 +1170,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 		}
 	}
 	location := buf.String()
+	// release buffer
 	bytebufferpool.Put(buf)
 	return location, nil
 }

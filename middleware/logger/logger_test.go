@@ -144,11 +144,14 @@ func Test_Logger_All(t *testing.T) {
 		Output: buf,
 	}))
 
+	// Alias colors
+	colors := app.Config().ColorScheme
+
 	resp, err := app.Test(httptest.NewRequest("GET", "/?foo=bar", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 
-	expected := fmt.Sprintf("%dHost=example.comhttp0.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sCannot GET /", os.Getpid(), cBlack, cRed, cGreen, cYellow, cBlue, cMagenta, cCyan, cWhite, cReset)
+	expected := fmt.Sprintf("%dHost=example.comhttp0.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sCannot GET /", os.Getpid(), colors.Black, colors.Red, colors.Green, colors.Yellow, colors.Blue, colors.Magenta, colors.Cyan, colors.White, colors.Reset)
 	utils.AssertEqual(t, expected, buf.String())
 }
 

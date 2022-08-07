@@ -1,0 +1,60 @@
+name: "\U0001F680 Feature Request"
+title: "\U0001F680 [Feature]: "
+description: Suggest an idea to improve this project.
+labels: ["✏️ Feature"]
+
+body:
+  - type: markdown
+    id: notice
+    attributes:
+      value: |
+        ### Notice
+        - Dont't forget you can ask your questions on our [Discord server](https://gofiber.io/discord).
+        - If you think this is just a bug, open the issue with **☢️ Bug Report** template.
+        - Write your issue with clear and understandable English.
+  - type: textarea
+    id: description
+    attributes:
+      label: "Feature Description"
+      description: "A clear and detailed description of the feature we need to do."
+      placeholder: "Explain your feature as clear and detailed."
+    validations:
+      required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: "Additional Context (optional)"
+      description: "If you have something else to describe, write them here."
+      placeholder: "Write here what you can describe differently."
+  - type: textarea
+    id: snippet
+    attributes:
+      label: "Code Snippet (optional)"
+      description: "Code snippet may be really helpful to describe some features."
+      placeholder: "Share a code to explain the feature better."
+      render: go
+      value: |
+        package main
+
+        import "github.com/gofiber/fiber/v2"
+        import "log"
+
+        func main() {
+          app := fiber.New()
+
+          // An example to describe the feature
+
+          log.Fatal(app.Listen(":3000"))
+        }
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: "Checklist:"
+      description: "By submitting this issue, you confirm that:"
+      options:
+        - label: "I agree to follow Fiber's [Code of Conduct](https://github.com/gofiber/fiber/blob/master/.github/CODE_OF_CONDUCT.md)."
+          required: true
+        - label: "I have checked for existing issues that describe my suggestion prior to opening this one."
+          required: true
+        - label: "I understand that improperly formatted feature requests may be closed without explanation."
+          required: true

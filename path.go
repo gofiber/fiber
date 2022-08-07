@@ -91,10 +91,12 @@ const (
 var (
 	// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
+	// list of greedy parameters
+	greedyParameters = []byte{wildcardParam, plusParam}
 	// list of chars for the parameter recognising
 	parameterStartChars = []byte{wildcardParam, plusParam, paramStarterChar}
 	// list of chars of delimiters and the starting parameter name char
-	parameterDelimiterChars = append([]byte{paramStarterChar}, routeDelimiter...)
+	parameterDelimiterChars = append([]byte{paramStarterChar, escapeChar}, routeDelimiter...)
 	// list of chars to find the end of a parameter
 	parameterEndChars = append([]byte{optionalParam}, parameterDelimiterChars...)
 	// list of parameter constraint start

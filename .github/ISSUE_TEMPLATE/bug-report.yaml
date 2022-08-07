@@ -1,0 +1,85 @@
+name: "\U0001F41B Bug Report"
+title: "\U0001F41B [Bug]: "
+description: Create a bug report to help us fix it.
+labels: ["☢️ Bug"]
+
+body:
+  - type: markdown
+    id: notice
+    attributes:
+      value: |
+        ### Notice
+        **This repository is not related to external or third-part Fiber modules. If you have a problem with them, open an issue under their repos. If you think the problem is related to Fiber, open the issue here.**
+        - Dont't forget you can ask your questions on our [Discord server](https://gofiber.io/discord).
+        - If you think Fiber doesn't have a nice feature that you think, open the issue with **✏️ Feature Request** template.
+        - Write your issue with clear and understandable English.
+  - type: textarea
+    id: description
+    attributes:
+      label: "Bug Description"
+      description: "A clear and detailed description of what the bug is."
+      placeholder: "Explain your problem as clear and detailed."
+    validations:
+      required: true
+  - type: textarea
+    id: how-to-reproduce
+    attributes:
+      label: How to Reproduce
+      description: "Steps to reproduce the behavior and what should be observed in the end."
+      placeholder: "Tell us step by step how we can replicate your problem and what we should see in the end."
+      value: |
+          Steps to reproduce the behavior:
+          1. Go to '....'
+          2. Click on '....'
+          3. Do '....'
+          4. See '....'
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: "A clear and detailed description of what you think should happens."
+      placeholder: "Tell us what Fiber should normally do."
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: "Fiber Version"
+      description: "Some bugs may be fixed in future Fiber releases, so we have to know your Fiber version."
+      placeholder: "Write your Fiber version. (v2.33.0, v2.34.1...)"
+    validations:
+      required: true
+  - type: textarea
+    id: snippet
+    attributes:
+      label: "Code Snippet (optional)"
+      description: "For some issues, we need to know some parts of your code."
+      placeholder: "Share a code you think related to the issue."
+      render: go
+      value: |
+        package main
+
+        import "github.com/gofiber/fiber/v2"
+        import "log"
+
+        func main() {
+          app := fiber.New()
+
+          // Steps to reproduce
+
+          log.Fatal(app.Listen(":3000"))
+        }
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: "Checklist:"
+      description: "By submitting this issue, you confirm that:"
+      options:
+        - label: "I agree to follow Fiber's [Code of Conduct](https://github.com/gofiber/fiber/blob/master/.github/CODE_OF_CONDUCT.md)."
+          required: true
+        - label: "I have checked for existing issues that describe my problem prior to opening this one."
+          required: true
+        - label: "I understand that improperly formatted bug reports may be closed without explanation."
+          required: true
