@@ -107,7 +107,49 @@ func (app *App) quoteString(raw string) string {
 }
 
 // Scan stack if other methods match the request
-func methodExist(c CustomCtx) (exist bool) {
+func methodExist(c *DefaultCtx) (exist bool) {
+	for i := 0; i < len(intMethod); i++ {
+		// Skip original method
+		if c.getMethodINT() == i {
+			continue
+		}
+		// Reset stack index
+		c.setIndexRoute(-1)
+
+		tree, ok := c.App().treeStack[i][c.getTreePath()]
+		if !ok {
+			tree = c.App().treeStack[i][""]
+		}
+		// Get stack length
+		lenr := len(tree) - 1
+		// Loop over the route stack starting from previous index
+		for c.getIndexRoute() < lenr {
+			// Increment route index
+			c.setIndexRoute(c.getIndexRoute() + 1)
+			// Get *Route
+			route := tree[c.getIndexRoute()]
+			// Skip use routes
+			if route.use {
+				continue
+			}
+			// Check if it matches the request path
+			match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
+			// No match, next route
+			if match {
+				// We matched
+				exist = true
+				// Add method to Allow header
+				c.Append(HeaderAllow, intMethod[i])
+				// Break stack loop
+				break
+			}
+		}
+	}
+	return
+}
+
+// Scan stack if other methods match the request
+func methodExistCustom(c CustomCtx) (exist bool) {
 	for i := 0; i < len(intMethod); i++ {
 		// Skip original method
 		if c.getMethodINT() == i {
