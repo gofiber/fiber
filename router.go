@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,7 +62,13 @@ type Route struct {
 	Handlers []Handler `json:"-"`      // Ctx handlers
 }
 
-func (r *Route) match(detectionPath, path string, params *[maxParams]string) (match bool) {
+func (r *Route) match(detectionPath, path string, params *[maxParams]string, matcher ...utils.RegexMatch) (match bool) {
+	// Override matcher
+	var regexMatch = regexp.MatchString
+	if len(matcher) > 1 {
+		regexMatch = matcher[0]
+	}
+
 	// root detectionPath check
 	if r.root && detectionPath == "/" {
 		return true
@@ -77,7 +84,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) (ma
 	// Does this route have parameters
 	if len(r.Params) > 0 {
 		// Match params
-		if match := r.routeParser.getMatch(detectionPath, path, params, r.use); match {
+		if match := r.routeParser.getMatch(detectionPath, path, params, r.use, regexMatch); match {
 			// Get params from the path detectionPath
 			return match
 		}
@@ -113,7 +120,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 		route := tree[c.indexRoute]
 
 		// Check if it matches the request path
-		match = route.match(c.detectionPath, c.path, &c.values)
+		match = route.match(c.detectionPath, c.path, &c.values, c.app.config.RegexMatcher)
 
 		// No match, next route
 		if !match {

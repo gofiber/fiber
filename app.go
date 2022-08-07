@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -72,16 +73,17 @@ type Storage interface {
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
-//  cfg := fiber.Config{}
-//  cfg.ErrorHandler = func(c *Ctx, err error) error {
-//   code := StatusInternalServerError
-//   if e, ok := err.(*Error); ok {
-//     code = e.Code
-//   }
-//   c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-//   return c.Status(code).SendString(err.Error())
-//  }
-//  app := fiber.New(cfg)
+//
+//	cfg := fiber.Config{}
+//	cfg.ErrorHandler = func(c *Ctx, err error) error {
+//	 code := StatusInternalServerError
+//	 if e, ok := err.(*Error); ok {
+//	   code = e.Code
+//	 }
+//	 c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+//	 return c.Status(code).SendString(err.Error())
+//	}
+//	app := fiber.New(cfg)
 type ErrorHandler = func(*Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
@@ -331,6 +333,13 @@ type Config struct {
 	// Default: json.Unmarshal
 	JSONDecoder utils.JSONUnmarshal `json:"-"`
 
+	// When set by an external client of Fiber it will use the provided implementation of a
+	// RegexMatcher
+	//
+	// Allowing for flexibility in using another regex library for matching
+	// Default: regexp.MatchString
+	RegexMatcher utils.RegexMatch `json:"-"`
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
 	//
@@ -440,12 +449,15 @@ var DefaultErrorHandler = func(c *Ctx, err error) error {
 }
 
 // New creates a new Fiber named instance.
-//  app := fiber.New()
+//
+//	app := fiber.New()
+//
 // You can pass optional configuration options by passing a Config struct:
-//  app := fiber.New(fiber.Config{
-//      Prefork: true,
-//      ServerHeader: "Fiber",
-//  })
+//
+//	app := fiber.New(fiber.Config{
+//	    Prefork: true,
+//	    ServerHeader: "Fiber",
+//	})
 func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
@@ -510,6 +522,9 @@ func New(config ...Config) *App {
 	}
 	if app.config.JSONDecoder == nil {
 		app.config.JSONDecoder = json.Unmarshal
+	}
+	if app.config.RegexMatcher == nil {
+		app.config.RegexMatcher = regexp.MatchString
 	}
 	if app.config.Network == "" {
 		app.config.Network = NetworkTCP4
@@ -608,15 +623,15 @@ func (app *App) GetRoute(name string) Route {
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //
-//  app.Use(func(c *fiber.Ctx) error {
-//       return c.Next()
-//  })
-//  app.Use("/api", func(c *fiber.Ctx) error {
-//       return c.Next()
-//  })
-//  app.Use("/api", handler, func(c *fiber.Ctx) error {
-//       return c.Next()
-//  })
+//	app.Use(func(c *fiber.Ctx) error {
+//	     return c.Next()
+//	})
+//	app.Use("/api", func(c *fiber.Ctx) error {
+//	     return c.Next()
+//	})
+//	app.Use("/api", handler, func(c *fiber.Ctx) error {
+//	     return c.Next()
+//	})
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...interface{}) Router {
@@ -709,8 +724,9 @@ func (app *App) All(path string, handlers ...Handler) Router {
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-//  api := app.Group("/api")
-//  api.Get("/users", handler)
+//
+//	api := app.Group("/api")
+//	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
 		app.register(methodUse, prefix, handlers...)
@@ -778,8 +794,8 @@ func (app *App) Listener(ln net.Listener) error {
 
 // Listen serves HTTP requests from the given addr.
 //
-//  app.Listen(":8080")
-//  app.Listen("127.0.0.1:8080")
+//	app.Listen(":8080")
+//	app.Listen("127.0.0.1:8080")
 func (app *App) Listen(addr string) error {
 	// Start prefork
 	if app.config.Prefork {
@@ -806,7 +822,8 @@ func (app *App) Listen(addr string) error {
 
 // ListenTLS serves HTTPS requests from the given addr.
 // certFile and keyFile are the paths to TLS certificate and key file:
-//  app.ListenTLS(":8080", "./cert.pem", "./cert.key")
+//
+//	app.ListenTLS(":8080", "./cert.pem", "./cert.key")
 func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
@@ -847,7 +864,8 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 
 // ListenMutualTLS serves HTTPS requests from the given addr.
 // certFile, keyFile and clientCertFile are the paths to TLS certificate and key file:
-//  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
+//
+//	app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
 func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {

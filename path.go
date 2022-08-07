@@ -8,7 +8,6 @@ package fiber
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -344,7 +343,13 @@ func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
-func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool {
+func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool, matcher ...utils.RegexMatch) bool {
+	// Override matcher
+	var regexMatch = regexp.MatchString
+	if len(matcher) > 1 {
+		regexMatch = matcher[0]
+	}
+
 	var i, paramsIterator, partLen int
 	for _, segment := range routeParser.segs {
 		partLen = len(detectionPath)
@@ -369,7 +374,7 @@ func (routeParser *routeParser) getMatch(detectionPath, path string, params *[ma
 
 			// check constraint
 			for _, c := range segment.Constraints {
-				if matched := c.CheckConstraint(params[paramsIterator]); !matched {
+				if matched := c.CheckConstraint(params[paramsIterator], regexMatch); !matched {
 					return false
 				}
 			}
@@ -509,7 +514,7 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 
 }
 
-func (c *Constraint) CheckConstraint(param string) bool {
+func (c *Constraint) CheckConstraint(param string, matcher utils.RegexMatch) bool {
 	var err error
 	var num int
 
@@ -593,10 +598,9 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			err = errors.New("")
 		}
 	case datetimeConstraint:
-		fmt.Print(time.Parse(c.Data[0], param))
 		_, err = time.Parse(c.Data[0], param)
 	case regexConstraint:
-		match, _ := regexp.MatchString(c.Data[0], param)
+		match, _ := matcher(c.Data[0], param)
 		if !match {
 			err = errors.New("")
 		}
