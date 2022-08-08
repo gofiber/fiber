@@ -2,10 +2,21 @@ package fiber
 
 import (
 	errors "encoding/json"
+	goErrors "errors"
 
 	"github.com/gofiber/fiber/v3/internal/schema"
 )
 
+// Range errors
+var (
+	ErrRangeMalformed     = goErrors.New("range: malformed range header string")
+	ErrRangeUnsatisfiable = goErrors.New("range: unsatisfiable range")
+)
+
+// Binder errors
+var ErrCustomBinderNotFound = goErrors.New("binder: custom binder not found, please be sure to enter the right name!")
+
+// gorilla/schema errors
 type (
 	// Conversion error exposes the internal schema.ConversionError for public use.
 	ConversionError = schema.ConversionError
@@ -17,6 +28,7 @@ type (
 	MultiError = schema.MultiError
 )
 
+// encoding/json errors
 type (
 	// An InvalidUnmarshalError describes an invalid argument passed to Unmarshal.
 	// (The argument to Unmarshal must be a non-nil pointer.)
