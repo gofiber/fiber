@@ -566,8 +566,7 @@ func (c *Constraint) CheckConstraint(param string, matcher utils.RegexMatch) boo
 		data, _ := strconv.Atoi(c.Data[0])
 		data2, _ := strconv.Atoi(c.Data[1])
 		length := len(param)
-
-		if !(length >= data && length <= data2) {
+		if length < data || length > data2 {
 			return false
 		}
 	case minConstraint:
@@ -589,7 +588,7 @@ func (c *Constraint) CheckConstraint(param string, matcher utils.RegexMatch) boo
 		data2, _ := strconv.Atoi(c.Data[1])
 		num, err = strconv.Atoi(param)
 
-		if !(num >= data && num <= data2) {
+		if num < data || num > data2 {
 			return false
 		}
 	case datetimeConstraint:
