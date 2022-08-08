@@ -1,7 +1,7 @@
 on:
   push:
     branches:
-      - master
+      - v3-beta
   pull_request:
 name: Test
 jobs:
