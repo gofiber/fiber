@@ -123,11 +123,13 @@ func Do(c *fiber.Ctx, addr string) error {
 	res := c.Response()
 	originalURL := utils.CopyString(c.OriginalURL())
 	defer req.SetRequestURI(originalURL)
-	req.SetRequestURI(addr)
+
+	copiedURL := utils.CopyString(addr)
+	req.SetRequestURI(copiedURL)
 	// NOTE: if req.isTLS is true, SetRequestURI keeps the scheme as https.
 	// issue reference:
 	// https://github.com/gofiber/fiber/issues/1762
-	if scheme := getScheme(utils.UnsafeBytes(addr)); len(scheme) > 0 {
+	if scheme := getScheme(utils.UnsafeBytes(copiedURL)); len(scheme) > 0 {
 		req.URI().SetSchemeBytes(scheme)
 	}
 

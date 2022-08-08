@@ -2,8 +2,10 @@ package proxy
 
 import (
 	"crypto/tls"
+	"io"
 	"io/ioutil"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -361,4 +363,31 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 
 	utils.AssertEqual(t, nil, err1)
 	utils.AssertEqual(t, nil, err2)
+}
+
+func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServer(func(c *fiber.Ctx) error {
+		return c.SendString("hello world")
+	}, t)
+
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app.Get("/*", func(c *fiber.Ctx) error {
+		path := c.OriginalURL()
+		url := strings.TrimPrefix(path, "/")
+
+		utils.AssertEqual(t, "http://"+addr, url)
+		if err := Do(c, url); err != nil {
+			return err
+		}
+		c.Response().Header.Del(fiber.HeaderServer)
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/http://"+addr, nil))
+	utils.AssertEqual(t, nil, err)
+	s, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "hello world", string(s))
 }
