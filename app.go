@@ -123,6 +123,8 @@ type App struct {
 	latestGroup *Group
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
+	// custom binders
+	customBinders []CustomBinder
 }
 
 // Config is a struct holding the server settings.
@@ -366,6 +368,12 @@ type Config struct {
 	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
+
+	// If you want to validate header/form/query... automatically when to bind, you can define struct validator.
+	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator.
+	//
+	// Default: nil
+	StructValidator StructValidator
 }
 
 // Static defines configuration options when defining static assets.
@@ -453,12 +461,13 @@ func New(config ...Config) *App {
 		stack:     make([][]*Route, len(intMethod)),
 		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create config
-		config:      Config{},
-		getBytes:    utils.UnsafeBytes,
-		getString:   utils.UnsafeString,
-		appList:     make(map[string]*App),
-		latestRoute: &Route{},
-		latestGroup: &Group{},
+		config:        Config{},
+		getBytes:      utils.UnsafeBytes,
+		getString:     utils.UnsafeString,
+		appList:       make(map[string]*App),
+		latestRoute:   &Route{},
+		latestGroup:   &Group{},
+		customBinders: []CustomBinder{},
 	}
 
 	// Create Ctx pool
@@ -544,6 +553,12 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // Note: It doesn't allow adding new methods, only customizing exist methods.
 func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
+}
+
+// You can register custom binders to use as Bind().Custom("name").
+// They should be compatible with CustomBinder interface.
+func (app *App) RegisterCustomBinder(binder CustomBinder) {
+	app.customBinders = append(app.customBinders, binder)
 }
 
 // Mount attaches another app instance as a sub-router along a routing path.

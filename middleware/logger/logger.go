@@ -247,8 +247,13 @@ func New(config ...Config) fiber.Handler {
 			case TagResBody:
 				return buf.Write(c.Response().Body())
 			case TagReqHeaders:
+				out := make(map[string]string, 0)
+				if err := c.Bind().Header(&out); err != nil {
+					return 0, err
+				}
+
 				reqHeaders := make([]string, 0)
-				for k, v := range c.GetReqHeaders() {
+				for k, v := range out {
 					reqHeaders = append(reqHeaders, k+"="+v)
 				}
 				return buf.Write([]byte(strings.Join(reqHeaders, "&")))

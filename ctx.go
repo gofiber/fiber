@@ -9,21 +9,18 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net"
 	"net/http"
 	"path/filepath"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"text/template"
 	"time"
 
-	"github.com/gofiber/fiber/v3/internal/schema"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/savsgio/dictpool"
 	"github.com/valyala/bytebufferpool"
@@ -32,13 +29,6 @@ import (
 
 // maxParams defines the maximum number of parameters per route.
 const maxParams = 30
-
-// Some constants for BodyParser, QueryParser and ReqHeaderParser.
-const (
-	queryTag     = "query"
-	reqHeaderTag = "reqHeader"
-	bodyTag      = "form"
-)
 
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey = "__local_user_context__"
@@ -61,6 +51,7 @@ type DefaultCtx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
+	bind                *Bind                // Default bind reference
 }
 
 // Range data for c.Range
@@ -90,21 +81,6 @@ type Cookie struct {
 type Views interface {
 	Load() error
 	Render(io.Writer, string, any, ...string) error
-}
-
-// ParserType require two element, type and converter for register.
-// Use ParserType with BodyParser for parsing custom type in form data.
-type ParserType struct {
-	Customtype any
-	Converter  func(string) reflect.Value
-}
-
-// ParserConfig form decoder config for SetParserDecoder
-type ParserConfig struct {
-	IgnoreUnknownKeys bool
-	SetAliasTag       string
-	ParserType        []ParserType
-	ZeroEmpty         bool
 }
 
 // Accepts checks if the specified extensions or content types are acceptable.
@@ -257,91 +233,6 @@ func (c *DefaultCtx) Body() []byte {
 	}
 
 	return body
-}
-
-// decoderPool helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
-var decoderPool = &sync.Pool{New: func() any {
-	return decoderBuilder(ParserConfig{
-		IgnoreUnknownKeys: true,
-		ZeroEmpty:         true,
-	})
-}}
-
-// SetParserDecoder allow globally change the option of form decoder, update decoderPool
-func SetParserDecoder(parserConfig ParserConfig) {
-	decoderPool = &sync.Pool{New: func() any {
-		return decoderBuilder(parserConfig)
-	}}
-}
-
-func decoderBuilder(parserConfig ParserConfig) any {
-	decoder := schema.NewDecoder()
-	decoder.IgnoreUnknownKeys(parserConfig.IgnoreUnknownKeys)
-	if parserConfig.SetAliasTag != "" {
-		decoder.SetAliasTag(parserConfig.SetAliasTag)
-	}
-	for _, v := range parserConfig.ParserType {
-		decoder.RegisterConverter(reflect.ValueOf(v.Customtype).Interface(), v.Converter)
-	}
-	decoder.ZeroEmpty(parserConfig.ZeroEmpty)
-	return decoder
-}
-
-// BodyParser binds the request body to a struct.
-// It supports decoding the following content types based on the Content-Type header:
-// application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
-// If none of the content types above are matched, it will return a ErrUnprocessableEntity error
-func (c *DefaultCtx) BodyParser(out any) error {
-	// Get content-type
-	ctype := utils.ToLower(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()))
-
-	ctype = utils.ParseVendorSpecificContentType(ctype)
-
-	// Parse body accordingly
-	if strings.HasPrefix(ctype, MIMEApplicationJSON) {
-		return c.app.config.JSONDecoder(c.Body(), out)
-	}
-	if strings.HasPrefix(ctype, MIMEApplicationForm) {
-		data := make(map[string][]string)
-		var err error
-
-		c.fasthttp.PostArgs().VisitAll(func(key, val []byte) {
-			if err != nil {
-				return
-			}
-
-			k := utils.UnsafeString(key)
-			v := utils.UnsafeString(val)
-
-			if strings.Contains(k, "[") {
-				k, err = parseParamSquareBrackets(k)
-			}
-
-			if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-				values := strings.Split(v, ",")
-				for i := 0; i < len(values); i++ {
-					data[k] = append(data[k], values[i])
-				}
-			} else {
-				data[k] = append(data[k], v)
-			}
-
-		})
-
-		return c.parseToStruct(bodyTag, out, data)
-	}
-	if strings.HasPrefix(ctype, MIMEMultipartForm) {
-		data, err := c.fasthttp.MultipartForm()
-		if err != nil {
-			return err
-		}
-		return c.parseToStruct(bodyTag, out, data.Value)
-	}
-	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
-		return xml.Unmarshal(c.Body(), out)
-	}
-	// No suitable content type found
-	return ErrUnprocessableEntity
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
@@ -571,30 +462,6 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
 }
 
-// GetReqHeaders returns the HTTP request headers.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
-func (c *DefaultCtx) GetReqHeaders() map[string]string {
-	headers := make(map[string]string)
-	c.Request().Header.VisitAll(func(k, v []byte) {
-		headers[string(k)] = c.app.getString(v)
-	})
-
-	return headers
-}
-
-// GetRespHeaders returns the HTTP response headers.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
-func (c *DefaultCtx) GetRespHeaders() map[string]string {
-	headers := make(map[string]string)
-	c.Response().Header.VisitAll(func(k, v []byte) {
-		headers[string(k)] = c.app.getString(v)
-	})
-
-	return headers
-}
-
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
@@ -805,17 +672,6 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 	return defaultString("", defaultValue)
 }
 
-// Params is used to get all route parameters.
-// Using Params method to get params.
-func (c *DefaultCtx) AllParams() map[string]string {
-	params := make(map[string]string, len(c.route.Params))
-	for _, param := range c.route.Params {
-		params[param] = c.Params(param)
-	}
-
-	return params
-}
-
 // ParamsInt is used to get an integer from the route parameters
 // it defaults to zero if the parameter is not found or if the
 // parameter cannot be converted to an integer
@@ -892,41 +748,6 @@ func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
 
-// QueryParser binds the query string to a struct.
-func (c *DefaultCtx) QueryParser(out any) error {
-	data := make(map[string][]string)
-	var err error
-
-	c.fasthttp.QueryArgs().VisitAll(func(key, val []byte) {
-		if err != nil {
-			return
-		}
-
-		k := utils.UnsafeString(key)
-		v := utils.UnsafeString(val)
-
-		if strings.Contains(k, "[") {
-			k, err = parseParamSquareBrackets(k)
-		}
-
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-			values := strings.Split(v, ",")
-			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
-			}
-		} else {
-			data[k] = append(data[k], v)
-		}
-
-	})
-
-	if err != nil {
-		return err
-	}
-
-	return c.parseToStruct(queryTag, out, data)
-}
-
 func parseParamSquareBrackets(k string) (string, error) {
 	bb := bytebufferpool.Get()
 	defer bytebufferpool.Put(bb)
@@ -952,84 +773,6 @@ func parseParamSquareBrackets(k string) (string, error) {
 
 	return bb.String(), nil
 }
-
-// ReqHeaderParser binds the request header strings to a struct.
-func (c *DefaultCtx) ReqHeaderParser(out any) error {
-	data := make(map[string][]string)
-	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
-		k := utils.UnsafeString(key)
-		v := utils.UnsafeString(val)
-
-		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
-			values := strings.Split(v, ",")
-			for i := 0; i < len(values); i++ {
-				data[k] = append(data[k], values[i])
-			}
-		} else {
-			data[k] = append(data[k], v)
-		}
-
-	})
-
-	return c.parseToStruct(reqHeaderTag, out, data)
-}
-
-func (c *DefaultCtx) parseToStruct(aliasTag string, out any, data map[string][]string) error {
-	// Get decoder from pool
-	schemaDecoder := decoderPool.Get().(*schema.Decoder)
-	defer decoderPool.Put(schemaDecoder)
-
-	// Set alias tag
-	schemaDecoder.SetAliasTag(aliasTag)
-
-	return schemaDecoder.Decode(out, data)
-}
-
-func equalFieldType(out any, kind reflect.Kind, key string) bool {
-	// Get type of interface
-	outTyp := reflect.TypeOf(out).Elem()
-	key = utils.ToLower(key)
-	// Must be a struct to match a field
-	if outTyp.Kind() != reflect.Struct {
-		return false
-	}
-	// Copy interface to an value to be used
-	outVal := reflect.ValueOf(out).Elem()
-	// Loop over each field
-	for i := 0; i < outTyp.NumField(); i++ {
-		// Get field value data
-		structField := outVal.Field(i)
-		// Can this field be changed?
-		if !structField.CanSet() {
-			continue
-		}
-		// Get field key data
-		typeField := outTyp.Field(i)
-		// Get type of field key
-		structFieldKind := structField.Kind()
-		// Does the field type equals input?
-		if structFieldKind != kind {
-			continue
-		}
-		// Get tag from field if exist
-		inputFieldName := typeField.Tag.Get(queryTag)
-		if inputFieldName == "" {
-			inputFieldName = typeField.Name
-		} else {
-			inputFieldName = strings.Split(inputFieldName, ",")[0]
-		}
-		// Compare field/tag with provided key
-		if utils.ToLower(inputFieldName) == key {
-			return true
-		}
-	}
-	return false
-}
-
-var (
-	ErrRangeMalformed     = errors.New("range: malformed range header string")
-	ErrRangeUnsatisfiable = errors.New("range: unsatisfiable range")
-)
 
 // Range returns a struct containing the type and a slice of ranges.
 func (c *DefaultCtx) Range(size int) (rangeData Range, err error) {
@@ -1095,7 +838,7 @@ func (c *DefaultCtx) Redirect(location string, status ...int) error {
 
 // Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
-func (c *DefaultCtx) Bind(vars Map) error {
+func (c *DefaultCtx) BindVars(vars Map) error {
 	// init viewBindMap - lazy map
 	if c.viewBindMap == nil {
 		c.viewBindMap = dictpool.AcquireDict()
@@ -1575,4 +1318,17 @@ func (c *DefaultCtx) IsFromLocal() bool {
 		ips = append(ips, c.IP())
 	}
 	return c.isLocalHost(ips[0])
+}
+
+// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
+// It gives custom binding support, detailed binding options and more.
+// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
+func (c *DefaultCtx) Bind() *Bind {
+	if c.bind == nil {
+		c.bind = &Bind{
+			ctx:    c,
+			should: true,
+		}
+	}
+	return c.bind
 }
