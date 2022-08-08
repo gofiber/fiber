@@ -733,4 +733,27 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v1/peach", params: []string{"peach"}, match: true},
 		{url: "/api/v1/p34ch", params: []string{"p34ch"}, match: false},
 	})
+	benchCase("/api/v1/:param<int;bool((>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
+	})
+	benchCase("/api/v1/:param<int;max(3000)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/8728382", params: []string{"8728382"}, match: false},
+		{url: "/api/v1/123", params: []string{"123"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
+	})
+	benchCase("/api/v1/:param<int;maxLen(10)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/87283827683", params: []string{"8728382"}, match: false},
+		{url: "/api/v1/123", params: []string{"123"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
+	})
+	benchCase("/api/v1/:param<int;range(10,30)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/87283827683", params: []string{"8728382"}, match: false},
+		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
+	})
 }

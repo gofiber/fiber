@@ -7,7 +7,6 @@
 package fiber
 
 import (
-	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -529,6 +528,7 @@ func (c *Constraint) CheckConstraint(param string, matcher utils.RegexMatch) boo
 		}
 	}
 
+	// check constraints
 	switch c.ID {
 	case intConstraint:
 		_, err = strconv.Atoi(param)
@@ -539,7 +539,7 @@ func (c *Constraint) CheckConstraint(param string, matcher utils.RegexMatch) boo
 	case alphaConstraint:
 		for _, r := range param {
 			if !unicode.IsLetter(r) {
-				err = errors.New("")
+				return false
 			}
 		}
 	case guidConstraint:
@@ -548,19 +548,19 @@ func (c *Constraint) CheckConstraint(param string, matcher utils.RegexMatch) boo
 		data, _ := strconv.Atoi(c.Data[0])
 
 		if len(param) < data {
-			err = errors.New("")
+			return false
 		}
 	case maxLenConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 
 		if len(param) > data {
-			err = errors.New("")
+			return false
 		}
 	case exactLenConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 
 		if len(param) != data {
-			err = errors.New("")
+			return false
 		}
 	case betweenLenConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
@@ -568,21 +568,21 @@ func (c *Constraint) CheckConstraint(param string, matcher utils.RegexMatch) boo
 		length := len(param)
 
 		if !(length >= data && length <= data2) {
-			err = errors.New("")
+			return false
 		}
 	case minConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 		num, err = strconv.Atoi(param)
 
 		if num < data {
-			err = errors.New("")
+			return false
 		}
 	case maxConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 		num, err = strconv.Atoi(param)
 
 		if num > data {
-			err = errors.New("")
+			return false
 		}
 	case rangeConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
@@ -590,14 +590,14 @@ func (c *Constraint) CheckConstraint(param string, matcher utils.RegexMatch) boo
 		num, err = strconv.Atoi(param)
 
 		if !(num >= data && num <= data2) {
-			err = errors.New("")
+			return false
 		}
 	case datetimeConstraint:
 		_, err = time.Parse(c.Data[0], param)
 	case regexConstraint:
 		match, _ := matcher(c.Data[0], param)
 		if !match {
-			err = errors.New("")
+			return false
 		}
 	}
 
