@@ -72,22 +72,23 @@ type Storage interface {
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
-//  cfg := fiber.Config{}
-//  cfg.ErrorHandler = func(c *DefaultCtx, err error) error {
-//   code := StatusInternalServerError
-//   if e, ok := err.(*Error); ok {
-//     code = e.Code
-//   }
-//   c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-//   return c.Status(code).SendString(err.Error())
-//  }
-//  app := fiber.New(cfg)
+//
+//	cfg := fiber.Config{}
+//	cfg.ErrorHandler = func(c *DefaultCtx, err error) error {
+//	 code := StatusInternalServerError
+//	 if e, ok := err.(*Error); ok {
+//	   code = e.Code
+//	 }
+//	 c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+//	 return c.Status(code).SendString(err.Error())
+//	}
+//	app := fiber.New(cfg)
 type ErrorHandler = func(Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
-	Code    int `json:"code"`
-	Message any `json:"message"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 // App denotes the Fiber application.
@@ -436,12 +437,15 @@ var DefaultErrorHandler = func(c Ctx, err error) error {
 }
 
 // New creates a new Fiber named instance.
-//  app := fiber.New()
+//
+//	app := fiber.New()
+//
 // You can pass optional configuration options by passing a Config struct:
-//  app := fiber.New(fiber.Config{
-//      Prefork: true,
-//      ServerHeader: "Fiber",
-//  })
+//
+//	app := fiber.New(fiber.Config{
+//	    Prefork: true,
+//	    ServerHeader: "Fiber",
+//	})
 func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
@@ -605,15 +609,15 @@ func (app *App) GetRoute(name string) Route {
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //
-//  app.Use(func(c fiber.Ctx) error {
-//       return c.Next()
-//  })
-//  app.Use("/api", func(c fiber.Ctx) error {
-//       return c.Next()
-//  })
-//  app.Use("/api", handler, func(c fiber.Ctx) error {
-//       return c.Next()
-//  })
+//	app.Use(func(c fiber.Ctx) error {
+//	     return c.Next()
+//	})
+//	app.Use("/api", func(c fiber.Ctx) error {
+//	     return c.Next()
+//	})
+//	app.Use("/api", handler, func(c fiber.Ctx) error {
+//	     return c.Next()
+//	})
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...any) Router {
@@ -706,8 +710,9 @@ func (app *App) All(path string, handlers ...Handler) Router {
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-//  api := app.Group("/api")
-//  api.Get("/users", handler)
+//
+//	api := app.Group("/api")
+//	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
 		app.register(methodUse, prefix, handlers...)
@@ -737,25 +742,19 @@ func (app *App) Route(prefix string, fn func(router Router), name ...string) Rou
 
 // Error makes it compatible with the `error` interface.
 func (e *Error) Error() string {
-	return fmt.Sprint(e.Message)
+	return e.Message
 }
 
-// NewErrors creates multiple/single new Error instances.
-// If you want to pass single message, you have to pass 1 message.
-// To pass multiple error messages, you have to pass +2 messages.
-func NewErrors(code int, messages ...any) *Error {
-	e := &Error{
+// NewError creates a new Error instance with an optional message
+func NewError(code int, message ...string) *Error {
+	err := &Error{
 		Code:    code,
 		Message: utils.StatusMessage(code),
 	}
-
-	if len(messages) == 1 {
-		e.Message = messages[0]
-	} else if len(messages) > 1 {
-		e.Message = messages
+	if len(message) > 0 {
+		err.Message = message[0]
 	}
-
-	return e
+	return err
 }
 
 // Listener can be used to pass a custom listener.
@@ -781,8 +780,8 @@ func (app *App) Listener(ln net.Listener) error {
 
 // Listen serves HTTP requests from the given addr.
 //
-//  app.Listen(":8080")
-//  app.Listen("127.0.0.1:8080")
+//	app.Listen(":8080")
+//	app.Listen("127.0.0.1:8080")
 func (app *App) Listen(addr string) error {
 	// Start prefork
 	if app.config.Prefork {
@@ -809,7 +808,8 @@ func (app *App) Listen(addr string) error {
 
 // ListenTLS serves HTTPS requests from the given addr.
 // certFile and keyFile are the paths to TLS certificate and key file:
-//  app.ListenTLS(":8080", "./cert.pem", "./cert.key")
+//
+//	app.ListenTLS(":8080", "./cert.pem", "./cert.key")
 func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
@@ -850,7 +850,8 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 
 // ListenMutualTLS serves HTTPS requests from the given addr.
 // certFile, keyFile and clientCertFile are the paths to TLS certificate and key file:
-//  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
+//
+//	app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
 func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {

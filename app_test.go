@@ -1252,17 +1252,18 @@ func Benchmark_AcquireCtx(b *testing.B) {
 	}
 }
 
-// go test -run Test_NewErrors
-func Test_NewErrors(t *testing.T) {
-	e := NewErrors(StatusForbidden, "permission denied")
-	utils.AssertEqual(t, StatusForbidden, e.Code)
-	utils.AssertEqual(t, "permission denied", fmt.Sprint(e.Message))
+// go test -v -run=^$ -bench=Benchmark_NewError -benchmem -count=4
+func Benchmark_NewError(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		NewError(200, "test")
+	}
+}
 
-	e = NewErrors(StatusBadRequest, "error 1", "error 2")
-	messages := e.Message.([]interface{})
-	utils.AssertEqual(t, StatusBadRequest, e.Code)
-	utils.AssertEqual(t, "error 1", fmt.Sprint(messages[0]))
-	utils.AssertEqual(t, "error 2", fmt.Sprint(messages[1]))
+// go test -run Test_NewError
+func Test_NewError(t *testing.T) {
+	e := NewError(StatusForbidden, "permission denied")
+	utils.AssertEqual(t, StatusForbidden, e.Code)
+	utils.AssertEqual(t, "permission denied", e.Message)
 }
 
 // go test -run Test_Test_Timeout

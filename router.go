@@ -134,7 +134,7 @@ func (app *App) next(c CustomCtx, customCtx bool) (match bool, err error) {
 	}
 
 	// If c.Next() does not match, return 404
-	err = NewErrors(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
+	err = NewError(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
 
 	var isMethodExist bool
 	if customCtx {
