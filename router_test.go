@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -87,17 +88,17 @@ func Test_Route_Match_Star(t *testing.T) {
 		routeParser: routeParser{},
 	}
 	params := [maxParams]string{}
-	match := route.match("", "", &params)
+	match := route.match("", "", &params, regexp.MatchString)
 	utils.AssertEqual(t, true, match)
 	utils.AssertEqual(t, [maxParams]string{}, params)
 
 	// with parameter
-	match = route.match("/favicon.ico", "/favicon.ico", &params)
+	match = route.match("/favicon.ico", "/favicon.ico", &params, regexp.MatchString)
 	utils.AssertEqual(t, true, match)
 	utils.AssertEqual(t, [maxParams]string{"favicon.ico"}, params)
 
 	// without parameter again
-	match = route.match("", "", &params)
+	match = route.match("", "", &params, regexp.MatchString)
 	utils.AssertEqual(t, true, match)
 	utils.AssertEqual(t, [maxParams]string{}, params)
 }
@@ -639,7 +640,7 @@ func Benchmark_Route_Match(b *testing.B) {
 	})
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		match = route.match("/user/keys/1337", "/user/keys/1337", &params)
+		match = route.match("/user/keys/1337", "/user/keys/1337", &params, regexp.MatchString)
 	}
 
 	utils.AssertEqual(b, true, match)
@@ -669,7 +670,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		match = route.match("/user/keys/bla", "/user/keys/bla", &params)
+		match = route.match("/user/keys/bla", "/user/keys/bla", &params, regexp.MatchString)
 	}
 
 	utils.AssertEqual(b, true, match)
@@ -700,7 +701,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		match = route.match("/", "/", &params)
+		match = route.match("/", "/", &params, regexp.MatchString)
 	}
 
 	utils.AssertEqual(b, true, match)

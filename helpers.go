@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 	"unsafe"
@@ -134,7 +135,7 @@ func methodExist(ctx *Ctx) (exist bool) {
 				continue
 			}
 			// Check if it matches the request path
-			match := route.match(ctx.detectionPath, ctx.path, &ctx.values)
+			match := route.match(ctx.detectionPath, ctx.path, &ctx.values, regexp.MatchString)
 			// No match, next route
 			if match {
 				// We matched
@@ -694,4 +695,22 @@ const (
 	CookieSameSiteLaxMode    = "lax"
 	CookieSameSiteStrictMode = "strict"
 	CookieSameSiteNoneMode   = "none"
+)
+
+// Route Constraints
+const (
+	ConstraintInt        = "int"
+	ConstraintBool       = "bool"
+	ConstraintFloat      = "float"
+	ConstraintAlpha      = "alpha"
+	ConstraintGuid       = "guid"
+	ConstraintMinLen     = "minLen"
+	ConstraintMaxLen     = "maxLen"
+	ConstraintExactLen   = "exactLen"
+	ConstraintBetweenLen = "betweenLen"
+	ConstraintMin        = "min"
+	ConstraintMax        = "max"
+	ConstraintRange      = "range"
+	ConstraintDatetime   = "datetime"
+	ConstraintRegex      = "regex"
 )

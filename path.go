@@ -8,7 +8,6 @@ package fiber
 
 import (
 	"errors"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -77,10 +76,10 @@ const (
 	alphaConstraint
 	datetimeConstraint
 	guidConstraint
-	minLengthConstraint
-	maxLengthConstraint
-	exactLengthConstraint
-	BetweenLengthConstraint
+	minLenConstraint
+	maxLenConstraint
+	exactLenConstraint
+	betweenLenConstraint
 	minConstraint
 	maxConstraint
 	rangeConstraint
@@ -345,13 +344,7 @@ func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
-func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool, matcher ...utils.RegexMatch) bool {
-	// Override matcher
-	var regexMatch = regexp.MatchString
-	if len(matcher) > 1 {
-		regexMatch = matcher[0]
-	}
-
+func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool, matcher utils.RegexMatch) bool {
 	var i, paramsIterator, partLen int
 	for _, segment := range routeParser.segs {
 		partLen = len(detectionPath)
@@ -376,7 +369,7 @@ func (routeParser *routeParser) getMatch(detectionPath, path string, params *[ma
 
 			// check constraint
 			for _, c := range segment.Constraints {
-				if matched := c.CheckConstraint(params[paramsIterator], regexMatch); !matched {
+				if matched := c.CheckConstraint(params[paramsIterator], matcher); !matched {
 					return false
 				}
 			}
@@ -482,33 +475,33 @@ func RemoveEscapeChar(word string) string {
 
 func getParamConstraintType(constraintPart string) TypeConstraint {
 	switch constraintPart {
-	case "int":
+	case ConstraintInt:
 		return intConstraint
-	case "bool":
+	case ConstraintBool:
 		return boolConstraint
-	case "float":
+	case ConstraintFloat:
 		return floatConstraint
-	case "alpha":
+	case ConstraintAlpha:
 		return alphaConstraint
-	case "guid":
+	case ConstraintGuid:
 		return guidConstraint
-	case "minLen":
-		return minLengthConstraint
-	case "maxLen":
-		return maxLengthConstraint
-	case "exactLen":
-		return exactLengthConstraint
-	case "betweenLen":
-		return BetweenLengthConstraint
-	case "min":
+	case ConstraintMinLen:
+		return minLenConstraint
+	case ConstraintMaxLen:
+		return maxLenConstraint
+	case ConstraintExactLen:
+		return exactLenConstraint
+	case ConstraintBetweenLen:
+		return betweenLenConstraint
+	case ConstraintMin:
 		return minConstraint
-	case "max":
+	case ConstraintMax:
 		return maxConstraint
-	case "range":
+	case ConstraintRange:
 		return rangeConstraint
-	case "datetime":
+	case ConstraintDatetime:
 		return datetimeConstraint
-	case "regex":
+	case ConstraintRegex:
 		return regexConstraint
 	default:
 		return noConstraint
@@ -521,8 +514,8 @@ func (c *Constraint) CheckConstraint(param string, matcher utils.RegexMatch) boo
 	var num int
 
 	// check data exists
-	needOneData := []TypeConstraint{minLengthConstraint, maxLengthConstraint, exactLengthConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
-	needTwoData := []TypeConstraint{BetweenLengthConstraint, rangeConstraint}
+	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, exactLenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
+	needTwoData := []TypeConstraint{betweenLenConstraint, rangeConstraint}
 
 	for _, data := range needOneData {
 		if c.ID == data && len(c.Data) == 0 {
@@ -551,25 +544,25 @@ func (c *Constraint) CheckConstraint(param string, matcher utils.RegexMatch) boo
 		}
 	case guidConstraint:
 		_, err = uuid.Parse(param)
-	case minLengthConstraint:
+	case minLenConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 
 		if len(param) < data {
 			err = errors.New("")
 		}
-	case maxLengthConstraint:
+	case maxLenConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 
 		if len(param) > data {
 			err = errors.New("")
 		}
-	case exactLengthConstraint:
+	case exactLenConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 
 		if len(param) != data {
 			err = errors.New("")
 		}
-	case BetweenLengthConstraint:
+	case betweenLenConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 		data2, _ := strconv.Atoi(c.Data[1])
 		length := len(param)
