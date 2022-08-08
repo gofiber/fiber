@@ -58,15 +58,13 @@ func parse(aliasTag string, out any, data map[string][]string) error {
 	ptrVal := reflect.ValueOf(out)
 
 	// Get pointer value
-	var ptr any
 	if ptrVal.Kind() == reflect.Ptr {
 		ptrVal = ptrVal.Elem()
-		ptr = ptrVal.Interface()
 	}
 
 	// Parse into the map
 	if ptrVal.Kind() == reflect.Map && ptrVal.Type().Key().Kind() == reflect.String {
-		return parseToMap(ptr, data)
+		return parseToMap(ptrVal.Interface(), data)
 	}
 
 	// Parse into the struct
