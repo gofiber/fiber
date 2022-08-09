@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"crypto/tls"
-	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -387,7 +386,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/http://"+addr, nil))
 	utils.AssertEqual(t, nil, err)
-	s, err := io.ReadAll(resp.Body)
+	s, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "hello world", string(s))
 }
