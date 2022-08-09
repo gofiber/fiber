@@ -136,6 +136,8 @@ func parserRequestURL(c *Client, req *Request) error {
 // Header should be set automatically based on data.
 // User-Agent should be set.
 func parserRequestHeader(c *Client, req *Request) error {
+	// set method
+	req.rawRequest.Header.SetMethod(req.Method())
 	// merge header
 	c.header.VisitAll(func(key, value []byte) {
 		req.rawRequest.Header.SetBytesKV(key, value)

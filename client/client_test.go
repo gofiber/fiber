@@ -1,37 +1,15 @@
 package client
 
 import (
+	"fmt"
 	"net"
+	"reflect"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
-
-// import (
-// 	"bytes"
-// 	"crypto/tls"
-// 	"encoding/base64"
-// 	"errors"
-// 	"fmt"
-// 	"io"
-// 	"mime/multipart"
-// 	"net"
-// 	"os"
-// 	"path/filepath"
-// 	"regexp"
-// 	"strings"
-// 	"testing"
-// 	"time"
-
-// 	"encoding/json"
-
-// 	"github.com/gofiber/fiber/v3"
-// 	"github.com/gofiber/fiber/v3/internal/tlstest"
-// 	"github.com/gofiber/fiber/v3/utils"
-// 	"github.com/valyala/fasthttp/fasthttputil"
-// )
 
 // func Test_Client_Invalid_URL(t *testing.T) {
 // 	t.Parallel()
@@ -1211,3 +1189,109 @@ func TestGet(t *testing.T) {
 // type errorWriter struct{}
 
 // func (errorWriter) Write(_ []byte) (int, error) { return 0, errors.New("Write error") }
+
+func TestClientR(t *testing.T) {
+	t.Parallel()
+
+	client := AcquireClient()
+	req := client.R()
+
+	utils.AssertEqual(t, "Request", reflect.TypeOf(req).Elem().Name())
+	utils.AssertEqual(t, client, req.Client())
+}
+
+func TestClientAddHook(t *testing.T) {
+	t.Parallel()
+
+	t.Run("add request hooks", func(t *testing.T) {
+		client := AcquireClient().AddRequestHook(func(c *Client, r *Request) error {
+			return nil
+		})
+
+		utils.AssertEqual(t, 1, len(client.RequestHook()))
+
+		client.AddRequestHook(func(c *Client, r *Request) error {
+			return nil
+		}, func(c *Client, r *Request) error {
+			return nil
+		})
+
+		utils.AssertEqual(t, 3, len(client.RequestHook()))
+	})
+
+	t.Run("add response hooks", func(t *testing.T) {
+		client := AcquireClient().AddResponseHook(func(c *Client, resp *Response, r *Request) error {
+			return nil
+		})
+
+		utils.AssertEqual(t, 1, len(client.ResponseHook()))
+
+		client.AddResponseHook(func(c *Client, resp *Response, r *Request) error {
+			return nil
+		}, func(c *Client, resp *Response, r *Request) error {
+			return nil
+		})
+
+		utils.AssertEqual(t, 3, len(client.ResponseHook()))
+	})
+}
+
+func TestClientMarshal(t *testing.T) {
+	t.Run("set json marshal", func(t *testing.T) {
+		client := AcquireClient().
+			SetJSONMarshal(func(v any) ([]byte, error) {
+				return []byte("hello"), nil
+			})
+		val, err := client.JSONMarshal()(nil)
+
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte("hello"), val)
+	})
+
+	t.Run("set json unmarshal", func(t *testing.T) {
+		client := AcquireClient().
+			SetJSONUnmarshal(func(data []byte, v any) error {
+				return fmt.Errorf("empty json")
+			})
+
+		err := client.JSONUnmarshal()(nil, nil)
+		utils.AssertEqual(t, fmt.Errorf("empty json"), err)
+	})
+
+	t.Run("set xml marshal", func(t *testing.T) {
+		client := AcquireClient().
+			SetXMLMarshal(func(v any) ([]byte, error) {
+				return []byte("hello"), nil
+			})
+		val, err := client.XMLMarshal()(nil)
+
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, []byte("hello"), val)
+	})
+
+	t.Run("set xml unmarshal", func(t *testing.T) {
+		client := AcquireClient().
+			SetXMLUnmarshal(func(data []byte, v any) error {
+				return fmt.Errorf("empty xml")
+			})
+
+		err := client.XMLUnmarshal()(nil, nil)
+		utils.AssertEqual(t, fmt.Errorf("empty xml"), err)
+	})
+}
+
+func TestClientSetBaseURL(t *testing.T) {
+	t.Parallel()
+
+	client := AcquireClient().SetBaseURL("http://example.com")
+
+	utils.AssertEqual(t, "http://example.com", client.BaseURL())
+}
+
+func TestClientHeader(t *testing.T) {
+	t.Parallel()
+
+	t.Run("", func(t *testing.T) {
+
+	})
+}

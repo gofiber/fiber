@@ -95,24 +95,21 @@ func (r *Response) Close() {
 	ReleaseResponse(r)
 }
 
-var responsePool sync.Pool
+var responsePool = &sync.Pool{
+	New: func() any {
+		return &Response{
+			cookie:      []*fasthttp.Cookie{},
+			rawResponse: fasthttp.AcquireResponse(),
+		}
+	},
+}
 
 // AcquireResponse returns an empty response object from the pool.
 //
 // The returned response may be returned to the pool with ReleaseResponse when no longer needed.
 // This allows reducing GC load.
 func AcquireResponse() (resp *Response) {
-	respv := responsePool.Get()
-	if respv != nil {
-		resp = respv.(*Response)
-		return
-	}
-	resp = &Response{
-		cookie:      []*fasthttp.Cookie{},
-		rawResponse: fasthttp.AcquireResponse(),
-	}
-
-	return
+	return responsePool.Get().(*Response)
 }
 
 // ReleaseResponse returns the object acquired via AcquireResponse to the pool.

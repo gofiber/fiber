@@ -144,20 +144,18 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	return resp, nil
 }
 
-var errChanPool sync.Pool
+var errChanPool = &sync.Pool{
+	New: func() any {
+		return make(chan error, 1)
+	},
+}
 
 // acquireErrChan returns an empty error chan from the pool.
 //
 // The returned error chan may be returned to the pool with releaseErrChan when no longer needed.
 // This allows reducing GC load.
-func acquireErrChan() (ch chan error) {
-	chv := errChanPool.Get()
-	if chv != nil {
-		ch = chv.(chan error)
-		return
-	}
-	ch = make(chan error, 1)
-	return
+func acquireErrChan() chan error {
+	return errChanPool.Get().(chan error)
 }
 
 // releaseErrChan returns the object acquired via acquireErrChan to the pool.

@@ -1,18 +1,22 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"reflect"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
 )
 
-// Implementing this interface allows data to be passed through the structure.
+// Implementing this interface allows data to
+// be stored from a struct via reflect.
 type WithStruct interface {
 	Add(string, string)
 	Del(string)
@@ -55,6 +59,11 @@ type Request struct {
 	rawRequest *fasthttp.Request
 }
 
+// Method returns http method in request.
+func (r *Request) Method() string {
+	return r.method
+}
+
 // SetMethod will set method for Request object,
 // user should use request method to set method.
 func (r *Request) SetMethod(method string) *Request {
@@ -62,10 +71,20 @@ func (r *Request) SetMethod(method string) *Request {
 	return r
 }
 
+// URL returns request url in Request instance.
+func (r *Request) URL() string {
+	return r.url
+}
+
 // SetURL will set url for Request object.
 func (r *Request) SetURL(url string) *Request {
 	r.url = url
 	return r
+}
+
+// Client get Client instance in Request.
+func (r *Request) Client() *Client {
+	return r.client
 }
 
 // SetClient method sets client in request instance.
@@ -92,6 +111,13 @@ func (r *Request) SetContext(ctx context.Context) *Request {
 	return r
 }
 
+// Header method returns header value via key,
+// this method will visit all field in the header,
+// then sort them.
+func (r *Request) Header(key string) []string {
+	return r.header.PeekMultiple(key)
+}
+
 // AddHeader method adds a single header field and its value in the request instance.
 // It will override header which set in client instance.
 func (r *Request) AddHeader(key, val string) *Request {
@@ -102,6 +128,7 @@ func (r *Request) AddHeader(key, val string) *Request {
 // SetHeader method sets a single header field and its value in the request instance.
 // It will override header which set in client instance.
 func (r *Request) SetHeader(key, val string) *Request {
+	r.header.Del(key)
 	r.header.Set(key, val)
 	return r
 }
@@ -118,6 +145,20 @@ func (r *Request) AddHeaders(h map[string][]string) *Request {
 func (r *Request) SetHeaders(h map[string]string) *Request {
 	r.header.SetHeaders(h)
 	return r
+}
+
+// Param method returns params value via key,
+// this method will visit all field in the query param,
+// then sort them.
+func (r *Request) Param(key string) []string {
+	res := []string{}
+	tmp := r.params.PeekMulti(key)
+	for _, v := range tmp {
+		res = append(res, utils.UnsafeString(v))
+	}
+	sort.Strings(res)
+
+	return res
 }
 
 // AddParam method adds a single param field and its value in the request instance.
@@ -163,6 +204,11 @@ func (r *Request) DelParams(key ...string) *Request {
 	return r
 }
 
+// UserAgent returns user agent in request instance.
+func (r *Request) UserAgent() string {
+	return r.userAgent
+}
+
 // SetUserAgent method sets user agent in request.
 // It will override user agent which set in client instance.
 func (r *Request) SetUserAgent(ua string) *Request {
@@ -170,11 +216,25 @@ func (r *Request) SetUserAgent(ua string) *Request {
 	return r
 }
 
+// Referer returns referer in request instance.
+func (r *Request) Referer() string {
+	return r.referer
+}
+
 // SetReferer method sets referer in request.
 // It will override referer which set in client instance.
 func (r *Request) SetReferer(referer string) *Request {
 	r.referer = referer
 	return r
+}
+
+// Cookie returns the cookie be set in request instance.
+// if cookie doesn't exist, return empty string.
+func (r *Request) Cookie(key string) string {
+	if val, ok := (*r.cookies)[key]; ok {
+		return val
+	}
+	return ""
 }
 
 // SetCookie method sets a single cookie field and its value in the request instance.
@@ -202,6 +262,16 @@ func (r *Request) SetCookiesWithStruct(v any) *Request {
 func (r *Request) DelCookies(key ...string) *Request {
 	r.cookies.DelCookies(key...)
 	return r
+}
+
+// PathParam returns the path param be set in request instance.
+// if path param doesn't exist, return empty string.
+func (r *Request) PathParam(key string) string {
+	if val, ok := (*r.path)[key]; ok {
+		return val
+	}
+
+	return ""
 }
 
 // SetPathParam method sets a single path param field and its value in the request instance.
@@ -261,6 +331,20 @@ func (r *Request) resetBody(t bodyType) {
 		return
 	}
 	r.bodyType = t
+}
+
+// FormData method returns form data value via key,
+// this method will visit all field in the form data,
+// then sort them.
+func (r *Request) FormData(key string) []string {
+	res := []string{}
+	tmp := r.formData.PeekMulti(key)
+	for _, v := range tmp {
+		res = append(res, utils.UnsafeString(v))
+	}
+	sort.Strings(res)
+
+	return res
 }
 
 // AddFormData method adds a single form data field and its value in the request instance.
@@ -430,6 +514,20 @@ type Header struct {
 	*fasthttp.RequestHeader
 }
 
+// Peekmutiple methods returns multiple field in header with same key.
+func (h *Header) PeekMultiple(key string) []string {
+	res := []string{}
+	byteKey := []byte(key)
+	h.RequestHeader.VisitAll(func(key, value []byte) {
+		if bytes.EqualFold(key, byteKey) {
+			res = append(res, utils.UnsafeString(value))
+		}
+	})
+	sort.Strings(res)
+
+	return res
+}
+
 // AddHeaders receive a map and add each value to header.
 func (h *Header) AddHeaders(r map[string][]string) {
 	for k, v := range r {
@@ -442,6 +540,7 @@ func (h *Header) AddHeaders(r map[string][]string) {
 // SetHeaders will override all headers.
 func (h *Header) SetHeaders(r map[string]string) {
 	for k, v := range r {
+		h.Del(k)
 		h.Set(k, v)
 	}
 }
@@ -662,30 +761,30 @@ func (f *File) Reset() {
 	f.reader = nil
 }
 
-var requestPool sync.Pool
+var requestPool = &sync.Pool{
+	New: func() any {
+		return &Request{
+			header:     &Header{RequestHeader: &fasthttp.RequestHeader{}},
+			params:     &QueryParam{Args: fasthttp.AcquireArgs()},
+			cookies:    &Cookie{},
+			path:       &PathParam{},
+			boundary:   "--FiberFormBoundary" + randString(16),
+			formData:   &FormData{Args: fasthttp.AcquireArgs()},
+			files:      make([]*File, 0),
+			rawRequest: fasthttp.AcquireRequest(),
+		}
+	},
+}
 
 // AcquireRequest returns an empty request object from the pool.
 //
 // The returned request may be returned to the pool with ReleaseRequest when no longer needed.
 // This allows reducing GC load.
-func AcquireRequest() (req *Request) {
-	reqv := requestPool.Get()
-	if reqv != nil {
-		req = reqv.(*Request)
-		return
-	}
+func AcquireRequest() *Request {
+	req := requestPool.Get().(*Request)
+	req.boundary = "--FiberFormBoundary" + randString(16)
 
-	req = &Request{
-		header:     &Header{RequestHeader: &fasthttp.RequestHeader{}},
-		params:     &QueryParam{Args: fasthttp.AcquireArgs()},
-		cookies:    &Cookie{},
-		path:       &PathParam{},
-		boundary:   "--FiberFormBoundary" + randString(16),
-		formData:   &FormData{Args: fasthttp.AcquireArgs()},
-		files:      make([]*File, 0),
-		rawRequest: fasthttp.AcquireRequest(),
-	}
-	return
+	return req
 }
 
 // ReleaseRequest returns the object acquired via AcquireRequest to the pool.

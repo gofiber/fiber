@@ -8,8 +8,14 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// The Client is used to create a Fiber Client with
+// client-level settings that apply to all requests
+// raise from the client.
+//
+// Fiber Client also provides an option to override
+// or merge most of the client settings at the request.
 type Client struct {
-	core *Core
+	core *core
 
 	baseUrl   string
 	userAgent string
@@ -22,14 +28,25 @@ type Client struct {
 	timeout time.Duration
 }
 
+// R raise a request from the client.
 func (c *Client) R() *Request {
 	return AcquireRequest().SetClient(c)
+}
+
+// Request returns user-defined request hooks.
+func (c *Client) RequestHook() []RequestHook {
+	return c.core.userRequestHooks
 }
 
 // Add user-defined request hooks.
 func (c *Client) AddRequestHook(h ...RequestHook) *Client {
 	c.core.userRequestHooks = append(c.core.userRequestHooks, h...)
 	return c
+}
+
+// ResponseHook return user-define reponse hooks.
+func (c *Client) ResponseHook() []ResponseHook {
+	return c.core.userResponseHooks
 }
 
 // Add user-defined response hooks.
@@ -45,10 +62,20 @@ func (c *Client) SetDial(f fasthttp.DialFunc) *Client {
 	return c
 }
 
+// JSONMarshal returns json marshal function in Core.
+func (c *Client) JSONMarshal() utils.JSONMarshal {
+	return c.core.jsonMarshal
+}
+
 // Set json encoder.
 func (c *Client) SetJSONMarshal(f utils.JSONMarshal) *Client {
 	c.core.jsonMarshal = f
 	return c
+}
+
+// JSONUnmarshal returns json unmarshal function in Core.
+func (c *Client) JSONUnmarshal() utils.JSONUnmarshal {
+	return c.core.jsonUnmarshal
 }
 
 // Set json decoder.
@@ -57,16 +84,31 @@ func (c *Client) SetJSONUnmarshal(f utils.JSONUnmarshal) *Client {
 	return c
 }
 
+// XMLMarshal returns xml marshal function in Core.
+func (c *Client) XMLMarshal() utils.XMLMarshal {
+	return c.core.xmlMarshal
+}
+
 // Set xml encoder.
 func (c *Client) SetXMLMarshal(f utils.XMLMarshal) *Client {
 	c.core.xmlMarshal = f
 	return c
 }
 
+// XMLUnmarshal returns xml unmarshal function in Core.
+func (c *Client) XMLUnmarshal() utils.XMLUnmarshal {
+	return c.core.xmlUnmarshal
+}
+
 // Set xml decoder.
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 	c.core.xmlUnmarshal = f
 	return c
+}
+
+// BaseURL returns baseurl in Client instance.
+func (c *Client) BaseURL() string {
+	return c.baseUrl
 }
 
 // Set baseUrl which is prefix of real url.
@@ -325,7 +367,6 @@ func (c *Client) Reset() {
 
 	c.path.Reset()
 	c.cookies.Reset()
-	c.core.reset()
 	c.header.Reset()
 	c.params.Reset()
 }
@@ -383,7 +424,21 @@ func SetRequestFiles(files ...*File) SetRequestOptionFunc {
 var (
 	defaultClient    *Client
 	defaultUserAgent = "fiber"
-	clientPool       sync.Pool
+	clientPool       = &sync.Pool{
+		New: func() any {
+			return &Client{
+				core: newCore(),
+				header: &Header{
+					RequestHeader: &fasthttp.RequestHeader{},
+				},
+				params: &QueryParam{
+					Args: fasthttp.AcquireArgs(),
+				},
+				cookies: &Cookie{},
+				path:    &PathParam{},
+			}
+		},
+	}
 )
 
 func init() {
@@ -394,24 +449,8 @@ func init() {
 //
 // The returned Client object may be returned to the pool with ReleaseClient when no longer needed.
 // This allows reducing GC load.
-func AcquireClient() (c *Client) {
-	cv := clientPool.Get()
-	if cv != nil {
-		c = cv.(*Client)
-		return
-	}
-	c = &Client{
-		core: AcquireCore(),
-		header: &Header{
-			RequestHeader: &fasthttp.RequestHeader{},
-		},
-		params: &QueryParam{
-			Args: fasthttp.AcquireArgs(),
-		},
-		cookies: &Cookie{},
-		path:    &PathParam{},
-	}
-	return
+func AcquireClient() *Client {
+	return clientPool.Get().(*Client)
 }
 
 // ReleaseClient returns the object acquired via AcquireClient to the pool.
