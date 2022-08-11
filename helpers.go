@@ -15,7 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"strings"
 	"time"
 	"unsafe"
@@ -135,7 +134,7 @@ func methodExist(ctx *Ctx) (exist bool) {
 				continue
 			}
 			// Check if it matches the request path
-			match := route.match(ctx.detectionPath, ctx.path, &ctx.values, regexp.MatchString)
+			match := route.match(ctx.detectionPath, ctx.path, &ctx.values)
 			// No match, next route
 			if match {
 				// We matched

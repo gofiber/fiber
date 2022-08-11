@@ -6,7 +6,6 @@ package fiber
 
 import (
 	"fmt"
-	"regexp"
 	"testing"
 
 	"github.com/gofiber/fiber/v2/utils"
@@ -147,7 +146,7 @@ func Test_Path_matchParams(t *testing.T) {
 	testCase := func(r string, cases []testparams) {
 		parser := parseRoute(r)
 		for _, c := range cases {
-			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck, regexp.MatchString)
+			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
 			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			if match && len(c.params) > 0 {
 				utils.AssertEqual(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
@@ -595,7 +594,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 			}
 			t.Run(r+" | "+state+" | "+c.url, func(b *testing.B) {
 				for i := 0; i <= b.N; i++ {
-					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck, regexp.MatchString); match {
+					if match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck); match {
 						// Get params from the original path
 						matchRes = true
 					}
@@ -770,7 +769,7 @@ func Test_Path_matchParams0(t *testing.T) {
 	testCase := func(r string, cases []testparams) {
 		parser := parseRoute(r)
 		for _, c := range cases {
-			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck, regexp.MatchString)
+			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
 			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			if match && len(c.params) > 0 {
 				utils.AssertEqual(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
