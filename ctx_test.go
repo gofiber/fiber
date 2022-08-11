@@ -1376,7 +1376,7 @@ func Test_Ctx_Params(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 
-func Test_Ctx_Params_Case_Sencitive(t *testing.T) {
+func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
 	t.Parallel()
 	app := New(Config{CaseSensitive: true})
 	app.Get("/test/:User", func(c *Ctx) error {
