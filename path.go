@@ -225,10 +225,16 @@ func (routeParser *routeParser) analyseConstantPart(pattern string, nextParamPos
 func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *routeSegment) {
 	isWildCard := pattern[0] == wildcardParam
 	isPlusParam := pattern[0] == plusParam
-	parameterEndPosition := findNextNonEscapedCharsetPosition(pattern[1:], parameterEndChars)
+
+	var parameterEndPosition int
+	if strings.ContainsRune(pattern, rune(paramConstraintStart)) && strings.ContainsRune(pattern, rune(paramConstraintEnd)) {
+		parameterEndPosition = findNextCharsetPositionConstraint(pattern[1:], parameterEndChars)
+	} else {
+		parameterEndPosition = findNextNonEscapedCharsetPosition(pattern[1:], parameterEndChars)
+	}
+
 	parameterConstraintStart := -1
 	parameterConstraintEnd := -1
-
 	// handle wildcard end
 	if isWildCard || isPlusParam {
 		parameterEndPosition = 0
@@ -242,7 +248,6 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	if parameterEndPosition > 0 {
 		parameterConstraintStart = findNextNonEscapedCharsetPosition(pattern[0:parameterEndPosition], parameterConstraintStartChars)
 		parameterConstraintEnd = findNextNonEscapedCharsetPosition(pattern[0:parameterEndPosition+1], parameterConstraintEndChars)
-
 	}
 
 	// cut params part
@@ -317,6 +322,33 @@ func findNextCharsetPosition(search string, charset []byte) int {
 	for _, char := range charset {
 		if pos := strings.IndexByte(search, char); pos != -1 && (pos < nextPosition || nextPosition == -1) {
 			nextPosition = pos
+		}
+	}
+
+	return nextPosition
+}
+
+// findNextCharsetPositionConstraint search the next char position from the charset
+func findNextCharsetPositionConstraint(search string, charset []byte) int {
+	nextPosition := -1
+	constraintStart := -1
+	constraintEnd := -1
+
+	for _, char := range charset {
+		pos := strings.IndexByte(search, char)
+
+		if char == paramConstraintStart {
+			constraintStart = pos
+		}
+
+		if char == paramConstraintEnd {
+			constraintEnd = pos
+		}
+		//fmt.Println(string(char))
+		if pos != -1 && (pos < nextPosition || nextPosition == -1) {
+			if pos > constraintStart && pos < constraintEnd {
+				nextPosition = pos
+			}
 		}
 	}
 
