@@ -1254,7 +1254,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	app.Post("/test", func(c *Ctx) error {
 		result := c.ClientHelloInfo()
 		if result != nil {
-			panic("Invalid ClientHelloInfo, it should be nil")
+			return NewError(500, "Invalid ClientHelloInfo, it should be nil")
 		}
 
 		return c.SendString("ClientHelloInfo is nil")
