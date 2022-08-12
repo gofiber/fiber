@@ -48,7 +48,7 @@ import (
 // 		errs[0].Error())
 // }
 
-func TestGet(t *testing.T) {
+func Test_Get(t *testing.T) {
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()
@@ -1190,7 +1190,7 @@ func TestGet(t *testing.T) {
 
 // func (errorWriter) Write(_ []byte) (int, error) { return 0, errors.New("Write error") }
 
-func TestClientR(t *testing.T) {
+func Test_Client_R(t *testing.T) {
 	t.Parallel()
 
 	client := AcquireClient()
@@ -1200,7 +1200,7 @@ func TestClientR(t *testing.T) {
 	utils.AssertEqual(t, client, req.Client())
 }
 
-func TestClientAddHook(t *testing.T) {
+func Test_Client_Add_Hook(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add request hooks", func(t *testing.T) {
@@ -1236,7 +1236,7 @@ func TestClientAddHook(t *testing.T) {
 	})
 }
 
-func TestClientMarshal(t *testing.T) {
+func Test_Client_Marshal(t *testing.T) {
 	t.Run("set json marshal", func(t *testing.T) {
 		client := AcquireClient().
 			SetJSONMarshal(func(v any) ([]byte, error) {
@@ -1280,7 +1280,7 @@ func TestClientMarshal(t *testing.T) {
 	})
 }
 
-func TestClientSetBaseURL(t *testing.T) {
+func Test_Client_SetBaseURL(t *testing.T) {
 	t.Parallel()
 
 	client := AcquireClient().SetBaseURL("http://example.com")
@@ -1288,7 +1288,7 @@ func TestClientSetBaseURL(t *testing.T) {
 	utils.AssertEqual(t, "http://example.com", client.BaseURL())
 }
 
-func TestClientHeader(t *testing.T) {
+func Test_Client_Header(t *testing.T) {
 	t.Parallel()
 
 	t.Run("", func(t *testing.T) {

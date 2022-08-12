@@ -11,7 +11,7 @@ import (
 	"github.com/gofiber/fiber/v3/utils"
 )
 
-func TestAddMissingPort(t *testing.T) {
+func Test_AddMissing_Port(t *testing.T) {
 	type args struct {
 		addr  string
 		isTLS bool
@@ -51,7 +51,7 @@ func TestAddMissingPort(t *testing.T) {
 	}
 }
 
-func TestRandString(t *testing.T) {
+func Test_Rand_String(t *testing.T) {
 	tests := []struct {
 		name string
 		args int
@@ -69,7 +69,7 @@ func TestRandString(t *testing.T) {
 	}
 }
 
-func TestParserRequestURL(t *testing.T) {
+func Test_Parser_Request_URL(t *testing.T) {
 	t.Parallel()
 
 	t.Run("client baseurl should be set", func(t *testing.T) {
@@ -210,7 +210,7 @@ func TestParserRequestURL(t *testing.T) {
 	})
 }
 
-func TestParserRequestHeader(t *testing.T) {
+func Test_Parser_Request_Header(t *testing.T) {
 	t.Parallel()
 
 	t.Run("client header should be set", func(t *testing.T) {
@@ -418,7 +418,7 @@ func TestParserRequestHeader(t *testing.T) {
 	})
 }
 
-func TestParserRequestBody(t *testing.T) {
+func Test_Parser_Request_Body(t *testing.T) {
 	t.Parallel()
 
 	t.Run("json body", func(t *testing.T) {

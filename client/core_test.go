@@ -13,7 +13,7 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-func TestExecFunc(t *testing.T) {
+func Test_Exec_Func(t *testing.T) {
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()
@@ -90,7 +90,7 @@ func TestExecFunc(t *testing.T) {
 	})
 }
 
-func TestExecute(t *testing.T) {
+func Test_Execute(t *testing.T) {
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()

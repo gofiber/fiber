@@ -140,11 +140,11 @@ func parserRequestHeader(c *Client, req *Request) error {
 	req.rawRequest.Header.SetMethod(req.Method())
 	// merge header
 	c.header.VisitAll(func(key, value []byte) {
-		req.rawRequest.Header.SetBytesKV(key, value)
+		req.rawRequest.Header.AddBytesKV(key, value)
 	})
 
 	req.header.VisitAll(func(key, value []byte) {
-		req.rawRequest.Header.SetBytesKV(key, value)
+		req.rawRequest.Header.AddBytesKV(key, value)
 	})
 
 	// according to data set content-type

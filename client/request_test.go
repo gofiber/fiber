@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-func TestRequestMethod(t *testing.T) {
+func Test_Request_Method(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest()
@@ -28,7 +29,7 @@ func TestRequestMethod(t *testing.T) {
 	utils.AssertEqual(t, "DELETE", req.Method())
 }
 
-func TestRequestURL(t *testing.T) {
+func Test_Request_URL(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest()
@@ -40,7 +41,7 @@ func TestRequestURL(t *testing.T) {
 	utils.AssertEqual(t, "https://example.com/normal", req.URL())
 }
 
-func TestRequestClient(t *testing.T) {
+func Test_Request_Client(t *testing.T) {
 	t.Parallel()
 
 	client := AcquireClient()
@@ -50,7 +51,7 @@ func TestRequestClient(t *testing.T) {
 	utils.AssertEqual(t, client, req.Client())
 }
 
-func TestRequestContext(t *testing.T) {
+func Test_Request_Context(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest()
@@ -66,7 +67,7 @@ func TestRequestContext(t *testing.T) {
 	utils.AssertEqual(t, "string", ctx.Value(key).(string))
 }
 
-func TestRequestHeader(t *testing.T) {
+func Test_Request_Header(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add header", func(t *testing.T) {
@@ -125,7 +126,7 @@ func TestRequestHeader(t *testing.T) {
 	})
 }
 
-func TestRequestQueryParam(t *testing.T) {
+func Test_Request_QueryParam(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add param", func(t *testing.T) {
@@ -245,7 +246,7 @@ func TestRequestQueryParam(t *testing.T) {
 	})
 }
 
-func TestRequestUA(t *testing.T) {
+func Test_Request_UA(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest().SetUserAgent("fiber")
@@ -255,7 +256,7 @@ func TestRequestUA(t *testing.T) {
 	utils.AssertEqual(t, "foo", req.UserAgent())
 }
 
-func TestReferer(t *testing.T) {
+func Test_Request_Referer(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest().SetReferer("http://example.com")
@@ -265,7 +266,7 @@ func TestReferer(t *testing.T) {
 	utils.AssertEqual(t, "https://example.com", req.Referer())
 }
 
-func TestRequestCookie(t *testing.T) {
+func Test_Request_Cookie(t *testing.T) {
 	t.Parallel()
 
 	t.Run("set cookie", func(t *testing.T) {
@@ -323,7 +324,7 @@ func TestRequestCookie(t *testing.T) {
 	})
 }
 
-func TestRequestPathParam(t *testing.T) {
+func Test_Request_PathParam(t *testing.T) {
 	t.Parallel()
 
 	t.Run("set path param", func(t *testing.T) {
@@ -381,7 +382,7 @@ func TestRequestPathParam(t *testing.T) {
 	})
 }
 
-func TestRequestFormData(t *testing.T) {
+func Test_Request_FormData(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add form data", func(t *testing.T) {
@@ -502,7 +503,7 @@ func TestRequestFormData(t *testing.T) {
 	})
 }
 
-func TestRequestFile(t *testing.T) {
+func Test_Request_File(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add file", func(t *testing.T) {
@@ -525,7 +526,7 @@ func createHelperServer(t *testing.T) (*fiber.App, *Client, func()) {
 	}
 }
 
-func TestRequestInvalidURL(t *testing.T) {
+func Test_Request_Invalid_URL(t *testing.T) {
 	t.Parallel()
 
 	resp, err := AcquireRequest().
@@ -535,7 +536,7 @@ func TestRequestInvalidURL(t *testing.T) {
 	utils.AssertEqual(t, (*Response)(nil), resp)
 }
 
-func TestRequestUnsupportProtocol(t *testing.T) {
+func Test_Request_Unsupport_Protocol(t *testing.T) {
 	t.Parallel()
 
 	resp, err := AcquireRequest().
@@ -544,7 +545,7 @@ func TestRequestUnsupportProtocol(t *testing.T) {
 	utils.AssertEqual(t, (*Response)(nil), resp)
 }
 
-func TestRequestGet(t *testing.T) {
+func Test_Request_Get(t *testing.T) {
 	t.Parallel()
 
 	app, client, start := createHelperServer(t)
@@ -564,7 +565,7 @@ func TestRequestGet(t *testing.T) {
 	}
 }
 
-func TestRequestPost(t *testing.T) {
+func Test_Request_Post(t *testing.T) {
 	t.Parallel()
 
 	app, client, start := createHelperServer(t)
@@ -587,7 +588,7 @@ func TestRequestPost(t *testing.T) {
 	}
 }
 
-func TestRequestHead(t *testing.T) {
+func Test_Request_Head(t *testing.T) {
 	t.Parallel()
 
 	app, client, start := createHelperServer(t)
@@ -609,7 +610,7 @@ func TestRequestHead(t *testing.T) {
 	}
 }
 
-func TestRequestPut(t *testing.T) {
+func Test_Request_Put(t *testing.T) {
 	t.Parallel()
 
 	app, client, start := createHelperServer(t)
@@ -632,33 +633,7 @@ func TestRequestPut(t *testing.T) {
 		resp.Close()
 	}
 }
-
-func TestRequestPatch(t *testing.T) {
-	t.Parallel()
-
-	app, client, start := createHelperServer(t)
-
-	app.Patch("/", func(c fiber.Ctx) error {
-		return c.SendString(c.FormValue("foo"))
-	})
-
-	go start()
-
-	for i := 0; i < 5; i++ {
-		resp, err := AcquireRequest().
-			SetClient(client).
-			SetFormData("foo", "bar").
-			Patch("http://example.com")
-
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-		utils.AssertEqual(t, "bar", resp.String())
-
-		resp.Close()
-	}
-}
-
-func TestRequestDelete(t *testing.T) {
+func Test_Request_Delete(t *testing.T) {
 	t.Parallel()
 
 	app, client, start := createHelperServer(t)
@@ -683,76 +658,173 @@ func TestRequestDelete(t *testing.T) {
 	}
 }
 
-// func Test_Client_UserAgent(t *testing.T) {
-// 	t.Parallel()
+func Test_Request_Options(t *testing.T) {
+	t.Parallel()
 
-// 	ln := fasthttputil.NewInmemoryListener()
+	app, client, start := createHelperServer(t)
 
-// 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app.Options("/", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).
+			SendString("options")
+	})
 
-// 	app.Get("/", func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().Header.UserAgent())
-// 	})
+	go start()
 
-// 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	for i := 0; i < 5; i++ {
+		resp, err := AcquireRequest().
+			SetClient(client).
+			Options("http://example.com")
 
-// 	t.Run("default", func(t *testing.T) {
-// 		for i := 0; i < 5; i++ {
-// 			a := Get("http://example.com")
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
+		utils.AssertEqual(t, "options", resp.String())
 
-// 			a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		resp.Close()
+	}
+}
 
-// 			code, body, errs := a.String()
+func Test_Request_Send(t *testing.T) {
+	t.Parallel()
 
-// 			utils.AssertEqual(t, fiber.StatusOK, code)
-// 			utils.AssertEqual(t, defaultUserAgent, body)
-// 			utils.AssertEqual(t, 0, len(errs))
-// 		}
-// 	})
+	app, client, start := createHelperServer(t)
 
-// 	t.Run("custom", func(t *testing.T) {
-// 		for i := 0; i < 5; i++ {
-// 			c := AcquireClient()
-// 			c.UserAgent = "ua"
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).
+			SendString("post")
+	})
 
-// 			a := c.Get("http://example.com")
+	go start()
 
-// 			a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+	for i := 0; i < 5; i++ {
+		resp, err := AcquireRequest().
+			SetClient(client).
+			SetURL("http://example.com").
+			SetMethod(fiber.MethodPost).
+			Send()
 
-// 			code, body, errs := a.String()
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
+		utils.AssertEqual(t, "post", resp.String())
 
-// 			utils.AssertEqual(t, fiber.StatusOK, code)
-// 			utils.AssertEqual(t, "ua", body)
-// 			utils.AssertEqual(t, 0, len(errs))
-// 			ReleaseClient(c)
-// 		}
-// 	})
-// }
+		resp.Close()
+	}
+}
 
-// func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		c.Request().Header.VisitAll(func(key, value []byte) {
-// 			if k := string(key); k == "K1" || k == "K2" {
-// 				_, _ = c.Write(key)
-// 				_, _ = c.Write(value)
-// 			}
-// 		})
-// 		return nil
-// 	}
+func Test_Request_Patch(t *testing.T) {
+	t.Parallel()
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.Set("k1", "v1").
-// 			SetBytesK([]byte("k1"), "v1").
-// 			SetBytesV("k1", []byte("v1")).
-// 			AddBytesK([]byte("k1"), "v11").
-// 			AddBytesV("k1", []byte("v22")).
-// 			AddBytesKV([]byte("k1"), []byte("v33")).
-// 			SetBytesKV([]byte("k2"), []byte("v2")).
-// 			Add("k2", "v22")
-// 	}
+	app, client, start := createHelperServer(t)
 
-// 	testAgent(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
-// }
+	app.Patch("/", func(c fiber.Ctx) error {
+		return c.SendString(c.FormValue("foo"))
+	})
+
+	go start()
+
+	for i := 0; i < 5; i++ {
+		resp, err := AcquireRequest().
+			SetClient(client).
+			SetFormData("foo", "bar").
+			Patch("http://example.com")
+
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
+		utils.AssertEqual(t, "bar", resp.String())
+
+		resp.Close()
+	}
+}
+
+func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted string, count ...int) {
+	t.Parallel()
+
+	app, client, start := createHelperServer(t)
+	app.Get("/", handler)
+	go start()
+
+	c := 1
+	if len(count) > 0 {
+		c = count[0]
+	}
+
+	for i := 0; i < c; i++ {
+		req := AcquireRequest().SetClient(client)
+		wrapAgent(req)
+
+		resp, err := req.Get("http://example.com")
+
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
+		utils.AssertEqual(t, excepted, resp.String())
+	}
+}
+
+func Test_Request_UserAgent_With_Server(t *testing.T) {
+	t.Parallel()
+
+	app, client, start := createHelperServer(t)
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.Send(c.Request().Header.UserAgent())
+	})
+
+	go start()
+
+	t.Run("default", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			resp, err := AcquireRequest().
+				SetClient(client).
+				Get("http://example.com")
+
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
+			utils.AssertEqual(t, defaultUserAgent, resp.String())
+
+			resp.Close()
+		}
+	})
+
+	t.Run("custom", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			resp, err := AcquireRequest().
+				SetClient(client).
+				SetUserAgent("ua").
+				Get("http://example.com")
+
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
+			utils.AssertEqual(t, "ua", resp.String())
+
+			resp.Close()
+		}
+	})
+}
+
+func Test_Request_Header_With_Server(t *testing.T) {
+	handler := func(c fiber.Ctx) error {
+		fmt.Println(c.Request().Header.String())
+		c.Request().Header.VisitAll(func(key, value []byte) {
+			if k := string(key); k == "K1" || k == "K2" {
+				_, _ = c.Write(key)
+				_, _ = c.Write(value)
+			}
+		})
+		return nil
+	}
+
+	wrapAgent := func(r *Request) {
+		r.SetHeader("k1", "v1").
+			AddHeader("k1", "v11").
+			AddHeaders(map[string][]string{
+				"k1": {"v22", "v33"},
+			}).
+			SetHeaders(map[string]string{
+				"k2": "v2",
+			}).
+			AddHeader("k2", "v22")
+	}
+
+	testAgent(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
+}
 
 // func Test_Client_Agent_Connection_Close(t *testing.T) {
 // 	handler := func(c fiber.Ctx) error {
@@ -1617,7 +1689,7 @@ func TestRequestDelete(t *testing.T) {
 
 // func (errorWriter) Write(_ []byte) (int, error) { return 0, errors.New("Write error") }
 
-func TestSetValWithStruct(t *testing.T) {
+func Test_SetValWithStruct(t *testing.T) {
 	t.Parallel()
 
 	// test SetValWithStruct vai QueryParam struct.
