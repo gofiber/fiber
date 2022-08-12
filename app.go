@@ -366,6 +366,9 @@ type Config struct {
 	//
 	// Optional. Default: DefaultColors
 	ColorScheme Colors `json:"color_scheme"`
+
+	// TLS handler
+	tlsHandler *tlsHandler
 }
 
 // Static defines configuration options when defining static assets.

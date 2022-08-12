@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -65,6 +66,18 @@ type Ctx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
+	tlsHandler          *tlsHandler          // Contains information from a ClientHello message in order to guide application logic
+}
+
+// tlsHandle object
+type tlsHandler struct {
+	clientHelloInfo *tls.ClientHelloInfo
+}
+
+// GetClientInfo Callback function to set CHI
+func (t *tlsHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	t.clientHelloInfo = info
+	return nil, nil
 }
 
 // Range data for c.Range
@@ -130,6 +143,8 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	c.fasthttp = fctx
 	// reset base uri
 	c.baseURI = ""
+	// Attach tlsHandler object to context
+	c.tlsHandler = app.config.tlsHandler
 	// Prettify path
 	c.configDependentPaths()
 	return c

@@ -81,22 +81,28 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
 	}
+	// Set TLS config with handler
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+	}
+	tlsHandler := &tlsHandler{}
+	config := &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		Certificates: []tls.Certificate{
+			cert,
+		},
+		GetCertificate: tlsHandler.GetClientInfo,
+	}
 	// Prefork is supported
 	if app.config.Prefork {
-		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-		if err != nil {
-			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
-		}
-		config := &tls.Config{
-			MinVersion: tls.VersionTLS12,
-			Certificates: []tls.Certificate{
-				cert,
-			},
-		}
 		return app.prefork(app.config.Network, addr, config)
 	}
+
 	// Setup listener
 	ln, err := net.Listen(app.config.Network, addr)
+	ln = tls.NewListener(ln, config)
+
 	if err != nil {
 		return err
 	}
@@ -110,8 +116,11 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+	// Attach the tlsHandler
+	app.config.tlsHandler = tlsHandler
+
 	// Start listening
-	return app.server.ServeTLS(ln, certFile, keyFile)
+	return app.server.Serve(ln)
 }
 
 // ListenMutualTLS serves HTTPS requests from the given addr.
