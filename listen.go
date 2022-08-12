@@ -118,7 +118,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	}
 
 	// Attach the tlsHandler to the config
-	app.config.tlsHandler = tlsHandler
+	app.tlsHandler = tlsHandler
 
 	// Start listening
 	return app.server.Serve(ln)
@@ -181,7 +181,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	}
 
 	// Attach the tlsHandler to the config
-	app.config.tlsHandler = tlsHandler
+	app.tlsHandler = tlsHandler
 
 	// Start listening
 	return app.server.Serve(ln)

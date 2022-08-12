@@ -112,6 +112,8 @@ type App struct {
 	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
+	// TLS handler
+	tlsHandler *tlsHandler
 }
 
 // Config is a struct holding the server settings.
@@ -366,9 +368,6 @@ type Config struct {
 	//
 	// Optional. Default: DefaultColors
 	ColorScheme Colors `json:"color_scheme"`
-
-	// TLS handler
-	tlsHandler *tlsHandler
 }
 
 // Static defines configuration options when defining static assets.

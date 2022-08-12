@@ -144,7 +144,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	// reset base uri
 	c.baseURI = ""
 	// Attach tlsHandler object to context
-	c.tlsHandler = app.config.tlsHandler
+	c.tlsHandler = app.tlsHandler
 	// Prettify path
 	c.configDependentPaths()
 	return c
