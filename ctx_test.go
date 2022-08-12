@@ -1247,6 +1247,28 @@ func Test_Ctx_Method(t *testing.T) {
 	utils.AssertEqual(t, MethodPost, c.Method())
 }
 
+// go test -run Test_Ctx_ClientHelloInfo
+func Test_Ctx_ClientHelloInfo(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Post("/test", func(c *Ctx) error {
+		result := c.ClientHelloInfo()
+		if result != nil {
+			panic("Invalid ClientHelloInfo, it should be nil")
+		}
+
+		return c.SendString("ClientHelloInfo is nil")
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	fctx.Request.Header.SetMethod(MethodPost)
+	fctx.Request.SetRequestURI("/test")
+
+	app.Handler()(fctx)
+	fmt.Println(fctx.Response.Body())
+	utils.AssertEqual(t, []byte("ClientHelloInfo is nil"), fctx.Response.Body())
+}
+
 // go test -run Test_Ctx_InvalidMethod
 func Test_Ctx_InvalidMethod(t *testing.T) {
 	t.Parallel()
