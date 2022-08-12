@@ -807,7 +807,11 @@ func (c *Ctx) MultipartForm() (*multipart.Form, error) {
 
 // ClientHelloInfo return CHI from context
 func (c *Ctx) ClientHelloInfo() *tls.ClientHelloInfo {
-	return c.tlsHandler.clientHelloInfo
+	if c.tlsHandler != nil {
+		return c.tlsHandler.clientHelloInfo
+	}
+
+	return nil
 }
 
 // Next executes the next method in the stack that matches the current route.
