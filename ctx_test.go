@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -1254,19 +1255,24 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	app.Post("/test", func(c *Ctx) error {
 		result := c.ClientHelloInfo()
 		if result != nil {
-			return NewError(500, "Invalid ClientHelloInfo, it should be nil")
+			return c.SendString(result.ServerName)
 		}
 
 		return c.SendString("ClientHelloInfo is nil")
 	})
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(MethodPost)
-	fctx.Request.SetRequestURI("/test")
+	// Test without TLS handler
+	resp, _ := app.Test(httptest.NewRequest(MethodPost, "/test", nil))
+	body, _ := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, []byte("ClientHelloInfo is nil"), body)
 
-	app.Handler()(fctx)
-	fmt.Println(fctx.Response.Body())
-	utils.AssertEqual(t, []byte("ClientHelloInfo is nil"), fctx.Response.Body())
+	// Test with TLS Handler
+	app.tlsHandler = &tlsHandler{clientHelloInfo: &tls.ClientHelloInfo{
+		ServerName: "example.golang",
+	}}
+	resp, _ = app.Test(httptest.NewRequest(MethodPost, "/test", nil))
+	body, _ = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, []byte("example.golang"), body)
 }
 
 // go test -run Test_Ctx_InvalidMethod
