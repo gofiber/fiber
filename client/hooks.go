@@ -210,7 +210,10 @@ func parserRequestBody(c *Client, req *Request) (err error) {
 		req.rawRequest.SetBody(req.formData.QueryString())
 	case filesBody:
 		mw := multipart.NewWriter(req.rawRequest.BodyWriter())
-		mw.SetBoundary(req.boundary)
+		err = mw.SetBoundary(req.boundary)
+		if err != nil {
+			return
+		}
 		defer func() {
 			err = mw.Close()
 			if err != nil {
@@ -271,11 +274,14 @@ func parserRequestBody(c *Client, req *Request) (err error) {
 					break
 				}
 
-				w.Write(b)
+				_, err = w.Write(b)
+				if err != nil {
+					return err
+				}
 			}
 
 			// ignore err
-			v.reader.Close()
+			_ = v.reader.Close()
 		}
 	case rawBody:
 		if body, ok := req.body.([]byte); ok {
