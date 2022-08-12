@@ -116,7 +116,8 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
-	// Attach the tlsHandler
+
+	// Attach the tlsHandler to the config
 	app.config.tlsHandler = tlsHandler
 
 	// Start listening
@@ -144,6 +145,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	clientCertPool := x509.NewCertPool()
 	clientCertPool.AppendCertsFromPEM(clientCACert)
 
+	tlsHandler := &tlsHandler{}
 	config := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		ClientAuth: tls.RequireAndVerifyClientCert,
@@ -151,6 +153,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 		Certificates: []tls.Certificate{
 			cert,
 		},
+		GetCertificate: tlsHandler.GetClientInfo,
 	}
 
 	// Prefork is supported
@@ -176,6 +179,9 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
+	// Attach the tlsHandler to the config
+	app.config.tlsHandler = tlsHandler
 
 	// Start listening
 	return app.server.Serve(ln)

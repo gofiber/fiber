@@ -805,6 +805,11 @@ func (c *Ctx) MultipartForm() (*multipart.Form, error) {
 	return c.fasthttp.MultipartForm()
 }
 
+// ClientHelloInfo return CHI from context
+func (c *Ctx) ClientHelloInfo() *tls.ClientHelloInfo {
+	return c.tlsHandler.clientHelloInfo
+}
+
 // Next executes the next method in the stack that matches the current route.
 func (c *Ctx) Next() (err error) {
 	// Increment handler index
