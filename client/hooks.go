@@ -192,7 +192,7 @@ func parserRequestHeader(c *Client, req *Request) error {
 
 // parserRequestBody automatically serializes the data according to
 // the data type and stores it in the body of the rawRequest
-func parserRequestBody(c *Client, req *Request) (err error) {
+func parserRequestBody(c *Client, req *Request) error {
 	switch req.bodyType {
 	case jsonBody:
 		body, err := c.core.jsonMarshal(req.body)
@@ -210,12 +210,12 @@ func parserRequestBody(c *Client, req *Request) (err error) {
 		req.rawRequest.SetBody(req.formData.QueryString())
 	case filesBody:
 		mw := multipart.NewWriter(req.rawRequest.BodyWriter())
-		err = mw.SetBoundary(req.boundary)
+		err := mw.SetBoundary(req.boundary)
 		if err != nil {
-			return
+			return err
 		}
 		defer func() {
-			err = mw.Close()
+			err := mw.Close()
 			if err != nil {
 				return
 			}
@@ -229,7 +229,7 @@ func parserRequestBody(c *Client, req *Request) (err error) {
 			err = mw.WriteField(utils.UnsafeString(key), utils.UnsafeString(value))
 		})
 		if err != nil {
-			return
+			return err
 		}
 
 		// add file
@@ -242,30 +242,30 @@ func parserRequestBody(c *Client, req *Request) (err error) {
 			// if name is not exist, set name
 			if v.name == "" && v.path != "" {
 				v.path = filepath.Clean(v.path)
-				v.name = filepath.Base(v.name)
+				v.name = filepath.Base(v.path)
 			}
 
 			// if param is not exist, set it
-			if v.paramName == "" {
-				v.paramName = "file" + fmt.Sprint(i)
+			if v.fieldName == "" {
+				v.fieldName = "file" + fmt.Sprint(i+1)
 			}
 
 			// check the reader
 			if v.reader == nil {
 				v.reader, err = os.Open(v.path)
 				if err != nil {
-					return
+					return err
 				}
 			}
 
 			// wirte file
-			w, err := mw.CreateFormFile(v.paramName, v.name)
+			w, err := mw.CreateFormFile(v.fieldName, v.name)
 			if err != nil {
 				return err
 			}
 
 			for {
-				_, err := v.reader.Read(b)
+				n, err := v.reader.Read(b)
 				if err != nil && err != io.EOF {
 					return err
 				}
@@ -274,7 +274,7 @@ func parserRequestBody(c *Client, req *Request) (err error) {
 					break
 				}
 
-				_, err = w.Write(b)
+				_, err = w.Write(b[:n])
 				if err != nil {
 					return err
 				}

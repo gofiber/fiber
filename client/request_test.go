@@ -1,9 +1,16 @@
 package client
 
 import (
+	"bytes"
 	"context"
-	"fmt"
+	"errors"
+	"io"
+	"mime/multipart"
 	"net"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -756,52 +763,34 @@ func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Reques
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
 		utils.AssertEqual(t, excepted, resp.String())
+		resp.Close()
 	}
 }
 
-func Test_Request_UserAgent_With_Server(t *testing.T) {
+func testAgentFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted error, count ...int) {
 	t.Parallel()
 
 	app, client, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
-		return c.Send(c.Request().Header.UserAgent())
-	})
-
+	app.Get("/", handler)
 	go start()
 
-	t.Run("default", func(t *testing.T) {
-		for i := 0; i < 5; i++ {
-			resp, err := AcquireRequest().
-				SetClient(client).
-				Get("http://example.com")
+	c := 1
+	if len(count) > 0 {
+		c = count[0]
+	}
 
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-			utils.AssertEqual(t, defaultUserAgent, resp.String())
+	for i := 0; i < c; i++ {
+		req := AcquireRequest().SetClient(client)
+		wrapAgent(req)
 
-			resp.Close()
-		}
-	})
+		_, err := req.Get("http://example.com")
 
-	t.Run("custom", func(t *testing.T) {
-		for i := 0; i < 5; i++ {
-			resp, err := AcquireRequest().
-				SetClient(client).
-				SetUserAgent("ua").
-				Get("http://example.com")
-
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-			utils.AssertEqual(t, "ua", resp.String())
-
-			resp.Close()
-		}
-	})
+		utils.AssertEqual(t, excepted.Error(), err.Error())
+	}
 }
 
 func Test_Request_Header_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
-		fmt.Println(c.Request().Header.String())
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
 				_, _ = c.Write(key)
@@ -841,61 +830,53 @@ func Test_Request_Header_With_Server(t *testing.T) {
 // 	testAgent(t, handler, wrapAgent, "close")
 // }
 
-// func Test_Client_Agent_UserAgent(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().Header.UserAgent())
-// 	}
+func Test_Request_UserAgent_With_Server(t *testing.T) {
+	t.Parallel()
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.UserAgent("ua").
-// 			UserAgentBytes([]byte("ua"))
-// 	}
+	handler := func(c fiber.Ctx) error {
+		return c.Send(c.Request().Header.UserAgent())
+	}
 
-// 	testAgent(t, handler, wrapAgent, "ua")
-// }
+	t.Run("default", func(t *testing.T) {
+		testAgent(t, handler, func(agent *Request) {}, defaultUserAgent, 5)
+	})
 
-// func Test_Client_Agent_Cookie(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.SendString(
-// 			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
-// 	}
+	t.Run("custom", func(t *testing.T) {
+		testAgent(t, handler, func(agent *Request) {
+			agent.SetUserAgent("ua")
+		}, "ua", 5)
+	})
+}
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.Cookie("k1", "v1").
-// 			CookieBytesK([]byte("k2"), "v2").
-// 			CookieBytesKV([]byte("k2"), []byte("v2")).
-// 			Cookies("k3", "v3", "k4", "v4").
-// 			CookiesBytesKV([]byte("k3"), []byte("v3"), []byte("k4"), []byte("v4"))
-// 	}
+func Test_Request_Cookie_With_Server(t *testing.T) {
+	handler := func(c fiber.Ctx) error {
+		return c.SendString(
+			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
+	}
 
-// 	testAgent(t, handler, wrapAgent, "v1v2v3v4")
-// }
+	wrapAgent := func(req *Request) {
+		req.SetCookie("k1", "v1").
+			SetCookies(map[string]string{
+				"k2": "v2",
+				"k3": "v3",
+				"k4": "v4",
+			}).DelCookies("k4")
+	}
 
-// func Test_Client_Agent_Referer(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().Header.Referer())
-// 	}
+	testAgent(t, handler, wrapAgent, "v1v2v3")
+}
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.Referer("http://referer.com").
-// 			RefererBytes([]byte("http://referer.com"))
-// 	}
+func Test_Request_Referer_With_Server(t *testing.T) {
+	handler := func(c fiber.Ctx) error {
+		return c.Send(c.Request().Header.Referer())
+	}
 
-// 	testAgent(t, handler, wrapAgent, "http://referer.com")
-// }
+	wrapAgent := func(req *Request) {
+		req.SetReferer("http://referer.com")
+	}
 
-// func Test_Client_Agent_ContentType(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().Header.ContentType())
-// 	}
-
-// 	wrapAgent := func(a *Agent) {
-// 		a.ContentType("custom-type").
-// 			ContentTypeBytes([]byte("custom-type"))
-// 	}
-
-// 	testAgent(t, handler, wrapAgent, "custom-type")
-// }
+	testAgent(t, handler, wrapAgent, "http://referer.com")
+}
 
 // func Test_Client_Agent_Host(t *testing.T) {
 // 	t.Parallel()
@@ -925,18 +906,20 @@ func Test_Request_Header_With_Server(t *testing.T) {
 // 	utils.AssertEqual(t, 0, len(errs))
 // }
 
-// func Test_Client_Agent_QueryString(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().URI().QueryString())
-// 	}
+func Test_Request_QueryString_With_Server(t *testing.T) {
+	handler := func(c fiber.Ctx) error {
+		return c.Send(c.Request().URI().QueryString())
+	}
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.QueryString("foo=bar&bar=baz").
-// 			QueryStringBytes([]byte("foo=bar&bar=baz"))
-// 	}
+	wrapAgent := func(req *Request) {
+		req.SetParam("foo", "bar").
+			SetParams(map[string]string{
+				"bar": "baz",
+			})
+	}
 
-// 	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")
-// }
+	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")
+}
 
 // func Test_Client_Agent_BasicAuth(t *testing.T) {
 // 	handler := func(c fiber.Ctx) error {
@@ -957,121 +940,248 @@ func Test_Request_Header_With_Server(t *testing.T) {
 // 	testAgent(t, handler, wrapAgent, "foo:bar")
 // }
 
-// func Test_Client_Agent_BodyString(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().Body())
-// 	}
+func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
+	t.Helper()
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.BodyString("foo=bar&bar=baz")
-// 	}
+	basename := filepath.Base(filename)
+	utils.AssertEqual(t, fh.Filename, basename)
 
-// 	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")
-// }
+	b1, err := os.ReadFile(filename)
+	utils.AssertEqual(t, nil, err)
 
-// func Test_Client_Agent_Body(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().Body())
-// 	}
+	b2 := make([]byte, fh.Size)
+	f, err := fh.Open()
+	utils.AssertEqual(t, nil, err)
+	defer func() { _ = f.Close() }()
+	_, err = f.Read(b2)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, b1, b2)
+}
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.Body([]byte("foo=bar&bar=baz"))
-// 	}
+func Test_Request_Body_With_Server(t *testing.T) {
+	t.Parallel()
 
-// 	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")
-// }
+	t.Run("json body", func(t *testing.T) {
+		testAgent(t,
+			func(c fiber.Ctx) error {
+				utils.AssertEqual(t, "application/json", string(c.Request().Header.ContentType()))
+				return c.SendString(string(c.Request().Body()))
+			},
+			func(agent *Request) {
+				agent.SetJSON(map[string]string{
+					"success": "hello",
+				})
+			},
+			"{\"success\":\"hello\"}",
+		)
+	})
 
-// func Test_Client_Agent_BodyStream(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().Body())
-// 	}
+	t.Run("json error", func(t *testing.T) {
+		testAgentFail(t,
+			func(c fiber.Ctx) error {
+				return c.SendString("")
+			},
+			func(agent *Request) {
+				agent.SetJSON(complex(1, 1))
+			},
+			errors.New("json: unsupported type: complex128"),
+		)
+	})
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.BodyStream(strings.NewReader("body stream"), -1)
-// 	}
+	t.Run("xml body", func(t *testing.T) {
+		testAgent(t,
+			func(c fiber.Ctx) error {
+				utils.AssertEqual(t, "application/xml", string(c.Request().Header.ContentType()))
+				return c.SendString(string(c.Request().Body()))
+			},
+			func(agent *Request) {
+				type args struct {
+					Content string `xml:"content"`
+				}
+				agent.SetXML(args{
+					Content: "hello",
+				})
+			},
+			"<args><content>hello</content></args>",
+		)
+	})
 
-// 	testAgent(t, handler, wrapAgent, "body stream")
-// }
+	t.Run("xml error", func(t *testing.T) {
+		testAgentFail(t,
+			func(c fiber.Ctx) error {
+				return c.SendString("")
+			},
+			func(agent *Request) {
+				agent.SetXML(complex(1, 1))
+			},
+			errors.New("xml: unsupported type: complex128"),
+		)
+	})
 
-// func Test_Client_Agent_Custom_Response(t *testing.T) {
+	t.Run("formdata", func(t *testing.T) {
+		testAgent(t,
+			func(c fiber.Ctx) error {
+				utils.AssertEqual(t, fiber.MIMEApplicationForm, string(c.Request().Header.ContentType()))
+				return c.Send(c.Request().Body())
+			},
+			func(agent *Request) {
+				agent.SetFormData("foo", "bar").
+					SetFormDatas(map[string]string{
+						"bar":   "baz",
+						"fiber": "fast",
+					})
+			},
+			"foo=bar&bar=baz&fiber=fast")
+	})
+
+	t.Run("multipart form", func(t *testing.T) {
+		t.Parallel()
+
+		app, client, start := createHelperServer(t)
+		app.Post("/", func(c fiber.Ctx) error {
+			utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
+
+			mf, err := c.MultipartForm()
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, "bar", mf.Value["foo"][0])
+
+			return c.Send(c.Request().Body())
+		})
+
+		go start()
+
+		req := AcquireRequest().
+			SetClient(client).
+			SetBoundary("myBoundary").
+			SetFormData("foo", "bar").
+			AddFiles(AcquireFile(
+				SetFileName("hello.txt"),
+				SetFileFieldName("foo"),
+				SetFileReader(io.NopCloser(strings.NewReader("world"))),
+			))
+
+		resp, err := req.Post("http://exmaple.com")
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
+
+		form, err := multipart.NewReader(bytes.NewReader(resp.Body()), "myBoundary").ReadForm(1024 * 1024)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "bar", form.Value["foo"][0])
+		resp.Close()
+	})
+
+	t.Run("multipart form send file", func(t *testing.T) {
+		t.Parallel()
+
+		app, client, start := createHelperServer(t)
+		app.Post("/", func(c fiber.Ctx) error {
+			utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
+
+			fh1, err := c.FormFile("field1")
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fh1.Filename, "name")
+			buf := make([]byte, fh1.Size)
+			f, err := fh1.Open()
+			utils.AssertEqual(t, nil, err)
+			defer func() { _ = f.Close() }()
+			_, err = f.Read(buf)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, "form file", string(buf))
+
+			fh2, err := c.FormFile("file2")
+			utils.AssertEqual(t, nil, err)
+			checkFormFile(t, fh2, "../.github/testdata/index.html")
+
+			fh3, err := c.FormFile("file3")
+			utils.AssertEqual(t, nil, err)
+			checkFormFile(t, fh3, "../.github/testdata/index.tmpl")
+
+			return c.SendString("multipart form files")
+		})
+
+		go start()
+
+		for i := 0; i < 5; i++ {
+			req := AcquireRequest().
+				SetClient(client).
+				AddFiles(
+					AcquireFile(
+						SetFileFieldName("field1"),
+						SetFileName("name"),
+						SetFileReader(io.NopCloser(bytes.NewReader([]byte("form file")))),
+					),
+				).
+				AddFile("../.github/testdata/index.html").
+				AddFile("../.github/testdata/index.tmpl").
+				SetBoundary("myBoundary")
+
+			resp, err := req.Post("http://example.com")
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, "multipart form files", resp.String())
+
+			resp.Close()
+		}
+	})
+
+	t.Run("multipart random boundary", func(t *testing.T) {
+		t.Parallel()
+
+		app, client, start := createHelperServer(t)
+		app.Post("/", func(c fiber.Ctx) error {
+			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{35}`)
+			utils.AssertEqual(t, true, reg.MatchString(c.Get(fiber.HeaderContentType)))
+
+			return c.Send(c.Request().Body())
+		})
+
+		go start()
+
+		req := AcquireRequest().
+			SetClient(client).
+			SetFormData("foo", "bar").
+			AddFiles(AcquireFile(
+				SetFileName("hello.txt"),
+				SetFileFieldName("foo"),
+				SetFileReader(io.NopCloser(strings.NewReader("world"))),
+			))
+
+		resp, err := req.Post("http://exmaple.com")
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
+	})
+
+	t.Run("raw body", func(t *testing.T) {
+		testAgent(t,
+			func(c fiber.Ctx) error {
+				return c.SendString(string(c.Request().Body()))
+			},
+			func(agent *Request) {
+				agent.SetRawBody([]byte("hello"))
+			},
+			"hello",
+		)
+	})
+}
+
+// func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
 // 	t.Parallel()
 
-// 	ln := fasthttputil.NewInmemoryListener()
+// 	a := Post("http://example.com").
+// 		Boundary("*").
+// 		MultipartForm(nil)
 
-// 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-
-// 	app.Get("/", func(c fiber.Ctx) error {
-// 		return c.SendString("custom")
-// 	})
-
-// 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
-
-// 	for i := 0; i < 5; i++ {
-// 		a := AcquireAgent()
-// 		resp := AcquireResponse()
-
-// 		req := a.Request()
-// 		req.Header.SetMethod(fiber.MethodGet)
-// 		req.SetRequestURI("http://example.com")
-
-// 		utils.AssertEqual(t, nil, a.Parse())
-
-// 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-
-// 		code, body, errs := a.SetResponse(resp).
-// 			String()
-
-// 		utils.AssertEqual(t, fiber.StatusOK, code)
-// 		utils.AssertEqual(t, "custom", body)
-// 		utils.AssertEqual(t, "custom", string(resp.Body()))
-// 		utils.AssertEqual(t, 0, len(errs))
-
-// 		ReleaseResponse(resp)
-// 	}
+// 	utils.AssertEqual(t, 1, len(a.errs))
+// 	utils.AssertEqual(t, "mime: invalid boundary character", a.errs[0].Error())
 // }
 
-// func Test_Client_Agent_Dest(t *testing.T) {
+// func Test_Client_Agent_SendFile_Error(t *testing.T) {
 // 	t.Parallel()
 
-// 	ln := fasthttputil.NewInmemoryListener()
+// 	a := Post("http://example.com").
+// 		SendFile("non-exist-file!", "")
 
-// 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-
-// 	app.Get("/", func(c fiber.Ctx) error {
-// 		return c.SendString("dest")
-// 	})
-
-// 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
-
-// 	t.Run("small dest", func(t *testing.T) {
-// 		dest := []byte("de")
-
-// 		a := Get("http://example.com")
-
-// 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-
-// 		code, body, errs := a.Dest(dest[:0]).String()
-
-// 		utils.AssertEqual(t, fiber.StatusOK, code)
-// 		utils.AssertEqual(t, "dest", body)
-// 		utils.AssertEqual(t, "de", string(dest))
-// 		utils.AssertEqual(t, 0, len(errs))
-// 	})
-
-// 	t.Run("enough dest", func(t *testing.T) {
-// 		dest := []byte("foobar")
-
-// 		a := Get("http://example.com")
-
-// 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-
-// 		code, body, errs := a.Dest(dest[:0]).String()
-
-// 		utils.AssertEqual(t, fiber.StatusOK, code)
-// 		utils.AssertEqual(t, "dest", body)
-// 		utils.AssertEqual(t, "destar", string(dest))
-// 		utils.AssertEqual(t, 0, len(errs))
-// 	})
+// 	utils.AssertEqual(t, 1, len(a.errs))
+// 	utils.AssertEqual(t, true, strings.Contains(a.errs[0].Error(), "open non-exist-file!"))
 // }
 
 // // readErrorConn is a struct for testing retryIf
@@ -1132,240 +1242,6 @@ func Test_Request_Header_With_Server(t *testing.T) {
 // 	_, _, errs := a.String()
 // 	utils.AssertEqual(t, dialsCount, 4)
 // 	utils.AssertEqual(t, 0, len(errs))
-// }
-
-// func Test_Client_Agent_Json(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		utils.AssertEqual(t, fiber.MIMEApplicationJSON, string(c.Request().Header.ContentType()))
-
-// 		return c.Send(c.Request().Body())
-// 	}
-
-// 	wrapAgent := func(a *Agent) {
-// 		a.JSON(data{Success: true})
-// 	}
-
-// 	testAgent(t, handler, wrapAgent, `{"success":true}`)
-// }
-
-// func Test_Client_Agent_Json_Error(t *testing.T) {
-// 	a := Get("http://example.com").
-// 		JSONEncoder(json.Marshal).
-// 		JSON(complex(1, 1))
-
-// 	_, body, errs := a.String()
-
-// 	utils.AssertEqual(t, "", body)
-// 	utils.AssertEqual(t, 1, len(errs))
-// 	utils.AssertEqual(t, "json: unsupported type: complex128", errs[0].Error())
-// }
-
-// func Test_Client_Agent_XML(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		utils.AssertEqual(t, fiber.MIMEApplicationXML, string(c.Request().Header.ContentType()))
-
-// 		return c.Send(c.Request().Body())
-// 	}
-
-// 	wrapAgent := func(a *Agent) {
-// 		a.XML(data{Success: true})
-// 	}
-
-// 	testAgent(t, handler, wrapAgent, "<data><success>true</success></data>")
-// }
-
-// func Test_Client_Agent_XML_Error(t *testing.T) {
-// 	a := Get("http://example.com").
-// 		XML(complex(1, 1))
-
-// 	_, body, errs := a.String()
-
-// 	utils.AssertEqual(t, "", body)
-// 	utils.AssertEqual(t, 1, len(errs))
-// 	utils.AssertEqual(t, "xml: unsupported type: complex128", errs[0].Error())
-// }
-
-// func Test_Client_Agent_Form(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		utils.AssertEqual(t, fiber.MIMEApplicationForm, string(c.Request().Header.ContentType()))
-
-// 		return c.Send(c.Request().Body())
-// 	}
-
-// 	args := AcquireArgs()
-
-// 	args.Set("foo", "bar")
-
-// 	wrapAgent := func(a *Agent) {
-// 		a.Form(args)
-// 	}
-
-// 	testAgent(t, handler, wrapAgent, "foo=bar")
-
-// 	ReleaseArgs(args)
-// }
-
-// func Test_Client_Agent_MultipartForm(t *testing.T) {
-// 	t.Parallel()
-
-// 	ln := fasthttputil.NewInmemoryListener()
-
-// 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-
-// 	app.Post("/", func(c fiber.Ctx) error {
-// 		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
-
-// 		mf, err := c.MultipartForm()
-// 		utils.AssertEqual(t, nil, err)
-// 		utils.AssertEqual(t, "bar", mf.Value["foo"][0])
-
-// 		return c.Send(c.Request().Body())
-// 	})
-
-// 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
-
-// 	args := AcquireArgs()
-
-// 	args.Set("foo", "bar")
-
-// 	a := Post("http://example.com").
-// 		Boundary("myBoundary").
-// 		MultipartForm(args)
-
-// 	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-
-// 	code, body, errs := a.String()
-
-// 	utils.AssertEqual(t, fiber.StatusOK, code)
-// 	utils.AssertEqual(t, "--myBoundary\r\nContent-Disposition: form-data; name=\"foo\"\r\n\r\nbar\r\n--myBoundary--\r\n", body)
-// 	utils.AssertEqual(t, 0, len(errs))
-// 	ReleaseArgs(args)
-// }
-
-// func Test_Client_Agent_MultipartForm_Errors(t *testing.T) {
-// 	t.Parallel()
-
-// 	a := AcquireAgent()
-// 	a.mw = &errorMultipartWriter{}
-
-// 	args := AcquireArgs()
-// 	args.Set("foo", "bar")
-
-// 	ff1 := &FormFile{"", "name1", []byte("content"), false}
-// 	ff2 := &FormFile{"", "name2", []byte("content"), false}
-// 	a.FileData(ff1, ff2).
-// 		MultipartForm(args)
-
-// 	utils.AssertEqual(t, 4, len(a.errs))
-// 	ReleaseArgs(args)
-// }
-
-// func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
-// 	t.Parallel()
-
-// 	ln := fasthttputil.NewInmemoryListener()
-
-// 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-
-// 	app.Post("/", func(c fiber.Ctx) error {
-// 		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
-
-// 		fh1, err := c.FormFile("field1")
-// 		utils.AssertEqual(t, nil, err)
-// 		utils.AssertEqual(t, fh1.Filename, "name")
-// 		buf := make([]byte, fh1.Size)
-// 		f, err := fh1.Open()
-// 		utils.AssertEqual(t, nil, err)
-// 		defer func() { _ = f.Close() }()
-// 		_, err = f.Read(buf)
-// 		utils.AssertEqual(t, nil, err)
-// 		utils.AssertEqual(t, "form file", string(buf))
-
-// 		fh2, err := c.FormFile("index")
-// 		utils.AssertEqual(t, nil, err)
-// 		checkFormFile(t, fh2, ".github/testdata/index.html")
-
-// 		fh3, err := c.FormFile("file3")
-// 		utils.AssertEqual(t, nil, err)
-// 		checkFormFile(t, fh3, ".github/testdata/index.tmpl")
-
-// 		return c.SendString("multipart form files")
-// 	})
-
-// 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
-
-// 	for i := 0; i < 5; i++ {
-// 		ff := AcquireFormFile()
-// 		ff.Fieldname = "field1"
-// 		ff.Name = "name"
-// 		ff.Content = []byte("form file")
-
-// 		a := Post("http://example.com").
-// 			Boundary("myBoundary").
-// 			FileData(ff).
-// 			SendFiles(".github/testdata/index.html", "index", ".github/testdata/index.tmpl").
-// 			MultipartForm(nil)
-
-// 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-
-// 		code, body, errs := a.String()
-
-// 		utils.AssertEqual(t, fiber.StatusOK, code)
-// 		utils.AssertEqual(t, "multipart form files", body)
-// 		utils.AssertEqual(t, 0, len(errs))
-
-// 		ReleaseFormFile(ff)
-// 	}
-// }
-
-// func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
-// 	t.Helper()
-
-// 	basename := filepath.Base(filename)
-// 	utils.AssertEqual(t, fh.Filename, basename)
-
-// 	b1, err := os.ReadFile(filename)
-// 	utils.AssertEqual(t, nil, err)
-
-// 	b2 := make([]byte, fh.Size)
-// 	f, err := fh.Open()
-// 	utils.AssertEqual(t, nil, err)
-// 	defer func() { _ = f.Close() }()
-// 	_, err = f.Read(b2)
-// 	utils.AssertEqual(t, nil, err)
-// 	utils.AssertEqual(t, b1, b2)
-// }
-
-// func Test_Client_Agent_Multipart_Random_Boundary(t *testing.T) {
-// 	t.Parallel()
-
-// 	a := Post("http://example.com").
-// 		MultipartForm(nil)
-
-// 	reg := regexp.MustCompile(`multipart/form-data; boundary=\w{30}`)
-
-// 	utils.AssertEqual(t, true, reg.Match(a.req.Header.Peek(fiber.HeaderContentType)))
-// }
-
-// func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
-// 	t.Parallel()
-
-// 	a := Post("http://example.com").
-// 		Boundary("*").
-// 		MultipartForm(nil)
-
-// 	utils.AssertEqual(t, 1, len(a.errs))
-// 	utils.AssertEqual(t, "mime: invalid boundary character", a.errs[0].Error())
-// }
-
-// func Test_Client_Agent_SendFile_Error(t *testing.T) {
-// 	t.Parallel()
-
-// 	a := Post("http://example.com").
-// 		SendFile("non-exist-file!", "")
-
-// 	utils.AssertEqual(t, 1, len(a.errs))
-// 	utils.AssertEqual(t, true, strings.Contains(a.errs[0].Error(), "open non-exist-file!"))
 // }
 
 // func Test_Client_Debug(t *testing.T) {
@@ -1632,37 +1508,6 @@ func Test_Request_Header_With_Server(t *testing.T) {
 // func Test_AddMissingPort_TLS(t *testing.T) {
 // 	addr := addMissingPort("example.com", true)
 // 	utils.AssertEqual(t, "example.com:443", addr)
-// }
-
-// func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Agent), excepted string, count ...int) {
-// 	t.Parallel()
-
-// 	ln := fasthttputil.NewInmemoryListener()
-
-// 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-
-// 	app.Get("/", handler)
-
-// 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
-
-// 	c := 1
-// 	if len(count) > 0 {
-// 		c = count[0]
-// 	}
-
-// 	for i := 0; i < c; i++ {
-// 		a := Get("http://example.com")
-
-// 		wrapAgent(a)
-
-// 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-
-// 		code, body, errs := a.String()
-
-// 		utils.AssertEqual(t, fiber.StatusOK, code)
-// 		utils.AssertEqual(t, excepted, body)
-// 		utils.AssertEqual(t, 0, len(errs))
-// 	}
 // }
 
 // type data struct {

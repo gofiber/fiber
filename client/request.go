@@ -216,6 +216,18 @@ func (r *Request) SetUserAgent(ua string) *Request {
 	return r
 }
 
+// Boundary returns bounday in multipart boundary.
+func (r *Request) Boundary() string {
+	return r.boundary
+}
+
+// SetBoundary method sets multipart boundary.
+func (r *Request) SetBoundary(b string) *Request {
+	r.boundary = b
+
+	return r
+}
+
 // Referer returns referer in request instance.
 func (r *Request) Referer() string {
 	return r.referer
@@ -494,10 +506,10 @@ func (r *Request) Reset() {
 	r.body = nil
 	r.bodyType = noBody
 
-	copiedFile := r.files
-	r.files = r.files[:0]
-	for _, v := range copiedFile {
-		ReleaseFile(v)
+	for len(r.files) != 0 {
+		t := r.files[0]
+		r.files = r.files[1:]
+		ReleaseFile(t)
 	}
 
 	r.formData.Reset()
@@ -727,7 +739,7 @@ func (f *FormData) Reset() {
 // File is a struct which support send files via request.
 type File struct {
 	name      string
-	paramName string
+	fieldName string
 	path      string
 	reader    io.ReadCloser
 }
@@ -737,9 +749,9 @@ func (f *File) SetName(n string) {
 	f.name = n
 }
 
-// SetParamName method sets key of file in the body.
-func (f *File) SetParamName(n string) {
-	f.paramName = n
+// SetFieldName method sets key of file in the body.
+func (f *File) SetFieldName(n string) {
+	f.fieldName = n
 }
 
 // SetPath method set file path.
@@ -756,7 +768,7 @@ func (f *File) SetReader(r io.ReadCloser) {
 // Reset clear the File object.
 func (f *File) Reset() {
 	f.name = ""
-	f.paramName = ""
+	f.fieldName = ""
 	f.path = ""
 	f.reader = nil
 }
@@ -807,9 +819,9 @@ func SetFileName(n string) SetFileFunc {
 	}
 }
 
-func SetFileParamName(p string) SetFileFunc {
+func SetFileFieldName(p string) SetFileFunc {
 	return func(f *File) {
-		f.SetParamName(p)
+		f.SetFieldName(p)
 	}
 }
 

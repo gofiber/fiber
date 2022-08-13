@@ -4,6 +4,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -42,8 +43,8 @@ func (r *Response) Protocol() string {
 }
 
 // Header method returns the response headers.
-func (r *Response) Header() fasthttp.ResponseHeader {
-	return r.rawResponse.Header
+func (r *Response) Header(key string) string {
+	return utils.UnsafeString(r.rawResponse.Header.Peek(key))
 }
 
 // Cookies method to access all the response cookies.
@@ -75,10 +76,11 @@ func (r *Response) XML(v any) error {
 func (r *Response) Reset() {
 	r.client = nil
 	r.request = nil
-	copied := r.cookie
-	r.cookie = []*fasthttp.Cookie{}
-	for _, v := range copied {
-		fasthttp.ReleaseCookie(v)
+
+	for len(r.cookie) != 0 {
+		t := r.cookie[0]
+		r.cookie = r.cookie[1:]
+		fasthttp.ReleaseCookie(t)
 	}
 
 	r.rawResponse.Reset()
