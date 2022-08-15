@@ -72,7 +72,7 @@ func New(config ...Config) fiber.Handler {
 				path = "/debug/pprof/"
 			}
 
-			return c.Redirect(path, fiber.StatusFound)
+			return c.Redirect().To(path)
 		}
 		return nil
 	}
