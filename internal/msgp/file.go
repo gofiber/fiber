@@ -21,7 +21,6 @@ import (
 // is only efficient for large files; small
 // files are best read and written using
 // the ordinary streaming interfaces.
-//
 func ReadFile(dst Unmarshaler, file *os.File) error {
 	stat, err := file.Stat()
 	if err != nil {
