@@ -70,7 +70,7 @@ type Constraint struct {
 }
 
 const (
-	noConstraint TypeConstraint = iota
+	noConstraint TypeConstraint = iota + 1
 	intConstraint
 	boolConstraint
 	floatConstraint
@@ -270,10 +270,17 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 
 			// Assign constraint
 			if start != -1 && end != -1 {
-				constraints = append(constraints, &Constraint{
+				constraint := &Constraint{
 					ID:   getParamConstraintType(c[:start]),
 					Data: strings.Split(RemoveEscapeChar(c[start+1:end]), string(parameterConstraintDataSeparatorChars)),
-				})
+				}
+
+				// Precompile regex if has regex constraint
+				if constraint.ID == regexConstraint {
+					constraint.RegexCompiler = regexp.MustCompile(constraint.Data[0])
+				}
+
+				constraints = append(constraints, constraint)
 			} else {
 				constraints = append(constraints, &Constraint{
 					ID:   getParamConstraintType(c),
@@ -628,15 +635,6 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	case datetimeConstraint:
 		_, err = time.Parse(c.Data[0], param)
 	case regexConstraint:
-		if c.RegexCompiler == nil {
-			compiler, err := regexp.Compile(c.Data[0])
-			if err != nil {
-				return false
-			}
-
-			c.RegexCompiler = compiler
-		}
-
 		if match := c.RegexCompiler.MatchString(param); !match {
 			return false
 		}
