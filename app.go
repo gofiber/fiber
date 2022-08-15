@@ -330,7 +330,7 @@ type Config struct {
 	//
 	// Allowing for flexibility in using another XML library for encoding
 	// Default: xml.Marshal
-	XMLEncoder utils.JSONMarshal `json:"-"`
+	XMLEncoder utils.XMLMarshal `json:"-"`
 
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
