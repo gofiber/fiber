@@ -67,7 +67,8 @@ type Storage interface {
 //	cfg := fiber.Config{}
 //	cfg.ErrorHandler = func(c *Ctx, err error) error {
 //	 code := StatusInternalServerError
-//	 if e, ok := err.(*Error); ok {
+//	 var e *fiber.Error
+//	 if errors.As(err, &e) {
 //	   code = e.Code
 //	 }
 //	 c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
@@ -849,7 +850,15 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
+		var returned bool
+		defer func() {
+			if !returned {
+				channel <- fmt.Errorf("runtime.Goexit() called in handler or server panic")
+			}
+		}()
+
 		channel <- app.server.ServeConn(conn)
+		returned = true
 	}()
 
 	// Wait for callback

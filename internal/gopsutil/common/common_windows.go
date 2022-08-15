@@ -211,9 +211,12 @@ func WMIQueryWithContext(ctx context.Context, query string, dst interface{}, con
 }
 
 // Convert paths using native DOS format like:
-//   "\Device\HarddiskVolume1\Windows\systemew\file.txt"
+//
+//	"\Device\HarddiskVolume1\Windows\systemew\file.txt"
+//
 // into:
-//   "C:\Windows\systemew\file.txt"
+//
+//	"C:\Windows\systemew\file.txt"
 func ConvertDOSPath(p string) string {
 	rawDrive := strings.Join(strings.Split(p, `\`)[:3], `\`)
 
