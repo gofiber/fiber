@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3/utils"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -1248,6 +1249,8 @@ func Benchmark_AcquireCtx(b *testing.B) {
 	app := New()
 	for n := 0; n < b.N; n++ {
 		c := app.AcquireCtx()
+		c.Reset(&fasthttp.RequestCtx{})
+
 		app.ReleaseCtx(c)
 	}
 }
