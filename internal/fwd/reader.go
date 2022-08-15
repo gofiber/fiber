@@ -31,7 +31,6 @@
 // returns a slice pointing to the next `n` bytes of the writer, and increments
 // the write position by the length of the returned slice. This allows users
 // to write directly to the end of the buffer.
-//
 package fwd
 
 import "io"

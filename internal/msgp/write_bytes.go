@@ -315,13 +315,13 @@ func AppendMapStrIntf(b []byte, m map[string]interface{}) ([]byte, error) {
 
 // AppendIntf appends the concrete type of 'i' to the
 // provided []byte. 'i' must be one of the following:
-//  - 'nil'
-//  - A bool, float, string, []byte, int, uint, or complex
-//  - A map[string]interface{} or map[string]string
-//  - A []T, where T is another supported type
-//  - A *T, where T is another supported type
-//  - A type that satisfieds the msgp.Marshaler interface
-//  - A type that satisfies the msgp.Extension interface
+//   - 'nil'
+//   - A bool, float, string, []byte, int, uint, or complex
+//   - A map[string]interface{} or map[string]string
+//   - A []T, where T is another supported type
+//   - A *T, where T is another supported type
+//   - A type that satisfieds the msgp.Marshaler interface
+//   - A type that satisfies the msgp.Extension interface
 func AppendIntf(b []byte, i interface{}) ([]byte, error) {
 	if i == nil {
 		return AppendNil(b), nil

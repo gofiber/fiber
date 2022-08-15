@@ -60,14 +60,14 @@ certain fields, use a dash for the name and it will be ignored:
 
 The supported field types in the destination struct are:
 
-	* bool
-	* float variants (float32, float64)
-	* int variants (int, int8, int16, int32, int64)
-	* string
-	* uint variants (uint, uint8, uint16, uint32, uint64)
-	* struct
-	* a pointer to one of the above types
-	* a slice or a pointer to a slice of one of the above types
+  - bool
+  - float variants (float32, float64)
+  - int variants (int, int8, int16, int32, int64)
+  - string
+  - uint variants (uint, uint8, uint16, uint32, uint64)
+  - struct
+  - a pointer to one of the above types
+  - a slice or a pointer to a slice of one of the above types
 
 Non-supported types are simply ignored, however custom types can be registered
 to be converted.

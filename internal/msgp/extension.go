@@ -30,7 +30,7 @@ var extensionReg = make(map[int8]func() Extension)
 //
 // For example, if you wanted to register a user-defined struct:
 //
-//  msgp.RegisterExtension(10, func() msgp.Extension { &MyExtension{} })
+//	msgp.RegisterExtension(10, func() msgp.Extension { &MyExtension{} })
 //
 // RegisterExtension will panic if you call it multiple times
 // with the same 'typ' argument, or if you use a reserved

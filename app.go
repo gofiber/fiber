@@ -63,17 +63,18 @@ type Storage interface {
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
-//  cfg := fiber.Config{}
-//  cfg.ErrorHandler = func(c *Ctx, err error) error {
-//   code := StatusInternalServerError
-//   var e *fiber.Error
-//   if errors.As(err, &e) {
-//     code = e.Code
-//   }
-//   c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-//   return c.Status(code).SendString(err.Error())
-//  }
-//  app := fiber.New(cfg)
+//
+//	cfg := fiber.Config{}
+//	cfg.ErrorHandler = func(c *Ctx, err error) error {
+//	 code := StatusInternalServerError
+//	 var e *fiber.Error
+//	 if errors.As(err, &e) {
+//	   code = e.Code
+//	 }
+//	 c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+//	 return c.Status(code).SendString(err.Error())
+//	}
+//	app := fiber.New(cfg)
 type ErrorHandler = func(*Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
@@ -438,12 +439,15 @@ var DefaultErrorHandler = func(c *Ctx, err error) error {
 }
 
 // New creates a new Fiber named instance.
-//  app := fiber.New()
+//
+//	app := fiber.New()
+//
 // You can pass optional configuration options by passing a Config struct:
-//  app := fiber.New(fiber.Config{
-//      Prefork: true,
-//      ServerHeader: "Fiber",
-//  })
+//
+//	app := fiber.New(fiber.Config{
+//	    Prefork: true,
+//	    ServerHeader: "Fiber",
+//	})
 func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
@@ -609,15 +613,15 @@ func (app *App) GetRoute(name string) Route {
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //
-//  app.Use(func(c *fiber.Ctx) error {
-//       return c.Next()
-//  })
-//  app.Use("/api", func(c *fiber.Ctx) error {
-//       return c.Next()
-//  })
-//  app.Use("/api", handler, func(c *fiber.Ctx) error {
-//       return c.Next()
-//  })
+//	app.Use(func(c *fiber.Ctx) error {
+//	     return c.Next()
+//	})
+//	app.Use("/api", func(c *fiber.Ctx) error {
+//	     return c.Next()
+//	})
+//	app.Use("/api", handler, func(c *fiber.Ctx) error {
+//	     return c.Next()
+//	})
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...interface{}) Router {
@@ -710,8 +714,9 @@ func (app *App) All(path string, handlers ...Handler) Router {
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-//  api := app.Group("/api")
-//  api.Get("/users", handler)
+//
+//	api := app.Group("/api")
+//	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
 		app.register(methodUse, prefix, handlers...)
