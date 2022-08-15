@@ -338,6 +338,7 @@ func findNextCharsetPosition(search string, charset []byte) int {
 }
 
 // findNextCharsetPositionConstraint search the next char position from the charset
+// unlike findNextCharsetPosition, it takes care of constraint start-end chars to parse route pattern
 func findNextCharsetPositionConstraint(search string, charset []byte) int {
 	nextPosition := -1
 	constraintStart := -1
