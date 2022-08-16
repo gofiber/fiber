@@ -110,7 +110,7 @@ type App struct {
 	// Mounted and main apps
 	appList map[string]*App
 	// Hooks
-	hooks *hooks
+	hooks *Hooks
 	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
@@ -819,7 +819,7 @@ func (app *App) Server() *fasthttp.Server {
 }
 
 // Hooks returns the hook struct to register hooks.
-func (app *App) Hooks() *hooks {
+func (app *App) Hooks() *Hooks {
 	return app.hooks
 }
 
