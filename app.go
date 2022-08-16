@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"encoding/json"
+	"encoding/xml"
 
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
@@ -324,6 +325,13 @@ type Config struct {
 	// Default: json.Unmarshal
 	JSONDecoder utils.JSONUnmarshal `json:"-"`
 
+	// XMLEncoder set by an external client of Fiber it will use the provided implementation of a
+	// XMLMarshal
+	//
+	// Allowing for flexibility in using another XML library for encoding
+	// Default: xml.Marshal
+	XMLEncoder utils.XMLMarshal `json:"-"`
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
 	//
@@ -512,6 +520,9 @@ func New(config ...Config) *App {
 	}
 	if app.config.JSONDecoder == nil {
 		app.config.JSONDecoder = json.Unmarshal
+	}
+	if app.config.XMLEncoder == nil {
+		app.config.XMLEncoder = xml.Marshal
 	}
 	if app.config.Network == "" {
 		app.config.Network = NetworkTCP4

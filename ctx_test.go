@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -2132,6 +2133,65 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, `emit({"Name":"Grame","Age":20});`, string(c.Response().Body()))
+}
+
+// go test -run Test_Ctx_XML
+func Test_Ctx_XML(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	utils.AssertEqual(t, true, c.JSON(complex(1, 1)) != nil)
+
+	type xmlResult struct {
+		XMLName xml.Name `xml:"Users"`
+		Names   []string `xml:"Names"`
+		Ages    []int    `xml:"Ages"`
+	}
+
+	c.XML(xmlResult{
+		Names: []string{"Grame", "John"},
+		Ages:  []int{1, 12, 20},
+	})
+
+	utils.AssertEqual(t, `<Users><Names>Grame</Names><Names>John</Names><Ages>1</Ages><Ages>12</Ages><Ages>20</Ages></Users>`, string(c.Response().Body()))
+	utils.AssertEqual(t, "application/xml", string(c.Response().Header.Peek("content-type")))
+
+	testEmpty := func(v interface{}, r string) {
+		err := c.XML(v)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, r, string(c.Response().Body()))
+	}
+
+	testEmpty(nil, "")
+	testEmpty("", `<string></string>`)
+	testEmpty(0, "<int>0</int>")
+	testEmpty([]int{}, "")
+}
+
+// go test -run=^$ -bench=Benchmark_Ctx_XML -benchmem -count=4
+func Benchmark_Ctx_XML(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	type SomeStruct struct {
+		Name string `xml:"Name"`
+		Age  uint8  `xml:"Age"`
+	}
+	data := SomeStruct{
+		Name: "Grame",
+		Age:  20,
+	}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		err = c.XML(data)
+	}
+
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, `<SomeStruct><Name>Grame</Name><Age>20</Age></SomeStruct>`, string(c.Response().Body()))
 }
 
 // go test -run Test_Ctx_Links

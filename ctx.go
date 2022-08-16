@@ -518,12 +518,7 @@ func (c *Ctx) Format(body interface{}) error {
 	case "txt":
 		return c.SendString(b)
 	case "xml":
-		raw, err := xml.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("error serializing xml: %v", body)
-		}
-		c.fasthttp.Response.SetBody(raw)
-		return nil
+		return c.XML(body)
 	}
 	return c.SendString(b)
 }
@@ -734,6 +729,18 @@ func (c *Ctx) JSONP(data interface{}, callback ...string) error {
 	c.setCanonical(HeaderXContentTypeOptions, "nosniff")
 	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
 	return c.SendString(result)
+}
+
+// XML converts any interface or string to XML.
+// This method also sets the content header to application/xml.
+func (c *Ctx) XML(data interface{}) error {
+	raw, err := c.app.config.XMLEncoder(data)
+	if err != nil {
+		return err
+	}
+	c.fasthttp.Response.SetBodyRaw(raw)
+	c.fasthttp.Response.Header.SetContentType(MIMEApplicationXML)
+	return nil
 }
 
 // Links joins the links followed by the property to populate the response's Link HTTP header field.
