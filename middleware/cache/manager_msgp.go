@@ -58,7 +58,7 @@ func (z *item) DecodeMsg(dc *msgp.Reader) (err error) {
 			if z.headers == nil && zcmr > 0 {
 				z.headers = make(map[string][]byte, zcmr)
 			} else if len(z.headers) > 0 {
-				for key, _ := range z.headers {
+				for key := range z.headers {
 					delete(z.headers, key)
 				}
 			}
@@ -252,7 +252,7 @@ func (z *item) UnmarshalMsg(bts []byte) (o []byte, err error) {
 			if z.headers == nil && zwht > 0 {
 				z.headers = make(map[string][]byte, zwht)
 			} else if len(z.headers) > 0 {
-				for key, _ := range z.headers {
+				for key := range z.headers {
 					delete(z.headers, key)
 				}
 			}

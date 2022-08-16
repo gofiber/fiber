@@ -566,7 +566,8 @@ func (a *Agent) SendFile(filename string, fieldname ...string) *Agent {
 // SendFiles reads files and appends them to multipart form request.
 //
 // Examples:
-//		SendFile("/path/to/file1", "fieldname1", "/path/to/file2")
+//
+//	SendFile("/path/to/file1", "fieldname1", "/path/to/file2")
 func (a *Agent) SendFiles(filenamesAndFieldnames ...string) *Agent {
 	pairs := len(filenamesAndFieldnames)
 	if pairs&1 == 1 {

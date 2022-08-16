@@ -896,7 +896,7 @@ func ReadStringBytes(b []byte) (string, []byte, error) {
 // into a slice of bytes. 'v' is the value of
 // the 'str' object, which may reside in memory
 // pointed to by 'scratch.' 'o' is the remaining bytes
-// in 'b.''
+// in 'b.”
 // Possible errors:
 // - ErrShortBytes (b not long enough)
 // - TypeError{} (not 'str' type)

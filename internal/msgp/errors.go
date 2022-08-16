@@ -70,7 +70,6 @@ func Resumable(e error) bool {
 //
 // ErrShortBytes is not wrapped with any context due to backward compatibility
 // issues with the public API.
-//
 func WrapError(err error, ctx ...interface{}) error {
 	switch e := err.(type) {
 	case errShort:
