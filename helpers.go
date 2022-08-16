@@ -695,3 +695,21 @@ const (
 	CookieSameSiteStrictMode = "strict"
 	CookieSameSiteNoneMode   = "none"
 )
+
+// Route Constraints
+const (
+	ConstraintInt        = "int"
+	ConstraintBool       = "bool"
+	ConstraintFloat      = "float"
+	ConstraintAlpha      = "alpha"
+	ConstraintGuid       = "guid"
+	ConstraintMinLen     = "minLen"
+	ConstraintMaxLen     = "maxLen"
+	ConstraintExactLen   = "exactLen"
+	ConstraintBetweenLen = "betweenLen"
+	ConstraintMin        = "min"
+	ConstraintMax        = "max"
+	ConstraintRange      = "range"
+	ConstraintDatetime   = "datetime"
+	ConstraintRegex      = "regex"
+)
