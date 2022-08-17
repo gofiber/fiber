@@ -53,7 +53,8 @@ type DefaultCtx struct {
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
 	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
-	flashMessages       string               // flash messages sent by redirection cookie
+	flashMessages       map[string]string    // flash messages sent by redirection cookie
+	oldInput            map[string]string    // old input data sent by redirection cookie
 }
 
 // Range data for c.Range
@@ -1296,12 +1297,33 @@ func (c *DefaultCtx) Bind() *Bind {
 	return c.bind
 }
 
+// setFlash is a method to get flash messages before removing them
 func (c *DefaultCtx) setFlash() {
-	c.flashMessages = c.Cookies("fiber_flash")
+	// parse flash messages
+	if c.Cookies("fiber_flash") != "" {
+		messages := strings.Split(c.Cookies("fiber_flash"), ",k:")
+		c.flashMessages = make(map[string]string, len(messages))
 
-	c.ClearCookie("fiber_flash")
-}
+		for _, msg := range messages {
+			msg = strings.Replace(msg, "k:", "", 1)
+			k, v := strings.Split(msg, ":")[0], strings.Split(msg, ":")[1]
 
-func (c *DefaultCtx) GetFlash() error {
-	return c.SendString(c.flashMessages)
+			c.flashMessages[k] = v
+		}
+	}
+
+	// parse old input data
+	if c.Cookies("fiber_flash_old_input") != "" {
+		messages := strings.Split(c.Cookies("fiber_flash_old_input"), ",k:")
+		c.oldInput = make(map[string]string, len(messages))
+
+		for _, msg := range messages {
+			msg = strings.Replace(msg, "k:", "", 1)
+			k, v := strings.Split(msg, ":")[0], strings.Split(msg, ":")[1]
+
+			c.oldInput[k] = v
+		}
+	}
+
+	c.ClearCookie("fiber_flash", "fiber_flash_old_input")
 }

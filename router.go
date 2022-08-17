@@ -161,9 +161,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	c.Reset(rctx)
 
 	// check flash messages
-	if c.Cookies("fiber_flash") != "" {
-		c.setFlash()
-	}
+	c.setFlash()
 
 	// handle invalid http method directly
 	if methodInt(c.Method()) == -1 {
