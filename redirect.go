@@ -127,9 +127,9 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 		i := 1
 		for k, v := range r.messages {
-			messageText.WriteString("k:" + k + ":" + v)
+			_, _ = messageText.WriteString("k:" + k + ":" + v)
 			if len(r.messages) != i {
-				messageText.WriteString(",")
+				_, _ = messageText.WriteString(",")
 			}
 			i++
 		}
@@ -148,9 +148,9 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 		i := 1
 		for k, v := range r.oldInput {
-			inputText.WriteString("k:" + k + ":" + v)
+			_, _ = inputText.WriteString("k:" + k + ":" + v)
 			if len(r.oldInput) != i {
-				inputText.WriteString(",")
+				_, _ = inputText.WriteString(",")
 			}
 			i++
 		}
