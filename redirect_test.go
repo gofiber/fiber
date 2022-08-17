@@ -168,7 +168,8 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	utils.AssertEqual(t, "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax", string(c.Response().Header.Peek(HeaderSetCookie)))
+	equal := string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax" || string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=k:message:test,k:success:1; path=/; SameSite=Lax"
+	utils.AssertEqual(t, true, equal)
 
 	c.Redirect().setFlash()
 	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
@@ -191,7 +192,10 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax;"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash=k:"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:success:1,k"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:message:test"))
+
 	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash_old_input=k:"))
 	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:id:1"))
 	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:name:tom"))
@@ -299,7 +303,8 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	utils.AssertEqual(b, 302, c.Response().StatusCode())
 	utils.AssertEqual(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	utils.AssertEqual(b, "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax", string(c.Response().Header.Peek(HeaderSetCookie)))
+	equal := string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax" || string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=k:message:test,k:success:1; path=/; SameSite=Lax"
+	utils.AssertEqual(b, true, equal)
 
 	c.Redirect().setFlash()
 	utils.AssertEqual(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
