@@ -161,7 +161,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	c.Reset(rctx)
 
 	// check flash messages
-	c.setFlash()
+	c.Redirect().setFlash()
 
 	// handle invalid http method directly
 	if methodInt(c.Method()) == -1 {

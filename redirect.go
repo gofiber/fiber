@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/utils"
@@ -191,4 +192,36 @@ func (r *Redirect) Back(fallback string) error {
 		location = fallback
 	}
 	return r.To(location)
+}
+
+// setFlash is a method to get flash messages before removing them
+func (r *Redirect) setFlash() {
+	// parse flash messages
+	fmt.Print(r.c.Cookies("fiber_flash"))
+	if r.c.Cookies("fiber_flash") != "" {
+		messages := strings.Split(r.c.Cookies("fiber_flash"), ",k:")
+		r.c.flashMessages = make(map[string]string, len(messages))
+
+		for _, msg := range messages {
+			msg = strings.Replace(msg, "k:", "", 1)
+			k, v := strings.Split(msg, ":")[0], strings.Split(msg, ":")[1]
+
+			r.c.flashMessages[k] = v
+		}
+	}
+
+	// parse old input data
+	if r.c.Cookies("fiber_flash_old_input") != "" {
+		messages := strings.Split(r.c.Cookies("fiber_flash_old_input"), ",k:")
+		r.c.oldInput = make(map[string]string, len(messages))
+
+		for _, msg := range messages {
+			msg = strings.Replace(msg, "k:", "", 1)
+			k, v := strings.Split(msg, ":")[0], strings.Split(msg, ":")[1]
+
+			r.c.oldInput[k] = v
+		}
+	}
+
+	r.c.ClearCookie("fiber_flash", "fiber_flash_old_input")
 }

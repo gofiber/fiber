@@ -1296,34 +1296,3 @@ func (c *DefaultCtx) Bind() *Bind {
 	}
 	return c.bind
 }
-
-// setFlash is a method to get flash messages before removing them
-func (c *DefaultCtx) setFlash() {
-	// parse flash messages
-	if c.Cookies("fiber_flash") != "" {
-		messages := strings.Split(c.Cookies("fiber_flash"), ",k:")
-		c.flashMessages = make(map[string]string, len(messages))
-
-		for _, msg := range messages {
-			msg = strings.Replace(msg, "k:", "", 1)
-			k, v := strings.Split(msg, ":")[0], strings.Split(msg, ":")[1]
-
-			c.flashMessages[k] = v
-		}
-	}
-
-	// parse old input data
-	if c.Cookies("fiber_flash_old_input") != "" {
-		messages := strings.Split(c.Cookies("fiber_flash_old_input"), ",k:")
-		c.oldInput = make(map[string]string, len(messages))
-
-		for _, msg := range messages {
-			msg = strings.Replace(msg, "k:", "", 1)
-			k, v := strings.Split(msg, ":")[0], strings.Split(msg, ":")[1]
-
-			c.oldInput[k] = v
-		}
-	}
-
-	c.ClearCookie("fiber_flash", "fiber_flash_old_input")
-}

@@ -322,9 +322,6 @@ type Ctx interface {
 	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
 	Bind() *Bind
 
-	// setFlash is a method to get flash messages before removing them
-	setFlash()
-
 	// SetReq resets fields of context that is relating to request.
 	setReq(fctx *fasthttp.RequestCtx)
 
