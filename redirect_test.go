@@ -152,6 +152,81 @@ func Test_Redirect_Back_WithReferer(t *testing.T) {
 	utils.AssertEqual(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
+// go test -run Test_Redirect_Route_WithFlashMessages
+func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	c.Redirect().With("success", "1").With("message", "test").Route("user")
+
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+
+	utils.AssertEqual(t, "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax", string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	c.Redirect().setFlash()
+	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+}
+
+// go test -run Test_Redirect_Route_WithOldInput
+func Test_Redirect_Route_WithOldInput(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	c.Request().URI().SetQueryString("id=1&name=tom")
+	c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
+
+	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax;"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash_old_input=k:"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:id:1"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:name:tom"))
+
+	c.Redirect().setFlash()
+	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+}
+
+// go test -run Test_Redirect_setFlash
+func Test_Redirect_setFlash(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash_old_input=k:name:tom,k:id:1")
+	c.Request().Header.Set(HeaderCookie, "fiber_flash=k:success:1,k:message:test")
+
+	c.Redirect().setFlash()
+
+	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+
+	utils.AssertEqual(t, "1", c.Redirect().Message("success"))
+	utils.AssertEqual(t, "test", c.Redirect().Message("message"))
+	utils.AssertEqual(t, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
+
+	utils.AssertEqual(t, "1", c.Redirect().Old("id"))
+	utils.AssertEqual(t, "tom", c.Redirect().Old("name"))
+	utils.AssertEqual(t, map[string]string{"id": "1", "name": "tom"}, c.Redirect().Olds())
+}
+
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route -benchmem -count=4
 func Benchmark_Redirect_Route(b *testing.B) {
 	app := New()
@@ -205,10 +280,8 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 	utils.AssertEqual(b, url.Values{"a": []string{"a"}, "b": []string{"b"}}, location.Query())
 }
 
-// go test -run Test_Redirect_Route_WithFlashMessages
-func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
-	t.Parallel()
-
+// go test -v -run=^$ -bench=Benchmark_Redirect_Route_WithFlashMessages -benchmem -count=4
+func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
 		return c.SendString("user")
@@ -216,47 +289,24 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	c.Redirect().With("success", 1).With("message", "test").Route("user")
+	b.ReportAllocs()
+	b.ResetTimer()
 
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+	for n := 0; n < b.N; n++ {
+		c.Redirect().With("success", "1").With("message", "test").Route("user")
+	}
 
-	utils.AssertEqual(t, "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax", string(c.Response().Header.Peek(HeaderSetCookie)))
+	utils.AssertEqual(b, 302, c.Response().StatusCode())
+	utils.AssertEqual(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	c.Redirect().setFlash()
-	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
-}
-
-// go test -run Test_Redirect_Route_WithOldInput
-func Test_Redirect_Route_WithOldInput(t *testing.T) {
-	t.Parallel()
-
-	app := New()
-	app.Get("/user", func(c Ctx) error {
-		return c.SendString("user")
-	}).Name("user")
-
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
-
-	c.Request().URI().SetQueryString("id=1&name=tom")
-	c.Redirect().With("success", 1).With("message", "test").WithInput().Route("user")
-
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
-
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax;"))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash_old_input=k:"))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:id:1"))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:name:tom"))
+	utils.AssertEqual(b, "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax", string(c.Response().Header.Peek(HeaderSetCookie)))
 
 	c.Redirect().setFlash()
-	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	utils.AssertEqual(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
-// go test -run Test_Redirect_setFlash
-func Test_Redirect_setFlash(t *testing.T) {
-	t.Parallel()
-
+// go test -v -run=^$ -bench=Benchmark_Redirect_Route_WithFlashMessages -benchmem -count=4
+func Benchmark_Redirect_setFlash(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
 		return c.SendString("user")
@@ -267,15 +317,20 @@ func Test_Redirect_setFlash(t *testing.T) {
 	c.Request().Header.Set(HeaderCookie, "fiber_flash_old_input=k:name:tom,k:id:1")
 	c.Request().Header.Set(HeaderCookie, "fiber_flash=k:success:1,k:message:test")
 
-	c.Redirect().setFlash()
+	b.ReportAllocs()
+	b.ResetTimer()
 
-	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	for n := 0; n < b.N; n++ {
+		c.Redirect().setFlash()
+	}
 
-	utils.AssertEqual(t, "1", c.Redirect().Message("success"))
-	utils.AssertEqual(t, "test", c.Redirect().Message("message"))
-	utils.AssertEqual(t, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
+	utils.AssertEqual(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 
-	utils.AssertEqual(t, "1", c.Redirect().Old("id"))
-	utils.AssertEqual(t, "tom", c.Redirect().Old("name"))
-	utils.AssertEqual(t, map[string]string{"id": "1", "name": "tom"}, c.Redirect().Olds())
+	utils.AssertEqual(b, "1", c.Redirect().Message("success"))
+	utils.AssertEqual(b, "test", c.Redirect().Message("message"))
+	utils.AssertEqual(b, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
+
+	utils.AssertEqual(b, "1", c.Redirect().Old("id"))
+	utils.AssertEqual(b, "tom", c.Redirect().Old("name"))
+	utils.AssertEqual(b, map[string]string{"id": "1", "name": "tom"}, c.Redirect().Olds())
 }

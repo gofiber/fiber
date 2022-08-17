@@ -5,7 +5,6 @@
 package fiber
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/gofiber/fiber/v3/binder"
@@ -17,7 +16,7 @@ import (
 type Redirect struct {
 	c        *DefaultCtx       // Embed ctx
 	status   int               // Status code of redirection. Default: StatusFound
-	messages Map               // Flash messages
+	messages map[string]string // Flash messages
 	oldInput map[string]string // Old input data
 }
 
@@ -34,7 +33,7 @@ func newRedirect(c *DefaultCtx) *Redirect {
 	return &Redirect{
 		c:        c,
 		status:   StatusFound,
-		messages: make(Map, 0),
+		messages: make(map[string]string, 0),
 		oldInput: make(map[string]string, 0),
 	}
 }
@@ -50,7 +49,7 @@ func (r *Redirect) Status(code int) *Redirect {
 // You can send flash messages by using With().
 // They will be sent as a cookie.
 // You can get them by using: Redirect().Messages(), Redirect().Message()
-func (r *Redirect) With(key string, value any) *Redirect {
+func (r *Redirect) With(key string, value string) *Redirect {
 	r.messages[key] = value
 
 	return r
@@ -68,11 +67,11 @@ func (r *Redirect) WithInput() *Redirect {
 	// TODO: Maybe better implementation.
 	switch ctype {
 	case MIMEApplicationForm:
-		r.c.Bind().Form(r.oldInput)
+		_ = r.c.Bind().Form(r.oldInput)
 	case MIMEMultipartForm:
-		r.c.Bind().MultipartForm(r.oldInput)
+		_ = r.c.Bind().MultipartForm(r.oldInput)
 	default:
-		r.c.Bind().Query(r.oldInput)
+		_ = r.c.Bind().Query(r.oldInput)
 	}
 
 	return r
@@ -128,7 +127,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 		i := 1
 		for k, v := range r.messages {
-			messageText.WriteString("k:" + k + ":" + fmt.Sprint(v))
+			messageText.WriteString("k:" + k + ":" + v)
 			if len(r.messages) != i {
 				messageText.WriteString(",")
 			}
@@ -137,7 +136,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 		r.c.Cookie(&Cookie{
 			Name:        "fiber_flash",
-			Value:       messageText.String(),
+			Value:       r.c.app.getString(messageText.Bytes()),
 			SessionOnly: true,
 		})
 	}
@@ -158,7 +157,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 		r.c.Cookie(&Cookie{
 			Name:        "fiber_flash_old_input",
-			Value:       inputText.String(),
+			Value:       r.c.app.getString(inputText.Bytes()),
 			SessionOnly: true,
 		})
 	}
@@ -178,7 +177,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 			i++
 		}
 
-		return r.To(location + "?" + queryText.String())
+		return r.To(location + "?" + r.c.app.getString(queryText.Bytes()))
 	}
 
 	return r.To(location)
@@ -197,16 +196,15 @@ func (r *Redirect) Back(fallback string) error {
 // setFlash is a method to get flash messages before removing them
 func (r *Redirect) setFlash() {
 	// parse flash messages
-	fmt.Print(r.c.Cookies("fiber_flash"))
 	if r.c.Cookies("fiber_flash") != "" {
 		messages := strings.Split(r.c.Cookies("fiber_flash"), ",k:")
 		r.c.flashMessages = make(map[string]string, len(messages))
 
 		for _, msg := range messages {
 			msg = strings.Replace(msg, "k:", "", 1)
-			k, v := strings.Split(msg, ":")[0], strings.Split(msg, ":")[1]
+			splitMsg := strings.Split(msg, ":")
 
-			r.c.flashMessages[k] = v
+			r.c.flashMessages[splitMsg[0]] = splitMsg[1]
 		}
 	}
 
@@ -217,9 +215,9 @@ func (r *Redirect) setFlash() {
 
 		for _, msg := range messages {
 			msg = strings.Replace(msg, "k:", "", 1)
-			k, v := strings.Split(msg, ":")[0], strings.Split(msg, ":")[1]
+			splitMsg := strings.Split(msg, ":")
 
-			r.c.oldInput[k] = v
+			r.c.oldInput[splitMsg[0]] = splitMsg[1]
 		}
 	}
 
