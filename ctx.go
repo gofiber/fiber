@@ -53,6 +53,7 @@ type DefaultCtx struct {
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
 	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
+	flashMessages       string               // flash messages sent by redirection cookie
 }
 
 // Range data for c.Range
@@ -1293,4 +1294,14 @@ func (c *DefaultCtx) Bind() *Bind {
 		}
 	}
 	return c.bind
+}
+
+func (c *DefaultCtx) setFlash() {
+	c.flashMessages = c.Cookies("fiber_flash")
+
+	c.ClearCookie("fiber_flash")
+}
+
+func (c *DefaultCtx) GetFlash() error {
+	return c.SendString(c.flashMessages)
 }

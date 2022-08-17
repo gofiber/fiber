@@ -5,14 +5,16 @@
 package fiber
 
 import (
+	"fmt"
+
 	"github.com/valyala/bytebufferpool"
 )
 
 // Redirect is a struct to use it with Ctx.
 type Redirect struct {
-	// Embed ctx
-	c      *DefaultCtx
-	status int // Default: StatusFound
+	c        *DefaultCtx // Embed ctx
+	status   int         // Status code of redirection. Default: StatusFound
+	messages Map         // Flash messages
 }
 
 // A config to use with Redirect().Route()
@@ -26,8 +28,9 @@ type RedirectConfig struct {
 // Return default Redirect reference.
 func newRedirect(c *DefaultCtx) *Redirect {
 	return &Redirect{
-		c:      c,
-		status: StatusFound,
+		c:        c,
+		status:   StatusFound,
+		messages: make(Map, 0),
 	}
 }
 
@@ -35,6 +38,14 @@ func newRedirect(c *DefaultCtx) *Redirect {
 // If status is not specified, status defaults to 302 Found.
 func (r *Redirect) Status(code int) *Redirect {
 	r.status = code
+
+	return r
+}
+
+// You can send flash messages by using With().
+// They will be sent as a cookie.
+func (r *Redirect) With(key string, value any) *Redirect {
+	r.messages[key] = value
 
 	return r
 }
@@ -60,6 +71,22 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 	location, err := r.c.getLocationFromRoute(r.c.App().GetRoute(name), cfg.Params)
 	if err != nil {
 		return err
+	}
+
+	// Flash messages
+	if len(r.messages) > 0 {
+		messageText := bytebufferpool.Get()
+		defer bytebufferpool.Put(messageText)
+
+		for k, v := range r.messages {
+			messageText.WriteString("k:" + k + ":" + fmt.Sprint(v) + ",")
+		}
+
+		r.c.Cookie(&Cookie{
+			Name:        "fiber_flash",
+			Value:       messageText.String(),
+			SessionOnly: true,
+		})
 	}
 
 	// Check queries

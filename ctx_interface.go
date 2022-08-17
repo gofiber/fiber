@@ -322,6 +322,10 @@ type Ctx interface {
 	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
 	Bind() *Bind
 
+	// setFlashes is a method to get flash messages before removing them
+	setFlash()
+	GetFlash() error
+
 	// SetReq resets fields of context that is relating to request.
 	setReq(fctx *fasthttp.RequestCtx)
 
@@ -425,6 +429,7 @@ func (c *DefaultCtx) release() {
 	c.fasthttp = nil
 	c.bind = nil
 	c.redirect = nil
+	c.flashMessages = ""
 	if c.viewBindMap != nil {
 		dictpool.ReleaseDict(c.viewBindMap)
 	}
