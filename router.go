@@ -160,9 +160,6 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 	c.Reset(rctx)
 
-	// check flash messages
-	c.Redirect().setFlash()
-
 	// handle invalid http method directly
 	if methodInt(c.Method()) == -1 {
 		_ = c.Status(StatusBadRequest).SendString("Invalid http method")
@@ -177,6 +174,9 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 			_ = c.SendStatus(StatusInternalServerError)
 		}
 	}
+
+	// check flash messages
+	c.Redirect().setFlash()
 
 	// Release Ctx
 	app.ReleaseCtx(c)
