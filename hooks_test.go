@@ -30,7 +30,7 @@ func Test_Hook_OnRoute(t *testing.T) {
 	subApp := New()
 	subApp.Get("/test", testSimpleHandler)
 
-	app.Mount("/sub", subApp)
+	app.Use("/sub", subApp)
 }
 
 func Test_Hook_OnName(t *testing.T) {
@@ -53,7 +53,7 @@ func Test_Hook_OnName(t *testing.T) {
 	subApp.Get("/test", testSimpleHandler)
 	subApp.Get("/test2", testSimpleHandler)
 
-	app.Mount("/sub", subApp)
+	app.Use("/sub", subApp)
 
 	utils.AssertEqual(t, "index", buf.String())
 }

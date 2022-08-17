@@ -2442,7 +2442,7 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	})
 
 	app := New()
-	app.Mount("/hello", sub)
+	app.Use("/hello", sub)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", nil))
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
@@ -2468,7 +2468,7 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 
 	app := New()
 	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
+	v1.Use("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
