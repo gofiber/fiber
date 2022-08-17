@@ -176,7 +176,9 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// check flash messages
-	c.Redirect().setFlash()
+	if c.Cookies("fiber_flash") != "" || c.Cookies("fiber_flash_old_input") != "" {
+		c.Redirect().setFlash()
+	}
 
 	// Release Ctx
 	app.ReleaseCtx(c)
