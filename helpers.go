@@ -214,8 +214,6 @@ func defaultString(value string, defaultValue []string) string {
 	return value
 }
 
-const normalizedHeaderETag = "Etag"
-
 func getGroupPath(prefix, path string) string {
 	if len(path) == 0 || path == "/" {
 		return prefix

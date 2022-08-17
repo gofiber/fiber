@@ -748,32 +748,6 @@ func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
 
-func parseParamSquareBrackets(k string) (string, error) {
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	kbytes := []byte(k)
-
-	for i, b := range kbytes {
-
-		if b == '[' && kbytes[i+1] != ']' {
-			if err := bb.WriteByte('.'); err != nil {
-				return "", err
-			}
-		}
-
-		if b == '[' || b == ']' {
-			continue
-		}
-
-		if err := bb.WriteByte(b); err != nil {
-			return "", err
-		}
-	}
-
-	return bb.String(), nil
-}
-
 // Range returns a struct containing the type and a slice of ranges.
 func (c *DefaultCtx) Range(size int) (rangeData Range, err error) {
 	rangeStr := c.Get(HeaderRange)

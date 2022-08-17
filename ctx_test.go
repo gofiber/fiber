@@ -396,7 +396,7 @@ func Test_Ctx_UserContext(t *testing.T) {
 		utils.AssertEqual(t, ctx, context.Background())
 	})
 	t.Run("ValueContext", func(t *testing.T) {
-		testKey := "Test Key"
+		testKey := struct{}{}
 		testValue := "Test Value"
 		ctx := context.WithValue(context.Background(), testKey, testValue)
 		utils.AssertEqual(t, testValue, ctx.Value(testKey))
@@ -408,7 +408,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	testKey := "Test Key"
+	testKey := struct{}{}
 	testValue := "Test Value"
 	ctx := context.WithValue(context.Background(), testKey, testValue)
 	c.SetUserContext(ctx)
@@ -417,7 +417,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 
 // go test -run Test_Ctx_UserContext_Multiple_Requests
 func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
-	testKey := "foobar-key"
+	testKey := struct{}{}
 	testValue := "foobar-value"
 
 	app := New()
@@ -2203,6 +2203,8 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	t.Parallel()
 	engine := &testTemplateEngine{}
 	err := engine.Load()
+	utils.AssertEqual(t, nil, err)
+
 	app := New(Config{
 		PassLocalsToViews: true,
 		Views:             engine,
