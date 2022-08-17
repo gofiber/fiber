@@ -649,33 +649,49 @@ func (c *Ctx) Port() string {
 }
 
 // IP returns the remote IP address of the request.
+// If ProxyHeader is configured, it will parse that header and return the first valid IP address
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) IP() string {
 	if c.IsProxyTrusted() && len(c.app.config.ProxyHeader) > 0 {
-		return c.Get(c.app.config.ProxyHeader)
+		return c.extractIPFromHeader(c.app.config.ProxyHeader)
 	}
 
 	return c.fasthttp.RemoteIP().String()
 }
 
-// IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
-func (c *Ctx) IPs() (ips []string) {
-	header := c.fasthttp.Request.Header.Peek(HeaderXForwardedFor)
-	if len(header) == 0 {
-		return
-	}
-	ips = make([]string, bytes.Count(header, []byte(","))+1)
-	var commaPos, i int
-	for {
-		commaPos = bytes.IndexByte(header, ',')
-		if commaPos != -1 {
-			ips[i] = utils.Trim(c.app.getString(header[:commaPos]), ' ')
-			header, i = header[commaPos+1:], i+1
-		} else {
-			ips[i] = utils.Trim(c.app.getString(header), ' ')
-			return
+// extractValidIPs will return a slice of strings that represent valid IP addresses
+// in the input string. The order is maintained. The separator is a comma
+func extractValidIPs(input string) (validIPs []string) {
+	unvalidatedIps := strings.Split(input, ",")
+	for _, ip := range unvalidatedIps {
+		if parsedIp := net.ParseIP(strings.TrimSpace(ip)); parsedIp != nil {
+			validIPs = append(validIPs, parsedIp.String())
 		}
 	}
+	return
+}
+
+// extractIPFromHeader will attempt to pull the real client IP from the given header
+// currently it will return the first valid IP address in header
+func (c *Ctx) extractIPFromHeader(header string) string {
+	// extract only valid IPs from the header's value
+	validIps := extractValidIPs(c.Get(header))
+
+	// since X-Forwarded-For has no RFC, it's really up to the proxy to decide whether to append
+	// or prepend IPs to this list. For example, the AWS ALB will prepend but the F5 BIG-IP will append ;(
+	// for now lets just go with the first value in the list...
+	if len(validIps) > 0 {
+		return validIps[0]
+	}
+
+	// return the IP from the stack if we could not find any valid Ips
+	return c.fasthttp.RemoteIP().String()
+}
+
+// IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
+// Only valid IP addresses are returned
+func (c *Ctx) IPs() (ips []string) {
+	return extractValidIPs(c.Get(HeaderXForwardedFor))
 }
 
 // Is returns the matching content type,
