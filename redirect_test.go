@@ -193,7 +193,7 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
 	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash=k:"))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:success:1,k"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:success:1"))
 	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:message:test"))
 
 	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash_old_input=k:"))
