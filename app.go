@@ -620,10 +620,10 @@ func (app *App) Use(args ...interface{}) Router {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
-		case Handler:
-			handlers = append(handlers, arg)
 		case *App:
 			mountedApp = arg
+		case Handler:
+			handlers = append(handlers, arg)
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
