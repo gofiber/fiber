@@ -58,7 +58,7 @@ func (r *Redirect) With(key string, value string) *Redirect {
 // You can send input data by using WithInput().
 // They will be sent as a cookie.
 // This method can send form, multipart form, query data to redirected route.
-// You can get them by using: Redirect().Olds(), Redirect().Old()
+// You can get them by using: Redirect().OldInputs(), Redirect().OldInput()
 func (r *Redirect) WithInput() *Redirect {
 	// Get content-type
 	ctype := utils.ToLower(utils.UnsafeString(r.c.Context().Request.Header.ContentType()))
@@ -88,12 +88,12 @@ func (r *Redirect) Message(key string) string {
 }
 
 // Get old input data.
-func (r *Redirect) Olds() map[string]string {
+func (r *Redirect) OldInputs() map[string]string {
 	return r.c.oldInput
 }
 
 // Get old input data by key.
-func (r *Redirect) Old(key string) string {
+func (r *Redirect) OldInput(key string) string {
 	return r.c.oldInput[key]
 }
 

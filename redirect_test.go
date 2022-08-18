@@ -226,9 +226,9 @@ func Test_Redirect_setFlash(t *testing.T) {
 	utils.AssertEqual(t, "test", c.Redirect().Message("message"))
 	utils.AssertEqual(t, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
 
-	utils.AssertEqual(t, "1", c.Redirect().Old("id"))
-	utils.AssertEqual(t, "tom", c.Redirect().Old("name"))
-	utils.AssertEqual(t, map[string]string{"id": "1", "name": "tom"}, c.Redirect().Olds())
+	utils.AssertEqual(t, "1", c.Redirect().OldInput("id"))
+	utils.AssertEqual(t, "tom", c.Redirect().OldInput("name"))
+	utils.AssertEqual(t, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route -benchmem -count=4
@@ -334,7 +334,7 @@ func Benchmark_Redirect_setFlash(b *testing.B) {
 	utils.AssertEqual(b, "test", c.Redirect().Message("message"))
 	utils.AssertEqual(b, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
 
-	utils.AssertEqual(b, "1", c.Redirect().Old("id"))
-	utils.AssertEqual(b, "tom", c.Redirect().Old("name"))
-	utils.AssertEqual(b, map[string]string{"id": "1", "name": "tom"}, c.Redirect().Olds())
+	utils.AssertEqual(b, "1", c.Redirect().OldInput("id"))
+	utils.AssertEqual(b, "tom", c.Redirect().OldInput("name"))
+	utils.AssertEqual(b, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
 }
