@@ -66,7 +66,6 @@ type Ctx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
-	tlsHandler          *tlsHandler          // Contains information from a ClientHello message in order to guide application logic
 }
 
 // tlsHandle object
@@ -143,8 +142,6 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	c.fasthttp = fctx
 	// reset base uri
 	c.baseURI = ""
-	// Attach tlsHandler object to context
-	c.tlsHandler = app.tlsHandler
 	// Prettify path
 	c.configDependentPaths()
 	return c
@@ -814,8 +811,8 @@ func (c *Ctx) MultipartForm() (*multipart.Form, error) {
 
 // ClientHelloInfo return CHI from context
 func (c *Ctx) ClientHelloInfo() *tls.ClientHelloInfo {
-	if c.tlsHandler != nil {
-		return c.tlsHandler.clientHelloInfo
+	if c.app.tlsHandler != nil {
+		return c.app.tlsHandler.clientHelloInfo
 	}
 
 	return nil
