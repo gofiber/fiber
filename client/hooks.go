@@ -2,7 +2,6 @@ package client
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"math/rand"
 	"mime/multipart"
@@ -245,9 +244,9 @@ func parserRequestBody(c *Client, req *Request) error {
 				v.name = filepath.Base(v.path)
 			}
 
-			// if param is not exist, set it
+			// if field name is not exist, set it
 			if v.fieldName == "" {
-				v.fieldName = "file" + fmt.Sprint(i+1)
+				v.fieldName = "file" + strconv.Itoa(i+1)
 			}
 
 			// check the reader
