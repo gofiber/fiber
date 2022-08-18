@@ -2,7 +2,7 @@ package retry
 
 import "time"
 
-// Config defines the config for middleware.
+// Config defines the config for addon.
 type Config struct {
 	// InitialInterval defines the initial time interval for backoff algorithm.
 	//

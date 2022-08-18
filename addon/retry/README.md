@@ -1,13 +1,13 @@
-# Retry Middleware
+# Retry Addon
 
-Retry middleware for [Fiber](https://github.com/gofiber/fiber) designed to apply retry mechanism for unsuccessful network
-operations. This middleware uses exponential backoff algorithm with jitter. It calls the function multiple times and tries
+Retry addon for [Fiber](https://github.com/gofiber/fiber) designed to apply retry mechanism for unsuccessful network
+operations. This addon uses exponential backoff algorithm with jitter. It calls the function multiple times and tries
 to make it successful. If all calls are failed, then, it returns error. It adds a jitter at each retry step because adding
 a jitter is a way to break synchronization across the client and avoid collision. 
 
 ## Table of Contents
 
-- [Retry Middleware](#retry-middleware)
+- [Retry Addon](#retry-addon)
   - [Table of Contents](#table-of-contents)
   - [Signatures](#signatures)
   - [Examples](#examples)
@@ -24,38 +24,35 @@ func NewExponentialBackoff(config ...Config) *ExponentialBackoff
 
 ## Examples
 
-Firstly, import the middleware from Fiber,
+Firstly, import the addon from Fiber,
 
 ```go
 import (
-    "github.com/gofiber/fiber/v3"
-    "github.com/gofiber/fiber/v3/middleware/retry"
+    "github.com/gofiber/fiber/v3/addon/retry"
 )
 ```
-
-Then, create a Fiber app with `app := fiber.New()`.
 
 ## Default Config
 
 ```go
-app.Use(retry.NewExponentialBackoff())
+retry.NewExponentialBackoff()
 ```
 
 ## Custom Config
 
 ```go
-app.Use(retry.NewExponentialBackoff(retry.Config{
+retry.NewExponentialBackoff(retry.Config{
         InitialInterval: 2 * time.Second,
         MaxBackoffTime:  64 * time.Second,
         Multiplier:      2.0,
         MaxRetryCount:   15,
-}))
+})
 ```
 
 ## Config
 
 ```go
-// Config defines the config for middleware.
+// Config defines the config for addon.
 type Config struct {
     // InitialInterval defines the initial time interval for backoff algorithm.
     //
