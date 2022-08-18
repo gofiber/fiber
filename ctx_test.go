@@ -13,6 +13,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/tls"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
