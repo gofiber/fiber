@@ -121,14 +121,33 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 	}
 
 	// Flash messages
-	if len(r.messages) > 0 {
+	if len(r.messages) > 0 || len(r.oldInput) > 0 {
 		messageText := bytebufferpool.Get()
 		defer bytebufferpool.Put(messageText)
 
+		// flash messages
 		i := 1
 		for k, v := range r.messages {
-			_, _ = messageText.WriteString("k:" + k + ":" + v)
+			if i != 1 {
+				_, _ = messageText.WriteString("k:")
+			}
+
+			_, _ = messageText.WriteString(k + ":" + v)
 			if len(r.messages) != i {
+				_, _ = messageText.WriteString(",")
+			}
+			i++
+		}
+
+		// old input data
+		i = 1
+		for k, v := range r.oldInput {
+			if i == 1 {
+				_, _ = messageText.WriteString("k:")
+			}
+
+			_, _ = messageText.WriteString("k:old_input_data_" + k + ":" + v)
+			if len(r.oldInput) != i {
 				_, _ = messageText.WriteString(",")
 			}
 			i++
@@ -137,27 +156,6 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		r.c.Cookie(&Cookie{
 			Name:        "fiber_flash",
 			Value:       r.c.app.getString(messageText.Bytes()),
-			SessionOnly: true,
-		})
-	}
-
-	// Old input data
-	if len(r.oldInput) > 0 {
-		inputText := bytebufferpool.Get()
-		defer bytebufferpool.Put(inputText)
-
-		i := 1
-		for k, v := range r.oldInput {
-			_, _ = inputText.WriteString("k:" + k + ":" + v)
-			if len(r.oldInput) != i {
-				_, _ = inputText.WriteString(",")
-			}
-			i++
-		}
-
-		r.c.Cookie(&Cookie{
-			Name:        "fiber_flash_old_input",
-			Value:       r.c.app.getString(inputText.Bytes()),
 			SessionOnly: true,
 		})
 	}
@@ -198,28 +196,20 @@ func (r *Redirect) setFlash() {
 	// parse flash messages
 	if r.c.Cookies("fiber_flash") != "" {
 		messages := strings.Split(r.c.Cookies("fiber_flash"), ",k:")
-		r.c.flashMessages = make(map[string]string, len(messages))
+		r.c.flashMessages = make(map[string]string)
+		r.c.oldInput = make(map[string]string)
 
 		for _, msg := range messages {
-			msg = strings.Replace(msg, "k:", "", 1)
 			splitMsg := strings.Split(msg, ":")
 
-			r.c.flashMessages[splitMsg[0]] = splitMsg[1]
+			// check old input data
+			if strings.HasPrefix(msg, "old_input_data_") {
+				r.c.oldInput[splitMsg[0][15:]] = splitMsg[1]
+			} else {
+				r.c.flashMessages[splitMsg[0]] = splitMsg[1]
+			}
 		}
 	}
 
-	// parse old input data
-	if r.c.Cookies("fiber_flash_old_input") != "" {
-		messages := strings.Split(r.c.Cookies("fiber_flash_old_input"), ",k:")
-		r.c.oldInput = make(map[string]string, len(messages))
-
-		for _, msg := range messages {
-			msg = strings.Replace(msg, "k:", "", 1)
-			splitMsg := strings.Split(msg, ":")
-
-			r.c.oldInput[splitMsg[0]] = splitMsg[1]
-		}
-	}
-
-	r.c.ClearCookie("fiber_flash", "fiber_flash_old_input")
+	r.c.ClearCookie("fiber_flash")
 }

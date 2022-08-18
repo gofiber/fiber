@@ -303,11 +303,11 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	utils.AssertEqual(b, 302, c.Response().StatusCode())
 	utils.AssertEqual(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	equal := string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax" || string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=k:message:test,k:success:1; path=/; SameSite=Lax"
+	equal := string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=success:1,k:message:test; path=/; SameSite=Lax" || string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=message:test,k:success:1; path=/; SameSite=Lax"
 	utils.AssertEqual(b, true, equal)
 
 	c.Redirect().setFlash()
-	utils.AssertEqual(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	utils.AssertEqual(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route_WithFlashMessages -benchmem -count=4
@@ -319,8 +319,7 @@ func Benchmark_Redirect_setFlash(b *testing.B) {
 
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash_old_input=k:name:tom,k:id:1")
-	c.Request().Header.Set(HeaderCookie, "fiber_flash=k:success:1,k:message:test")
+	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,k:message:test,k:old_input_data_name:tom,k:old_input_data_id:1")
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -329,7 +328,7 @@ func Benchmark_Redirect_setFlash(b *testing.B) {
 		c.Redirect().setFlash()
 	}
 
-	utils.AssertEqual(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	utils.AssertEqual(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 
 	utils.AssertEqual(b, "1", c.Redirect().Message("success"))
 	utils.AssertEqual(b, "test", c.Redirect().Message("message"))
