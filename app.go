@@ -613,7 +613,7 @@ func (app *App) GetRoute(name string) Route {
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...any) Router {
 	var prefix string
-	var mountedApp *App
+	var subApp *App
 	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
@@ -621,7 +621,7 @@ func (app *App) Use(args ...any) Router {
 		case string:
 			prefix = arg
 		case *App:
-			mountedApp = arg
+			subApp = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
@@ -629,8 +629,8 @@ func (app *App) Use(args ...any) Router {
 		}
 	}
 
-	if mountedApp != nil {
-		app.mount(prefix, mountedApp)
+	if subApp != nil {
+		app.mount(prefix, subApp)
 		return app
 	}
 
