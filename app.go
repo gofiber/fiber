@@ -109,6 +109,10 @@ type App struct {
 	getString func(b []byte) string
 	// Mounted and main apps
 	appList map[string]*App
+	// If application is a parent, It returns nill. It can accessible only from sub app
+	parent *App
+	// Mounted sub app's path
+	mountpath string
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
@@ -473,6 +477,8 @@ func New(config ...Config) *App {
 		getBytes:    utils.UnsafeBytes,
 		getString:   utils.UnsafeString,
 		appList:     make(map[string]*App),
+		parent:      nil,
+		mountpath:   "",
 		latestRoute: &Route{},
 		latestGroup: &Group{},
 	}
@@ -561,36 +567,6 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	}
 }
 
-// Mount attaches another app instance as a sub-router along a routing path.
-// It's very useful to split up a large API as many independent routers and
-// compose them as a single service using Mount. The fiber's error handler and
-// any of the fiber's sub apps are added to the application's error handlers
-// to be invoked on errors that happen within the prefix route.
-func (app *App) Mount(prefix string, fiber *App) Router {
-	stack := fiber.Stack()
-	prefix = strings.TrimRight(prefix, "/")
-	if prefix == "" {
-		prefix = "/"
-	}
-
-	for m := range stack {
-		for r := range stack[m] {
-			route := app.copyRoute(stack[m][r])
-			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
-		}
-	}
-
-	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subApp := range fiber.appList {
-		app.appList[prefix+mountedPrefixes] = subApp
-		subApp.init()
-	}
-
-	atomic.AddUint32(&app.handlersCount, fiber.handlersCount)
-
-	return app
-}
-
 // Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
@@ -637,6 +613,7 @@ func (app *App) GetRoute(name string) Route {
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...interface{}) Router {
 	var prefix string
+	var mountedApp *App
 	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
@@ -645,10 +622,18 @@ func (app *App) Use(args ...interface{}) Router {
 			prefix = arg
 		case Handler:
 			handlers = append(handlers, arg)
+		case *App:
+			mountedApp = arg
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
+
+	if mountedApp != nil {
+		app.mount(prefix, mountedApp)
+		return app
+	}
+
 	app.register(methodUse, prefix, handlers...)
 	return app
 }
@@ -722,6 +707,25 @@ func (app *App) All(path string, handlers ...Handler) Router {
 		_ = app.Add(method, path, handlers...)
 	}
 	return app
+}
+
+// The MountPath property contains one or more path patterns on which a sub-app was mounted.
+func (app *App) Mountpath() string {
+	if app.mountpath == "" {
+		panic("mountpath cannot be used on parent app")
+	}
+
+	return utils.CopyString(app.mountpath)
+}
+
+// The mount event is fired on a sub-app, when it is mounted on a parent app. The parent app is passed to the callback function.
+func (app *App) OnMount(callback func(parent *App)) {
+	if app.mountpath == "" {
+		panic("onmount cannot be used on parent app")
+	}
+
+	// returns parent app in callback
+	callback(app.parent)
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
@@ -943,6 +947,38 @@ func (app *App) init() *App {
 
 	// unlock application
 	app.mutex.Unlock()
+	return app
+}
+
+// Mount attaches another app instance as a sub-router along a routing path.
+// It's very useful to split up a large API as many independent routers and
+// compose them as a single service using Mount. The fiber's error handler and
+// any of the fiber's sub apps are added to the application's error handlers
+// to be invoked on errors that happen within the prefix route.
+func (app *App) mount(prefix string, sub *App) *App {
+	stack := sub.Stack()
+	prefix = strings.TrimRight(prefix, "/")
+	if prefix == "" {
+		prefix = "/"
+	}
+
+	for m := range stack {
+		for r := range stack[m] {
+			route := app.copyRoute(stack[m][r])
+			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
+		}
+	}
+
+	// Support for configs of mounted-apps and sub-mounted-apps
+	for mountedPrefixes, subApp := range sub.appList {
+		app.appList[prefix+mountedPrefixes] = subApp
+		subApp.parent = app
+		subApp.mountpath = prefix + mountedPrefixes
+		subApp.init()
+	}
+
+	atomic.AddUint32(&app.handlersCount, sub.handlersCount)
+
 	return app
 }
 
