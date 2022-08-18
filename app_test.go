@@ -322,20 +322,23 @@ func Test_App_Mount(t *testing.T) {
 	utils.AssertEqual(t, uint32(2), app.handlersCount)
 }
 
-func Test_App_MountPath(t *testing.T) {
+func Test_App_Mountpath(t *testing.T) {
 	parent := New()
 	sub := New()
+	sub1 := New()
 
 	parent.Use("/sub", sub)
+	parent.Use("/sub1", sub1)
+
+	utils.AssertEqual(t, "/sub", sub.Mountpath())
+	utils.AssertEqual(t, "/sub1", sub1.Mountpath())
 
 	defer func() {
 		if err := recover(); err != nil {
 			utils.AssertEqual(t, "mountpath cannot be used on parent app", fmt.Sprintf("%s", err))
 		}
 	}()
-	parent.MountPath()
-
-	utils.AssertEqual(t, "/sub", sub.MountPath())
+	parent.Mountpath()
 }
 
 func Test_App_OnMount(t *testing.T) {
@@ -347,7 +350,8 @@ func Test_App_OnMount(t *testing.T) {
 	app.Use("/sub", sub)
 
 	sub.OnMount(func(parent *App) {
-		utils.AssertEqual(t, app.mountPath, parent.mountPath)
+		//Check parent app
+		utils.AssertEqual(t, app.mountpath, parent.mountpath)
 	})
 
 	sub.OnMount(func(parent *App) {
