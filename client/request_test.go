@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/utils"
@@ -514,8 +516,41 @@ func Test_Request_File(t *testing.T) {
 	t.Parallel()
 
 	t.Run("add file", func(t *testing.T) {
+		req := AcquireRequest().
+			AddFile("../.github/index.html").
+			AddFiles(AcquireFile(SetFileName("tmp.txt")))
 
+		utils.AssertEqual(t, "../.github/index.html", req.File("index.html").path)
+		utils.AssertEqual(t, "../.github/index.html", req.FileByPath("../.github/index.html").path)
+		utils.AssertEqual(t, "tmp.txt", req.File("tmp.txt").name)
 	})
+
+	t.Run("add file by reader", func(t *testing.T) {
+		req := AcquireRequest().
+			AddFileWithReader("tmp.txt", io.NopCloser(strings.NewReader("world")))
+
+		utils.AssertEqual(t, "tmp.txt", req.File("tmp.txt").name)
+
+		content, err := ioutil.ReadAll(req.File("tmp.txt").reader)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "world", string(content))
+	})
+
+	t.Run("add files", func(t *testing.T) {
+		req := AcquireRequest().
+			AddFiles(AcquireFile(SetFileName("tmp.txt")), AcquireFile(SetFileName("foo.txt")))
+
+		utils.AssertEqual(t, "tmp.txt", req.File("tmp.txt").name)
+		utils.AssertEqual(t, "foo.txt", req.File("foo.txt").name)
+	})
+}
+
+func Test_Request_Timeout(t *testing.T) {
+	t.Parallel()
+
+	req := AcquireRequest().SetTimeout(5 * time.Second)
+
+	utils.AssertEqual(t, 5*time.Second, req.Timeout())
 }
 
 func createHelperServer(t *testing.T) (*fiber.App, *Client, func()) {
@@ -976,18 +1011,6 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		)
 	})
 
-	t.Run("json error", func(t *testing.T) {
-		testAgentFail(t,
-			func(c fiber.Ctx) error {
-				return c.SendString("")
-			},
-			func(agent *Request) {
-				agent.SetJSON(complex(1, 1))
-			},
-			errors.New("json: unsupported type: complex128"),
-		)
-	})
-
 	t.Run("xml body", func(t *testing.T) {
 		testAgent(t,
 			func(c fiber.Ctx) error {
@@ -1003,18 +1026,6 @@ func Test_Request_Body_With_Server(t *testing.T) {
 				})
 			},
 			"<args><content>hello</content></args>",
-		)
-	})
-
-	t.Run("xml error", func(t *testing.T) {
-		testAgentFail(t,
-			func(c fiber.Ctx) error {
-				return c.SendString("")
-			},
-			func(agent *Request) {
-				agent.SetXML(complex(1, 1))
-			},
-			errors.New("xml: unsupported type: complex128"),
 		)
 	})
 
@@ -1163,26 +1174,68 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	})
 }
 
-// func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
-// 	t.Parallel()
+func Test_Request_Error_Body_With_Server(t *testing.T) {
+	t.Run("json error", func(t *testing.T) {
+		testAgentFail(t,
+			func(c fiber.Ctx) error {
+				return c.SendString("")
+			},
+			func(agent *Request) {
+				agent.SetJSON(complex(1, 1))
+			},
+			errors.New("json: unsupported type: complex128"),
+		)
+	})
 
-// 	a := Post("http://example.com").
-// 		Boundary("*").
-// 		MultipartForm(nil)
+	t.Run("xml error", func(t *testing.T) {
+		testAgentFail(t,
+			func(c fiber.Ctx) error {
+				return c.SendString("")
+			},
+			func(agent *Request) {
+				agent.SetXML(complex(1, 1))
+			},
+			errors.New("xml: unsupported type: complex128"),
+		)
+	})
 
-// 	utils.AssertEqual(t, 1, len(a.errs))
-// 	utils.AssertEqual(t, "mime: invalid boundary character", a.errs[0].Error())
-// }
+	t.Run("form body with invalid boundary", func(t *testing.T) {
+		t.Parallel()
 
-// func Test_Client_Agent_SendFile_Error(t *testing.T) {
-// 	t.Parallel()
+		_, err := AcquireRequest().
+			SetBoundary("*").
+			AddFileWithReader("t.txt", io.NopCloser(strings.NewReader("world"))).
+			Get("http://example.com")
+		utils.AssertEqual(t, "mime: invalid boundary character", err.Error())
+	})
 
-// 	a := Post("http://example.com").
-// 		SendFile("non-exist-file!", "")
+	t.Run("open non exist file", func(t *testing.T) {
+		t.Parallel()
 
-// 	utils.AssertEqual(t, 1, len(a.errs))
-// 	utils.AssertEqual(t, true, strings.Contains(a.errs[0].Error(), "open non-exist-file!"))
-// }
+		_, err := AcquireRequest().
+			AddFile("non-exist-file!").
+			Get("http://example.com")
+		utils.AssertEqual(t, "open non-exist-file!: The system cannot find the file specified.", err.Error())
+	})
+}
+
+func Test_Request_Timeout_With_Server(t *testing.T) {
+	t.Parallel()
+
+	app, client, start := createHelperServer(t)
+	app.Get("/", func(c fiber.Ctx) error {
+		time.Sleep(time.Millisecond * 200)
+		return c.SendString("timeout")
+	})
+	go start()
+
+	_, err := AcquireRequest().
+		SetClient(client).
+		SetTimeout(50 * time.Millisecond).
+		Get("http://example.com")
+
+	utils.AssertEqual(t, ErrTimeoutOrCancel, err)
+}
 
 // // readErrorConn is a struct for testing retryIf
 // type readErrorConn struct {
@@ -1265,63 +1318,6 @@ func Test_Request_Body_With_Server(t *testing.T) {
 // 	utils.AssertEqual(t, true, strings.Contains(str, "Host: example.com\r\n\r\n"))
 // 	utils.AssertEqual(t, true, strings.Contains(str, "HTTP/1.1 200 OK"))
 // 	utils.AssertEqual(t, true, strings.Contains(str, "Content-Type: text/plain; charset=utf-8\r\nContent-Length: 5\r\n\r\ndebug"))
-// }
-
-// func Test_Client_Agent_Timeout(t *testing.T) {
-// 	t.Parallel()
-
-// 	ln := fasthttputil.NewInmemoryListener()
-
-// 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-
-// 	app.Get("/", func(c fiber.Ctx) error {
-// 		time.Sleep(time.Millisecond * 200)
-// 		return c.SendString("timeout")
-// 	})
-
-// 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
-
-// 	a := Get("http://example.com").
-// 		Timeout(time.Millisecond * 50)
-
-// 	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-
-// 	_, body, errs := a.String()
-
-// 	utils.AssertEqual(t, "", body)
-// 	utils.AssertEqual(t, 1, len(errs))
-// 	utils.AssertEqual(t, "timeout", errs[0].Error())
-// }
-
-// func Test_Client_Agent_Reuse(t *testing.T) {
-// 	t.Parallel()
-
-// 	ln := fasthttputil.NewInmemoryListener()
-
-// 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-
-// 	app.Get("/", func(c fiber.Ctx) error {
-// 		return c.SendString("reuse")
-// 	})
-
-// 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
-
-// 	a := Get("http://example.com").
-// 		Reuse()
-
-// 	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-
-// 	code, body, errs := a.String()
-
-// 	utils.AssertEqual(t, fiber.StatusOK, code)
-// 	utils.AssertEqual(t, "reuse", body)
-// 	utils.AssertEqual(t, 0, len(errs))
-
-// 	code, body, errs = a.String()
-
-// 	utils.AssertEqual(t, fiber.StatusOK, code)
-// 	utils.AssertEqual(t, "reuse", body)
-// 	utils.AssertEqual(t, 0, len(errs))
 // }
 
 // func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {

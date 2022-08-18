@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -402,6 +403,33 @@ func (r *Request) DelFormDatas(key ...string) *Request {
 	return r
 }
 
+// File returns file ptr store in request obj by name.
+// If name field is empty, it will try to match path.
+func (r *Request) File(name string) *File {
+	for _, v := range r.files {
+		if v.name == "" {
+			if filepath.Base(v.path) == name {
+				return v
+			}
+		} else if v.name == name {
+			return v
+		}
+	}
+
+	return nil
+}
+
+// File returns file ptr store in request obj by path.
+func (r *Request) FileByPath(path string) *File {
+	for _, v := range r.files {
+		if v.path == path {
+			return v
+		}
+	}
+
+	return nil
+}
+
 // AddFile method adds single file field
 // and its value in the request instance via file path.
 func (r *Request) AddFile(path string) *Request {
@@ -424,6 +452,11 @@ func (r *Request) AddFiles(files ...*File) *Request {
 	r.files = append(r.files, files...)
 	r.resetBody(filesBody)
 	return r
+}
+
+// Timeout returns the length of timeout in request.
+func (r *Request) Timeout() time.Duration {
+	return r.timeout
 }
 
 // SetTimeout method sets timeout field and its values at one go in the request instance.
