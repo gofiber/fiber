@@ -109,7 +109,7 @@ type App struct {
 	getString func(b []byte) string
 	// Mounted and main apps
 	appList map[string]*App
-	// If application is a parent, It returns nill. It can accessible only from sub app
+	// If application is a parent, It returns nil. It can accessible only from sub app
 	parent *App
 	// Mounted sub app's path
 	mountpath string
