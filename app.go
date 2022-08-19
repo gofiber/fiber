@@ -720,6 +720,10 @@ func (app *App) MountPath() string {
 
 // The mount event is fired on a sub-app, when it is mounted on a parent app. The parent app is passed to the callback function.
 func (app *App) OnMount(callback func(parent *App)) {
+	if app.parent == nil {
+		panic("not mounted sub app to parent app")
+	}
+
 	if app.mountpath == "" {
 		panic("onmount cannot be used on parent app")
 	}
