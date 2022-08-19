@@ -2,7 +2,7 @@ package favicon
 
 import (
 	"io"
-	"net/http"
+	"io/fs"
 	"os"
 	"strconv"
 
@@ -25,7 +25,7 @@ type Config struct {
 	// An example of this could be an embedded or network filesystem
 	//
 	// Optional. Default: nil
-	FileSystem http.FileSystem `json:"-"`
+	FileSystem fs.FS `json:"-"`
 
 	// CacheControl defines how the Cache-Control header in the response should be set
 	//
