@@ -19,12 +19,12 @@ _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) pa
 
 ```go
 func New(config ...Config) *Store
-func (s *Store) RegisterType(i interface{})
+func (s *Store) RegisterType(i any)
 func (s *Store) Get(c fiber.Ctx) (*Session, error)
 func (s *Store) Reset() error
 
-func (s *Session) Get(key string) interface{}
-func (s *Session) Set(key string, val interface{})
+func (s *Session) Get(key string) any
+func (s *Session) Set(key string, val any)
 func (s *Session) Delete(key string)
 func (s *Session) Destroy() error
 func (s *Session) Regenerate() error
@@ -35,14 +35,14 @@ func (s *Session) Keys() []string
 func (s *Session) SetExpiry(time.Duration) 
 ```
 
-**⚠ _Storing `interface{}` values are limited to built-ins Go types_**
+**⚠ _Storing `any` values are limited to built-ins Go types_**
 
 ### Examples
 Import the middleware package that is part of the Fiber web framework
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/session"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/session"
 )
 ```
 
