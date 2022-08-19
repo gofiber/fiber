@@ -29,9 +29,7 @@ type Config struct {
 	// PathPrefix defines a prefix to be added to a filepath when
 	// reading a file from the FileSystem.
 	//
-	// Use when using Go 1.16 embed.FS
-	//
-	// Optional. Default ""
+	// Optional. Default "."
 	PathPrefix string `json:"path_prefix"`
 
 	// Enable directory browsing.
