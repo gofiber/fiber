@@ -1,9 +1,154 @@
 package utils
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
+
+func Test_TrimRightBytes(t *testing.T) {
+	t.Parallel()
+	res := TrimRight([]byte("/test//////"), '/')
+	AssertEqual(t, []byte("/test"), res)
+
+	res = TrimRight([]byte("/test"), '/')
+	AssertEqual(t, []byte("/test"), res)
+
+	res = TrimRight([]byte(" "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = TrimRight([]byte("  "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = TrimRight([]byte(""), ' ')
+	AssertEqual(t, 0, len(res))
+}
+
+func Benchmark_TrimRightBytes(b *testing.B) {
+	var res []byte
+
+	b.Run("fiber", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = TrimRight([]byte("foobar  "), ' ')
+		}
+		AssertEqual(b, []byte("foobar"), res)
+	})
+	b.Run("default", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = bytes.TrimRight([]byte("foobar  "), " ")
+		}
+		AssertEqual(b, []byte("foobar"), res)
+	})
+}
+
+func Test_TrimLeftBytes(t *testing.T) {
+	t.Parallel()
+	res := TrimLeft([]byte("////test/"), '/')
+	AssertEqual(t, []byte("test/"), res)
+
+	res = TrimLeft([]byte("test/"), '/')
+	AssertEqual(t, []byte("test/"), res)
+
+	res = TrimLeft([]byte(" "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = TrimLeft([]byte("  "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = TrimLeft([]byte(""), ' ')
+	AssertEqual(t, 0, len(res))
+}
+
+func Benchmark_TrimLeftBytes(b *testing.B) {
+	var res []byte
+
+	b.Run("fiber", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = TrimLeft([]byte("  foobar"), ' ')
+		}
+		AssertEqual(b, []byte("foobar"), res)
+	})
+	b.Run("default", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = bytes.TrimLeft([]byte("  foobar"), " ")
+		}
+		AssertEqual(b, []byte("foobar"), res)
+	})
+}
+
+func Test_TrimBytes(t *testing.T) {
+	t.Parallel()
+	res := Trim([]byte("   test  "), ' ')
+	AssertEqual(t, []byte("test"), res)
+
+	res = Trim([]byte("test"), ' ')
+	AssertEqual(t, []byte("test"), res)
+
+	res = Trim([]byte(".test"), '.')
+	AssertEqual(t, []byte("test"), res)
+
+	res = Trim([]byte(" "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = Trim([]byte("  "), ' ')
+	AssertEqual(t, 0, len(res))
+
+	res = Trim([]byte(""), ' ')
+	AssertEqual(t, 0, len(res))
+}
+
+func Benchmark_TrimBytes(b *testing.B) {
+	var res []byte
+
+	b.Run("fiber", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = Trim([]byte("  foobar   "), ' ')
+		}
+		AssertEqual(b, []byte("foobar"), res)
+	})
+	b.Run("default", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = bytes.Trim([]byte("  foobar   "), " ")
+		}
+		AssertEqual(b, []byte("foobar"), res)
+	})
+}
+
+func Benchmark_EqualFoldBytes(b *testing.B) {
+	left := []byte(upperStr)
+	right := []byte(lowerStr)
+	var res bool
+	b.Run("fiber", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = EqualFold(left, right)
+		}
+		AssertEqual(b, true, res)
+	})
+	b.Run("default", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			res = bytes.EqualFold(left, right)
+		}
+		AssertEqual(b, true, res)
+	})
+}
+
+func Test_EqualFoldBytes(t *testing.T) {
+	t.Parallel()
+	res := EqualFold([]byte("/MY/NAME/IS/:PARAM/*"), []byte("/my/name/is/:param/*"))
+	AssertEqual(t, true, res)
+	res = EqualFold([]byte("/MY1/NAME/IS/:PARAM/*"), []byte("/MY1/NAME/IS/:PARAM/*"))
+	AssertEqual(t, true, res)
+	res = EqualFold([]byte("/my2/name/is/:param/*"), []byte("/my2/name"))
+	AssertEqual(t, false, res)
+	res = EqualFold([]byte("/dddddd"), []byte("eeeeee"))
+	AssertEqual(t, false, res)
+	res = EqualFold([]byte("\na"), []byte("*A"))
+	AssertEqual(t, false, res)
+	res = EqualFold([]byte("/MY3/NAME/IS/:PARAM/*"), []byte("/my3/name/is/:param/*"))
+	AssertEqual(t, true, res)
+	res = EqualFold([]byte("/MY4/NAME/IS/:PARAM/*"), []byte("/my4/nAME/IS/:param/*"))
+	AssertEqual(t, true, res)
+}
 
 func Test_TrimRight(t *testing.T) {
 	t.Parallel()
