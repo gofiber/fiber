@@ -53,7 +53,7 @@ func Trim(s string, cutset byte) string {
 }
 
 // TrimRight is the equivalent of strings.TrimRight
-func TrimRight[S byteSeq](s S, cutset byte) S {
+func TrimRight(s string, cutset byte) string {
 	lenStr := len(s)
 	for lenStr > 0 && s[lenStr-1] == cutset {
 		lenStr--
