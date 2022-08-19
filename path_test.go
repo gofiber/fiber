@@ -549,6 +549,12 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/25", params: []string{"25"}, match: true},
 		{url: "/api/v1/true", params: []string{"true"}, match: false},
 	})
+	testCase("/api/v1/:param<int\\;range(10,30)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: true},
+		{url: "/api/v1/87283827683", params: []string{"87283827683"}, match: true},
+		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: true},
+	})
 }
 
 func Test_Utils_GetTrimmedParam(t *testing.T) {
@@ -755,28 +761,10 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v1/25", params: []string{"25"}, match: true},
 		{url: "/api/v1/true", params: []string{"true"}, match: false},
 	})
-}
-
-func Test_Path_matchParams0(t *testing.T) {
-	t.Parallel()
-	type testparams struct {
-		url          string
-		params       []string
-		match        bool
-		partialCheck bool
-	}
-	var ctxParams [maxParams]string
-	testCase := func(r string, cases []testparams) {
-		parser := parseRoute(r)
-		for _, c := range cases {
-			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
-			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-			if match && len(c.params) > 0 {
-				utils.AssertEqual(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-			}
-		}
-	}
-	testCase("/api/v1/:param<datetime(2006-01-02)>", []testparams{
-		{url: "/api/v1/2005-11-01", params: []string{"2005-11-01"}, match: true},
+	benchCase("/api/v1/:param<int\\;range(10,30)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: true},
+		{url: "/api/v1/87283827683", params: []string{"87283827683"}, match: true},
+		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: true},
 	})
 }

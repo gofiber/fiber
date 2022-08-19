@@ -261,7 +261,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 
 	if hasConstraint := (parameterConstraintStart != -1 && parameterConstraintEnd != -1); hasConstraint {
 		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd]
-		userconstraints := strings.Split(constraintString, string(parameterConstraintSeparatorChars))
+		userconstraints := splitNonEscaped(constraintString, string(parameterConstraintSeparatorChars))
 		constraints = make([]*Constraint, 0, len(userconstraints))
 
 		for _, c := range userconstraints {
@@ -272,7 +272,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 			if start != -1 && end != -1 {
 				constraint := &Constraint{
 					ID:   getParamConstraintType(c[:start]),
-					Data: strings.Split(RemoveEscapeChar(c[start+1:end]), string(parameterConstraintDataSeparatorChars)),
+					Data: splitNonEscaped(RemoveEscapeChar(c[start+1:end]), string(parameterConstraintDataSeparatorChars)),
 				}
 
 				// Precompile regex if has regex constraint
@@ -382,6 +382,21 @@ func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
 	}
 
 	return pos
+}
+
+// splitNonEscaped slices s into all substrings separated by sep and returns a slice of the substrings between those separators
+// This function also takes a care of escape char when splitting.
+func splitNonEscaped(s, sep string) []string {
+	var result []string
+	i := findNextNonEscapedCharsetPosition(s, []byte(sep))
+
+	for i > -1 {
+		result = append(result, s[:i])
+		s = s[i+len(sep):]
+		i = findNextNonEscapedCharsetPosition(s, []byte(sep))
+	}
+
+	return append(result, s)
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
@@ -526,13 +541,13 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 		return alphaConstraint
 	case ConstraintGuid:
 		return guidConstraint
-	case ConstraintMinLen:
+	case ConstraintMinLen, ConstraintMinLenLower:
 		return minLenConstraint
-	case ConstraintMaxLen:
+	case ConstraintMaxLen, ConstraintMaxLenLower:
 		return maxLenConstraint
-	case ConstraintExactLen:
+	case ConstraintExactLen, ConstraintExactLenLower:
 		return exactLenConstraint
-	case ConstraintBetweenLen:
+	case ConstraintBetweenLen, ConstraintBetweenLenLower:
 		return betweenLenConstraint
 	case ConstraintMin:
 		return minConstraint
