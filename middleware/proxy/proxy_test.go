@@ -2,7 +2,7 @@ package proxy
 
 import (
 	"crypto/tls"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -173,7 +173,7 @@ func Test_Proxy_Forward(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "forwarded", string(b))
 }
@@ -233,7 +233,7 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "modified response", string(b))
 }
@@ -260,7 +260,7 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "modified request", string(b))
 }
@@ -284,7 +284,7 @@ func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "fiber is awesome", string(b))
 }
@@ -308,7 +308,7 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "timeout", string(b))
 }
@@ -386,7 +386,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/http://"+addr, nil))
 	utils.AssertEqual(t, nil, err)
-	s, err := ioutil.ReadAll(resp.Body)
+	s, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "hello world", string(s))
 }

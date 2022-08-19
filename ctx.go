@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -1354,7 +1353,7 @@ func (c *Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, s
 		return err
 	}
 
-	content, err := ioutil.ReadAll(file)
+	content, err := io.ReadAll(file)
 	if err != nil {
 		return err
 	}

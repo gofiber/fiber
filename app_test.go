@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -43,7 +42,7 @@ func testErrorResponse(t *testing.T, err error, resp *http.Response, expectedBod
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, expectedBodyError, string(body), "Response body")
 }
@@ -161,7 +160,7 @@ func Test_App_Errors(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "hi, i'm an error", string(body))
 
@@ -186,7 +185,7 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "hi, i'm an custom error", string(body))
 }
@@ -215,7 +214,7 @@ func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "1: USE error", string(body))
 }
@@ -240,7 +239,7 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "1: USE error", string(body))
 }
@@ -381,7 +380,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	// check the param result
 	utils.AssertEqual(t, "اختبار", app.getString(body))
@@ -416,7 +415,7 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	// check the detected path result
 	utils.AssertEqual(t, "/AbC", app.getString(body))
@@ -518,7 +517,7 @@ func Test_App_Order(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 }
@@ -640,7 +639,7 @@ func Test_App_Static_Index_Default(t *testing.T) {
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
 	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
 
@@ -650,7 +649,7 @@ func Test_App_Static_Index_Default(t *testing.T) {
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
 	utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Cannot GET /not-found", string(body))
 }
@@ -667,7 +666,7 @@ func Test_App_Static_Direct(t *testing.T) {
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
 	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
 
@@ -678,7 +677,7 @@ func Test_App_Static_Direct(t *testing.T) {
 	utils.AssertEqual(t, MIMEApplicationJSON, resp.Header.Get("Content-Type"))
 	utils.AssertEqual(t, "", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "testRoutes"))
 }
@@ -755,7 +754,7 @@ func Test_App_Static_Wildcard(t *testing.T) {
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
 	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Test file"))
 }
@@ -780,7 +779,7 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
 	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Test file"))
 }
@@ -883,7 +882,7 @@ func Test_App_Static_Next(t *testing.T) {
 		utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
 		utils.AssertEqual(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, true, strings.Contains(string(body), "You've skipped app.Static"))
 	})
@@ -897,7 +896,7 @@ func Test_App_Static_Next(t *testing.T) {
 		utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
 		utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"))
 	})
@@ -928,7 +927,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	utils.AssertEqual(t, "TestValue", resp.Header.Get("TestHeader"))
 	utils.AssertEqual(t, "text/html", resp.Header.Get(HeaderContentType))
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "FOO_BAR", string(body))
 
@@ -941,7 +940,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	utils.AssertEqual(t, "TestValue", resp.Header.Get("TestHeader"))
 	utils.AssertEqual(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, strings.Contains(string(body), "Hello, World!"), "Response: "+string(body))
 	utils.AssertEqual(t, true, strings.HasPrefix(string(body), "<!DOCTYPE html>"), "Response: "+string(body))
@@ -1387,8 +1386,8 @@ func Test_App_ReadBodyStream(t *testing.T) {
 	testString := "this is a test"
 	resp, err := app.Test(httptest.NewRequest("POST", "/", bytes.NewBufferString(testString)))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "ioutil.ReadAll(resp.Body)")
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "io.ReadAll(resp.Body)")
 	utils.AssertEqual(t, fmt.Sprintf("true %s", testString), string(body))
 }
 
@@ -1433,8 +1432,8 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "ioutil.ReadAll(resp.Body)")
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "io.ReadAll(resp.Body)")
 
 	utils.AssertEqual(t, testString, string(body))
 }
@@ -1516,7 +1515,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "/api/sub req")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
 	utils.AssertEqual(t, "hi, i'm a custom sub fiber error", string(b), "Response body")
 
@@ -1524,7 +1523,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "/api/sub/third req")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	b, err = ioutil.ReadAll(resp2.Body)
+	b, err = io.ReadAll(resp2.Body)
 	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
 	utils.AssertEqual(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
 }

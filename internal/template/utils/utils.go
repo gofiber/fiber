@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -30,7 +31,7 @@ func ReadFile(path string, fs http.FileSystem) ([]byte, error) {
 			return nil, err
 		}
 		defer file.Close()
-		return ioutil.ReadAll(file)
+		return io.ReadAll(file)
 	}
 	return ioutil.ReadFile(path)
 }
