@@ -347,6 +347,7 @@ func Test_App_Mountpath(t *testing.T) {
 func Test_App_OnMount(t *testing.T) {
 	app := New()
 	sub := New()
+	sub1 := New()
 
 	app.Use("/sub", sub)
 
@@ -358,6 +359,14 @@ func Test_App_OnMount(t *testing.T) {
 	sub.OnMount(func(parent *App) {
 		utils.AssertEqual(t, parent != nil, true)
 	})
+
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "not mounted sub app to parent app", fmt.Sprintf("%s", err))
+		}
+	}()
+
+	sub1.OnMount(func(parent *App) {})
 
 	defer func() {
 		if err := recover(); err != nil {
