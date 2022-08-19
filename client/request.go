@@ -57,7 +57,7 @@ type Request struct {
 	files    []*File
 	bodyType bodyType
 
-	rawRequest *fasthttp.Request
+	RawRequest *fasthttp.Request
 }
 
 // Method returns http method in request.
@@ -550,7 +550,7 @@ func (r *Request) Reset() {
 	r.cookies.Reset()
 	r.header.Reset()
 	r.params.Reset()
-	r.rawRequest.Reset()
+	r.RawRequest.Reset()
 }
 
 // Header is a wrapper which wrap http.Header,
@@ -816,7 +816,7 @@ var requestPool = &sync.Pool{
 			boundary:   "--FiberFormBoundary" + randString(16),
 			formData:   &FormData{Args: fasthttp.AcquireArgs()},
 			files:      make([]*File, 0),
-			rawRequest: fasthttp.AcquireRequest(),
+			RawRequest: fasthttp.AcquireRequest(),
 		}
 	},
 }

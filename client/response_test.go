@@ -2,7 +2,6 @@ package client
 
 import (
 	"encoding/xml"
-	"fmt"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -144,8 +143,6 @@ func Test_Response_Cookie(t *testing.T) {
 		SetClient(client).
 		Get("http://example.com")
 
-	fmt.Println(resp.rawResponse.String())
-
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "bar", string(resp.Cookies()[0].Value()))
 	resp.Close()
@@ -214,8 +211,6 @@ func Test_Response_Body(t *testing.T) {
 		resp, err := AcquireRequest().
 			SetClient(client).
 			Get("http://example.com/xml")
-
-		fmt.Println(resp.rawResponse.String())
 
 		utils.AssertEqual(t, nil, err)
 

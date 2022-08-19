@@ -38,25 +38,25 @@ func Test_Exec_Func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
 		core := client.core
 		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-		req.rawRequest.SetRequestURI("http://example.com/normal")
+		req.RawRequest.SetRequestURI("http://example.com/normal")
 
 		resp, err := core.execFunc(context.Background(), client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, 200, resp.rawResponse.StatusCode())
-		utils.AssertEqual(t, "example.com", string(resp.rawResponse.Body()))
+		utils.AssertEqual(t, 200, resp.RawResponse.StatusCode())
+		utils.AssertEqual(t, "example.com", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("the request return an error", func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
 		core := client.core
 		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-		req.rawRequest.SetRequestURI("http://example.com/return-error")
+		req.RawRequest.SetRequestURI("http://example.com/return-error")
 
 		resp, err := core.execFunc(context.Background(), client, req)
 
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, 500, resp.rawResponse.StatusCode())
-		utils.AssertEqual(t, "the request is error", string(resp.rawResponse.Body()))
+		utils.AssertEqual(t, 500, resp.RawResponse.StatusCode())
+		utils.AssertEqual(t, "the request is error", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("there is no connect", func(t *testing.T) {
@@ -67,13 +67,13 @@ func Test_Exec_Func(t *testing.T) {
 
 		go func() {
 			req := AcquireRequest()
-			req.rawRequest.SetRequestURI("http://example.com/normal")
+			req.RawRequest.SetRequestURI("http://example.com/normal")
 			_, err := core.execFunc(context.Background(), client, req)
 			utils.AssertEqual(t, fasthttp.ErrNoFreeConns, err)
 		}()
 
 		req := AcquireRequest()
-		req.rawRequest.SetRequestURI("http://example.com/hang-up")
+		req.RawRequest.SetRequestURI("http://example.com/hang-up")
 		core.execFunc(context.Background(), client, req)
 	})
 
@@ -82,7 +82,7 @@ func Test_Exec_Func(t *testing.T) {
 		core := client.core
 
 		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-		req.rawRequest.SetRequestURI("http://example.com/hang-up")
+		req.RawRequest.SetRequestURI("http://example.com/hang-up")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
@@ -128,7 +128,7 @@ func Test_Execute(t *testing.T) {
 
 		resp, err := client.core.execute(context.Background(), client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "Cannot GET /", string(resp.rawResponse.Body()))
+		utils.AssertEqual(t, "Cannot GET /", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("add user response hooks", func(t *testing.T) {
@@ -143,7 +143,7 @@ func Test_Execute(t *testing.T) {
 
 		resp, err := client.core.execute(context.Background(), client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "Cannot GET /", string(resp.rawResponse.Body()))
+		utils.AssertEqual(t, "Cannot GET /", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("no timeout", func(t *testing.T) {
@@ -155,7 +155,7 @@ func Test_Execute(t *testing.T) {
 
 		resp, err := client.core.execute(context.Background(), client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "example.com hang up", string(resp.rawResponse.Body()))
+		utils.AssertEqual(t, "example.com hang up", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("client timeout", func(t *testing.T) {
@@ -192,6 +192,6 @@ func Test_Execute(t *testing.T) {
 
 		resp, err := client.core.execute(context.Background(), client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "example.com hang up", string(resp.rawResponse.Body()))
+		utils.AssertEqual(t, "example.com hang up", string(resp.RawResponse.Body()))
 	})
 }

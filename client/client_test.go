@@ -69,7 +69,7 @@ func Test_Get(t *testing.T) {
 
 		resp, err := Get("http://example.com")
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "example.com", utils.UnsafeString(resp.rawResponse.Body()))
+		utils.AssertEqual(t, "example.com", utils.UnsafeString(resp.RawResponse.Body()))
 	})
 }
 

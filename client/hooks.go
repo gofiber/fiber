@@ -97,8 +97,8 @@ func parserRequestURL(c *Client, req *Request) error {
 	})
 
 	// set uri to request and orther related setting
-	req.rawRequest.SetRequestURI(uri)
-	rawUri := req.rawRequest.URI()
+	req.RawRequest.SetRequestURI(uri)
+	rawUri := req.RawRequest.URI()
 	isTLS, scheme := false, rawUri.Scheme()
 	if bytes.Equal(httpsBytes, scheme) {
 		isTLS = true
@@ -124,8 +124,8 @@ func parserRequestURL(c *Client, req *Request) error {
 	req.params.VisitAll(func(key, value []byte) {
 		args.AddBytesKV(key, value)
 	})
-	req.rawRequest.URI().SetQueryStringBytes(utils.CopyBytes(args.QueryString()))
-	req.rawRequest.URI().SetHash(hashSplit[1])
+	req.RawRequest.URI().SetQueryStringBytes(utils.CopyBytes(args.QueryString()))
+	req.RawRequest.URI().SetHash(hashSplit[1])
 
 	return nil
 }
@@ -136,54 +136,54 @@ func parserRequestURL(c *Client, req *Request) error {
 // User-Agent should be set.
 func parserRequestHeader(c *Client, req *Request) error {
 	// set method
-	req.rawRequest.Header.SetMethod(req.Method())
+	req.RawRequest.Header.SetMethod(req.Method())
 	// merge header
 	c.header.VisitAll(func(key, value []byte) {
-		req.rawRequest.Header.AddBytesKV(key, value)
+		req.RawRequest.Header.AddBytesKV(key, value)
 	})
 
 	req.header.VisitAll(func(key, value []byte) {
-		req.rawRequest.Header.AddBytesKV(key, value)
+		req.RawRequest.Header.AddBytesKV(key, value)
 	})
 
 	// according to data set content-type
 	switch req.bodyType {
 	case jsonBody:
-		req.rawRequest.Header.SetContentType(applicationJSON)
-		req.rawRequest.Header.Set(headerAccept, applicationJSON)
+		req.RawRequest.Header.SetContentType(applicationJSON)
+		req.RawRequest.Header.Set(headerAccept, applicationJSON)
 	case xmlBody:
-		req.rawRequest.Header.SetContentType(applicationXML)
+		req.RawRequest.Header.SetContentType(applicationXML)
 	case formBody:
-		req.rawRequest.Header.SetContentType(applicationForm)
+		req.RawRequest.Header.SetContentType(applicationForm)
 	case filesBody:
-		req.rawRequest.Header.SetContentType(multipartFormData)
+		req.RawRequest.Header.SetContentType(multipartFormData)
 		// set boundary
-		req.rawRequest.Header.SetMultipartFormBoundary(req.boundary)
+		req.RawRequest.Header.SetMultipartFormBoundary(req.boundary)
 	default:
 	}
 
 	// set useragent
-	req.rawRequest.Header.SetUserAgent(defaultUserAgent)
+	req.RawRequest.Header.SetUserAgent(defaultUserAgent)
 	if c.userAgent != "" {
-		req.rawRequest.Header.SetUserAgent(c.userAgent)
+		req.RawRequest.Header.SetUserAgent(c.userAgent)
 	}
 	if req.userAgent != "" {
-		req.rawRequest.Header.SetUserAgent(req.userAgent)
+		req.RawRequest.Header.SetUserAgent(req.userAgent)
 	}
 
 	// set referer
-	req.rawRequest.Header.SetReferer(c.referer)
+	req.RawRequest.Header.SetReferer(c.referer)
 	if req.referer != "" {
-		req.rawRequest.Header.SetReferer(req.referer)
+		req.RawRequest.Header.SetReferer(req.referer)
 	}
 
 	// set cookie
 	c.cookies.VisitAll(func(key, val string) {
-		req.rawRequest.Header.SetCookie(key, val)
+		req.RawRequest.Header.SetCookie(key, val)
 	})
 
 	req.cookies.VisitAll(func(key, val string) {
-		req.rawRequest.Header.SetCookie(key, val)
+		req.RawRequest.Header.SetCookie(key, val)
 	})
 
 	return nil
@@ -198,17 +198,17 @@ func parserRequestBody(c *Client, req *Request) error {
 		if err != nil {
 			return err
 		}
-		req.rawRequest.SetBody(body)
+		req.RawRequest.SetBody(body)
 	case xmlBody:
 		body, err := c.core.xmlMarshal(req.body)
 		if err != nil {
 			return err
 		}
-		req.rawRequest.SetBody(body)
+		req.RawRequest.SetBody(body)
 	case formBody:
-		req.rawRequest.SetBody(req.formData.QueryString())
+		req.RawRequest.SetBody(req.formData.QueryString())
 	case filesBody:
-		mw := multipart.NewWriter(req.rawRequest.BodyWriter())
+		mw := multipart.NewWriter(req.RawRequest.BodyWriter())
 		err := mw.SetBoundary(req.boundary)
 		if err != nil {
 			return err
@@ -284,7 +284,7 @@ func parserRequestBody(c *Client, req *Request) error {
 		}
 	case rawBody:
 		if body, ok := req.body.([]byte); ok {
-			req.rawRequest.SetBody(body)
+			req.RawRequest.SetBody(body)
 		} else {
 			return ErrBodyType
 		}
@@ -293,7 +293,7 @@ func parserRequestBody(c *Client, req *Request) error {
 }
 
 func parserResponseCookie(c *Client, resp *Response, req *Request) (err error) {
-	resp.rawResponse.Header.VisitAllCookie(func(key, value []byte) {
+	resp.RawResponse.Header.VisitAllCookie(func(key, value []byte) {
 		cookie := fasthttp.AcquireCookie()
 		_ = cookie.ParseBytes(value)
 		cookie.SetKeyBytes(key)

@@ -78,7 +78,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "http://example.com/api", req.rawRequest.URI().String())
+		utils.AssertEqual(t, "http://example.com/api", req.RawRequest.URI().String())
 	})
 
 	t.Run("request url should be set", func(t *testing.T) {
@@ -87,7 +87,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "http://example.com/api", req.rawRequest.URI().String())
+		utils.AssertEqual(t, "http://example.com/api", req.RawRequest.URI().String())
 	})
 
 	t.Run("the request url will override baseurl with protocol", func(t *testing.T) {
@@ -96,7 +96,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "http://example.com/api/v1", req.rawRequest.URI().String())
+		utils.AssertEqual(t, "http://example.com/api/v1", req.RawRequest.URI().String())
 	})
 
 	t.Run("the request url should be append after baseurl without protocol", func(t *testing.T) {
@@ -105,7 +105,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "http://example.com/api/v1", req.rawRequest.URI().String())
+		utils.AssertEqual(t, "http://example.com/api/v1", req.RawRequest.URI().String())
 	})
 
 	t.Run("the url is error", func(t *testing.T) {
@@ -124,7 +124,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "http://example.com/api/5", req.rawRequest.URI().String())
+		utils.AssertEqual(t, "http://example.com/api/5", req.RawRequest.URI().String())
 	})
 
 	t.Run("the path param from request", func(t *testing.T) {
@@ -141,7 +141,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "http://example.com/api/5/fiber/%7Bkey%7D", req.rawRequest.URI().String())
+		utils.AssertEqual(t, "http://example.com/api/5/fiber/%7Bkey%7D", req.RawRequest.URI().String())
 	})
 
 	t.Run("the path param from request and client", func(t *testing.T) {
@@ -158,7 +158,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "http://example.com/api/12/fiber/val", req.rawRequest.URI().String())
+		utils.AssertEqual(t, "http://example.com/api/12/fiber/val", req.RawRequest.URI().String())
 	})
 
 	t.Run("query params from client should be set", func(t *testing.T) {
@@ -168,7 +168,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("foo=bar"), req.rawRequest.URI().QueryString())
+		utils.AssertEqual(t, []byte("foo=bar"), req.RawRequest.URI().QueryString())
 	})
 
 	t.Run("query params from request should be set", func(t *testing.T) {
@@ -179,7 +179,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 
 		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("bar=foo"), req.rawRequest.URI().QueryString())
+		utils.AssertEqual(t, []byte("bar=foo"), req.RawRequest.URI().QueryString())
 	})
 
 	t.Run("query params should be merged", func(t *testing.T) {
@@ -192,7 +192,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 		err := parserRequestURL(client, req)
 		utils.AssertEqual(t, nil, err)
 
-		values, _ := url.ParseQuery(string(req.rawRequest.URI().QueryString()))
+		values, _ := url.ParseQuery(string(req.RawRequest.URI().QueryString()))
 
 		flag1, flag2, flag3 := false, false, false
 		for _, v := range values["bar"] {
@@ -223,7 +223,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("application/json"), req.rawRequest.Header.ContentType())
+		utils.AssertEqual(t, []byte("application/json"), req.RawRequest.Header.ContentType())
 	})
 
 	t.Run("request header should be set", func(t *testing.T) {
@@ -236,7 +236,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("application/json, utf-8"), req.rawRequest.Header.ContentType())
+		utils.AssertEqual(t, []byte("application/json, utf-8"), req.RawRequest.Header.ContentType())
 	})
 
 	t.Run("request header should override client header", func(t *testing.T) {
@@ -248,7 +248,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("application/json, utf-8"), req.rawRequest.Header.ContentType())
+		utils.AssertEqual(t, []byte("application/json, utf-8"), req.RawRequest.Header.ContentType())
 	})
 
 	t.Run("auto set json header", func(t *testing.T) {
@@ -263,7 +263,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte(applicationJSON), req.rawRequest.Header.ContentType())
+		utils.AssertEqual(t, []byte(applicationJSON), req.RawRequest.Header.ContentType())
 	})
 
 	t.Run("auto set xml header", func(t *testing.T) {
@@ -279,7 +279,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte(applicationXML), req.rawRequest.Header.ContentType())
+		utils.AssertEqual(t, []byte(applicationXML), req.RawRequest.Header.ContentType())
 	})
 
 	t.Run("auto set form data header", func(t *testing.T) {
@@ -292,7 +292,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, applicationForm, string(req.rawRequest.Header.ContentType()))
+		utils.AssertEqual(t, applicationForm, string(req.RawRequest.Header.ContentType()))
 	})
 
 	t.Run("auto set file header", func(t *testing.T) {
@@ -303,8 +303,8 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Header.MultipartFormBoundary()), "--FiberFormBoundary"))
-		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Header.ContentType()), multipartFormData))
+		utils.AssertEqual(t, true, strings.Contains(string(req.RawRequest.Header.MultipartFormBoundary()), "--FiberFormBoundary"))
+		utils.AssertEqual(t, true, strings.Contains(string(req.RawRequest.Header.ContentType()), multipartFormData))
 	})
 
 	t.Run("ua should have default value", func(t *testing.T) {
@@ -313,7 +313,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("fiber"), req.rawRequest.Header.UserAgent())
+		utils.AssertEqual(t, []byte("fiber"), req.RawRequest.Header.UserAgent())
 	})
 
 	t.Run("ua in client should be set", func(t *testing.T) {
@@ -322,7 +322,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("foo"), req.rawRequest.Header.UserAgent())
+		utils.AssertEqual(t, []byte("foo"), req.RawRequest.Header.UserAgent())
 	})
 
 	t.Run("ua in request should have higher level", func(t *testing.T) {
@@ -331,7 +331,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("bar"), req.rawRequest.Header.UserAgent())
+		utils.AssertEqual(t, []byte("bar"), req.RawRequest.Header.UserAgent())
 	})
 
 	t.Run("referer in client should be set", func(t *testing.T) {
@@ -340,7 +340,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("https://example.com"), req.rawRequest.Header.Referer())
+		utils.AssertEqual(t, []byte("https://example.com"), req.RawRequest.Header.Referer())
 	})
 
 	t.Run("referer in request should have higher level", func(t *testing.T) {
@@ -349,7 +349,7 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("https://example.com"), req.rawRequest.Header.Referer())
+		utils.AssertEqual(t, []byte("https://example.com"), req.RawRequest.Header.Referer())
 	})
 
 	t.Run("client cookie should be set", func(t *testing.T) {
@@ -365,9 +365,9 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "bar", string(req.rawRequest.Header.Cookie("foo")))
-		utils.AssertEqual(t, "foo", string(req.rawRequest.Header.Cookie("bar")))
-		utils.AssertEqual(t, "", string(req.rawRequest.Header.Cookie("bar1")))
+		utils.AssertEqual(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
+		utils.AssertEqual(t, "foo", string(req.RawRequest.Header.Cookie("bar")))
+		utils.AssertEqual(t, "", string(req.RawRequest.Header.Cookie("bar1")))
 	})
 
 	t.Run("request cookie should be set", func(t *testing.T) {
@@ -386,9 +386,9 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "bar", string(req.rawRequest.Header.Cookie("foo")))
-		utils.AssertEqual(t, "67", string(req.rawRequest.Header.Cookie("bar")))
-		utils.AssertEqual(t, "", string(req.rawRequest.Header.Cookie("bar1")))
+		utils.AssertEqual(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
+		utils.AssertEqual(t, "67", string(req.RawRequest.Header.Cookie("bar")))
+		utils.AssertEqual(t, "", string(req.RawRequest.Header.Cookie("bar1")))
 	})
 
 	t.Run("request cookie will override client cookie", func(t *testing.T) {
@@ -412,9 +412,9 @@ func Test_Parser_Request_Header(t *testing.T) {
 
 		err := parserRequestHeader(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "bar", string(req.rawRequest.Header.Cookie("foo")))
-		utils.AssertEqual(t, "67", string(req.rawRequest.Header.Cookie("bar")))
-		utils.AssertEqual(t, "foo1", string(req.rawRequest.Header.Cookie("bar1")))
+		utils.AssertEqual(t, "bar", string(req.RawRequest.Header.Cookie("foo")))
+		utils.AssertEqual(t, "67", string(req.RawRequest.Header.Cookie("bar")))
+		utils.AssertEqual(t, "foo1", string(req.RawRequest.Header.Cookie("bar1")))
 	})
 }
 
@@ -433,7 +433,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("{\"name\":\"foo\"}"), req.rawRequest.Body())
+		utils.AssertEqual(t, []byte("{\"name\":\"foo\"}"), req.RawRequest.Body())
 	})
 
 	t.Run("xml body", func(t *testing.T) {
@@ -449,7 +449,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("<body><name>foo</name></body>"), req.rawRequest.Body())
+		utils.AssertEqual(t, []byte("<body><name>foo</name></body>"), req.RawRequest.Body())
 	})
 
 	t.Run("form data body", func(t *testing.T) {
@@ -461,7 +461,7 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "ball=cricle+and+square", string(req.rawRequest.Body()))
+		utils.AssertEqual(t, "ball=cricle+and+square", string(req.RawRequest.Body()))
 	})
 
 	t.Run("file body", func(t *testing.T) {
@@ -471,8 +471,8 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "----FiberFormBoundary"))
-		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "world"))
+		utils.AssertEqual(t, true, strings.Contains(string(req.RawRequest.Body()), "----FiberFormBoundary"))
+		utils.AssertEqual(t, true, strings.Contains(string(req.RawRequest.Body()), "world"))
 	})
 
 	t.Run("file and form data", func(t *testing.T) {
@@ -483,9 +483,9 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "----FiberFormBoundary"))
-		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "world"))
-		utils.AssertEqual(t, true, strings.Contains(string(req.rawRequest.Body()), "bar"))
+		utils.AssertEqual(t, true, strings.Contains(string(req.RawRequest.Body()), "----FiberFormBoundary"))
+		utils.AssertEqual(t, true, strings.Contains(string(req.RawRequest.Body()), "world"))
+		utils.AssertEqual(t, true, strings.Contains(string(req.RawRequest.Body()), "bar"))
 	})
 
 	t.Run("raw body", func(t *testing.T) {
@@ -495,6 +495,6 @@ func Test_Parser_Request_Body(t *testing.T) {
 
 		err := parserRequestBody(client, req)
 		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("hello world"), req.rawRequest.Body())
+		utils.AssertEqual(t, []byte("hello world"), req.RawRequest.Body())
 	})
 }

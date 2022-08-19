@@ -59,14 +59,14 @@ func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 		fasthttp.ReleaseResponse(respv)
 	}()
 
-	req.rawRequest.CopyTo(reqv)
+	req.RawRequest.CopyTo(reqv)
 	go func() {
 		err := c.client.Do(reqv, respv)
 		if err != nil {
 			errCh <- err
 			return
 		}
-		respv.CopyTo(resp.rawResponse)
+		respv.CopyTo(resp.RawResponse)
 		errCh <- nil
 	}()
 

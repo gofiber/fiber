@@ -9,10 +9,11 @@ import (
 )
 
 type Response struct {
-	client      *Client
-	request     *Request
-	cookie      []*fasthttp.Cookie
-	rawResponse *fasthttp.Response
+	client  *Client
+	request *Request
+	cookie  []*fasthttp.Cookie
+
+	RawResponse *fasthttp.Response
 }
 
 // setClient method sets client object in response instance.
@@ -29,22 +30,22 @@ func (r *Response) setRequest(req *Request) {
 
 // Status method returns the HTTP status string for the executed request.
 func (r *Response) Status() string {
-	return string(r.rawResponse.Header.StatusMessage())
+	return string(r.RawResponse.Header.StatusMessage())
 }
 
 // StatusCode method returns the HTTP status code for the executed request.
 func (r *Response) StatusCode() int {
-	return r.rawResponse.StatusCode()
+	return r.RawResponse.StatusCode()
 }
 
 // Protocol method returns the HTTP response protocol used for the request.
 func (r *Response) Protocol() string {
-	return string(r.rawResponse.Header.Protocol())
+	return string(r.RawResponse.Header.Protocol())
 }
 
 // Header method returns the response headers.
 func (r *Response) Header(key string) string {
-	return utils.UnsafeString(r.rawResponse.Header.Peek(key))
+	return utils.UnsafeString(r.RawResponse.Header.Peek(key))
 }
 
 // Cookies method to access all the response cookies.
@@ -54,7 +55,7 @@ func (r *Response) Cookies() []*fasthttp.Cookie {
 
 // Body method returns HTTP response as []byte array for the executed request.
 func (r *Response) Body() []byte {
-	return r.rawResponse.Body()
+	return r.RawResponse.Body()
 }
 
 // String method returns the body of the server response as String.
@@ -83,7 +84,7 @@ func (r *Response) Reset() {
 		fasthttp.ReleaseCookie(t)
 	}
 
-	r.rawResponse.Reset()
+	r.RawResponse.Reset()
 }
 
 // Close method will release Request object and Response object,
@@ -101,7 +102,7 @@ var responsePool = &sync.Pool{
 	New: func() any {
 		return &Response{
 			cookie:      []*fasthttp.Cookie{},
-			rawResponse: fasthttp.AcquireResponse(),
+			RawResponse: fasthttp.AcquireResponse(),
 		}
 	},
 }
