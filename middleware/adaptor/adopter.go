@@ -5,7 +5,7 @@
 package adaptor
 
 import (
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 
@@ -75,7 +75,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 		defer fasthttp.ReleaseRequest(req)
 		// Convert net/http -> fasthttp request
 		if r.Body != nil {
-			body, err := ioutil.ReadAll(r.Body)
+			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				http.Error(w, utils.StatusMessage(fiber.StatusInternalServerError), fiber.StatusInternalServerError)
 				return

@@ -53,19 +53,6 @@ const (
 	TagReset             = "reset"
 )
 
-// Color values
-const (
-	cBlack   = "\u001b[90m"
-	cRed     = "\u001b[91m"
-	cGreen   = "\u001b[92m"
-	cYellow  = "\u001b[93m"
-	cBlue    = "\u001b[94m"
-	cMagenta = "\u001b[95m"
-	cCyan    = "\u001b[96m"
-	cWhite   = "\u001b[97m"
-	cReset   = "\u001b[0m"
-)
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config

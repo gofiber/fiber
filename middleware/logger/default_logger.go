@@ -33,6 +33,9 @@ var tmpl *fasttemplate.Template
 func defaultLogger(c fiber.Ctx, data LoggerData, cfg Config) error {
 	var mu sync.Mutex
 
+	// Alias colors
+	colors := c.App().Config().ColorScheme
+
 	// Get new buffer
 	buf := bytebufferpool.Get()
 
@@ -41,16 +44,16 @@ func defaultLogger(c fiber.Ctx, data LoggerData, cfg Config) error {
 		// Format error if exist
 		formatErr := ""
 		if data.ChainErr != nil {
-			formatErr = cRed + " | " + data.ChainErr.Error() + cReset
+			formatErr = colors.Red + " | " + data.ChainErr.Error() + colors.Reset
 		}
 
 		// Format log to buffer
 		_, _ = buf.WriteString(fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
 			data.Timestamp.Load().(string),
-			statusColor(c.Response().StatusCode()), c.Response().StatusCode(), cReset,
+			statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
 			data.Stop.Sub(data.Start).Round(time.Millisecond),
 			c.IP(),
-			methodColor(c.Method()), c.Method(), cReset,
+			methodColor(c.Method(), colors), c.Method(), colors.Reset,
 			c.Path(),
 			formatErr,
 		))
@@ -93,7 +96,7 @@ func defaultLogger(c fiber.Ctx, data LoggerData, cfg Config) error {
 		case TagUA:
 			return buf.WriteString(c.Get(fiber.HeaderUserAgent))
 		case TagLatency:
-			return buf.WriteString(data.Stop.Sub(data.Start).String())
+			return buf.WriteString(fmt.Sprintf("%7v", data.Stop.Sub(data.Start).Round(time.Millisecond)))
 		case TagBody:
 			return buf.Write(c.Body())
 		case TagBytesReceived:
@@ -104,7 +107,7 @@ func defaultLogger(c fiber.Ctx, data LoggerData, cfg Config) error {
 			return buf.WriteString(c.Route().Path)
 		case TagStatus:
 			if cfg.enableColors {
-				return buf.WriteString(fmt.Sprintf("%s %3d %s", statusColor(c.Response().StatusCode()), c.Response().StatusCode(), cReset))
+				return buf.WriteString(fmt.Sprintf("%s %3d %s", statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset))
 			}
 			return appendInt(buf, c.Response().StatusCode())
 		case TagResBody:
@@ -124,27 +127,27 @@ func defaultLogger(c fiber.Ctx, data LoggerData, cfg Config) error {
 			return buf.WriteString(c.Request().URI().QueryArgs().String())
 		case TagMethod:
 			if cfg.enableColors {
-				return buf.WriteString(fmt.Sprintf("%s %-7s %s", methodColor(c.Method()), c.Method(), cReset))
+				return buf.WriteString(fmt.Sprintf("%s %-7s %s", methodColor(c.Method(), colors), c.Method(), colors.Reset))
 			}
 			return buf.WriteString(c.Method())
 		case TagBlack:
-			return buf.WriteString(cBlack)
+			return buf.WriteString(colors.Black)
 		case TagRed:
-			return buf.WriteString(cRed)
+			return buf.WriteString(colors.Red)
 		case TagGreen:
-			return buf.WriteString(cGreen)
+			return buf.WriteString(colors.Green)
 		case TagYellow:
-			return buf.WriteString(cYellow)
+			return buf.WriteString(colors.Yellow)
 		case TagBlue:
-			return buf.WriteString(cBlue)
+			return buf.WriteString(colors.Blue)
 		case TagMagenta:
-			return buf.WriteString(cMagenta)
+			return buf.WriteString(colors.Magenta)
 		case TagCyan:
-			return buf.WriteString(cCyan)
+			return buf.WriteString(colors.Cyan)
 		case TagWhite:
-			return buf.WriteString(cWhite)
+			return buf.WriteString(colors.White)
 		case TagReset:
-			return buf.WriteString(cReset)
+			return buf.WriteString(colors.Reset)
 		case TagError:
 			if data.ChainErr != nil {
 				return buf.WriteString(data.ChainErr.Error())

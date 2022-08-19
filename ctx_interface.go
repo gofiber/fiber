@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"mime/multipart"
 
@@ -153,6 +154,10 @@ type Ctx interface {
 	// This method is identical to JSON, except that it opts-in to JSONP callback support.
 	// By default, the callback name is simply callback.
 	JSONP(data any, callback ...string) error
+
+	// XML converts any interface or string to XML.
+	// This method also sets the content header to application/xml.
+	XML(data any) error
 
 	// Links joins the links followed by the property to populate the response's Link HTTP header field.
 	Links(link ...string)
@@ -328,6 +333,9 @@ type Ctx interface {
 	// It gives custom binding support, detailed binding options and more.
 	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
 	Bind() *Bind
+
+	// ClientHelloInfo return CHI from context
+	ClientHelloInfo() *tls.ClientHelloInfo
 
 	// SetReq resets fields of context that is relating to request.
 	setReq(fctx *fasthttp.RequestCtx)

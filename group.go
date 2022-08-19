@@ -70,15 +70,15 @@ func (grp *Group) Name(name string) Router {
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //
-//  app.Use(func(c fiber.Ctx) error {
-//       return c.Next()
-//  })
-//  app.Use("/api", func(c fiber.Ctx) error {
-//       return c.Next()
-//  })
-//  app.Use("/api", handler, func(c fiber.Ctx) error {
-//       return c.Next()
-//  })
+//	app.Use(func(c fiber.Ctx) error {
+//	     return c.Next()
+//	})
+//	app.Use("/api", func(c fiber.Ctx) error {
+//	     return c.Next()
+//	})
+//	app.Use("/api", handler, func(c fiber.Ctx) error {
+//	     return c.Next()
+//	})
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (grp *Group) Use(args ...any) Router {
@@ -171,8 +171,9 @@ func (grp *Group) All(path string, handlers ...Handler) Router {
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-//  api := app.Group("/api")
-//  api.Get("/users", handler)
+//
+//	api := app.Group("/api")
+//	api.Get("/users", handler)
 func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 	prefix = getGroupPath(grp.Prefix, prefix)
 	if len(handlers) > 0 {

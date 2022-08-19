@@ -4,14 +4,13 @@
 
 package fiber
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Accepts -benchmem -count=4
-// go test -run Test_Ctx
-
 import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/tls"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -396,7 +395,7 @@ func Test_Ctx_UserContext(t *testing.T) {
 		utils.AssertEqual(t, ctx, context.Background())
 	})
 	t.Run("ValueContext", func(t *testing.T) {
-		testKey := "Test Key"
+		testKey := struct{}{}
 		testValue := "Test Value"
 		ctx := context.WithValue(context.Background(), testKey, testValue)
 		utils.AssertEqual(t, testValue, ctx.Value(testKey))
@@ -408,7 +407,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	testKey := "Test Key"
+	testKey := struct{}{}
 	testValue := "Test Value"
 	ctx := context.WithValue(context.Background(), testKey, testValue)
 	c.SetUserContext(ctx)
@@ -417,7 +416,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 
 // go test -run Test_Ctx_UserContext_Multiple_Requests
 func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
-	testKey := "foobar-key"
+	testKey := struct{}{}
 	testValue := "foobar-value"
 
 	app := New()
@@ -1019,6 +1018,67 @@ func Test_Ctx_Method(t *testing.T) {
 
 	c.Method("MethodInvalid")
 	utils.AssertEqual(t, MethodPost, c.Method())
+}
+
+// go test -run Test_Ctx_ClientHelloInfo
+func Test_Ctx_ClientHelloInfo(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/ServerName", func(c Ctx) error {
+		result := c.ClientHelloInfo()
+		if result != nil {
+			return c.SendString(result.ServerName)
+		}
+
+		return c.SendString("ClientHelloInfo is nil")
+	})
+	app.Get("/SignatureSchemes", func(c Ctx) error {
+		result := c.ClientHelloInfo()
+		if result != nil {
+			return c.JSON(result.SignatureSchemes)
+		}
+
+		return c.SendString("ClientHelloInfo is nil")
+	})
+	app.Get("/SupportedVersions", func(c Ctx) error {
+		result := c.ClientHelloInfo()
+		if result != nil {
+			return c.JSON(result.SupportedVersions)
+		}
+
+		return c.SendString("ClientHelloInfo is nil")
+	})
+
+	// Test without TLS handler
+	resp, _ := app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
+	body, _ := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, []byte("ClientHelloInfo is nil"), body)
+
+	// Test with TLS Handler
+	const (
+		PSSWithSHA256 = 0x0804
+		VersionTLS13  = 0x0304
+	)
+	app.tlsHandler = &tlsHandler{clientHelloInfo: &tls.ClientHelloInfo{
+		ServerName:        "example.golang",
+		SignatureSchemes:  []tls.SignatureScheme{PSSWithSHA256},
+		SupportedVersions: []uint16{VersionTLS13},
+	}}
+
+	// Test ServerName
+	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
+	body, _ = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, []byte("example.golang"), body)
+
+	// Test SignatureSchemes
+	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", nil))
+	body, _ = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, "["+strconv.Itoa(PSSWithSHA256)+"]", string(body))
+
+	// Test SupportedVersions
+	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", nil))
+	body, _ = io.ReadAll(resp.Body)
+	utils.AssertEqual(t, "["+strconv.Itoa(VersionTLS13)+"]", string(body))
 }
 
 // go test -run Test_Ctx_InvalidMethod
@@ -1833,6 +1893,63 @@ func Benchmark_Ctx_JSONP(b *testing.B) {
 	utils.AssertEqual(b, `emit({"Name":"Grame","Age":20});`, string(c.Response().Body()))
 }
 
+// go test -run Test_Ctx_XML
+func Test_Ctx_XML(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	utils.AssertEqual(t, true, c.JSON(complex(1, 1)) != nil)
+
+	type xmlResult struct {
+		XMLName xml.Name `xml:"Users"`
+		Names   []string `xml:"Names"`
+		Ages    []int    `xml:"Ages"`
+	}
+
+	c.XML(xmlResult{
+		Names: []string{"Grame", "John"},
+		Ages:  []int{1, 12, 20},
+	})
+
+	utils.AssertEqual(t, `<Users><Names>Grame</Names><Names>John</Names><Ages>1</Ages><Ages>12</Ages><Ages>20</Ages></Users>`, string(c.Response().Body()))
+	utils.AssertEqual(t, "application/xml", string(c.Response().Header.Peek("content-type")))
+
+	testEmpty := func(v any, r string) {
+		err := c.XML(v)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, r, string(c.Response().Body()))
+	}
+
+	testEmpty(nil, "")
+	testEmpty("", `<string></string>`)
+	testEmpty(0, "<int>0</int>")
+	testEmpty([]int{}, "")
+}
+
+// go test -run=^$ -bench=Benchmark_Ctx_XML -benchmem -count=4
+func Benchmark_Ctx_XML(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	type SomeStruct struct {
+		Name string `xml:"Name"`
+		Age  uint8  `xml:"Age"`
+	}
+	data := SomeStruct{
+		Name: "Grame",
+		Age:  20,
+	}
+	var err error
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		err = c.XML(data)
+	}
+
+	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, `<SomeStruct><Name>Grame</Name><Age>20</Age></SomeStruct>`, string(c.Response().Body()))
+}
+
 // go test -run Test_Ctx_Links
 func Test_Ctx_Links(t *testing.T) {
 	t.Parallel()
@@ -2203,6 +2320,8 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	t.Parallel()
 	engine := &testTemplateEngine{}
 	err := engine.Load()
+	utils.AssertEqual(t, nil, err)
+
 	app := New(Config{
 		PassLocalsToViews: true,
 		Views:             engine,
@@ -2636,7 +2755,7 @@ func Test_Ctx_SendStream(t *testing.T) {
 	file, err := os.Open("./.github/index.html")
 	utils.AssertEqual(t, nil, err)
 	c.SendStream(bufio.NewReader(file))
-	utils.AssertEqual(t, true, (c.Response().Header.ContentLength() > 200))
+	utils.AssertEqual(t, true, c.Response().Header.ContentLength() > 200)
 }
 
 // go test -run Test_Ctx_Set
