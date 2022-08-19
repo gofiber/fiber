@@ -108,13 +108,14 @@ func configDefault(config ...Config) Config {
 		cfg.APIOnly = ConfigDefault.APIOnly
 	}
 
-	if cfg.Title == ConfigDefault.Title && cfg.Refresh == ConfigDefault.Refresh {
-		cfg.index = ConfigDefault.index
-	} else {
-		// update cfg.index with custom title/refresh
-		cfg.index = newIndex(viewBag{cfg.Title,
-			cfg.Refresh, cfg.FontURL, cfg.ChartJsURL, cfg.CustomHead})
-	}
+	// update cfg.index with custom title/refresh
+	cfg.index = newIndex(viewBag{
+		title:      cfg.Title,
+		refresh:    cfg.Refresh,
+		fontUrl:    cfg.FontURL,
+		chartJsUrl: cfg.ChartJsURL,
+		customHead: cfg.CustomHead,
+	})
 
 	return cfg
 }
