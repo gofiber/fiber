@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http/httptest"
 	"net/url"
@@ -1816,14 +1815,14 @@ func Test_Ctx_SaveFile(t *testing.T) {
 		fh, err := c.FormFile("file")
 		utils.AssertEqual(t, nil, err)
 
-		tempFile, err := ioutil.TempFile(os.TempDir(), "test-")
+		tempFile, err := os.CreateTemp(os.TempDir(), "test-")
 		utils.AssertEqual(t, nil, err)
 
 		defer os.Remove(tempFile.Name())
 		err = c.SaveFile(fh, tempFile.Name())
 		utils.AssertEqual(t, nil, err)
 
-		bs, err := ioutil.ReadFile(tempFile.Name())
+		bs, err := os.ReadFile(tempFile.Name())
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "hello world", string(bs))
 		return nil
@@ -2985,7 +2984,7 @@ func Test_Ctx_Render_Engine_Error(t *testing.T) {
 func Test_Ctx_Render_Go_Template(t *testing.T) {
 	t.Parallel()
 
-	file, err := ioutil.TempFile(os.TempDir(), "fiber")
+	file, err := os.CreateTemp(os.TempDir(), "fiber")
 	utils.AssertEqual(t, nil, err)
 	defer os.Remove(file.Name())
 

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -15,7 +15,7 @@ import (
 var filedata []byte
 
 func init() {
-	dat, err := ioutil.ReadFile("../../.github/README.md")
+	dat, err := os.ReadFile("../../.github/README.md")
 	if err != nil {
 		panic(err)
 	}

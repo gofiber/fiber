@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -812,7 +812,7 @@ func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 	basename := filepath.Base(filename)
 	utils.AssertEqual(t, fh.Filename, basename)
 
-	b1, err := ioutil.ReadFile(filename)
+	b1, err := os.ReadFile(filename)
 	utils.AssertEqual(t, nil, err)
 
 	b2 := make([]byte, fh.Size)

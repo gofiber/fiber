@@ -11,8 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -23,7 +23,7 @@ import (
 var routesFixture = routeJSON{}
 
 func init() {
-	dat, err := ioutil.ReadFile("./.github/testdata/testRoutes.json")
+	dat, err := os.ReadFile("./.github/testdata/testRoutes.json")
 	if err != nil {
 		panic(err)
 	}

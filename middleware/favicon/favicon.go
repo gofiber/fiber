@@ -2,8 +2,8 @@ package favicon
 
 import (
 	"io"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -84,7 +84,7 @@ func New(config ...Config) fiber.Handler {
 			if icon, err = io.ReadAll(f); err != nil {
 				panic(err)
 			}
-		} else if icon, err = ioutil.ReadFile(cfg.File); err != nil {
+		} else if icon, err = os.ReadFile(cfg.File); err != nil {
 			panic(err)
 		}
 

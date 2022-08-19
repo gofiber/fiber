@@ -2,7 +2,6 @@ package utils
 
 import (
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	pathpkg "path"
@@ -33,7 +32,7 @@ func ReadFile(path string, fs http.FileSystem) ([]byte, error) {
 		defer file.Close()
 		return io.ReadAll(file)
 	}
-	return ioutil.ReadFile(path)
+	return os.ReadFile(path)
 }
 
 // readDirNames reads the directory named by dirname and returns

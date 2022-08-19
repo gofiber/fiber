@@ -6,10 +6,10 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -584,7 +584,7 @@ func Benchmark_Cache(b *testing.B) {
 	app.Use(New())
 
 	app.Get("/demo", func(c *fiber.Ctx) error {
-		data, _ := ioutil.ReadFile("../../.github/README.md")
+		data, _ := os.ReadFile("../../.github/README.md")
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
@@ -614,7 +614,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	}))
 
 	app.Get("/demo", func(c *fiber.Ctx) error {
-		data, _ := ioutil.ReadFile("../../.github/README.md")
+		data, _ := os.ReadFile("../../.github/README.md")
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
