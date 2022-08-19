@@ -21,12 +21,6 @@ const (
 	lowerStr = "/repos/gofiber/fiber/issues/187643/comments/repos/gofiber/fiber/issues/comments"
 )
 
-var (
-	largeBytes = []byte(largeStr)
-	upperBytes = []byte(upperStr)
-	lowerBytes = []byte(lowerStr)
-)
-
 func Benchmark_ToUpper(b *testing.B) {
 	var res string
 	b.Run("fiber", func(b *testing.B) {
