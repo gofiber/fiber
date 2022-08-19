@@ -14,8 +14,6 @@ import (
 )
 
 func Test_Exec_Func(t *testing.T) {
-	t.Parallel()
-
 	ln := fasthttputil.NewInmemoryListener()
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
@@ -37,7 +35,8 @@ func Test_Exec_Func(t *testing.T) {
 	}()
 
 	t.Run("normal request", func(t *testing.T) {
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		client, req := AcquireClient(), AcquireRequest()
+		core := client.core
 		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		req.rawRequest.SetRequestURI("http://example.com/normal")
 
@@ -48,7 +47,8 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	t.Run("the request return an error", func(t *testing.T) {
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		client, req := AcquireClient(), AcquireRequest()
+		core := client.core
 		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		req.rawRequest.SetRequestURI("http://example.com/return-error")
 
@@ -60,7 +60,8 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	t.Run("there is no connect", func(t *testing.T) {
-		core, client := newCore(), AcquireClient()
+		client := AcquireClient()
+		core := client.core
 		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		core.client.SetMaxConns(1)
 
@@ -77,11 +78,13 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	t.Run("the request timeout", func(t *testing.T) {
-		core, client, req := newCore(), AcquireClient(), AcquireRequest()
+		client, req := AcquireClient(), AcquireRequest()
+		core := client.core
+
 		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		req.rawRequest.SetRequestURI("http://example.com/hang-up")
 
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 
 		_, err := core.execFunc(ctx, client, req)

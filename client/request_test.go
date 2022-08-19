@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"mime/multipart"
-	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,7 +17,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 func Test_Request_Method(t *testing.T) {
@@ -553,21 +551,6 @@ func Test_Request_Timeout(t *testing.T) {
 	utils.AssertEqual(t, 5*time.Second, req.Timeout())
 }
 
-func createHelperServer(t *testing.T) (*fiber.App, *Client, func()) {
-	t.Helper()
-
-	ln := fasthttputil.NewInmemoryListener()
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
-
-	client := AcquireClient().SetDial(func(addr string) (net.Conn, error) {
-		return ln.Dial()
-	})
-
-	return app, client, func() {
-		utils.AssertEqual(t, nil, app.Listener(ln))
-	}
-}
-
 func Test_Request_Invalid_URL(t *testing.T) {
 	t.Parallel()
 
@@ -774,53 +757,6 @@ func Test_Request_Patch(t *testing.T) {
 		utils.AssertEqual(t, "bar", resp.String())
 
 		resp.Close()
-	}
-}
-
-func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted string, count ...int) {
-	t.Parallel()
-
-	app, client, start := createHelperServer(t)
-	app.Get("/", handler)
-	go start()
-
-	c := 1
-	if len(count) > 0 {
-		c = count[0]
-	}
-
-	for i := 0; i < c; i++ {
-		req := AcquireRequest().SetClient(client)
-		wrapAgent(req)
-
-		resp, err := req.Get("http://example.com")
-
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-		utils.AssertEqual(t, excepted, resp.String())
-		resp.Close()
-	}
-}
-
-func testAgentFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted error, count ...int) {
-	t.Parallel()
-
-	app, client, start := createHelperServer(t)
-	app.Get("/", handler)
-	go start()
-
-	c := 1
-	if len(count) > 0 {
-		c = count[0]
-	}
-
-	for i := 0; i < c; i++ {
-		req := AcquireRequest().SetClient(client)
-		wrapAgent(req)
-
-		_, err := req.Get("http://example.com")
-
-		utils.AssertEqual(t, excepted.Error(), err.Error())
 	}
 }
 
@@ -1033,7 +969,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		testAgent(t,
 			func(c fiber.Ctx) error {
 				utils.AssertEqual(t, fiber.MIMEApplicationForm, string(c.Request().Header.ContentType()))
-				return c.Send(c.Request().Body())
+				return c.Send([]byte("foo=" + c.FormValue("foo") + "&bar=" + c.FormValue("bar") + "&fiber=" + c.FormValue("fiber")))
 			},
 			func(agent *Request) {
 				agent.SetFormData("foo", "bar").
