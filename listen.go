@@ -29,7 +29,9 @@ func (app *App) Listener(ln net.Listener) error {
 	// ClientHelloInfo support
 	tlsHandler := &tlsHandler{}
 	addr, tlsConfig := lnMetadata(app.config.Network, ln)
-	tlsConfig.GetCertificate = tlsHandler.GetClientInfo
+	if tlsConfig != nil {
+		tlsConfig.GetCertificate = tlsHandler.GetClientInfo
+	}
 
 	// Prefork is supported for custom listeners
 	if app.config.Prefork {
