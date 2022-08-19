@@ -65,7 +65,7 @@ type byteSeq interface {
 	~string | ~[]byte
 }
 
-// EqualFold tests ascii strings for equality case-insensitively
+// EqualFold tests ascii strings or bytes for equality case-insensitively
 func EqualFold[S byteSeq](b, s S) bool {
 	if len(b) != len(s) {
 		return false
