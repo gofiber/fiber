@@ -17,8 +17,8 @@ func New(config ...Config) fiber.Handler
 Import the middleware package that is part of the Fiber web framework
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/recover"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/recover"
 )
 ```
 
@@ -50,7 +50,7 @@ type Config struct {
 	// StackTraceHandler defines a function to handle stack trace
 	//
 	// Optional. Default: defaultStackTraceHandler
-	StackTraceHandler func(c fiber.Ctx, e interface{})
+	StackTraceHandler func(c fiber.Ctx, e any)
 }
 ```
 
