@@ -96,15 +96,8 @@ func configDefault(config ...Config) Config {
 	if cfg.ChartJsURL == "" {
 		cfg.ChartJsURL = defaultChartJsURL
 	}
-	if cfg.Title == ConfigDefault.Title && cfg.Refresh == ConfigDefault.Refresh {
-		cfg.index = ConfigDefault.index
-	} else {
-		if cfg.Refresh < minRefresh {
-			cfg.Refresh = minRefresh
-		}
-		// update cfg.index with custom title/refresh
-		cfg.index = newIndex(viewBag{cfg.Title,
-			cfg.Refresh, cfg.FontURL, cfg.ChartJsURL, cfg.CustomHead})
+	if cfg.Refresh < minRefresh {
+		cfg.Refresh = minRefresh
 	}
 
 	if cfg.Next == nil {
@@ -113,6 +106,14 @@ func configDefault(config ...Config) Config {
 
 	if !cfg.APIOnly {
 		cfg.APIOnly = ConfigDefault.APIOnly
+	}
+
+	if cfg.Title == ConfigDefault.Title && cfg.Refresh == ConfigDefault.Refresh {
+		cfg.index = ConfigDefault.index
+	} else {
+		// update cfg.index with custom title/refresh
+		cfg.index = newIndex(viewBag{cfg.Title,
+			cfg.Refresh, cfg.FontURL, cfg.ChartJsURL, cfg.CustomHead})
 	}
 
 	return cfg
