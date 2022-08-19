@@ -61,8 +61,12 @@ func TrimRight(s string, cutset byte) string {
 	return s[:lenStr]
 }
 
+type byteSeq interface {
+	~string | ~[]byte
+}
+
 // EqualFold tests ascii strings for equality case-insensitively
-func EqualFold(b, s string) bool {
+func EqualFold[S byteSeq](b, s S) bool {
 	if len(b) != len(s) {
 		return false
 	}
