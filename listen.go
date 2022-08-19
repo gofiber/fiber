@@ -26,9 +26,13 @@ import (
 
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
+	// ClientHelloInfo support
+	tlsHandler := &tlsHandler{}
+	addr, tlsConfig := lnMetadata(app.config.Network, ln)
+	tlsConfig.GetCertificate = tlsHandler.GetClientInfo
+
 	// Prefork is supported for custom listeners
 	if app.config.Prefork {
-		addr, tlsConfig := lnMetadata(app.config.Network, ln)
 		return app.prefork(app.config.Network, addr, tlsConfig)
 	}
 	// prepare the server for the start
