@@ -213,12 +213,12 @@ func Test_EqualFold(t *testing.T) {
 	}{
 		{Expected: true, S1: "/MY/NAME/IS/:PARAM/*", S2: "/my/name/is/:param/*"},
 		{Expected: true, S1: "/MY/NAME/IS/:PARAM/*", S2: "/my/name/is/:param/*"},
-		{true, "/MY1/NAME/IS/:PARAM/*", "/MY1/NAME/IS/:PARAM/*"},
-		{false, "/my2/name/is/:param/*", "/my2/name"},
-		{false, "/dddddd", "eeeeee"},
-		{false, "\na", "*A"},
-		{true, "/MY3/NAME/IS/:PARAM/*", "/my3/name/is/:param/*"},
-		{true, "/MY4/NAME/IS/:PARAM/*", "/my4/nAME/IS/:param/*"},
+		{Expected: true, S1: "/MY1/NAME/IS/:PARAM/*", S2: "/MY1/NAME/IS/:PARAM/*"},
+		{Expected: false, S1: "/my2/name/is/:param/*", S2: "/my2/name"},
+		{Expected: false, S1: "/dddddd", S2: "eeeeee"},
+		{Expected: false, S1: "\na", S2: "*A"},
+		{Expected: true, S1: "/MY3/NAME/IS/:PARAM/*", S2: "/my3/name/is/:param/*"},
+		{Expected: true, S1: "/MY4/NAME/IS/:PARAM/*", S2: "/my4/nAME/IS/:param/*"},
 	}
 
 	for _, tc := range testCases {
