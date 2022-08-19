@@ -1245,7 +1245,7 @@ func (c *DefaultCtx) WriteString(s string) (int, error) {
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFoldBytes(utils.UnsafeBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFold(c.Get(HeaderXRequestedWith), "xmlhttprequest")
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
@@ -1267,7 +1267,7 @@ func (c *DefaultCtx) configDependentPaths() {
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
-		c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
+		c.detectionPathBuffer = utils.TrimRight(c.detectionPathBuffer, '/')
 	}
 	c.detectionPath = c.app.getString(c.detectionPathBuffer)
 
