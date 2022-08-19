@@ -1,8 +1,10 @@
 package filesystem
 
 import (
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,7 +24,7 @@ type Config struct {
 	// to a collection of files and directories.
 	//
 	// Required. Default: nil
-	Root http.FileSystem `json:"-"`
+	Root fs.FS `json:"-"`
 
 	// PathPrefix defines a prefix to be added to a filepath when
 	// reading a file from the FileSystem.
@@ -58,7 +60,7 @@ type Config struct {
 var ConfigDefault = Config{
 	Next:       nil,
 	Root:       nil,
-	PathPrefix: "",
+	PathPrefix: ".",
 	Browse:     false,
 	Index:      "/index.html",
 	MaxAge:     0,
@@ -77,6 +79,9 @@ func New(config ...Config) fiber.Handler {
 		if cfg.Index == "" {
 			cfg.Index = ConfigDefault.Index
 		}
+		if cfg.PathPrefix == "" {
+			cfg.PathPrefix = ConfigDefault.PathPrefix
+		}
 		if !strings.HasPrefix(cfg.Index, "/") {
 			cfg.Index = "/" + cfg.Index
 		}
@@ -89,8 +94,13 @@ func New(config ...Config) fiber.Handler {
 		panic("filesystem: Root cannot be nil")
 	}
 
-	if cfg.PathPrefix != "" && !strings.HasPrefix(cfg.PathPrefix, "/") {
-		cfg.PathPrefix = "/" + cfg.PathPrefix
+	// PathPrefix configurations for io/fs compatibility.
+	if cfg.PathPrefix != "." && !strings.HasPrefix(cfg.PathPrefix, "/") {
+		cfg.PathPrefix = "./" + cfg.PathPrefix
+	}
+
+	if cfg.NotFoundFile != "" {
+		cfg.NotFoundFile = filepath.Join(cfg.PathPrefix, filepath.Clean("/"+cfg.NotFoundFile))
 	}
 
 	var once sync.Once
@@ -121,23 +131,26 @@ func New(config ...Config) fiber.Handler {
 		if !strings.HasPrefix(path, "/") {
 			path = "/" + path
 		}
+
+		var (
+			file fs.File
+			stat os.FileInfo
+		)
+
 		// Add PathPrefix
 		if cfg.PathPrefix != "" {
 			// PathPrefix already has a "/" prefix
-			path = cfg.PathPrefix + path
+			path = filepath.Join(cfg.PathPrefix, filepath.Clean("/"+path))
 		}
-
-		var (
-			file http.File
-			stat os.FileInfo
-		)
 
 		if len(path) > 1 {
 			path = utils.TrimRight(path, '/')
 		}
-		file, err = cfg.Root.Open(path)
+
+		file, err = openFile(cfg.Root, path)
+
 		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
-			file, err = cfg.Root.Open(cfg.NotFoundFile)
+			file, err = openFile(cfg.Root, cfg.NotFoundFile)
 		}
 
 		if err != nil {
@@ -154,7 +167,9 @@ func New(config ...Config) fiber.Handler {
 		// Serve index if path is directory
 		if stat.IsDir() {
 			indexPath := utils.TrimRight(path, '/') + cfg.Index
-			index, err := cfg.Root.Open(indexPath)
+			indexPath = filepath.Join(cfg.PathPrefix, filepath.Clean("/"+indexPath))
+
+			index, err := openFile(cfg.Root, indexPath)
 			if err == nil {
 				indexStat, err := index.Stat()
 				if err == nil {
@@ -169,6 +184,7 @@ func New(config ...Config) fiber.Handler {
 			if cfg.Browse {
 				return dirList(c, file)
 			}
+
 			return fiber.ErrForbidden
 		}
 
@@ -206,13 +222,15 @@ func New(config ...Config) fiber.Handler {
 }
 
 // SendFile ...
-func SendFile(c fiber.Ctx, fs http.FileSystem, path string) (err error) {
+func SendFile(c fiber.Ctx, filesystem fs.FS, path string) (err error) {
 	var (
-		file http.File
+		file fs.File
 		stat os.FileInfo
 	)
 
-	file, err = fs.Open(path)
+	path = filepath.Join(".", filepath.Clean("/"+path))
+
+	file, err = openFile(filesystem, path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fiber.ErrNotFound
@@ -227,7 +245,7 @@ func SendFile(c fiber.Ctx, fs http.FileSystem, path string) (err error) {
 	// Serve index if path is directory
 	if stat.IsDir() {
 		indexPath := utils.TrimRight(path, '/') + ConfigDefault.Index
-		index, err := fs.Open(indexPath)
+		index, err := openFile(filesystem, indexPath)
 		if err == nil {
 			indexStat, err := index.Stat()
 			if err == nil {
