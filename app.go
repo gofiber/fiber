@@ -114,6 +114,8 @@ type App struct {
 	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
+	// TLS handler
+	tlsHandler *tlsHandler
 }
 
 // Config is a struct holding the server settings.

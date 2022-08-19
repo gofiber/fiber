@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -65,6 +66,17 @@ type Ctx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
+}
+
+// tlsHandle object
+type tlsHandler struct {
+	clientHelloInfo *tls.ClientHelloInfo
+}
+
+// GetClientInfo Callback function to set CHI
+func (t *tlsHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	t.clientHelloInfo = info
+	return nil, nil
 }
 
 // Range data for c.Range
@@ -795,6 +807,15 @@ func (c *Ctx) Method(override ...string) string {
 // This returns a map[string][]string, so given a key the value will be a string slice.
 func (c *Ctx) MultipartForm() (*multipart.Form, error) {
 	return c.fasthttp.MultipartForm()
+}
+
+// ClientHelloInfo return CHI from context
+func (c *Ctx) ClientHelloInfo() *tls.ClientHelloInfo {
+	if c.app.tlsHandler != nil {
+		return c.app.tlsHandler.clientHelloInfo
+	}
+
+	return nil
 }
 
 // Next executes the next method in the stack that matches the current route.
