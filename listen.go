@@ -35,16 +35,23 @@ func (app *App) Listener(ln net.Listener) error {
 	if app.config.Prefork {
 		return app.prefork(app.config.Network, addr, tlsConfig)
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
+	// Attach the tlsHandler to the config
+	app.tlsHandler = tlsHandler
+
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -73,6 +80,7 @@ func (app *App) Listen(addr string) error {
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
 	return app.server.Serve(ln)
 }
