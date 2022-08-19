@@ -295,11 +295,10 @@ func parserRequestBody(c *Client, req *Request) error {
 func parserResponseCookie(c *Client, resp *Response, req *Request) (err error) {
 	resp.rawResponse.Header.VisitAllCookie(func(key, value []byte) {
 		cookie := fasthttp.AcquireCookie()
-		err = cookie.ParseBytes(value)
-		if err != nil {
-			return
-		}
+		_ = cookie.ParseBytes(value)
 		cookie.SetKeyBytes(key)
+
+		resp.cookie = append(resp.cookie, cookie)
 	})
 
 	return
