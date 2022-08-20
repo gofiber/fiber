@@ -56,7 +56,7 @@ func New(directory, extension string) *Engine {
 	return engine
 }
 
-//NewFileSystem ...
+// NewFileSystem ...
 func NewFileSystem(fs http.FileSystem, extension string) *Engine {
 	engine := &Engine{
 		left:       "{{",

@@ -5,16 +5,19 @@
 // generator implement the Marshaler/Unmarshaler and Encodable/Decodable interfaces.
 //
 // This package defines four "families" of functions:
-// 	- AppendXxxx() appends an object to a []byte in MessagePack encoding.
-// 	- ReadXxxxBytes() reads an object from a []byte and returns the remaining bytes.
-// 	- (*Writer).WriteXxxx() writes an object to the buffered *Writer type.
-// 	- (*Reader).ReadXxxx() reads an object from a buffered *Reader type.
+//   - AppendXxxx() appends an object to a []byte in MessagePack encoding.
+//   - ReadXxxxBytes() reads an object from a []byte and returns the remaining bytes.
+//   - (*Writer).WriteXxxx() writes an object to the buffered *Writer type.
+//   - (*Reader).ReadXxxx() reads an object from a buffered *Reader type.
 //
 // Once a type has satisfied the `Encodable` and `Decodable` interfaces,
 // it can be written and read from arbitrary `io.Writer`s and `io.Reader`s using
-// 		msgp.Encode(io.Writer, msgp.Encodable)
+//
+//	msgp.Encode(io.Writer, msgp.Encodable)
+//
 // and
-//		msgp.Decode(io.Reader, msgp.Decodable)
+//
+//	msgp.Decode(io.Reader, msgp.Decodable)
 //
 // There are also methods for converting MessagePack to JSON without
 // an explicit de-serialization step.

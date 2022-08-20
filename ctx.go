@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -65,6 +66,17 @@ type Ctx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
+}
+
+// tlsHandle object
+type tlsHandler struct {
+	clientHelloInfo *tls.ClientHelloInfo
+}
+
+// GetClientInfo Callback function to set CHI
+func (t *tlsHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	t.clientHelloInfo = info
+	return nil, nil
 }
 
 // Range data for c.Range
@@ -518,12 +530,7 @@ func (c *Ctx) Format(body interface{}) error {
 	case "txt":
 		return c.SendString(b)
 	case "xml":
-		raw, err := xml.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("error serializing xml: %v", body)
-		}
-		c.fasthttp.Response.SetBody(raw)
-		return nil
+		return c.XML(body)
 	}
 	return c.SendString(b)
 }
@@ -736,6 +743,18 @@ func (c *Ctx) JSONP(data interface{}, callback ...string) error {
 	return c.SendString(result)
 }
 
+// XML converts any interface or string to XML.
+// This method also sets the content header to application/xml.
+func (c *Ctx) XML(data interface{}) error {
+	raw, err := c.app.config.XMLEncoder(data)
+	if err != nil {
+		return err
+	}
+	c.fasthttp.Response.SetBodyRaw(raw)
+	c.fasthttp.Response.Header.SetContentType(MIMEApplicationXML)
+	return nil
+}
+
 // Links joins the links followed by the property to populate the response's Link HTTP header field.
 func (c *Ctx) Links(link ...string) {
 	if len(link) == 0 {
@@ -788,6 +807,15 @@ func (c *Ctx) Method(override ...string) string {
 // This returns a map[string][]string, so given a key the value will be a string slice.
 func (c *Ctx) MultipartForm() (*multipart.Form, error) {
 	return c.fasthttp.MultipartForm()
+}
+
+// ClientHelloInfo return CHI from context
+func (c *Ctx) ClientHelloInfo() *tls.ClientHelloInfo {
+	if c.app.tlsHandler != nil {
+		return c.app.tlsHandler.clientHelloInfo
+	}
+
+	return nil
 }
 
 // Next executes the next method in the stack that matches the current route.
