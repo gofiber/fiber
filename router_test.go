@@ -90,17 +90,17 @@ func Test_Route_Match_Star(t *testing.T) {
 	}
 	params := [maxParams]string{}
 	match := route.match("", "", &params)
-	require.Equal(t, true, match)
+	require.True(t, match)
 	require.Equal(t, [maxParams]string{}, params)
 
 	// with parameter
 	match = route.match("/favicon.ico", "/favicon.ico", &params)
-	require.Equal(t, true, match)
+	require.True(t, match)
 	require.Equal(t, [maxParams]string{"favicon.ico"}, params)
 
 	// without parameter again
 	match = route.match("", "", &params)
-	require.Equal(t, true, match)
+	require.True(t, match)
 	require.Equal(t, [maxParams]string{}, params)
 }
 
@@ -287,11 +287,11 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 	var app any = (*App)(nil)
 	_, ok := app.(Router)
-	require.Equal(t, true, ok)
+	require.True(t, ok)
 
 	var group any = (*Group)(nil)
 	_, ok = group.(Router)
-	require.Equal(t, true, ok)
+	require.True(t, ok)
 }
 
 func Test_Router_Handler_Catch_Error(t *testing.T) {
@@ -328,7 +328,7 @@ func Test_Route_Static_Root(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
+	require.True(t, strings.Contains(app.getString(body), "color"))
 
 	app = New()
 	app.Static("/", dir)
@@ -343,7 +343,7 @@ func Test_Route_Static_Root(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
+	require.True(t, strings.Contains(app.getString(body), "color"))
 }
 
 func Test_Route_Static_HasPrefix(t *testing.T) {
@@ -367,7 +367,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
+	require.True(t, strings.Contains(app.getString(body), "color"))
 
 	app = New()
 	app.Static("/static/", dir, Static{
@@ -388,7 +388,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
+	require.True(t, strings.Contains(app.getString(body), "color"))
 
 	app = New()
 	app.Static("/static", dir)
@@ -407,7 +407,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
+	require.True(t, strings.Contains(app.getString(body), "color"))
 
 	app = New()
 	app.Static("/static/", dir)
@@ -426,7 +426,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
+	require.True(t, strings.Contains(app.getString(body), "color"))
 }
 
 //////////////////////////////////////////////
@@ -599,7 +599,7 @@ func Benchmark_Router_Next(b *testing.B) {
 		res, err = app.next(c, false)
 	}
 	require.NoError(b, err)
-	require.Equal(b, true, res)
+	require.True(b, res)
 	require.Equal(b, 4, c.indexRoute)
 }
 
@@ -628,7 +628,7 @@ func Benchmark_Route_Match(b *testing.B) {
 		match = route.match("/user/keys/1337", "/user/keys/1337", &params)
 	}
 
-	require.Equal(b, true, match)
+	require.True(b, match)
 	require.Equal(b, []string{"1337"}, params[0:len(parsed.params)])
 }
 
@@ -658,7 +658,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 		match = route.match("/user/keys/bla", "/user/keys/bla", &params)
 	}
 
-	require.Equal(b, true, match)
+	require.True(b, match)
 	require.Equal(b, []string{"user/keys/bla"}, params[0:len(parsed.params)])
 }
 
@@ -689,7 +689,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 		match = route.match("/", "/", &params)
 	}
 
-	require.Equal(b, true, match)
+	require.True(b, match)
 	require.Equal(b, []string{}, params[0:len(parsed.params)])
 }
 
@@ -780,7 +780,7 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		}
 
 		require.NoError(b, err)
-		require.Equal(b, true, match)
+		require.True(b, match)
 	}
 }
 

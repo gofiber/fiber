@@ -44,7 +44,7 @@ func Test_Compress_Gzip(t *testing.T) {
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, len(body) < len(filedata))
+	require.True(t, len(body) < len(filedata))
 }
 
 // go test -run Test_Compress_Different_Level
@@ -72,7 +72,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 			// Validate that the file size has shrunk
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
-			require.Equal(t, true, len(body) < len(filedata))
+			require.True(t, len(body) < len(filedata))
 		})
 	}
 }
@@ -97,7 +97,7 @@ func Test_Compress_Deflate(t *testing.T) {
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, len(body) < len(filedata))
+	require.True(t, len(body) < len(filedata))
 }
 
 func Test_Compress_Brotli(t *testing.T) {
@@ -120,7 +120,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, len(body) < len(filedata))
+	require.True(t, len(body) < len(filedata))
 }
 
 func Test_Compress_Disabled(t *testing.T) {
@@ -143,7 +143,7 @@ func Test_Compress_Disabled(t *testing.T) {
 	// Validate the file size is not shrunk
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, len(body) == len(filedata))
+	require.True(t, len(body) == len(filedata))
 }
 
 func Test_Compress_Next_Error(t *testing.T) {

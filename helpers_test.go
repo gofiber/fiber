@@ -159,7 +159,7 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		_ = isNoCache("no-cache, public")
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
-	require.Equal(b, true, ok)
+	require.True(b, ok)
 }
 
 func Test_Utils_lnMetadata(t *testing.T) {
@@ -172,7 +172,7 @@ func Test_Utils_lnMetadata(t *testing.T) {
 		addr, config := lnMetadata(NetworkTCP, ln)
 
 		require.Equal(t, ln.Addr().String(), addr)
-		require.Equal(t, true, config == nil)
+		require.True(t, config == nil)
 	})
 
 	t.Run("non tls", func(t *testing.T) {
@@ -183,7 +183,7 @@ func Test_Utils_lnMetadata(t *testing.T) {
 		addr, config := lnMetadata(NetworkTCP4, ln)
 
 		require.Equal(t, ln.Addr().String(), addr)
-		require.Equal(t, true, config == nil)
+		require.True(t, config == nil)
 	})
 
 	t.Run("tls", func(t *testing.T) {
@@ -200,7 +200,7 @@ func Test_Utils_lnMetadata(t *testing.T) {
 		addr, config := lnMetadata(NetworkTCP4, ln)
 
 		require.Equal(t, ln.Addr().String(), addr)
-		require.Equal(t, true, config != nil)
+		require.True(t, config != nil)
 	})
 }
 
@@ -215,7 +215,7 @@ func Benchmark_SlashRecognition(b *testing.B) {
 				result = true
 			}
 		}
-		require.Equal(b, true, result)
+		require.True(b, result)
 	})
 	b.Run("forEach", func(b *testing.B) {
 		result = false
@@ -228,7 +228,7 @@ func Benchmark_SlashRecognition(b *testing.B) {
 				}
 			}
 		}
-		require.Equal(b, true, result)
+		require.True(b, result)
 	})
 	b.Run("IndexRune", func(b *testing.B) {
 		result = false
@@ -236,7 +236,7 @@ func Benchmark_SlashRecognition(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			result = IndexRune(search, c)
 		}
-		require.Equal(b, true, result)
+		require.True(b, result)
 	})
 }
 

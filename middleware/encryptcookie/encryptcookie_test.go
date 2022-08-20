@@ -59,7 +59,7 @@ func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 
 	encryptedCookie := fasthttp.Cookie{}
 	encryptedCookie.SetKey("test")
-	require.Equal(t, true, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
+	require.True(t, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
 	decryptedCookieValue, _ := DecryptCookie(string(encryptedCookie.Value()), testKey)
 	require.Equal(t, "SomeThing", decryptedCookieValue)
 
@@ -126,12 +126,12 @@ func Test_Encrypt_Cookie_Except(t *testing.T) {
 
 	rawCookie := fasthttp.Cookie{}
 	rawCookie.SetKey("test1")
-	require.Equal(t, true, ctx.Response.Header.Cookie(&rawCookie), "Get cookie value")
+	require.True(t, ctx.Response.Header.Cookie(&rawCookie), "Get cookie value")
 	require.Equal(t, "SomeThing", string(rawCookie.Value()))
 
 	encryptedCookie := fasthttp.Cookie{}
 	encryptedCookie.SetKey("test2")
-	require.Equal(t, true, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
+	require.True(t, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
 	decryptedCookieValue, _ := DecryptCookie(string(encryptedCookie.Value()), testKey)
 	require.Equal(t, "SomeThing", decryptedCookieValue)
 }
@@ -171,7 +171,7 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 
 	encryptedCookie := fasthttp.Cookie{}
 	encryptedCookie.SetKey("test")
-	require.Equal(t, true, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
+	require.True(t, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
 	decodedBytes, _ := base64.StdEncoding.DecodeString(string(encryptedCookie.Value()))
 	require.Equal(t, "SomeThing", string(decodedBytes))
 

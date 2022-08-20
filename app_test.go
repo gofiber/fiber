@@ -599,7 +599,7 @@ func Test_App_Config(t *testing.T) {
 	app := New(Config{
 		DisableStartupMessage: true,
 	})
-	require.Equal(t, true, app.Config().DisableStartupMessage)
+	require.True(t, app.Config().DisableStartupMessage)
 }
 
 func Test_App_Shutdown(t *testing.T) {
@@ -607,7 +607,7 @@ func Test_App_Shutdown(t *testing.T) {
 		app := New(Config{
 			DisableStartupMessage: true,
 		})
-		require.Equal(t, true, app.Shutdown() == nil)
+		require.True(t, app.Shutdown() == nil)
 	})
 
 	t.Run("no server", func(t *testing.T) {
@@ -631,17 +631,17 @@ func Test_App_Static_Index_Default(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, strings.Contains(string(body), "Hello, World!"))
+	require.True(t, strings.Contains(string(body), "Hello, World!"))
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/not-found", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err = io.ReadAll(resp.Body)
@@ -658,23 +658,23 @@ func Test_App_Static_Direct(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, strings.Contains(string(body), "Hello, World!"))
+	require.True(t, strings.Contains(string(body), "Hello, World!"))
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/testdata/testRoutes.json", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMEApplicationJSON, resp.Header.Get("Content-Type"))
 	require.Equal(t, "", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, strings.Contains(string(body), "testRoutes"))
+	require.True(t, strings.Contains(string(body), "testRoutes"))
 }
 
 // go test -run Test_App_Static_MaxAge
@@ -686,7 +686,7 @@ func Test_App_Static_MaxAge(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("GET", "/index.html", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 	require.Equal(t, "public, max-age=100", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 }
@@ -700,7 +700,7 @@ func Test_App_Static_Download(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("GET", "/fiber.png", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, "image/png", resp.Header.Get(HeaderContentType))
 	require.Equal(t, `attachment`, resp.Header.Get(HeaderContentDisposition))
 }
@@ -720,7 +720,7 @@ func Test_App_Static_Group(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 	require.Equal(t, "123", resp.Header.Get("Test-Header"))
 
@@ -731,7 +731,7 @@ func Test_App_Static_Group(t *testing.T) {
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 }
 
@@ -744,12 +744,12 @@ func Test_App_Static_Wildcard(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, strings.Contains(string(body), "Test file"))
+	require.True(t, strings.Contains(string(body), "Test file"))
 }
 
 func Test_App_Static_Prefix_Wildcard(t *testing.T) {
@@ -761,7 +761,7 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	app.Static("/my/nameisjohn*", "./.github/index.html")
@@ -769,12 +769,12 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/my/nameisjohn/no/its/not", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, strings.Contains(string(body), "Test file"))
+	require.True(t, strings.Contains(string(body), "Test file"))
 }
 
 func Test_App_Static_Prefix(t *testing.T) {
@@ -785,7 +785,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	app.Static("/prefix", "./.github/testdata")
@@ -794,7 +794,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	app.Static("/single", "./.github/testdata/testRoutes.json")
@@ -803,7 +803,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMEApplicationJSON, resp.Header.Get(HeaderContentType))
 }
 
@@ -815,7 +815,7 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	app.Static("/john_without_index", "./.github/testdata/fs/css")
@@ -824,7 +824,7 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	app.Static("/john/", "./.github")
@@ -833,14 +833,14 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	req = httptest.NewRequest(MethodGet, "/john", nil)
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 	app.Static("/john_without_index/", "./.github/testdata/fs/css")
@@ -849,7 +849,7 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 }
 
@@ -872,12 +872,12 @@ func Test_App_Static_Next(t *testing.T) {
 		resp, err := app.Test(req)
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.StatusCode)
-		require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+		require.False(t, resp.Header.Get(HeaderContentLength) == "")
 		require.Equal(t, MIMETextPlainCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Equal(t, true, strings.Contains(string(body), "You've skipped app.Static"))
+		require.True(t, strings.Contains(string(body), "You've skipped app.Static"))
 	})
 
 	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
@@ -886,12 +886,12 @@ func Test_App_Static_Next(t *testing.T) {
 		resp, err := app.Test(req)
 		require.NoError(t, err)
 		require.Equal(t, 200, resp.StatusCode)
-		require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+		require.False(t, resp.Header.Get(HeaderContentLength) == "")
 		require.Equal(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
 
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)
-		require.Equal(t, true, strings.Contains(string(body), "Hello, World!"))
+		require.True(t, strings.Contains(string(body), "Hello, World!"))
 	})
 }
 
@@ -916,7 +916,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
 	require.Equal(t, "text/html", resp.Header.Get(HeaderContentType))
 
@@ -929,14 +929,14 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	resp, err = app.Test(req)
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, false, resp.Header.Get(HeaderContentLength) == "")
+	require.False(t, resp.Header.Get(HeaderContentLength) == "")
 	require.Equal(t, "TestValue", resp.Header.Get("TestHeader"))
 	require.Equal(t, "text/html; charset=utf-8", resp.Header.Get(HeaderContentType))
 
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, strings.Contains(string(body), "Hello, World!"), "Response: "+string(body))
-	require.Equal(t, true, strings.HasPrefix(string(body), "<!DOCTYPE html>"), "Response: "+string(body))
+	require.True(t, strings.Contains(string(body), "Hello, World!"), "Response: "+string(body))
+	require.True(t, strings.HasPrefix(string(body), "<!DOCTYPE html>"), "Response: "+string(body))
 }
 
 func Test_App_Group_Invalid(t *testing.T) {
@@ -1152,7 +1152,7 @@ func Test_Test_Timeout(t *testing.T) {
 	})
 
 	_, err = app.Test(httptest.NewRequest(MethodGet, "/timeout", nil), 20)
-	require.Equal(t, true, err != nil, "app.Test(req)")
+	require.True(t, err != nil, "app.Test(req)")
 }
 
 type errorReader int
@@ -1169,7 +1169,7 @@ func Test_Test_DumpError(t *testing.T) {
 	app.Get("/", testEmptyHandler)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", errorReader(0)))
-	require.Equal(t, true, resp == nil)
+	require.True(t, resp == nil)
 	require.Equal(t, "errorReader", err.Error())
 }
 
@@ -1259,7 +1259,7 @@ func Test_App_ReadTimeout(t *testing.T) {
 		n, err = conn.Read(buf)
 
 		require.NoError(t, err)
-		require.Equal(t, true, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
+		require.True(t, bytes.Contains(buf[:n], []byte("408 Request Timeout")))
 
 		require.Nil(t, app.Shutdown())
 	}()
@@ -1291,7 +1291,7 @@ func Test_App_BadRequest(t *testing.T) {
 		n, err = conn.Read(buf)
 		require.NoError(t, err)
 
-		require.Equal(t, true, bytes.Contains(buf[:n], []byte("400 Bad Request")))
+		require.True(t, bytes.Contains(buf[:n], []byte("400 Bad Request")))
 
 		require.Nil(t, app.Shutdown())
 	}()
@@ -1326,7 +1326,7 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 func Test_App_Server(t *testing.T) {
 	app := New()
 
-	require.Equal(t, false, app.Server() == nil)
+	require.False(t, app.Server() == nil)
 }
 
 func Test_App_Error_In_Fasthttp_Server(t *testing.T) {

@@ -549,7 +549,7 @@ func Test_Ctx_Format(t *testing.T) {
 	require.Equal(t, `<string>Hello, World!</string>`, string(c.Response().Body()))
 
 	err := c.Format(complex(1, 1))
-	require.Equal(t, true, err != nil)
+	require.True(t, err != nil)
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
 	c.Format(Map{})
@@ -707,44 +707,44 @@ func Test_Ctx_Fresh(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	require.Equal(t, false, c.Fresh())
+	require.False(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfNoneMatch, "*")
 	c.Request().Header.Set(HeaderCacheControl, "no-cache")
-	require.Equal(t, false, c.Fresh())
+	require.False(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfNoneMatch, "*")
 	c.Request().Header.Set(HeaderCacheControl, ",no-cache,")
-	require.Equal(t, false, c.Fresh())
+	require.False(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfNoneMatch, "*")
 	c.Request().Header.Set(HeaderCacheControl, "aa,no-cache,")
-	require.Equal(t, false, c.Fresh())
+	require.False(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfNoneMatch, "*")
 	c.Request().Header.Set(HeaderCacheControl, ",no-cache,bb")
-	require.Equal(t, false, c.Fresh())
+	require.False(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfNoneMatch, "675af34563dc-tr34")
 	c.Request().Header.Set(HeaderCacheControl, "public")
-	require.Equal(t, false, c.Fresh())
+	require.False(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfNoneMatch, "a, b")
 	c.Response().Header.Set(HeaderETag, "c")
-	require.Equal(t, false, c.Fresh())
+	require.False(t, c.Fresh())
 
 	c.Response().Header.Set(HeaderETag, "a")
-	require.Equal(t, true, c.Fresh())
+	require.True(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfModifiedSince, "xxWed, 21 Oct 2015 07:28:00 GMT")
 	c.Response().Header.Set(HeaderLastModified, "xxWed, 21 Oct 2015 07:28:00 GMT")
-	require.Equal(t, false, c.Fresh())
+	require.False(t, c.Fresh())
 
 	c.Response().Header.Set(HeaderLastModified, "Wed, 21 Oct 2015 07:28:00 GMT")
-	require.Equal(t, false, c.Fresh())
+	require.False(t, c.Fresh())
 
 	c.Request().Header.Set(HeaderIfModifiedSince, "Wed, 21 Oct 2015 07:28:00 GMT")
-	require.Equal(t, false, c.Fresh())
+	require.False(t, c.Fresh())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Fresh_WithNoCache -benchmem -count=4
@@ -945,32 +945,32 @@ func Test_Ctx_Is(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderContentType, MIMETextHTML+"; boundary=something")
-	require.Equal(t, true, c.Is(".html"))
-	require.Equal(t, true, c.Is("html"))
-	require.Equal(t, false, c.Is("json"))
-	require.Equal(t, false, c.Is(".json"))
-	require.Equal(t, false, c.Is(""))
-	require.Equal(t, false, c.Is(".foooo"))
+	require.True(t, c.Is(".html"))
+	require.True(t, c.Is("html"))
+	require.False(t, c.Is("json"))
+	require.False(t, c.Is(".json"))
+	require.False(t, c.Is(""))
+	require.False(t, c.Is(".foooo"))
 
 	c.Request().Header.Set(HeaderContentType, MIMEApplicationJSONCharsetUTF8)
-	require.Equal(t, false, c.Is("html"))
-	require.Equal(t, true, c.Is("json"))
-	require.Equal(t, true, c.Is(".json"))
+	require.False(t, c.Is("html"))
+	require.True(t, c.Is("json"))
+	require.True(t, c.Is(".json"))
 
 	c.Request().Header.Set(HeaderContentType, " application/json;charset=UTF-8")
-	require.Equal(t, false, c.Is("html"))
-	require.Equal(t, true, c.Is("json"))
-	require.Equal(t, true, c.Is(".json"))
+	require.False(t, c.Is("html"))
+	require.True(t, c.Is("json"))
+	require.True(t, c.Is(".json"))
 
 	c.Request().Header.Set(HeaderContentType, MIMEApplicationXMLCharsetUTF8)
-	require.Equal(t, false, c.Is("html"))
-	require.Equal(t, true, c.Is("xml"))
-	require.Equal(t, true, c.Is(".xml"))
+	require.False(t, c.Is("html"))
+	require.True(t, c.Is("xml"))
+	require.True(t, c.Is(".xml"))
 
 	c.Request().Header.Set(HeaderContentType, MIMETextPlain)
-	require.Equal(t, false, c.Is("html"))
-	require.Equal(t, true, c.Is("txt"))
-	require.Equal(t, true, c.Is(".txt"))
+	require.False(t, c.Is("html"))
+	require.True(t, c.Is("txt"))
+	require.True(t, c.Is(".txt"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Is -benchmem -count=4
@@ -986,7 +986,7 @@ func Benchmark_Ctx_Is(b *testing.B) {
 		_ = c.Is(".json")
 		res = c.Is("json")
 	}
-	require.Equal(b, true, res)
+	require.True(b, res)
 }
 
 // go test -run Test_Ctx_Locals
@@ -1445,19 +1445,19 @@ func Test_Ctx_Range(t *testing.T) {
 	)
 
 	_, err = c.Range(1000)
-	require.Equal(t, true, err != nil)
+	require.True(t, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500")
 	_, err = c.Range(1000)
-	require.Equal(t, true, err != nil)
+	require.True(t, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500=")
 	_, err = c.Range(1000)
-	require.Equal(t, true, err != nil)
+	require.True(t, err != nil)
 
 	c.Request().Header.Set(HeaderRange, "bytes=500-300")
 	_, err = c.Range(1000)
-	require.Equal(t, true, err != nil)
+	require.True(t, err != nil)
 
 	testRange := func(header string, start, end int) {
 		c.Request().Header.Set(HeaderRange, header)
@@ -1597,7 +1597,7 @@ func Test_Ctx_Secure(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	// TODO Add TLS conn
-	require.Equal(t, false, c.Secure())
+	require.False(t, c.Secure())
 }
 
 // go test -run Test_Ctx_Stale
@@ -1606,7 +1606,7 @@ func Test_Ctx_Stale(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	require.Equal(t, true, c.Stale())
+	require.True(t, c.Stale())
 }
 
 // go test -run Test_Ctx_Subdomains
@@ -1645,13 +1645,13 @@ func Test_Ctx_ClearCookie(t *testing.T) {
 
 	c.Request().Header.Set(HeaderCookie, "john=doe")
 	c.ClearCookie("john")
-	require.Equal(t, true, strings.HasPrefix(string(c.Response().Header.Peek(HeaderSetCookie)), "john=; expires="))
+	require.True(t, strings.HasPrefix(string(c.Response().Header.Peek(HeaderSetCookie)), "john=; expires="))
 
 	c.Request().Header.Set(HeaderCookie, "test1=dummy")
 	c.Request().Header.Set(HeaderCookie, "test2=dummy")
 	c.ClearCookie()
-	require.Equal(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "test1=; expires="))
-	require.Equal(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "test2=; expires="))
+	require.True(t, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "test1=; expires="))
+	require.True(t, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "test2=; expires="))
 }
 
 // go test -race -run Test_Ctx_Download
@@ -1725,7 +1725,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 	app := New()
 	app.Get("/", func(c Ctx) error {
 		err := c.SendFile(filepath.FromSlash("john_dow.go/"))
-		require.Equal(t, false, err == nil)
+		require.False(t, err == nil)
 		return err
 	})
 
@@ -1803,7 +1803,7 @@ func Test_Ctx_JSON(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	require.Equal(t, true, c.JSON(complex(1, 1)) != nil)
+	require.True(t, c.JSON(complex(1, 1)) != nil)
 
 	c.JSON(Map{ // map has no order
 		"Name": "Grame",
@@ -1853,7 +1853,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	require.Equal(t, true, c.JSONP(complex(1, 1)) != nil)
+	require.True(t, c.JSONP(complex(1, 1)) != nil)
 
 	c.JSONP(Map{
 		"Name": "Grame",
@@ -1900,7 +1900,7 @@ func Test_Ctx_XML(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	require.Equal(t, true, c.JSON(complex(1, 1)) != nil)
+	require.True(t, c.JSON(complex(1, 1)) != nil)
 
 	type xmlResult struct {
 		XMLName xml.Name `xml:"Users"`
@@ -2171,10 +2171,10 @@ func Test_Ctx_Render(t *testing.T) {
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 
 	err = c.Render("./.github/testdata/template-non-exists.html", nil)
-	require.Equal(t, false, err == nil)
+	require.False(t, err == nil)
 
 	err = c.Render("./.github/testdata/template-invalid.html", nil)
-	require.Equal(t, false, err == nil)
+	require.False(t, err == nil)
 }
 
 // go test -run Test_Ctx_Render_Mount
@@ -2497,8 +2497,8 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Equal(t, false, executedOldHandler, "Executed old handler")
-	require.Equal(t, true, executedNewHandler, "Executed new handler")
+	require.False(t, executedOldHandler, "Executed old handler")
+	require.True(t, executedNewHandler, "Executed new handler")
 }
 
 // go test -run Test_Ctx_RestartRoutingWithChangedPathAnd404
@@ -2665,7 +2665,7 @@ func Test_Ctx_Render_Engine_Error(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	err := c.Render("index.tmpl", nil)
-	require.Equal(t, false, err == nil)
+	require.False(t, err == nil)
 }
 
 // go test -run Test_Ctx_Render_Go_Template
@@ -2756,7 +2756,7 @@ func Test_Ctx_SendStream(t *testing.T) {
 	file, err := os.Open("./.github/index.html")
 	require.NoError(t, err)
 	c.SendStream(bufio.NewReader(file))
-	require.Equal(t, true, c.Response().Header.ContentLength() > 200)
+	require.True(t, c.Response().Header.ContentLength() > 200)
 }
 
 // go test -run Test_Ctx_Set
@@ -2782,11 +2782,11 @@ func Test_Ctx_Set_Splitter(t *testing.T) {
 
 	c.Set("Location", "foo\r\nSet-Cookie:%20SESSIONID=MaliciousValue\r\n")
 	h := string(c.Response().Header.Peek("Location"))
-	require.Equal(t, false, strings.Contains(h, "\r\n"), h)
+	require.False(t, strings.Contains(h, "\r\n"), h)
 
 	c.Set("Location", "foo\nSet-Cookie:%20SESSIONID=MaliciousValue\n")
 	h = string(c.Response().Header.Peek("Location"))
-	require.Equal(t, false, strings.Contains(h, "\n"), h)
+	require.False(t, strings.Contains(h, "\n"), h)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_Set -benchmem -count=4
@@ -2950,7 +2950,7 @@ func Test_Ctx_XHR(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderXRequestedWith, "XMLHttpRequest")
-	require.Equal(t, true, c.XHR())
+	require.True(t, c.XHR())
 }
 
 // go test -run=^$ -bench=Benchmark_Ctx_XHR -benchmem -count=4
@@ -2965,7 +2965,7 @@ func Benchmark_Ctx_XHR(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		equal = c.XHR()
 	}
-	require.Equal(b, true, equal)
+	require.True(b, equal)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_SendString_B -benchmem -count=4
@@ -3153,7 +3153,7 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		app := New()
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 
-		require.Equal(t, true, c.IsFromLocal())
+		require.True(t, c.IsFromLocal())
 	}
 	// This is a test for "0.0.0.0"
 	{
@@ -3161,7 +3161,7 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.0")
 
-		require.Equal(t, true, c.IsFromLocal())
+		require.True(t, c.IsFromLocal())
 	}
 
 	// This is a test for "127.0.0.1"
@@ -3170,7 +3170,7 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
 
-		require.Equal(t, true, c.IsFromLocal())
+		require.True(t, c.IsFromLocal())
 	}
 
 	// This is a test for "localhost"
@@ -3178,7 +3178,7 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		app := New()
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 
-		require.Equal(t, true, c.IsFromLocal())
+		require.True(t, c.IsFromLocal())
 	}
 
 	// This is testing "::1", it is the compressed format IPV6 loopback address 0:0:0:0:0:0:0:1.
@@ -3188,7 +3188,7 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderXForwardedFor, "::1")
 
-		require.Equal(t, true, c.IsFromLocal())
+		require.True(t, c.IsFromLocal())
 	}
 
 	{
@@ -3196,6 +3196,6 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		c.Request().Header.Set(HeaderXForwardedFor, "93.46.8.90")
 
-		require.Equal(t, false, c.IsFromLocal())
+		require.False(t, c.IsFromLocal())
 	}
 }

@@ -24,7 +24,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	app := New()
 
 	err := app.prefork(NetworkTCP4, "invalid", nil)
-	require.Equal(t, false, err == nil)
+	require.False(t, err == nil)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
@@ -64,7 +64,7 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 	dummyChildCmd = "invalid"
 
 	err := app.prefork(NetworkTCP4, "127.0.0.1:", nil)
-	require.Equal(t, false, err == nil)
+	require.False(t, err == nil)
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {

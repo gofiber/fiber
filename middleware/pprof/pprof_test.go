@@ -44,7 +44,7 @@ func Test_Pprof_Index(t *testing.T) {
 
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, bytes.Contains(b, []byte("<title>/debug/pprof/</title>")))
+	require.True(t, bytes.Contains(b, []byte("<title>/debug/pprof/</title>")))
 }
 
 func Test_Pprof_Subs(t *testing.T) {

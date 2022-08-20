@@ -16,13 +16,13 @@ func Benchmark_EqualFoldBytes(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = EqualFold(left, right)
 		}
-		require.Equal(b, true, res)
+		require.True(b, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = bytes.EqualFold(left, right)
 		}
-		require.Equal(b, true, res)
+		require.True(b, res)
 	})
 }
 
@@ -33,13 +33,13 @@ func Benchmark_EqualFold(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = EqualFold(upperStr, lowerStr)
 		}
-		require.Equal(b, true, res)
+		require.True(b, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.EqualFold(upperStr, lowerStr)
 		}
-		require.Equal(b, true, res)
+		require.True(b, res)
 	})
 }
 

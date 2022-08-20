@@ -833,7 +833,7 @@ func Test_Client_Agent_Multipart_Random_Boundary(t *testing.T) {
 
 	reg := regexp.MustCompile(`multipart/form-data; boundary=\w{30}`)
 
-	require.Equal(t, true, reg.Match(a.req.Header.Peek(HeaderContentType)))
+	require.True(t, reg.Match(a.req.Header.Peek(HeaderContentType)))
 }
 
 func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
@@ -854,7 +854,7 @@ func Test_Client_Agent_SendFile_Error(t *testing.T) {
 		SendFile("non-exist-file!", "")
 
 	require.Equal(t, 1, len(a.errs))
-	require.Equal(t, true, strings.Contains(a.errs[0].Error(), "open non-exist-file!"))
+	require.True(t, strings.Contains(a.errs[0].Error(), "open non-exist-file!"))
 }
 
 func Test_Client_Debug(t *testing.T) {
@@ -872,12 +872,12 @@ func Test_Client_Debug(t *testing.T) {
 
 	str := output.String()
 
-	require.Equal(t, true, strings.Contains(str, "Connected to example.com(pipe)"))
-	require.Equal(t, true, strings.Contains(str, "GET / HTTP/1.1"))
-	require.Equal(t, true, strings.Contains(str, "User-Agent: fiber"))
-	require.Equal(t, true, strings.Contains(str, "Host: example.com\r\n\r\n"))
-	require.Equal(t, true, strings.Contains(str, "HTTP/1.1 200 OK"))
-	require.Equal(t, true, strings.Contains(str, "Content-Type: text/plain; charset=utf-8\r\nContent-Length: 5\r\n\r\ndebug"))
+	require.True(t, strings.Contains(str, "Connected to example.com(pipe)"))
+	require.True(t, strings.Contains(str, "GET / HTTP/1.1"))
+	require.True(t, strings.Contains(str, "User-Agent: fiber"))
+	require.True(t, strings.Contains(str, "Host: example.com\r\n\r\n"))
+	require.True(t, strings.Contains(str, "HTTP/1.1 200 OK"))
+	require.True(t, strings.Contains(str, "Content-Type: text/plain; charset=utf-8\r\nContent-Length: 5\r\n\r\ndebug"))
 }
 
 func Test_Client_Agent_Timeout(t *testing.T) {
@@ -1075,7 +1075,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		require.Equal(t, StatusOK, code)
 		require.Equal(t, `{"success":true}`, string(body))
 		require.Equal(t, 0, len(errs))
-		require.Equal(t, true, d.Success)
+		require.True(t, d.Success)
 	})
 
 	t.Run("pre error", func(t *testing.T) {
@@ -1091,7 +1091,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		require.Equal(t, "", string(body))
 		require.Equal(t, 1, len(errs))
 		require.Equal(t, "pre errors", errs[0].Error())
-		require.Equal(t, false, d.Success)
+		require.False(t, d.Success)
 	})
 
 	t.Run("error", func(t *testing.T) {

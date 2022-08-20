@@ -44,8 +44,8 @@ func Test_Expvar_Index(t *testing.T) {
 
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, bytes.Contains(b, []byte("cmdline")))
-	require.Equal(t, true, bytes.Contains(b, []byte("memstat")))
+	require.True(t, bytes.Contains(b, []byte("cmdline")))
+	require.True(t, bytes.Contains(b, []byte("memstat")))
 }
 
 func Test_Expvar_Filter(t *testing.T) {
@@ -64,8 +64,8 @@ func Test_Expvar_Filter(t *testing.T) {
 
 	b, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, bytes.Contains(b, []byte("cmdline")))
-	require.Equal(t, false, bytes.Contains(b, []byte("memstat")))
+	require.True(t, bytes.Contains(b, []byte("cmdline")))
+	require.False(t, bytes.Contains(b, []byte("memstat")))
 }
 
 func Test_Expvar_Other_Path(t *testing.T) {

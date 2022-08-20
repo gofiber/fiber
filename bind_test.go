@@ -66,7 +66,7 @@ func Test_Bind_Query(t *testing.T) {
 	q2.Name = "hello world"
 	require.Nil(t, c.Bind().Query(q2))
 	require.Equal(t, "basketball,football", q2.Hobby)
-	require.Equal(t, true, q2.Bool)
+	require.True(t, q2.Bool)
 	require.Equal(t, "tom", q2.Name) // check value get overwritten
 	require.Equal(t, []string{"milo", "coke", "pepsi"}, q2.FavouriteDrinks)
 	var nilSlice []string
@@ -339,7 +339,7 @@ func Test_Bind_Header(t *testing.T) {
 	h2.Name = "hello world"
 	require.Nil(t, c.Bind().Header(h2))
 	require.Equal(t, "go,fiber", h2.Hobby)
-	require.Equal(t, true, h2.Bool)
+	require.True(t, h2.Bool)
 	require.Equal(t, "Jane Doe", h2.Name) // check value get overwritten
 	require.Equal(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
 	var nilSlice []string
@@ -581,7 +581,7 @@ func Test_Bind_RespHeader(t *testing.T) {
 	h2.Name = "hello world"
 	require.Nil(t, c.Bind().RespHeader(h2))
 	require.Equal(t, "go,fiber", h2.Hobby)
-	require.Equal(t, true, h2.Bool)
+	require.True(t, h2.Bool)
 	require.Equal(t, "Jane Doe", h2.Name) // check value get overwritten
 	require.Equal(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
 	var nilSlice []string
@@ -854,7 +854,7 @@ func Test_Bind_Body(t *testing.T) {
 		c.Request().Header.SetContentType(contentType)
 		c.Request().SetBody([]byte(body))
 		c.Request().Header.SetContentLength(len(body))
-		require.Equal(t, false, c.Bind().Body(nil) == nil)
+		require.False(t, c.Bind().Body(nil) == nil)
 	}
 
 	testDecodeParserError("invalid-content-type", "")
@@ -1217,7 +1217,7 @@ func Test_Bind_Cookie(t *testing.T) {
 	h2.Name = "hello world"
 	require.Nil(t, c.Bind().Cookie(h2))
 	require.Equal(t, "go,fiber", h2.Hobby)
-	require.Equal(t, true, h2.Bool)
+	require.True(t, h2.Bool)
 	require.Equal(t, "Jane Doe", h2.Name) // check value get overwritten
 	require.Equal(t, []string{"milo", "coke", "pepsi"}, h2.FavouriteDrinks)
 	var nilSlice []string

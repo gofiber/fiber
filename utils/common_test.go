@@ -26,7 +26,7 @@ func Test_UUID(t *testing.T) {
 	t.Parallel()
 	res := UUID()
 	require.Equal(t, 36, len(res))
-	require.Equal(t, true, res != "00000000-0000-0000-0000-000000000000")
+	require.True(t, res != "00000000-0000-0000-0000-000000000000")
 }
 
 func Test_UUID_Concurrency(t *testing.T) {
@@ -51,7 +51,7 @@ func Test_UUIDv4(t *testing.T) {
 	t.Parallel()
 	res := UUIDv4()
 	require.Equal(t, 36, len(res))
-	require.Equal(t, true, res != "00000000-0000-0000-0000-000000000000")
+	require.True(t, res != "00000000-0000-0000-0000-000000000000")
 }
 
 func Test_UUIDv4_Concurrency(t *testing.T) {

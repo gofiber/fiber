@@ -24,7 +24,7 @@ import (
 func Test_App_Listen(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true})
 
-	require.Equal(t, false, app.Listen(":99999") == nil)
+	require.False(t, app.Listen(":99999") == nil)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
@@ -48,9 +48,9 @@ func Test_App_ListenTLS(t *testing.T) {
 	app := New()
 
 	// invalid port
-	require.Equal(t, false, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key") == nil)
+	require.False(t, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key") == nil)
 	// missing perm/cert file
-	require.Equal(t, false, app.ListenTLS(":0", "", "./.github/testdata/ssl.key") == nil)
+	require.False(t, app.ListenTLS(":0", "", "./.github/testdata/ssl.key") == nil)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
@@ -67,7 +67,7 @@ func Test_App_ListenTLS_Prefork(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
 
 	// invalid key file content
-	require.Equal(t, false, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.tmpl") == nil)
+	require.False(t, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.tmpl") == nil)
 
 	require.Nil(t, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
 }
@@ -77,9 +77,9 @@ func Test_App_ListenMutualTLS(t *testing.T) {
 	app := New()
 
 	// invalid port
-	require.Equal(t, false, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem") == nil)
+	require.False(t, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem") == nil)
 	// missing perm/cert file
-	require.Equal(t, false, app.ListenMutualTLS(":0", "", "./.github/testdata/ssl.key", "") == nil)
+	require.False(t, app.ListenMutualTLS(":0", "", "./.github/testdata/ssl.key", "") == nil)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
@@ -96,7 +96,7 @@ func Test_App_ListenMutualTLS_Prefork(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
 
 	// invalid key file content
-	require.Equal(t, false, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html", "") == nil)
+	require.False(t, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html", "") == nil)
 
 	require.Nil(t, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
 }
@@ -181,11 +181,11 @@ func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
 	})
 	fmt.Println(startupMessage)
-	require.Equal(t, true, strings.Contains(startupMessage, "https://127.0.0.1:3000"))
-	require.Equal(t, true, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
-	require.Equal(t, true, strings.Contains(startupMessage, "Child PIDs"))
-	require.Equal(t, true, strings.Contains(startupMessage, "11111, 22222, 33333, 44444, 55555, 60000"))
-	require.Equal(t, true, strings.Contains(startupMessage, "Prefork ........ Enabled"))
+	require.True(t, strings.Contains(startupMessage, "https://127.0.0.1:3000"))
+	require.True(t, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
+	require.True(t, strings.Contains(startupMessage, "Child PIDs"))
+	require.True(t, strings.Contains(startupMessage, "11111, 22222, 33333, 44444, 55555, 60000"))
+	require.True(t, strings.Contains(startupMessage, "Prefork ........ Enabled"))
 }
 
 func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
@@ -195,7 +195,7 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	})
 	fmt.Println(startupMessage)
 	require.Equal(t, "Test App v1.0.1", app.Config().AppName)
-	require.Equal(t, true, strings.Contains(startupMessage, app.Config().AppName))
+	require.True(t, strings.Contains(startupMessage, app.Config().AppName))
 }
 
 func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.T) {
@@ -205,7 +205,7 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.
 		app.startupMessage(":3000", false, "")
 	})
 	fmt.Println(startupMessage)
-	require.Equal(t, true, strings.Contains(startupMessage, "│        Serveur de vérification des données        │"))
+	require.True(t, strings.Contains(startupMessage, "│        Serveur de vérification des données        │"))
 }
 
 func Test_App_print_Route(t *testing.T) {
@@ -215,10 +215,10 @@ func Test_App_print_Route(t *testing.T) {
 		app.printRoutesMessage()
 	})
 	fmt.Println(printRoutesMessage)
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "GET"))
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "/"))
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "routeName"))
+	require.True(t, strings.Contains(printRoutesMessage, "GET"))
+	require.True(t, strings.Contains(printRoutesMessage, "/"))
+	require.True(t, strings.Contains(printRoutesMessage, "emptyHandler"))
+	require.True(t, strings.Contains(printRoutesMessage, "routeName"))
 }
 
 func Test_App_print_Route_with_group(t *testing.T) {
@@ -234,14 +234,14 @@ func Test_App_print_Route_with_group(t *testing.T) {
 		app.printRoutesMessage()
 	})
 
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "GET"))
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "/"))
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "/v1/test"))
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "POST"))
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber"))
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "PUT"))
-	require.Equal(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
+	require.True(t, strings.Contains(printRoutesMessage, "GET"))
+	require.True(t, strings.Contains(printRoutesMessage, "/"))
+	require.True(t, strings.Contains(printRoutesMessage, "emptyHandler"))
+	require.True(t, strings.Contains(printRoutesMessage, "/v1/test"))
+	require.True(t, strings.Contains(printRoutesMessage, "POST"))
+	require.True(t, strings.Contains(printRoutesMessage, "/v1/test/fiber"))
+	require.True(t, strings.Contains(printRoutesMessage, "PUT"))
+	require.True(t, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
 }
 
 func emptyHandler(c Ctx) error {

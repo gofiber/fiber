@@ -268,15 +268,15 @@ func Test_Cache_CustomNext(t *testing.T) {
 	require.NoError(t, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
 	require.NoError(t, err)
-	require.Equal(t, true, bytes.Equal(body, bodyCached))
-	require.Equal(t, true, respCached.Header.Get(fiber.HeaderCacheControl) != "")
+	require.True(t, bytes.Equal(body, bodyCached))
+	require.True(t, respCached.Header.Get(fiber.HeaderCacheControl) != "")
 
 	_, err = app.Test(httptest.NewRequest("GET", "/error", nil))
 	require.NoError(t, err)
 
 	errRespCached, err := app.Test(httptest.NewRequest("GET", "/error", nil))
 	require.NoError(t, err)
-	require.Equal(t, true, errRespCached.Header.Get(fiber.HeaderCacheControl) == "")
+	require.True(t, errRespCached.Header.Get(fiber.HeaderCacheControl) == "")
 }
 
 func Test_CustomKey(t *testing.T) {
@@ -296,7 +296,7 @@ func Test_CustomKey(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	_, err := app.Test(req)
 	require.NoError(t, err)
-	require.Equal(t, true, called)
+	require.True(t, called)
 }
 
 func Test_CustomExpiration(t *testing.T) {
@@ -319,7 +319,7 @@ func Test_CustomExpiration(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	require.NoError(t, err)
-	require.Equal(t, true, called)
+	require.True(t, called)
 	require.Equal(t, 1, newCacheTime)
 
 	// Sleep until the cache is expired
@@ -603,7 +603,7 @@ func Benchmark_Cache(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	require.Equal(b, true, len(fctx.Response.Body()) > 30000)
+	require.True(b, len(fctx.Response.Body()) > 30000)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Cache_Storage -benchmem -count=4
@@ -633,7 +633,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	}
 
 	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	require.Equal(b, true, len(fctx.Response.Body()) > 30000)
+	require.True(b, len(fctx.Response.Body()) > 30000)
 }
 
 func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
