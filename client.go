@@ -856,8 +856,12 @@ func (a *Agent) reset() {
 }
 
 var (
-	clientPool   sync.Pool
-	agentPool    sync.Pool
+	clientPool sync.Pool
+	agentPool  = sync.Pool{
+		New: func() any {
+			return &Agent{req: &Request{}}
+		},
+	}
 	responsePool sync.Pool
 	argsPool     sync.Pool
 	formFilePool sync.Pool
@@ -895,11 +899,7 @@ func ReleaseClient(c *Client) {
 // no longer needed. This allows Agent recycling, reduces GC pressure
 // and usually improves performance.
 func AcquireAgent() *Agent {
-	v := agentPool.Get()
-	if v == nil {
-		return &Agent{req: &Request{}}
-	}
-	return v.(*Agent)
+	return agentPool.Get().(*Agent)
 }
 
 // ReleaseAgent returns a acquired via AcquireAgent to Agent pool.
