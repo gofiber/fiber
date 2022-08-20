@@ -715,7 +715,7 @@ func (app *App) MountPath() string {
 		panic("mountpath cannot be used on parent app")
 	}
 
-	return utils.CopyString(app.mountpath)
+	return app.mountpath
 }
 
 // The mount event is fired on a sub-app, when it is mounted on a parent app. The parent app is passed to the callback function.
