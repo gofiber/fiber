@@ -438,9 +438,6 @@ func (app *App) addRoute(method string, route *Route) {
 
 	app.mutex.Lock()
 	app.latestRoute = route
-	if err := app.hooks.executeOnRouteHooks(*route); err != nil {
-		panic(err)
-	}
 	app.mutex.Unlock()
 }
 

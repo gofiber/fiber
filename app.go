@@ -108,8 +108,6 @@ type App struct {
 	getString func(b []byte) string
 	// Mounted and main apps
 	appList map[string]*App
-	// Hooks
-	hooks *hooks
 	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
@@ -469,9 +467,6 @@ func New(config ...Config) *App {
 		latestGroup: &Group{},
 	}
 
-	// Define hooks
-	app.hooks = newHooks(app)
-
 	// Override config if provided
 	if len(config) > 0 {
 		app.config = config[0]
@@ -587,10 +582,6 @@ func (app *App) Name(name string) Router {
 		app.latestRoute.Name = app.latestGroup.name + name
 	} else {
 		app.latestRoute.Name = name
-	}
-
-	if err := app.hooks.executeOnNameHooks(*app.latestRoute); err != nil {
-		panic(err)
 	}
 	app.mutex.Unlock()
 
@@ -722,9 +713,6 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 		app.register(methodUse, prefix, handlers...)
 	}
 	grp := &Group{Prefix: prefix, app: app}
-	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
-		panic(err)
-	}
 
 	return grp
 }
@@ -790,10 +778,6 @@ func (app *App) HandlersCount() uint32 {
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
-	if app.hooks != nil {
-		defer app.hooks.executeOnShutdownHooks()
-	}
-
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 	if app.server == nil {
@@ -805,11 +789,6 @@ func (app *App) Shutdown() error {
 // Server returns the underlying fasthttp server
 func (app *App) Server() *fasthttp.Server {
 	return app.server
-}
-
-// Hooks returns the hook struct to register hooks.
-func (app *App) Hooks() *hooks {
-	return app.hooks
 }
 
 // Test is used for internal debugging by passing a *http.Request.
@@ -983,10 +962,6 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
-	if err := app.hooks.executeOnListenHooks(); err != nil {
-		panic(err)
-	}
-
 	app.mutex.Lock()
 	app.buildTree()
 	app.mutex.Unlock()
