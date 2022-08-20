@@ -108,9 +108,9 @@ func (c *DefaultCtx) Accepts(offers ...string) string {
 	for len(header) > 0 && commaPos != -1 {
 		commaPos = strings.IndexByte(header, ',')
 		if commaPos != -1 {
-			spec = utils.Trim(header[:commaPos], ' ')
+			spec = strings.TrimLeft(header[:commaPos], " ")
 		} else {
-			spec = utils.TrimLeft(header, ' ')
+			spec = strings.TrimLeft(header, " ")
 		}
 		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
 			spec = spec[:factorSign]
@@ -508,10 +508,10 @@ func (c *DefaultCtx) IPs() (ips []string) {
 	for {
 		commaPos = bytes.IndexByte(header, ',')
 		if commaPos != -1 {
-			ips[i] = utils.Trim(c.app.getString(header[:commaPos]), ' ')
+			ips[i] = strings.Trim(c.app.getString(header[:commaPos]), " ")
 			header, i = header[commaPos+1:], i+1
 		} else {
-			ips[i] = utils.Trim(c.app.getString(header), ' ')
+			ips[i] = strings.Trim(c.app.getString(header), " ")
 			return
 		}
 	}
@@ -526,7 +526,7 @@ func (c *DefaultCtx) Is(extension string) bool {
 	}
 
 	return strings.HasPrefix(
-		utils.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), ' '),
+		strings.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), " "),
 		extensionHeader,
 	)
 }
@@ -597,7 +597,7 @@ func (c *DefaultCtx) Links(link ...string) {
 			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	c.setCanonical(HeaderLink, utils.TrimRight(c.app.getString(bb.Bytes()), ','))
+	c.setCanonical(HeaderLink, strings.TrimRight(c.app.getString(bb.Bytes()), ","))
 	bytebufferpool.Put(bb)
 }
 
@@ -1245,7 +1245,7 @@ func (c *DefaultCtx) WriteString(s string) (int, error) {
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFoldBytes(utils.UnsafeBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFold(c.Get(HeaderXRequestedWith), "xmlhttprequest")
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
@@ -1267,7 +1267,7 @@ func (c *DefaultCtx) configDependentPaths() {
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
-		c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
+		c.detectionPathBuffer = bytes.TrimRight(c.detectionPathBuffer, "/")
 	}
 	c.detectionPath = c.app.getString(c.detectionPathBuffer)
 

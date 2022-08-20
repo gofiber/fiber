@@ -17,7 +17,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -223,7 +222,7 @@ func getGroupPath(prefix, path string) string {
 		path = "/" + path
 	}
 
-	return utils.TrimRight(prefix, '/') + path
+	return strings.TrimRight(prefix, "/") + path
 }
 
 // return valid offer for header negotiation
@@ -238,7 +237,7 @@ func getOffer(header string, offers ...string) string {
 	for len(header) > 0 && commaPos != -1 {
 		commaPos = strings.IndexByte(header, ',')
 		if commaPos != -1 {
-			spec = utils.Trim(header[:commaPos], ' ')
+			spec = strings.TrimSpace(header[:commaPos])
 		} else {
 			spec = header
 		}
