@@ -10,4 +10,5 @@ func Test_AssertEqual(t *testing.T) {
 	t.Parallel()
 	AssertEqual(nil, []string{}, []string{})
 	AssertEqual(t, []string{}, []string{})
+	AssertEqual(t, []byte("aq"), []byte("aq"))
 }
