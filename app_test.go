@@ -325,7 +325,7 @@ func Test_App_Mount(t *testing.T) {
 	utils.AssertEqual(t, uint32(2), app.handlersCount)
 }
 
-func Test_App_Mountpath(t *testing.T) {
+func Test_App_MountPath(t *testing.T) {
 	parent := New()
 	sub := New()
 	sub1 := New()
@@ -342,6 +342,23 @@ func Test_App_Mountpath(t *testing.T) {
 		}
 	}()
 	parent.MountPath()
+}
+
+func Benchmark_App_MountPath(b *testing.B) {
+	parent := New()
+	sub := New()
+
+	parent.Use("/sub", sub)
+
+	var mp string
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		mp = sub.MountPath()
+	}
+
+	utils.AssertEqual(b, "/sub", mp)
 }
 
 func Test_App_OnMount(t *testing.T) {
