@@ -37,7 +37,7 @@ func Test_Compress_Gzip(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
@@ -65,7 +65,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 			req.Header.Set("Accept-Encoding", "gzip")
 
 			resp, err := app.Test(req)
-			require.Nil(t, err, "app.Test(req)")
+			require.NoError(t, err, "app.Test(req)")
 			require.Equal(t, 200, resp.StatusCode, "Status code")
 			require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
@@ -90,7 +90,7 @@ func Test_Compress_Deflate(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "deflate")
 
 	resp, err := app.Test(req)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "deflate", resp.Header.Get(fiber.HeaderContentEncoding))
 
@@ -113,7 +113,7 @@ func Test_Compress_Brotli(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req, 10000)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
 
@@ -136,7 +136,7 @@ func Test_Compress_Disabled(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 
@@ -159,7 +159,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 500, resp.StatusCode, "Status code")
 	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 

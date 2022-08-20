@@ -98,9 +98,9 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 		return c.SendString(c.Params("id"))
 	})
 	resp, err := app.Test(httptest.NewRequest("GET", "/v3", &bytes.Buffer{}))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "io.ReadAll(resp.Body)")
+	require.NoError(t, err, "io.ReadAll(resp.Body)")
 	require.Equal(t, "prefix_v3", string(body))
 }
 
@@ -440,11 +440,11 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 		t.Run(fmt.Sprintf("request_%d", i), func(t *testing.T) {
 			resp, err := app.Test(httptest.NewRequest(MethodGet, fmt.Sprintf("/?input=%d", i), nil))
 
-			require.Nil(t, err, "Unexpected error from response")
+			require.NoError(t, err, "Unexpected error from response")
 			require.Equal(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
 
 			b, err := io.ReadAll(resp.Body)
-			require.Nil(t, err, "Unexpected error from reading response body")
+			require.NoError(t, err, "Unexpected error from reading response body")
 			require.Equal(t, fmt.Sprintf("resp_%d_returned", i), string(b), "response text incorrect")
 		})
 	}
@@ -656,7 +656,7 @@ func Test_Ctx_FormFile(t *testing.T) {
 	req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -681,7 +681,7 @@ func Test_Ctx_FormValue(t *testing.T) {
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -861,7 +861,7 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/port", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
@@ -1001,7 +1001,7 @@ func Test_Ctx_Locals(t *testing.T) {
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -1123,7 +1123,7 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -1186,19 +1186,19 @@ func Test_Ctx_Params(t *testing.T) {
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -1247,7 +1247,7 @@ func Test_Ctx_Path(t *testing.T) {
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/specialChars/cr%C3%A9er", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -1483,7 +1483,7 @@ func Test_Ctx_Route(t *testing.T) {
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	c := app.NewCtx(&fasthttp.RequestCtx{})
@@ -1502,7 +1502,7 @@ func Test_Ctx_RouteNormalized(t *testing.T) {
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "//test", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 }
 
@@ -1544,7 +1544,7 @@ func Test_Ctx_SaveFile(t *testing.T) {
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -1586,7 +1586,7 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
 
 	resp, err := app.Test(req)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -2003,7 +2003,7 @@ func Test_Ctx_Next(t *testing.T) {
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
 }
@@ -2017,7 +2017,7 @@ func Test_Ctx_Next_Error(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/test", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
 }
@@ -2069,7 +2069,7 @@ func Test_Ctx_RedirectToRouteWithQueries(t *testing.T) {
 	require.Equal(t, 302, c.Response().StatusCode())
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
-	require.Nil(t, err, "url.Parse(location)")
+	require.NoError(t, err, "url.Parse(location)")
 	require.Equal(t, "/user/fiber", location.Path)
 	require.Equal(t, url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}}, location.Query())
 }
@@ -2199,7 +2199,7 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", nil))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
@@ -2227,7 +2227,7 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 	v1.Mount("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
@@ -2407,7 +2407,7 @@ func Benchmark_Ctx_RedirectToRouteWithQueries(b *testing.B) {
 	require.Equal(b, 302, c.Response().StatusCode())
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
-	require.Nil(b, err, "url.Parse(location)")
+	require.NoError(b, err, "url.Parse(location)")
 	require.Equal(b, "/user/fiber", location.Path)
 	require.Equal(b, url.Values{"a": []string{"a"}, "b": []string{"b"}}, location.Query())
 }
@@ -2470,7 +2470,7 @@ func Test_Ctx_RestartRouting(t *testing.T) {
 		return nil
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, 3, calls, "Number of calls")
 }
@@ -2495,7 +2495,7 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, false, executedOldHandler, "Executed old handler")
 	require.Equal(t, true, executedNewHandler, "Executed new handler")
@@ -2517,7 +2517,7 @@ func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "http://example.com/old", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 

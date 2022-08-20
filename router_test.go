@@ -41,20 +41,20 @@ func Test_Route_Match_SameLength(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/:param", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, ":param", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "test", app.getString(body))
 }
 
@@ -66,20 +66,20 @@ func Test_Route_Match_Star(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/*", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "*", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "test", app.getString(body))
 
 	// without parameter
@@ -112,11 +112,11 @@ func Test_Route_Match_Root(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "root", app.getString(body))
 }
 
@@ -130,20 +130,20 @@ func Test_Route_Match_Parser(t *testing.T) {
 		return c.SendString(c.Params("*"))
 	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "bar", app.getString(body))
 
 	// with star
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/Foobar/test", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "test", app.getString(body))
 }
 
@@ -155,20 +155,20 @@ func Test_Route_Match_Middleware(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/*", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "*", app.getString(body))
 
 	// with param
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/bar/fasel", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "bar/fasel", app.getString(body))
 }
 
@@ -180,21 +180,21 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "test", app.getString(body))
 	// without special chars
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/créer", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	// check deactivated behavior
 	app.config.UnescapePath = false
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/cr%C3%A9er", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
 }
 
@@ -216,29 +216,29 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 
 	// check static route
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/some/resource/name:customVerb", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "static", app.getString(body))
 
 	// check group route
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "group", app.getString(body))
 
 	// check param route
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "awesome", app.getString(body))
 }
 
@@ -250,11 +250,11 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo/bar", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "middleware", app.getString(body))
 }
 
@@ -266,11 +266,11 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/everything", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, "middleware", app.getString(body))
 }
 
@@ -319,30 +319,30 @@ func Test_Route_Static_Root(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
 	app.Static("/", dir)
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/style.css", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
 }
 
@@ -354,19 +354,19 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/static", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
@@ -375,57 +375,57 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	})
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
 	app.Static("/static", dir)
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
 
 	app = New()
 	app.Static("/static/", dir)
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 404, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/static/style.css", nil))
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
 	body, err = io.ReadAll(resp.Body)
-	require.Nil(t, err, "app.Test(req)")
+	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, true, strings.Contains(app.getString(body), "color"))
 }
 
