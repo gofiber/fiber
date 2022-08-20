@@ -4,12 +4,16 @@
 
 package utils
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
 
 func Test_UnsafeString(t *testing.T) {
 	t.Parallel()
 	res := UnsafeString([]byte("Hello, World!"))
-	AssertEqual(t, "Hello, World!", res)
+	require.Equal(t, "Hello, World!", res)
 }
 
 // go test -v -run=^$ -bench=UnsafeString -benchmem -count=2
@@ -21,20 +25,20 @@ func Benchmark_UnsafeString(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = UnsafeString(hello)
 		}
-		AssertEqual(b, "Hello, World!", res)
+		require.Equal(b, "Hello, World!", res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = string(hello)
 		}
-		AssertEqual(b, "Hello, World!", res)
+		require.Equal(b, "Hello, World!", res)
 	})
 }
 
 func Test_UnsafeBytes(t *testing.T) {
 	t.Parallel()
 	res := UnsafeBytes("Hello, World!")
-	AssertEqual(t, []byte("Hello, World!"), res)
+	require.Equal(t, []byte("Hello, World!"), res)
 }
 
 // go test -v -run=^$ -bench=UnsafeBytes -benchmem -count=4
@@ -46,30 +50,30 @@ func Benchmark_UnsafeBytes(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = UnsafeBytes(hello)
 		}
-		AssertEqual(b, []byte("Hello, World!"), res)
+		require.Equal(b, []byte("Hello, World!"), res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = []byte(hello)
 		}
-		AssertEqual(b, []byte("Hello, World!"), res)
+		require.Equal(b, []byte("Hello, World!"), res)
 	})
 }
 
 func Test_CopyString(t *testing.T) {
 	t.Parallel()
 	res := CopyString("Hello, World!")
-	AssertEqual(t, "Hello, World!", res)
+	require.Equal(t, "Hello, World!", res)
 }
 
 func Test_ToString(t *testing.T) {
 	t.Parallel()
 	res := ToString([]byte("Hello, World!"))
-	AssertEqual(t, "Hello, World!", res)
+	require.Equal(t, "Hello, World!", res)
 	res = ToString(true)
-	AssertEqual(t, "true", res)
+	require.Equal(t, "true", res)
 	res = ToString(uint(100))
-	AssertEqual(t, "100", res)
+	require.Equal(t, "100", res)
 }
 
 // go test -v -run=^$ -bench=ToString -benchmem -count=2

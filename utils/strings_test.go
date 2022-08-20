@@ -7,12 +7,14 @@ package utils
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_ToUpper(t *testing.T) {
 	t.Parallel()
 	res := ToUpper("/my/name/is/:param/*")
-	AssertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
+	require.Equal(t, "/MY/NAME/IS/:PARAM/*", res)
 }
 
 const (
@@ -27,28 +29,28 @@ func Benchmark_ToUpper(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToUpper(largeStr)
 		}
-		AssertEqual(b, upperStr, res)
+		require.Equal(b, upperStr, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.ToUpper(largeStr)
 		}
-		AssertEqual(b, upperStr, res)
+		require.Equal(b, upperStr, res)
 	})
 }
 
 func Test_ToLower(t *testing.T) {
 	t.Parallel()
 	res := ToLower("/MY/NAME/IS/:PARAM/*")
-	AssertEqual(t, "/my/name/is/:param/*", res)
+	require.Equal(t, "/my/name/is/:param/*", res)
 	res = ToLower("/MY1/NAME/IS/:PARAM/*")
-	AssertEqual(t, "/my1/name/is/:param/*", res)
+	require.Equal(t, "/my1/name/is/:param/*", res)
 	res = ToLower("/MY2/NAME/IS/:PARAM/*")
-	AssertEqual(t, "/my2/name/is/:param/*", res)
+	require.Equal(t, "/my2/name/is/:param/*", res)
 	res = ToLower("/MY3/NAME/IS/:PARAM/*")
-	AssertEqual(t, "/my3/name/is/:param/*", res)
+	require.Equal(t, "/my3/name/is/:param/*", res)
 	res = ToLower("/MY4/NAME/IS/:PARAM/*")
-	AssertEqual(t, "/my4/name/is/:param/*", res)
+	require.Equal(t, "/my4/name/is/:param/*", res)
 }
 
 func Benchmark_ToLower(b *testing.B) {
@@ -57,32 +59,32 @@ func Benchmark_ToLower(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToLower(largeStr)
 		}
-		AssertEqual(b, lowerStr, res)
+		require.Equal(b, lowerStr, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.ToLower(largeStr)
 		}
-		AssertEqual(b, lowerStr, res)
+		require.Equal(b, lowerStr, res)
 	})
 }
 
 func Test_TrimRight(t *testing.T) {
 	t.Parallel()
 	res := TrimRight("/test//////", '/')
-	AssertEqual(t, "/test", res)
+	require.Equal(t, "/test", res)
 
 	res = TrimRight("/test", '/')
-	AssertEqual(t, "/test", res)
+	require.Equal(t, "/test", res)
 
 	res = TrimRight(" ", ' ')
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 
 	res = TrimRight("  ", ' ')
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 
 	res = TrimRight("", ' ')
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 }
 
 func Benchmark_TrimRight(b *testing.B) {
@@ -92,32 +94,32 @@ func Benchmark_TrimRight(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = TrimRight("foobar  ", ' ')
 		}
-		AssertEqual(b, "foobar", res)
+		require.Equal(b, "foobar", res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.TrimRight("foobar  ", " ")
 		}
-		AssertEqual(b, "foobar", res)
+		require.Equal(b, "foobar", res)
 	})
 }
 
 func Test_TrimLeft(t *testing.T) {
 	t.Parallel()
 	res := TrimLeft("////test/", '/')
-	AssertEqual(t, "test/", res)
+	require.Equal(t, "test/", res)
 
 	res = TrimLeft("test/", '/')
-	AssertEqual(t, "test/", res)
+	require.Equal(t, "test/", res)
 
 	res = TrimLeft(" ", ' ')
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 
 	res = TrimLeft("  ", ' ')
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 
 	res = TrimLeft("", ' ')
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 }
 
 func Benchmark_TrimLeft(b *testing.B) {
@@ -127,35 +129,35 @@ func Benchmark_TrimLeft(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = TrimLeft("  foobar", ' ')
 		}
-		AssertEqual(b, "foobar", res)
+		require.Equal(b, "foobar", res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.TrimLeft("  foobar", " ")
 		}
-		AssertEqual(b, "foobar", res)
+		require.Equal(b, "foobar", res)
 	})
 }
 
 func Test_Trim(t *testing.T) {
 	t.Parallel()
 	res := Trim("   test  ", ' ')
-	AssertEqual(t, "test", res)
+	require.Equal(t, "test", res)
 
 	res = Trim("test", ' ')
-	AssertEqual(t, "test", res)
+	require.Equal(t, "test", res)
 
 	res = Trim(".test", '.')
-	AssertEqual(t, "test", res)
+	require.Equal(t, "test", res)
 
 	res = Trim(" ", ' ')
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 
 	res = Trim("  ", ' ')
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 
 	res = Trim("", ' ')
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 }
 
 func Benchmark_Trim(b *testing.B) {
@@ -165,19 +167,19 @@ func Benchmark_Trim(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = Trim("  foobar   ", ' ')
 		}
-		AssertEqual(b, "foobar", res)
+		require.Equal(b, "foobar", res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.Trim("  foobar   ", " ")
 		}
-		AssertEqual(b, "foobar", res)
+		require.Equal(b, "foobar", res)
 	})
 	b.Run("default.trimspace", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.TrimSpace("  foobar   ")
 		}
-		AssertEqual(b, "foobar", res)
+		require.Equal(b, "foobar", res)
 	})
 }
 
@@ -188,30 +190,30 @@ func Benchmark_EqualFold(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = EqualFold(upperStr, lowerStr)
 		}
-		AssertEqual(b, true, res)
+		require.Equal(b, true, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.EqualFold(upperStr, lowerStr)
 		}
-		AssertEqual(b, true, res)
+		require.Equal(b, true, res)
 	})
 }
 
 func Test_EqualFold(t *testing.T) {
 	t.Parallel()
 	res := EqualFold("/MY/NAME/IS/:PARAM/*", "/my/name/is/:param/*")
-	AssertEqual(t, true, res)
+	require.Equal(t, true, res)
 	res = EqualFold("/MY1/NAME/IS/:PARAM/*", "/MY1/NAME/IS/:PARAM/*")
-	AssertEqual(t, true, res)
+	require.Equal(t, true, res)
 	res = EqualFold("/my2/name/is/:param/*", "/my2/name")
-	AssertEqual(t, false, res)
+	require.Equal(t, false, res)
 	res = EqualFold("/dddddd", "eeeeee")
-	AssertEqual(t, false, res)
+	require.Equal(t, false, res)
 	res = EqualFold("\na", "*A")
-	AssertEqual(t, false, res)
+	require.Equal(t, false, res)
 	res = EqualFold("/MY3/NAME/IS/:PARAM/*", "/my3/name/is/:param/*")
-	AssertEqual(t, true, res)
+	require.Equal(t, true, res)
 	res = EqualFold("/MY4/NAME/IS/:PARAM/*", "/my4/nAME/IS/:param/*")
-	AssertEqual(t, true, res)
+	require.Equal(t, true, res)
 }
