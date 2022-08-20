@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,10 +17,10 @@ import (
 	"testing"
 	"time"
 
-	"encoding/json"
-
 	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v3/internal/tlstest"
+	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
