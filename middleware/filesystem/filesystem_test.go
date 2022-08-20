@@ -107,7 +107,7 @@ func Test_FileSystem(t *testing.T) {
 			url:         "/spatest/doesnotexist",
 			statusCode:  200,
 			contentType: "text/html",
-		}, /******/
+		},
 		{
 			name:        "PathPrefix should be applied",
 			url:         "/prefix/fiber.png",
@@ -143,6 +143,22 @@ func Test_FileSystem_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+// go test -run Test_FileSystem_Download
+func Test_FileSystem_Download(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Root:     os.DirFS("../../.github/testdata/fs"),
+		Download: true,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/img/fiber.png", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get(fiber.HeaderContentLength) == "")
+	utils.AssertEqual(t, "image/png", resp.Header.Get(fiber.HeaderContentType))
+	utils.AssertEqual(t, `attachment`, resp.Header.Get(fiber.HeaderContentDisposition))
 }
 
 func Test_FileSystem_NonGetAndHead(t *testing.T) {

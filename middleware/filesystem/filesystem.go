@@ -42,6 +42,11 @@ type Config struct {
 	// Optional. Default: "index.html"
 	Index string `json:"index"`
 
+	// When set to true, enables direct download for files.
+	//
+	// Optional. Default: false.
+	Download bool `json:"download"`
+
 	// The value for the Cache-Control HTTP-header
 	// that is set on the file response. MaxAge is defined in seconds.
 	//
@@ -195,6 +200,11 @@ func New(config ...Config) fiber.Handler {
 		// Set Last Modified header
 		if !modTime.IsZero() {
 			c.Set(fiber.HeaderLastModified, modTime.UTC().Format(http.TimeFormat))
+		}
+
+		// Sets the response Content-Disposition header to attachment if the Download option is true and if it's a file
+		if cfg.Download && !stat.IsDir() {
+			c.Attachment()
 		}
 
 		if method == fiber.MethodGet {
