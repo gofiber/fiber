@@ -26,13 +26,13 @@ func Benchmark_ToLowerBytes(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToLowerBytes(path)
 		}
-		AssertEqual(b, true, bytes.Equal(want, res))
+		AssertEqual(b, want, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = bytes.ToLower(path)
 		}
-		AssertEqual(b, true, bytes.Equal(want, res))
+		AssertEqual(b, want, res)
 	})
 }
 
@@ -53,12 +53,12 @@ func Benchmark_ToUpperBytes(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToUpperBytes(path)
 		}
-		AssertEqual(b, true, bytes.Equal(want, res))
+		AssertEqual(b, want, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = bytes.ToUpper(path)
 		}
-		AssertEqual(b, true, bytes.Equal(want, res))
+		AssertEqual(b, want, res)
 	})
 }
