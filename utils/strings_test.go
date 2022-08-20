@@ -11,8 +11,7 @@ import (
 
 func Test_ToUpper(t *testing.T) {
 	t.Parallel()
-	res := ToUpper("/my/name/is/:param/*")
-	AssertEqual(t, "/MY/NAME/IS/:PARAM/*", res)
+	AssertEqual(t, "/MY/NAME/IS/:PARAM/*", ToUpper("/my/name/is/:param/*"))
 }
 
 const (
@@ -39,16 +38,11 @@ func Benchmark_ToUpper(b *testing.B) {
 
 func Test_ToLower(t *testing.T) {
 	t.Parallel()
-	res := ToLower("/MY/NAME/IS/:PARAM/*")
-	AssertEqual(t, "/my/name/is/:param/*", res)
-	res = ToLower("/MY1/NAME/IS/:PARAM/*")
-	AssertEqual(t, "/my1/name/is/:param/*", res)
-	res = ToLower("/MY2/NAME/IS/:PARAM/*")
-	AssertEqual(t, "/my2/name/is/:param/*", res)
-	res = ToLower("/MY3/NAME/IS/:PARAM/*")
-	AssertEqual(t, "/my3/name/is/:param/*", res)
-	res = ToLower("/MY4/NAME/IS/:PARAM/*")
-	AssertEqual(t, "/my4/name/is/:param/*", res)
+	AssertEqual(t, "/my/name/is/:param/*", ToLower("/MY/NAME/IS/:PARAM/*"))
+	AssertEqual(t, "/my1/name/is/:param/*", ToLower("/MY1/NAME/IS/:PARAM/*"))
+	AssertEqual(t, "/my2/name/is/:param/*", ToLower("/MY2/NAME/IS/:PARAM/*"))
+	AssertEqual(t, "/my3/name/is/:param/*", ToLower("/MY3/NAME/IS/:PARAM/*"))
+	AssertEqual(t, "/my4/name/is/:param/*", ToLower("/MY4/NAME/IS/:PARAM/*"))
 }
 
 func Benchmark_ToLower(b *testing.B) {

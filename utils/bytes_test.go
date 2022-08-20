@@ -11,16 +11,11 @@ import (
 
 func Test_ToLowerBytes(t *testing.T) {
 	t.Parallel()
-	res := ToLowerBytes([]byte("/MY/NAME/IS/:PARAM/*"))
-	AssertEqual(t, true, bytes.Equal([]byte("/my/name/is/:param/*"), res))
-	res = ToLowerBytes([]byte("/MY1/NAME/IS/:PARAM/*"))
-	AssertEqual(t, true, bytes.Equal([]byte("/my1/name/is/:param/*"), res))
-	res = ToLowerBytes([]byte("/MY2/NAME/IS/:PARAM/*"))
-	AssertEqual(t, true, bytes.Equal([]byte("/my2/name/is/:param/*"), res))
-	res = ToLowerBytes([]byte("/MY3/NAME/IS/:PARAM/*"))
-	AssertEqual(t, true, bytes.Equal([]byte("/my3/name/is/:param/*"), res))
-	res = ToLowerBytes([]byte("/MY4/NAME/IS/:PARAM/*"))
-	AssertEqual(t, true, bytes.Equal([]byte("/my4/name/is/:param/*"), res))
+	AssertEqual(t, []byte("/my/name/is/:param/*"), ToLowerBytes([]byte("/MY/NAME/IS/:PARAM/*")))
+	AssertEqual(t, []byte("/my1/name/is/:param/*"), ToLowerBytes([]byte("/MY1/NAME/IS/:PARAM/*")))
+	AssertEqual(t, []byte("/my2/name/is/:param/*"), ToLowerBytes([]byte("/MY2/NAME/IS/:PARAM/*")))
+	AssertEqual(t, []byte("/my3/name/is/:param/*"), ToLowerBytes([]byte("/MY3/NAME/IS/:PARAM/*")))
+	AssertEqual(t, []byte("/my4/name/is/:param/*"), ToLowerBytes([]byte("/MY4/NAME/IS/:PARAM/*")))
 }
 
 func Benchmark_ToLowerBytes(b *testing.B) {
@@ -43,16 +38,11 @@ func Benchmark_ToLowerBytes(b *testing.B) {
 
 func Test_ToUpperBytes(t *testing.T) {
 	t.Parallel()
-	res := ToUpperBytes([]byte("/my/name/is/:param/*"))
-	AssertEqual(t, true, bytes.Equal([]byte("/MY/NAME/IS/:PARAM/*"), res))
-	res = ToUpperBytes([]byte("/my1/name/is/:param/*"))
-	AssertEqual(t, true, bytes.Equal([]byte("/MY1/NAME/IS/:PARAM/*"), res))
-	res = ToUpperBytes([]byte("/my2/name/is/:param/*"))
-	AssertEqual(t, true, bytes.Equal([]byte("/MY2/NAME/IS/:PARAM/*"), res))
-	res = ToUpperBytes([]byte("/my3/name/is/:param/*"))
-	AssertEqual(t, true, bytes.Equal([]byte("/MY3/NAME/IS/:PARAM/*"), res))
-	res = ToUpperBytes([]byte("/my4/name/is/:param/*"))
-	AssertEqual(t, true, bytes.Equal([]byte("/MY4/NAME/IS/:PARAM/*"), res))
+	AssertEqual(t, []byte("/MY/NAME/IS/:PARAM/*"), ToUpperBytes([]byte("/my/name/is/:param/*")))
+	AssertEqual(t, []byte("/MY1/NAME/IS/:PARAM/*"), ToUpperBytes([]byte("/my1/name/is/:param/*")))
+	AssertEqual(t, []byte("/MY2/NAME/IS/:PARAM/*"), ToUpperBytes([]byte("/my2/name/is/:param/*")))
+	AssertEqual(t, []byte("/MY3/NAME/IS/:PARAM/*"), ToUpperBytes([]byte("/my3/name/is/:param/*")))
+	AssertEqual(t, []byte("/MY4/NAME/IS/:PARAM/*"), ToUpperBytes([]byte("/my4/name/is/:param/*")))
 }
 
 func Benchmark_ToUpperBytes(b *testing.B) {
