@@ -13,7 +13,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/gofiber/fiber/v3/utils"
 	"github.com/google/uuid"
 )
 
@@ -51,6 +50,7 @@ const (
 	optionalParam                byte = '?'  // concludes a parameter by name and makes it optional
 	paramStarterChar             byte = ':'  // start character for a parameter with name
 	slashDelimiter               byte = '/'  // separator for the route, unlike the other delimiters this character at the end can be optional
+	slashDelimiterStr                 = "/"  // separator for the route, unlike the other delimiters this character at the end can be optional
 	escapeChar                   byte = '\\' // escape character
 	paramConstraintStart         byte = '<'  // start of type constraint for a parameter
 	paramConstraintEnd           byte = '>'  // end of type constraint for a parameter
@@ -159,7 +159,7 @@ func addParameterMetaInfo(segs []*routeSegment) []*routeSegment {
 		} else {
 			comparePart = segs[i].Const
 			if len(comparePart) > 1 {
-				comparePart = utils.TrimRight(comparePart, slashDelimiter)
+				comparePart = strings.TrimRight(comparePart, slashDelimiterStr)
 			}
 		}
 	}
@@ -354,7 +354,7 @@ func findNextCharsetPositionConstraint(search string, charset []byte) int {
 		if char == paramConstraintEnd {
 			constraintEnd = pos
 		}
-		//fmt.Println(string(char))
+		// fmt.Println(string(char))
 		if pos != -1 && (pos < nextPosition || nextPosition == -1) {
 			if pos > constraintStart && pos < constraintEnd {
 				nextPosition = pos
