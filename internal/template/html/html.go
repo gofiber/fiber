@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gofiber/fiber/v2/internal/template/utils"
+	"github.com/gofiber/fiber/v3/internal/template/utils"
 )
 
 // Engine struct
@@ -56,7 +56,7 @@ func New(directory, extension string) *Engine {
 	return engine
 }
 
-//NewFileSystem ...
+// NewFileSystem ...
 func NewFileSystem(fs http.FileSystem, extension string) *Engine {
 	engine := &Engine{
 		left:       "{{",

@@ -4,14 +4,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/memory"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/memory"
 )
 
 // go:generate msgp
 // msgp -file="manager.go" -o="manager_msgp.go" -tests=false -unexported
 // don't forget to replace the msgp import path to:
-// "github.com/gofiber/fiber/v2/internal/msgp"
+// "github.com/gofiber/fiber/v3/internal/msgp"
 type item struct {
 	body      []byte
 	ctype     []byte

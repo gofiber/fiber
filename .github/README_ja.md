@@ -56,10 +56,10 @@
     <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
   </a>
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v3#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat-square">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v3">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B?style=flat-square">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -88,7 +88,7 @@
 ```go
 package main
 
-import "github.com/gofiber/fiber/v2"
+import "github.com/gofiber/fiber/v3"
 
 func main() {
     app := fiber.New()
@@ -118,7 +118,7 @@ Initialize your project by creating a folder and then running `go mod init githu
 フォルダを作成し、フォルダ内で `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) を実行してプロジェクトを初期化してください。その後、 Fiber を以下の [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) コマンドでインストールしてください。
 
 ```bash
-go get -u github.com/gofiber/fiber/v2
+go get -u github.com/gofiber/fiber/v3
 ```
 
 ## 🎯 機能
@@ -147,8 +147,9 @@ Fiber は人気の高い Web フレームワークである Expressjs に**イ�
 もしも、Web アプリケーションを Express 等の Node.js フレームワークで実装した経験があれば、多くの方法や原理がとても**馴染み深い**でしょう。
 
 ## ⚠️ 制限時効
-* Fiberはunsafeパッケージを使用しているため、最新のGoバージョンと互換性がない場合があります。Fiber 2.29.0 は、Go のバージョン 1.14 から 1.18 でテストされています。
-* Fiberはnet/httpインターフェースと互換性がありません。つまり、gqlgenやgo-swaggerなど、net/httpのエコシステムの一部であるプロジェクトを使用することができません。
+
+-   Fiber は unsafe パッケージを使用しているため、最新の Go バージョンと互換性がない場合があります。Fiber 2.29.0 は、Go のバージョン 1.14 から 1.18 でテストされています。
+-   Fiber は net/http インターフェースと互換性がありません。つまり、gqlgen や go-swagger など、net/http のエコシステムの一部であるプロジェクトを使用することができません。
 
 ## 👀 例
 
@@ -285,17 +286,17 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-view engineが設定されていない時は、Fiberのデフォルトは[html/template](https://pkg.go.dev/html/template/) になります。
+view engine が設定されていない時は、Fiber のデフォルトは[html/template](https://pkg.go.dev/html/template/) になります。
 
 パーシャルを実行したい場合や、[amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) ,[pug](https://github.com/Joker/jade) などの別のエンジンを使用したい場合など、
 
-複数のview engineをサポートする [Template](https://github.com/gofiber/template) パッケージをご覧ください。
+複数の view engine をサポートする [Template](https://github.com/gofiber/template) パッケージをご覧ください。
 
 ```go
 package main
 
 import (
-    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v3"
     "github.com/gofiber/template/pug"
 )
 
@@ -362,8 +363,8 @@ package main
 import (
     "log"
 
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/logger"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/logger"
 )
 
 func main() {
@@ -385,8 +386,8 @@ func main() {
 import (
     "log"
 
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/cors"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/cors"
 )
 
 func main() {
@@ -400,7 +401,7 @@ func main() {
 }
 ```
 
-`Origin`ヘッダーに任意のドメインを渡してCORSのチェックをします:
+`Origin`ヘッダーに任意のドメインを渡して CORS のチェックをします:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -470,8 +471,8 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/websocket"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/websocket"
 )
 
 func main() {
@@ -504,7 +505,7 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v3"
     "github.com/valyala/fasthttp"
 )
 
@@ -520,7 +521,7 @@ func main() {
     c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
       fmt.Println("WRITER")
       var i int
-      
+
       for {
         i++
         msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
@@ -545,8 +546,8 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/recover"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/recover"
 )
 
 func main() {

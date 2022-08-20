@@ -28,11 +28,11 @@ body:
       description: "Steps to reproduce the behavior and what should be observed in the end."
       placeholder: "Tell us step by step how we can replicate your problem and what we should see in the end."
       value: |
-          Steps to reproduce the behavior:
-          1. Go to '....'
-          2. Click on '....'
-          3. Do '....'
-          4. See '....'
+        Steps to reproduce the behavior:
+        1. Go to '....'
+        2. Click on '....'
+        3. Do '....'
+        4. See '....'
     validations:
       required: true
   - type: textarea
@@ -61,7 +61,7 @@ body:
       value: |
         package main
 
-        import "github.com/gofiber/fiber/v2"
+        import "github.com/gofiber/fiber/v3"
         import "log"
 
         func main() {

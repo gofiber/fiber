@@ -12,9 +12,9 @@ import (
 
 func Test_FunctionName(t *testing.T) {
 	t.Parallel()
-	AssertEqual(t, "github.com/gofiber/fiber/v2/utils.Test_UUID", FunctionName(Test_UUID))
+	AssertEqual(t, "github.com/gofiber/fiber/v3/utils.Test_UUID", FunctionName(Test_UUID))
 
-	AssertEqual(t, "github.com/gofiber/fiber/v2/utils.Test_FunctionName.func1", FunctionName(func() {}))
+	AssertEqual(t, "github.com/gofiber/fiber/v3/utils.Test_FunctionName.func1", FunctionName(func() {}))
 
 	dummyint := 20
 	AssertEqual(t, "int", FunctionName(dummyint))

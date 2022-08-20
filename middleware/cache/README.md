@@ -5,14 +5,14 @@ Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to inter
 ## Table of Contents
 
 - [Cache Middleware](#cache-middleware)
-	- [Table of Contents](#table-of-contents)
-	- [Signatures](#signatures)
-	- [Examples](#examples)
-		- [Default Config](#default-config)
-		- [Custom Config](#custom-config)
-		- [Custom Cache Key Or Expiration](#custom-cache-key-or-expiration)
-		- [Config](#config)
-		- [Default Config](#default-config-1)
+  - [Table of Contents](#table-of-contents)
+  - [Signatures](#signatures)
+  - [Examples](#examples)
+    - [Default Config](#default-config)
+    - [Custom Config](#custom-config)
+    - [Custom Cache Key Or Expiration](#custom-cache-key-or-expiration)
+    - [Config](#config)
+    - [Default Config](#default-config-1)
 
 ## Signatures
 
@@ -26,8 +26,8 @@ First import the middleware from Fiber,
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/cache"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/cache"
 )
 ```
 

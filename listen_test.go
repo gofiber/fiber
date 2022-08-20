@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 

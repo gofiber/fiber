@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package wmi
@@ -8,8 +9,8 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/gofiber/fiber/v2/internal/go-ole"
-	"github.com/gofiber/fiber/v2/internal/go-ole/oleutil"
+	"github.com/gofiber/fiber/v3/internal/go-ole"
+	"github.com/gofiber/fiber/v3/internal/go-ole/oleutil"
 )
 
 // SWbemServices is used to access wmi. See https://msdn.microsoft.com/en-us/library/aa393719(v=vs.85).aspx

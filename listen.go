@@ -20,8 +20,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/gofiber/fiber/v2/internal/colorable"
-	"github.com/gofiber/fiber/v2/internal/isatty"
+	"github.com/gofiber/fiber/v3/internal/colorable"
+	"github.com/gofiber/fiber/v3/internal/isatty"
 )
 
 // Listener can be used to pass a custom listener.
@@ -47,8 +47,8 @@ func (app *App) Listener(ln net.Listener) error {
 
 // Listen serves HTTP requests from the given addr.
 //
-//  app.Listen(":8080")
-//  app.Listen("127.0.0.1:8080")
+//	app.Listen(":8080")
+//	app.Listen("127.0.0.1:8080")
 func (app *App) Listen(addr string) error {
 	// Start prefork
 	if app.config.Prefork {
@@ -75,7 +75,8 @@ func (app *App) Listen(addr string) error {
 
 // ListenTLS serves HTTPS requests from the given addr.
 // certFile and keyFile are the paths to TLS certificate and key file:
-//  app.ListenTLS(":8080", "./cert.pem", "./cert.key")
+//
+//	app.ListenTLS(":8080", "./cert.pem", "./cert.key")
 func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
@@ -116,7 +117,8 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 
 // ListenMutualTLS serves HTTPS requests from the given addr.
 // certFile, keyFile and clientCertFile are the paths to TLS certificate and key file:
-//  app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
+//
+//	app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
 func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
@@ -371,8 +373,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 // printRoutesMessage print all routes with method, path, name and handlers
 // in a format of table, like this:
 // method | path | name      | handlers
-// GET    | /    | routeName | github.com/gofiber/fiber/v2.emptyHandler
-// HEAD   | /    |           | github.com/gofiber/fiber/v2.emptyHandler
+// GET    | /    | routeName | github.com/gofiber/fiber/v3.emptyHandler
+// HEAD   | /    |           | github.com/gofiber/fiber/v3.emptyHandler
 func (app *App) printRoutesMessage() {
 	// ignore child processes
 	if IsChild() {

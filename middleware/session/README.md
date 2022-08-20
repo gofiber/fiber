@@ -7,13 +7,13 @@ _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) pa
 ## Table of Contents
 
 - [Session](#session)
-	- [Table of Contents](#table-of-contents)
-	- [Signatures](#signatures)
-		- [Examples](#examples)
-		- [Default Configuration](#default-configuration)
-		- [Custom Storage/Database](#custom-storagedatabase)
-	- [Config](#config)
-	- [Default Config](#default-config)
+  - [Table of Contents](#table-of-contents)
+  - [Signatures](#signatures)
+    - [Examples](#examples)
+    - [Default Configuration](#default-configuration)
+    - [Custom Storage/Database](#custom-storagedatabase)
+  - [Config](#config)
+  - [Default Config](#default-config)
 
 ## Signatures
 
@@ -32,17 +32,19 @@ func (s *Session) Save() error
 func (s *Session) Fresh() bool
 func (s *Session) ID() string
 func (s *Session) Keys() []string
-func (s *Session) SetExpiry(time.Duration) 
+func (s *Session) SetExpiry(time.Duration)
 ```
 
 **⚠ _Storing `interface{}` values are limited to built-ins Go types_**
 
 ### Examples
+
 Import the middleware package that is part of the Fiber web framework
+
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/session"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/session"
 )
 ```
 

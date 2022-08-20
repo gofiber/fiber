@@ -5,12 +5,12 @@ Basic Authentication middleware for [Fiber](https://github.com/gofiber/fiber) th
 ## Table of Contents
 
 - [Basic Authentication Middleware](#basic-authentication-middleware)
-	- [Table of Contents](#table-of-contents)
-	- [Signatures](#signatures)
-	- [Examples](#examples)
-		- [Custom Config](#custom-config)
-	- [Config](#config)
-	- [Default Config](#default-config)
+  - [Table of Contents](#table-of-contents)
+  - [Signatures](#signatures)
+  - [Examples](#examples)
+    - [Custom Config](#custom-config)
+  - [Config](#config)
+  - [Default Config](#default-config)
 
 ## Signatures
 
@@ -24,8 +24,8 @@ First import the middleware from Fiber,
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/basicauth"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/basicauth"
 )
 ```
 

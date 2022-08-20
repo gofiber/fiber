@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v2/internal/fwd"
+	"github.com/gofiber/fiber/v3/internal/fwd"
 )
 
 // where we keep old *Readers

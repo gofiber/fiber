@@ -56,10 +56,10 @@
     <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
   </a>
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v3#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat-square">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v3">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B?style=flat-square">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -93,7 +93,7 @@
 ```go
 package main
 
-import "github.com/gofiber/fiber/v2"
+import "github.com/gofiber/fiber/v3"
 
 func main() {
     app := fiber.New()
@@ -139,7 +139,7 @@ func main() {
 <div dir="ltr">
 
 ```bash
-go get -u github.com/gofiber/fiber/v2
+go get -u github.com/gofiber/fiber/v3
 ```
 
 </div>
@@ -182,8 +182,9 @@ Fiber از Express <b>الهام گرفته</b>, که محبوب ترین فری
 </p>
 
 ## ⚠️ محدودیت ها
-* به دلیل استفاده ناامن از Fiber, ممکن است کتابخانه همیشه با آخرین نسخه Go سازگار نباشد. Fiber 2.29.0 با زبان گو نسخه ۱.۱۴ تا ۱.۱۷ تست شده است.
-* فریمورک Fiber با پکیج net/http سازگار نیست. این بدان معناست شما نمی توانید از پکیج های مانند go-swagger, gqlgen یا سایر پروژه هایی که بخشی از اکوسیستم net/http هستند استفاده کنید.
+
+-   به دلیل استفاده ناامن از Fiber, ممکن است کتابخانه همیشه با آخرین نسخه Go سازگار نباشد. Fiber 2.29.0 با زبان گو نسخه ۱.۱۴ تا ۱.۱۷ تست شده است.
+-   فریمورک Fiber با پکیج net/http سازگار نیست. این بدان معناست شما نمی توانید از پکیج های مانند go-swagger, gqlgen یا سایر پروژه هایی که بخشی از اکوسیستم net/http هستند استفاده کنید.
 
 <br>
 
@@ -275,7 +276,6 @@ func main() {
 
 </div>
 
-
 #### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
 
 <div dir="ltr">
@@ -364,7 +364,7 @@ Fiber زمانیکه view engine تنظیم نشده باشد بطور پیش ف
 package main
 
 import (
-    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v3"
     "github.com/gofiber/template/pug"
 )
 
@@ -439,8 +439,8 @@ package main
 import (
     "log"
 
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/logger"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/logger"
 )
 
 func main() {
@@ -466,8 +466,8 @@ func main() {
 import (
     "log"
 
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/cors"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/cors"
 )
 
 func main() {
@@ -567,8 +567,8 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/websocket"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/websocket"
 )
 
 func main() {
@@ -601,7 +601,7 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v3"
     "github.com/valyala/fasthttp"
 )
 
@@ -617,7 +617,7 @@ func main() {
     c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
       fmt.Println("WRITER")
       var i int
-      
+
       for {
         i++
         msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
@@ -646,8 +646,8 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/recover"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/recover"
 )
 
 func main() {
@@ -678,28 +678,28 @@ func main() {
 
 <div dir="rtl">
 
-| Middleware                                                                       | توضیحات                                                                                                                                                                      |
-| :------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         |یک میدلور پایه که سیستم احراز هویت پایه ای را فراهم میکند. در صورت معتبر بودن درخواست روتر بعدی صدا زده شده و در صورت  نامعتبر بودن خطای ۴۰۱ نمایش داده میشود.|
-| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 |پاسخ هارا رهگیری کرده و انها را به صورت موقت ذخیره میکند.|
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)           | یک میدلور فشرده سازی برای Fiber که به طور پیشفرض از `deflate`, `gzip` و `brotli`. پشتیبانی میکند.|                                                                                     |
-| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   |فعال سازی هدر های cross-origin با گزینه های مختلف.|
-| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   |در برابر حملات CSRF ایمنی ایجاد میکند.|
-| [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) |مقادیر کوکی هارا رمزنگاری میکند.|
-| [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | میدلور ETag به کش ها اجازه میدهد کارآمد تر عمل کرده و در پهنای باند صرفه جویی کنند.  به عنوان یک وب سرور نیازی به دادن پاسخ کامل نیست اگر محتوا تغییر نکرده باشد. |
-| [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | میدلور Expvar میتواند متغیر هایی را تعریف کرده و مقادیر انها را در زمان اجرا با فرمت JSON به شما نشان دهد. |
-| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | جلوگیری و یا کش کردن درخواست های favicon در صورتی که مسیر یک فایل را داده باشید.|
-| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem)       | میدلور FileSystem به شما اجازه میدهد فایل های یک مسیر را عمومی کنید. |
-| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)             |میدلور محدود کننده تعداد درخواست برای Fiber.|
-| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)               |لاگ گرفتن از درخواست و پاسخ های HTTP.|
-| [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             |وضعیت سرور را مانیتور و گزارش میکند، از express-status-monitor الهام گرفته شده است.|
-| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)                 | تشکر ویژه از Matthew Lee \(@mthli\)|
-| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)                 | اجازه میدهد درخواست هارا بر روی چند سرور پروکسی کنید. |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)             |خطا های زمان اجرا را در وب سرور HTTP شما مدیریت میکنند[ ErrorHandler](https://docs.gofiber.io/guide/error-handling). |
-| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)         | به تمامی درخواست ها شناسه ای را اختصاص میدهد.|
-| [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             |برای ذخیره و مدیریت شناسه کاربری یا session بازدید کنندگان استفاده .میشود|
-| [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   |این میدلور میتواند با استفاده از شرط های تعیین شده درخواست هایی را نادیده بگیرد.|
-| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             |این میدلور محدودیت زمانی ای را برای درخواست ها تنظیم میکند، در صورتی که محدودیت به پایان برسد ErrorHandler صدا زده میشود.|
+| Middleware                                                                             | توضیحات                                                                                                                                                          |
+| :------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | یک میدلور پایه که سیستم احراز هویت پایه ای را فراهم میکند. در صورت معتبر بودن درخواست روتر بعدی صدا زده شده و در صورت نامعتبر بودن خطای ۴۰۱ نمایش داده میشود.    |
+| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 | پاسخ هارا رهگیری کرده و انها را به صورت موقت ذخیره میکند.                                                                                                        |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)           | یک میدلور فشرده سازی برای Fiber که به طور پیشفرض از `deflate`, `gzip` و `brotli`. پشتیبانی میکند.                                                                |     |
+| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | فعال سازی هدر های cross-origin با گزینه های مختلف.                                                                                                               |
+| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | در برابر حملات CSRF ایمنی ایجاد میکند.                                                                                                                           |
+| [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | مقادیر کوکی هارا رمزنگاری میکند.                                                                                                                                 |
+| [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | میدلور ETag به کش ها اجازه میدهد کارآمد تر عمل کرده و در پهنای باند صرفه جویی کنند. به عنوان یک وب سرور نیازی به دادن پاسخ کامل نیست اگر محتوا تغییر نکرده باشد. |
+| [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | میدلور Expvar میتواند متغیر هایی را تعریف کرده و مقادیر انها را در زمان اجرا با فرمت JSON به شما نشان دهد.                                                       |
+| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | جلوگیری و یا کش کردن درخواست های favicon در صورتی که مسیر یک فایل را داده باشید.                                                                                 |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem)       | میدلور FileSystem به شما اجازه میدهد فایل های یک مسیر را عمومی کنید.                                                                                             |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)             | میدلور محدود کننده تعداد درخواست برای Fiber.                                                                                                                     |
+| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)               | لاگ گرفتن از درخواست و پاسخ های HTTP.                                                                                                                            |
+| [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             | وضعیت سرور را مانیتور و گزارش میکند، از express-status-monitor الهام گرفته شده است.                                                                              |
+| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)                 | تشکر ویژه از Matthew Lee \(@mthli\)                                                                                                                              |
+| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)                 | اجازه میدهد درخواست هارا بر روی چند سرور پروکسی کنید.                                                                                                            |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)             | خطا های زمان اجرا را در وب سرور HTTP شما مدیریت میکنند[ ErrorHandler](https://docs.gofiber.io/guide/error-handling).                                             |
+| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)         | به تمامی درخواست ها شناسه ای را اختصاص میدهد.                                                                                                                    |
+| [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | برای ذخیره و مدیریت شناسه کاربری یا session بازدید کنندگان استفاده .میشود                                                                                        |
+| [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | این میدلور میتواند با استفاده از شرط های تعیین شده درخواست هایی را نادیده بگیرد.                                                                                 |
+| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | این میدلور محدودیت زمانی ای را برای درخواست ها تنظیم میکند، در صورتی که محدودیت به پایان برسد ErrorHandler صدا زده میشود.                                        |
 
 </div>
 </br></br>

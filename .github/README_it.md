@@ -56,10 +56,10 @@
     <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
   </a> -->
   <br>
-  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v2#pkg-overview">
+  <a href="https://pkg.go.dev/github.com/gofiber/fiber/v3#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat-square">
   </a>
-  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v2">
+  <a href="https://goreportcard.com/report/github.com/gofiber/fiber/v3">
     <img src="https://img.shields.io/badge/%F0%9F%93%9D%20goreport-A%2B-75C46B?style=flat-square">
   </a>
   <a href="https://gocover.io/github.com/gofiber/fiber">
@@ -87,7 +87,7 @@
 ```go
 package main
 
-import "github.com/gofiber/fiber/v2"
+import "github.com/gofiber/fiber/v3"
 
 func main() {
     app := fiber.New()
@@ -116,7 +116,7 @@ Assicurati di avere Go ([download](https://go.dev/dl/)) installato. Versione `1.
 Inizializza il tuo progetto creando una cartella e successivamente lanciando `go mod init github.com/your/repo` ([per maggiori info](https://go.dev/blog/using-go-modules)) da dentro la cartella. Dopo installa Fiber con il comando [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
 ```bash
-go get -u github.com/gofiber/fiber/v2
+go get -u github.com/gofiber/fiber/v3
 ```
 
 ## 🎯 Caratteristiche
@@ -143,8 +143,8 @@ Fiber è **inspirato** da Express, il web framework più popolare su internet. A
 
 ## ⚠️ Limitazioni
 
-* Dato che Fiber utilizza unsafe, la libreria non sempre potrebbe essere compatibile con l'ultima versione di Go. Fiber 2.29.0 è stato testato con la versioni 1.14 alla 1.18 di Go.
-* Fiber non è compatibile con le interfacce net/http. Questo significa che non è possibile utilizzare progetti come qglgen, go-swagger, o altri che fanno parte dell'ecosistema net/http.
+-   Dato che Fiber utilizza unsafe, la libreria non sempre potrebbe essere compatibile con l'ultima versione di Go. Fiber 2.29.0 è stato testato con la versioni 1.14 alla 1.18 di Go.
+-   Fiber non è compatibile con le interfacce net/http. Questo significa che non è possibile utilizzare progetti come qglgen, go-swagger, o altri che fanno parte dell'ecosistema net/http.
 
 ## 👀 Esempi
 
@@ -291,7 +291,7 @@ Dai un'occhiata al pacchetto [Template](https://github.com/gofiber/template) che
 package main
 
 import (
-    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v3"
     "github.com/gofiber/template/pug"
 )
 
@@ -358,8 +358,8 @@ package main
 import (
     "log"
 
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/logger"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/logger"
 )
 
 func main() {
@@ -381,8 +381,8 @@ func main() {
 import (
     "log"
 
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/cors"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/cors"
 )
 
 func main() {
@@ -466,8 +466,8 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/websocket"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/websocket"
 )
 
 func main() {
@@ -500,7 +500,7 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
+    "github.com/gofiber/fiber/v3"
     "github.com/valyala/fasthttp"
 )
 
@@ -516,7 +516,7 @@ func main() {
     c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
       fmt.Println("WRITER")
       var i int
-      
+
       for {
         i++
         msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
@@ -541,8 +541,8 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/recover"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/recover"
 )
 
 func main() {
@@ -566,8 +566,8 @@ func main() {
 
 ```go
 import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/gofiber/fiber/v2/middleware/recover"
+    "github.com/gofiber/fiber/v3"
+    "github.com/gofiber/fiber/v3/middleware/recover"
 )
 
 func main() {

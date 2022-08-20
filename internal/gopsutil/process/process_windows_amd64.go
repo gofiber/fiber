@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
+	"github.com/gofiber/fiber/v3/internal/gopsutil/common"
 )
 
 type PROCESS_MEMORY_COUNTERS struct {

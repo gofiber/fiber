@@ -5,13 +5,13 @@ CORS middleware for [Fiber](https://github.com/gofiber/fiber) that that can be u
 ## Table of Contents
 
 - [Cross-Origin Resource Sharing (CORS) Middleware](#cross-origin-resource-sharing-cors-middleware)
-	- [Table of Contents](#table-of-contents)
-	- [Signatures](#signatures)
-	- [Examples](#examples)
-		- [Default Config](#default-config)
-		- [Custom Config](#custom-config)
-	- [Config](#config)
-	- [Default Config](#default-config-1)
+  - [Table of Contents](#table-of-contents)
+  - [Signatures](#signatures)
+  - [Examples](#examples)
+    - [Default Config](#default-config)
+    - [Custom Config](#custom-config)
+  - [Config](#config)
+  - [Default Config](#default-config-1)
 
 ## Signatures
 
@@ -25,8 +25,8 @@ First import the middleware from Fiber,
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/cors"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/cors"
 )
 ```
 

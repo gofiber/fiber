@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/utils"
 )
 
 func getFileExtension(path string) string {

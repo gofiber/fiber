@@ -3,13 +3,13 @@
 Compression middleware for [Fiber](https://github.com/gofiber/fiber) that will compress the response using `gzip`, `deflate` and `brotli` compression depending on the [Accept-Encoding](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Encoding) header.
 
 - [Compress Middleware](#compress-middleware)
-	- [Signatures](#signatures)
-	- [Examples](#examples)
-		- [Default Config](#default-config)
-		- [Custom Config](#custom-config)
-	- [Config](#config)
-	- [Default Config](#default-config-1)
-	- [Constants](#constants)
+  - [Signatures](#signatures)
+  - [Examples](#examples)
+    - [Default Config](#default-config)
+    - [Custom Config](#custom-config)
+  - [Config](#config)
+  - [Default Config](#default-config-1)
+  - [Constants](#constants)
 
 ## Signatures
 
@@ -23,8 +23,8 @@ First import the middleware from Fiber,
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/compress"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/compress"
 )
 ```
 

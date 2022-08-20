@@ -5,13 +5,13 @@ ETag middleware for [Fiber](https://github.com/gofiber/fiber) that lets caches b
 ## Table of Contents
 
 - [ETag Middleware](#etag-middleware)
-	- [Table of Contents](#table-of-contents)
-	- [Signatures](#signatures)
-	- [Examples](#examples)
-		- [Default Config](#default-config)
-		- [Custom Config](#custom-config)
-	- [Config](#config)
-	- [Default Config](#default-config-2)
+  - [Table of Contents](#table-of-contents)
+  - [Signatures](#signatures)
+  - [Examples](#examples)
+    - [Default Config](#default-config)
+    - [Custom Config](#custom-config)
+  - [Config](#config)
+  - [Default Config](#default-config-2)
 
 ## Signatures
 
@@ -25,8 +25,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/etag"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/etag"
 )
 ```
 

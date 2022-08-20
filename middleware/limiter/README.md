@@ -9,14 +9,14 @@ _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) pa
 ## Table of Contents
 
 - [Limiter Middleware](#limiter-middleware)
-	- [Table of Contents](#table-of-contents)
-	- [Signatures](#signatures)
-	- [Examples](#examples)
-		- [Default Config](#default-config)
-		- [Custom Config](#custom-config)
-		- [Custom Storage/Database](#custom-storagedatabase)
-	- [Config](#config)
-		- [Default Config](#default-config-1)
+  - [Table of Contents](#table-of-contents)
+  - [Signatures](#signatures)
+  - [Examples](#examples)
+    - [Default Config](#default-config)
+    - [Custom Config](#custom-config)
+    - [Custom Storage/Database](#custom-storagedatabase)
+  - [Config](#config)
+    - [Default Config](#default-config-1)
 
 ## Signatures
 
@@ -30,8 +30,8 @@ First import the middleware from Fiber,
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/limiter"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/limiter"
 )
 ```
 

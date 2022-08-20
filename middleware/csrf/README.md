@@ -8,14 +8,14 @@ _NOTE: This middleware uses our [Storage](https://github.com/gofiber/storage) pa
 ## Table of Contents
 
 - [CSRF Middleware](#csrf-middleware)
-	- [Table of Contents](#table-of-contents)
-	- [Signatures](#signatures)
-	- [Examples](#examples)
-		- [Default Config](#default-config)
-		- [Custom Config](#custom-config)
-		- [Custom Storage/Database](#custom-storagedatabase)
-		- [Config](#config)
-		- [Default Config](#default-config-1)
+  - [Table of Contents](#table-of-contents)
+  - [Signatures](#signatures)
+  - [Examples](#examples)
+    - [Default Config](#default-config)
+    - [Custom Config](#custom-config)
+    - [Custom Storage/Database](#custom-storagedatabase)
+    - [Config](#config)
+    - [Default Config](#default-config-1)
 
 ## Signatures
 
@@ -29,8 +29,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/crsf"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/crsf"
 )
 ```
 

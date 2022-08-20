@@ -4,10 +4,10 @@ Encrypt middleware for [Fiber](https://github.com/gofiber/fiber) which encrypts 
 
 ## Table of Contents
 
-* [Signatures](encryptcookie.md#signatures)
-* [Setup](encryptcookie.md#setup)
-* [Config](encryptcookie.md#config)
-* [Default Config](encryptcookie.md#default-config)
+- [Signatures](encryptcookie.md#signatures)
+- [Setup](encryptcookie.md#setup)
+- [Config](encryptcookie.md#config)
+- [Default Config](encryptcookie.md#default-config)
 
 ## Signatures
 
@@ -25,8 +25,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/encryptcookie"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/encryptcookie"
 )
 ```
 

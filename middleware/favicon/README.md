@@ -5,14 +5,16 @@ Favicon middleware for [Fiber](https://github.com/gofiber/fiber) that ignores fa
 **Note** This middleware is exclusively for serving the default, implicit favicon, which is GET /favicon.ico.
 
 ## Table of Contents
+
 - [Favicon Middleware](#favicon-middleware)
-	- [Table of Contents](#table-of-contents)
-	- [Signatures](#signatures)
-	- [Examples](#examples)
-		- [Default Config](#default-config)
-		- [Custom Config](#custom-config)
-		- [Config](#config)
-		- [Default Config](#default-config-1)
+  - [Table of Contents](#table-of-contents)
+  - [Signatures](#signatures)
+  - [Examples](#examples)
+    - [Default Config](#default-config)
+    - [Custom Config](#custom-config)
+    - [Config](#config)
+    - [Default Config](#default-config-1)
+
 ## Signatures
 
 ```go
@@ -25,8 +27,8 @@ First import the middleware from Fiber,
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/favicon"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/favicon"
 )
 ```
 
@@ -39,6 +41,7 @@ app.Use(favicon.New())
 ```
 
 ### Custom Config
+
 ```go
 app.Use(favicon.New(favicon.Config{
 	File: "./favicon.ico",

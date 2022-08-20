@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
+	"github.com/gofiber/fiber/v3/internal/gopsutil/common"
 	"golang.org/x/sys/windows"
 )
 
@@ -208,7 +208,8 @@ func IOCountersByFileWithContext(ctx context.Context, pernic bool, filename stri
 
 // Return a list of network connections
 // Available kind:
-//   reference to netConnectionKindMap
+//
+//	reference to netConnectionKindMap
 func Connections(kind string) ([]ConnectionStat, error) {
 	return ConnectionsWithContext(context.Background(), kind)
 }

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v3/utils"
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {

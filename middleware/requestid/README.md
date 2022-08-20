@@ -1,28 +1,33 @@
 # RequestID
+
 RequestID middleware for [Fiber](https://github.com/gofiber/fiber) that adds an identifier to the response.
 
 ### Table of Contents
+
 - [Signatures](#signatures)
 - [Examples](#examples)
 - [Config](#config)
 - [Default Config](#default-config)
 
-
 ### Signatures
+
 ```go
 func New(config ...Config) fiber.Handler
 ```
 
 ### Examples
+
 Import the middleware package that is part of the Fiber web framework
+
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/requestid"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/requestid"
 )
 ```
 
 After you initiate your Fiber app, you can use the following possibilities:
+
 ```go
 // Default middleware config
 app.Use(requestid.New())
@@ -37,6 +42,7 @@ app.Use(requestid.New(requestid.Config{
 ```
 
 ### Config
+
 ```go
 // Config defines the config for middleware.
 type Config struct {
@@ -64,6 +70,7 @@ type Config struct {
 ```
 
 ### Default Config
+
 ```go
 var ConfigDefault = Config{
 	Next:       nil,
