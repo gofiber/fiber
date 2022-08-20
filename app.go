@@ -467,6 +467,8 @@ func New(config ...Config) *App {
 		getBytes:    utils.UnsafeBytes,
 		getString:   utils.UnsafeString,
 		appList:     make(map[string]*App),
+		parent:      nil,
+		mountpath:   "",
 		latestRoute: &Route{},
 		latestGroup: &Group{},
 	}
