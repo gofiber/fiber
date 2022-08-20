@@ -811,7 +811,6 @@ func (c *Ctx) MultipartForm() (*multipart.Form, error) {
 
 // ClientHelloInfo return CHI from context
 func (c *Ctx) ClientHelloInfo() *tls.ClientHelloInfo {
-	fmt.Print(c.app.tlsHandler)
 	if c.app.tlsHandler != nil {
 		return c.app.tlsHandler.clientHelloInfo
 	}
