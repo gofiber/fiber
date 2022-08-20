@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -1559,4 +1560,18 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 		t.Error("unexpected success request")
 		t.FailNow()
 	}
+}
+
+func Test_App_SetTLSHandler(t *testing.T) {
+	tlsHandler := &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
+		ServerName: "example.golang",
+	}}
+
+	app := New()
+	app.SetTLSHandler(tlsHandler)
+
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	utils.AssertEqual(t, "example.golang", c.ClientHelloInfo().ServerName)
 }

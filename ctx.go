@@ -68,13 +68,13 @@ type Ctx struct {
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
 }
 
-// tlsHandle object
-type tlsHandler struct {
+// TLSHandler object
+type TLSHandler struct {
 	clientHelloInfo *tls.ClientHelloInfo
 }
 
 // GetClientInfo Callback function to set CHI
-func (t *tlsHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	t.clientHelloInfo = info
 	return nil, nil
 }
@@ -811,6 +811,7 @@ func (c *Ctx) MultipartForm() (*multipart.Form, error) {
 
 // ClientHelloInfo return CHI from context
 func (c *Ctx) ClientHelloInfo() *tls.ClientHelloInfo {
+	fmt.Print(c.app.tlsHandler)
 	if c.app.tlsHandler != nil {
 		return c.app.tlsHandler.clientHelloInfo
 	}
