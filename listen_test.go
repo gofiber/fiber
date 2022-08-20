@@ -28,10 +28,10 @@ func Test_App_Listen(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Equal(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Equal(t, nil, app.Listen(":4003"))
+	require.Nil(t, app.Listen(":4003"))
 }
 
 // go test -run Test_App_Listen_Prefork
@@ -40,7 +40,7 @@ func Test_App_Listen_Prefork(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
 
-	require.Equal(t, nil, app.Listen(":99999"))
+	require.Nil(t, app.Listen(":99999"))
 }
 
 // go test -run Test_App_ListenTLS
@@ -54,10 +54,10 @@ func Test_App_ListenTLS(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Equal(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Equal(t, nil, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
+	require.Nil(t, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
 }
 
 // go test -run Test_App_ListenTLS_Prefork
@@ -69,7 +69,7 @@ func Test_App_ListenTLS_Prefork(t *testing.T) {
 	// invalid key file content
 	require.Equal(t, false, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.tmpl") == nil)
 
-	require.Equal(t, nil, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
+	require.Nil(t, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
 }
 
 // go test -run Test_App_ListenMutualTLS
@@ -83,10 +83,10 @@ func Test_App_ListenMutualTLS(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Equal(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Equal(t, nil, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
+	require.Nil(t, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
 }
 
 // go test -run Test_App_ListenMutualTLS_Prefork
@@ -98,7 +98,7 @@ func Test_App_ListenMutualTLS_Prefork(t *testing.T) {
 	// invalid key file content
 	require.Equal(t, false, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html", "") == nil)
 
-	require.Equal(t, nil, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
+	require.Nil(t, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
 }
 
 // go test -run Test_App_Listener
@@ -107,11 +107,11 @@ func Test_App_Listener(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		require.Equal(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
 
 	ln := fasthttputil.NewInmemoryListener()
-	require.Equal(t, nil, app.Listener(ln))
+	require.Nil(t, app.Listener(ln))
 }
 
 // go test -run Test_App_Listener_Prefork
@@ -121,28 +121,28 @@ func Test_App_Listener_Prefork(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
 
 	ln := fasthttputil.NewInmemoryListener()
-	require.Equal(t, nil, app.Listener(ln))
+	require.Nil(t, app.Listener(ln))
 }
 
 func Test_App_Listener_TLS_Listener(t *testing.T) {
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 	}
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 	ln, err := tls.Listen(NetworkTCP4, ":0", config)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	app := New()
 
 	go func() {
 		time.Sleep(time.Millisecond * 500)
-		require.Equal(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Equal(t, nil, app.Listener(ln))
+	require.Nil(t, app.Listener(ln))
 }
 
 func captureOutput(f func()) string {

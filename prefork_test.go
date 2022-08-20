@@ -28,24 +28,24 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Equal(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Equal(t, nil, app.prefork(NetworkTCP6, "[::1]:", nil))
+	require.Nil(t, app.prefork(NetworkTCP6, "[::1]:", nil))
 
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 	}
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Equal(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Equal(t, nil, app.prefork(NetworkTCP4, "127.0.0.1:", config))
+	require.Nil(t, app.prefork(NetworkTCP4, "127.0.0.1:", config))
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
@@ -56,10 +56,10 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Equal(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Equal(t, nil, app.prefork(NetworkTCP4, ":3000", nil))
+	require.Nil(t, app.prefork(NetworkTCP4, ":3000", nil))
 
 	dummyChildCmd = "invalid"
 
@@ -75,27 +75,27 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 	defer func() { os.Stdout = rescueStdout }()
 
 	r, w, err := os.Pipe()
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	os.Stdout = w
 
 	New().startupProcess().startupMessage(":3000", false, "")
 
-	require.Equal(t, nil, w.Close())
+	require.Nil(t, w.Close())
 
 	out, err := io.ReadAll(r)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 0, len(out))
 }
 
 func setupIsChild(t *testing.T) {
 	t.Helper()
 
-	require.Equal(t, nil, os.Setenv(envPreforkChildKey, envPreforkChildVal))
+	require.Nil(t, os.Setenv(envPreforkChildKey, envPreforkChildVal))
 }
 
 func teardownIsChild(t *testing.T) {
 	t.Helper()
 
-	require.Equal(t, nil, os.Setenv(envPreforkChildKey, ""))
+	require.Nil(t, os.Setenv(envPreforkChildKey, ""))
 }

@@ -17,7 +17,7 @@ func Test_Skip(t *testing.T) {
 	app.Get("/", helloWorldHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
@@ -29,7 +29,7 @@ func Test_SkipFalse(t *testing.T) {
 	app.Get("/", helloWorldHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
@@ -41,7 +41,7 @@ func Test_SkipNilFunc(t *testing.T) {
 	app.Get("/", helloWorldHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }
 

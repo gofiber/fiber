@@ -90,7 +90,7 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, "SomeThing", resp.Cookies()[0].Value)
 }
 

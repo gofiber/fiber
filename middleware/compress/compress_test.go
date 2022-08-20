@@ -37,13 +37,13 @@ func Test_Compress_Gzip(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, true, len(body) < len(filedata))
 }
 
@@ -65,13 +65,13 @@ func Test_Compress_Different_Level(t *testing.T) {
 			req.Header.Set("Accept-Encoding", "gzip")
 
 			resp, err := app.Test(req)
-			require.Equal(t, nil, err, "app.Test(req)")
+			require.Nil(t, err, "app.Test(req)")
 			require.Equal(t, 200, resp.StatusCode, "Status code")
 			require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
 			// Validate that the file size has shrunk
 			body, err := io.ReadAll(resp.Body)
-			require.Equal(t, nil, err)
+			require.NoError(t, err)
 			require.Equal(t, true, len(body) < len(filedata))
 		})
 	}
@@ -90,13 +90,13 @@ func Test_Compress_Deflate(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "deflate")
 
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "deflate", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, true, len(body) < len(filedata))
 }
 
@@ -113,13 +113,13 @@ func Test_Compress_Brotli(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req, 10000)
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, true, len(body) < len(filedata))
 }
 
@@ -136,13 +136,13 @@ func Test_Compress_Disabled(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate the file size is not shrunk
 	body, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, true, len(body) == len(filedata))
 }
 
@@ -159,12 +159,12 @@ func Test_Compress_Next_Error(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, 500, resp.StatusCode, "Status code")
 	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	body, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, "next error", string(body))
 }
 
@@ -178,6 +178,6 @@ func Test_Compress_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }

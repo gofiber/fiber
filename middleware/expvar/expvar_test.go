@@ -20,11 +20,11 @@ func Test_Non_Expvar_Path(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
 	b, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, "escaped", string(b))
 }
 
@@ -38,12 +38,12 @@ func Test_Expvar_Index(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
 	b, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, true, bytes.Contains(b, []byte("cmdline")))
 	require.Equal(t, true, bytes.Contains(b, []byte("memstat")))
 }
@@ -58,12 +58,12 @@ func Test_Expvar_Filter(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars?r=cmd", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	require.Equal(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
 	b, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, true, bytes.Contains(b, []byte("cmdline")))
 	require.Equal(t, false, bytes.Contains(b, []byte("memstat")))
 }
@@ -78,7 +78,7 @@ func Test_Expvar_Other_Path(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars/302", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 302, resp.StatusCode)
 }
 
@@ -95,6 +95,6 @@ func Test_Expvar_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/vars", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }

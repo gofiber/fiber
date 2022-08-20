@@ -25,7 +25,7 @@ func Test_BasicAuth_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
@@ -80,11 +80,11 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		req := httptest.NewRequest("GET", "/testauth", nil)
 		req.Header.Add("Authorization", "Basic "+creds)
 		resp, err := app.Test(req)
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		body, err := io.ReadAll(resp.Body)
 
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, tt.statusCode, resp.StatusCode)
 
 		if tt.statusCode == 200 {

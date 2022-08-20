@@ -21,7 +21,7 @@ func Test_ETag_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
@@ -36,7 +36,7 @@ func Test_ETag_SkipError(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
@@ -51,7 +51,7 @@ func Test_ETag_NotStatusOK(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusCreated, resp.StatusCode)
 }
 
@@ -66,7 +66,7 @@ func Test_ETag_NoBody(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
@@ -104,7 +104,7 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	}
 
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	if !headerIfNoneMatch || !matched {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -115,7 +115,7 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	if matched {
 		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, 0, len(b))
 	}
 }
@@ -154,7 +154,7 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	}
 
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	if !headerIfNoneMatch || !matched {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -165,7 +165,7 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	if matched {
 		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, 0, len(b))
 	}
 }
@@ -208,7 +208,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	}
 
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	if !headerIfNoneMatch || !matched {
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
@@ -219,7 +219,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	if matched {
 		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, 0, len(b))
 	}
 }
@@ -241,7 +241,7 @@ func Test_ETag_CustomEtagPut(t *testing.T) {
 	req := httptest.NewRequest("PUT", "/", nil)
 	req.Header.Set(fiber.HeaderIfMatch, `"non-match"`)
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusPreconditionFailed, resp.StatusCode)
 }
 

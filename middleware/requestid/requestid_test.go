@@ -19,7 +19,7 @@ func Test_RequestID(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
@@ -29,7 +29,7 @@ func Test_RequestID(t *testing.T) {
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
 
 	resp, err = app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, reqid, resp.Header.Get(fiber.HeaderXRequestID))
 }
@@ -44,7 +44,7 @@ func Test_RequestID_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, resp.Header.Get(fiber.HeaderXRequestID), "")
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -70,6 +70,6 @@ func Test_RequestID_Locals(t *testing.T) {
 	})
 
 	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, reqId, ctxVal)
 }

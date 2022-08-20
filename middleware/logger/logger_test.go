@@ -34,7 +34,7 @@ func Test_Logger(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 	require.Equal(t, "some random error", buf.String())
 }
@@ -66,21 +66,21 @@ func Test_Logger_locals(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "johndoe", buf.String())
 
 	buf.Reset()
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/int", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "55", buf.String())
 
 	buf.Reset()
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/empty", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "", buf.String())
 }
@@ -95,7 +95,7 @@ func Test_Logger_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
@@ -107,7 +107,7 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
@@ -127,7 +127,7 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 	require.Equal(t, 2, int(*o))
@@ -148,7 +148,7 @@ func Test_Logger_All(t *testing.T) {
 	colors := app.Config().ColorScheme
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/?foo=bar", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 	expected := fmt.Sprintf("%dHost=example.comhttpHTTP/1.10.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sCannot GET /", os.Getpid(), colors.Black, colors.Red, colors.Green, colors.Yellow, colors.Blue, colors.Magenta, colors.Cyan, colors.White, colors.Reset)
@@ -167,7 +167,7 @@ func Test_Query_Params(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/?foo=bar&baz=moz", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 	expected := "foo=bar&baz=moz"
@@ -194,7 +194,7 @@ func Test_Response_Body(t *testing.T) {
 	})
 
 	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	expectedGetResponse := "Sample response body"
 	require.Equal(t, expectedGetResponse, buf.String())
@@ -202,7 +202,7 @@ func Test_Response_Body(t *testing.T) {
 	buf.Reset() // Reset buffer to test POST
 
 	_, err = app.Test(httptest.NewRequest("POST", "/test", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	expectedPostResponse := "Post in test"
 	require.Equal(t, expectedPostResponse, buf.String())
@@ -225,7 +225,7 @@ func Test_Logger_AppendUint(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "0 5 200", buf.String())
 }
@@ -256,9 +256,9 @@ func Test_Logger_Data_Race(t *testing.T) {
 	resp2, err2 = app.Test(httptest.NewRequest("GET", "/", nil))
 	wg.Wait()
 
-	require.Equal(t, nil, err1)
+	require.Nil(t, err1)
 	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
-	require.Equal(t, nil, err2)
+	require.Nil(t, err2)
 	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
 }
 
@@ -312,7 +312,7 @@ func Test_Response_Header(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "Hello fiber!", buf.String())
 }
@@ -334,7 +334,7 @@ func Test_Req_Header(t *testing.T) {
 	headerReq.Header.Add("test", "Hello fiber!")
 	resp, err := app.Test(headerReq)
 
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "Hello fiber!", buf.String())
 }
@@ -356,7 +356,7 @@ func Test_ReqHeader_Header(t *testing.T) {
 	reqHeaderReq.Header.Add("test", "Hello fiber!")
 	resp, err := app.Test(reqHeaderReq)
 
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 	require.Equal(t, "Hello fiber!", buf.String())
 }

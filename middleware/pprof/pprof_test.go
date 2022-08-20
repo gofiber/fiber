@@ -20,11 +20,11 @@ func Test_Non_Pprof_Path(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
 	b, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, "escaped", string(b))
 }
 
@@ -38,12 +38,12 @@ func Test_Pprof_Index(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
 	b, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, true, bytes.Contains(b, []byte("<title>/debug/pprof/</title>")))
 }
 
@@ -68,7 +68,7 @@ func Test_Pprof_Subs(t *testing.T) {
 				target += "?seconds=1"
 			}
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, nil), 5000)
-			require.Equal(t, nil, err)
+			require.NoError(t, err)
 			require.Equal(t, 200, resp.StatusCode)
 		})
 	}
@@ -84,7 +84,7 @@ func Test_Pprof_Other(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/302", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 302, resp.StatusCode)
 }
 
@@ -101,6 +101,6 @@ func Test_Pprof_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)
 }

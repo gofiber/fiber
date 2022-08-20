@@ -23,19 +23,19 @@ func Test_Middleware_Favicon(t *testing.T) {
 
 	// Skip Favicon middleware
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusNoContent, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest("OPTIONS", "/favicon.ico", nil))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest("PUT", "/favicon.ico", nil))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusMethodNotAllowed, resp.StatusCode, "Status code")
 	require.Equal(t, "GET, HEAD, OPTIONS", resp.Header.Get(fiber.HeaderAllow))
 }
@@ -67,7 +67,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
 
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
@@ -83,7 +83,7 @@ func Test_Middleware_Favicon_FileSystem(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
@@ -99,7 +99,7 @@ func Test_Middleware_Favicon_CacheControl(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
-	require.Equal(t, nil, err, "app.Test(req)")
+	require.Nil(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 	require.Equal(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
@@ -134,6 +134,6 @@ func Test_Favicon_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }

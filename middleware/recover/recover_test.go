@@ -24,7 +24,7 @@ func Test_Recover(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/panic", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
@@ -38,7 +38,7 @@ func Test_Recover_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
@@ -53,6 +53,6 @@ func Test_Recover_EnableStackTrace(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/panic", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 }

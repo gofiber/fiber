@@ -28,7 +28,7 @@ func Test_Session(t *testing.T) {
 
 	// get session
 	sess, err := store.Get(ctx)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, true, sess.Fresh())
 
 	// get keys
@@ -37,7 +37,7 @@ func Test_Session(t *testing.T) {
 
 	// get value
 	name := sess.Get("name")
-	require.Equal(t, nil, name)
+	require.Nil(t, name)
 
 	// set value
 	sess.Set("name", "john")
@@ -54,7 +54,7 @@ func Test_Session(t *testing.T) {
 
 	// get value
 	name = sess.Get("name")
-	require.Equal(t, nil, name)
+	require.Nil(t, name)
 
 	// get keys
 	keys = sess.Keys()
@@ -66,13 +66,13 @@ func Test_Session(t *testing.T) {
 
 	// save the old session first
 	err = sess.Save()
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	// requesting entirely new context to prevent falsy tests
 	ctx = app.NewCtx(&fasthttp.RequestCtx{})
 
 	sess, err = store.Get(ctx)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, true, sess.Fresh())
 
 	// this id should be randomly generated as session key was deleted
@@ -85,7 +85,7 @@ func Test_Session(t *testing.T) {
 	// request the server with the old session
 	ctx.Request().Header.SetCookie(store.sessionName, id)
 	sess, err = store.Get(ctx)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, false, sess.Fresh())
 	require.Equal(t, sess.id, id)
 }
@@ -108,7 +108,7 @@ func Test_Session_Types(t *testing.T) {
 
 	// get session
 	sess, err := store.Get(ctx)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, true, sess.Fresh())
 
 	// the session string is no longer be 123
@@ -166,11 +166,11 @@ func Test_Session_Types(t *testing.T) {
 
 	// save session
 	err = sess.Save()
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	// get session
 	sess, err = store.Get(ctx)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, false, sess.Fresh())
 
 	// get value
@@ -221,7 +221,7 @@ func Test_Session_Store_Reset(t *testing.T) {
 	// make sure the session is recreated
 	sess, _ = store.Get(ctx)
 	require.Equal(t, true, sess.Fresh())
-	require.Equal(t, nil, sess.Get("hello"))
+	require.Nil(t, sess.Get("hello"))
 }
 
 // go test -run Test_Session_Save
@@ -243,7 +243,7 @@ func Test_Session_Save(t *testing.T) {
 
 		// save session
 		err := sess.Save()
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 	})
 
 	t.Run("save to header", func(t *testing.T) {
@@ -263,7 +263,7 @@ func Test_Session_Save(t *testing.T) {
 
 		// save session
 		err := sess.Save()
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, store.getSessionID(ctx), string(ctx.Response().Header.Peek(store.sessionName)))
 		require.Equal(t, store.getSessionID(ctx), string(ctx.Request().Header.Peek(store.sessionName)))
 	})
@@ -290,7 +290,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 
 		// save session
 		err := sess.Save()
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		// here you need to get the old session yet
 		sess, _ = store.Get(ctx)
@@ -301,7 +301,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 
 		// here you should get a new session
 		sess, _ = store.Get(ctx)
-		require.Equal(t, nil, sess.Get("name"))
+		require.Nil(t, sess.Get("name"))
 	})
 }
 
@@ -323,7 +323,7 @@ func Test_Session_Reset(t *testing.T) {
 		sess.Set("name", "fenny")
 		sess.Destroy()
 		name := sess.Get("name")
-		require.Equal(t, nil, name)
+		require.Nil(t, name)
 	})
 
 	t.Run("reset from header", func(t *testing.T) {
@@ -345,7 +345,7 @@ func Test_Session_Reset(t *testing.T) {
 		sess, _ = store.Get(ctx)
 
 		err := sess.Destroy()
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, "", string(ctx.Response().Header.Peek(store.sessionName)))
 		require.Equal(t, "", string(ctx.Request().Header.Peek(store.sessionName)))
 	})
@@ -414,21 +414,21 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 	ctx := app.NewCtx(&fasthttp.RequestCtx{})
 
 	sess, err := store.Get(ctx)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	ctx.Request().Header.SetCookie(store.sessionName, sess.ID())
 
 	sess.Set("id", "1")
-	require.Equal(t, nil, sess.Save())
+	require.Nil(t, sess.Save())
 
 	sess, err = store.Get(ctx)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	sess.Delete("id")
-	require.Equal(t, nil, sess.Save())
+	require.Nil(t, sess.Save())
 
 	sess, err = store.Get(ctx)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, false, sess.Fresh())
-	require.Equal(t, nil, sess.Get("id"))
+	require.Nil(t, sess.Get("id"))
 }
 
 // go test -run Test_Session_Regenerate
@@ -446,23 +446,23 @@ func Test_Session_Regenerate(t *testing.T) {
 
 		// now the session is in the storage
 		freshSession, err := store.Get(ctx)
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		originalSessionUUIDString = freshSession.ID()
 
 		err = freshSession.Save()
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		// set cookie
 		ctx.Request().Header.SetCookie(store.sessionName, originalSessionUUIDString)
 
 		// as the session is in the storage, session.fresh should be false
 		acquiredSession, err := store.Get(ctx)
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, false, acquiredSession.Fresh())
 
 		err = acquiredSession.Regenerate()
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		if acquiredSession.ID() == originalSessionUUIDString {
 			t.Fatal("regenerate should generate another different id")

@@ -34,11 +34,11 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		body, err := io.ReadAll(resp.Body)
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, "Hello tester!", string(body))
 	}
 
@@ -50,13 +50,13 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	wg.Wait()
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
 
@@ -79,11 +79,11 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		body, err := io.ReadAll(resp.Body)
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 		require.Equal(t, "Hello tester!", string(body))
 	}
 
@@ -95,13 +95,13 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	wg.Wait()
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
 
@@ -124,15 +124,15 @@ func Test_Limiter_No_Skip_Choices(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 }
 
@@ -154,21 +154,21 @@ func Test_Limiter_Skip_Failed_Requests(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
 
@@ -192,21 +192,21 @@ func Test_Limiter_Skip_Successful_Requests(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 }
 
@@ -247,7 +247,7 @@ func Test_Limiter_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
@@ -321,10 +321,10 @@ func Test_Sliding_Window(t *testing.T) {
 	singleRequest := func(shouldFail bool) {
 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 		if shouldFail {
-			require.Equal(t, nil, err)
+			require.NoError(t, err)
 			require.Equal(t, 429, resp.StatusCode)
 		} else {
-			require.Equal(t, nil, err)
+			require.NoError(t, err)
 			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 		}
 	}

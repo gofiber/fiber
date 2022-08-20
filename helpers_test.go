@@ -120,9 +120,9 @@ func Test_Utils_GetOffset(t *testing.T) {
 
 func Test_Utils_TestConn_Deadline(t *testing.T) {
 	conn := &testConn{}
-	require.Equal(t, nil, conn.SetDeadline(time.Time{}))
-	require.Equal(t, nil, conn.SetReadDeadline(time.Time{}))
-	require.Equal(t, nil, conn.SetWriteDeadline(time.Time{}))
+	require.Nil(t, conn.SetDeadline(time.Time{}))
+	require.Nil(t, conn.SetReadDeadline(time.Time{}))
+	require.Nil(t, conn.SetWriteDeadline(time.Time{}))
 }
 
 func Test_Utils_IsNoCache(t *testing.T) {
@@ -165,9 +165,9 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 func Test_Utils_lnMetadata(t *testing.T) {
 	t.Run("closed listen", func(t *testing.T) {
 		ln, err := net.Listen(NetworkTCP, ":0")
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
-		require.Equal(t, nil, ln.Close())
+		require.Nil(t, ln.Close())
 
 		addr, config := lnMetadata(NetworkTCP, ln)
 
@@ -178,7 +178,7 @@ func Test_Utils_lnMetadata(t *testing.T) {
 	t.Run("non tls", func(t *testing.T) {
 		ln, err := net.Listen(NetworkTCP, ":0")
 
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		addr, config := lnMetadata(NetworkTCP4, ln)
 
@@ -188,12 +188,12 @@ func Test_Utils_lnMetadata(t *testing.T) {
 
 	t.Run("tls", func(t *testing.T) {
 		cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 		ln, err := net.Listen(NetworkTCP4, ":0")
-		require.Equal(t, nil, err)
+		require.NoError(t, err)
 
 		ln = tls.NewListener(ln, config)
 

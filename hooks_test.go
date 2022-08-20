@@ -148,7 +148,7 @@ func Test_Hook_OnShutdown(t *testing.T) {
 		return nil
 	})
 
-	require.Equal(t, nil, app.Shutdown())
+	require.Nil(t, app.Shutdown())
 	require.Equal(t, "shutdowning", buf.String())
 }
 
@@ -170,9 +170,9 @@ func Test_Hook_OnListen(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Equal(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
-	require.Equal(t, nil, app.Listen(":9000"))
+	require.Nil(t, app.Listen(":9000"))
 
 	require.Equal(t, "ready", buf.String())
 }
@@ -186,7 +186,7 @@ func Test_Hook_OnHook(t *testing.T) {
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		require.Equal(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
 
 	app.Hooks().OnFork(func(pid int) error {
@@ -194,5 +194,5 @@ func Test_Hook_OnHook(t *testing.T) {
 		return nil
 	})
 
-	require.Equal(t, nil, app.prefork(NetworkTCP4, ":3000", nil))
+	require.Nil(t, app.prefork(NetworkTCP4, ":3000", nil))
 }
