@@ -23,7 +23,7 @@ func Test_GolangJSONEncoder(t *testing.T) {
 	)
 
 	raw, err := jsonEncoder(ss)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	require.Equal(t, string(raw), importantString)
 }
@@ -40,7 +40,7 @@ func Test_DefaultJSONEncoder(t *testing.T) {
 	)
 
 	raw, err := jsonEncoder(ss)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	require.Equal(t, string(raw), importantString)
 }
@@ -55,6 +55,6 @@ func Test_DefaultJSONDecoder(t *testing.T) {
 	)
 
 	err := jsonDecoder(importantString, &ss)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 	require.Equal(t, "Hello World", ss.ImportantString)
 }

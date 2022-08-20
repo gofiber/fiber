@@ -35,7 +35,7 @@ func Test_GolangXMLEncoder(t *testing.T) {
 	)
 
 	raw, err := xmlEncoder(ss)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	require.Equal(t, string(raw), xmlString)
 }
@@ -55,7 +55,7 @@ func Test_DefaultXMLEncoder(t *testing.T) {
 	)
 
 	raw, err := xmlEncoder(ss)
-	require.Equal(t, err, nil)
+	require.NoError(t, err)
 
 	require.Equal(t, string(raw), xmlString)
 }

@@ -73,7 +73,7 @@ func TestStore_Get(t *testing.T) {
 		ctx.Request().Header.SetCookie(store.sessionName, unexpectedID)
 
 		acquiredSession, err := store.Get(ctx)
-		require.Equal(t, err, nil)
+		require.NoError(t, err)
 
 		if acquiredSession.ID() != unexpectedID {
 			t.Fatal("server should not accept the unexpectedID which is not in the store")
