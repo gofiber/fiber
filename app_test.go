@@ -139,12 +139,7 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 		t.Error("Expect an error at app.Test(request)")
 	}
 
-	require.Equal(
-		t,
-		true,
-		expectedError.MatchString(err.Error()),
-		fmt.Sprintf("Has: %s, expected pattern: %s", err.Error(), expectedError.String()))
-
+	require.Regexp(t, expectedError, err.Error())
 }
 
 func Test_App_Errors(t *testing.T) {
