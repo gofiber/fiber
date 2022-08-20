@@ -23,6 +23,16 @@ import (
 	"github.com/gofiber/fiber/v3/internal/isatty"
 )
 
+type TLSConfig struct {
+	CertFile, KeyFile, ClientCertFile string
+}
+
+var defaultTLSConfig TLSConfig = TLSConfig{
+	CertFile:       "",
+	KeyFile:        "",
+	ClientCertFile: "",
+}
+
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
 	// Prefork is supported for custom listeners
@@ -48,7 +58,29 @@ func (app *App) Listener(ln net.Listener) error {
 //
 //	app.Listen(":8080")
 //	app.Listen("127.0.0.1:8080")
-func (app *App) Listen(addr string) error {
+func (app *App) Listen(addr string, tlscfg ...TLSConfig) error {
+	if len(tlscfg) > 0 {
+		cfg := defaultTLSConfig
+
+		if tlscfg[0].CertFile != "" {
+			cfg.CertFile = tlscfg[0].CertFile
+		}
+
+		if tlscfg[0].KeyFile != "" {
+			cfg.KeyFile = tlscfg[0].KeyFile
+		}
+
+		if tlscfg[0].ClientCertFile != "" {
+			cfg.ClientCertFile = tlscfg[0].ClientCertFile
+		}
+
+		if cfg.ClientCertFile != "" {
+			return app.listenMutualTLS(addr, cfg.CertFile, cfg.KeyFile, cfg.ClientCertFile)
+		}
+
+		return app.listenTLS(addr, cfg.CertFile, cfg.KeyFile)
+	}
+
 	// Start prefork
 	if app.config.Prefork {
 		return app.prefork(app.config.Network, addr, nil)
@@ -76,7 +108,7 @@ func (app *App) Listen(addr string) error {
 // certFile and keyFile are the paths to TLS certificate and key file:
 //
 //	app.ListenTLS(":8080", "./cert.pem", "./cert.key")
-func (app *App) ListenTLS(addr, certFile, keyFile string) error {
+func (app *App) listenTLS(addr, certFile, keyFile string) error {
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
@@ -118,7 +150,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 // certFile, keyFile and clientCertFile are the paths to TLS certificate and key file:
 //
 //	app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
-func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
+func (app *App) listenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
