@@ -19,8 +19,6 @@ import (
 
 	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
-	"github.com/gofiber/fiber/v3/internal/tlstest"
-	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
