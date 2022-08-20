@@ -256,7 +256,7 @@ func Test_App_ErrorHandler_GroupMount(t *testing.T) {
 
 	app := New()
 	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
+	v1.Use("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	testErrorResponse(t, err, resp, "1: custom error")
@@ -275,7 +275,7 @@ func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
 
 	app := New()
 	v1 := app.Group("/v1")
-	v1.Mount("/", micro)
+	v1.Use("/", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	testErrorResponse(t, err, resp, "1: custom error")
@@ -312,12 +312,63 @@ func Test_App_Mount(t *testing.T) {
 	})
 
 	app := New()
-	app.Mount("/john", micro)
+	app.Use("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, uint32(2), app.handlersCount)
+}
+
+func Test_App_Mountpath(t *testing.T) {
+	parent := New()
+	sub := New()
+	sub1 := New()
+
+	parent.Use("/sub", sub)
+	parent.Use("/sub1", sub1)
+
+	utils.AssertEqual(t, "/sub", sub.MountPath())
+	utils.AssertEqual(t, "/sub1", sub1.MountPath())
+
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "mountpath cannot be used on parent app", fmt.Sprintf("%s", err))
+		}
+	}()
+	parent.MountPath()
+}
+
+func Test_App_OnMount(t *testing.T) {
+	app := New()
+	sub := New()
+	sub1 := New()
+
+	app.Use("/sub", sub)
+
+	sub.OnMount(func(parent *App) {
+		//Check parent app
+		utils.AssertEqual(t, app.mountpath, parent.mountpath)
+	})
+
+	sub.OnMount(func(parent *App) {
+		utils.AssertEqual(t, parent != nil, true)
+	})
+
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "not mounted sub app to parent app", fmt.Sprintf("%s", err))
+		}
+	}()
+
+	sub1.OnMount(func(parent *App) {})
+
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "onmount cannot be used on parent app", fmt.Sprintf("%s", err))
+		}
+	}()
+	app.OnMount(func(parent *App) {})
 }
 
 func Test_App_Use_Params(t *testing.T) {
@@ -963,7 +1014,7 @@ func Test_App_Group_Mount(t *testing.T) {
 
 	app := New()
 	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
+	v1.Use("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -1449,7 +1500,7 @@ func Test_App_UseMountedErrorHandler(t *testing.T) {
 		return errors.New("something happened")
 	})
 
-	app.Mount("/api", fiber)
+	app.Use("/api", fiber)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
 	testErrorResponse(t, err, resp, "hi, i'm a custom error")
@@ -1467,7 +1518,7 @@ func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
 		return errors.New("something happened")
 	})
 
-	app.Mount("/", fiber)
+	app.Use("/", fiber)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
 	testErrorResponse(t, err, resp, "hi, i'm a custom error")
@@ -1495,7 +1546,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	subfiber.Get("/", func(c *Ctx) error {
 		return errors.New("something happened")
 	})
-	subfiber.Mount("/third", tripleSubFiber)
+	subfiber.Use("/third", tripleSubFiber)
 
 	f := func(ctx *Ctx, err error) error {
 		return ctx.Status(200).SendString("hi, i'm a custom error")
@@ -1506,9 +1557,9 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	fiber.Get("/", func(c *Ctx) error {
 		return errors.New("something happened")
 	})
-	fiber.Mount("/sub", subfiber)
+	fiber.Use("/sub", subfiber)
 
-	app.Mount("/api", fiber)
+	app.Use("/api", fiber)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub", nil))
 	utils.AssertEqual(t, nil, err, "/api/sub req")
