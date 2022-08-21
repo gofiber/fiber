@@ -168,7 +168,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Serve index if path is directory
 		if stat.IsDir() {
-			indexPath := strings.TrimRight(path, '/') + cfg.Index
+			indexPath := strings.TrimRight(path, "/") + cfg.Index
 			indexPath = filepath.Join(cfg.PathPrefix, filepath.Clean("/"+indexPath))
 
 			index, err := openFile(cfg.Root, indexPath)
@@ -251,7 +251,7 @@ func SendFile(c fiber.Ctx, filesystem fs.FS, path string) (err error) {
 
 	// Serve index if path is directory
 	if stat.IsDir() {
-		indexPath := strings.TrimRight(path, '/') + ConfigDefault.Index
+		indexPath := strings.TrimRight(path, "/") + ConfigDefault.Index
 		index, err := openFile(filesystem, indexPath)
 		if err == nil {
 			indexStat, err := index.Stat()
