@@ -997,14 +997,23 @@ func Test_Ctx_Get(t *testing.T) {
 	utils.AssertEqual(t, "default", c.Get("unknown", "default"))
 }
 
+func Test_Ctx_Host(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().SetRequestURI("http://example.com:3000")
+	utils.AssertEqual(t, "example.com:3000", c.Host())
+}
+
 // go test -run Test_Ctx_Hostname
 func Test_Ctx_Hostname(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.Request().SetRequestURI("http://google.com/test")
-	utils.AssertEqual(t, "google.com", c.Hostname())
+	c.Request().SetRequestURI("http://example.com:3000")
+	utils.AssertEqual(t, "example.com", c.Hostname())
 }
 
 // go test -run Test_Ctx_Hostname_Untrusted
