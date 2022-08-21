@@ -33,8 +33,10 @@ func Test_Listen(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(":4003", ListenConfig{DisableStartupMessage: true}))
 }
 
-// go test -run Test_Listen
+// go test -run Test_Listen_Graceful_Shutdown
 func Test_Listen_Graceful_Shutdown(t *testing.T) {
+	var shutdown bool
+
 	app := New()
 
 	app.Get("/", func(c Ctx) error {
@@ -44,12 +46,15 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 		defer cancel()
 
 		err := app.Listen(ln, ListenConfig{
 			DisableStartupMessage: true,
 			GracefulContext:       ctx,
+			OnShutdownSuccess: func() {
+				shutdown = true
+			},
 		})
 
 		utils.AssertEqual(t, nil, err)
@@ -62,7 +67,7 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		ExceptedErrsLen    int
 	}{
 		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErrsLen: 0},
-		{Time: 600 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
+		{Time: 500 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
 	}
 
 	for _, tc := range testCases {
@@ -76,6 +81,8 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		utils.AssertEqual(t, tc.ExpectedBody, body)
 		utils.AssertEqual(t, tc.ExceptedErrsLen, len(errs))
 	}
+
+	utils.AssertEqual(t, true, shutdown)
 }
 
 // go test -run Test_Listen_Prefork

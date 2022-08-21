@@ -91,6 +91,11 @@ type ListenConfig struct {
 	//
 	// Default: Print error with log.Fatalf()
 	OnShutdownError func(err error)
+
+	// OnShutdownSuccess allows to customize success behavior when to graceful shutdown server by given signal.
+	//
+	// Default: nil
+	OnShutdownSuccess func()
 }
 
 // ListenConfigDefault is a function to set default values of ListenConfig.
@@ -490,13 +495,11 @@ func (app *App) printRoutesMessage() {
 func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 	<-ctx.Done()
 
-	fmt.Print(app.Shutdown())
-	/*if err := app.Shutdown(); err != nil {
-		fmt.Print("dfsdsa")
-
+	if err := app.Shutdown(); err != nil {
 		cfg.OnShutdownError(err)
-		//os.Exit(1)
-	}*/
+	}
 
-	//os.Exit(0)
+	if success := cfg.OnShutdownSuccess; success != nil {
+		success()
+	}
 }
