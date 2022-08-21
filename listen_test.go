@@ -35,6 +35,7 @@ func Test_Listen(t *testing.T) {
 
 // go test -run Test_Listen_Graceful_Shutdown
 func Test_Listen_Graceful_Shutdown(t *testing.T) {
+	var mu sync.Mutex
 	var shutdown bool
 
 	app := New()
@@ -53,7 +54,9 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 			DisableStartupMessage: true,
 			GracefulContext:       ctx,
 			OnShutdownSuccess: func() {
+				mu.Lock()
 				shutdown = true
+				mu.Unlock()
 			},
 		})
 
