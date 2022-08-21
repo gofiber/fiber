@@ -540,6 +540,7 @@ func (r *Request) Send() (*Response, error) {
 
 // Reset clear Request object, used by ReleaseRequest method.
 func (r *Request) Reset() {
+	r.core = nil
 	r.url = ""
 	r.method = fiber.MethodGet
 	r.userAgent = ""
@@ -818,7 +819,6 @@ func (f *File) Reset() {
 var requestPool = &sync.Pool{
 	New: func() any {
 		return &Request{
-			core:       newCore(),
 			header:     &Header{RequestHeader: &fasthttp.RequestHeader{}},
 			params:     &QueryParam{Args: fasthttp.AcquireArgs()},
 			cookies:    &Cookie{},
@@ -838,6 +838,7 @@ var requestPool = &sync.Pool{
 func AcquireRequest() *Request {
 	req := requestPool.Get().(*Request)
 	req.boundary = "--FiberFormBoundary" + randString(16)
+	req.core = newCore()
 
 	return req
 }
