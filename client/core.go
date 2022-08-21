@@ -54,22 +54,26 @@ func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 
 	// To avoid memory allocation reuse of data structures such as errch.
 	done := int32(0)
-	errCh, reqv, respv := acquireErrChan(), fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+	errCh, reqv := acquireErrChan(), fasthttp.AcquireRequest()
 	defer func() {
 		releaseErrChan(errCh)
-		fasthttp.ReleaseRequest(reqv)
-		fasthttp.ReleaseResponse(respv)
 	}()
 
 	req.RawRequest.CopyTo(reqv)
 	go func() {
+		respv := fasthttp.AcquireResponse()
 		err := c.client.Do(reqv, respv)
+		defer func() {
+			fasthttp.ReleaseRequest(reqv)
+			fasthttp.ReleaseResponse(respv)
+		}()
 
 		if atomic.CompareAndSwapInt32(&done, 0, 1) {
 			if err != nil {
 				errCh <- err
 				return
 			}
+			respv.CopyTo(resp.RawResponse)
 			errCh <- nil
 		}
 	}()
@@ -81,8 +85,6 @@ func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 			ReleaseResponse(resp)
 			return nil, err
 		}
-
-		respv.CopyTo(resp.RawResponse)
 		return resp, nil
 	case <-ctx.Done():
 		atomic.SwapInt32(&done, 1)
