@@ -652,10 +652,12 @@ func (c *Ctx) Host() string {
 func (c *Ctx) Hostname() string {
 	if c.IsProxyTrusted() {
 		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
-			return host
+			return strings.Split(host, ":")[0]
 		}
 	}
-	return c.app.getString(c.fasthttp.Request.URI().Host())
+
+	hn := utils.UnsafeString(c.fasthttp.Host())
+	return strings.Split(hn, ":")[0]
 }
 
 // Port returns the remote port of the request.
