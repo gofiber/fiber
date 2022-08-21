@@ -18,6 +18,8 @@ import (
 // Fiber Client also provides an option to override
 // or merge most of the client settings at the request.
 type Client struct {
+	mu sync.RWMutex
+
 	baseUrl   string
 	userAgent string
 	referer   string

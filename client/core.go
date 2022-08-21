@@ -76,19 +76,29 @@ func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 // execute will exec each hooks and plugins.
 func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Response, error) {
 	// The built-in hooks will be executed only
-	// after the user-defined hooks are executed。
-	for _, f := range client.userRequestHooks {
-		err := f(client, req)
-		if err != nil {
-			return nil, err
-		}
-	}
+	// after the user-defined hooks are executed.
+	err := func() error {
+		client.mu.RLock()
+		defer client.mu.RUnlock()
 
-	for _, f := range client.buildinRequestHooks {
-		err := f(client, req)
-		if err != nil {
-			return nil, err
+		for _, f := range client.userRequestHooks {
+			err := f(client, req)
+			if err != nil {
+				return err
+			}
 		}
+
+		for _, f := range client.buildinRequestHooks {
+			err := f(client, req)
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}()
+	if err != nil {
+		return nil, err
 	}
 
 	// deal with timeout
@@ -116,18 +126,28 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 
 	// The built-in hooks will be executed only
 	// before the user-defined hooks are executed.
-	for _, f := range client.buildinResposeHooks {
-		err := f(client, resp, req)
-		if err != nil {
-			return nil, err
+	err = func() error {
+		client.mu.RLock()
+		defer client.mu.RUnlock()
+		for _, f := range client.buildinResposeHooks {
+			err := f(client, resp, req)
+			if err != nil {
+				return err
+			}
 		}
-	}
 
-	for _, f := range client.userResponseHooks {
-		err := f(client, resp, req)
-		if err != nil {
-			return nil, err
+		for _, f := range client.userResponseHooks {
+			err := f(client, resp, req)
+			if err != nil {
+				return err
+			}
 		}
+
+		return nil
+	}()
+	if err != nil {
+		resp.Close()
+		return nil, err
 	}
 
 	return resp, nil
