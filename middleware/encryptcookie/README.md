@@ -25,8 +25,8 @@ Import the middleware package that is part of the Fiber web framework
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/encryptcookie"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/encryptcookie"
 )
 ```
 
@@ -39,12 +39,12 @@ app.Use(encryptcookie.New(encryptcookie.Config{
 }))
 
 // Get / reading out the encrypted cookie
-app.Get("/", func(c *fiber.Ctx) error {
+app.Get("/", func(c fiber.Ctx) error {
     return c.SendString("value=" + c.Cookies("test"))
 })
 
 // Post / create the encrypted cookie
-app.Post("/", func(c *fiber.Ctx) error {
+app.Post("/", func(c fiber.Ctx) error {
     c.Cookie(&fiber.Cookie{
         Name:  "test",
         Value: "SomeThing",
@@ -60,7 +60,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Array of cookie keys that should not be encrypted.
 	//

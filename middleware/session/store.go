@@ -36,7 +36,7 @@ func (s *Store) RegisterType(i any) {
 }
 
 // Get will get/create a session
-func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
+func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 	var fresh bool
 	loadData := true
 
@@ -91,7 +91,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 // 1. cookie
 // 2. http headers
 // 3. query string
-func (s *Store) getSessionID(c *fiber.Ctx) string {
+func (s *Store) getSessionID(c fiber.Ctx) string {
 	id := c.Cookies(s.sessionName)
 	if len(id) > 0 {
 		return utils.CopyString(id)
@@ -114,7 +114,7 @@ func (s *Store) getSessionID(c *fiber.Ctx) string {
 	return ""
 }
 
-func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
+func (s *Store) responseCookies(c fiber.Ctx) (string, error) {
 	// Get key from response cookie
 	cookieValue := c.Response().Header.PeekCookie(s.sessionName)
 	if len(cookieValue) == 0 {

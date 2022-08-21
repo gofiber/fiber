@@ -10,7 +10,7 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-var testSimpleHandler = func(c *Ctx) error {
+var testSimpleHandler = func(c Ctx) error {
 	return c.SendString("simple")
 }
 
@@ -173,4 +173,24 @@ func Test_Hook_OnListen(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(":9000", ListenConfig{DisableStartupMessage: true}))
 
 	utils.AssertEqual(t, "ready", buf.String())
+}
+
+func Test_Hook_OnHook(t *testing.T) {
+	// Reset test var
+	testPreforkMaster = true
+	testOnPrefork = true
+
+	app := New()
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	app.Hooks().OnFork(func(pid int) error {
+		utils.AssertEqual(t, 1, pid)
+		return nil
+	})
+
+	utils.AssertEqual(t, nil, app.prefork(":3000", nil, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }

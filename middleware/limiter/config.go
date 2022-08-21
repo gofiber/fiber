@@ -11,7 +11,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Max number of recent connections during `Expiration` seconds before sending a 429 response
 	//
@@ -20,10 +20,10 @@ type Config struct {
 
 	// KeyGenerator allows you to generate custom keys, by default c.IP() is used
 	//
-	// Default: func(c *fiber.Ctx) string {
+	// Default: func(c fiber.Ctx) string {
 	//   return c.IP()
 	// }
-	KeyGenerator func(*fiber.Ctx) string
+	KeyGenerator func(fiber.Ctx) string
 
 	// Expiration is the time on how long to keep records of requests in memory
 	//
@@ -32,7 +32,7 @@ type Config struct {
 
 	// LimitReached is called when a request hits the limit
 	//
-	// Default: func(c *fiber.Ctx) error {
+	// Default: func(c fiber.Ctx) error {
 	//   return c.SendStatus(fiber.StatusTooManyRequests)
 	// }
 	LimitReached fiber.Handler
@@ -62,10 +62,10 @@ type Config struct {
 var ConfigDefault = Config{
 	Max:        5,
 	Expiration: 1 * time.Minute,
-	KeyGenerator: func(c *fiber.Ctx) string {
+	KeyGenerator: func(c fiber.Ctx) string {
 		return c.IP()
 	},
-	LimitReached: func(c *fiber.Ctx) error {
+	LimitReached: func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTooManyRequests)
 	},
 	SkipFailedRequests:     false,

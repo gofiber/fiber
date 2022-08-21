@@ -15,14 +15,14 @@ func New(h fiber.Handler, t time.Duration) fiber.Handler
 Import the middleware package that is part of the Fiber web framework
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/timeout"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/timeout"
 )
 ```
 
 After you initiate your Fiber app, you can use the following possibilities:
 ```go
-handler := func(ctx *fiber.Ctx) error {
+handler := func(c fiber.Ctx) error {
 	err := ctx.SendString("Hello, World 👋!")
 	if err != nil {
 		return err

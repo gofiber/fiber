@@ -28,7 +28,7 @@ func Test_Compress_Gzip(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
 		return c.Send(filedata)
 	})
@@ -56,7 +56,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 
 			app.Use(New(Config{Level: level}))
 
-			app.Get("/", func(c *fiber.Ctx) error {
+			app.Get("/", func(c fiber.Ctx) error {
 				c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
 				return c.Send(filedata)
 			})
@@ -82,7 +82,7 @@ func Test_Compress_Deflate(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.Send(filedata)
 	})
 
@@ -105,7 +105,7 @@ func Test_Compress_Brotli(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.Send(filedata)
 	})
 
@@ -128,7 +128,7 @@ func Test_Compress_Disabled(t *testing.T) {
 
 	app.Use(New(Config{Level: LevelDisabled}))
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.Send(filedata)
 	})
 
@@ -151,7 +151,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return errors.New("next error")
 	})
 
@@ -172,7 +172,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 func Test_Compress_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))

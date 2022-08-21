@@ -24,6 +24,7 @@ const (
 	TagTime              = "time"
 	TagReferer           = "referer"
 	TagProtocol          = "protocol"
+	TagScheme            = "scheme"
 	TagPort              = "port"
 	TagIP                = "ip"
 	TagIPs               = "ips"
@@ -42,34 +43,21 @@ const (
 	TagBytesReceived     = "bytesReceived"
 	TagRoute             = "route"
 	TagError             = "error"
-	TagReqHeader  = "reqHeader:"
-	TagRespHeader = "respHeader:"
-	TagLocals     = "locals:"
-	TagQuery      = "query:"
-	TagForm       = "form:"
-	TagCookie     = "cookie:"
-	TagBlack      = "black"
-	TagRed        = "red"
-	TagGreen      = "green"
-	TagYellow     = "yellow"
-	TagBlue       = "blue"
-	TagMagenta    = "magenta"
-	TagCyan       = "cyan"
-	TagWhite      = "white"
-	TagReset      = "reset"
-)
-
-// Color values
-const (
-	cBlack   = "\u001b[90m"
-	cRed     = "\u001b[91m"
-	cGreen   = "\u001b[92m"
-	cYellow  = "\u001b[93m"
-	cBlue    = "\u001b[94m"
-	cMagenta = "\u001b[95m"
-	cCyan    = "\u001b[96m"
-	cWhite   = "\u001b[97m"
-	cReset   = "\u001b[0m"
+	TagReqHeader         = "reqHeader:"
+	TagRespHeader        = "respHeader:"
+	TagLocals            = "locals:"
+	TagQuery             = "query:"
+	TagForm              = "form:"
+	TagCookie            = "cookie:"
+	TagBlack             = "black"
+	TagRed               = "red"
+	TagGreen             = "green"
+	TagYellow            = "yellow"
+	TagBlue              = "blue"
+	TagMagenta           = "magenta"
+	TagCyan              = "cyan"
+	TagWhite             = "white"
+	TagReset             = "reset"
 )
 
 // New creates a new middleware handler
@@ -125,11 +113,14 @@ func New(config ...Config) fiber.Handler {
 	errPadding := 15
 	errPaddingStr := strconv.Itoa(errPadding)
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
+
+		// Alias colors
+		colors := c.App().Config().ColorScheme
 
 		// Set error handler once
 		once.Do(func() {
@@ -177,16 +168,16 @@ func New(config ...Config) fiber.Handler {
 			// Format error if exist
 			formatErr := ""
 			if chainErr != nil {
-				formatErr = cRed + " | " + chainErr.Error() + cReset
+				formatErr = colors.Red + " | " + chainErr.Error() + colors.Reset
 			}
 
 			// Format log to buffer
 			_, _ = buf.WriteString(fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
 				timestamp.Load().(string),
-				statusColor(c.Response().StatusCode()), c.Response().StatusCode(), cReset,
+				statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
 				stop.Sub(start).Round(time.Millisecond),
 				c.IP(),
-				methodColor(c.Method()), c.Method(), cReset,
+				methodColor(c.Method(), colors), c.Method(), colors.Reset,
 				c.Path(),
 				formatErr,
 			))
@@ -210,6 +201,8 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(c.Get(fiber.HeaderReferer))
 			case TagProtocol:
 				return buf.WriteString(c.Protocol())
+			case TagScheme:
+				return buf.WriteString(c.Scheme())
 			case TagPid:
 				return buf.WriteString(pid)
 			case TagPort:
@@ -227,7 +220,7 @@ func New(config ...Config) fiber.Handler {
 			case TagUA:
 				return buf.WriteString(c.Get(fiber.HeaderUserAgent))
 			case TagLatency:
-				return buf.WriteString(stop.Sub(start).String())
+				return buf.WriteString(fmt.Sprintf("%7v", stop.Sub(start).Round(time.Millisecond)))
 			case TagBody:
 				return buf.Write(c.Body())
 			case TagBytesReceived:
@@ -238,14 +231,19 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(c.Route().Path)
 			case TagStatus:
 				if cfg.enableColors {
-					return buf.WriteString(fmt.Sprintf("%s %3d %s", statusColor(c.Response().StatusCode()), c.Response().StatusCode(), cReset))
+					return buf.WriteString(fmt.Sprintf("%s %3d %s", statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset))
 				}
 				return appendInt(buf, c.Response().StatusCode())
 			case TagResBody:
 				return buf.Write(c.Response().Body())
 			case TagReqHeaders:
+				out := make(map[string]string, 0)
+				if err := c.Bind().Header(&out); err != nil {
+					return 0, err
+				}
+
 				reqHeaders := make([]string, 0)
-				for k, v := range c.GetReqHeaders() {
+				for k, v := range out {
 					reqHeaders = append(reqHeaders, k+"="+v)
 				}
 				return buf.Write([]byte(strings.Join(reqHeaders, "&")))
@@ -253,27 +251,27 @@ func New(config ...Config) fiber.Handler {
 				return buf.WriteString(c.Request().URI().QueryArgs().String())
 			case TagMethod:
 				if cfg.enableColors {
-					return buf.WriteString(fmt.Sprintf("%s %-7s %s", methodColor(c.Method()), c.Method(), cReset))
+					return buf.WriteString(fmt.Sprintf("%s %-7s %s", methodColor(c.Method(), colors), c.Method(), colors.Reset))
 				}
 				return buf.WriteString(c.Method())
 			case TagBlack:
-				return buf.WriteString(cBlack)
+				return buf.WriteString(colors.Black)
 			case TagRed:
-				return buf.WriteString(cRed)
+				return buf.WriteString(colors.Red)
 			case TagGreen:
-				return buf.WriteString(cGreen)
+				return buf.WriteString(colors.Green)
 			case TagYellow:
-				return buf.WriteString(cYellow)
+				return buf.WriteString(colors.Yellow)
 			case TagBlue:
-				return buf.WriteString(cBlue)
+				return buf.WriteString(colors.Blue)
 			case TagMagenta:
-				return buf.WriteString(cMagenta)
+				return buf.WriteString(colors.Magenta)
 			case TagCyan:
-				return buf.WriteString(cCyan)
+				return buf.WriteString(colors.Cyan)
 			case TagWhite:
-				return buf.WriteString(cWhite)
+				return buf.WriteString(colors.White)
 			case TagReset:
-				return buf.WriteString(cReset)
+				return buf.WriteString(colors.Reset)
 			case TagError:
 				if chainErr != nil {
 					return buf.WriteString(chainErr.Error())

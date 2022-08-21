@@ -14,7 +14,7 @@ func Test_RequestID(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("Hello, World 👋!")
 	})
 
@@ -38,7 +38,7 @@ func Test_RequestID(t *testing.T) {
 func Test_RequestID_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
@@ -64,7 +64,7 @@ func Test_RequestID_Locals(t *testing.T) {
 
 	var ctxVal string
 
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		ctxVal = c.Locals(ctxKey).(string)
 		return c.Next()
 	})

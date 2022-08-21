@@ -1,11 +1,16 @@
 package fiber
 
 import (
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,7 +21,7 @@ import (
 // - [ ] Test_Start_Graceful_Shutdown
 
 // go test -run Test_Start
-func Test_Listen(t *testing.T) {
+func Test_Start(t *testing.T) {
 	app := New()
 
 	utils.AssertEqual(t, false, app.Listen(":99999") == nil)
@@ -361,6 +366,36 @@ func Test_Start_Print_Route_With_Group(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
 }
 
-func emptyHandler(c *Ctx) error {
+func emptyHandler(c Ctx) error {
 	return nil
+}
+
+func captureOutput(f func()) string {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		panic(err)
+	}
+	stdout := os.Stdout
+	stderr := os.Stderr
+	defer func() {
+		os.Stdout = stdout
+		os.Stderr = stderr
+		log.SetOutput(os.Stderr)
+	}()
+	os.Stdout = writer
+	os.Stderr = writer
+	log.SetOutput(writer)
+	out := make(chan string)
+	wg := new(sync.WaitGroup)
+	wg.Add(1)
+	go func() {
+		var buf bytes.Buffer
+		wg.Done()
+		io.Copy(&buf, reader)
+		out <- buf.String()
+	}()
+	wg.Wait()
+	f()
+	writer.Close()
+	return <-out
 }

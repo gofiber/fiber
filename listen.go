@@ -242,19 +242,6 @@ func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 	}
 }
 
-// startupProcess Is the method which executes all the necessary processes just before the start of the server.
-func (app *App) startupProcess() *App {
-	if err := app.hooks.executeOnListenHooks(); err != nil {
-		panic(err)
-	}
-
-	app.mutex.Lock()
-	app.buildTree()
-	app.mutex.Unlock()
-
-	return app
-}
-
 // startupMessage prepares the startup message with the handler number, port, address and other information
 func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenConfig) {
 	// ignore child processes
@@ -262,11 +249,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 		return
 	}
 
-	const (
-		cBlack = "\u001b[90m"
-		cCyan  = "\u001b[96m"
-		cReset = "\u001b[0m"
-	)
+	// Alias colors
+	colors := app.config.ColorScheme
 
 	value := func(s string, width int) string {
 		pad := width - len(s)
@@ -277,7 +261,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 		if s == "Disabled" {
 			str += " " + s
 		} else {
-			str += fmt.Sprintf(" %s%s%s", cCyan, s, cBlack)
+			str += fmt.Sprintf(" %s%s%s", colors.Cyan, s, colors.Black)
 		}
 		return str
 	}
@@ -294,11 +278,12 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 	}
 
 	centerValue := func(s string, width int) string {
-		pad := strconv.Itoa((width - len(s)) / 2)
+		pad := strconv.Itoa((width - len([]rune(s))) / 2)
 		str := fmt.Sprintf("%"+pad+"s", " ")
-		str += fmt.Sprintf("%s%s%s", cCyan, s, cBlack)
+		str += fmt.Sprintf("%s%s%s", colors.Cyan, s, colors.Black)
 		str += fmt.Sprintf("%"+pad+"s", " ")
-		if len(str)-10 < width {
+		if len([]rune(s))-10 < width && len([]rune(s))%2 == 0 {
+			// add an ending space if the length of str is even and str is not too long
 			str += " "
 		}
 		return str
@@ -337,11 +322,11 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 		procs = "1"
 	}
 
-	mainLogo := cBlack + " ┌───────────────────────────────────────────────────┐\n"
+	mainLogo := colors.Black + " ┌───────────────────────────────────────────────────┐\n"
 	if app.config.AppName != "" {
 		mainLogo += " │ " + centerValue(app.config.AppName, 49) + " │\n"
 	}
-	mainLogo += " │ " + centerValue(" Fiber v"+Version, 49) + " │\n"
+	mainLogo += " │ " + centerValue("Fiber v"+Version, 49) + " │\n"
 
 	if host == "0.0.0.0" {
 		mainLogo +=
@@ -357,7 +342,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 			" │ Handlers %s  Processes %s │\n"+
 			" │ Prefork .%s  PID ....%s │\n"+
 			" └───────────────────────────────────────────────────┘"+
-			cReset,
+			colors.Reset,
 		value(strconv.Itoa(int(app.handlersCount)), 14), value(procs, 12),
 		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 	)
@@ -388,9 +373,9 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 			lines = append(lines,
 				fmt.Sprintf(
 					newLine,
-					cBlack,
-					thisLine+cCyan+pad(strings.Join(itemsOnThisLine, ", "), 49-len(thisLine)),
-					cBlack,
+					colors.Black,
+					thisLine+colors.Cyan+pad(strings.Join(itemsOnThisLine, ", "), 49-len(thisLine)),
+					colors.Black,
 				),
 			)
 		}
@@ -412,9 +397,9 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 
 		// Form logo
 		childPidsLogo = fmt.Sprintf(childPidsTemplate,
-			cBlack,
+			colors.Black,
 			strings.Join(lines, "\n")+"\n",
-			cReset,
+			colors.Reset,
 		)
 	}
 
@@ -442,7 +427,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 	// Combine the two logos, line by line
 	output := "\n"
 	for i := range splitMainLogo {
-		output += cBlack + splitMainLogo[i] + " " + splitChildPidsLogo[i] + "\n"
+		output += colors.Black + splitMainLogo[i] + " " + splitChildPidsLogo[i] + "\n"
 	}
 
 	out := colorable.NewColorableStdout()
@@ -464,13 +449,9 @@ func (app *App) printRoutesMessage() {
 		return
 	}
 
-	const (
-		cCyan   = "\u001b[96m"
-		cGreen  = "\u001b[92m"
-		cYellow = "\u001b[93m"
-		cBlue   = "\u001b[94m"
-		cWhite  = "\u001b[97m"
-	)
+	// Alias colors
+	colors := app.config.ColorScheme
+
 	var routes []RouteMessage
 	for _, routeStack := range app.stack {
 		for _, route := range routeStack {
@@ -495,10 +476,11 @@ func (app *App) printRoutesMessage() {
 	sort.Slice(routes, func(i, j int) bool {
 		return routes[i].path < routes[j].path
 	})
-	_, _ = fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
-	_, _ = fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\n", cBlue, cWhite, cGreen, cWhite, cCyan, cWhite, cYellow)
+
+	_, _ = fmt.Fprintf(w, "%smethod\t%s| %spath\t%s| %sname\t%s| %shandlers\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow)
+	_, _ = fmt.Fprintf(w, "%s------\t%s| %s----\t%s| %s----\t%s| %s--------\n", colors.Blue, colors.White, colors.Green, colors.White, colors.Cyan, colors.White, colors.Yellow)
 	for _, route := range routes {
-		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", cBlue, route.method, cWhite, cGreen, route.path, cWhite, cCyan, route.name, cWhite, cYellow, route.handlers)
+		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers)
 	}
 
 	_ = w.Flush()

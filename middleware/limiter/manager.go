@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/memory"
+	"github.com/gofiber/fiber/v3/internal/storage/memory"
 )
 
 // go:generate msgp
@@ -19,7 +19,6 @@ type item struct {
 //msgp:ignore manager
 type manager struct {
 	pool    sync.Pool
-	memory  *memory.Storage
 	storage fiber.Storage
 }
 
@@ -32,13 +31,15 @@ func newManager(storage fiber.Storage) *manager {
 			},
 		},
 	}
+
 	if storage != nil {
 		// Use provided storage if provided
 		manager.storage = storage
 	} else {
-		// Fallback too memory storage
-		manager.memory = memory.New()
+		// Fallback to memory storage
+		manager.storage = memory.New(1)
 	}
+
 	return manager
 }
 
@@ -57,58 +58,39 @@ func (m *manager) release(e *item) {
 
 // get data from storage or memory
 func (m *manager) get(key string) (it *item) {
-	if m.storage != nil {
-		it = m.acquire()
-		if raw, _ := m.storage.Get(key); raw != nil {
-			if _, err := it.UnmarshalMsg(raw); err != nil {
-				return
-			}
+	it = m.acquire()
+	if raw, _ := m.storage.Get(key); raw != nil {
+		if _, err := it.UnmarshalMsg(raw); err != nil {
+			return
 		}
-		return
-	}
-	if it, _ = m.memory.Get(key).(*item); it == nil {
-		it = m.acquire()
 	}
 	return
+
 }
 
 // get raw data from storage or memory
 func (m *manager) getRaw(key string) (raw []byte) {
-	if m.storage != nil {
-		raw, _ = m.storage.Get(key)
-	} else {
-		raw, _ = m.memory.Get(key).([]byte)
-	}
+	raw, _ = m.storage.Get(key)
+
 	return
 }
 
 // set data to storage or memory
 func (m *manager) set(key string, it *item, exp time.Duration) {
-	if m.storage != nil {
-		if raw, err := it.MarshalMsg(nil); err == nil {
-			_ = m.storage.Set(key, raw, exp)
-		}
-		// we can release data because it's serialized to database
-		m.release(it)
-	} else {
-		m.memory.Set(key, it, exp)
+	if raw, err := it.MarshalMsg(nil); err == nil {
+		_ = m.storage.Set(key, raw, exp)
 	}
+
+	// we can release data because it's serialized to database
+	m.release(it)
 }
 
 // set data to storage or memory
 func (m *manager) setRaw(key string, raw []byte, exp time.Duration) {
-	if m.storage != nil {
-		_ = m.storage.Set(key, raw, exp)
-	} else {
-		m.memory.Set(key, raw, exp)
-	}
+	_ = m.storage.Set(key, raw, exp)
 }
 
 // delete data from storage or memory
 func (m *manager) delete(key string) {
-	if m.storage != nil {
-		_ = m.storage.Delete(key)
-	} else {
-		m.memory.Delete(key)
-	}
+	_ = m.storage.Delete(key)
 }

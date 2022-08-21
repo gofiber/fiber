@@ -19,7 +19,7 @@ func Test_BasicAuth_Next(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New(Config{
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))
@@ -40,7 +40,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		},
 	}))
 
-	app.Get("/testauth", func(c *fiber.Ctx) error {
+	app.Get("/testauth", func(c fiber.Ctx) error {
 		username := c.Locals("username").(string)
 		password := c.Locals("password").(string)
 
@@ -102,7 +102,7 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 			"john": "doe",
 		},
 	}))
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusTeapot)
 	})
 

@@ -2,7 +2,7 @@ package favicon
 
 import (
 	"io"
-	"net/http"
+	"io/fs"
 	"os"
 	"strconv"
 
@@ -14,7 +14,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// File holds the path to an actual favicon that will be cached
 	//
@@ -25,7 +25,7 @@ type Config struct {
 	// An example of this could be an embedded or network filesystem
 	//
 	// Optional. Default: nil
-	FileSystem http.FileSystem `json:"-"`
+	FileSystem fs.FS `json:"-"`
 
 	// CacheControl defines how the Cache-Control header in the response should be set
 	//
@@ -92,7 +92,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Return new handler
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()

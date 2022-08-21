@@ -9,6 +9,8 @@ package fiber
 
 import (
 	"bufio"
+	"bytes"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -21,6 +23,7 @@ import (
 	"time"
 
 	"encoding/json"
+	"encoding/xml"
 
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
@@ -30,7 +33,7 @@ import (
 const Version = "3.0.0-beta.1"
 
 // Handler defines a function to serve HTTP requests.
-type Handler = func(*Ctx) error
+type Handler = func(Ctx) error
 
 // Map is a shortcut for map[string]any, useful for JSON returns
 type Map map[string]any
@@ -61,17 +64,19 @@ type Storage interface {
 
 // ErrorHandler defines a function that will process all errors
 // returned from any handlers in the stack
-//  cfg := fiber.Config{}
-//  cfg.ErrorHandler = func(c *Ctx, err error) error {
-//   code := StatusInternalServerError
-//   if e, ok := err.(*Error); ok {
-//     code = e.Code
-//   }
-//   c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
-//   return c.Status(code).SendString(err.Error())
-//  }
-//  app := fiber.New(cfg)
-type ErrorHandler = func(*Ctx, error) error
+//
+//	cfg := fiber.Config{}
+//	cfg.ErrorHandler = func(c Ctx, err error) error {
+//	 code := StatusInternalServerError
+//	 var e *fiber.Error
+//	 if errors.As(err, &e) {
+//	   code = e.Code
+//	 }
+//	 c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
+//	 return c.Status(code).SendString(err.Error())
+//	}
+//	app := fiber.New(cfg)
+type ErrorHandler = func(Ctx, error) error
 
 // Error represents an error that occurred while handling a request.
 type Error struct {
@@ -105,10 +110,16 @@ type App struct {
 	// Mounted and main apps
 	appList map[string]*App
 	// Hooks
-	hooks *hooks
+	hooks *Hooks
 	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
+	// newCtxFunc
+	newCtxFunc func(app *App) CustomCtx
+	// custom binders
+	customBinders []CustomBinder
+	// TLS handler
+	tlsHandler *tlsHandler
 }
 
 // Config is a struct holding the server settings.
@@ -304,6 +315,13 @@ type Config struct {
 	// Default: json.Unmarshal
 	JSONDecoder utils.JSONUnmarshal `json:"-"`
 
+	// XMLEncoder set by an external client of Fiber it will use the provided implementation of a
+	// XMLMarshal
+	//
+	// Allowing for flexibility in using another XML library for encoding
+	// Default: xml.Marshal
+	XMLEncoder utils.XMLMarshal `json:"-"`
+
 	// If you find yourself behind some sort of proxy, like a load balancer,
 	// then certain header information may be sent to you using special X-Forwarded-* headers or the Forwarded header.
 	// For example, the Host HTTP header is usually used to return the requested host.
@@ -313,11 +331,11 @@ type Config struct {
 	// If you enable EnableTrustedProxyCheck and leave TrustedProxies empty Fiber will skip
 	// all headers that could be spoofed.
 	// If request ip in TrustedProxies whitelist then:
-	//   1. c.Protocol() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
+	//   1. c.Scheme() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
 	//   2. c.IP() get value from ProxyHeader header.
 	//   3. c.Hostname() get value from X-Forwarded-Host header
 	// But if request ip NOT in Trusted Proxies whitelist then:
-	//   1. c.Protocol() WON't get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
+	//   1. c.Scheme() WON't get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
 	//    will return https in case when tls connection is handled by the app, of http otherwise
 	//   2. c.IP() WON'T get value from ProxyHeader header, will return RemoteIP() from fasthttp context
 	//   3. c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
@@ -332,6 +350,17 @@ type Config struct {
 	TrustedProxies     []string `json:"trusted_proxies"`
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
+
+	// You can define custom color scheme. They'll be used for startup message, route list and some middlewares.
+	//
+	// Optional. Default: DefaultColors
+	ColorScheme Colors `json:"color_scheme"`
+
+	// If you want to validate header/form/query... automatically when to bind, you can define struct validator.
+	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator.
+	//
+	// Default: nil
+	StructValidator StructValidator
 }
 
 // Static defines configuration options when defining static assets.
@@ -372,7 +401,7 @@ type Static struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *Ctx) bool
+	Next func(c Ctx) bool
 }
 
 // RouteMessage is some message need to be print when server starts
@@ -393,9 +422,10 @@ const (
 )
 
 // DefaultErrorHandler that process return errors from handlers
-var DefaultErrorHandler = func(c *Ctx, err error) error {
+var DefaultErrorHandler = func(c Ctx, err error) error {
 	code := StatusInternalServerError
-	if e, ok := err.(*Error); ok {
+	var e *Error
+	if errors.As(err, &e) {
 		code = e.Code
 	}
 	c.Set(HeaderContentType, MIMETextPlainCharsetUTF8)
@@ -403,31 +433,36 @@ var DefaultErrorHandler = func(c *Ctx, err error) error {
 }
 
 // New creates a new Fiber named instance.
-//  app := fiber.New()
+//
+//	app := fiber.New()
+//
 // You can pass optional configuration options by passing a Config struct:
-//  app := fiber.New(fiber.Config{
-//      Prefork: true,
-//      ServerHeader: "Fiber",
-//  })
+//
+//	app := fiber.New(fiber.Config{
+//	    Prefork: true,
+//	    ServerHeader: "Fiber",
+//	})
 func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
 		// Create router stack
 		stack:     make([][]*Route, len(intMethod)),
 		treeStack: make([]map[string][]*Route, len(intMethod)),
-		// Create Ctx pool
-		pool: sync.Pool{
-			New: func() any {
-				return new(Ctx)
-			},
-		},
 		// Create config
-		config:      Config{},
-		getBytes:    utils.UnsafeBytes,
-		getString:   utils.UnsafeString,
-		appList:     make(map[string]*App),
-		latestRoute: &Route{},
-		latestGroup: &Group{},
+		config:        Config{},
+		getBytes:      utils.UnsafeBytes,
+		getString:     utils.UnsafeString,
+		appList:       make(map[string]*App),
+		latestRoute:   &Route{},
+		latestGroup:   &Group{},
+		customBinders: []CustomBinder{},
+	}
+
+	// Create Ctx pool
+	app.pool = sync.Pool{
+		New: func() any {
+			return app.NewCtx(&fasthttp.RequestCtx{})
+		},
 	}
 
 	// Define hooks
@@ -468,11 +503,17 @@ func New(config ...Config) *App {
 	if app.config.JSONDecoder == nil {
 		app.config.JSONDecoder = json.Unmarshal
 	}
+	if app.config.XMLEncoder == nil {
+		app.config.XMLEncoder = xml.Marshal
+	}
 
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
 	for _, ipAddress := range app.config.TrustedProxies {
 		app.handleTrustedProxy(ipAddress)
 	}
+
+	// Override colors
+	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
 
 	// Init appList
 	app.appList[""] = app
@@ -497,6 +538,18 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	} else {
 		app.config.trustedProxiesMap[ipAddress] = struct{}{}
 	}
+}
+
+// NewCtxFunc allows to customize ctx methods as we want.
+// Note: It doesn't allow adding new methods, only customizing exist methods.
+func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
+	app.newCtxFunc = function
+}
+
+// You can register custom binders to use as Bind().Custom("name").
+// They should be compatible with CustomBinder interface.
+func (app *App) RegisterCustomBinder(binder CustomBinder) {
+	app.customBinders = append(app.customBinders, binder)
 }
 
 // Mount attaches another app instance as a sub-router along a routing path.
@@ -562,15 +615,15 @@ func (app *App) GetRoute(name string) Route {
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //
-//  app.Use(func(c *fiber.Ctx) error {
-//       return c.Next()
-//  })
-//  app.Use("/api", func(c *fiber.Ctx) error {
-//       return c.Next()
-//  })
-//  app.Use("/api", handler, func(c *fiber.Ctx) error {
-//       return c.Next()
-//  })
+//	app.Use(func(c fiber.Ctx) error {
+//	     return c.Next()
+//	})
+//	app.Use("/api", func(c fiber.Ctx) error {
+//	     return c.Next()
+//	})
+//	app.Use("/api", handler, func(c fiber.Ctx) error {
+//	     return c.Next()
+//	})
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...any) Router {
@@ -663,8 +716,9 @@ func (app *App) All(path string, handlers ...Handler) Router {
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-//  api := app.Group("/api")
-//  api.Get("/users", handler)
+//
+//	api := app.Group("/api")
+//	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
 		app.register(methodUse, prefix, handlers...)
@@ -757,7 +811,7 @@ func (app *App) Server() *fasthttp.Server {
 }
 
 // Hooks returns the hook struct to register hooks.
-func (app *App) Hooks() *hooks {
+func (app *App) Hooks() *Hooks {
 	return app.hooks
 }
 
@@ -781,6 +835,11 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 		return nil, err
 	}
 
+	// adding back the query from URL, since dump cleans it
+	dumps := bytes.Split(dump, []byte(" "))
+	dumps[1] = []byte(req.URL.String())
+	dump = bytes.Join(dumps, []byte(" "))
+
 	// Create test connection
 	conn := new(testConn)
 
@@ -794,7 +853,15 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	// Serve conn to server
 	channel := make(chan error)
 	go func() {
+		var returned bool
+		defer func() {
+			if !returned {
+				channel <- fmt.Errorf("runtime.Goexit() called in handler or server panic")
+			}
+		}()
+
 		channel <- app.server.ServeConn(conn)
+		returned = true
 	}()
 
 	// Wait for callback
@@ -876,14 +943,14 @@ func (app *App) init() *App {
 // sub fibers by their prefixes and if it finds a match, it uses that
 // error handler. Otherwise it uses the configured error handler for
 // the app, which if not set is the DefaultErrorHandler.
-func (app *App) ErrorHandler(ctx *Ctx, err error) error {
+func (app *App) ErrorHandler(ctx Ctx, err error) error {
 	var (
 		mountedErrHandler  ErrorHandler
 		mountedPrefixParts int
 	)
 
 	for prefix, subApp := range app.appList {
-		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
+		if prefix != "" && strings.HasPrefix(ctx.Path(), prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
 				mountedErrHandler = subApp.config.ErrorHandler
@@ -903,7 +970,10 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 // user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
-	c := app.AcquireCtx(fctx)
+	// Acquire Ctx with fasthttp request from pool
+	c := app.AcquireCtx().(*DefaultCtx)
+	c.Reset(fctx)
+
 	if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
 		err = ErrRequestHeaderFieldsTooLarge
 	} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
@@ -923,4 +993,16 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	}
 
 	app.ReleaseCtx(c)
+}
+
+// startupProcess Is the method which executes all the necessary processes just before the start of the server.
+func (app *App) startupProcess() *App {
+	if err := app.hooks.executeOnListenHooks(); err != nil {
+		panic(err)
+	}
+
+	app.mutex.Lock()
+	app.buildTree()
+	app.mutex.Unlock()
+	return app
 }

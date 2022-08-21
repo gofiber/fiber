@@ -15,7 +15,7 @@ func Test_Non_Pprof_Path(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("escaped")
 	})
 
@@ -33,7 +33,7 @@ func Test_Pprof_Index(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("escaped")
 	})
 
@@ -52,7 +52,7 @@ func Test_Pprof_Subs(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("escaped")
 	})
 
@@ -79,7 +79,7 @@ func Test_Pprof_Other(t *testing.T) {
 
 	app.Use(New())
 
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("escaped")
 	})
 
@@ -95,7 +95,7 @@ func Test_Pprof_Next(t *testing.T) {
 	app := fiber.New()
 
 	app.Use(New(Config{
-		Next: func(_ *fiber.Ctx) bool {
+		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
 	}))

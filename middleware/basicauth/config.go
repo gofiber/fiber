@@ -12,7 +12,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c *fiber.Ctx) bool
+	Next func(c fiber.Ctx) bool
 
 	// Users defines the allowed credentials
 	//
@@ -90,7 +90,7 @@ func configDefault(config ...Config) Config {
 		}
 	}
 	if cfg.Unauthorized == nil {
-		cfg.Unauthorized = func(c *fiber.Ctx) error {
+		cfg.Unauthorized = func(c fiber.Ctx) error {
 			c.Set(fiber.HeaderWWWAuthenticate, "basic realm="+cfg.Realm)
 			return c.SendStatus(fiber.StatusUnauthorized)
 		}
