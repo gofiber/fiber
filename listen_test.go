@@ -85,7 +85,9 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		utils.AssertEqual(t, tc.ExceptedErrsLen, len(errs))
 	}
 
+	mu.Lock()
 	utils.AssertEqual(t, true, shutdown)
+	mu.Unlock()
 }
 
 // go test -run Test_Listen_Prefork
