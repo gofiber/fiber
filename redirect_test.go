@@ -168,11 +168,11 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	equal := string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=k:success:1,k:message:test; path=/; SameSite=Lax" || string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=k:message:test,k:success:1; path=/; SameSite=Lax"
+	equal := string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=success:1,k:message:test; path=/; SameSite=Lax" || string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=message:test,k:success:1; path=/; SameSite=Lax"
 	utils.AssertEqual(t, true, equal)
 
 	c.Redirect().setFlash()
-	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -run Test_Redirect_Route_WithOldInput
@@ -192,16 +192,15 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash=k:"))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:success:1"))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:message:test"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash="))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "success:1"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "message:test"))
 
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash_old_input=k:"))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:id:1"))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "k:name:tom"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "old_input_data_id:1"))
+	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "old_input_data_name:tom"))
 
 	c.Redirect().setFlash()
-	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -run Test_Redirect_setFlash
@@ -215,12 +214,11 @@ func Test_Redirect_setFlash(t *testing.T) {
 
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash_old_input=k:name:tom,k:id:1")
-	c.Request().Header.Set(HeaderCookie, "fiber_flash=k:success:1,k:message:test")
+	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,k:message:test,k:old_input_data_name:tom,k:old_input_data_id:1")
 
 	c.Redirect().setFlash()
 
-	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT; fiber_flash_old_input=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 
 	utils.AssertEqual(t, "1", c.Redirect().Message("success"))
 	utils.AssertEqual(t, "test", c.Redirect().Message("message"))

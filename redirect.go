@@ -146,7 +146,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 				_, _ = messageText.WriteString("k:")
 			}
 
-			_, _ = messageText.WriteString("k:old_input_data_" + k + ":" + v)
+			_, _ = messageText.WriteString("old_input_data_" + k + ":" + v)
 			if len(r.oldInput) != i {
 				_, _ = messageText.WriteString(",")
 			}
