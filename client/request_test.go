@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"os"
 	"path/filepath"
@@ -529,7 +528,7 @@ func Test_Request_File(t *testing.T) {
 
 		utils.AssertEqual(t, "tmp.txt", req.File("tmp.txt").name)
 
-		content, err := ioutil.ReadAll(req.File("tmp.txt").reader)
+		content, err := io.ReadAll(req.File("tmp.txt").reader)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "world", string(content))
 	})
