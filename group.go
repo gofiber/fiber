@@ -71,6 +71,11 @@ func (grp *Group) Name(name string) Router {
 	return grp
 }
 
+// Stack returns the raw router stack.
+func (grp *Group) Stack() [][]*Route {
+	return grp.app.stack
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //

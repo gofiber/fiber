@@ -594,6 +594,7 @@ func (app *App) GetRoute(name string) Route {
 func (app *App) Use(args ...interface{}) Router {
 	var prefix string
 	var subApp *App
+	var router Router
 	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
@@ -602,6 +603,8 @@ func (app *App) Use(args ...interface{}) Router {
 			prefix = arg
 		case *App:
 			subApp = arg
+		case Router:
+			router = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
@@ -610,9 +613,17 @@ func (app *App) Use(args ...interface{}) Router {
 	}
 
 	if subApp != nil {
-		app.mutex.Lock()
 		app.mount(prefix, subApp)
-		app.mutex.Unlock()
+		return app
+	}
+
+	if router != nil {
+		for m := range router.Stack() {
+			for r := range router.Stack()[m] {
+				route := app.copyRoute(router.Stack()[m][r])
+				app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
+			}
+		}
 		return app
 	}
 
@@ -946,7 +957,7 @@ func (app *App) mount(prefix string, sub *App) Router {
 	for m := range stack {
 		for r := range stack[m] {
 			route := app.copyRoute(stack[m][r])
-			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
+			app.addRoute(route.Method, app.addPrefixToRoute(sub.path, route))
 		}
 	}
 

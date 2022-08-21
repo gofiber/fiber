@@ -18,6 +18,8 @@ import (
 
 // Router defines all router handle interface includes app and group router.
 type Router interface {
+	Stack() [][]*Route
+
 	Use(args ...interface{}) Router
 
 	Get(path string, handlers ...Handler) Router
@@ -57,6 +59,39 @@ type Route struct {
 	Path     string    `json:"path"`   // Original registered route path
 	Params   []string  `json:"params"` // Case sensitive param keys
 	Handlers []Handler `json:"-"`      // Ctx handlers
+}
+
+type RouterConfig struct {
+	CaseSensitive bool `json:"case_sensitive"`
+	MergeParams   bool `json:"merge_params"`
+	Strict        bool `json:"strict"`
+}
+
+var defaultRouterConfig = RouterConfig{
+	CaseSensitive: false,
+	MergeParams:   false,
+	Strict:        false,
+}
+
+func NewRouter(config ...RouterConfig) Router {
+	cfg := defaultRouterConfig
+
+	if len(config) > 0 {
+		if config[0].CaseSensitive {
+			cfg.CaseSensitive = true
+		}
+		if config[0].MergeParams {
+			cfg.MergeParams = true
+		}
+		if config[0].Strict {
+			cfg.Strict = true
+		}
+	}
+
+	return New(Config{
+		CaseSensitive: cfg.CaseSensitive,
+		StrictRouting: cfg.Strict,
+	})
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) (match bool) {
