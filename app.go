@@ -612,12 +612,8 @@ func (app *App) Use(args ...interface{}) Router {
 	}
 
 	if router != nil {
-		for m := range router.Stack() {
-			for r := range router.Stack()[m] {
-				route := app.copyRoute(router.Stack()[m][r])
-				app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
-			}
-		}
+		app.register(methodUse, prefix, handlers...)
+		app.registerRouter(prefix, router)
 		return app
 	}
 

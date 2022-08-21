@@ -84,10 +84,21 @@ func NewRouter(config ...RouterConfig) Router {
 		}
 	}
 
+	//TODO : do config feature (not working now)
 	return New(Config{
 		CaseSensitive: cfg.CaseSensitive,
 		StrictRouting: cfg.Strict,
 	})
+}
+
+// Register router
+func (app *App) registerRouter(prefix string, router Router) {
+	for m := range router.Stack() {
+		for r := range router.Stack()[m] {
+			route := app.copyRoute(router.Stack()[m][r])
+			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
+		}
+	}
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) (match bool) {
