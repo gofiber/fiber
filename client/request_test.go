@@ -1150,7 +1150,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 		_, err := AcquireRequest().
 			AddFile("non-exist-file!").
 			Get("http://example.com")
-		utils.AssertEqual(t, "open non-exist-file!: The system cannot find the file specified.", err.Error())
+		utils.AssertEqual(t, "open non-exist-file!: no such file or directory", err.Error())
 	})
 }
 
