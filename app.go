@@ -108,10 +108,12 @@ type App struct {
 	getString func(b []byte) string
 	// If application is a parent, It returns nil. It can accessible only from sub app
 	parent *App
+	// Returns the canonical path of the app, a string.
+	path string
 	// Mounted sub app's path
 	mountpath string
-	// Mounted and main apps
-	appList map[string]*App
+	// Mounted sub apps
+	subList map[string]*App
 	// Latest route & group
 	latestRoute *Route
 	latestGroup *Group
@@ -466,8 +468,9 @@ func New(config ...Config) *App {
 		config:      Config{},
 		getBytes:    utils.UnsafeBytes,
 		getString:   utils.UnsafeString,
-		appList:     make(map[string]*App),
+		subList:     make(map[string]*App),
 		parent:      nil,
+		path:        "/",
 		mountpath:   "",
 		latestRoute: &Route{},
 		latestGroup: &Group{},
@@ -525,9 +528,6 @@ func New(config ...Config) *App {
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
-
-	// Init appList
-	app.appList[""] = app
 
 	// Init app
 	app.init()
@@ -610,7 +610,9 @@ func (app *App) Use(args ...interface{}) Router {
 	}
 
 	if subApp != nil {
+		app.mutex.Lock()
 		app.mount(prefix, subApp)
+		app.mutex.Unlock()
 		return app
 	}
 
@@ -689,12 +691,13 @@ func (app *App) All(path string, handlers ...Handler) Router {
 	return app
 }
 
+// Returns the canonical path of the app, a string.
+func (app *App) Path() string {
+	return app.path
+}
+
 // The MountPath property contains one or more path patterns on which a sub-app was mounted.
 func (app *App) MountPath() string {
-	if app.mountpath == "" {
-		panic("mountpath cannot be used on parent app")
-	}
-
 	return app.mountpath
 }
 
@@ -926,19 +929,25 @@ func (app *App) mount(prefix string, sub *App) Router {
 		prefix = "/"
 	}
 
+	if app.parent == nil {
+		sub.parent = app
+		sub.path = app.mountpath + prefix
+		sub.mountpath = prefix
+		app.subList[app.mountpath+prefix] = sub
+		app.subList[app.mountpath+prefix].init()
+	}
+
+	sub.parent = app
+	sub.path = app.mountpath + prefix
+	sub.mountpath = prefix
+	sub.subList[app.mountpath+prefix] = sub
+	sub.subList[app.mountpath+prefix].init()
+
 	for m := range stack {
 		for r := range stack[m] {
 			route := app.copyRoute(stack[m][r])
 			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
 		}
-	}
-
-	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subApp := range sub.appList {
-		subApp.parent = app
-		subApp.mountpath = prefix + mountedPrefixes
-		app.appList[prefix+mountedPrefixes] = subApp
-		subApp.init()
 	}
 
 	atomic.AddUint32(&app.handlersCount, sub.handlersCount)
@@ -957,7 +966,7 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
-	for prefix, subApp := range app.appList {
+	for prefix, subApp := range app.subList {
 		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {

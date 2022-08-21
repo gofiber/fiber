@@ -1229,9 +1229,10 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	// Pass-locals-to-views & bind
 	c.renderExtensions(bind)
 
+	//TODO: fix this bug
 	rendered := false
-	for prefix, app := range c.app.appList {
-		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
+	for _, app := range c.app.subList {
+		if app.parent == nil || strings.Contains(c.OriginalURL(), "") {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
 					app.config.ViewsLayout,

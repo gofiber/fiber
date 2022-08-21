@@ -22,13 +22,27 @@ type Group struct {
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount.
-func (grp *Group) mount(prefix string, fiber *App) Router {
-	stack := fiber.Stack()
+func (grp *Group) mount(prefix string, sub *App) Router {
+	stack := sub.Stack()
 	groupPath := getGroupPath(grp.Prefix, prefix)
 	groupPath = strings.TrimRight(groupPath, "/")
 	if groupPath == "" {
 		groupPath = "/"
 	}
+
+	if grp.app.parent == nil {
+		sub.parent = grp.app
+		sub.path = grp.app.mountpath + prefix
+		sub.mountpath = prefix
+		grp.app.subList[grp.app.mountpath+prefix] = sub
+		grp.app.subList[grp.app.mountpath+prefix].init()
+	}
+
+	sub.parent = grp.app
+	sub.path = grp.app.mountpath + prefix
+	sub.mountpath = prefix
+	sub.subList[grp.app.mountpath+prefix] = sub
+	sub.subList[grp.app.mountpath+prefix].init()
 
 	for m := range stack {
 		for r := range stack[m] {
@@ -37,15 +51,7 @@ func (grp *Group) mount(prefix string, fiber *App) Router {
 		}
 	}
 
-	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subApp := range fiber.appList {
-		subApp.parent = grp.app
-		subApp.mountpath = groupPath + mountedPrefixes
-		grp.app.appList[groupPath+mountedPrefixes] = subApp
-		subApp.init()
-	}
-
-	atomic.AddUint32(&grp.app.handlersCount, fiber.handlersCount)
+	atomic.AddUint32(&grp.app.handlersCount, sub.handlersCount)
 
 	return grp
 }
