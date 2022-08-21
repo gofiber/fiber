@@ -36,10 +36,6 @@ type Router interface {
 	Static(prefix, root string, config ...Static) Router
 	All(path string, handlers ...Handler) Router
 
-	Group(prefix string, handlers ...Handler) Router
-
-	Route(prefix string, fn func(router Router), name ...string) Router
-
 	Name(name string) Router
 }
 

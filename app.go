@@ -116,7 +116,6 @@ type App struct {
 	subList map[string]*App
 	// Latest route & group
 	latestRoute *Route
-	latestGroup *Group
 }
 
 // Config is a struct holding the server settings.
@@ -473,7 +472,6 @@ func New(config ...Config) *App {
 		path:        "/",
 		mountpath:   "",
 		latestRoute: &Route{},
-		latestGroup: &Group{},
 	}
 
 	// Override config if provided
@@ -554,11 +552,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
-	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.Prefix) {
-		app.latestRoute.Name = app.latestGroup.name + name
-	} else {
-		app.latestRoute.Name = name
-	}
+	app.latestRoute.Name = name
 	app.mutex.Unlock()
 
 	return app
@@ -724,34 +718,6 @@ func (app *App) OnMount(callback func(parent *App)) {
 
 	// returns parent app in callback
 	callback(app.parent)
-}
-
-// Group is used for Routes with common prefix to define a new sub-router with optional middleware.
-//
-//	api := app.Group("/api")
-//	api.Get("/users", handler)
-func (app *App) Group(prefix string, handlers ...Handler) Router {
-	if len(handlers) > 0 {
-		app.register(methodUse, prefix, handlers...)
-	}
-	grp := &Group{Prefix: prefix, app: app}
-
-	return grp
-}
-
-// Route is used to define routes with a common prefix inside the common function.
-// Uses Group method to define new sub-router.
-func (app *App) Route(prefix string, fn func(router Router), name ...string) Router {
-	// Create new group
-	group := app.Group(prefix)
-	if len(name) > 0 {
-		group.Name(name[0])
-	}
-
-	// Define routes
-	fn(group)
-
-	return group
 }
 
 // Error makes it compatible with the `error` interface.

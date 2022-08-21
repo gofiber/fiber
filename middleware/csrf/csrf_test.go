@@ -165,7 +165,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 func Test_CSRF_From_Param(t *testing.T) {
 	app := fiber.New()
 
-	csrfGroup := app.Group("/:csrf", New(Config{KeyLookup: "param:csrf"}))
+	csrfGroup := app.Get("/:csrf", New(Config{KeyLookup: "param:csrf"}))
 
 	csrfGroup.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
@@ -201,7 +201,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 func Test_CSRF_From_Cookie(t *testing.T) {
 	app := fiber.New()
 
-	csrfGroup := app.Group("/", New(Config{KeyLookup: "cookie:csrf"}))
+	csrfGroup := app.Get("/", New(Config{KeyLookup: "cookie:csrf"}))
 
 	csrfGroup.Post("/", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)

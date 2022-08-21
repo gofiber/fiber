@@ -203,11 +203,6 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	app.Get("/v1/some/resource/name\\:customVerb", func(c *Ctx) error {
 		return c.SendString("static")
 	})
-	// group route
-	group := app.Group("/v2/\\:firstVerb")
-	group.Get("/\\:customVerb", func(c *Ctx) error {
-		return c.SendString("group")
-	})
 	// route with resource param and escaped part
 	app.Get("/v3/:resource/name\\:customVerb", func(c *Ctx) error {
 		return c.SendString(c.Params("resource"))
@@ -286,10 +281,6 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 	var app interface{} = (*App)(nil)
 	_, ok := app.(Router)
-	utils.AssertEqual(t, true, ok)
-
-	var group interface{} = (*Group)(nil)
-	_, ok = group.(Router)
 	utils.AssertEqual(t, true, ok)
 }
 

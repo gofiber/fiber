@@ -108,7 +108,7 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 404, resp.StatusCode)
 
-	g := app.Group("/with-next", func(c *Ctx) error {
+	g := app.Get("/with-next", func(c *Ctx) error {
 		return c.Status(404).Next()
 	})
 
@@ -262,24 +262,24 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 // 	testErrorResponse(t, err, resp, "1: custom error")
 // }
 
-func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
-	micro := New(Config{
-		ErrorHandler: func(c *Ctx, err error) error {
-			utils.AssertEqual(t, "0: GET error", err.Error())
-			return c.Status(500).SendString("1: custom error")
-		},
-	})
-	micro.Get("/john/doe", func(c *Ctx) error {
-		return errors.New("0: GET error")
-	})
+// func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
+// 	micro := New(Config{
+// 		ErrorHandler: func(c *Ctx, err error) error {
+// 			utils.AssertEqual(t, "0: GET error", err.Error())
+// 			return c.Status(500).SendString("1: custom error")
+// 		},
+// 	})
+// 	micro.Get("/john/doe", func(c *Ctx) error {
+// 		return errors.New("0: GET error")
+// 	})
 
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Use("/", micro)
+// 	app := New()
+// 	v1 := app.Group("/v1")
+// 	v1.Use("/", micro)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	testErrorResponse(t, err, resp, "1: custom error")
-}
+// 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
+// 	testErrorResponse(t, err, resp, "1: custom error")
+// }
 
 func Test_App_Nested_Params(t *testing.T) {
 	app := New()
@@ -535,23 +535,23 @@ func Test_App_GETOnly(t *testing.T) {
 	utils.AssertEqual(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
 }
 
-func Test_App_Use_Params_Group(t *testing.T) {
-	app := New()
+// func Test_App_Use_Params_Group(t *testing.T) {
+// 	app := New()
 
-	group := app.Group("/prefix/:param/*")
-	group.Use("/", func(c *Ctx) error {
-		return c.Next()
-	})
-	group.Get("/test", func(c *Ctx) error {
-		utils.AssertEqual(t, "john", c.Params("param"))
-		utils.AssertEqual(t, "doe", c.Params("*"))
-		return nil
-	})
+// 	group := app.Group("/prefix/:param/*")
+// 	group.Use("/", func(c *Ctx) error {
+// 		return c.Next()
+// 	})
+// 	group.Get("/test", func(c *Ctx) error {
+// 		utils.AssertEqual(t, "john", c.Params("param"))
+// 		utils.AssertEqual(t, "doe", c.Params("*"))
+// 		return nil
+// 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/prefix/john/doe/test", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-}
+// 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/prefix/john/doe/test", nil))
+// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
+// 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+// }
 
 func Test_App_Chaining(t *testing.T) {
 	n := func(c *Ctx) error {
@@ -649,34 +649,34 @@ func Test_App_Methods(t *testing.T) {
 	testStatus200(t, app, "/john/doe", MethodGet)
 }
 
-func Test_App_Route_Naming(t *testing.T) {
-	app := New()
-	handler := func(c *Ctx) error {
-		return c.SendStatus(StatusOK)
-	}
-	app.Get("/john", handler).Name("john")
-	app.Delete("/doe", handler)
-	app.Name("doe")
+// func Test_App_Route_Naming(t *testing.T) {
+// 	app := New()
+// 	handler := func(c *Ctx) error {
+// 		return c.SendStatus(StatusOK)
+// 	}
+// 	app.Get("/john", handler).Name("john")
+// 	app.Delete("/doe", handler)
+// 	app.Name("doe")
 
-	jane := app.Group("/jane").Name("jane.")
-	jane.Get("/test", handler).Name("test")
-	jane.Trace("/trace", handler).Name("trace")
+// 	jane := app.Group("/jane").Name("jane.")
+// 	jane.Get("/test", handler).Name("test")
+// 	jane.Trace("/trace", handler).Name("trace")
 
-	group := app.Group("/group")
-	group.Get("/test", handler).Name("test")
+// 	group := app.Group("/group")
+// 	group.Get("/test", handler).Name("test")
 
-	app.Post("/post", handler).Name("post")
+// 	app.Post("/post", handler).Name("post")
 
-	subGroup := jane.Group("/sub-group").Name("sub.")
-	subGroup.Get("/done", handler).Name("done")
+// 	subGroup := jane.Group("/sub-group").Name("sub.")
+// 	subGroup.Get("/done", handler).Name("done")
 
-	utils.AssertEqual(t, "post", app.GetRoute("post").Name)
-	utils.AssertEqual(t, "john", app.GetRoute("john").Name)
-	utils.AssertEqual(t, "jane.test", app.GetRoute("jane.test").Name)
-	utils.AssertEqual(t, "jane.trace", app.GetRoute("jane.trace").Name)
-	utils.AssertEqual(t, "jane.sub.done", app.GetRoute("jane.sub.done").Name)
-	utils.AssertEqual(t, "test", app.GetRoute("test").Name)
-}
+// 	utils.AssertEqual(t, "post", app.GetRoute("post").Name)
+// 	utils.AssertEqual(t, "john", app.GetRoute("john").Name)
+// 	utils.AssertEqual(t, "jane.test", app.GetRoute("jane.test").Name)
+// 	utils.AssertEqual(t, "jane.trace", app.GetRoute("jane.trace").Name)
+// 	utils.AssertEqual(t, "jane.sub.done", app.GetRoute("jane.sub.done").Name)
+// 	utils.AssertEqual(t, "test", app.GetRoute("test").Name)
+// }
 
 func Test_App_New(t *testing.T) {
 	app := New()
@@ -801,34 +801,34 @@ func Test_App_Static_Download(t *testing.T) {
 }
 
 // go test -run Test_App_Static_Group
-func Test_App_Static_Group(t *testing.T) {
-	app := New()
+// func Test_App_Static_Group(t *testing.T) {
+// 	app := New()
 
-	grp := app.Group("/v1", func(c *Ctx) error {
-		c.Set("Test-Header", "123")
-		return c.Next()
-	})
+// 	grp := app.Group("/v1", func(c *Ctx) error {
+// 		c.Set("Test-Header", "123")
+// 		return c.Next()
+// 	})
 
-	grp.Static("/v2", "./.github/index.html")
+// 	grp.Static("/v2", "./.github/index.html")
 
-	req := httptest.NewRequest(MethodGet, "/v1/v2", nil)
-	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-	utils.AssertEqual(t, "123", resp.Header.Get("Test-Header"))
+// 	req := httptest.NewRequest(MethodGet, "/v1/v2", nil)
+// 	resp, err := app.Test(req)
+// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
+// 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+// 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+// 	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
+// 	utils.AssertEqual(t, "123", resp.Header.Get("Test-Header"))
 
-	grp = app.Group("/v2")
-	grp.Static("/v3*", "./.github/index.html")
+// 	grp = app.Group("/v2")
+// 	grp.Static("/v3*", "./.github/index.html")
 
-	req = httptest.NewRequest(MethodGet, "/v2/v3/john/doe", nil)
-	resp, err = app.Test(req)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
-	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
-}
+// 	req = httptest.NewRequest(MethodGet, "/v2/v3/john/doe", nil)
+// 	resp, err = app.Test(req)
+// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
+// 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+// 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
+// 	utils.AssertEqual(t, MIMETextHTMLCharsetUTF8, resp.Header.Get(HeaderContentType))
+// }
 
 func Test_App_Static_Wildcard(t *testing.T) {
 	app := New()
@@ -1034,159 +1034,110 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 	utils.AssertEqual(t, true, strings.HasPrefix(string(body), "<!DOCTYPE html>"), "Response: "+string(body))
 }
 
-func Test_App_Group_Invalid(t *testing.T) {
-	defer func() {
-		if err := recover(); err != nil {
-			utils.AssertEqual(t, "use: invalid handler int\n", fmt.Sprintf("%v", err))
-		}
-	}()
-	New().Group("/").Use(1)
-}
+// func Test_App_Group_Invalid(t *testing.T) {
+// 	defer func() {
+// 		if err := recover(); err != nil {
+// 			utils.AssertEqual(t, "use: invalid handler int\n", fmt.Sprintf("%v", err))
+// 		}
+// 	}()
+// 	New().Group("/").Use(1)
+// }
 
 // go test -run Test_App_Group_Mount
-func Test_App_Group_Mount(t *testing.T) {
-	micro := New()
-	micro.Get("/doe", func(c *Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
+// func Test_App_Group_Mount(t *testing.T) {
+// 	micro := New()
+// 	micro.Get("/doe", func(c *Ctx) error {
+// 		return c.SendStatus(StatusOK)
+// 	})
 
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Use("/john", micro)
+// 	app := New()
+// 	v1 := app.Group("/v1")
+// 	v1.Use("/john", micro)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, uint32(2), app.handlersCount)
-}
+// 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
+// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
+// 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+// 	utils.AssertEqual(t, uint32(2), app.handlersCount)
+// }
 
-func Test_App_Group(t *testing.T) {
-	dummyHandler := testEmptyHandler
+// func Test_App_Group(t *testing.T) {
+// 	dummyHandler := testEmptyHandler
 
-	app := New()
+// 	app := New()
 
-	grp := app.Group("/test")
-	grp.Get("/", dummyHandler)
-	testStatus200(t, app, "/test", MethodGet)
+// 	grp := app.Group("/test")
+// 	grp.Get("/", dummyHandler)
+// 	testStatus200(t, app, "/test", MethodGet)
 
-	grp.Get("/:demo?", dummyHandler)
-	testStatus200(t, app, "/test/john", MethodGet)
+// 	grp.Get("/:demo?", dummyHandler)
+// 	testStatus200(t, app, "/test/john", MethodGet)
 
-	grp.Connect("/CONNECT", dummyHandler)
-	testStatus200(t, app, "/test/CONNECT", MethodConnect)
+// 	grp.Connect("/CONNECT", dummyHandler)
+// 	testStatus200(t, app, "/test/CONNECT", MethodConnect)
 
-	grp.Put("/PUT", dummyHandler)
-	testStatus200(t, app, "/test/PUT", MethodPut)
+// 	grp.Put("/PUT", dummyHandler)
+// 	testStatus200(t, app, "/test/PUT", MethodPut)
 
-	grp.Post("/POST", dummyHandler)
-	testStatus200(t, app, "/test/POST", MethodPost)
+// 	grp.Post("/POST", dummyHandler)
+// 	testStatus200(t, app, "/test/POST", MethodPost)
 
-	grp.Delete("/DELETE", dummyHandler)
-	testStatus200(t, app, "/test/DELETE", MethodDelete)
+// 	grp.Delete("/DELETE", dummyHandler)
+// 	testStatus200(t, app, "/test/DELETE", MethodDelete)
 
-	grp.Head("/HEAD", dummyHandler)
-	testStatus200(t, app, "/test/HEAD", MethodHead)
+// 	grp.Head("/HEAD", dummyHandler)
+// 	testStatus200(t, app, "/test/HEAD", MethodHead)
 
-	grp.Patch("/PATCH", dummyHandler)
-	testStatus200(t, app, "/test/PATCH", MethodPatch)
+// 	grp.Patch("/PATCH", dummyHandler)
+// 	testStatus200(t, app, "/test/PATCH", MethodPatch)
 
-	grp.Options("/OPTIONS", dummyHandler)
-	testStatus200(t, app, "/test/OPTIONS", MethodOptions)
+// 	grp.Options("/OPTIONS", dummyHandler)
+// 	testStatus200(t, app, "/test/OPTIONS", MethodOptions)
 
-	grp.Trace("/TRACE", dummyHandler)
-	testStatus200(t, app, "/test/TRACE", MethodTrace)
+// 	grp.Trace("/TRACE", dummyHandler)
+// 	testStatus200(t, app, "/test/TRACE", MethodTrace)
 
-	grp.All("/ALL", dummyHandler)
-	testStatus200(t, app, "/test/ALL", MethodPost)
+// 	grp.All("/ALL", dummyHandler)
+// 	testStatus200(t, app, "/test/ALL", MethodPost)
 
-	grp.Use(dummyHandler)
-	testStatus200(t, app, "/test/oke", MethodGet)
+// 	grp.Use(dummyHandler)
+// 	testStatus200(t, app, "/test/oke", MethodGet)
 
-	grp.Use("/USE", dummyHandler)
-	testStatus200(t, app, "/test/USE/oke", MethodGet)
+// 	grp.Use("/USE", dummyHandler)
+// 	testStatus200(t, app, "/test/USE/oke", MethodGet)
 
-	api := grp.Group("/v1")
-	api.Post("/", dummyHandler)
+// 	api := grp.Group("/v1")
+// 	api.Post("/", dummyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	// utils.AssertEqual(t, "/test/v1", resp.Header.Get("Location"), "Location")
+// 	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", nil))
+// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
+// 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+// 	// utils.AssertEqual(t, "/test/v1", resp.Header.Get("Location"), "Location")
 
-	api.Get("/users", dummyHandler)
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	// utils.AssertEqual(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
-}
+// 	api.Get("/users", dummyHandler)
+// 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", nil))
+// 	utils.AssertEqual(t, nil, err, "app.Test(req)")
+// 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+// 	// utils.AssertEqual(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
+// }
 
-func Test_App_Route(t *testing.T) {
-	dummyHandler := testEmptyHandler
+// func Test_App_Deep_Group(t *testing.T) {
+// 	runThroughCount := 0
+// 	dummyHandler := func(c *Ctx) error {
+// 		runThroughCount++
+// 		return c.Next()
+// 	}
 
-	app := New()
-
-	grp := app.Route("/test", func(grp Router) {
-		grp.Get("/", dummyHandler)
-		grp.Get("/:demo?", dummyHandler)
-		grp.Connect("/CONNECT", dummyHandler)
-		grp.Put("/PUT", dummyHandler)
-		grp.Post("/POST", dummyHandler)
-		grp.Delete("/DELETE", dummyHandler)
-		grp.Head("/HEAD", dummyHandler)
-		grp.Patch("/PATCH", dummyHandler)
-		grp.Options("/OPTIONS", dummyHandler)
-		grp.Trace("/TRACE", dummyHandler)
-		grp.All("/ALL", dummyHandler)
-		grp.Use(dummyHandler)
-		grp.Use("/USE", dummyHandler)
-	})
-
-	testStatus200(t, app, "/test", MethodGet)
-	testStatus200(t, app, "/test/john", MethodGet)
-	testStatus200(t, app, "/test/CONNECT", MethodConnect)
-	testStatus200(t, app, "/test/PUT", MethodPut)
-	testStatus200(t, app, "/test/POST", MethodPost)
-	testStatus200(t, app, "/test/DELETE", MethodDelete)
-	testStatus200(t, app, "/test/HEAD", MethodHead)
-	testStatus200(t, app, "/test/PATCH", MethodPatch)
-	testStatus200(t, app, "/test/OPTIONS", MethodOptions)
-	testStatus200(t, app, "/test/TRACE", MethodTrace)
-	testStatus200(t, app, "/test/ALL", MethodPost)
-	testStatus200(t, app, "/test/oke", MethodGet)
-	testStatus200(t, app, "/test/USE/oke", MethodGet)
-
-	grp.Route("/v1", func(grp Router) {
-		grp.Post("/", dummyHandler)
-		grp.Get("/users", dummyHandler)
-	})
-
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-}
-
-func Test_App_Deep_Group(t *testing.T) {
-	runThroughCount := 0
-	dummyHandler := func(c *Ctx) error {
-		runThroughCount++
-		return c.Next()
-	}
-
-	app := New()
-	gAPI := app.Group("/api", dummyHandler)
-	gV1 := gAPI.Group("/v1", dummyHandler)
-	gUser := gV1.Group("/user", dummyHandler)
-	gUser.Get("/authenticate", func(c *Ctx) error {
-		runThroughCount++
-		return c.SendStatus(200)
-	})
-	testStatus200(t, app, "/api/v1/user/authenticate", MethodGet)
-	utils.AssertEqual(t, 4, runThroughCount, "Loop count")
-}
+// 	app := New()
+// 	gAPI := app.Group("/api", dummyHandler)
+// 	gV1 := gAPI.Group("/v1", dummyHandler)
+// 	gUser := gV1.Group("/user", dummyHandler)
+// 	gUser.Get("/authenticate", func(c *Ctx) error {
+// 		runThroughCount++
+// 		return c.SendStatus(200)
+// 	})
+// 	testStatus200(t, app, "/api/v1/user/authenticate", MethodGet)
+// 	utils.AssertEqual(t, 4, runThroughCount, "Loop count")
+// }
 
 // go test -run Test_App_Next_Method
 func Test_App_Next_Method(t *testing.T) {
