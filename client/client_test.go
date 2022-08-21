@@ -63,11 +63,9 @@ func Test_Get(t *testing.T) {
 	}()
 
 	t.Run("global get function", func(t *testing.T) {
-		C().SetDial(func(addr string) (net.Conn, error) {
+		resp, err := Get("http://example.com", SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
-		})
-
-		resp, err := Get("http://example.com")
+		}))
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "example.com", utils.UnsafeString(resp.RawResponse.Body()))
 	})

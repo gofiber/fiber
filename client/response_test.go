@@ -11,7 +11,7 @@ import (
 func Test_Response_Status(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("foo")
 	})
@@ -24,7 +24,7 @@ func Test_Response_Status(t *testing.T) {
 		t.Parallel()
 
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Get("http://example")
 
 		utils.AssertEqual(t, nil, err)
@@ -36,7 +36,7 @@ func Test_Response_Status(t *testing.T) {
 		t.Parallel()
 
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Get("http://example/fail")
 
 		utils.AssertEqual(t, nil, err)
@@ -48,7 +48,7 @@ func Test_Response_Status(t *testing.T) {
 func Test_Response_Status_Code(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("foo")
 	})
@@ -61,7 +61,7 @@ func Test_Response_Status_Code(t *testing.T) {
 		t.Parallel()
 
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Get("http://example")
 
 		utils.AssertEqual(t, nil, err)
@@ -73,7 +73,7 @@ func Test_Response_Status_Code(t *testing.T) {
 		t.Parallel()
 
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Get("http://example/fail")
 
 		utils.AssertEqual(t, nil, err)
@@ -86,14 +86,14 @@ func Test_Response_Protocol(t *testing.T) {
 	t.Parallel()
 
 	t.Run("http", func(t *testing.T) {
-		app, client, start := createHelperServer(t)
+		app, ln, start := createHelperServer(t)
 		app.Get("/", func(c fiber.Ctx) error {
 			return c.SendString("foo")
 		})
 		go start()
 
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Get("http://example")
 
 		utils.AssertEqual(t, nil, err)
@@ -110,7 +110,7 @@ func Test_Response_Protocol(t *testing.T) {
 func Test_Response_Header(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Response().Header.Add("foo", "bar")
 		return c.SendString("helo world")
@@ -118,7 +118,7 @@ func Test_Response_Header(t *testing.T) {
 	go start()
 
 	resp, err := AcquireRequest().
-		SetClient(client).
+		SetDial(ln).
 		Get("http://example.com")
 
 	utils.AssertEqual(t, nil, err)
@@ -129,7 +129,7 @@ func Test_Response_Header(t *testing.T) {
 func Test_Response_Cookie(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Get("/", func(c fiber.Ctx) error {
 		c.Cookie(&fiber.Cookie{
 			Name:  "foo",
@@ -140,7 +140,7 @@ func Test_Response_Cookie(t *testing.T) {
 	go start()
 
 	resp, err := AcquireRequest().
-		SetClient(client).
+		SetDial(ln).
 		Get("http://example.com")
 
 	utils.AssertEqual(t, nil, err)
@@ -151,7 +151,7 @@ func Test_Response_Cookie(t *testing.T) {
 func Test_Response_Body(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString("hello world")
 	})
@@ -166,7 +166,7 @@ func Test_Response_Body(t *testing.T) {
 
 	t.Run("raw body", func(t *testing.T) {
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Get("http://example.com")
 
 		utils.AssertEqual(t, nil, err)
@@ -176,7 +176,7 @@ func Test_Response_Body(t *testing.T) {
 
 	t.Run("string body", func(t *testing.T) {
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Get("http://example.com")
 
 		utils.AssertEqual(t, nil, err)
@@ -190,7 +190,7 @@ func Test_Response_Body(t *testing.T) {
 		}
 
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Get("http://example.com/json")
 
 		utils.AssertEqual(t, nil, err)
@@ -209,7 +209,7 @@ func Test_Response_Body(t *testing.T) {
 		}
 
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Get("http://example.com/xml")
 
 		utils.AssertEqual(t, nil, err)

@@ -2,13 +2,10 @@ package client
 
 import (
 	"context"
-	"encoding/json"
-	"encoding/xml"
 	"errors"
 	"sync"
 	"sync/atomic"
 
-	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -28,23 +25,6 @@ type ResponseHook func(*Client, *Response, *Request) error
 // and defines the execution process
 type core struct {
 	client *fasthttp.HostClient
-
-	// user defined request hooks
-	userRequestHooks []RequestHook
-
-	// client package defined request hooks
-	buildinRequestHooks []RequestHook
-
-	// user defined response hooks
-	userResponseHooks []ResponseHook
-
-	// client package defined respose hooks
-	buildinResposeHooks []ResponseHook
-
-	jsonMarshal   utils.JSONMarshal
-	jsonUnmarshal utils.JSONUnmarshal
-	xmlMarshal    utils.XMLMarshal
-	xmlUnmarshal  utils.XMLUnmarshal
 }
 
 func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Response, error) {
@@ -97,14 +77,14 @@ func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Response, error) {
 	// The built-in hooks will be executed only
 	// after the user-defined hooks are executed。
-	for _, f := range c.userRequestHooks {
+	for _, f := range client.userRequestHooks {
 		err := f(client, req)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	for _, f := range c.buildinRequestHooks {
+	for _, f := range client.buildinRequestHooks {
 		err := f(client, req)
 		if err != nil {
 			return nil, err
@@ -136,14 +116,14 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 
 	// The built-in hooks will be executed only
 	// before the user-defined hooks are executed.
-	for _, f := range c.buildinResposeHooks {
+	for _, f := range client.buildinResposeHooks {
 		err := f(client, resp, req)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	for _, f := range c.userResponseHooks {
+	for _, f := range client.userResponseHooks {
 		err := f(client, resp, req)
 		if err != nil {
 			return nil, err
@@ -177,15 +157,7 @@ func releaseErrChan(ch chan error) {
 // newCore returns an empty core object.
 func newCore() (c *core) {
 	c = &core{
-		client:              &fasthttp.HostClient{},
-		userRequestHooks:    []RequestHook{},
-		buildinRequestHooks: []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
-		userResponseHooks:   []ResponseHook{},
-		buildinResposeHooks: []ResponseHook{parserResponseCookie},
-		jsonMarshal:         json.Marshal,
-		jsonUnmarshal:       json.Unmarshal,
-		xmlMarshal:          xml.Marshal,
-		xmlUnmarshal:        xml.Unmarshal,
+		client: &fasthttp.HostClient{},
 	}
 
 	return

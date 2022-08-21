@@ -572,14 +572,14 @@ func Test_Request_Unsupport_Protocol(t *testing.T) {
 func Test_Request_Get(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 	go start()
 
 	for i := 0; i < 5; i++ {
-		req := AcquireRequest().SetClient(client)
+		req := AcquireRequest().SetDial(ln)
 
 		resp, err := req.Get("http://example.com")
 		utils.AssertEqual(t, nil, err)
@@ -592,7 +592,7 @@ func Test_Request_Get(t *testing.T) {
 func Test_Request_Post(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Post("/", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusCreated).
 			SendString(c.FormValue("foo"))
@@ -601,7 +601,7 @@ func Test_Request_Post(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			SetFormData("foo", "bar").
 			Post("http://example.com")
 
@@ -615,7 +615,7 @@ func Test_Request_Post(t *testing.T) {
 func Test_Request_Head(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
 	})
@@ -624,7 +624,7 @@ func Test_Request_Head(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Head("http://example.com")
 
 		utils.AssertEqual(t, nil, err)
@@ -637,7 +637,7 @@ func Test_Request_Head(t *testing.T) {
 func Test_Request_Put(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Put("/", func(c fiber.Ctx) error {
 		return c.SendString(c.FormValue("foo"))
 	})
@@ -646,7 +646,7 @@ func Test_Request_Put(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			SetFormData("foo", "bar").
 			Put("http://example.com")
 
@@ -660,7 +660,7 @@ func Test_Request_Put(t *testing.T) {
 func Test_Request_Delete(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 
 	app.Delete("/", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusNoContent).
@@ -671,7 +671,7 @@ func Test_Request_Delete(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Delete("http://example.com")
 
 		utils.AssertEqual(t, nil, err)
@@ -685,7 +685,7 @@ func Test_Request_Delete(t *testing.T) {
 func Test_Request_Options(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 
 	app.Options("/", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).
@@ -696,7 +696,7 @@ func Test_Request_Options(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			Options("http://example.com")
 
 		utils.AssertEqual(t, nil, err)
@@ -710,7 +710,7 @@ func Test_Request_Options(t *testing.T) {
 func Test_Request_Send(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 
 	app.Post("/", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).
@@ -721,7 +721,7 @@ func Test_Request_Send(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			SetURL("http://example.com").
 			SetMethod(fiber.MethodPost).
 			Send()
@@ -737,7 +737,7 @@ func Test_Request_Send(t *testing.T) {
 func Test_Request_Patch(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 
 	app.Patch("/", func(c fiber.Ctx) error {
 		return c.SendString(c.FormValue("foo"))
@@ -747,7 +747,7 @@ func Test_Request_Patch(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		resp, err := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			SetFormData("foo", "bar").
 			Patch("http://example.com")
 
@@ -983,7 +983,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Run("multipart form", func(t *testing.T) {
 		t.Parallel()
 
-		app, client, start := createHelperServer(t)
+		app, ln, start := createHelperServer(t)
 		app.Post("/", func(c fiber.Ctx) error {
 			utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
 
@@ -997,7 +997,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		go start()
 
 		req := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			SetBoundary("myBoundary").
 			SetFormData("foo", "bar").
 			AddFiles(AcquireFile(
@@ -1019,7 +1019,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Run("multipart form send file", func(t *testing.T) {
 		t.Parallel()
 
-		app, client, start := createHelperServer(t)
+		app, ln, start := createHelperServer(t)
 		app.Post("/", func(c fiber.Ctx) error {
 			utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
 
@@ -1049,7 +1049,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		for i := 0; i < 5; i++ {
 			req := AcquireRequest().
-				SetClient(client).
+				SetDial(ln).
 				AddFiles(
 					AcquireFile(
 						SetFileFieldName("field1"),
@@ -1072,7 +1072,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Run("multipart random boundary", func(t *testing.T) {
 		t.Parallel()
 
-		app, client, start := createHelperServer(t)
+		app, ln, start := createHelperServer(t)
 		app.Post("/", func(c fiber.Ctx) error {
 			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{35}`)
 			utils.AssertEqual(t, true, reg.MatchString(c.Get(fiber.HeaderContentType)))
@@ -1083,7 +1083,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		go start()
 
 		req := AcquireRequest().
-			SetClient(client).
+			SetDial(ln).
 			SetFormData("foo", "bar").
 			AddFiles(AcquireFile(
 				SetFileName("hello.txt"),
@@ -1157,7 +1157,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 func Test_Request_Timeout_With_Server(t *testing.T) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Get("/", func(c fiber.Ctx) error {
 		time.Sleep(time.Millisecond * 200)
 		return c.SendString("timeout")
@@ -1165,7 +1165,7 @@ func Test_Request_Timeout_With_Server(t *testing.T) {
 	go start()
 
 	_, err := AcquireRequest().
-		SetClient(client).
+		SetDial(ln).
 		SetTimeout(50 * time.Millisecond).
 		Get("http://example.com")
 

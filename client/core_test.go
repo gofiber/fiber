@@ -9,7 +9,6 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/utils"
-	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -36,7 +35,7 @@ func Test_Exec_Func(t *testing.T) {
 
 	t.Run("normal request", func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
-		core := client.core
+		core := req.core
 		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		req.RawRequest.SetRequestURI("http://example.com/normal")
 
@@ -48,7 +47,7 @@ func Test_Exec_Func(t *testing.T) {
 
 	t.Run("the request return an error", func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
-		core := client.core
+		core := req.core
 		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		req.RawRequest.SetRequestURI("http://example.com/return-error")
 
@@ -59,27 +58,9 @@ func Test_Exec_Func(t *testing.T) {
 		utils.AssertEqual(t, "the request is error", string(resp.RawResponse.Body()))
 	})
 
-	t.Run("there is no connect", func(t *testing.T) {
-		client := AcquireClient()
-		core := client.core
-		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-		core.client.SetMaxConns(1)
-
-		go func() {
-			req := AcquireRequest()
-			req.RawRequest.SetRequestURI("http://example.com/normal")
-			_, err := core.execFunc(context.Background(), client, req)
-			utils.AssertEqual(t, fasthttp.ErrNoFreeConns, err)
-		}()
-
-		req := AcquireRequest()
-		req.RawRequest.SetRequestURI("http://example.com/hang-up")
-		core.execFunc(context.Background(), client, req)
-	})
-
 	t.Run("the request timeout", func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
-		core := client.core
+		core := req.core
 
 		core.client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		req.RawRequest.SetRequestURI("http://example.com/hang-up")
@@ -121,12 +102,12 @@ func Test_Execute(t *testing.T) {
 		client.AddRequestHook(func(c *Client, r *Request) error {
 			utils.AssertEqual(t, "http://example.com", req.URL())
 			return nil
-		}).SetDial(func(addr string) (net.Conn, error) {
-			return ln.Dial()
 		})
-		req.SetURL("http://example.com")
+		req.SetDial(func(addr string) (net.Conn, error) {
+			return ln.Dial()
+		}).SetURL("http://example.com")
 
-		resp, err := client.core.execute(context.Background(), client, req)
+		resp, err := req.core.execute(context.Background(), client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "Cannot GET /", string(resp.RawResponse.Body()))
 	})
@@ -136,61 +117,61 @@ func Test_Execute(t *testing.T) {
 		client.AddResponseHook(func(c *Client, resp *Response, req *Request) error {
 			utils.AssertEqual(t, "http://example.com", req.URL())
 			return nil
-		}).SetDial(func(addr string) (net.Conn, error) {
-			return ln.Dial()
 		})
-		req.SetURL("http://example.com")
+		req.SetDial(func(addr string) (net.Conn, error) {
+			return ln.Dial()
+		}).SetURL("http://example.com")
 
-		resp, err := client.core.execute(context.Background(), client, req)
+		resp, err := req.core.execute(context.Background(), client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "Cannot GET /", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("no timeout", func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
-		client.SetDial(func(addr string) (net.Conn, error) {
-			return ln.Dial()
-		})
-		req.SetURL("http://example.com/hang-up")
 
-		resp, err := client.core.execute(context.Background(), client, req)
+		req.SetDial(func(addr string) (net.Conn, error) {
+			return ln.Dial()
+		}).SetURL("http://example.com/hang-up")
+
+		resp, err := req.core.execute(context.Background(), client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "example.com hang up", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("client timeout", func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
-		client.SetDial(func(addr string) (net.Conn, error) {
+		client.SetTimeout(500 * time.Millisecond)
+		req.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
-		}).SetTimeout(500 * time.Millisecond)
-		req.SetURL("http://example.com/hang-up")
+		}).SetURL("http://example.com/hang-up")
 
-		_, err := client.core.execute(context.Background(), client, req)
+		_, err := req.core.execute(context.Background(), client, req)
 		utils.AssertEqual(t, ErrTimeoutOrCancel, err)
 	})
 
 	t.Run("request timeout", func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
-		client.SetDial(func(addr string) (net.Conn, error) {
+
+		req.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
-		})
-		req.SetURL("http://example.com/hang-up").
+		}).SetURL("http://example.com/hang-up").
 			SetTimeout(300 * time.Millisecond)
 
-		_, err := client.core.execute(context.Background(), client, req)
+		_, err := req.core.execute(context.Background(), client, req)
 		utils.AssertEqual(t, ErrTimeoutOrCancel, err)
 	})
 
 	t.Run("request timeout has higher level", func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
-		client.SetDial(func(addr string) (net.Conn, error) {
+		client.SetTimeout(30 * time.Millisecond)
+
+		req.SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
-		}).
-			SetTimeout(30 * time.Millisecond)
-		req.SetURL("http://example.com/hang-up").
+		}).SetURL("http://example.com/hang-up").
 			SetTimeout(3000 * time.Millisecond)
 
-		resp, err := client.core.execute(context.Background(), client, req)
+		resp, err := req.core.execute(context.Background(), client, req)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "example.com hang up", string(resp.RawResponse.Body()))
 	})

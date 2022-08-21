@@ -1,6 +1,9 @@
 package client
 
 import (
+	"encoding/json"
+	"encoding/xml"
+	"net"
 	"sync"
 	"time"
 
@@ -15,8 +18,6 @@ import (
 // Fiber Client also provides an option to override
 // or merge most of the client settings at the request.
 type Client struct {
-	core *core
-
 	baseUrl   string
 	userAgent string
 	referer   string
@@ -26,6 +27,23 @@ type Client struct {
 	path      *PathParam
 
 	timeout time.Duration
+
+	// user defined request hooks
+	userRequestHooks []RequestHook
+
+	// client package defined request hooks
+	buildinRequestHooks []RequestHook
+
+	// user defined response hooks
+	userResponseHooks []ResponseHook
+
+	// client package defined respose hooks
+	buildinResposeHooks []ResponseHook
+
+	jsonMarshal   utils.JSONMarshal
+	jsonUnmarshal utils.JSONUnmarshal
+	xmlMarshal    utils.XMLMarshal
+	xmlUnmarshal  utils.XMLUnmarshal
 }
 
 // R raise a request from the client.
@@ -35,74 +53,67 @@ func (c *Client) R() *Request {
 
 // Request returns user-defined request hooks.
 func (c *Client) RequestHook() []RequestHook {
-	return c.core.userRequestHooks
+	return c.userRequestHooks
 }
 
 // Add user-defined request hooks.
 func (c *Client) AddRequestHook(h ...RequestHook) *Client {
-	c.core.userRequestHooks = append(c.core.userRequestHooks, h...)
+	c.userRequestHooks = append(c.userRequestHooks, h...)
 	return c
 }
 
 // ResponseHook return user-define reponse hooks.
 func (c *Client) ResponseHook() []ResponseHook {
-	return c.core.userResponseHooks
+	return c.userResponseHooks
 }
 
 // Add user-defined response hooks.
 func (c *Client) AddResponseHook(h ...ResponseHook) *Client {
-	c.core.userResponseHooks = append(c.core.userResponseHooks, h...)
-	return c
-}
-
-// Set HostClient dial, this method for unit test,
-// maybe don't use it.
-func (c *Client) SetDial(f fasthttp.DialFunc) *Client {
-	c.core.client.Dial = f
+	c.userResponseHooks = append(c.userResponseHooks, h...)
 	return c
 }
 
 // JSONMarshal returns json marshal function in Core.
 func (c *Client) JSONMarshal() utils.JSONMarshal {
-	return c.core.jsonMarshal
+	return c.jsonMarshal
 }
 
 // Set json encoder.
 func (c *Client) SetJSONMarshal(f utils.JSONMarshal) *Client {
-	c.core.jsonMarshal = f
+	c.jsonMarshal = f
 	return c
 }
 
 // JSONUnmarshal returns json unmarshal function in Core.
 func (c *Client) JSONUnmarshal() utils.JSONUnmarshal {
-	return c.core.jsonUnmarshal
+	return c.jsonUnmarshal
 }
 
 // Set json decoder.
 func (c *Client) SetJSONUnmarshal(f utils.JSONUnmarshal) *Client {
-	c.core.jsonUnmarshal = f
+	c.jsonUnmarshal = f
 	return c
 }
 
 // XMLMarshal returns xml marshal function in Core.
 func (c *Client) XMLMarshal() utils.XMLMarshal {
-	return c.core.xmlMarshal
+	return c.xmlMarshal
 }
 
 // Set xml encoder.
 func (c *Client) SetXMLMarshal(f utils.XMLMarshal) *Client {
-	c.core.xmlMarshal = f
+	c.xmlMarshal = f
 	return c
 }
 
 // XMLUnmarshal returns xml unmarshal function in Core.
 func (c *Client) XMLUnmarshal() utils.XMLUnmarshal {
-	return c.core.xmlUnmarshal
+	return c.xmlUnmarshal
 }
 
 // Set xml decoder.
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
-	c.core.xmlUnmarshal = f
+	c.xmlUnmarshal = f
 	return c
 }
 
@@ -421,13 +432,18 @@ func SetRequestFiles(files ...*File) SetRequestOptionFunc {
 	}
 }
 
+func SetDial(f func(addr string) (net.Conn, error)) SetRequestOptionFunc {
+	return func(r *Request) {
+		r.core.client.Dial = f
+	}
+}
+
 var (
 	defaultClient    *Client
 	defaultUserAgent = "fiber"
 	clientPool       = &sync.Pool{
 		New: func() any {
 			return &Client{
-				core: newCore(),
 				header: &Header{
 					RequestHeader: &fasthttp.RequestHeader{},
 				},
@@ -436,6 +452,15 @@ var (
 				},
 				cookies: &Cookie{},
 				path:    &PathParam{},
+
+				userRequestHooks:    []RequestHook{},
+				buildinRequestHooks: []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
+				userResponseHooks:   []ResponseHook{},
+				buildinResposeHooks: []ResponseHook{parserResponseCookie},
+				jsonMarshal:         json.Marshal,
+				jsonUnmarshal:       json.Unmarshal,
+				xmlMarshal:          xml.Marshal,
+				xmlUnmarshal:        xml.Unmarshal,
 			}
 		},
 	}

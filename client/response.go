@@ -65,12 +65,12 @@ func (r *Response) String() string {
 
 // JSON method will unmarshal body to json.
 func (r *Response) JSON(v any) error {
-	return r.client.core.jsonUnmarshal(r.Body(), v)
+	return r.client.jsonUnmarshal(r.Body(), v)
 }
 
 // XML method will unmarshal body to xml.
 func (r *Response) XML(v any) error {
-	return r.client.core.xmlUnmarshal(r.Body(), v)
+	return r.client.xmlUnmarshal(r.Body(), v)
 }
 
 // Reset clear Response object.

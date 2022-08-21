@@ -9,25 +9,23 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-func createHelperServer(t *testing.T) (*fiber.App, *Client, func()) {
+func createHelperServer(t *testing.T) (*fiber.App, func(addr string) (net.Conn, error), func()) {
 	t.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
 	app := fiber.New(fiber.Config{DisableStartupMessage: true})
 
-	client := AcquireClient().SetDial(func(addr string) (net.Conn, error) {
-		return ln.Dial()
-	})
-
-	return app, client, func() {
-		utils.AssertEqual(t, nil, app.Listener(ln))
-	}
+	return app, func(addr string) (net.Conn, error) {
+			return ln.Dial()
+		}, func() {
+			utils.AssertEqual(t, nil, app.Listener(ln))
+		}
 }
 
 func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted string, count ...int) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Get("/", handler)
 	go start()
 
@@ -37,7 +35,7 @@ func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Reques
 	}
 
 	for i := 0; i < c; i++ {
-		req := AcquireRequest().SetClient(client)
+		req := AcquireRequest().SetDial(ln)
 		wrapAgent(req)
 
 		resp, err := req.Get("http://example.com")
@@ -52,7 +50,7 @@ func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Reques
 func testAgentFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted error, count ...int) {
 	t.Parallel()
 
-	app, client, start := createHelperServer(t)
+	app, ln, start := createHelperServer(t)
 	app.Get("/", handler)
 	go start()
 
@@ -62,7 +60,7 @@ func testAgentFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Re
 	}
 
 	for i := 0; i < c; i++ {
-		req := AcquireRequest().SetClient(client)
+		req := AcquireRequest().SetDial(ln)
 		wrapAgent(req)
 
 		_, err := req.Get("http://example.com")

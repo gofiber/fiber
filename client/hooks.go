@@ -107,8 +107,8 @@ func parserRequestURL(c *Client, req *Request) error {
 		return ErrNotSupportSchema
 	}
 
-	c.core.client.Addr = addMissingPort(string(rawUri.Host()), isTLS)
-	c.core.client.IsTLS = isTLS
+	req.core.client.Addr = addMissingPort(string(rawUri.Host()), isTLS)
+	req.core.client.IsTLS = isTLS
 
 	// merge query params
 	hashSplit := strings.Split(splitUrl[1], "#")
@@ -195,13 +195,13 @@ func parserRequestHeader(c *Client, req *Request) error {
 func parserRequestBody(c *Client, req *Request) error {
 	switch req.bodyType {
 	case jsonBody:
-		body, err := c.core.jsonMarshal(req.body)
+		body, err := c.jsonMarshal(req.body)
 		if err != nil {
 			return err
 		}
 		req.RawRequest.SetBody(body)
 	case xmlBody:
-		body, err := c.core.xmlMarshal(req.body)
+		body, err := c.xmlMarshal(req.body)
 		if err != nil {
 			return err
 		}
