@@ -30,7 +30,6 @@ var (
 	applicationForm   = "application/x-www-form-urlencoded"
 	multipartFormData = "multipart/form-data"
 
-	src           = rand.NewSource(time.Now().UnixNano())
 	letterBytes   = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	letterIdxBits = 6                    // 6 bits to represent a letter index
 	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
@@ -53,6 +52,8 @@ func addMissingPort(addr string, isTLS bool) string {
 func randString(n int) string {
 	b := make([]byte, n)
 	length := len(letterBytes)
+	src := rand.NewSource(time.Now().UnixNano())
+
 	for i, cache, remain := n-1, src.Int63(), letterIdxMax; i >= 0; {
 		if remain == 0 {
 			cache, remain = src.Int63(), letterIdxMax

@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
@@ -52,6 +53,7 @@ func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 	resp.setRequest(req)
 
 	// To avoid memory allocation reuse of data structures such as errch.
+	done := int32(0)
 	errCh, reqv, respv := acquireErrChan(), fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
 	defer func() {
 		releaseErrChan(errCh)
@@ -62,12 +64,14 @@ func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 	req.RawRequest.CopyTo(reqv)
 	go func() {
 		err := c.client.Do(reqv, respv)
-		if err != nil {
-			errCh <- err
-			return
+
+		if atomic.CompareAndSwapInt32(&done, 0, 1) {
+			if err != nil {
+				errCh <- err
+				return
+			}
+			errCh <- nil
 		}
-		respv.CopyTo(resp.RawResponse)
-		errCh <- nil
 	}()
 
 	select {
@@ -77,8 +81,11 @@ func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 			ReleaseResponse(resp)
 			return nil, err
 		}
+
+		respv.CopyTo(resp.RawResponse)
 		return resp, nil
 	case <-ctx.Done():
+		atomic.SwapInt32(&done, 1)
 		ReleaseResponse(resp)
 		return nil, ErrTimeoutOrCancel
 	}
