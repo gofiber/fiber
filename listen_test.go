@@ -18,10 +18,10 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-// - [ ] Test_Start_Graceful_Shutdown
+// - [ ] Test_Listen_Graceful_Shutdown
 
-// go test -run Test_Start
-func Test_Start(t *testing.T) {
+// go test -run Test_Listen
+func Test_Listen(t *testing.T) {
 	app := New()
 
 	utils.AssertEqual(t, false, app.Listen(":99999") == nil)
@@ -34,8 +34,8 @@ func Test_Start(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(":4003", ListenConfig{DisableStartupMessage: true}))
 }
 
-// go test -run Test_Start_Prefork
-func Test_Start_Prefork(t *testing.T) {
+// go test -run Test_Listen_Prefork
+func Test_Listen_Prefork(t *testing.T) {
 	testPreforkMaster = true
 
 	app := New()
@@ -43,8 +43,8 @@ func Test_Start_Prefork(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
-// go test -run Test_Start_TLS
-func Test_Start_TLS(t *testing.T) {
+// go test -run Test_Listen_TLS
+func Test_Listen_TLS(t *testing.T) {
 	app := New()
 
 	// invalid port
@@ -64,8 +64,8 @@ func Test_Start_TLS(t *testing.T) {
 	}))
 }
 
-// go test -run Test_Start_TLS_Prefork
-func Test_Start_TLS_Prefork(t *testing.T) {
+// go test -run Test_Listen_TLS_Prefork
+func Test_Listen_TLS_Prefork(t *testing.T) {
 	testPreforkMaster = true
 
 	app := New()
@@ -91,8 +91,8 @@ func Test_Start_TLS_Prefork(t *testing.T) {
 	}))
 }
 
-// go test -run Test_Start_MutualTLS
-func Test_Start_MutualTLS(t *testing.T) {
+// go test -run Test_Listen_MutualTLS
+func Test_Listen_MutualTLS(t *testing.T) {
 	app := New()
 
 	// invalid port
@@ -114,8 +114,8 @@ func Test_Start_MutualTLS(t *testing.T) {
 	}))
 }
 
-// go test -run Test_Start_MutualTLS_Prefork
-func Test_Start_MutualTLS_Prefork(t *testing.T) {
+// go test -run Test_Listen_MutualTLS_Prefork
+func Test_Listen_MutualTLS_Prefork(t *testing.T) {
 	testPreforkMaster = true
 
 	app := New()
@@ -143,8 +143,8 @@ func Test_Start_MutualTLS_Prefork(t *testing.T) {
 	}))
 }
 
-// go test -run Test_Start_CustomListener
-func Test_Start_CustomListener(t *testing.T) {
+// go test -run Test_Listen_CustomListener
+func Test_Listen_CustomListener(t *testing.T) {
 	app := New()
 
 	go func() {
@@ -156,8 +156,8 @@ func Test_Start_CustomListener(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(ln))
 }
 
-// go test -run Test_Start_CustomListener_Prefork
-func Test_Start_CustomListener_Prefork(t *testing.T) {
+// go test -run Test_Listen_CustomListener_Prefork
+func Test_Listen_CustomListener_Prefork(t *testing.T) {
 	testPreforkMaster = true
 
 	app := New()
@@ -166,8 +166,8 @@ func Test_Start_CustomListener_Prefork(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(ln, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
-// go test -run Test_Start_CustomTLSListener
-func Test_Start_CustomTLSListener(t *testing.T) {
+// go test -run Test_Listen_CustomTLSListener
+func Test_Listen_CustomTLSListener(t *testing.T) {
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
@@ -188,8 +188,8 @@ func Test_Start_CustomTLSListener(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listen(ln))
 }
 
-// go test -run Test_Start_TLSConfigFunc
-func Test_Start_TLSConfigFunc(t *testing.T) {
+// go test -run Test_Listen_TLSConfigFunc
+func Test_Listen_TLSConfigFunc(t *testing.T) {
 	var callTLSConfig bool
 	app := New()
 
@@ -210,8 +210,8 @@ func Test_Start_TLSConfigFunc(t *testing.T) {
 	utils.AssertEqual(t, true, callTLSConfig)
 }
 
-// go test -run Test_Start_ListenerAddrFunc
-func Test_Start_ListenerAddrFunc(t *testing.T) {
+// go test -run Test_Listen_ListenerAddrFunc
+func Test_Listen_ListenerAddrFunc(t *testing.T) {
 	var network string
 	app := New()
 
@@ -232,8 +232,8 @@ func Test_Start_ListenerAddrFunc(t *testing.T) {
 	utils.AssertEqual(t, "tcp", network)
 }
 
-// go test -run Test_Start_BeforeServeFunc
-func Test_Start_BeforeServeFunc(t *testing.T) {
+// go test -run Test_Listen_BeforeServeFunc
+func Test_Listen_BeforeServeFunc(t *testing.T) {
 	var handlers uint32
 	app := New()
 
@@ -254,8 +254,8 @@ func Test_Start_BeforeServeFunc(t *testing.T) {
 	utils.AssertEqual(t, uint32(0), handlers)
 }
 
-// go test -run Test_Start_ListenerNetwork
-func Test_Start_ListenerNetwork(t *testing.T) {
+// go test -run Test_Listen_ListenerNetwork
+func Test_Listen_ListenerNetwork(t *testing.T) {
 	var network string
 	app := New()
 
@@ -290,8 +290,8 @@ func Test_Start_ListenerNetwork(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(network, "0.0.0.0:"))
 }
 
-// go test -run Test_Start_Master_Process_Show_Startup_Message
-func Test_Start_Master_Process_Show_Startup_Message(t *testing.T) {
+// go test -run Test_Listen_Master_Process_Show_Startup_Message
+func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 	cfg := ListenConfig{
 		EnablePrefork: true,
 	}
@@ -308,8 +308,8 @@ func Test_Start_Master_Process_Show_Startup_Message(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, "Prefork ........ Enabled"))
 }
 
-// go test -run Test_Start_Master_Process_Show_Startup_MessageWithAppName
-func Test_Start_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
+// go test -run Test_Listen_Master_Process_Show_Startup_MessageWithAppName
+func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	cfg := ListenConfig{
 		EnablePrefork: true,
 	}
@@ -323,8 +323,8 @@ func Test_Start_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, app.Config().AppName))
 }
 
-// go test -run Test_Start_Print_Route
-func Test_Start_Print_Route(t *testing.T) {
+// go test -run Test_Listen_Print_Route
+func Test_Listen_Print_Route(t *testing.T) {
 	app := New()
 	app.Get("/", emptyHandler).Name("routeName")
 
@@ -340,8 +340,8 @@ func Test_Start_Print_Route(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "routeName"))
 }
 
-// go test -run Test_Start_Print_Route_With_Group
-func Test_Start_Print_Route_With_Group(t *testing.T) {
+// go test -run Test_Listen_Print_Route_With_Group
+func Test_Listen_Print_Route_With_Group(t *testing.T) {
 	app := New()
 	app.Get("/", emptyHandler)
 
