@@ -78,8 +78,8 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	// The built-in hooks will be executed only
 	// after the user-defined hooks are executed.
 	err := func() error {
-		client.mu.RLock()
-		defer client.mu.RUnlock()
+		client.mu.Lock()
+		defer client.mu.Unlock()
 
 		for _, f := range client.userRequestHooks {
 			err := f(client, req)
@@ -127,8 +127,8 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 	// The built-in hooks will be executed only
 	// before the user-defined hooks are executed.
 	err = func() error {
-		client.mu.RLock()
-		defer client.mu.RUnlock()
+		client.mu.Lock()
+		defer client.mu.Unlock()
 		for _, f := range client.buildinResposeHooks {
 			err := f(client, resp, req)
 			if err != nil {
