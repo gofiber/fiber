@@ -27,7 +27,7 @@ func IsChild() bool {
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
-func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg StartConfig) (err error) {
+func (app *App) prefork(addr string, tlsConfig *tls.Config, cfg ListenConfig) (err error) {
 	// 👶 child process 👶
 	if IsChild() {
 		// use 1 cpu core per child process

@@ -24,10 +24,10 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-// StartConfig is a struct to customize startup of Fiber.
+// ListenConfig is a struct to customize startup of Fiber.
 //
 // TODO: Add timeout for graceful shutdown.
-type StartConfig struct {
+type ListenConfig struct {
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
 	//
@@ -93,10 +93,10 @@ type StartConfig struct {
 	OnShutdownError func(err error)
 }
 
-// startConfigDefault is a function to set default values of StartConfig.
-func startConfigDefault(config ...StartConfig) StartConfig {
+// ListenConfigDefault is a function to set default values of ListenConfig.
+func ListenConfigDefault(config ...ListenConfig) ListenConfig {
 	if len(config) < 1 {
-		return StartConfig{
+		return ListenConfig{
 			ListenerNetwork: NetworkTCP4,
 			OnShutdownError: func(err error) {
 				log.Fatalf("shutdown: %v", err)
@@ -118,14 +118,14 @@ func startConfigDefault(config ...StartConfig) StartConfig {
 	return cfg
 }
 
-// Start serves HTTP requests from the given addr.
-// You should enter custom StartConfig to customize startup. (TLS, mTLS, prefork...)
+// Listen serves HTTP requests from the given addr.
+// You should enter custom ListenConfig to customize startup. (TLS, mTLS, prefork...)
 //
-//  app.Start(":8080")
-//  app.Start("127.0.0.1:8080")
-//  app.Start(":8080", StartConfig{EnablePrefork: true})
-func (app *App) Start(addr any, config ...StartConfig) error {
-	cfg := startConfigDefault(config...)
+//	app.Listen(":8080")
+//	app.Listen("127.0.0.1:8080")
+//	app.Listen(":8080", ListenConfig{EnablePrefork: true})
+func (app *App) Listen(addr any, config ...ListenConfig) error {
+	cfg := ListenConfigDefault(config...)
 
 	// Configure TLS
 	var tlsConfig *tls.Config = nil
@@ -213,7 +213,7 @@ func (app *App) Start(addr any, config ...StartConfig) error {
 }
 
 // Create listener function.
-func (app *App) createListener(addr string, tlsConfig *tls.Config, cfg StartConfig) (net.Listener, error) {
+func (app *App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig) (net.Listener, error) {
 	var listener net.Listener
 	var err error
 
@@ -230,7 +230,7 @@ func (app *App) createListener(addr string, tlsConfig *tls.Config, cfg StartConf
 	return listener, err
 }
 
-func (app *App) printMessages(cfg StartConfig, ln net.Listener) {
+func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 	// Print startup message
 	if !cfg.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "", cfg)
@@ -256,7 +256,7 @@ func (app *App) startupProcess() *App {
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, tls bool, pids string, cfg StartConfig) {
+func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenConfig) {
 	// ignore child processes
 	if IsChild() {
 		return
@@ -505,7 +505,7 @@ func (app *App) printRoutesMessage() {
 }
 
 // shutdown goroutine
-func (app *App) gracefulShutdown(ctx context.Context, cfg StartConfig) {
+func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 	<-ctx.Done()
 
 	if err := app.Shutdown(); err != nil {

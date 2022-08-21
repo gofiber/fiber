@@ -23,7 +23,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 
 	app := New()
 
-	err := app.prefork("invalid", nil, startConfigDefault())
+	err := app.prefork("invalid", nil, ListenConfigDefault())
 	utils.AssertEqual(t, false, err == nil)
 
 	go func() {
@@ -31,7 +31,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork("[::1]:", nil, StartConfig{ListenerNetwork: NetworkTCP6}))
+	utils.AssertEqual(t, nil, app.prefork("[::1]:", nil, ListenConfig{ListenerNetwork: NetworkTCP6}))
 
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
@@ -45,7 +45,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:", config, startConfigDefault()))
+	utils.AssertEqual(t, nil, app.prefork("127.0.0.1:", config, ListenConfigDefault()))
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
@@ -59,11 +59,11 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.prefork(":3000", nil, startConfigDefault()))
+	utils.AssertEqual(t, nil, app.prefork(":3000", nil, ListenConfigDefault()))
 
 	dummyChildCmd = "invalid"
 
-	err := app.prefork("127.0.0.1:", nil, startConfigDefault())
+	err := app.prefork("127.0.0.1:", nil, ListenConfigDefault())
 	utils.AssertEqual(t, false, err == nil)
 
 	dummyChildCmd = "go"
@@ -81,7 +81,7 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 
 	os.Stdout = w
 
-	New().startupProcess().startupMessage(":3000", false, "", startConfigDefault())
+	New().startupProcess().startupMessage(":3000", false, "", ListenConfigDefault())
 
 	utils.AssertEqual(t, nil, w.Close())
 

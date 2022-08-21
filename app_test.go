@@ -1258,7 +1258,7 @@ func Test_App_ReadTimeout(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":4004", StartConfig{DisableStartupMessage: true}))
+	utils.AssertEqual(t, nil, app.Listen(":4004", ListenConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_App_BadRequest
@@ -1288,7 +1288,7 @@ func Test_App_BadRequest(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":4005", StartConfig{DisableStartupMessage: true}))
+	utils.AssertEqual(t, nil, app.Listen(":4005", ListenConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_App_SmallReadBuffer
@@ -1311,7 +1311,7 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":4006", StartConfig{DisableStartupMessage: true}))
+	utils.AssertEqual(t, nil, app.Listen(":4006", ListenConfig{DisableStartupMessage: true}))
 }
 
 func captureOutput(f func()) string {

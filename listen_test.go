@@ -16,17 +16,17 @@ import (
 // - [ ] Test_Start_Graceful_Shutdown
 
 // go test -run Test_Start
-func Test_Start(t *testing.T) {
+func Test_Listen(t *testing.T) {
 	app := New()
 
-	utils.AssertEqual(t, false, app.Start(":99999") == nil)
+	utils.AssertEqual(t, false, app.Listen(":99999") == nil)
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":4003", StartConfig{DisableStartupMessage: true}))
+	utils.AssertEqual(t, nil, app.Listen(":4003", ListenConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_Start_Prefork
@@ -35,7 +35,7 @@ func Test_Start_Prefork(t *testing.T) {
 
 	app := New()
 
-	utils.AssertEqual(t, nil, app.Start(":99999", StartConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	utils.AssertEqual(t, nil, app.Listen(":99999", ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
 // go test -run Test_Start_TLS
@@ -43,7 +43,7 @@ func Test_Start_TLS(t *testing.T) {
 	app := New()
 
 	// invalid port
-	utils.AssertEqual(t, false, app.Start(":99999", StartConfig{
+	utils.AssertEqual(t, false, app.Listen(":99999", ListenConfig{
 		CertFile:    "./.github/testdata/ssl.pem",
 		CertKeyFile: "./.github/testdata/ssl.key",
 	}) == nil)
@@ -53,7 +53,7 @@ func Test_Start_TLS(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":0", StartConfig{
+	utils.AssertEqual(t, nil, app.Listen(":0", ListenConfig{
 		CertFile:    "./.github/testdata/ssl.pem",
 		CertKeyFile: "./.github/testdata/ssl.key",
 	}))
@@ -66,7 +66,7 @@ func Test_Start_TLS_Prefork(t *testing.T) {
 	app := New()
 
 	// invalid key file content
-	utils.AssertEqual(t, false, app.Start(":0", StartConfig{
+	utils.AssertEqual(t, false, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
@@ -78,7 +78,7 @@ func Test_Start_TLS_Prefork(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":99999", StartConfig{
+	utils.AssertEqual(t, nil, app.Listen(":99999", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
@@ -91,7 +91,7 @@ func Test_Start_MutualTLS(t *testing.T) {
 	app := New()
 
 	// invalid port
-	utils.AssertEqual(t, false, app.Start(":99999", StartConfig{
+	utils.AssertEqual(t, false, app.Listen(":99999", ListenConfig{
 		CertFile:       "./.github/testdata/ssl.pem",
 		CertKeyFile:    "./.github/testdata/ssl.key",
 		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
@@ -102,7 +102,7 @@ func Test_Start_MutualTLS(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":0", StartConfig{
+	utils.AssertEqual(t, nil, app.Listen(":0", ListenConfig{
 		CertFile:       "./.github/testdata/ssl.pem",
 		CertKeyFile:    "./.github/testdata/ssl.key",
 		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
@@ -116,7 +116,7 @@ func Test_Start_MutualTLS_Prefork(t *testing.T) {
 	app := New()
 
 	// invalid key file content
-	utils.AssertEqual(t, false, app.Start(":0", StartConfig{
+	utils.AssertEqual(t, false, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
@@ -129,7 +129,7 @@ func Test_Start_MutualTLS_Prefork(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":99999", StartConfig{
+	utils.AssertEqual(t, nil, app.Listen(":99999", ListenConfig{
 		DisableStartupMessage: true,
 		EnablePrefork:         true,
 		CertFile:              "./.github/testdata/ssl.pem",
@@ -148,7 +148,7 @@ func Test_Start_CustomListener(t *testing.T) {
 	}()
 
 	ln := fasthttputil.NewInmemoryListener()
-	utils.AssertEqual(t, nil, app.Start(ln))
+	utils.AssertEqual(t, nil, app.Listen(ln))
 }
 
 // go test -run Test_Start_CustomListener_Prefork
@@ -158,7 +158,7 @@ func Test_Start_CustomListener_Prefork(t *testing.T) {
 	app := New()
 
 	ln := fasthttputil.NewInmemoryListener()
-	utils.AssertEqual(t, nil, app.Start(ln, StartConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	utils.AssertEqual(t, nil, app.Listen(ln, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
 // go test -run Test_Start_CustomTLSListener
@@ -180,7 +180,7 @@ func Test_Start_CustomTLSListener(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(ln))
+	utils.AssertEqual(t, nil, app.Listen(ln))
 }
 
 // go test -run Test_Start_TLSConfigFunc
@@ -193,7 +193,7 @@ func Test_Start_TLSConfigFunc(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":0", StartConfig{
+	utils.AssertEqual(t, nil, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		TLSConfigFunc: func(tlsConfig *tls.Config) {
 			callTLSConfig = true
@@ -215,7 +215,7 @@ func Test_Start_ListenerAddrFunc(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":0", StartConfig{
+	utils.AssertEqual(t, nil, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		ListenerAddrFunc: func(addr net.Addr) {
 			network = addr.Network()
@@ -237,7 +237,7 @@ func Test_Start_BeforeServeFunc(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, errors.New("test"), app.Start(":0", StartConfig{
+	utils.AssertEqual(t, errors.New("test"), app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		BeforeServeFunc: func(fiber *App) error {
 			handlers = fiber.HandlersCount()
@@ -259,7 +259,7 @@ func Test_Start_ListenerNetwork(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":0", StartConfig{
+	utils.AssertEqual(t, nil, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		ListenerNetwork:       NetworkTCP6,
 		ListenerAddrFunc: func(addr net.Addr) {
@@ -274,7 +274,7 @@ func Test_Start_ListenerNetwork(t *testing.T) {
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
-	utils.AssertEqual(t, nil, app.Start(":0", StartConfig{
+	utils.AssertEqual(t, nil, app.Listen(":0", ListenConfig{
 		DisableStartupMessage: true,
 		ListenerNetwork:       NetworkTCP4,
 		ListenerAddrFunc: func(addr net.Addr) {
@@ -287,7 +287,7 @@ func Test_Start_ListenerNetwork(t *testing.T) {
 
 // go test -run Test_Start_Master_Process_Show_Startup_Message
 func Test_Start_Master_Process_Show_Startup_Message(t *testing.T) {
-	cfg := StartConfig{
+	cfg := ListenConfig{
 		EnablePrefork: true,
 	}
 
@@ -305,7 +305,7 @@ func Test_Start_Master_Process_Show_Startup_Message(t *testing.T) {
 
 // go test -run Test_Start_Master_Process_Show_Startup_MessageWithAppName
 func Test_Start_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
-	cfg := StartConfig{
+	cfg := ListenConfig{
 		EnablePrefork: true,
 	}
 

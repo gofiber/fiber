@@ -170,7 +170,7 @@ func Test_Hook_OnListen(t *testing.T) {
 		time.Sleep(1000 * time.Millisecond)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
-	utils.AssertEqual(t, nil, app.Start(":9000", StartConfig{DisableStartupMessage: true}))
+	utils.AssertEqual(t, nil, app.Listen(":9000", ListenConfig{DisableStartupMessage: true}))
 
 	utils.AssertEqual(t, "ready", buf.String())
 }

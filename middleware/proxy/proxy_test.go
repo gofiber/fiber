@@ -26,7 +26,7 @@ func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, str
 	addr := ln.Addr().String()
 
 	go func() {
-		utils.AssertEqual(t, nil, target.Start(ln, fiber.StartConfig{
+		utils.AssertEqual(t, nil, target.Listen(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -117,7 +117,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	}))
 
 	go func() {
-		utils.AssertEqual(t, nil, app.Start(ln, fiber.StartConfig{
+		utils.AssertEqual(t, nil, app.Listen(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -152,7 +152,7 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	app.Use(Forward("http://" + targetAddr))
 
 	go func() {
-		utils.AssertEqual(t, nil, app.Start(proxyServerLn, fiber.StartConfig{
+		utils.AssertEqual(t, nil, app.Listen(proxyServerLn, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -214,7 +214,7 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 	app.Use(Forward("https://" + addr + "/tlsfwd"))
 
 	go func() {
-		utils.AssertEqual(t, nil, app.Start(ln, fiber.StartConfig{
+		utils.AssertEqual(t, nil, app.Listen(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
