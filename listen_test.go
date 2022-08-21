@@ -2,6 +2,7 @@ package fiber
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -18,8 +19,6 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-// - [ ] Test_Listen_Graceful_Shutdown
-
 // go test -run Test_Listen
 func Test_Listen(t *testing.T) {
 	app := New()
@@ -32,6 +31,51 @@ func Test_Listen(t *testing.T) {
 	}()
 
 	utils.AssertEqual(t, nil, app.Listen(":4003", ListenConfig{DisableStartupMessage: true}))
+}
+
+// go test -run Test_Listen
+func Test_Listen_Graceful_Shutdown(t *testing.T) {
+	app := New()
+
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.Hostname())
+	})
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		err := app.Listen(ln, ListenConfig{
+			DisableStartupMessage: true,
+			GracefulContext:       ctx,
+		})
+
+		utils.AssertEqual(t, nil, err)
+	}()
+
+	testCases := []struct {
+		Time               time.Duration
+		ExpectedBody       string
+		ExpectedStatusCode int
+		ExceptedErrsLen    int
+	}{
+		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErrsLen: 0},
+		{Time: 600 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
+	}
+
+	for _, tc := range testCases {
+		time.Sleep(tc.Time)
+
+		a := Get("http://example.com")
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		code, body, errs := a.String()
+
+		utils.AssertEqual(t, tc.ExpectedStatusCode, code)
+		utils.AssertEqual(t, tc.ExpectedBody, body)
+		utils.AssertEqual(t, tc.ExceptedErrsLen, len(errs))
+	}
 }
 
 // go test -run Test_Listen_Prefork

@@ -9,7 +9,7 @@ import (
 
 // Graceful shutdown errors
 var (
-	ErrGracefulTimeout = stdErrors.New("shutdown: graceful timeout has been reached, exiting!")
+	ErrGracefulTimeout = stdErrors.New("shutdown: graceful timeout has been reached, exiting")
 )
 
 // Range errors

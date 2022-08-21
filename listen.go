@@ -490,10 +490,13 @@ func (app *App) printRoutesMessage() {
 func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 	<-ctx.Done()
 
-	if err := app.Shutdown(); err != nil {
-		cfg.OnShutdownError(err)
-		os.Exit(1)
-	}
+	fmt.Print(app.Shutdown())
+	/*if err := app.Shutdown(); err != nil {
+		fmt.Print("dfsdsa")
 
-	os.Exit(0)
+		cfg.OnShutdownError(err)
+		//os.Exit(1)
+	}*/
+
+	//os.Exit(0)
 }
