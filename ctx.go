@@ -633,6 +633,18 @@ func (c *Ctx) GetRespHeaders() map[string]string {
 	return headers
 }
 
+// Contains the host derived from the Host HTTP header.
+// When the trust proxy setting does not evaluate to false, this property will instead get the value from the X-Forwarded-Host header field. This header can be set by the client or by the proxy.
+// If there is more than one X-Forwarded-Host header in the request, the value of the first header is used. This includes a single header with comma-separated values, in which the first value is used.
+func (c *Ctx) Host() string {
+	if c.IsProxyTrusted() {
+		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
+			return host
+		}
+	}
+	return utils.UnsafeString(c.fasthttp.Host())
+}
+
 // Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
