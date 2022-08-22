@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Default(t *testing.T) {
@@ -22,13 +22,13 @@ func Test_Default(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "1; mode=block", resp.Header.Get(fiber.HeaderXXSSProtection))
-	utils.AssertEqual(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
-	utils.AssertEqual(t, "SAMEORIGIN", resp.Header.Get(fiber.HeaderXFrameOptions))
-	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
-	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderReferrerPolicy))
-	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderPermissionsPolicy))
+	require.NoError(t, err)
+	require.Equal(t, "1; mode=block", resp.Header.Get(fiber.HeaderXXSSProtection))
+	require.Equal(t, "nosniff", resp.Header.Get(fiber.HeaderXContentTypeOptions))
+	require.Equal(t, "SAMEORIGIN", resp.Header.Get(fiber.HeaderXFrameOptions))
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderReferrerPolicy))
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderPermissionsPolicy))
 }
 
 func Test_Filter(t *testing.T) {
@@ -49,12 +49,12 @@ func Test_Filter(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "no-referrer", resp.Header.Get(fiber.HeaderReferrerPolicy))
+	require.NoError(t, err)
+	require.Equal(t, "no-referrer", resp.Header.Get(fiber.HeaderReferrerPolicy))
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/filter", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderReferrerPolicy))
+	require.NoError(t, err)
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderReferrerPolicy))
 }
 
 func Test_ContentSecurityPolicy(t *testing.T) {
@@ -69,8 +69,8 @@ func Test_ContentSecurityPolicy(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
+	require.NoError(t, err)
+	require.Equal(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
 }
 
 func Test_ContentSecurityPolicyReportOnly(t *testing.T) {
@@ -86,9 +86,9 @@ func Test_ContentSecurityPolicyReportOnly(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicyReportOnly))
-	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
+	require.NoError(t, err)
+	require.Equal(t, "default-src 'none'", resp.Header.Get(fiber.HeaderContentSecurityPolicyReportOnly))
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentSecurityPolicy))
 }
 
 func Test_PermissionsPolicy(t *testing.T) {
@@ -103,6 +103,6 @@ func Test_PermissionsPolicy(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "microphone=()", resp.Header.Get(fiber.HeaderPermissionsPolicy))
+	require.NoError(t, err)
+	require.Equal(t, "microphone=()", resp.Header.Get(fiber.HeaderPermissionsPolicy))
 }

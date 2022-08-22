@@ -12,7 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -34,9 +34,9 @@ func Test_Logger(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
-	utils.AssertEqual(t, "some random error", buf.String())
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.Equal(t, "some random error", buf.String())
 }
 
 // go test -run Test_Logger_locals
@@ -66,23 +66,23 @@ func Test_Logger_locals(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, "johndoe", buf.String())
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "johndoe", buf.String())
 
 	buf.Reset()
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/int", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, "55", buf.String())
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "55", buf.String())
 
 	buf.Reset()
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/empty", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, "", buf.String())
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "", buf.String())
 }
 
 // go test -run Test_Logger_Next
@@ -95,8 +95,8 @@ func Test_Logger_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 // go test -run Test_Logger_ErrorTimeZone
@@ -107,8 +107,8 @@ func Test_Logger_ErrorTimeZone(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 type fakeOutput int
@@ -127,10 +127,10 @@ func Test_Logger_ErrorOutput(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
-	utils.AssertEqual(t, 2, int(*o))
+	require.Equal(t, 2, int(*o))
 }
 
 // go test -run Test_Logger_All
@@ -148,11 +148,11 @@ func Test_Logger_All(t *testing.T) {
 	colors := app.Config().ColorScheme
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/?foo=bar", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 	expected := fmt.Sprintf("%dHost=example.comhttpHTTP/1.10.0.0.0example.com/?foo=bar/%s%s%s%s%s%s%s%s%sCannot GET /", os.Getpid(), colors.Black, colors.Red, colors.Green, colors.Yellow, colors.Blue, colors.Magenta, colors.Cyan, colors.White, colors.Reset)
-	utils.AssertEqual(t, expected, buf.String())
+	require.Equal(t, expected, buf.String())
 }
 
 // go test -run Test_Query_Params
@@ -167,11 +167,11 @@ func Test_Query_Params(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/?foo=bar&baz=moz", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 
 	expected := "foo=bar&baz=moz"
-	utils.AssertEqual(t, expected, buf.String())
+	require.Equal(t, expected, buf.String())
 }
 
 // go test -run Test_Response_Body
@@ -194,18 +194,18 @@ func Test_Response_Body(t *testing.T) {
 	})
 
 	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	expectedGetResponse := "Sample response body"
-	utils.AssertEqual(t, expectedGetResponse, buf.String())
+	require.Equal(t, expectedGetResponse, buf.String())
 
 	buf.Reset() // Reset buffer to test POST
 
 	_, err = app.Test(httptest.NewRequest("POST", "/test", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	expectedPostResponse := "Post in test"
-	utils.AssertEqual(t, expectedPostResponse, buf.String())
+	require.Equal(t, expectedPostResponse, buf.String())
 }
 
 // go test -run Test_Logger_AppendUint
@@ -225,9 +225,9 @@ func Test_Logger_AppendUint(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, "0 5 200", buf.String())
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "0 5 200", buf.String())
 }
 
 // go test -run Test_Logger_Data_Race -race
@@ -256,10 +256,10 @@ func Test_Logger_Data_Race(t *testing.T) {
 	resp2, err2 = app.Test(httptest.NewRequest("GET", "/", nil))
 	wg.Wait()
 
-	utils.AssertEqual(t, nil, err1)
-	utils.AssertEqual(t, fiber.StatusOK, resp1.StatusCode)
-	utils.AssertEqual(t, nil, err2)
-	utils.AssertEqual(t, fiber.StatusOK, resp2.StatusCode)
+	require.Nil(t, err1)
+	require.Equal(t, fiber.StatusOK, resp1.StatusCode)
+	require.Nil(t, err2)
+	require.Equal(t, fiber.StatusOK, resp2.StatusCode)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Logger -benchmem -count=4
@@ -287,7 +287,7 @@ func Benchmark_Logger(b *testing.B) {
 		h(fctx)
 	}
 
-	utils.AssertEqual(b, 200, fctx.Response.Header.StatusCode())
+	require.Equal(b, 200, fctx.Response.Header.StatusCode())
 }
 
 // go test -run Test_Response_Header
@@ -312,9 +312,9 @@ func Test_Response_Header(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, "Hello fiber!", buf.String())
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "Hello fiber!", buf.String())
 }
 
 // go test -run Test_Req_Header
@@ -334,9 +334,9 @@ func Test_Req_Header(t *testing.T) {
 	headerReq.Header.Add("test", "Hello fiber!")
 	resp, err := app.Test(headerReq)
 
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, "Hello fiber!", buf.String())
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "Hello fiber!", buf.String())
 }
 
 // go test -run Test_ReqHeader_Header
@@ -356,7 +356,7 @@ func Test_ReqHeader_Header(t *testing.T) {
 	reqHeaderReq.Header.Add("test", "Hello fiber!")
 	resp, err := app.Test(reqHeaderReq)
 
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, "Hello fiber!", buf.String())
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, "Hello fiber!", buf.String())
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -35,11 +36,11 @@ func Test_Cache_CacheControl(t *testing.T) {
 	})
 
 	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "public, max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
+	require.NoError(t, err)
+	require.Equal(t, "public, max-age=10", resp.Header.Get(fiber.HeaderCacheControl))
 }
 
 func Test_Cache_Expired(t *testing.T) {
@@ -53,17 +54,17 @@ func Test_Cache_Expired(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	// Sleep until the cache is expired
 	time.Sleep(3 * time.Second)
 
 	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	if bytes.Equal(body, bodyCached) {
 		t.Errorf("Cache should have expired: %s, %s", body, bodyCached)
@@ -71,9 +72,9 @@ func Test_Cache_Expired(t *testing.T) {
 
 	// Next response should be also cached
 	respCachedNextRound, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	bodyCachedNextRound, err := io.ReadAll(respCachedNextRound.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	if !bytes.Equal(bodyCachedNextRound, bodyCached) {
 		t.Errorf("Cache should not have expired: %s, %s", bodyCached, bodyCachedNextRound)
@@ -93,18 +94,18 @@ func Test_Cache(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/", nil)
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	cachedReq := httptest.NewRequest("GET", "/", nil)
 	cachedResp, err := app.Test(cachedReq)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	cachedBody, err := io.ReadAll(cachedResp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
-	utils.AssertEqual(t, cachedBody, body)
+	require.Equal(t, cachedBody, body)
 }
 
 func Test_Cache_WithSeveralRequests(t *testing.T) {
@@ -125,18 +126,18 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			func(id int) {
 				rsp, err := app.Test(httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%d", id), nil))
-				utils.AssertEqual(t, nil, err)
+				require.NoError(t, err)
 
 				defer rsp.Body.Close()
 
 				idFromServ, err := io.ReadAll(rsp.Body)
-				utils.AssertEqual(t, nil, err)
+				require.NoError(t, err)
 
 				a, err := strconv.Atoi(string(idFromServ))
-				utils.AssertEqual(t, nil, err)
+				require.NoError(t, err)
 
 				// SomeTimes,The id is not equal with a
-				utils.AssertEqual(t, id, a)
+				require.Equal(t, id, a)
 			}(i)
 		}
 	}
@@ -156,18 +157,18 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/", nil)
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	cachedReq := httptest.NewRequest("GET", "/", nil)
 	cachedResp, err := app.Test(cachedReq)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	cachedBody, err := io.ReadAll(cachedResp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
-	utils.AssertEqual(t, cachedBody, body)
+	require.Equal(t, cachedBody, body)
 }
 
 func Test_Cache_Invalid_Method(t *testing.T) {
@@ -186,28 +187,28 @@ func Test_Cache_Invalid_Method(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("POST", "/?cache=123", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "123", string(body))
+	require.NoError(t, err)
+	require.Equal(t, "123", string(body))
 
 	resp, err = app.Test(httptest.NewRequest("POST", "/?cache=12345", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "12345", string(body))
+	require.NoError(t, err)
+	require.Equal(t, "12345", string(body))
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=123", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "123", string(body))
+	require.NoError(t, err)
+	require.Equal(t, "123", string(body))
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=12345", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	body, err = io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "123", string(body))
+	require.NoError(t, err)
+	require.Equal(t, "123", string(body))
 }
 
 func Test_Cache_NothingToCache(t *testing.T) {
@@ -222,16 +223,16 @@ func Test_Cache_NothingToCache(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	time.Sleep(500 * time.Millisecond)
 
 	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	if bytes.Equal(body, bodyCached) {
 		t.Errorf("Cache should have expired: %s, %s", body, bodyCached)
@@ -259,23 +260,23 @@ func Test_Cache_CustomNext(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	bodyCached, err := io.ReadAll(respCached.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, bytes.Equal(body, bodyCached))
-	utils.AssertEqual(t, true, respCached.Header.Get(fiber.HeaderCacheControl) != "")
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(body, bodyCached))
+	require.True(t, respCached.Header.Get(fiber.HeaderCacheControl) != "")
 
 	_, err = app.Test(httptest.NewRequest("GET", "/error", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	errRespCached, err := app.Test(httptest.NewRequest("GET", "/error", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, errRespCached.Header.Get(fiber.HeaderCacheControl) == "")
+	require.NoError(t, err)
+	require.True(t, errRespCached.Header.Get(fiber.HeaderCacheControl) == "")
 }
 
 func Test_CustomKey(t *testing.T) {
@@ -294,8 +295,8 @@ func Test_CustomKey(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/", nil)
 	_, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, called)
+	require.NoError(t, err)
+	require.True(t, called)
 }
 
 func Test_CustomExpiration(t *testing.T) {
@@ -317,20 +318,20 @@ func Test_CustomExpiration(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, called)
-	utils.AssertEqual(t, 1, newCacheTime)
+	require.NoError(t, err)
+	require.True(t, called)
+	require.Equal(t, 1, newCacheTime)
 
 	// Sleep until the cache is expired
 	time.Sleep(1 * time.Second)
 
 	cachedResp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	cachedBody, err := io.ReadAll(cachedResp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	if bytes.Equal(body, cachedBody) {
 		t.Errorf("Cache should have expired: %s, %s", body, cachedBody)
@@ -338,9 +339,9 @@ func Test_CustomExpiration(t *testing.T) {
 
 	// Next response should be cached
 	cachedRespNextRound, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	cachedBodyNextRound, err := io.ReadAll(cachedRespNextRound.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	if !bytes.Equal(cachedBodyNextRound, cachedBody) {
 		t.Errorf("Cache should not have expired: %s, %s", cachedBodyNextRound, cachedBody)
@@ -362,13 +363,13 @@ func Test_AdditionalE2EResponseHeaders(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/", nil)
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "foobar", resp.Header.Get("X-Foobar"))
+	require.NoError(t, err)
+	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
 
 	req = httptest.NewRequest("GET", "/", nil)
 	resp, err = app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "foobar", resp.Header.Get("X-Foobar"))
+	require.NoError(t, err)
+	require.Equal(t, "foobar", resp.Header.Get("X-Foobar"))
 }
 
 func Test_CacheHeader(t *testing.T) {
@@ -396,20 +397,20 @@ func Test_CacheHeader(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, cacheHit, resp.Header.Get("X-Cache"))
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, resp.Header.Get("X-Cache"))
 
 	resp, err = app.Test(httptest.NewRequest("POST", "/?cache=12345", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, cacheUnreachable, resp.Header.Get("X-Cache"))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, resp.Header.Get("X-Cache"))
 
 	errRespCached, err := app.Test(httptest.NewRequest("GET", "/error", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, cacheUnreachable, errRespCached.Header.Get("X-Cache"))
+	require.NoError(t, err)
+	require.Equal(t, cacheUnreachable, errRespCached.Header.Get("X-Cache"))
 }
 
 func Test_Cache_WithHead(t *testing.T) {
@@ -425,18 +426,18 @@ func Test_Cache_WithHead(t *testing.T) {
 
 	req := httptest.NewRequest("HEAD", "/", nil)
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	cachedReq := httptest.NewRequest("HEAD", "/", nil)
 	cachedResp, err := app.Test(cachedReq)
-	utils.AssertEqual(t, cacheHit, cachedResp.Header.Get("X-Cache"))
+	require.Equal(t, cacheHit, cachedResp.Header.Get("X-Cache"))
 
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	cachedBody, err := io.ReadAll(cachedResp.Body)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
-	utils.AssertEqual(t, cachedBody, body)
+	require.Equal(t, cachedBody, body)
 }
 
 func Test_Cache_WithHeadThenGet(t *testing.T) {
@@ -449,32 +450,32 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 	})
 
 	headResp, err := app.Test(httptest.NewRequest("HEAD", "/?cache=123", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	headBody, err := io.ReadAll(headResp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "", string(headBody))
-	utils.AssertEqual(t, cacheMiss, headResp.Header.Get("X-Cache"))
+	require.NoError(t, err)
+	require.Equal(t, "", string(headBody))
+	require.Equal(t, cacheMiss, headResp.Header.Get("X-Cache"))
 
 	headResp, err = app.Test(httptest.NewRequest("HEAD", "/?cache=123", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	headBody, err = io.ReadAll(headResp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "", string(headBody))
-	utils.AssertEqual(t, cacheHit, headResp.Header.Get("X-Cache"))
+	require.NoError(t, err)
+	require.Equal(t, "", string(headBody))
+	require.Equal(t, cacheHit, headResp.Header.Get("X-Cache"))
 
 	getResp, err := app.Test(httptest.NewRequest("GET", "/?cache=123", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	getBody, err := io.ReadAll(getResp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "123", string(getBody))
-	utils.AssertEqual(t, cacheMiss, getResp.Header.Get("X-Cache"))
+	require.NoError(t, err)
+	require.Equal(t, "123", string(getBody))
+	require.Equal(t, cacheMiss, getResp.Header.Get("X-Cache"))
 
 	getResp, err = app.Test(httptest.NewRequest("GET", "/?cache=123", nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	getBody, err = io.ReadAll(getResp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "123", string(getBody))
-	utils.AssertEqual(t, cacheHit, getResp.Header.Get("X-Cache"))
+	require.NoError(t, err)
+	require.Equal(t, "123", string(getBody))
+	require.Equal(t, cacheHit, getResp.Header.Get("X-Cache"))
 }
 
 func Test_CustomCacheHeader(t *testing.T) {
@@ -491,8 +492,8 @@ func Test_CustomCacheHeader(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, cacheMiss, resp.Header.Get("Cache-Status"))
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("Cache-Status"))
 }
 
 // Because time points are updated once every X milliseconds, entries in tests can often have
@@ -538,8 +539,8 @@ func Test_Cache_MaxBytesOrder(t *testing.T) {
 
 	for idx, tcase := range cases {
 		rsp, err := app.Test(httptest.NewRequest("GET", tcase[0], nil))
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, tcase[1], rsp.Header.Get("X-Cache"), fmt.Sprintf("Case %v", idx))
+		require.NoError(t, err)
+		require.Equal(t, tcase[1], rsp.Header.Get("X-Cache"), fmt.Sprintf("Case %v", idx))
 	}
 }
 
@@ -572,8 +573,8 @@ func Test_Cache_MaxBytesSizes(t *testing.T) {
 
 	for idx, tcase := range cases {
 		rsp, err := app.Test(httptest.NewRequest("GET", tcase[0], nil))
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, tcase[1], rsp.Header.Get("X-Cache"), fmt.Sprintf("Case %v", idx))
+		require.NoError(t, err)
+		require.Equal(t, tcase[1], rsp.Header.Get("X-Cache"), fmt.Sprintf("Case %v", idx))
 	}
 }
 
@@ -601,8 +602,8 @@ func Benchmark_Cache(b *testing.B) {
 		h(fctx)
 	}
 
-	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	utils.AssertEqual(b, true, len(fctx.Response.Body()) > 30000)
+	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	require.True(b, len(fctx.Response.Body()) > 30000)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Cache_Storage -benchmem -count=4
@@ -631,8 +632,8 @@ func Benchmark_Cache_Storage(b *testing.B) {
 		h(fctx)
 	}
 
-	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	utils.AssertEqual(b, true, len(fctx.Response.Body()) > 30000)
+	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	require.True(b, len(fctx.Response.Body()) > 30000)
 }
 
 func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
@@ -659,8 +660,8 @@ func Benchmark_Cache_AdditionalHeaders(b *testing.B) {
 		h(fctx)
 	}
 
-	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
-	utils.AssertEqual(b, []byte("foobar"), fctx.Response.Header.Peek("X-Foobar"))
+	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	require.Equal(b, []byte("foobar"), fctx.Response.Header.Peek("X-Foobar"))
 }
 
 func Benchmark_Cache_MaxSize(b *testing.B) {
@@ -691,7 +692,7 @@ func Benchmark_Cache_MaxSize(b *testing.B) {
 				h(fctx)
 			}
 
-			utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+			require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 		})
 	}
 }

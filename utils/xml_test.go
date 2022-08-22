@@ -3,6 +3,8 @@ package utils
 import (
 	"encoding/xml"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type serversXMLStructure struct {
@@ -33,9 +35,9 @@ func Test_GolangXMLEncoder(t *testing.T) {
 	)
 
 	raw, err := xmlEncoder(ss)
-	AssertEqual(t, err, nil)
+	require.NoError(t, err)
 
-	AssertEqual(t, string(raw), xmlString)
+	require.Equal(t, string(raw), xmlString)
 }
 
 func Test_DefaultXMLEncoder(t *testing.T) {
@@ -53,9 +55,9 @@ func Test_DefaultXMLEncoder(t *testing.T) {
 	)
 
 	raw, err := xmlEncoder(ss)
-	AssertEqual(t, err, nil)
+	require.NoError(t, err)
 
-	AssertEqual(t, string(raw), xmlString)
+	require.Equal(t, string(raw), xmlString)
 }
 
 func Test_DefaultXMLDecoder(t *testing.T) {

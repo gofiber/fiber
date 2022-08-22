@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
 )
 
 // Config defines the config for middleware.
@@ -133,7 +132,7 @@ func New(config ...Config) fiber.Handler {
 		)
 
 		if len(path) > 1 {
-			path = utils.TrimRight(path, '/')
+			path = strings.TrimRight(path, "/")
 		}
 		file, err = cfg.Root.Open(path)
 		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
@@ -153,7 +152,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Serve index if path is directory
 		if stat.IsDir() {
-			indexPath := utils.TrimRight(path, '/') + cfg.Index
+			indexPath := strings.TrimRight(path, "/") + cfg.Index
 			index, err := cfg.Root.Open(indexPath)
 			if err == nil {
 				indexStat, err := index.Stat()
@@ -226,7 +225,7 @@ func SendFile(c fiber.Ctx, fs http.FileSystem, path string) (err error) {
 
 	// Serve index if path is directory
 	if stat.IsDir() {
-		indexPath := utils.TrimRight(path, '/') + ConfigDefault.Index
+		indexPath := strings.TrimRight(path, "/") + ConfigDefault.Index
 		index, err := fs.Open(indexPath)
 		if err == nil {
 			indexStat, err := index.Stat()

@@ -6,7 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -28,55 +28,55 @@ func Test_Session(t *testing.T) {
 
 	// get session
 	sess, err := store.Get(ctx)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, sess.Fresh())
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	// get keys
 	keys := sess.Keys()
-	utils.AssertEqual(t, []string{}, keys)
+	require.Equal(t, []string{}, keys)
 
 	// get value
 	name := sess.Get("name")
-	utils.AssertEqual(t, nil, name)
+	require.Nil(t, name)
 
 	// set value
 	sess.Set("name", "john")
 
 	// get value
 	name = sess.Get("name")
-	utils.AssertEqual(t, "john", name)
+	require.Equal(t, "john", name)
 
 	keys = sess.Keys()
-	utils.AssertEqual(t, []string{"name"}, keys)
+	require.Equal(t, []string{"name"}, keys)
 
 	// delete key
 	sess.Delete("name")
 
 	// get value
 	name = sess.Get("name")
-	utils.AssertEqual(t, nil, name)
+	require.Nil(t, name)
 
 	// get keys
 	keys = sess.Keys()
-	utils.AssertEqual(t, []string{}, keys)
+	require.Equal(t, []string{}, keys)
 
 	// get id
 	id := sess.ID()
-	utils.AssertEqual(t, "123", id)
+	require.Equal(t, "123", id)
 
 	// save the old session first
 	err = sess.Save()
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	// requesting entirely new context to prevent falsy tests
 	ctx = app.NewCtx(&fasthttp.RequestCtx{})
 
 	sess, err = store.Get(ctx)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, sess.Fresh())
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	// this id should be randomly generated as session key was deleted
-	utils.AssertEqual(t, 36, len(sess.ID()))
+	require.Equal(t, 36, len(sess.ID()))
 
 	// when we use the original session for the second time
 	// the session be should be same if the session is not expired
@@ -85,9 +85,9 @@ func Test_Session(t *testing.T) {
 	// request the server with the old session
 	ctx.Request().Header.SetCookie(store.sessionName, id)
 	sess, err = store.Get(ctx)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, false, sess.Fresh())
-	utils.AssertEqual(t, sess.id, id)
+	require.NoError(t, err)
+	require.False(t, sess.Fresh())
+	require.Equal(t, sess.id, id)
 }
 
 // go test -run Test_Session_Types
@@ -108,8 +108,8 @@ func Test_Session_Types(t *testing.T) {
 
 	// get session
 	sess, err := store.Get(ctx)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, sess.Fresh())
+	require.NoError(t, err)
+	require.True(t, sess.Fresh())
 
 	// the session string is no longer be 123
 	newSessionIDString := sess.ID()
@@ -166,34 +166,34 @@ func Test_Session_Types(t *testing.T) {
 
 	// save session
 	err = sess.Save()
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	// get session
 	sess, err = store.Get(ctx)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, false, sess.Fresh())
+	require.NoError(t, err)
+	require.False(t, sess.Fresh())
 
 	// get value
-	utils.AssertEqual(t, vuser, sess.Get("vuser").(User))
-	utils.AssertEqual(t, vbool, sess.Get("vbool").(bool))
-	utils.AssertEqual(t, vstring, sess.Get("vstring").(string))
-	utils.AssertEqual(t, vint, sess.Get("vint").(int))
-	utils.AssertEqual(t, vint8, sess.Get("vint8").(int8))
-	utils.AssertEqual(t, vint16, sess.Get("vint16").(int16))
-	utils.AssertEqual(t, vint32, sess.Get("vint32").(int32))
-	utils.AssertEqual(t, vint64, sess.Get("vint64").(int64))
-	utils.AssertEqual(t, vuint, sess.Get("vuint").(uint))
-	utils.AssertEqual(t, vuint8, sess.Get("vuint8").(uint8))
-	utils.AssertEqual(t, vuint16, sess.Get("vuint16").(uint16))
-	utils.AssertEqual(t, vuint32, sess.Get("vuint32").(uint32))
-	utils.AssertEqual(t, vuint64, sess.Get("vuint64").(uint64))
-	utils.AssertEqual(t, vuintptr, sess.Get("vuintptr").(uintptr))
-	utils.AssertEqual(t, vbyte, sess.Get("vbyte").(byte))
-	utils.AssertEqual(t, vrune, sess.Get("vrune").(rune))
-	utils.AssertEqual(t, vfloat32, sess.Get("vfloat32").(float32))
-	utils.AssertEqual(t, vfloat64, sess.Get("vfloat64").(float64))
-	utils.AssertEqual(t, vcomplex64, sess.Get("vcomplex64").(complex64))
-	utils.AssertEqual(t, vcomplex128, sess.Get("vcomplex128").(complex128))
+	require.Equal(t, vuser, sess.Get("vuser").(User))
+	require.Equal(t, vbool, sess.Get("vbool").(bool))
+	require.Equal(t, vstring, sess.Get("vstring").(string))
+	require.Equal(t, vint, sess.Get("vint").(int))
+	require.Equal(t, vint8, sess.Get("vint8").(int8))
+	require.Equal(t, vint16, sess.Get("vint16").(int16))
+	require.Equal(t, vint32, sess.Get("vint32").(int32))
+	require.Equal(t, vint64, sess.Get("vint64").(int64))
+	require.Equal(t, vuint, sess.Get("vuint").(uint))
+	require.Equal(t, vuint8, sess.Get("vuint8").(uint8))
+	require.Equal(t, vuint16, sess.Get("vuint16").(uint16))
+	require.Equal(t, vuint32, sess.Get("vuint32").(uint32))
+	require.Equal(t, vuint64, sess.Get("vuint64").(uint64))
+	require.Equal(t, vuintptr, sess.Get("vuintptr").(uintptr))
+	require.Equal(t, vbyte, sess.Get("vbyte").(byte))
+	require.Equal(t, vrune, sess.Get("vrune").(rune))
+	require.Equal(t, vfloat32, sess.Get("vfloat32").(float32))
+	require.Equal(t, vfloat64, sess.Get("vfloat64").(float64))
+	require.Equal(t, vcomplex64, sess.Get("vcomplex64").(complex64))
+	require.Equal(t, vcomplex128, sess.Get("vcomplex128").(complex128))
 }
 
 // go test -run Test_Session_Store_Reset
@@ -209,7 +209,7 @@ func Test_Session_Store_Reset(t *testing.T) {
 	// get session
 	sess, _ := store.Get(ctx)
 	// make sure its new
-	utils.AssertEqual(t, true, sess.Fresh())
+	require.True(t, sess.Fresh())
 	// set value & save
 	sess.Set("hello", "world")
 	ctx.Request().Header.SetCookie(store.sessionName, sess.ID())
@@ -220,8 +220,8 @@ func Test_Session_Store_Reset(t *testing.T) {
 
 	// make sure the session is recreated
 	sess, _ = store.Get(ctx)
-	utils.AssertEqual(t, true, sess.Fresh())
-	utils.AssertEqual(t, nil, sess.Get("hello"))
+	require.True(t, sess.Fresh())
+	require.Nil(t, sess.Get("hello"))
 }
 
 // go test -run Test_Session_Save
@@ -243,7 +243,7 @@ func Test_Session_Save(t *testing.T) {
 
 		// save session
 		err := sess.Save()
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 	})
 
 	t.Run("save to header", func(t *testing.T) {
@@ -263,9 +263,9 @@ func Test_Session_Save(t *testing.T) {
 
 		// save session
 		err := sess.Save()
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, store.getSessionID(ctx), string(ctx.Response().Header.Peek(store.sessionName)))
-		utils.AssertEqual(t, store.getSessionID(ctx), string(ctx.Request().Header.Peek(store.sessionName)))
+		require.NoError(t, err)
+		require.Equal(t, store.getSessionID(ctx), string(ctx.Response().Header.Peek(store.sessionName)))
+		require.Equal(t, store.getSessionID(ctx), string(ctx.Request().Header.Peek(store.sessionName)))
 	})
 }
 
@@ -290,18 +290,18 @@ func Test_Session_Save_Expiration(t *testing.T) {
 
 		// save session
 		err := sess.Save()
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 
 		// here you need to get the old session yet
 		sess, _ = store.Get(ctx)
-		utils.AssertEqual(t, "john", sess.Get("name"))
+		require.Equal(t, "john", sess.Get("name"))
 
 		// just to make sure the session has been expired
 		time.Sleep(time.Second * 5)
 
 		// here you should get a new session
 		sess, _ = store.Get(ctx)
-		utils.AssertEqual(t, nil, sess.Get("name"))
+		require.Nil(t, sess.Get("name"))
 	})
 }
 
@@ -323,7 +323,7 @@ func Test_Session_Reset(t *testing.T) {
 		sess.Set("name", "fenny")
 		sess.Destroy()
 		name := sess.Get("name")
-		utils.AssertEqual(t, nil, name)
+		require.Nil(t, name)
 	})
 
 	t.Run("reset from header", func(t *testing.T) {
@@ -345,9 +345,9 @@ func Test_Session_Reset(t *testing.T) {
 		sess, _ = store.Get(ctx)
 
 		err := sess.Destroy()
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "", string(ctx.Response().Header.Peek(store.sessionName)))
-		utils.AssertEqual(t, "", string(ctx.Request().Header.Peek(store.sessionName)))
+		require.NoError(t, err)
+		require.Equal(t, "", string(ctx.Response().Header.Peek(store.sessionName)))
+		require.Equal(t, "", string(ctx.Request().Header.Peek(store.sessionName)))
 	})
 }
 
@@ -356,11 +356,11 @@ func Test_Session_Custom_Config(t *testing.T) {
 	t.Parallel()
 
 	store := New(Config{Expiration: time.Hour, KeyGenerator: func() string { return "very random" }})
-	utils.AssertEqual(t, time.Hour, store.Expiration)
-	utils.AssertEqual(t, "very random", store.KeyGenerator())
+	require.Equal(t, time.Hour, store.Expiration)
+	require.Equal(t, "very random", store.KeyGenerator())
 
 	store = New(Config{Expiration: 0})
-	utils.AssertEqual(t, ConfigDefault.Expiration, store.Expiration)
+	require.Equal(t, ConfigDefault.Expiration, store.Expiration)
 }
 
 // go test -run Test_Session_Cookie
@@ -378,7 +378,7 @@ func Test_Session_Cookie(t *testing.T) {
 	sess.Save()
 
 	// cookie should be set on Save ( even if empty data )
-	utils.AssertEqual(t, 84, len(ctx.Response().Header.PeekCookie(store.sessionName)))
+	require.Equal(t, 84, len(ctx.Response().Header.PeekCookie(store.sessionName)))
 }
 
 // go test -run Test_Session_Cookie_In_Response
@@ -393,15 +393,15 @@ func Test_Session_Cookie_In_Response(t *testing.T) {
 	// get session
 	sess, _ := store.Get(ctx)
 	sess.Set("id", "1")
-	utils.AssertEqual(t, true, sess.Fresh())
+	require.True(t, sess.Fresh())
 	sess.Save()
 
 	sess, _ = store.Get(ctx)
 	sess.Set("name", "john")
-	utils.AssertEqual(t, true, sess.Fresh())
+	require.True(t, sess.Fresh())
 
-	utils.AssertEqual(t, "1", sess.Get("id"))
-	utils.AssertEqual(t, "john", sess.Get("name"))
+	require.Equal(t, "1", sess.Get("id"))
+	require.Equal(t, "john", sess.Get("name"))
 }
 
 // go test -run Test_Session_Deletes_Single_Key
@@ -414,21 +414,21 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 	ctx := app.NewCtx(&fasthttp.RequestCtx{})
 
 	sess, err := store.Get(ctx)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	ctx.Request().Header.SetCookie(store.sessionName, sess.ID())
 
 	sess.Set("id", "1")
-	utils.AssertEqual(t, nil, sess.Save())
+	require.Nil(t, sess.Save())
 
 	sess, err = store.Get(ctx)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	sess.Delete("id")
-	utils.AssertEqual(t, nil, sess.Save())
+	require.Nil(t, sess.Save())
 
 	sess, err = store.Get(ctx)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, false, sess.Fresh())
-	utils.AssertEqual(t, nil, sess.Get("id"))
+	require.NoError(t, err)
+	require.False(t, sess.Fresh())
+	require.Nil(t, sess.Get("id"))
 }
 
 // go test -run Test_Session_Regenerate
@@ -446,29 +446,29 @@ func Test_Session_Regenerate(t *testing.T) {
 
 		// now the session is in the storage
 		freshSession, err := store.Get(ctx)
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 
 		originalSessionUUIDString = freshSession.ID()
 
 		err = freshSession.Save()
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 
 		// set cookie
 		ctx.Request().Header.SetCookie(store.sessionName, originalSessionUUIDString)
 
 		// as the session is in the storage, session.fresh should be false
 		acquiredSession, err := store.Get(ctx)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, false, acquiredSession.Fresh())
+		require.NoError(t, err)
+		require.False(t, acquiredSession.Fresh())
 
 		err = acquiredSession.Regenerate()
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 
 		if acquiredSession.ID() == originalSessionUUIDString {
 			t.Fatal("regenerate should generate another different id")
 		}
 		// acquiredSession.fresh should be true after regenerating
-		utils.AssertEqual(t, true, acquiredSession.Fresh())
+		require.True(t, acquiredSession.Fresh())
 	})
 }
 

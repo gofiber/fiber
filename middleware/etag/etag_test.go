@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -21,8 +21,8 @@ func Test_ETag_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 // go test -run Test_ETag_SkipError
@@ -36,8 +36,8 @@ func Test_ETag_SkipError(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusForbidden, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
 // go test -run Test_ETag_NotStatusOK
@@ -51,8 +51,8 @@ func Test_ETag_NotStatusOK(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusCreated, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusCreated, resp.StatusCode)
 }
 
 // go test -run Test_ETag_NoBody
@@ -66,8 +66,8 @@ func Test_ETag_NoBody(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 // go test -run Test_ETag_NewEtag
@@ -104,19 +104,19 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	}
 
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	if !headerIfNoneMatch || !matched {
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-		utils.AssertEqual(t, `"13-1831710635"`, resp.Header.Get(fiber.HeaderETag))
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.Equal(t, `"13-1831710635"`, resp.Header.Get(fiber.HeaderETag))
 		return
 	}
 
 	if matched {
-		utils.AssertEqual(t, fiber.StatusNotModified, resp.StatusCode)
+		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, 0, len(b))
+		require.NoError(t, err)
+		require.Equal(t, 0, len(b))
 	}
 }
 
@@ -154,19 +154,19 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	}
 
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	if !headerIfNoneMatch || !matched {
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-		utils.AssertEqual(t, `W/"13-1831710635"`, resp.Header.Get(fiber.HeaderETag))
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.Equal(t, `W/"13-1831710635"`, resp.Header.Get(fiber.HeaderETag))
 		return
 	}
 
 	if matched {
-		utils.AssertEqual(t, fiber.StatusNotModified, resp.StatusCode)
+		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, 0, len(b))
+		require.NoError(t, err)
+		require.Equal(t, 0, len(b))
 	}
 }
 
@@ -208,19 +208,19 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 	}
 
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	if !headerIfNoneMatch || !matched {
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-		utils.AssertEqual(t, `"custom"`, resp.Header.Get(fiber.HeaderETag))
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
+		require.Equal(t, `"custom"`, resp.Header.Get(fiber.HeaderETag))
 		return
 	}
 
 	if matched {
-		utils.AssertEqual(t, fiber.StatusNotModified, resp.StatusCode)
+		require.Equal(t, fiber.StatusNotModified, resp.StatusCode)
 		b, err := io.ReadAll(resp.Body)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, 0, len(b))
+		require.NoError(t, err)
+		require.Equal(t, 0, len(b))
 	}
 }
 
@@ -241,8 +241,8 @@ func Test_ETag_CustomEtagPut(t *testing.T) {
 	req := httptest.NewRequest("PUT", "/", nil)
 	req.Header.Set(fiber.HeaderIfMatch, `"non-match"`)
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusPreconditionFailed, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusPreconditionFailed, resp.StatusCode)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Etag -benchmem -count=4
@@ -268,6 +268,6 @@ func Benchmark_Etag(b *testing.B) {
 		h(fctx)
 	}
 
-	utils.AssertEqual(b, 200, fctx.Response.Header.StatusCode())
-	utils.AssertEqual(b, `"13-1831710635"`, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
+	require.Equal(b, 200, fctx.Response.Header.StatusCode())
+	require.Equal(b, `"13-1831710635"`, string(fctx.Response.Header.Peek(fiber.HeaderETag)))
 }

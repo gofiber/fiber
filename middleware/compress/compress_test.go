@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 )
 
 var filedata []byte
@@ -37,14 +37,14 @@ func Test_Compress_Gzip(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, len(body) < len(filedata))
+	require.NoError(t, err)
+	require.True(t, len(body) < len(filedata))
 }
 
 // go test -run Test_Compress_Different_Level
@@ -65,14 +65,14 @@ func Test_Compress_Different_Level(t *testing.T) {
 			req.Header.Set("Accept-Encoding", "gzip")
 
 			resp, err := app.Test(req)
-			utils.AssertEqual(t, nil, err, "app.Test(req)")
-			utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-			utils.AssertEqual(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
+			require.NoError(t, err, "app.Test(req)")
+			require.Equal(t, 200, resp.StatusCode, "Status code")
+			require.Equal(t, "gzip", resp.Header.Get(fiber.HeaderContentEncoding))
 
 			// Validate that the file size has shrunk
 			body, err := io.ReadAll(resp.Body)
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, true, len(body) < len(filedata))
+			require.NoError(t, err)
+			require.True(t, len(body) < len(filedata))
 		})
 	}
 }
@@ -90,14 +90,14 @@ func Test_Compress_Deflate(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "deflate")
 
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "deflate", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, "deflate", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, len(body) < len(filedata))
+	require.NoError(t, err)
+	require.True(t, len(body) < len(filedata))
 }
 
 func Test_Compress_Brotli(t *testing.T) {
@@ -113,14 +113,14 @@ func Test_Compress_Brotli(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req, 10000)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, "br", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate that the file size has shrunk
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, len(body) < len(filedata))
+	require.NoError(t, err)
+	require.True(t, len(body) < len(filedata))
 }
 
 func Test_Compress_Disabled(t *testing.T) {
@@ -136,14 +136,14 @@ func Test_Compress_Disabled(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	// Validate the file size is not shrunk
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, len(body) == len(filedata))
+	require.NoError(t, err)
+	require.True(t, len(body) == len(filedata))
 }
 
 func Test_Compress_Next_Error(t *testing.T) {
@@ -159,13 +159,13 @@ func Test_Compress_Next_Error(t *testing.T) {
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 500, resp.StatusCode, "Status code")
+	require.Equal(t, "", resp.Header.Get(fiber.HeaderContentEncoding))
 
 	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "next error", string(body))
+	require.NoError(t, err)
+	require.Equal(t, "next error", string(body))
 }
 
 // go test -run Test_Compress_Next
@@ -178,6 +178,6 @@ func Test_Compress_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
