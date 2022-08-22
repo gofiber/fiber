@@ -8,24 +8,26 @@ import (
 	"mime"
 	"net/http"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_GetMIME(t *testing.T) {
 	t.Parallel()
 	res := GetMIME(".json")
-	AssertEqual(t, "application/json", res)
+	require.Equal(t, "application/json", res)
 
 	res = GetMIME(".xml")
-	AssertEqual(t, "application/xml", res)
+	require.Equal(t, "application/xml", res)
 
 	res = GetMIME("xml")
-	AssertEqual(t, "application/xml", res)
+	require.Equal(t, "application/xml", res)
 
 	res = GetMIME("unknown")
-	AssertEqual(t, MIMEOctetStream, res)
+	require.Equal(t, MIMEOctetStream, res)
 	// empty case
 	res = GetMIME("")
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 }
 
 // go test -v -run=^$ -bench=Benchmark_GetMIME -benchmem -count=2
@@ -39,7 +41,7 @@ func Benchmark_GetMIME(b *testing.B) {
 			res = GetMIME(".exe")
 			res = GetMIME(".json")
 		}
-		AssertEqual(b, "application/json", res)
+		require.Equal(b, "application/json", res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
@@ -49,7 +51,7 @@ func Benchmark_GetMIME(b *testing.B) {
 			res = mime.TypeByExtension(".exe")
 			res = mime.TypeByExtension(".json")
 		}
-		AssertEqual(b, "application/json", res)
+		require.Equal(b, "application/json", res)
 	})
 }
 
@@ -57,25 +59,25 @@ func Test_ParseVendorSpecificContentType(t *testing.T) {
 	t.Parallel()
 
 	cType := ParseVendorSpecificContentType("application/json")
-	AssertEqual(t, "application/json", cType)
+	require.Equal(t, "application/json", cType)
 
 	cType = ParseVendorSpecificContentType("multipart/form-data; boundary=dart-http-boundary-ZnVy.ICWq+7HOdsHqWxCFa8g3D.KAhy+Y0sYJ_lBADypu8po3_X")
-	AssertEqual(t, "multipart/form-data", cType)
+	require.Equal(t, "multipart/form-data", cType)
 
 	cType = ParseVendorSpecificContentType("multipart/form-data")
-	AssertEqual(t, "multipart/form-data", cType)
+	require.Equal(t, "multipart/form-data", cType)
 
 	cType = ParseVendorSpecificContentType("application/vnd.api+json; version=1")
-	AssertEqual(t, "application/json", cType)
+	require.Equal(t, "application/json", cType)
 
 	cType = ParseVendorSpecificContentType("application/vnd.api+json")
-	AssertEqual(t, "application/json", cType)
+	require.Equal(t, "application/json", cType)
 
 	cType = ParseVendorSpecificContentType("application/vnd.dummy+x-www-form-urlencoded")
-	AssertEqual(t, "application/x-www-form-urlencoded", cType)
+	require.Equal(t, "application/x-www-form-urlencoded", cType)
 
 	cType = ParseVendorSpecificContentType("something invalid")
-	AssertEqual(t, "something invalid", cType)
+	require.Equal(t, "something invalid", cType)
 }
 
 func Benchmark_ParseVendorSpecificContentType(b *testing.B) {
@@ -84,42 +86,42 @@ func Benchmark_ParseVendorSpecificContentType(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			cType = ParseVendorSpecificContentType("application/vnd.api+json; version=1")
 		}
-		AssertEqual(b, "application/json", cType)
+		require.Equal(b, "application/json", cType)
 	})
 
 	b.Run("defaultContentType", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			cType = ParseVendorSpecificContentType("application/json")
 		}
-		AssertEqual(b, "application/json", cType)
+		require.Equal(b, "application/json", cType)
 	})
 }
 
 func Test_StatusMessage(t *testing.T) {
 	t.Parallel()
 	res := StatusMessage(204)
-	AssertEqual(t, "No Content", res)
+	require.Equal(t, "No Content", res)
 
 	res = StatusMessage(404)
-	AssertEqual(t, "Not Found", res)
+	require.Equal(t, "Not Found", res)
 
 	res = StatusMessage(426)
-	AssertEqual(t, "Upgrade Required", res)
+	require.Equal(t, "Upgrade Required", res)
 
 	res = StatusMessage(511)
-	AssertEqual(t, "Network Authentication Required", res)
+	require.Equal(t, "Network Authentication Required", res)
 
 	res = StatusMessage(1337)
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 
 	res = StatusMessage(-1)
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 
 	res = StatusMessage(0)
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 
 	res = StatusMessage(600)
-	AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 }
 
 // go test -run=^$ -bench=Benchmark_StatusMessage -benchmem -count=2
@@ -129,12 +131,12 @@ func Benchmark_StatusMessage(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = StatusMessage(http.StatusNotExtended)
 		}
-		AssertEqual(b, "Not Extended", res)
+		require.Equal(b, "Not Extended", res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = http.StatusText(http.StatusNotExtended)
 		}
-		AssertEqual(b, "Not Extended", res)
+		require.Equal(b, "Not Extended", res)
 	})
 }

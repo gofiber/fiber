@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Benchmark_EqualFoldBytes(b *testing.B) {
@@ -14,32 +16,14 @@ func Benchmark_EqualFoldBytes(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = EqualFold(left, right)
 		}
-		AssertEqual(b, true, res)
+		require.True(b, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = bytes.EqualFold(left, right)
 		}
-		AssertEqual(b, true, res)
+		require.True(b, res)
 	})
-}
-
-func Test_EqualFoldBytes(t *testing.T) {
-	t.Parallel()
-	res := EqualFold([]byte("/MY/NAME/IS/:PARAM/*"), []byte("/my/name/is/:param/*"))
-	AssertEqual(t, true, res)
-	res = EqualFold([]byte("/MY1/NAME/IS/:PARAM/*"), []byte("/MY1/NAME/IS/:PARAM/*"))
-	AssertEqual(t, true, res)
-	res = EqualFold([]byte("/my2/name/is/:param/*"), []byte("/my2/name"))
-	AssertEqual(t, false, res)
-	res = EqualFold([]byte("/dddddd"), []byte("eeeeee"))
-	AssertEqual(t, false, res)
-	res = EqualFold([]byte("\na"), []byte("*A"))
-	AssertEqual(t, false, res)
-	res = EqualFold([]byte("/MY3/NAME/IS/:PARAM/*"), []byte("/my3/name/is/:param/*"))
-	AssertEqual(t, true, res)
-	res = EqualFold([]byte("/MY4/NAME/IS/:PARAM/*"), []byte("/my4/nAME/IS/:param/*"))
-	AssertEqual(t, true, res)
 }
 
 // go test -v -run=^$ -bench=Benchmark_EqualFold -benchmem -count=4 ./utils/
@@ -49,13 +33,13 @@ func Benchmark_EqualFold(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = EqualFold(upperStr, lowerStr)
 		}
-		AssertEqual(b, true, res)
+		require.True(b, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.EqualFold(upperStr, lowerStr)
 		}
-		AssertEqual(b, true, res)
+		require.True(b, res)
 	})
 }
 
@@ -78,9 +62,9 @@ func Test_EqualFold(t *testing.T) {
 
 	for _, tc := range testCases {
 		res := EqualFold[string](tc.S1, tc.S2)
-		AssertEqual(t, tc.Expected, res, "string")
+		require.Equal(t, tc.Expected, res, "string")
 
 		res = EqualFold[[]byte]([]byte(tc.S1), []byte(tc.S2))
-		AssertEqual(t, tc.Expected, res, "bytes")
+		require.Equal(t, tc.Expected, res, "bytes")
 	}
 }

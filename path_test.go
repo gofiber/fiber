@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 )
 
 // go test -race -run Test_Path_parseRoute
@@ -16,7 +16,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	var rp routeParser
 
 	rp = parseRoute("/shop/product/::filter/color::color/size::size")
-	utils.AssertEqual(t, routeParser{
+	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/shop/product/:", Length: 15},
 			{IsParam: true, ParamName: "filter", ComparePart: "/color:", PartCount: 1},
@@ -29,7 +29,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	rp = parseRoute("/api/v1/:param/abc/*")
-	utils.AssertEqual(t, routeParser{
+	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/v1/", Length: 8},
 			{IsParam: true, ParamName: "param", ComparePart: "/abc", PartCount: 1},
@@ -41,7 +41,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	rp = parseRoute("/v1/some/resource/name\\:customVerb")
-	utils.AssertEqual(t, routeParser{
+	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/name:customVerb", Length: 33, IsLast: true},
 		},
@@ -49,7 +49,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	rp = parseRoute("/v1/some/resource/:name\\:customVerb")
-	utils.AssertEqual(t, routeParser{
+	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/", Length: 18},
 			{IsParam: true, ParamName: "name", ComparePart: ":customVerb", PartCount: 1},
@@ -60,7 +60,7 @@ func Test_Path_parseRoute(t *testing.T) {
 
 	// heavy test with escaped charaters
 	rp = parseRoute("/v1/some/resource/name\\\\:customVerb?\\?/:param/*")
-	utils.AssertEqual(t, routeParser{
+	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/v1/some/resource/name:customVerb??/", Length: 36},
 			{IsParam: true, ParamName: "param", ComparePart: "/", PartCount: 1},
@@ -72,7 +72,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	rp = parseRoute("/api/*/:param/:param2")
-	utils.AssertEqual(t, routeParser{
+	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/", Length: 5, HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "/", PartCount: 2},
@@ -86,7 +86,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	rp = parseRoute("/test:optional?:optional2?")
-	utils.AssertEqual(t, routeParser{
+	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/test", Length: 5},
 			{IsParam: true, ParamName: "optional", IsOptional: true, Length: 1},
@@ -96,7 +96,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	rp = parseRoute("/config/+.json")
-	utils.AssertEqual(t, routeParser{
+	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/config/", Length: 8},
 			{IsParam: true, ParamName: "+1", IsGreedy: true, IsOptional: false, ComparePart: ".json", PartCount: 1},
@@ -107,7 +107,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	rp = parseRoute("/api/:day.:month?.:year?")
-	utils.AssertEqual(t, routeParser{
+	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/api/", Length: 5},
 			{IsParam: true, ParamName: "day", IsOptional: false, ComparePart: ".", PartCount: 2},
@@ -120,7 +120,7 @@ func Test_Path_parseRoute(t *testing.T) {
 	}, rp)
 
 	rp = parseRoute("/*v1*/proxy")
-	utils.AssertEqual(t, routeParser{
+	require.Equal(t, routeParser{
 		segs: []*routeSegment{
 			{Const: "/", Length: 1, HasOptionalSlash: true},
 			{IsParam: true, ParamName: "*1", IsGreedy: true, IsOptional: true, ComparePart: "v1", PartCount: 1},
@@ -131,6 +131,7 @@ func Test_Path_parseRoute(t *testing.T) {
 		params:        []string{"*1", "*2"},
 		wildCardCount: 2,
 	}, rp)
+
 }
 
 // go test -race -run Test_Path_matchParams
@@ -147,9 +148,9 @@ func Test_Path_matchParams(t *testing.T) {
 		parser := parseRoute(r)
 		for _, c := range cases {
 			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
-			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			require.Equal(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			if match && len(c.params) > 0 {
-				utils.AssertEqual(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				require.Equal(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			}
 		}
 	}
@@ -554,25 +555,25 @@ func Test_Path_matchParams(t *testing.T) {
 func Test_Utils_GetTrimmedParam(t *testing.T) {
 	t.Parallel()
 	res := GetTrimmedParam("")
-	utils.AssertEqual(t, "", res)
+	require.Equal(t, "", res)
 	res = GetTrimmedParam("*")
-	utils.AssertEqual(t, "*", res)
+	require.Equal(t, "*", res)
 	res = GetTrimmedParam(":param")
-	utils.AssertEqual(t, "param", res)
+	require.Equal(t, "param", res)
 	res = GetTrimmedParam(":param1?")
-	utils.AssertEqual(t, "param1", res)
+	require.Equal(t, "param1", res)
 	res = GetTrimmedParam("noParam")
-	utils.AssertEqual(t, "noParam", res)
+	require.Equal(t, "noParam", res)
 }
 
 func Test_Utils_RemoveEscapeChar(t *testing.T) {
 	t.Parallel()
 	res := RemoveEscapeChar(":test\\:bla")
-	utils.AssertEqual(t, ":test:bla", res)
+	require.Equal(t, ":test:bla", res)
 	res = RemoveEscapeChar("\\abc")
-	utils.AssertEqual(t, "abc", res)
+	require.Equal(t, "abc", res)
 	res = RemoveEscapeChar("noEscapeChar")
-	utils.AssertEqual(t, "noEscapeChar", res)
+	require.Equal(t, "noEscapeChar", res)
 }
 
 // go test -race -run Test_Path_matchParams
@@ -599,9 +600,9 @@ func Benchmark_Path_matchParams(t *testing.B) {
 						matchRes = true
 					}
 				}
-				utils.AssertEqual(t, c.match, matchRes, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				require.Equal(t, c.match, matchRes, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 				if matchRes && len(c.params) > 0 {
-					utils.AssertEqual(t, c.params[0:len(c.params)-1], ctxParams[0:len(c.params)-1], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+					require.Equal(t, c.params[0:len(c.params)-1], ctxParams[0:len(c.params)-1], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 				}
 			})
 
@@ -770,9 +771,9 @@ func Test_Path_matchParams0(t *testing.T) {
 		parser := parseRoute(r)
 		for _, c := range cases {
 			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
-			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+			require.Equal(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			if match && len(c.params) > 0 {
-				utils.AssertEqual(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
+				require.Equal(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 			}
 		}
 	}

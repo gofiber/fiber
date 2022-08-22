@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 
 	"github.com/gofiber/fiber/v3/internal/tlstest"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -34,7 +34,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 		return c.SendString(c.Hostname())
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	a := Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
@@ -42,9 +42,9 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 	_, body, errs := a.String()
 
-	utils.AssertEqual(t, "", body)
-	utils.AssertEqual(t, 1, len(errs))
-	utils.AssertEqual(t, "missing required Host header in request", errs[0].Error())
+	require.Equal(t, "", body)
+	require.Equal(t, 1, len(errs))
+	require.Equal(t, "missing required Host header in request", errs[0].Error())
 }
 
 func Test_Client_Unsupported_Protocol(t *testing.T) {
@@ -54,10 +54,11 @@ func Test_Client_Unsupported_Protocol(t *testing.T) {
 
 	_, body, errs := a.String()
 
-	utils.AssertEqual(t, "", body)
-	utils.AssertEqual(t, 1, len(errs))
-	utils.AssertEqual(t, `unsupported protocol "ftp". http and https are supported`,
+	require.Equal(t, "", body)
+	require.Equal(t, 1, len(errs))
+	require.Equal(t, `unsupported protocol "ftp". http and https are supported`,
 		errs[0].Error())
+
 }
 
 func Test_Client_Get(t *testing.T) {
@@ -71,7 +72,7 @@ func Test_Client_Get(t *testing.T) {
 		return c.SendString(c.Hostname())
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		a := Get("http://example.com")
@@ -80,9 +81,9 @@ func Test_Client_Get(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, "example.com", body)
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, "example.com", body)
+		require.Equal(t, 0, len(errs))
 	}
 }
 
@@ -97,7 +98,7 @@ func Test_Client_Head(t *testing.T) {
 		return c.SendString(c.Hostname())
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		a := Head("http://example.com")
@@ -106,9 +107,9 @@ func Test_Client_Head(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, "", body)
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, "", body)
+		require.Equal(t, 0, len(errs))
 	}
 }
 
@@ -124,7 +125,7 @@ func Test_Client_Post(t *testing.T) {
 			SendString(c.FormValue("foo"))
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -138,9 +139,9 @@ func Test_Client_Post(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusCreated, code)
-		utils.AssertEqual(t, "bar", body)
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusCreated, code)
+		require.Equal(t, "bar", body)
+		require.Equal(t, 0, len(errs))
 
 		ReleaseArgs(args)
 	}
@@ -157,7 +158,7 @@ func Test_Client_Put(t *testing.T) {
 		return c.SendString(c.FormValue("foo"))
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -171,9 +172,9 @@ func Test_Client_Put(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, "bar", body)
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, "bar", body)
+		require.Equal(t, 0, len(errs))
 
 		ReleaseArgs(args)
 	}
@@ -190,7 +191,7 @@ func Test_Client_Patch(t *testing.T) {
 		return c.SendString(c.FormValue("foo"))
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -204,9 +205,9 @@ func Test_Client_Patch(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, "bar", body)
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, "bar", body)
+		require.Equal(t, 0, len(errs))
 
 		ReleaseArgs(args)
 	}
@@ -224,7 +225,7 @@ func Test_Client_Delete(t *testing.T) {
 			SendString("deleted")
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -235,9 +236,9 @@ func Test_Client_Delete(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusNoContent, code)
-		utils.AssertEqual(t, "", body)
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusNoContent, code)
+		require.Equal(t, "", body)
+		require.Equal(t, 0, len(errs))
 
 		ReleaseArgs(args)
 	}
@@ -254,7 +255,7 @@ func Test_Client_UserAgent(t *testing.T) {
 		return c.Send(c.Request().Header.UserAgent())
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	t.Run("default", func(t *testing.T) {
 		for i := 0; i < 5; i++ {
@@ -264,9 +265,9 @@ func Test_Client_UserAgent(t *testing.T) {
 
 			code, body, errs := a.String()
 
-			utils.AssertEqual(t, StatusOK, code)
-			utils.AssertEqual(t, defaultUserAgent, body)
-			utils.AssertEqual(t, 0, len(errs))
+			require.Equal(t, StatusOK, code)
+			require.Equal(t, defaultUserAgent, body)
+			require.Equal(t, 0, len(errs))
 		}
 	})
 
@@ -281,9 +282,9 @@ func Test_Client_UserAgent(t *testing.T) {
 
 			code, body, errs := a.String()
 
-			utils.AssertEqual(t, StatusOK, code)
-			utils.AssertEqual(t, "ua", body)
-			utils.AssertEqual(t, 0, len(errs))
+			require.Equal(t, StatusOK, code)
+			require.Equal(t, "ua", body)
+			require.Equal(t, 0, len(errs))
 			ReleaseClient(c)
 		}
 	})
@@ -396,21 +397,21 @@ func Test_Client_Agent_Host(t *testing.T) {
 		return c.SendString(c.Hostname())
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	a := Get("http://1.1.1.1:8080").
 		Host("example.com").
 		HostBytes([]byte("example.com"))
 
-	utils.AssertEqual(t, "1.1.1.1:8080", a.HostClient.Addr)
+	require.Equal(t, "1.1.1.1:8080", a.HostClient.Addr)
 
 	a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 
 	code, body, errs := a.String()
 
-	utils.AssertEqual(t, StatusOK, code)
-	utils.AssertEqual(t, "example.com", body)
-	utils.AssertEqual(t, 0, len(errs))
+	require.Equal(t, StatusOK, code)
+	require.Equal(t, "example.com", body)
+	require.Equal(t, 0, len(errs))
 }
 
 func Test_Client_Agent_QueryString(t *testing.T) {
@@ -432,7 +433,7 @@ func Test_Client_Agent_BasicAuth(t *testing.T) {
 		auth := c.Get(HeaderAuthorization)
 		// Decode the header contents
 		raw, err := base64.StdEncoding.DecodeString(auth[6:])
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 
 		return c.Send(raw)
 	}
@@ -492,7 +493,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 		return c.SendString("custom")
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		a := AcquireAgent()
@@ -502,17 +503,17 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 		req.Header.SetMethod(MethodGet)
 		req.SetRequestURI("http://example.com")
 
-		utils.AssertEqual(t, nil, a.Parse())
+		require.Nil(t, a.Parse())
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 
 		code, body, errs := a.SetResponse(resp).
 			String()
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, "custom", body)
-		utils.AssertEqual(t, "custom", string(resp.Body()))
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, "custom", body)
+		require.Equal(t, "custom", string(resp.Body()))
+		require.Equal(t, 0, len(errs))
 
 		ReleaseResponse(resp)
 	}
@@ -529,7 +530,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 		return c.SendString("dest")
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	t.Run("small dest", func(t *testing.T) {
 		dest := []byte("de")
@@ -540,10 +541,10 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 		code, body, errs := a.Dest(dest[:0]).String()
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, "dest", body)
-		utils.AssertEqual(t, "de", string(dest))
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, "dest", body)
+		require.Equal(t, "de", string(dest))
+		require.Equal(t, 0, len(errs))
 	})
 
 	t.Run("enough dest", func(t *testing.T) {
@@ -555,10 +556,10 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 		code, body, errs := a.Dest(dest[:0]).String()
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, "dest", body)
-		utils.AssertEqual(t, "destar", string(dest))
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, "dest", body)
+		require.Equal(t, "destar", string(dest))
+		require.Equal(t, 0, len(errs))
 	})
 }
 
@@ -593,7 +594,7 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	a := Post("http://example.com").
 		RetryIf(func(req *Request) bool {
@@ -618,13 +619,13 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 	}
 
 	_, _, errs := a.String()
-	utils.AssertEqual(t, dialsCount, 4)
-	utils.AssertEqual(t, 0, len(errs))
+	require.Equal(t, dialsCount, 4)
+	require.Equal(t, 0, len(errs))
 }
 
 func Test_Client_Agent_Json(t *testing.T) {
 	handler := func(c Ctx) error {
-		utils.AssertEqual(t, MIMEApplicationJSON, string(c.Request().Header.ContentType()))
+		require.Equal(t, MIMEApplicationJSON, string(c.Request().Header.ContentType()))
 
 		return c.Send(c.Request().Body())
 	}
@@ -643,14 +644,14 @@ func Test_Client_Agent_Json_Error(t *testing.T) {
 
 	_, body, errs := a.String()
 
-	utils.AssertEqual(t, "", body)
-	utils.AssertEqual(t, 1, len(errs))
-	utils.AssertEqual(t, "json: unsupported type: complex128", errs[0].Error())
+	require.Equal(t, "", body)
+	require.Equal(t, 1, len(errs))
+	require.Equal(t, "json: unsupported type: complex128", errs[0].Error())
 }
 
 func Test_Client_Agent_XML(t *testing.T) {
 	handler := func(c Ctx) error {
-		utils.AssertEqual(t, MIMEApplicationXML, string(c.Request().Header.ContentType()))
+		require.Equal(t, MIMEApplicationXML, string(c.Request().Header.ContentType()))
 
 		return c.Send(c.Request().Body())
 	}
@@ -668,14 +669,14 @@ func Test_Client_Agent_XML_Error(t *testing.T) {
 
 	_, body, errs := a.String()
 
-	utils.AssertEqual(t, "", body)
-	utils.AssertEqual(t, 1, len(errs))
-	utils.AssertEqual(t, "xml: unsupported type: complex128", errs[0].Error())
+	require.Equal(t, "", body)
+	require.Equal(t, 1, len(errs))
+	require.Equal(t, "xml: unsupported type: complex128", errs[0].Error())
 }
 
 func Test_Client_Agent_Form(t *testing.T) {
 	handler := func(c Ctx) error {
-		utils.AssertEqual(t, MIMEApplicationForm, string(c.Request().Header.ContentType()))
+		require.Equal(t, MIMEApplicationForm, string(c.Request().Header.ContentType()))
 
 		return c.Send(c.Request().Body())
 	}
@@ -701,16 +702,16 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true})
 
 	app.Post("/", func(c Ctx) error {
-		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
+		require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
 
 		mf, err := c.MultipartForm()
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "bar", mf.Value["foo"][0])
+		require.NoError(t, err)
+		require.Equal(t, "bar", mf.Value["foo"][0])
 
 		return c.Send(c.Request().Body())
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	args := AcquireArgs()
 
@@ -724,9 +725,9 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 
 	code, body, errs := a.String()
 
-	utils.AssertEqual(t, StatusOK, code)
-	utils.AssertEqual(t, "--myBoundary\r\nContent-Disposition: form-data; name=\"foo\"\r\n\r\nbar\r\n--myBoundary--\r\n", body)
-	utils.AssertEqual(t, 0, len(errs))
+	require.Equal(t, StatusOK, code)
+	require.Equal(t, "--myBoundary\r\nContent-Disposition: form-data; name=\"foo\"\r\n\r\nbar\r\n--myBoundary--\r\n", body)
+	require.Equal(t, 0, len(errs))
 	ReleaseArgs(args)
 }
 
@@ -744,7 +745,7 @@ func Test_Client_Agent_MultipartForm_Errors(t *testing.T) {
 	a.FileData(ff1, ff2).
 		MultipartForm(args)
 
-	utils.AssertEqual(t, 4, len(a.errs))
+	require.Equal(t, 4, len(a.errs))
 	ReleaseArgs(args)
 }
 
@@ -756,31 +757,31 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true})
 
 	app.Post("/", func(c Ctx) error {
-		utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
+		require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
 
 		fh1, err := c.FormFile("field1")
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fh1.Filename, "name")
+		require.NoError(t, err)
+		require.Equal(t, fh1.Filename, "name")
 		buf := make([]byte, fh1.Size)
 		f, err := fh1.Open()
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 		defer func() { _ = f.Close() }()
 		_, err = f.Read(buf)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "form file", string(buf))
+		require.NoError(t, err)
+		require.Equal(t, "form file", string(buf))
 
 		fh2, err := c.FormFile("index")
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 		checkFormFile(t, fh2, ".github/testdata/index.html")
 
 		fh3, err := c.FormFile("file3")
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 		checkFormFile(t, fh3, ".github/testdata/index.tmpl")
 
 		return c.SendString("multipart form files")
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	for i := 0; i < 5; i++ {
 		ff := AcquireFormFile()
@@ -798,9 +799,9 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, "multipart form files", body)
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, "multipart form files", body)
+		require.Equal(t, 0, len(errs))
 
 		ReleaseFormFile(ff)
 	}
@@ -810,18 +811,18 @@ func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 	t.Helper()
 
 	basename := filepath.Base(filename)
-	utils.AssertEqual(t, fh.Filename, basename)
+	require.Equal(t, fh.Filename, basename)
 
 	b1, err := os.ReadFile(filename)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	b2 := make([]byte, fh.Size)
 	f, err := fh.Open()
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 	_, err = f.Read(b2)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, b1, b2)
+	require.NoError(t, err)
+	require.Equal(t, b1, b2)
 }
 
 func Test_Client_Agent_Multipart_Random_Boundary(t *testing.T) {
@@ -832,7 +833,7 @@ func Test_Client_Agent_Multipart_Random_Boundary(t *testing.T) {
 
 	reg := regexp.MustCompile(`multipart/form-data; boundary=\w{30}`)
 
-	utils.AssertEqual(t, true, reg.Match(a.req.Header.Peek(HeaderContentType)))
+	require.True(t, reg.Match(a.req.Header.Peek(HeaderContentType)))
 }
 
 func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
@@ -842,8 +843,8 @@ func Test_Client_Agent_Multipart_Invalid_Boundary(t *testing.T) {
 		Boundary("*").
 		MultipartForm(nil)
 
-	utils.AssertEqual(t, 1, len(a.errs))
-	utils.AssertEqual(t, "mime: invalid boundary character", a.errs[0].Error())
+	require.Equal(t, 1, len(a.errs))
+	require.Equal(t, "mime: invalid boundary character", a.errs[0].Error())
 }
 
 func Test_Client_Agent_SendFile_Error(t *testing.T) {
@@ -852,8 +853,8 @@ func Test_Client_Agent_SendFile_Error(t *testing.T) {
 	a := Post("http://example.com").
 		SendFile("non-exist-file!", "")
 
-	utils.AssertEqual(t, 1, len(a.errs))
-	utils.AssertEqual(t, true, strings.Contains(a.errs[0].Error(), "open non-exist-file!"))
+	require.Equal(t, 1, len(a.errs))
+	require.True(t, strings.Contains(a.errs[0].Error(), "open non-exist-file!"))
 }
 
 func Test_Client_Debug(t *testing.T) {
@@ -871,12 +872,12 @@ func Test_Client_Debug(t *testing.T) {
 
 	str := output.String()
 
-	utils.AssertEqual(t, true, strings.Contains(str, "Connected to example.com(pipe)"))
-	utils.AssertEqual(t, true, strings.Contains(str, "GET / HTTP/1.1"))
-	utils.AssertEqual(t, true, strings.Contains(str, "User-Agent: fiber"))
-	utils.AssertEqual(t, true, strings.Contains(str, "Host: example.com\r\n\r\n"))
-	utils.AssertEqual(t, true, strings.Contains(str, "HTTP/1.1 200 OK"))
-	utils.AssertEqual(t, true, strings.Contains(str, "Content-Type: text/plain; charset=utf-8\r\nContent-Length: 5\r\n\r\ndebug"))
+	require.True(t, strings.Contains(str, "Connected to example.com(pipe)"))
+	require.True(t, strings.Contains(str, "GET / HTTP/1.1"))
+	require.True(t, strings.Contains(str, "User-Agent: fiber"))
+	require.True(t, strings.Contains(str, "Host: example.com\r\n\r\n"))
+	require.True(t, strings.Contains(str, "HTTP/1.1 200 OK"))
+	require.True(t, strings.Contains(str, "Content-Type: text/plain; charset=utf-8\r\nContent-Length: 5\r\n\r\ndebug"))
 }
 
 func Test_Client_Agent_Timeout(t *testing.T) {
@@ -891,7 +892,7 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 		return c.SendString("timeout")
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	a := Get("http://example.com").
 		Timeout(time.Millisecond * 50)
@@ -900,9 +901,9 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 
 	_, body, errs := a.String()
 
-	utils.AssertEqual(t, "", body)
-	utils.AssertEqual(t, 1, len(errs))
-	utils.AssertEqual(t, "timeout", errs[0].Error())
+	require.Equal(t, "", body)
+	require.Equal(t, 1, len(errs))
+	require.Equal(t, "timeout", errs[0].Error())
 }
 
 func Test_Client_Agent_Reuse(t *testing.T) {
@@ -916,7 +917,7 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 		return c.SendString("reuse")
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	a := Get("http://example.com").
 		Reuse()
@@ -925,29 +926,29 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 
 	code, body, errs := a.String()
 
-	utils.AssertEqual(t, StatusOK, code)
-	utils.AssertEqual(t, "reuse", body)
-	utils.AssertEqual(t, 0, len(errs))
+	require.Equal(t, StatusOK, code)
+	require.Equal(t, "reuse", body)
+	require.Equal(t, 0, len(errs))
 
 	code, body, errs = a.String()
 
-	utils.AssertEqual(t, StatusOK, code)
-	utils.AssertEqual(t, "reuse", body)
-	utils.AssertEqual(t, 0, len(errs))
+	require.Equal(t, StatusOK, code)
+	require.Equal(t, "reuse", body)
+	require.Equal(t, 0, len(errs))
 }
 
 func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 	t.Parallel()
 
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	serverTLSConf := &tls.Config{
 		Certificates: []tls.Certificate{cer},
 	}
 
 	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
@@ -957,26 +958,26 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 		return c.SendString("ignore tls")
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	code, body, errs := Get("https://" + ln.Addr().String()).
 		InsecureSkipVerify().
 		InsecureSkipVerify().
 		String()
 
-	utils.AssertEqual(t, 0, len(errs))
-	utils.AssertEqual(t, StatusOK, code)
-	utils.AssertEqual(t, "ignore tls", body)
+	require.Equal(t, 0, len(errs))
+	require.Equal(t, StatusOK, code)
+	require.Equal(t, "ignore tls", body)
 }
 
 func Test_Client_Agent_TLS(t *testing.T) {
 	t.Parallel()
 
 	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	ln, err := net.Listen(NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
@@ -986,15 +987,15 @@ func Test_Client_Agent_TLS(t *testing.T) {
 		return c.SendString("tls")
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	code, body, errs := Get("https://" + ln.Addr().String()).
 		TLSConfig(clientTLSConf).
 		String()
 
-	utils.AssertEqual(t, 0, len(errs))
-	utils.AssertEqual(t, StatusOK, code)
-	utils.AssertEqual(t, "tls", body)
+	require.Equal(t, 0, len(errs))
+	require.Equal(t, StatusOK, code)
+	require.Equal(t, "tls", body)
 }
 
 func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
@@ -1014,7 +1015,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 		return c.SendString("redirect")
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	t.Run("success", func(t *testing.T) {
 		a := Get("http://example.com?foo").
@@ -1024,9 +1025,9 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, 200, code)
-		utils.AssertEqual(t, "redirect", body)
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, 200, code)
+		require.Equal(t, "redirect", body)
+		require.Equal(t, 0, len(errs))
 	})
 
 	t.Run("error", func(t *testing.T) {
@@ -1037,9 +1038,9 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 
 		_, body, errs := a.String()
 
-		utils.AssertEqual(t, "", body)
-		utils.AssertEqual(t, 1, len(errs))
-		utils.AssertEqual(t, "too many redirects detected when doing the request", errs[0].Error())
+		require.Equal(t, "", body)
+		require.Equal(t, 1, len(errs))
+		require.Equal(t, "too many redirects detected when doing the request", errs[0].Error())
 	})
 }
 
@@ -1058,7 +1059,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		return c.SendString(`{"success"`)
 	})
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
@@ -1071,10 +1072,10 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 		code, body, errs := a.Struct(&d)
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, `{"success":true}`, string(body))
-		utils.AssertEqual(t, 0, len(errs))
-		utils.AssertEqual(t, true, d.Success)
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, `{"success":true}`, string(body))
+		require.Equal(t, 0, len(errs))
+		require.True(t, d.Success)
 	})
 
 	t.Run("pre error", func(t *testing.T) {
@@ -1087,10 +1088,10 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		var d data
 		_, body, errs := a.Struct(&d)
 
-		utils.AssertEqual(t, "", string(body))
-		utils.AssertEqual(t, 1, len(errs))
-		utils.AssertEqual(t, "pre errors", errs[0].Error())
-		utils.AssertEqual(t, false, d.Success)
+		require.Equal(t, "", string(body))
+		require.Equal(t, 1, len(errs))
+		require.Equal(t, "pre errors", errs[0].Error())
+		require.False(t, d.Success)
 	})
 
 	t.Run("error", func(t *testing.T) {
@@ -1102,10 +1103,10 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 		code, body, errs := a.JSONDecoder(json.Unmarshal).Struct(&d)
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, `{"success"`, string(body))
-		utils.AssertEqual(t, 1, len(errs))
-		utils.AssertEqual(t, "unexpected end of JSON input", errs[0].Error())
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, `{"success"`, string(body))
+		require.Equal(t, 1, len(errs))
+		require.Equal(t, "unexpected end of JSON input", errs[0].Error())
 	})
 }
 
@@ -1114,12 +1115,12 @@ func Test_Client_Agent_Parse(t *testing.T) {
 
 	a := Get("https://example.com:10443")
 
-	utils.AssertEqual(t, nil, a.Parse())
+	require.Nil(t, a.Parse())
 }
 
 func Test_AddMissingPort_TLS(t *testing.T) {
 	addr := addMissingPort("example.com", true)
-	utils.AssertEqual(t, "example.com:443", addr)
+	require.Equal(t, "example.com:443", addr)
 }
 
 func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), excepted string, count ...int) {
@@ -1131,7 +1132,7 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 
 	app.Get("/", handler)
 
-	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+	go func() { require.Nil(t, app.Listener(ln)) }()
 
 	c := 1
 	if len(count) > 0 {
@@ -1147,9 +1148,9 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 
 		code, body, errs := a.String()
 
-		utils.AssertEqual(t, StatusOK, code)
-		utils.AssertEqual(t, excepted, body)
-		utils.AssertEqual(t, 0, len(errs))
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, excepted, body)
+		require.Equal(t, 0, len(errs))
 	}
 }
 
