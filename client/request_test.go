@@ -1150,7 +1150,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 		_, err := AcquireRequest().
 			AddFile("non-exist-file!").
 			Get("http://example.com")
-		require.Equal(t, "open non-exist-file!: no such file or directory", err.Error())
+		require.Contains(t, err.Error(), "open non-exist-file!")
 	})
 }
 
