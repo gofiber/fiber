@@ -1215,6 +1215,34 @@ func Benchmark_Ctx_IPs(b *testing.B) {
 	utils.AssertEqual(b, []string{"127.0.0.1", "127.0.0.1", "127.0.0.1"}, res)
 }
 
+func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
+	app := New(Config{ProxyHeader: HeaderXForwardedFor})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IP()
+	}
+	utils.AssertEqual(b, "127.0.0.1", res)
+}
+
+func Benchmark_Ctx_IP(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request()
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IP()
+	}
+	utils.AssertEqual(b, "0.0.0.0", res)
+}
+
 // go test -run Test_Ctx_Is
 func Test_Ctx_Is(t *testing.T) {
 	t.Parallel()

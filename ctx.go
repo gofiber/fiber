@@ -662,10 +662,38 @@ func (c *Ctx) IP() string {
 // extractValidIPs will return a slice of strings that represent valid IP addresses
 // in the input string. The order is maintained. The separator is a comma
 func extractValidIPs(input string) (validIPs []string) {
-	unvalidatedIps := strings.Split(input, ",")
-	for _, ip := range unvalidatedIps {
-		if parsedIp := net.ParseIP(strings.TrimSpace(ip)); parsedIp != nil {
-			validIPs = append(validIPs, parsedIp.String())
+
+	// try to gather IPs in the input with minimal allocations to improve performance
+	ips := make([]string, bytes.Count([]byte(input), []byte(","))+1)
+	var commaPos, i, validCount int
+	for {
+		commaPos = bytes.IndexByte([]byte(input), ',')
+		if commaPos != -1 {
+			if net.ParseIP(utils.Trim(input[:commaPos], ' ')) != nil {
+				ips[i] = utils.Trim(input[:commaPos], ' ')
+				validCount++
+			}
+			input, i = input[commaPos+1:], i+1
+		} else {
+			if net.ParseIP(utils.Trim(input, ' ')) != nil {
+				ips[i] = utils.Trim(input, ' ')
+				validCount++
+			}
+			break
+		}
+	}
+
+	// filter out any invalid IP(s) that we found
+	if len(ips) == validCount {
+		validIPs = ips
+	} else {
+		validIPs = make([]string, validCount)
+		var validIndex int
+		for n := range ips {
+			if ips[n] != "" {
+				validIPs[validIndex] = ips[n]
+				validIndex++
+			}
 		}
 	}
 	return
