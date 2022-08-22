@@ -649,7 +649,7 @@ func (c *Ctx) Port() string {
 }
 
 // IP returns the remote IP address of the request.
-// If ProxyHeader is configured, it will parse that header and return the first valid IP address
+// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) IP() string {
 	if c.IsProxyTrusted() && len(c.app.config.ProxyHeader) > 0 {
@@ -659,24 +659,34 @@ func (c *Ctx) IP() string {
 	return c.fasthttp.RemoteIP().String()
 }
 
-// extractValidIPs will return a slice of strings that represent valid IP addresses
-// in the input string. The order is maintained. The separator is a comma
-func extractValidIPs(input string) (validIPs []string) {
+// validateIPIfEnabled will return the input IP when validation is disabled.
+// when validation is enabled, it will return an empty string if the input is not a valid IP.
+func (c *Ctx) validateIPIfEnabled(ip string) string {
+	if c.app.config.EnableIPValidation && net.ParseIP(ip) == nil {
+		return ""
+	}
+	return ip
+}
+
+// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
+// When IP validation is enabled, any invalid IPs will be omitted.
+func (c *Ctx) extractIPsFromHeader(header string) (ipsFound []string) {
+	headerValue := c.Get(header)
 
 	// try to gather IPs in the input with minimal allocations to improve performance
-	ips := make([]string, bytes.Count([]byte(input), []byte(","))+1)
+	ips := make([]string, bytes.Count([]byte(headerValue), []byte(","))+1)
 	var commaPos, i, validCount int
 	for {
-		commaPos = bytes.IndexByte([]byte(input), ',')
+		commaPos = bytes.IndexByte([]byte(headerValue), ',')
 		if commaPos != -1 {
-			if net.ParseIP(utils.Trim(input[:commaPos], ' ')) != nil {
-				ips[i] = utils.Trim(input[:commaPos], ' ')
+			ips[i] = c.validateIPIfEnabled(utils.Trim(headerValue[:commaPos], ' '))
+			if ips[i] != "" {
 				validCount++
 			}
-			input, i = input[commaPos+1:], i+1
+			headerValue, i = headerValue[commaPos+1:], i+1
 		} else {
-			if net.ParseIP(utils.Trim(input, ' ')) != nil {
-				ips[i] = utils.Trim(input, ' ')
+			ips[i] = c.validateIPIfEnabled(utils.Trim(headerValue, ' '))
+			if ips[i] != "" {
 				validCount++
 			}
 			break
@@ -685,13 +695,13 @@ func extractValidIPs(input string) (validIPs []string) {
 
 	// filter out any invalid IP(s) that we found
 	if len(ips) == validCount {
-		validIPs = ips
+		ipsFound = ips
 	} else {
-		validIPs = make([]string, validCount)
+		ipsFound = make([]string, validCount)
 		var validIndex int
 		for n := range ips {
 			if ips[n] != "" {
-				validIPs[validIndex] = ips[n]
+				ipsFound[validIndex] = ips[n]
 				validIndex++
 			}
 		}
@@ -699,27 +709,34 @@ func extractValidIPs(input string) (validIPs []string) {
 	return
 }
 
-// extractIPFromHeader will attempt to pull the real client IP from the given header
-// currently it will return the first valid IP address in header
+// extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
+// currently, it will return the first valid IP address in header.
+// when IP validation is disabled, it will simply return the value of the header without any inspection.
 func (c *Ctx) extractIPFromHeader(header string) string {
-	// extract only valid IPs from the header's value
-	validIps := extractValidIPs(c.Get(header))
+	if c.app.config.EnableIPValidation {
+		// extract all IPs from the header's value
+		ips := c.extractIPsFromHeader(header)
 
-	// since X-Forwarded-For has no RFC, it's really up to the proxy to decide whether to append
-	// or prepend IPs to this list. For example, the AWS ALB will prepend but the F5 BIG-IP will append ;(
-	// for now lets just go with the first value in the list...
-	if len(validIps) > 0 {
-		return validIps[0]
+		// since X-Forwarded-For has no RFC, it's really up to the proxy to decide whether to append
+		// or prepend IPs to this list. For example, the AWS ALB will prepend but the F5 BIG-IP will append ;(
+		// for now lets just go with the first value in the list...
+		if len(ips) > 0 {
+			return ips[0]
+		}
+
+		// return the IP from the stack if we could not find any valid Ips
+		return c.fasthttp.RemoteIP().String()
 	}
 
-	// return the IP from the stack if we could not find any valid Ips
-	return c.fasthttp.RemoteIP().String()
+	// default behaviour if IP validation is not enabled is just to return whatever value is
+	// in the proxy header. Even if it is empty or invalid
+	return c.Get(c.app.config.ProxyHeader)
 }
 
 // IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
-// Only valid IP addresses are returned
+// When IP validation is enabled, only valid IPs are returned.
 func (c *Ctx) IPs() (ips []string) {
-	return extractValidIPs(c.Get(HeaderXForwardedFor))
+	return c.extractIPsFromHeader(HeaderXForwardedFor)
 }
 
 // Is returns the matching content type,
