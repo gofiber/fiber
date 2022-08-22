@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Response_Status(t *testing.T) {
@@ -27,8 +27,8 @@ func Test_Response_Status(t *testing.T) {
 			SetDial(ln).
 			Get("http://example")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "OK", resp.Status())
+		require.NoError(t, err)
+		require.Equal(t, "OK", resp.Status())
 		resp.Close()
 	})
 
@@ -39,8 +39,8 @@ func Test_Response_Status(t *testing.T) {
 			SetDial(ln).
 			Get("http://example/fail")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "Proxy Authentication Required", resp.Status())
+		require.NoError(t, err)
+		require.Equal(t, "Proxy Authentication Required", resp.Status())
 		resp.Close()
 	})
 }
@@ -64,8 +64,8 @@ func Test_Response_Status_Code(t *testing.T) {
 			SetDial(ln).
 			Get("http://example")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, 200, resp.StatusCode())
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.StatusCode())
 		resp.Close()
 	})
 
@@ -76,8 +76,8 @@ func Test_Response_Status_Code(t *testing.T) {
 			SetDial(ln).
 			Get("http://example/fail")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, 407, resp.StatusCode())
+		require.NoError(t, err)
+		require.Equal(t, 407, resp.StatusCode())
 		resp.Close()
 	})
 }
@@ -96,8 +96,8 @@ func Test_Response_Protocol(t *testing.T) {
 			SetDial(ln).
 			Get("http://example")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "HTTP/1.1", resp.Protocol())
+		require.NoError(t, err)
+		require.Equal(t, "HTTP/1.1", resp.Protocol())
 		resp.Close()
 	})
 
@@ -121,8 +121,8 @@ func Test_Response_Header(t *testing.T) {
 		SetDial(ln).
 		Get("http://example.com")
 
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "bar", resp.Header("foo"))
+	require.NoError(t, err)
+	require.Equal(t, "bar", resp.Header("foo"))
 	resp.Close()
 }
 
@@ -143,8 +143,8 @@ func Test_Response_Cookie(t *testing.T) {
 		SetDial(ln).
 		Get("http://example.com")
 
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "bar", string(resp.Cookies()[0].Value()))
+	require.NoError(t, err)
+	require.Equal(t, "bar", string(resp.Cookies()[0].Value()))
 	resp.Close()
 }
 
@@ -169,8 +169,8 @@ func Test_Response_Body(t *testing.T) {
 			SetDial(ln).
 			Get("http://example.com")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("hello world"), resp.Body())
+		require.NoError(t, err)
+		require.Equal(t, []byte("hello world"), resp.Body())
 		resp.Close()
 	})
 
@@ -179,8 +179,8 @@ func Test_Response_Body(t *testing.T) {
 			SetDial(ln).
 			Get("http://example.com")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "hello world", resp.String())
+		require.NoError(t, err)
+		require.Equal(t, "hello world", resp.String())
 		resp.Close()
 	})
 
@@ -193,12 +193,12 @@ func Test_Response_Body(t *testing.T) {
 			SetDial(ln).
 			Get("http://example.com/json")
 
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 
 		tmp := &body{}
 		err = resp.JSON(tmp)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "success", tmp.Status)
+		require.NoError(t, err)
+		require.Equal(t, "success", tmp.Status)
 		resp.Close()
 	})
 
@@ -212,12 +212,12 @@ func Test_Response_Body(t *testing.T) {
 			SetDial(ln).
 			Get("http://example.com/xml")
 
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 
 		tmp := &body{}
 		err = resp.XML(tmp)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "success", tmp.Status)
+		require.NoError(t, err)
+		require.Equal(t, "success", tmp.Status)
 		resp.Close()
 	})
 }

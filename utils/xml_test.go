@@ -70,9 +70,9 @@ func Test_DefaultXMLDecoder(t *testing.T) {
 	)
 
 	err := xmlDecoder(xmlBytes, &ss)
-	AssertEqual(t, err, nil)
-	AssertEqual(t, len(ss.Servers), 2)
-	AssertEqual(t, ss.Version, "1")
-	AssertEqual(t, ss.Servers[0].Name, "fiber one")
-	AssertEqual(t, ss.Servers[1].Name, "fiber two")
+	require.Nil(t, err)
+	require.Equal(t, 2, len(ss.Servers))
+	require.Equal(t, "1", ss.Version)
+	require.Equal(t, "fiber one", ss.Servers[0].Name)
+	require.Equal(t, "fiber two", ss.Servers[1].Name)
 }

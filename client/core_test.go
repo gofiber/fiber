@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -30,7 +30,7 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	go func() {
-		utils.AssertEqual(t, nil, app.Listener(ln))
+		require.Nil(t, app.Listener(ln))
 	}()
 
 	t.Run("normal request", func(t *testing.T) {
@@ -40,9 +40,9 @@ func Test_Exec_Func(t *testing.T) {
 		req.RawRequest.SetRequestURI("http://example.com/normal")
 
 		resp, err := core.execFunc(context.Background(), client, req)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, 200, resp.RawResponse.StatusCode())
-		utils.AssertEqual(t, "example.com", string(resp.RawResponse.Body()))
+		require.NoError(t, err)
+		require.Equal(t, 200, resp.RawResponse.StatusCode())
+		require.Equal(t, "example.com", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("the request return an error", func(t *testing.T) {
@@ -53,9 +53,9 @@ func Test_Exec_Func(t *testing.T) {
 
 		resp, err := core.execFunc(context.Background(), client, req)
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, 500, resp.RawResponse.StatusCode())
-		utils.AssertEqual(t, "the request is error", string(resp.RawResponse.Body()))
+		require.NoError(t, err)
+		require.Equal(t, 500, resp.RawResponse.StatusCode())
+		require.Equal(t, "the request is error", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("the request timeout", func(t *testing.T) {
@@ -70,7 +70,7 @@ func Test_Exec_Func(t *testing.T) {
 
 		_, err := core.execFunc(ctx, client, req)
 
-		utils.AssertEqual(t, ErrTimeoutOrCancel, err)
+		require.Equal(t, ErrTimeoutOrCancel, err)
 	})
 }
 
@@ -94,13 +94,13 @@ func Test_Execute(t *testing.T) {
 	})
 
 	go func() {
-		utils.AssertEqual(t, nil, app.Listener(ln))
+		require.Nil(t, app.Listener(ln))
 	}()
 
 	t.Run("add user request hooks", func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
 		client.AddRequestHook(func(c *Client, r *Request) error {
-			utils.AssertEqual(t, "http://example.com", req.URL())
+			require.Equal(t, "http://example.com", req.URL())
 			return nil
 		})
 		req.SetDial(func(addr string) (net.Conn, error) {
@@ -108,14 +108,14 @@ func Test_Execute(t *testing.T) {
 		}).SetURL("http://example.com")
 
 		resp, err := req.core.execute(context.Background(), client, req)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "Cannot GET /", string(resp.RawResponse.Body()))
+		require.NoError(t, err)
+		require.Equal(t, "Cannot GET /", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("add user response hooks", func(t *testing.T) {
 		client, req := AcquireClient(), AcquireRequest()
 		client.AddResponseHook(func(c *Client, resp *Response, req *Request) error {
-			utils.AssertEqual(t, "http://example.com", req.URL())
+			require.Equal(t, "http://example.com", req.URL())
 			return nil
 		})
 		req.SetDial(func(addr string) (net.Conn, error) {
@@ -123,8 +123,8 @@ func Test_Execute(t *testing.T) {
 		}).SetURL("http://example.com")
 
 		resp, err := req.core.execute(context.Background(), client, req)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "Cannot GET /", string(resp.RawResponse.Body()))
+		require.NoError(t, err)
+		require.Equal(t, "Cannot GET /", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("no timeout", func(t *testing.T) {
@@ -135,8 +135,8 @@ func Test_Execute(t *testing.T) {
 		}).SetURL("http://example.com/hang-up")
 
 		resp, err := req.core.execute(context.Background(), client, req)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "example.com hang up", string(resp.RawResponse.Body()))
+		require.NoError(t, err)
+		require.Equal(t, "example.com hang up", string(resp.RawResponse.Body()))
 	})
 
 	t.Run("client timeout", func(t *testing.T) {
@@ -147,7 +147,7 @@ func Test_Execute(t *testing.T) {
 		}).SetURL("http://example.com/hang-up")
 
 		_, err := req.core.execute(context.Background(), client, req)
-		utils.AssertEqual(t, ErrTimeoutOrCancel, err)
+		require.Equal(t, ErrTimeoutOrCancel, err)
 	})
 
 	t.Run("request timeout", func(t *testing.T) {
@@ -159,7 +159,7 @@ func Test_Execute(t *testing.T) {
 			SetTimeout(300 * time.Millisecond)
 
 		_, err := req.core.execute(context.Background(), client, req)
-		utils.AssertEqual(t, ErrTimeoutOrCancel, err)
+		require.Equal(t, ErrTimeoutOrCancel, err)
 	})
 
 	t.Run("request timeout has higher level", func(t *testing.T) {
@@ -172,7 +172,7 @@ func Test_Execute(t *testing.T) {
 			SetTimeout(3000 * time.Millisecond)
 
 		resp, err := req.core.execute(context.Background(), client, req)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "example.com hang up", string(resp.RawResponse.Body()))
+		require.NoError(t, err)
+		require.Equal(t, "example.com hang up", string(resp.RawResponse.Body()))
 	})
 }

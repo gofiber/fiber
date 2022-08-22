@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -18,7 +18,7 @@ func createHelperServer(t *testing.T) (*fiber.App, func(addr string) (net.Conn, 
 	return app, func(addr string) (net.Conn, error) {
 			return ln.Dial()
 		}, func() {
-			utils.AssertEqual(t, nil, app.Listener(ln))
+			require.Nil(t, app.Listener(ln))
 		}
 }
 
@@ -40,9 +40,9 @@ func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Reques
 
 		resp, err := req.Get("http://example.com")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-		utils.AssertEqual(t, excepted, resp.String())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, excepted, resp.String())
 		resp.Close()
 	}
 }
@@ -65,6 +65,6 @@ func testAgentFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Re
 
 		_, err := req.Get("http://example.com")
 
-		utils.AssertEqual(t, excepted.Error(), err.Error())
+		require.Equal(t, excepted.Error(), err.Error())
 	}
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -59,15 +60,15 @@ func Test_Get(t *testing.T) {
 	})
 
 	go func() {
-		utils.AssertEqual(t, nil, app.Listener(ln))
+		require.Nil(t, app.Listener(ln))
 	}()
 
 	t.Run("global get function", func(t *testing.T) {
 		resp, err := Get("http://example.com", SetDial(func(addr string) (net.Conn, error) {
 			return ln.Dial()
 		}))
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "example.com", utils.UnsafeString(resp.RawResponse.Body()))
+		require.NoError(t, err)
+		require.Equal(t, "example.com", utils.UnsafeString(resp.RawResponse.Body()))
 	})
 }
 
@@ -1194,8 +1195,8 @@ func Test_Client_R(t *testing.T) {
 	client := AcquireClient()
 	req := client.R()
 
-	utils.AssertEqual(t, "Request", reflect.TypeOf(req).Elem().Name())
-	utils.AssertEqual(t, client, req.Client())
+	require.Equal(t, "Request", reflect.TypeOf(req).Elem().Name())
+	require.Equal(t, client, req.Client())
 }
 
 func Test_Client_Add_Hook(t *testing.T) {
@@ -1206,7 +1207,7 @@ func Test_Client_Add_Hook(t *testing.T) {
 			return nil
 		})
 
-		utils.AssertEqual(t, 1, len(client.RequestHook()))
+		require.Equal(t, 1, len(client.RequestHook()))
 
 		client.AddRequestHook(func(c *Client, r *Request) error {
 			return nil
@@ -1214,7 +1215,7 @@ func Test_Client_Add_Hook(t *testing.T) {
 			return nil
 		})
 
-		utils.AssertEqual(t, 3, len(client.RequestHook()))
+		require.Equal(t, 3, len(client.RequestHook()))
 	})
 
 	t.Run("add response hooks", func(t *testing.T) {
@@ -1222,7 +1223,7 @@ func Test_Client_Add_Hook(t *testing.T) {
 			return nil
 		})
 
-		utils.AssertEqual(t, 1, len(client.ResponseHook()))
+		require.Equal(t, 1, len(client.ResponseHook()))
 
 		client.AddResponseHook(func(c *Client, resp *Response, r *Request) error {
 			return nil
@@ -1230,7 +1231,7 @@ func Test_Client_Add_Hook(t *testing.T) {
 			return nil
 		})
 
-		utils.AssertEqual(t, 3, len(client.ResponseHook()))
+		require.Equal(t, 3, len(client.ResponseHook()))
 	})
 }
 
@@ -1242,8 +1243,8 @@ func Test_Client_Marshal(t *testing.T) {
 			})
 		val, err := client.JSONMarshal()(nil)
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("hello"), val)
+		require.NoError(t, err)
+		require.Equal(t, []byte("hello"), val)
 	})
 
 	t.Run("set json unmarshal", func(t *testing.T) {
@@ -1253,7 +1254,7 @@ func Test_Client_Marshal(t *testing.T) {
 			})
 
 		err := client.JSONUnmarshal()(nil, nil)
-		utils.AssertEqual(t, fmt.Errorf("empty json"), err)
+		require.Equal(t, fmt.Errorf("empty json"), err)
 	})
 
 	t.Run("set xml marshal", func(t *testing.T) {
@@ -1263,8 +1264,8 @@ func Test_Client_Marshal(t *testing.T) {
 			})
 		val, err := client.XMLMarshal()(nil)
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, []byte("hello"), val)
+		require.NoError(t, err)
+		require.Equal(t, []byte("hello"), val)
 	})
 
 	t.Run("set xml unmarshal", func(t *testing.T) {
@@ -1274,7 +1275,7 @@ func Test_Client_Marshal(t *testing.T) {
 			})
 
 		err := client.XMLUnmarshal()(nil, nil)
-		utils.AssertEqual(t, fmt.Errorf("empty xml"), err)
+		require.Equal(t, fmt.Errorf("empty xml"), err)
 	})
 }
 
@@ -1283,7 +1284,7 @@ func Test_Client_SetBaseURL(t *testing.T) {
 
 	client := AcquireClient().SetBaseURL("http://example.com")
 
-	utils.AssertEqual(t, "http://example.com", client.BaseURL())
+	require.Equal(t, "http://example.com", client.BaseURL())
 }
 
 func Test_Client_Header(t *testing.T) {

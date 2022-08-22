@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -23,16 +23,16 @@ func Test_Request_Method(t *testing.T) {
 
 	req := AcquireRequest()
 	req.SetMethod("GET")
-	utils.AssertEqual(t, "GET", req.Method())
+	require.Equal(t, "GET", req.Method())
 
 	req.SetMethod("POST")
-	utils.AssertEqual(t, "POST", req.Method())
+	require.Equal(t, "POST", req.Method())
 
 	req.SetMethod("PUT")
-	utils.AssertEqual(t, "PUT", req.Method())
+	require.Equal(t, "PUT", req.Method())
 
 	req.SetMethod("DELETE")
-	utils.AssertEqual(t, "DELETE", req.Method())
+	require.Equal(t, "DELETE", req.Method())
 }
 
 func Test_Request_URL(t *testing.T) {
@@ -41,10 +41,10 @@ func Test_Request_URL(t *testing.T) {
 	req := AcquireRequest()
 
 	req.SetURL("http://example.com/normal")
-	utils.AssertEqual(t, "http://example.com/normal", req.URL())
+	require.Equal(t, "http://example.com/normal", req.URL())
 
 	req.SetURL("https://example.com/normal")
-	utils.AssertEqual(t, "https://example.com/normal", req.URL())
+	require.Equal(t, "https://example.com/normal", req.URL())
 }
 
 func Test_Request_Client(t *testing.T) {
@@ -54,7 +54,7 @@ func Test_Request_Client(t *testing.T) {
 	req := AcquireRequest()
 
 	req.SetClient(client)
-	utils.AssertEqual(t, client, req.Client())
+	require.Equal(t, client, req.Client())
 }
 
 func Test_Request_Context(t *testing.T) {
@@ -64,13 +64,13 @@ func Test_Request_Context(t *testing.T) {
 	ctx := req.Context()
 	key := struct{}{}
 
-	utils.AssertEqual(t, nil, ctx.Value(key))
+	require.Nil(t, ctx.Value(key))
 
 	ctx = context.WithValue(ctx, key, "string")
 	req.SetContext(ctx)
 	ctx = req.Context()
 
-	utils.AssertEqual(t, "string", ctx.Value(key).(string))
+	require.Equal(t, "string", ctx.Value(key).(string))
 }
 
 func Test_Request_Header(t *testing.T) {
@@ -81,9 +81,9 @@ func Test_Request_Header(t *testing.T) {
 		req.AddHeader("foo", "bar").AddHeader("foo", "fiber")
 
 		res := req.Header("foo")
-		utils.AssertEqual(t, 2, len(res))
-		utils.AssertEqual(t, "bar", res[0])
-		utils.AssertEqual(t, "fiber", res[1])
+		require.Equal(t, 2, len(res))
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "fiber", res[1])
 	})
 
 	t.Run("set header", func(t *testing.T) {
@@ -91,8 +91,8 @@ func Test_Request_Header(t *testing.T) {
 		req.AddHeader("foo", "bar").SetHeader("foo", "fiber")
 
 		res := req.Header("foo")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "fiber", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "fiber", res[0])
 	})
 
 	t.Run("add headers", func(t *testing.T) {
@@ -104,14 +104,14 @@ func Test_Request_Header(t *testing.T) {
 			})
 
 		res := req.Header("foo")
-		utils.AssertEqual(t, 3, len(res))
-		utils.AssertEqual(t, "bar", res[0])
-		utils.AssertEqual(t, "buaa", res[1])
-		utils.AssertEqual(t, "fiber", res[2])
+		require.Equal(t, 3, len(res))
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "buaa", res[1])
+		require.Equal(t, "fiber", res[2])
 
 		res = req.Header("bar")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "foo", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "foo", res[0])
 	})
 
 	t.Run("set headers", func(t *testing.T) {
@@ -123,12 +123,12 @@ func Test_Request_Header(t *testing.T) {
 			})
 
 		res := req.Header("foo")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "fiber", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "fiber", res[0])
 
 		res = req.Header("bar")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "foo", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "foo", res[0])
 	})
 }
 
@@ -140,9 +140,9 @@ func Test_Request_QueryParam(t *testing.T) {
 		req.AddParam("foo", "bar").AddParam("foo", "fiber")
 
 		res := req.Param("foo")
-		utils.AssertEqual(t, 2, len(res))
-		utils.AssertEqual(t, "bar", res[0])
-		utils.AssertEqual(t, "fiber", res[1])
+		require.Equal(t, 2, len(res))
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "fiber", res[1])
 	})
 
 	t.Run("set param", func(t *testing.T) {
@@ -150,8 +150,8 @@ func Test_Request_QueryParam(t *testing.T) {
 		req.AddParam("foo", "bar").SetParam("foo", "fiber")
 
 		res := req.Param("foo")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "fiber", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "fiber", res[0])
 	})
 
 	t.Run("add params", func(t *testing.T) {
@@ -163,14 +163,14 @@ func Test_Request_QueryParam(t *testing.T) {
 			})
 
 		res := req.Param("foo")
-		utils.AssertEqual(t, 3, len(res))
-		utils.AssertEqual(t, "bar", res[0])
-		utils.AssertEqual(t, "buaa", res[1])
-		utils.AssertEqual(t, "fiber", res[2])
+		require.Equal(t, 3, len(res))
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "buaa", res[1])
+		require.Equal(t, "fiber", res[2])
 
 		res = req.Param("bar")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "foo", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "foo", res[0])
 	})
 
 	t.Run("set headers", func(t *testing.T) {
@@ -182,12 +182,12 @@ func Test_Request_QueryParam(t *testing.T) {
 			})
 
 		res := req.Param("foo")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "fiber", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "fiber", res[0])
 
 		res = req.Param("bar")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "foo", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "foo", res[0])
 	})
 
 	t.Run("set params with struct", func(t *testing.T) {
@@ -212,28 +212,28 @@ func Test_Request_QueryParam(t *testing.T) {
 			TIntSlice: []int{1, 2},
 		})
 
-		utils.AssertEqual(t, 0, len(p.Param("unexport")))
+		require.Equal(t, 0, len(p.Param("unexport")))
 
-		utils.AssertEqual(t, 1, len(p.Param("TInt")))
-		utils.AssertEqual(t, "5", p.Param("TInt")[0])
+		require.Equal(t, 1, len(p.Param("TInt")))
+		require.Equal(t, "5", p.Param("TInt")[0])
 
-		utils.AssertEqual(t, 1, len(p.Param("TString")))
-		utils.AssertEqual(t, "string", p.Param("TString")[0])
+		require.Equal(t, 1, len(p.Param("TString")))
+		require.Equal(t, "string", p.Param("TString")[0])
 
-		utils.AssertEqual(t, 1, len(p.Param("TFloat")))
-		utils.AssertEqual(t, "3.1", p.Param("TFloat")[0])
+		require.Equal(t, 1, len(p.Param("TFloat")))
+		require.Equal(t, "3.1", p.Param("TFloat")[0])
 
-		utils.AssertEqual(t, 1, len(p.Param("TBool")))
+		require.Equal(t, 1, len(p.Param("TBool")))
 
 		tslice := p.Param("TSlice")
-		utils.AssertEqual(t, 2, len(tslice))
-		utils.AssertEqual(t, "bar", tslice[0])
-		utils.AssertEqual(t, "foo", tslice[1])
+		require.Equal(t, 2, len(tslice))
+		require.Equal(t, "bar", tslice[0])
+		require.Equal(t, "foo", tslice[1])
 
 		tint := p.Param("TSlice")
-		utils.AssertEqual(t, 2, len(tint))
-		utils.AssertEqual(t, "bar", tint[0])
-		utils.AssertEqual(t, "foo", tint[1])
+		require.Equal(t, 2, len(tint))
+		require.Equal(t, "bar", tint[0])
+		require.Equal(t, "foo", tint[1])
 	})
 
 	t.Run("del params", func(t *testing.T) {
@@ -245,10 +245,10 @@ func Test_Request_QueryParam(t *testing.T) {
 			}).DelParams("foo", "bar")
 
 		res := req.Param("foo")
-		utils.AssertEqual(t, 0, len(res))
+		require.Equal(t, 0, len(res))
 
 		res = req.Param("bar")
-		utils.AssertEqual(t, 0, len(res))
+		require.Equal(t, 0, len(res))
 	})
 }
 
@@ -256,20 +256,20 @@ func Test_Request_UA(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest().SetUserAgent("fiber")
-	utils.AssertEqual(t, "fiber", req.UserAgent())
+	require.Equal(t, "fiber", req.UserAgent())
 
 	req.SetUserAgent("foo")
-	utils.AssertEqual(t, "foo", req.UserAgent())
+	require.Equal(t, "foo", req.UserAgent())
 }
 
 func Test_Request_Referer(t *testing.T) {
 	t.Parallel()
 
 	req := AcquireRequest().SetReferer("http://example.com")
-	utils.AssertEqual(t, "http://example.com", req.Referer())
+	require.Equal(t, "http://example.com", req.Referer())
 
 	req.SetReferer("https://example.com")
-	utils.AssertEqual(t, "https://example.com", req.Referer())
+	require.Equal(t, "https://example.com", req.Referer())
 }
 
 func Test_Request_Cookie(t *testing.T) {
@@ -278,10 +278,10 @@ func Test_Request_Cookie(t *testing.T) {
 	t.Run("set cookie", func(t *testing.T) {
 		req := AcquireRequest().
 			SetCookie("foo", "bar")
-		utils.AssertEqual(t, "bar", req.Cookie("foo"))
+		require.Equal(t, "bar", req.Cookie("foo"))
 
 		req.SetCookie("foo", "bar1")
-		utils.AssertEqual(t, "bar1", req.Cookie("foo"))
+		require.Equal(t, "bar1", req.Cookie("foo"))
 	})
 
 	t.Run("set cookies", func(t *testing.T) {
@@ -290,14 +290,14 @@ func Test_Request_Cookie(t *testing.T) {
 				"foo": "bar",
 				"bar": "foo",
 			})
-		utils.AssertEqual(t, "bar", req.Cookie("foo"))
-		utils.AssertEqual(t, "foo", req.Cookie("bar"))
+		require.Equal(t, "bar", req.Cookie("foo"))
+		require.Equal(t, "foo", req.Cookie("bar"))
 
 		req.SetCookies(map[string]string{
 			"foo": "bar1",
 		})
-		utils.AssertEqual(t, "bar1", req.Cookie("foo"))
-		utils.AssertEqual(t, "foo", req.Cookie("bar"))
+		require.Equal(t, "bar1", req.Cookie("foo"))
+		require.Equal(t, "foo", req.Cookie("bar"))
 	})
 
 	t.Run("set cookies with struct", func(t *testing.T) {
@@ -311,8 +311,8 @@ func Test_Request_Cookie(t *testing.T) {
 			CookieString: "foo",
 		})
 
-		utils.AssertEqual(t, "5", req.Cookie("int"))
-		utils.AssertEqual(t, "foo", req.Cookie("string"))
+		require.Equal(t, "5", req.Cookie("int"))
+		require.Equal(t, "foo", req.Cookie("string"))
 	})
 
 	t.Run("del cookies", func(t *testing.T) {
@@ -321,12 +321,12 @@ func Test_Request_Cookie(t *testing.T) {
 				"foo": "bar",
 				"bar": "foo",
 			})
-		utils.AssertEqual(t, "bar", req.Cookie("foo"))
-		utils.AssertEqual(t, "foo", req.Cookie("bar"))
+		require.Equal(t, "bar", req.Cookie("foo"))
+		require.Equal(t, "foo", req.Cookie("bar"))
 
 		req.DelCookies("foo")
-		utils.AssertEqual(t, "", req.Cookie("foo"))
-		utils.AssertEqual(t, "foo", req.Cookie("bar"))
+		require.Equal(t, "", req.Cookie("foo"))
+		require.Equal(t, "foo", req.Cookie("bar"))
 	})
 }
 
@@ -336,10 +336,10 @@ func Test_Request_PathParam(t *testing.T) {
 	t.Run("set path param", func(t *testing.T) {
 		req := AcquireRequest().
 			SetPathParam("foo", "bar")
-		utils.AssertEqual(t, "bar", req.PathParam("foo"))
+		require.Equal(t, "bar", req.PathParam("foo"))
 
 		req.SetPathParam("foo", "bar1")
-		utils.AssertEqual(t, "bar1", req.PathParam("foo"))
+		require.Equal(t, "bar1", req.PathParam("foo"))
 	})
 
 	t.Run("set path params", func(t *testing.T) {
@@ -348,14 +348,14 @@ func Test_Request_PathParam(t *testing.T) {
 				"foo": "bar",
 				"bar": "foo",
 			})
-		utils.AssertEqual(t, "bar", req.PathParam("foo"))
-		utils.AssertEqual(t, "foo", req.PathParam("bar"))
+		require.Equal(t, "bar", req.PathParam("foo"))
+		require.Equal(t, "foo", req.PathParam("bar"))
 
 		req.SetPathParams(map[string]string{
 			"foo": "bar1",
 		})
-		utils.AssertEqual(t, "bar1", req.PathParam("foo"))
-		utils.AssertEqual(t, "foo", req.PathParam("bar"))
+		require.Equal(t, "bar1", req.PathParam("foo"))
+		require.Equal(t, "foo", req.PathParam("bar"))
 	})
 
 	t.Run("set path params with struct", func(t *testing.T) {
@@ -369,8 +369,8 @@ func Test_Request_PathParam(t *testing.T) {
 			CookieString: "foo",
 		})
 
-		utils.AssertEqual(t, "5", req.PathParam("int"))
-		utils.AssertEqual(t, "foo", req.PathParam("string"))
+		require.Equal(t, "5", req.PathParam("int"))
+		require.Equal(t, "foo", req.PathParam("string"))
 	})
 
 	t.Run("del path params", func(t *testing.T) {
@@ -379,12 +379,12 @@ func Test_Request_PathParam(t *testing.T) {
 				"foo": "bar",
 				"bar": "foo",
 			})
-		utils.AssertEqual(t, "bar", req.PathParam("foo"))
-		utils.AssertEqual(t, "foo", req.PathParam("bar"))
+		require.Equal(t, "bar", req.PathParam("foo"))
+		require.Equal(t, "foo", req.PathParam("bar"))
 
 		req.DelPathParams("foo")
-		utils.AssertEqual(t, "", req.PathParam("foo"))
-		utils.AssertEqual(t, "foo", req.PathParam("bar"))
+		require.Equal(t, "", req.PathParam("foo"))
+		require.Equal(t, "foo", req.PathParam("bar"))
 	})
 }
 
@@ -396,9 +396,9 @@ func Test_Request_FormData(t *testing.T) {
 		req.AddFormData("foo", "bar").AddFormData("foo", "fiber")
 
 		res := req.FormData("foo")
-		utils.AssertEqual(t, 2, len(res))
-		utils.AssertEqual(t, "bar", res[0])
-		utils.AssertEqual(t, "fiber", res[1])
+		require.Equal(t, 2, len(res))
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "fiber", res[1])
 	})
 
 	t.Run("set param", func(t *testing.T) {
@@ -406,8 +406,8 @@ func Test_Request_FormData(t *testing.T) {
 		req.AddFormData("foo", "bar").SetFormData("foo", "fiber")
 
 		res := req.FormData("foo")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "fiber", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "fiber", res[0])
 	})
 
 	t.Run("add params", func(t *testing.T) {
@@ -419,14 +419,14 @@ func Test_Request_FormData(t *testing.T) {
 			})
 
 		res := req.FormData("foo")
-		utils.AssertEqual(t, 3, len(res))
-		utils.AssertEqual(t, "bar", res[0])
-		utils.AssertEqual(t, "buaa", res[1])
-		utils.AssertEqual(t, "fiber", res[2])
+		require.Equal(t, 3, len(res))
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "buaa", res[1])
+		require.Equal(t, "fiber", res[2])
 
 		res = req.FormData("bar")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "foo", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "foo", res[0])
 	})
 
 	t.Run("set headers", func(t *testing.T) {
@@ -438,12 +438,12 @@ func Test_Request_FormData(t *testing.T) {
 			})
 
 		res := req.FormData("foo")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "fiber", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "fiber", res[0])
 
 		res = req.FormData("bar")
-		utils.AssertEqual(t, 1, len(res))
-		utils.AssertEqual(t, "foo", res[0])
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "foo", res[0])
 	})
 
 	t.Run("set params with struct", func(t *testing.T) {
@@ -468,28 +468,28 @@ func Test_Request_FormData(t *testing.T) {
 			TIntSlice: []int{1, 2},
 		})
 
-		utils.AssertEqual(t, 0, len(p.FormData("unexport")))
+		require.Equal(t, 0, len(p.FormData("unexport")))
 
-		utils.AssertEqual(t, 1, len(p.FormData("TInt")))
-		utils.AssertEqual(t, "5", p.FormData("TInt")[0])
+		require.Equal(t, 1, len(p.FormData("TInt")))
+		require.Equal(t, "5", p.FormData("TInt")[0])
 
-		utils.AssertEqual(t, 1, len(p.FormData("TString")))
-		utils.AssertEqual(t, "string", p.FormData("TString")[0])
+		require.Equal(t, 1, len(p.FormData("TString")))
+		require.Equal(t, "string", p.FormData("TString")[0])
 
-		utils.AssertEqual(t, 1, len(p.FormData("TFloat")))
-		utils.AssertEqual(t, "3.1", p.FormData("TFloat")[0])
+		require.Equal(t, 1, len(p.FormData("TFloat")))
+		require.Equal(t, "3.1", p.FormData("TFloat")[0])
 
-		utils.AssertEqual(t, 1, len(p.FormData("TBool")))
+		require.Equal(t, 1, len(p.FormData("TBool")))
 
 		tslice := p.FormData("TSlice")
-		utils.AssertEqual(t, 2, len(tslice))
-		utils.AssertEqual(t, "bar", tslice[0])
-		utils.AssertEqual(t, "foo", tslice[1])
+		require.Equal(t, 2, len(tslice))
+		require.Equal(t, "bar", tslice[0])
+		require.Equal(t, "foo", tslice[1])
 
 		tint := p.FormData("TSlice")
-		utils.AssertEqual(t, 2, len(tint))
-		utils.AssertEqual(t, "bar", tint[0])
-		utils.AssertEqual(t, "foo", tint[1])
+		require.Equal(t, 2, len(tint))
+		require.Equal(t, "bar", tint[0])
+		require.Equal(t, "foo", tint[1])
 
 	})
 
@@ -502,10 +502,10 @@ func Test_Request_FormData(t *testing.T) {
 			}).DelFormDatas("foo", "bar")
 
 		res := req.FormData("foo")
-		utils.AssertEqual(t, 0, len(res))
+		require.Equal(t, 0, len(res))
 
 		res = req.FormData("bar")
-		utils.AssertEqual(t, 0, len(res))
+		require.Equal(t, 0, len(res))
 	})
 }
 
@@ -517,28 +517,28 @@ func Test_Request_File(t *testing.T) {
 			AddFile("../.github/index.html").
 			AddFiles(AcquireFile(SetFileName("tmp.txt")))
 
-		utils.AssertEqual(t, "../.github/index.html", req.File("index.html").path)
-		utils.AssertEqual(t, "../.github/index.html", req.FileByPath("../.github/index.html").path)
-		utils.AssertEqual(t, "tmp.txt", req.File("tmp.txt").name)
+		require.Equal(t, "../.github/index.html", req.File("index.html").path)
+		require.Equal(t, "../.github/index.html", req.FileByPath("../.github/index.html").path)
+		require.Equal(t, "tmp.txt", req.File("tmp.txt").name)
 	})
 
 	t.Run("add file by reader", func(t *testing.T) {
 		req := AcquireRequest().
 			AddFileWithReader("tmp.txt", io.NopCloser(strings.NewReader("world")))
 
-		utils.AssertEqual(t, "tmp.txt", req.File("tmp.txt").name)
+		require.Equal(t, "tmp.txt", req.File("tmp.txt").name)
 
 		content, err := io.ReadAll(req.File("tmp.txt").reader)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "world", string(content))
+		require.NoError(t, err)
+		require.Equal(t, "world", string(content))
 	})
 
 	t.Run("add files", func(t *testing.T) {
 		req := AcquireRequest().
 			AddFiles(AcquireFile(SetFileName("tmp.txt")), AcquireFile(SetFileName("foo.txt")))
 
-		utils.AssertEqual(t, "tmp.txt", req.File("tmp.txt").name)
-		utils.AssertEqual(t, "foo.txt", req.File("foo.txt").name)
+		require.Equal(t, "tmp.txt", req.File("tmp.txt").name)
+		require.Equal(t, "foo.txt", req.File("foo.txt").name)
 	})
 }
 
@@ -547,7 +547,7 @@ func Test_Request_Timeout(t *testing.T) {
 
 	req := AcquireRequest().SetTimeout(5 * time.Second)
 
-	utils.AssertEqual(t, 5*time.Second, req.Timeout())
+	require.Equal(t, 5*time.Second, req.Timeout())
 }
 
 func Test_Request_Invalid_URL(t *testing.T) {
@@ -556,8 +556,8 @@ func Test_Request_Invalid_URL(t *testing.T) {
 	resp, err := AcquireRequest().
 		Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
-	utils.AssertEqual(t, ErrURLForamt, err)
-	utils.AssertEqual(t, (*Response)(nil), resp)
+	require.Equal(t, ErrURLForamt, err)
+	require.Equal(t, (*Response)(nil), resp)
 }
 
 func Test_Request_Unsupport_Protocol(t *testing.T) {
@@ -565,8 +565,8 @@ func Test_Request_Unsupport_Protocol(t *testing.T) {
 
 	resp, err := AcquireRequest().
 		Get("ftp://example.com")
-	utils.AssertEqual(t, ErrURLForamt, err)
-	utils.AssertEqual(t, (*Response)(nil), resp)
+	require.Equal(t, ErrURLForamt, err)
+	require.Equal(t, (*Response)(nil), resp)
 }
 
 func Test_Request_Get(t *testing.T) {
@@ -582,9 +582,9 @@ func Test_Request_Get(t *testing.T) {
 		req := AcquireRequest().SetDial(ln)
 
 		resp, err := req.Get("http://example.com")
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-		utils.AssertEqual(t, "example.com", resp.String())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "example.com", resp.String())
 		resp.Close()
 	}
 }
@@ -605,9 +605,9 @@ func Test_Request_Post(t *testing.T) {
 			SetFormData("foo", "bar").
 			Post("http://example.com")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusCreated, resp.StatusCode())
-		utils.AssertEqual(t, "bar", resp.String())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusCreated, resp.StatusCode())
+		require.Equal(t, "bar", resp.String())
 		resp.Close()
 	}
 }
@@ -627,9 +627,9 @@ func Test_Request_Head(t *testing.T) {
 			SetDial(ln).
 			Head("http://example.com")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-		utils.AssertEqual(t, "", resp.String())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "", resp.String())
 		resp.Close()
 	}
 }
@@ -650,9 +650,9 @@ func Test_Request_Put(t *testing.T) {
 			SetFormData("foo", "bar").
 			Put("http://example.com")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-		utils.AssertEqual(t, "bar", resp.String())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "bar", resp.String())
 
 		resp.Close()
 	}
@@ -674,9 +674,9 @@ func Test_Request_Delete(t *testing.T) {
 			SetDial(ln).
 			Delete("http://example.com")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusNoContent, resp.StatusCode())
-		utils.AssertEqual(t, "", resp.String())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusNoContent, resp.StatusCode())
+		require.Equal(t, "", resp.String())
 
 		resp.Close()
 	}
@@ -699,9 +699,9 @@ func Test_Request_Options(t *testing.T) {
 			SetDial(ln).
 			Options("http://example.com")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-		utils.AssertEqual(t, "options", resp.String())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "options", resp.String())
 
 		resp.Close()
 	}
@@ -726,9 +726,9 @@ func Test_Request_Send(t *testing.T) {
 			SetMethod(fiber.MethodPost).
 			Send()
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-		utils.AssertEqual(t, "post", resp.String())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "post", resp.String())
 
 		resp.Close()
 	}
@@ -751,9 +751,9 @@ func Test_Request_Patch(t *testing.T) {
 			SetFormData("foo", "bar").
 			Patch("http://example.com")
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
-		utils.AssertEqual(t, "bar", resp.String())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, "bar", resp.String())
 
 		resp.Close()
 	}
@@ -914,18 +914,18 @@ func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 	t.Helper()
 
 	basename := filepath.Base(filename)
-	utils.AssertEqual(t, fh.Filename, basename)
+	require.Equal(t, fh.Filename, basename)
 
 	b1, err := os.ReadFile(filename)
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	b2 := make([]byte, fh.Size)
 	f, err := fh.Open()
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	defer func() { _ = f.Close() }()
 	_, err = f.Read(b2)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, b1, b2)
+	require.NoError(t, err)
+	require.Equal(t, b1, b2)
 }
 
 func Test_Request_Body_With_Server(t *testing.T) {
@@ -934,7 +934,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Run("json body", func(t *testing.T) {
 		testAgent(t,
 			func(c fiber.Ctx) error {
-				utils.AssertEqual(t, "application/json", string(c.Request().Header.ContentType()))
+				require.Equal(t, "application/json", string(c.Request().Header.ContentType()))
 				return c.SendString(string(c.Request().Body()))
 			},
 			func(agent *Request) {
@@ -949,7 +949,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Run("xml body", func(t *testing.T) {
 		testAgent(t,
 			func(c fiber.Ctx) error {
-				utils.AssertEqual(t, "application/xml", string(c.Request().Header.ContentType()))
+				require.Equal(t, "application/xml", string(c.Request().Header.ContentType()))
 				return c.SendString(string(c.Request().Body()))
 			},
 			func(agent *Request) {
@@ -967,7 +967,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Run("formdata", func(t *testing.T) {
 		testAgent(t,
 			func(c fiber.Ctx) error {
-				utils.AssertEqual(t, fiber.MIMEApplicationForm, string(c.Request().Header.ContentType()))
+				require.Equal(t, fiber.MIMEApplicationForm, string(c.Request().Header.ContentType()))
 				return c.Send([]byte("foo=" + c.FormValue("foo") + "&bar=" + c.FormValue("bar") + "&fiber=" + c.FormValue("fiber")))
 			},
 			func(agent *Request) {
@@ -985,11 +985,11 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		app, ln, start := createHelperServer(t)
 		app.Post("/", func(c fiber.Ctx) error {
-			utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
+			require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
 
 			mf, err := c.MultipartForm()
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, "bar", mf.Value["foo"][0])
+			require.NoError(t, err)
+			require.Equal(t, "bar", mf.Value["foo"][0])
 
 			return c.Send(c.Request().Body())
 		})
@@ -1007,12 +1007,12 @@ func Test_Request_Body_With_Server(t *testing.T) {
 			))
 
 		resp, err := req.Post("http://exmaple.com")
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 
 		form, err := multipart.NewReader(bytes.NewReader(resp.Body()), "myBoundary").ReadForm(1024 * 1024)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "bar", form.Value["foo"][0])
+		require.NoError(t, err)
+		require.Equal(t, "bar", form.Value["foo"][0])
 		resp.Close()
 	})
 
@@ -1021,25 +1021,25 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 		app, ln, start := createHelperServer(t)
 		app.Post("/", func(c fiber.Ctx) error {
-			utils.AssertEqual(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
+			require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(fiber.HeaderContentType))
 
 			fh1, err := c.FormFile("field1")
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, fh1.Filename, "name")
+			require.NoError(t, err)
+			require.Equal(t, fh1.Filename, "name")
 			buf := make([]byte, fh1.Size)
 			f, err := fh1.Open()
-			utils.AssertEqual(t, nil, err)
+			require.NoError(t, err)
 			defer func() { _ = f.Close() }()
 			_, err = f.Read(buf)
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, "form file", string(buf))
+			require.NoError(t, err)
+			require.Equal(t, "form file", string(buf))
 
 			fh2, err := c.FormFile("file2")
-			utils.AssertEqual(t, nil, err)
+			require.NoError(t, err)
 			checkFormFile(t, fh2, "../.github/testdata/index.html")
 
 			fh3, err := c.FormFile("file3")
-			utils.AssertEqual(t, nil, err)
+			require.NoError(t, err)
 			checkFormFile(t, fh3, "../.github/testdata/index.tmpl")
 
 			return c.SendString("multipart form files")
@@ -1062,8 +1062,8 @@ func Test_Request_Body_With_Server(t *testing.T) {
 				SetBoundary("myBoundary")
 
 			resp, err := req.Post("http://example.com")
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, "multipart form files", resp.String())
+			require.NoError(t, err)
+			require.Equal(t, "multipart form files", resp.String())
 
 			resp.Close()
 		}
@@ -1075,7 +1075,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 		app, ln, start := createHelperServer(t)
 		app.Post("/", func(c fiber.Ctx) error {
 			reg := regexp.MustCompile(`multipart/form-data; boundary=[\-\w]{35}`)
-			utils.AssertEqual(t, true, reg.MatchString(c.Get(fiber.HeaderContentType)))
+			require.True(t, reg.MatchString(c.Get(fiber.HeaderContentType)))
 
 			return c.Send(c.Request().Body())
 		})
@@ -1092,8 +1092,8 @@ func Test_Request_Body_With_Server(t *testing.T) {
 			))
 
 		resp, err := req.Post("http://exmaple.com")
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode())
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	})
 
 	t.Run("raw body", func(t *testing.T) {
@@ -1141,7 +1141,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 			SetBoundary("*").
 			AddFileWithReader("t.txt", io.NopCloser(strings.NewReader("world"))).
 			Get("http://example.com")
-		utils.AssertEqual(t, "mime: invalid boundary character", err.Error())
+		require.Equal(t, "mime: invalid boundary character", err.Error())
 	})
 
 	t.Run("open non exist file", func(t *testing.T) {
@@ -1150,7 +1150,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 		_, err := AcquireRequest().
 			AddFile("non-exist-file!").
 			Get("http://example.com")
-		utils.AssertEqual(t, "open non-exist-file!: no such file or directory", err.Error())
+		require.Equal(t, "open non-exist-file!: no such file or directory", err.Error())
 	})
 }
 
@@ -1169,7 +1169,7 @@ func Test_Request_Timeout_With_Server(t *testing.T) {
 		SetTimeout(50 * time.Millisecond).
 		Get("http://example.com")
 
-	utils.AssertEqual(t, ErrTimeoutOrCancel, err)
+	require.Equal(t, ErrTimeoutOrCancel, err)
 }
 
 // // readErrorConn is a struct for testing retryIf
@@ -1494,12 +1494,12 @@ func Test_SetValWithStruct(t *testing.T) {
 			TIntSlice: []int{1, 2},
 		})
 
-		utils.AssertEqual(t, "", string(p.Peek("unexport")))
-		utils.AssertEqual(t, []byte("5"), p.Peek("TInt"))
-		utils.AssertEqual(t, []byte("string"), p.Peek("TString"))
-		utils.AssertEqual(t, []byte("3.1"), p.Peek("TFloat"))
-		utils.AssertEqual(t, "", string(p.Peek("TBool")))
-		utils.AssertEqual(t, true, func() bool {
+		require.Equal(t, "", string(p.Peek("unexport")))
+		require.Equal(t, []byte("5"), p.Peek("TInt"))
+		require.Equal(t, []byte("string"), p.Peek("TString"))
+		require.Equal(t, []byte("3.1"), p.Peek("TFloat"))
+		require.Equal(t, "", string(p.Peek("TBool")))
+		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "foo" {
 					return true
@@ -1507,7 +1507,8 @@ func Test_SetValWithStruct(t *testing.T) {
 			}
 			return false
 		}())
-		utils.AssertEqual(t, true, func() bool {
+
+		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "bar" {
 					return true
@@ -1515,7 +1516,8 @@ func Test_SetValWithStruct(t *testing.T) {
 			}
 			return false
 		}())
-		utils.AssertEqual(t, true, func() bool {
+
+		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("int_slice") {
 				if string(v) == "1" {
 					return true
@@ -1523,7 +1525,8 @@ func Test_SetValWithStruct(t *testing.T) {
 			}
 			return false
 		}())
-		utils.AssertEqual(t, true, func() bool {
+
+		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("int_slice") {
 				if string(v) == "2" {
 					return true
@@ -1531,6 +1534,7 @@ func Test_SetValWithStruct(t *testing.T) {
 			}
 			return false
 		}())
+
 	})
 
 	t.Run("the pointer of a struct should be applied", func(t *testing.T) {
@@ -1547,11 +1551,11 @@ func Test_SetValWithStruct(t *testing.T) {
 			TIntSlice: []int{1, 2},
 		})
 
-		utils.AssertEqual(t, []byte("5"), p.Peek("TInt"))
-		utils.AssertEqual(t, []byte("string"), p.Peek("TString"))
-		utils.AssertEqual(t, []byte("3.1"), p.Peek("TFloat"))
-		utils.AssertEqual(t, "true", string(p.Peek("TBool")))
-		utils.AssertEqual(t, true, func() bool {
+		require.Equal(t, []byte("5"), p.Peek("TInt"))
+		require.Equal(t, []byte("string"), p.Peek("TString"))
+		require.Equal(t, []byte("3.1"), p.Peek("TFloat"))
+		require.Equal(t, "true", string(p.Peek("TBool")))
+		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "foo" {
 					return true
@@ -1559,7 +1563,8 @@ func Test_SetValWithStruct(t *testing.T) {
 			}
 			return false
 		}())
-		utils.AssertEqual(t, true, func() bool {
+
+		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("TSlice") {
 				if string(v) == "bar" {
 					return true
@@ -1567,7 +1572,8 @@ func Test_SetValWithStruct(t *testing.T) {
 			}
 			return false
 		}())
-		utils.AssertEqual(t, true, func() bool {
+
+		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("int_slice") {
 				if string(v) == "1" {
 					return true
@@ -1575,7 +1581,8 @@ func Test_SetValWithStruct(t *testing.T) {
 			}
 			return false
 		}())
-		utils.AssertEqual(t, true, func() bool {
+
+		require.True(t, func() bool {
 			for _, v := range p.PeekMulti("int_slice") {
 				if string(v) == "2" {
 					return true
@@ -1583,6 +1590,7 @@ func Test_SetValWithStruct(t *testing.T) {
 			}
 			return false
 		}())
+
 	})
 
 	t.Run("the zero val should be ignore", func(t *testing.T) {
@@ -1595,11 +1603,11 @@ func Test_SetValWithStruct(t *testing.T) {
 			TFloat:  0.0,
 		})
 
-		utils.AssertEqual(t, "", string(p.Peek("TInt")))
-		utils.AssertEqual(t, "", string(p.Peek("TString")))
-		utils.AssertEqual(t, "", string(p.Peek("TFloat")))
-		utils.AssertEqual(t, 0, len(p.PeekMulti("TSlice")))
-		utils.AssertEqual(t, 0, len(p.PeekMulti("int_slice")))
+		require.Equal(t, "", string(p.Peek("TInt")))
+		require.Equal(t, "", string(p.Peek("TString")))
+		require.Equal(t, "", string(p.Peek("TFloat")))
+		require.Equal(t, 0, len(p.PeekMulti("TSlice")))
+		require.Equal(t, 0, len(p.PeekMulti("int_slice")))
 	})
 
 	t.Run("error type should ignore", func(t *testing.T) {
@@ -1607,6 +1615,6 @@ func Test_SetValWithStruct(t *testing.T) {
 			Args: fasthttp.AcquireArgs(),
 		}
 		SetValWithStruct(p, "param", 5)
-		utils.AssertEqual(t, 0, p.Len())
+		require.Equal(t, 0, p.Len())
 	})
 }
