@@ -741,9 +741,14 @@ func (a *Agent) RetryIf(retryIf RetryIfFunc) *Agent {
 /************************** End Agent Setting **************************/
 
 // Bytes returns the status code, bytes body and errors of url.
+//
+// it's not safe to use Agent after calling [Agent.Bytes]
 func (a *Agent) Bytes() (code int, body []byte, errs []error) {
 	defer a.release()
+	return a.bytes()
+}
 
+func (a *Agent) bytes() (code int, body []byte, errs []error) {
 	if errs = append(errs, a.errs...); len(errs) > 0 {
 		return
 	}
@@ -802,16 +807,22 @@ func printDebugInfo(req *Request, resp *Response, w io.Writer) {
 }
 
 // String returns the status code, string body and errors of url.
+//
+// it's not safe to use Agent after calling [Agent.String]
 func (a *Agent) String() (int, string, []error) {
-	code, body, errs := a.Bytes()
+	defer a.release()
+	code, body, errs := a.bytes()
 
 	return code, utils.UnsafeString(body), errs
 }
 
 // Struct returns the status code, bytes body and errors of url.
 // And bytes body will be unmarshalled to given v.
+//
+// it's not safe to use Agent after calling [Agent.Struct]
 func (a *Agent) Struct(v interface{}) (code int, body []byte, errs []error) {
-	if code, body, errs = a.Bytes(); len(errs) > 0 {
+	defer a.release()
+	if code, body, errs = a.bytes(); len(errs) > 0 {
 		return
 	}
 
@@ -856,8 +867,12 @@ func (a *Agent) reset() {
 }
 
 var (
-	clientPool   sync.Pool
-	agentPool    sync.Pool
+	clientPool sync.Pool
+	agentPool  = sync.Pool{
+		New: func() interface{} {
+			return &Agent{req: &Request{}}
+		},
+	}
 	responsePool sync.Pool
 	argsPool     sync.Pool
 	formFilePool sync.Pool
@@ -895,11 +910,7 @@ func ReleaseClient(c *Client) {
 // no longer needed. This allows Agent recycling, reduces GC pressure
 // and usually improves performance.
 func AcquireAgent() *Agent {
-	v := agentPool.Get()
-	if v == nil {
-		return &Agent{req: &Request{}}
-	}
-	return v.(*Agent)
+	return agentPool.Get().(*Agent)
 }
 
 // ReleaseAgent returns a acquired via AcquireAgent to Agent pool.
