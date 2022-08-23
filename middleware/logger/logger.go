@@ -237,15 +237,10 @@ func New(config ...Config) fiber.Handler {
 			case TagResBody:
 				return buf.Write(c.Response().Body())
 			case TagReqHeaders:
-				out := make(map[string]string, 0)
-				if err := c.Bind().Header(&out); err != nil {
-					return 0, err
-				}
-
 				reqHeaders := make([]string, 0)
-				for k, v := range out {
-					reqHeaders = append(reqHeaders, k+"="+v)
-				}
+				c.Request().Header.VisitAll(func(k, v []byte) {
+					reqHeaders = append(reqHeaders, string(k)+"="+string(v))
+				})
 				return buf.Write([]byte(strings.Join(reqHeaders, "&")))
 			case TagQueryStringParams:
 				return buf.WriteString(c.Request().URI().QueryArgs().String())

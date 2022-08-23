@@ -51,7 +51,6 @@ type DefaultCtx struct {
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
-	bind                *Bind                // Default bind reference
 }
 
 // tlsHandle object
@@ -1319,17 +1318,4 @@ func (c *DefaultCtx) IsFromLocal() bool {
 		ips = append(ips, c.IP())
 	}
 	return c.isLocalHost(ips[0])
-}
-
-// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
-// It gives custom binding support, detailed binding options and more.
-// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
-func (c *DefaultCtx) Bind() *Bind {
-	if c.bind == nil {
-		c.bind = &Bind{
-			ctx:    c,
-			should: true,
-		}
-	}
-	return c.bind
 }

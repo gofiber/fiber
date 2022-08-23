@@ -329,11 +329,6 @@ type Ctx interface {
 	// Reset is a method to reset context fields by given request when to use server handlers.
 	Reset(fctx *fasthttp.RequestCtx)
 
-	// You can bind body, cookie, headers etc. into the map, map slice, struct easily by using Binding method.
-	// It gives custom binding support, detailed binding options and more.
-	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
-	Bind() *Bind
-
 	// ClientHelloInfo return CHI from context
 	ClientHelloInfo() *tls.ClientHelloInfo
 
@@ -438,7 +433,6 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
-	c.bind = nil
 	if c.viewBindMap != nil {
 		dictpool.ReleaseDict(c.viewBindMap)
 	}

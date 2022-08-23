@@ -10,6 +10,8 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net"
@@ -21,9 +23,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"encoding/json"
-	"encoding/xml"
 
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
@@ -116,8 +115,6 @@ type App struct {
 	latestGroup *Group
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
-	// custom binders
-	customBinders []CustomBinder
 	// TLS handler
 	tlsHandler *tlsHandler
 }
@@ -375,12 +372,6 @@ type Config struct {
 	//
 	// Optional. Default: DefaultColors
 	ColorScheme Colors `json:"color_scheme"`
-
-	// If you want to validate header/form/query... automatically when to bind, you can define struct validator.
-	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator.
-	//
-	// Default: nil
-	StructValidator StructValidator
 }
 
 // Static defines configuration options when defining static assets.
@@ -469,13 +460,12 @@ func New(config ...Config) *App {
 		stack:     make([][]*Route, len(intMethod)),
 		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create config
-		config:        Config{},
-		getBytes:      utils.UnsafeBytes,
-		getString:     utils.UnsafeString,
-		appList:       make(map[string]*App),
-		latestRoute:   &Route{},
-		latestGroup:   &Group{},
-		customBinders: []CustomBinder{},
+		config:      Config{},
+		getBytes:    utils.UnsafeBytes,
+		getString:   utils.UnsafeString,
+		appList:     make(map[string]*App),
+		latestRoute: &Route{},
+		latestGroup: &Group{},
 	}
 
 	// Create Ctx pool
@@ -567,12 +557,6 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 // Note: It doesn't allow adding new methods, only customizing exist methods.
 func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
-}
-
-// You can register custom binders to use as Bind().Custom("name").
-// They should be compatible with CustomBinder interface.
-func (app *App) RegisterCustomBinder(binder CustomBinder) {
-	app.customBinders = append(app.customBinders, binder)
 }
 
 // Mount attaches another app instance as a sub-router along a routing path.
