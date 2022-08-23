@@ -476,16 +476,26 @@ func (app *App) addRoute(method string, route *Route) {
 		app.routesRefreshed = true
 	}
 
-	app.mutex.Lock()
 	app.latestRoute = route
-	app.mutex.Unlock()
 }
 
 // buildTree build the prefix tree from the previously registered routes
 func (app *App) buildTree() *App {
+	// Build sub apps
+	for _, sub := range app.subList {
+		stack := sub.stack
+		for m := range stack {
+			for r := range stack[m] {
+				route := app.copyRoute(stack[m][r])
+				app.addRoute(route.Method, app.addPrefixToRoute(sub.path, route))
+			}
+		}
+	}
+
 	if !app.routesRefreshed {
 		return app
 	}
+
 	// loop all the methods and stacks and create the prefix tree
 	for m := range intMethod {
 		tsMap := make(map[string][]*Route)

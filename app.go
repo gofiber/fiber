@@ -896,7 +896,6 @@ func (app *App) init() *App {
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
 func (app *App) mount(prefix string, sub *App) Router {
-	stack := sub.Stack()
 	prefix = strings.TrimRight(prefix, "/")
 	if prefix == "" {
 		prefix = "/"
@@ -913,13 +912,6 @@ func (app *App) mount(prefix string, sub *App) Router {
 	sub.path = app.mountpath + prefix
 	sub.mountpath = prefix
 	sub.subList[app.mountpath+prefix] = sub
-
-	for m := range stack {
-		for r := range stack[m] {
-			route := app.copyRoute(stack[m][r])
-			app.addRoute(route.Method, app.addPrefixToRoute(sub.path, route))
-		}
-	}
 
 	atomic.AddUint32(&app.handlersCount, sub.handlersCount)
 
