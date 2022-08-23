@@ -907,14 +907,12 @@ func (app *App) mount(prefix string, sub *App) Router {
 		sub.path = app.mountpath + prefix
 		sub.mountpath = prefix
 		app.subList[app.mountpath+prefix] = sub
-		app.subList[app.mountpath+prefix].init()
 	}
 
 	sub.parent = app
 	sub.path = app.mountpath + prefix
 	sub.mountpath = prefix
 	sub.subList[app.mountpath+prefix] = sub
-	sub.subList[app.mountpath+prefix].init()
 
 	for m := range stack {
 		for r := range stack[m] {
@@ -940,7 +938,7 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 	)
 
 	for prefix, subApp := range app.subList {
-		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
+		if strings.HasPrefix(ctx.path, prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
 				mountedErrHandler = subApp.config.ErrorHandler
