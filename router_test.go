@@ -217,15 +217,6 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "static", app.getString(body))
 
-	// check group route
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v2/:firstVerb/:customVerb", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
-
-	body, err = io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, "group", app.getString(body))
-
 	// check param route
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/v3/awesome/name:customVerb", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
