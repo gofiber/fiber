@@ -1100,19 +1100,86 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 // go test -run Test_Ctx_IP
 func Test_Ctx_IP(t *testing.T) {
 	t.Parallel()
+
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
+
+	// default behaviour will return the remote IP from the stack
+	utils.AssertEqual(t, "0.0.0.0", c.IP())
+
+	// X-Forwarded-For is set, but it is ignored because proxyHeader is not set
+	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
 	utils.AssertEqual(t, "0.0.0.0", c.IP())
 }
 
 // go test -run Test_Ctx_IP_ProxyHeader
 func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	t.Parallel()
-	app := New(Config{ProxyHeader: "Real-Ip"})
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	utils.AssertEqual(t, "", c.IP())
+
+	// make sure that the same behaviour exists for different proxy header names
+	proxyHeaderNames := []string{"Real-Ip", HeaderXForwardedFor}
+
+	for _, proxyHeaderName := range proxyHeaderNames {
+		app := New(Config{ProxyHeader: proxyHeaderName})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+		c.Request().Header.Set(proxyHeaderName, "0.0.0.1")
+		utils.AssertEqual(t, "0.0.0.1", c.IP())
+
+		// without IP validation we return the full string
+		c.Request().Header.Set(proxyHeaderName, "0.0.0.1, 0.0.0.2")
+		utils.AssertEqual(t, "0.0.0.1, 0.0.0.2", c.IP())
+
+		// without IP validation we return invalid IPs
+		c.Request().Header.Set(proxyHeaderName, "invalid, 0.0.0.2, 0.0.0.3")
+		utils.AssertEqual(t, "invalid, 0.0.0.2, 0.0.0.3", c.IP())
+
+		// when proxy header is enabled but the value is empty, without IP validation we return an empty string
+		c.Request().Header.Set(proxyHeaderName, "")
+		utils.AssertEqual(t, "", c.IP())
+
+		// without IP validation we return an invalid IP
+		c.Request().Header.Set(proxyHeaderName, "not-valid-ip")
+		utils.AssertEqual(t, "not-valid-ip", c.IP())
+
+		app.ReleaseCtx(c)
+	}
+}
+
+// go test -run Test_Ctx_IP_ProxyHeader
+func Test_Ctx_IP_ProxyHeader_With_IP_Validation(t *testing.T) {
+	t.Parallel()
+
+	// make sure that the same behaviour exists for different proxy header names
+	proxyHeaderNames := []string{"Real-Ip", HeaderXForwardedFor}
+
+	for _, proxyHeaderName := range proxyHeaderNames {
+		app := New(Config{EnableIPValidation: true, ProxyHeader: proxyHeaderName})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+		// when proxy header & validation is enabled and the value is a valid IP, we return it
+		c.Request().Header.Set(proxyHeaderName, "0.0.0.1")
+		utils.AssertEqual(t, "0.0.0.1", c.IP())
+
+		// when proxy header & validation is enabled and the value is a list of IPs, we return the first valid IP
+		c.Request().Header.Set(proxyHeaderName, "0.0.0.1, 0.0.0.2")
+		utils.AssertEqual(t, "0.0.0.1", c.IP())
+
+		c.Request().Header.Set(proxyHeaderName, "invalid, 0.0.0.2, 0.0.0.3")
+		utils.AssertEqual(t, "0.0.0.2", c.IP())
+
+		// when proxy header & validation is enabled but the value is empty, we will ignore the header
+		c.Request().Header.Set(proxyHeaderName, "")
+		utils.AssertEqual(t, "0.0.0.0", c.IP())
+
+		// when proxy header & validation is enabled but the value is not an IP, we will ignore the header
+		// and return the IP of the caller
+		c.Request().Header.Set(proxyHeaderName, "not-valid-ip")
+		utils.AssertEqual(t, "0.0.0.0", c.IP())
+
+		app.ReleaseCtx(c)
+	}
 }
 
 // go test -run Test_Ctx_IP_UntrustedProxy
@@ -1141,13 +1208,64 @@ func Test_Ctx_IPs(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
+
+	// normal happy path test case
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.2, 127.0.0.3")
 	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
 
+	// inconsistent space formatting
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1,127.0.0.2  ,127.0.0.3")
 	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
 
+	// invalid IPs are allowed to be returned
+	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 127.0.0.1, 127.0.0.2")
+	utils.AssertEqual(t, []string{"invalid", "127.0.0.1", "127.0.0.2"}, c.IPs())
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.2")
+	utils.AssertEqual(t, []string{"127.0.0.1", "invalid", "127.0.0.2"}, c.IPs())
+
+	// ensure that the ordering of IPs in the header is maintained
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.3, 127.0.0.1, 127.0.0.2")
+	utils.AssertEqual(t, []string{"127.0.0.3", "127.0.0.1", "127.0.0.2"}, c.IPs())
+
+	// empty header
 	c.Request().Header.Set(HeaderXForwardedFor, "")
+	utils.AssertEqual(t, 0, len(c.IPs()))
+
+	// missing header
+	c.Request()
+	utils.AssertEqual(t, 0, len(c.IPs()))
+}
+
+func Test_Ctx_IPs_With_IP_Validation(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableIPValidation: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	// normal happy path test case
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.2, 127.0.0.3")
+	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
+
+	// inconsistent space formatting
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1,127.0.0.2  ,127.0.0.3")
+	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
+
+	// invalid IPs are in the header
+	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 127.0.0.1, 127.0.0.2")
+	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.2"}, c.IPs())
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.2")
+	utils.AssertEqual(t, []string{"127.0.0.1", "127.0.0.2"}, c.IPs())
+
+	// ensure that the ordering of IPs in the header is maintained
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.3, 127.0.0.1, 127.0.0.2")
+	utils.AssertEqual(t, []string{"127.0.0.3", "127.0.0.1", "127.0.0.2"}, c.IPs())
+
+	// empty header
+	c.Request().Header.Set(HeaderXForwardedFor, "")
+	utils.AssertEqual(t, 0, len(c.IPs()))
+
+	// missing header
+	c.Request()
 	utils.AssertEqual(t, 0, len(c.IPs()))
 }
 
@@ -1156,14 +1274,70 @@ func Benchmark_Ctx_IPs(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.1, 127.0.0.1")
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.1")
 	var res []string
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		res = c.IPs()
 	}
-	utils.AssertEqual(b, []string{"127.0.0.1", "127.0.0.1", "127.0.0.1"}, res)
+	utils.AssertEqual(b, []string{"127.0.0.1", "invalid", "127.0.0.1"}, res)
+}
+
+func Benchmark_Ctx_IPs_With_IP_Validation(b *testing.B) {
+	app := New(Config{EnableIPValidation: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.1")
+	var res []string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IPs()
+	}
+	utils.AssertEqual(b, []string{"127.0.0.1", "127.0.0.1"}, res)
+}
+
+func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
+	app := New(Config{ProxyHeader: HeaderXForwardedFor})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IP()
+	}
+	utils.AssertEqual(b, "127.0.0.1", res)
+}
+
+func Benchmark_Ctx_IP_With_ProxyHeader_and_IP_Validation(b *testing.B) {
+	app := New(Config{ProxyHeader: HeaderXForwardedFor, EnableIPValidation: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IP()
+	}
+	utils.AssertEqual(b, "127.0.0.1", res)
+}
+
+func Benchmark_Ctx_IP(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request()
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IP()
+	}
+	utils.AssertEqual(b, "0.0.0.0", res)
 }
 
 // go test -run Test_Ctx_Is
