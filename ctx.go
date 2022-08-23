@@ -1488,7 +1488,7 @@ func (c *Ctx) Subdomains(offset ...int) []string {
 	if len(offset) > 0 {
 		o = offset[0]
 	}
-	subdomains := strings.Split(c.Hostname(), ".")
+	subdomains := strings.Split(c.Host(), ".")
 	l := len(subdomains) - o
 	// Check index to avoid slice bounds out of range panic
 	if l < 0 {
