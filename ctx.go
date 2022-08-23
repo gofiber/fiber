@@ -213,6 +213,25 @@ func (c *DefaultCtx) BaseURL() string {
 	return c.baseURI
 }
 
+func (c *DefaultCtx) Bind() *Bind {
+	return &Bind{ctx: c}
+}
+
+// func (c *DefaultCtx) BindWithValidate(v any) error {
+// 	if err := c.Bind(v); err != nil {
+// 		return err
+// 	}
+//
+// 	return c.EnableValidate(v)
+// }
+
+func (c *DefaultCtx) Validate(v any) error {
+	if c.app.config.Validator == nil {
+		return NilValidatorError{}
+	}
+	return c.app.config.Validator.Validate(v)
+}
+
 // Body contains the raw body submitted in a POST request.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
@@ -243,6 +262,14 @@ func (c *DefaultCtx) Body() []byte {
 	}
 
 	return body
+}
+
+func (c *DefaultCtx) BodyJSON(v any) error {
+	return c.app.config.JSONDecoder(c.Body(), v)
+}
+
+func (c *DefaultCtx) BodyXML(v any) error {
+	return c.app.config.XMLDecoder(c.Body(), v)
 }
 
 // ClearCookie expires a specific cookie by key on the client side.
@@ -836,7 +863,7 @@ func (c *DefaultCtx) Redirect(location string, status ...int) error {
 	return nil
 }
 
-// Add vars to default view var map binding to template engine.
+// BindVars Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
 func (c *DefaultCtx) BindVars(vars Map) error {
 	// init viewBindMap - lazy map

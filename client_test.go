@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,8 +16,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"encoding/json"
 
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/stretchr/testify/require"
@@ -431,7 +430,7 @@ func Test_Client_Agent_BasicAuth(t *testing.T) {
 	handler := func(c Ctx) error {
 		// Get authorization header
 		auth := c.Get(HeaderAuthorization)
-		// Decode the header contents
+		// Req the header contents
 		raw, err := base64.StdEncoding.DecodeString(auth[6:])
 		require.NoError(t, err)
 

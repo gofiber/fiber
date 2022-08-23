@@ -117,6 +117,8 @@ type App struct {
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
 	tlsHandler *tlsHandler
+	// bind decoder cache
+	bindDecoderCache sync.Map
 }
 
 // Config is a struct holding the server settings.
@@ -329,6 +331,17 @@ type Config struct {
 	// Default: xml.Marshal
 	XMLEncoder utils.XMLMarshal `json:"-"`
 
+	// XMLDecoder set by an external client of Fiber it will use the provided implementation of a
+	// XMLUnmarshal
+	//
+	// Allowing for flexibility in using another XML library for encoding
+	// Default: utils.XMLUnmarshal
+	XMLDecoder utils.XMLUnmarshal `json:"-"`
+
+	// App validate. if nil, and context.EnableValidate will always return a error.
+	// Default: nil
+	Validator Validator
+
 	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
 	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
 	//
@@ -513,9 +526,14 @@ func New(config ...Config) *App {
 	if app.config.JSONDecoder == nil {
 		app.config.JSONDecoder = json.Unmarshal
 	}
+
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
 	}
+	if app.config.XMLDecoder == nil {
+		app.config.XMLDecoder = xml.Unmarshal
+	}
+
 	if app.config.Network == "" {
 		app.config.Network = NetworkTCP4
 	}

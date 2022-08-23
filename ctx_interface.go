@@ -42,10 +42,27 @@ type Ctx interface {
 	// BaseURL returns (protocol + host + base path).
 	BaseURL() string
 
+	// Bind unmarshal request data from context add assign to struct fields.
+	// You can bind cookie, headers etc. into basic type, slice, or any customized binders by
+	// implementing [encoding.TextUnmarshaler] or [bind.Unmarshaler].
+	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
+	Bind() *Bind
+
+	// BindWithValidate is an alias for `context.Bind` and `context.EnableValidate`
+	// BindWithValidate(v any) error
+
+	Validate(v any) error
+
 	// Body contains the raw body submitted in a POST request.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	Body() []byte
+
+	// BodyJSON will unmarshal request body with Config.JSONDecoder
+	BodyJSON(v any) error
+
+	// BodyXML will unmarshal request body with Config.XMLDecoder
+	BodyXML(v any) error
 
 	// ClearCookie expires a specific cookie by key on the client side.
 	// If no key is provided it expires all cookies that came with the request.
@@ -227,7 +244,7 @@ type Ctx interface {
 	// If status is not specified, status defaults to 302 Found.
 	Redirect(location string, status ...int) error
 
-	// Add vars to default view var map binding to template engine.
+	// BindVars Add vars to default view var map binding to template engine.
 	// Variables are read by the Render method and may be overwritten.
 	BindVars(vars Map) error
 
