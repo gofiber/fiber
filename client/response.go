@@ -1,6 +1,10 @@
 package client
 
 import (
+	"bytes"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -71,6 +75,53 @@ func (r *Response) JSON(v any) error {
 // XML method will unmarshal body to xml.
 func (r *Response) XML(v any) error {
 	return r.client.xmlUnmarshal(r.Body(), v)
+}
+
+func (r *Response) Save(v any) error {
+	switch p := v.(type) {
+	case string:
+		file := filepath.Clean(p)
+		dir := filepath.Dir(file)
+
+		// create director
+		if _, err := os.Stat(dir); err != nil {
+			if !os.IsNotExist(err) {
+				return err
+			}
+
+			if err = os.MkdirAll(dir, 0755); err != nil {
+				return err
+			}
+		}
+
+		// create file
+		outFile, err := os.Create(file)
+		if err != nil {
+			return err
+		}
+		defer func() { outFile.Close() }()
+
+		_, err = io.Copy(outFile, bytes.NewReader(r.Body()))
+		if err != nil {
+			return err
+		}
+
+		return nil
+	case io.Writer:
+		_, err := io.Copy(p, bytes.NewReader(r.Body()))
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if pc, ok := p.(io.WriteCloser); ok {
+				pc.Close()
+			}
+		}()
+
+		return nil
+	default:
+		return ErrNotSupportSaveMethod
+	}
 }
 
 // Reset clear Response object.

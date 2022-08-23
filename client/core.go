@@ -184,9 +184,10 @@ func newCore() (c *core) {
 }
 
 var (
-	ErrTimeoutOrCancel  = errors.New("timeout or cancel")
-	ErrURLForamt        = errors.New("the url is a mistake")
-	ErrNotSupportSchema = errors.New("the protocol is not support, only http or https")
-	ErrFileNoName       = errors.New("the file should have name")
-	ErrBodyType         = errors.New("the body type should be []byte")
+	ErrTimeoutOrCancel      = errors.New("timeout or cancel")
+	ErrURLForamt            = errors.New("the url is a mistake")
+	ErrNotSupportSchema     = errors.New("the protocol is not support, only http or https")
+	ErrFileNoName           = errors.New("the file should have name")
+	ErrBodyType             = errors.New("the body type should be []byte")
+	ErrNotSupportSaveMethod = errors.New("file path and io.Writer are supported")
 )

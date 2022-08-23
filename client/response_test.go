@@ -1,7 +1,10 @@
 package client
 
 import (
+	"bytes"
 	"encoding/xml"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -219,5 +222,66 @@ func Test_Response_Body(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "success", tmp.Status)
 		resp.Close()
+	})
+}
+
+func Test_Response_Save(t *testing.T) {
+
+	app, ln, start := createHelperServer(t)
+	app.Get("/json", func(c fiber.Ctx) error {
+		return c.SendString("{\"status\":\"success\"}")
+	})
+
+	go start()
+
+	t.Run("file path", func(t *testing.T) {
+		resp, err := AcquireRequest().
+			SetDial(ln).
+			Get("http://example.com/json")
+
+		require.NoError(t, err)
+
+		err = resp.Save("./test/tmp.json")
+		require.NoError(t, err)
+		defer func() {
+			if _, err := os.Stat("./test/tmp.json"); err != nil {
+				return
+			}
+
+			os.RemoveAll("./test")
+		}()
+
+		file, err := os.Open("./test/tmp.json")
+		require.NoError(t, err)
+
+		data, err := io.ReadAll(file)
+		require.NoError(t, err)
+		require.Equal(t, "{\"status\":\"success\"}", string(data))
+		file.Close()
+	})
+
+	t.Run("io.Writer", func(t *testing.T) {
+		resp, err := AcquireRequest().
+			SetDial(ln).
+			Get("http://example.com/json")
+
+		require.NoError(t, err)
+
+		buf := &bytes.Buffer{}
+
+		err = resp.Save(buf)
+		require.NoError(t, err)
+		require.Equal(t, "{\"status\":\"success\"}", buf.String())
+	})
+
+	t.Run("error type", func(t *testing.T) {
+		resp, err := AcquireRequest().
+			SetDial(ln).
+			Get("http://example.com/json")
+
+		require.NoError(t, err)
+
+		err = resp.Save(nil)
+		require.Error(t, err)
 	})
 }
