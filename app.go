@@ -115,7 +115,7 @@ type App struct {
 	latestRoute *Route
 	latestGroup *Group
 	// TLS handler
-	tlsHandler *tlsHandler
+	tlsHandler *TLSHandler
 }
 
 // Config is a struct holding the server settings.
@@ -568,6 +568,14 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	} else {
 		app.config.trustedProxiesMap[ipAddress] = struct{}{}
 	}
+}
+
+// You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.
+func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
+	// Attach the tlsHandler to the config
+	app.mutex.Lock()
+	app.tlsHandler = tlsHandler
+	app.mutex.Unlock()
 }
 
 // Mount attaches another app instance as a sub-router along a routing path.
