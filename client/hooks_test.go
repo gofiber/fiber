@@ -11,46 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_AddMissing_Port(t *testing.T) {
-	type args struct {
-		addr  string
-		isTLS bool
-	}
-	tests := []struct {
-		name string
-		args args
-		want string
-	}{
-		{
-			name: "do anything",
-			args: args{
-				addr: "example.com:1234",
-			},
-			want: "example.com:1234",
-		},
-		{
-			name: "add 80 port",
-			args: args{
-				addr: "example.com",
-			},
-			want: "example.com:80",
-		},
-		{
-			name: "add 443 port",
-			args: args{
-				addr:  "example.com",
-				isTLS: true,
-			},
-			want: "example.com:443",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, addMissingPort(tt.args.addr, tt.args.isTLS))
-		})
-	}
-}
-
 func Test_Rand_String(t *testing.T) {
 	tests := []struct {
 		name string

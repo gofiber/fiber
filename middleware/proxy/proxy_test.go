@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	fiberClient "github.com/gofiber/fiber/v3/client"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/stretchr/testify/require"
@@ -117,11 +118,15 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 
 	go func() { require.Nil(t, app.Listener(ln)) }()
 
-	code, body, errs := fiberClient.Get("https://" + addr + "/tlsbalaner").TLSConfig(clientTLSConf).String()
+	resp, err := fiberClient.AcquireClient().
+		SetTLSConfig(clientTLSConf).
+		R().
+		Get("https://" + addr + "/tlsbalaner")
 
-	require.Equal(t, 0, len(errs))
-	require.Equal(t, fiber.StatusOK, code)
-	require.Equal(t, "tls balancer", body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "tls balancer", resp.String())
+	resp.Close()
 }
 
 // go test -run Test_Proxy_Forward_WithTlsConfig_To_Http
@@ -148,14 +153,16 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 
 	go func() { require.Nil(t, app.Listener(proxyServerLn)) }()
 
-	code, body, errs := fiberClient.Get("https://" + proxyAddr).
-		InsecureSkipVerify().
-		Timeout(5 * time.Second).
-		String()
+	resp, err := fiberClient.AcquireClient().SetTLSConfig(&tls.Config{
+		InsecureSkipVerify: true,
+	}).R().
+		SetTimeout(5 * time.Second).
+		Get("https://" + proxyAddr)
 
-	require.Equal(t, 0, len(errs))
-	require.Equal(t, fiber.StatusOK, code)
-	require.Equal(t, "hello from target", body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "hello from target", resp.String())
+	resp.Close()
 }
 
 // go test -run Test_Proxy_Forward
@@ -206,11 +213,14 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 
 	go func() { require.Nil(t, app.Listener(ln)) }()
 
-	code, body, errs := fiberClient.Get("https://" + addr).TLSConfig(clientTLSConf).String()
+	resp, err := fiberClient.AcquireClient().
+		SetTLSConfig(clientTLSConf).
+		R().
+		Get("https://" + addr)
 
-	require.Equal(t, 0, len(errs))
-	require.Equal(t, fiber.StatusOK, code)
-	require.Equal(t, "tls forward", body)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "tls forward", resp.String())
 }
 
 // go test -run Test_Proxy_Modify_Response

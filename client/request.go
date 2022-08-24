@@ -37,8 +37,6 @@ const (
 )
 
 type Request struct {
-	core *core
-
 	url       string
 	method    string
 	userAgent string
@@ -59,13 +57,15 @@ type Request struct {
 	files    []*File
 	bodyType bodyType
 
+	dial fasthttp.DialFunc
+
 	RawRequest *fasthttp.Request
 }
 
 // Set HostClient dial, this method for unit test,
 // maybe don't use it.
 func (r *Request) SetDial(f fasthttp.DialFunc) *Request {
-	r.core.client.Dial = f
+	r.dial = f
 	return r
 }
 
@@ -484,63 +484,48 @@ func (r *Request) checkClient() {
 
 // Send get request.
 func (r *Request) Get(url string) (*Response, error) {
-	r.SetURL(url).SetMethod(fiber.MethodGet).checkClient()
-
-	return r.core.execute(r.Context(), r.client, r)
+	return r.SetURL(url).SetMethod(fiber.MethodGet).Send()
 }
 
 // Send post request.
 func (r *Request) Post(url string) (*Response, error) {
-	r.SetURL(url).SetMethod(fiber.MethodPost).checkClient()
-
-	return r.core.execute(r.Context(), r.client, r)
+	return r.SetURL(url).SetMethod(fiber.MethodPost).Send()
 }
 
 // Send head request.
 func (r *Request) Head(url string) (*Response, error) {
-	r.SetURL(url).SetMethod(fiber.MethodHead).checkClient()
-
-	return r.core.execute(r.Context(), r.client, r)
+	return r.SetURL(url).SetMethod(fiber.MethodHead).Send()
 }
 
 // Send put request.
 func (r *Request) Put(url string) (*Response, error) {
-	r.SetURL(url).SetMethod(fiber.MethodPut).checkClient()
-
-	return r.core.execute(r.Context(), r.client, r)
+	return r.SetURL(url).SetMethod(fiber.MethodPut).Send()
 }
 
 // Send Delete request.
 func (r *Request) Delete(url string) (*Response, error) {
-	r.SetURL(url).SetMethod(fiber.MethodDelete).checkClient()
-
-	return r.core.execute(r.Context(), r.client, r)
+	return r.SetURL(url).SetMethod(fiber.MethodDelete).Send()
 }
 
 // Send Options reuqest.
 func (r *Request) Options(url string) (*Response, error) {
-	r.SetURL(url).SetMethod(fiber.MethodOptions).checkClient()
-
-	return r.core.execute(r.Context(), r.client, r)
+	return r.SetURL(url).SetMethod(fiber.MethodOptions).Send()
 }
 
 // Send patch request.
 func (r *Request) Patch(url string) (*Response, error) {
-	r.SetURL(url).SetMethod(fiber.MethodPatch).checkClient()
-
-	return r.core.execute(r.Context(), r.client, r)
+	return r.SetURL(url).SetMethod(fiber.MethodPatch).Send()
 }
 
 // Send a request.
 func (r *Request) Send() (*Response, error) {
 	r.checkClient()
 
-	return r.core.execute(r.Context(), r.client, r)
+	return newCore().execute(r.Context(), r.Client(), r)
 }
 
 // Reset clear Request object, used by ReleaseRequest method.
 func (r *Request) Reset() {
-	r.core = nil
 	r.url = ""
 	r.method = fiber.MethodGet
 	r.userAgent = ""
@@ -838,7 +823,6 @@ var requestPool = &sync.Pool{
 func AcquireRequest() *Request {
 	req := requestPool.Get().(*Request)
 	req.boundary = "--FiberFormBoundary" + randString(16)
-	req.core = newCore()
 
 	return req
 }

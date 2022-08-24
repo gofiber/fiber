@@ -1,11 +1,9 @@
 package client
 
 import (
-	"bytes"
 	"io"
 	"math/rand"
 	"mime/multipart"
-	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -18,9 +16,6 @@ import (
 )
 
 var (
-	httpBytes  = []byte("http")
-	httpsBytes = []byte("https")
-
 	protocolCheck = regexp.MustCompile(`^https?://.*$`)
 
 	headerAccept = "Accept"
@@ -35,19 +30,6 @@ var (
 	letterIdxMask = 1<<letterIdxBits - 1 // All 1-bits, as many as letterIdxBits
 	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
 )
-
-// addMissingPort will add the corresponding port number for host.
-func addMissingPort(addr string, isTLS bool) string {
-	n := strings.Index(addr, ":")
-	if n >= 0 {
-		return addr
-	}
-	port := 80
-	if isTLS {
-		port = 443
-	}
-	return net.JoinHostPort(addr, strconv.Itoa(port))
-}
 
 func randString(n int) string {
 	b := make([]byte, n)
@@ -99,16 +81,6 @@ func parserRequestURL(c *Client, req *Request) error {
 
 	// set uri to request and orther related setting
 	req.RawRequest.SetRequestURI(uri)
-	rawUri := req.RawRequest.URI()
-	isTLS, scheme := false, rawUri.Scheme()
-	if bytes.Equal(httpsBytes, scheme) {
-		isTLS = true
-	} else if !bytes.Equal(httpBytes, scheme) {
-		return ErrNotSupportSchema
-	}
-
-	req.core.client.Addr = addMissingPort(string(rawUri.Host()), isTLS)
-	req.core.client.IsTLS = isTLS
 
 	// merge query params
 	hashSplit := strings.Split(splitUrl[1], "#")

@@ -1,13 +1,35 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/valyala/fasthttp"
 )
+
+var (
+	httpBytes  = []byte("http")
+	httpsBytes = []byte("https")
+)
+
+// addMissingPort will add the corresponding port number for host.
+func addMissingPort(addr string, isTLS bool) string {
+	n := strings.Index(addr, ":")
+	if n >= 0 {
+		return addr
+	}
+	port := 80
+	if isTLS {
+		port = 443
+	}
+	return net.JoinHostPort(addr, strconv.Itoa(port))
+}
 
 // RequestHook is a function that receives Agent and Request,
 // it can change the data in Request and Agent.
@@ -24,13 +46,17 @@ type ResponseHook func(*Client, *Response, *Request) error
 // `core` stores middleware and plugin definitions,
 // and defines the execution process
 type core struct {
-	client *fasthttp.HostClient
+	host *fasthttp.HostClient
+
+	client *Client
+	req    *Request
+	ctx    context.Context
 }
 
-func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Response, error) {
+func (c *core) execFunc() (*Response, error) {
 	resp := AcquireResponse()
-	resp.setClient(client)
-	resp.setRequest(req)
+	resp.setClient(c.client)
+	resp.setRequest(c.req)
 
 	// To avoid memory allocation reuse of data structures such as errch.
 	done := int32(0)
@@ -39,10 +65,10 @@ func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 		releaseErrChan(errCh)
 	}()
 
-	req.RawRequest.CopyTo(reqv)
+	c.req.RawRequest.CopyTo(reqv)
 	go func() {
 		respv := fasthttp.AcquireResponse()
-		err := c.client.Do(reqv, respv)
+		err := c.host.Do(reqv, respv)
 		defer func() {
 			fasthttp.ReleaseRequest(reqv)
 			fasthttp.ReleaseResponse(respv)
@@ -66,85 +92,131 @@ func (c *core) execFunc(ctx context.Context, client *Client, req *Request) (*Res
 			return nil, err
 		}
 		return resp, nil
-	case <-ctx.Done():
+	case <-c.ctx.Done():
 		atomic.SwapInt32(&done, 1)
 		ReleaseResponse(resp)
 		return nil, ErrTimeoutOrCancel
 	}
 }
 
+// Exec request hook
+func (c *core) preHooks() error {
+	c.client.mu.Lock()
+	defer c.client.mu.Unlock()
+
+	for _, f := range c.client.userRequestHooks {
+		err := f(c.client, c.req)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, f := range c.client.buildinRequestHooks {
+		err := f(c.client, c.req)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Exec response hooks
+func (c *core) afterHooks(resp *Response) error {
+	c.client.mu.Lock()
+	defer c.client.mu.Unlock()
+	for _, f := range c.client.buildinResposeHooks {
+		err := f(c.client, resp, c.req)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, f := range c.client.userResponseHooks {
+		err := f(c.client, resp, c.req)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// timeout deals with timeout
+func (c *core) timeout() context.CancelFunc {
+	var cancel context.CancelFunc
+
+	if c.req.timeout > 0 {
+		c.ctx, cancel = context.WithTimeout(c.ctx, c.req.timeout)
+	} else {
+		if c.client.timeout > 0 {
+			c.ctx, cancel = context.WithTimeout(c.ctx, c.client.timeout)
+		}
+	}
+
+	return cancel
+}
+
+// dial set dial in host.
+func (c *core) dial() {
+	c.host.Dial = c.req.dial
+}
+
+// tls sets tls config.
+func (c *core) tls() {
+	c.host.TLSConfig = c.client.tlsConfig.Clone()
+}
+
+// TODO now set url with Request uri, need cover with proxy url
+func (c *core) proxy() error {
+	rawUri := c.req.RawRequest.URI()
+	isTLS, scheme := false, rawUri.Scheme()
+	if bytes.Equal(httpsBytes, scheme) {
+		isTLS = true
+	} else if !bytes.Equal(httpBytes, scheme) {
+		return ErrNotSupportSchema
+	}
+
+	c.host.Addr = addMissingPort(string(rawUri.Host()), isTLS)
+	c.host.IsTLS = isTLS
+
+	return nil
+}
+
 // execute will exec each hooks and plugins.
 func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Response, error) {
+	// keep a reference, because pass param is boring
+	c.ctx = ctx
+	c.client = client
+	c.req = req
+
 	// The built-in hooks will be executed only
 	// after the user-defined hooks are executed.
-	err := func() error {
-		client.mu.Lock()
-		defer client.mu.Unlock()
-
-		for _, f := range client.userRequestHooks {
-			err := f(client, req)
-			if err != nil {
-				return err
-			}
-		}
-
-		for _, f := range client.buildinRequestHooks {
-			err := f(client, req)
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}()
+	err := c.preHooks()
 	if err != nil {
 		return nil, err
 	}
 
-	// deal with timeout
-	if req.timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, req.timeout)
-		defer func() {
-			cancel()
-		}()
-	} else {
-		if client.timeout > 0 {
-			var cancel context.CancelFunc
-			ctx, cancel = context.WithTimeout(ctx, client.timeout)
-			defer func() {
-				cancel()
-			}()
-		}
+	cancel := c.timeout()
+	if cancel != nil {
+		defer cancel()
 	}
 
+	c.tls()
+
+	c.dial()
+
+	c.proxy()
+
 	// Do http request
-	resp, err := c.execFunc(ctx, client, req)
+	resp, err := c.execFunc()
 	if err != nil {
 		return nil, err
 	}
 
 	// The built-in hooks will be executed only
 	// before the user-defined hooks are executed.
-	err = func() error {
-		client.mu.Lock()
-		defer client.mu.Unlock()
-		for _, f := range client.buildinResposeHooks {
-			err := f(client, resp, req)
-			if err != nil {
-				return err
-			}
-		}
-
-		for _, f := range client.userResponseHooks {
-			err := f(client, resp, req)
-			if err != nil {
-				return err
-			}
-		}
-
-		return nil
-	}()
+	err = c.afterHooks(resp)
 	if err != nil {
 		resp.Close()
 		return nil, err
@@ -177,7 +249,7 @@ func releaseErrChan(ch chan error) {
 // newCore returns an empty core object.
 func newCore() (c *core) {
 	c = &core{
-		client: &fasthttp.HostClient{},
+		host: &fasthttp.HostClient{},
 	}
 
 	return

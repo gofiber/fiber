@@ -1,9 +1,13 @@
 package client
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"encoding/xml"
+	"io"
 	"net"
+	"os"
 	"sync"
 	"time"
 
@@ -46,6 +50,9 @@ type Client struct {
 	jsonUnmarshal utils.JSONUnmarshal
 	xmlMarshal    utils.XMLMarshal
 	xmlUnmarshal  utils.XMLUnmarshal
+
+	// tls config
+	tlsConfig *tls.Config
 }
 
 // R raise a request from the client.
@@ -116,6 +123,62 @@ func (c *Client) XMLUnmarshal() utils.XMLUnmarshal {
 // Set xml decoder.
 func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 	c.xmlUnmarshal = f
+	return c
+}
+
+// TLSConfig returns tlsConfig in client.
+// If client don't have tlsConfig, this function will init it.
+func (c *Client) TLSConfig() *tls.Config {
+	if c.tlsConfig == nil {
+		c.tlsConfig = &tls.Config{}
+	}
+
+	return c.tlsConfig
+}
+
+// SetTLSConfig sets tlsConfig in client.
+func (c *Client) SetTLSConfig(config *tls.Config) *Client {
+	c.tlsConfig = config
+	return c
+}
+
+// SetCertificates method sets client certificates into client.
+func (c *Client) SetCertificates(certs ...tls.Certificate) *Client {
+	config := c.TLSConfig()
+	config.Certificates = append(config.Certificates, certs...)
+	return c
+}
+
+// SetRootCertificate adds one or more root certificates into client.
+func (c *Client) SetRootCertificate(path string) *Client {
+	file, err := os.Open(path)
+	if err != nil {
+		return c
+	}
+	defer file.Close()
+	pem, err := io.ReadAll(file)
+	if err != nil {
+		return c
+	}
+
+	config := c.TLSConfig()
+	if config.RootCAs == nil {
+		config.RootCAs = x509.NewCertPool()
+	}
+	config.RootCAs.AppendCertsFromPEM(pem)
+
+	return c
+}
+
+// SetRootCertificateFromString method adds one or more root certificates into client.
+func (c *Client) SetRootCertificateFromString(pem string) *Client {
+	config := c.TLSConfig()
+
+	if config.RootCAs == nil {
+		config.RootCAs = x509.NewCertPool()
+	}
+	config.RootCAs.AppendCertsFromPEM([]byte(pem))
+
 	return c
 }
 
@@ -436,7 +499,7 @@ func SetRequestFiles(files ...*File) SetRequestOptionFunc {
 
 func SetDial(f func(addr string) (net.Conn, error)) SetRequestOptionFunc {
 	return func(r *Request) {
-		r.core.client.Dial = f
+		r.dial = f
 	}
 }
 
