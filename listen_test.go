@@ -185,7 +185,7 @@ func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 	require.True(t, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
 	require.True(t, strings.Contains(startupMessage, "Child PIDs"))
 	require.True(t, strings.Contains(startupMessage, "11111, 22222, 33333, 44444, 55555, 60000"))
-	require.True(t, strings.Contains(startupMessage, "Prefork ........ Enabled"))
+	require.True(t, strings.Contains(startupMessage, "Prefork: Enabled"))
 }
 
 func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
@@ -205,7 +205,7 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.
 		app.startupMessage(":3000", false, "")
 	})
 	fmt.Println(startupMessage)
-	require.True(t, strings.Contains(startupMessage, "│        Serveur de vérification des données        │"))
+	require.True(t, strings.Contains(startupMessage, "Serveur de vérification des données"))
 }
 
 func Test_App_print_Route(t *testing.T) {
