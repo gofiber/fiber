@@ -23,6 +23,13 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
+const figletFiberText = `
+    _______ __             
+   / ____(_) /_  ___  _____
+  / /_  / / __ \/ _ \/ ___/
+ / __/ / / /_/ /  __/ /    
+/_/   /_/_.___/\___/_/     `
+
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
 	// Prefork is supported for custom listeners
@@ -381,6 +388,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		out = colorable.NewNonColorable(os.Stdout)
 	}
 
+	_, _ = fmt.Fprintln(out, figletFiberText)
 	_, _ = fmt.Fprintln(out, output)
 }
 
