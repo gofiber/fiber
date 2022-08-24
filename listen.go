@@ -30,6 +30,22 @@ const figletFiberText = `
  / __/ / / /_/ /  __/ /    
 /_/   /_/_.___/\___/_/     `
 
+var (
+	resetColor = "\033[0m"
+	red        = "\033[31m"
+	green      = "\033[32m"
+	blue       = "\033[34m"
+)
+
+func init() {
+	if runtime.GOOS == "windows" {
+		resetColor = ""
+		red = ""
+		green = ""
+		blue = ""
+	}
+}
+
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
 	// Prefork is supported for custom listeners
@@ -226,26 +242,36 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		procs = "1"
 	}
 
-	out := colorable.NewColorableStdout()
+	out := os.Stdout
 	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-		out = colorable.NewNonColorable(os.Stdout)
+		//out = colorable.NewNonColorable(os.Stdout)
 	}
 	_, _ = fmt.Fprintf(out, "%s\n\n", figletFiberText)
 	if app.config.AppName != "" {
-		_, _ = fmt.Fprintf(out, "INFO Application name: %s\n", app.config.AppName)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Application name: %s%s%s\n", green, resetColor, blue, app.config.AppName, resetColor)
 	}
-	_, _ = fmt.Fprintf(out, "INFO Fiber version: v+%s\n", Version)
+	_, _ = fmt.Fprintf(out, "%sINFO%s Fiber version: %sv+%s%s\n", green, resetColor, blue, Version, resetColor)
 
 	if host == "0.0.0.0" {
-		_, _ = fmt.Fprintf(out, "INFO Server started on %s://127.0.0.1:%s (bound on host 0.0.0.0 and port %s)\n", scheme, port, port)
+		_, _ = fmt.Fprintf(out,
+			"%sINFO%s Server started on %s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)\n",
+			green, resetColor, blue, scheme, port, resetColor, port)
 	} else {
-		_, _ = fmt.Fprintf(out, "INFO %s\n", fmt.Sprintf("%s://%s:%s", scheme, host, port))
+		_, _ = fmt.Fprintf(out,
+			"%sINFO%s Server started on %s%s%s\n",
+			green, resetColor, blue, fmt.Sprintf("%s://%s:%s", scheme, host, port), resetColor)
 	}
 
-	_, _ = fmt.Fprintf(out, "INFO Total handlers count: %s\n", strconv.Itoa(int(app.handlersCount)))
-	_, _ = fmt.Fprintf(out, "INFO Prefork: %s\n", isPrefork)
-	_, _ = fmt.Fprintf(out, "INFO PID: %v\n", os.Getpid())
-	_, _ = fmt.Fprintf(out, "INFO Total process count: %s\n", procs)
+	_, _ = fmt.Fprintf(out,
+		"%sINFO%s Total handlers count: %s%s%s\n",
+		green, resetColor, blue, strconv.Itoa(int(app.handlersCount)), resetColor)
+	if isPrefork == "Enabled" {
+		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: %s%s%s\n", green, resetColor, blue, isPrefork, resetColor)
+	} else {
+		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: %s%s%s\n", green, resetColor, red, isPrefork, resetColor)
+	}
+	_, _ = fmt.Fprintf(out, "%sINFO%s PID: %s%v%s\n", green, resetColor, blue, os.Getpid(), resetColor)
+	_, _ = fmt.Fprintf(out, "%sINFO%s Total process count: %s%s%s\n", green, resetColor, blue, procs, resetColor)
 
 	if app.config.Prefork {
 		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
@@ -256,7 +282,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			}
 		}
 
-		_, _ = fmt.Fprintf(out, "INFO Child PIDs: ")
+		_, _ = fmt.Fprintf(out, "%sINFO%s Child PIDs: ", green, resetColor)
 		totalPids := len(pidSlice)
 		rowTotalPidCount := 10
 		for i := 0; i < totalPids; i += rowTotalPidCount {
