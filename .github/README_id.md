@@ -145,7 +145,7 @@ Kami **mendengarkan** para pengguna di [GitHub Issues](https://github.com/gofibe
 
 ## ⚠️ Limitasi
 
-* Karena penggunaan Fiber yang tidak aman, perpustakaan mungkin tidak selalu kompatibel dengan versi Go terbaru. Fiber 2.29.0 telah diuji dengan Go versi 1.14 hingga 1.18.
+* Karena penggunaan Fiber yang tidak aman, perpustakaan mungkin tidak selalu kompatibel dengan versi Go terbaru. Fiber 2.29.0 telah diuji dengan Go versi 1.14 hingga 1.19.
 * Fiber tidak kompatibel dengan antarmuka net/http. Ini berarti kamu tidak akan dapat menggunakan proyek seperti gqlgen, go-swagger, atau lainnya yang merupakan bagian dari ekosistem net/http.
 
 ## 👀 Contoh
