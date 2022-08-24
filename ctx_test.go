@@ -1587,6 +1587,11 @@ func Test_Ctx_Params(t *testing.T) {
 		utils.AssertEqual(t, "", c.Params("optional"))
 		return nil
 	})
+	app.Get("/test5/:id/:Id", func(c *Ctx) error {
+		utils.AssertEqual(t, "first", c.Params("id"))
+		utils.AssertEqual(t, "first", c.Params("Id"))
+		return nil
+	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
@@ -1601,6 +1606,32 @@ func Test_Ctx_Params(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test5/first/second", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
+	t.Parallel()
+	app := New(Config{CaseSensitive: true})
+	app.Get("/test/:User", func(c *Ctx) error {
+		utils.AssertEqual(t, "john", c.Params("User"))
+		utils.AssertEqual(t, "", c.Params("user"))
+		return nil
+	})
+	app.Get("/test2/:id/:Id", func(c *Ctx) error {
+		utils.AssertEqual(t, "first", c.Params("id"))
+		utils.AssertEqual(t, "second", c.Params("Id"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/first/second", nil))
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -3090,16 +3121,39 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 
 // go test -run Test_Ctx_Get_Location_From_Route_name
 func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	app.Get("/user/:name", func(c *Ctx) error {
-		return c.SendString(c.Params("name"))
-	}).Name("User")
+	t.Run("case insensitive", func(t *testing.T) {
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		app.Get("/user/:name", func(c *Ctx) error {
+			return c.SendString(c.Params("name"))
+		}).Name("User")
 
-	location, err := c.GetRouteURL("User", Map{"name": "fiber"})
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "/user/fiber", location)
+		location, err := c.GetRouteURL("User", Map{"name": "fiber"})
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "/user/fiber", location)
+
+		location, err = c.GetRouteURL("User", Map{"Name": "fiber"})
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "/user/fiber", location)
+	})
+	
+	t.Run("case sensitive",func(t *testing.T) {
+		app := New(Config{CaseSensitive: true})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		app.Get("/user/:name", func(c *Ctx) error {
+			return c.SendString(c.Params("name"))
+		}).Name("User")
+
+		location, err := c.GetRouteURL("User", Map{"name": "fiber"})
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "/user/fiber", location)
+
+		location, err = c.GetRouteURL("User", Map{"Name": "fiber"})
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, "/user/", location)
+	})
 }
 
 // go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy

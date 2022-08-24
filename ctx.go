@@ -922,7 +922,7 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 		if len(key) != len(c.route.Params[i]) {
 			continue
 		}
-		if c.route.Params[i] == key {
+		if c.route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(c.route.Params[i], key)) {
 			// in case values are not here
 			if len(c.values) <= i || len(c.values[i]) == 0 {
 				break
@@ -1243,18 +1243,22 @@ func (c *Ctx) Bind(vars Map) error {
 func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
-		for key, val := range params {
-			if segment.IsParam && (key == segment.ParamName || (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))) {
-				_, err := buf.WriteString(utils.ToString(val))
-				if err != nil {
-					return "", err
-				}
-			}
-		}
 		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
 				return "", err
+			}
+			continue
+		}
+
+		for key, val := range params {
+			isSame := key == segment.ParamName || (!c.app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
+			isGreedy := (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))
+			if isSame || isGreedy {
+				_, err := buf.WriteString(utils.ToString(val))
+				if err != nil {
+					return "", err
+				}
 			}
 		}
 	}
