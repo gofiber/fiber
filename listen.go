@@ -133,9 +133,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	}
 
 	// Attach the tlsHandler to the config
-	app.mutex.Lock()
-	app.tlsHandler = tlsHandler
-	app.mutex.Unlock()
+	app.SetTLSHandler(tlsHandler)
 
 	// Start listening
 	return app.server.Serve(ln)
@@ -199,9 +197,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	}
 
 	// Attach the tlsHandler to the config
-	app.mutex.Lock()
-	app.tlsHandler = tlsHandler
-	app.mutex.Unlock()
+	app.SetTLSHandler(tlsHandler)
 
 	// Start listening
 	return app.server.Serve(ln)
