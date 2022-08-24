@@ -206,7 +206,10 @@ func (c *core) execute(ctx context.Context, client *Client, req *Request) (*Resp
 
 	c.dial()
 
-	c.proxy()
+	err = c.proxy()
+	if err != nil {
+		return nil, err
+	}
 
 	// Do http request
 	resp, err := c.execFunc()
