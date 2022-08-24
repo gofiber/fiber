@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -130,7 +131,9 @@ func (c *Client) SetXMLUnmarshal(f utils.XMLUnmarshal) *Client {
 // If client don't have tlsConfig, this function will init it.
 func (c *Client) TLSConfig() *tls.Config {
 	if c.tlsConfig == nil {
-		c.tlsConfig = &tls.Config{}
+		c.tlsConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
 	}
 
 	return c.tlsConfig
@@ -151,11 +154,12 @@ func (c *Client) SetCertificates(certs ...tls.Certificate) *Client {
 
 // SetRootCertificate adds one or more root certificates into client.
 func (c *Client) SetRootCertificate(path string) *Client {
+	path = filepath.Clean(path)
 	file, err := os.Open(path)
 	if err != nil {
 		return c
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	pem, err := io.ReadAll(file)
 	if err != nil {
 		return c

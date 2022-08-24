@@ -99,7 +99,7 @@ func (r *Response) Save(v any) error {
 		if err != nil {
 			return err
 		}
-		defer func() { outFile.Close() }()
+		defer func() { _ = outFile.Close() }()
 
 		_, err = io.Copy(outFile, bytes.NewReader(r.Body()))
 		if err != nil {
@@ -114,7 +114,7 @@ func (r *Response) Save(v any) error {
 		}
 		defer func() {
 			if pc, ok := p.(io.WriteCloser); ok {
-				pc.Close()
+				_ = pc.Close()
 			}
 		}()
 
