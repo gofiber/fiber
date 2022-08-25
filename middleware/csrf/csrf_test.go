@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -295,4 +296,61 @@ func Test_CSRF_ErrorHandler_EmptyToken(t *testing.T) {
 	h(ctx)
 	utils.AssertEqual(t, 419, ctx.Response.StatusCode())
 	utils.AssertEqual(t, "empty CSRF token", string(ctx.Response.Body()))
+}
+
+func Test_CSRF_UnsafeHeaderValue(t *testing.T) { // TODO: add the flow of the bug to a testcase before we start fixing it
+	app := fiber.New()
+
+	app.Use(New())
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 429, resp.StatusCode)
+
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
+	ctx.Request.Header.SetMethod("POST")
+	ctx.Request.Header.Set("X-CSRF-Token", token)
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 429, resp.StatusCode)
+
+	app.ReleaseCtx(ctx)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Middleware_CSRF -benchmem -count=4
+func Benchmark_Middleware_CSRF(b *testing.B) { // TODO: complete benchmark
+	app := fiber.New()
+
+	app.Use(New())
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	// Generate CSRF token
+	ctx.Request.Header.SetMethod("GET")
+	h(ctx)
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
+	ctx.Request.Header.SetMethod("POST")
+	ctx.Request.Header.Set("X-CSRF-Token", token)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 }
