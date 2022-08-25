@@ -80,7 +80,7 @@ const (
 	guidConstraint
 	minLenConstraint
 	maxLenConstraint
-	exactLenConstraint
+	lenConstraint
 	betweenLenConstraint
 	minConstraint
 	maxConstraint
@@ -554,8 +554,8 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 		return minLenConstraint
 	case ConstraintMaxLen, ConstraintMaxLenLower:
 		return maxLenConstraint
-	case ConstraintExactLen, ConstraintExactLenLower:
-		return exactLenConstraint
+	case ConstraintLen:
+		return lenConstraint
 	case ConstraintBetweenLen, ConstraintBetweenLenLower:
 		return betweenLenConstraint
 	case ConstraintMin:
@@ -579,7 +579,7 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	var num int
 
 	// check data exists
-	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, exactLenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
+	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, lenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
 	needTwoData := []TypeConstraint{betweenLenConstraint, rangeConstraint}
 
 	for _, data := range needOneData {
@@ -624,7 +624,7 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		if len(param) > data {
 			return false
 		}
-	case exactLenConstraint:
+	case lenConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 
 		if len(param) != data {

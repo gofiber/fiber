@@ -475,7 +475,7 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/123", params: []string{"123"}, match: true},
 		{url: "/api/v1/12345", params: []string{"12345"}, match: true},
 	})
-	testCase("/api/v1/:param<exactLen(5)>", []testparams{
+	testCase("/api/v1/:param<len(5)>", []testparams{
 		{url: "/api/v1/ent", params: []string{"ent"}, match: false},
 		{url: "/api/v1/123", params: []string{"123"}, match: false},
 		{url: "/api/v1/12345", params: []string{"12345"}, match: true},
@@ -694,7 +694,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v1/123", params: []string{"123"}, match: true},
 		{url: "/api/v1/12345", params: []string{"12345"}, match: true},
 	})
-	benchCase("/api/v1/:param<exactLen(5)>", []testparams{
+	benchCase("/api/v1/:param<len(5)>", []testparams{
 		{url: "/api/v1/ent", params: []string{"ent"}, match: false},
 		{url: "/api/v1/123", params: []string{"123"}, match: false},
 		{url: "/api/v1/12345", params: []string{"12345"}, match: true},
