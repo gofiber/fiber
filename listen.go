@@ -23,28 +23,12 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-const figletFiberText = `
+var figletFiberText = fmt.Sprintf(`
     _______ __             
    / ____(_) /_  ___  _____
   / /_  / / __ \/ _ \/ ___/
  / __/ / / /_/ /  __/ /    
-/_/   /_/_.___/\___/_/     `
-
-var (
-	resetColor = "\033[0m"
-	red        = "\033[31m"
-	green      = "\033[32m"
-	blue       = "\033[34m"
-)
-
-func init() {
-	if runtime.GOOS == "windows" {
-		resetColor = ""
-		red = ""
-		green = ""
-		blue = ""
-	}
-}
+/_/   /_/_.___/\___/_/     v%s`, Version)
 
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
@@ -218,6 +202,14 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		return
 	}
 
+	var resetColor, red, blue, green string
+	if runtime.GOOS != "windows" {
+		resetColor = app.config.ColorScheme.Reset
+		red = app.config.ColorScheme.Red
+		blue = app.config.ColorScheme.Blue
+		green = app.config.ColorScheme.Green
+	}
+
 	host, port := parseAddr(addr)
 	if host == "" {
 		if app.config.Network == NetworkTCP6 {
@@ -244,13 +236,10 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 
 	out := os.Stdout
 	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-		//out = colorable.NewNonColorable(os.Stdout)
+		out = os.Stdout
 	}
-	_, _ = fmt.Fprintf(out, "%s\n\n", figletFiberText)
-	if app.config.AppName != "" {
-		_, _ = fmt.Fprintf(out, "%sINFO%s Application name: %s%s%s\n", green, resetColor, blue, app.config.AppName, resetColor)
-	}
-	_, _ = fmt.Fprintf(out, "%sINFO%s Fiber version: %sv+%s%s\n", green, resetColor, blue, Version, resetColor)
+	_, _ = fmt.Fprintf(out, "%s\n", figletFiberText)
+	_, _ = fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")
 
 	if host == "0.0.0.0" {
 		_, _ = fmt.Fprintf(out,
@@ -262,6 +251,9 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			green, resetColor, blue, fmt.Sprintf("%s://%s:%s", scheme, host, port), resetColor)
 	}
 
+	if app.config.AppName != "" {
+		_, _ = fmt.Fprintf(out, "%sINFO%s Application name: %s%s%s\n", green, resetColor, blue, app.config.AppName, resetColor)
+	}
 	_, _ = fmt.Fprintf(out,
 		"%sINFO%s Total handlers count: %s%s%s\n",
 		green, resetColor, blue, strconv.Itoa(int(app.handlersCount)), resetColor)

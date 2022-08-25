@@ -185,7 +185,7 @@ func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 	require.True(t, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
 	require.True(t, strings.Contains(startupMessage, "Child PIDs"))
 	require.True(t, strings.Contains(startupMessage, "11111, 22222, 33333, 44444, 55555, 60000"))
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("Prefork: %sEnabled%s", blue, resetColor)))
+	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("Prefork: %sEnabled%s", DefaultColors.Blue, DefaultColors.Reset)))
 }
 
 func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
@@ -215,11 +215,10 @@ func Test_App_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustomEnd
 		app.startupMessage("server.com:8081", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5))
 	})
 	fmt.Println(startupMessage)
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%sINFO%s", green, resetColor)))
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", blue, appName, resetColor)))
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", blue, "v+"+Version, resetColor)))
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", blue, "https://server.com:8081", resetColor)))
-	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("Prefork: %sDisabled%s", red, resetColor)))
+	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%sINFO%s", DefaultColors.Green, DefaultColors.Reset)))
+	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", DefaultColors.Blue, appName, DefaultColors.Reset)))
+	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", DefaultColors.Blue, "https://server.com:8081", DefaultColors.Reset)))
+	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("Prefork: %sDisabled%s", DefaultColors.Red, DefaultColors.Reset)))
 }
 
 func Test_App_print_Route(t *testing.T) {
