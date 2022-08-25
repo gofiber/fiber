@@ -7,6 +7,7 @@
 package fiber
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -272,7 +273,15 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 			if start != -1 && end != -1 {
 				constraint := &Constraint{
 					ID:   getParamConstraintType(c[:start]),
-					Data: splitNonEscaped(RemoveEscapeChar(c[start+1:end]), string(parameterConstraintDataSeparatorChars)),
+					Data: splitNonEscaped(c[start+1:end], string(parameterConstraintDataSeparatorChars)),
+				}
+
+				// remove escapes from data
+				if len(constraint.Data) == 1 {
+					constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
+				} else if len(constraint.Data) == 2 {
+					constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
+					constraint.Data[1] = RemoveEscapeChar(constraint.Data[1])
 				}
 
 				// Precompile regex if has regex constraint
@@ -584,6 +593,8 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			return false
 		}
 	}
+
+	fmt.Print(c.Data)
 
 	// check constraints
 	switch c.ID {

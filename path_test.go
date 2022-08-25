@@ -555,6 +555,13 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/25", params: []string{"25"}, match: true},
 		{url: "/api/v1/true", params: []string{"true"}, match: true},
 	})
+	testCase("/api/v1/:param<range(10\\,30,1500)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/87283827683", params: []string{"8728382"}, match: false},
+		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/1200", params: []string{"1200"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
+	})
 }
 
 func Test_Utils_GetTrimmedParam(t *testing.T) {
@@ -766,5 +773,12 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v1/87283827683", params: []string{"87283827683"}, match: true},
 		{url: "/api/v1/25", params: []string{"25"}, match: true},
 		{url: "/api/v1/true", params: []string{"true"}, match: true},
+	})
+	benchCase("/api/v1/:param<range(10\\,30,1500)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/87283827683", params: []string{"8728382"}, match: false},
+		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/1200", params: []string{"1200"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
 	})
 }
