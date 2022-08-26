@@ -202,7 +202,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 
 // Listener serves HTTP requests from the given listener.
 // You should enter custom ListenConfig to customize startup. (prefork, startup message, graceful shutdown...)
-func (app *App) Listener(addr net.Listener, config ...ListenConfig) error {
+func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 	cfg := listenConfigDefault(config...)
 
 	// Graceful shutdown
@@ -215,7 +215,7 @@ func (app *App) Listener(addr net.Listener, config ...ListenConfig) error {
 
 	// Prefork is supported for custom listeners
 	if cfg.EnablePrefork {
-		newAddr, tlsConfig := lnMetadata(cfg.ListenerNetwork, addr)
+		newAddr, tlsConfig := lnMetadata(cfg.ListenerNetwork, ln)
 
 		return app.prefork(newAddr, tlsConfig, cfg)
 	}
@@ -224,7 +224,7 @@ func (app *App) Listener(addr net.Listener, config ...ListenConfig) error {
 	app.startupProcess()
 
 	// Print startup message & routes
-	app.printMessages(cfg, addr)
+	app.printMessages(cfg, ln)
 
 	// Serve
 	if cfg.BeforeServeFunc != nil {
@@ -233,7 +233,7 @@ func (app *App) Listener(addr net.Listener, config ...ListenConfig) error {
 		}
 	}
 
-	return app.server.Serve(addr)
+	return app.server.Serve(ln)
 }
 
 // Create listener function.
