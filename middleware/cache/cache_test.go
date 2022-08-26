@@ -5,6 +5,7 @@ package cache
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math"
 	"net/http"
@@ -126,7 +127,10 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 				rsp, err := app.Test(httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%d", id), nil))
 				utils.AssertEqual(t, nil, err)
 
-				defer rsp.Body.Close()
+				defer func(Body io.ReadCloser) {
+					err := Body.Close()
+					utils.AssertEqual(t, nil, err)
+				}(rsp.Body)
 
 				idFromServ, err := ioutil.ReadAll(rsp.Body)
 				utils.AssertEqual(t, nil, err)

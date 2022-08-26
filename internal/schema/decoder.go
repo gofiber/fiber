@@ -74,19 +74,19 @@ func (d *Decoder) Decode(dst interface{}, src map[string][]string) error {
 	}
 	v = v.Elem()
 	t := v.Type()
-	errors := MultiError{}
+	multiError := MultiError{}
 	for path, values := range src {
 		if parts, err := d.cache.parsePath(path, t); err == nil {
 			if err = d.decode(v, path, parts, values); err != nil {
-				errors[path] = err
+				multiError[path] = err
 			}
 		} else if !d.ignoreUnknownKeys {
-			errors[path] = UnknownKeyError{Key: path}
+			multiError[path] = UnknownKeyError{Key: path}
 		}
 	}
-	errors.merge(d.checkRequired(t, src))
-	if len(errors) > 0 {
-		return errors
+	multiError.merge(d.checkRequired(t, src))
+	if len(multiError) > 0 {
+		return multiError
 	}
 	return nil
 }
