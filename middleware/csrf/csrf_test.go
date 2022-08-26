@@ -261,7 +261,7 @@ func Test_CSRF_From_Custom(t *testing.T) {
 
 	// Invalid CSRF token
 	ctx.Request.Header.SetMethod("POST")
-	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
+	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
 	h(ctx)
 	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
 
@@ -274,7 +274,7 @@ func Test_CSRF_From_Custom(t *testing.T) {
 	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
 	ctx.Request.Header.SetMethod("POST")
-	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
+	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
 	ctx.Request.SetBodyString("_csrf=" + token)
 	h(ctx)
 	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
