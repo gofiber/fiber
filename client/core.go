@@ -170,6 +170,12 @@ func (c *core) tls() {
 // TODO now set url with Request uri, need cover with proxy url
 func (c *core) proxy() error {
 	rawUri := c.req.RawRequest.URI()
+	if c.client.proxyURL != "" {
+		rawUri := fasthttp.AcquireURI()
+		rawUri.Update(c.client.proxyURL)
+		defer fasthttp.ReleaseURI(rawUri)
+	}
+
 	isTLS, scheme := false, rawUri.Scheme()
 	if bytes.Equal(httpsBytes, scheme) {
 		isTLS = true

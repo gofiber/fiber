@@ -7,6 +7,7 @@ import (
 	"encoding/xml"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -54,6 +55,9 @@ type Client struct {
 
 	// tls config
 	tlsConfig *tls.Config
+
+	// proxy
+	proxyURL string
 }
 
 // R raise a request from the client.
@@ -182,6 +186,17 @@ func (c *Client) SetRootCertificateFromString(pem string) *Client {
 		config.RootCAs = x509.NewCertPool()
 	}
 	config.RootCAs.AppendCertsFromPEM([]byte(pem))
+
+	return c
+}
+
+// SetProxyURL sets proxy url in client. It will apply via core to hostclient.
+func (c *Client) SetProxyURL(proxyURL string) *Client {
+	pUrl, err := url.Parse(proxyURL)
+	if err != nil {
+		return c
+	}
+	c.proxyURL = pUrl.String()
 
 	return c
 }
