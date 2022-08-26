@@ -77,13 +77,15 @@ type Config struct {
 	Next func(c *fiber.Ctx) bool
 
 	// KeyLookup is a string in the form of "<source>:<key>" that is used
-	// to extract token from the request.
+	// to create an Extractor that extracts the token from the request.
 	// Possible values:
 	// - "header:<name>"
 	// - "query:<name>"
 	// - "param:<name>"
 	// - "form:<name>"
 	// - "cookie:<name>"
+	//
+	// Ignored if an Extractor is explicitly set.
 	//
 	// Optional. Default: "header:X-CSRF-Token"
 	KeyLookup string
