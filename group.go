@@ -152,6 +152,18 @@ func (grp *Group) Patch(path string, handlers ...Handler) Router {
 	return grp.Add(MethodPatch, path, handlers...)
 }
 
+// Match registers one or more HTTP methods to register a route
+func (grp *Group) Match(methods []string, path string, handlers ...Handler) Router {
+	for _, method := range methods {
+		for _, m := range intMethod {
+			if method == m {
+				_ = grp.Add(method, path, handlers...)
+			}
+		}
+	}
+	return grp
+}
+
 // Add allows you to specify a HTTP method to register a route
 func (grp *Group) Add(method, path string, handlers ...Handler) Router {
 	return grp.app.register(method, getGroupPath(grp.Prefix, path), handlers...)

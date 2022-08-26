@@ -723,6 +723,18 @@ func (app *App) Patch(path string, handlers ...Handler) Router {
 	return app.Add(MethodPatch, path, handlers...)
 }
 
+// Match registers one or more HTTP methods to register a route
+func (app *App) Match(methods []string, path string, handlers ...Handler) Router {
+	for _, method := range methods {
+		for _, m := range intMethod {
+			if method == m {
+				_ = app.Add(method, path, handlers...)
+			}
+		}
+	}
+	return app
+}
+
 // Add allows you to specify a HTTP method to register a route
 func (app *App) Add(method, path string, handlers ...Handler) Router {
 	return app.register(method, path, handlers...)

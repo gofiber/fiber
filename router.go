@@ -30,6 +30,7 @@ type Router interface {
 	Trace(path string, handlers ...Handler) Router
 	Patch(path string, handlers ...Handler) Router
 
+	Match(methods []string, path string, handlers ...Handler) Router
 	Add(method, path string, handlers ...Handler) Router
 	Static(prefix, root string, config ...Static) Router
 	All(path string, handlers ...Handler) Router
