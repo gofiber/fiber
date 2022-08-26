@@ -161,8 +161,8 @@ func (c *Client) SetCertificates(certs ...tls.Certificate) *Client {
 
 // SetRootCertificate adds one or more root certificates into client.
 func (c *Client) SetRootCertificate(path string) *Client {
-	path = filepath.Clean(path)
-	file, err := os.Open(path)
+	cleanPath := filepath.Clean(path)
+	file, err := os.Open(cleanPath)
 	if err != nil {
 		return c
 	}

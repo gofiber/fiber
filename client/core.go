@@ -91,7 +91,7 @@ func (c *core) execFunc() (*Response, error) {
 		var err error
 		respv := fasthttp.AcquireResponse()
 		if cfg != nil {
-			retry.NewExponentialBackoff(*cfg).Retry(func() error {
+			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
 				return c.host.Do(reqv, respv)
 			})
 		} else {
