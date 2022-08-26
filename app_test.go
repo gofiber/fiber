@@ -499,17 +499,20 @@ func Test_App_Order(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c *Ctx) error {
-		c.Write([]byte("1"))
+		_, err := c.Write([]byte("1"))
+		utils.AssertEqual(t, nil, err)
 		return c.Next()
 	})
 
 	app.All("/test", func(c *Ctx) error {
-		c.Write([]byte("2"))
+		_, err := c.Write([]byte("2"))
+		utils.AssertEqual(t, nil, err)
 		return c.Next()
 	})
 
 	app.Use(func(c *Ctx) error {
-		c.Write([]byte("3"))
+		_, err := c.Write([]byte("3"))
+		utils.AssertEqual(t, nil, err)
 		return nil
 	})
 
