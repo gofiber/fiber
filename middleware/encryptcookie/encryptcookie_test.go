@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -36,39 +36,39 @@ func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod("GET")
 	h(ctx)
-	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
-	utils.AssertEqual(t, "value=", string(ctx.Response.Body()))
+	require.Equal(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, "value=", string(ctx.Response.Body()))
 
 	// Test invalid cookie
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod("GET")
 	ctx.Request.Header.SetCookie("test", "Invalid")
 	h(ctx)
-	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
-	utils.AssertEqual(t, "value=", string(ctx.Response.Body()))
+	require.Equal(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, "value=", string(ctx.Response.Body()))
 	ctx.Request.Header.SetCookie("test", "ixQURE2XOyZUs0WAOh2ehjWcP7oZb07JvnhWOsmeNUhPsj4+RyI=")
 	h(ctx)
-	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
-	utils.AssertEqual(t, "value=", string(ctx.Response.Body()))
+	require.Equal(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, "value=", string(ctx.Response.Body()))
 
 	// Test valid cookie
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod("POST")
 	h(ctx)
-	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, 200, ctx.Response.StatusCode())
 
 	encryptedCookie := fasthttp.Cookie{}
 	encryptedCookie.SetKey("test")
-	utils.AssertEqual(t, true, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
+	require.True(t, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
 	decryptedCookieValue, _ := DecryptCookie(string(encryptedCookie.Value()), testKey)
-	utils.AssertEqual(t, "SomeThing", decryptedCookieValue)
+	require.Equal(t, "SomeThing", decryptedCookieValue)
 
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod("GET")
 	ctx.Request.Header.SetCookie("test", string(encryptedCookie.Value()))
 	h(ctx)
-	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
-	utils.AssertEqual(t, "value=SomeThing", string(ctx.Response.Body()))
+	require.Equal(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, "value=SomeThing", string(ctx.Response.Body()))
 }
 
 func Test_Encrypt_Cookie_Next(t *testing.T) {
@@ -90,8 +90,8 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "SomeThing", resp.Cookies()[0].Value)
+	require.NoError(t, err)
+	require.Equal(t, "SomeThing", resp.Cookies()[0].Value)
 }
 
 func Test_Encrypt_Cookie_Except(t *testing.T) {
@@ -122,18 +122,18 @@ func Test_Encrypt_Cookie_Except(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod("GET")
 	h(ctx)
-	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, 200, ctx.Response.StatusCode())
 
 	rawCookie := fasthttp.Cookie{}
 	rawCookie.SetKey("test1")
-	utils.AssertEqual(t, true, ctx.Response.Header.Cookie(&rawCookie), "Get cookie value")
-	utils.AssertEqual(t, "SomeThing", string(rawCookie.Value()))
+	require.True(t, ctx.Response.Header.Cookie(&rawCookie), "Get cookie value")
+	require.Equal(t, "SomeThing", string(rawCookie.Value()))
 
 	encryptedCookie := fasthttp.Cookie{}
 	encryptedCookie.SetKey("test2")
-	utils.AssertEqual(t, true, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
+	require.True(t, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
 	decryptedCookieValue, _ := DecryptCookie(string(encryptedCookie.Value()), testKey)
-	utils.AssertEqual(t, "SomeThing", decryptedCookieValue)
+	require.Equal(t, "SomeThing", decryptedCookieValue)
 }
 
 func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
@@ -167,18 +167,18 @@ func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod("POST")
 	h(ctx)
-	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, 200, ctx.Response.StatusCode())
 
 	encryptedCookie := fasthttp.Cookie{}
 	encryptedCookie.SetKey("test")
-	utils.AssertEqual(t, true, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
+	require.True(t, ctx.Response.Header.Cookie(&encryptedCookie), "Get cookie value")
 	decodedBytes, _ := base64.StdEncoding.DecodeString(string(encryptedCookie.Value()))
-	utils.AssertEqual(t, "SomeThing", string(decodedBytes))
+	require.Equal(t, "SomeThing", string(decodedBytes))
 
 	ctx = &fasthttp.RequestCtx{}
 	ctx.Request.Header.SetMethod("GET")
 	ctx.Request.Header.SetCookie("test", string(encryptedCookie.Value()))
 	h(ctx)
-	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
-	utils.AssertEqual(t, "value=SomeThing", string(ctx.Response.Body()))
+	require.Equal(t, 200, ctx.Response.StatusCode())
+	require.Equal(t, "value=SomeThing", string(ctx.Response.Body()))
 }

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -20,12 +20,12 @@ func Test_Redirect_To(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Redirect().To("http://default.com")
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "http://default.com", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "http://default.com", string(c.Response().Header.Peek(HeaderLocation)))
 
 	c.Redirect().Status(301).To("http://example.com")
-	utils.AssertEqual(t, 301, c.Response().StatusCode())
-	utils.AssertEqual(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, 301, c.Response().StatusCode())
+	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Redirect_Route_WithParams
@@ -42,8 +42,8 @@ func Test_Redirect_Route_WithParams(t *testing.T) {
 			"name": "fiber",
 		},
 	})
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Redirect_Route_WithParams_WithQueries
@@ -61,12 +61,12 @@ func Test_Redirect_Route_WithParams_WithQueries(t *testing.T) {
 		},
 		Queries: map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
 	})
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
+	require.Equal(t, 302, c.Response().StatusCode())
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
-	utils.AssertEqual(t, nil, err, "url.Parse(location)")
-	utils.AssertEqual(t, "/user/fiber", location.Path)
-	utils.AssertEqual(t, url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}}, location.Query())
+	require.NoError(t, err, "url.Parse(location)")
+	require.Equal(t, "/user/fiber", location.Path)
+	require.Equal(t, url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}}, location.Query())
 }
 
 // go test -run Test_Redirect_Route_WithOptionalParams
@@ -83,8 +83,8 @@ func Test_Redirect_Route_WithOptionalParams(t *testing.T) {
 			"name": "fiber",
 		},
 	})
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Redirect_Route_WithOptionalParamsWithoutValue
@@ -97,8 +97,8 @@ func Test_Redirect_Route_WithOptionalParamsWithoutValue(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Redirect().Route("user")
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Redirect_Route_WithGreedyParameters
@@ -115,8 +115,8 @@ func Test_Redirect_Route_WithGreedyParameters(t *testing.T) {
 			"+": "test/routes",
 		},
 	})
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Redirect_Back
@@ -129,8 +129,8 @@ func Test_Redirect_Back(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Redirect().Back("/")
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Redirect_Back_WithReferer
@@ -147,9 +147,9 @@ func Test_Redirect_Back_WithReferer(t *testing.T) {
 
 	c.Request().Header.Set(HeaderReferer, "/back")
 	c.Redirect().Back("/")
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/back", c.Get(HeaderReferer))
-	utils.AssertEqual(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "/back", c.Get(HeaderReferer))
+	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -run Test_Redirect_Route_WithFlashMessages
@@ -165,14 +165,14 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 
 	c.Redirect().With("success", "1").With("message", "test").Route("user")
 
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
 	equal := string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=success:1,k:message:test; path=/; SameSite=Lax" || string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=message:test,k:success:1; path=/; SameSite=Lax"
-	utils.AssertEqual(t, true, equal)
+	require.True(t, equal)
 
 	c.Redirect().setFlash()
-	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	require.Equal(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -run Test_Redirect_Route_WithOldInput
@@ -189,18 +189,18 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	c.Request().URI().SetQueryString("id=1&name=tom")
 	c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
 
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(t, 302, c.Response().StatusCode())
+	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash="))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "success:1"))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "message:test"))
+	require.True(t, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "fiber_flash="))
+	require.True(t, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "success:1"))
+	require.True(t, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "message:test"))
 
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "old_input_data_id:1"))
-	utils.AssertEqual(t, true, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "old_input_data_name:tom"))
+	require.True(t, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "old_input_data_id:1"))
+	require.True(t, strings.Contains(string(c.Response().Header.Peek(HeaderSetCookie)), "old_input_data_name:tom"))
 
 	c.Redirect().setFlash()
-	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	require.Equal(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -run Test_Redirect_setFlash
@@ -218,15 +218,15 @@ func Test_Redirect_setFlash(t *testing.T) {
 
 	c.Redirect().setFlash()
 
-	utils.AssertEqual(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	require.Equal(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 
-	utils.AssertEqual(t, "1", c.Redirect().Message("success"))
-	utils.AssertEqual(t, "test", c.Redirect().Message("message"))
-	utils.AssertEqual(t, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
+	require.Equal(t, "1", c.Redirect().Message("success"))
+	require.Equal(t, "test", c.Redirect().Message("message"))
+	require.Equal(t, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
 
-	utils.AssertEqual(t, "1", c.Redirect().OldInput("id"))
-	utils.AssertEqual(t, "tom", c.Redirect().OldInput("name"))
-	utils.AssertEqual(t, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
+	require.Equal(t, "1", c.Redirect().OldInput("id"))
+	require.Equal(t, "tom", c.Redirect().OldInput("name"))
+	require.Equal(t, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route -benchmem -count=4
@@ -249,8 +249,8 @@ func Benchmark_Redirect_Route(b *testing.B) {
 		})
 	}
 
-	utils.AssertEqual(b, 302, c.Response().StatusCode())
-	utils.AssertEqual(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(b, 302, c.Response().StatusCode())
+	require.Equal(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route_WithQueries -benchmem -count=4
@@ -274,12 +274,12 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 		})
 	}
 
-	utils.AssertEqual(b, 302, c.Response().StatusCode())
+	require.Equal(b, 302, c.Response().StatusCode())
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
-	utils.AssertEqual(b, nil, err, "url.Parse(location)")
-	utils.AssertEqual(b, "/user/fiber", location.Path)
-	utils.AssertEqual(b, url.Values{"a": []string{"a"}, "b": []string{"b"}}, location.Query())
+	require.NoError(b, err, "url.Parse(location)")
+	require.Equal(b, "/user/fiber", location.Path)
+	require.Equal(b, url.Values{"a": []string{"a"}, "b": []string{"b"}}, location.Query())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route_WithFlashMessages -benchmem -count=4
@@ -298,14 +298,14 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 		c.Redirect().With("success", "1").With("message", "test").Route("user")
 	}
 
-	utils.AssertEqual(b, 302, c.Response().StatusCode())
-	utils.AssertEqual(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
+	require.Equal(b, 302, c.Response().StatusCode())
+	require.Equal(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
 	equal := string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=success:1,k:message:test; path=/; SameSite=Lax" || string(c.Response().Header.Peek(HeaderSetCookie)) == "fiber_flash=message:test,k:success:1; path=/; SameSite=Lax"
-	utils.AssertEqual(b, true, equal)
+	require.True(b, equal)
 
 	c.Redirect().setFlash()
-	utils.AssertEqual(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route_WithFlashMessages -benchmem -count=4
@@ -326,13 +326,13 @@ func Benchmark_Redirect_setFlash(b *testing.B) {
 		c.Redirect().setFlash()
 	}
 
-	utils.AssertEqual(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
+	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", string(c.Response().Header.Peek(HeaderSetCookie)))
 
-	utils.AssertEqual(b, "1", c.Redirect().Message("success"))
-	utils.AssertEqual(b, "test", c.Redirect().Message("message"))
-	utils.AssertEqual(b, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
+	require.Equal(b, "1", c.Redirect().Message("success"))
+	require.Equal(b, "test", c.Redirect().Message("message"))
+	require.Equal(b, map[string]string{"success": "1", "message": "test"}, c.Redirect().Messages())
 
-	utils.AssertEqual(b, "1", c.Redirect().OldInput("id"))
-	utils.AssertEqual(b, "tom", c.Redirect().OldInput("name"))
-	utils.AssertEqual(b, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
+	require.Equal(b, "1", c.Redirect().OldInput("id"))
+	require.Equal(b, "tom", c.Redirect().OldInput("name"))
+	require.Equal(b, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
 }

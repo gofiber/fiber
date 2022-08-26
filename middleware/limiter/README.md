@@ -30,8 +30,8 @@ First import the middleware from Fiber,
 
 ```go
 import (
-  "github.com/gofiber/fiber/v2"
-  "github.com/gofiber/fiber/v2/middleware/limiter"
+  "github.com/gofiber/fiber/v3"
+  "github.com/gofiber/fiber/v3/middleware/limiter"
 )
 ```
 
@@ -95,7 +95,7 @@ type Config struct {
 	// Default: func(c fiber.Ctx) string {
 	//   return c.IP()
 	// }
-	KeyGenerator func(*fiber.Ctx) string
+	KeyGenerator func(fiber.Ctx) string
 
 	// Expiration is the time on how long to keep records of requests in memory
 	//

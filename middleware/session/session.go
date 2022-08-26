@@ -14,7 +14,7 @@ import (
 type Session struct {
 	id         string        // session id
 	fresh      bool          // if new session
-	ctx        fiber.Ctx    // fiber context
+	ctx        fiber.Ctx     // fiber context
 	config     *Store        // store configuration
 	data       *data         // key value data
 	byteBuffer *bytes.Buffer // byte buffer for the en- and decode
@@ -144,10 +144,8 @@ func (s *Session) Save() error {
 		s.exp = s.config.Expiration
 	}
 
-	// Create session with the session ID if fresh
-	if s.fresh {
-		s.setSession()
-	}
+	// Update client cookie
+	s.setSession()
 
 	// Convert data to bytes
 	mux.Lock()

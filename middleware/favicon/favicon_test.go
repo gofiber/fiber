@@ -5,10 +5,10 @@ import (
 	"os"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
 )
 
 // go test -run Test_Middleware_Favicon
@@ -23,21 +23,21 @@ func Test_Middleware_Favicon(t *testing.T) {
 
 	// Skip Favicon middleware
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, fiber.StatusNoContent, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusNoContent, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest("OPTIONS", "/favicon.ico", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
 	resp, err = app.Test(httptest.NewRequest("PUT", "/favicon.ico", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, fiber.StatusMethodNotAllowed, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "GET, HEAD, OPTIONS", resp.Header.Get(fiber.HeaderAllow))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusMethodNotAllowed, resp.StatusCode, "Status code")
+	require.Equal(t, "GET, HEAD, OPTIONS", resp.Header.Get(fiber.HeaderAllow))
 }
 
 // go test -run Test_Middleware_Favicon_Not_Found
@@ -67,10 +67,10 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
 
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
-	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
 // go test -run Test_Middleware_Favicon_FileSystem
@@ -83,10 +83,10 @@ func Test_Middleware_Favicon_FileSystem(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
-	utils.AssertEqual(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	require.Equal(t, "public, max-age=31536000", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
 // go test -run Test_Middleware_Favicon_CacheControl
@@ -99,10 +99,10 @@ func Test_Middleware_Favicon_CacheControl(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
-	utils.AssertEqual(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
+	require.Equal(t, "public, max-age=100", resp.Header.Get(fiber.HeaderCacheControl), "CacheControl Control")
 }
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_Favicon -benchmem -count=4
@@ -134,6 +134,6 @@ func Test_Favicon_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }

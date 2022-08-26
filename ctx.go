@@ -7,8 +7,8 @@ package fiber
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -57,6 +57,17 @@ type DefaultCtx struct {
 	oldInput            map[string]string    // old input data sent by redirection cookie
 }
 
+// tlsHandle object
+type tlsHandler struct {
+	clientHelloInfo *tls.ClientHelloInfo
+}
+
+// GetClientInfo Callback function to set CHI
+func (t *tlsHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	t.clientHelloInfo = info
+	return nil, nil
+}
+
 // Range data for c.Range
 type Range struct {
 	Type   string
@@ -100,9 +111,9 @@ func (c *DefaultCtx) Accepts(offers ...string) string {
 	for len(header) > 0 && commaPos != -1 {
 		commaPos = strings.IndexByte(header, ',')
 		if commaPos != -1 {
-			spec = utils.Trim(header[:commaPos], ' ')
+			spec = strings.TrimLeft(header[:commaPos], " ")
 		} else {
-			spec = utils.TrimLeft(header, ' ')
+			spec = strings.TrimLeft(header, " ")
 		}
 		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
 			spec = spec[:factorSign]
@@ -373,12 +384,7 @@ func (c *DefaultCtx) Format(body any) error {
 	case "txt":
 		return c.SendString(b)
 	case "xml":
-		raw, err := xml.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("error serializing xml: %v", body)
-		}
-		c.fasthttp.Response.SetBody(raw)
-		return nil
+		return c.XML(body)
 	}
 	return c.SendString(b)
 }
@@ -505,10 +511,10 @@ func (c *DefaultCtx) IPs() (ips []string) {
 	for {
 		commaPos = bytes.IndexByte(header, ',')
 		if commaPos != -1 {
-			ips[i] = utils.Trim(c.app.getString(header[:commaPos]), ' ')
+			ips[i] = strings.Trim(c.app.getString(header[:commaPos]), " ")
 			header, i = header[commaPos+1:], i+1
 		} else {
-			ips[i] = utils.Trim(c.app.getString(header), ' ')
+			ips[i] = strings.Trim(c.app.getString(header), " ")
 			return
 		}
 	}
@@ -523,7 +529,7 @@ func (c *DefaultCtx) Is(extension string) bool {
 	}
 
 	return strings.HasPrefix(
-		utils.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), ' '),
+		strings.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), " "),
 		extensionHeader,
 	)
 }
@@ -567,6 +573,18 @@ func (c *DefaultCtx) JSONP(data any, callback ...string) error {
 	return c.SendString(result)
 }
 
+// XML converts any interface or string to XML.
+// This method also sets the content header to application/xml.
+func (c *DefaultCtx) XML(data any) error {
+	raw, err := c.app.config.XMLEncoder(data)
+	if err != nil {
+		return err
+	}
+	c.fasthttp.Response.SetBodyRaw(raw)
+	c.fasthttp.Response.Header.SetContentType(MIMEApplicationXML)
+	return nil
+}
+
 // Links joins the links followed by the property to populate the response's Link HTTP header field.
 func (c *DefaultCtx) Links(link ...string) {
 	if len(link) == 0 {
@@ -582,7 +600,7 @@ func (c *DefaultCtx) Links(link ...string) {
 			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	c.setCanonical(HeaderLink, utils.TrimRight(c.app.getString(bb.Bytes()), ','))
+	c.setCanonical(HeaderLink, strings.TrimRight(c.app.getString(bb.Bytes()), ","))
 	bytebufferpool.Put(bb)
 }
 
@@ -619,6 +637,15 @@ func (c *DefaultCtx) Method(override ...string) string {
 // This returns a map[string][]string, so given a key the value will be a string slice.
 func (c *DefaultCtx) MultipartForm() (*multipart.Form, error) {
 	return c.fasthttp.MultipartForm()
+}
+
+// ClientHelloInfo return CHI from context
+func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
+	if c.app.tlsHandler != nil {
+		return c.app.tlsHandler.clientHelloInfo
+	}
+
+	return nil
 }
 
 // Next executes the next method in the stack that matches the current route.
@@ -749,32 +776,6 @@ func (c *DefaultCtx) Protocol() string {
 // Make copies or use the Immutable setting to use the value outside the Handler.
 func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
-}
-
-func parseParamSquareBrackets(k string) (string, error) {
-	bb := bytebufferpool.Get()
-	defer bytebufferpool.Put(bb)
-
-	kbytes := []byte(k)
-
-	for i, b := range kbytes {
-
-		if b == '[' && kbytes[i+1] != ']' {
-			if err := bb.WriteByte('.'); err != nil {
-				return "", err
-			}
-		}
-
-		if b == '[' || b == ']' {
-			continue
-		}
-
-		if err := bb.WriteByte(b); err != nil {
-			return "", err
-		}
-	}
-
-	return bb.String(), nil
 }
 
 // Range returns a struct containing the type and a slice of ranges.
@@ -1208,7 +1209,7 @@ func (c *DefaultCtx) WriteString(s string) (int, error) {
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFoldBytes(utils.UnsafeBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFold(c.Get(HeaderXRequestedWith), "xmlhttprequest")
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
@@ -1230,7 +1231,7 @@ func (c *DefaultCtx) configDependentPaths() {
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
-		c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
+		c.detectionPathBuffer = bytes.TrimRight(c.detectionPathBuffer, "/")
 	}
 	c.detectionPath = c.app.getString(c.detectionPathBuffer)
 

@@ -9,7 +9,7 @@ import (
 	b64 "encoding/base64"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -25,8 +25,8 @@ func Test_BasicAuth_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 func Test_Middleware_BasicAuth(t *testing.T) {
@@ -80,15 +80,15 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		req := httptest.NewRequest("GET", "/testauth", nil)
 		req.Header.Add("Authorization", "Basic "+creds)
 		resp, err := app.Test(req)
-		utils.AssertEqual(t, nil, err)
+		require.NoError(t, err)
 
 		body, err := io.ReadAll(resp.Body)
 
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, tt.statusCode, resp.StatusCode)
+		require.NoError(t, err)
+		require.Equal(t, tt.statusCode, resp.StatusCode)
 
 		if tt.statusCode == 200 {
-			utils.AssertEqual(t, fmt.Sprintf("%s%s", tt.username, tt.password), string(body))
+			require.Equal(t, fmt.Sprintf("%s%s", tt.username, tt.password), string(body))
 		}
 	}
 }
@@ -120,5 +120,5 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 		h(fctx)
 	}
 
-	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+	require.Equal(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
 }

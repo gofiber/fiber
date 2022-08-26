@@ -14,7 +14,7 @@ var (
 )
 
 // Binder errors
-var ErrCustomBinderNotFound = goErrors.New("binder: custom binder not found, please be sure to enter the right name!")
+var ErrCustomBinderNotFound = goErrors.New("binder: custom binder not found, please be sure to enter the right name")
 
 // gorilla/schema errors
 type (

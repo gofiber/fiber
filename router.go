@@ -18,7 +18,7 @@ import (
 
 // Router defines all router handle interface includes app and group router.
 type Router interface {
-	Use(args ...interface{}) Router
+	Use(args ...any) Router
 
 	Get(path string, handlers ...Handler) Router
 	Head(path string, handlers ...Handler) Router
@@ -193,7 +193,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	}
 	// Strict routing, remove trailing slashes
 	if !app.config.StrictRouting && len(prettyPath) > 1 {
-		prettyPath = utils.TrimRight(prettyPath, '/')
+		prettyPath = strings.TrimRight(prettyPath, "/")
 	}
 
 	route.Path = prefixedPath
@@ -251,7 +251,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 	}
 	// Strict routing, remove trailing slashes
 	if !app.config.StrictRouting && len(pathPretty) > 1 {
-		pathPretty = utils.TrimRight(pathPretty, '/')
+		pathPretty = strings.TrimRight(pathPretty, "/")
 	}
 	// Is layer a middleware?
 	isUse := method == methodUse

@@ -20,6 +20,7 @@ const (
 )
 
 var testPreforkMaster = false
+var testOnPrefork = false
 
 // IsChild determines if the current process is a child of Prefork
 func IsChild() bool {
@@ -102,6 +103,15 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error)
 		childs[pid] = cmd
 		pids = append(pids, strconv.Itoa(pid))
 
+		// execute fork hook
+		if app.hooks != nil {
+			if testOnPrefork {
+				app.hooks.executeOnForkHooks(dummyPid)
+			} else {
+				app.hooks.executeOnForkHooks(pid)
+			}
+		}
+
 		// notify master if child crashes
 		go func() {
 			channel <- child{pid, cmd.Wait()}
@@ -146,3 +156,5 @@ func dummyCmd() *exec.Cmd {
 	}
 	return exec.Command(dummyChildCmd, "version")
 }
+
+var dummyPid = 1

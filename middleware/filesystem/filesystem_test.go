@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 )
 
 // go test -run Test_FileSystem
@@ -118,12 +118,12 @@ func Test_FileSystem(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			resp, err := app.Test(httptest.NewRequest("GET", tt.url, nil))
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, tt.statusCode, resp.StatusCode)
+			require.NoError(t, err)
+			require.Equal(t, tt.statusCode, resp.StatusCode)
 
 			if tt.contentType != "" {
 				ct := resp.Header.Get("Content-Type")
-				utils.AssertEqual(t, tt.contentType, ct)
+				require.Equal(t, tt.contentType, ct)
 			}
 		})
 	}
@@ -140,8 +140,8 @@ func Test_FileSystem_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 func Test_FileSystem_NonGetAndHead(t *testing.T) {
@@ -152,8 +152,8 @@ func Test_FileSystem_NonGetAndHead(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/test", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 404, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 404, resp.StatusCode)
 }
 
 func Test_FileSystem_Head(t *testing.T) {
@@ -165,13 +165,13 @@ func Test_FileSystem_Head(t *testing.T) {
 
 	req, _ := http.NewRequest(fiber.MethodHead, "/test", nil)
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
 }
 
 func Test_FileSystem_NoRoot(t *testing.T) {
 	defer func() {
-		utils.AssertEqual(t, "filesystem: Root cannot be nil", recover())
+		require.Equal(t, "filesystem: Root cannot be nil", recover())
 	}()
 
 	app := fiber.New()
@@ -188,8 +188,8 @@ func Test_FileSystem_UsingParam(t *testing.T) {
 
 	req, _ := http.NewRequest(fiber.MethodHead, "/index", nil)
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
 }
 
 func Test_FileSystem_UsingParam_NonFile(t *testing.T) {
@@ -201,6 +201,6 @@ func Test_FileSystem_UsingParam_NonFile(t *testing.T) {
 
 	req, _ := http.NewRequest(fiber.MethodHead, "/template", nil)
 	resp, err := app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 404, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 404, resp.StatusCode)
 }

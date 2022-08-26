@@ -17,7 +17,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -214,8 +213,6 @@ func defaultString(value string, defaultValue []string) string {
 	return value
 }
 
-const normalizedHeaderETag = "Etag"
-
 func getGroupPath(prefix, path string) string {
 	if len(path) == 0 || path == "/" {
 		return prefix
@@ -225,7 +222,7 @@ func getGroupPath(prefix, path string) string {
 		path = "/" + path
 	}
 
-	return utils.TrimRight(prefix, '/') + path
+	return strings.TrimRight(prefix, "/") + path
 }
 
 // return valid offer for header negotiation
@@ -240,7 +237,7 @@ func getOffer(header string, offers ...string) string {
 	for len(header) > 0 && commaPos != -1 {
 		commaPos = strings.IndexByte(header, ',')
 		if commaPos != -1 {
-			spec = utils.Trim(header[:commaPos], ' ')
+			spec = strings.TrimSpace(header[:commaPos])
 		} else {
 			spec = header
 		}
@@ -687,4 +684,22 @@ const (
 	CookieSameSiteLaxMode    = "lax"
 	CookieSameSiteStrictMode = "strict"
 	CookieSameSiteNoneMode   = "none"
+)
+
+// Route Constraints
+const (
+	ConstraintInt        = "int"
+	ConstraintBool       = "bool"
+	ConstraintFloat      = "float"
+	ConstraintAlpha      = "alpha"
+	ConstraintGuid       = "guid"
+	ConstraintMinLen     = "minLen"
+	ConstraintMaxLen     = "maxLen"
+	ConstraintExactLen   = "exactLen"
+	ConstraintBetweenLen = "betweenLen"
+	ConstraintMin        = "min"
+	ConstraintMax        = "max"
+	ConstraintRange      = "range"
+	ConstraintDatetime   = "datetime"
+	ConstraintRegex      = "regex"
 )

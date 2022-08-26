@@ -565,7 +565,8 @@ func (a *Agent) SendFile(filename string, fieldname ...string) *Agent {
 // SendFiles reads files and appends them to multipart form request.
 //
 // Examples:
-//		SendFile("/path/to/file1", "fieldname1", "/path/to/file2")
+//
+//	SendFile("/path/to/file1", "fieldname1", "/path/to/file2")
 func (a *Agent) SendFiles(filenamesAndFieldnames ...string) *Agent {
 	pairs := len(filenamesAndFieldnames)
 	if pairs&1 == 1 {
@@ -737,14 +738,9 @@ func (a *Agent) RetryIf(retryIf RetryIfFunc) *Agent {
 }
 
 /************************** End Agent Setting **************************/
-var warnOnce sync.Once
 
 // Bytes returns the status code, bytes body and errors of url.
 func (a *Agent) Bytes() (code int, body []byte, errs []error) {
-	warnOnce.Do(func() {
-		fmt.Println("[Warning] client is still in beta, API might change in the future!")
-	})
-
 	defer a.release()
 
 	if errs = append(errs, a.errs...); len(errs) > 0 {
