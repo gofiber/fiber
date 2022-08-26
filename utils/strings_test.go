@@ -7,11 +7,13 @@ package utils
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_ToUpper(t *testing.T) {
 	t.Parallel()
-	AssertEqual(t, "/MY/NAME/IS/:PARAM/*", ToUpper("/my/name/is/:param/*"))
+	require.Equal(t, "/MY/NAME/IS/:PARAM/*", ToUpper("/my/name/is/:param/*"))
 }
 
 const (
@@ -26,23 +28,23 @@ func Benchmark_ToUpper(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToUpper(largeStr)
 		}
-		AssertEqual(b, upperStr, res)
+		require.Equal(b, upperStr, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.ToUpper(largeStr)
 		}
-		AssertEqual(b, upperStr, res)
+		require.Equal(b, upperStr, res)
 	})
 }
 
 func Test_ToLower(t *testing.T) {
 	t.Parallel()
-	AssertEqual(t, "/my/name/is/:param/*", ToLower("/MY/NAME/IS/:PARAM/*"))
-	AssertEqual(t, "/my1/name/is/:param/*", ToLower("/MY1/NAME/IS/:PARAM/*"))
-	AssertEqual(t, "/my2/name/is/:param/*", ToLower("/MY2/NAME/IS/:PARAM/*"))
-	AssertEqual(t, "/my3/name/is/:param/*", ToLower("/MY3/NAME/IS/:PARAM/*"))
-	AssertEqual(t, "/my4/name/is/:param/*", ToLower("/MY4/NAME/IS/:PARAM/*"))
+	require.Equal(t, "/my/name/is/:param/*", ToLower("/MY/NAME/IS/:PARAM/*"))
+	require.Equal(t, "/my1/name/is/:param/*", ToLower("/MY1/NAME/IS/:PARAM/*"))
+	require.Equal(t, "/my2/name/is/:param/*", ToLower("/MY2/NAME/IS/:PARAM/*"))
+	require.Equal(t, "/my3/name/is/:param/*", ToLower("/MY3/NAME/IS/:PARAM/*"))
+	require.Equal(t, "/my4/name/is/:param/*", ToLower("/MY4/NAME/IS/:PARAM/*"))
 }
 
 func Benchmark_ToLower(b *testing.B) {
@@ -51,12 +53,12 @@ func Benchmark_ToLower(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToLower(largeStr)
 		}
-		AssertEqual(b, lowerStr, res)
+		require.Equal(b, lowerStr, res)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = strings.ToLower(largeStr)
 		}
-		AssertEqual(b, lowerStr, res)
+		require.Equal(b, lowerStr, res)
 	})
 }

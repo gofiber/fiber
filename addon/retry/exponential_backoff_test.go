@@ -2,9 +2,10 @@ package retry
 
 import (
 	"fmt"
-	"github.com/gofiber/fiber/v3/utils"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestExponentialBackoff_Retry(t *testing.T) {
@@ -59,7 +60,7 @@ func TestExponentialBackoff_Retry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.expBackoff.Retry(tt.f)
-			utils.AssertEqual(t, tt.expErr, err)
+			require.Equal(t, tt.expErr, err)
 		})
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 )
 
 func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, string) {
@@ -22,12 +23,12 @@ func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, str
 	target.Get("/", handler)
 
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	addr := ln.Addr().String()
 
 	go func() {
-		utils.AssertEqual(t, nil, target.Listen(ln, fiber.ListenConfig{
+		require.Nil(t, target.Listen(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -43,7 +44,7 @@ func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			utils.AssertEqual(t, "Servers cannot be empty", r)
+			require.Equal(t, "Servers cannot be empty", r)
 		}
 	}()
 	app := fiber.New()
@@ -63,8 +64,8 @@ func Test_Proxy_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 // go test -run Test_Proxy
@@ -76,8 +77,8 @@ func Test_Proxy(t *testing.T) {
 	)
 
 	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
 	app := fiber.New()
 
@@ -86,8 +87,8 @@ func Test_Proxy(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Host = addr
 	resp, err = app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
 // go test -run Test_Proxy_Balancer_WithTlsConfig
@@ -95,10 +96,10 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	t.Parallel()
 
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
@@ -118,16 +119,16 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	}))
 
 	go func() {
-		utils.AssertEqual(t, nil, app.Listen(ln, fiber.ListenConfig{
+		require.Nil(t, app.Listen(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
 
 	code, body, errs := fiber.Get("https://" + addr + "/tlsbalaner").TLSConfig(clientTLSConf).String()
 
-	utils.AssertEqual(t, 0, len(errs))
-	utils.AssertEqual(t, fiber.StatusOK, code)
-	utils.AssertEqual(t, "tls balancer", body)
+	require.Equal(t, 0, len(errs))
+	require.Equal(t, fiber.StatusOK, code)
+	require.Equal(t, "tls balancer", body)
 }
 
 // go test -run Test_Proxy_Forward_WithTlsConfig_To_Http
@@ -139,10 +140,10 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	}, t)
 
 	proxyServerTLSConf, _, err := tlstest.GetTLSConfigs()
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	proxyServerLn, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	proxyServerLn = tls.NewListener(proxyServerLn, proxyServerTLSConf)
 
@@ -153,7 +154,7 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	app.Use(Forward("http://" + targetAddr))
 
 	go func() {
-		utils.AssertEqual(t, nil, app.Listen(proxyServerLn, fiber.ListenConfig{
+		require.Nil(t, app.Listen(proxyServerLn, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -163,9 +164,9 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 		Timeout(5 * time.Second).
 		String()
 
-	utils.AssertEqual(t, 0, len(errs))
-	utils.AssertEqual(t, fiber.StatusOK, code)
-	utils.AssertEqual(t, "hello from target", body)
+	require.Equal(t, 0, len(errs))
+	require.Equal(t, fiber.StatusOK, code)
+	require.Equal(t, "hello from target", body)
 }
 
 // go test -run Test_Proxy_Forward
@@ -181,12 +182,12 @@ func Test_Proxy_Forward(t *testing.T) {
 	app.Use(Forward("http://" + addr))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	b, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "forwarded", string(b))
+	require.NoError(t, err)
+	require.Equal(t, "forwarded", string(b))
 }
 
 // go test -run Test_Proxy_Forward_WithTlsConfig
@@ -194,10 +195,10 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 	t.Parallel()
 
 	serverTLSConf, _, err := tlstest.GetTLSConfigs()
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
@@ -215,16 +216,16 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 	app.Use(Forward("https://" + addr + "/tlsfwd"))
 
 	go func() {
-		utils.AssertEqual(t, nil, app.Listen(ln, fiber.ListenConfig{
+		require.Nil(t, app.Listen(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
 
 	code, body, errs := fiber.Get("https://" + addr).TLSConfig(clientTLSConf).String()
 
-	utils.AssertEqual(t, 0, len(errs))
-	utils.AssertEqual(t, fiber.StatusOK, code)
-	utils.AssertEqual(t, "tls forward", body)
+	require.Equal(t, 0, len(errs))
+	require.Equal(t, fiber.StatusOK, code)
+	require.Equal(t, "tls forward", body)
 }
 
 // go test -run Test_Proxy_Modify_Response
@@ -245,12 +246,12 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	b, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "modified response", string(b))
+	require.NoError(t, err)
+	require.Equal(t, "modified response", string(b))
 }
 
 // go test -run Test_Proxy_Modify_Request
@@ -272,12 +273,12 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	b, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "modified request", string(b))
+	require.NoError(t, err)
+	require.Equal(t, "modified request", string(b))
 }
 
 // go test -run Test_Proxy_Timeout_Slow_Server
@@ -296,12 +297,12 @@ func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), 5000)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	b, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "fiber is awesome", string(b))
+	require.NoError(t, err)
+	require.Equal(t, "fiber is awesome", string(b))
 }
 
 // go test -run Test_Proxy_With_Timeout
@@ -320,12 +321,12 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), 2000)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 
 	b, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "timeout", string(b))
+	require.NoError(t, err)
+	require.Equal(t, "timeout", string(b))
 }
 
 // go test -run Test_Proxy_Buffer_Size_Response
@@ -342,8 +343,8 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	app.Use(Balancer(Config{Servers: []string{addr}}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 
 	app = fiber.New()
 	app.Use(Balancer(Config{
@@ -352,8 +353,8 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	}))
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 // go test -race -run Test_Proxy_Do_RestoreOriginalURL
@@ -368,15 +369,15 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 		if err := Do(c, "/proxy"); err != nil {
 			return err
 		}
-		utils.AssertEqual(t, originalURL, c.OriginalURL())
+		require.Equal(t, originalURL, c.OriginalURL())
 		return c.SendString("ok")
 	})
 	_, err1 := app.Test(httptest.NewRequest("GET", "/test", nil))
 	// This test requires multiple requests due to zero allocation used in fiber
 	_, err2 := app.Test(httptest.NewRequest("GET", "/test", nil))
 
-	utils.AssertEqual(t, nil, err1)
-	utils.AssertEqual(t, nil, err2)
+	require.Nil(t, err1)
+	require.Nil(t, err2)
 }
 
 func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
@@ -391,7 +392,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 		path := c.OriginalURL()
 		url := strings.TrimPrefix(path, "/")
 
-		utils.AssertEqual(t, "http://"+addr, url)
+		require.Equal(t, "http://"+addr, url)
 		if err := Do(c, url); err != nil {
 			return err
 		}
@@ -400,8 +401,8 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/http://"+addr, nil))
-	utils.AssertEqual(t, nil, err)
+	require.NoError(t, err)
 	s, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "hello world", string(s))
+	require.NoError(t, err)
+	require.Equal(t, "hello world", string(s))
 }

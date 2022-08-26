@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Non_Pprof_Path(t *testing.T) {
@@ -20,12 +20,12 @@ func Test_Non_Pprof_Path(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
 
 	b, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "escaped", string(b))
+	require.NoError(t, err)
+	require.Equal(t, "escaped", string(b))
 }
 
 func Test_Pprof_Index(t *testing.T) {
@@ -38,13 +38,13 @@ func Test_Pprof_Index(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
-	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	require.Equal(t, fiber.MIMETextHTMLCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
 	b, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, bytes.Contains(b, []byte("<title>/debug/pprof/</title>")))
+	require.NoError(t, err)
+	require.True(t, bytes.Contains(b, []byte("<title>/debug/pprof/</title>")))
 }
 
 func Test_Pprof_Subs(t *testing.T) {
@@ -68,8 +68,8 @@ func Test_Pprof_Subs(t *testing.T) {
 				target += "?seconds=1"
 			}
 			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, target, nil), 5000)
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, 200, resp.StatusCode)
+			require.NoError(t, err)
+			require.Equal(t, 200, resp.StatusCode)
 		})
 	}
 }
@@ -84,8 +84,8 @@ func Test_Pprof_Other(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/302", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 302, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 302, resp.StatusCode)
 }
 
 // go test -run Test_Pprof_Next
@@ -101,6 +101,6 @@ func Test_Pprof_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/debug/pprof/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 404, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 404, resp.StatusCode)
 }

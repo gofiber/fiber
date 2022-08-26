@@ -3,6 +3,8 @@ package utils
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 type sampleStructure struct {
@@ -21,9 +23,9 @@ func Test_GolangJSONEncoder(t *testing.T) {
 	)
 
 	raw, err := jsonEncoder(ss)
-	AssertEqual(t, err, nil)
+	require.NoError(t, err)
 
-	AssertEqual(t, string(raw), importantString)
+	require.Equal(t, string(raw), importantString)
 }
 
 func Test_DefaultJSONEncoder(t *testing.T) {
@@ -38,9 +40,9 @@ func Test_DefaultJSONEncoder(t *testing.T) {
 	)
 
 	raw, err := jsonEncoder(ss)
-	AssertEqual(t, err, nil)
+	require.NoError(t, err)
 
-	AssertEqual(t, string(raw), importantString)
+	require.Equal(t, string(raw), importantString)
 }
 
 func Test_DefaultJSONDecoder(t *testing.T) {
@@ -53,6 +55,6 @@ func Test_DefaultJSONDecoder(t *testing.T) {
 	)
 
 	err := jsonDecoder(importantString, &ss)
-	AssertEqual(t, err, nil)
-	AssertEqual(t, "Hello World", ss.ImportantString)
+	require.NoError(t, err)
+	require.Equal(t, "Hello World", ss.ImportantString)
 }
