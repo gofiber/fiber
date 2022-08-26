@@ -49,7 +49,7 @@ app.Use(csrf.New(csrf.Config{
 	CookieSameSite: "Lax",
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
-	Extractor:      func(c *fiber.Ctx) (string, error) { ... }
+	Extractor:      func(c *fiber.Ctx) (string, error) { ... },
 }))
 ```
 
