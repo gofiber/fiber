@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3/addon/retry"
 	"github.com/valyala/fasthttp"
 )
 
@@ -17,6 +18,21 @@ var (
 	httpBytes  = []byte("http")
 	httpsBytes = []byte("https")
 )
+
+// RequestHook is a function that receives Agent and Request,
+// it can change the data in Request and Agent.
+//
+// Called before a request is sent.
+type RequestHook func(*Client, *Request) error
+
+// ResponseHook is a function that receives Agent, Respose and Request,
+// it can change the data is Respose or deal with some effects.
+//
+// Called after a respose has been received.
+type ResponseHook func(*Client, *Response, *Request) error
+
+// RetryConfig is an alias for config in the `addon/retry` package.
+type RetryConfig = retry.Config
 
 // addMissingPort will add the corresponding port number for host.
 func addMissingPort(addr string, isTLS bool) string {
@@ -30,18 +46,6 @@ func addMissingPort(addr string, isTLS bool) string {
 	}
 	return net.JoinHostPort(addr, strconv.Itoa(port))
 }
-
-// RequestHook is a function that receives Agent and Request,
-// it can change the data in Request and Agent.
-//
-// Called before a request is sent.
-type RequestHook func(*Client, *Request) error
-
-// ResponseHook is a function that receives Agent, Respose and Request,
-// it can change the data is Respose or deal with some effects.
-//
-// Called after a respose has been received.
-type ResponseHook func(*Client, *Response, *Request) error
 
 // `core` stores middleware and plugin definitions,
 // and defines the execution process
@@ -66,9 +70,33 @@ func (c *core) execFunc() (*Response, error) {
 	}()
 
 	c.req.RawRequest.CopyTo(reqv)
+	cfg := func() *RetryConfig {
+		c.client.mu.Lock()
+		defer c.client.mu.Unlock()
+
+		c := c.client.RetryConfig()
+		if c == nil {
+			return nil
+		}
+
+		return &RetryConfig{
+			InitialInterval: c.InitialInterval,
+			MaxBackoffTime:  c.MaxBackoffTime,
+			Multiplier:      c.Multiplier,
+			MaxRetryCount:   c.MaxRetryCount,
+		}
+	}()
+
 	go func() {
+		var err error
 		respv := fasthttp.AcquireResponse()
-		err := c.host.Do(reqv, respv)
+		if cfg != nil {
+			retry.NewExponentialBackoff(*cfg).Retry(func() error {
+				return c.host.Do(reqv, respv)
+			})
+		} else {
+			err = c.host.Do(reqv, respv)
+		}
 		defer func() {
 			fasthttp.ReleaseRequest(reqv)
 			fasthttp.ReleaseResponse(respv)

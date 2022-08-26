@@ -58,6 +58,9 @@ type Client struct {
 
 	// proxy
 	proxyURL string
+
+	// retry
+	retryConfig *RetryConfig
 }
 
 // R raise a request from the client.
@@ -198,6 +201,16 @@ func (c *Client) SetProxyURL(proxyURL string) *Client {
 	}
 	c.proxyURL = pUrl.String()
 
+	return c
+}
+
+func (c *Client) RetryConfig() *RetryConfig {
+	return c.retryConfig
+}
+
+// SetRetryConfig sets retry config in client which is impl by addon/retry package.
+func (c *Client) SetRetryConfig(config *RetryConfig) *Client {
+	c.retryConfig = config
 	return c
 }
 
