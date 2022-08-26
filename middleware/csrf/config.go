@@ -18,13 +18,15 @@ type Config struct {
 	Next func(c *fiber.Ctx) bool
 
 	// KeyLookup is a string in the form of "<source>:<key>" that is used
-	// to extract token from the request.
+	// to create an Extractor that extracts the token from the request.
 	// Possible values:
 	// - "header:<name>"
 	// - "query:<name>"
 	// - "param:<name>"
 	// - "form:<name>"
 	// - "cookie:<name>"
+	//
+	// Ignored if an Extractor is explicitly set.
 	//
 	// Optional. Default: "header:X-CSRF-Token"
 	KeyLookup string
@@ -92,8 +94,12 @@ type Config struct {
 	// Optional. Default: DefaultErrorHandler
 	ErrorHandler fiber.ErrorHandler
 
-	// extractor returns the csrf token from the request based on KeyLookup
-	extractor func(c *fiber.Ctx) (string, error)
+	// Extractor returns the csrf token
+	//
+	// If set this will be used in place of an Extractor based on KeyLookup.
+	//
+	// Optional. Default will create an Extractor based on KeyLookup.
+	Extractor func(c *fiber.Ctx) (string, error)
 }
 
 // ConfigDefault is the default config
@@ -104,7 +110,7 @@ var ConfigDefault = Config{
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
 	ErrorHandler:   defaultErrorHandler,
-	extractor:      csrfFromHeader("X-Csrf-Token"),
+	Extractor:      CsrfFromHeader("X-Csrf-Token"),
 }
 
 // default ErrorHandler that process return error from fiber.Handler
@@ -174,18 +180,20 @@ func configDefault(config ...Config) Config {
 		panic("[CSRF] KeyLookup must in the form of <source>:<key>")
 	}
 
-	// By default we extract from a header
-	cfg.extractor = csrfFromHeader(textproto.CanonicalMIMEHeaderKey(selectors[1]))
+	if cfg.Extractor == nil {
+		// By default we extract from a header
+		cfg.Extractor = CsrfFromHeader(textproto.CanonicalMIMEHeaderKey(selectors[1]))
 
-	switch selectors[0] {
-	case "form":
-		cfg.extractor = csrfFromForm(selectors[1])
-	case "query":
-		cfg.extractor = csrfFromQuery(selectors[1])
-	case "param":
-		cfg.extractor = csrfFromParam(selectors[1])
-	case "cookie":
-		cfg.extractor = csrfFromCookie(selectors[1])
+		switch selectors[0] {
+		case "form":
+			cfg.Extractor = CsrfFromForm(selectors[1])
+		case "query":
+			cfg.Extractor = CsrfFromQuery(selectors[1])
+		case "param":
+			cfg.Extractor = CsrfFromParam(selectors[1])
+		case "cookie":
+			cfg.Extractor = CsrfFromCookie(selectors[1])
+		}
 	}
 
 	return cfg
