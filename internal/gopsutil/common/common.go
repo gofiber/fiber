@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/url"
 	"os"
 	"os/exec"
@@ -122,7 +123,12 @@ func ReadLinesOffsetN(filename string, offset uint, n int) ([]string, error) {
 	if err != nil {
 		return []string{""}, err
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}(f)
 
 	var ret []string
 
@@ -204,7 +210,12 @@ func ReadInts(filename string) ([]int64, error) {
 	if err != nil {
 		return []int64{}, err
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}(f)
 
 	var ret []int64
 
