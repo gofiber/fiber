@@ -50,7 +50,7 @@ func Test_Listen_Graceful_Shutdown(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 		defer cancel()
 
-		err := app.Listen(ln, ListenConfig{
+		err := app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 			GracefulContext:       ctx,
 			OnShutdownSuccess: func() {
@@ -203,8 +203,8 @@ func Test_Listen_MutualTLS_Prefork(t *testing.T) {
 
 }
 
-// go test -run Test_Listen_CustomListener
-func Test_Listen_CustomListener(t *testing.T) {
+// go test -run Test_Listener
+func Test_Listener(t *testing.T) {
 	app := New()
 
 	go func() {
@@ -213,21 +213,21 @@ func Test_Listen_CustomListener(t *testing.T) {
 	}()
 
 	ln := fasthttputil.NewInmemoryListener()
-	require.Nil(t, app.Listen(ln))
+	require.Nil(t, app.Listener(ln))
 }
 
-// go test -run Test_Listen_CustomListener_Prefork
-func Test_Listen_CustomListener_Prefork(t *testing.T) {
+// go test -run Test_Listener_Prefork
+func Test_Listener_Prefork(t *testing.T) {
 	testPreforkMaster = true
 
 	app := New()
 
 	ln := fasthttputil.NewInmemoryListener()
-	require.Nil(t, app.Listen(ln, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+	require.Nil(t, app.Listener(ln, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }
 
-// go test -run Test_Listen_CustomTLSListener
-func Test_Listen_CustomTLSListener(t *testing.T) {
+// go test -run Test_Listener_CustomTLS
+func Test_Listener_CustomTLS(t *testing.T) {
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
@@ -245,7 +245,7 @@ func Test_Listen_CustomTLSListener(t *testing.T) {
 		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(ln))
+	require.Nil(t, app.Listener(ln))
 }
 
 // go test -run Test_Listen_TLSConfigFunc

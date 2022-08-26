@@ -35,7 +35,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listen(ln, ListenConfig{
+		require.Nil(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -77,7 +77,7 @@ func Test_Client_Get(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listen(ln, ListenConfig{
+		require.Nil(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -107,7 +107,7 @@ func Test_Client_Head(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listen(ln, ListenConfig{
+		require.Nil(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -137,7 +137,7 @@ func Test_Client_Post(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listen(ln, ListenConfig{
+		require.Nil(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -174,7 +174,7 @@ func Test_Client_Put(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listen(ln, ListenConfig{
+		require.Nil(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -211,7 +211,7 @@ func Test_Client_Patch(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -249,7 +249,7 @@ func Test_Client_Delete(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listen(ln, ListenConfig{
+		require.Nil(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -283,7 +283,7 @@ func Test_Client_UserAgent(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -429,7 +429,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listen(ln, ListenConfig{
+		require.Nil(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -529,7 +529,7 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listen(ln, ListenConfig{
+		require.Nil(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -570,7 +570,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -638,7 +638,7 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 	app := New()
 
 	go func() {
-		require.Nil(t, app.Listen(ln, ListenConfig{
+		require.Nil(t, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -759,7 +759,7 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -833,7 +833,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -948,7 +948,7 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -977,7 +977,7 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1022,7 +1022,7 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1055,7 +1055,7 @@ func Test_Client_Agent_TLS(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1087,7 +1087,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1135,7 +1135,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -1212,7 +1212,7 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 	app.Get("/", handler)
 
 	go func() {
-		require.Nil(t, nil, app.Listen(ln, ListenConfig{
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()

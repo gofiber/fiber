@@ -98,8 +98,8 @@ type ListenConfig struct {
 	OnShutdownSuccess func()
 }
 
-// ListenConfigDefault is a function to set default values of ListenConfig.
-func ListenConfigDefault(config ...ListenConfig) ListenConfig {
+// listenConfigDefault is a function to set default values of ListenConfig.
+func listenConfigDefault(config ...ListenConfig) ListenConfig {
 	if len(config) < 1 {
 		return ListenConfig{
 			ListenerNetwork: NetworkTCP4,
@@ -129,8 +129,8 @@ func ListenConfigDefault(config ...ListenConfig) ListenConfig {
 //	app.Listen(":8080")
 //	app.Listen("127.0.0.1:8080")
 //	app.Listen(":8080", ListenConfig{EnablePrefork: true})
-func (app *App) Listen(addr any, config ...ListenConfig) error {
-	cfg := ListenConfigDefault(config...)
+func (app *App) Listen(addr string, config ...ListenConfig) error {
+	cfg := listenConfigDefault(config...)
 
 	// Configure TLS
 	var tlsConfig *tls.Config = nil
@@ -173,32 +173,15 @@ func (app *App) Listen(addr any, config ...ListenConfig) error {
 		go app.gracefulShutdown(ctx, cfg)
 	}
 
-	var ln net.Listener
-	var err error
+	// Start prefork
+	if cfg.EnablePrefork {
+		return app.prefork(addr, tlsConfig, cfg)
+	}
 
-	switch addr := addr.(type) {
-	case string:
-		// Start prefork
-		if cfg.EnablePrefork {
-			return app.prefork(addr, tlsConfig, cfg)
-		}
-
-		// Configure Listener
-		ln, err = app.createListener(addr, tlsConfig, cfg)
-		if err != nil {
-			return err
-		}
-	case net.Listener:
-		// Prefork is supported for custom listeners
-		if cfg.EnablePrefork {
-			newAddr, tlsConfig := lnMetadata(cfg.ListenerNetwork, addr)
-
-			return app.prefork(newAddr, tlsConfig, cfg)
-		}
-
-		ln = addr
-	default:
-		panic("start: invalid handler, you must use string or net.Listener as addr type")
+	// Configure Listener
+	ln, err := app.createListener(addr, tlsConfig, cfg)
+	if err != nil {
+		return err
 	}
 
 	// prepare the server for the start
@@ -215,6 +198,42 @@ func (app *App) Listen(addr any, config ...ListenConfig) error {
 	}
 
 	return app.server.Serve(ln)
+}
+
+// Listener serves HTTP requests from the given listener.
+// You should enter custom ListenConfig to customize startup. (prefork, startup message, graceful shutdown...)
+func (app *App) Listener(addr net.Listener, config ...ListenConfig) error {
+	cfg := listenConfigDefault(config...)
+
+	// Graceful shutdown
+	if cfg.GracefulContext != nil {
+		ctx, cancel := context.WithCancel(cfg.GracefulContext)
+		defer cancel()
+
+		go app.gracefulShutdown(ctx, cfg)
+	}
+
+	// Prefork is supported for custom listeners
+	if cfg.EnablePrefork {
+		newAddr, tlsConfig := lnMetadata(cfg.ListenerNetwork, addr)
+
+		return app.prefork(newAddr, tlsConfig, cfg)
+	}
+
+	// prepare the server for the start
+	app.startupProcess()
+
+	// Print startup message & routes
+	app.printMessages(cfg, addr)
+
+	// Serve
+	if cfg.BeforeServeFunc != nil {
+		if err := cfg.BeforeServeFunc(app); err != nil {
+			return err
+		}
+	}
+
+	return app.server.Serve(addr)
 }
 
 // Create listener function.

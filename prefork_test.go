@@ -23,7 +23,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 
 	app := New()
 
-	err := app.prefork("invalid", nil, ListenConfigDefault())
+	err := app.prefork("invalid", nil, listenConfigDefault())
 	require.False(t, err == nil)
 
 	go func() {
@@ -45,7 +45,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.prefork("127.0.0.1:", config, ListenConfigDefault()))
+	require.Nil(t, app.prefork("127.0.0.1:", config, listenConfigDefault()))
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
@@ -59,11 +59,11 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.prefork(":3000", nil, ListenConfigDefault()))
+	require.Nil(t, app.prefork(":3000", nil, listenConfigDefault()))
 
 	dummyChildCmd = "invalid"
 
-	err := app.prefork("127.0.0.1:", nil, ListenConfigDefault())
+	err := app.prefork("127.0.0.1:", nil, listenConfigDefault())
 	require.False(t, err == nil)
 
 	dummyChildCmd = "go"
@@ -81,7 +81,7 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 
 	os.Stdout = w
 
-	New().startupProcess().startupMessage(":3000", false, "", ListenConfigDefault())
+	New().startupProcess().startupMessage(":3000", false, "", listenConfigDefault())
 
 	require.Nil(t, w.Close())
 

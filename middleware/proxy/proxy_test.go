@@ -28,7 +28,7 @@ func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, str
 	addr := ln.Addr().String()
 
 	go func() {
-		require.Nil(t, target.Listen(ln, fiber.ListenConfig{
+		require.Nil(t, target.Listener(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -119,7 +119,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 	}))
 
 	go func() {
-		require.Nil(t, app.Listen(ln, fiber.ListenConfig{
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -154,7 +154,7 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 	app.Use(Forward("http://" + targetAddr))
 
 	go func() {
-		require.Nil(t, app.Listen(proxyServerLn, fiber.ListenConfig{
+		require.Nil(t, app.Listener(proxyServerLn, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
@@ -216,7 +216,7 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 	app.Use(Forward("https://" + addr + "/tlsfwd"))
 
 	go func() {
-		require.Nil(t, app.Listen(ln, fiber.ListenConfig{
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{
 			DisableStartupMessage: true,
 		}))
 	}()
