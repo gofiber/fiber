@@ -57,6 +57,23 @@ type core struct {
 	ctx    context.Context
 }
 
+func (c *core) getRetryConfig() *RetryConfig {
+	c.client.mu.Lock()
+	defer c.client.mu.Unlock()
+
+	cfg := c.client.RetryConfig()
+	if cfg == nil {
+		return nil
+	}
+
+	return &RetryConfig{
+		InitialInterval: cfg.InitialInterval,
+		MaxBackoffTime:  cfg.MaxBackoffTime,
+		Multiplier:      cfg.Multiplier,
+		MaxRetryCount:   cfg.MaxRetryCount,
+	}
+}
+
 func (c *core) execFunc() (*Response, error) {
 	resp := AcquireResponse()
 	resp.setClient(c.client)
@@ -70,22 +87,7 @@ func (c *core) execFunc() (*Response, error) {
 	}()
 
 	c.req.RawRequest.CopyTo(reqv)
-	cfg := func() *RetryConfig {
-		c.client.mu.Lock()
-		defer c.client.mu.Unlock()
-
-		c := c.client.RetryConfig()
-		if c == nil {
-			return nil
-		}
-
-		return &RetryConfig{
-			InitialInterval: c.InitialInterval,
-			MaxBackoffTime:  c.MaxBackoffTime,
-			Multiplier:      c.Multiplier,
-			MaxRetryCount:   c.MaxRetryCount,
-		}
-	}()
+	cfg := c.getRetryConfig()
 
 	go func() {
 		var err error
