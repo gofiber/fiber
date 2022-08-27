@@ -1,7 +1,6 @@
 package envvar
 
 import (
-	"encoding/json"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"os"
@@ -46,7 +45,7 @@ func New(config ...Config) fiber.Handler {
 
 		if path == cfg.Path {
 			envVar := newEnvVar(cfg)
-			varsByte, err := json.Marshal(envVar)
+			varsByte, err := c.App().Config().JSONEncoder(envVar)
 			if err != nil {
 				c.Response().SetBodyRaw(utils.UnsafeBytes(err.Error()))
 				c.Response().SetStatusCode(fiber.StatusInternalServerError)
