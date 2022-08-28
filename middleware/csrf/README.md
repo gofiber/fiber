@@ -49,8 +49,11 @@ app.Use(csrf.New(csrf.Config{
 	CookieSameSite: "Lax",
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
+	Extractor:      func(c *fiber.Ctx) (string, error) { ... },
 }))
 ```
+
+Note: KeyLookup will be ignored if Extractor is explicitly set.
 
 ### Custom Storage/Database
 
@@ -74,13 +77,15 @@ type Config struct {
 	Next func(c *fiber.Ctx) bool
 
 	// KeyLookup is a string in the form of "<source>:<key>" that is used
-	// to extract token from the request.
+	// to create an Extractor that extracts the token from the request.
 	// Possible values:
 	// - "header:<name>"
 	// - "query:<name>"
 	// - "param:<name>"
 	// - "form:<name>"
 	// - "cookie:<name>"
+	//
+	// Ignored if an Extractor is explicitly set.
 	//
 	// Optional. Default: "header:X-CSRF-Token"
 	KeyLookup string
@@ -133,6 +138,13 @@ type Config struct {
 	//
 	// Optional. Default: utils.UUID
 	KeyGenerator func() string
+
+	// Extractor returns the csrf token
+	//
+	// If set this will be used in place of an Extractor based on KeyLookup.
+	//
+	// Optional. Default will create an Extractor based on KeyLookup.
+	Extractor func(c *fiber.Ctx) (string, error)
 }
 ```
 

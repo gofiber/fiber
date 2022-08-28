@@ -236,6 +236,50 @@ func Test_CSRF_From_Cookie(t *testing.T) {
 	utils.AssertEqual(t, "OK", string(ctx.Response.Body()))
 }
 
+func Test_CSRF_From_Custom(t *testing.T) {
+	app := fiber.New()
+
+	extractor := func(c *fiber.Ctx) (string, error) {
+		body := string(c.Body())
+		// Generate the correct extractor to get the token from the correct location
+		selectors := strings.Split(body, "=")
+
+		if len(selectors) != 2 || selectors[1] == "" {
+			return "", errMissingParam
+		}
+		return selectors[1], nil
+	}
+
+	app.Use(New(Config{Extractor: extractor}))
+
+	app.Post("/", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	// Invalid CSRF token
+	ctx.Request.Header.SetMethod("POST")
+	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
+	h(ctx)
+	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
+
+	// Generate CSRF token
+	ctx.Request.Reset()
+	ctx.Response.Reset()
+	ctx.Request.Header.SetMethod("GET")
+	h(ctx)
+	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
+	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+
+	ctx.Request.Header.SetMethod("POST")
+	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
+	ctx.Request.SetBodyString("_csrf=" + token)
+	h(ctx)
+	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
+}
+
 func Test_CSRF_ErrorHandler_InvalidToken(t *testing.T) {
 	app := fiber.New()
 
