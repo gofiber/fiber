@@ -21,8 +21,12 @@ type EnvVar struct {
 	Vars map[string]string `json:"vars"`
 }
 
-func (envVar EnvVar) set(key, val string) {
+func (envVar *EnvVar) set(key, val string) {
 	envVar.Vars[key] = val
+}
+
+func (envVar *EnvVar) get(key string) string {
+	return envVar.Vars[key]
 }
 
 func New(config ...Config) fiber.Handler {
