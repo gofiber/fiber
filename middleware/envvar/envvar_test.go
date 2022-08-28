@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
-	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"testing"
@@ -48,7 +48,7 @@ func TestEnvVarHandler(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	utils.AssertEqual(t, expectedEnvVarResponse, respBody)
@@ -69,7 +69,7 @@ func TestEnvVarHandlerNotMatched(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	utils.AssertEqual(t, []byte("OK"), respBody)
@@ -86,7 +86,7 @@ func TestEnvVarHandlerDefaultConfig(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	var envVars EnvVar
