@@ -6,13 +6,17 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 	"io"
 	"net/http"
+	"os"
 	"testing"
 )
 
 func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
-	t.Setenv("testKey", "testEnvValue")
-	t.Setenv("anotherEnvKey", "anotherEnvVal")
-	t.Setenv("excludeKey", "excludeEnvValue")
+	os.Setenv("testKey", "testEnvValue")
+	os.Setenv("anotherEnvKey", "anotherEnvVal")
+	os.Setenv("excludeKey", "excludeEnvValue")
+	defer os.Unsetenv("testKey")
+	defer os.Unsetenv("anotherEnvKey")
+	defer os.Unsetenv("excludeKey")
 
 	vars := newEnvVar(Config{
 		ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
@@ -25,7 +29,8 @@ func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
 }
 
 func TestEnvVarHandler(t *testing.T) {
-	t.Setenv("testKey", "testVal")
+	os.Setenv("testKey", "testVal")
+	defer os.Unsetenv("testKey")
 
 	expectedEnvVarResponse, _ := json.Marshal(
 		struct {
@@ -71,7 +76,8 @@ func TestEnvVarHandlerNotMatched(t *testing.T) {
 }
 
 func TestEnvVarHandlerDefaultConfig(t *testing.T) {
-	t.Setenv("testEnvKey", "testEnvVal")
+	os.Setenv("testEnvKey", "testEnvVal")
+	defer os.Unsetenv("testEnvKey")
 
 	app := fiber.New()
 	app.Use(New())
