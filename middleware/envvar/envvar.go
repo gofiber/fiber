@@ -25,10 +25,6 @@ func (envVar EnvVar) set(key, val string) {
 	envVar.Vars[key] = val
 }
 
-func (envVar EnvVar) get(key string) string {
-	return envVar.Vars[key]
-}
-
 func New(config ...Config) fiber.Handler {
 	var cfg Config
 	if len(config) > 0 {

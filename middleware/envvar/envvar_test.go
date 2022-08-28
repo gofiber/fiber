@@ -22,10 +22,10 @@ func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
 		ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
 		ExcludeVars: map[string]string{"excludeKey": ""}})
 
-	utils.AssertEqual(t, vars.get("testKey"), "testEnvValue")
-	utils.AssertEqual(t, vars.get("testDefaultKey"), "testDefaultVal")
-	utils.AssertEqual(t, vars.get("excludeKey"), "")
-	utils.AssertEqual(t, vars.get("anotherEnvKey"), "")
+	utils.AssertEqual(t, vars.Vars["testKey"], "testEnvValue")
+	utils.AssertEqual(t, vars.Vars["testDefaultKey"], "testDefaultVal")
+	utils.AssertEqual(t, vars.Vars["excludeKey"], "")
+	utils.AssertEqual(t, vars.Vars["anotherEnvKey"], "")
 }
 
 func TestEnvVarHandler(t *testing.T) {
@@ -91,6 +91,6 @@ func TestEnvVarHandlerDefaultConfig(t *testing.T) {
 
 	var envVars EnvVar
 	utils.AssertEqual(t, nil, json.Unmarshal(respBody, &envVars))
-	val := envVars.get("testEnvKey")
+	val := envVars.Vars["testEnvKey"]
 	utils.AssertEqual(t, "testEnvVal", val)
 }
