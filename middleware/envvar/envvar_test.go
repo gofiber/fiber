@@ -40,8 +40,7 @@ func TestEnvVarHandler(t *testing.T) {
 		})
 
 	app := fiber.New()
-	app.Use(New(Config{
-		Path:       "/envvars",
+	app.Use("/envvars", New(Config{
 		ExportVars: map[string]string{"testKey": ""}}))
 
 	req, _ := http.NewRequest("GET", "http://localhost/envvars", nil)
@@ -56,8 +55,7 @@ func TestEnvVarHandler(t *testing.T) {
 
 func TestEnvVarHandlerNotMatched(t *testing.T) {
 	app := fiber.New()
-	app.Use(New(Config{
-		Path:       "/envvars",
+	app.Use("/envvars", New(Config{
 		ExportVars: map[string]string{"testKey": ""}}))
 
 	app.Get("/another-path", func(ctx *fiber.Ctx) error {
@@ -80,7 +78,7 @@ func TestEnvVarHandlerDefaultConfig(t *testing.T) {
 	defer os.Unsetenv("testEnvKey")
 
 	app := fiber.New()
-	app.Use(New())
+	app.Use("/envvars", New())
 
 	req, _ := http.NewRequest("GET", "http://localhost/envvars", nil)
 	resp, err := app.Test(req)
@@ -93,4 +91,14 @@ func TestEnvVarHandlerDefaultConfig(t *testing.T) {
 	utils.AssertEqual(t, nil, json.Unmarshal(respBody, &envVars))
 	val := envVars.Vars["testEnvKey"]
 	utils.AssertEqual(t, "testEnvVal", val)
+}
+
+func TestEnvVarHandlerMethod(t *testing.T) {
+	app := fiber.New()
+	app.Use("/envvars", New())
+
+	req, _ := http.NewRequest("POST", "http://localhost/envvars", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusMethodNotAllowed, resp.StatusCode)
 }

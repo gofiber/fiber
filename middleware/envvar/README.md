@@ -33,17 +33,18 @@ import (
 
 Then create a Fiber app with `app := fiber.New()`.
 
+**Note**: You need to provide a path to use envvar middleware.
+
 ### Default Config
 
 ```go
-app.Use(envvar.New())
+app.Use("/expose/envvars", envvar.New())
 ```
 
 ### Custom Config
 
 ```go
-app.Use(envvar.New(envvar.Config{
-    Path: "/expose/envvars",
+app.Use("/expose/envvars", envvar.New(envvar.Config{
     ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
     ExcludeVars: map[string]string{"excludeKey": ""}}
 }))
@@ -67,8 +68,6 @@ Http response contract:
 ```go
 // Config defines the config for middleware.
 type Config struct {
-    // Path specifies the path of handler that exposes environment variables
-    Path string
     // ExportVars specifies the environment variables that should export
     ExportVars map[string]string
     // ExcludeVars specifies the environment variables that should not export
@@ -80,7 +79,5 @@ type Config struct {
 ## Default Config
 
 ```go
-Config{
-	Path: "/envvars",
-}
+Config{}
 ```

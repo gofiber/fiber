@@ -9,8 +9,6 @@ import (
 
 // Config defines the config for middleware.
 type Config struct {
-	// Path specifies the path of handler that exposes environment variables
-	Path string
 	// ExportVars specifies the environment variables that should export
 	ExportVars map[string]string
 	// ExcludeVars specifies the environment variables that should not export
@@ -25,35 +23,30 @@ func (envVar *EnvVar) set(key, val string) {
 	envVar.Vars[key] = val
 }
 
+var defaultConfig = Config{}
+
 func New(config ...Config) fiber.Handler {
-	var cfg Config
+	var cfg = defaultConfig
 	if len(config) > 0 {
 		cfg = config[0]
-	} else {
-		cfg = Config{Path: "/envvars"}
 	}
 
 	return func(c *fiber.Ctx) error {
-		path := c.Path()
-		if len(path) < len(cfg.Path) || !strings.HasPrefix(path, cfg.Path) {
-			return c.Next()
+		if c.Method() != fiber.MethodGet {
+			return fiber.ErrMethodNotAllowed
 		}
 
-		if path == cfg.Path {
-			envVar := newEnvVar(cfg)
-			varsByte, err := c.App().Config().JSONEncoder(envVar)
-			if err != nil {
-				c.Response().SetBodyRaw(utils.UnsafeBytes(err.Error()))
-				c.Response().SetStatusCode(fiber.StatusInternalServerError)
-				return nil
-			}
-			c.Response().SetBodyRaw(varsByte)
-			c.Response().SetStatusCode(fiber.StatusOK)
-			c.Response().Header.Set("Content-Type", "application/json; charset=utf-8")
+		envVar := newEnvVar(cfg)
+		varsByte, err := c.App().Config().JSONEncoder(envVar)
+		if err != nil {
+			c.Response().SetBodyRaw(utils.UnsafeBytes(err.Error()))
+			c.Response().SetStatusCode(fiber.StatusInternalServerError)
 			return nil
 		}
-
-		return c.Next()
+		c.Response().SetBodyRaw(varsByte)
+		c.Response().SetStatusCode(fiber.StatusOK)
+		c.Response().Header.Set("Content-Type", "application/json; charset=utf-8")
+		return nil
 	}
 }
 
