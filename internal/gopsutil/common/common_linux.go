@@ -6,6 +6,7 @@ package common
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,7 +38,12 @@ func NumProcs() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func(f *os.File) {
+		err := f.Close()
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}(f)
 
 	list, err := f.Readdirnames(-1)
 	if err != nil {

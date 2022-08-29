@@ -127,9 +127,9 @@ func Test_Session_Types(t *testing.T) {
 		Name: "John",
 	}
 	// set value
-	var vbool bool = true
-	var vstring string = "str"
-	var vint int = 13
+	var vbool = true
+	var vstring = "str"
+	var vint = 13
 	var vint8 int8 = 13
 	var vint16 int16 = 13
 	var vint32 int32 = 13

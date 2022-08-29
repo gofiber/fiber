@@ -7,6 +7,7 @@
 package fiber
 
 import (
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -79,7 +80,7 @@ const (
 	guidConstraint
 	minLenConstraint
 	maxLenConstraint
-	exactLenConstraint
+	lenConstraint
 	betweenLenConstraint
 	minConstraint
 	maxConstraint
@@ -261,7 +262,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 
 	if hasConstraint := (parameterConstraintStart != -1 && parameterConstraintEnd != -1); hasConstraint {
 		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd]
-		userconstraints := strings.Split(constraintString, string(parameterConstraintSeparatorChars))
+		userconstraints := splitNonEscaped(constraintString, string(parameterConstraintSeparatorChars))
 		constraints = make([]*Constraint, 0, len(userconstraints))
 
 		for _, c := range userconstraints {
@@ -272,7 +273,15 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 			if start != -1 && end != -1 {
 				constraint := &Constraint{
 					ID:   getParamConstraintType(c[:start]),
-					Data: strings.Split(RemoveEscapeChar(c[start+1:end]), string(parameterConstraintDataSeparatorChars)),
+					Data: splitNonEscaped(c[start+1:end], string(parameterConstraintDataSeparatorChars)),
+				}
+
+				// remove escapes from data
+				if len(constraint.Data) == 1 {
+					constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
+				} else if len(constraint.Data) == 2 {
+					constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
+					constraint.Data[1] = RemoveEscapeChar(constraint.Data[1])
 				}
 
 				// Precompile regex if has regex constraint
@@ -382,6 +391,21 @@ func findNextNonEscapedCharsetPosition(search string, charset []byte) int {
 	}
 
 	return pos
+}
+
+// splitNonEscaped slices s into all substrings separated by sep and returns a slice of the substrings between those separators
+// This function also takes a care of escape char when splitting.
+func splitNonEscaped(s, sep string) []string {
+	var result []string
+	i := findNextNonEscapedCharsetPosition(s, []byte(sep))
+
+	for i > -1 {
+		result = append(result, s[:i])
+		s = s[i+len(sep):]
+		i = findNextNonEscapedCharsetPosition(s, []byte(sep))
+	}
+
+	return append(result, s)
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
@@ -526,13 +550,13 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 		return alphaConstraint
 	case ConstraintGuid:
 		return guidConstraint
-	case ConstraintMinLen:
+	case ConstraintMinLen, ConstraintMinLenLower:
 		return minLenConstraint
-	case ConstraintMaxLen:
+	case ConstraintMaxLen, ConstraintMaxLenLower:
 		return maxLenConstraint
-	case ConstraintExactLen:
-		return exactLenConstraint
-	case ConstraintBetweenLen:
+	case ConstraintLen:
+		return lenConstraint
+	case ConstraintBetweenLen, ConstraintBetweenLenLower:
 		return betweenLenConstraint
 	case ConstraintMin:
 		return minConstraint
@@ -555,7 +579,7 @@ func (c *Constraint) CheckConstraint(param string) bool {
 	var num int
 
 	// check data exists
-	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, exactLenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
+	needOneData := []TypeConstraint{minLenConstraint, maxLenConstraint, lenConstraint, minConstraint, maxConstraint, datetimeConstraint, regexConstraint}
 	needTwoData := []TypeConstraint{betweenLenConstraint, rangeConstraint}
 
 	for _, data := range needOneData {
@@ -569,6 +593,8 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			return false
 		}
 	}
+
+	fmt.Print(c.Data)
 
 	// check constraints
 	switch c.ID {
@@ -598,7 +624,7 @@ func (c *Constraint) CheckConstraint(param string) bool {
 		if len(param) > data {
 			return false
 		}
-	case exactLenConstraint:
+	case lenConstraint:
 		data, _ := strconv.Atoi(c.Data[0])
 
 		if len(param) != data {

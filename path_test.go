@@ -475,7 +475,7 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/123", params: []string{"123"}, match: true},
 		{url: "/api/v1/12345", params: []string{"12345"}, match: true},
 	})
-	testCase("/api/v1/:param<exactLen(5)>", []testparams{
+	testCase("/api/v1/:param<len(5)>", []testparams{
 		{url: "/api/v1/ent", params: []string{"ent"}, match: false},
 		{url: "/api/v1/123", params: []string{"123"}, match: false},
 		{url: "/api/v1/12345", params: []string{"12345"}, match: true},
@@ -547,6 +547,19 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
 		{url: "/api/v1/87283827683", params: []string{"8728382"}, match: false},
 		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
+	})
+	testCase("/api/v1/:param<int\\;range(10,30)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: true},
+		{url: "/api/v1/87283827683", params: []string{"87283827683"}, match: true},
+		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: true},
+	})
+	testCase("/api/v1/:param<range(10\\,30,1500)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/87283827683", params: []string{"8728382"}, match: false},
+		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/1200", params: []string{"1200"}, match: true},
 		{url: "/api/v1/true", params: []string{"true"}, match: false},
 	})
 }
@@ -681,7 +694,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v1/123", params: []string{"123"}, match: true},
 		{url: "/api/v1/12345", params: []string{"12345"}, match: true},
 	})
-	benchCase("/api/v1/:param<exactLen(5)>", []testparams{
+	benchCase("/api/v1/:param<len(5)>", []testparams{
 		{url: "/api/v1/ent", params: []string{"ent"}, match: false},
 		{url: "/api/v1/123", params: []string{"123"}, match: false},
 		{url: "/api/v1/12345", params: []string{"12345"}, match: true},
@@ -755,28 +768,17 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v1/25", params: []string{"25"}, match: true},
 		{url: "/api/v1/true", params: []string{"true"}, match: false},
 	})
-}
-
-func Test_Path_matchParams0(t *testing.T) {
-	t.Parallel()
-	type testparams struct {
-		url          string
-		params       []string
-		match        bool
-		partialCheck bool
-	}
-	var ctxParams [maxParams]string
-	testCase := func(r string, cases []testparams) {
-		parser := parseRoute(r)
-		for _, c := range cases {
-			match := parser.getMatch(c.url, c.url, &ctxParams, c.partialCheck)
-			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-			if match && len(c.params) > 0 {
-				utils.AssertEqual(t, c.params[0:len(c.params)], ctxParams[0:len(c.params)], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
-			}
-		}
-	}
-	testCase("/api/v1/:param<datetime(2006-01-02)>", []testparams{
-		{url: "/api/v1/2005-11-01", params: []string{"2005-11-01"}, match: true},
+	benchCase("/api/v1/:param<int\\;range(10,30)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: true},
+		{url: "/api/v1/87283827683", params: []string{"87283827683"}, match: true},
+		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: true},
+	})
+	benchCase("/api/v1/:param<range(10\\,30,1500)>", []testparams{
+		{url: "/api/v1/entity", params: []string{"entity"}, match: false},
+		{url: "/api/v1/87283827683", params: []string{"8728382"}, match: false},
+		{url: "/api/v1/25", params: []string{"25"}, match: true},
+		{url: "/api/v1/1200", params: []string{"1200"}, match: true},
+		{url: "/api/v1/true", params: []string{"true"}, match: false},
 	})
 }
