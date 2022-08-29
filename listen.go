@@ -23,12 +23,12 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-var figletFiberText = fmt.Sprintf(`
+var figletFiberText = `
     _______ __             
    / ____(_) /_  ___  _____
   / /_  / / __ \/ _ \/ ___/
  / __/ / / /_/ /  __/ /    
-/_/   /_/_.___/\___/_/     v%s`, Version)
+/_/   /_/_.___/\___/_/     %s`
 
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
@@ -202,13 +202,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		return
 	}
 
-	var resetColor, red, blue, green string
-	if runtime.GOOS != "windows" {
-		resetColor = app.config.ColorScheme.Reset
-		red = app.config.ColorScheme.Red
-		blue = app.config.ColorScheme.Blue
-		green = app.config.ColorScheme.Green
-	}
+	// Alias colors
+	colors := app.config.ColorScheme
 
 	host, port := parseAddr(addr)
 	if host == "" {
@@ -234,36 +229,37 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		procs = "1"
 	}
 
-	out := os.Stdout
+	out := colorable.NewColorableStdout()
 	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-		out = os.Stdout
+		out = colorable.NewNonColorable(os.Stdout)
 	}
-	_, _ = fmt.Fprintf(out, "%s\n", figletFiberText)
+
+	_, _ = fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset))
 	_, _ = fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")
 
 	if host == "0.0.0.0" {
 		_, _ = fmt.Fprintf(out,
 			"%sINFO%s Server started on %s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)\n",
-			green, resetColor, blue, scheme, port, resetColor, port)
+			colors.Green, colors.Reset, colors.Blue, scheme, port, colors.Reset, port)
 	} else {
 		_, _ = fmt.Fprintf(out,
 			"%sINFO%s Server started on %s%s%s\n",
-			green, resetColor, blue, fmt.Sprintf("%s://%s:%s", scheme, host, port), resetColor)
+			colors.Green, colors.Reset, colors.Blue, fmt.Sprintf("%s://%s:%s", scheme, host, port), colors.Reset)
 	}
 
 	if app.config.AppName != "" {
-		_, _ = fmt.Fprintf(out, "%sINFO%s Application name: %s%s%s\n", green, resetColor, blue, app.config.AppName, resetColor)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Application name: %s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
 	}
 	_, _ = fmt.Fprintf(out,
 		"%sINFO%s Total handlers count: %s%s%s\n",
-		green, resetColor, blue, strconv.Itoa(int(app.handlersCount)), resetColor)
+		colors.Green, colors.Reset, colors.Blue, strconv.Itoa(int(app.handlersCount)), colors.Reset)
 	if isPrefork == "Enabled" {
-		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: %s%s%s\n", green, resetColor, blue, isPrefork, resetColor)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: %s%s%s\n", colors.Green, colors.Reset, colors.Blue, isPrefork, colors.Reset)
 	} else {
-		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: %s%s%s\n", green, resetColor, red, isPrefork, resetColor)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: %s%s%s\n", colors.Green, colors.Reset, colors.Red, isPrefork, colors.Reset)
 	}
-	_, _ = fmt.Fprintf(out, "%sINFO%s PID: %s%v%s\n", green, resetColor, blue, os.Getpid(), resetColor)
-	_, _ = fmt.Fprintf(out, "%sINFO%s Total process count: %s%s%s\n", green, resetColor, blue, procs, resetColor)
+	_, _ = fmt.Fprintf(out, "%sINFO%s PID: %s%v%s\n", colors.Green, colors.Reset, colors.Blue, os.Getpid(), colors.Reset)
+	_, _ = fmt.Fprintf(out, "%sINFO%s Total process count: %s%s%s\n", colors.Green, colors.Reset, colors.Blue, procs, colors.Reset)
 
 	if app.config.Prefork {
 		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
@@ -274,7 +270,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			}
 		}
 
-		_, _ = fmt.Fprintf(out, "%sINFO%s Child PIDs: ", green, resetColor)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Child PIDs: ", colors.Green, colors.Reset)
 		totalPids := len(pidSlice)
 		rowTotalPidCount := 10
 		for i := 0; i < totalPids; i += rowTotalPidCount {
@@ -283,8 +279,11 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			if end > totalPids {
 				end = totalPids
 			}
-			for _, pid := range pidSlice[start:end] {
-				_, _ = fmt.Fprintf(out, "%s, ", pid)
+			for n, pid := range pidSlice[start:end] {
+				_, _ = fmt.Fprintf(out, "%s", pid)
+				if n+1 != len(pidSlice[start:end]) {
+					_, _ = fmt.Fprintf(out, ", ")
+				}
 			}
 			_, _ = fmt.Fprintf(out, "\n")
 		}
