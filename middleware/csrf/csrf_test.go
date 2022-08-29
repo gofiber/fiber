@@ -1,6 +1,7 @@
 package csrf
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -41,7 +42,7 @@ func Test_CSRF(t *testing.T) {
 		ctx.Request.Reset()
 		ctx.Response.Reset()
 		ctx.Request.Header.SetMethod("POST")
-		ctx.Request.Header.Set("X-CSRF-Token", "johndoe")
+		ctx.Request.Header.Set(HeaderName, "johndoe")
 		h(ctx)
 		utils.AssertEqual(t, 403, ctx.Response.StatusCode())
 
@@ -56,7 +57,7 @@ func Test_CSRF(t *testing.T) {
 		ctx.Request.Reset()
 		ctx.Response.Reset()
 		ctx.Request.Header.SetMethod("POST")
-		ctx.Request.Header.Set("X-CSRF-Token", token)
+		ctx.Request.Header.Set(HeaderName, token)
 		h(ctx)
 		utils.AssertEqual(t, 200, ctx.Response.StatusCode())
 	}
@@ -306,7 +307,7 @@ func Test_CSRF_ErrorHandler_InvalidToken(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.Header.SetMethod("POST")
-	ctx.Request.Header.Set("X-CSRF-Token", "johndoe")
+	ctx.Request.Header.Set(HeaderName, "johndoe")
 	h(ctx)
 	utils.AssertEqual(t, 419, ctx.Response.StatusCode())
 	utils.AssertEqual(t, "invalid CSRF token", string(ctx.Response.Body()))
@@ -347,28 +348,53 @@ func Test_CSRF_UnsafeHeaderValue(t *testing.T) { // TODO: add the flow of the bu
 
 	app.Use(New())
 	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusTeapot)
+		return c.SendStatus(fiber.StatusOK)
+	})
+	app.Get("/test", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
+	app.Post("/", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
 	})
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 429, resp.StatusCode)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
-	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
+	var token string
+	for _, c := range resp.Cookies() {
+		if c.Name != ConfigDefault.CookieName {
+			continue
+		}
+		token = c.Value
+		break
+	}
 
-	ctx.Request.Header.SetMethod("POST")
-	ctx.Request.Header.Set("X-CSRF-Token", token)
+	fmt.Println("token", token)
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 429, resp.StatusCode)
+	getReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	getReq.Header.Set(HeaderName, token)
+	resp, err = app.Test(getReq)
 
-	app.ReleaseCtx(ctx)
+	getReq = httptest.NewRequest(http.MethodGet, "/test", nil)
+	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+	getReq.Header.Set(fiber.HeaderCacheControl, "no")
+	getReq.Header.Set(HeaderName, token)
+
+	resp, err = app.Test(getReq)
+
+	getReq.Header.Set(fiber.HeaderAccept, "*/*")
+	getReq.Header.Del(HeaderName)
+	resp, err = app.Test(getReq)
+
+	postReq := httptest.NewRequest(http.MethodPost, "/", nil)
+	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+	postReq.Header.Set(HeaderName, token)
+	resp, err = app.Test(postReq)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Middleware_CSRF -benchmem -count=4
-func Benchmark_Middleware_CSRF(b *testing.B) { // TODO: complete benchmark
+// go test -v -run=^$ -bench=Benchmark_Middleware_CSRF_Check -benchmem -count=4
+func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	app := fiber.New()
 
 	app.Use(New())
@@ -387,8 +413,33 @@ func Benchmark_Middleware_CSRF(b *testing.B) { // TODO: complete benchmark
 	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
 	ctx.Request.Header.SetMethod("POST")
-	ctx.Request.Header.Set("X-CSRF-Token", token)
+	ctx.Request.Header.Set(HeaderName, token)
 
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		h(fctx)
+	}
+
+	utils.AssertEqual(b, fiber.StatusTeapot, fctx.Response.Header.StatusCode())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Middleware_CSRF_GenerateToken -benchmem -count=4
+func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
+	app := fiber.New()
+
+	app.Use(New())
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusTeapot)
+	})
+
+	fctx := &fasthttp.RequestCtx{}
+	h := app.Handler()
+	ctx := &fasthttp.RequestCtx{}
+
+	// Generate CSRF token
+	ctx.Request.Header.SetMethod("GET")
 	b.ReportAllocs()
 	b.ResetTimer()
 
