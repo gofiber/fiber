@@ -22,7 +22,8 @@ func Test_Utils_ETag(t *testing.T) {
 	t.Run("Not Status OK", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		c.Status(201)
 		setETag(c, false)
 		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
@@ -38,7 +39,8 @@ func Test_Utils_ETag(t *testing.T) {
 	t.Run("Has HeaderIfNoneMatch", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		c.Request().Header.Set(HeaderIfNoneMatch, `"13-1831710635"`)
 		setETag(c, false)
 		utils.AssertEqual(t, 304, c.Response().StatusCode())
@@ -49,7 +51,8 @@ func Test_Utils_ETag(t *testing.T) {
 	t.Run("No HeaderIfNoneMatch", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		setETag(c, false)
 		utils.AssertEqual(t, `"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
 	})
@@ -60,7 +63,8 @@ func Benchmark_Utils_ETag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.SendString("Hello, World!")
+	err := c.SendString("Hello, World!")
+	utils.AssertEqual(b, nil, err)
 	for n := 0; n < b.N; n++ {
 		setETag(c, false)
 	}
@@ -73,7 +77,8 @@ func Test_Utils_ETag_Weak(t *testing.T) {
 	t.Run("Set Weak", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		setETag(c, true)
 		utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
 	})
