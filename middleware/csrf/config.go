@@ -102,15 +102,17 @@ type Config struct {
 	Extractor func(c *fiber.Ctx) (string, error)
 }
 
+const HeaderName = "X-Csrf-Token"
+
 // ConfigDefault is the default config
 var ConfigDefault = Config{
-	KeyLookup:      "header:X-Csrf-Token",
+	KeyLookup:      "header:" + HeaderName,
 	CookieName:     "csrf_",
 	CookieSameSite: "Lax",
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
 	ErrorHandler:   defaultErrorHandler,
-	Extractor:      CsrfFromHeader("X-Csrf-Token"),
+	Extractor:      CsrfFromHeader(HeaderName),
 }
 
 // default ErrorHandler that process return error from fiber.Handler
