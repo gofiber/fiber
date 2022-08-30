@@ -7,7 +7,6 @@
 package fiber
 
 import (
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -250,7 +249,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	// find constraint part if exists in the parameter part and remove it
 	if parameterEndPosition > 0 {
 		parameterConstraintStart = findNextNonEscapedCharsetPosition(pattern[0:parameterEndPosition], parameterConstraintStartChars)
-		parameterConstraintEnd = findNextNonEscapedCharsetPosition(pattern[0:parameterEndPosition+1], parameterConstraintEndChars)
+		parameterConstraintEnd = findLastCharsetPosition(pattern[0:parameterEndPosition+1], parameterConstraintEndChars)
 	}
 
 	// cut params part
@@ -262,12 +261,12 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 
 	if hasConstraint := (parameterConstraintStart != -1 && parameterConstraintEnd != -1); hasConstraint {
 		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd]
-		userconstraints := splitNonEscaped(constraintString, string(parameterConstraintSeparatorChars))
-		constraints = make([]*Constraint, 0, len(userconstraints))
+		userConstraints := splitNonEscaped(constraintString, string(parameterConstraintSeparatorChars))
+		constraints = make([]*Constraint, 0, len(userConstraints))
 
-		for _, c := range userconstraints {
+		for _, c := range userConstraints {
 			start := findNextNonEscapedCharsetPosition(c, parameterConstraintDataStartChars)
-			end := findNextNonEscapedCharsetPosition(c, parameterConstraintDataEndChars)
+			end := findLastCharsetPosition(c, parameterConstraintDataEndChars)
 
 			// Assign constraint
 			if start != -1 && end != -1 {
@@ -277,11 +276,13 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 				}
 
 				// remove escapes from data
-				if len(constraint.Data) == 1 {
-					constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
-				} else if len(constraint.Data) == 2 {
-					constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
-					constraint.Data[1] = RemoveEscapeChar(constraint.Data[1])
+				if constraint.ID != regexConstraint {
+					if len(constraint.Data) == 1 {
+						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
+					} else if len(constraint.Data) == 2 {
+						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
+						constraint.Data[1] = RemoveEscapeChar(constraint.Data[1])
+					}
 				}
 
 				// Precompile regex if has regex constraint
@@ -346,6 +347,18 @@ func findNextCharsetPosition(search string, charset []byte) int {
 	return nextPosition
 }
 
+// findNextCharsetPosition search the last char position from the charset
+func findLastCharsetPosition(search string, charset []byte) int {
+	lastPosition := -1
+	for _, char := range charset {
+		if pos := strings.LastIndexByte(search, char); pos != -1 && (pos < lastPosition || lastPosition == -1) {
+			lastPosition = pos
+		}
+	}
+
+	return lastPosition
+}
+
 // findNextCharsetPositionConstraint search the next char position from the charset
 // unlike findNextCharsetPosition, it takes care of constraint start-end chars to parse route pattern
 func findNextCharsetPositionConstraint(search string, charset []byte) int {
@@ -363,7 +376,7 @@ func findNextCharsetPositionConstraint(search string, charset []byte) int {
 		if char == paramConstraintEnd {
 			constraintEnd = pos
 		}
-		//fmt.Println(string(char))
+
 		if pos != -1 && (pos < nextPosition || nextPosition == -1) {
 			if pos > constraintStart && pos < constraintEnd {
 				nextPosition = pos
@@ -593,8 +606,6 @@ func (c *Constraint) CheckConstraint(param string) bool {
 			return false
 		}
 	}
-
-	fmt.Print(c.Data)
 
 	// check constraints
 	switch c.ID {
