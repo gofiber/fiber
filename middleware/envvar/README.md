@@ -10,7 +10,7 @@ EnvVar middleware for [Fiber](https://github.com/gofiber/fiber) that can be used
     - [Examples](#examples)
         - [Default Config](#default-config)
         - [Custom Config](#custom-config)
-        - [Response](#http-response)
+        - [Response](#response)
     - [Config](#config)
     - [Default Config](#default-config-1)
 
