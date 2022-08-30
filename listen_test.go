@@ -166,12 +166,18 @@ func captureOutput(f func()) string {
 	go func() {
 		var buf bytes.Buffer
 		wg.Done()
-		io.Copy(&buf, reader)
+		_, err := io.Copy(&buf, reader)
+		if err != nil {
+			panic(err)
+		}
 		out <- buf.String()
 	}()
 	wg.Wait()
 	f()
-	writer.Close()
+	err = writer.Close()
+	if err != nil {
+		panic(err)
+	}
 	return <-out
 }
 
