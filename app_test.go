@@ -435,18 +435,18 @@ func Test_App_Not_Use_StrictRouting(t *testing.T) {
 		return c.SendString(c.Path())
 	})
 
-	// // wrong path in the requested route -> 404
-	// resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", nil))
-	// utils.AssertEqual(t, nil, err, "app.Test(req)")
-	// utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+	// wrong path in the requested route -> 404
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	// // right path in the requrested route -> 200
-	// resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
-	// utils.AssertEqual(t, nil, err, "app.Test(req)")
-	// utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	// right path in the requrested route -> 200
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	// wrong path with group in the requested route -> 404
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -459,27 +459,27 @@ func Test_App_Not_Use_StrictRouting(t *testing.T) {
 func Test_App_Use_StrictRouting(t *testing.T) {
 	app := New(Config{StrictRouting: true})
 
-	app.Use("/abc", func(c *Ctx) error {
+	app.Get("/abc", func(c *Ctx) error {
 		return c.SendString(c.Path())
 	})
 
 	g := app.Group("/foo")
-	g.Use("/", func(c *Ctx) error {
+	g.Get("/", func(c *Ctx) error {
 		return c.SendString(c.Path())
 	})
 
-	// // wrong path in the requested route -> 404
-	// resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", nil))
-	// utils.AssertEqual(t, nil, err, "app.Test(req)")
-	// utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+	// wrong path in the requested route -> 404
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 
-	// // right path in the requrested route -> 200
-	// resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
-	// utils.AssertEqual(t, nil, err, "app.Test(req)")
-	// utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	// right path in the requrested route -> 200
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
 	// wrong path with group in the requested route -> 404
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
 
