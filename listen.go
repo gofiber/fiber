@@ -26,12 +26,6 @@ import (
 
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
-	// Prefork is supported for custom listeners
-	if app.config.Prefork {
-		addr, tlsConfig := lnMetadata(app.config.Network, ln)
-		return app.prefork(app.config.Network, addr, tlsConfig)
-	}
-
 	// prepare the server for the start
 	app.startupProcess()
 
@@ -43,6 +37,11 @@ func (app *App) Listener(ln net.Listener) error {
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
+	}
+
+	// Prefork is not supported for custom listeners
+	if app.config.Prefork {
+		fmt.Println("[Warning] Prefork isn't supported for custom listeners.")
 	}
 
 	// Start listening
