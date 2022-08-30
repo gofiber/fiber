@@ -83,7 +83,7 @@ func Test_Route_Match_Star(t *testing.T) {
 	require.Equal(t, "test", app.getString(body))
 
 	// without parameter
-	route := Route{
+	route := RouteInfo{
 		star:        true,
 		path:        "/*",
 		routeParser: routeParser{},
@@ -609,7 +609,7 @@ func Benchmark_Route_Match(b *testing.B) {
 	var params [maxParams]string
 
 	parsed := parseRoute("/user/keys/:id")
-	route := &Route{
+	route := &RouteInfo{
 		use:         false,
 		root:        false,
 		star:        false,
@@ -638,7 +638,7 @@ func Benchmark_Route_Match_Star(b *testing.B) {
 	var params [maxParams]string
 
 	parsed := parseRoute("/*")
-	route := &Route{
+	route := &RouteInfo{
 		use:         false,
 		root:        false,
 		star:        true,
@@ -668,7 +668,7 @@ func Benchmark_Route_Match_Root(b *testing.B) {
 	var params [maxParams]string
 
 	parsed := parseRoute("/")
-	route := &Route{
+	route := &RouteInfo{
 		use:         false,
 		root:        true,
 		star:        false,

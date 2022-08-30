@@ -248,7 +248,7 @@ type Ctx interface {
 	Render(name string, bind Map, layouts ...string) error
 
 	// Route returns the matched Route struct.
-	Route() *Route
+	Route() *RouteInfo
 
 	// SaveFile saves any multipart file to disk.
 	SaveFile(fileheader *multipart.FileHeader, path string) error
@@ -361,7 +361,7 @@ type CustomCtx interface {
 	setIndexHandler(handler int)
 	setIndexRoute(route int)
 	setMatched(matched bool)
-	setRoute(route *Route)
+	setRoute(route *RouteInfo)
 }
 
 func NewDefaultCtx(app *App) *DefaultCtx {
@@ -501,6 +501,6 @@ func (c *DefaultCtx) setMatched(matched bool) {
 	c.matched = matched
 }
 
-func (c *DefaultCtx) setRoute(route *Route) {
+func (c *DefaultCtx) setRoute(route *RouteInfo) {
 	c.route = route
 }

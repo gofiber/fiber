@@ -190,9 +190,9 @@ func methodExistCustom(c CustomCtx) (exist bool) {
 }
 
 // uniqueRouteStack drop all not unique routes from the slice
-func uniqueRouteStack(stack []*Route) []*Route {
-	var unique []*Route
-	m := make(map[*Route]int)
+func uniqueRouteStack(stack []*RouteInfo) []*RouteInfo {
+	var unique []*RouteInfo
+	m := make(map[*RouteInfo]int)
 	for _, v := range stack {
 		if _, ok := m[v]; !ok {
 			// Unique key found. Record position and collect

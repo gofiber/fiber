@@ -1207,7 +1207,7 @@ func Benchmark_Ctx_Params(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	c.route = &Route{
+	c.route = &RouteInfo{
 		Params: []string{
 			"param1", "param2", "param3", "param4",
 		},

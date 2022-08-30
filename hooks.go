@@ -1,7 +1,7 @@
 package fiber
 
 // Handlers define a function to create hooks for Fiber.
-type OnRouteHandler = func(Route) error
+type OnRouteHandler = func(RouteInfo) error
 type OnNameHandler = OnRouteHandler
 type OnGroupHandler = func(Group) error
 type OnGroupNameHandler = OnGroupHandler
@@ -94,7 +94,7 @@ func (h *Hooks) OnFork(handler ...OnForkHandler) {
 	h.app.mutex.Unlock()
 }
 
-func (h *Hooks) executeOnRouteHooks(route Route) error {
+func (h *Hooks) executeOnRouteHooks(route RouteInfo) error {
 	for _, v := range h.onRoute {
 		if err := v(route); err != nil {
 			return err
@@ -104,7 +104,7 @@ func (h *Hooks) executeOnRouteHooks(route Route) error {
 	return nil
 }
 
-func (h *Hooks) executeOnNameHooks(route Route) error {
+func (h *Hooks) executeOnNameHooks(route RouteInfo) error {
 	for _, v := range h.onName {
 		if err := v(route); err != nil {
 			return err

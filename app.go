@@ -88,9 +88,9 @@ type Error struct {
 type App struct {
 	mutex sync.Mutex
 	// Route stack divided by HTTP methods
-	stack [][]*Route
+	stack [][]*RouteInfo
 	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[string][]*Route
+	treeStack []map[string][]*RouteInfo
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
 	// Amount of registered routes
@@ -112,7 +112,7 @@ type App struct {
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
-	latestRoute *Route
+	latestRoute *RouteInfo
 	latestGroup *Group
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
@@ -466,14 +466,14 @@ func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
 		// Create router stack
-		stack:     make([][]*Route, len(intMethod)),
-		treeStack: make([]map[string][]*Route, len(intMethod)),
+		stack:     make([][]*RouteInfo, len(intMethod)),
+		treeStack: make([]map[string][]*RouteInfo, len(intMethod)),
 		// Create config
 		config:        Config{},
 		getBytes:      utils.UnsafeBytes,
 		getString:     utils.UnsafeString,
 		appList:       make(map[string]*App),
-		latestRoute:   &Route{},
+		latestRoute:   &RouteInfo{},
 		latestGroup:   &Group{},
 		customBinders: []CustomBinder{},
 	}
@@ -623,7 +623,7 @@ func (app *App) Name(name string) Router {
 }
 
 // Get route by name
-func (app *App) GetRoute(name string) Route {
+func (app *App) GetRoute(name string) RouteInfo {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
@@ -632,7 +632,7 @@ func (app *App) GetRoute(name string) Route {
 		}
 	}
 
-	return Route{}
+	return RouteInfo{}
 }
 
 // Use registers a middleware route that will match requests
@@ -799,7 +799,7 @@ func (app *App) Handler() fasthttp.RequestHandler {
 }
 
 // Stack returns the raw router stack.
-func (app *App) Stack() [][]*Route {
+func (app *App) Stack() [][]*RouteInfo {
 	return app.stack
 }
 

@@ -19,7 +19,7 @@ func Test_Hook_OnRoute(t *testing.T) {
 
 	app := New()
 
-	app.Hooks().OnRoute(func(r Route) error {
+	app.Hooks().OnRoute(func(r RouteInfo) error {
 		require.Equal(t, "", r.Name)
 
 		return nil
@@ -41,7 +41,7 @@ func Test_Hook_OnName(t *testing.T) {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	app.Hooks().OnName(func(r Route) error {
+	app.Hooks().OnName(func(r RouteInfo) error {
 		buf.WriteString(r.Name)
 
 		return nil
@@ -68,7 +68,7 @@ func Test_Hook_OnName_Error(t *testing.T) {
 		}
 	}()
 
-	app.Hooks().OnName(func(r Route) error {
+	app.Hooks().OnName(func(r RouteInfo) error {
 		return errors.New("unknown error")
 	})
 
