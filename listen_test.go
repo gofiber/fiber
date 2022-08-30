@@ -250,6 +250,6 @@ func Test_App_print_Route_with_group(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
 }
 
-func emptyHandler(c *Ctx) error {
+func emptyHandler(_ *Ctx) error {
 	return nil
 }
