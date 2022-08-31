@@ -28,7 +28,7 @@ func compileReqParser(rt reflect.Type) (Decoder, error) {
 
 	el := rt.Elem()
 	if el.Kind() != reflect.Struct {
-		panic("wrapped request need to struct")
+		return nil, &UnsupportedBinderError{Type: rt}
 	}
 
 	for i := 0; i < el.NumField(); i++ {

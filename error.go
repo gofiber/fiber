@@ -19,7 +19,7 @@ func (n NilValidatorError) Error() string {
 	return "fiber: ctx.EnableValidate(v any) is called without validator"
 }
 
-// InvalidBinderError is the error when try to bind unsupported type.
+// InvalidBinderError is the error when try to bind invalid value.
 type InvalidBinderError struct {
 	Type reflect.Type
 }
@@ -33,4 +33,13 @@ func (e *InvalidBinderError) Error() string {
 		return "fiber: Unmarshal(non-pointer " + e.Type.String() + ")"
 	}
 	return "fiber: Bind(nil " + e.Type.String() + ")"
+}
+
+// UnsupportedBinderError is the error when try to bind unsupported type.
+type UnsupportedBinderError struct {
+	Type reflect.Type
+}
+
+func (e *UnsupportedBinderError) Error() string {
+	return "unsupported binder: ctx.Bind().Req(" + e.Type.String() + "), only binding struct is supported new"
 }
