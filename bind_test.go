@@ -1,6 +1,9 @@
 package fiber
 
 import (
+	"bytes"
+	"fmt"
+	"mime/multipart"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -10,6 +13,30 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
+
+func Test_Binder(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	ctx := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx.values = [maxParams]string{"id string"}
+	ctx.route = &Route{Params: []string{"id"}}
+	ctx.Request().SetBody([]byte(`{"name": "john doe"}`))
+	ctx.Request().Header.Set("content-type", "application/json")
+
+	var req struct {
+		ID string `param:"id"`
+	}
+
+	var body struct {
+		Name string `json:"name"`
+	}
+
+	err := ctx.Bind().Req(&req).JSON(&body).Err()
+	require.NoError(t, err)
+	require.Equal(t, "id string", req.ID)
+	require.Equal(t, "john doe", body.Name)
+}
 
 // go test -run Test_Bind_BasicType -v
 func Test_Bind_BasicType(t *testing.T) {
@@ -250,6 +277,68 @@ func Test_Bind_error_message(t *testing.T) {
 
 	require.Error(t, err)
 	require.Regexp(t, regexp.MustCompile(`unable to decode 'john' as time`), err.Error())
+}
+
+func Test_Bind_Form(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	c.Context().Request.Header.Set(HeaderContentType, MIMEApplicationForm)
+	c.Context().Request.SetBody([]byte(url.Values{
+		"username": {"u"},
+		"password": {"p"},
+		"likes":    {"apple", "banana"},
+	}.Encode()))
+
+	type Req struct {
+		Username string   `form:"username"`
+		Password string   `form:"password"`
+		Likes    []string `form:"likes"`
+	}
+
+	var r Req
+	err := c.Bind().Form(&r).Err()
+
+	require.NoError(t, err)
+	require.Equal(t, "u", r.Username)
+	require.Equal(t, "p", r.Password)
+	require.Equal(t, []string{"apple", "banana"}, r.Likes)
+}
+
+func Test_Bind_Multipart(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	buf := bytes.NewBuffer(nil)
+	boundary := multipart.NewWriter(nil).Boundary()
+	err := fasthttp.WriteMultipartForm(buf, &multipart.Form{
+		Value: map[string][]string{
+			"username": {"u"},
+			"password": {"p"},
+			"likes":    {"apple", "banana"},
+		},
+	}, boundary)
+
+	require.NoError(t, err)
+
+	c.Context().Request.Header.Set(HeaderContentType, fmt.Sprintf("%s; boundary=%s", MIMEMultipartForm, boundary))
+	c.Context().Request.SetBody(buf.Bytes())
+
+	type Req struct {
+		Username string   `multipart:"username"`
+		Password string   `multipart:"password"`
+		Likes    []string `multipart:"likes"`
+	}
+
+	var r Req
+	err = c.Bind().Multipart(&r).Err()
+	require.NoError(t, err)
+
+	require.Equal(t, "u", r.Username)
+	require.Equal(t, "p", r.Password)
+	require.Equal(t, []string{"apple", "banana"}, r.Likes)
 }
 
 type Req struct {

@@ -213,10 +213,6 @@ func (c *DefaultCtx) BaseURL() string {
 	return c.baseURI
 }
 
-func (c *DefaultCtx) Bind() *Bind {
-	return &Bind{ctx: c}
-}
-
 // func (c *DefaultCtx) BindWithValidate(v any) error {
 // 	if err := c.Bind(v); err != nil {
 // 		return err

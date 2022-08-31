@@ -20,10 +20,18 @@ const bindTagQuery = "query"
 const bindTagParam = "param"
 const bindTagCookie = "cookie"
 
+const bindTagForm = "form"
+const bindTagMultipart = "multipart"
+
 var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 var bindUnmarshalerType = reflect.TypeOf((*Binder)(nil)).Elem()
 
-func compileReqParser(rt reflect.Type) (Decoder, error) {
+type bindCompileOption struct {
+	bodyDecoder bool // to parse `form` or `multipart/form-data`
+	reqDecoder  bool // to parse header/cookie/param/query/header/respHeader
+}
+
+func compileReqParser(rt reflect.Type, opt bindCompileOption) (Decoder, error) {
 	var decoders []decoder
 
 	el := rt.Elem()
@@ -37,7 +45,7 @@ func compileReqParser(rt reflect.Type) (Decoder, error) {
 			continue
 		}
 
-		dec, err := compileFieldDecoder(el.Field(i), i)
+		dec, err := compileFieldDecoder(el.Field(i), i, opt)
 		if err != nil {
 			return nil, err
 		}
@@ -59,13 +67,18 @@ func compileReqParser(rt reflect.Type) (Decoder, error) {
 	}, nil
 }
 
-func compileFieldDecoder(field reflect.StructField, index int) (decoder, error) {
+func compileFieldDecoder(field reflect.StructField, index int, opt bindCompileOption) (decoder, error) {
 	if reflect.PtrTo(field.Type).Implements(bindUnmarshalerType) {
 		return &fieldCtxDecoder{index: index, fieldName: field.Name, fieldType: field.Type}, nil
 	}
 
+	var tags = []string{bindTagRespHeader, bindTagQuery, bindTagParam, bindTagHeader, bindTagCookie}
+	if opt.bodyDecoder {
+		tags = []string{bindTagForm, bindTagMultipart}
+	}
+
 	var tagScope = ""
-	for _, loopTagScope := range []string{bindTagRespHeader, bindTagQuery, bindTagParam, bindTagHeader, bindTagCookie} {
+	for _, loopTagScope := range tags {
 		if _, ok := field.Tag.Lookup(loopTagScope); ok {
 			tagScope = loopTagScope
 			break
@@ -89,6 +102,24 @@ func compileFieldDecoder(field reflect.StructField, index int) (decoder, error) 
 	return compileTextBasedDecoder(field, index, tagScope, tagContent)
 }
 
+func formGetter(ctx Ctx, key string, defaultValue ...string) string {
+	return utils.UnsafeString(ctx.Request().PostArgs().Peek(key))
+}
+
+func multipartGetter(ctx Ctx, key string, defaultValue ...string) string {
+	f, err := ctx.Request().MultipartForm()
+	if err != nil {
+		return ""
+	}
+
+	v, ok := f.Value[key]
+	if !ok {
+		return ""
+	}
+
+	return v[0]
+}
+
 func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tagContent string) (decoder, error) {
 	var get func(ctx Ctx, key string, defaultValue ...string) string
 	switch tagScope {
@@ -102,6 +133,10 @@ func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tag
 		get = Ctx.Params
 	case bindTagCookie:
 		get = Ctx.Cookies
+	case bindTagMultipart:
+		get = multipartGetter
+	case bindTagForm:
+		get = formGetter
 	default:
 		return nil, errors.New("unexpected tag scope " + strconv.Quote(tagScope))
 	}
@@ -145,6 +180,10 @@ func compileSliceFieldTextBasedDecoder(field reflect.StructField, index int, tag
 		eqBytes = utils.EqualFold[[]byte]
 	case bindTagCookie:
 		visitAll = visitCookie
+	case bindTagForm:
+		visitAll = visitForm
+	case bindTagMultipart:
+		visitAll = visitMultipart
 	case bindTagParam:
 		return nil, errors.New("using params with slice type is not supported")
 	default:

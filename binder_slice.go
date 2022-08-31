@@ -74,3 +74,20 @@ func visitResHeader(ctx Ctx, f func(key []byte, value []byte)) {
 func visitCookie(ctx Ctx, f func(key []byte, value []byte)) {
 	ctx.Request().Header.VisitAllCookie(f)
 }
+
+func visitForm(ctx Ctx, f func(key []byte, value []byte)) {
+	ctx.Request().PostArgs().VisitAll(f)
+}
+
+func visitMultipart(ctx Ctx, f func(key []byte, value []byte)) {
+	mp, err := ctx.Request().MultipartForm()
+	if err != nil {
+		return
+	}
+
+	for key, values := range mp.Value {
+		for _, value := range values {
+			f(utils.UnsafeBytes(key), utils.UnsafeBytes(value))
+		}
+	}
+}

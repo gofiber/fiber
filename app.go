@@ -119,6 +119,10 @@ type App struct {
 	tlsHandler *tlsHandler
 	// bind decoder cache
 	bindDecoderCache sync.Map
+	// form decoder cache
+	formDecoderCache sync.Map
+	// multipart decoder cache
+	multipartDecoderCache sync.Map
 }
 
 // Config is a struct holding the server settings.
