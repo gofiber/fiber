@@ -44,10 +44,12 @@ app.Use("/expose/envvars", envvar.New())
 ### Custom Config
 
 ```go
-app.Use("/expose/envvars", envvar.New(envvar.Config{
-    ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
-    ExcludeVars: map[string]string{"excludeKey": ""}}
-}))
+app.Use("/expose/envvars", envvar.New(
+	envvar.Config{
+		ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
+		ExcludeVars: map[string]string{"excludeKey": ""},
+	}),
+)
 ```
 
 ### Response
@@ -57,10 +59,9 @@ Http response contract:
 {
   "vars": {
     "someEnvVariable": "someValue",
-    "anotherEnvVariable": "anotherValue",
+    "anotherEnvVariable": "anotherValue"
   }
 }
-
 ```
 
 ## Config
@@ -68,12 +69,11 @@ Http response contract:
 ```go
 // Config defines the config for middleware.
 type Config struct {
-    // ExportVars specifies the environment variables that should export
-    ExportVars map[string]string
-    // ExcludeVars specifies the environment variables that should not export
-    ExcludeVars map[string]string
+	// ExportVars specifies the environment variables that should export
+	ExportVars map[string]string
+	// ExcludeVars specifies the environment variables that should not export
+	ExcludeVars map[string]string
 }
-
 ```
 
 ## Default Config
