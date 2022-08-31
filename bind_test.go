@@ -1102,7 +1102,7 @@ func Benchmark_Bind_URI(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	c.route = &RouteInfo{
+	c.route = &Route{
 		Params: []string{
 			"param1", "param2", "param3", "param4",
 		},
@@ -1136,7 +1136,7 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	c.route = &RouteInfo{
+	c.route = &Route{
 		Params: []string{
 			"param1", "param2", "param3", "param4",
 		},

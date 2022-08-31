@@ -88,9 +88,9 @@ type Error struct {
 type App struct {
 	mutex sync.Mutex
 	// Route stack divided by HTTP methods
-	stack [][]*RouteInfo
+	stack [][]*Route
 	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[string][]*RouteInfo
+	treeStack []map[string][]*Route
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
 	// Amount of registered routes
@@ -112,7 +112,7 @@ type App struct {
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
-	latestRoute *RouteInfo
+	latestRoute *Route
 	latestGroup *Group
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
@@ -466,14 +466,14 @@ func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
 		// Create router stack
-		stack:     make([][]*RouteInfo, len(intMethod)),
-		treeStack: make([]map[string][]*RouteInfo, len(intMethod)),
+		stack:     make([][]*Route, len(intMethod)),
+		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create config
 		config:        Config{},
 		getBytes:      utils.UnsafeBytes,
 		getString:     utils.UnsafeString,
 		appList:       make(map[string]*App),
-		latestRoute:   &RouteInfo{},
+		latestRoute:   &Route{},
 		latestGroup:   &Group{},
 		customBinders: []CustomBinder{},
 	}
@@ -623,7 +623,7 @@ func (app *App) Name(name string) Router {
 }
 
 // Get route by name
-func (app *App) GetRoute(name string) RouteInfo {
+func (app *App) GetRoute(name string) Route {
 	for _, routes := range app.stack {
 		for _, route := range routes {
 			if route.Name == name {
@@ -632,7 +632,7 @@ func (app *App) GetRoute(name string) RouteInfo {
 		}
 	}
 
-	return RouteInfo{}
+	return Route{}
 }
 
 // Use registers a middleware route that will match requests
@@ -756,17 +756,11 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 
 // Route is used to define routes with a common prefix inside the common function.
 // Uses Group method to define new sub-router.
-func (app *App) Route(prefix string, fn func(router Router), name ...string) Router {
-	// Create new group
-	group := app.Group(prefix)
-	if len(name) > 0 {
-		group.Name(name[0])
-	}
+func (app *App) Route(path string) *Register {
+	// Create new route
+	route := &Register{app: app, Path: path}
 
-	// Define routes
-	fn(group)
-
-	return group
+	return route
 }
 
 // Error makes it compatible with the `error` interface.
@@ -799,7 +793,7 @@ func (app *App) Handler() fasthttp.RequestHandler {
 }
 
 // Stack returns the raw router stack.
-func (app *App) Stack() [][]*RouteInfo {
+func (app *App) Stack() [][]*Route {
 	return app.stack
 }
 

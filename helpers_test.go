@@ -18,17 +18,17 @@ import (
 )
 
 func Test_Utils_UniqueRouteStack(t *testing.T) {
-	route1 := &RouteInfo{}
-	route2 := &RouteInfo{}
-	route3 := &RouteInfo{}
+	route1 := &Route{}
+	route2 := &Route{}
+	route3 := &Route{}
 	require.Equal(
 		t,
-		[]*RouteInfo{
+		[]*Route{
 			route1,
 			route2,
 			route3,
 		},
-		uniqueRouteStack([]*RouteInfo{
+		uniqueRouteStack([]*Route{
 			route1,
 			route1,
 			route1,

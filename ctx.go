@@ -35,7 +35,7 @@ const userContextKey = "__local_user_context__"
 
 type DefaultCtx struct {
 	app                 *App                 // Reference to *App
-	route               *RouteInfo           // Reference to *Route
+	route               *Route               // Reference to *Route
 	indexRoute          int                  // Index of the current route
 	indexHandler        int                  // Index of the current handler
 	method              string               // HTTP method
@@ -852,7 +852,7 @@ func (c *DefaultCtx) BindVars(vars Map) error {
 }
 
 // getLocationFromRoute get URL location from route using parameters
-func (c *DefaultCtx) getLocationFromRoute(route RouteInfo, params Map) (string, error) {
+func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
 		for key, val := range params {
@@ -999,10 +999,10 @@ func (c *DefaultCtx) renderExtensions(bind Map) {
 }
 
 // Route returns the matched Route struct.
-func (c *DefaultCtx) Route() *RouteInfo {
+func (c *DefaultCtx) Route() *Route {
 	if c.route == nil {
 		// Fallback for fasthttp error handler
-		return &RouteInfo{
+		return &Route{
 			path:     c.pathOriginal,
 			Path:     c.pathOriginal,
 			Method:   c.method,

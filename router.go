@@ -36,15 +36,15 @@ type Router interface {
 
 	Group(prefix string, handlers ...Handler) Router
 
-	Route(prefix string, fn func(router Router), name ...string) Router
+	Route(path string) *Register
 
 	Mount(prefix string, fiber *App) Router
 
 	Name(name string) Router
 }
 
-// RouteInfo is a struct that holds all metadata for each registered handler
-type RouteInfo struct {
+// Route is a struct that holds all metadata for each registered handler
+type Route struct {
 	// Data for routing
 	pos         uint32      // Position in stack -> important for the sort of the matched routes
 	use         bool        // USE matches path prefixes
@@ -61,7 +61,7 @@ type RouteInfo struct {
 	Handlers []Handler `json:"-"`      // Ctx handlers
 }
 
-func (r *RouteInfo) match(detectionPath, path string, params *[maxParams]string) (match bool) {
+func (r *Route) match(detectionPath, path string, params *[maxParams]string) (match bool) {
 	// root detectionPath check
 	if r.root && detectionPath == "/" {
 		return true
@@ -179,7 +179,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	app.ReleaseCtx(c)
 }
 
-func (app *App) addPrefixToRoute(prefix string, route *RouteInfo) *RouteInfo {
+func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	prefixedPath := getGroupPath(prefix, route.Path)
 	prettyPath := prefixedPath
 	// Case sensitive routing, all to lowercase
@@ -200,8 +200,8 @@ func (app *App) addPrefixToRoute(prefix string, route *RouteInfo) *RouteInfo {
 	return route
 }
 
-func (app *App) copyRoute(route *RouteInfo) *RouteInfo {
-	return &RouteInfo{
+func (app *App) copyRoute(route *Route) *Route {
+	return &Route{
 		// Router booleans
 		use:  route.use,
 		star: route.star,
@@ -259,7 +259,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 	parsedPretty := parseRoute(pathPretty)
 
 	// Create route metadata without pointer
-	route := RouteInfo{
+	route := Route{
 		// Router booleans
 		use:  isUse,
 		star: isStar,
@@ -408,7 +408,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	}
 
 	// Create route metadata without pointer
-	route := RouteInfo{
+	route := Route{
 		// Router booleans
 		use:  true,
 		root: isRoot,
@@ -427,7 +427,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	return app
 }
 
-func (app *App) addRoute(method string, route *RouteInfo) {
+func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method identifier
 	m := methodInt(method)
 
@@ -460,7 +460,7 @@ func (app *App) buildTree() *App {
 	}
 	// loop all the methods and stacks and create the prefix tree
 	for m := range intMethod {
-		tsMap := make(map[string][]*RouteInfo)
+		tsMap := make(map[string][]*Route)
 		for _, route := range app.stack[m] {
 			treePath := ""
 			if len(route.routeParser.segs) > 0 && len(route.routeParser.segs[0].Const) >= 3 {
