@@ -109,9 +109,10 @@ you need.
 
 ### Parse Request Body
 
-you can call `ctx.BodyJSON(v any) error` or `BodyXML(v any) error`
+you can call `Bind().JSON(v any)` / `Bind().XML(v any)` / `Bind().Form(v any)` / `Bind().Multipart(v any)` 
+to unmarshal request Body.
 
-These methods will check content-type HTTP header and call configured JSON or XML decoder to unmarshal.
+use `Bind().Strict()` to enable content-type checking.
 
 ```golang
 package main
@@ -127,9 +128,17 @@ type Body struct {
 func main() {
 	app := fiber.New()
 
-	app.Get("/:id", func(c fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		var data Body
 		if err := c.Bind().JSON(&data).Err(); err != nil {
+			return err
+		}
+		return c.JSON(data)
+	})
+
+	app.Get("/strict", func(c fiber.Ctx) error {
+		var data Body
+		if err := c.Bind().Strict().JSON(&data).Err(); err != nil {
 			return err
 		}
 		return c.JSON(data)

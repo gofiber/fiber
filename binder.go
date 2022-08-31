@@ -15,9 +15,10 @@ var binderPool = sync.Pool{New: func() any {
 }}
 
 type Bind struct {
-	err error
-	ctx Ctx
-	val any // last decoded val
+	err    error
+	ctx    Ctx
+	val    any // last decoded val
+	strict bool
 }
 
 func (c *DefaultCtx) Bind() *Bind {
@@ -26,27 +27,37 @@ func (c *DefaultCtx) Bind() *Bind {
 	return b
 }
 
-func (b *Bind) setErr(err error) *Bind {
-	b.err = err
+func (b *Bind) Strict() *Bind {
+	b.strict = true
 	return b
 }
 
-func (b *Bind) HTTPErr() error {
-	if b.err != nil {
-		if fe, ok := b.err.(*Error); ok {
-			return fe
-		}
-
-		return NewError(http.StatusBadRequest, b.err.Error())
-	}
-
-	return nil
+func (b *Bind) setErr(err error) *Bind {
+	b.err = err
+	return b
 }
 
 func (b *Bind) reset() {
 	b.ctx = nil
 	b.val = nil
 	b.err = nil
+	b.strict = false
+}
+
+// HTTPErr return a wrapped fiber.Error for 400 http bad request.
+// it's not safe to use after HTTPErr is called.
+func (b *Bind) HTTPErr() error {
+	err := b.Err()
+
+	if err != nil {
+		if fe, ok := err.(*Error); ok {
+			return fe
+		}
+
+		return NewError(http.StatusBadRequest, err.Error())
+	}
+
+	return nil
 }
 
 // Err return binding error and put binder back to pool
@@ -61,17 +72,18 @@ func (b *Bind) Err() error {
 }
 
 // JSON unmarshal body as json
-// unlike `ctx.BodyJSON`, this will also check "content-type" HTTP header.
 func (b *Bind) JSON(v any) *Bind {
 	if b.err != nil {
 		return b
 	}
 
-	if !bytes.HasPrefix(b.ctx.Request().Header.ContentType(), utils.UnsafeBytes(MIMEApplicationJSON)) {
-		return b.setErr(NewError(http.StatusUnsupportedMediaType, "expecting content-type \"application/json\""))
+	if b.strict {
+		if !bytes.HasPrefix(b.ctx.Request().Header.ContentType(), utils.UnsafeBytes(MIMEApplicationJSON)) {
+			return b.setErr(NewError(http.StatusUnsupportedMediaType, "expecting content-type \"application/json\""))
+		}
 	}
 
-	if err := b.ctx.BodyJSON(v); err != nil {
+	if err := b.ctx.App().config.JSONDecoder(b.ctx.Body(), v); err != nil {
 		return b.setErr(err)
 	}
 
@@ -80,17 +92,18 @@ func (b *Bind) JSON(v any) *Bind {
 }
 
 // XML unmarshal body as xml
-// unlike `ctx.BodyXML`, this will also check "content-type" HTTP header.
 func (b *Bind) XML(v any) *Bind {
 	if b.err != nil {
 		return b
 	}
 
-	if !bytes.HasPrefix(b.ctx.Request().Header.ContentType(), utils.UnsafeBytes(MIMEApplicationXML)) {
-		return b.setErr(NewError(http.StatusUnsupportedMediaType, "expecting content-type \"application/xml\""))
+	if b.strict {
+		if !bytes.HasPrefix(b.ctx.Request().Header.ContentType(), utils.UnsafeBytes(MIMEApplicationXML)) {
+			return b.setErr(NewError(http.StatusUnsupportedMediaType, "expecting content-type \"application/xml\""))
+		}
 	}
 
-	if err := b.ctx.BodyXML(v); err != nil {
+	if err := b.ctx.App().config.XMLDecoder(b.ctx.Body(), v); err != nil {
 		return b.setErr(err)
 	}
 
@@ -104,8 +117,10 @@ func (b *Bind) Form(v any) *Bind {
 		return b
 	}
 
-	if !bytes.HasPrefix(b.ctx.Request().Header.ContentType(), utils.UnsafeBytes(MIMEApplicationForm)) {
-		return b.setErr(NewError(http.StatusUnsupportedMediaType, "expecting content-type \"application/x-www-form-urlencoded\""))
+	if b.strict {
+		if !bytes.HasPrefix(b.ctx.Request().Header.ContentType(), utils.UnsafeBytes(MIMEApplicationForm)) {
+			return b.setErr(NewError(http.StatusUnsupportedMediaType, "expecting content-type \"application/x-www-form-urlencoded\""))
+		}
 	}
 
 	if err := b.formDecode(v); err != nil {
@@ -123,8 +138,10 @@ func (b *Bind) Multipart(v any) *Bind {
 		return b
 	}
 
-	if !bytes.HasPrefix(b.ctx.Request().Header.ContentType(), utils.UnsafeBytes(MIMEMultipartForm)) {
-		return b.setErr(NewError(http.StatusUnsupportedMediaType, "expecting content-type \"multipart/form-data\""))
+	if b.strict {
+		if !bytes.HasPrefix(b.ctx.Request().Header.ContentType(), utils.UnsafeBytes(MIMEMultipartForm)) {
+			return b.setErr(NewError(http.StatusUnsupportedMediaType, "expecting content-type \"multipart/form-data\""))
+		}
 	}
 
 	if err := b.multipartDecode(v); err != nil {

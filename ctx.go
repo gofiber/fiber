@@ -260,14 +260,6 @@ func (c *DefaultCtx) Body() []byte {
 	return body
 }
 
-func (c *DefaultCtx) BodyJSON(v any) error {
-	return c.app.config.JSONDecoder(c.Body(), v)
-}
-
-func (c *DefaultCtx) BodyXML(v any) error {
-	return c.app.config.XMLDecoder(c.Body(), v)
-}
-
 // ClearCookie expires a specific cookie by key on the client side.
 // If no key is provided it expires all cookies that came with the request.
 func (c *DefaultCtx) ClearCookie(key ...string) {

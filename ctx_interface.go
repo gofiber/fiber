@@ -58,12 +58,6 @@ type Ctx interface {
 	// Make copies or use the Immutable setting instead.
 	Body() []byte
 
-	// BodyJSON will unmarshal request body with Config.JSONDecoder
-	BodyJSON(v any) error
-
-	// BodyXML will unmarshal request body with Config.XMLDecoder
-	BodyXML(v any) error
-
 	// ClearCookie expires a specific cookie by key on the client side.
 	// If no key is provided it expires all cookies that came with the request.
 	ClearCookie(key ...string)
