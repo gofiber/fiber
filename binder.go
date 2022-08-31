@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/gofiber/fiber/v3/internal/reflectunsafe"
+	"github.com/gofiber/fiber/v3/internal/bind"
 	"github.com/gofiber/fiber/v3/utils"
 )
 
@@ -165,7 +165,7 @@ func (b *Bind) Validate() *Bind {
 }
 
 func (b *Bind) reqDecode(v any) error {
-	rv, typeID := reflectunsafe.ValueAndTypeID(v)
+	rv, typeID := bind.ValueAndTypeID(v)
 	if rv.Kind() != reflect.Pointer || rv.IsNil() {
 		return &InvalidBinderError{Type: reflect.TypeOf(v)}
 	}
@@ -187,7 +187,7 @@ func (b *Bind) reqDecode(v any) error {
 }
 
 func (b *Bind) formDecode(v any) error {
-	rv, typeID := reflectunsafe.ValueAndTypeID(v)
+	rv, typeID := bind.ValueAndTypeID(v)
 	if rv.Kind() != reflect.Pointer || rv.IsNil() {
 		return &InvalidBinderError{Type: reflect.TypeOf(v)}
 	}
@@ -209,7 +209,7 @@ func (b *Bind) formDecode(v any) error {
 }
 
 func (b *Bind) multipartDecode(v any) error {
-	rv, typeID := reflectunsafe.ValueAndTypeID(v)
+	rv, typeID := bind.ValueAndTypeID(v)
 	if rv.Kind() != reflect.Pointer || rv.IsNil() {
 		return &InvalidBinderError{Type: reflect.TypeOf(v)}
 	}

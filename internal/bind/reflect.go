@@ -1,4 +1,4 @@
-package reflectunsafe
+package bind
 
 import (
 	"reflect"
