@@ -2,12 +2,13 @@ package envvar
 
 import (
 	"encoding/json"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"testing"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
@@ -101,4 +102,39 @@ func TestEnvVarHandlerMethod(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusMethodNotAllowed, resp.StatusCode)
+}
+
+func TestEnvVarHandlerSpecialValue(t *testing.T) {
+	testEnvKey := "testEnvKey"
+	fakeBase64 := "testBase64:TQ=="
+	os.Setenv(testEnvKey, fakeBase64)
+	defer os.Unsetenv(testEnvKey)
+
+	app := fiber.New()
+	app.Use("/envvars", New())
+	app.Use("/envvars/export", New(Config{ExportVars: map[string]string{testEnvKey: ""}}))
+
+	req, _ := http.NewRequest("GET", "http://localhost/envvars", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+
+	respBody, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	var envVars EnvVar
+	utils.AssertEqual(t, nil, json.Unmarshal(respBody, &envVars))
+	val := envVars.Vars[testEnvKey]
+	utils.AssertEqual(t, fakeBase64, val)
+
+	req, _ = http.NewRequest("GET", "http://localhost/envvars/export", nil)
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err)
+
+	respBody, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	var envVarsExport EnvVar
+	utils.AssertEqual(t, nil, json.Unmarshal(respBody, &envVarsExport))
+	val = envVarsExport.Vars[testEnvKey]
+	utils.AssertEqual(t, fakeBase64, val)
 }

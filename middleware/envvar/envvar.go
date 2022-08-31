@@ -1,10 +1,11 @@
 package envvar
 
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
 	"os"
 	"strings"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // Config defines the config for middleware.
@@ -62,7 +63,7 @@ func newEnvVar(cfg Config) *EnvVar {
 		}
 	} else {
 		for _, envVal := range os.Environ() {
-			keyVal := strings.Split(envVal, "=")
+			keyVal := strings.SplitN(envVal, "=", 2)
 			if _, exists := cfg.ExcludeVars[keyVal[0]]; !exists {
 				vars.set(keyVal[0], keyVal[1])
 			}
