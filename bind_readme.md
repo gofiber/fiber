@@ -109,7 +109,7 @@ you need.
 
 ### Parse Request Body
 
-you can call `Bind().JSON(v any)` / `Bind().XML(v any)` / `Bind().Form(v any)` / `Bind().Multipart(v any)` 
+you can call `Bind().JSON(v any)` / `Bind().XML(v any)` / `Bind().Form(v any)` / `Bind().Multipart(v any)`
 to unmarshal request Body.
 
 use `Bind().Strict()` to enable content-type checking.
@@ -179,3 +179,13 @@ func main() {
 	})
 }
 ```
+
+### Chaining API
+
+Binder is expected to be called in chaining, and will do no-op after first error.
+
+If `ctx.Bind().XML/JSON/Req/Validate/...` meet any error, all calling will be ignored,
+and `.Err()` will return the first error encountered.
+
+For example, if `ctx.Bind().Req(...).JSON(...).Err()` return a non-nil error in `Req(...)`,
+binder won't try to decode body as JSON and `.Err()` will return error in `Req(...)`
