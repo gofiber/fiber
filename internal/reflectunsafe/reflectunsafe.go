@@ -6,7 +6,13 @@ import (
 )
 
 func ValueAndTypeID(v any) (reflect.Value, uintptr) {
+	header := (*emptyInterface)(unsafe.Pointer(&v))
+
 	rv := reflect.ValueOf(v)
-	rt := rv.Type()
-	return rv, (*[2]uintptr)(unsafe.Pointer(&rt))[1]
+	return rv, header.typeID
+}
+
+type emptyInterface struct {
+	typeID  uintptr
+	dataPtr unsafe.Pointer
 }
