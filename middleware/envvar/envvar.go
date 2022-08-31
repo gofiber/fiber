@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
 )
 
 // Config defines the config for middleware.
@@ -40,14 +39,10 @@ func New(config ...Config) fiber.Handler {
 		envVar := newEnvVar(cfg)
 		varsByte, err := c.App().Config().JSONEncoder(envVar)
 		if err != nil {
-			c.Response().SetBodyRaw(utils.UnsafeBytes(err.Error()))
-			c.Response().SetStatusCode(fiber.StatusInternalServerError)
-			return nil
+			return c.Status(fiber.StatusInternalServerError).SendString(err.Error())
 		}
-		c.Response().SetBodyRaw(varsByte)
-		c.Response().SetStatusCode(fiber.StatusOK)
-		c.Response().Header.Set("Content-Type", "application/json; charset=utf-8")
-		return nil
+		c.Set(fiber.HeaderContentType, fiber.MIMEApplicationJSONCharsetUTF8)
+		return c.Send(varsByte)
 	}
 }
 
