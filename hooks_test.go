@@ -42,7 +42,8 @@ func Test_Hook_OnName(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnName(func(r Route) error {
-		buf.WriteString(r.Name)
+		_, err := buf.WriteString(r.Name)
+		utils.AssertEqual(t, nil, err)
 
 		return nil
 	})
@@ -84,8 +85,8 @@ func Test_Hook_OnGroup(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnGroup(func(g Group) error {
-		buf.WriteString(g.Prefix)
-
+		_, err := buf.WriteString(g.Prefix)
+		utils.AssertEqual(t, nil, err)
 		return nil
 	})
 
@@ -104,7 +105,8 @@ func Test_Hook_OnGroupName(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnGroupName(func(g Group) error {
-		buf.WriteString(g.name)
+		_, err := buf.WriteString(g.name)
+		utils.AssertEqual(t, nil, err)
 
 		return nil
 	})
@@ -143,7 +145,8 @@ func Test_Hook_OnShutdown(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnShutdown(func() error {
-		buf.WriteString("shutdowning")
+		_, err := buf.WriteString("shutdowning")
+		utils.AssertEqual(t, nil, err)
 
 		return nil
 	})
@@ -163,7 +166,8 @@ func Test_Hook_OnListen(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnListen(func() error {
-		buf.WriteString("ready")
+		_, err := buf.WriteString("ready")
+		utils.AssertEqual(t, nil, err)
 
 		return nil
 	})
