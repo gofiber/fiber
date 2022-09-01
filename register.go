@@ -8,32 +8,32 @@ package fiber
 type Register struct {
 	app *App
 
-	Path string
+	path string
 }
 
-// Use registers a middleware route that will match requests
-// with the provided prefix (which is optional and defaults to "/").
+// All registers a middleware route that will match requests
+// with the provided path which is stored in register struct.
 //
-//	app.Use(func(c fiber.Ctx) error {
+//	app.Route("/").All(func(c fiber.Ctx) error {
 //	     return c.Next()
 //	})
-//	app.Use("/api", func(c fiber.Ctx) error {
+//	app.Route("/api").All(func(c fiber.Ctx) error {
 //	     return c.Next()
 //	})
-//	app.Use("/api", handler, func(c fiber.Ctx) error {
+//	app.Route("/api").All(handler, func(c fiber.Ctx) error {
 //	     return c.Next()
 //	})
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (r *Register) All(handlers ...Handler) *Register {
-	r.app.register(methodUse, r.Path, handlers...)
+	r.app.register(methodUse, r.path, handlers...)
 	return r
 }
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (r *Register) Get(handlers ...Handler) *Register {
-	r.app.Add(MethodHead, r.Path, handlers...).Add(MethodGet, r.Path, handlers...)
+	r.app.Add(MethodHead, r.path, handlers...).Add(MethodGet, r.path, handlers...)
 	return r
 }
 
@@ -86,21 +86,21 @@ func (r *Register) Patch(handlers ...Handler) *Register {
 
 // Add allows you to specify a HTTP method to register a route
 func (r *Register) Add(method string, handlers ...Handler) *Register {
-	r.app.register(method, r.Path, handlers...)
+	r.app.register(method, r.path, handlers...)
 	return r
 }
 
 // Static will create a file server serving static files
 func (r *Register) Static(root string, config ...Static) *Register {
-	r.app.registerStatic(r.Path, root, config...)
+	r.app.registerStatic(r.path, root, config...)
 	return r
 }
 
-// Route is used to define routes with a common prefix inside the common function.
-// Uses Group method to define new sub-router.
+// Route returns a new Register instance whose route path takes 
+// the path in the current instance as its prefix.
 func (r *Register) Route(path string) *Register {
 	// Create new group
-	route := &Register{app: r.app, Path: getGroupPath(r.Path, path)}
+	route := &Register{app: r.app, path: getGroupPath(r.path, path)}
 
 	return route
 }
