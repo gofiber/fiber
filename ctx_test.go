@@ -755,35 +755,42 @@ func Test_Ctx_Format(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	c.Format([]byte("Hello, World!"))
+	err := c.Format([]byte("Hello, World!"))
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Hello, World!", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
-	c.Format("Hello, World!")
+	err = c.Format("Hello, World!")
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<p>Hello, World!</p>", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
-	c.Format("Hello, World!")
+	err = c.Format("Hello, World!")
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `"Hello, World!"`, string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	c.Format(complex(1, 1))
+	err = c.Format(complex(1, 1))
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "(1+1i)", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationXML)
-	c.Format("Hello, World!")
+	err = c.Format("Hello, World!")
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `<string>Hello, World!</string>`, string(c.Response().Body()))
 
-	err := c.Format(complex(1, 1))
+	err = c.Format(complex(1, 1))
 	utils.AssertEqual(t, true, err != nil)
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	c.Format(Map{})
+	err = c.Format(Map{})
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "map[]", string(c.Response().Body()))
 
 	type broken string
 	c.Request().Header.Set(HeaderAccept, "broken/accept")
-	c.Format(broken("Hello, World!"))
+	err = c.Format(broken("Hello, World!"))
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `Hello, World!`, string(c.Response().Body()))
 }
 
@@ -3137,8 +3144,8 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "/user/fiber", location)
 	})
-	
-	t.Run("case sensitive",func(t *testing.T) {
+
+	t.Run("case sensitive", func(t *testing.T) {
 		app := New(Config{CaseSensitive: true})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
