@@ -711,10 +711,6 @@ func (app *App) All(path string, handlers ...Handler) Router {
 
 // The MountPath property contains one or more path patterns on which a sub-app was mounted.
 func (app *App) MountPath() string {
-	if app.mountpath == "" {
-		panic("mountpath cannot be used on parent app")
-	}
-
 	return app.mountpath
 }
 
