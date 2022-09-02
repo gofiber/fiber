@@ -758,7 +758,7 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 // Uses Group method to define new sub-router.
 func (app *App) Route(path string) Register {
 	// Create new route
-	route := &Registe{app: app, path: path}
+	route := &Registering{app: app, path: path}
 
 	return route
 }
