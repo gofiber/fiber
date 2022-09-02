@@ -1136,7 +1136,8 @@ func Benchmark_App_ETag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.Send([]byte("Hello, World!"))
+	err := c.Send([]byte("Hello, World!"))
+	utils.AssertEqual(b, nil, err)
 	for n := 0; n < b.N; n++ {
 		setETag(c, false)
 	}
@@ -1148,7 +1149,8 @@ func Benchmark_App_ETag_Weak(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.Send([]byte("Hello, World!"))
+	err := c.Send([]byte("Hello, World!"))
+	utils.AssertEqual(b, nil, err)
 	for n := 0; n < b.N; n++ {
 		setETag(c, true)
 	}
@@ -1378,7 +1380,8 @@ func Test_App_New_Test_Parallel(t *testing.T) {
 	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		app.Test(httptest.NewRequest("GET", "/", nil))
+		_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+		utils.AssertEqual(t, nil, err)
 	})
 }
 
