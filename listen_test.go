@@ -114,16 +114,6 @@ func Test_App_Listener(t *testing.T) {
 	utils.AssertEqual(t, nil, app.Listener(ln))
 }
 
-// go test -run Test_App_Listener_Prefork
-func Test_App_Listener_Prefork(t *testing.T) {
-	testPreforkMaster = true
-
-	app := New(Config{DisableStartupMessage: true, Prefork: true})
-
-	ln := fasthttputil.NewInmemoryListener()
-	utils.AssertEqual(t, nil, app.Listener(ln))
-}
-
 func Test_App_Listener_TLS_Listener(t *testing.T) {
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")

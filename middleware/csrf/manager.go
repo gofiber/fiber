@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/memory"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // go:generate msgp
@@ -88,7 +89,8 @@ func (m *manager) set(key string, it *item, exp time.Duration) {
 			_ = m.storage.Set(key, raw, exp)
 		}
 	} else {
-		m.memory.Set(key, it, exp)
+		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
+		m.memory.Set(utils.CopyString(key), it, exp)
 	}
 }
 
@@ -97,7 +99,8 @@ func (m *manager) setRaw(key string, raw []byte, exp time.Duration) {
 	if m.storage != nil {
 		_ = m.storage.Set(key, raw, exp)
 	} else {
-		m.memory.Set(key, raw, exp)
+		// the key is crucial in crsf and sometimes a reference to another value which can be reused later(pool/unsafe values concept), so a copy is made here
+		m.memory.Set(utils.CopyString(key), raw, exp)
 	}
 }
 
