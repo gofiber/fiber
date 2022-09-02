@@ -1243,26 +1243,41 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	// Pass-locals-to-views & bind
 	c.renderExtensions(bind)
 
-	//TODO: fix this bug
 	rendered := false
-	for _, app := range c.app.subList {
-		if app.parent == nil || strings.Contains(c.OriginalURL(), "") {
-			if len(layouts) == 0 && app.config.ViewsLayout != "" {
-				layouts = []string{
-					app.config.ViewsLayout,
-				}
-			}
-
-			// Render template from Views
-			if app.config.Views != nil {
-				if err := app.config.Views.Render(buf, name, bind, layouts...); err != nil {
-					return err
-				}
-
-				rendered = true
-				break
+	if c.app.parent == nil {
+		if len(layouts) == 0 && c.app.config.ViewsLayout != "" {
+			layouts = []string{
+				c.app.config.ViewsLayout,
 			}
 		}
+
+		// Render template from Views
+		if c.app.config.Views != nil {
+			if err := c.app.config.Views.Render(buf, name, bind, layouts...); err != nil {
+				return err
+			}
+
+			rendered = true
+		}
+	}
+
+	for _, sub := range c.app.subList {
+		if len(layouts) == 0 && sub.config.ViewsLayout != "" {
+			layouts = []string{
+				sub.config.ViewsLayout,
+			}
+		}
+
+		// Render template from Views
+		if sub.config.Views != nil {
+			if err := sub.config.Views.Render(buf, name, bind, layouts...); err != nil {
+				return err
+			}
+
+			rendered = true
+			break
+		}
+
 	}
 
 	if !rendered {
