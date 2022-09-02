@@ -36,7 +36,7 @@ type Router interface {
 
 	Group(prefix string, handlers ...Handler) Router
 
-	Route(path string) *Register
+	Route(path string) Register
 
 	Mount(prefix string, fiber *App) Router
 

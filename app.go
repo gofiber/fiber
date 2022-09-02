@@ -756,9 +756,9 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 
 // Route is used to define routes with a common prefix inside the common function.
 // Uses Group method to define new sub-router.
-func (app *App) Route(path string) *Register {
+func (app *App) Route(path string) Register {
 	// Create new route
-	route := &Register{app: app, path: path}
+	route := &Registe{app: app, path: path}
 
 	return route
 }
