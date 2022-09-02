@@ -60,7 +60,7 @@ const (
 	paramConstraintDataSeparator byte = ','  // separator of datas of type constraint for a parameter
 )
 
-// parameter constraint types
+// TypeConstraint parameter constraint types
 type TypeConstraint int16
 
 type Constraint struct {
@@ -259,7 +259,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	// Check has constraint
 	var constraints []*Constraint
 
-	if hasConstraint := (parameterConstraintStart != -1 && parameterConstraintEnd != -1); hasConstraint {
+	if hasConstraint := parameterConstraintStart != -1 && parameterConstraintEnd != -1; hasConstraint {
 		constraintString := pattern[parameterConstraintStart+1 : parameterConstraintEnd]
 		userConstraints := splitNonEscaped(constraintString, string(parameterConstraintSeparatorChars))
 		constraints = make([]*Constraint, 0, len(userConstraints))
