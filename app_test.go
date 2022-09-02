@@ -335,13 +335,6 @@ func Test_App_MountPath(t *testing.T) {
 
 	utils.AssertEqual(t, "/sub", sub.MountPath())
 	utils.AssertEqual(t, "/sub1", sub1.MountPath())
-
-	defer func() {
-		if err := recover(); err != nil {
-			utils.AssertEqual(t, "mountpath cannot be used on parent app", fmt.Sprintf("%s", err))
-		}
-	}()
-	parent.MountPath()
 }
 
 func Benchmark_App_MountPath(b *testing.B) {
