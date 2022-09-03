@@ -256,8 +256,6 @@ func (c *Ctx) Attachment(filename ...string) {
 
 // BaseURL returns (protocol + host + base path).
 func (c *Ctx) BaseURL() string {
-	// TODO: Could be improved: 53.8 ns/op  32 B/op  1 allocs/op
-	// Should work like https://codeigniter.com/user_guide/helpers/url_helper.html
 	if c.baseURI != "" {
 		return c.baseURI
 	}

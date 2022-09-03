@@ -293,7 +293,7 @@ func Benchmark_Ctx_BaseURL(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		res = c.BaseURL()
 	}
-	utils.AssertEqual(b, "http://google.com:1337", res)
+	utils.AssertEqual(b, "http://google.com", res)
 }
 
 // go test -run Test_Ctx_Body
