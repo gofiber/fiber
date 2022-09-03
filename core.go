@@ -135,12 +135,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 }
 
 func (app *App) registerRouter(prefix string, router Router) {
-	for m := range router.Stack() {
-		for r := range router.Stack()[m] {
-			route := app.copyRoute(router.Stack()[m][r])
-			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
-		}
-	}
+	app.routerList[prefix] = router
 }
 
 func (r *Route) match(detectionPath, path string, params *[maxParams]string) (match bool) {
@@ -523,17 +518,6 @@ func (app *App) addRoute(method string, route *Route) {
 
 // buildTree build the prefix tree from the previously registered routes
 func (app *App) buildTree() *App {
-	// Build sub apps
-	for _, sub := range app.subList {
-		stack := sub.stack
-		for m := range stack {
-			for r := range stack[m] {
-				route := app.copyRoute(stack[m][r])
-				app.addRoute(route.Method, app.addPrefixToRoute(sub.path, route))
-			}
-		}
-	}
-
 	if !app.routesRefreshed {
 		return app
 	}
@@ -569,9 +553,39 @@ func (app *App) buildTree() *App {
 	return app
 }
 
+// buildSubTree build prefix tree from the previously registered sub app' routes
+func (app *App) buildSubTree() *App {
+	for _, sub := range app.subList {
+		stack := sub.stack
+		for m := range stack {
+			for r := range stack[m] {
+				route := app.copyRoute(stack[m][r])
+				app.addRoute(route.Method, app.addPrefixToRoute(sub.path, route))
+			}
+		}
+	}
+	return app
+}
+
+// buildRouterTree build prefix tree from the previously registered router's routes
+func (app *App) buildRouterTree() *App {
+	for path, rtr := range app.routerList {
+		stack := rtr.Stack()
+		for m := range stack {
+			for r := range stack[m] {
+				route := app.copyRoute(stack[m][r])
+				app.addRoute(route.Method, app.addPrefixToRoute(path, route))
+			}
+		}
+	}
+	return app
+}
+
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
 	app.mutex.Lock()
+	app.buildSubTree()
+	app.buildRouterTree()
 	app.buildTree()
 	app.mutex.Unlock()
 	return app

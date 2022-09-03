@@ -113,6 +113,8 @@ type App struct {
 	mountpath string
 	// Mounted sub apps
 	subList map[string]*App
+	// Registered routers
+	routerList map[string]Router
 	// Latest route & group
 	latestRoute *Route
 }
@@ -467,6 +469,7 @@ func New(config ...Config) *App {
 		getBytes:    utils.UnsafeBytes,
 		getString:   utils.UnsafeString,
 		subList:     make(map[string]*App),
+		routerList:  make(map[string]Router),
 		parent:      nil,
 		path:        "/",
 		mountpath:   "",
@@ -620,7 +623,6 @@ func (app *App) Use(args ...interface{}) Router {
 	}
 
 	if router != nil {
-		app.register(methodUse, prefix, handlers...)
 		app.registerRouter(prefix, router)
 		return app
 	}
