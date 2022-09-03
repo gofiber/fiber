@@ -7,6 +7,7 @@ type routeFunc struct {
 
 type RouteFunc interface {
 	Use(handlers ...Handler) RouteFunc
+
 	Get(handlers ...Handler) RouteFunc
 	Head(handlers ...Handler) RouteFunc
 	Post(handlers ...Handler) RouteFunc
@@ -16,6 +17,7 @@ type RouteFunc interface {
 	Options(handlers ...Handler) RouteFunc
 	Trace(handlers ...Handler) RouteFunc
 	Patch(handlers ...Handler) RouteFunc
+
 	Add(method, path string, handlers ...Handler) RouteFunc
 	All(handlers ...Handler) RouteFunc
 }
