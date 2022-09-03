@@ -216,18 +216,7 @@ func Test_Listener(t *testing.T) {
 	require.Nil(t, app.Listener(ln))
 }
 
-// go test -run Test_Listener_Prefork
-func Test_Listener_Prefork(t *testing.T) {
-	testPreforkMaster = true
-
-	app := New()
-
-	ln := fasthttputil.NewInmemoryListener()
-	require.Nil(t, app.Listener(ln, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
-}
-
-// go test -run Test_Listener_CustomTLS
-func Test_Listener_CustomTLS(t *testing.T) {
+func Test_App_Listener_TLS_Listener(t *testing.T) {
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
@@ -426,10 +415,6 @@ func Test_Listen_Print_Route_With_Group(t *testing.T) {
 	require.True(t, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
 }
 
-func emptyHandler(c Ctx) error {
-	return nil
-}
-
 func captureOutput(f func()) string {
 	reader, writer, err := os.Pipe()
 	if err != nil {
@@ -451,11 +436,21 @@ func captureOutput(f func()) string {
 	go func() {
 		var buf bytes.Buffer
 		wg.Done()
-		io.Copy(&buf, reader)
+		_, err := io.Copy(&buf, reader)
+		if err != nil {
+			panic(err)
+		}
 		out <- buf.String()
 	}()
 	wg.Wait()
 	f()
-	writer.Close()
+	err = writer.Close()
+	if err != nil {
+		panic(err)
+	}
 	return <-out
+}
+
+func emptyHandler(_ Ctx) error {
+	return nil
 }

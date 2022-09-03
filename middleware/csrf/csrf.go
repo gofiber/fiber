@@ -39,7 +39,7 @@ func New(config ...Config) fiber.Handler {
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
 			// Extract token from client request i.e. header, query, param, form or cookie
-			token, err = cfg.extractor(c)
+			token, err = cfg.Extractor(c)
 			if err != nil {
 				return cfg.ErrorHandler(c, err)
 			}

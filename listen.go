@@ -140,11 +140,13 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", cfg.CertFile, cfg.CertKeyFile, err)
 		}
 
+		tlsHandler := &TLSHandler{}
 		tlsConfig = &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			Certificates: []tls.Certificate{
 				cert,
 			},
+			GetCertificate: tlsHandler.GetClientInfo,
 		}
 
 		if cfg.CertClientFile != "" {
@@ -159,6 +161,9 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
 			tlsConfig.ClientCAs = clientCertPool
 		}
+
+		// Attach the tlsHandler to the config
+		app.SetTLSHandler(tlsHandler)
 	}
 
 	if cfg.TLSConfigFunc != nil {
@@ -213,13 +218,6 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 		go app.gracefulShutdown(ctx, cfg)
 	}
 
-	// Prefork is supported for custom listeners
-	if cfg.EnablePrefork {
-		newAddr, tlsConfig := lnMetadata(cfg.ListenerNetwork, ln)
-
-		return app.prefork(newAddr, tlsConfig, cfg)
-	}
-
 	// prepare the server for the start
 	app.startupProcess()
 
@@ -231,6 +229,11 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 		if err := cfg.BeforeServeFunc(app); err != nil {
 			return err
 		}
+	}
+
+	// Prefork is not supported for custom listeners
+	if cfg.EnablePrefork {
+		fmt.Println("[Warning] Prefork isn't supported for custom listeners.")
 	}
 
 	return app.server.Serve(ln)
