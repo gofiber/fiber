@@ -63,14 +63,14 @@ type RouterConfig struct {
 	Strict        bool `json:"strict"`
 }
 
-var defaultRouterConfig = RouterConfig{
+var DefaultRouterConfig = RouterConfig{
 	CaseSensitive: false,
 	MergeParams:   false,
 	Strict:        false,
 }
 
 func NewRouter(config ...RouterConfig) Router {
-	cfg := defaultRouterConfig
+	cfg := DefaultRouterConfig
 
 	if len(config) > 0 {
 		if config[0].CaseSensitive {
@@ -91,7 +91,6 @@ func NewRouter(config ...RouterConfig) Router {
 	})
 }
 
-// Register router
 func (app *App) registerRouter(prefix string, router Router) {
 	for m := range router.Stack() {
 		for r := range router.Stack()[m] {
