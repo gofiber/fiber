@@ -667,7 +667,7 @@ func Test_App_Route(t *testing.T) {
 		All(dummyHandler).
 		Use(dummyHandler)
 
-	testStatus200(t, app, "/john/doe", "CONNECT")
+	testStatus200(t, app, "/john/doe", MethodConnect)
 	testStatus200(t, app, "/john/doe", MethodPut)
 	testStatus200(t, app, "/john/doe", MethodPost)
 	testStatus200(t, app, "/john/doe", MethodDelete)
