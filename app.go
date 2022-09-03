@@ -571,6 +571,15 @@ func (app *App) GetRoute(name string) Route {
 	return Route{}
 }
 
+// Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware.
+// Use app.Route() to avoid duplicate route names (and thus typo erros).
+func (app *App) Route(path string) RouteFunc {
+	return RouteFunc{
+		app:  app,
+		path: path,
+	}
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
 //
