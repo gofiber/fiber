@@ -19,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"encoding/json"
@@ -850,83 +849,6 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	return http.ReadResponse(buffer, req)
 }
 
-type disableLogger struct{}
-
-func (dl *disableLogger) Printf(_ string, _ ...interface{}) {
-	// fmt.Println(fmt.Sprintf(format, args...))
-}
-
-func (app *App) init() *App {
-	// lock application
-	app.mutex.Lock()
-
-	// Only load templates if a view engine is specified
-	if app.config.Views != nil {
-		if err := app.config.Views.Load(); err != nil {
-			fmt.Printf("views: %v\n", err)
-		}
-	}
-
-	// create fasthttp server
-	app.server = &fasthttp.Server{
-		Logger:       &disableLogger{},
-		LogAllErrors: false,
-		ErrorHandler: app.serverErrorHandler,
-	}
-
-	// fasthttp server settings
-	app.server.Handler = app.handler
-	app.server.Name = app.config.ServerHeader
-	app.server.Concurrency = app.config.Concurrency
-	app.server.NoDefaultDate = app.config.DisableDefaultDate
-	app.server.NoDefaultContentType = app.config.DisableDefaultContentType
-	app.server.DisableHeaderNamesNormalizing = app.config.DisableHeaderNormalizing
-	app.server.DisableKeepalive = app.config.DisableKeepalive
-	app.server.MaxRequestBodySize = app.config.BodyLimit
-	app.server.NoDefaultServerHeader = app.config.ServerHeader == ""
-	app.server.ReadTimeout = app.config.ReadTimeout
-	app.server.WriteTimeout = app.config.WriteTimeout
-	app.server.IdleTimeout = app.config.IdleTimeout
-	app.server.ReadBufferSize = app.config.ReadBufferSize
-	app.server.WriteBufferSize = app.config.WriteBufferSize
-	app.server.GetOnly = app.config.GETOnly
-	app.server.ReduceMemoryUsage = app.config.ReduceMemoryUsage
-	app.server.StreamRequestBody = app.config.StreamRequestBody
-	app.server.DisablePreParseMultipartForm = app.config.DisablePreParseMultipartForm
-
-	// unlock application
-	app.mutex.Unlock()
-	return app
-}
-
-// Mount attaches another app instance as a sub-router along a routing path.
-// It's very useful to split up a large API as many independent routers and
-// compose them as a single service using Mount. The fiber's error handler and
-// any of the fiber's sub apps are added to the application's error handlers
-// to be invoked on errors that happen within the prefix route.
-func (app *App) mount(prefix string, sub *App) Router {
-	prefix = strings.TrimRight(prefix, "/")
-	if prefix == "" {
-		prefix = "/"
-	}
-
-	if app.parent == nil {
-		sub.parent = app
-		sub.path = app.mountpath + prefix
-		sub.mountpath = prefix
-		app.subList[app.mountpath+prefix] = sub
-	}
-
-	sub.parent = app
-	sub.path = app.mountpath + prefix
-	sub.mountpath = prefix
-	sub.subList[app.mountpath+prefix] = sub
-
-	atomic.AddUint32(&app.handlersCount, sub.handlersCount)
-
-	return app
-}
-
 // ErrorHandler is the application's method in charge of finding the
 // appropriate handler for the given request. It searches any mounted
 // sub fibers by their prefixes and if it finds a match, it uses that
@@ -953,38 +875,4 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 	}
 
 	return app.config.ErrorHandler(ctx, err)
-}
-
-// serverErrorHandler is a wrapper around the application's error handler method
-// user for the fasthttp server configuration. It maps a set of fasthttp errors to fiber
-// errors before calling the application's error handler method.
-func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
-	c := app.AcquireCtx(fctx)
-	if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
-		err = ErrRequestHeaderFieldsTooLarge
-	} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
-		err = ErrRequestTimeout
-	} else if err == fasthttp.ErrBodyTooLarge {
-		err = ErrRequestEntityTooLarge
-	} else if err == fasthttp.ErrGetOnly {
-		err = ErrMethodNotAllowed
-	} else if strings.Contains(err.Error(), "timeout") {
-		err = ErrRequestTimeout
-	} else {
-		err = ErrBadRequest
-	}
-
-	if catch := app.ErrorHandler(c, err); catch != nil {
-		_ = c.SendStatus(StatusInternalServerError)
-	}
-
-	app.ReleaseCtx(c)
-}
-
-// startupProcess Is the method which executes all the necessary processes just before the start of the server.
-func (app *App) startupProcess() *App {
-	app.mutex.Lock()
-	app.buildTree()
-	app.mutex.Unlock()
-	return app
 }
