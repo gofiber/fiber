@@ -119,7 +119,7 @@ type App struct {
 	// custom binders
 	customBinders []CustomBinder
 	// TLS handler
-	tlsHandler *tlsHandler
+	tlsHandler *TLSHandler
 }
 
 // Config is a struct holding the server settings.
@@ -367,6 +367,13 @@ type Config struct {
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
 
+	// If set to true, c.IP() and c.IPs() will validate IP addresses before returning them.
+	// Also, c.IP() will return only the first valid IP rather than just the raw header
+	// WARNING: this has a performance cost associated with it.
+	//
+	// Default: false
+	EnableIPValidation bool `json:"enable_ip_validation"`
+
 	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
 	EnablePrintRoutes bool `json:"enable_print_routes"`
@@ -573,6 +580,14 @@ func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 // They should be compatible with CustomBinder interface.
 func (app *App) RegisterCustomBinder(binder CustomBinder) {
 	app.customBinders = append(app.customBinders, binder)
+}
+
+// You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.
+func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
+	// Attach the tlsHandler to the config
+	app.mutex.Lock()
+	app.tlsHandler = tlsHandler
+	app.mutex.Unlock()
 }
 
 // Mount attaches another app instance as a sub-router along a routing path.

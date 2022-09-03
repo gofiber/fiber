@@ -128,7 +128,10 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 				rsp, err := app.Test(httptest.NewRequest(http.MethodGet, fmt.Sprintf("/%d", id), nil))
 				require.NoError(t, err)
 
-				defer rsp.Body.Close()
+				defer func(Body io.ReadCloser) {
+					err := Body.Close()
+					require.NoError(t, err)
+				}(rsp.Body)
 
 				idFromServ, err := io.ReadAll(rsp.Body)
 				require.NoError(t, err)
@@ -426,10 +429,12 @@ func Test_Cache_WithHead(t *testing.T) {
 
 	req := httptest.NewRequest("HEAD", "/", nil)
 	resp, err := app.Test(req)
+	require.NoError(t, err)
 	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	cachedReq := httptest.NewRequest("HEAD", "/", nil)
 	cachedResp, err := app.Test(cachedReq)
+	require.NoError(t, err)
 	require.Equal(t, cacheHit, cachedResp.Header.Get("X-Cache"))
 
 	body, err := io.ReadAll(resp.Body)

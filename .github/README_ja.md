@@ -147,7 +147,7 @@ Fiber は人気の高い Web フレームワークである Expressjs に**イ�
 もしも、Web アプリケーションを Express 等の Node.js フレームワークで実装した経験があれば、多くの方法や原理がとても**馴染み深い**でしょう。
 
 ## ⚠️ 制限時効
-* Fiberはunsafeパッケージを使用しているため、最新のGoバージョンと互換性がない場合があります。Fiber 2.29.0 は、Go のバージョン 1.14 から 1.18 でテストされています。
+* Fiberはunsafeパッケージを使用しているため、最新のGoバージョンと互換性がない場合があります。Fiber 2.29.0 は、Go のバージョン 1.14 から 1.19 でテストされています。
 * Fiberはnet/httpインターフェースと互換性がありません。つまり、gqlgenやgo-swaggerなど、net/httpのエコシステムの一部であるプロジェクトを使用することができません。
 
 ## 👀 例
@@ -576,6 +576,7 @@ func main() {
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | Enable cross-origin resource sharing \(CORS\) with various options.                                                                                                          |
 | [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | Protect from CSRF exploits.                                                                                                                                                  |
 | [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware which encrypts cookie values.                                                                                                                             |
+| [envvar](https://github.com/gofiber/fiber/tree/master/middleware/envvar)               | Expose environment variables with providing an optional config.                                                                                                              |
 | [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | ETag middleware that lets caches be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.               |
 | [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware that serves via its HTTP server runtime exposed variants in the JSON format.                                                                               |
 | [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | Ignore favicon from logs or serve from memory if a file path is provided.                                                                                                    |

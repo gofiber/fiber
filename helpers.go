@@ -22,37 +22,6 @@ import (
 )
 
 /* #nosec */
-// lnMetadata will close the listener and return the addr and tls config
-func lnMetadata(network string, ln net.Listener) (addr string, cfg *tls.Config) {
-	// Get addr
-	addr = ln.Addr().String()
-
-	// Close listener
-	if err := ln.Close(); err != nil {
-		return
-	}
-
-	// Wait for the listener to be closed
-	var closed bool
-	for i := 0; i < 10; i++ {
-		conn, err := net.DialTimeout(network, addr, 3*time.Second)
-		if err != nil || conn == nil {
-			closed = true
-			break
-		}
-		_ = conn.Close()
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !closed {
-		panic("listener: " + addr + ": Only one usage of each socket address (protocol/network address/port) is normally permitted.")
-	}
-
-	cfg = getTlsConfig(ln)
-
-	return
-}
-
-/* #nosec */
 // getTlsConfig returns a net listener's tls config
 func getTlsConfig(ln net.Listener) *tls.Config {
 	// Get listener type
@@ -688,18 +657,21 @@ const (
 
 // Route Constraints
 const (
-	ConstraintInt        = "int"
-	ConstraintBool       = "bool"
-	ConstraintFloat      = "float"
-	ConstraintAlpha      = "alpha"
-	ConstraintGuid       = "guid"
-	ConstraintMinLen     = "minLen"
-	ConstraintMaxLen     = "maxLen"
-	ConstraintExactLen   = "exactLen"
-	ConstraintBetweenLen = "betweenLen"
-	ConstraintMin        = "min"
-	ConstraintMax        = "max"
-	ConstraintRange      = "range"
-	ConstraintDatetime   = "datetime"
-	ConstraintRegex      = "regex"
+	ConstraintInt             = "int"
+	ConstraintBool            = "bool"
+	ConstraintFloat           = "float"
+	ConstraintAlpha           = "alpha"
+	ConstraintGuid            = "guid"
+	ConstraintMinLen          = "minLen"
+	ConstraintMaxLen          = "maxLen"
+	ConstraintLen             = "len"
+	ConstraintBetweenLen      = "betweenLen"
+	ConstraintMinLenLower     = "minlen"
+	ConstraintMaxLenLower     = "maxlen"
+	ConstraintBetweenLenLower = "betweenlen"
+	ConstraintMin             = "min"
+	ConstraintMax             = "max"
+	ConstraintRange           = "range"
+	ConstraintDatetime        = "datetime"
+	ConstraintRegex           = "regex"
 )

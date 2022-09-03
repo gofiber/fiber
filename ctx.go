@@ -54,13 +54,13 @@ type DefaultCtx struct {
 	bind                *Bind                // Default bind reference
 }
 
-// tlsHandle object
-type tlsHandler struct {
+// TLSHandler object
+type TLSHandler struct {
 	clientHelloInfo *tls.ClientHelloInfo
 }
 
 // GetClientInfo Callback function to set CHI
-func (t *tlsHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	t.clientHelloInfo = info
 	return nil, nil
 }
@@ -488,33 +488,94 @@ func (c *DefaultCtx) Port() string {
 }
 
 // IP returns the remote IP address of the request.
+// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) IP() string {
 	if c.IsProxyTrusted() && len(c.app.config.ProxyHeader) > 0 {
-		return c.Get(c.app.config.ProxyHeader)
+		return c.extractIPFromHeader(c.app.config.ProxyHeader)
 	}
 
 	return c.fasthttp.RemoteIP().String()
 }
 
-// IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
-func (c *DefaultCtx) IPs() (ips []string) {
-	header := c.fasthttp.Request.Header.Peek(HeaderXForwardedFor)
-	if len(header) == 0 {
-		return
+// validateIPIfEnabled will return the input IP when validation is disabled.
+// when validation is enabled, it will return an empty string if the input is not a valid IP.
+func (c *DefaultCtx) validateIPIfEnabled(ip string) string {
+	if c.app.config.EnableIPValidation && net.ParseIP(ip) == nil {
+		return ""
 	}
-	ips = make([]string, bytes.Count(header, []byte(","))+1)
-	var commaPos, i int
+	return ip
+}
+
+// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
+// When IP validation is enabled, any invalid IPs will be omitted.
+func (c *DefaultCtx) extractIPsFromHeader(header string) (ipsFound []string) {
+	headerValue := c.Get(header)
+
+	// try to gather IPs in the input with minimal allocations to improve performance
+	ips := make([]string, bytes.Count([]byte(headerValue), []byte(","))+1)
+	var commaPos, i, validCount int
 	for {
-		commaPos = bytes.IndexByte(header, ',')
+		commaPos = bytes.IndexByte([]byte(headerValue), ',')
 		if commaPos != -1 {
-			ips[i] = strings.Trim(c.app.getString(header[:commaPos]), " ")
-			header, i = header[commaPos+1:], i+1
+			ips[i] = c.validateIPIfEnabled(strings.Trim(headerValue[:commaPos], " "))
+			if ips[i] != "" {
+				validCount++
+			}
+			headerValue, i = headerValue[commaPos+1:], i+1
 		} else {
-			ips[i] = strings.Trim(c.app.getString(header), " ")
-			return
+			ips[i] = c.validateIPIfEnabled(strings.Trim(headerValue, " "))
+			if ips[i] != "" {
+				validCount++
+			}
+			break
 		}
 	}
+
+	// filter out any invalid IP(s) that we found
+	if len(ips) == validCount {
+		ipsFound = ips
+	} else {
+		ipsFound = make([]string, validCount)
+		var validIndex int
+		for n := range ips {
+			if ips[n] != "" {
+				ipsFound[validIndex] = ips[n]
+				validIndex++
+			}
+		}
+	}
+	return
+}
+
+// extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
+// currently, it will return the first valid IP address in header.
+// when IP validation is disabled, it will simply return the value of the header without any inspection.
+func (c *DefaultCtx) extractIPFromHeader(header string) string {
+	if c.app.config.EnableIPValidation {
+		// extract all IPs from the header's value
+		ips := c.extractIPsFromHeader(header)
+
+		// since X-Forwarded-For has no RFC, it's really up to the proxy to decide whether to append
+		// or prepend IPs to this list. For example, the AWS ALB will prepend but the F5 BIG-IP will append ;(
+		// for now lets just go with the first value in the list...
+		if len(ips) > 0 {
+			return ips[0]
+		}
+
+		// return the IP from the stack if we could not find any valid Ips
+		return c.fasthttp.RemoteIP().String()
+	}
+
+	// default behaviour if IP validation is not enabled is just to return whatever value is
+	// in the proxy header. Even if it is empty or invalid
+	return c.Get(c.app.config.ProxyHeader)
+}
+
+// IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
+// When IP validation is enabled, only valid IPs are returned.
+func (c *DefaultCtx) IPs() (ips []string) {
+	return c.extractIPsFromHeader(HeaderXForwardedFor)
 }
 
 // Is returns the matching content type,
@@ -688,7 +749,7 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 		if len(key) != len(c.route.Params[i]) {
 			continue
 		}
-		if c.route.Params[i] == key {
+		if c.route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(c.route.Params[i], key)) {
 			// in case values are not here
 			if len(c.values) <= i || len(c.values[i]) == 0 {
 				break
@@ -855,18 +916,22 @@ func (c *DefaultCtx) BindVars(vars Map) error {
 func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
-		for key, val := range params {
-			if segment.IsParam && (key == segment.ParamName || (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))) {
-				_, err := buf.WriteString(utils.ToString(val))
-				if err != nil {
-					return "", err
-				}
-			}
-		}
 		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
 				return "", err
+			}
+			continue
+		}
+
+		for key, val := range params {
+			isSame := key == segment.ParamName || (!c.app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
+			isGreedy := (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))
+			if isSame || isGreedy {
+				_, err := buf.WriteString(utils.ToString(val))
+				if err != nil {
+					return "", err
+				}
 			}
 		}
 	}

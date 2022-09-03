@@ -114,16 +114,6 @@ func Test_App_Listener(t *testing.T) {
 	require.Nil(t, app.Listener(ln))
 }
 
-// go test -run Test_App_Listener_Prefork
-func Test_App_Listener_Prefork(t *testing.T) {
-	testPreforkMaster = true
-
-	app := New(Config{DisableStartupMessage: true, Prefork: true})
-
-	ln := fasthttputil.NewInmemoryListener()
-	require.Nil(t, app.Listener(ln))
-}
-
 func Test_App_Listener_TLS_Listener(t *testing.T) {
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
@@ -166,12 +156,18 @@ func captureOutput(f func()) string {
 	go func() {
 		var buf bytes.Buffer
 		wg.Done()
-		io.Copy(&buf, reader)
+		_, err := io.Copy(&buf, reader)
+		if err != nil {
+			panic(err)
+		}
 		out <- buf.String()
 	}()
 	wg.Wait()
 	f()
-	writer.Close()
+	err = writer.Close()
+	if err != nil {
+		panic(err)
+	}
 	return <-out
 }
 
@@ -244,6 +240,6 @@ func Test_App_print_Route_with_group(t *testing.T) {
 	require.True(t, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
 }
 
-func emptyHandler(c Ctx) error {
+func emptyHandler(_ Ctx) error {
 	return nil
 }
