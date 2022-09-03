@@ -574,7 +574,7 @@ func (app *App) GetRoute(name string) Route {
 // Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware.
 // Use app.Route() to avoid duplicate route names (and thus typo erros).
 func (app *App) Route(path string) RouteFunc {
-	return routeFunc{
+	return &routeFunc{
 		app:  app,
 		path: path,
 	}
