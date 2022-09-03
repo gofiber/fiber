@@ -13,6 +13,24 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Route is a struct that holds all metadata for each registered handler
+type Route struct {
+	// Data for routing
+	pos         uint32      // Position in stack -> important for the sort of the matched routes
+	use         bool        // USE matches path prefixes
+	star        bool        // Path equals '*'
+	root        bool        // Path equals '/'
+	path        string      // Prettified path
+	routeParser routeParser // Parameter parser
+
+	// Public fields
+	Method   string    `json:"method"` // HTTP method
+	Name     string    `json:"name"`   // Route's name
+	Path     string    `json:"path"`   // Original registered route path
+	Params   []string  `json:"params"` // Case sensitive param keys
+	Handlers []Handler `json:"-"`      // Ctx handlers
+}
+
 type disableLogger struct{}
 
 func (dl *disableLogger) Printf(_ string, _ ...interface{}) {
