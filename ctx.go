@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -464,7 +463,7 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fasthttp.ReleaseCookie(fcookie)
 }
 
-// Cookies is used for getting a cookie value by key.
+// Cookies are used for getting a cookie value by key.
 // Defaults to the empty string "" if the cookie doesn't exist.
 // If a default value is given, it will return that value if the cookie doesn't exist.
 // The returned value is only valid within the handler. Do not store any references.
@@ -1225,7 +1224,7 @@ func (c *Ctx) Redirect(location string, status ...int) error {
 	return nil
 }
 
-// Add vars to default view var map binding to template engine.
+// Bind will Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
 func (c *Ctx) Bind(vars Map) error {
 	// init viewBindMap - lazy map
@@ -1253,7 +1252,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!c.app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))
+			isGreedy := segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters)
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
@@ -1419,7 +1418,7 @@ func (c *Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, s
 		return err
 	}
 
-	content, err := ioutil.ReadAll(file)
+	content, err := io.ReadAll(file)
 	if err != nil {
 		return err
 	}
