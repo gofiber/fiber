@@ -85,7 +85,7 @@ func (app *App) init() *App {
 // compose them as a single service using Mount. The fiber's error handler and
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
-func (app *App) mount(prefix string, sub *App) Router {
+func (app *App) mount(prefix string, sub *App) IRouter {
 	prefix = strings.TrimRight(prefix, "/")
 	if prefix == "" {
 		prefix = "/"
@@ -134,7 +134,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	app.ReleaseCtx(c)
 }
 
-func (app *App) registerRouter(prefix string, router Router) {
+func (app *App) registerRouter(prefix string, router *Router) {
 	app.routerList[prefix] = router
 }
 
@@ -288,7 +288,7 @@ func (app *App) copyRoute(route *Route) *Route {
 	}
 }
 
-func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
+func (app *App) register(method, pathRaw string, handlers ...Handler) IRouter {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
@@ -362,7 +362,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 	return app
 }
 
-func (app *App) registerStatic(prefix, root string, config ...Static) Router {
+func (app *App) registerStatic(prefix, root string, config ...Static) IRouter {
 	// For security we want to restrict to the current work directory.
 	if root == "" {
 		root = "."
@@ -553,14 +553,15 @@ func (app *App) buildTree() *App {
 	return app
 }
 
-// buildSubTree build prefix tree from the previously registered sub app' routes
+// buildSubTree build prefix tree from the previously registered sub app's routes
 func (app *App) buildSubTree() *App {
 	for _, sub := range app.subList {
+		go sub.buildSubTree()
 		stack := sub.stack
 		for m := range stack {
 			for r := range stack[m] {
 				route := app.copyRoute(stack[m][r])
-				app.addRoute(route.Method, app.addPrefixToRoute(sub.path, route))
+				sub.parent.addRoute(route.Method, app.addPrefixToRoute(sub.path, route))
 			}
 		}
 	}
@@ -575,6 +576,7 @@ func (app *App) buildRouterTree() *App {
 			for r := range stack[m] {
 				route := app.copyRoute(stack[m][r])
 				app.addRoute(route.Method, app.addPrefixToRoute(path, route))
+				atomic.AddUint32(&app.handlersCount, uint32(len(route.Handlers)))
 			}
 		}
 	}

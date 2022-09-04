@@ -18,26 +18,24 @@ import (
 )
 
 // Router defines all router handle interface includes app and group router.
-type Router interface {
-	Stack() [][]*Route
+type IRouter interface {
+	Use(args ...interface{}) IRouter
 
-	Use(args ...interface{}) Router
+	Get(path string, handlers ...Handler) IRouter
+	Head(path string, handlers ...Handler) IRouter
+	Post(path string, handlers ...Handler) IRouter
+	Put(path string, handlers ...Handler) IRouter
+	Delete(path string, handlers ...Handler) IRouter
+	Connect(path string, handlers ...Handler) IRouter
+	Options(path string, handlers ...Handler) IRouter
+	Trace(path string, handlers ...Handler) IRouter
+	Patch(path string, handlers ...Handler) IRouter
 
-	Get(path string, handlers ...Handler) Router
-	Head(path string, handlers ...Handler) Router
-	Post(path string, handlers ...Handler) Router
-	Put(path string, handlers ...Handler) Router
-	Delete(path string, handlers ...Handler) Router
-	Connect(path string, handlers ...Handler) Router
-	Options(path string, handlers ...Handler) Router
-	Trace(path string, handlers ...Handler) Router
-	Patch(path string, handlers ...Handler) Router
+	Add(method, path string, handlers ...Handler) IRouter
+	Static(prefix, root string, config ...Static) IRouter
+	All(path string, handlers ...Handler) IRouter
 
-	Add(method, path string, handlers ...Handler) Router
-	Static(prefix, root string, config ...Static) Router
-	All(path string, handlers ...Handler) Router
-
-	Name(name string) Router
+	Name(name string) IRouter
 }
 
 type RouterConfig struct {
@@ -52,14 +50,12 @@ var DefaultRouterConfig = RouterConfig{
 	Strict:        false,
 }
 
-type router struct {
+type Router struct {
 	mutex sync.Mutex
 	// App
 	app *App
 	// Route stack divided by HTTP methods
 	stack [][]*Route
-	// Route stack divided by HTTP methods and route prefixes
-	treeStack []map[string][]*Route
 	// contains the information if the route stack has been changed to build the optimized tree
 	routesRefreshed bool
 	// Amount of registered routes
@@ -72,11 +68,10 @@ type router struct {
 	latestRoute *Route
 }
 
-func NewRouter(config ...RouterConfig) Router {
-	r := &router{
-		stack:     make([][]*Route, len(intMethod)),
-		treeStack: make([]map[string][]*Route, len(intMethod)),
-		config:    DefaultRouterConfig,
+func NewRouter(config ...RouterConfig) *Router {
+	r := &Router{
+		stack:  make([][]*Route, len(intMethod)),
+		config: DefaultRouterConfig,
 	}
 
 	if len(config) > 0 {
@@ -96,11 +91,11 @@ func NewRouter(config ...RouterConfig) Router {
 }
 
 // Stack returns the raw router stack.
-func (r *router) Stack() [][]*Route {
+func (r *Router) Stack() [][]*Route {
 	return r.stack
 }
 
-func (r *router) Name(name string) Router {
+func (r *Router) Name(name string) IRouter {
 	r.mutex.Lock()
 	r.latestRoute.Name = name
 	r.mutex.Unlock()
@@ -109,7 +104,7 @@ func (r *router) Name(name string) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (r *router) Use(args ...interface{}) Router {
+func (r *Router) Use(args ...interface{}) IRouter {
 	var prefix string
 	var handlers []Handler
 
@@ -130,7 +125,7 @@ func (r *router) Use(args ...interface{}) Router {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (r *router) Get(path string, handlers ...Handler) Router {
+func (r *Router) Get(path string, handlers ...Handler) IRouter {
 	r.Head(path, handlers...)
 	r.register(MethodGet, path, handlers...)
 	return r
@@ -138,79 +133,79 @@ func (r *router) Get(path string, handlers ...Handler) Router {
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (r *router) Head(path string, handlers ...Handler) Router {
+func (r *Router) Head(path string, handlers ...Handler) IRouter {
 	r.register(MethodHead, path, handlers...)
 	return r
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (r *router) Post(path string, handlers ...Handler) Router {
+func (r *Router) Post(path string, handlers ...Handler) IRouter {
 	r.register(MethodPost, path, handlers...)
 	return r
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (r *router) Put(path string, handlers ...Handler) Router {
+func (r *Router) Put(path string, handlers ...Handler) IRouter {
 	r.register(MethodPut, path, handlers...)
 	return r
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (r *router) Delete(path string, handlers ...Handler) Router {
+func (r *Router) Delete(path string, handlers ...Handler) IRouter {
 	r.register(MethodDelete, path, handlers...)
 	return r
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (r *router) Connect(path string, handlers ...Handler) Router {
+func (r *Router) Connect(path string, handlers ...Handler) IRouter {
 	r.register(MethodConnect, path, handlers...)
 	return r
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (r *router) Options(path string, handlers ...Handler) Router {
+func (r *Router) Options(path string, handlers ...Handler) IRouter {
 	r.register(MethodOptions, path, handlers...)
 	return r
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (r *router) Trace(path string, handlers ...Handler) Router {
+func (r *Router) Trace(path string, handlers ...Handler) IRouter {
 	r.register(MethodTrace, path, handlers...)
 	return r
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (r *router) Patch(path string, handlers ...Handler) Router {
+func (r *Router) Patch(path string, handlers ...Handler) IRouter {
 	r.register(MethodPatch, path, handlers...)
 	return r
 }
 
 // Add allows you to specify a HTTP method to register a route
-func (r *router) Add(method, path string, handlers ...Handler) Router {
+func (r *Router) Add(method, path string, handlers ...Handler) IRouter {
 	r.register(method, path, handlers...)
 	return r
 }
 
 // Static will create a file server serving static files
-func (r *router) Static(prefix, root string, config ...Static) Router {
+func (r *Router) Static(prefix, root string, config ...Static) IRouter {
 	return r.registerStatic(prefix, root, config...)
 }
 
 // All will register the handler on all HTTP methods
-func (r *router) All(path string, handlers ...Handler) Router {
+func (r *Router) All(path string, handlers ...Handler) IRouter {
 	for _, method := range intMethod {
 		r.register(method, path, handlers...)
 	}
 	return r
 }
 
-func (r *router) register(method, pathRaw string, handlers ...Handler) {
+func (r *Router) register(method, pathRaw string, handlers ...Handler) {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
@@ -283,7 +278,7 @@ func (r *router) register(method, pathRaw string, handlers ...Handler) {
 	}
 }
 
-func (r *router) addRoute(method string, route *Route) {
+func (r *Router) addRoute(method string, route *Route) {
 	// Get unique HTTP method identifier
 	m := methodInt(method)
 
@@ -304,7 +299,7 @@ func (r *router) addRoute(method string, route *Route) {
 	r.latestRoute = route
 }
 
-func (r *router) registerStatic(prefix, root string, config ...Static) Router {
+func (r *Router) registerStatic(prefix, root string, config ...Static) IRouter {
 	// For security we want to restrict to the current work directory.
 	if root == "" {
 		root = "."
