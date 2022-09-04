@@ -126,7 +126,7 @@ func (r *Router) Use(args ...interface{}) IRouter {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (r *Router) Get(path string, handlers ...Handler) IRouter {
-	r.Head(path, handlers...)
+	r.register(MethodHead, path, handlers...)
 	r.register(MethodGet, path, handlers...)
 	return r
 }
