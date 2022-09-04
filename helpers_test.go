@@ -84,7 +84,8 @@ func Test_Utils_ETag_Weak(t *testing.T) {
 	t.Run("Match Weak ETag", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		c.Request().Header.Set(HeaderIfNoneMatch, `W/"13-1831710635"`)
 		setETag(c, true)
 		utils.AssertEqual(t, 304, c.Response().StatusCode())
@@ -95,7 +96,8 @@ func Test_Utils_ETag_Weak(t *testing.T) {
 	t.Run("Not Match Weak ETag", func(t *testing.T) {
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		c.Request().Header.Set(HeaderIfNoneMatch, `W/"13-1831710635xx"`)
 		setETag(c, true)
 		utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
@@ -135,7 +137,8 @@ func Benchmark_Utils_ETag_Weak(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.SendString("Hello, World!")
+	err := c.SendString("Hello, World!")
+	utils.AssertEqual(b, nil, err)
 	for n := 0; n < b.N; n++ {
 		setETag(c, true)
 	}
