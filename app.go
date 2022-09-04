@@ -623,6 +623,7 @@ func (app *App) Use(args ...interface{}) IRouter {
 	}
 
 	if router != nil {
+		router.app = app
 		app.registerRouter(prefix, router)
 		return app
 	}
