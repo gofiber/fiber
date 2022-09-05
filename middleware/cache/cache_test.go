@@ -297,6 +297,13 @@ func Test_CustomKey(t *testing.T) {
 	utils.AssertEqual(t, true, called)
 }
 
+func defaultString(value string, defaultValue ...string) string {
+	if len(value) == 0 && len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return value
+}
+
 func Test_CustomExpiration(t *testing.T) {
 	t.Parallel()
 
@@ -305,7 +312,7 @@ func Test_CustomExpiration(t *testing.T) {
 	var newCacheTime int
 	app.Use(New(Config{ExpirationGenerator: func(c *fiber.Ctx, cfg *Config) time.Duration {
 		called = true
-		newCacheTime, _ = strconv.Atoi(c.GetRespHeader("Cache-Time", "600"))
+		newCacheTime, _ = strconv.Atoi(string(c.Response().Header.Peek("Cache-Time")))
 		return time.Second * time.Duration(newCacheTime)
 	}}))
 

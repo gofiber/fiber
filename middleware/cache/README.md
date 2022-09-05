@@ -56,7 +56,7 @@ app.Use(cache.New(cache.Config{
 ```go
 app.Use(New(Config{
 	ExpirationGenerator: func(c *fiber.Ctx, cfg *Config) time.Duration {
-		newCacheTime, _ := strconv.Atoi(c.GetRespHeader("Cache-Time", "600"))
+		newCacheTime, _ := strconv.Atoi(string(c.Response().Header.Peek("Cache-Time")))
 		return time.Second * time.Duration(newCacheTime)
 	},
 	KeyGenerator: func(c *fiber.Ctx) string {

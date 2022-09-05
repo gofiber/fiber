@@ -599,26 +599,6 @@ func (c *Ctx) Get(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Request.Header.Peek(key)), defaultValue)
 }
 
-// GetRespHeader returns the HTTP response header specified by field.
-// Field names are case-insensitive
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
-func (c *Ctx) GetRespHeader(key string, defaultValue ...string) string {
-	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
-}
-
-// GetRespHeaders returns the HTTP response headers.
-// Returned value is only valid within the handler. Do not store any references.
-// Make copies or use the Immutable setting instead.
-func (c *Ctx) GetRespHeaders() map[string]string {
-	headers := make(map[string]string)
-	c.Response().Header.VisitAll(func(k, v []byte) {
-		headers[string(k)] = c.app.getString(v)
-	})
-
-	return headers
-}
-
 // Contains the host derived from the Host HTTP header.
 // When the trust proxy setting does not evaluate to false, this property will instead get the value from the X-Forwarded-Host header field. This header can be set by the client or by the proxy.
 // If there is more than one X-Forwarded-Host header in the request, the value of the first header is used. This includes a single header with comma-separated values, in which the first value is used.

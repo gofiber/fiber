@@ -272,8 +272,6 @@ func New(config ...Config) fiber.Handler {
 					return buf.WriteString(c.Get(tag[10:]))
 				case strings.HasPrefix(tag, TagHeader):
 					return buf.WriteString(c.Get(tag[7:]))
-				case strings.HasPrefix(tag, TagRespHeader):
-					return buf.WriteString(c.GetRespHeader(tag[11:]))
 				case strings.HasPrefix(tag, TagQuery):
 					return buf.WriteString(c.Query(tag[6:]))
 				case strings.HasPrefix(tag, TagForm):
