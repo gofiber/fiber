@@ -1186,40 +1186,6 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 	return location, nil
 }
 
-// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
-func (c *Ctx) GetRouteURL(routeName string, params Map) (string, error) {
-	return c.getLocationFromRoute(c.App().GetRoute(routeName), params)
-}
-
-// RedirectToRoute to the Route registered in the app with appropriate parameters
-// If status is not specified, status defaults to 302 Found.
-// If you want to send queries to route, you must add "queries" key typed as map[string]string to params.
-func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error {
-	location, err := c.getLocationFromRoute(c.App().GetRoute(routeName), params)
-	if err != nil {
-		return err
-	}
-
-	// Check queries
-	if queries, ok := params["queries"].(map[string]string); ok {
-		queryText := bytebufferpool.Get()
-		defer bytebufferpool.Put(queryText)
-
-		i := 1
-		for k, v := range queries {
-			_, _ = queryText.WriteString(k + "=" + v)
-
-			if i != len(queries) {
-				_, _ = queryText.WriteString("&")
-			}
-			i++
-		}
-
-		return c.Redirect(location+"?"+queryText.String(), status...)
-	}
-	return c.Redirect(location, status...)
-}
-
 // RedirectBack to the URL to referer
 // If status is not specified, status defaults to 302 Found.
 func (c *Ctx) RedirectBack(fallback string, status ...int) error {

@@ -551,28 +551,6 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	}
 }
 
-// Assign name to specific route.
-func (app *App) Name(name string) IRouter {
-	app.mutex.Lock()
-	app.latestRoute.Name = name
-	app.mutex.Unlock()
-
-	return app
-}
-
-// Get route by name
-func (app *App) GetRoute(name string) Route {
-	for _, routes := range app.stack {
-		for _, route := range routes {
-			if route.Name == name {
-				return *route
-			}
-		}
-	}
-
-	return Route{}
-}
-
 // Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware.
 // Use app.Route() to avoid duplicate route names (and thus typo erros).
 func (app *App) Route(path string) IRoute {

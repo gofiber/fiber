@@ -17,7 +17,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -2230,126 +2229,38 @@ func Test_Ctx_Redirect(t *testing.T) {
 	utils.AssertEqual(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Ctx_RedirectToRouteWithParams
-func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name", func(c *Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	c.RedirectToRoute("user", Map{
-		"name": "fiber",
-	})
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Ctx_RedirectToRouteWithParams
-func Test_Ctx_RedirectToRouteWithQueries(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name", func(c *Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	c.RedirectToRoute("user", Map{
-		"name":    "fiber",
-		"queries": map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
-	})
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
-	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
-	utils.AssertEqual(t, nil, err, "url.Parse(location)")
-	utils.AssertEqual(t, "/user/fiber", location.Path)
-	utils.AssertEqual(t, url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}}, location.Query())
-}
-
-// go test -run Test_Ctx_RedirectToRouteWithOptionalParams
-func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name?", func(c *Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	c.RedirectToRoute("user", Map{
-		"name": "fiber",
-	})
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue
-func Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name?", func(c *Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	c.RedirectToRoute("user", Map{})
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Ctx_RedirectToRouteWithGreedyParameters
-func Test_Ctx_RedirectToRouteWithGreedyParameters(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/+", func(c *Ctx) error {
-		return c.JSON(c.Params("+"))
-	}).Name("user")
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	c.RedirectToRoute("user", Map{
-		"+": "test/routes",
-	})
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
 // go test -run Test_Ctx_RedirectBack
-func Test_Ctx_RedirectBack(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/", func(c *Ctx) error {
-		return c.JSON("Home")
-	}).Name("home")
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	c.RedirectBack("/")
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
-}
+// func Test_Ctx_RedirectBack(t *testing.T) {
+// 	t.Parallel()
+// 	app := New()
+// 	app.Get("/", func(c *Ctx) error {
+// 		return c.JSON("Home")
+// 	}).Name("home")
+// 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+// 	defer app.ReleaseCtx(c)
+// 	c.RedirectBack("/")
+// 	utils.AssertEqual(t, 302, c.Response().StatusCode())
+// 	utils.AssertEqual(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+// }
 
-// go test -run Test_Ctx_RedirectBackWithReferer
-func Test_Ctx_RedirectBackWithReferer(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/", func(c *Ctx) error {
-		return c.JSON("Home")
-	}).Name("home")
-	app.Get("/back", func(c *Ctx) error {
-		return c.JSON("Back")
-	}).Name("back")
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	c.Request().Header.Set(HeaderReferer, "/back")
-	c.RedirectBack("/")
-	utils.AssertEqual(t, 302, c.Response().StatusCode())
-	utils.AssertEqual(t, "/back", c.Get(HeaderReferer))
-	utils.AssertEqual(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
-}
+// // go test -run Test_Ctx_RedirectBackWithReferer
+// func Test_Ctx_RedirectBackWithReferer(t *testing.T) {
+// 	t.Parallel()
+// 	app := New()
+// 	app.Get("/", func(c *Ctx) error {
+// 		return c.JSON("Home")
+// 	}).Name("home")
+// 	app.Get("/back", func(c *Ctx) error {
+// 		return c.JSON("Back")
+// 	}).Name("back")
+// 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+// 	defer app.ReleaseCtx(c)
+// 	c.Request().Header.Set(HeaderReferer, "/back")
+// 	c.RedirectBack("/")
+// 	utils.AssertEqual(t, 302, c.Response().StatusCode())
+// 	utils.AssertEqual(t, "/back", c.Get(HeaderReferer))
+// 	utils.AssertEqual(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
+// }
 
 // go test -run Test_Ctx_Render
 func Test_Ctx_Render(t *testing.T) {
@@ -2558,55 +2469,6 @@ func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
 	utils.AssertEqual(b, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
 }
 
-func Benchmark_Ctx_RedirectToRoute(b *testing.B) {
-	app := New()
-	app.Get("/user/:name", func(c *Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		c.RedirectToRoute("user", Map{
-			"name": "fiber",
-		})
-	}
-
-	utils.AssertEqual(b, 302, c.Response().StatusCode())
-	utils.AssertEqual(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-func Benchmark_Ctx_RedirectToRouteWithQueries(b *testing.B) {
-	app := New()
-	app.Get("/user/:name", func(c *Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		c.RedirectToRoute("user", Map{
-			"name":    "fiber",
-			"queries": map[string]string{"a": "a", "b": "b"},
-		})
-	}
-
-	utils.AssertEqual(b, 302, c.Response().StatusCode())
-	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
-	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
-	utils.AssertEqual(b, nil, err, "url.Parse(location)")
-	utils.AssertEqual(b, "/user/fiber", location.Path)
-	utils.AssertEqual(b, url.Values{"a": []string{"a"}, "b": []string{"b"}}, location.Query())
-}
-
 func Benchmark_Ctx_RenderLocals(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
@@ -2785,68 +2647,6 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	}
 	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, "<h1>Hello, World!</h1>", string(c.Response().Body()))
-}
-
-// go test -v -run=^$ -bench=Benchmark_Ctx_Get_Location_From_Route -benchmem -count=4
-func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	app.Get("/user/:name", func(c *Ctx) error {
-		return c.SendString(c.Params("name"))
-	}).Name("User")
-	for n := 0; n < b.N; n++ {
-		c.getLocationFromRoute(app.GetRoute("User"), Map{"name": "fiber"})
-	}
-}
-
-// go test -run Test_Ctx_Get_Location_From_Route_name
-func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	app.Get("/user/:name", func(c *Ctx) error {
-		return c.SendString(c.Params("name"))
-	}).Name("User")
-
-	location, err := c.GetRouteURL("User", Map{"name": "fiber"})
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "/user/fiber", location)
-}
-
-// go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy
-func Test_Ctx_Get_Location_From_Route_name_Optional_greedy(t *testing.T) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	app.Get("/:phone/*/send/*", func(c *Ctx) error {
-		return c.SendString("Phone: " + c.Params("phone") + "\nFirst Param: " + c.Params("*1") + "\nSecond Param: " + c.Params("*2"))
-	}).Name("SendSms")
-
-	location, err := c.GetRouteURL("SendSms", Map{
-		"phone": "23456789",
-		"*1":    "sms",
-		"*2":    "test-msg",
-	})
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "/23456789/sms/send/test-msg", location)
-}
-
-// go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param
-func Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param(t *testing.T) {
-	app := New()
-	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-	defer app.ReleaseCtx(c)
-	app.Get("/:phone/*/send", func(c *Ctx) error {
-		return c.SendString("Phone: " + c.Params("phone") + "\nFirst Param: " + c.Params("*1"))
-	}).Name("SendSms")
-
-	location, err := c.GetRouteURL("SendSms", Map{
-		"phone": "23456789",
-		"*":     "sms",
-	})
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "/23456789/sms/send", location)
 }
 
 type errorTemplateEngine struct{}

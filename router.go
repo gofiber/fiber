@@ -34,8 +34,6 @@ type IRouter interface {
 	Add(method, path string, handlers ...Handler) IRouter
 	Static(prefix, root string, config ...Static) IRouter
 	All(path string, handlers ...Handler) IRouter
-
-	Name(name string) IRouter
 }
 
 type RouterConfig struct {

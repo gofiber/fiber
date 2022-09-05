@@ -243,18 +243,18 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, "│        Serveur de vérification des données        │"))
 }
 
-func Test_App_print_Route(t *testing.T) {
-	app := New(Config{EnablePrintRoutes: true})
-	app.Get("/", emptyHandler).Name("routeName")
-	printRoutesMessage := captureOutput(func() {
-		app.printRoutesMessage()
-	})
-	fmt.Println(printRoutesMessage)
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "GET"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "routeName"))
-}
+// func Test_App_print_Route(t *testing.T) {
+// 	app := New(Config{EnablePrintRoutes: true})
+// 	app.Get("/", emptyHandler).Name("routeName")
+// 	printRoutesMessage := captureOutput(func() {
+// 		app.printRoutesMessage()
+// 	})
+// 	fmt.Println(printRoutesMessage)
+// 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "GET"))
+// 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/"))
+// 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
+// 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "routeName"))
+// }
 
 // func Test_App_print_Route_with_group(t *testing.T) {
 // 	app := New(Config{EnablePrintRoutes: true})
