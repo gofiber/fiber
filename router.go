@@ -36,9 +36,20 @@ type IRouter interface {
 }
 
 type RouterConfig struct {
+	// Enable case sensitivity.
+	//
+	// Disabled by default, treating “/Foo” and “/foo” as the same.
 	CaseSensitive bool `json:"case_sensitive"`
-	MergeParams   bool `json:"merge_params"`
-	Strict        bool `json:"strict"`
+	// Preserve the req.params values from the parent router.
+	//
+	// If the parent and the child have conflicting param names, the child’s value take precedence.
+	//
+	// Disabled by default
+	MergeParams bool `json:"merge_params"`
+	// Enable strict routing.
+	//
+	// Disabled by default, “/foo” and “/foo/” are treated the same by the router.
+	Strict bool `json:"strict"`
 }
 
 var DefaultRouterConfig = RouterConfig{
@@ -63,6 +74,9 @@ type Router struct {
 	config RouterConfig
 }
 
+// Creates a new router object.
+//
+// You can add middleware and HTTP method routes (such as get, put, post, and so on) to router just like an application.
 func NewRouter(config ...RouterConfig) *Router {
 	r := &Router{
 		stack:  make([][]*Route, len(intMethod)),
