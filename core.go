@@ -515,6 +515,30 @@ func (app *App) addRoute(method string, route *Route) {
 
 // buildTree build the prefix tree from the previously registered routes
 func (app *App) buildTree() *App {
+	// build prefix tree from the previously registered sub app's routes
+	for _, sub := range app.subList {
+		stack := sub.stack
+		for m := range stack {
+			for r := range stack[m] {
+				route := app.copyRoute(stack[m][r])
+				sub.parent.addRoute(route.Method, app.addPrefixToRoute(sub.path, route))
+
+			}
+		}
+	}
+
+	// build prefix tree from the previously registered router's routes
+	for path, rtr := range app.routerList {
+		stack := rtr.stack
+		for m := range stack {
+			for r := range stack[m] {
+				route := app.copyRoute(stack[m][r])
+				app.addRoute(route.Method, app.addPrefixToRoute(path, route))
+				atomic.AddUint32(&app.handlersCount, uint32(len(route.Handlers)))
+			}
+		}
+	}
+
 	if !app.routesRefreshed {
 		return app
 	}
@@ -532,6 +556,7 @@ func (app *App) buildTree() *App {
 		}
 		app.treeStack[m] = tsMap
 	}
+
 	// loop the methods and tree stacks and add global stack and sort everything
 	for m := range intMethod {
 		tsMap := app.treeStack[m]
@@ -545,46 +570,15 @@ func (app *App) buildTree() *App {
 			sort.Slice(slc, func(i, j int) bool { return slc[i].pos < slc[j].pos })
 		}
 	}
+
 	app.routesRefreshed = false
 
-	return app
-}
-
-// buildSubTree build prefix tree from the previously registered sub app's routes
-func (app *App) buildSubTree() *App {
-	for _, sub := range app.subList {
-		go sub.buildSubTree()
-		stack := sub.stack
-		for m := range stack {
-			for r := range stack[m] {
-				route := app.copyRoute(stack[m][r])
-				sub.parent.addRoute(route.Method, app.addPrefixToRoute(sub.path, route))
-			}
-		}
-	}
-	return app
-}
-
-// buildRouterTree build prefix tree from the previously registered router's routes
-func (app *App) buildRouterTree() *App {
-	for path, rtr := range app.routerList {
-		stack := rtr.stack
-		for m := range stack {
-			for r := range stack[m] {
-				route := app.copyRoute(stack[m][r])
-				app.addRoute(route.Method, app.addPrefixToRoute(path, route))
-				atomic.AddUint32(&app.handlersCount, uint32(len(route.Handlers)))
-			}
-		}
-	}
 	return app
 }
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
 	app.mutex.Lock()
-	app.buildSubTree()
-	app.buildRouterTree()
 	app.buildTree()
 	app.mutex.Unlock()
 	return app

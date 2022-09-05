@@ -268,18 +268,18 @@ func Test_App_Nested_Params(t *testing.T) {
 
 // go test -run Test_App_Mount
 func Test_App_Mount(t *testing.T) {
+	app := New()
 	micro := New()
+
+	app.Use("/john", micro)
+
 	micro.Get("/doe", func(c *Ctx) error {
 		return c.SendStatus(StatusOK)
 	})
 
-	app := New()
-	app.Use("/john", micro)
-
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, uint32(2), app.handlersCount)
 }
 
 func Test_App_Path(t *testing.T) {
