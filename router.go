@@ -194,6 +194,16 @@ func (r *Router) Add(method, path string, handlers ...Handler) IRouter {
 	return r
 }
 
+// Returns an instance of a single route which you can then use to handle HTTP verbs with optional middleware.
+//
+// Use router.Route() to avoid duplicate route naming and thus typing errors.
+func (r *Router) Route(path string) IRoute {
+	return &route{
+		app:  r.app,
+		path: path,
+	}
+}
+
 // Static will create a file server serving static files
 func (r *Router) Static(prefix, root string, config ...Static) IRouter {
 	return r.registerStatic(prefix, root, config...)
