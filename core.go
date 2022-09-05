@@ -571,7 +571,7 @@ func (app *App) buildSubTree() *App {
 // buildRouterTree build prefix tree from the previously registered router's routes
 func (app *App) buildRouterTree() *App {
 	for path, rtr := range app.routerList {
-		stack := rtr.Stack()
+		stack := rtr.stack
 		for m := range stack {
 			for r := range stack[m] {
 				route := app.copyRoute(stack[m][r])
