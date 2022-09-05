@@ -265,7 +265,7 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 	var app interface{} = (*App)(nil)
-	_, ok := app.(Router)
+	_, ok := app.(IRouter)
 	utils.AssertEqual(t, true, ok)
 }
 
