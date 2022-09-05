@@ -599,16 +599,16 @@ func (app *App) Use(args ...interface{}) IRouter {
 
 	if subApp != nil {
 		app.mount(prefix, subApp)
-		return app
 	}
 
 	if router != nil {
 		router.app = app
 		app.registerRouter(prefix, router)
-		return app
 	}
 
-	app.register(methodUse, prefix, handlers...)
+	if len(handlers) != 0 {
+		app.register(methodUse, prefix, handlers...)
+	}
 	return app
 }
 
