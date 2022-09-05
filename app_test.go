@@ -1378,7 +1378,8 @@ func Test_App_New_Test_Parallel(t *testing.T) {
 	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		app.Test(httptest.NewRequest("GET", "/", nil))
+		_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+		utils.AssertEqual(t, nil, err)
 	})
 }
 
