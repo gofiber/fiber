@@ -115,6 +115,8 @@ type App struct {
 	subList map[string]*App
 	// Registered routers
 	routerList map[string]*Router
+	// The app.Locals has properties that are local variables within the application, and will be available in templates rendered with ctx.Render.
+	Locals map[string]interface{}
 }
 
 // Config is a struct holding the server settings.
@@ -471,6 +473,7 @@ func New(config ...Config) *App {
 		parent:     nil,
 		path:       "/",
 		mountpath:  "",
+		Locals:     make(map[string]interface{}),
 	}
 
 	// Override config if provided
