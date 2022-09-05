@@ -270,7 +270,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			}
 		}
 
-		_, _ = fmt.Fprintf(out, "%sINFO%s Child PIDs: ", colors.Green, colors.Reset)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Child PIDs: %s", colors.Green, colors.Reset, colors.Blue)
 		totalPids := len(pidSlice)
 		rowTotalPidCount := 10
 		for i := 0; i < totalPids; i += rowTotalPidCount {
@@ -285,7 +285,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 					_, _ = fmt.Fprintf(out, ", ")
 				}
 			}
-			_, _ = fmt.Fprintf(out, "\n")
+			_, _ = fmt.Fprintf(out, "\n%s", colors.Reset)
 		}
 	}
 }
