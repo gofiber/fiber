@@ -268,8 +268,6 @@ func New(config ...Config) fiber.Handler {
 			default:
 				// Check if we have a value tag i.e.: "reqHeader:x-key"
 				switch {
-				case strings.HasPrefix(tag, TagReqHeader):
-					return buf.WriteString(c.Get(tag[10:]))
 				case strings.HasPrefix(tag, TagHeader):
 					return buf.WriteString(c.Get(tag[7:]))
 				case strings.HasPrefix(tag, TagQuery):
