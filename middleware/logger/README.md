@@ -11,6 +11,7 @@ Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP r
 		- [Logging Request ID](#logging-request-id)
 		- [Changing TimeZone & TimeFormat](#changing-timezone--timeformat)
 		- [Custom File Writer](#custom-file-writer)
+		- [Logging with Zerolog](#logging-with-zerolog)
 	- [Config](#config)
 	- [Default Config](#default-config-1)
 	- [Constants](#constants)
@@ -76,6 +77,43 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+### Logging with Zerolog
+```go
+package main
+
+import (
+	"os"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/logger"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+)
+
+func main() {
+	app := fiber.New()
+
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+
+	app.Use(logger.New(logger.Config{LoggerFunc: func(c fiber.Ctx, data logger.LoggerData, cfg logger.Config) error {
+		log.Info().
+			Str("path", c.Path()).
+			Str("method", c.Method()).
+			Int("status", c.Response().
+				StatusCode()).
+			Msg("new request")
+
+		return nil
+	}}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("test")
+	})
+
+	app.Listen(":3000")
+}
+```
+
 ## Config
 ```go
 // Config defines the config for middleware.
@@ -109,19 +147,38 @@ type Config struct {
 	//
 	// Default: os.Stderr
 	Output io.Writer
+
+	// You can define specific things before the returning the handler: colors, template, etc.
+	//
+	// Optional. Default: beforeHandlerFunc
+	BeforeHandlerFunc func(Config)
+
+	// You can use custom loggers with Fiber by using this field.
+	// This field is really useful if you're using Zerolog, Zap, Logrus, apex/log etc.
+	// If you don't define anything for this field, it'll use classical logger of Fiber.
+	//
+	// Optional. Default: defaultLogger
+	LoggerFunc func(c fiber.Ctx, data LoggerData, cfg Config) error
 }
 ```
 
 ## Default Config
 ```go
+// ConfigDefault is the default config
 var ConfigDefault = Config{
-	Next:         nil,
-	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat:   "15:04:05",
-	TimeZone:     "Local",
-	TimeInterval: 500 * time.Millisecond,
-	Output:       os.Stderr,
+	Next:              nil,
+	Format:            defaultFormat,
+	TimeFormat:        "15:04:05",
+	TimeZone:          "Local",
+	TimeInterval:      500 * time.Millisecond,
+	Output:            os.Stdout,
+	BeforeHandlerFunc: beforeHandlerFunc,
+	LoggerFunc:        defaultLogger,
+	enableColors:      true,
 }
+
+// default logging format for Fiber's default logger
+var defaultFormat = "[${time}] ${status} - ${latency} ${method} ${path}\n"
 ```
 
 ## Constants
