@@ -512,8 +512,6 @@ func (app *App) addRoute(method string, route *Route) {
 		app.stack[m] = append(app.stack[m], route)
 		app.routesRefreshed = true
 	}
-
-	app.latestRoute = route
 }
 
 // buildTree build the prefix tree from the previously registered routes

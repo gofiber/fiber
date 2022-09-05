@@ -62,8 +62,6 @@ type Router struct {
 	handlersCount uint32
 	// Router config
 	config RouterConfig
-	// Latest route
-	latestRoute *Route
 }
 
 func NewRouter(config ...RouterConfig) *Router {
@@ -91,13 +89,6 @@ func NewRouter(config ...RouterConfig) *Router {
 // Stack returns the raw router stack.
 func (r *Router) Stack() [][]*Route {
 	return r.stack
-}
-
-func (r *Router) Name(name string) IRouter {
-	r.mutex.Lock()
-	r.latestRoute.Name = name
-	r.mutex.Unlock()
-	return r
 }
 
 // Get registers a route for GET methods that requests a representation
@@ -293,8 +284,6 @@ func (r *Router) addRoute(method string, route *Route) {
 		r.stack[m] = append(r.stack[m], route)
 		r.routesRefreshed = true
 	}
-
-	r.latestRoute = route
 }
 
 func (r *Router) registerStatic(prefix, root string, config ...Static) IRouter {

@@ -115,8 +115,6 @@ type App struct {
 	subList map[string]*App
 	// Registered routers
 	routerList map[string]*Router
-	// Latest route & group
-	latestRoute *Route
 }
 
 // Config is a struct holding the server settings.
@@ -465,15 +463,14 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config:      Config{},
-		getBytes:    utils.UnsafeBytes,
-		getString:   utils.UnsafeString,
-		subList:     make(map[string]*App),
-		routerList:  make(map[string]*Router),
-		parent:      nil,
-		path:        "/",
-		mountpath:   "",
-		latestRoute: &Route{},
+		config:     Config{},
+		getBytes:   utils.UnsafeBytes,
+		getString:  utils.UnsafeString,
+		subList:    make(map[string]*App),
+		routerList: make(map[string]*Router),
+		parent:     nil,
+		path:       "/",
+		mountpath:  "",
 	}
 
 	// Override config if provided
