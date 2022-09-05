@@ -1333,6 +1333,13 @@ func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
 	testErrorResponse(t, err, resp, "hi, i'm a custom error")
 }
 
+func Test_App_Locals(t *testing.T) {
+	app := New()
+	app.Locals["framework"] = "fiber"
+
+	utils.AssertEqual(t, "fiber", app.Locals["framework"])
+}
+
 // TODO: Rewrite this tests for new mounting app
 // func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 // 	app := New()
