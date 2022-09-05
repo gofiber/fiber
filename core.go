@@ -25,7 +25,6 @@ type Route struct {
 
 	// Public fields
 	Method   string    `json:"method"` // HTTP method
-	Name     string    `json:"name"`   // Route's name
 	Path     string    `json:"path"`   // Original registered route path
 	Params   []string  `json:"params"` // Case sensitive param keys
 	Handlers []Handler `json:"-"`      // Ctx handlers

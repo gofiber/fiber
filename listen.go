@@ -419,7 +419,6 @@ func (app *App) printRoutesMessage() {
 	for _, routeStack := range app.stack {
 		for _, route := range routeStack {
 			var newRoute = RouteMessage{}
-			newRoute.name = route.Name
 			newRoute.method = route.Method
 			newRoute.path = route.Path
 			for _, handler := range route.Handlers {
