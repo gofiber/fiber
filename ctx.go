@@ -1161,31 +1161,7 @@ func (c *Ctx) Bind(vars Map) error {
 	return nil
 }
 
-// getLocationFromRoute get URL location from route using parameters
-func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
-	buf := bytebufferpool.Get()
-	for _, segment := range route.routeParser.segs {
-		for key, val := range params {
-			if segment.IsParam && (key == segment.ParamName || (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))) {
-				_, err := buf.WriteString(utils.ToString(val))
-				if err != nil {
-					return "", err
-				}
-			}
-		}
-		if !segment.IsParam {
-			_, err := buf.WriteString(segment.Const)
-			if err != nil {
-				return "", err
-			}
-		}
-	}
-	location := buf.String()
-	// release buffer
-	bytebufferpool.Put(buf)
-	return location, nil
-}
-
+// TODO: Remove this func after add this feature to ctx.Redirect
 // RedirectBack to the URL to referer
 // If status is not specified, status defaults to 302 Found.
 func (c *Ctx) RedirectBack(fallback string, status ...int) error {
