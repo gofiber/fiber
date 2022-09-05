@@ -624,6 +624,15 @@ func Test_App_Route(t *testing.T) {
 	testStatus200(t, app, "/john/doe", MethodGet)
 }
 
+func Test_App_Router(t *testing.T) {
+	app := New()
+	r := app.Router()
+
+	r.Get("/", testEmptyHandler)
+
+	testStatus200(t, app, "/", MethodGet)
+}
+
 func Test_App_New(t *testing.T) {
 	app := New()
 	app.Get("/", testEmptyHandler)
