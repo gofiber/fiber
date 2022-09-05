@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -49,7 +48,7 @@ var DefaultRouterConfig = RouterConfig{
 }
 
 type Router struct {
-	mutex sync.Mutex
+	// mutex sync.Mutex
 	// App
 	app *App
 	// Route stack divided by HTTP methods
