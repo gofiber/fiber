@@ -304,7 +304,7 @@ func Benchmark_App_Path(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		p = sub.MountPath()
+		p = sub.Path()
 	}
 
 	utils.AssertEqual(b, "/sub", p)
