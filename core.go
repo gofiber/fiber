@@ -232,15 +232,11 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Find match in stack
-	match, err := app.next(c)
+	_, err := app.next(c)
 	if err != nil {
 		if catch := c.app.ErrorHandler(c, err); catch != nil {
 			_ = c.SendStatus(StatusInternalServerError)
 		}
-	}
-	// Generate ETag if enabled
-	if match && app.config.ETag {
-		setETag(c, false)
 	}
 
 	// Release Ctx
