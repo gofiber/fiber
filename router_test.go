@@ -4,4 +4,4 @@
 
 package fiber
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router -benchmem -count=2
+//TODO: Add router tests
