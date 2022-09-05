@@ -94,8 +94,8 @@ func Test_Client_Head(t *testing.T) {
 
 	app := New(Config{DisableStartupMessage: true})
 
-	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.Hostname())
+	app.Head("/", func(c Ctx) error {
+		return c.SendStatus(StatusAccepted)
 	})
 
 	go func() { require.Nil(t, app.Listener(ln)) }()
@@ -107,7 +107,7 @@ func Test_Client_Head(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		require.Equal(t, StatusOK, code)
+		require.Equal(t, StatusAccepted, code)
 		require.Equal(t, "", body)
 		require.Equal(t, 0, len(errs))
 	}

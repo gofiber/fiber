@@ -685,7 +685,7 @@ func (app *App) Use(args ...any) Router {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (app *App) Get(path string, handlers ...Handler) Router {
-	return app.Head(path, handlers...).Add(MethodGet, path, handlers...)
+	return app.Add(MethodGet, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical

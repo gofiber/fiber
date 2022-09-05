@@ -83,12 +83,14 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodTrace, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
-	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
+	require.Equal(t, "GET, POST, OPTIONS", resp.Header.Get(HeaderAllow))
 
 	resp, err = app.Test(httptest.NewRequest(MethodPatch, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 405, resp.StatusCode)
-	require.Equal(t, "GET, HEAD, POST, OPTIONS", resp.Header.Get(HeaderAllow))
+	require.Equal(t, "GET, POST, OPTIONS", resp.Header.Get(HeaderAllow))
+
+	app.Head("/", testEmptyHandler)
 
 	resp, err = app.Test(httptest.NewRequest(MethodPut, "/", nil))
 	require.NoError(t, err)
@@ -313,7 +315,7 @@ func Test_App_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(2), app.handlersCount)
+	require.Equal(t, uint32(1), app.handlersCount)
 }
 
 func Test_App_Use_Params(t *testing.T) {
@@ -962,7 +964,7 @@ func Test_App_Group_Mount(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(2), app.handlersCount)
+	require.Equal(t, uint32(1), app.handlersCount)
 }
 
 func Test_App_Group(t *testing.T) {
@@ -1209,7 +1211,7 @@ func Test_App_Stack(t *testing.T) {
 	stack := app.Stack()
 	require.Equal(t, 9, len(stack))
 	require.Equal(t, 3, len(stack[methodInt(MethodGet)]))
-	require.Equal(t, 3, len(stack[methodInt(MethodHead)]))
+	require.Equal(t, 1, len(stack[methodInt(MethodHead)]))
 	require.Equal(t, 2, len(stack[methodInt(MethodPost)]))
 	require.Equal(t, 1, len(stack[methodInt(MethodPut)]))
 	require.Equal(t, 1, len(stack[methodInt(MethodPatch)]))
@@ -1228,7 +1230,7 @@ func Test_App_HandlersCount(t *testing.T) {
 	app.Post("/path3", testEmptyHandler)
 
 	count := app.HandlersCount()
-	require.Equal(t, uint32(4), count)
+	require.Equal(t, uint32(3), count)
 }
 
 // go test -run Test_App_ReadTimeout
