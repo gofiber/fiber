@@ -210,7 +210,7 @@ func (c *DefaultCtx) BaseURL() string {
 	if c.baseURI != "" {
 		return c.baseURI
 	}
-	c.baseURI = c.Scheme() + "://" + c.Hostname()
+	c.baseURI = c.Scheme() + "://" + c.Host()
 	return c.baseURI
 }
 
@@ -468,17 +468,27 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
 }
 
-// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
+// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
-func (c *DefaultCtx) Hostname() string {
+func (c *DefaultCtx) Host() string {
 	if c.IsProxyTrusted() {
 		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
 			return host
 		}
 	}
 	return c.app.getString(c.fasthttp.Request.URI().Host())
+}
+
+// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+func (c *DefaultCtx) Hostname() string {
+	addr, _ := parseAddr(c.Host())
+
+	return addr
 }
 
 // Port returns the remote port of the request.
@@ -1238,7 +1248,7 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	if len(offset) > 0 {
 		o = offset[0]
 	}
-	subdomains := strings.Split(c.Hostname(), ".")
+	subdomains := strings.Split(c.Host(), ".")
 	l := len(subdomains) - o
 	// Check index to avoid slice bounds out of range panic
 	if l < 0 {

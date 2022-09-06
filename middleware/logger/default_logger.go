@@ -88,7 +88,7 @@ func defaultLogger(c fiber.Ctx, data LoggerData, cfg Config) error {
 		case TagIPs:
 			return buf.WriteString(c.Get(fiber.HeaderXForwardedFor))
 		case TagHost:
-			return buf.WriteString(c.Hostname())
+			return buf.WriteString(c.Host())
 		case TagPath:
 			return buf.WriteString(c.Path())
 		case TagURL:

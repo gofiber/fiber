@@ -772,18 +772,18 @@ func Test_Ctx_Get(t *testing.T) {
 	require.Equal(t, "default", c.Get("unknown", "default"))
 }
 
-// go test -run Test_Ctx_Hostname
-func Test_Ctx_Hostname(t *testing.T) {
+// go test -run Test_Ctx_Host
+func Test_Ctx_Host(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetRequestURI("http://google.com/test")
-	require.Equal(t, "google.com", c.Hostname())
+	require.Equal(t, "google.com", c.Host())
 }
 
-// go test -run Test_Ctx_Hostname_Untrusted
-func Test_Ctx_Hostname_UntrustedProxy(t *testing.T) {
+// go test -run Test_Ctx_Host_UntrustedProxy
+func Test_Ctx_Host_UntrustedProxy(t *testing.T) {
 	t.Parallel()
 	// Don't trust any proxy
 	{
@@ -791,7 +791,7 @@ func Test_Ctx_Hostname_UntrustedProxy(t *testing.T) {
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-		require.Equal(t, "google.com", c.Hostname())
+		require.Equal(t, "google.com", c.Host())
 		app.ReleaseCtx(c)
 	}
 	// Trust to specific proxy list
@@ -800,46 +800,87 @@ func Test_Ctx_Hostname_UntrustedProxy(t *testing.T) {
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-		require.Equal(t, "google.com", c.Hostname())
+		require.Equal(t, "google.com", c.Host())
 		app.ReleaseCtx(c)
 	}
 }
 
-// go test -run Test_Ctx_Hostname_Trusted
-func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
+// go test -run Test_Ctx_Host_TrustedProxy
+func Test_Ctx_Host_TrustedProxy(t *testing.T) {
 	t.Parallel()
 	{
 		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "0.8.0.1"}})
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-		require.Equal(t, "google1.com", c.Hostname())
+		require.Equal(t, "google1.com", c.Host())
 		app.ReleaseCtx(c)
 	}
 }
 
-// go test -run Test_Ctx_Hostname_UntrustedProxyRange
-func Test_Ctx_Hostname_TrustedProxyRange(t *testing.T) {
+// go test -run Test_Ctx_Host_TrustedProxyRange
+func Test_Ctx_Host_TrustedProxyRange(t *testing.T) {
 	t.Parallel()
 
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0/30"}})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 	c.Request().SetRequestURI("http://google.com/test")
 	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-	require.Equal(t, "google1.com", c.Hostname())
+	require.Equal(t, "google1.com", c.Host())
 	app.ReleaseCtx(c)
 }
 
-// go test -run Test_Ctx_Hostname_UntrustedProxyRange
-func Test_Ctx_Hostname_UntrustedProxyRange(t *testing.T) {
+// go test -run Test_Ctx_Host_UntrustedProxyRange
+func Test_Ctx_Host_UntrustedProxyRange(t *testing.T) {
 	t.Parallel()
 
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"1.0.0.0/30"}})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 	c.Request().SetRequestURI("http://google.com/test")
 	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-	require.Equal(t, "google.com", c.Hostname())
+	require.Equal(t, "google.com", c.Host())
 	app.ReleaseCtx(c)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Host -benchmem -count=4
+func Benchmark_Ctx_Host(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().SetRequestURI("http://google.com/test")
+	var host string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		host = c.Host()
+	}
+	require.Equal(b, "google.com", host)
+}
+
+// go test -run Test_Ctx_Hostname
+func Test_Ctx_Hostname(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().SetRequestURI("http://google.com/test")
+	require.Equal(t, "google.com", c.Hostname())
+
+	c.Request().SetRequestURI("http://google.com:8080/test")
+	require.Equal(t, "google.com", c.Hostname())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Hostname -benchmem -count=4
+func Benchmark_Ctx_Hostname(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().SetRequestURI("http://google.com:8080/test")
+	var hostname string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		hostname = c.Hostname()
+	}
+	require.Equal(b, "google.com", hostname)
 }
 
 // go test -run Test_Ctx_Port

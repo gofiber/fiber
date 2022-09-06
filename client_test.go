@@ -31,7 +31,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true})
 
 	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.Hostname())
+		return c.SendString(c.Host())
 	})
 
 	go func() { require.Nil(t, app.Listener(ln)) }()
@@ -69,7 +69,7 @@ func Test_Client_Get(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true})
 
 	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.Hostname())
+		return c.SendString(c.Host())
 	})
 
 	go func() { require.Nil(t, app.Listener(ln)) }()
@@ -394,7 +394,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 	app := New(Config{DisableStartupMessage: true})
 
 	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.Hostname())
+		return c.SendString(c.Host())
 	})
 
 	go func() { require.Nil(t, app.Listener(ln)) }()
