@@ -367,47 +367,6 @@ type Config struct {
 	ColorScheme Colors `json:"color_scheme"`
 }
 
-// Static defines configuration options when defining static assets.
-type Static struct {
-	// When set to true, the server tries minimizing CPU usage by caching compressed files.
-	// This works differently than the github.com/gofiber/compression middleware.
-	// Optional. Default value false
-	Compress bool `json:"compress"`
-
-	// When set to true, enables byte range requests.
-	// Optional. Default value false
-	ByteRange bool `json:"byte_range"`
-
-	// When set to true, enables directory browsing.
-	// Optional. Default value false.
-	Browse bool `json:"browse"`
-
-	// When set to true, enables direct download.
-	// Optional. Default value false.
-	Download bool `json:"download"`
-
-	// The name of the index file for serving a directory.
-	// Optional. Default value "index.html".
-	Index string `json:"index"`
-
-	// Expiration duration for inactive file handlers.
-	// Use a negative time.Duration to disable it.
-	//
-	// Optional. Default value 10 * time.Second.
-	CacheDuration time.Duration `json:"cache_duration"`
-
-	// The value for the Cache-Control HTTP-header
-	// that is set on the file response. MaxAge is defined in seconds.
-	//
-	// Optional. Default value 0.
-	MaxAge int `json:"max_age"`
-
-	// Next defines a function to skip this middleware when returned true.
-	//
-	// Optional. Default: nil
-	Next func(c *Ctx) bool
-}
-
 // RouteMessage is some message need to be print when server starts
 type RouteMessage struct {
 	name     string
@@ -572,6 +531,7 @@ func (app *App) Use(args ...interface{}) IRouter {
 	var subApp *App
 	var router *Router
 	var handlers []Handler
+	var static *Static
 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
@@ -581,6 +541,8 @@ func (app *App) Use(args ...interface{}) IRouter {
 			subApp = arg
 		case *Router:
 			router = arg
+		case *Static:
+			static = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
@@ -595,6 +557,10 @@ func (app *App) Use(args ...interface{}) IRouter {
 	if router != nil {
 		router.app = app
 		app.registerRouter(prefix, router)
+	}
+
+	if static != nil {
+		app.registerStatic(prefix, static.Root, static.Config)
 	}
 
 	if len(handlers) != 0 {
@@ -659,11 +625,6 @@ func (app *App) Patch(path string, handlers ...Handler) IRouter {
 // Add allows you to specify a HTTP method to register a route
 func (app *App) Add(method, path string, handlers ...Handler) IRouter {
 	return app.register(method, path, handlers...)
-}
-
-// Static will create a file server serving static files
-func (app *App) Static(prefix, root string, config ...Static) IRouter {
-	return app.registerStatic(prefix, root, config...)
 }
 
 // All will register the handler on all HTTP methods

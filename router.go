@@ -31,7 +31,6 @@ type IRouter interface {
 	Patch(path string, handlers ...Handler) IRouter
 
 	Add(method, path string, handlers ...Handler) IRouter
-	Static(prefix, root string, config ...Static) IRouter
 	All(path string, handlers ...Handler) IRouter
 }
 
@@ -109,11 +108,14 @@ func (r *Router) Stack() [][]*Route {
 func (r *Router) Use(args ...interface{}) IRouter {
 	var prefix string
 	var handlers []Handler
+	var static *Static
 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
+		case *Static:
+			static = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
@@ -121,7 +123,14 @@ func (r *Router) Use(args ...interface{}) IRouter {
 		}
 	}
 
-	r.register(methodUse, prefix, handlers...)
+	if static != nil {
+		r.registerStatic(prefix, static.Root, static.Config)
+	}
+
+	if len(handlers) != 0 {
+		r.register(methodUse, prefix, handlers...)
+	}
+
 	return r
 }
 
@@ -202,11 +211,6 @@ func (r *Router) Route(path string) IRoute {
 		app:  r.app,
 		path: path,
 	}
-}
-
-// Static will create a file server serving static files
-func (r *Router) Static(prefix, root string, config ...Static) IRouter {
-	return r.registerStatic(prefix, root, config...)
 }
 
 // All will register the handler on all HTTP methods
@@ -309,7 +313,7 @@ func (r *Router) addRoute(method string, route *Route) {
 	}
 }
 
-func (r *Router) registerStatic(prefix, root string, config ...Static) IRouter {
+func (r *Router) registerStatic(prefix, root string, config ...StaticConfig) IRouter {
 	// For security we want to restrict to the current work directory.
 	if root == "" {
 		root = "."

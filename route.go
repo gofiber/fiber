@@ -18,7 +18,6 @@ type IRoute interface {
 	Trace(handlers ...Handler) IRoute
 	Patch(handlers ...Handler) IRoute
 
-	Static(root string, config ...Static) IRoute
 	Add(method string, handlers ...Handler) IRoute
 	All(handlers ...Handler) IRoute
 }
@@ -104,11 +103,5 @@ func (r *route) Patch(handlers ...Handler) IRoute {
 // Add allows you to specify a HTTP method to register a route
 func (r *route) Add(method string, handlers ...Handler) IRoute {
 	r.app.register(method, r.path, handlers...)
-	return r
-}
-
-// Static will create a file server serving static files
-func (r *route) Static(root string, config ...Static) IRoute {
-	r.app.registerStatic(r.path, root, config...)
 	return r
 }
