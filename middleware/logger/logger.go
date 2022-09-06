@@ -152,9 +152,11 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Logger instance & update some logger data fields
+		data.mu.Lock()
 		data.ChainErr = chainErr
 		data.Start = start
 		data.Stop = stop
+		data.mu.Unlock()
 
 		if err = cfg.LoggerFunc(c, data, cfg); err != nil {
 			return err

@@ -19,6 +19,7 @@ import (
 
 // LoggerData is a struct to define some variables to use in custom logger function.
 type LoggerData struct {
+	mu            sync.Mutex
 	Pid           string
 	ErrPaddingStr string
 	ChainErr      error
@@ -28,7 +29,6 @@ type LoggerData struct {
 }
 
 var tmpl *fasttemplate.Template
-var mu sync.Mutex
 
 // default logger for fiber
 func defaultLogger(c fiber.Ctx, data *LoggerData, cfg Config) error {
@@ -184,7 +184,7 @@ func defaultLogger(c fiber.Ctx, data *LoggerData, cfg Config) error {
 	if err != nil {
 		_, _ = buf.WriteString(err.Error())
 	}
-	mu.Lock()
+	data.mu.Lock()
 	// Write buffer to output
 	if _, err := cfg.Output.Write(buf.Bytes()); err != nil {
 		// Write error to output
@@ -193,7 +193,7 @@ func defaultLogger(c fiber.Ctx, data *LoggerData, cfg Config) error {
 			fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
 		}
 	}
-	mu.Unlock()
+	data.mu.Unlock()
 	// Put buffer back to pool
 	bytebufferpool.Put(buf)
 
