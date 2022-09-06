@@ -157,11 +157,11 @@ func New(config ...Config) fiber.Handler {
 		data.ChainErr = chainErr
 		data.Start = start
 		data.Stop = stop
-		mu.Unlock()
 
 		if err = cfg.LoggerFunc(c, data, cfg); err != nil {
 			return err
 		}
+		mu.Unlock()
 
 		return nil
 	}
