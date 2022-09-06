@@ -95,7 +95,7 @@ func main() {
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 
-	app.Use(logger.New(logger.Config{LoggerFunc: func(c fiber.Ctx, data logger.LoggerData, cfg logger.Config) error {
+	app.Use(logger.New(logger.Config{LoggerFunc: func(c fiber.Ctx, data *logger.LoggerData, cfg logger.Config) error {
 		log.Info().
 			Str("path", c.Path()).
 			Str("method", c.Method()).
@@ -158,7 +158,7 @@ type Config struct {
 	// If you don't define anything for this field, it'll use classical logger of Fiber.
 	//
 	// Optional. Default: defaultLogger
-	LoggerFunc func(c fiber.Ctx, data LoggerData, cfg Config) error
+	LoggerFunc func(c fiber.Ctx, data *LoggerData, cfg Config) error
 }
 ```
 

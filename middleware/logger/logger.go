@@ -88,6 +88,7 @@ func New(config ...Config) fiber.Handler {
 
 	// Set variables
 	var (
+		mu         sync.Mutex
 		once       sync.Once
 		errHandler fiber.ErrorHandler
 	)
@@ -98,6 +99,13 @@ func New(config ...Config) fiber.Handler {
 
 	// Before handling func
 	cfg.BeforeHandlerFunc(cfg)
+
+	// Logger data
+	data := &LoggerData{
+		Pid:           pid,
+		ErrPaddingStr: errPaddingStr,
+		Timestamp:     timestamp,
+	}
 
 	// Return new handler
 	return func(c fiber.Ctx) (err error) {
@@ -144,17 +152,16 @@ func New(config ...Config) fiber.Handler {
 			stop = time.Now()
 		}
 
-		// Logger instance
-		if err = cfg.LoggerFunc(c, LoggerData{
-			Pid:           pid,
-			ErrPaddingStr: errPaddingStr,
-			ChainErr:      chainErr,
-			Start:         start,
-			Stop:          stop,
-			Timestamp:     timestamp,
-		}, cfg); err != nil {
+		// Logger instance & update some logger data fields
+		mu.Lock()
+		data.ChainErr = chainErr
+		data.Start = start
+		data.Stop = stop
+
+		if err = cfg.LoggerFunc(c, data, cfg); err != nil {
 			return err
 		}
+		mu.Unlock()
 
 		return nil
 	}
