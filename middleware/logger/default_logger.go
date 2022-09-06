@@ -28,11 +28,10 @@ type LoggerData struct {
 }
 
 var tmpl *fasttemplate.Template
+var mu sync.Mutex
 
 // default logger for fiber
-func defaultLogger(c fiber.Ctx, data LoggerData, cfg Config) error {
-	var mu sync.Mutex
-
+func defaultLogger(c fiber.Ctx, data *LoggerData, cfg Config) error {
 	// Alias colors
 	colors := c.App().Config().ColorScheme
 

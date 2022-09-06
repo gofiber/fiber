@@ -99,6 +99,13 @@ func New(config ...Config) fiber.Handler {
 	// Before handling func
 	cfg.BeforeHandlerFunc(cfg)
 
+	// Logger data
+	data := &LoggerData{
+		Pid:           pid,
+		ErrPaddingStr: errPaddingStr,
+		Timestamp:     timestamp,
+	}
+
 	// Return new handler
 	return func(c fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
@@ -144,15 +151,12 @@ func New(config ...Config) fiber.Handler {
 			stop = time.Now()
 		}
 
-		// Logger instance
-		if err = cfg.LoggerFunc(c, LoggerData{
-			Pid:           pid,
-			ErrPaddingStr: errPaddingStr,
-			ChainErr:      chainErr,
-			Start:         start,
-			Stop:          stop,
-			Timestamp:     timestamp,
-		}, cfg); err != nil {
+		// Logger instance & update some logger data fields
+		data.ChainErr = chainErr
+		data.Start = start
+		data.Stop = stop
+
+		if err = cfg.LoggerFunc(c, data, cfg); err != nil {
 			return err
 		}
 

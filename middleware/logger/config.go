@@ -51,7 +51,7 @@ type Config struct {
 	// If you don't define anything for this field, it'll use default logger of Fiber.
 	//
 	// Optional. Default: defaultLogger
-	LoggerFunc func(c fiber.Ctx, data LoggerData, cfg Config) error
+	LoggerFunc func(c fiber.Ctx, data *LoggerData, cfg Config) error
 
 	enableColors     bool
 	enableLatency    bool
