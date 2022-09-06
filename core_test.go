@@ -482,7 +482,7 @@ func Benchmark_Router_Handler(b *testing.B) {
 
 func Benchmark_Router_Handler_Strict_Case(b *testing.B) {
 	app := New(Config{
-		StrictRouting: true,
+		Strict:        true,
 		CaseSensitive: true,
 	})
 	registerDummyRoutes(app)

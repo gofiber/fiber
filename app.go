@@ -135,7 +135,7 @@ type Config struct {
 	// By default this is disabled and both "/foo" and "/foo/" will execute the same handler.
 	//
 	// Default: false
-	StrictRouting bool `json:"strict_routing"`
+	Strict bool `json:"strict"`
 
 	// When set to true, enables case sensitive routing.
 	// E.g. "/FoO" and "/foo" are treated as different routes.
@@ -301,7 +301,7 @@ type Config struct {
 	ReduceMemoryUsage bool `json:"reduce_memory_usage"`
 
 	// FEATURE: v2.3.x
-	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
+	// The router executes the same handler by default if Strict or CaseSensitive is disabled.
 	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
 	//

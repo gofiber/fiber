@@ -1504,7 +1504,7 @@ func (c *Ctx) configDependentPaths() {
 		c.detectionPathBuffer = utils.ToLowerBytes(c.detectionPathBuffer)
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
-	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
+	if !c.app.config.Strict && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
 		c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
 	}
 	c.detectionPath = c.app.getString(c.detectionPathBuffer)
