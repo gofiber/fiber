@@ -38,5 +38,5 @@ jobs:
       uses: nick-fields/retry@v2
       with:
         max_attempts: 3
-        timeout_seconds: 15
+        timeout_minutes: 15
         command: go test ./... -v -race
