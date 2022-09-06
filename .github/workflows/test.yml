@@ -37,5 +37,5 @@ jobs:
     - name: Run Test
       uses: nick-fields/retry@v2
       with:
-        max_attemps: 3
+        max_attempts: 3
         command: go test ./... -v -race
