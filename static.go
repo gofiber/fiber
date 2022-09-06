@@ -56,6 +56,7 @@ type StaticConfig struct {
 	Next func(c *Ctx) bool
 }
 
+// New creates a new static instance.
 func NewStatic(root string, config ...StaticConfig) *Static {
 	st := Static{
 		Root: root,
