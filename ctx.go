@@ -1107,6 +1107,10 @@ func (c *Ctx) Range(size int) (rangeData Range, err error) {
 // Redirect to the URL derived from the specified path, with specified status.
 // If status is not specified, status defaults to 302 Found.
 func (c *Ctx) Redirect(location string, status ...int) error {
+	if location == "back" {
+		location = "."
+	}
+
 	c.setCanonical(HeaderLocation, location)
 	if len(status) > 0 {
 		c.Status(status[0])
@@ -1128,17 +1132,6 @@ func (c *Ctx) Bind(vars Map) error {
 	}
 
 	return nil
-}
-
-// TODO: Remove this func after add this feature to ctx.Redirect
-// RedirectBack to the URL to referer
-// If status is not specified, status defaults to 302 Found.
-func (c *Ctx) RedirectBack(fallback string, status ...int) error {
-	location := c.Get(HeaderReferer)
-	if location == "" {
-		location = fallback
-	}
-	return c.Redirect(location, status...)
 }
 
 // Render a template with data and sends a text/html response.

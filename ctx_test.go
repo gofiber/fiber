@@ -2229,39 +2229,6 @@ func Test_Ctx_Redirect(t *testing.T) {
 	utils.AssertEqual(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
 
-// go test -run Test_Ctx_RedirectBack
-// func Test_Ctx_RedirectBack(t *testing.T) {
-// 	t.Parallel()
-// 	app := New()
-// 	app.Get("/", func(c *Ctx) error {
-// 		return c.JSON("Home")
-// 	}).Name("home")
-// 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-// 	defer app.ReleaseCtx(c)
-// 	c.RedirectBack("/")
-// 	utils.AssertEqual(t, 302, c.Response().StatusCode())
-// 	utils.AssertEqual(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
-// }
-
-// // go test -run Test_Ctx_RedirectBackWithReferer
-// func Test_Ctx_RedirectBackWithReferer(t *testing.T) {
-// 	t.Parallel()
-// 	app := New()
-// 	app.Get("/", func(c *Ctx) error {
-// 		return c.JSON("Home")
-// 	}).Name("home")
-// 	app.Get("/back", func(c *Ctx) error {
-// 		return c.JSON("Back")
-// 	}).Name("back")
-// 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
-// 	defer app.ReleaseCtx(c)
-// 	c.Request().Header.Set(HeaderReferer, "/back")
-// 	c.RedirectBack("/")
-// 	utils.AssertEqual(t, 302, c.Response().StatusCode())
-// 	utils.AssertEqual(t, "/back", c.Get(HeaderReferer))
-// 	utils.AssertEqual(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
-// }
-
 // go test -run Test_Ctx_Render
 func Test_Ctx_Render(t *testing.T) {
 	t.Parallel()
