@@ -148,13 +148,10 @@ func Benchmark_Utils_ETag_Weak(b *testing.B) {
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
 	res := getGroupPath("/v1", "/")
-	utils.AssertEqual(t, "/v1", res)
+	utils.AssertEqual(t, "/v1/", res)
 
 	res = getGroupPath("/v1/", "/")
 	utils.AssertEqual(t, "/v1/", res)
-
-	res = getGroupPath("/v1", "/")
-	utils.AssertEqual(t, "/v1", res)
 
 	res = getGroupPath("/", "/")
 	utils.AssertEqual(t, "/", res)
