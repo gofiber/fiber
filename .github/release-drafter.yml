@@ -90,4 +90,7 @@ autolabeler:
 template: |
     $CHANGES
 
+
+    **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$COMPLETE
+
     Thank you $CONTRIBUTORS for making this update possible.
