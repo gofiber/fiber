@@ -772,18 +772,18 @@ func Test_Ctx_Get(t *testing.T) {
 	require.Equal(t, "default", c.Get("unknown", "default"))
 }
 
-// go test -run Test_Ctx_Hostname
-func Test_Ctx_Hostname(t *testing.T) {
+// go test -run Test_Ctx_Host
+func Test_Ctx_Host(t *testing.T) {
 	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Request().SetRequestURI("http://google.com/test")
-	require.Equal(t, "google.com", c.Hostname())
+	require.Equal(t, "google.com", c.Host())
 }
 
-// go test -run Test_Ctx_Hostname_Untrusted
-func Test_Ctx_Hostname_UntrustedProxy(t *testing.T) {
+// go test -run Test_Ctx_Host_UntrustedProxy
+func Test_Ctx_Host_UntrustedProxy(t *testing.T) {
 	t.Parallel()
 	// Don't trust any proxy
 	{
@@ -791,7 +791,7 @@ func Test_Ctx_Hostname_UntrustedProxy(t *testing.T) {
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-		require.Equal(t, "google.com", c.Hostname())
+		require.Equal(t, "google.com", c.Host())
 		app.ReleaseCtx(c)
 	}
 	// Trust to specific proxy list
@@ -800,46 +800,87 @@ func Test_Ctx_Hostname_UntrustedProxy(t *testing.T) {
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-		require.Equal(t, "google.com", c.Hostname())
+		require.Equal(t, "google.com", c.Host())
 		app.ReleaseCtx(c)
 	}
 }
 
-// go test -run Test_Ctx_Hostname_Trusted
-func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
+// go test -run Test_Ctx_Host_TrustedProxy
+func Test_Ctx_Host_TrustedProxy(t *testing.T) {
 	t.Parallel()
 	{
 		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "0.8.0.1"}})
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		c.Request().SetRequestURI("http://google.com/test")
 		c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-		require.Equal(t, "google1.com", c.Hostname())
+		require.Equal(t, "google1.com", c.Host())
 		app.ReleaseCtx(c)
 	}
 }
 
-// go test -run Test_Ctx_Hostname_UntrustedProxyRange
-func Test_Ctx_Hostname_TrustedProxyRange(t *testing.T) {
+// go test -run Test_Ctx_Host_TrustedProxyRange
+func Test_Ctx_Host_TrustedProxyRange(t *testing.T) {
 	t.Parallel()
 
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0/30"}})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 	c.Request().SetRequestURI("http://google.com/test")
 	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-	require.Equal(t, "google1.com", c.Hostname())
+	require.Equal(t, "google1.com", c.Host())
 	app.ReleaseCtx(c)
 }
 
-// go test -run Test_Ctx_Hostname_UntrustedProxyRange
-func Test_Ctx_Hostname_UntrustedProxyRange(t *testing.T) {
+// go test -run Test_Ctx_Host_UntrustedProxyRange
+func Test_Ctx_Host_UntrustedProxyRange(t *testing.T) {
 	t.Parallel()
 
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"1.0.0.0/30"}})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 	c.Request().SetRequestURI("http://google.com/test")
 	c.Request().Header.Set(HeaderXForwardedHost, "google1.com")
-	require.Equal(t, "google.com", c.Hostname())
+	require.Equal(t, "google.com", c.Host())
 	app.ReleaseCtx(c)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Host -benchmem -count=4
+func Benchmark_Ctx_Host(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().SetRequestURI("http://google.com/test")
+	var host string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		host = c.Host()
+	}
+	require.Equal(b, "google.com", host)
+}
+
+// go test -run Test_Ctx_Hostname
+func Test_Ctx_Hostname(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().SetRequestURI("http://google.com/test")
+	require.Equal(t, "google.com", c.Hostname())
+
+	c.Request().SetRequestURI("http://google.com:8080/test")
+	require.Equal(t, "google.com", c.Hostname())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Ctx_Hostname -benchmem -count=4
+func Benchmark_Ctx_Hostname(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().SetRequestURI("http://google.com:8080/test")
+	var hostname string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		hostname = c.Hostname()
+	}
+	require.Equal(b, "google.com", hostname)
 }
 
 // go test -run Test_Ctx_Port
@@ -872,19 +913,81 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 // go test -run Test_Ctx_IP
 func Test_Ctx_IP(t *testing.T) {
 	t.Parallel()
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
+	// default behaviour will return the remote IP from the stack
+	require.Equal(t, "0.0.0.0", c.IP())
+
+	// X-Forwarded-For is set, but it is ignored because proxyHeader is not set
+	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
 	require.Equal(t, "0.0.0.0", c.IP())
 }
 
 // go test -run Test_Ctx_IP_ProxyHeader
 func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	t.Parallel()
-	app := New(Config{ProxyHeader: "Real-Ip"})
-	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	require.Equal(t, "", c.IP())
+	// make sure that the same behaviour exists for different proxy header names
+	proxyHeaderNames := []string{"Real-Ip", HeaderXForwardedFor}
+
+	for _, proxyHeaderName := range proxyHeaderNames {
+		app := New(Config{ProxyHeader: proxyHeaderName})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+
+		c.Request().Header.Set(proxyHeaderName, "0.0.0.1")
+		require.Equal(t, "0.0.0.1", c.IP())
+
+		// without IP validation we return the full string
+		c.Request().Header.Set(proxyHeaderName, "0.0.0.1, 0.0.0.2")
+		require.Equal(t, "0.0.0.1, 0.0.0.2", c.IP())
+
+		// without IP validation we return invalid IPs
+		c.Request().Header.Set(proxyHeaderName, "invalid, 0.0.0.2, 0.0.0.3")
+		require.Equal(t, "invalid, 0.0.0.2, 0.0.0.3", c.IP())
+
+		// when proxy header is enabled but the value is empty, without IP validation we return an empty string
+		c.Request().Header.Set(proxyHeaderName, "")
+		require.Equal(t, "", c.IP())
+
+		// without IP validation we return an invalid IP
+		c.Request().Header.Set(proxyHeaderName, "not-valid-ip")
+		require.Equal(t, "not-valid-ip", c.IP())
+	}
+}
+
+// go test -run Test_Ctx_IP_ProxyHeader
+func Test_Ctx_IP_ProxyHeader_With_IP_Validation(t *testing.T) {
+	t.Parallel()
+
+	// make sure that the same behaviour exists for different proxy header names
+	proxyHeaderNames := []string{"Real-Ip", HeaderXForwardedFor}
+
+	for _, proxyHeaderName := range proxyHeaderNames {
+		app := New(Config{EnableIPValidation: true, ProxyHeader: proxyHeaderName})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+
+		// when proxy header & validation is enabled and the value is a valid IP, we return it
+		c.Request().Header.Set(proxyHeaderName, "0.0.0.1")
+		require.Equal(t, "0.0.0.1", c.IP())
+
+		// when proxy header & validation is enabled and the value is a list of IPs, we return the first valid IP
+		c.Request().Header.Set(proxyHeaderName, "0.0.0.1, 0.0.0.2")
+		require.Equal(t, "0.0.0.1", c.IP())
+
+		c.Request().Header.Set(proxyHeaderName, "invalid, 0.0.0.2, 0.0.0.3")
+		require.Equal(t, "0.0.0.2", c.IP())
+
+		// when proxy header & validation is enabled but the value is empty, we will ignore the header
+		c.Request().Header.Set(proxyHeaderName, "")
+		require.Equal(t, "0.0.0.0", c.IP())
+
+		// when proxy header & validation is enabled but the value is not an IP, we will ignore the header
+		// and return the IP of the caller
+		c.Request().Header.Set(proxyHeaderName, "not-valid-ip")
+		require.Equal(t, "0.0.0.0", c.IP())
+	}
 }
 
 // go test -run Test_Ctx_IP_UntrustedProxy
@@ -893,7 +996,6 @@ func Test_Ctx_IP_UntrustedProxy(t *testing.T) {
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.1"}, ProxyHeader: HeaderXForwardedFor})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
-
 	require.Equal(t, "0.0.0.0", c.IP())
 }
 
@@ -903,7 +1005,6 @@ func Test_Ctx_IP_TrustedProxy(t *testing.T) {
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0"}, ProxyHeader: HeaderXForwardedFor})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 	c.Request().Header.Set(HeaderXForwardedFor, "0.0.0.1")
-
 	require.Equal(t, "0.0.0.1", c.IP())
 }
 
@@ -913,13 +1014,62 @@ func Test_Ctx_IPs(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
+	// normal happy path test case
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.2, 127.0.0.3")
 	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
 
+	// inconsistent space formatting
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1,127.0.0.2  ,127.0.0.3")
 	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
 
+	// invalid IPs are allowed to be returned
+	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 127.0.0.1, 127.0.0.2")
+	require.Equal(t, []string{"invalid", "127.0.0.1", "127.0.0.2"}, c.IPs())
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.2")
+	require.Equal(t, []string{"127.0.0.1", "invalid", "127.0.0.2"}, c.IPs())
+
+	// ensure that the ordering of IPs in the header is maintained
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.3, 127.0.0.1, 127.0.0.2")
+	require.Equal(t, []string{"127.0.0.3", "127.0.0.1", "127.0.0.2"}, c.IPs())
+
+	// empty header
 	c.Request().Header.Set(HeaderXForwardedFor, "")
+	require.Equal(t, 0, len(c.IPs()))
+
+	// missing header
+	c.Request()
+	require.Equal(t, 0, len(c.IPs()))
+}
+
+func Test_Ctx_IPs_With_IP_Validation(t *testing.T) {
+	t.Parallel()
+	app := New(Config{EnableIPValidation: true})
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	// normal happy path test case
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.2, 127.0.0.3")
+	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
+
+	// inconsistent space formatting
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1,127.0.0.2  ,127.0.0.3")
+	require.Equal(t, []string{"127.0.0.1", "127.0.0.2", "127.0.0.3"}, c.IPs())
+
+	// invalid IPs are in the header
+	c.Request().Header.Set(HeaderXForwardedFor, "invalid, 127.0.0.1, 127.0.0.2")
+	require.Equal(t, []string{"127.0.0.1", "127.0.0.2"}, c.IPs())
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.2")
+	require.Equal(t, []string{"127.0.0.1", "127.0.0.2"}, c.IPs())
+
+	// ensure that the ordering of IPs in the header is maintained
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.3, 127.0.0.1, 127.0.0.2")
+	require.Equal(t, []string{"127.0.0.3", "127.0.0.1", "127.0.0.2"}, c.IPs())
+
+	// empty header
+	c.Request().Header.Set(HeaderXForwardedFor, "")
+	require.Equal(t, 0, len(c.IPs()))
+
+	// missing header
+	c.Request()
 	require.Equal(t, 0, len(c.IPs()))
 }
 
@@ -927,15 +1077,66 @@ func Test_Ctx_IPs(t *testing.T) {
 func Benchmark_Ctx_IPs(b *testing.B) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, 127.0.0.1, 127.0.0.1")
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.1")
 	var res []string
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		res = c.IPs()
 	}
-	require.Equal(b, []string{"127.0.0.1", "127.0.0.1", "127.0.0.1"}, res)
+	require.Equal(b, []string{"127.0.0.1", "invalid", "127.0.0.1"}, res)
+}
+
+func Benchmark_Ctx_IPs_With_IP_Validation(b *testing.B) {
+	app := New(Config{EnableIPValidation: true})
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1, invalid, 127.0.0.1")
+	var res []string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IPs()
+	}
+	require.Equal(b, []string{"127.0.0.1", "127.0.0.1"}, res)
+}
+
+func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
+	app := New(Config{ProxyHeader: HeaderXForwardedFor})
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IP()
+	}
+	require.Equal(b, "127.0.0.1", res)
+}
+
+func Benchmark_Ctx_IP_With_ProxyHeader_and_IP_Validation(b *testing.B) {
+	app := New(Config{ProxyHeader: HeaderXForwardedFor, EnableIPValidation: true})
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.1")
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IP()
+	}
+	require.Equal(b, "127.0.0.1", res)
+}
+
+func Benchmark_Ctx_IP(b *testing.B) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c.Request()
+	var res string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IP()
+	}
+	require.Equal(b, "0.0.0.0", res)
 }
 
 // go test -run Test_Ctx_Is
@@ -1060,7 +1261,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 		PSSWithSHA256 = 0x0804
 		VersionTLS13  = 0x0304
 	)
-	app.tlsHandler = &tlsHandler{clientHelloInfo: &tls.ClientHelloInfo{
+	app.tlsHandler = &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
 		ServerName:        "example.golang",
 		SignatureSchemes:  []tls.SignatureScheme{PSSWithSHA256},
 		SupportedVersions: []uint16{VersionTLS13},
@@ -1185,6 +1386,11 @@ func Test_Ctx_Params(t *testing.T) {
 		require.Equal(t, "", c.Params("optional"))
 		return nil
 	})
+	app.Get("/test5/:id/:Id", func(c Ctx) error {
+		require.Equal(t, "first", c.Params("id"))
+		require.Equal(t, "first", c.Params("Id"))
+		return nil
+	})
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -1199,6 +1405,32 @@ func Test_Ctx_Params(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
 	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test5/first/second", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_Ctx_Params_Case_Sensitive(t *testing.T) {
+	t.Parallel()
+	app := New(Config{CaseSensitive: true})
+	app.Get("/test/:User", func(c Ctx) error {
+		require.Equal(t, "john", c.Params("User"))
+		require.Equal(t, "", c.Params("user"))
+		return nil
+	})
+	app.Get("/test2/:id/:Id", func(c Ctx) error {
+		require.Equal(t, "first", c.Params("id"))
+		require.Equal(t, "second", c.Params("Id"))
+		return nil
+	})
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/first/second", nil))
+	require.Equal(t, nil, err)
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
@@ -2603,16 +2835,38 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 
 // go test -run Test_Ctx_Get_Location_From_Route_name
 func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
-	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	t.Run("case insensitive", func(t *testing.T) {
+		app := New()
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		app.Get("/user/:name", func(c Ctx) error {
+			return c.SendString(c.Params("name"))
+		}).Name("User")
 
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.SendString(c.Params("name"))
-	}).Name("User")
+		location, err := c.GetRouteURL("User", Map{"name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/fiber", location)
 
-	location, err := c.GetRouteURL("User", Map{"name": "fiber"})
-	require.NoError(t, err)
-	require.Equal(t, "/user/fiber", location)
+		location, err = c.GetRouteURL("User", Map{"Name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/fiber", location)
+	})
+
+	t.Run("case sensitive", func(t *testing.T) {
+		app := New(Config{CaseSensitive: true})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		app.Get("/user/:name", func(c Ctx) error {
+			return c.SendString(c.Params("name"))
+		}).Name("User")
+
+		location, err := c.GetRouteURL("User", Map{"name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/fiber", location)
+
+		location, err = c.GetRouteURL("User", Map{"Name": "fiber"})
+		require.NoError(t, err)
+		require.Equal(t, "/user/", location)
+	})
 }
 
 // go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy

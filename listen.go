@@ -25,21 +25,24 @@ import (
 
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
-	// Prefork is supported for custom listeners
-	if app.config.Prefork {
-		addr, tlsConfig := lnMetadata(app.config.Network, ln)
-		return app.prefork(app.config.Network, addr, tlsConfig)
-	}
 	// prepare the server for the start
 	app.startupProcess()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
+	// Prefork is not supported for custom listeners
+	if app.config.Prefork {
+		fmt.Println("[Warning] Prefork isn't supported for custom listeners.")
+	}
+
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -53,21 +56,26 @@ func (app *App) Listen(addr string) error {
 	if app.config.Prefork {
 		return app.prefork(app.config.Network, addr, nil)
 	}
+
 	// Setup listener
 	ln, err := net.Listen(app.config.Network, addr)
 	if err != nil {
 		return err
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), false, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
+
 	// Start listening
 	return app.server.Serve(ln)
 }
@@ -81,12 +89,14 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
 	}
+
 	// Set TLS config with handler
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 	}
-	tlsHandler := &tlsHandler{}
+
+	tlsHandler := &TLSHandler{}
 	config := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		Certificates: []tls.Certificate{
@@ -94,6 +104,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 		},
 		GetCertificate: tlsHandler.GetClientInfo,
 	}
+
 	// Prefork is supported
 	if app.config.Prefork {
 		return app.prefork(app.config.Network, addr, config)
@@ -102,23 +113,25 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Setup listener
 	ln, err := net.Listen(app.config.Network, addr)
 	ln = tls.NewListener(ln, config)
-
 	if err != nil {
 		return err
 	}
+
 	// prepare the server for the start
 	app.startupProcess()
+
 	// Print startup message
 	if !app.config.DisableStartupMessage {
 		app.startupMessage(ln.Addr().String(), true, "")
 	}
+
 	// Print routes
 	if app.config.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
 
 	// Attach the tlsHandler to the config
-	app.tlsHandler = tlsHandler
+	app.SetTLSHandler(tlsHandler)
 
 	// Start listening
 	return app.server.Serve(ln)
@@ -146,7 +159,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	clientCertPool := x509.NewCertPool()
 	clientCertPool.AppendCertsFromPEM(clientCACert)
 
-	tlsHandler := &tlsHandler{}
+	tlsHandler := &TLSHandler{}
 	config := &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		ClientAuth: tls.RequireAndVerifyClientCert,
@@ -182,7 +195,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	}
 
 	// Attach the tlsHandler to the config
-	app.tlsHandler = tlsHandler
+	app.SetTLSHandler(tlsHandler)
 
 	// Start listening
 	return app.server.Serve(ln)

@@ -119,7 +119,7 @@ type App struct {
 	// custom binders
 	customBinders []CustomBinder
 	// TLS handler
-	tlsHandler *tlsHandler
+	tlsHandler *TLSHandler
 }
 
 // Config is a struct holding the server settings.
@@ -349,12 +349,12 @@ type Config struct {
 	// If request ip in TrustedProxies whitelist then:
 	//   1. c.Scheme() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
 	//   2. c.IP() get value from ProxyHeader header.
-	//   3. c.Hostname() get value from X-Forwarded-Host header
+	//   3. c.Host() and c.Hostname() get value from X-Forwarded-Host header
 	// But if request ip NOT in Trusted Proxies whitelist then:
 	//   1. c.Scheme() WON't get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
 	//    will return https in case when tls connection is handled by the app, of http otherwise
 	//   2. c.IP() WON'T get value from ProxyHeader header, will return RemoteIP() from fasthttp context
-	//   3. c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
+	//   3. c.Host() and c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
 	//    will be used to get the hostname.
 	//
 	// Default: false
@@ -366,6 +366,13 @@ type Config struct {
 	TrustedProxies     []string `json:"trusted_proxies"`
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
+
+	// If set to true, c.IP() and c.IPs() will validate IP addresses before returning them.
+	// Also, c.IP() will return only the first valid IP rather than just the raw header
+	// WARNING: this has a performance cost associated with it.
+	//
+	// Default: false
+	EnableIPValidation bool `json:"enable_ip_validation"`
 
 	// If set to true, will print all routes with their method, path and handler.
 	// Default: false
@@ -575,6 +582,14 @@ func (app *App) RegisterCustomBinder(binder CustomBinder) {
 	app.customBinders = append(app.customBinders, binder)
 }
 
+// You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.
+func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
+	// Attach the tlsHandler to the config
+	app.mutex.Lock()
+	app.tlsHandler = tlsHandler
+	app.mutex.Unlock()
+}
+
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount. The fiber's error handler and
@@ -670,7 +685,7 @@ func (app *App) Use(args ...any) Router {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (app *App) Get(path string, handlers ...Handler) Router {
-	return app.Head(path, handlers...).Add(MethodGet, path, handlers...)
+	return app.Add(MethodGet, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical

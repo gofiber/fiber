@@ -144,7 +144,7 @@ Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에�
 우리는 **어떤한** 작업, **마감일정**, 개발자의 **기술**이던간에 **빠르고**, **유연하고**, **익숙한** Go 웹 프레임워크를 만들기 위해 사용자들의 [이슈들](https://github.com/gofiber/fiber/issues)을(그리고 모든 인터넷을 통해) **듣고 있습니다**! Express가 자바스크립트 세계에서 하는 것 처럼요.
 
 ## ⚠️ 한계점
-* Fiber는 unsafe 패키지를 사용하기 때문에 최신 Go버전과 호환되지 않을 수 있습니다.Fiber 2.29.0은 Go 버전 1.14에서 1.18로 테스트되고 있습니다.
+* Fiber는 unsafe 패키지를 사용하기 때문에 최신 Go버전과 호환되지 않을 수 있습니다.Fiber 2.29.0은 Go 버전 1.14에서 1.19로 테스트되고 있습니다.
 * Fiber는 net/http 인터페이스와 호환되지 않습니다.즉, gqlgen이나 go-swagger 등 net/http 생태계의 일부인 프로젝트를 사용할 수 없습니다.
 
 ## 👀 예제
@@ -577,6 +577,7 @@ Fiber 프레임워크에 포함되는 미들웨어 목록입니다.
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | Enable cross-origin resource sharing \(CORS\) with various options.                                                                                                          |
 | [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | Protect from CSRF exploits.                                                                                                                                                  |
 | [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware which encrypts cookie values.                                                                                                                             |
+| [envvar](https://github.com/gofiber/fiber/tree/master/middleware/envvar)               | Expose environment variables with providing an optional config.                                                                                                              |
 | [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | ETag middleware that lets caches be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.               |
 | [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware that serves via its HTTP server runtime exposed variants in the JSON format.                                                                               |
 | [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | Ignore favicon from logs or serve from memory if a file path is provided.                                                                                                    |
