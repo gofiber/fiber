@@ -91,6 +91,6 @@ template: |
     $CHANGES
 
 
-    **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$COMPLETE
+    **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_VERSION
 
     Thank you $CONTRIBUTORS for making this update possible.
