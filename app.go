@@ -509,7 +509,9 @@ func (app *App) Route(path string) IRoute {
 
 // The application’s in-built instance of router. This is created lazily, on first access.
 func (app *App) Router() IRouter {
-	return app
+	r := NewRouter()
+	app.registerRouter("/", r)
+	return r
 }
 
 // Use registers a middleware route that will match requests
