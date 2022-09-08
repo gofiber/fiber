@@ -1134,23 +1134,25 @@ func (c *Ctx) Bind(vars Map) error {
 	return nil
 }
 
+type RenderCallback = func(err error, html string) error
+
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-func (c *Ctx) Render(name string, bind interface{}) error {
+func (c *Ctx) Render(view string, locals interface{}, callback ...RenderCallback) error {
 	var err error
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
 	// Pass-locals-to-views & bind
-	c.renderExtensions(bind)
+	c.renderExtensions(locals)
 
 	rendered := false
 	if c.app.parent == nil {
 
 		// Render template from Views
 		if c.app.engine != nil {
-			if err := c.app.engine.Render(buf, name, bind); err != nil {
+			if err := c.app.engine.Render(buf, view, locals); err != nil {
 				return err
 			}
 
@@ -1161,7 +1163,7 @@ func (c *Ctx) Render(name string, bind interface{}) error {
 	for _, sub := range c.app.subList {
 		// Render template from Views
 		if sub.engine != nil {
-			if err := sub.engine.Render(buf, name, bind); err != nil {
+			if err := sub.engine.Render(buf, view, locals); err != nil {
 				return err
 			}
 
@@ -1174,7 +1176,7 @@ func (c *Ctx) Render(name string, bind interface{}) error {
 	if !rendered {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
-		if _, err = readContent(buf, name); err != nil {
+		if _, err = readContent(buf, view); err != nil {
 			return err
 		}
 		// Parse template
@@ -1183,13 +1185,18 @@ func (c *Ctx) Render(name string, bind interface{}) error {
 		}
 		buf.Reset()
 		// Render template
-		if err = tmpl.Execute(buf, bind); err != nil {
+		if err = tmpl.Execute(buf, locals); err != nil {
 			return err
 		}
 	}
 
 	// Set Content-Type to text/html
 	c.fasthttp.Response.Header.SetContentType(MIMETextHTMLCharsetUTF8)
+
+	if len(callback) > 0 {
+		return callback[0](err, utils.UnsafeString(buf.Bytes()))
+	}
+
 	// Set rendered template to body
 	c.fasthttp.Response.SetBody(buf.Bytes())
 	// Return err if exist
