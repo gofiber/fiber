@@ -144,7 +144,7 @@ go get -u github.com/gofiber/fiber/v3
 我们会**倾听**用户在[issues](https://github.com/gofiber/fiber/issues)和 Discord [channel](https://gofiber.io/discord)和在互联网上的所有诉求，为了创建一个能让有着任何技术栈的开发者都能在deadline前完成任务的**迅速**，**灵活**以及**友好**的`Go web`框架，就像`Express`在`JavaScript`世界中一样。
 
 ## ⚠️ 限制
-* 由于 Fiber 使用了 unsafe 特性，导致其可能与最新的 Go 版本不兼容。Fiber 2.29.0 已经在 Go 1.14 到 1.18 上测试过。
+* 由于 Fiber 使用了 unsafe 特性，导致其可能与最新的 Go 版本不兼容。Fiber 2.29.0 已经在 Go 1.14 到 1.19 上测试过。
 * Fiber 与 net/http 接口不兼容。也就是说你无法使用 gqlen，go-swagger 或者任何其他属于 net/http 生态的项目。
 
 ## 👀 示例
@@ -573,6 +573,7 @@ func main() {
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)             | 使用各种选项启用跨源资源共享\(CORS\).                                                                                                          |
 | [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)             | 保护来自CSRF的漏洞.                                                                                                                                                  |
 | [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | 加密 cookie 值的加密中间件.                                                                                                                             |
+| [envvar](https://github.com/gofiber/fiber/tree/master/middleware/envvar)               | 通过提供可选配置来公开环境变量。.                                                                                                              |
 | [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | 让缓存更加高效并且节省带宽,让web服务不再需要重新响应整个响应体如果响应内容未变更.               |
 | [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | 通过其HTTP服务器运行时间提供JSON格式的暴露变体.                                                                               |
 | [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)       | 如果提供了文件路径，则忽略日志中的图标或从内存中服务.                                                                                                    |

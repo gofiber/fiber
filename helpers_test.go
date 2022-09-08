@@ -5,9 +5,7 @@
 package fiber
 
 import (
-	"crypto/tls"
 	"fmt"
-	"net"
 	"strings"
 	"testing"
 	"time"
@@ -160,48 +158,6 @@ func Benchmark_Utils_IsNoCache(b *testing.B) {
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
 	require.True(b, ok)
-}
-
-func Test_Utils_lnMetadata(t *testing.T) {
-	t.Run("closed listen", func(t *testing.T) {
-		ln, err := net.Listen(NetworkTCP, ":0")
-		require.NoError(t, err)
-
-		require.Nil(t, ln.Close())
-
-		addr, config := lnMetadata(NetworkTCP, ln)
-
-		require.Equal(t, ln.Addr().String(), addr)
-		require.True(t, config == nil)
-	})
-
-	t.Run("non tls", func(t *testing.T) {
-		ln, err := net.Listen(NetworkTCP, ":0")
-
-		require.NoError(t, err)
-
-		addr, config := lnMetadata(NetworkTCP4, ln)
-
-		require.Equal(t, ln.Addr().String(), addr)
-		require.True(t, config == nil)
-	})
-
-	t.Run("tls", func(t *testing.T) {
-		cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-		require.NoError(t, err)
-
-		config := &tls.Config{Certificates: []tls.Certificate{cer}}
-
-		ln, err := net.Listen(NetworkTCP4, ":0")
-		require.NoError(t, err)
-
-		ln = tls.NewListener(ln, config)
-
-		addr, config := lnMetadata(NetworkTCP4, ln)
-
-		require.Equal(t, ln.Addr().String(), addr)
-		require.True(t, config != nil)
-	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4

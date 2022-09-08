@@ -35,4 +35,8 @@ jobs:
     - name: Fetch Repository
       uses: actions/checkout@v3
     - name: Run Test
-      run: go test ./... -v -race
+      uses: nick-fields/retry@v2
+      with:
+        max_attempts: 3
+        timeout_minutes: 15
+        command: go test ./... -v -race
