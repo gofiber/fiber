@@ -90,7 +90,7 @@ type Cookie struct {
 }
 
 // Views is the interface that wraps the Render function.
-type Views interface {
+type TemplateEngine interface {
 	Load() error
 	Render(io.Writer, string, interface{}, ...string) error
 }
@@ -1149,8 +1149,8 @@ func (c *Ctx) Render(name string, bind interface{}) error {
 	if c.app.parent == nil {
 
 		// Render template from Views
-		if c.app.config.Views != nil {
-			if err := c.app.config.Views.Render(buf, name, bind); err != nil {
+		if c.app.engine != nil {
+			if err := c.app.engine.Render(buf, name, bind); err != nil {
 				return err
 			}
 
@@ -1160,8 +1160,8 @@ func (c *Ctx) Render(name string, bind interface{}) error {
 
 	for _, sub := range c.app.subList {
 		// Render template from Views
-		if sub.config.Views != nil {
-			if err := sub.config.Views.Render(buf, name, bind); err != nil {
+		if sub.engine != nil {
+			if err := sub.engine.Render(buf, name, bind); err != nil {
 				return err
 			}
 

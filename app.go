@@ -117,6 +117,8 @@ type App struct {
 	routerList map[string]*Router
 	// The app.Locals has properties that are local variables within the application, and will be available in templates rendered with ctx.Render.
 	Locals map[string]interface{}
+	// Default engine
+	engine TemplateEngine
 }
 
 // Config is a struct holding the server settings.
@@ -170,11 +172,6 @@ type Config struct {
 	//
 	// Default: 256 * 1024
 	Concurrency int `json:"concurrency"`
-
-	// Views is the interface that wraps the Render function.
-	//
-	// Default: nil
-	Views Views `json:"-"`
 
 	// PassLocalsToViews Enables passing of the locals set on a fiber.Ctx to the template engine
 	//
@@ -491,6 +488,12 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	} else {
 		app.config.trustedProxiesMap[ipAddress] = struct{}{}
 	}
+}
+
+// Registers the given template engine.
+func (app *App) Engine(engine TemplateEngine) *App {
+	app.engine = engine
+	return app
 }
 
 // Returns an instance of a single route, which you can then use to handle HTTP verbs with optional middleware.

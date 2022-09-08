@@ -2261,9 +2261,9 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	engine.Load()
 
 	app := New()
-	sub := New(Config{
-		Views: engine,
-	})
+	sub := New()
+	sub.Engine(engine)
+
 	app.Use("/hello", sub)
 
 	sub.Get("/:name", func(ctx *Ctx) error {
@@ -2396,8 +2396,8 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	err := engine.Load()
 	app := New(Config{
 		PassLocalsToViews: true,
-		Views:             engine,
 	})
+	app.Engine(engine)
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Locals("Title", "This is a test.")
@@ -2416,8 +2416,9 @@ func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
 	utils.AssertEqual(b, nil, err)
 	app := New(Config{
 		PassLocalsToViews: true,
-		Views:             engine,
 	})
+	app.engine = engine
+
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Bind(Map{
@@ -2445,7 +2446,7 @@ func Benchmark_Ctx_RenderLocals(b *testing.B) {
 	app := New(Config{
 		PassLocalsToViews: true,
 	})
-	app.config.Views = engine
+	app.engine = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Locals("Title", "Hello, World!")
@@ -2468,7 +2469,7 @@ func Benchmark_Ctx_RenderBind(b *testing.B) {
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
 	app := New()
-	app.config.Views = engine
+	app.engine = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Bind(Map{
@@ -2573,7 +2574,7 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 	engine := &testTemplateEngine{}
 	engine.Load()
 	app := New()
-	app.config.Views = engine
+	app.engine = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	err := c.Render("index.tmpl", Map{
@@ -2589,7 +2590,7 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
 	app := New()
-	app.config.Views = engine
+	app.engine = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	b.ReportAllocs()
@@ -2614,7 +2615,7 @@ func (t errorTemplateEngine) Load() error { return nil }
 // go test -run Test_Ctx_Render_Engine_Error
 func Test_Ctx_Render_Engine_Error(t *testing.T) {
 	app := New()
-	app.config.Views = errorTemplateEngine{}
+	app.engine = errorTemplateEngine{}
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	err := c.Render("index.tmpl", nil)

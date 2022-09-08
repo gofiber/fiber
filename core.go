@@ -39,8 +39,8 @@ func (app *App) init() *App {
 	app.mutex.Lock()
 
 	// Only load templates if a view engine is specified
-	if app.config.Views != nil {
-		if err := app.config.Views.Load(); err != nil {
+	if app.engine != nil {
+		if err := app.engine.Load(); err != nil {
 			fmt.Printf("views: %v\n", err)
 		}
 	}

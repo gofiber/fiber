@@ -797,14 +797,15 @@ func (i invalidView) Render(io.Writer, string, interface{}, ...string) error { p
 
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
-	app := New(Config{Views: invalidView{}})
+	app := New()
+	app.Engine(invalidView{})
 
 	defer func() {
 		if err := recover(); err != nil {
 			utils.AssertEqual(t, "implement me", fmt.Sprintf("%v", err))
 		}
 	}()
-	_ = app.config.Views.Render(nil, "", nil)
+	_ = app.engine.Render(nil, "", nil)
 }
 
 // go test -run Test_App_Stack
