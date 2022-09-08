@@ -5,10 +5,11 @@
 package fiber
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -23,42 +24,167 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
-// Listener can be used to pass a custom listener.
-func (app *App) Listener(ln net.Listener) error {
-	// prepare the server for the start
-	app.startupProcess()
+// ListenConfig is a struct to customize startup of Fiber.
+//
+// TODO: Add timeout for graceful shutdown.
+type ListenConfig struct {
+	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
+	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
+	//
+	// Default: NetworkTCP4
+	ListenerNetwork string `json:"listener_network"`
 
-	// Print startup message
-	if !app.config.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
+	// CertFile is a path of certficate file.
+	// If you want to use TLS, you have to enter this field.
+	//
+	// Default : ""
+	CertFile string `json:"cert_file"`
+
+	// KeyFile is a path of certficate's private key.
+	// If you want to use TLS, you have to enter this field.
+	//
+	// Default : ""
+	CertKeyFile string `json:"cert_key_file"`
+
+	// CertClientFile is a path of client certficate.
+	// If you want to use mTLS, you have to enter this field.
+	//
+	// Default : ""
+	CertClientFile string `json:"cert_client_file"`
+
+	// GracefulContext is a field to shutdown Fiber by given context gracefully.
+	//
+	// Default: nil
+	GracefulContext context.Context `json:"graceful_context"`
+
+	// TLSConfigFunc allows customizing tls.Config as you want.
+	//
+	// Default: nil
+	TLSConfigFunc func(tlsConfig *tls.Config) `json:"tls_config_func"`
+
+	// ListenerFunc allows accessing and customizing net.Listener.
+	//
+	// Default: nil
+	ListenerAddrFunc func(addr net.Addr) `json:"listener_addr_func"`
+
+	// BeforeServeFunc allows customizing and accessing fiber app before serving the app.
+	//
+	// Default: nil
+	BeforeServeFunc func(app *App) error `json:"before_serve_func"`
+
+	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
+	//
+	// Default: false
+	DisableStartupMessage bool `json:"disable_startup_message"`
+
+	// When set to true, this will spawn multiple Go processes listening on the same port.
+	//
+	// Default: false
+	EnablePrefork bool `json:"enable_prefork"`
+
+	// If set to true, will print all routes with their method, path and handler.
+	//
+	// Default: false
+	EnablePrintRoutes bool `json:"enable_print_routes"`
+
+	// OnShutdownError allows to customize error behavior when to graceful shutdown server by given signal.
+	//
+	// Default: Print error with log.Fatalf()
+	OnShutdownError func(err error)
+
+	// OnShutdownSuccess allows to customize success behavior when to graceful shutdown server by given signal.
+	//
+	// Default: nil
+	OnShutdownSuccess func()
+}
+
+// listenConfigDefault is a function to set default values of ListenConfig.
+func listenConfigDefault(config ...ListenConfig) ListenConfig {
+	if len(config) < 1 {
+		return ListenConfig{
+			ListenerNetwork: NetworkTCP4,
+			OnShutdownError: func(err error) {
+				log.Fatalf("shutdown: %v", err)
+			},
+		}
 	}
 
-	// Print routes
-	if app.config.EnablePrintRoutes {
-		app.printRoutesMessage()
+	cfg := config[0]
+	if cfg.ListenerNetwork == "" {
+		cfg.ListenerNetwork = NetworkTCP4
 	}
 
-	// Prefork is not supported for custom listeners
-	if app.config.Prefork {
-		fmt.Println("[Warning] Prefork isn't supported for custom listeners.")
+	if cfg.OnShutdownError == nil {
+		cfg.OnShutdownError = func(err error) {
+			log.Fatalf("shutdown: %v", err)
+		}
 	}
 
-	// Start listening
-	return app.server.Serve(ln)
+	return cfg
 }
 
 // Listen serves HTTP requests from the given addr.
+// You should enter custom ListenConfig to customize startup. (TLS, mTLS, prefork...)
 //
 //	app.Listen(":8080")
 //	app.Listen("127.0.0.1:8080")
-func (app *App) Listen(addr string) error {
+//	app.Listen(":8080", ListenConfig{EnablePrefork: true})
+func (app *App) Listen(addr string, config ...ListenConfig) error {
+	cfg := listenConfigDefault(config...)
+
+	// Configure TLS
+	var tlsConfig *tls.Config = nil
+	if cfg.CertFile != "" && cfg.CertKeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.CertKeyFile)
+		if err != nil {
+			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", cfg.CertFile, cfg.CertKeyFile, err)
+		}
+
+		tlsHandler := &TLSHandler{}
+		tlsConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			Certificates: []tls.Certificate{
+				cert,
+			},
+			GetCertificate: tlsHandler.GetClientInfo,
+		}
+
+		if cfg.CertClientFile != "" {
+			clientCACert, err := os.ReadFile(filepath.Clean(cfg.CertClientFile))
+			if err != nil {
+				return err
+			}
+
+			clientCertPool := x509.NewCertPool()
+			clientCertPool.AppendCertsFromPEM(clientCACert)
+
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+			tlsConfig.ClientCAs = clientCertPool
+		}
+
+		// Attach the tlsHandler to the config
+		app.SetTLSHandler(tlsHandler)
+	}
+
+	if cfg.TLSConfigFunc != nil {
+		cfg.TLSConfigFunc(tlsConfig)
+	}
+
+	// Graceful shutdown
+	if cfg.GracefulContext != nil {
+		ctx, cancel := context.WithCancel(cfg.GracefulContext)
+		defer cancel()
+
+		go app.gracefulShutdown(ctx, cfg)
+	}
+
 	// Start prefork
-	if app.config.Prefork {
-		return app.prefork(app.config.Network, addr, nil)
+	if cfg.EnablePrefork {
+		return app.prefork(addr, tlsConfig, cfg)
 	}
 
-	// Setup listener
-	ln, err := net.Listen(app.config.Network, addr)
+	// Configure Listener
+	ln, err := app.createListener(addr, tlsConfig, cfg)
 	if err != nil {
 		return err
 	}
@@ -66,143 +192,85 @@ func (app *App) Listen(addr string) error {
 	// prepare the server for the start
 	app.startupProcess()
 
-	// Print startup message
-	if !app.config.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), false, "")
+	// Print startup message & routes
+	app.printMessages(cfg, ln)
+
+	// Serve
+	if cfg.BeforeServeFunc != nil {
+		if err := cfg.BeforeServeFunc(app); err != nil {
+			return err
+		}
 	}
 
-	// Print routes
-	if app.config.EnablePrintRoutes {
-		app.printRoutesMessage()
-	}
-
-	// Start listening
 	return app.server.Serve(ln)
 }
 
-// ListenTLS serves HTTPS requests from the given addr.
-// certFile and keyFile are the paths to TLS certificate and key file:
-//
-//	app.ListenTLS(":8080", "./cert.pem", "./cert.key")
-func (app *App) ListenTLS(addr, certFile, keyFile string) error {
-	// Check for valid cert/key path
-	if len(certFile) == 0 || len(keyFile) == 0 {
-		return errors.New("tls: provide a valid cert or key path")
-	}
+// Listener serves HTTP requests from the given listener.
+// You should enter custom ListenConfig to customize startup. (prefork, startup message, graceful shutdown...)
+func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
+	cfg := listenConfigDefault(config...)
 
-	// Set TLS config with handler
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
-	}
+	// Graceful shutdown
+	if cfg.GracefulContext != nil {
+		ctx, cancel := context.WithCancel(cfg.GracefulContext)
+		defer cancel()
 
-	tlsHandler := &TLSHandler{}
-	config := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		Certificates: []tls.Certificate{
-			cert,
-		},
-		GetCertificate: tlsHandler.GetClientInfo,
-	}
-
-	// Prefork is supported
-	if app.config.Prefork {
-		return app.prefork(app.config.Network, addr, config)
-	}
-
-	// Setup listener
-	ln, err := net.Listen(app.config.Network, addr)
-	ln = tls.NewListener(ln, config)
-	if err != nil {
-		return err
+		go app.gracefulShutdown(ctx, cfg)
 	}
 
 	// prepare the server for the start
 	app.startupProcess()
 
-	// Print startup message
-	if !app.config.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), true, "")
+	// Print startup message & routes
+	app.printMessages(cfg, ln)
+
+	// Serve
+	if cfg.BeforeServeFunc != nil {
+		if err := cfg.BeforeServeFunc(app); err != nil {
+			return err
+		}
 	}
 
-	// Print routes
-	if app.config.EnablePrintRoutes {
-		app.printRoutesMessage()
+	// Prefork is not supported for custom listeners
+	if cfg.EnablePrefork {
+		fmt.Println("[Warning] Prefork isn't supported for custom listeners.")
 	}
 
-	// Attach the tlsHandler to the config
-	app.SetTLSHandler(tlsHandler)
-
-	// Start listening
 	return app.server.Serve(ln)
 }
 
-// ListenMutualTLS serves HTTPS requests from the given addr.
-// certFile, keyFile and clientCertFile are the paths to TLS certificate and key file:
-//
-//	app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
-func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
-	// Check for valid cert/key path
-	if len(certFile) == 0 || len(keyFile) == 0 {
-		return errors.New("tls: provide a valid cert or key path")
+// Create listener function.
+func (app *App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig) (net.Listener, error) {
+	var listener net.Listener
+	var err error
+
+	if tlsConfig != nil {
+		listener, err = tls.Listen(cfg.ListenerNetwork, addr, tlsConfig)
+	} else {
+		listener, err = net.Listen(cfg.ListenerNetwork, addr)
 	}
 
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
-	if err != nil {
-		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+	if cfg.ListenerAddrFunc != nil {
+		cfg.ListenerAddrFunc(listener.Addr())
 	}
 
-	clientCACert, err := os.ReadFile(filepath.Clean(clientCertFile))
-	if err != nil {
-		return err
-	}
-	clientCertPool := x509.NewCertPool()
-	clientCertPool.AppendCertsFromPEM(clientCACert)
+	return listener, err
+}
 
-	tlsHandler := &TLSHandler{}
-	config := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		ClientAuth: tls.RequireAndVerifyClientCert,
-		ClientCAs:  clientCertPool,
-		Certificates: []tls.Certificate{
-			cert,
-		},
-		GetCertificate: tlsHandler.GetClientInfo,
-	}
-
-	// Prefork is supported
-	if app.config.Prefork {
-		return app.prefork(app.config.Network, addr, config)
-	}
-
-	// Setup listener
-	ln, err := tls.Listen(app.config.Network, addr, config)
-	if err != nil {
-		return err
-	}
-
-	// prepare the server for the start
-	app.startupProcess()
-
+func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 	// Print startup message
-	if !app.config.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), true, "")
+	if !cfg.DisableStartupMessage {
+		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "", cfg)
 	}
 
 	// Print routes
-	if app.config.EnablePrintRoutes {
+	if cfg.EnablePrintRoutes {
 		app.printRoutesMessage()
 	}
-
-	// Attach the tlsHandler to the config
-	app.SetTLSHandler(tlsHandler)
-
-	// Start listening
-	return app.server.Serve(ln)
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, tls bool, pids string) {
+func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenConfig) {
 	// ignore child processes
 	if IsChild() {
 		return
@@ -259,7 +327,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 
 	host, port := parseAddr(addr)
 	if host == "" {
-		if app.config.Network == NetworkTCP6 {
+		if cfg.ListenerNetwork == NetworkTCP6 {
 			host = "[::1]"
 		} else {
 			host = "0.0.0.0"
@@ -272,12 +340,12 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	isPrefork := "Disabled"
-	if app.config.Prefork {
+	if cfg.EnablePrefork {
 		isPrefork = "Enabled"
 	}
 
 	procs := strconv.Itoa(runtime.GOMAXPROCS(0))
-	if !app.config.Prefork {
+	if !cfg.EnablePrefork {
 		procs = "1"
 	}
 
@@ -307,7 +375,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	)
 
 	var childPidsLogo string
-	if app.config.Prefork {
+	if cfg.EnablePrefork {
 		var childPidsTemplate string
 		childPidsTemplate += "%s"
 		childPidsTemplate += " ┌───────────────────────────────────────────────────┐\n%s"
@@ -443,4 +511,17 @@ func (app *App) printRoutesMessage() {
 	}
 
 	_ = w.Flush()
+}
+
+// shutdown goroutine
+func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
+	<-ctx.Done()
+
+	if err := app.Shutdown(); err != nil {
+		cfg.OnShutdownError(err)
+	}
+
+	if success := cfg.OnShutdownSuccess; success != nil {
+		success()
+	}
 }

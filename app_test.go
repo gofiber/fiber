@@ -599,16 +599,14 @@ func Test_App_New(t *testing.T) {
 
 func Test_App_Config(t *testing.T) {
 	app := New(Config{
-		DisableStartupMessage: true,
+		StrictRouting: true,
 	})
-	require.True(t, app.Config().DisableStartupMessage)
+	require.True(t, app.Config().StrictRouting)
 }
 
 func Test_App_Shutdown(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		app := New(Config{
-			DisableStartupMessage: true,
-		})
+		app := New()
 		require.True(t, app.Shutdown() == nil)
 	})
 
@@ -1098,7 +1096,6 @@ func Test_App_Deep_Group(t *testing.T) {
 // go test -run Test_App_Next_Method
 func Test_App_Next_Method(t *testing.T) {
 	app := New()
-	app.config.DisableStartupMessage = true
 
 	app.Use(func(c Ctx) error {
 		require.Equal(t, MethodGet, c.Method())
@@ -1140,7 +1137,6 @@ func Test_NewError(t *testing.T) {
 // go test -run Test_Test_Timeout
 func Test_Test_Timeout(t *testing.T) {
 	app := New()
-	app.config.DisableStartupMessage = true
 
 	app.Get("/", testEmptyHandler)
 
@@ -1166,7 +1162,6 @@ func (errorReader) Read([]byte) (int, error) {
 // go test -run Test_Test_DumpError
 func Test_Test_DumpError(t *testing.T) {
 	app := New()
-	app.config.DisableStartupMessage = true
 
 	app.Get("/", testEmptyHandler)
 
@@ -1236,10 +1231,9 @@ func Test_App_HandlersCount(t *testing.T) {
 // go test -run Test_App_ReadTimeout
 func Test_App_ReadTimeout(t *testing.T) {
 	app := New(Config{
-		ReadTimeout:           time.Nanosecond,
-		IdleTimeout:           time.Minute,
-		DisableStartupMessage: true,
-		DisableKeepalive:      true,
+		ReadTimeout:      time.Nanosecond,
+		IdleTimeout:      time.Minute,
+		DisableKeepalive: true,
 	})
 
 	app.Get("/read-timeout", func(c Ctx) error {
@@ -1266,14 +1260,12 @@ func Test_App_ReadTimeout(t *testing.T) {
 		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":4004"))
+	require.Nil(t, app.Listen(":4004", ListenConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_App_BadRequest
 func Test_App_BadRequest(t *testing.T) {
-	app := New(Config{
-		DisableStartupMessage: true,
-	})
+	app := New()
 
 	app.Get("/bad-request", func(c Ctx) error {
 		return c.SendString("I should not be sent")
@@ -1298,14 +1290,13 @@ func Test_App_BadRequest(t *testing.T) {
 		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":4005"))
+	require.Nil(t, app.Listen(":4005", ListenConfig{DisableStartupMessage: true}))
 }
 
 // go test -run Test_App_SmallReadBuffer
 func Test_App_SmallReadBuffer(t *testing.T) {
 	app := New(Config{
-		ReadBufferSize:        1,
-		DisableStartupMessage: true,
+		ReadBufferSize: 1,
 	})
 
 	app.Get("/small-read-buffer", func(c Ctx) error {
@@ -1322,7 +1313,7 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 		require.Nil(t, app.Shutdown())
 	}()
 
-	require.Nil(t, app.Listen(":4006"))
+	require.Nil(t, app.Listen(":4006", ListenConfig{DisableStartupMessage: true}))
 }
 
 func Test_App_Server(t *testing.T) {

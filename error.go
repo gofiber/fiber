@@ -2,19 +2,24 @@ package fiber
 
 import (
 	errors "encoding/json"
-	goErrors "errors"
+	stdErrors "errors"
 
 	"github.com/gofiber/fiber/v3/internal/schema"
 )
 
+// Graceful shutdown errors
+var (
+	ErrGracefulTimeout = stdErrors.New("shutdown: graceful timeout has been reached, exiting")
+)
+
 // Range errors
 var (
-	ErrRangeMalformed     = goErrors.New("range: malformed range header string")
-	ErrRangeUnsatisfiable = goErrors.New("range: unsatisfiable range")
+	ErrRangeMalformed     = stdErrors.New("range: malformed range header string")
+	ErrRangeUnsatisfiable = stdErrors.New("range: unsatisfiable range")
 )
 
 // Binder errors
-var ErrCustomBinderNotFound = goErrors.New("binder: custom binder not found, please be sure to enter the right name")
+var ErrCustomBinderNotFound = stdErrors.New("binder: custom binder not found, please be sure to enter the right name")
 
 // gorilla/schema errors
 type (

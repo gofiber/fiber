@@ -124,11 +124,6 @@ type App struct {
 
 // Config is a struct holding the server settings.
 type Config struct {
-	// When set to true, this will spawn multiple Go processes listening on the same port.
-	//
-	// Default: false
-	Prefork bool `json:"prefork"`
-
 	// Enables the "Server: value" HTTP header.
 	//
 	// Default: ""
@@ -270,11 +265,6 @@ type Config struct {
 	// Default: false
 	DisableHeaderNormalizing bool `json:"disable_header_normalizing"`
 
-	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
-	//
-	// Default: false
-	DisableStartupMessage bool `json:"disable_startup_message"`
-
 	// This function allows to setup app name for the app
 	//
 	// Default: nil
@@ -332,12 +322,6 @@ type Config struct {
 	// Default: xml.Marshal
 	XMLEncoder utils.XMLMarshal `json:"-"`
 
-	// Known networks are "tcp", "tcp4" (IPv4-only), "tcp6" (IPv6-only)
-	// WARNING: When prefork is set to true, only "tcp4" and "tcp6" can be chose.
-	//
-	// Default: NetworkTCP4
-	Network string
-
 	// If you find yourself behind some sort of proxy, like a load balancer,
 	// then certain header information may be sent to you using special X-Forwarded-* headers or the Forwarded header.
 	// For example, the Host HTTP header is usually used to return the requested host.
@@ -373,10 +357,6 @@ type Config struct {
 	//
 	// Default: false
 	EnableIPValidation bool `json:"enable_ip_validation"`
-
-	// If set to true, will print all routes with their method, path and handler.
-	// Default: false
-	EnablePrintRoutes bool `json:"enable_print_routes"`
 
 	// You can define custom color scheme. They'll be used for startup message, route list and some middlewares.
 	//
@@ -532,9 +512,6 @@ func New(config ...Config) *App {
 	}
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
-	}
-	if app.config.Network == "" {
-		app.config.Network = NetworkTCP4
 	}
 
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
@@ -831,7 +808,8 @@ func (app *App) HandlersCount() uint32 {
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
 	if app.hooks != nil {
-		defer app.hooks.executeOnShutdownHooks()
+		// TODO: check should be defered?
+		app.hooks.executeOnShutdownHooks()
 	}
 
 	app.mutex.Lock()
