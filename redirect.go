@@ -142,7 +142,9 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		// old input data
 		i = 1
 		for k, v := range r.oldInput {
-			if i == 1 {
+			if len(r.messages) > 1 && i == 1 {
+				_, _ = messageText.WriteString(",k:")
+			} else if i != 1 {
 				_, _ = messageText.WriteString("k:")
 			}
 
