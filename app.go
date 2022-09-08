@@ -176,11 +176,6 @@ type Config struct {
 	// Default: nil
 	Views Views `json:"-"`
 
-	// Views Layout is the global layout for all template render until override on Render function.
-	//
-	// Default: ""
-	ViewsLayout string `json:"views_layout"`
-
 	// PassLocalsToViews Enables passing of the locals set on a fiber.Ctx to the template engine
 	//
 	// Default: false

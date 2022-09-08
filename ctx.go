@@ -1136,7 +1136,7 @@ func (c *Ctx) Bind(vars Map) error {
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
+func (c *Ctx) Render(name string, bind interface{}) error {
 	var err error
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
@@ -1147,15 +1147,10 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 
 	rendered := false
 	if c.app.parent == nil {
-		if len(layouts) == 0 && c.app.config.ViewsLayout != "" {
-			layouts = []string{
-				c.app.config.ViewsLayout,
-			}
-		}
 
 		// Render template from Views
 		if c.app.config.Views != nil {
-			if err := c.app.config.Views.Render(buf, name, bind, layouts...); err != nil {
+			if err := c.app.config.Views.Render(buf, name, bind); err != nil {
 				return err
 			}
 
@@ -1164,15 +1159,9 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	}
 
 	for _, sub := range c.app.subList {
-		if len(layouts) == 0 && sub.config.ViewsLayout != "" {
-			layouts = []string{
-				sub.config.ViewsLayout,
-			}
-		}
-
 		// Render template from Views
 		if sub.config.Views != nil {
-			if err := sub.config.Views.Render(buf, name, bind, layouts...); err != nil {
+			if err := sub.config.Views.Render(buf, name, bind); err != nil {
 				return err
 			}
 
