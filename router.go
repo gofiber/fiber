@@ -167,17 +167,17 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// check flash messages
+	if c.Cookies("fiber_flash") != "" {
+		c.Redirect().setFlash()
+	}
+
 	// Find match in stack
 	_, err := app.next(c, app.newCtxFunc != nil)
 	if err != nil {
 		if catch := c.App().ErrorHandler(c, err); catch != nil {
 			_ = c.SendStatus(StatusInternalServerError)
 		}
-	}
-
-	// check flash messages
-	if c.Cookies("fiber_flash") != "" {
-		c.Redirect().setFlash()
 	}
 
 	// Release Ctx
