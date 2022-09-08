@@ -42,7 +42,8 @@ func Test_Hook_OnName(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnName(func(r Route) error {
-		buf.WriteString(r.Name)
+		_, err := buf.WriteString(r.Name)
+		require.NoError(t, nil, err)
 
 		return nil
 	})
@@ -84,8 +85,8 @@ func Test_Hook_OnGroup(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnGroup(func(g Group) error {
-		buf.WriteString(g.Prefix)
-
+		_, err := buf.WriteString(g.Prefix)
+		require.NoError(t, nil, err)
 		return nil
 	})
 
@@ -104,7 +105,8 @@ func Test_Hook_OnGroupName(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnGroupName(func(g Group) error {
-		buf.WriteString(g.name)
+		_, err := buf.WriteString(g.name)
+		require.NoError(t, nil, err)
 
 		return nil
 	})
@@ -143,7 +145,8 @@ func Test_Hook_OnShutdown(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnShutdown(func() error {
-		buf.WriteString("shutdowning")
+		_, err := buf.WriteString("shutdowning")
+		require.NoError(t, nil, err)
 
 		return nil
 	})
@@ -155,15 +158,14 @@ func Test_Hook_OnShutdown(t *testing.T) {
 func Test_Hook_OnListen(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{
-		DisableStartupMessage: true,
-	})
+	app := New()
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnListen(func() error {
-		buf.WriteString("ready")
+		_, err := buf.WriteString("ready")
+		require.NoError(t, nil, err)
 
 		return nil
 	})
@@ -172,8 +174,8 @@ func Test_Hook_OnListen(t *testing.T) {
 		time.Sleep(1000 * time.Millisecond)
 		require.Nil(t, app.Shutdown())
 	}()
-	require.Nil(t, app.Listen(":9000"))
 
+	require.Nil(t, app.Listen(":9000", ListenConfig{DisableStartupMessage: true}))
 	require.Equal(t, "ready", buf.String())
 }
 
@@ -194,5 +196,5 @@ func Test_Hook_OnHook(t *testing.T) {
 		return nil
 	})
 
-	require.Nil(t, app.prefork(NetworkTCP4, ":3000", nil))
+	require.Nil(t, app.prefork(":3000", nil, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
 }

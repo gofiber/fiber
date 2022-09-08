@@ -79,7 +79,7 @@
   </a>
 </p>
 <p align="center">
-<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Express</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, el motor HTTP <strong>más rápido</strong> para <a href="https://go.dev/doc/">Go</a>. Diseñado para <strong>facilitar</strong> las cosas para <strong>un</strong> desarrollo <strong>rápido</strong> con <strong>cero asignación de memoria</strong> y <strong>rendimiento</strong> en mente.
+<strong>Fiber</strong> es un <strong>framework web</strong> inspirado en <a href="https://github.com/expressjs/express">Express</a> construido sobre <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, el motor HTTP <strong>más rápido</strong> para <a href="https://go.dev/doc/">Go</a>. Diseñado para <strong>facilitar</strong> las cosas y tener un <strong>menor tiempo de desarrollo</strong> con <strong>cero asignación de memoria</strong> y pensado para un mejor <strong>rendimiento</strong>.
 </p>
 
 ## ⚡️ Inicio rápido
@@ -142,7 +142,7 @@ Los nuevos gophers que hacen el cambio de [Node.js](https://nodejs.org/en/about/
 Fiber está **inspirado** en Expressjs, el framework web más popular en Internet. Combinamos la **facilidad** de Express y **el rendimiento bruto** de Go. Si alguna vez ha implementado una aplicación web en Node.js ( _utilizando Express.js o similar_ ), muchos métodos y principios le parecerán **muy comunes** .
 
 ## ⚠️ Limitantes
-* Debido a que Fiber utiliza unsafe, la biblioteca no siempre será compatible con la última versión de Go. Fiber 2.29.0 ha sido probado con las versiones de Go 1.14 a 1.18.
+* Debido a que Fiber utiliza unsafe, la biblioteca no siempre será compatible con la última versión de Go. Fiber 2.29.0 ha sido probado con las versiones de Go 1.14 a 1.19.
 * Fiber no es compatible con interfaces net/http. Esto significa que no lo podrá usar en proyectos como qglgen, go-swagger, u otros que son parte del ecosistema net/http.
 
 ## 👀 Ejemplos
@@ -571,6 +571,7 @@ Aquí está una lista del middleware incluido en el marco web Fiber.
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | Enable cross-origin resource sharing \(CORS\) with various options.                                                                                                          |
 | [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | Protect from CSRF exploits.                                                                                                                                                  |
 | [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware which encrypts cookie values.                                                                                                                             |
+| [envvar](https://github.com/gofiber/fiber/tree/master/middleware/envvar)               | Expose environment variables with providing an optional config.                                                                                                              |
 | [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | ETag middleware that lets caches be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.               |
 | [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware that serves via its HTTP server runtime exposed variants in the JSON format.                                                                               |
 | [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | Ignore favicon from logs or serve from memory if a file path is provided.                                                                                                    |

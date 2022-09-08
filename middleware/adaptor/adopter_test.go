@@ -245,8 +245,8 @@ func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.A
 		if contentLength != expectedContentLength {
 			t.Fatalf("unexpected contentLength %d. Expecting %d", contentLength, expectedContentLength)
 		}
-		if c.Hostname() != expectedHost {
-			t.Fatalf("unexpected host %q. Expecting %q", c.Hostname(), expectedHost)
+		if c.Host() != expectedHost {
+			t.Fatalf("unexpected host %q. Expecting %q", c.Host(), expectedHost)
 		}
 		remoteAddr := c.Context().RemoteAddr().String()
 		if remoteAddr != expectedRemoteAddr {

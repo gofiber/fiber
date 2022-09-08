@@ -102,7 +102,7 @@ func (grp *Group) Use(args ...any) Router {
 // of the specified resource. Requests using GET should only retrieve data.
 func (grp *Group) Get(path string, handlers ...Handler) Router {
 	path = getGroupPath(grp.Prefix, path)
-	return grp.app.Add(MethodHead, path, handlers...).Add(MethodGet, path, handlers...)
+	return grp.app.Add(MethodGet, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical

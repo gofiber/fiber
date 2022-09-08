@@ -123,7 +123,13 @@ type Ctx interface {
 	// Make copies or use the Immutable setting instead.
 	GetRespHeader(key string, defaultValue ...string) string
 
-	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
+	// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+	Host() string
+
+	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.

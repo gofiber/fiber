@@ -71,12 +71,14 @@ func (m *manager) getRaw(key string) (raw []byte) {
 // set data to storage or memory
 func (m *manager) set(key string, it *item, exp time.Duration) {
 	if raw, err := it.MarshalMsg(nil); err == nil {
+		// TODO: Should we use utils.CopyString(key) here?
 		_ = m.storage.Set(key, raw, exp)
 	}
 }
 
 // set data to storage or memory
 func (m *manager) setRaw(key string, raw []byte, exp time.Duration) {
+	// TODO: Should we use utils.CopyString(key) here?
 	_ = m.storage.Set(key, raw, exp)
 }
 
