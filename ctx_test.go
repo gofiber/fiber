@@ -23,13 +23,13 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"text/template"
 	"time"
 
-	"github.com/gofiber/fiber/v3/internal/bytebufferpool"
+	"text/template"
+
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
-	"github.com/gofiber/fiber/v3/internal/template/html"
 	"github.com/gofiber/fiber/v3/utils"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 
@@ -2257,18 +2257,20 @@ func Test_Ctx_Render(t *testing.T) {
 func Test_Ctx_Render_Mount(t *testing.T) {
 	t.Parallel()
 
+	engine := &testTemplateEngine{}
+	engine.Load()
+
+	app := New()
 	sub := New(Config{
-		Views: html.New("./.github/testdata/template", ".gohtml"),
+		Views: engine,
 	})
+	app.Use("/hello", sub)
 
 	sub.Get("/:name", func(ctx *Ctx) error {
-		return ctx.Render("hello_world", Map{
+		return ctx.Render("hello_world.tmpl", Map{
 			"Name": ctx.Params("name"),
 		})
 	})
-
-	app := New()
-	app.Use("/hello", sub)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", nil))
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")

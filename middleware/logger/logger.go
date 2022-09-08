@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/internal/bytebufferpool"
-	"github.com/gofiber/fiber/v3/internal/colorable"
-	"github.com/gofiber/fiber/v3/internal/fasttemplate"
-	"github.com/gofiber/fiber/v3/internal/isatty"
+	"github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasttemplate"
 )
 
 // Logger variables

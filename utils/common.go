@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"unicode"
 
-	googleuuid "github.com/gofiber/fiber/v3/internal/uuid"
+	"github.com/google/uuid"
 )
 
 const (
@@ -78,7 +78,7 @@ func UUID() string {
 // UUIDv4 returns a Random (Version 4) UUID.
 // The strength of the UUIDs is based on the strength of the crypto/rand package.
 func UUIDv4() string {
-	token, err := googleuuid.NewRandom()
+	token, err := uuid.NewRandom()
 	if err != nil {
 		return UUID()
 	}
