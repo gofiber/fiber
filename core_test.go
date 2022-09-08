@@ -294,7 +294,7 @@ func registerDummyRoutes(app *App) {
 		return nil
 	}
 	for _, r := range routesFixture.GithubAPI {
-		app.Add(r.Method, r.Path, h)
+		app.register(r.Method, r.Path, h)
 	}
 }
 

@@ -8,6 +8,7 @@ type route struct {
 type IRoute interface {
 	Use(handlers ...Handler) IRoute
 
+	All(handlers ...Handler) IRoute
 	Get(handlers ...Handler) IRoute
 	Head(handlers ...Handler) IRoute
 	Post(handlers ...Handler) IRoute
@@ -17,9 +18,6 @@ type IRoute interface {
 	Options(handlers ...Handler) IRoute
 	Trace(handlers ...Handler) IRoute
 	Patch(handlers ...Handler) IRoute
-
-	Add(method string, handlers ...Handler) IRoute
-	All(handlers ...Handler) IRoute
 }
 
 // Get registers a route for GET methods that requests a representation
@@ -97,11 +95,5 @@ func (r *route) Trace(handlers ...Handler) IRoute {
 // modifications to a resource.
 func (r *route) Patch(handlers ...Handler) IRoute {
 	r.app.register(MethodPatch, r.path, handlers...)
-	return r
-}
-
-// Add allows you to specify a HTTP method to register a route
-func (r *route) Add(method string, handlers ...Handler) IRoute {
-	r.app.register(method, r.path, handlers...)
 	return r
 }

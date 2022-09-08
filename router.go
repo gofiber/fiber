@@ -20,6 +20,7 @@ import (
 type IRouter interface {
 	Use(args ...interface{}) IRouter
 
+	All(path string, handlers ...Handler) IRouter
 	Get(path string, handlers ...Handler) IRouter
 	Head(path string, handlers ...Handler) IRouter
 	Post(path string, handlers ...Handler) IRouter
@@ -29,9 +30,6 @@ type IRouter interface {
 	Options(path string, handlers ...Handler) IRouter
 	Trace(path string, handlers ...Handler) IRouter
 	Patch(path string, handlers ...Handler) IRouter
-
-	Add(method, path string, handlers ...Handler) IRouter
-	All(path string, handlers ...Handler) IRouter
 }
 
 type RouterConfig struct {

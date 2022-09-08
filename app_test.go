@@ -471,16 +471,6 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	utils.AssertEqual(t, "/AbC", app.getString(body))
 }
 
-func Test_App_Add_Method_Test(t *testing.T) {
-	app := New()
-	defer func() {
-		if err := recover(); err != nil {
-			utils.AssertEqual(t, "add: invalid http method JOHN\n", fmt.Sprintf("%v", err))
-		}
-	}()
-	app.Add("JOHN", "/doe", testEmptyHandler)
-}
-
 // go test -run Test_App_GETOnly
 func Test_App_GETOnly(t *testing.T) {
 	app := New(Config{
