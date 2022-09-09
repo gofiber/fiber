@@ -195,9 +195,11 @@ func (r *Router) Patch(path string, handlers ...Handler) IRouter {
 	return r
 }
 
-// Add allows you to specify a HTTP method to register a route
-func (r *Router) Add(method, path string, handlers ...Handler) IRouter {
-	r.register(method, path, handlers...)
+// All will register the handler on all HTTP methods
+func (r *Router) All(path string, handlers ...Handler) IRouter {
+	for _, method := range intMethod {
+		r.register(method, path, handlers...)
+	}
 	return r
 }
 
@@ -209,14 +211,6 @@ func (r *Router) Route(path string) IRoute {
 		app:  r.app,
 		path: path,
 	}
-}
-
-// All will register the handler on all HTTP methods
-func (r *Router) All(path string, handlers ...Handler) IRouter {
-	for _, method := range intMethod {
-		r.register(method, path, handlers...)
-	}
-	return r
 }
 
 func (r *Router) register(method, pathRaw string, handlers ...Handler) {
