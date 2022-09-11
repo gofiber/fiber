@@ -572,8 +572,10 @@ func (app *App) Use(args ...interface{}) IRouter {
 	}
 
 	if static != nil {
-		for _, p := range multiPrefix {
-			app.registerStatic(p, static.Root, static.Config)
+		if len(multiPrefix) != 0 {
+			for _, p := range multiPrefix {
+				app.registerStatic(p, static.Root, static.Config)
+			}
 		}
 		app.registerStatic(prefix, static.Root, static.Config)
 	}
