@@ -464,7 +464,7 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	fasthttp.ReleaseCookie(fcookie)
 }
 
-// Cookies is used for getting a cookie value by key.
+// Cookies are used for getting a cookie value by key.
 // Defaults to the empty string "" if the cookie doesn't exist.
 // If a default value is given, it will return that value if the cookie doesn't exist.
 // The returned value is only valid within the handler. Do not store any references.
@@ -933,7 +933,7 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 	return defaultString("", defaultValue)
 }
 
-// Params is used to get all route parameters.
+// AllParams Params is used to get all route parameters.
 // Using Params method to get params.
 func (c *Ctx) AllParams() map[string]string {
 	params := make(map[string]string, len(c.route.Params))
@@ -1253,7 +1253,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!c.app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))
+			isGreedy := segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters)
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
