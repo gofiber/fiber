@@ -5,6 +5,11 @@ import (
 	"reflect"
 )
 
+// Graceful shutdown errors
+var (
+	ErrGracefulTimeout = errors.New("shutdown: graceful timeout has been reached, exiting")
+)
+
 // Range errors
 var (
 	ErrRangeMalformed     = errors.New("range: malformed range header string")

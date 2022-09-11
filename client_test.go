@@ -27,13 +27,17 @@ func Test_Client_Invalid_URL(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.Hostname())
+		return c.SendString(c.Host())
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	a := Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
@@ -65,13 +69,17 @@ func Test_Client_Get(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.Hostname())
+		return c.SendString(c.Host())
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	for i := 0; i < 5; i++ {
 		a := Get("http://example.com")
@@ -91,14 +99,17 @@ func Test_Client_Head(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
-	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.Hostname())
+	app.Head("/", func(c Ctx) error {
+		return c.SendStatus(StatusAccepted)
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
-
+	go func() {
+		require.Nil(t, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 	for i := 0; i < 5; i++ {
 		a := Head("http://example.com")
 
@@ -106,7 +117,7 @@ func Test_Client_Head(t *testing.T) {
 
 		code, body, errs := a.String()
 
-		require.Equal(t, StatusOK, code)
+		require.Equal(t, StatusAccepted, code)
 		require.Equal(t, "", body)
 		require.Equal(t, 0, len(errs))
 	}
@@ -117,14 +128,18 @@ func Test_Client_Post(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Post("/", func(c Ctx) error {
 		return c.Status(StatusCreated).
 			SendString(c.FormValue("foo"))
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -151,13 +166,17 @@ func Test_Client_Put(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Put("/", func(c Ctx) error {
 		return c.SendString(c.FormValue("foo"))
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -184,13 +203,17 @@ func Test_Client_Patch(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Patch("/", func(c Ctx) error {
 		return c.SendString(c.FormValue("foo"))
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -217,14 +240,18 @@ func Test_Client_Delete(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Delete("/", func(c Ctx) error {
 		return c.Status(StatusNoContent).
 			SendString("deleted")
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	for i := 0; i < 5; i++ {
 		args := AcquireArgs()
@@ -248,13 +275,17 @@ func Test_Client_UserAgent(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
 		return c.Send(c.Request().Header.UserAgent())
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	t.Run("default", func(t *testing.T) {
 		for i := 0; i < 5; i++ {
@@ -390,13 +421,17 @@ func Test_Client_Agent_Host(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
-		return c.SendString(c.Hostname())
+		return c.SendString(c.Host())
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	a := Get("http://1.1.1.1:8080").
 		Host("example.com").
@@ -486,13 +521,17 @@ func Test_Client_Agent_Custom_Response(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
 		return c.SendString("custom")
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	for i := 0; i < 5; i++ {
 		a := AcquireAgent()
@@ -523,13 +562,17 @@ func Test_Client_Agent_Dest(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
 		return c.SendString("dest")
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	t.Run("small dest", func(t *testing.T) {
 		dest := []byte("de")
@@ -591,9 +634,13 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	a := Post("http://example.com").
 		RetryIf(func(req *Request) bool {
@@ -698,7 +745,7 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Post("/", func(c Ctx) error {
 		require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
@@ -710,7 +757,11 @@ func Test_Client_Agent_MultipartForm(t *testing.T) {
 		return c.Send(c.Request().Body())
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	args := AcquireArgs()
 
@@ -753,7 +804,7 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Post("/", func(c Ctx) error {
 		require.Equal(t, "multipart/form-data; boundary=myBoundary", c.Get(HeaderContentType))
@@ -780,7 +831,11 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 		return c.SendString("multipart form files")
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	for i := 0; i < 5; i++ {
 		ff := AcquireFormFile()
@@ -884,14 +939,18 @@ func Test_Client_Agent_Timeout(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
 		time.Sleep(time.Millisecond * 200)
 		return c.SendString("timeout")
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	a := Get("http://example.com").
 		Timeout(time.Millisecond * 50)
@@ -910,13 +969,17 @@ func Test_Client_Agent_Reuse(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
 		return c.SendString("reuse")
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	a := Get("http://example.com").
 		Reuse()
@@ -951,13 +1014,17 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
 		return c.SendString("ignore tls")
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	code, body, errs := Get("https://" + ln.Addr().String()).
 		InsecureSkipVerify().
@@ -980,13 +1047,17 @@ func Test_Client_Agent_TLS(t *testing.T) {
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
 		return c.SendString("tls")
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	code, body, errs := Get("https://" + ln.Addr().String()).
 		TLSConfig(clientTLSConf).
@@ -1002,7 +1073,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
 		if c.Request().URI().QueryArgs().Has("foo") {
@@ -1014,7 +1085,11 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 		return c.SendString("redirect")
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	t.Run("success", func(t *testing.T) {
 		a := Get("http://example.com?foo").
@@ -1048,7 +1123,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", func(c Ctx) error {
 		return c.JSON(data{true})
@@ -1058,7 +1133,11 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		return c.SendString(`{"success"`)
 	})
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
@@ -1127,11 +1206,15 @@ func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), exce
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := New(Config{DisableStartupMessage: true})
+	app := New()
 
 	app.Get("/", handler)
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, nil, app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	c := 1
 	if len(count) > 0 {

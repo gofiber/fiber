@@ -144,7 +144,7 @@ Fiber **受到** 網路上最流行的 Web 框架 ExpressJS**啟發**，結合 E
 有什麼問題請發[issues](https://github.com/gofiber/fiber/issues)或加入 Discord [channel](https://gofiber.io/discord)討論，我們想要創造**快速**、**彈性**、**友善**的社群給**任何人**使用！就像 Express 那樣。
 
 ## 限制
-* 由於 Fiber 使用了 unsafe，該庫可能並不總是與最新的 Go 版本兼容。 Fiber 2.29.0 已經用 Go 版本 1.14 到 1.18 進行了測試。
+* 由於 Fiber 使用了 unsafe，該庫可能並不總是與最新的 Go 版本兼容。 Fiber 2.29.0 已經用 Go 版本 1.14 到 1.19 進行了測試。
 * Fiber 與 net/http 接口不兼容。 這意味著您將無法使用 gqlgen、go-swagger 或任何其他屬於 net/http 生態系統的項目。
 
 ## 👀 範例
@@ -573,6 +573,7 @@ func main() {
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)             | 使用各種選項啟用跨域資源共享 \(CORS\)。                                                                                  |
 | [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)             | 防止 CSRF 漏洞利用。                                                                                                                          |
 | [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware which encrypts cookie values.                                                                                                                             |
+| [envvar](https://github.com/gofiber/fiber/tree/master/middleware/envvar)               | Expose environment variables with providing an optional config.                                                                                                              |
 | [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | ETag middleware that lets caches be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.               |
 | [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware that serves via its HTTP server runtime exposed variants in the JSON format.                                                                               |
 | [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)       | 如果提供了文件路徑，則忽略日誌中的網站圖標或從內存中提供服務。                                                                                                    |

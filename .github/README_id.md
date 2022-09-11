@@ -145,7 +145,7 @@ Kami **mendengarkan** para pengguna di [GitHub Issues](https://github.com/gofibe
 
 ## ⚠️ Limitasi
 
-* Karena penggunaan Fiber yang tidak aman, perpustakaan mungkin tidak selalu kompatibel dengan versi Go terbaru. Fiber 2.29.0 telah diuji dengan Go versi 1.14 hingga 1.18.
+* Karena penggunaan Fiber yang tidak aman, perpustakaan mungkin tidak selalu kompatibel dengan versi Go terbaru. Fiber 2.29.0 telah diuji dengan Go versi 1.14 hingga 1.19.
 * Fiber tidak kompatibel dengan antarmuka net/http. Ini berarti kamu tidak akan dapat menggunakan proyek seperti gqlgen, go-swagger, atau lainnya yang merupakan bagian dari ekosistem net/http.
 
 ## 👀 Contoh
@@ -574,6 +574,7 @@ Kumpulan `middleware` yang ada didalam kerangka kerja Fiber.
 | [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | Enable cross-origin resource sharing \(CORS\) with various options.                                                                                                          |
 | [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | Protect from CSRF exploits.                                                                                                                                                  |
 | [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware which encrypts cookie values.                                                                                                                             |
+| [envvar](https://github.com/gofiber/fiber/tree/master/middleware/envvar)               | Expose environment variables with providing an optional config.                                                                                                              |
 | [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | ETag middleware that lets caches be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.               |
 | [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware that serves via its HTTP server runtime exposed variants in the JSON format.                                                                               |
 | [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | Ignore favicon from logs or serve from memory if a file path is provided.                                                                                                    |

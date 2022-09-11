@@ -11,7 +11,7 @@ import (
 )
 
 func Test_Non_Pprof_Path(t *testing.T) {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	app.Use(New())
 
@@ -29,7 +29,7 @@ func Test_Non_Pprof_Path(t *testing.T) {
 }
 
 func Test_Pprof_Index(t *testing.T) {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	app.Use(New())
 
@@ -48,7 +48,7 @@ func Test_Pprof_Index(t *testing.T) {
 }
 
 func Test_Pprof_Subs(t *testing.T) {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	app.Use(New())
 
@@ -75,7 +75,7 @@ func Test_Pprof_Subs(t *testing.T) {
 }
 
 func Test_Pprof_Other(t *testing.T) {
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	app.Use(New())
 

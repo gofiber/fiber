@@ -116,7 +116,7 @@ type App struct {
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
-	tlsHandler *tlsHandler
+	tlsHandler *TLSHandler
 	// bind decoder cache
 	bindDecoderCache sync.Map
 	// form decoder cache
@@ -127,11 +127,6 @@ type App struct {
 
 // Config is a struct holding the server settings.
 type Config struct {
-	// When set to true, this will spawn multiple Go processes listening on the same port.
-	//
-	// Default: false
-	Prefork bool `json:"prefork"`
-
 	// Enables the "Server: value" HTTP header.
 	//
 	// Default: ""
@@ -273,11 +268,6 @@ type Config struct {
 	// Default: false
 	DisableHeaderNormalizing bool `json:"disable_header_normalizing"`
 
-	// When set to true, it will not print out the «Fiber» ASCII art and listening address.
-	//
-	// Default: false
-	DisableStartupMessage bool `json:"disable_startup_message"`
-
 	// This function allows to setup app name for the app
 	//
 	// Default: nil
@@ -363,12 +353,12 @@ type Config struct {
 	// If request ip in TrustedProxies whitelist then:
 	//   1. c.Scheme() get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header
 	//   2. c.IP() get value from ProxyHeader header.
-	//   3. c.Hostname() get value from X-Forwarded-Host header
+	//   3. c.Host() and c.Hostname() get value from X-Forwarded-Host header
 	// But if request ip NOT in Trusted Proxies whitelist then:
 	//   1. c.Scheme() WON't get value from X-Forwarded-Proto, X-Forwarded-Protocol, X-Forwarded-Ssl or X-Url-Scheme header,
 	//    will return https in case when tls connection is handled by the app, of http otherwise
 	//   2. c.IP() WON'T get value from ProxyHeader header, will return RemoteIP() from fasthttp context
-	//   3. c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
+	//   3. c.Host() and c.Hostname() WON'T get value from X-Forwarded-Host header, fasthttp.Request.URI().Host()
 	//    will be used to get the hostname.
 	//
 	// Default: false
@@ -381,9 +371,12 @@ type Config struct {
 	trustedProxiesMap  map[string]struct{}
 	trustedProxyRanges []*net.IPNet
 
-	// If set to true, will print all routes with their method, path and handler.
+	// If set to true, c.IP() and c.IPs() will validate IP addresses before returning them.
+	// Also, c.IP() will return only the first valid IP rather than just the raw header
+	// WARNING: this has a performance cost associated with it.
+	//
 	// Default: false
-	EnablePrintRoutes bool `json:"enable_print_routes"`
+	EnableIPValidation bool `json:"enable_ip_validation"`
 
 	// You can define custom color scheme. They'll be used for startup message, route list and some middlewares.
 	//
@@ -581,6 +574,14 @@ func (app *App) NewCtxFunc(function func(app *App) CustomCtx) {
 	app.newCtxFunc = function
 }
 
+// You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.
+func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
+	// Attach the tlsHandler to the config
+	app.mutex.Lock()
+	app.tlsHandler = tlsHandler
+	app.mutex.Unlock()
+}
+
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount. The fiber's error handler and
@@ -676,7 +677,7 @@ func (app *App) Use(args ...any) Router {
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (app *App) Get(path string, handlers ...Handler) Router {
-	return app.Head(path, handlers...).Add(MethodGet, path, handlers...)
+	return app.Add(MethodGet, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -822,7 +823,8 @@ func (app *App) HandlersCount() uint32 {
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
 	if app.hooks != nil {
-		defer app.hooks.executeOnShutdownHooks()
+		// TODO: check should be defered?
+		app.hooks.executeOnShutdownHooks()
 	}
 
 	app.mutex.Lock()

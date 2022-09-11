@@ -3,6 +3,8 @@ package bind
 import (
 	"encoding"
 	"reflect"
+
+	"github.com/gofiber/fiber/v3/utils"
 )
 
 type textUnmarshalEncoder struct {
@@ -17,7 +19,7 @@ func (d *textUnmarshalEncoder) UnmarshalString(s string, fieldValue reflect.Valu
 	v := reflect.New(d.fieldType)
 	unmarshaler := v.Interface().(encoding.TextUnmarshaler)
 
-	if err := unmarshaler.UnmarshalText([]byte(s)); err != nil {
+	if err := unmarshaler.UnmarshalText(utils.UnsafeBytes(s)); err != nil {
 		return err
 	}
 
