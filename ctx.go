@@ -821,8 +821,12 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 	values = values[-(len(c.route.Params) - len(values)):]
 
 	for i := range values {
-		if key == c.route.Params[i] {
-			return values[i]
+		if c.route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(c.route.Params[i], key)) {
+			// in case values are not here
+			if len(c.values) <= i || len(c.values[i]) == 0 {
+				break
+			}
+			return c.values[i]
 		}
 	}
 
