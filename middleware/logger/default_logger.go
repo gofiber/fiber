@@ -114,15 +114,23 @@ func defaultLogger(c fiber.Ctx, data *LoggerData, cfg Config) error {
 		case TagReqHeaders:
 			l := c.Request().Header.Len()
 			i := 0
+			ew := errWriter{w: buf}
 			c.Request().Header.VisitAll(func(k, v []byte) {
-				buf.Write(k)
-				buf.WriteString("=")
-				buf.Write(v)
+				if ew.err != nil {
+					return
+				}
+
+				ew.Write(k)
+				ew.WriteString("=")
+				ew.Write(v)
+
 				i++
 				if i != l {
-					buf.WriteString("&")
+					ew.WriteString("&")
 				}
 			})
+
+			return ew.n, ew.err
 		case TagQueryStringParams:
 			return buf.WriteString(c.Request().URI().QueryArgs().String())
 		case TagMethod:
@@ -219,4 +227,35 @@ func appendInt(buf *bytebufferpool.ByteBuffer, v int) (int, error) {
 	old := len(buf.B)
 	buf.B = fasthttp.AppendUint(buf.B, v)
 	return len(buf.B) - old, nil
+}
+
+type errWriter struct {
+	n   int
+	err error
+	w   *bytebufferpool.ByteBuffer
+}
+
+func (r errWriter) Write(p []byte) {
+	if r.err != nil {
+		return
+	}
+
+	r.write(r.w.Write(p))
+}
+
+func (r errWriter) WriteString(p string) {
+	if r.err != nil {
+		return
+	}
+
+	r.write(r.w.WriteString(p))
+}
+
+func (r errWriter) write(n int, err error) {
+	if err != nil {
+		r.err = err
+		return
+	}
+
+	r.n += n
 }
