@@ -173,7 +173,7 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 	utils.AssertEqual(t, cachedBody, body)
 }
 
-func Test_Cache_Invalid_Method(t *testing.T) {
+func Test_Cache_Get(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -211,6 +211,48 @@ func Test_Cache_Invalid_Method(t *testing.T) {
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
+}
+
+func Test_Cache_Post(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Methods: []string{fiber.MethodPost},
+	}))
+
+	app.Post("/", func(c *fiber.Ctx) error {
+		return c.SendString(c.Query("cache"))
+	})
+
+	app.Get("/get", func(c *fiber.Ctx) error {
+		return c.SendString(c.Query("cache"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/?cache=123", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "123", string(body))
+
+	resp, err = app.Test(httptest.NewRequest("POST", "/?cache=12345", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "123", string(body))
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=123", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "123", string(body))
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=12345", nil))
+	utils.AssertEqual(t, nil, err)
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "12345", string(body))
 }
 
 func Test_Cache_NothingToCache(t *testing.T) {
@@ -428,10 +470,12 @@ func Test_Cache_WithHead(t *testing.T) {
 
 	req := httptest.NewRequest("HEAD", "/", nil)
 	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheMiss, resp.Header.Get("X-Cache"))
 
 	cachedReq := httptest.NewRequest("HEAD", "/", nil)
 	cachedResp, err := app.Test(cachedReq)
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheHit, cachedResp.Header.Get("X-Cache"))
 
 	body, err := ioutil.ReadAll(resp.Body)
