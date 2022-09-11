@@ -108,6 +108,7 @@ func (r *Router) Stack() [][]*Route {
 // of the specified resource. Requests using GET should only retrieve data.
 func (r *Router) Use(args ...interface{}) IRouter {
 	var prefix string
+	var multiPrefix []string
 	var handlers []Handler
 	var static *Static
 
@@ -115,6 +116,8 @@ func (r *Router) Use(args ...interface{}) IRouter {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
+		case []string:
+			multiPrefix = arg
 		case *Static:
 			static = arg
 		case Handler:
@@ -125,10 +128,20 @@ func (r *Router) Use(args ...interface{}) IRouter {
 	}
 
 	if static != nil {
+		if len(multiPrefix) != 0 {
+			for _, p := range multiPrefix {
+				r.registerStatic(p, static.Root, static.Config)
+			}
+		}
 		r.registerStatic(prefix, static.Root, static.Config)
 	}
 
 	if len(handlers) != 0 {
+		if len(multiPrefix) != 0 {
+			for _, p := range multiPrefix {
+				r.register(methodUse, p, handlers...)
+			}
+		}
 		r.register(methodUse, prefix, handlers...)
 	}
 
