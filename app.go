@@ -528,6 +528,7 @@ func (app *App) Router() IRouter {
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...interface{}) IRouter {
 	var prefix string
+	var multiPrefix []string
 	var subApp *App
 	var router *Router
 	var handlers []Handler
@@ -537,6 +538,8 @@ func (app *App) Use(args ...interface{}) IRouter {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
+		case []string:
+			multiPrefix = arg
 		case *App:
 			subApp = arg
 		case *Router:
@@ -551,20 +554,39 @@ func (app *App) Use(args ...interface{}) IRouter {
 	}
 
 	if subApp != nil {
+		if len(multiPrefix) != 0 {
+			for _, p := range multiPrefix {
+				app.mount(p, subApp)
+			}
+		}
 		app.mount(prefix, subApp)
 	}
 
 	if router != nil {
+		if len(multiPrefix) != 0 {
+			for _, p := range multiPrefix {
+				app.registerRouter(p, router)
+			}
+		}
 		app.registerRouter(prefix, router)
 	}
 
 	if static != nil {
+		for _, p := range multiPrefix {
+			app.registerStatic(p, static.Root, static.Config)
+		}
 		app.registerStatic(prefix, static.Root, static.Config)
 	}
 
 	if len(handlers) != 0 {
+		if len(multiPrefix) != 0 {
+			for _, p := range multiPrefix {
+				app.register(methodUse, p, handlers...)
+			}
+		}
 		app.register(methodUse, prefix, handlers...)
 	}
+
 	return app
 }
 
