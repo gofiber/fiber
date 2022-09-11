@@ -112,11 +112,17 @@ func defaultLogger(c fiber.Ctx, data *LoggerData, cfg Config) error {
 		case TagResBody:
 			return buf.Write(c.Response().Body())
 		case TagReqHeaders:
-			reqHeaders := make([]string, 0)
+			l := c.Request().Header.Len()
+			i := 0
 			c.Request().Header.VisitAll(func(k, v []byte) {
-				reqHeaders = append(reqHeaders, string(k)+"="+string(v))
+				buf.Write(k)
+				buf.WriteString("=")
+				buf.Write(v)
+				i++
+				if i != l {
+					buf.WriteString("&")
+				}
 			})
-			return buf.Write([]byte(strings.Join(reqHeaders, "&")))
 		case TagQueryStringParams:
 			return buf.WriteString(c.Request().URI().QueryArgs().String())
 		case TagMethod:
