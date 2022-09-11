@@ -191,7 +191,7 @@ func setETag(c *Ctx, weak bool) {
 }
 
 func getGroupPath(prefix, path string) string {
-	if len(path) == 0 || path == "/" {
+	if len(path) == 0 {
 		return prefix
 	}
 
