@@ -69,6 +69,8 @@ type Router struct {
 	handlersCount uint32
 	// Router config
 	config RouterConfig
+	// It is neccessary for merge params
+	params []string
 }
 
 // Creates a new router object.
@@ -78,6 +80,7 @@ func NewRouter(config ...RouterConfig) *Router {
 	r := &Router{
 		stack:  make([][]*Route, len(intMethod)),
 		config: DefaultRouterConfig,
+		params: make([]string, 0),
 	}
 
 	if len(config) > 0 {
@@ -252,6 +255,11 @@ func (r *Router) register(method, pathRaw string, handlers ...Handler) {
 	parsedRaw := parseRoute(pathRaw)
 	parsedPretty := parseRoute(pathPretty)
 
+	if len(r.params) > 0 {
+		parsedRaw.params = append(r.params, parsedRaw.params...)
+		parsedPretty.params = append(r.params, parsedPretty.params...)
+	}
+
 	// Create route metadata without pointer
 	route := Route{
 		// Router booleans
@@ -269,6 +277,7 @@ func (r *Router) register(method, pathRaw string, handlers ...Handler) {
 		Method:   method,
 		Handlers: handlers,
 	}
+
 	// Increment global handler count
 	atomic.AddUint32(&r.handlersCount, uint32(len(handlers)))
 

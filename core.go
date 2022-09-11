@@ -132,6 +132,13 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 }
 
 func (app *App) registerRouter(prefix string, router *Router) {
+	router.app = app
+
+	if router.config.MergeParams {
+		parsed := parseRoute(prefix)
+		router.params = append(router.params, parsed.params...)
+	}
+
 	app.routerList[prefix] = router
 }
 
@@ -383,7 +390,6 @@ func (app *App) buildTree() *App {
 			for r := range stack[m] {
 				route := app.copyRoute(stack[m][r])
 				sub.parent.addRoute(route.Method, app.addPrefixToRoute(sub.path, route))
-
 			}
 		}
 	}
@@ -393,9 +399,9 @@ func (app *App) buildTree() *App {
 		stack := rtr.stack
 		for m := range stack {
 			for r := range stack[m] {
+				atomic.AddUint32(&app.handlersCount, 1)
 				route := app.copyRoute(stack[m][r])
 				app.addRoute(route.Method, app.addPrefixToRoute(path, route))
-				atomic.AddUint32(&app.handlersCount, uint32(len(route.Handlers)))
 			}
 		}
 	}

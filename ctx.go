@@ -809,18 +809,23 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 	if key == "*" || key == "+" {
 		key += "1"
 	}
-	for i := range c.route.Params {
-		if len(key) != len(c.route.Params[i]) {
-			continue
-		}
-		if c.route.Params[i] == key {
-			// in case values are not here
-			if len(c.values) <= i || len(c.values[i]) == 0 {
-				break
-			}
-			return c.values[i]
+
+	var values []string
+
+	for _, v := range c.values {
+		if v != "" {
+			values = append(values, v)
 		}
 	}
+
+	values = values[-(len(c.route.Params) - len(values)):]
+
+	for i := range values {
+		if key == c.route.Params[i] {
+			return values[i]
+		}
+	}
+
 	return defaultString("", defaultValue)
 }
 
