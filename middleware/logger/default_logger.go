@@ -235,7 +235,7 @@ type errWriter struct {
 	w   *bytebufferpool.ByteBuffer
 }
 
-func (r errWriter) Write(p []byte) {
+func (r *errWriter) Write(p []byte) {
 	if r.err != nil {
 		return
 	}
@@ -243,7 +243,7 @@ func (r errWriter) Write(p []byte) {
 	r.write(r.w.Write(p))
 }
 
-func (r errWriter) WriteString(p string) {
+func (r *errWriter) WriteString(p string) {
 	if r.err != nil {
 		return
 	}
@@ -251,7 +251,7 @@ func (r errWriter) WriteString(p string) {
 	r.write(r.w.WriteString(p))
 }
 
-func (r errWriter) write(n int, err error) {
+func (r *errWriter) write(n int, err error) {
 	if err != nil {
 		r.err = err
 		return
