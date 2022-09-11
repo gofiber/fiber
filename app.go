@@ -578,32 +578,50 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	app.mutex.Unlock()
 }
 
+func (app *App) mount() {
+	copied := make(map[string]*App, len(app.appList))
+
+	for k, v := range app.appList {
+		copied[k] = v
+		delete(app.appList, k)
+	}
+
+	for prefix, fiber := range copied {
+		// avoid mount self
+		if prefix == "" {
+			continue
+		}
+
+		stack := fiber.Stack()
+		prefix = strings.TrimRight(prefix, "/")
+		if prefix == "" {
+			prefix = "/"
+		}
+
+		for m := range stack {
+			for r := range stack[m] {
+				route := app.copyRoute(stack[m][r])
+				app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
+			}
+		}
+
+		// Support for configs of mounted-apps and sub-mounted-apps
+		for mountedPrefixes, subApp := range fiber.appList {
+			app.appList[prefix+mountedPrefixes] = subApp
+			subApp.init()
+		}
+
+		atomic.AddUint32(&app.handlersCount, fiber.handlersCount)
+	}
+}
+
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
 // compose them as a single service using Mount. The fiber's error handler and
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
 func (app *App) Mount(prefix string, fiber *App) Router {
-	stack := fiber.Stack()
-	prefix = strings.TrimRight(prefix, "/")
-	if prefix == "" {
-		prefix = "/"
-	}
-
-	for m := range stack {
-		for r := range stack[m] {
-			route := app.copyRoute(stack[m][r])
-			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
-		}
-	}
-
-	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subApp := range fiber.appList {
-		app.appList[prefix+mountedPrefixes] = subApp
-		subApp.init()
-	}
-
-	atomic.AddUint32(&app.handlersCount, fiber.handlersCount)
+	app.appList[prefix] = fiber
 
 	return app
 }
@@ -1022,6 +1040,8 @@ func (app *App) startupProcess() *App {
 	if err := app.hooks.executeOnListenHooks(); err != nil {
 		panic(err)
 	}
+
+	app.mount()
 
 	app.mutex.Lock()
 	app.buildTree()
