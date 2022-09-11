@@ -1338,78 +1338,107 @@ func Test_Ctx_OriginalURL(t *testing.T) {
 // go test -race -run Test_Ctx_Params
 func Test_Ctx_Params(t *testing.T) {
 	t.Parallel()
-	app := New()
-	app.Get("/test/:user", func(c *Ctx) error {
-		utils.AssertEqual(t, "john", c.Params("user"))
-		return nil
-	})
-	app.Get("/test2/*", func(c *Ctx) error {
-		utils.AssertEqual(t, "im/a/cookie", c.Params("*"))
-		return nil
-	})
-	app.Get("/test3/*/blafasel/*", func(c *Ctx) error {
-		utils.AssertEqual(t, "1111", c.Params("*1"))
-		utils.AssertEqual(t, "2222", c.Params("*2"))
-		utils.AssertEqual(t, "1111", c.Params("*"))
-		return nil
-	})
-	app.Get("/test4/:optional?", func(c *Ctx) error {
-		utils.AssertEqual(t, "", c.Params("optional"))
-		return nil
-	})
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	{
+		app := New()
+		app.Get("/test/:user", func(c *Ctx) error {
+			utils.AssertEqual(t, "john", c.Params("user"))
+			return nil
+		})
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	}
+	{
+		app := New()
+		app.Get("/test2/*", func(c *Ctx) error {
+			utils.AssertEqual(t, "im/a/cookie", c.Params("*"))
+			return nil
+		})
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	}
+	{
+		app := New()
+		app.Get("/test3/*/blafasel/*", func(c *Ctx) error {
+			utils.AssertEqual(t, "1111", c.Params("*1"))
+			utils.AssertEqual(t, "2222", c.Params("*2"))
+			utils.AssertEqual(t, "1111", c.Params("*"))
+			return nil
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	}
+	{
+		app := New()
+		app.Get("/test4/:optional?", func(c *Ctx) error {
+			utils.AssertEqual(t, "", c.Params("optional"))
+			return nil
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	}
+
 }
 
 // go test -race -run Test_Ctx_AllParams
 func Test_Ctx_AllParams(t *testing.T) {
 	t.Parallel()
-	app := New()
-	app.Get("/test/:user", func(c *Ctx) error {
-		utils.AssertEqual(t, map[string]string{"user": "john"}, c.AllParams())
-		return nil
-	})
-	app.Get("/test2/*", func(c *Ctx) error {
-		utils.AssertEqual(t, map[string]string{"*1": "im/a/cookie"}, c.AllParams())
-		return nil
-	})
-	app.Get("/test3/*/blafasel/*", func(c *Ctx) error {
-		utils.AssertEqual(t, map[string]string{"*1": "1111", "*2": "2222"}, c.AllParams())
-		return nil
-	})
-	app.Get("/test4/:optional?", func(c *Ctx) error {
-		utils.AssertEqual(t, map[string]string{"optional": ""}, c.AllParams())
-		return nil
-	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	{
+		app := New()
+		app.Get("/test/:user", func(c *Ctx) error {
+			utils.AssertEqual(t, map[string]string{"user": "john"}, c.AllParams())
+			return nil
+		})
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	}
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	{
+		app := New()
+		app.Get("/test2/*", func(c *Ctx) error {
+			utils.AssertEqual(t, map[string]string{"*1": "im/a/cookie"}, c.AllParams())
+			return nil
+		})
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	}
+
+	{
+		app := New()
+		app.Get("/test3/*/blafasel/*", func(c *Ctx) error {
+			utils.AssertEqual(t, map[string]string{"*1": "1111", "*2": "2222"}, c.AllParams())
+			return nil
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	}
+
+	{
+		app := New()
+		app.Get("/test4/:optional?", func(c *Ctx) error {
+			utils.AssertEqual(t, map[string]string{"optional": ""}, c.AllParams())
+			return nil
+		})
+
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	}
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Params -benchmem -count=4

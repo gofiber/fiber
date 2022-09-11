@@ -817,14 +817,30 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 			values = append(values, v)
 		}
 	}
+	distance := (len(values) - len(c.route.Params))
+	if distance < 0 {
+		distance = -distance
+	}
 
-	for i := range values[-(len(c.route.Params) - len(values)):] {
+	if len(values) == 0 {
+		return defaultString("", defaultValue)
+	}
+
+	values = values[distance:]
+
+	for i, v := range values {
+		if len(v) == 0 {
+			break
+		}
+		if len(key) != len(c.route.Params[i]) {
+			continue
+		}
 		if c.route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(c.route.Params[i], key)) {
 			// in case values are not here
-			if len(c.values) <= i || len(c.values[i]) == 0 {
+			if len(values) <= i || len(values[i]) == 0 {
 				break
 			}
-			return c.values[i]
+			return values[i]
 		}
 	}
 
