@@ -372,35 +372,42 @@ func Test_App_OnMount(t *testing.T) {
 }
 
 func Test_App_Use_Params(t *testing.T) {
+	t.Parallel()
 	app := New()
 
-	app.Use("/prefix/:param", func(c *Ctx) error {
-		utils.AssertEqual(t, "john", c.Params("param"))
-		return nil
-	})
+	{
+		app.Use("/prefix/:param", func(c *Ctx) error {
+			utils.AssertEqual(t, "john", c.Params("param"))
+			return nil
+		})
 
-	app.Use("/foo/:bar?", func(c *Ctx) error {
-		utils.AssertEqual(t, "foobar", c.Params("bar", "foobar"))
-		return nil
-	})
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/prefix/john", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	}
 
-	app.Use("/:param/*", func(c *Ctx) error {
-		utils.AssertEqual(t, "john", c.Params("param"))
-		utils.AssertEqual(t, "doe", c.Params("*"))
-		return nil
-	})
+	{
+		app.Use("/foo/:bar?", func(c *Ctx) error {
+			utils.AssertEqual(t, "foobar", c.Params("bar", "foobar"))
+			return nil
+		})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/prefix/john", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	}
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	{
+		app.Use("/:param/*", func(c *Ctx) error {
+			utils.AssertEqual(t, "john", c.Params("param"))
+			utils.AssertEqual(t, "doe", c.Params("*"))
+			return nil
+		})
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+		resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	}
 
 	defer func() {
 		if err := recover(); err != nil {
