@@ -128,7 +128,7 @@ func (r *Router) Use(args ...interface{}) IRouter {
 	}
 
 	if static != nil {
-		if len(multiPrefix) != 0 {
+		if len(multiPrefix) > 0 {
 			for _, p := range multiPrefix {
 				r.registerStatic(p, static.Root, static.Config)
 			}
@@ -136,8 +136,8 @@ func (r *Router) Use(args ...interface{}) IRouter {
 		r.registerStatic(prefix, static.Root, static.Config)
 	}
 
-	if len(handlers) != 0 {
-		if len(multiPrefix) != 0 {
+	if len(handlers) > 0 {
+		if len(multiPrefix) > 0 {
 			for _, p := range multiPrefix {
 				r.register(methodUse, p, handlers...)
 			}

@@ -554,7 +554,7 @@ func (app *App) Use(args ...interface{}) IRouter {
 	}
 
 	if subApp != nil {
-		if len(multiPrefix) != 0 {
+		if len(multiPrefix) > 0 {
 			for _, p := range multiPrefix {
 				app.mount(p, subApp)
 			}
@@ -563,7 +563,7 @@ func (app *App) Use(args ...interface{}) IRouter {
 	}
 
 	if router != nil {
-		if len(multiPrefix) != 0 {
+		if len(multiPrefix) > 0 {
 			for _, p := range multiPrefix {
 				app.registerRouter(p, router)
 			}
@@ -572,7 +572,7 @@ func (app *App) Use(args ...interface{}) IRouter {
 	}
 
 	if static != nil {
-		if len(multiPrefix) != 0 {
+		if len(multiPrefix) > 0 {
 			for _, p := range multiPrefix {
 				app.registerStatic(p, static.Root, static.Config)
 			}
@@ -580,8 +580,8 @@ func (app *App) Use(args ...interface{}) IRouter {
 		app.registerStatic(prefix, static.Root, static.Config)
 	}
 
-	if len(handlers) != 0 {
-		if len(multiPrefix) != 0 {
+	if len(handlers) > 0 {
+		if len(multiPrefix) > 0 {
 			for _, p := range multiPrefix {
 				app.register(methodUse, p, handlers...)
 			}
