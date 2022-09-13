@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"io"
 	"net/http/httptest"
 	"testing"
 
@@ -116,4 +117,24 @@ func Test_Router_MergeParams(t *testing.T) {
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, StatusOK, resp.StatusCode)
 	}
+}
+
+func Test_Router_ErrorHandler(t *testing.T) {
+	app := New()
+	router := NewRouter()
+
+	app.Use("/router", router)
+
+	router.Use(func(c *Ctx, err error) error {
+		return c.Status(500).SendString("I'm router error handler")
+	})
+
+	router.Get("/", func(c *Ctx) error {
+		return NewError(StatusBadRequest, "")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/router/", nil))
+	body, _ := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, string(body), "I'm router error handler")
 }
