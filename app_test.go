@@ -170,10 +170,10 @@ func Test_App_Errors(t *testing.T) {
 }
 
 func Test_App_ErrorHandler_Custom(t *testing.T) {
-	app := New(Config{
-		ErrorHandler: func(c *Ctx, err error) error {
-			return c.Status(200).SendString("hi, i'm an custom error")
-		},
+	app := New()
+
+	app.Use(func(c *Ctx, err error) error {
+		return c.Status(200).SendString("hi, i'm an custom error")
 	})
 
 	app.Get("/", func(c *Ctx) error {
@@ -190,12 +190,13 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 }
 
 func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
-	app := New(Config{
-		ErrorHandler: func(c *Ctx, err error) error {
-			utils.AssertEqual(t, "1: USE error", err.Error())
-			return DefaultErrorHandler(c, err)
-		},
+	app := New()
+
+	app.Use(func(c *Ctx, err error) error {
+		utils.AssertEqual(t, "1: USE error", err.Error())
+		return DefaultErrorHandler(c, err)
 	})
+
 	app.Use("/", func(c *Ctx) error {
 		err := c.Next() // call next USE
 		utils.AssertEqual(t, "2: USE error", err.Error())
@@ -219,12 +220,13 @@ func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
 }
 
 func Test_App_ErrorHandler_RouteStack(t *testing.T) {
-	app := New(Config{
-		ErrorHandler: func(c *Ctx, err error) error {
-			utils.AssertEqual(t, "1: USE error", err.Error())
-			return DefaultErrorHandler(c, err)
-		},
+	app := New()
+
+	app.Use(func(c *Ctx, err error) error {
+		utils.AssertEqual(t, "1: USE error", err.Error())
+		return DefaultErrorHandler(c, err)
 	})
+
 	app.Use("/", func(c *Ctx) error {
 		err := c.Next()
 		utils.AssertEqual(t, "0: GET error", err.Error())
@@ -939,7 +941,7 @@ func Test_App_Server(t *testing.T) {
 
 func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 	app := New()
-	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
+	app.errorHandler = func(ctx *Ctx, err error) error {
 		return errors.New("fake error")
 	}
 	app.server.GetOnly = true
@@ -1027,11 +1029,11 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 func Test_App_UseMountedErrorHandler(t *testing.T) {
 	app := New()
 
-	fiber := New(Config{
-		ErrorHandler: func(ctx *Ctx, err error) error {
-			return ctx.Status(500).SendString("hi, i'm a custom error")
-		},
+	fiber := New()
+	fiber.Use(func(ctx *Ctx, err error) error {
+		return ctx.Status(500).SendString("hi, i'm a custom error")
 	})
+
 	fiber.Get("/", func(c *Ctx) error {
 		return errors.New("something happened")
 	})
@@ -1045,11 +1047,11 @@ func Test_App_UseMountedErrorHandler(t *testing.T) {
 func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
 	app := New()
 
-	fiber := New(Config{
-		ErrorHandler: func(ctx *Ctx, err error) error {
-			return ctx.Status(500).SendString("hi, i'm a custom error")
-		},
+	fiber := New()
+	fiber.Use(func(ctx *Ctx, err error) error {
+		return ctx.Status(500).SendString("hi, i'm a custom error")
 	})
+
 	fiber.Get("/api", func(c *Ctx) error {
 		return errors.New("something happened")
 	})

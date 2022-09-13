@@ -71,6 +71,8 @@ type Router struct {
 	config RouterConfig
 	// It is neccessary for merge params
 	params []string
+	// Router error handler
+	errorHandler ErrorHandler `json:"-"`
 }
 
 // Creates a new router object.
@@ -81,6 +83,10 @@ func NewRouter(config ...RouterConfig) *Router {
 		stack:  make([][]*Route, len(intMethod)),
 		config: DefaultRouterConfig,
 		params: make([]string, 0),
+	}
+
+	if r.errorHandler == nil {
+		r.errorHandler = DefaultErrorHandler
 	}
 
 	if len(config) > 0 {
@@ -111,6 +117,7 @@ func (r *Router) Use(args ...interface{}) IRouter {
 	var multiPrefix []string
 	var handlers []Handler
 	var static *Static
+	var errorHandler ErrorHandler
 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
@@ -120,6 +127,8 @@ func (r *Router) Use(args ...interface{}) IRouter {
 			multiPrefix = arg
 		case *Static:
 			static = arg
+		case ErrorHandler:
+			errorHandler = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
@@ -134,6 +143,10 @@ func (r *Router) Use(args ...interface{}) IRouter {
 			}
 		}
 		r.registerStatic(prefix, static.Root, static.Config)
+	}
+
+	if errorHandler != nil {
+		r.errorHandler = errorHandler
 	}
 
 	if len(handlers) > 0 {

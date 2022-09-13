@@ -119,6 +119,10 @@ type App struct {
 	Locals map[string]interface{}
 	// Default engine
 	engine TemplateEngine
+	// ErrorHandler is executed when an error is returned from fiber.Handler.
+	//
+	// Default: DefaultErrorHandler
+	errorHandler ErrorHandler `json:"-"`
 }
 
 // Config is a struct holding the server settings.
@@ -231,11 +235,6 @@ type Config struct {
 	//
 	// Default: false
 	GETOnly bool `json:"get_only"`
-
-	// ErrorHandler is executed when an error is returned from fiber.Handler.
-	//
-	// Default: DefaultErrorHandler
-	ErrorHandler ErrorHandler `json:"-"`
 
 	// When set to true, disables keep-alive connections.
 	// The server will close incoming connections after sending the first response to client.
@@ -421,6 +420,10 @@ func New(config ...Config) *App {
 		Locals:     make(map[string]interface{}),
 	}
 
+	if app.errorHandler == nil {
+		app.errorHandler = DefaultErrorHandler
+	}
+
 	// Override config if provided
 	if len(config) > 0 {
 		app.config = config[0]
@@ -444,10 +447,6 @@ func New(config ...Config) *App {
 	}
 	if app.config.Immutable {
 		app.getBytes, app.getString = getBytesImmutable, getStringImmutable
-	}
-
-	if app.config.ErrorHandler == nil {
-		app.config.ErrorHandler = DefaultErrorHandler
 	}
 
 	if app.config.JSONEncoder == nil {
@@ -533,6 +532,7 @@ func (app *App) Use(args ...interface{}) IRouter {
 	var router *Router
 	var handlers []Handler
 	var static *Static
+	var errorHandler ErrorHandler
 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
@@ -548,6 +548,8 @@ func (app *App) Use(args ...interface{}) IRouter {
 			static = arg
 		case Handler:
 			handlers = append(handlers, arg)
+		case ErrorHandler:
+			errorHandler = arg
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
@@ -587,6 +589,10 @@ func (app *App) Use(args ...interface{}) IRouter {
 			}
 		}
 		app.register(methodUse, prefix, handlers...)
+	}
+
+	if errorHandler != nil {
+		app.errorHandler = errorHandler
 	}
 
 	return app
@@ -811,15 +817,26 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 // the app, which if not set is the DefaultErrorHandler.
 func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 	var (
-		mountedErrHandler  ErrorHandler
 		mountedPrefixParts int
+		mountedErrHandler  ErrorHandler
+		routerErrHandler   ErrorHandler
 	)
 
 	for prefix, subApp := range app.subList {
 		if strings.HasPrefix(ctx.path, prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
-				mountedErrHandler = subApp.config.ErrorHandler
+				mountedErrHandler = subApp.errorHandler
+				mountedPrefixParts = parts
+			}
+		}
+	}
+
+	for prefix, router := range app.routerList {
+		if strings.HasPrefix(ctx.path, prefix) {
+			parts := len(strings.Split(prefix, "/"))
+			if mountedPrefixParts <= parts {
+				routerErrHandler = router.errorHandler
 				mountedPrefixParts = parts
 			}
 		}
@@ -829,5 +846,9 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 		return mountedErrHandler(ctx, err)
 	}
 
-	return app.config.ErrorHandler(ctx, err)
+	if routerErrHandler != nil {
+		return routerErrHandler(ctx, err)
+	}
+
+	return app.errorHandler(ctx, err)
 }

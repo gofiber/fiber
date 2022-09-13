@@ -270,7 +270,7 @@ func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 
 func Test_Router_Handler_Catch_Error(t *testing.T) {
 	app := New()
-	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
+	app.errorHandler = func(ctx *Ctx, err error) error {
 		return errors.New("fake error")
 	}
 
