@@ -133,7 +133,7 @@ func Test_Router_ErrorHandler(t *testing.T) {
 		return NewError(StatusBadRequest, "")
 	})
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/router/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/router", nil))
 	body, _ := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, string(body), "I'm router error handler")
