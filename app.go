@@ -819,6 +819,7 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 	var (
 		mountedPrefixParts int
 		mountedErrHandler  ErrorHandler
+		routerPrefixParts  int
 		routerErrHandler   ErrorHandler
 	)
 
@@ -835,9 +836,9 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 	for prefix, router := range app.routerList {
 		if strings.HasPrefix(ctx.path, prefix) {
 			parts := len(strings.Split(prefix, "/"))
-			if mountedPrefixParts <= parts {
+			if routerPrefixParts <= parts {
 				routerErrHandler = router.errorHandler
-				mountedPrefixParts = parts
+				routerPrefixParts = parts
 			}
 		}
 	}
