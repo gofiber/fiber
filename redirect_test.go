@@ -307,7 +307,7 @@ func Test_Redirect_Request(t *testing.T) {
 
 	for _, tc := range testCases {
 		a := Get("http://example.com" + tc.URL)
-		a.Cookie("fiber_flash", tc.CookieValue)
+		a.Cookie(FlashCookieName, tc.CookieValue)
 		a.MaxRedirectsCount(1)
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 		code, body, errs := a.String()

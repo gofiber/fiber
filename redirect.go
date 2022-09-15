@@ -156,7 +156,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		}
 
 		r.c.Cookie(&Cookie{
-			Name:        "fiber_flash",
+			Name:        FlashCookieName,
 			Value:       r.c.app.getString(messageText.Bytes()),
 			SessionOnly: true,
 		})
@@ -203,8 +203,8 @@ func (r *Redirect) Back(fallback ...string) error {
 // setFlash is a method to get flash messages before removing them
 func (r *Redirect) setFlash() {
 	// parse flash messages
-	if r.c.Cookies("fiber_flash") != "" {
-		messages := strings.Split(r.c.Cookies("fiber_flash"), ",k:")
+	if r.c.Cookies(FlashCookieName) != "" {
+		messages := strings.Split(r.c.Cookies(FlashCookieName), ",k:")
 		r.c.flashMessages = make(map[string]string)
 		r.c.oldInput = make(map[string]string)
 
@@ -220,5 +220,5 @@ func (r *Redirect) setFlash() {
 		}
 	}
 
-	r.c.ClearCookie("fiber_flash")
+	r.c.ClearCookie(FlashCookieName)
 }
