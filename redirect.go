@@ -29,9 +29,8 @@ type RedirectConfig struct {
 }
 
 // Return default Redirect reference.
-func newRedirect(c *DefaultCtx) *Redirect {
+func newRedirect() *Redirect {
 	return &Redirect{
-		c:        c,
 		status:   StatusFound,
 		messages: make(map[string]string, 0),
 		oldInput: make(map[string]string, 0),
