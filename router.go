@@ -80,13 +80,10 @@ type Router struct {
 // You can add middleware and HTTP method routes (such as get, put, post, and so on) to router just like an application.
 func NewRouter(config ...RouterConfig) *Router {
 	r := &Router{
-		stack:  make([][]*Route, len(intMethod)),
-		config: DefaultRouterConfig,
-		params: make([]string, 0),
-	}
-
-	if r.errorHandler == nil {
-		r.errorHandler = DefaultErrorHandler
+		stack:        make([][]*Route, len(intMethod)),
+		config:       DefaultRouterConfig,
+		errorHandler: DefaultErrorHandler,
+		params:       make([]string, 0),
 	}
 
 	if len(config) > 0 {

@@ -409,19 +409,16 @@ func New(config ...Config) *App {
 			},
 		},
 		// Create config
-		config:     Config{},
-		getBytes:   utils.UnsafeBytes,
-		getString:  utils.UnsafeString,
-		subList:    make(map[string]*App),
-		routerList: make(map[string]*Router),
-		parent:     nil,
-		path:       "/",
-		mountpath:  "",
-		Locals:     make(map[string]interface{}),
-	}
-
-	if app.errorHandler == nil {
-		app.errorHandler = DefaultErrorHandler
+		config:       Config{},
+		getBytes:     utils.UnsafeBytes,
+		getString:    utils.UnsafeString,
+		subList:      make(map[string]*App),
+		routerList:   make(map[string]*Router),
+		parent:       nil,
+		path:         "/",
+		mountpath:    "",
+		errorHandler: DefaultErrorHandler,
+		Locals:       make(map[string]interface{}),
 	}
 
 	// Override config if provided

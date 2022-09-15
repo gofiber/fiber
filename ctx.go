@@ -1512,14 +1512,35 @@ func (c *Ctx) configDependentPaths() {
 	// another path is specified which is for routing recognition only
 	// use the path that was changed by the previous configuration flags
 	c.detectionPathBuffer = append(c.detectionPathBuffer[0:0], c.pathBuffer...)
-	// If CaseSensitive is disabled, we lowercase the original path
-	if !c.app.config.CaseSensitive {
-		c.detectionPathBuffer = utils.ToLowerBytes(c.detectionPathBuffer)
+
+	//TODO: Working but improve this
+	if len(c.app.routerList) > 0 {
+		for prefix, r := range c.app.routerList {
+			if strings.HasPrefix(c.path, prefix) {
+				if !r.config.CaseSensitive {
+					c.detectionPathBuffer = utils.ToLowerBytes(c.detectionPathBuffer)
+				}
+				if !r.config.Strict && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
+					c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
+				}
+			} else {
+				if !c.app.config.CaseSensitive {
+					c.detectionPathBuffer = utils.ToLowerBytes(c.detectionPathBuffer)
+				}
+				if !c.app.config.Strict && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
+					c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
+				}
+			}
+		}
+	} else {
+		if !c.app.config.CaseSensitive {
+			c.detectionPathBuffer = utils.ToLowerBytes(c.detectionPathBuffer)
+		}
+		if !c.app.config.Strict && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
+			c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
+		}
 	}
-	// If StrictRouting is disabled, we strip all trailing slashes
-	if !c.app.config.Strict && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
-		c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
-	}
+
 	c.detectionPath = c.app.getString(c.detectionPathBuffer)
 
 	// Define the path for dividing routes into areas for fast tree detection, so that fewer routes need to be traversed,

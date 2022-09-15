@@ -81,6 +81,73 @@ func Test_Router_Methods(t *testing.T) {
 	testStatus200(t, app, "/users/john/doe", MethodGet)
 }
 
+func Test_Router_CaseSensitive(t *testing.T) {
+	app := New(Config{
+		CaseSensitive: false,
+	})
+	router := NewRouter(RouterConfig{
+		CaseSensitive: true,
+	})
+
+	app.Use("/router", router)
+
+	app.Get("/abc", func(c *Ctx) error {
+		return c.SendString(c.Path())
+	})
+	router.Get("/abc", func(c *Ctx) error {
+		return c.SendString(c.Path())
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/AbC", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	// wrong letters in the requested route -> 404
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/router/AbC", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusNotFound, resp.StatusCode, "Status code")
+
+	// right letters in the requrested route -> 200
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/router/abc", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	// check the detected path when the case insensitive recognition is activated
+	router.config.CaseSensitive = false
+	// check the case sensitive feature
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/router/AbC", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	// check the detected path result
+	utils.AssertEqual(t, "/router/AbC", app.getString(body))
+}
+
+func Test_Router_Strict(t *testing.T) {
+	app := New(Config{
+		Strict: false,
+	})
+	router := NewRouter(RouterConfig{
+		Strict: true,
+	})
+
+	app.Use("/router", router)
+
+	app.Get("/fiber", testEmptyHandler)
+	router.Get("/fiber", testEmptyHandler)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/fiber/", nil))
+	utils.AssertEqual(t, err, nil)
+	utils.AssertEqual(t, resp.StatusCode, StatusOK)
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/router/fiber/", nil))
+	utils.AssertEqual(t, err, nil)
+	utils.AssertEqual(t, resp.StatusCode, StatusNotFound)
+
+}
+
 func Test_Router_MergeParams(t *testing.T) {
 	t.Parallel()
 	{
