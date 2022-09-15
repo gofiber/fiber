@@ -3302,11 +3302,6 @@ func Test_Ctx_SendStream(t *testing.T) {
 
 	c.SendStream(bufio.NewReader(bytes.NewReader([]byte("Hello bufio"))))
 	utils.AssertEqual(t, "Hello bufio", string(c.Response().Body()))
-
-	file, err := os.Open("./.github/index.html")
-	utils.AssertEqual(t, nil, err)
-	c.SendStream(bufio.NewReader(file))
-	utils.AssertEqual(t, true, c.Response().Header.ContentLength() > 200)
 }
 
 // go test -run Test_Ctx_Set
