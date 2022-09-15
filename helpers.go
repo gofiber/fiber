@@ -675,3 +675,6 @@ const (
 	ConstraintDatetime        = "datetime"
 	ConstraintRegex           = "regex"
 )
+
+// Cookie name to send flash messages when to use redirection.
+const FlashCookieName = "fiber_flash"

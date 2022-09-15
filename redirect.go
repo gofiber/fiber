@@ -184,12 +184,19 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 }
 
 // Redirect back to the URL to referer.
-// TODO: Should fallback be optional?
-func (r *Redirect) Back(fallback string) error {
+func (r *Redirect) Back(fallback ...string) error {
 	location := r.c.Get(HeaderReferer)
 	if location == "" {
-		location = fallback
+		// Check fallback URL
+		if len(fallback) == 0 {
+			err := ErrRedirectBackNoFallback
+			r.c.Status(err.Code)
+
+			return err
+		}
+		location = fallback[0]
 	}
+
 	return r.To(location)
 }
 

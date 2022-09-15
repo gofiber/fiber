@@ -134,6 +134,10 @@ func Test_Redirect_Back(t *testing.T) {
 	c.Redirect().Back("/")
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
+
+	err := c.Redirect().Back()
+	require.Equal(t, 500, c.Response().StatusCode())
+	require.ErrorAs(t, ErrRedirectBackNoFallback, &err)
 }
 
 // go test -run Test_Redirect_Back_WithReferer
