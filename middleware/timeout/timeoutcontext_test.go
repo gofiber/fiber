@@ -1,4 +1,4 @@
-package timeoutcontext
+package timeout
 
 import (
 	"context"
@@ -16,10 +16,10 @@ import (
 func Test_TimeoutContext(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
-	h := New(func(c *fiber.Ctx) error {
+	h := NewWithContext(func(c *fiber.Ctx) error {
 		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-		if err := sleepWithContext(c.UserContext(), sleepTime); err != nil {
-			return fmt.Errorf("%w: execution error", err)
+		if err := sleepWithContext(c.UserContext(), sleepTime, context.DeadlineExceeded); err != nil {
+			return fmt.Errorf("%w: l2 wrap", fmt.Errorf("%w: l1 wrap ", err))
 		}
 		return nil
 	}, 100*time.Millisecond)
@@ -46,9 +46,9 @@ var ErrFooTimeOut = errors.New("foo context canceled")
 func Test_TimeoutContextWithCustomError(t *testing.T) {
 	// fiber instance
 	app := fiber.New()
-	h := New(func(c *fiber.Ctx) error {
+	h := NewWithContext(func(c *fiber.Ctx) error {
 		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-		if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
+		if err := sleepWithContext(c.UserContext(), sleepTime, ErrFooTimeOut); err != nil {
 			return fmt.Errorf("%w: execution error", err)
 		}
 		return nil
@@ -70,27 +70,14 @@ func Test_TimeoutContextWithCustomError(t *testing.T) {
 	testSucces("30")
 }
 
-func sleepWithContext(ctx context.Context, d time.Duration) error {
+func sleepWithContext(ctx context.Context, d time.Duration, te error) error {
 	timer := time.NewTimer(d)
 	select {
 	case <-ctx.Done():
 		if !timer.Stop() {
 			<-timer.C
 		}
-		return context.DeadlineExceeded
-	case <-timer.C:
-	}
-	return nil
-}
-
-func sleepWithContextWithCustomError(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	select {
-	case <-ctx.Done():
-		if !timer.Stop() {
-			<-timer.C
-		}
-		return ErrFooTimeOut
+		return te
 	case <-timer.C:
 	}
 	return nil

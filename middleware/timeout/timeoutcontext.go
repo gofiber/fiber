@@ -1,4 +1,4 @@
-package timeoutcontext
+package timeout
 
 import (
 	"context"
@@ -9,18 +9,17 @@ import (
 )
 
 // New implementation of timeout middleware. Set custom errors(context.DeadlineExceeded vs) for get fiber.ErrRequestTimeout response.
-func New(handler fiber.Handler, timeout time.Duration, timeoutErrors ...error) fiber.Handler {
+func NewWithContext(h fiber.Handler, t time.Duration, tErrs ...error) fiber.Handler {
 	return func(ctx *fiber.Ctx) error {
-		timeoutContext, cancel := context.WithTimeout(ctx.UserContext(), timeout)
+		timeoutContext, cancel := context.WithTimeout(ctx.UserContext(), t)
 		defer cancel()
 		ctx.SetUserContext(timeoutContext)
-		if err := handler(ctx); err != nil {
-			unwrappedErr := errors.Unwrap(err)
-			if unwrappedErr == context.DeadlineExceeded {
+		if err := h(ctx); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
 				return fiber.ErrRequestTimeout
 			}
-			for i := range timeoutErrors {
-				if unwrappedErr == timeoutErrors[i] {
+			for i := range tErrs {
+				if errors.Is(err, tErrs[i]) {
 					return fiber.ErrRequestTimeout
 				}
 			}
