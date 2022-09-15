@@ -52,7 +52,7 @@ type DefaultCtx struct {
 	matched             bool                 // Non use route matched
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
 	bind                *Bind                // Default bind reference
-	redirect            *Redirect            // Default redirect reference
+	redirectPool        sync.Pool            // Pool for redirection
 	flashMessages       map[string]string    // flash messages sent by redirection cookie
 	oldInput            map[string]string    // old input data sent by redirection cookie
 }
@@ -904,11 +904,10 @@ func (c *DefaultCtx) Range(size int) (rangeData Range, err error) {
 // If status is not specified, status defaults to 302 Found.
 // You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
 func (c *DefaultCtx) Redirect() *Redirect {
-	if c.redirect == nil {
-		c.redirect = newRedirect(c)
-	}
+	redirect := c.redirectPool.Get().(*Redirect)
+	defer c.redirectPool.Put(redirect)
 
-	return c.redirect
+	return redirect
 }
 
 // Add vars to default view var map binding to template engine.

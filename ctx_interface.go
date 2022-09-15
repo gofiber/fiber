@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"io"
 	"mime/multipart"
+	"sync"
 
 	"github.com/savsgio/dictpool"
 	"github.com/valyala/fasthttp"
@@ -429,6 +430,13 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 	c.method = c.app.getString(fctx.Request.Header.Method())
 	c.methodINT = methodInt(c.method)
 
+	// create redirection pool
+	/*c.redirectPool = sync.Pool{
+		New: func() any {
+			return newRedirect(c)
+		},
+	}*/
+
 	// Prettify path
 	c.configDependentPaths()
 }
@@ -438,7 +446,6 @@ func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
 	c.bind = nil
-	c.redirect = nil
 	c.flashMessages = nil
 	c.oldInput = nil
 	if c.viewBindMap != nil {
@@ -457,6 +464,13 @@ func (c *DefaultCtx) setReq(fctx *fasthttp.RequestCtx) {
 	// Set method
 	c.method = c.app.getString(fctx.Request.Header.Method())
 	c.methodINT = methodInt(c.method)
+
+	// create redirection pool
+	c.redirectPool = sync.Pool{
+		New: func() any {
+			return newRedirect(c)
+		},
+	}
 
 	// Prettify path
 	c.configDependentPaths()
