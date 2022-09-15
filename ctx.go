@@ -810,6 +810,7 @@ func (c *Ctx) Params(key string, defaultValue ...string) string {
 		key += "1"
 	}
 
+	//TODO: Improve performance
 	var values []string
 
 	for _, v := range c.values {
