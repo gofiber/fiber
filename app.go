@@ -10,6 +10,7 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -828,6 +829,30 @@ func (app *App) Shutdown() error {
 		return fmt.Errorf("shutdown: server is not running")
 	}
 	return app.server.Shutdown()
+}
+
+// ShutdownWithContext gracefully shuts down the server without interrupting any active connections or timeout.
+func (app *App) ShutdownWithContext(ctx context.Context) error {
+	if app.hooks != nil {
+		defer app.hooks.executeOnShutdownHooks()
+	}
+
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+	if app.server == nil {
+		return fmt.Errorf("shutdown: server is not running")
+	}
+
+	errCh := make(chan error)
+	go func() {
+		errCh <- app.server.Shutdown()
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-errCh:
+		return err
+	}
 }
 
 // Server returns the underlying fasthttp server

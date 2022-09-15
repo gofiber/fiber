@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 var testEmptyHandler = func(c *Ctx) error {
@@ -693,6 +695,66 @@ func Test_App_Shutdown(t *testing.T) {
 				t.Fatal()
 			}
 		}
+	})
+}
+
+func Test_App_ShutdownContext(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		app := New(Config{
+			DisableStartupMessage: true,
+		})
+		utils.AssertEqual(t, true, app.ShutdownWithContext(context.Background()) == nil)
+	})
+
+	t.Run("no server", func(t *testing.T) {
+		app := &App{}
+		if err := app.ShutdownWithContext(context.Background()); err != nil {
+			if err.Error() != "shutdown: server is not running" {
+				t.Fatal()
+			}
+		}
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		ln := fasthttputil.NewInmemoryListener()
+
+		app := New(Config{
+			DisableStartupMessage: true,
+		})
+		app.Get("/", func(c *Ctx) error {
+			return c.SendStatus(StatusOK)
+		})
+		go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+		time.Sleep(time.Millisecond)
+
+		ch := make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(time.Millisecond * 100)
+			defer ticker.Stop()
+			for range ticker.C {
+				h := Get("http://example.com")
+				h.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+				_, _, err2 := h.String()
+				if err2 != nil {
+					t.Logf("[%v]listening closed: %v", time.Now(), err2)
+					ch <- struct{}{}
+					break
+				}
+			}
+		}()
+		time.Sleep(time.Second * 1)
+		start := time.Now()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+		t.Logf("[%v]begin shutdown\n", start)
+		if err := app.ShutdownWithContext(ctx); err != nil {
+			if err != context.DeadlineExceeded {
+				t.Fatal()
+			}
+		}
+		end := time.Now()
+		t.Logf("[%v]end shutdown\n", end)
+		<-ch
+		cancel()
 	})
 }
 
