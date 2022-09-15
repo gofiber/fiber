@@ -24,6 +24,14 @@ import (
 	"github.com/mattn/go-isatty"
 )
 
+// Figlet text to show Fiber ASCII art on startup message
+var figletFiberText = `
+    _______ __             
+   / ____(_) /_  ___  _____
+  / /_  / / __ \/ _ \/ ___/
+ / __/ / / /_/ /  __/ /    
+/_/   /_/_.___/\___/_/     %s`
+
 // ListenConfig is a struct to customize startup of Fiber.
 //
 // TODO: Add timeout for graceful shutdown.
@@ -279,52 +287,6 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 	// Alias colors
 	colors := app.config.ColorScheme
 
-	value := func(s string, width int) string {
-		pad := width - len(s)
-		str := ""
-		for i := 0; i < pad; i++ {
-			str += "."
-		}
-		if s == "Disabled" {
-			str += " " + s
-		} else {
-			str += fmt.Sprintf(" %s%s%s", colors.Cyan, s, colors.Black)
-		}
-		return str
-	}
-
-	center := func(s string, width int) string {
-		pad := strconv.Itoa((width - len(s)) / 2)
-		str := fmt.Sprintf("%"+pad+"s", " ")
-		str += s
-		str += fmt.Sprintf("%"+pad+"s", " ")
-		if len(str) < width {
-			str += " "
-		}
-		return str
-	}
-
-	centerValue := func(s string, width int) string {
-		pad := strconv.Itoa((width - len([]rune(s))) / 2)
-		str := fmt.Sprintf("%"+pad+"s", " ")
-		str += fmt.Sprintf("%s%s%s", colors.Cyan, s, colors.Black)
-		str += fmt.Sprintf("%"+pad+"s", " ")
-		if len([]rune(s))-10 < width && len([]rune(s))%2 == 0 {
-			// add an ending space if the length of str is even and str is not too long
-			str += " "
-		}
-		return str
-	}
-
-	pad := func(s string, width int) (str string) {
-		toAdd := width - len(s)
-		str += s
-		for i := 0; i < toAdd; i++ {
-			str += " "
-		}
-		return
-	}
-
 	host, port := parseAddr(addr)
 	if host == "" {
 		if cfg.ListenerNetwork == NetworkTCP6 {
@@ -349,41 +311,39 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 		procs = "1"
 	}
 
-	mainLogo := colors.Black + " ┌───────────────────────────────────────────────────┐\n"
-	if app.config.AppName != "" {
-		mainLogo += " │ " + centerValue(app.config.AppName, 49) + " │\n"
+	out := colorable.NewColorableStdout()
+	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
+		out = colorable.NewNonColorable(os.Stdout)
 	}
-	mainLogo += " │ " + centerValue("Fiber v"+Version, 49) + " │\n"
+
+	_, _ = fmt.Fprintf(out, "%s\n", fmt.Sprintf(figletFiberText, colors.Red+"v"+Version+colors.Reset))
+	_, _ = fmt.Fprintf(out, strings.Repeat("-", 50)+"\n")
 
 	if host == "0.0.0.0" {
-		mainLogo +=
-			" │ " + center(fmt.Sprintf("%s://127.0.0.1:%s", scheme, port), 49) + " │\n" +
-				" │ " + center(fmt.Sprintf("(bound on host 0.0.0.0 and port %s)", port), 49) + " │\n"
+		_, _ = fmt.Fprintf(out,
+			"%sINFO%s Server started on %s%s://127.0.0.1:%s%s (bound on host 0.0.0.0 and port %s)\n",
+			colors.Green, colors.Reset, colors.Blue, scheme, port, colors.Reset, port)
 	} else {
-		mainLogo +=
-			" │ " + center(fmt.Sprintf("%s://%s:%s", scheme, host, port), 49) + " │\n"
+		_, _ = fmt.Fprintf(out,
+			"%sINFO%s Server started on %s%s%s\n",
+			colors.Green, colors.Reset, colors.Blue, fmt.Sprintf("%s://%s:%s", scheme, host, port), colors.Reset)
 	}
 
-	mainLogo += fmt.Sprintf(
-		" │                                                   │\n"+
-			" │ Handlers %s  Processes %s │\n"+
-			" │ Prefork .%s  PID ....%s │\n"+
-			" └───────────────────────────────────────────────────┘"+
-			colors.Reset,
-		value(strconv.Itoa(int(app.handlersCount)), 14), value(procs, 12),
-		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
-	)
+	if app.config.AppName != "" {
+		_, _ = fmt.Fprintf(out, "%sINFO%s Application name: %s%s%s\n", colors.Green, colors.Reset, colors.Blue, app.config.AppName, colors.Reset)
+	}
+	_, _ = fmt.Fprintf(out,
+		"%sINFO%s Total handlers count: %s%s%s\n",
+		colors.Green, colors.Reset, colors.Blue, strconv.Itoa(int(app.handlersCount)), colors.Reset)
+	if isPrefork == "Enabled" {
+		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: %s%s%s\n", colors.Green, colors.Reset, colors.Blue, isPrefork, colors.Reset)
+	} else {
+		_, _ = fmt.Fprintf(out, "%sINFO%s Prefork: %s%s%s\n", colors.Green, colors.Reset, colors.Red, isPrefork, colors.Reset)
+	}
+	_, _ = fmt.Fprintf(out, "%sINFO%s PID: %s%v%s\n", colors.Green, colors.Reset, colors.Blue, os.Getpid(), colors.Reset)
+	_, _ = fmt.Fprintf(out, "%sINFO%s Total process count: %s%s%s\n", colors.Green, colors.Reset, colors.Blue, procs, colors.Reset)
 
-	var childPidsLogo string
 	if cfg.EnablePrefork {
-		var childPidsTemplate string
-		childPidsTemplate += "%s"
-		childPidsTemplate += " ┌───────────────────────────────────────────────────┐\n%s"
-		childPidsTemplate += " └───────────────────────────────────────────────────┘"
-		childPidsTemplate += "%s"
-
-		newLine := " │ %s%s%s │"
-
 		// Turn the `pids` variable (in the form ",a,b,c,d,e,f,etc") into a slice of PIDs
 		var pidSlice []string
 		for _, v := range strings.Split(pids, ",") {
@@ -392,77 +352,24 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 			}
 		}
 
-		var lines []string
-		thisLine := "Child PIDs ... "
-		var itemsOnThisLine []string
-
-		addLine := func() {
-			lines = append(lines,
-				fmt.Sprintf(
-					newLine,
-					colors.Black,
-					thisLine+colors.Cyan+pad(strings.Join(itemsOnThisLine, ", "), 49-len(thisLine)),
-					colors.Black,
-				),
-			)
-		}
-
-		for _, pid := range pidSlice {
-			if len(thisLine+strings.Join(append(itemsOnThisLine, pid), ", ")) > 49 {
-				addLine()
-				thisLine = ""
-				itemsOnThisLine = []string{pid}
-			} else {
-				itemsOnThisLine = append(itemsOnThisLine, pid)
+		_, _ = fmt.Fprintf(out, "%sINFO%s Child PIDs: %s", colors.Green, colors.Reset, colors.Blue)
+		totalPids := len(pidSlice)
+		rowTotalPidCount := 10
+		for i := 0; i < totalPids; i += rowTotalPidCount {
+			start := i
+			end := i + rowTotalPidCount
+			if end > totalPids {
+				end = totalPids
 			}
-		}
-
-		// Add left over items to their own line
-		if len(itemsOnThisLine) != 0 {
-			addLine()
-		}
-
-		// Form logo
-		childPidsLogo = fmt.Sprintf(childPidsTemplate,
-			colors.Black,
-			strings.Join(lines, "\n")+"\n",
-			colors.Reset,
-		)
-	}
-
-	// Combine both the child PID logo and the main Fiber logo
-
-	// Pad the shorter logo to the length of the longer one
-	splitMainLogo := strings.Split(mainLogo, "\n")
-	splitChildPidsLogo := strings.Split(childPidsLogo, "\n")
-
-	mainLen := len(splitMainLogo)
-	childLen := len(splitChildPidsLogo)
-
-	if mainLen > childLen {
-		diff := mainLen - childLen
-		for i := 0; i < diff; i++ {
-			splitChildPidsLogo = append(splitChildPidsLogo, "")
-		}
-	} else {
-		diff := childLen - mainLen
-		for i := 0; i < diff; i++ {
-			splitMainLogo = append(splitMainLogo, "")
+			for n, pid := range pidSlice[start:end] {
+				_, _ = fmt.Fprintf(out, "%s", pid)
+				if n+1 != len(pidSlice[start:end]) {
+					_, _ = fmt.Fprintf(out, ", ")
+				}
+			}
+			_, _ = fmt.Fprintf(out, "\n%s", colors.Reset)
 		}
 	}
-
-	// Combine the two logos, line by line
-	output := "\n"
-	for i := range splitMainLogo {
-		output += colors.Black + splitMainLogo[i] + " " + splitChildPidsLogo[i] + "\n"
-	}
-
-	out := colorable.NewColorableStdout()
-	if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-		out = colorable.NewNonColorable(os.Stdout)
-	}
-
-	_, _ = fmt.Fprintln(out, output)
 }
 
 // printRoutesMessage print all routes with method, path, name and handlers
