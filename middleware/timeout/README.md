@@ -34,7 +34,7 @@ h := func(c *fiber.Ctx) error {
 	return nil
 }
 
-app.Get("/foo", timeoutcontext.New(h, 5 * time.Second))
+app.Get("/foo", timeout.New(h, 5 * time.Second))
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
@@ -62,7 +62,7 @@ h := func(c *fiber.Ctx) error {
 	return nil
 }
 
-app.Get("/foo", timeoutcontext.New(h, 5 * time.Second), ErrFooTimeOut)
+app.Get("/foo", timeout.New(h, 5 * time.Second), ErrFooTimeOut)
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
