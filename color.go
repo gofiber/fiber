@@ -52,7 +52,7 @@ type Colors struct {
 	Reset string
 }
 
-// Default color codes
+// DefaultColors Default color codes
 var DefaultColors = Colors{
 	Black:   "\u001b[90m",
 	Red:     "\u001b[91m",
