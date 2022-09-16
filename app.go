@@ -570,7 +570,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	}
 }
 
-// You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.
+// SetTLSHandler You can use SetTLSHandler to use ClientHelloInfo when using TLS with Listener.
 func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	// Attach the tlsHandler to the config
 	app.mutex.Lock()
@@ -608,7 +608,7 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 	return app
 }
 
-// Assign name to specific route.
+// Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
 	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.Prefix) {
@@ -625,7 +625,7 @@ func (app *App) Name(name string) Router {
 	return app
 }
 
-// Get route by name
+// GetRoute Get route by name
 func (app *App) GetRoute(name string) Route {
 	for _, routes := range app.stack {
 		for _, route := range routes {
