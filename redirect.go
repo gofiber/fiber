@@ -58,10 +58,10 @@ func ReleaseRedirect(r *Redirect) {
 }
 
 func (r *Redirect) release() {
-	r.status = 0
+	r.status = 302
 	// TODO: maybe use args from fasthttp
-	r.messages = nil
-	r.oldInput = nil
+	r.messages = make(map[string]string, 0)
+	r.oldInput = make(map[string]string, 0)
 	r.c = nil
 }
 
@@ -106,22 +106,62 @@ func (r *Redirect) WithInput() *Redirect {
 
 // Get flash messages.
 func (r *Redirect) Messages() map[string]string {
-	return r.c.flashMessages
+	msgs := r.c.redirectionMessages
+	flashMessages := make(map[string]string, len(msgs))
+
+	for _, msg := range msgs {
+		k, v := parseMessage(msg)
+
+		if !strings.HasPrefix(k, "old_input_data_") {
+			flashMessages[k] = v
+		}
+	}
+	return flashMessages
 }
 
 // Get flash message by key.
 func (r *Redirect) Message(key string) string {
-	return r.c.flashMessages[key]
+	msgs := r.c.redirectionMessages
+
+	for _, msg := range msgs {
+		k, v := parseMessage(msg)
+
+		if !strings.HasPrefix(k, "old_input_data_") && k == key {
+			return v
+		}
+	}
+	return ""
 }
 
 // Get old input data.
 func (r *Redirect) OldInputs() map[string]string {
-	return r.c.oldInput
+	msgs := r.c.redirectionMessages
+	oldInputs := make(map[string]string, len(msgs))
+
+	for _, msg := range msgs {
+		k, v := parseMessage(msg)
+
+		if strings.HasPrefix(k, "old_input_data_") {
+			// remove "old_input_data_" part from key
+			oldInputs[k[15:]] = v
+		}
+	}
+	return oldInputs
 }
 
 // Get old input data by key.
 func (r *Redirect) OldInput(key string) string {
-	return r.c.oldInput[key]
+	msgs := r.c.redirectionMessages
+
+	for _, msg := range msgs {
+		k, v := parseMessage(msg)
+
+		if strings.HasPrefix(k, "old_input_data_") && k[15:] == key {
+			return v
+		}
+	}
+	return ""
+
 }
 
 // Redirect to the URL derived from the specified path, with specified status.
@@ -155,12 +195,8 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		// flash messages
 		i := 1
 		for k, v := range r.messages {
-			if i != 1 {
-				_, _ = messageText.WriteString("k:")
-			}
-
 			_, _ = messageText.WriteString(k + ":" + v)
-			if len(r.messages) != i {
+			if len(r.messages) != i || (len(r.messages) == i && len(r.oldInput) > 0) {
 				_, _ = messageText.WriteString(",")
 			}
 			i++
@@ -169,12 +205,6 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		// old input data
 		i = 1
 		for k, v := range r.oldInput {
-			if len(r.messages) > 1 && i == 1 {
-				_, _ = messageText.WriteString(",k:")
-			} else if i != 1 {
-				_, _ = messageText.WriteString("k:")
-			}
-
 			_, _ = messageText.WriteString("old_input_data_" + k + ":" + v)
 			if len(r.oldInput) != i {
 				_, _ = messageText.WriteString(",")
@@ -230,22 +260,45 @@ func (r *Redirect) Back(fallback ...string) error {
 // setFlash is a method to get flash messages before removing them
 func (r *Redirect) setFlash() {
 	// parse flash messages
-	if r.c.Cookies(FlashCookieName) != "" {
-		messages := strings.Split(r.c.Cookies(FlashCookieName), ",k:")
-		r.c.flashMessages = make(map[string]string)
-		r.c.oldInput = make(map[string]string)
+	cookieValue := r.c.Cookies(FlashCookieName)
 
-		for _, msg := range messages {
-			splitMsg := strings.Split(msg, ":")
-
-			// check old input data
-			if strings.HasPrefix(msg, "old_input_data_") {
-				r.c.oldInput[splitMsg[0][15:]] = splitMsg[1]
-			} else {
-				r.c.flashMessages[splitMsg[0]] = splitMsg[1]
+	r.c.redirectionMessages = make([]string, nonEscapedCount(cookieValue, []byte(","))+1)
+	var commaPos, i, validCount int
+	for {
+		commaPos = findNextNonEscapedCharsetPosition(cookieValue, []byte(","))
+		if commaPos != -1 {
+			r.c.redirectionMessages[i] = RemoveEscapeChar(strings.Trim(cookieValue[:commaPos], " "))
+			if r.c.redirectionMessages[i] != "" {
+				validCount++
 			}
+			cookieValue, i = cookieValue[commaPos+1:], i+1
+		} else {
+			r.c.redirectionMessages[i] = RemoveEscapeChar(strings.Trim(cookieValue, " "))
+			if r.c.redirectionMessages[i] != "" {
+				validCount++
+			}
+			break
 		}
 	}
 
 	r.c.ClearCookie(FlashCookieName)
+}
+
+func nonEscapedCount(s string, substr []byte) int {
+	n := 0
+	for {
+		i := findNextNonEscapedCharsetPosition(s, substr)
+		if i == -1 {
+			return n
+		}
+		n++
+		s = s[i+len(substr):]
+	}
+}
+
+func parseMessage(raw string) (key, value string) {
+	if i := strings.LastIndex(raw, ":"); i != -1 {
+		return raw[:i], raw[i+1:]
+	}
+	return raw, ""
 }

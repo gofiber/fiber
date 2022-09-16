@@ -175,7 +175,7 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,k:message:test; path=/; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,k:success:1; path=/; SameSite=Lax"
+	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; SameSite=Lax"
 	require.True(t, equal)
 
 	c.Redirect().setFlash()
@@ -203,8 +203,8 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	require.Contains(t, c.GetRespHeader(HeaderSetCookie), "success:1")
 	require.Contains(t, c.GetRespHeader(HeaderSetCookie), "message:test")
 
-	require.Contains(t, c.GetRespHeader(HeaderSetCookie), ",k:old_input_data_id:1")
-	require.Contains(t, c.GetRespHeader(HeaderSetCookie), ",k:old_input_data_name:tom")
+	require.Contains(t, c.GetRespHeader(HeaderSetCookie), ",old_input_data_id:1")
+	require.Contains(t, c.GetRespHeader(HeaderSetCookie), ",old_input_data_name:tom")
 
 	c.Redirect().setFlash()
 	require.Equal(t, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
@@ -221,7 +221,7 @@ func Test_Redirect_setFlash(t *testing.T) {
 
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,k:message:test,k:old_input_data_name:tom,k:old_input_data_id:1")
+	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
 
 	c.Redirect().setFlash()
 
@@ -284,21 +284,21 @@ func Test_Redirect_Request(t *testing.T) {
 		ExceptedErrsLen    int
 	}{
 		{URL: "/",
-			CookieValue:        "key:value,k:key2:value2",
+			CookieValue:        "key:value,key2:value2",
 			ExpectedBody:       `{"inputs":{},"messages":{"key":"value","key2":"value2"}}`,
 			ExpectedStatusCode: StatusOK,
 			ExceptedErrsLen:    0,
 		},
 		{
 			URL:                "/with-inputs?name=john&surname=doe",
-			CookieValue:        "key:value,k:key2:value2key:value,k:key2:value2,k:old_input_data_name:john,k:old_input_data_surname:doe",
+			CookieValue:        "key:value,key2:value2,key:value,key2:value2,old_input_data_name:john,old_input_data_surname:doe",
 			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{"key":"value","key2":"value2"}}`,
 			ExpectedStatusCode: StatusOK,
 			ExceptedErrsLen:    0,
 		},
 		{
 			URL:                "/just-inputs?name=john&surname=doe",
-			CookieValue:        "old_input_data_name:john,k:old_input_data_surname:doe",
+			CookieValue:        "old_input_data_name:john,old_input_data_surname:doe",
 			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{}}`,
 			ExpectedStatusCode: StatusOK,
 			ExceptedErrsLen:    0,
@@ -390,14 +390,14 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	require.Equal(b, 302, c.Response().StatusCode())
 	require.Equal(b, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
-	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,k:message:test; path=/; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,k:success:1; path=/; SameSite=Lax"
+	equal := c.GetRespHeader(HeaderSetCookie) == "fiber_flash=success:1,message:test; path=/; SameSite=Lax" || c.GetRespHeader(HeaderSetCookie) == "fiber_flash=message:test,success:1; path=/; SameSite=Lax"
 	require.True(b, equal)
 
 	c.Redirect().setFlash()
 	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
 }
 
-// go test -v -run=^$ -bench=Benchmark_Redirect_Route_WithFlashMessages -benchmem -count=4
+// go test -v -run=^$ -bench=Benchmark_Redirect_setFlash -benchmem -count=4
 func Benchmark_Redirect_setFlash(b *testing.B) {
 	app := New()
 	app.Get("/user", func(c Ctx) error {
@@ -406,7 +406,7 @@ func Benchmark_Redirect_setFlash(b *testing.B) {
 
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,k:message:test,k:old_input_data_name:tom,k:old_input_data_id:1")
+	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -424,4 +424,104 @@ func Benchmark_Redirect_setFlash(b *testing.B) {
 	require.Equal(b, "1", c.Redirect().OldInput("id"))
 	require.Equal(b, "tom", c.Redirect().OldInput("name"))
 	require.Equal(b, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
+}
+
+// go test -v -run=^$ -bench=Benchmark_Redirect_Messages -benchmem -count=4
+func Benchmark_Redirect_Messages(b *testing.B) {
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
+	c.Redirect().setFlash()
+
+	var msgs map[string]string
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		msgs = c.Redirect().Messages()
+	}
+
+	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
+	require.Equal(b, map[string]string{"success": "1", "message": "test"}, msgs)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Redirect_OldInputs -benchmem -count=4
+func Benchmark_Redirect_OldInputs(b *testing.B) {
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
+	c.Redirect().setFlash()
+
+	var oldInputs map[string]string
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		oldInputs = c.Redirect().OldInputs()
+	}
+
+	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
+	require.Equal(b, map[string]string{"id": "1", "name": "tom"}, oldInputs)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Redirect_Message -benchmem -count=4
+func Benchmark_Redirect_Message(b *testing.B) {
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
+	c.Redirect().setFlash()
+
+	var msg string
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		msg = c.Redirect().Message("message")
+	}
+
+	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
+	require.Equal(b, "test", msg)
+}
+
+// go test -v -run=^$ -bench=Benchmark_Redirect_OldInput -benchmem -count=4
+func Benchmark_Redirect_OldInput(b *testing.B) {
+	app := New()
+	app.Get("/user", func(c Ctx) error {
+		return c.SendString("user")
+	}).Name("user")
+
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+
+	c.Request().Header.Set(HeaderCookie, "fiber_flash=success:1,message:test,old_input_data_name:tom,old_input_data_id:1")
+	c.Redirect().setFlash()
+
+	var input string
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		input = c.Redirect().OldInput("name")
+	}
+
+	require.Equal(b, "fiber_flash=; expires=Tue, 10 Nov 2009 23:00:00 GMT", c.GetRespHeader(HeaderSetCookie))
+	require.Equal(b, "tom", input)
 }

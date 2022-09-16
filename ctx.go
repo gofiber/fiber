@@ -55,8 +55,7 @@ type DefaultCtx struct {
 	redirect            *Redirect            // Default redirect reference
 
 	// TODO: maybe use args/userdata concept from fasthttp
-	flashMessages map[string]string // flash messages sent by redirection cookie
-	oldInput      map[string]string // old input data sent by redirection cookie
+	redirectionMessages []string
 }
 
 // TLSHandler object

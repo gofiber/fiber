@@ -445,8 +445,7 @@ func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
 	c.bind = nil
-	c.flashMessages = nil
-	c.oldInput = nil
+	c.redirectionMessages = nil
 	if c.viewBindMap != nil {
 		dictpool.ReleaseDict(c.viewBindMap)
 		c.viewBindMap = nil
