@@ -26,18 +26,23 @@ import (
 
 After you initiate your Fiber app, you can use:
 ```go
-h := func(c *fiber.Ctx) error {
-	sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-	if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
-		return fmt.Errorf("%w: execution error", err)
+func main() {
+	app := fiber.New()
+	h := func(c *fiber.Ctx) error {
+		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+		if err := sleepWithContext(c.UserContext(), sleepTime); err != nil {
+			return fmt.Errorf("%w: execution error", err)
+		}
+		return nil
 	}
-	return nil
-}
 
-app.Get("/foo", timeout.New(h, 5 * time.Second))
+	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second))
+	_ = app.Listen(":3000")
+}
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
+
 	select {
 	case <-ctx.Done():
 		if !timer.Stop() {
@@ -50,19 +55,29 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 }
 ```
 
-Use with custom error:
+Test it with curl:
+```bash
+curl --location --request GET 'http://localhost:3000/foo?sleepTime=1000' // http 200 (OK)
+curl --location --request GET 'http://localhost:3000/foo?sleepTime=3000' // http 408 (Request Timeout)
+```
+
+When using with custom error:
 ```go
 var ErrFooTimeOut = errors.New("foo context canceled")
 
-h := func(c *fiber.Ctx) error {
-	sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-	if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
-		return fmt.Errorf("%w: execution error", err)
+func main() {
+	app := fiber.New()
+	h := func(c *fiber.Ctx) error {
+		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+		if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
+			return fmt.Errorf("%w: execution error", err)
+		}
+		return nil
 	}
-	return nil
-}
 
-app.Get("/foo", timeout.New(h, 5 * time.Second), ErrFooTimeOut)
+	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second), ErrFooTimeOut)
+	_ = app.Listen(":3000")
+}
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
