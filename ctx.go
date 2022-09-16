@@ -1545,7 +1545,6 @@ func (c *Ctx) SendStream(stream io.Reader, size ...int) error {
 		c.fasthttp.Response.SetBodyStream(stream, size[0])
 	} else {
 		c.fasthttp.Response.SetBodyStream(stream, -1)
-		c.setCanonical(HeaderContentLength, strconv.Itoa(len(c.fasthttp.Response.Body())))
 	}
 
 	return nil
