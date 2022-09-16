@@ -6,16 +6,31 @@ package fiber
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/bytebufferpool"
 )
 
+var (
+	// Pool for redirection
+	redirectPool = sync.Pool{
+		New: func() any {
+			return &Redirect{
+				status:   StatusFound,
+				messages: make(map[string]string, 0),
+				oldInput: make(map[string]string, 0),
+			}
+		},
+	}
+)
+
 // Redirect is a struct to use it with Ctx.
 type Redirect struct {
-	c        *DefaultCtx       // Embed ctx
-	status   int               // Status code of redirection. Default: StatusFound
+	c      *DefaultCtx // Embed ctx
+	status int         // Status code of redirection. Default: StatusFound
+	// TODO: maybe use args/userdata concept from fasthttp
 	messages map[string]string // Flash messages
 	oldInput map[string]string // Old input data
 }
@@ -28,13 +43,26 @@ type RedirectConfig struct {
 	Queries map[string]string // Query map
 }
 
-// Return default Redirect reference.
-func newRedirect() *Redirect {
-	return &Redirect{
-		status:   StatusFound,
-		messages: make(map[string]string, 0),
-		oldInput: make(map[string]string, 0),
-	}
+// AcquireRedirect return default Redirect reference from the redirect pool
+func AcquireRedirect() *Redirect {
+	return redirectPool.Get().(*Redirect)
+}
+
+// ReleaseRedirect returns c acquired via Redirect to redirect pool.
+//
+// It is forbidden accessing req and/or its' members after returning
+// it to redirect pool.
+func ReleaseRedirect(r *Redirect) {
+	r.release()
+	redirectPool.Put(r)
+}
+
+func (r *Redirect) release() {
+	r.status = 0
+	// TODO: maybe use args from fasthttp
+	r.messages = nil
+	r.oldInput = nil
+	r.c = nil
 }
 
 // Status sets the status code of redirection.

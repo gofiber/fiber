@@ -10,6 +10,8 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net"
@@ -21,9 +23,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"encoding/json"
-	"encoding/xml"
 
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
@@ -120,8 +119,6 @@ type App struct {
 	customBinders []CustomBinder
 	// TLS handler
 	tlsHandler *TLSHandler
-	// Pool for redirection
-	redirectPool sync.Pool
 }
 
 // Config is a struct holding the server settings.
@@ -471,13 +468,6 @@ func New(config ...Config) *App {
 	app.pool = sync.Pool{
 		New: func() any {
 			return app.NewCtx(&fasthttp.RequestCtx{})
-		},
-	}
-
-	// create redirection pool
-	app.redirectPool = sync.Pool{
-		New: func() any {
-			return newRedirect()
 		},
 	}
 

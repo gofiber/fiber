@@ -449,6 +449,11 @@ func (c *DefaultCtx) release() {
 	c.oldInput = nil
 	if c.viewBindMap != nil {
 		dictpool.ReleaseDict(c.viewBindMap)
+		c.viewBindMap = nil
+	}
+	if c.redirect != nil {
+		ReleaseRedirect(c.redirect)
+		c.redirect = nil
 	}
 }
 
