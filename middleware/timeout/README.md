@@ -55,11 +55,16 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 }
 ```
 
-Test it with curl:
+Test http 200 with curl:
 ```bash
-curl --location --request GET 'http://localhost:3000/foo?sleepTime=1000' // http 200 (OK)
-curl --location --request GET 'http://localhost:3000/foo?sleepTime=3000' // http 408 (Request Timeout)
+curl --location -I --request GET 'http://localhost:3000/foo/1000' 
 ```
+
+Test http 408 with curl:
+```bash
+curl --location -I --request GET 'http://localhost:3000/foo/3000' 
+```
+
 
 When using with custom error:
 ```go
