@@ -263,20 +263,14 @@ func (r *Redirect) setFlash() {
 	cookieValue := r.c.Cookies(FlashCookieName)
 
 	r.c.redirectionMessages = make([]string, nonEscapedCount(cookieValue, []byte(","))+1)
-	var commaPos, i, validCount int
+	var commaPos, i int
 	for {
 		commaPos = findNextNonEscapedCharsetPosition(cookieValue, []byte(","))
 		if commaPos != -1 {
 			r.c.redirectionMessages[i] = RemoveEscapeChar(strings.Trim(cookieValue[:commaPos], " "))
-			if r.c.redirectionMessages[i] != "" {
-				validCount++
-			}
 			cookieValue, i = cookieValue[commaPos+1:], i+1
 		} else {
 			r.c.redirectionMessages[i] = RemoveEscapeChar(strings.Trim(cookieValue, " "))
-			if r.c.redirectionMessages[i] != "" {
-				validCount++
-			}
 			break
 		}
 	}
