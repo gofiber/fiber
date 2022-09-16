@@ -1059,6 +1059,17 @@ func Test_App_Route(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	register.Route("/v1").Route("/v2").Route("/v3").Get(dummyHandler).Trace(dummyHandler)
+
+	resp, err = app.Test(httptest.NewRequest(MethodTrace, "/test/v1/v2/v3", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/v2/v3", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
 }
 
 func Test_App_Deep_Group(t *testing.T) {
