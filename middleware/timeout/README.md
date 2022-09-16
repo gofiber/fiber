@@ -24,7 +24,7 @@ import (
 )
 ```
 
-After you initiate your Fiber app, you can use:
+Sample timeout middleware usage
 ```go
 func main() {
 	app := fiber.New()
