@@ -243,7 +243,7 @@ func Test_Redirect_Request(t *testing.T) {
 	app := New()
 
 	app.Get("/", func(c Ctx) error {
-		return c.Redirect().With("key", "value").With("key2", "value2").Route("name")
+		return c.Redirect().With("key", "value").With("key2", "value2").With("comma", "Fiber\\, v3").Route("name")
 	})
 
 	app.Get("/with-inputs", func(c Ctx) error {
@@ -284,8 +284,8 @@ func Test_Redirect_Request(t *testing.T) {
 		ExceptedErrsLen    int
 	}{
 		{URL: "/",
-			CookieValue:        "key:value,key2:value2",
-			ExpectedBody:       `{"inputs":{},"messages":{"key":"value","key2":"value2"}}`,
+			CookieValue:        "key:value,key2:value2,comma:Fiber\\, v3",
+			ExpectedBody:       `{"inputs":{},"messages":{"comma":"Fiber, v3","key":"value","key2":"value2"}}`,
 			ExpectedStatusCode: StatusOK,
 			ExceptedErrsLen:    0,
 		},
