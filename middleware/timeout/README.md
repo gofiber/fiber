@@ -6,10 +6,8 @@ If the context passed executions (eg. DB ops, Http calls) takes longer than the 
 It has no race conditions, ready to use on production.
 
 ### Table of Contents
-- [Timeout](#timeout)
-		- [Table of Contents](#table-of-contents)
-		- [Signatures](#signatures)
-		- [Examples](#examples)
+- [Signatures](#signatures)
+- [Examples](#examples)
 
 
 ### Signatures
@@ -29,12 +27,12 @@ import (
 After you initiate your Fiber app, you can use:
 ```go
 h := func(c *fiber.Ctx) error {
-		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-		if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
-			return fmt.Errorf("%w: execution error", err)
-		}
-		return nil
+	sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+	if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
+		return fmt.Errorf("%w: execution error", err)
 	}
+	return nil
+}
 
 app.Get("/foo", timeoutcontext.New(h, 5 * time.Second))
 
@@ -57,12 +55,12 @@ Use with custom error:
 var ErrFooTimeOut = errors.New("foo context canceled")
 
 h := func(c *fiber.Ctx) error {
-		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
-		if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
-			return fmt.Errorf("%w: execution error", err)
-		}
-		return nil
+	sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+	if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
+		return fmt.Errorf("%w: execution error", err)
 	}
+	return nil
+}
 
 app.Get("/foo", timeoutcontext.New(h, 5 * time.Second), ErrFooTimeOut)
 
