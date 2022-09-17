@@ -64,9 +64,11 @@ func Test_Get(t *testing.T) {
 	}()
 
 	t.Run("global get function", func(t *testing.T) {
-		resp, err := Get("http://example.com", SetDial(func(addr string) (net.Conn, error) {
-			return ln.Dial()
-		}))
+		resp, err := Get("http://example.com", Config{
+			dial: func(addr string) (net.Conn, error) {
+				return ln.Dial()
+			},
+		})
 		require.NoError(t, err)
 		require.Equal(t, "example.com", utils.UnsafeString(resp.RawResponse.Body()))
 	})

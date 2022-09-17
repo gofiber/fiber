@@ -197,11 +197,11 @@ func (c *core) tls() {
 	c.host.TLSConfig = c.client.tlsConfig.Clone()
 }
 
-// TODO now set url with Request uri, need cover with proxy url
+// proxy set proxy in host.
 func (c *core) proxy() error {
 	rawUri := c.req.RawRequest.URI()
 	if c.client.proxyURL != "" {
-		rawUri := fasthttp.AcquireURI()
+		rawUri = fasthttp.AcquireURI()
 		rawUri.Update(c.client.proxyURL)
 		defer fasthttp.ReleaseURI(rawUri)
 	}

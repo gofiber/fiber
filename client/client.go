@@ -1,12 +1,12 @@
 package client
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"encoding/xml"
 	"io"
-	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -390,78 +390,57 @@ func (c *Client) SetTimeout(t time.Duration) *Client {
 }
 
 // Get provide a API like axios which send get request.
-func (c *Client) Get(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+func (c *Client) Get(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
-
-	for _, v := range setter {
-		v(req)
-	}
+	setConfigToRequest(req, cfg...)
 
 	return req.Get(url)
 }
 
 // Post provide a API like axios which send post request.
-func (c *Client) Post(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+func (c *Client) Post(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
-
-	for _, v := range setter {
-		v(req)
-	}
+	setConfigToRequest(req, cfg...)
 
 	return req.Post(url)
 }
 
 // Head provide a API like axios which send head request.
-func (c *Client) Head(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+func (c *Client) Head(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
-
-	for _, v := range setter {
-		v(req)
-	}
+	setConfigToRequest(req, cfg...)
 
 	return req.Head(url)
 }
 
 // Put provide a API like axios which send put request.
-func (c *Client) Put(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+func (c *Client) Put(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
-
-	for _, v := range setter {
-		v(req)
-	}
+	setConfigToRequest(req, cfg...)
 
 	return req.Put(url)
 }
 
 // Delete provide a API like axios which send delete request.
-func (c *Client) Delete(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+func (c *Client) Delete(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
-
-	for _, v := range setter {
-		v(req)
-	}
+	setConfigToRequest(req, cfg...)
 
 	return req.Delete(url)
 }
 
 // Options provide a API like axios which send options request.
-func (c *Client) Options(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+func (c *Client) Options(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
-
-	for _, v := range setter {
-		v(req)
-	}
+	setConfigToRequest(req, cfg...)
 
 	return req.Options(url)
 }
 
 // Patch provide a API like axios which send patch request.
-func (c *Client) Patch(url string, setter ...SetRequestOptionFunc) (*Response, error) {
+func (c *Client) Patch(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
-
-	for _, v := range setter {
-		v(req)
-	}
+	setConfigToRequest(req, cfg...)
 
 	return req.Patch(url)
 }
@@ -479,64 +458,92 @@ func (c *Client) Reset() {
 	c.params.Reset()
 }
 
-type SetRequestOptionFunc func(r *Request)
+// Config for easy to set the request parameters, it should be
+// noted that when setting the request body will use JSON as
+// the default serialization mechanism, while the priority of
+// Body is higher than FormData, and the priority of FormData
+// is higher than File.
+type Config struct {
+	Ctx context.Context
 
-func SetRequestHeaders(m map[string]string) SetRequestOptionFunc {
-	return func(r *Request) {
-		r.SetHeaders(m)
-	}
+	UserAgent string
+	Referer   string
+	Header    map[string]string
+	Param     map[string]string
+	Cookie    map[string]string
+	PathParam map[string]string
+
+	Timeout time.Duration
+
+	Body     any
+	FormData map[string]string
+	File     []*File
+
+	dial fasthttp.DialFunc
 }
 
-func SetRequestQueryParams(m map[string]string) SetRequestOptionFunc {
-	return func(r *Request) {
-		r.SetParams(m)
+// Set the parameters passed via Config to Request.
+func setConfigToRequest(req *Request, config ...Config) {
+	if len(config) == 0 {
+		return
 	}
-}
+	cfg := config[0]
 
-func SetRequestUserAgent(ua string) SetRequestOptionFunc {
-	return func(r *Request) {
-		r.SetUserAgent(ua)
+	if cfg.Ctx != nil {
+		req.SetContext(cfg.Ctx)
 	}
-}
 
-func SetRequestReferer(referer string) SetRequestOptionFunc {
-	return func(r *Request) {
-		r.SetReferer(referer)
+	if cfg.UserAgent != "" {
+		req.SetUserAgent(cfg.UserAgent)
 	}
-}
 
-func SetRequestData(v any) SetRequestOptionFunc {
-	return func(r *Request) {
-		r.SetJSON(v)
+	if cfg.Referer != "" {
+		req.SetReferer(cfg.Referer)
 	}
-}
 
-func SetRequestFormDatas(m map[string]string) SetRequestOptionFunc {
-	return func(r *Request) {
-		r.SetFormDatas(m)
+	if cfg.Header != nil {
+		req.SetHeaders(cfg.Header)
 	}
-}
 
-func SetRequestPathParams(m map[string]string) SetRequestOptionFunc {
-	return func(r *Request) {
-		r.SetPathParams(m)
+	if cfg.Param != nil {
+		req.SetParams(cfg.Param)
 	}
-}
 
-func SetRequestFiles(files ...*File) SetRequestOptionFunc {
-	return func(r *Request) {
-		r.AddFiles(files...)
+	if cfg.Cookie != nil {
+		req.SetCookies(cfg.Cookie)
 	}
-}
 
-func SetDial(f func(addr string) (net.Conn, error)) SetRequestOptionFunc {
-	return func(r *Request) {
-		r.dial = f
+	if cfg.PathParam != nil {
+		req.SetPathParams(cfg.PathParam)
+	}
+
+	if cfg.Timeout != 0 {
+		req.SetTimeout(cfg.Timeout)
+	}
+
+	if cfg.dial != nil {
+		req.SetDial(cfg.dial)
+	}
+
+	if cfg.Body != nil {
+		req.SetJSON(cfg.Body)
+		return
+	}
+
+	if cfg.FormData != nil {
+		req.SetFormDatas(cfg.FormData)
+		return
+	}
+
+	if cfg.File != nil && len(cfg.File) != 0 {
+		req.AddFiles(cfg.File...)
+		return
 	}
 }
 
 var (
 	defaultClient    *Client
+	replaceMu        = sync.Mutex{}
 	defaultUserAgent = "fiber"
 	clientPool       = &sync.Pool{
 		New: func() any {
@@ -590,6 +597,9 @@ func C() *Client {
 
 // Replce the defaultClient, the returned function can undo.
 func Replace(c *Client) func() {
+	replaceMu.Lock()
+	defer replaceMu.Unlock()
+
 	oldClient := defaultClient
 	defaultClient = c
 
@@ -599,36 +609,36 @@ func Replace(c *Client) func() {
 }
 
 // Get send a get request use defaultClient, a convenient method.
-func Get(url string, setter ...SetRequestOptionFunc) (*Response, error) {
-	return defaultClient.Get(url, setter...)
+func Get(url string, cfg ...Config) (*Response, error) {
+	return defaultClient.Get(url, cfg...)
 }
 
 // Post send a post request use defaultClient, a convenient method.
-func Post(url string, setter ...SetRequestOptionFunc) (*Response, error) {
-	return defaultClient.Post(url, setter...)
+func Post(url string, cfg ...Config) (*Response, error) {
+	return defaultClient.Post(url, cfg...)
 }
 
 // Head send a head request use defaultClient, a convenient method.
-func Head(url string, setter ...SetRequestOptionFunc) (*Response, error) {
-	return defaultClient.Head(url, setter...)
+func Head(url string, cfg ...Config) (*Response, error) {
+	return defaultClient.Head(url, cfg...)
 }
 
 // Put send a put request use defaultClient, a convenient method.
-func Put(url string, setter ...SetRequestOptionFunc) (*Response, error) {
-	return defaultClient.Put(url, setter...)
+func Put(url string, cfg ...Config) (*Response, error) {
+	return defaultClient.Put(url, cfg...)
 }
 
 // Delete send a delete request use defaultClient, a convenient method.
-func Delete(url string, setter ...SetRequestOptionFunc) (*Response, error) {
-	return defaultClient.Delete(url, setter...)
+func Delete(url string, cfg ...Config) (*Response, error) {
+	return defaultClient.Delete(url, cfg...)
 }
 
 // Options send a options request use defaultClient, a convenient method.
-func Options(url string, setter ...SetRequestOptionFunc) (*Response, error) {
-	return defaultClient.Options(url, setter...)
+func Options(url string, cfg ...Config) (*Response, error) {
+	return defaultClient.Options(url, cfg...)
 }
 
 // Patch send a patch request use defaultClient, a convenient method.
-func Patch(url string, setter ...SetRequestOptionFunc) (*Response, error) {
-	return defaultClient.Patch(url, setter...)
+func Patch(url string, cfg ...Config) (*Response, error) {
+	return defaultClient.Patch(url, cfg...)
 }
