@@ -87,7 +87,6 @@ func NewRouter(config ...RouterConfig) *Router {
 	}
 
 	if len(config) > 0 {
-		//TODO: CaseSensitive Feature
 		if config[0].CaseSensitive {
 			r.config.CaseSensitive = true
 		}
@@ -96,7 +95,6 @@ func NewRouter(config ...RouterConfig) *Router {
 			r.config.MergeParams = true
 		}
 
-		//TODO: Strict Feature
 		if config[0].Strict {
 			r.config.Strict = true
 		}
