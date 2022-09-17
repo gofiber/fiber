@@ -145,6 +145,12 @@ func (app *App) ReleaseCtx(c *Ctx) {
 	app.pool.Put(c)
 }
 
+// Emit synchronously calls each of the listeners registered for the event named eventName, in the order they were registered, passing the supplied arguments to each.
+// Returns true if the event had listeners, false otherwise
+func (c *Ctx) Emit(evt string, argv ...interface{}) error {
+	return c.app.eventEmitter.Emit(evt, argv...)
+}
+
 // Accepts checks if the specified extensions or content types are acceptable.
 func (c *Ctx) Accepts(offers ...string) string {
 	if len(offers) == 0 {

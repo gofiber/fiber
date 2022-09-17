@@ -30,6 +30,15 @@ type IRouter interface {
 	Options(path string, handlers ...Handler) IRouter
 	Trace(path string, handlers ...Handler) IRouter
 	Patch(path string, handlers ...Handler) IRouter
+
+	// On(eventName string, listener any) IRouter
+	// Once(eventName string, listener any) IRouter
+	// Emit(eventName string, arguments ...any) IRouter
+	// Off(eventName string, listener any) IRouter
+	// AddListener(eventName string, listener any) IRouter
+	// RemoveAllListeners(eventNames ...string) IRouter
+	// RemoveListener(eventName string, listener any) IRouter
+	// ListenerCount(eventName string) int
 }
 
 type RouterConfig struct {
@@ -106,6 +115,56 @@ func NewRouter(config ...RouterConfig) *Router {
 // Stack returns the raw router stack.
 func (r *Router) Stack() [][]*Route {
 	return r.stack
+}
+
+// On is an alias for .AddListener(eventName, listener).
+func (r *Router) On(eventName string, listener any) IRouter {
+	r.app.eventEmitter.On(eventName, listener)
+	return r
+}
+
+// Once adds a one-time listener function for the event named eventName.
+// The next time eventName is triggered, this listener is removed and then invoked.
+func (r *Router) Once(eventName string, listener any) IRouter {
+	r.app.eventEmitter.Once(eventName, listener)
+	return r
+}
+
+// Emit synchronously calls each of the listeners registered for the event named eventName, in the order they were registered, passing the supplied arguments to each.
+// Returns true if the event had listeners, false otherwise
+func (r *Router) Emit(eventName string, arguments ...any) IRouter {
+	r.app.eventEmitter.Emit(eventName, arguments...)
+	return r
+}
+
+// Off removes the specified listener from the listener array for the event named eventName.
+func (r *Router) Off(eventName string, listener any) IRouter {
+	r.app.eventEmitter.Off(eventName, listener)
+	return r
+}
+
+// Alias for .On(eventName, listener).
+func (r *Router) AddListener(eventName string, listener any) IRouter {
+	r.app.eventEmitter.AddListener(eventName, listener)
+	return r
+}
+
+// RemoveAllListeners removes all listeners, or those of the specified eventNames.
+func (r *Router) RemoveAllListeners(eventNames ...string) IRouter {
+	r.app.eventEmitter.RemoveAllListeners(eventNames...)
+	return r
+}
+
+// RemoveListener is the alias for app.Off(eventName, listener).
+func (r *Router) RemoveListener(eventName string, listener any) IRouter {
+	r.app.eventEmitter.RemoveListener(eventName, listener)
+	return r
+}
+
+// ListenerCount returns the number of listeners listening to the event named eventName.
+func (r *Router) ListenerCount(eventName string) int {
+	count, _ := r.app.eventEmitter.ListenerCount(eventName)
+	return count
 }
 
 // Get registers a route for GET methods that requests a representation

@@ -23,6 +23,7 @@ import (
 
 	"encoding/json"
 
+	"github.com/gofiber/fiber/v3/eventemitter"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -123,6 +124,8 @@ type App struct {
 	//
 	// Default: DefaultErrorHandler
 	errorHandler ErrorHandler `json:"-"`
+	// Eventemitter
+	eventEmitter *eventemitter.Emitter
 }
 
 // Config is a struct holding the server settings.
@@ -419,6 +422,7 @@ func New(config ...Config) *App {
 		mountpath:    "",
 		errorHandler: DefaultErrorHandler,
 		Locals:       make(map[string]interface{}),
+		eventEmitter: eventemitter.New(),
 	}
 
 	// Override config if provided
@@ -668,7 +672,59 @@ func (app *App) MountPath() string {
 	return app.mountpath
 }
 
-// The mount event is fired on a sub-app, when it is mounted on a parent app. The parent app is passed to the callback function.
+// On is an alias for .AddListener(eventName, listener).
+func (app *App) On(eventName string, listener any) *App {
+	app.eventEmitter.On(eventName, listener)
+	return app
+}
+
+// Once adds a one-time listener function for the event named eventName.
+// The next time eventName is triggered, this listener is removed and then invoked.
+func (app *App) Once(eventName string, listener any) *App {
+	app.eventEmitter.Once(eventName, listener)
+	return app
+}
+
+// Emit synchronously calls each of the listeners registered for the event named eventName, in the order they were registered, passing the supplied arguments to each.
+// Returns true if the event had listeners, false otherwise
+func (app *App) Emit(eventName string, arguments ...any) *App {
+	app.eventEmitter.Emit(eventName, arguments...)
+	return app
+}
+
+// Off removes the specified listener from the listener array for the event named eventName.
+func (app *App) Off(eventName string, listener any) *App {
+	app.eventEmitter.Off(eventName, listener)
+	return app
+}
+
+// Alias for .On(eventName, listener).
+func (app *App) AddListener(eventName string, listener any) *App {
+	app.eventEmitter.AddListener(eventName, listener)
+	return app
+}
+
+// RemoveAllListeners removes all listeners, or those of the specified eventNames.
+func (app *App) RemoveAllListeners(eventNames ...string) *App {
+	app.eventEmitter.RemoveAllListeners(eventNames...)
+	return app
+}
+
+// RemoveListener is the alias for app.Off(eventName, listener).
+func (app *App) RemoveListener(eventName string, listener any) *App {
+	app.eventEmitter.RemoveListener(eventName, listener)
+	return app
+}
+
+// ListenerCount returns the number of listeners listening to the event named eventName.
+func (app *App) ListenerCount(eventName string) int {
+	count, _ := app.eventEmitter.ListenerCount(eventName)
+	return count
+}
+
+// The mount event is fired on a sub-app, when it is mounted on a parent app.
+//
+// The parent app is passed to the callback function.
 func (app *App) OnMount(callback func(parent *App)) {
 	if app.parent == nil {
 		panic("not mounted sub app to parent app")
