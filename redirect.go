@@ -19,19 +19,26 @@ var (
 		New: func() any {
 			return &Redirect{
 				status:   StatusFound,
-				messages: make(map[string]string, 0),
 				oldInput: make(map[string]string, 0),
 			}
 		},
 	}
 )
 
+// Cookie name to send flash messages when to use redirection.
+const (
+	FlashCookieName     = "fiber_flash"
+	OldInputDataPrefix  = "old_input_data_"
+	CookieDataSeparator = ","
+	CookieDataAssigner  = ":"
+)
+
 // Redirect is a struct to use it with Ctx.
 type Redirect struct {
 	c      *DefaultCtx // Embed ctx
 	status int         // Status code of redirection. Default: StatusFound
-	// TODO: maybe use args/userdata concept from fasthttp
-	messages map[string]string // Flash messages
+
+	messages []string          // Flash messages
 	oldInput map[string]string // Old input data
 }
 
@@ -59,9 +66,11 @@ func ReleaseRedirect(r *Redirect) {
 
 func (r *Redirect) release() {
 	r.status = 302
-	// TODO: maybe use args from fasthttp
-	r.messages = make(map[string]string, 0)
-	r.oldInput = make(map[string]string, 0)
+	r.messages = r.messages[:0]
+	// reset map
+	for k := range r.oldInput {
+		delete(r.oldInput, k)
+	}
 	r.c = nil
 }
 
@@ -77,7 +86,8 @@ func (r *Redirect) Status(code int) *Redirect {
 // They will be sent as a cookie.
 // You can get them by using: Redirect().Messages(), Redirect().Message()
 func (r *Redirect) With(key string, value string) *Redirect {
-	r.messages[key] = value
+	// TODO: handle values with special chars ":", ",", "="
+	r.messages = append(r.messages, key+CookieDataAssigner+value)
 
 	return r
 }
@@ -112,10 +122,11 @@ func (r *Redirect) Messages() map[string]string {
 	for _, msg := range msgs {
 		k, v := parseMessage(msg)
 
-		if !strings.HasPrefix(k, "old_input_data_") {
+		if !strings.HasPrefix(k, OldInputDataPrefix) {
 			flashMessages[k] = v
 		}
 	}
+
 	return flashMessages
 }
 
@@ -126,7 +137,7 @@ func (r *Redirect) Message(key string) string {
 	for _, msg := range msgs {
 		k, v := parseMessage(msg)
 
-		if !strings.HasPrefix(k, "old_input_data_") && k == key {
+		if !strings.HasPrefix(k, OldInputDataPrefix) && k == key {
 			return v
 		}
 	}
@@ -141,9 +152,9 @@ func (r *Redirect) OldInputs() map[string]string {
 	for _, msg := range msgs {
 		k, v := parseMessage(msg)
 
-		if strings.HasPrefix(k, "old_input_data_") {
+		if strings.HasPrefix(k, OldInputDataPrefix) {
 			// remove "old_input_data_" part from key
-			oldInputs[k[15:]] = v
+			oldInputs[k[len(OldInputDataPrefix):]] = v
 		}
 	}
 	return oldInputs
@@ -156,7 +167,7 @@ func (r *Redirect) OldInput(key string) string {
 	for _, msg := range msgs {
 		k, v := parseMessage(msg)
 
-		if strings.HasPrefix(k, "old_input_data_") && k[15:] == key {
+		if strings.HasPrefix(k, OldInputDataPrefix) && k[len(OldInputDataPrefix):] == key {
 			return v
 		}
 	}
@@ -193,21 +204,20 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		defer bytebufferpool.Put(messageText)
 
 		// flash messages
-		i := 1
-		for k, v := range r.messages {
-			_, _ = messageText.WriteString(k + ":" + v)
-			if len(r.messages) != i || (len(r.messages) == i && len(r.oldInput) > 0) {
-				_, _ = messageText.WriteString(",")
+		for i, message := range r.messages {
+			_, _ = messageText.WriteString(message)
+			// when there are more messages or oldInput -> add a comma
+			if len(r.messages)-1 != i || (len(r.messages)-1 == i && len(r.oldInput) > 0) {
+				_, _ = messageText.WriteString(CookieDataSeparator)
 			}
-			i++
 		}
 
 		// old input data
-		i = 1
+		i := 1
 		for k, v := range r.oldInput {
-			_, _ = messageText.WriteString("old_input_data_" + k + ":" + v)
+			_, _ = messageText.WriteString(OldInputDataPrefix + k + CookieDataAssigner + v)
 			if len(r.oldInput) != i {
-				_, _ = messageText.WriteString(",")
+				_, _ = messageText.WriteString(CookieDataSeparator)
 			}
 			i++
 		}
@@ -262,15 +272,14 @@ func (r *Redirect) setFlash() {
 	// parse flash messages
 	cookieValue := r.c.Cookies(FlashCookieName)
 
-	r.c.redirectionMessages = make([]string, nonEscapedCount(cookieValue, []byte(","))+1)
-	var commaPos, i int
+	var commaPos int
 	for {
-		commaPos = findNextNonEscapedCharsetPosition(cookieValue, []byte(","))
+		commaPos = findNextNonEscapedCharsetPosition(cookieValue, []byte(CookieDataSeparator))
 		if commaPos != -1 {
-			r.c.redirectionMessages[i] = RemoveEscapeChar(strings.Trim(cookieValue[:commaPos], " "))
-			cookieValue, i = cookieValue[commaPos+1:], i+1
+			r.c.redirectionMessages = append(r.c.redirectionMessages, RemoveEscapeChar(strings.Trim(cookieValue[:commaPos], " ")))
+			cookieValue = cookieValue[commaPos+1:]
 		} else {
-			r.c.redirectionMessages[i] = RemoveEscapeChar(strings.Trim(cookieValue, " "))
+			r.c.redirectionMessages = append(r.c.redirectionMessages, RemoveEscapeChar(strings.Trim(cookieValue, " ")))
 			break
 		}
 	}
@@ -278,20 +287,8 @@ func (r *Redirect) setFlash() {
 	r.c.ClearCookie(FlashCookieName)
 }
 
-func nonEscapedCount(s string, substr []byte) int {
-	n := 0
-	for {
-		i := findNextNonEscapedCharsetPosition(s, substr)
-		if i == -1 {
-			return n
-		}
-		n++
-		s = s[i+len(substr):]
-	}
-}
-
 func parseMessage(raw string) (key, value string) {
-	if i := strings.LastIndex(raw, ":"); i != -1 {
+	if i := strings.LastIndex(raw, CookieDataAssigner); i != -1 {
 		return raw[:i], raw[i+1:]
 	}
 	return raw, ""

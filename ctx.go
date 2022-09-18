@@ -53,9 +53,7 @@ type DefaultCtx struct {
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
 	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
-
-	// TODO: maybe use args/userdata concept from fasthttp
-	redirectionMessages []string
+	redirectionMessages []string             // Messages of the previous redirect
 }
 
 // TLSHandler object
