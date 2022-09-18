@@ -27,6 +27,7 @@ import (
 
 	"text/template"
 
+	"github.com/gofiber/fiber/v3/eventemitter"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/bytebufferpool"
@@ -3758,4 +3759,25 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		defer app.ReleaseCtx(c)
 		utils.AssertEqual(t, false, c.IsFromLocal())
 	}
+}
+
+func Test_Emit(t *testing.T) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	app.On("fiber", func(message string) {
+		utils.AssertEqual(t, message, "fiber is amazing")
+	})
+
+	// empty event name
+	err := c.Emit("", "")
+	utils.AssertEqual(t, err, eventemitter.ErrEmptyName)
+
+	// unknown event name
+	err = c.Emit("gin", "")
+	utils.AssertEqual(t, err, eventemitter.ErrEventNotExists)
+
+	err = c.Emit("fiber", "fiber is amazing")
+	utils.AssertEqual(t, err, nil)
 }
