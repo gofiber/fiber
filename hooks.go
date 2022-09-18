@@ -1,6 +1,6 @@
 package fiber
 
-// Handlers define a function to create hooks for Fiber.
+// OnRouteHandler Handlers define a function to create hooks for Fiber.
 type OnRouteHandler = func(Route) error
 type OnNameHandler = OnRouteHandler
 type OnGroupHandler = func(Group) error
