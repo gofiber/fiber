@@ -112,40 +112,49 @@ func NewRouter(config ...RouterConfig) *Router {
 	return r
 }
 
-// Stack returns the raw router stack.
-func (r *Router) Stack() [][]*Route {
-	return r.stack
-}
-
 // On is an alias for .AddListener(eventName, listener).
 func (r *Router) On(eventName string, listener any) IRouter {
-	r.app.eventEmitter.On(eventName, listener)
+	if err := r.app.eventEmitter.On(eventName, listener); err != nil {
+		panic(err)
+	}
+
 	return r
 }
 
 // Once adds a one-time listener function for the event named eventName.
 // The next time eventName is triggered, this listener is removed and then invoked.
 func (r *Router) Once(eventName string, listener any) IRouter {
-	r.app.eventEmitter.Once(eventName, listener)
+	if err := r.app.eventEmitter.Once(eventName, listener); err != nil {
+		panic(err)
+	}
+
 	return r
 }
 
 // Emit synchronously calls each of the listeners registered for the event named eventName, in the order they were registered, passing the supplied arguments to each.
 // Returns true if the event had listeners, false otherwise
 func (r *Router) Emit(eventName string, arguments ...any) IRouter {
-	r.app.eventEmitter.Emit(eventName, arguments...)
+	if err := r.app.eventEmitter.Emit(eventName, arguments...); err != nil {
+		panic(err)
+	}
+
 	return r
 }
 
 // Off removes the specified listener from the listener array for the event named eventName.
 func (r *Router) Off(eventName string, listener any) IRouter {
-	r.app.eventEmitter.Off(eventName, listener)
+	if _, err := r.app.eventEmitter.Off(eventName, listener); err != nil {
+		panic(err)
+	}
+
 	return r
 }
 
 // Alias for .On(eventName, listener).
 func (r *Router) AddListener(eventName string, listener any) IRouter {
-	r.app.eventEmitter.AddListener(eventName, listener)
+	if err := r.app.eventEmitter.AddListener(eventName, listener); err != nil {
+		panic(err)
+	}
 	return r
 }
 
@@ -157,13 +166,20 @@ func (r *Router) RemoveAllListeners(eventNames ...string) IRouter {
 
 // RemoveListener is the alias for app.Off(eventName, listener).
 func (r *Router) RemoveListener(eventName string, listener any) IRouter {
-	r.app.eventEmitter.RemoveListener(eventName, listener)
+	if _, err := r.app.eventEmitter.RemoveListener(eventName, listener); err != nil {
+		panic(err)
+	}
+
 	return r
 }
 
 // ListenerCount returns the number of listeners listening to the event named eventName.
 func (r *Router) ListenerCount(eventName string) int {
-	count, _ := r.app.eventEmitter.ListenerCount(eventName)
+	count, err := r.app.eventEmitter.ListenerCount(eventName)
+	if err != nil {
+		panic(err)
+	}
+
 	return count
 }
 

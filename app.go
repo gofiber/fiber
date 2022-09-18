@@ -674,33 +674,47 @@ func (app *App) MountPath() string {
 
 // On is an alias for .AddListener(eventName, listener).
 func (app *App) On(eventName string, listener any) *App {
-	app.eventEmitter.On(eventName, listener)
+	if err := app.eventEmitter.On(eventName, listener); err != nil {
+		panic(err)
+	}
+
 	return app
 }
 
 // Once adds a one-time listener function for the event named eventName.
 // The next time eventName is triggered, this listener is removed and then invoked.
 func (app *App) Once(eventName string, listener any) *App {
-	app.eventEmitter.Once(eventName, listener)
+	if err := app.eventEmitter.Once(eventName, listener); err != nil {
+		panic(err)
+	}
+
 	return app
 }
 
 // Emit synchronously calls each of the listeners registered for the event named eventName, in the order they were registered, passing the supplied arguments to each.
 // Returns true if the event had listeners, false otherwise
 func (app *App) Emit(eventName string, arguments ...any) *App {
-	app.eventEmitter.Emit(eventName, arguments...)
+	if err := app.eventEmitter.Emit(eventName, arguments...); err != nil {
+		panic(err)
+	}
+
 	return app
 }
 
 // Off removes the specified listener from the listener array for the event named eventName.
 func (app *App) Off(eventName string, listener any) *App {
-	app.eventEmitter.Off(eventName, listener)
+	if _, err := app.eventEmitter.Off(eventName, listener); err != nil {
+		panic(err)
+	}
+
 	return app
 }
 
 // Alias for .On(eventName, listener).
 func (app *App) AddListener(eventName string, listener any) *App {
-	app.eventEmitter.AddListener(eventName, listener)
+	if err := app.eventEmitter.AddListener(eventName, listener); err != nil {
+		panic(err)
+	}
 	return app
 }
 
@@ -712,13 +726,20 @@ func (app *App) RemoveAllListeners(eventNames ...string) *App {
 
 // RemoveListener is the alias for app.Off(eventName, listener).
 func (app *App) RemoveListener(eventName string, listener any) *App {
-	app.eventEmitter.RemoveListener(eventName, listener)
+	if _, err := app.eventEmitter.RemoveListener(eventName, listener); err != nil {
+		panic(err)
+	}
+
 	return app
 }
 
 // ListenerCount returns the number of listeners listening to the event named eventName.
 func (app *App) ListenerCount(eventName string) int {
-	count, _ := app.eventEmitter.ListenerCount(eventName)
+	count, err := app.eventEmitter.ListenerCount(eventName)
+	if err != nil {
+		panic(err)
+	}
+
 	return count
 }
 
