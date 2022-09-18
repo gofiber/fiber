@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3/eventemitter"
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -1036,6 +1037,33 @@ func Test_App_Locals(t *testing.T) {
 	app.Locals["framework"] = "fiber"
 
 	utils.AssertEqual(t, "fiber", app.Locals["framework"])
+}
+
+func Test_App_EventEmitter(t *testing.T) {
+	app := New()
+	fiberEvent := func(message string) {
+		utils.AssertEqual(t, message, "fiber is amazing")
+	}
+
+	app.On("fiber", &fiberEvent)
+	app.Emit("fiber", "fiber is amazing")
+	utils.AssertEqual(t, 1, app.ListenerCount("fiber"))
+	app.RemoveListener("fiber", &fiberEvent)
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, err, eventemitter.ErrEventNotExists)
+		}
+	}()
+	app.ListenerCount("fiber")
+
+	events := []string{
+		"event_1", "event_1", "event_1",
+	}
+	for _, event := range events {
+		app.AddListener(event, func() {})
+	}
+	app.RemoveAllListeners()
+	utils.AssertEqual(t, 0, app.ListenerCount("event_1"))
 }
 
 // TODO: Rewrite this tests for new mounting app
