@@ -31,6 +31,8 @@ type IRouter interface {
 	Trace(path string, handlers ...Handler) IRouter
 	Patch(path string, handlers ...Handler) IRouter
 
+	Route(path string) IRoute
+
 	// On(eventName string, listener any) IRouter
 	// Once(eventName string, listener any) IRouter
 	// Emit(eventName string, arguments ...any) IRouter
