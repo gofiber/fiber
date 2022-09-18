@@ -7,8 +7,6 @@ import (
 	"github.com/gofiber/fiber/v3/utils"
 )
 
-//TODO: add benchmark test
-
 func Test_New_Emitter(t *testing.T) {
 	emitter := New()
 	utils.AssertEqual(t, emitter != nil, true)
@@ -190,4 +188,114 @@ func Test_Is_Not_A_Function(t *testing.T) {
 
 	err := emitter.On("damn", "it is not a function")
 	utils.AssertEqual(t, ErrNotAFunction, err)
+}
+
+func Benchmark_AddListener(b *testing.B) {
+	emitter := New()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		emitter.AddListener("event", func() {})
+	}
+}
+
+func Benchmark_AddListener_Pointer(b *testing.B) {
+	emitter := New()
+	testEvent := func() {}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		emitter.AddListener("event", &testEvent)
+	}
+}
+
+func Benchmark_Emit(b *testing.B) {
+	emitter := New()
+	emitter.AddListener("event", func() {})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		emitter.Emit("event")
+	}
+}
+
+func Benchmark_Emit_Pointer(b *testing.B) {
+	emitter := New()
+	testEvent := func() {}
+	emitter.AddListener("event", &testEvent)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		emitter.Emit("event")
+	}
+}
+
+func Benchmark_Emit_With_Arguments(b *testing.B) {
+	emitter := New()
+	emitter.AddListener("event", func(a int, b string, c bool) {})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		emitter.Emit("event", 1, "test", true)
+	}
+}
+
+func Benchmark_Emit_Pointer_With_Arguments(b *testing.B) {
+	emitter := New()
+	testEvent := func(a int, b string, c bool) {}
+	emitter.AddListener("event", &testEvent)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		emitter.Emit("event", 1, "test", true)
+	}
+}
+
+func Benchmark_Emit_Variadic(b *testing.B) {
+	emitter := New()
+	emitter.AddListener("event", func(a int, b bool, c ...any) {})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		emitter.Emit("event", 1, true, "test", false, 1000)
+	}
+}
+
+func Benchmark_Emit_Pointer_Variadic(b *testing.B) {
+	emitter := New()
+	testEvent := func(a int, b bool, c ...any) {}
+	emitter.AddListener("event", &testEvent)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		emitter.Emit("event", 1, true, "test", false, 1000)
+	}
+}
+
+func Benchmark_RemoveListener(b *testing.B) {
+	emitter := New()
+
+	event := func() {}
+	for i := 0; i < b.N; i++ {
+		emitter.AddListener("event", event)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		emitter.RemoveListener("event", event)
+	}
+}
+
+func Benchmark_RemoveListener_Pointer(b *testing.B) {
+	emitter := New()
+	testEvent := func() {}
+
+	for i := 0; i < b.N; i++ {
+		emitter.AddListener("event", &testEvent)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		emitter.RemoveListener("event", &testEvent)
+	}
 }
