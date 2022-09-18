@@ -65,7 +65,7 @@ func Test_Get(t *testing.T) {
 
 	t.Run("global get function", func(t *testing.T) {
 		resp, err := Get("http://example.com", Config{
-			dial: func(addr string) (net.Conn, error) {
+			Dial: func(addr string) (net.Conn, error) {
 				return ln.Dial()
 			},
 		})

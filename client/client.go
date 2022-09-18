@@ -479,7 +479,7 @@ type Config struct {
 	FormData map[string]string
 	File     []*File
 
-	dial fasthttp.DialFunc
+	Dial fasthttp.DialFunc
 }
 
 // Set the parameters passed via Config to Request.
@@ -521,8 +521,8 @@ func setConfigToRequest(req *Request, config ...Config) {
 		req.SetTimeout(cfg.Timeout)
 	}
 
-	if cfg.dial != nil {
-		req.SetDial(cfg.dial)
+	if cfg.Dial != nil {
+		req.SetDial(cfg.Dial)
 	}
 
 	if cfg.Body != nil {
