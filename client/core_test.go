@@ -70,7 +70,7 @@ func Test_Exec_Func(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln))
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}()
 
 	t.Run("normal request", func(t *testing.T) {
@@ -143,7 +143,7 @@ func Test_Execute(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln))
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}()
 
 	t.Run("add user request hooks", func(t *testing.T) {

@@ -60,7 +60,7 @@ func Test_Get(t *testing.T) {
 	})
 
 	go func() {
-		require.Nil(t, app.Listener(ln))
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 	}()
 
 	t.Run("global get function", func(t *testing.T) {

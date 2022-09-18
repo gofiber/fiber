@@ -18,7 +18,7 @@ func createHelperServer(t *testing.T) (*fiber.App, func(addr string) (net.Conn, 
 	return app, func(addr string) (net.Conn, error) {
 			return ln.Dial()
 		}, func() {
-			require.Nil(t, app.Listener(ln))
+			require.Nil(t, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true}))
 		}
 }
 
