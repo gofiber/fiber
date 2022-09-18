@@ -1202,7 +1202,8 @@ func Benchmark_App_ETag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.Send([]byte("Hello, World!"))
+	err := c.Send([]byte("Hello, World!"))
+	utils.AssertEqual(b, nil, err)
 	for n := 0; n < b.N; n++ {
 		setETag(c, false)
 	}
