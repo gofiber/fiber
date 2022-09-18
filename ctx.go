@@ -154,6 +154,7 @@ func (app *App) ReleaseCtx(c *Ctx) {
 	c.fasthttp = nil
 	if c.viewBindMap != nil {
 		dictpool.ReleaseDict(c.viewBindMap)
+		c.viewBindMap = nil
 	}
 	app.pool.Put(c)
 }
