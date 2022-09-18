@@ -18,7 +18,7 @@ import (
 
 // Router defines all router handle interface includes app and group router.
 type IRouter interface {
-	Use(args ...interface{}) IRouter
+	Use(args ...any) IRouter
 
 	All(path string, handlers ...Handler) IRouter
 	Get(path string, handlers ...Handler) IRouter
@@ -187,7 +187,7 @@ func (r *Router) ListenerCount(eventName string) int {
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (r *Router) Use(args ...interface{}) IRouter {
+func (r *Router) Use(args ...any) IRouter {
 	var prefix string
 	var multiPrefix []string
 	var handlers []Handler

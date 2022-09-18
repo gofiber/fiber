@@ -22,7 +22,7 @@ type Session struct {
 }
 
 var sessionPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return new(Session)
 	},
 }
@@ -64,7 +64,7 @@ func (s *Session) ID() string {
 }
 
 // Get will return the value
-func (s *Session) Get(key string) interface{} {
+func (s *Session) Get(key string) any {
 	// Better safe than sorry
 	if s.data == nil {
 		return nil
@@ -73,7 +73,7 @@ func (s *Session) Get(key string) interface{} {
 }
 
 // Set will update or create a new key value
-func (s *Session) Set(key string, val interface{}) {
+func (s *Session) Set(key string, val any) {
 	// Better safe than sorry
 	if s.data == nil {
 		return

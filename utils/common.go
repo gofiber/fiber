@@ -86,7 +86,7 @@ func UUIDv4() string {
 }
 
 // FunctionName returns function name
-func FunctionName(fn interface{}) string {
+func FunctionName(fn any) string {
 	t := reflect.ValueOf(fn).Type()
 	if t.Kind() == reflect.Func {
 		return runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()

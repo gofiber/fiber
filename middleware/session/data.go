@@ -10,13 +10,13 @@ import (
 // "github.com/gofiber/fiber/v3/internal/msgp"
 type data struct {
 	sync.RWMutex
-	Data map[string]interface{}
+	Data map[string]any
 }
 
 var dataPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		d := new(data)
-		d.Data = make(map[string]interface{})
+		d.Data = make(map[string]any)
 		return d
 	},
 }
@@ -33,14 +33,14 @@ func (d *data) Reset() {
 	d.Unlock()
 }
 
-func (d *data) Get(key string) interface{} {
+func (d *data) Get(key string) any {
 	d.RLock()
 	v := d.Data[key]
 	d.RUnlock()
 	return v
 }
 
-func (d *data) Set(key string, value interface{}) {
+func (d *data) Set(key string, value any) {
 	d.Lock()
 	d.Data[key] = value
 	d.Unlock()

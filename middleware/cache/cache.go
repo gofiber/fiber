@@ -27,7 +27,7 @@ const (
 	cacheMiss        = "miss"
 )
 
-var ignoreHeaders = map[string]interface{}{
+var ignoreHeaders = map[string]any{
 	"Connection":          nil,
 	"Keep-Alive":          nil,
 	"Proxy-Authenticate":  nil,

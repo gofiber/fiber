@@ -92,13 +92,13 @@ type Cookie struct {
 // Views is the interface that wraps the Render function.
 type TemplateEngine interface {
 	Load() error
-	Render(io.Writer, string, interface{}, ...string) error
+	Render(io.Writer, string, any, ...string) error
 }
 
 // ParserType require two element, type and converter for register.
 // Use ParserType with BodyParser for parsing custom type in form data.
 type ParserType struct {
-	Customtype interface{}
+	Customtype any
 	Converter  func(string) reflect.Value
 }
 
@@ -147,7 +147,7 @@ func (app *App) ReleaseCtx(c *Ctx) {
 
 // Emit synchronously calls each of the listeners registered for the event named eventName, in the order they were registered, passing the supplied arguments to each.
 // Returns true if the event had listeners, false otherwise
-func (c *Ctx) Emit(evt string, argv ...interface{}) error {
+func (c *Ctx) Emit(evt string, argv ...any) error {
 	return c.app.eventEmitter.Emit(evt, argv...)
 }
 
@@ -302,7 +302,7 @@ func (c *Ctx) Body() []byte {
 }
 
 // decoderPool helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
-var decoderPool = &sync.Pool{New: func() interface{} {
+var decoderPool = &sync.Pool{New: func() any {
 	return decoderBuilder(ParserConfig{
 		IgnoreUnknownKeys: true,
 		ZeroEmpty:         true,
@@ -311,12 +311,12 @@ var decoderPool = &sync.Pool{New: func() interface{} {
 
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetParserDecoder(parserConfig ParserConfig) {
-	decoderPool = &sync.Pool{New: func() interface{} {
+	decoderPool = &sync.Pool{New: func() any {
 		return decoderBuilder(parserConfig)
 	}}
 }
 
-func decoderBuilder(parserConfig ParserConfig) interface{} {
+func decoderBuilder(parserConfig ParserConfig) any {
 	decoder := schema.NewDecoder()
 	decoder.IgnoreUnknownKeys(parserConfig.IgnoreUnknownKeys)
 	if parserConfig.SetAliasTag != "" {
@@ -333,7 +333,7 @@ func decoderBuilder(parserConfig ParserConfig) interface{} {
 // It supports decoding the following content types based on the Content-Type header:
 // application/json, application/xml, application/x-www-form-urlencoded, multipart/form-data
 // If none of the content types above are matched, it will return a ErrUnprocessableEntity error
-func (c *Ctx) BodyParser(out interface{}) error {
+func (c *Ctx) BodyParser(out any) error {
 	// Get content-type
 	ctype := utils.ToLower(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()))
 
@@ -496,7 +496,7 @@ func (c *Ctx) Response() *fasthttp.Response {
 // Format performs content-negotiation on the Accept HTTP header.
 // It uses Accepts to select a proper format.
 // If the header is not specified or there is no proper format, text/plain is used.
-func (c *Ctx) Format(body interface{}) error {
+func (c *Ctx) Format(body any) error {
 	// Get accepted content type
 	accept := c.Accepts("html", "json", "txt", "xml")
 	// Set accepted content type
@@ -688,7 +688,7 @@ func (c *Ctx) Is(extension string) bool {
 // except that []byte encodes as a base64-encoded string,
 // and a nil slice encodes as the null JSON value.
 // This method also sets the content header to application/json.
-func (c *Ctx) JSON(data interface{}) error {
+func (c *Ctx) JSON(data any) error {
 	raw, err := c.app.config.JSONEncoder(data)
 	if err != nil {
 		return err
@@ -701,7 +701,7 @@ func (c *Ctx) JSON(data interface{}) error {
 // JSONP sends a JSON response with JSONP support.
 // This method is identical to JSON, except that it opts-in to JSONP callback support.
 // By default, the callback name is simply callback.
-func (c *Ctx) JSONP(data interface{}, callback ...string) error {
+func (c *Ctx) JSONP(data any, callback ...string) error {
 	raw, err := json.Marshal(data)
 	if err != nil {
 		return err
@@ -741,9 +741,9 @@ func (c *Ctx) Links(link ...string) {
 	bytebufferpool.Put(bb)
 }
 
-// Locals makes it possible to pass interface{} values under string keys scoped to the request
+// Locals makes it possible to pass any values under string keys scoped to the request
 // and therefore available to all following routes that match the request.
-func (c *Ctx) Locals(key string, value ...interface{}) (val interface{}) {
+func (c *Ctx) Locals(key string, value ...any) (val any) {
 	if len(value) == 0 {
 		return c.fasthttp.UserValue(key)
 	}
@@ -866,7 +866,7 @@ func (c *Ctx) AllParams() map[string]string {
 }
 
 // ParamsParser binds the param string to a struct.
-func (c *Ctx) ParamsParser(out interface{}) error {
+func (c *Ctx) ParamsParser(out any) error {
 	params := make(map[string][]string, len(c.route.Params))
 	for _, param := range c.route.Params {
 		params[param] = append(params[param], c.Params(param))
@@ -946,7 +946,7 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 }
 
 // QueryParser binds the query string to a struct.
-func (c *Ctx) QueryParser(out interface{}) error {
+func (c *Ctx) QueryParser(out any) error {
 	data := make(map[string][]string)
 	var err error
 
@@ -1007,7 +1007,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 }
 
 // ReqHeaderParser binds the request header strings to a struct.
-func (c *Ctx) ReqHeaderParser(out interface{}) error {
+func (c *Ctx) ReqHeaderParser(out any) error {
 	data := make(map[string][]string)
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
 		k := utils.UnsafeString(key)
@@ -1027,7 +1027,7 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 	return c.parseToStruct(reqHeaderTag, out, data)
 }
 
-func (c *Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
+func (c *Ctx) parseToStruct(aliasTag string, out any, data map[string][]string) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPool.Get().(*schema.Decoder)
 	defer decoderPool.Put(schemaDecoder)
@@ -1038,7 +1038,7 @@ func (c *Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]
 	return schemaDecoder.Decode(out, data)
 }
 
-func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
+func equalFieldType(out any, kind reflect.Kind, key string) bool {
 	// Get type of interface
 	outTyp := reflect.TypeOf(out).Elem()
 	key = utils.ToLower(key)
@@ -1168,7 +1168,7 @@ type RenderCallback = func(err error, html string) error
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-func (c *Ctx) Render(view string, locals interface{}, callback ...RenderCallback) error {
+func (c *Ctx) Render(view string, locals any, callback ...RenderCallback) error {
 	var err error
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
@@ -1233,7 +1233,7 @@ func (c *Ctx) Render(view string, locals interface{}, callback ...RenderCallback
 	return err
 }
 
-func (c *Ctx) renderExtensions(bind interface{}) {
+func (c *Ctx) renderExtensions(bind any) {
 	if bindMap, ok := bind.(Map); ok {
 		// Bind view map
 		if c.viewBindMap != nil {
@@ -1245,7 +1245,7 @@ func (c *Ctx) renderExtensions(bind interface{}) {
 		// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 		if c.app.config.PassLocalsToViews {
 			// Loop through each local and set it in the map
-			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
+			c.fasthttp.VisitUserValues(func(key []byte, val any) {
 				// check if bindMap doesn't contain the key
 				if _, ok := bindMap[utils.UnsafeString(key)]; !ok {
 					// Set the key and value in the bindMap
@@ -1490,7 +1490,7 @@ func (c *Ctx) Write(p []byte) (int, error) {
 }
 
 // Writef appends f & a into response body writer.
-func (c *Ctx) Writef(f string, a ...interface{}) (int, error) {
+func (c *Ctx) Writef(f string, a ...any) (int, error) {
 	return fmt.Fprintf(c.fasthttp.Response.BodyWriter(), f, a...)
 }
 

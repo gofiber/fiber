@@ -473,7 +473,7 @@ func (a *Agent) BodyStream(bodyStream io.Reader, bodySize int) *Agent {
 }
 
 // JSON sends a JSON request.
-func (a *Agent) JSON(v interface{}) *Agent {
+func (a *Agent) JSON(v any) *Agent {
 	if a.jsonEncoder == nil {
 		a.jsonEncoder = json.Marshal
 	}
@@ -490,7 +490,7 @@ func (a *Agent) JSON(v interface{}) *Agent {
 }
 
 // XML sends an XML request.
-func (a *Agent) XML(v interface{}) *Agent {
+func (a *Agent) XML(v any) *Agent {
 	a.req.Header.SetContentType(MIMEApplicationXML)
 
 	if body, err := xml.Marshal(v); err != nil {
@@ -819,7 +819,7 @@ func (a *Agent) String() (int, string, []error) {
 // And bytes body will be unmarshalled to given v.
 //
 // it's not safe to use Agent after calling [Agent.Struct]
-func (a *Agent) Struct(v interface{}) (code int, body []byte, errs []error) {
+func (a *Agent) Struct(v any) (code int, body []byte, errs []error) {
 	defer a.release()
 	if code, body, errs = a.bytes(); len(errs) > 0 {
 		return
@@ -868,7 +868,7 @@ func (a *Agent) reset() {
 var (
 	clientPool sync.Pool
 	agentPool  = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &Agent{req: &Request{}}
 		},
 	}

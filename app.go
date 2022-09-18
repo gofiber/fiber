@@ -34,8 +34,8 @@ const Version = "3.0.0-alpha.1"
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
 
-// Map is a shortcut for map[string]interface{}, useful for JSON returns
-type Map map[string]interface{}
+// Map is a shortcut for map[string]any, useful for JSON returns
+type Map map[string]any
 
 // Storage interface for communicating with different database/key-value
 // providers
@@ -117,7 +117,7 @@ type App struct {
 	// Registered routers
 	routerList map[string]*Router
 	// The app.Locals has properties that are local variables within the application, and will be available in templates rendered with ctx.Render.
-	Locals map[string]interface{}
+	Locals map[string]any
 	// Default engine
 	engine TemplateEngine
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
@@ -407,7 +407,7 @@ func New(config ...Config) *App {
 		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create Ctx pool
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return new(Ctx)
 			},
 		},
@@ -421,7 +421,7 @@ func New(config ...Config) *App {
 		path:         "/",
 		mountpath:    "",
 		errorHandler: DefaultErrorHandler,
-		Locals:       make(map[string]interface{}),
+		Locals:       make(map[string]any),
 		eventEmitter: eventemitter.New(),
 	}
 
@@ -526,7 +526,7 @@ func (app *App) Router() IRouter {
 //	})
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
-func (app *App) Use(args ...interface{}) IRouter {
+func (app *App) Use(args ...any) IRouter {
 	var prefix string
 	var multiPrefix []string
 	var subApp *App

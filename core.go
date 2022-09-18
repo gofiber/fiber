@@ -30,7 +30,7 @@ type Route struct {
 
 type disableLogger struct{}
 
-func (dl *disableLogger) Printf(_ string, _ ...interface{}) {
+func (dl *disableLogger) Printf(_ string, _ ...any) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
