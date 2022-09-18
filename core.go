@@ -132,7 +132,12 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 }
 
 func (app *App) registerRouter(prefix string, router *Router) {
+	if prefix == "" {
+		prefix = "/"
+	}
+
 	router.app = app
+	router.path = prefix
 
 	if router.config.MergeParams {
 		parsed := parseRoute(prefix)

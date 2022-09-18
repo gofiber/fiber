@@ -81,6 +81,40 @@ func Test_Router_Methods(t *testing.T) {
 	testStatus200(t, app, "/users/john/doe", MethodGet)
 }
 
+func Test_Router_Route(t *testing.T) {
+	dummyHandler := testEmptyHandler
+
+	app := New()
+	router := NewRouter()
+
+	app.Use("/router", router)
+
+	router.Route("/:john?/:doe?").
+		Connect(dummyHandler).
+		Put(dummyHandler).
+		Post(dummyHandler).
+		Delete(dummyHandler).
+		Head(dummyHandler).
+		Patch(dummyHandler).
+		Options(dummyHandler).
+		Trace(dummyHandler).
+		Get(dummyHandler).
+		All(dummyHandler).
+		Use(dummyHandler)
+
+	testStatus200(t, app, "/router/john/doe", MethodConnect)
+	testStatus200(t, app, "/router/john/doe", MethodPut)
+	testStatus200(t, app, "/router/john/doe", MethodPost)
+	testStatus200(t, app, "/router/john/doe", MethodDelete)
+	testStatus200(t, app, "/router/john/doe", MethodHead)
+	testStatus200(t, app, "/router/john/doe", MethodPatch)
+	testStatus200(t, app, "/router/john/doe", MethodOptions)
+	testStatus200(t, app, "/router/john/doe", MethodTrace)
+	testStatus200(t, app, "/router/john/doe", MethodGet)
+	testStatus200(t, app, "/router/john/doe", MethodPost)
+	testStatus200(t, app, "/router/john/doe", MethodGet)
+}
+
 func Test_Router_CaseSensitive(t *testing.T) {
 	app := New(Config{
 		CaseSensitive: false,

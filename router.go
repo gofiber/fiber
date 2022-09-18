@@ -68,6 +68,8 @@ type Router struct {
 	// mutex sync.Mutex
 	// App
 	app *App
+	// router path
+	path string
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// contains the information if the route stack has been changed to build the optimized tree
@@ -309,9 +311,13 @@ func (r *Router) All(path string, handlers ...Handler) IRouter {
 //
 // Use router.Route() to avoid duplicate route naming and thus typing errors.
 func (r *Router) Route(path string) IRoute {
+	if path == "" {
+		path = "/"
+	}
+
 	return &route{
 		app:  r.app,
-		path: path,
+		path: r.path + path,
 	}
 }
 
