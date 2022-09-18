@@ -239,3 +239,27 @@ func Test_Router_ErrorHandler(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, string(body), "I'm router error handler")
 }
+
+func Test_Router_EventEmitter(t *testing.T) {
+	app := New()
+	router := NewRouter()
+
+	app.Use("/router", router)
+
+	app.On("fiber", func(message string) {
+		utils.AssertEqual(t, message, "fiber is amazing")
+	})
+
+	router.On("fiber", func(message string) {
+		utils.AssertEqual(t, message, "fiber is amazing")
+	})
+
+	router.Get("/", func(c *Ctx) error {
+		c.Emit("fiber", "fiber is amazing")
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/router", nil))
+	utils.AssertEqual(t, err, nil)
+	utils.AssertEqual(t, resp.StatusCode, StatusOK)
+}
