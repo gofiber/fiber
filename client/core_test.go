@@ -54,7 +54,7 @@ func Test_AddMissing_Port(t *testing.T) {
 
 func Test_Exec_Func(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	app.Get("/normal", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
@@ -127,7 +127,7 @@ func Test_Execute(t *testing.T) {
 	t.Parallel()
 
 	ln := fasthttputil.NewInmemoryListener()
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	app.Get("/normal", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())

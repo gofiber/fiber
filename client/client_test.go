@@ -54,7 +54,7 @@ func Test_Get(t *testing.T) {
 
 	ln := fasthttputil.NewInmemoryListener()
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
 	})

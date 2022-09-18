@@ -13,7 +13,7 @@ func createHelperServer(t *testing.T) (*fiber.App, func(addr string) (net.Conn, 
 	t.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	return app, func(addr string) (net.Conn, error) {
 			return ln.Dial()

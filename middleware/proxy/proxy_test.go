@@ -20,18 +20,21 @@ import (
 func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, string) {
 	t.Helper()
 
-	target := fiber.New(fiber.Config{DisableStartupMessage: true})
+	target := fiber.New()
 	target.Get("/", handler)
 
 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
 	require.NoError(t, err)
 
+	addr := ln.Addr().String()
+
 	go func() {
-		require.Nil(t, target.Listener(ln))
+		require.Nil(t, target.Listener(ln, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
 	}()
 
 	time.Sleep(2 * time.Second)
-	addr := ln.Addr().String()
 
 	return target, addr
 }
@@ -78,7 +81,7 @@ func Test_Proxy(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	app.Use(Balancer(Config{Servers: []string{addr}}))
 
@@ -101,7 +104,7 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	app.Get("/tlsbalaner", func(c fiber.Ctx) error {
 		return c.SendString("tls balancer")
@@ -116,7 +119,11 @@ func Test_Proxy_Balancer_WithTlsConfig(t *testing.T) {
 		TlsConfig: clientTLSConf,
 	}))
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	resp, err := fiberClient.AcquireClient().
 		SetTLSConfig(clientTLSConf).
@@ -145,13 +152,17 @@ func Test_Proxy_Forward_WithTlsConfig_To_Http(t *testing.T) {
 
 	proxyServerLn = tls.NewListener(proxyServerLn, proxyServerTLSConf)
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	proxyAddr := proxyServerLn.Addr().String()
 
 	app.Use(Forward("http://" + targetAddr))
 
-	go func() { require.Nil(t, app.Listener(proxyServerLn)) }()
+	go func() {
+		require.Nil(t, app.Listener(proxyServerLn, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	resp, err := fiberClient.AcquireClient().SetTLSConfig(&tls.Config{
 		InsecureSkipVerify: true,
@@ -198,7 +209,7 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 
 	ln = tls.NewListener(ln, serverTLSConf)
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 
 	app.Get("/tlsfwd", func(c fiber.Ctx) error {
 		return c.SendString("tls forward")
@@ -211,7 +222,11 @@ func Test_Proxy_Forward_WithTlsConfig(t *testing.T) {
 	WithTlsConfig(clientTLSConf)
 	app.Use(Forward("https://" + addr + "/tlsfwd"))
 
-	go func() { require.Nil(t, app.Listener(ln)) }()
+	go func() {
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
 
 	resp, err := fiberClient.AcquireClient().
 		SetTLSConfig(clientTLSConf).
@@ -382,7 +397,7 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 		return c.SendString("hello world")
 	}, t)
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Get("/*", func(c fiber.Ctx) error {
 		path := c.OriginalURL()
 		url := strings.TrimPrefix(path, "/")
