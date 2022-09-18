@@ -211,6 +211,7 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 				_, _ = messageText.WriteString(CookieDataSeparator)
 			}
 		}
+		r.messages = r.messages[:0]
 
 		// old input data
 		i := 1
