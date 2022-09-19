@@ -4441,3 +4441,52 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		utils.AssertEqual(t, false, c.IsFromLocal())
 	}
 }
+
+// go test -run Test_Ctx_RepeatParserWithSameStruct -v
+func Test_Ctx_RepeatParserWithSameStruct(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	type Request struct {
+		QueryParam  string `query:"query_param"`
+		HeaderParam string `reqHeader:"header_param"`
+		BodyParam   string `json:"body_param" xml:"body_param" form:"body_param"`
+	}
+
+	r := new(Request)
+
+	c.Request().URI().SetQueryString("query_param=query_param")
+	utils.AssertEqual(t, nil, c.QueryParser(r))
+	utils.AssertEqual(t, "query_param", r.QueryParam)
+
+	c.Request().Header.Add("header_param", "header_param")
+	utils.AssertEqual(t, nil, c.ReqHeaderParser(r))
+	utils.AssertEqual(t, "header_param", r.HeaderParam)
+
+	var gzipJSON bytes.Buffer
+	w := gzip.NewWriter(&gzipJSON)
+	_, _ = w.Write([]byte(`{"body_param":"body_param"}`))
+	_ = w.Close()
+	c.Request().Header.SetContentType(MIMEApplicationJSON)
+	c.Request().Header.Set(HeaderContentEncoding, "gzip")
+	c.Request().SetBody(gzipJSON.Bytes())
+	c.Request().Header.SetContentLength(len(gzipJSON.Bytes()))
+	utils.AssertEqual(t, nil, c.BodyParser(r))
+	utils.AssertEqual(t, "body_param", r.BodyParam)
+	c.Request().Header.Del(HeaderContentEncoding)
+
+	testDecodeParser := func(contentType, body string) {
+		c.Request().Header.SetContentType(contentType)
+		c.Request().SetBody([]byte(body))
+		c.Request().Header.SetContentLength(len(body))
+		utils.AssertEqual(t, nil, c.BodyParser(r))
+		utils.AssertEqual(t, "body_param", r.BodyParam)
+	}
+
+	testDecodeParser(MIMEApplicationJSON, `{"body_param":"body_param"}`)
+	testDecodeParser(MIMEApplicationXML, `<Demo><body_param>body_param</body_param></Demo>`)
+	testDecodeParser(MIMEApplicationForm, "body_param=body_param")
+	testDecodeParser(MIMEMultipartForm+`;boundary="b"`, "--b\r\nContent-Disposition: form-data; name=\"body_param\"\r\n\r\nbody_param\r\n--b--")
+}
