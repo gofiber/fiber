@@ -70,8 +70,6 @@ type Router struct {
 	// mutex sync.Mutex
 	// App
 	app *App
-	// router path
-	path string
 	// Route stack divided by HTTP methods
 	stack [][]*Route
 	// contains the information if the route stack has been changed to build the optimized tree
@@ -318,8 +316,8 @@ func (r *Router) Route(path string) IRoute {
 	}
 
 	return &route{
-		app:  r.app,
-		path: r.path + path,
+		router: r,
+		path:   path,
 	}
 }
 

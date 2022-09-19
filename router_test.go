@@ -220,6 +220,45 @@ func Test_Router_MergeParams(t *testing.T) {
 	}
 }
 
+func Test_Router_MergeParams_With_Route(t *testing.T) {
+	dummyHandler := func(c *Ctx) error {
+		utils.AssertEqual(t, c.Params("john"), "john")
+		utils.AssertEqual(t, c.Params("doe"), "doe")
+		return nil
+	}
+
+	app := New()
+	router := NewRouter(RouterConfig{
+		MergeParams: true,
+	})
+	app.Use("/router/:john", router)
+
+	router.Route("/:doe").
+		Connect(dummyHandler).
+		Put(dummyHandler).
+		Post(dummyHandler).
+		Delete(dummyHandler).
+		Head(dummyHandler).
+		Patch(dummyHandler).
+		Options(dummyHandler).
+		Trace(dummyHandler).
+		Get(dummyHandler).
+		All(dummyHandler).
+		Use(dummyHandler)
+
+	testStatus200(t, app, "/router/john/doe", MethodConnect)
+	testStatus200(t, app, "/router/john/doe", MethodPut)
+	testStatus200(t, app, "/router/john/doe", MethodPost)
+	testStatus200(t, app, "/router/john/doe", MethodDelete)
+	testStatus200(t, app, "/router/john/doe", MethodHead)
+	testStatus200(t, app, "/router/john/doe", MethodPatch)
+	testStatus200(t, app, "/router/john/doe", MethodOptions)
+	testStatus200(t, app, "/router/john/doe", MethodTrace)
+	testStatus200(t, app, "/router/john/doe", MethodGet)
+	testStatus200(t, app, "/router/john/doe", MethodPost)
+	testStatus200(t, app, "/router/john/doe", MethodGet)
+}
+
 func Test_Router_ErrorHandler(t *testing.T) {
 	app := New()
 	router := NewRouter()

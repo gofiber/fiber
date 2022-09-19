@@ -137,7 +137,6 @@ func (app *App) registerRouter(prefix string, router *Router) {
 	}
 
 	router.app = app
-	router.path = prefix
 
 	if router.config.MergeParams {
 		parsed := parseRoute(prefix)
