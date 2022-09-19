@@ -8,11 +8,9 @@ import (
 	"context"
 	"net"
 	"net/url"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3/utils"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -285,7 +283,8 @@ func Test_Redirect_Request(t *testing.T) {
 		ExpectedStatusCode int
 		ExceptedErrsLen    int
 	}{
-		{URL: "/",
+		{
+			URL:                "/",
 			CookieValue:        "key:value,key2:value2,comma:Fiber\\, v3",
 			ExpectedBody:       `{"inputs":{},"messages":{"comma":"Fiber, v3","key":"value","key2":"value2"}}`,
 			ExpectedStatusCode: StatusOK,
@@ -426,23 +425,6 @@ func Benchmark_Redirect_setFlash(b *testing.B) {
 	require.Equal(b, "1", c.Redirect().OldInput("id"))
 	require.Equal(b, "tom", c.Redirect().OldInput("name"))
 	require.Equal(b, map[string]string{"id": "1", "name": "tom"}, c.Redirect().OldInputs())
-}
-
-// go test -v -run=^$ -bench=Benchmark_Redirect_Route_WithFlashMessages -benchmem -count=4
-func Benchmark_Redirect_CheckForCookie(b *testing.B) {
-	r := &fasthttp.RequestCtx{}
-	r.Request.Header.Set(HeaderCookie, "tttt=success:1,k:message:test,k:old_input_data_name:tom,k:old_input_data_id:1")
-
-	r.Request.Header.Cookie("test")
-	result := false
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		result = strings.Contains(utils.UnsafeString(r.Request.Header.RawHeaders()), FlashCookieName)
-	}
-
-	require.Equal(b, false, result)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Messages -benchmem -count=4
