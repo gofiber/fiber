@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpproxy"
 )
 
 // New is deprecated
@@ -50,7 +51,9 @@ func Balancer(config Config) fiber.Handler {
 
 			TLSConfig: config.TlsConfig,
 		}
-
+		if len(cfg.Proxy) != 0 {
+			client.Dial = fasthttpproxy.FasthttpHTTPDialer(cfg.Proxy)
+		}
 		lbc.Clients = append(lbc.Clients, client)
 	}
 
@@ -106,6 +109,12 @@ var client = fasthttp.Client{
 // This function should be called before Do and Forward.
 func WithTlsConfig(tlsConfig *tls.Config) {
 	client.TLSConfig = tlsConfig
+}
+
+// WithHttpProxy dials the http client using the provided HTTP proxy.
+// This function should be called before Do and Forward.
+func WithHttpProxy(proxy string) {
+	client.Dial = fasthttpproxy.FasthttpHTTPDialer(proxy)
 }
 
 // Forward performs the given http request and fills the given http response.

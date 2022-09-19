@@ -1,7 +1,10 @@
 package proxy
 
 import (
+	"bytes"
 	"crypto/tls"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -364,6 +367,7 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 	utils.AssertEqual(t, nil, err2)
 }
 
+// go test -race -run Test_Proxy_Do_HTTP_Prefix_URL
 func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	t.Parallel()
 
@@ -389,4 +393,99 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	s, err := ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "hello world", string(s))
+}
+
+// go test -run Test_Proxy_Forward_WithHttpProxy
+func Test_Proxy_Forward_WithHttpProxy(t *testing.T) {
+	t.Parallel()
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+
+	app.Get("/proxy_fwd", func(c *fiber.Ctx) error {
+		return c.SendString("proxy forward")
+	})
+
+	addr := ln.Addr().String()
+
+	WithHttpProxy("127.0.0.1:7777")
+	app.Use(Forward("http://" + addr + "/proxy_fwd"))
+
+	go func() { runTestProxy("127.0.0.1:7777") }()
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+
+	code, body, errs := fiber.Get("http://" + addr).String()
+
+	utils.AssertEqual(t, 0, len(errs))
+	utils.AssertEqual(t, fiber.StatusOK, code)
+	utils.AssertEqual(t, "proxy forward", body)
+}
+
+// go test -run Test_Proxy_Balancer_ProxyConfig
+func Test_Proxy_Balancer_ProxyConfig(t *testing.T) {
+	t.Parallel()
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+
+	app.Get("/proxy_balancer", func(c *fiber.Ctx) error {
+		return c.SendString("proxy balancer")
+	})
+
+	addr := ln.Addr().String()
+	app.Use(Balancer(Config{
+		Servers: []string{addr},
+		Proxy:   "127.0.0.1:7778",
+	}))
+
+	go func() { runTestProxy("127.0.0.1:7778") }()
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+
+	code, body, errs := fiber.Get("http://" + addr + "/proxy_balancer").String()
+
+	utils.AssertEqual(t, 0, len(errs))
+	utils.AssertEqual(t, fiber.StatusOK, code)
+	utils.AssertEqual(t, "proxy balancer", body)
+}
+
+func runTestProxy(address string) {
+	l, err := net.Listen("tcp", address)
+	if err != nil {
+		panic(err)
+	}
+
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			panic(err)
+		}
+		go handleRequest(conn)
+	}
+}
+
+func handleRequest(conn net.Conn) {
+	defer conn.Close()
+
+	var b [1024]byte
+	n, err := conn.Read(b[:])
+	if err != nil {
+		panic(err)
+	}
+	var method, host string
+	fmt.Sscanf(string(b[:bytes.IndexByte(b[:], '\n')]), "%s%s", &method, &host)
+	serverConn, err := net.Dial("tcp", host)
+	if err != nil {
+		panic(err)
+	}
+	if method == "CONNECT" {
+		fmt.Fprint(conn, "HTTP/1.1 200 Connection established\r\n\r\n")
+	} else {
+		serverConn.Write(b[:n])
+	}
+	go io.Copy(serverConn, conn)
+	io.Copy(conn, serverConn)
 }
