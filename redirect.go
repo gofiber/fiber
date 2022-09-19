@@ -101,7 +101,6 @@ func (r *Redirect) WithInput() *Redirect {
 	ctype := utils.ToLower(utils.UnsafeString(r.c.Context().Request.Header.ContentType()))
 	ctype = binder.FilterFlags(utils.ParseVendorSpecificContentType(ctype))
 
-	// TODO: Maybe better implementation.
 	switch ctype {
 	case MIMEApplicationForm:
 		_ = r.c.Bind().Form(r.oldInput)
