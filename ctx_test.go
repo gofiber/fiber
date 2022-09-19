@@ -446,9 +446,11 @@ func Test_Ctx_ParamParser(t *testing.T) {
 		utils.AssertEqual(t, uint(222), d.RoleID)
 		return nil
 	})
-	app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
-	app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	utils.AssertEqual(t, nil, err)
 
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	utils.AssertEqual(t, nil, err)
 }
 
 // go test -run Test_Ctx_BodyParser_WithSetParserDecoder
@@ -621,7 +623,7 @@ func Test_Ctx_UserContext(t *testing.T) {
 		utils.AssertEqual(t, ctx, context.Background())
 	})
 	t.Run("ValueContext", func(t *testing.T) {
-		testKey := "Test Key"
+		testKey := struct{}{}
 		testValue := "Test Value"
 		ctx := context.WithValue(context.Background(), testKey, testValue)
 		utils.AssertEqual(t, testValue, ctx.Value(testKey))
@@ -634,7 +636,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	testKey := "Test Key"
+	testKey := struct{}{}
 	testValue := "Test Value"
 	ctx := context.WithValue(context.Background(), testKey, testValue)
 	c.SetUserContext(ctx)
@@ -643,7 +645,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 
 // go test -run Test_Ctx_UserContext_Multiple_Requests
 func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
-	testKey := "foobar-key"
+	testKey := struct{}{}
 	testValue := "foobar-value"
 
 	app := New()
@@ -802,9 +804,13 @@ func Benchmark_Ctx_Format(b *testing.B) {
 	c.Request().Header.Set("Accept", "text/plain")
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.Format("Hello, World!")
+		err = c.Format("Hello, World!")
 	}
+
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, `Hello, World!`, string(c.Response().Body()))
 }
 
@@ -816,9 +822,13 @@ func Benchmark_Ctx_Format_HTML(b *testing.B) {
 	c.Request().Header.Set("Accept", "text/html")
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.Format("Hello, World!")
+		err = c.Format("Hello, World!")
 	}
+
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, "<p>Hello, World!</p>", string(c.Response().Body()))
 }
 
@@ -830,9 +840,13 @@ func Benchmark_Ctx_Format_JSON(b *testing.B) {
 	c.Request().Header.Set("Accept", "application/json")
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.Format("Hello, World!")
+		err = c.Format("Hello, World!")
 	}
+
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, `"Hello, World!"`, string(c.Response().Body()))
 }
 
@@ -844,9 +858,13 @@ func Benchmark_Ctx_Format_XML(b *testing.B) {
 	c.Request().Header.Set("Accept", "application/xml")
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.Format("Hello, World!")
+		err = c.Format("Hello, World!")
 	}
+
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, `<string>Hello, World!</string>`, string(c.Response().Body()))
 }
 
@@ -1752,9 +1770,13 @@ func Benchmark_Ctx_ParamsParse(b *testing.B) {
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.ParamsParser(&res)
+		err = c.ParamsParser(&res)
 	}
+
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, "john", res.Param1)
 	utils.AssertEqual(b, "doe", res.Param2)
 	utils.AssertEqual(b, "is", res.Param3)
@@ -2173,7 +2195,7 @@ func Test_Ctx_Download(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	c.Download("ctx.go", "Awesome File!")
+	utils.AssertEqual(t, nil, c.Download("ctx.go", "Awesome File!"))
 
 	f, err := os.Open("./ctx.go")
 	utils.AssertEqual(t, nil, err)
@@ -2184,7 +2206,7 @@ func Test_Ctx_Download(t *testing.T) {
 	utils.AssertEqual(t, expect, c.Response().Body())
 	utils.AssertEqual(t, `attachment; filename="Awesome+File%21"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 
-	c.Download("ctx.go")
+	utils.AssertEqual(t, nil, c.Download("ctx.go"))
 	utils.AssertEqual(t, `attachment; filename="ctx.go"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
 }
 
@@ -2319,10 +2341,11 @@ func Test_Ctx_JSON(t *testing.T) {
 
 	utils.AssertEqual(t, true, c.JSON(complex(1, 1)) != nil)
 
-	c.JSON(Map{ // map has no order
+	err := c.JSON(Map{ // map has no order
 		"Name": "Grame",
 		"Age":  20,
 	})
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `{"Age":20,"Name":"Grame"}`, string(c.Response().Body()))
 	utils.AssertEqual(t, "application/json", string(c.Response().Header.Peek("content-type")))
 
@@ -2370,17 +2393,19 @@ func Test_Ctx_JSONP(t *testing.T) {
 
 	utils.AssertEqual(t, true, c.JSONP(complex(1, 1)) != nil)
 
-	c.JSONP(Map{
+	err := c.JSONP(Map{
 		"Name": "Grame",
 		"Age":  20,
 	})
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `callback({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
 	utils.AssertEqual(t, "application/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
-	c.JSONP(Map{
+	err = c.JSONP(Map{
 		"Name": "Grame",
 		"Age":  20,
 	}, "john")
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `john({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
 	utils.AssertEqual(t, "application/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 }
@@ -2424,11 +2449,11 @@ func Test_Ctx_XML(t *testing.T) {
 		Ages    []int    `xml:"Ages"`
 	}
 
-	c.XML(xmlResult{
+	err := c.XML(xmlResult{
 		Names: []string{"Grame", "John"},
 		Ages:  []int{1, 12, 20},
 	})
-
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `<Users><Names>Grame</Names><Names>John</Names><Ages>1</Ages><Ages>12</Ages><Ages>20</Ages></Users>`, string(c.Response().Body()))
 	utils.AssertEqual(t, "application/xml", string(c.Response().Header.Peek("content-type")))
 
@@ -2547,11 +2572,13 @@ func Test_Ctx_Redirect(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	c.Redirect("http://default.com")
+	err := c.Redirect("http://default.com")
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "http://default.com", string(c.Response().Header.Peek(HeaderLocation)))
 
-	c.Redirect("http://example.com", 301)
+	err = c.Redirect("http://example.com", 301)
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 301, c.Response().StatusCode())
 	utils.AssertEqual(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -2566,9 +2593,10 @@ func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	c.RedirectToRoute("user", Map{
+	err := c.RedirectToRoute("user", Map{
 		"name": "fiber",
 	})
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -2583,10 +2611,11 @@ func Test_Ctx_RedirectToRouteWithQueries(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	c.RedirectToRoute("user", Map{
+	err := c.RedirectToRoute("user", Map{
 		"name":    "fiber",
 		"queries": map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
 	})
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
@@ -2605,9 +2634,10 @@ func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	c.RedirectToRoute("user", Map{
+	err := c.RedirectToRoute("user", Map{
 		"name": "fiber",
 	})
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -2622,7 +2652,8 @@ func Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	c.RedirectToRoute("user", Map{})
+	err := c.RedirectToRoute("user", Map{})
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -2637,9 +2668,10 @@ func Test_Ctx_RedirectToRouteWithGreedyParameters(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	c.RedirectToRoute("user", Map{
+	err := c.RedirectToRoute("user", Map{
 		"+": "test/routes",
 	})
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -2653,7 +2685,8 @@ func Test_Ctx_RedirectBack(t *testing.T) {
 	}).Name("home")
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.RedirectBack("/")
+	err := c.RedirectBack("/")
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -2671,7 +2704,8 @@ func Test_Ctx_RedirectBackWithReferer(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	c.Request().Header.Set(HeaderReferer, "/back")
-	c.RedirectBack("/")
+	err := c.RedirectBack("/")
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 302, c.Response().StatusCode())
 	utils.AssertEqual(t, "/back", c.Get(HeaderReferer))
 	utils.AssertEqual(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
@@ -2798,11 +2832,12 @@ func Test_Ctx_RenderWithBind(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Bind(Map{
+	err := c.Bind(Map{
 		"Title": "Hello, World!",
 	})
+	utils.AssertEqual(t, nil, err)
 	defer app.ReleaseCtx(c)
-	err := c.Render("./.github/testdata/index.tmpl", Map{})
+	err = c.Render("./.github/testdata/index.tmpl", Map{})
 
 	buf := bytebufferpool.Get()
 	_, _ = buf.WriteString("overwrite")
@@ -2822,14 +2857,15 @@ func Test_Ctx_RenderWithBindLocals(t *testing.T) {
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Bind(Map{
+	err := c.Bind(Map{
 		"Title": "Hello, World!",
 	})
+	utils.AssertEqual(t, nil, err)
 
 	c.Locals("Summary", "Test")
 
 	defer app.ReleaseCtx(c)
-	err := c.Render("./.github/testdata/template.tmpl", Map{})
+	err = c.Render("./.github/testdata/template.tmpl", Map{})
 
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
@@ -2840,6 +2876,7 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	t.Parallel()
 	engine := &testTemplateEngine{}
 	err := engine.Load()
+	utils.AssertEqual(t, nil, err)
 	app := New(Config{
 		PassLocalsToViews: true,
 		Views:             engine,
@@ -2860,15 +2897,17 @@ func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
+	utils.AssertEqual(b, nil, err)
 	app := New(Config{
 		PassLocalsToViews: true,
 		Views:             engine,
 	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Bind(Map{
+	err = c.Bind(Map{
 		"Title": "Hello, World!",
 	})
+	utils.AssertEqual(b, nil, err)
 	c.Locals("Summary", "Test")
 
 	defer app.ReleaseCtx(c)
@@ -2896,12 +2935,14 @@ func Benchmark_Ctx_RedirectToRoute(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.RedirectToRoute("user", Map{
+		err = c.RedirectToRoute("user", Map{
 			"name": "fiber",
 		})
 	}
 
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, 302, c.Response().StatusCode())
 	utils.AssertEqual(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -2918,13 +2959,15 @@ func Benchmark_Ctx_RedirectToRouteWithQueries(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.RedirectToRoute("user", Map{
+		err = c.RedirectToRoute("user", Map{
 			"name":    "fiber",
 			"queries": map[string]string{"a": "a", "b": "b"},
 		})
 	}
 
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, 302, c.Response().StatusCode())
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
@@ -2966,9 +3009,10 @@ func Benchmark_Ctx_RenderBind(b *testing.B) {
 	app.config.Views = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
-	c.Bind(Map{
+	err = c.Bind(Map{
 		"Title": "Hello, World!",
 	})
+	utils.AssertEqual(b, nil, err)
 
 	defer app.ReleaseCtx(c)
 
@@ -3066,7 +3110,7 @@ func (t *testTemplateEngine) Load() error {
 // go test -run Test_Ctx_Render_Engine
 func Test_Ctx_Render_Engine(t *testing.T) {
 	engine := &testTemplateEngine{}
-	engine.Load()
+	utils.AssertEqual(t, nil, engine.Load())
 	app := New()
 	app.config.Views = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -3081,7 +3125,7 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 // go test -run Test_Ctx_Render_Engine_With_View_Layout
 func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
 	engine := &testTemplateEngine{}
-	engine.Load()
+	utils.AssertEqual(t, nil, engine.Load())
 	app := New(Config{ViewsLayout: "main.tmpl"})
 	app.config.Views = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -3121,9 +3165,15 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	app.Get("/user/:name", func(c *Ctx) error {
 		return c.SendString(c.Params("name"))
 	}).Name("User")
+
+	var err error
+	var location string
 	for n := 0; n < b.N; n++ {
-		c.getLocationFromRoute(app.GetRoute("User"), Map{"name": "fiber"})
+		location, err = c.getLocationFromRoute(app.GetRoute("User"), Map{"name": "fiber"})
 	}
+	utils.AssertEqual(b, "/user/fiber", location)
+	utils.AssertEqual(b, nil, err)
+
 }
 
 // go test -run Test_Ctx_Get_Location_From_Route_name
@@ -3246,9 +3296,9 @@ func Test_Ctx_Send(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.Send([]byte("Hello, World"))
-	c.Send([]byte("Don't crash please"))
-	c.Send([]byte("1337"))
+	utils.AssertEqual(t, nil, c.Send([]byte("Hello, World")))
+	utils.AssertEqual(t, nil, c.Send([]byte("Don't crash please")))
+	utils.AssertEqual(t, nil, c.Send([]byte("1337")))
 	utils.AssertEqual(t, "1337", string(c.Response().Body()))
 }
 
@@ -3260,9 +3310,12 @@ func Benchmark_Ctx_Send(b *testing.B) {
 	byt := []byte("Hello, World!")
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.Send(byt)
+		err = c.Send(byt)
 	}
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, "Hello, World!", string(c.Response().Body()))
 }
 
@@ -3272,7 +3325,8 @@ func Test_Ctx_SendStatus(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.SendStatus(415)
+	err := c.SendStatus(415)
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 415, c.Response().StatusCode())
 	utils.AssertEqual(t, "Unsupported Media Type", string(c.Response().Body()))
 }
@@ -3283,7 +3337,8 @@ func Test_Ctx_SendString(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.SendString("Don't crash please")
+	err := c.SendString("Don't crash please")
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Don't crash please", string(c.Response().Body()))
 }
 
@@ -3294,13 +3349,16 @@ func Test_Ctx_SendStream(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 
-	c.SendStream(bytes.NewReader([]byte("Don't crash please")))
+	err := c.SendStream(bytes.NewReader([]byte("Don't crash please")))
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Don't crash please", string(c.Response().Body()))
 
-	c.SendStream(bytes.NewReader([]byte("Don't crash please")), len([]byte("Don't crash please")))
+	err = c.SendStream(bytes.NewReader([]byte("Don't crash please")), len([]byte("Don't crash please")))
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Don't crash please", string(c.Response().Body()))
 
-	c.SendStream(bufio.NewReader(bytes.NewReader([]byte("Hello bufio"))))
+	err = c.SendStream(bufio.NewReader(bytes.NewReader([]byte("Hello bufio"))))
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Hello bufio", string(c.Response().Body()))
 }
 
@@ -3356,7 +3414,8 @@ func Test_Ctx_Status(t *testing.T) {
 	defer app.ReleaseCtx(c)
 	c.Status(400)
 	utils.AssertEqual(t, 400, c.Response().StatusCode())
-	c.Status(415).Send([]byte("Hello, World"))
+	err := c.Status(415).Send([]byte("Hello, World"))
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 415, c.Response().StatusCode())
 	utils.AssertEqual(t, "Hello, World", string(c.Response().Body()))
 }
@@ -3436,8 +3495,10 @@ func Test_Ctx_Write(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.Write([]byte("Hello, "))
-	c.Write([]byte("World!"))
+	_, err := c.Write([]byte("Hello, "))
+	utils.AssertEqual(t, nil, err)
+	_, err = c.Write([]byte("World!"))
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Hello, World!", string(c.Response().Body()))
 }
 
@@ -3449,9 +3510,12 @@ func Benchmark_Ctx_Write(b *testing.B) {
 	byt := []byte("Hello, World!")
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.Write(byt)
+		_, err = c.Write(byt)
 	}
+	utils.AssertEqual(b, nil, err)
 }
 
 // go test -run Test_Ctx_Writef
@@ -3461,7 +3525,8 @@ func Test_Ctx_Writef(t *testing.T) {
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	world := "World!"
-	c.Writef("Hello, %s", world)
+	_, err := c.Writef("Hello, %s", world)
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Hello, World!", string(c.Response().Body()))
 }
 
@@ -3473,9 +3538,12 @@ func Benchmark_Ctx_Writef(b *testing.B) {
 	world := "World!"
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.Writef("Hello, %s", world)
+		_, err = c.Writef("Hello, %s", world)
 	}
+	utils.AssertEqual(b, nil, err)
 }
 
 // go test -run Test_Ctx_WriteString
@@ -3484,8 +3552,10 @@ func Test_Ctx_WriteString(t *testing.T) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.WriteString("Hello, ")
-	c.WriteString("World!")
+	_, err := c.WriteString("Hello, ")
+	utils.AssertEqual(t, nil, err)
+	_, err = c.WriteString("World!")
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "Hello, World!", string(c.Response().Body()))
 }
 
@@ -3522,9 +3592,12 @@ func Benchmark_Ctx_SendString_B(b *testing.B) {
 	body := "Hello, world!"
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.SendString(body)
+		err = c.SendString(body)
 	}
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, []byte("Hello, world!"), c.Response().Body())
 }
 
@@ -4010,9 +4083,12 @@ func Benchmark_Ctx_QueryParser(b *testing.B) {
 	q := new(Query)
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.QueryParser(q)
+		err = c.QueryParser(q)
 	}
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, nil, c.QueryParser(q))
 }
 
@@ -4037,10 +4113,13 @@ func Benchmark_Ctx_parseQuery(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.QueryParser(cq)
+		err = c.QueryParser(cq)
 	}
 
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, nil, c.QueryParser(cq))
 }
 
@@ -4061,9 +4140,12 @@ func Benchmark_Ctx_QueryParser_Comma(b *testing.B) {
 	q := new(Query)
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.QueryParser(q)
+		err = c.QueryParser(q)
 	}
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, nil, c.QueryParser(q))
 }
 
@@ -4087,9 +4169,12 @@ func Benchmark_Ctx_ReqHeaderParser(b *testing.B) {
 	q := new(ReqHeader)
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
-		c.ReqHeaderParser(q)
+		err = c.ReqHeaderParser(q)
 	}
+	utils.AssertEqual(b, nil, err)
 	utils.AssertEqual(b, nil, c.ReqHeaderParser(q))
 }
 
@@ -4129,17 +4214,20 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 	user := []byte(`{"name":"john"}`)
 	b.ReportAllocs()
 	b.ResetTimer()
+
+	var err error
 	for n := 0; n < b.N; n++ {
 		ctx.ResetBody()
 		ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
 			for i := 0; i < 10; i++ {
-				w.Write(user)
+				_, err = w.Write(user)
 				if err := w.Flush(); err != nil {
 					return
 				}
 			}
 		})
 	}
+	utils.AssertEqual(b, nil, err)
 }
 
 func Test_Ctx_String(t *testing.T) {
@@ -4240,10 +4328,17 @@ func TestCtx_ParamsInt(t *testing.T) {
 		return nil
 	})
 
-	app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
-	app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
-	app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
-	app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test/1111", nil))
+	utils.AssertEqual(t, nil, err)
+
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/testnoint/xd", nil))
+	utils.AssertEqual(t, nil, err)
+
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/testignoredefault/2222", nil))
+	utils.AssertEqual(t, nil, err)
+
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/testdefault/xd", nil))
+	utils.AssertEqual(t, nil, err)
 }
 
 // go test -run Test_Ctx_GetRespHeader

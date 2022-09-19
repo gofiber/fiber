@@ -248,11 +248,11 @@ func Test_Utils_IsNoCache(t *testing.T) {
 func Benchmark_Utils_IsNoCache(b *testing.B) {
 	var ok bool
 	for i := 0; i < b.N; i++ {
-		ok = isNoCache("public")
-		ok = isNoCache("no-cache")
-		ok = isNoCache("public, no-cache, max-age=30")
-		ok = isNoCache("public,no-cache")
-		ok = isNoCache("no-cache, public")
+		_ = isNoCache("public")
+		_ = isNoCache("no-cache")
+		_ = isNoCache("public, no-cache, max-age=30")
+		_ = isNoCache("public,no-cache")
+		_ = isNoCache("no-cache, public")
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
 	utils.AssertEqual(b, true, ok)
