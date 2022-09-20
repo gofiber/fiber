@@ -849,7 +849,7 @@ func (app *App) Hooks() *Hooks {
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
 func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, err error) {
 	// Set timeout
-	timeout := 1000000000
+	timeout := 1000
 	if len(msTimeout) > 0 {
 		timeout = msTimeout[0]
 	}
