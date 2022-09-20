@@ -216,7 +216,8 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
 	if method != methodUse && methodInt(method) == -1 {
-		panic(fmt.Sprintf("add: invalid http method %s\n", method))
+		intMethod = append(intMethod, method)
+		app.updateStack()
 	}
 	// A route requires atleast one ctx handler
 	if len(handlers) == 0 {

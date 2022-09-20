@@ -555,6 +555,11 @@ func New(config ...Config) *App {
 	return app
 }
 
+func (app *App) updateStack() {
+	app.stack = append(app.stack, []*Route{})
+	app.treeStack = append(app.treeStack, map[string][]*Route{})
+}
+
 // Adds an ip address to trustedProxyRanges or trustedProxiesMap based on whether it is an IP range or not
 func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
@@ -844,7 +849,7 @@ func (app *App) Hooks() *Hooks {
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
 func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, err error) {
 	// Set timeout
-	timeout := 1000
+	timeout := 1000000000
 	if len(msTimeout) > 0 {
 		timeout = msTimeout[0]
 	}

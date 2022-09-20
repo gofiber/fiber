@@ -491,12 +491,24 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 
 func Test_App_Add_Method_Test(t *testing.T) {
 	app := New()
-	defer func() {
-		if err := recover(); err != nil {
-			utils.AssertEqual(t, "add: invalid http method JOHN\n", fmt.Sprintf("%v", err))
-		}
-	}()
 	app.Add("JOHN", "/doe", testEmptyHandler)
+	app.Add("JANE", "/doe", testEmptyHandler)
+
+	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest("JANE", "/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, StatusBadRequest, resp.StatusCode, "Status code")
 }
 
 // go test -run Test_App_GETOnly
@@ -1301,7 +1313,7 @@ func Test_App_Stack(t *testing.T) {
 	app.Post("/path3", testEmptyHandler)
 
 	stack := app.Stack()
-	utils.AssertEqual(t, 9, len(stack))
+	utils.AssertEqual(t, len(intMethod), len(stack))
 	utils.AssertEqual(t, 3, len(stack[methodInt(MethodGet)]))
 	utils.AssertEqual(t, 3, len(stack[methodInt(MethodHead)]))
 	utils.AssertEqual(t, 2, len(stack[methodInt(MethodPost)]))
@@ -1646,4 +1658,12 @@ func Test_App_SetTLSHandler(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	utils.AssertEqual(t, "example.golang", c.ClientHelloInfo().ServerName)
+}
+
+func Test_App_UpdateStact(t *testing.T) {
+	app := New()
+	utils.AssertEqual(t, len(app.stack), len(intMethod))
+
+	app.updateStack()
+	utils.AssertEqual(t, len(app.stack), len(intMethod)+1)
 }
