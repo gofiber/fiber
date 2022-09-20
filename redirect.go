@@ -85,8 +85,8 @@ func (r *Redirect) Status(code int) *Redirect {
 // You can send flash messages by using With().
 // They will be sent as a cookie.
 // You can get them by using: Redirect().Messages(), Redirect().Message()
+// Note: You must use escape char before using ',' and ':' chars to avoid wrong parsing.
 func (r *Redirect) With(key string, value string) *Redirect {
-	// TODO: handle values with special chars ":", ",", "="
 	r.messages = append(r.messages, key+CookieDataAssigner+value)
 
 	return r
@@ -276,10 +276,10 @@ func (r *Redirect) setFlash() {
 	for {
 		commaPos = findNextNonEscapedCharsetPosition(cookieValue, []byte(CookieDataSeparator))
 		if commaPos != -1 {
-			r.c.redirectionMessages = append(r.c.redirectionMessages, RemoveEscapeChar(strings.Trim(cookieValue[:commaPos], " ")))
+			r.c.redirectionMessages = append(r.c.redirectionMessages, strings.Trim(cookieValue[:commaPos], " "))
 			cookieValue = cookieValue[commaPos+1:]
 		} else {
-			r.c.redirectionMessages = append(r.c.redirectionMessages, RemoveEscapeChar(strings.Trim(cookieValue, " ")))
+			r.c.redirectionMessages = append(r.c.redirectionMessages, strings.Trim(cookieValue, " "))
 			break
 		}
 	}
@@ -288,8 +288,8 @@ func (r *Redirect) setFlash() {
 }
 
 func parseMessage(raw string) (key, value string) {
-	if i := strings.LastIndex(raw, CookieDataAssigner); i != -1 {
-		return raw[:i], raw[i+1:]
+	if i := findNextNonEscapedCharsetPosition(raw, []byte(CookieDataAssigner)); i != -1 {
+		return RemoveEscapeChar(raw[:i]), RemoveEscapeChar(raw[i+1:])
 	}
-	return raw, ""
+	return RemoveEscapeChar(raw), ""
 }
