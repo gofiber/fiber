@@ -2614,6 +2614,25 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
+// go test -run Test_Ctx_Render_Engine_With_View_Layout
+func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
+	engine := &testTemplateEngine{}
+	utils.AssertEqual(t, nil, engine.Load())
+	app := New()
+	app.engine = engine
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	err := c.Render("index.tmpl", Map{
+		"Title": "Hello, World!",
+	}, []string{"main.tmpl"}, func(err error, html string) error {
+		utils.AssertEqual(t, err, nil)
+		utils.AssertEqual(t, "<h1>Hello, World!</h1><h1>I'm main</h1>", html)
+		return c.SendString(html)
+	})
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World!</h1><h1>I'm main</h1>", string(c.Response().Body()))
+}
+
 func Test_Ctx_Render_Engine_Callback(t *testing.T) {
 	engine := &testTemplateEngine{}
 	engine.Load()

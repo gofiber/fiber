@@ -1168,7 +1168,7 @@ type RenderCallback = func(err error, html string) error
 
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
-func (c *Ctx) Render(view string, locals any, callback ...RenderCallback) error {
+func (c *Ctx) Render(view string, locals any, args ...any) error {
 	var err error
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
@@ -1177,13 +1177,33 @@ func (c *Ctx) Render(view string, locals any, callback ...RenderCallback) error 
 	// Pass-locals-to-views & bind
 	c.renderExtensions(locals)
 
+	var layouts []string
+	var callback RenderCallback
+
+	for i := 0; i < len(args); i++ {
+		switch arg := args[i].(type) {
+		case string:
+			layouts = append(layouts, arg)
+		case RenderCallback:
+			callback = arg
+		default:
+			panic(fmt.Sprintf("invalid args %v\n", reflect.TypeOf(arg)))
+		}
+	}
+
 	rendered := false
 	if c.app.parent == nil {
 
 		// Render template from Views
 		if c.app.engine != nil {
-			if err := c.app.engine.Render(buf, view, locals); err != nil {
-				return err
+			if len(layouts) > 0 {
+				if err := c.app.engine.Render(buf, view, locals, layouts...); err != nil {
+					return err
+				}
+			} else {
+				if err := c.app.engine.Render(buf, view, locals); err != nil {
+					return err
+				}
 			}
 
 			rendered = true
@@ -1193,8 +1213,14 @@ func (c *Ctx) Render(view string, locals any, callback ...RenderCallback) error 
 	for _, sub := range c.app.subList {
 		// Render template from Views
 		if sub.engine != nil {
-			if err := sub.engine.Render(buf, view, locals); err != nil {
-				return err
+			if len(layouts) > 0 {
+				if err := sub.engine.Render(buf, view, locals, layouts...); err != nil {
+					return err
+				}
+			} else {
+				if err := sub.engine.Render(buf, view, locals); err != nil {
+					return err
+				}
 			}
 
 			rendered = true
@@ -1223,8 +1249,8 @@ func (c *Ctx) Render(view string, locals any, callback ...RenderCallback) error 
 	// Set Content-Type to text/html
 	c.fasthttp.Response.Header.SetContentType(MIMETextHTMLCharsetUTF8)
 
-	if len(callback) > 0 {
-		return callback[0](err, utils.UnsafeString(buf.Bytes()))
+	if callback != nil {
+		return callback(err, utils.UnsafeString(buf.Bytes()))
 	}
 
 	// Set rendered template to body
