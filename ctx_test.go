@@ -2624,7 +2624,7 @@ func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
 	defer app.ReleaseCtx(c)
 	err := c.Render("index.tmpl", Map{
 		"Title": "Hello, World!",
-	}, []string{"main.tmpl"}, func(err error, html string) error {
+	}, "main.tmpl", func(err error, html string) error {
 		utils.AssertEqual(t, err, nil)
 		utils.AssertEqual(t, "<h1>Hello, World!</h1><h1>I'm main</h1>", html)
 		return c.SendString(html)
