@@ -118,8 +118,8 @@ type App struct {
 	routerList map[string]*Router
 	// The app.Locals has properties that are local variables within the application, and will be available in templates rendered with ctx.Render.
 	Locals map[string]any
-	// Default engine
-	engine TemplateEngine
+	// Registered engines
+	engineList map[string]TemplateEngine
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
 	//
 	// Default: DefaultErrorHandler
@@ -322,6 +322,14 @@ type Config struct {
 	// Default: NetworkTCP4
 	Network string
 
+	// A directory or an array of directories for the application's views.
+	// If an array, the views are looked up in the order they occur in the array.
+	Views []string `json:"views"`
+	// Enables view template compilation caching.
+	ViewCache bool `json:"view_cache"`
+	// The default engine extension to use when omitted.
+	ViewEngine string `json:"view_engine"`
+
 	// If you find yourself behind some sort of proxy, like a load balancer,
 	// then certain header information may be sent to you using special X-Forwarded-* headers or the Forwarded header.
 	// For example, the Host HTTP header is usually used to return the requested host.
@@ -415,6 +423,7 @@ func New(config ...Config) *App {
 		config:       Config{},
 		getBytes:     utils.UnsafeBytes,
 		getString:    utils.UnsafeString,
+		engineList:   make(map[string]TemplateEngine),
 		subList:      make(map[string]*App),
 		routerList:   make(map[string]*Router),
 		parent:       nil,
@@ -490,9 +499,23 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	}
 }
 
-// Registers the given template engine.
-func (app *App) Engine(engine TemplateEngine) *App {
-	app.engine = engine
+type EngineCallback = func(*EngineContext) TemplateEngine
+type EngineContext struct {
+	Views      []string `json:"views"`
+	ViewEngine string   `json:"view_engine"`
+	ViewCache  bool     `json:"view_cache"`
+}
+
+func (app *App) Engine(ext string, callback EngineCallback) *App {
+	if ext == "" {
+		panic("engine: ext name cannot be empty")
+	}
+	app.engineList[ext] = callback(&EngineContext{
+		Views:      app.config.Views,
+		ViewEngine: "." + app.config.ViewEngine,
+		ViewCache:  app.config.ViewCache,
+	})
+
 	return app
 }
 

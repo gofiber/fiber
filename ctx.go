@@ -1195,13 +1195,13 @@ func (c *Ctx) Render(view string, locals any, args ...any) error {
 	if c.app.parent == nil {
 
 		// Render template from Views
-		if c.app.engine != nil {
+		if c.app.engineList[c.app.config.ViewEngine] != nil {
 			if len(layouts) > 0 {
-				if err := c.app.engine.Render(buf, view, locals, layouts...); err != nil {
+				if err := c.app.engineList[c.app.config.ViewEngine].Render(buf, view, locals, layouts...); err != nil {
 					return err
 				}
 			} else {
-				if err := c.app.engine.Render(buf, view, locals); err != nil {
+				if err := c.app.engineList[c.app.config.ViewEngine].Render(buf, view, locals); err != nil {
 					return err
 				}
 			}
@@ -1212,13 +1212,13 @@ func (c *Ctx) Render(view string, locals any, args ...any) error {
 
 	for _, sub := range c.app.subList {
 		// Render template from Views
-		if sub.engine != nil {
+		if sub.engineList[sub.config.ViewEngine] != nil {
 			if len(layouts) > 0 {
-				if err := sub.engine.Render(buf, view, locals, layouts...); err != nil {
+				if err := sub.engineList[sub.config.ViewEngine].Render(buf, view, locals, layouts...); err != nil {
 					return err
 				}
 			} else {
-				if err := sub.engine.Render(buf, view, locals); err != nil {
+				if err := sub.engineList[sub.config.ViewEngine].Render(buf, view, locals); err != nil {
 					return err
 				}
 			}

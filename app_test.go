@@ -767,14 +767,16 @@ func (i invalidView) Render(io.Writer, string, any, ...string) error { panic("im
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
 	app := New()
-	app.Engine(invalidView{})
+	app.Engine("asd", func(ec *EngineContext) TemplateEngine {
+		return invalidView{}
+	})
 
 	defer func() {
 		if err := recover(); err != nil {
 			utils.AssertEqual(t, "implement me", fmt.Sprintf("%v", err))
 		}
 	}()
-	_ = app.engine.Render(nil, "", nil)
+	_ = app.engineList["asd"].Render(nil, "", nil)
 }
 
 // go test -run Test_App_Stack

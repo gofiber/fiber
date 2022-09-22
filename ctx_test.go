@@ -2291,8 +2291,12 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	engine.Load()
 
 	app := New()
-	sub := New()
-	sub.Engine(engine)
+	sub := New(Config{
+		ViewEngine: "tmpl",
+	})
+	sub.Engine("tmpl", func(ec *EngineContext) TemplateEngine {
+		return engine
+	})
 
 	app.Use("/hello", sub)
 
@@ -2424,10 +2428,14 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 	t.Parallel()
 	engine := &testTemplateEngine{}
 	err := engine.Load()
+	utils.AssertEqual(t, err, nil)
 	app := New(Config{
+		ViewEngine:        "tmpl",
 		PassLocalsToViews: true,
 	})
-	app.Engine(engine)
+	app.Engine("tmpl", func(ec *EngineContext) TemplateEngine {
+		return engine
+	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Locals("Title", "This is a test.")
@@ -2447,7 +2455,7 @@ func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
 	app := New(Config{
 		PassLocalsToViews: true,
 	})
-	app.engine = engine
+	app.engineList["tmpl"] = engine
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -2476,7 +2484,7 @@ func Benchmark_Ctx_RenderLocals(b *testing.B) {
 	app := New(Config{
 		PassLocalsToViews: true,
 	})
-	app.engine = engine
+	app.engineList["tmpl"] = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Locals("Title", "Hello, World!")
@@ -2499,7 +2507,7 @@ func Benchmark_Ctx_RenderBind(b *testing.B) {
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
 	app := New()
-	app.engine = engine
+	app.engineList["tmpl"] = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
 	c.Bind(Map{
@@ -2590,6 +2598,7 @@ func (t *testTemplateEngine) Render(w io.Writer, name string, bind any, layout .
 	if len(layout) == 0 {
 		return t.templates.ExecuteTemplate(w, name, bind)
 	}
+
 	_ = t.templates.ExecuteTemplate(w, name, bind)
 	return t.templates.ExecuteTemplate(w, layout[0], bind)
 }
@@ -2603,8 +2612,10 @@ func (t *testTemplateEngine) Load() error {
 func Test_Ctx_Render_Engine(t *testing.T) {
 	engine := &testTemplateEngine{}
 	engine.Load()
-	app := New()
-	app.engine = engine
+	app := New(Config{
+		ViewEngine: "tmpl",
+	})
+	app.engineList["tmpl"] = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	err := c.Render("index.tmpl", Map{
@@ -2618,8 +2629,10 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
 	engine := &testTemplateEngine{}
 	utils.AssertEqual(t, nil, engine.Load())
-	app := New()
-	app.engine = engine
+	app := New(Config{
+		ViewEngine: "tmpl",
+	})
+	app.engineList["tmpl"] = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	err := c.Render("index.tmpl", Map{
@@ -2636,8 +2649,14 @@ func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
 func Test_Ctx_Render_Engine_Callback(t *testing.T) {
 	engine := &testTemplateEngine{}
 	engine.Load()
-	app := New()
-	app.Engine(engine)
+	app := New(Config{
+		ViewEngine: "tmpl",
+	})
+	app.Engine("tmpl", func(ec *EngineContext) TemplateEngine {
+		utils.AssertEqual(t, 0, len(ec.Views))
+		utils.AssertEqual(t, ".tmpl", ec.ViewEngine)
+		return engine
+	})
 
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -2658,7 +2677,7 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
 	app := New()
-	app.engine = engine
+	app.engineList["tmpl"] = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	b.ReportAllocs()
@@ -2683,7 +2702,7 @@ func (t errorTemplateEngine) Load() error { return nil }
 // go test -run Test_Ctx_Render_Engine_Error
 func Test_Ctx_Render_Engine_Error(t *testing.T) {
 	app := New()
-	app.engine = errorTemplateEngine{}
+	app.engineList["tmpl"] = errorTemplateEngine{}
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
 	err := c.Render("index.tmpl", nil)
