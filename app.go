@@ -499,13 +499,15 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	}
 }
 
-type EngineCallback = func(*EngineContext) TemplateEngine
 type EngineContext struct {
 	Views      []string `json:"views"`
 	ViewEngine string   `json:"view_engine"`
 	ViewCache  bool     `json:"view_cache"`
 }
 
+type EngineCallback = func(*EngineContext) TemplateEngine
+
+// Registers the given template engine callback as ext.
 func (app *App) Engine(ext string, callback EngineCallback) *App {
 	if ext == "" {
 		panic("engine: ext name cannot be empty")
