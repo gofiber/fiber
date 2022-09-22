@@ -342,7 +342,7 @@ func Test_Bind_Multipart(t *testing.T) {
 }
 
 type Req struct {
-	ID int `query:"id"`
+	ID string `params:"id"`
 
 	I int `query:"I"`
 	J int `query:"j"`
@@ -351,11 +351,12 @@ type Req struct {
 	Token string `header:"x-auth"`
 }
 
-func getCtx() Ctx {
+func getBenchCtx() Ctx {
 	app := New()
 
-	// TODO: also bench params
-	ctx := app.NewCtx(&fasthttp.RequestCtx{})
+	ctx := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx.values = [maxParams]string{"id string"}
+	ctx.route = &Route{Params: []string{"id"}}
 
 	var u = fasthttp.URI{}
 	u.SetQueryString("j=1&j=123&k=-1")
@@ -367,16 +368,13 @@ func getCtx() Ctx {
 }
 
 func Benchmark_Bind_by_hand(b *testing.B) {
-	ctx := getCtx()
+	ctx := getBenchCtx()
 	for i := 0; i < b.N; i++ {
 		var req Req
 		var err error
-		if raw := ctx.Query("id"); raw != "" {
-			req.ID, err = strconv.Atoi(raw)
-			if err != nil {
-				b.Error(err)
-				b.FailNow()
-			}
+
+		if raw := ctx.Params("id"); raw != "" {
+			req.ID = raw
 		}
 
 		if raw := ctx.Query("i"); raw != "" {
@@ -408,10 +406,10 @@ func Benchmark_Bind_by_hand(b *testing.B) {
 }
 
 func Benchmark_Bind(b *testing.B) {
-	ctx := getCtx()
+	ctx := getBenchCtx()
 	for i := 0; i < b.N; i++ {
 		var v = Req{}
-		err := ctx.Bind().Req(&v)
+		err := ctx.Bind().Req(&v).Err()
 		if err != nil {
 			b.Error(err)
 			b.FailNow()
