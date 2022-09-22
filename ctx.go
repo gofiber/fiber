@@ -213,14 +213,6 @@ func (c *DefaultCtx) BaseURL() string {
 	return c.baseURI
 }
 
-// func (c *DefaultCtx) BindWithValidate(v any) error {
-// 	if err := c.Bind(v); err != nil {
-// 		return err
-// 	}
-//
-// 	return c.EnableValidate(v)
-// }
-
 func (c *DefaultCtx) Validate(v any) error {
 	if c.app.config.Validator == nil {
 		return NilValidatorError{}
