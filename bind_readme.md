@@ -16,6 +16,13 @@ It's introduced in Fiber v3 and a replacement of:
 
 ## Guides
 
+There are 2 kind of binder in fiber
+
+- request info binder for basic request, info including query,header,param,respHeader,cookie.
+- request body binder, parsing request body like XML or JSON.
+
+underling fiber will call `app.config.*Decoder` to parse request body, so you need to find parsing details in their own document.
+
 ### Binding basic request info
 
 Fiber supports binding basic request data into the struct:
@@ -27,10 +34,18 @@ all tags you can use are:
 - query
 - param
 - cookie
+- form
+- multipart
 
 (binding for Request/Response header are case in-sensitive)
 
 private and anonymous fields will be ignored.
+
+basically, you can bind all type `int8/int16...uint64/int/uint/float32/float64/string/bool`, you can also bind their slice for non `param` source.
+
+`int` and `uint`, float and `bool` are parsed by `strconv.ParseInt`, `strconv.ParseUint`, `strconv.ParseFloat` and `strconv.ParseBool`, if binder failed to parse input string, a error will be returned by binder.
+
+## Quick Start:
 
 ```go
 package main
@@ -49,7 +64,7 @@ type Req struct {
 	ID    int       `param:"id"`
 	Q     int       `query:"q"`
 	Likes []int     `query:"likes"`
-	T     time.Time `header:"x-time"`
+	T     time.Time `header:"x-time"` // by time.Time.UnmarshalText, will ben explained later
 	Token string    `header:"x-auth"`
 }
 
@@ -81,7 +96,6 @@ func main() {
 	fmt.Println(resp.StatusCode, string(b))
 	// Output: 200 {"ID":1,"S":["a","b","c"],"Q":47,"Likes":[1,2],"T":"2022-08-08T08:11:39+08:00","Token":"ttt"}
 }
-
 ```
 
 ### Defining Custom Binder
@@ -90,9 +104,15 @@ We support 2 types of Custom Binder
 
 #### a `encoding.TextUnmarshaler` with basic tag config.
 
-like the `time.Time` field in the previous example, if a field implement `encoding.TextUnmarshaler`, it will be called
-to
-unmarshal raw string we get from request's query/header/...
+like the `time.Time` field in the previous example, if a field implement `encoding.TextUnmarshaler`, it will be called to parse raw string we get from request's query/header/...
+
+Example:
+
+```golang
+type Req struct {
+	Start     time.Time `query:"start_time"` // by time.Time.UnmarshalText, will ben explained later
+}
+```
 
 #### a `fiber.Binder` interface.
 
@@ -104,8 +124,21 @@ type Binder interface {
 }
 ```
 
-If your type implement `fiber.Binder`, bind will pass current request Context to your and you can unmarshal the info
-you need.
+If your type implement `fiber.Binder`, bind will pass current request Context to your and you can unmarshal the request info you need.
+
+Example:
+
+```golang
+type MyBinder struct{}
+
+func (e *MyBinder) UnmarshalFiberCtx(ctx fiber.Ctx) error {
+	...
+}
+
+type Req struct {
+	Data MyBinder
+}
+```
 
 ### Parse Request Body
 
@@ -171,7 +204,9 @@ func main() {
 	app.Get("/:id", func(c fiber.Ctx) error {
 		var req struct{}
 		var body struct{}
-		if err := c.Bind().Req(&req).Validate().JSON(&body).Validate().Err(); err != nil {
+		if err := c.Bind().Req(&req).Validate(). // will validate &req
+			JSON(&body).Validate(). // will validate &body
+			Err(); err != nil {
 			return err
 		}
 
