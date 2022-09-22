@@ -123,7 +123,7 @@ func main() {
 
 	app.Use("/assets", filesystem.New(filesystem.Config{
 		Root: pkger.Dir("/assets"),
-	})
+	}))
 
 	log.Fatal(app.Listen(":3000"))
 }
@@ -148,7 +148,7 @@ func main() {
 
 	app.Use("/assets", filesystem.New(filesystem.Config{
 		Root: packr.New("Assets Box", "/assets"),
-	})
+	}))
 
 	log.Fatal(app.Listen(":3000"))
 }
@@ -173,7 +173,7 @@ func main() {
 
 	app.Use("/assets", filesystem.New(filesystem.Config{
 		Root: rice.MustFindBox("assets").HTTPBox(),
-	})
+	}))
 
 	log.Fatal(app.Listen(":3000"))
 }
@@ -198,7 +198,7 @@ func main() {
 
 	app.Use("/assets", filesystem.New(filesystem.Config{
 		Root: myEmbeddedFiles.HTTP,
-	})
+	}))
 
 	log.Fatal(app.Listen(":3000"))
 }
@@ -229,7 +229,7 @@ func main() {
 
 	app.Use("/", filesystem.New(filesystem.Config{
 		Root: statikFS,
-	})
+	}))
 
 	log.Fatal(app.Listen(":3000"))
 }
