@@ -1647,3 +1647,33 @@ func Test_App_SetTLSHandler(t *testing.T) {
 
 	utils.AssertEqual(t, "example.golang", c.ClientHelloInfo().ServerName)
 }
+
+func TestApp_GetRoutes(t *testing.T) {
+	app := New()
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	})
+	handler := func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	}
+	app.Delete("/delete", handler).Name("delete")
+	app.Post("/post", handler).Name("post")
+	routes := app.GetRoutes(false)
+	utils.AssertEqual(t, 11, len(routes))
+	methodMap := map[string]string{"/delete": "delete", "/post": "post"}
+	for _, route := range routes {
+		name, ok := methodMap[route.Path]
+		if ok {
+			utils.AssertEqual(t, name, route.Name)
+		}
+	}
+
+	routes = app.GetRoutes(true)
+	utils.AssertEqual(t, 2, len(routes))
+	for _, route := range routes {
+		name, ok := methodMap[route.Path]
+		utils.AssertEqual(t, true, ok)
+		utils.AssertEqual(t, name, route.Name)
+	}
+
+}
