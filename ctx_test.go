@@ -2453,6 +2453,7 @@ func Benchmark_Ctx_RenderWithLocalsAndBinding(b *testing.B) {
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
 	app := New(Config{
+		ViewEngine:        "tmpl",
 		PassLocalsToViews: true,
 	})
 	app.engineList["tmpl"] = engine
@@ -2482,6 +2483,7 @@ func Benchmark_Ctx_RenderLocals(b *testing.B) {
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
 	app := New(Config{
+		ViewEngine:        "tmpl",
 		PassLocalsToViews: true,
 	})
 	app.engineList["tmpl"] = engine
@@ -2506,7 +2508,9 @@ func Benchmark_Ctx_RenderBind(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
-	app := New()
+	app := New(Config{
+		ViewEngine: "tmpl",
+	})
 	app.engineList["tmpl"] = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -2676,7 +2680,9 @@ func Benchmark_Ctx_Render_Engine(b *testing.B) {
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	utils.AssertEqual(b, nil, err)
-	app := New()
+	app := New(Config{
+		ViewEngine: "tmpl",
+	})
 	app.engineList["tmpl"] = engine
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
