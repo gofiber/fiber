@@ -449,8 +449,5 @@ func (app *App) buildTree() *App {
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.
 func (app *App) startupProcess() *App {
-	app.mutex.Lock()
-	app.buildTree()
-	app.mutex.Unlock()
-	return app
+	return app.buildTree()
 }
