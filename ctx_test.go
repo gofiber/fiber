@@ -16,7 +16,6 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -2254,137 +2253,6 @@ func Test_Ctx_Next_Error(t *testing.T) {
 	require.Equal(t, "Works", resp.Header.Get("X-Next-Result"))
 }
 
-// go test -run Test_Ctx_Redirect
-func Test_Ctx_Redirect(t *testing.T) {
-	t.Parallel()
-	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.Redirect("http://default.com")
-	require.Equal(t, 302, c.Response().StatusCode())
-	require.Equal(t, "http://default.com", string(c.Response().Header.Peek(HeaderLocation)))
-
-	c.Redirect("http://example.com", 301)
-	require.Equal(t, 301, c.Response().StatusCode())
-	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Ctx_RedirectToRouteWithParams
-func Test_Ctx_RedirectToRouteWithParams(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.RedirectToRoute("user", Map{
-		"name": "fiber",
-	})
-	require.Equal(t, 302, c.Response().StatusCode())
-	require.Equal(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Ctx_RedirectToRouteWithParams
-func Test_Ctx_RedirectToRouteWithQueries(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.RedirectToRoute("user", Map{
-		"name":    "fiber",
-		"queries": map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
-	})
-	require.Equal(t, 302, c.Response().StatusCode())
-	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
-	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
-	require.NoError(t, err, "url.Parse(location)")
-	require.Equal(t, "/user/fiber", location.Path)
-	require.Equal(t, url.Values{"data[0][name]": []string{"john"}, "data[0][age]": []string{"10"}, "test": []string{"doe"}}, location.Query())
-}
-
-// go test -run Test_Ctx_RedirectToRouteWithOptionalParams
-func Test_Ctx_RedirectToRouteWithOptionalParams(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name?", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.RedirectToRoute("user", Map{
-		"name": "fiber",
-	})
-	require.Equal(t, 302, c.Response().StatusCode())
-	require.Equal(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue
-func Test_Ctx_RedirectToRouteWithOptionalParamsWithoutValue(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/:name?", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.RedirectToRoute("user", Map{})
-	require.Equal(t, 302, c.Response().StatusCode())
-	require.Equal(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Ctx_RedirectToRouteWithGreedyParameters
-func Test_Ctx_RedirectToRouteWithGreedyParameters(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/user/+", func(c Ctx) error {
-		return c.JSON(c.Params("+"))
-	}).Name("user")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.RedirectToRoute("user", Map{
-		"+": "test/routes",
-	})
-	require.Equal(t, 302, c.Response().StatusCode())
-	require.Equal(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Ctx_RedirectBack
-func Test_Ctx_RedirectBack(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.JSON("Home")
-	}).Name("home")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.RedirectBack("/")
-	require.Equal(t, 302, c.Response().StatusCode())
-	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-// go test -run Test_Ctx_RedirectBackWithReferer
-func Test_Ctx_RedirectBackWithReferer(t *testing.T) {
-	t.Parallel()
-	app := New()
-	app.Get("/", func(c Ctx) error {
-		return c.JSON("Home")
-	}).Name("home")
-	app.Get("/back", func(c Ctx) error {
-		return c.JSON("Back")
-	}).Name("back")
-	c := app.NewCtx(&fasthttp.RequestCtx{})
-
-	c.Request().Header.Set(HeaderReferer, "/back")
-	c.RedirectBack("/")
-	require.Equal(t, 302, c.Response().StatusCode())
-	require.Equal(t, "/back", c.Get(HeaderReferer))
-	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
 // go test -run Test_Ctx_Render
 func Test_Ctx_Render(t *testing.T) {
 	t.Parallel()
@@ -2595,53 +2463,6 @@ func Benchmark_Ctx_RenderWithLocalsAndBindVars(b *testing.B) {
 
 	require.NoError(b, err)
 	require.Equal(b, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
-}
-
-func Benchmark_Ctx_RedirectToRoute(b *testing.B) {
-	app := New()
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		c.RedirectToRoute("user", Map{
-			"name": "fiber",
-		})
-	}
-
-	require.Equal(b, 302, c.Response().StatusCode())
-	require.Equal(b, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
-}
-
-func Benchmark_Ctx_RedirectToRouteWithQueries(b *testing.B) {
-	app := New()
-	app.Get("/user/:name", func(c Ctx) error {
-		return c.JSON(c.Params("name"))
-	}).Name("user")
-
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		c.RedirectToRoute("user", Map{
-			"name":    "fiber",
-			"queries": map[string]string{"a": "a", "b": "b"},
-		})
-	}
-
-	require.Equal(b, 302, c.Response().StatusCode())
-	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
-	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
-	require.NoError(b, err, "url.Parse(location)")
-	require.Equal(b, "/user/fiber", location.Path)
-	require.Equal(b, url.Values{"a": []string{"a"}, "b": []string{"b"}}, location.Query())
 }
 
 func Benchmark_Ctx_RenderLocals(b *testing.B) {

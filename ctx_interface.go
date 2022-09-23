@@ -229,9 +229,11 @@ type Ctx interface {
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (rangeData Range, err error)
 
-	// Redirect to the URL derived from the specified path, with specified status.
+	// Redirect returns the Redirect reference.
+	// Use Redirect().Status() to set custom redirection status code.
 	// If status is not specified, status defaults to 302 Found.
-	Redirect(location string, status ...int) error
+	// You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
+	Redirect() *Redirect
 
 	// Add vars to default view var map binding to template engine.
 	// Variables are read by the Render method and may be overwritten.
@@ -239,15 +241,6 @@ type Ctx interface {
 
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
-
-	// RedirectToRoute to the Route registered in the app with appropriate parameters
-	// If status is not specified, status defaults to 302 Found.
-	// If you want to send queries to route, you must add "queries" key typed as map[string]string to params.
-	RedirectToRoute(routeName string, params Map, status ...int) error
-
-	// RedirectBack to the URL to referer
-	// If status is not specified, status defaults to 302 Found.
-	RedirectBack(fallback string, status ...int) error
 
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
@@ -445,8 +438,14 @@ func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
 	c.bind = nil
+	c.redirectionMessages = c.redirectionMessages[:0]
 	if c.viewBindMap != nil {
 		dictpool.ReleaseDict(c.viewBindMap)
+		c.viewBindMap = nil
+	}
+	if c.redirect != nil {
+		ReleaseRedirect(c.redirect)
+		c.redirect = nil
 	}
 }
 

@@ -52,6 +52,8 @@ type DefaultCtx struct {
 	matched             bool                 // Non use route matched
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
 	bind                *Bind                // Default bind reference
+	redirect            *Redirect            // Default redirect reference
+	redirectionMessages []string             // Messages of the previous redirect
 }
 
 // TLSHandler object
@@ -896,16 +898,17 @@ func (c *DefaultCtx) Range(size int) (rangeData Range, err error) {
 	return
 }
 
-// Redirect to the URL derived from the specified path, with specified status.
+// Redirect returns the Redirect reference.
+// Use Redirect().Status() to set custom redirection status code.
 // If status is not specified, status defaults to 302 Found.
-func (c *DefaultCtx) Redirect(location string, status ...int) error {
-	c.setCanonical(HeaderLocation, location)
-	if len(status) > 0 {
-		c.Status(status[0])
-	} else {
-		c.Status(StatusFound)
+// You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
+func (c *DefaultCtx) Redirect() *Redirect {
+	if c.redirect == nil {
+		c.redirect = AcquireRedirect()
+		c.redirect.c = c
 	}
-	return nil
+
+	return c.redirect
 }
 
 // Add vars to default view var map binding to template engine.
@@ -954,45 +957,6 @@ func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, erro
 // GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 func (c *DefaultCtx) GetRouteURL(routeName string, params Map) (string, error) {
 	return c.getLocationFromRoute(c.App().GetRoute(routeName), params)
-}
-
-// RedirectToRoute to the Route registered in the app with appropriate parameters
-// If status is not specified, status defaults to 302 Found.
-// If you want to send queries to route, you must add "queries" key typed as map[string]string to params.
-func (c *DefaultCtx) RedirectToRoute(routeName string, params Map, status ...int) error {
-	location, err := c.getLocationFromRoute(c.App().GetRoute(routeName), params)
-	if err != nil {
-		return err
-	}
-
-	// Check queries
-	if queries, ok := params["queries"].(map[string]string); ok {
-		queryText := bytebufferpool.Get()
-		defer bytebufferpool.Put(queryText)
-
-		i := 1
-		for k, v := range queries {
-			_, _ = queryText.WriteString(k + "=" + v)
-
-			if i != len(queries) {
-				_, _ = queryText.WriteString("&")
-			}
-			i++
-		}
-
-		return c.Redirect(location+"?"+queryText.String(), status...)
-	}
-	return c.Redirect(location, status...)
-}
-
-// RedirectBack to the URL to referer
-// If status is not specified, status defaults to 302 Found.
-func (c *DefaultCtx) RedirectBack(fallback string, status ...int) error {
-	location := c.Get(HeaderReferer)
-	if location == "" {
-		location = fallback
-	}
-	return c.Redirect(location, status...)
 }
 
 // Render a template with data and sends a text/html response.

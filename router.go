@@ -167,6 +167,11 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// check flash messages
+	if strings.Contains(utils.UnsafeString(c.Request().Header.RawHeaders()), FlashCookieName) {
+		c.Redirect().setFlash()
+	}
+
 	// Find match in stack
 	_, err := app.next(c, app.newCtxFunc != nil)
 	if err != nil {

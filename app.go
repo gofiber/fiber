@@ -10,6 +10,8 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net"
@@ -21,9 +23,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"encoding/json"
-	"encoding/xml"
 
 	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/fasthttp"

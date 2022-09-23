@@ -1078,9 +1078,9 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 
 	app.Get("/", func(c Ctx) error {
 		if c.Request().URI().QueryArgs().Has("foo") {
-			return c.Redirect("/foo")
+			return c.Redirect().To("/foo")
 		}
-		return c.Redirect("/")
+		return c.Redirect().To("/")
 	})
 	app.Get("/foo", func(c Ctx) error {
 		return c.SendString("redirect")
