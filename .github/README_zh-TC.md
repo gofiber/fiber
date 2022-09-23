@@ -82,6 +82,9 @@
   <b>Fiber</b>是移植NodeJS的<a href="https://github.com/expressjs/express">Express</a><b>框架</b>改以<a href="https://go.dev/doc/">Go</a>語言編寫。<b>本套件基於</b><a href="https://github.com/valyala/fasthttp">Fasthttp</a>，Fasthttp有<b>不分配記憶體空間</b>和<b>Request Pool</b>的特性，在網路效能方面有著顯著的效能。
 </p>
 
+
+[簡體中文](README_zh-CN.md) | 繁體中文
+
 ## ⚡️ 快速入門
 
 ```go
