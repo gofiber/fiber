@@ -130,7 +130,7 @@ func filterFlags(content string) string {
 }
 
 func fasthttpArgsToMap(v *fasthttp.Args) map[string]string {
-	var u map[string]string
+	var u = make(map[string]string)
 	v.VisitAll(func(key, value []byte) {
 		u[string(key)] = string(value)
 	})
