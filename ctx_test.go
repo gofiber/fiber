@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"

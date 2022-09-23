@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3/binder"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils"
 	"github.com/valyala/bytebufferpool"
 )
 

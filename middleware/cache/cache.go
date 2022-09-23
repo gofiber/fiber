@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils"
 )
 
 // timestampUpdatePeriod is the period which is used to check the cache expiration.
