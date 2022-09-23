@@ -29,6 +29,6 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		return c.Redirect("/debug/vars", 302)
+		return c.Redirect().To("/debug/vars")
 	}
 }

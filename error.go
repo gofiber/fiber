@@ -10,6 +10,11 @@ var (
 	ErrGracefulTimeout = errors.New("shutdown: graceful timeout has been reached, exiting")
 )
 
+// Fiber redirection errors
+var (
+	ErrRedirectBackNoFallback = NewError(StatusInternalServerError, "Referer not found, you have to enter fallback URL for redirection.")
+)
+
 // Range errors
 var (
 	ErrRangeMalformed     = errors.New("range: malformed range header string")

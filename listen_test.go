@@ -349,12 +349,13 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 		New().
 			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
+	colors := Colors{}
 	fmt.Println(startupMessage)
 	require.True(t, strings.Contains(startupMessage, "https://127.0.0.1:3000"))
 	require.True(t, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
 	require.True(t, strings.Contains(startupMessage, "Child PIDs"))
 	require.True(t, strings.Contains(startupMessage, "11111, 22222, 33333, 44444, 55555, 60000"))
-	require.True(t, strings.Contains(startupMessage, "Prefork ........ Enabled"))
+	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("Prefork: %sEnabled%s", colors.Blue, colors.Reset)))
 }
 
 // go test -run Test_Listen_Master_Process_Show_Startup_MessageWithAppName
@@ -372,17 +373,49 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	require.True(t, strings.Contains(startupMessage, app.Config().AppName))
 }
 
+// go test -run Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii
+func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.T) {
+	cfg := ListenConfig{
+		EnablePrefork: true,
+	}
+
+	appName := "Serveur de vérification des données"
+	app := New(Config{AppName: appName})
+
+	startupMessage := captureOutput(func() {
+		app.startupMessage(":3000", false, "", cfg)
+	})
+	fmt.Println(startupMessage)
+	require.True(t, strings.Contains(startupMessage, "Serveur de vérification des données"))
+}
+
+// go test -run Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustomEndpoint
+func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustomEndpoint(t *testing.T) {
+	cfg := ListenConfig{
+		EnablePrefork: false,
+	}
+
+	appName := "Fiber Example Application"
+	app := New(Config{AppName: appName})
+	startupMessage := captureOutput(func() {
+		app.startupMessage("server.com:8081", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5), cfg)
+	})
+	colors := Colors{}
+	fmt.Println(startupMessage)
+	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset)))
+	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, appName, colors.Reset)))
+	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, "https://server.com:8081", colors.Reset)))
+	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("Prefork: %sDisabled%s", colors.Red, colors.Reset)))
+}
+
 // go test -run Test_Listen_Print_Route
 func Test_Listen_Print_Route(t *testing.T) {
 	app := New()
 	app.Get("/", emptyHandler).Name("routeName")
-
 	printRoutesMessage := captureOutput(func() {
 		app.printRoutesMessage()
 	})
-
 	fmt.Println(printRoutesMessage)
-
 	require.True(t, strings.Contains(printRoutesMessage, "GET"))
 	require.True(t, strings.Contains(printRoutesMessage, "/"))
 	require.True(t, strings.Contains(printRoutesMessage, "emptyHandler"))
@@ -402,8 +435,6 @@ func Test_Listen_Print_Route_With_Group(t *testing.T) {
 	printRoutesMessage := captureOutput(func() {
 		app.printRoutesMessage()
 	})
-
-	fmt.Println(printRoutesMessage)
 
 	require.True(t, strings.Contains(printRoutesMessage, "GET"))
 	require.True(t, strings.Contains(printRoutesMessage, "/"))
