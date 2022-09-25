@@ -31,7 +31,6 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subApp := range fiber.appList {
 		grp.app.appList[groupPath+mountedPrefixes] = subApp
-		subApp.init()
 	}
 
 	return grp
