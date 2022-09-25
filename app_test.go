@@ -1030,48 +1030,46 @@ func Test_App_Route(t *testing.T) {
 
 	app := New()
 
-	grp := app.Route("/test", func(grp Router) {
-		grp.Get("/", dummyHandler)
-		grp.Get("/:demo?", dummyHandler)
-		grp.Connect("/CONNECT", dummyHandler)
-		grp.Put("/PUT", dummyHandler)
-		grp.Post("/POST", dummyHandler)
-		grp.Delete("/DELETE", dummyHandler)
-		grp.Head("/HEAD", dummyHandler)
-		grp.Patch("/PATCH", dummyHandler)
-		grp.Options("/OPTIONS", dummyHandler)
-		grp.Trace("/TRACE", dummyHandler)
-		grp.All("/ALL", dummyHandler)
-		grp.Use(dummyHandler)
-		grp.Use("/USE", dummyHandler)
-	})
+	register := app.Route("/test").
+		Get(dummyHandler).
+		Post(dummyHandler).
+		Put(dummyHandler).
+		Delete(dummyHandler).
+		Connect(dummyHandler).
+		Options(dummyHandler).
+		Trace(dummyHandler).
+		Patch(dummyHandler)
 
 	testStatus200(t, app, "/test", MethodGet)
-	testStatus200(t, app, "/test/john", MethodGet)
-	testStatus200(t, app, "/test/CONNECT", MethodConnect)
-	testStatus200(t, app, "/test/PUT", MethodPut)
-	testStatus200(t, app, "/test/POST", MethodPost)
-	testStatus200(t, app, "/test/DELETE", MethodDelete)
-	testStatus200(t, app, "/test/HEAD", MethodHead)
-	testStatus200(t, app, "/test/PATCH", MethodPatch)
-	testStatus200(t, app, "/test/OPTIONS", MethodOptions)
-	testStatus200(t, app, "/test/TRACE", MethodTrace)
-	testStatus200(t, app, "/test/ALL", MethodPost)
-	testStatus200(t, app, "/test/oke", MethodGet)
-	testStatus200(t, app, "/test/USE/oke", MethodGet)
+	testStatus200(t, app, "/test", MethodHead)
+	testStatus200(t, app, "/test", MethodPost)
+	testStatus200(t, app, "/test", MethodPut)
+	testStatus200(t, app, "/test", MethodDelete)
+	testStatus200(t, app, "/test", MethodConnect)
+	testStatus200(t, app, "/test", MethodOptions)
+	testStatus200(t, app, "/test", MethodTrace)
+	testStatus200(t, app, "/test", MethodPatch)
 
-	grp.Route("/v1", func(grp Router) {
-		grp.Post("/", dummyHandler)
-		grp.Get("/users", dummyHandler)
-	})
+	register.Route("/v1").Get(dummyHandler).Post(dummyHandler)
 
-	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", nil))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	register.Route("/v1").Route("/v2").Route("/v3").Get(dummyHandler).Trace(dummyHandler)
+
+	resp, err = app.Test(httptest.NewRequest(MethodTrace, "/test/v1/v2/v3", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/v2/v3", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+
 }
 
 func Test_App_Deep_Group(t *testing.T) {

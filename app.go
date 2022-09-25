@@ -10,6 +10,8 @@ package fiber
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net"
@@ -22,10 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"encoding/json"
-	"encoding/xml"
-
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -748,17 +747,11 @@ func (app *App) Group(prefix string, handlers ...Handler) Router {
 
 // Route is used to define routes with a common prefix inside the common function.
 // Uses Group method to define new sub-router.
-func (app *App) Route(prefix string, fn func(router Router), name ...string) Router {
-	// Create new group
-	group := app.Group(prefix)
-	if len(name) > 0 {
-		group.Name(name[0])
-	}
+func (app *App) Route(path string) Register {
+	// Create new route
+	route := &Registering{app: app, path: path}
 
-	// Define routes
-	fn(group)
-
-	return group
+	return route
 }
 
 // Error makes it compatible with the `error` interface.

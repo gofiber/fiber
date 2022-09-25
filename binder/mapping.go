@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3/internal/schema"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils"
 	"github.com/valyala/bytebufferpool"
 )
 

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils"
 	"github.com/valyala/fasthttp"
 )
 

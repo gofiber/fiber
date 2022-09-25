@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -36,7 +36,7 @@ type Router interface {
 
 	Group(prefix string, handlers ...Handler) Router
 
-	Route(prefix string, fn func(router Router), name ...string) Router
+	Route(path string) Register
 
 	Mount(prefix string, fiber *App) Router
 
@@ -165,6 +165,11 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		_ = c.Status(StatusBadRequest).SendString("Invalid http method")
 		app.ReleaseCtx(c)
 		return
+	}
+
+	// check flash messages
+	if strings.Contains(utils.UnsafeString(c.Request().Header.RawHeaders()), FlashCookieName) {
+		c.Redirect().setFlash()
 	}
 
 	// Find match in stack
