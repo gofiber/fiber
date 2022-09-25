@@ -967,7 +967,6 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 	)
 
 	for prefix, subApp := range app.appList {
-		fmt.Println(prefix)
 		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
