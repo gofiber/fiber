@@ -116,6 +116,8 @@ type App struct {
 	latestGroup *Group
 	// TLS handler
 	tlsHandler *TLSHandler
+	// check added routes of sub-apps
+	subAppsRoutesAdded bool
 }
 
 // Config is a struct holding the server settings.
@@ -584,17 +586,9 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 // any of the fiber's sub apps are added to the application's error handlers
 // to be invoked on errors that happen within the prefix route.
 func (app *App) Mount(prefix string, fiber *App) Router {
-	stack := fiber.Stack()
 	prefix = strings.TrimRight(prefix, "/")
 	if prefix == "" {
 		prefix = "/"
-	}
-
-	for m := range stack {
-		for r := range stack[m] {
-			route := app.copyRoute(stack[m][r])
-			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
-		}
 	}
 
 	// Support for configs of mounted-apps and sub-mounted-apps
@@ -602,8 +596,6 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 		app.appList[prefix+mountedPrefixes] = subApp
 		subApp.init()
 	}
-
-	atomic.AddUint32(&app.handlersCount, fiber.handlersCount)
 
 	return app
 }
@@ -975,6 +967,7 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 	)
 
 	for prefix, subApp := range app.appList {
+		fmt.Println(prefix)
 		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
@@ -1024,7 +1017,66 @@ func (app *App) startupProcess() *App {
 	}
 
 	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	// add routes of sub-apps
+	if !app.subAppsRoutesAdded {
+		app.appendSubAppLists(app.appList)
+		app.addSubAppsRoutes(app.appList)
+
+		app.subAppsRoutesAdded = true
+	}
+
+	// build route tree stack
 	app.buildTree()
-	app.mutex.Unlock()
+
 	return app
+}
+
+// appendSubAppLists supports nested for sub apps
+func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
+	for prefix, subApp := range appList {
+		// skip real app
+		if prefix == "" {
+			continue
+		}
+
+		if len(parent) > 0 {
+			prefix = parent[0] + prefix
+		}
+
+		if _, ok := app.appList[prefix]; !ok {
+			app.appList[prefix] = subApp
+		}
+
+		if len(subApp.appList) > 1 {
+			app.appendSubAppLists(subApp.appList, prefix)
+		}
+
+	}
+}
+
+// addSubAppsRoutes adds routes of sub apps nestedly when to start the server
+func (app *App) addSubAppsRoutes(appList map[string]*App, parent ...string) {
+	for prefix, subApp := range appList {
+		// skip real app
+		if prefix == "" {
+			continue
+		}
+
+		if len(parent) > 0 {
+			prefix = parent[0] + prefix
+		}
+
+		// add routes
+		stack := subApp.stack
+		for m := range stack {
+			for r := range stack[m] {
+				route := app.copyRoute(stack[m][r])
+				app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
+			}
+		}
+
+		atomic.AddUint32(&app.handlersCount, subApp.handlersCount)
+	}
 }

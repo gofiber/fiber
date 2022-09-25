@@ -323,6 +323,44 @@ func Test_App_Mount(t *testing.T) {
 	utils.AssertEqual(t, uint32(2), app.handlersCount)
 }
 
+// go test -run Test_App_Mount_Nested
+func Test_App_Mount_Nested(t *testing.T) {
+	app := New()
+	one := New()
+	two := New()
+	three := New()
+
+	two.Mount("/three", three)
+	app.Mount("/one", one)
+	one.Mount("/two", two)
+
+	one.Get("/doe", func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	two.Get("/nested", func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	three.Get("/test", func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/one/doe", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/one/two/nested", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/one/two/three/test", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+
+	utils.AssertEqual(t, uint32(6), app.handlersCount)
+}
+
 func Test_App_Use_Params(t *testing.T) {
 	app := New()
 
