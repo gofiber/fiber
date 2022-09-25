@@ -1015,9 +1015,6 @@ func (app *App) startupProcess() *App {
 		panic(err)
 	}
 
-	app.mutex.Lock()
-	defer app.mutex.Unlock()
-
 	// add routes of sub-apps
 	if !app.subAppsRoutesAdded {
 		app.appendSubAppLists(app.appList)
@@ -1027,7 +1024,9 @@ func (app *App) startupProcess() *App {
 	}
 
 	// build route tree stack
+	app.mutex.Lock()
 	app.buildTree()
+	app.mutex.Unlock()
 
 	return app
 }
