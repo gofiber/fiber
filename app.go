@@ -1014,6 +1014,9 @@ func (app *App) startupProcess() *App {
 		panic(err)
 	}
 
+	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
 	// add routes of sub-apps
 	if !app.subAppsRoutesAdded {
 		app.appendSubAppLists(app.appList)
@@ -1023,9 +1026,7 @@ func (app *App) startupProcess() *App {
 	}
 
 	// build route tree stack
-	app.mutex.Lock()
 	app.buildTree()
-	app.mutex.Unlock()
 
 	return app
 }
@@ -1070,7 +1071,7 @@ func (app *App) addSubAppsRoutes(appList map[string]*App, parent ...string) {
 		for m := range stack {
 			for r := range stack[m] {
 				route := app.copyRoute(stack[m][r])
-				app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
+				app.addRoute(route.Method, app.addPrefixToRoute(prefix, route), true)
 			}
 		}
 

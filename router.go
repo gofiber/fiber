@@ -418,7 +418,13 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	return app
 }
 
-func (app *App) addRoute(method string, route *Route) {
+func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
+	// Check mounted routes
+	var mounted bool
+	if len(isMounted) > 0 {
+		mounted = isMounted[0]
+	}
+
 	// Get unique HTTP method identifier
 	m := methodInt(method)
 
@@ -436,12 +442,15 @@ func (app *App) addRoute(method string, route *Route) {
 		app.routesRefreshed = true
 	}
 
-	app.mutex.Lock()
-	app.latestRoute = route
-	if err := app.hooks.executeOnRouteHooks(*route); err != nil {
-		panic(err)
+	// Execute onRoute hooks & change latestRoute if not adding mounted route
+	if !mounted {
+		app.mutex.Lock()
+		app.latestRoute = route
+		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
+			panic(err)
+		}
+		app.mutex.Unlock()
 	}
-	defer app.mutex.Unlock()
 }
 
 // buildTree build the prefix tree from the previously registered routes
