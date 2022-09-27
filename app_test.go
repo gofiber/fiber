@@ -767,7 +767,7 @@ func (i invalidView) Render(io.Writer, string, any, ...string) error { panic("im
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
 	app := New()
-	app.Engine("asd", func(ec *EngineContext) TemplateEngine {
+	app.Engine("asd", func(ec *EngineCtx) TemplateEngine {
 		return invalidView{}
 	})
 

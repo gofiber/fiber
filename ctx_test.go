@@ -2294,7 +2294,7 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	sub := New(Config{
 		ViewEngine: "tmpl",
 	})
-	sub.Engine("tmpl", func(ec *EngineContext) TemplateEngine {
+	sub.Engine("tmpl", func(ec *EngineCtx) TemplateEngine {
 		return engine
 	})
 
@@ -2433,7 +2433,7 @@ func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
 		ViewEngine:        "tmpl",
 		PassLocalsToViews: true,
 	})
-	app.Engine("tmpl", func(ec *EngineContext) TemplateEngine {
+	app.Engine("tmpl", func(ec *EngineCtx) TemplateEngine {
 		return engine
 	})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -2656,7 +2656,7 @@ func Test_Ctx_Render_Engine_Callback(t *testing.T) {
 	app := New(Config{
 		ViewEngine: "tmpl",
 	})
-	app.Engine("tmpl", func(ec *EngineContext) TemplateEngine {
+	app.Engine("tmpl", func(ec *EngineCtx) TemplateEngine {
 		utils.AssertEqual(t, 0, len(ec.Views))
 		utils.AssertEqual(t, ".tmpl", ec.ViewEngine)
 		return engine
