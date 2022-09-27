@@ -13,6 +13,7 @@ It has no race conditions, ready to use on production.
 ### Signatures
 ```go
 func New(handler fiber.Handler, timeout time.Duration, timeoutErrors ...error) fiber.Handler
+func Use(timeout time.Duration, timeoutErrors ...error) fiber.Handler
 ```
 
 ### Examples
@@ -42,7 +43,43 @@ func main() {
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
+	select {
+	case <-ctx.Done():
+		if !timer.Stop() {
+			<-timer.C
+		}
+		return context.DeadlineExceeded
+	case <-timer.C:
+	}
+	return nil
+}
+```
 
+Sample timeout middleware usage for global or group
+
+```go
+func main() {
+	app := fiber.New()
+	h := func(c *fiber.Ctx) error {
+		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+		if err := sleepWithContext(c.UserContext(), sleepTime); err != nil {
+			return fmt.Errorf("%w: execution error", err)
+		}
+		return nil
+	}
+
+	// for global
+	app.Use(timeout.Use(2 * time.Second))
+	app.Get("/foo/:sleepTime", h)
+
+	// for group
+	bar := app.Group("/bar", timeout.Use(1*time.Second))
+	bar.Get("/:sleepTime", h)
+	_ = app.Listen(":3000")
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
 	select {
 	case <-ctx.Done():
 		if !timer.Stop() {
@@ -56,6 +93,7 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 ```
 
 Test http 200 with curl:
+
 ```bash
 curl --location -I --request GET 'http://localhost:3000/foo/1000' 
 ```
@@ -80,11 +118,19 @@ func main() {
 		return nil
 	}
 
-	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second), ErrFooTimeOut)
+	// for global
+	app.Use(timeout.Use(3*time.Second, ErrFooTimeOut))
+	app.Get("/foo/:sleepTime", h)
+
+	// for group
+	bar := app.Group("/bar", timeout.Use(1*time.Second, ErrFooTimeOut))
+	bar.Get("/:sleepTime", h)
+
+	app.Get("/baz/:sleepTime", timeout.New(h, 2*time.Second, ErrFooTimeOut))
 	_ = app.Listen(":3000")
 }
 
-func sleepWithContext(ctx context.Context, d time.Duration) error {
+func sleepWithContextWithCustomError(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
 	select {
 	case <-ctx.Done():

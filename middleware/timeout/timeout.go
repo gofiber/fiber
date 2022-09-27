@@ -28,3 +28,11 @@ func New(h fiber.Handler, t time.Duration, tErrs ...error) fiber.Handler {
 		return nil
 	}
 }
+
+// Use timeout middleware for global or group usage.
+func Use(t time.Duration, tErrs ...error) fiber.Handler {
+	h := func(ctx *fiber.Ctx) error {
+		return ctx.Next()
+	}
+	return New(h, t, tErrs...)
+}
