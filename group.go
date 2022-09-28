@@ -33,6 +33,15 @@ func (grp *Group) Mount(prefix string, fiber *App) Router {
 		grp.app.appList[groupPath+mountedPrefixes] = subApp
 	}
 
+	// Fill some fields of sub-app
+	fiber.mountPath = prefix
+	fiber.parentApp = grp.app
+
+	// Execute onMount hooks
+	if err := fiber.hooks.executeOnMountHooks(grp.app); err != nil {
+		panic(err)
+	}
+
 	return grp
 }
 

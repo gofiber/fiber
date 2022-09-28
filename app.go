@@ -118,6 +118,10 @@ type App struct {
 	tlsHandler *TLSHandler
 	// check added routes of sub-apps
 	subAppsRoutesAdded bool
+	// Returns parent app if app was mounted
+	parentApp *App
+	// Prefix of app if it was mounted
+	mountPath string
 }
 
 // Config is a struct holding the server settings.
@@ -596,7 +600,21 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 		app.appList[prefix+mountedPrefixes] = subApp
 	}
 
+	// Fill some fields of sub-app
+	fiber.mountPath = prefix
+	fiber.parentApp = app
+
+	// Execute onMount hooks
+	if err := fiber.hooks.executeOnMountHooks(app); err != nil {
+		panic(err)
+	}
+
 	return app
+}
+
+// The MountPath property contains one or more path patterns on which a sub-app was mounted.
+func (app *App) MountPath() string {
+	return app.mountPath
 }
 
 // Name Assign name to specific route.

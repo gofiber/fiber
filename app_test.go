@@ -361,6 +361,20 @@ func Test_App_Mount_Nested(t *testing.T) {
 	utils.AssertEqual(t, uint32(6), app.handlersCount)
 }
 
+// go test -run Test_App_MountPath
+func Test_App_MountPath(t *testing.T) {
+	micro := New()
+	micro.Get("/doe", func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
+
+	app := New()
+	app.Mount("/john", micro)
+
+	utils.AssertEqual(t, "/john", micro.MountPath())
+	utils.AssertEqual(t, "", app.MountPath())
+}
+
 func Test_App_Use_Params(t *testing.T) {
 	app := New()
 
