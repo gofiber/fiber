@@ -42,7 +42,6 @@ func main() {
 
 func sleepWithContext(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
-
 	select {
 	case <-ctx.Done():
 		if !timer.Stop() {
@@ -80,11 +79,11 @@ func main() {
 		return nil
 	}
 
-	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second), ErrFooTimeOut)
+	app.Get("/foo/:sleepTime", timeout.New(h, 2*time.Second, ErrFooTimeOut))
 	_ = app.Listen(":3000")
 }
 
-func sleepWithContext(ctx context.Context, d time.Duration) error {
+func sleepWithContextWithCustomError(ctx context.Context, d time.Duration) error {
 	timer := time.NewTimer(d)
 	select {
 	case <-ctx.Done():
