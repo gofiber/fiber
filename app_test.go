@@ -1215,7 +1215,7 @@ func Benchmark_App_ETag_Weak(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.Send([]byte("Hello, World!"))
+	utils.AssertEqual(b, nil, c.Send([]byte("Hello, World!")))
 	for n := 0; n < b.N; n++ {
 		setETag(c, true)
 	}
@@ -1440,7 +1440,8 @@ func Test_App_New_Test_Parallel(t *testing.T) {
 	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		app.Test(httptest.NewRequest("GET", "/", nil))
+		_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+		utils.AssertEqual(t, nil, err)
 	})
 	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
 		t.Parallel()
@@ -1645,4 +1646,34 @@ func Test_App_SetTLSHandler(t *testing.T) {
 	defer app.ReleaseCtx(c)
 
 	utils.AssertEqual(t, "example.golang", c.ClientHelloInfo().ServerName)
+}
+
+func TestApp_GetRoutes(t *testing.T) {
+	app := New()
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	})
+	handler := func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	}
+	app.Delete("/delete", handler).Name("delete")
+	app.Post("/post", handler).Name("post")
+	routes := app.GetRoutes(false)
+	utils.AssertEqual(t, 11, len(routes))
+	methodMap := map[string]string{"/delete": "delete", "/post": "post"}
+	for _, route := range routes {
+		name, ok := methodMap[route.Path]
+		if ok {
+			utils.AssertEqual(t, name, route.Name)
+		}
+	}
+
+	routes = app.GetRoutes(true)
+	utils.AssertEqual(t, 2, len(routes))
+	for _, route := range routes {
+		name, ok := methodMap[route.Path]
+		utils.AssertEqual(t, true, ok)
+		utils.AssertEqual(t, name, route.Name)
+	}
+
 }

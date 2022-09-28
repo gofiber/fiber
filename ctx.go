@@ -46,6 +46,33 @@ const (
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey = "__local_user_context__"
 
+var (
+	// decoderPoolMap helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
+	decoderPoolMap = map[string]*sync.Pool{}
+	// tags is used to classify parser's pool
+	tags = []string{queryTag, bodyTag, reqHeaderTag, paramsTag}
+)
+
+func init() {
+	for _, tag := range tags {
+		decoderPoolMap[tag] = &sync.Pool{New: func() interface{} {
+			return decoderBuilder(ParserConfig{
+				IgnoreUnknownKeys: true,
+				ZeroEmpty:         true,
+			})
+		}}
+	}
+}
+
+// SetParserDecoder allow globally change the option of form decoder, update decoderPool
+func SetParserDecoder(parserConfig ParserConfig) {
+	for _, tag := range tags {
+		decoderPoolMap[tag] = &sync.Pool{New: func() interface{} {
+			return decoderBuilder(parserConfig)
+		}}
+	}
+}
+
 // Ctx represents the Context which hold the HTTP request and response.
 // It has methods for the request query string, parameters, body, HTTP headers and so on.
 type Ctx struct {
@@ -309,21 +336,6 @@ func (c *Ctx) Body() []byte {
 	}
 
 	return body
-}
-
-// decoderPool helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
-var decoderPool = &sync.Pool{New: func() interface{} {
-	return decoderBuilder(ParserConfig{
-		IgnoreUnknownKeys: true,
-		ZeroEmpty:         true,
-	})
-}}
-
-// SetParserDecoder allow globally change the option of form decoder, update decoderPool
-func SetParserDecoder(parserConfig ParserConfig) {
-	decoderPool = &sync.Pool{New: func() interface{} {
-		return decoderBuilder(parserConfig)
-	}}
 }
 
 func decoderBuilder(parserConfig ParserConfig) interface{} {
@@ -1109,8 +1121,8 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 
 func (c *Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
 	// Get decoder from pool
-	schemaDecoder := decoderPool.Get().(*schema.Decoder)
-	defer decoderPool.Put(schemaDecoder)
+	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder)
+	defer decoderPoolMap[aliasTag].Put(schemaDecoder)
 
 	// Set alias tag
 	schemaDecoder.SetAliasTag(aliasTag)

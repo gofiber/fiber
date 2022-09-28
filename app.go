@@ -30,7 +30,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.37.1"
+const Version = "2.38.1"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
@@ -636,6 +636,24 @@ func (app *App) GetRoute(name string) Route {
 	}
 
 	return Route{}
+}
+
+// GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
+func (app *App) GetRoutes(filterUseOption ...bool) []Route {
+	var rs []Route
+	var filterUse bool
+	if len(filterUseOption) != 0 {
+		filterUse = filterUseOption[0]
+	}
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if filterUse && route.use {
+				continue
+			}
+			rs = append(rs, *route)
+		}
+	}
+	return rs
 }
 
 // Use registers a middleware route that will match requests
