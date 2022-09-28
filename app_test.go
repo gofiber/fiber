@@ -1343,7 +1343,10 @@ func Test_App_ReadTimeout(t *testing.T) {
 
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
 		utils.AssertEqual(t, nil, err)
-		defer conn.Close()
+		defer func(conn net.Conn) {
+			err := conn.Close()
+			utils.AssertEqual(t, nil, err)
+		}(conn)
 
 		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
 		utils.AssertEqual(t, nil, err)
@@ -1375,7 +1378,10 @@ func Test_App_BadRequest(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4005")
 		utils.AssertEqual(t, nil, err)
-		defer conn.Close()
+		defer func(conn net.Conn) {
+			err := conn.Close()
+			utils.AssertEqual(t, nil, err)
+		}(conn)
 
 		_, err = conn.Write([]byte("BadRequest\r\n"))
 		utils.AssertEqual(t, nil, err)
