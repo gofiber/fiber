@@ -3,6 +3,7 @@ package filesystem
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -14,11 +15,11 @@ func Test_FileSystem(t *testing.T) {
 	app := fiber.New()
 
 	app.Use("/test", New(Config{
-		Root: http.Dir("../../.github/testdata/fs"),
+		Root: os.DirFS("../../.github/testdata/fs"),
 	}))
 
 	app.Use("/dir", New(Config{
-		Root:   http.Dir("../../.github/testdata/fs"),
+		Root:   os.DirFS("../../.github/testdata/fs"),
 		Browse: true,
 	}))
 
@@ -27,13 +28,13 @@ func Test_FileSystem(t *testing.T) {
 	})
 
 	app.Use("/spatest", New(Config{
-		Root:         http.Dir("../../.github/testdata/fs"),
+		Root:         os.DirFS("../../.github/testdata/fs"),
 		Index:        "index.html",
 		NotFoundFile: "index.html",
 	}))
 
 	app.Use("/prefix", New(Config{
-		Root:       http.Dir("../../.github/testdata/fs"),
+		Root:       os.DirFS("../../.github/testdata/fs"),
 		PathPrefix: "img",
 	}))
 
@@ -133,7 +134,7 @@ func Test_FileSystem(t *testing.T) {
 func Test_FileSystem_Next(t *testing.T) {
 	app := fiber.New()
 	app.Use(New(Config{
-		Root: http.Dir("../../.github/testdata/fs"),
+		Root: os.DirFS("../../.github/testdata/fs"),
 		Next: func(_ fiber.Ctx) bool {
 			return true
 		},
@@ -144,11 +145,27 @@ func Test_FileSystem_Next(t *testing.T) {
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
+// go test -run Test_FileSystem_Download
+func Test_FileSystem_Download(t *testing.T) {
+	app := fiber.New()
+	app.Use(New(Config{
+		Root:     os.DirFS("../../.github/testdata/fs"),
+		Download: true,
+	}))
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/img/fiber.png", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, false, resp.Header.Get(fiber.HeaderContentLength) == "")
+	utils.AssertEqual(t, "image/png", resp.Header.Get(fiber.HeaderContentType))
+	utils.AssertEqual(t, `attachment`, resp.Header.Get(fiber.HeaderContentDisposition))
+}
+
 func Test_FileSystem_NonGetAndHead(t *testing.T) {
 	app := fiber.New()
 
 	app.Use("/test", New(Config{
-		Root: http.Dir("../../.github/testdata/fs"),
+		Root: os.DirFS("../../.github/testdata/fs"),
 	}))
 
 	resp, err := app.Test(httptest.NewRequest(fiber.MethodPost, "/test", nil))
@@ -160,7 +177,7 @@ func Test_FileSystem_Head(t *testing.T) {
 	app := fiber.New()
 
 	app.Use("/test", New(Config{
-		Root: http.Dir("../../.github/testdata/fs"),
+		Root: os.DirFS("../../.github/testdata/fs"),
 	}))
 
 	req, _ := http.NewRequest(fiber.MethodHead, "/test", nil)
@@ -183,7 +200,7 @@ func Test_FileSystem_UsingParam(t *testing.T) {
 	app := fiber.New()
 
 	app.Use("/:path", func(c fiber.Ctx) error {
-		return SendFile(c, http.Dir("../../.github/testdata/fs"), c.Params("path")+".html")
+		return SendFile(c, os.DirFS("../../.github/testdata/fs"), c.Params("path")+".html")
 	})
 
 	req, _ := http.NewRequest(fiber.MethodHead, "/index", nil)
@@ -196,7 +213,7 @@ func Test_FileSystem_UsingParam_NonFile(t *testing.T) {
 	app := fiber.New()
 
 	app.Use("/:path", func(c fiber.Ctx) error {
-		return SendFile(c, http.Dir("../../.github/testdata/fs"), c.Params("path")+".html")
+		return SendFile(c, os.DirFS("../../.github/testdata/fs"), c.Params("path")+".html")
 	})
 
 	req, _ := http.NewRequest(fiber.MethodHead, "/template", nil)

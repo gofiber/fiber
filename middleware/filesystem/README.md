@@ -12,11 +12,6 @@ Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables
 	- [Examples](#examples)
 		- [Config](#config)
 		- [embed](#embed)
-		- [pkger](#pkger)
-		- [packr](#packr)
-		- [go.rice](#gorice)
-		- [fileb0x](#fileb0x)
-		- [statik](#statik)
 	- [Config](#config-1)
 		- [Default Config](#default-config)
 
@@ -44,12 +39,12 @@ Then create a Fiber app with `app := fiber.New()`.
 ```go
 // Provide a minimal config
 app.Use(filesystem.New(filesystem.Config{
-	Root: http.Dir("./assets"),
+	Root: os.DirFS("./assets"),
 }))
 
 // Or extend your config for customization
 app.Use(filesystem.New(filesystem.Config{
-	Root:         http.Dir("./assets"),
+	Root:         os.DirFS("./assets"),
 	Browse:       true,
 	Index:        "index.html",
 	NotFoundFile: "404.html",
@@ -88,148 +83,16 @@ func main() {
 	app := fiber.New()
 
 	app.Use("/", filesystem.New(filesystem.Config{
-		Root: http.FS(f),
+		Root: f,
 	}))
 
 	// Access file "image.png" under `static/` directory via URL: `http://<server>/static/image.png`.
 	// Without `PathPrefix`, you have to access it via URL:
 	// `http://<server>/static/static/image.png`.
 	app.Use("/static", filesystem.New(filesystem.Config{
-		Root: http.FS(embedDirStatic),
-		PathPrefix: "static",
+		Root: embedDirStatic,
 		Browse: true,
 	}))
-
-	log.Fatal(app.Listen(":3000"))
-}
-```
-
-### pkger
-
-[Pkger](https://github.com/markbates/pkger) can be used to embed files in a Golang excecutable.
-
-```go
-package main
-
-import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/filesystem"
-
-	"github.com/markbates/pkger"
-)
-
-func main() {
-	app := fiber.New()
-
-	app.Use("/assets", filesystem.New(filesystem.Config{
-		Root: pkger.Dir("/assets"),
-	})
-
-	log.Fatal(app.Listen(":3000"))
-}
-```
-
-### packr
-
-[Packr](https://github.com/gobuffalo/packr) can be used to embed files in a Golang excecutable.
-
-```go
-package main
-
-import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/filesystem"
-
-	"github.com/gobuffalo/packr/v2"
-)
-
-func main() {
-	app := fiber.New()
-
-	app.Use("/assets", filesystem.New(filesystem.Config{
-		Root: packr.New("Assets Box", "/assets"),
-	})
-
-	log.Fatal(app.Listen(":3000"))
-}
-```
-
-### go.rice
-
-https://github.com/GeertJohan/go.rice
-
-```go
-package main
-
-import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/filesystem"
-
-	"github.com/GeertJohan/go.rice"
-)
-
-func main() {
-	app := fiber.New()
-
-	app.Use("/assets", filesystem.New(filesystem.Config{
-		Root: rice.MustFindBox("assets").HTTPBox(),
-	})
-
-	log.Fatal(app.Listen(":3000"))
-}
-```
-
-### fileb0x
-
-[Fileb0x](https://github.com/UnnoTed/fileb0x) can be used to embed files in a Golang excecutable.
-
-```go
-package main
-
-import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/filesystem"
-
-	"<Your go module>/myEmbeddedFiles"
-)
-
-func main() {
-	app := fiber.New()
-
-	app.Use("/assets", filesystem.New(filesystem.Config{
-		Root: myEmbeddedFiles.HTTP,
-	})
-
-	log.Fatal(app.Listen(":3000"))
-}
-```
-
-### statik
-
-[Statik](https://github.com/rakyll/statik) can be used to embed files in a Golang excecutable.
-
-```go
-package main
-
-import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/filesystem"
-
-	"<Your go module>/statik"
-	fs "github.com/rakyll/statik/fs"
-)
-
-func main() {
-	statik, err := fs.New()
-	if err != nil {
-		panic(err)
-	}
-
-	app := fiber.New()
-
-	app.Use("/", filesystem.New(filesystem.Config{
-		Root: statikFS,
-	})
 
 	log.Fatal(app.Listen(":3000"))
 }
@@ -249,14 +112,12 @@ type Config struct {
 	// to a collection of files and directories.
 	//
 	// Required. Default: nil
-	Root http.FileSystem `json:"-"`
+	Root fs.FS `json:"-"`
 
 	// PathPrefix defines a prefix to be added to a filepath when
 	// reading a file from the FileSystem.
 	//
-	// Use when using Go 1.16 embed.FS
-	//
-	// Optional. Default ""
+	// Optional. Default "."
 	PathPrefix string `json:"path_prefix"`
 
 	// Enable directory browsing.
@@ -288,7 +149,7 @@ type Config struct {
 var ConfigDefault = Config{
 	Next:       nil,
 	Root:       nil,
-	PathPrefix: "",
+	PathPrefix: ".",
 	Browse:     false,
 	Index:      "/index.html",
 	MaxAge:     0,
