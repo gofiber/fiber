@@ -32,15 +32,6 @@ type IRouter interface {
 	Patch(path string, handlers ...Handler) IRouter
 
 	Route(path string) IRoute
-
-	// On(eventName string, listener any) IRouter
-	// Once(eventName string, listener any) IRouter
-	// Emit(eventName string, arguments ...any) IRouter
-	// Off(eventName string, listener any) IRouter
-	// AddListener(eventName string, listener any) IRouter
-	// RemoveAllListeners(eventNames ...string) IRouter
-	// RemoveListener(eventName string, listener any) IRouter
-	// ListenerCount(eventName string) int
 }
 
 type RouterConfig struct {
