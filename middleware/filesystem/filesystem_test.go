@@ -154,11 +154,11 @@ func Test_FileSystem_Download(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/img/fiber.png", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, false, resp.Header.Get(fiber.HeaderContentLength) == "")
-	utils.AssertEqual(t, "image/png", resp.Header.Get(fiber.HeaderContentType))
-	utils.AssertEqual(t, `attachment`, resp.Header.Get(fiber.HeaderContentDisposition))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.False(t, resp.Header.Get(fiber.HeaderContentLength) == "")
+	require.Equal(t, "image/png", resp.Header.Get(fiber.HeaderContentType))
+	require.Equal(t, "attachment", resp.Header.Get(fiber.HeaderContentDisposition))
 }
 
 func Test_FileSystem_NonGetAndHead(t *testing.T) {
