@@ -132,7 +132,7 @@ go get -u github.com/gofiber/fiber/v2
 -   پشتگیریی [WebSocket](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   وەرگێڕراوە بۆ [15 زمان](https://docs.gofiber.io/)
+-   وەرگێڕراوە بۆ [18 زمان](https://docs.gofiber.io/)
 -   زیاتریش، [فایبەر بپشکنە](https://docs.gofiber.io/)
 
 ## 💡 فەلسەفە
