@@ -132,7 +132,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [WebSocket support](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   Verfügbar in [15 Sprachen](https://docs.gofiber.io/)
+-   Verfügbar in [18 Sprachen](https://docs.gofiber.io/)
 -   Und vieles mehr - [erkunde Fiber](https://docs.gofiber.io/)
 
 ## 💡 Philosophie
