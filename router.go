@@ -357,6 +357,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 
 	// Set config if provided
 	var cacheControlValue string
+	var setHeaders func(c *Ctx)
 	if len(config) > 0 {
 		maxAge := config[0].MaxAge
 		if maxAge > 0 {
@@ -369,6 +370,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		if config[0].Index != "" {
 			fs.IndexNames = []string{config[0].Index}
 		}
+		setHeaders = config[0].SetHeaders
 	}
 	fileHandler := fs.NewRequestHandler()
 	handler := func(c *Ctx) error {
@@ -387,6 +389,9 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		if status != StatusNotFound && status != StatusForbidden {
 			if len(cacheControlValue) > 0 {
 				c.fasthttp.Response.Header.Set(HeaderCacheControl, cacheControlValue)
+			}
+			if setHeaders != nil {
+				setHeaders(c)
 			}
 			return nil
 		}
