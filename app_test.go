@@ -1355,7 +1355,10 @@ func Test_App_ReadTimeout(t *testing.T) {
 
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
 		utils.AssertEqual(t, nil, err)
-		defer conn.Close()
+		defer func(conn net.Conn) {
+			err := conn.Close()
+			utils.AssertEqual(t, nil, err)
+		}(conn)
 
 		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
 		utils.AssertEqual(t, nil, err)
@@ -1387,7 +1390,10 @@ func Test_App_BadRequest(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4005")
 		utils.AssertEqual(t, nil, err)
-		defer conn.Close()
+		defer func(conn net.Conn) {
+			err := conn.Close()
+			utils.AssertEqual(t, nil, err)
+		}(conn)
 
 		_, err = conn.Write([]byte("BadRequest\r\n"))
 		utils.AssertEqual(t, nil, err)
@@ -1666,4 +1672,33 @@ func Test_App_UpdateStack(t *testing.T) {
 
 	app.addCustomRequestMethod("test")
 	utils.AssertEqual(t, len(app.stack), len(intMethod))
+}
+
+func TestApp_GetRoutes(t *testing.T) {
+	app := New()
+	app.Use(func(c *Ctx) error {
+		return c.Next()
+	})
+	handler := func(c *Ctx) error {
+		return c.SendStatus(StatusOK)
+	}
+	app.Delete("/delete", handler).Name("delete")
+	app.Post("/post", handler).Name("post")
+	routes := app.GetRoutes(false)
+	utils.AssertEqual(t, 11, len(routes))
+	methodMap := map[string]string{"/delete": "delete", "/post": "post"}
+	for _, route := range routes {
+		name, ok := methodMap[route.Path]
+		if ok {
+			utils.AssertEqual(t, name, route.Name)
+		}
+	}
+
+	routes = app.GetRoutes(true)
+	utils.AssertEqual(t, 2, len(routes))
+	for _, route := range routes {
+		name, ok := methodMap[route.Path]
+		utils.AssertEqual(t, true, ok)
+		utils.AssertEqual(t, name, route.Name)
+	}
 }

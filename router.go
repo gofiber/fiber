@@ -16,7 +16,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Router defines all router handle interface includes app and group router.
+// Router defines all router handle interface, including app and group router.
 type Router interface {
 	Use(args ...interface{}) Router
 
@@ -43,7 +43,7 @@ type Router interface {
 	Name(name string) Router
 }
 
-// Route is a struct that holds all metadata for each registered handler
+// Route is a struct that holds all metadata for each registered handler.
 type Route struct {
 	// Data for routing
 	pos         uint32      // Position in stack -> important for the sort of the matched routes

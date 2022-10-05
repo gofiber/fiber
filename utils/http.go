@@ -132,16 +132,17 @@ var statusMessage = []string{
 	511: "Network Authentication Required",
 }
 
-// MIME types were copied from https://github.com/nginx/nginx/blob/master/conf/mime.types
+// MIME types were copied from https://github.com/nginx/nginx/blob/67d2a9541826ecd5db97d604f23460210fd3e517/conf/mime.types with the following updates:
+// - Use "application/xml" instead of "text/xml" as recommended per https://datatracker.ietf.org/doc/html/rfc7303#section-4.1
 var mimeExtensions = map[string]string{
 	"html":    "text/html",
 	"htm":     "text/html",
 	"shtml":   "text/html",
 	"css":     "text/css",
+	"xml":     "application/xml",
 	"gif":     "image/gif",
 	"jpeg":    "image/jpeg",
 	"jpg":     "image/jpeg",
-	"xml":     "application/xml",
 	"js":      "application/javascript",
 	"atom":    "application/atom+xml",
 	"rss":     "application/rss+xml",
@@ -150,6 +151,7 @@ var mimeExtensions = map[string]string{
 	"jad":     "text/vnd.sun.j2me.app-descriptor",
 	"wml":     "text/vnd.wap.wml",
 	"htc":     "text/x-component",
+	"avif":    "image/avif",
 	"png":     "image/png",
 	"svg":     "image/svg+xml",
 	"svgz":    "image/svg+xml",
@@ -183,7 +185,11 @@ var mimeExtensions = map[string]string{
 	"odp":     "application/vnd.oasis.opendocument.presentation",
 	"ods":     "application/vnd.oasis.opendocument.spreadsheet",
 	"odt":     "application/vnd.oasis.opendocument.text",
+	"pptx":    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	"xlsx":    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"docx":    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 	"wmlc":    "application/vnd.wap.wmlc",
+	"wasm":    "application/wasm",
 	"7z":      "application/x-7z-compressed",
 	"cco":     "application/x-cocoa",
 	"jardiff": "application/x-java-archive-diff",

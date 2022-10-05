@@ -132,7 +132,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [WebSocket 支持](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [频率限制](https://docs.gofiber.io/api/middleware/limiter)
--   [15 种语言](https://docs.gofiber.io/)
+-   [18 种语言](https://docs.gofiber.io/)
 -   更多请[探索文档](https://docs.gofiber.io/)
 
 ## 💡 哲学

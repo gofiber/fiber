@@ -7,11 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 )
 
 var (

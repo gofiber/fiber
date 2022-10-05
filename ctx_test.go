@@ -431,7 +431,7 @@ func Test_Ctx_BodyParser(t *testing.T) {
 func Test_Ctx_ParamParser(t *testing.T) {
 	t.Parallel()
 	app := New()
-	app.Get("/test1/userId/role/:roleId", func(ctx *Ctx) error {
+	app.Get("/test1/:userId/role/:roleId", func(ctx *Ctx) error {
 		type Demo struct {
 			UserID uint `params:"userId"`
 			RoleID uint `params:"roleId"`
