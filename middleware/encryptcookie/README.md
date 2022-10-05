@@ -95,3 +95,19 @@ app.Use(encryptcookie.New(encryptcookie.Config{
     Key: "secret-thirty-2-character-string",
 }))
 ```
+
+## Usage of CSRF and Encryptcookie Middlewares with Custom Cookie Names
+Normally, encryptcookie middleware skips `csrf_` cookies. However, it won't work when you use custom cookie names for CSRF. You should update `Except` config to avoid this problem. For example:
+
+```go
+app.Use(encryptcookie.New(encryptcookie.Config{
+	Key: "secret-thirty-2-character-string",
+	Except: []string{"csrf_1"}, // exclude CSRF cookie
+}))
+
+app.Use(csrf.New(csrf.Config{
+	KeyLookup:      "form:test",
+	CookieName:     "csrf_1", 
+	CookieHTTPOnly: true,
+}))
+```
