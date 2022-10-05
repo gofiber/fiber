@@ -1106,6 +1106,24 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		utils.AssertEqual(t, 1, len(errs))
 		utils.AssertEqual(t, "unexpected end of JSON input", errs[0].Error())
 	})
+
+	t.Run("nil jsonDecoder", func(t *testing.T) {
+		a := AcquireAgent()
+		defer ReleaseAgent(a)
+		defer a.ConnectionClose()
+		request := a.Request()
+		request.Header.SetMethod("GET")
+		request.SetRequestURI("http://example.com")
+		err := a.Parse()
+		utils.AssertEqual(t, nil, err)
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		var d data
+		code, body, errs := a.Struct(&d)
+		utils.AssertEqual(t, StatusOK, code)
+		utils.AssertEqual(t, `{"success":true}`, string(body))
+		utils.AssertEqual(t, 0, len(errs))
+		utils.AssertEqual(t, true, d.Success)
+	})
 }
 
 func Test_Client_Agent_Parse(t *testing.T) {
