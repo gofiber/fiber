@@ -767,6 +767,26 @@ func Test_App_Static_MaxAge(t *testing.T) {
 	utils.AssertEqual(t, "public, max-age=100", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 }
 
+// go test -run Test_App_Static_Custom_CacheControl
+func Test_App_Static_Custom_CacheControl(t *testing.T) {
+	app := New()
+
+	app.Static("/", "./.github", Static{ModifyResponse: func(c *Ctx) error {
+		if strings.Contains(string(c.GetRespHeader("Content-Type")), "text/html") {
+			c.Response().Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		}
+		return nil
+	}})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/index.html", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, "no-cache, no-store, must-revalidate", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
+
+	normal_resp, normal_err := app.Test(httptest.NewRequest("GET", "/config.yml", nil))
+	utils.AssertEqual(t, nil, normal_err, "app.Test(req)")
+	utils.AssertEqual(t, "", normal_resp.Header.Get(HeaderCacheControl), "CacheControl Control")
+}
+
 // go test -run Test_App_Static_Download
 func Test_App_Static_Download(t *testing.T) {
 	app := New()

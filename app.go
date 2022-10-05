@@ -421,6 +421,11 @@ type Static struct {
 	// Optional. Default value 0.
 	MaxAge int `json:"max_age"`
 
+	// ModifyResponse defines a function that allows you to alter the response.
+	//
+	// Optional. Default: nil
+	ModifyResponse Handler
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
