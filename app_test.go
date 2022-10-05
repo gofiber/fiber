@@ -771,10 +771,11 @@ func Test_App_Static_MaxAge(t *testing.T) {
 func Test_App_Static_Custom_CacheControl(t *testing.T) {
 	app := New()
 
-	app.Static("/", "./.github", Static{SetHeaders: func(c *Ctx) {
+	app.Static("/", "./.github", Static{ModifyResponse: func(c *Ctx) error {
 		if strings.Contains(string(c.GetRespHeader("Content-Type")), "text/html") {
 			c.Response().Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		}
+		return nil
 	}})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/index.html", nil))

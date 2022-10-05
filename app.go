@@ -421,10 +421,10 @@ type Static struct {
 	// Optional. Default value 0.
 	MaxAge int `json:"max_age"`
 
-	// SetHeaders defines a function that sets custom headers on response.
+	// ModifyResponse defines a function that allows you to alter the response.
 	//
 	// Optional. Default: nil
-	SetHeaders func(c *Ctx)
+	ModifyResponse Handler
 
 	// Next defines a function to skip this middleware when returned true.
 	//
