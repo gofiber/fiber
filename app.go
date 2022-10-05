@@ -555,9 +555,10 @@ func New(config ...Config) *App {
 	return app
 }
 
-func (app *App) updateStack() {
+func (app *App) addCustomRequestMethod(newMethodName string) {
 	app.stack = append(app.stack, []*Route{})
 	app.treeStack = append(app.treeStack, map[string][]*Route{})
+	intMethod = append(intMethod, newMethodName)
 }
 
 // Adds an ip address to trustedProxyRanges or trustedProxiesMap based on whether it is an IP range or not

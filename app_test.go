@@ -1664,6 +1664,6 @@ func Test_App_UpdateStack(t *testing.T) {
 	app := New()
 	utils.AssertEqual(t, len(app.stack), len(intMethod))
 
-	app.updateStack()
-	utils.AssertEqual(t, len(app.stack), len(intMethod)+1)
+	app.addCustomRequestMethod("test")
+	utils.AssertEqual(t, len(app.stack), len(intMethod))
 }

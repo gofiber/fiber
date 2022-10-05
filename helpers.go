@@ -332,13 +332,33 @@ var getBytesImmutable = func(s string) (b []byte) {
 
 // HTTP methods and their unique INTs
 func methodInt(s string) int {
-	for i, v := range intMethod {
-		if s == v {
-			return i
+	switch s {
+	case MethodGet:
+		return 0
+	case MethodHead:
+		return 1
+	case MethodPost:
+		return 2
+	case MethodPut:
+		return 3
+	case MethodDelete:
+		return 4
+	case MethodConnect:
+		return 5
+	case MethodOptions:
+		return 6
+	case MethodTrace:
+		return 7
+	case MethodPatch:
+		return 8
+	default:
+		for i, v := range intMethod[8:] {
+			if s == v {
+				return i + 8
+			}
 		}
+		return -1
 	}
-
-	return -1
 }
 
 // HTTP methods slice
