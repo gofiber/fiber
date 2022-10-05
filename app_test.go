@@ -1660,7 +1660,7 @@ func Test_App_SetTLSHandler(t *testing.T) {
 	utils.AssertEqual(t, "example.golang", c.ClientHelloInfo().ServerName)
 }
 
-func Test_App_UpdateStact(t *testing.T) {
+func Test_App_UpdateStack(t *testing.T) {
 	app := New()
 	utils.AssertEqual(t, len(app.stack), len(intMethod))
 
