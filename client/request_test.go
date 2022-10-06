@@ -616,7 +616,7 @@ func Test_Request_Head(t *testing.T) {
 	t.Parallel()
 
 	app, ln, start := createHelperServer(t)
-	app.Get("/", func(c fiber.Ctx) error {
+	app.Head("/", func(c fiber.Ctx) error {
 		return c.SendString(c.Hostname())
 	})
 
