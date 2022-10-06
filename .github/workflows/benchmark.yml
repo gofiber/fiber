@@ -16,7 +16,8 @@ jobs:
       uses: actions/cache@v3
       with:
         path: ./cache
-        key: ${{ runner.os }}-benchmark
+        # TODO: reactivate it later -> when v3 is the stable one
+        key: ${{ runner.os }}-benchmark-v3
     - name: Save Benchmark Results
       uses: rhysd/github-action-benchmark@v1
       with:
@@ -25,4 +26,5 @@ jobs:
         github-token: ${{ secrets.BENCHMARK_TOKEN }}
         fail-on-alert: true
         comment-on-alert: true
-        auto-push: true
+        # TODO: reactivate it later -> when v3 is the stable one
+        auto-push: false
