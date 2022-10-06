@@ -5,11 +5,15 @@
 package fiber
 
 import (
+	"context"
+	"net"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 // go test -run Test_Redirect_To
@@ -233,87 +237,91 @@ func Test_Redirect_setFlash(t *testing.T) {
 }
 
 // go test -run Test_Redirect_Request
-// func Test_Redirect_Request(t *testing.T) {
-// 	t.Parallel()
+func Test_Redirect_Request(t *testing.T) {
+	t.Parallel()
 
-// 	app := New()
+	app := New()
 
-// 	app.Get("/", func(c Ctx) error {
-// 		return c.Redirect().With("key", "value").With("key2", "value2").With("co\\:m\\,ma", "Fi\\:ber\\, v3").Route("name")
-// 	})
+	app.Get("/", func(c Ctx) error {
+		return c.Redirect().With("key", "value").With("key2", "value2").With("co\\:m\\,ma", "Fi\\:ber\\, v3").Route("name")
+	})
 
-// 	app.Get("/with-inputs", func(c Ctx) error {
-// 		return c.Redirect().WithInput().With("key", "value").With("key2", "value2").Route("name")
-// 	})
+	app.Get("/with-inputs", func(c Ctx) error {
+		return c.Redirect().WithInput().With("key", "value").With("key2", "value2").Route("name")
+	})
 
-// 	app.Get("/just-inputs", func(c Ctx) error {
-// 		return c.Redirect().WithInput().Route("name")
-// 	})
+	app.Get("/just-inputs", func(c Ctx) error {
+		return c.Redirect().WithInput().Route("name")
+	})
 
-// 	app.Get("/redirected", func(c Ctx) error {
-// 		return c.JSON(Map{
-// 			"messages": c.Redirect().Messages(),
-// 			"inputs":   c.Redirect().OldInputs(),
-// 		})
-// 	}).Name("name")
+	app.Get("/redirected", func(c Ctx) error {
+		return c.JSON(Map{
+			"messages": c.Redirect().Messages(),
+			"inputs":   c.Redirect().OldInputs(),
+		})
+	}).Name("name")
 
-// 	// Start test server
-// 	ln := fasthttputil.NewInmemoryListener()
-// 	go func() {
-// 		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
-// 		defer cancel()
+	// Start test server
+	ln := fasthttputil.NewInmemoryListener()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		defer cancel()
 
-// 		err := app.Listener(ln, ListenConfig{
-// 			DisableStartupMessage: true,
-// 			GracefulContext:       ctx,
-// 		})
+		err := app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+			GracefulContext:       ctx,
+		})
 
-// 		require.NoError(t, err)
-// 	}()
+		require.NoError(t, err)
+	}()
 
-// 	// Test cases
-// 	testCases := []struct {
-// 		URL                string
-// 		CookieValue        string
-// 		ExpectedBody       string
-// 		ExpectedStatusCode int
-// 		ExceptedErrsLen    int
-// 	}{
-// 		{
-// 			URL:                "/",
-// 			CookieValue:        "key:value,key2:value2,co\\:m\\,ma:Fi\\:ber\\, v3",
-// 			ExpectedBody:       `{"inputs":{},"messages":{"co:m,ma":"Fi:ber, v3","key":"value","key2":"value2"}}`,
-// 			ExpectedStatusCode: StatusOK,
-// 			ExceptedErrsLen:    0,
-// 		},
-// 		{
-// 			URL:                "/with-inputs?name=john&surname=doe",
-// 			CookieValue:        "key:value,key2:value2,key:value,key2:value2,old_input_data_name:john,old_input_data_surname:doe",
-// 			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{"key":"value","key2":"value2"}}`,
-// 			ExpectedStatusCode: StatusOK,
-// 			ExceptedErrsLen:    0,
-// 		},
-// 		{
-// 			URL:                "/just-inputs?name=john&surname=doe",
-// 			CookieValue:        "old_input_data_name:john,old_input_data_surname:doe",
-// 			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{}}`,
-// 			ExpectedStatusCode: StatusOK,
-// 			ExceptedErrsLen:    0,
-// 		},
-// 	}
+	// Test cases
+	testCases := []struct {
+		URL                string
+		CookieValue        string
+		ExpectedBody       string
+		ExpectedStatusCode int
+		ExceptedErr        error
+	}{
+		{
+			URL:                "/",
+			CookieValue:        "key:value,key2:value2,co\\:m\\,ma:Fi\\:ber\\, v3",
+			ExpectedBody:       `{"inputs":{},"messages":{"co:m,ma":"Fi:ber, v3","key":"value","key2":"value2"}}`,
+			ExpectedStatusCode: StatusOK,
+			ExceptedErr:        nil,
+		},
+		{
+			URL:                "/with-inputs?name=john&surname=doe",
+			CookieValue:        "key:value,key2:value2,key:value,key2:value2,old_input_data_name:john,old_input_data_surname:doe",
+			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{"key":"value","key2":"value2"}}`,
+			ExpectedStatusCode: StatusOK,
+			ExceptedErr:        nil,
+		},
+		{
+			URL:                "/just-inputs?name=john&surname=doe",
+			CookieValue:        "old_input_data_name:john,old_input_data_surname:doe",
+			ExpectedBody:       `{"inputs":{"name":"john","surname":"doe"},"messages":{}}`,
+			ExpectedStatusCode: StatusOK,
+			ExceptedErr:        nil,
+		},
+	}
 
-// 	for _, tc := range testCases {
-// 		a := Get("http://example.com" + tc.URL)
-// 		a.Cookie(FlashCookieName, tc.CookieValue)
-// 		a.MaxRedirectsCount(1)
-// 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-// 		code, body, errs := a.String()
+	for _, tc := range testCases {
+		client := &fasthttp.HostClient{
+			Dial: func(addr string) (net.Conn, error) {
+				return ln.Dial()
+			},
+		}
+		req, resp := fasthttp.AcquireRequest(), fasthttp.AcquireResponse()
+		req.SetRequestURI("http://example.com" + tc.URL)
+		req.Header.SetCookie(FlashCookieName, tc.CookieValue)
+		err := client.DoRedirects(req, resp, 1)
+		require.NoError(t, err)
 
-// 		require.Equal(t, tc.ExpectedStatusCode, code)
-// 		require.Equal(t, tc.ExpectedBody, body)
-// 		require.Equal(t, tc.ExceptedErrsLen, len(errs))
-// 	}
-// }
+		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
+		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
+	}
+}
 
 // go test -v -run=^$ -bench=Benchmark_Redirect_Route -benchmem -count=4
 func Benchmark_Redirect_Route(b *testing.B) {
