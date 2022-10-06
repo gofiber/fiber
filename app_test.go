@@ -1666,12 +1666,14 @@ func Test_App_SetTLSHandler(t *testing.T) {
 	utils.AssertEqual(t, "example.golang", c.ClientHelloInfo().ServerName)
 }
 
-func Test_App_UpdateStack(t *testing.T) {
+func Test_App_AddCustomRequestMethod(t *testing.T) {
 	app := New()
 	utils.AssertEqual(t, len(app.stack), len(intMethod))
 
-	app.addCustomRequestMethod("test")
+	// method name is always uppercase - https://datatracker.ietf.org/doc/html/rfc7231#section-4.1
+	app.addCustomRequestMethod("TEST")
 	utils.AssertEqual(t, len(app.stack), len(intMethod))
+	utils.AssertEqual(t, "TEST", intMethod[len(intMethod)-1])
 }
 
 func TestApp_GetRoutes(t *testing.T) {
