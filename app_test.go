@@ -1687,7 +1687,7 @@ func TestApp_GetRoutes(t *testing.T) {
 	app.Delete("/delete", handler).Name("delete")
 	app.Post("/post", handler).Name("post")
 	routes := app.GetRoutes(false)
-	utils.AssertEqual(t, 11, len(routes))
+	utils.AssertEqual(t, 2+len(intMethod), len(routes))
 	methodMap := map[string]string{"/delete": "delete", "/post": "post"}
 	for _, route := range routes {
 		name, ok := methodMap[route.Path]
