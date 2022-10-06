@@ -113,6 +113,65 @@ var (
 	parameterConstraintDataSeparatorChars = []byte{paramConstraintDataSeparator}
 )
 
+// RoutePatternMatch checks if a given path matches a Fiber route pattern.
+func RoutePatternMatch(path, pattern string, cfg ...Config) bool {
+	// See logic in (*Route).match and (*App).register
+	var ctxParams [maxParams]string
+
+	config := Config{}
+	if len(cfg) > 0 {
+		config = cfg[0]
+	}
+
+	if path == "" {
+		path = "/"
+	}
+
+	// Cannot have an empty pattern
+	if pattern == "" {
+		pattern = "/"
+	}
+	// Pattern always start with a '/'
+	if pattern[0] != '/' {
+		pattern = "/" + pattern
+	}
+
+	patternPretty := pattern
+
+	// Case sensitive routing, all to lowercase
+	if !config.CaseSensitive {
+		patternPretty = utils.ToLower(patternPretty)
+		path = utils.ToLower(path)
+	}
+	// Strict routing, remove trailing slashes
+	if !config.StrictRouting && len(patternPretty) > 1 {
+		patternPretty = utils.TrimRight(patternPretty, '/')
+	}
+
+	parser := parseRoute(patternPretty)
+
+	if patternPretty == "/" && path == "/" {
+		return true
+		// '*' wildcard matches any path
+	} else if patternPretty == "/*" {
+		return true
+	}
+
+	// Does this route have parameters
+	if len(parser.params) > 0 {
+		if match := parser.getMatch(path, path, &ctxParams, false); match {
+			return true
+		}
+	}
+	// Check for a simple match
+	patternPretty = RemoveEscapeChar(patternPretty)
+	if len(patternPretty) == len(path) && patternPretty == path {
+		return true
+	}
+	// No match
+	return false
+}
+
 // parseRoute analyzes the route and divides it into segments for constant areas and parameters,
 // this information is needed later when assigning the requests to the declared routes
 func parseRoute(pattern string) routeParser {
