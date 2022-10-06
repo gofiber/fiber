@@ -2,6 +2,7 @@ package fiber
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -33,61 +35,66 @@ func Test_Listen(t *testing.T) {
 }
 
 // go test -run Test_Listen_Graceful_Shutdown
-// func Test_Listen_Graceful_Shutdown(t *testing.T) {
-// 	var mu sync.Mutex
-// 	var shutdown bool
+func Test_Listen_Graceful_Shutdown(t *testing.T) {
+	var mu sync.Mutex
+	var shutdown bool
 
-// 	app := New()
+	app := New()
 
-// 	app.Get("/", func(c Ctx) error {
-// 		return c.SendString(c.Hostname())
-// 	})
+	app.Get("/", func(c Ctx) error {
+		return c.SendString(c.Hostname())
+	})
 
-// 	ln := fasthttputil.NewInmemoryListener()
+	ln := fasthttputil.NewInmemoryListener()
 
-// 	go func() {
-// 		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
-// 		defer cancel()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+		defer cancel()
 
-// 		err := app.Listener(ln, ListenConfig{
-// 			DisableStartupMessage: true,
-// 			GracefulContext:       ctx,
-// 			OnShutdownSuccess: func() {
-// 				mu.Lock()
-// 				shutdown = true
-// 				mu.Unlock()
-// 			},
-// 		})
+		err := app.Listener(ln, ListenConfig{
+			DisableStartupMessage: true,
+			GracefulContext:       ctx,
+			OnShutdownSuccess: func() {
+				mu.Lock()
+				shutdown = true
+				mu.Unlock()
+			},
+		})
 
-// 		require.NoError(t, err)
-// 	}()
+		require.NoError(t, err)
+	}()
 
-// 	testCases := []struct {
-// 		Time               time.Duration
-// 		ExpectedBody       string
-// 		ExpectedStatusCode int
-// 		ExceptedErrsLen    int
-// 	}{
-// 		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErrsLen: 0},
-// 		{Time: 500 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: 0, ExceptedErrsLen: 1},
-// 	}
+	testCases := []struct {
+		Time               time.Duration
+		ExpectedBody       string
+		ExpectedStatusCode int
+		ExceptedErr        error
+	}{
+		{Time: 100 * time.Millisecond, ExpectedBody: "example.com", ExpectedStatusCode: StatusOK, ExceptedErr: nil},
+		{Time: 500 * time.Millisecond, ExpectedBody: "", ExpectedStatusCode: StatusOK, ExceptedErr: errors.New("InmemoryListener is already closed: use of closed network connection")},
+	}
 
-// 	for _, tc := range testCases {
-// 		time.Sleep(tc.Time)
+	for _, tc := range testCases {
+		time.Sleep(tc.Time)
 
-// 		a := Get("http://example.com")
-// 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
-// 		code, body, errs := a.String()
+		req := fasthttp.AcquireRequest()
+		req.SetRequestURI("http://example.com")
 
-// 		require.Equal(t, tc.ExpectedStatusCode, code)
-// 		require.Equal(t, tc.ExpectedBody, body)
-// 		require.Equal(t, tc.ExceptedErrsLen, len(errs))
-// 	}
+		client := fasthttp.HostClient{}
+		client.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
 
-// 	mu.Lock()
-// 	require.True(t, shutdown)
-// 	mu.Unlock()
-// }
+		resp := fasthttp.AcquireResponse()
+		err := client.Do(req, resp)
+
+		require.Equal(t, tc.ExceptedErr, err)
+		require.Equal(t, tc.ExpectedStatusCode, resp.StatusCode())
+		require.Equal(t, tc.ExpectedBody, string(resp.Body()))
+	}
+
+	mu.Lock()
+	require.True(t, shutdown)
+	mu.Unlock()
+}
 
 // go test -run Test_Listen_Prefork
 func Test_Listen_Prefork(t *testing.T) {
