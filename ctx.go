@@ -813,7 +813,7 @@ func (c *Ctx) JSONP(data interface{}, callback ...string) error {
 	result = cb + "(" + c.app.getString(raw) + ");"
 
 	c.setCanonical(HeaderXContentTypeOptions, "nosniff")
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
+	c.fasthttp.Response.Header.SetContentType(MIMETextJavaScriptCharsetUTF8)
 	return c.SendString(result)
 }
 
