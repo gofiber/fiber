@@ -96,7 +96,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) (ma
 	return false
 }
 
-func (app *App) next(c CustomCtx, customCtx bool) (match bool, err error) {
+func (app *App) nextCustom(c CustomCtx) (match bool, err error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
 	if !ok {
@@ -136,22 +136,64 @@ func (app *App) next(c CustomCtx, customCtx bool) (match bool, err error) {
 	// If c.Next() does not match, return 404
 	err = NewError(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
 
-	var isMethodExist bool
-	if customCtx {
-		isMethodExist = methodExistCustom(c)
-	} else {
-		isMethodExist = methodExist(c.(*DefaultCtx))
+	// If no match, scan stack again if other methods match the request
+	// Moved from app.handler because middleware may break the route chain
+	if !c.getMatched() && methodExistCustom(c) {
+		err = ErrMethodNotAllowed
 	}
+	return
+}
+
+func (app *App) next(c *DefaultCtx) (match bool, err error) {
+	// Get stack length
+	tree, ok := app.treeStack[c.methodINT][c.treePath]
+	if !ok {
+		tree = app.treeStack[c.methodINT][""]
+	}
+	lenr := len(tree) - 1
+
+	// Loop over the route stack starting from previous index
+	for c.indexRoute < lenr {
+		// Increment route index
+		c.indexRoute++
+
+		// Get *Route
+		route := tree[c.indexRoute]
+
+		// Check if it matches the request path
+		match = route.match(c.detectionPath, c.path, &c.values)
+
+		// No match, next route
+		if !match {
+			continue
+		}
+		// Pass route reference and param values
+		c.route = route
+
+		// Non use handler matched
+		if !c.matched && !route.use {
+			c.matched = true
+		}
+
+		// Execute first handler of route
+		c.indexHandler = 0
+		err = route.Handlers[0](c)
+		return match, err // Stop scanning the stack
+	}
+
+	// If c.Next() does not match, return 404
+	err = NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	if !c.getMatched() && isMethodExist {
+	if !c.matched && methodExist(c) {
 		err = ErrMethodNotAllowed
 	}
 	return
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
+	// Handler for default ctxs
 	var c CustomCtx
 	if app.newCtxFunc != nil {
 		c = app.AcquireCtx().(CustomCtx)
@@ -173,7 +215,12 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 
 	// Find match in stack
-	_, err := app.next(c, app.newCtxFunc != nil)
+	var err error
+	if app.newCtxFunc != nil {
+		_, err = app.nextCustom(c)
+	} else {
+		_, err = app.next(c.(*DefaultCtx))
+	}
 	if err != nil {
 		if catch := c.App().ErrorHandler(c, err); catch != nil {
 			_ = c.SendStatus(StatusInternalServerError)
