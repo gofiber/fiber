@@ -621,7 +621,7 @@ Apabila anda ingin mengucapkan **terima kasih** dan/atau mendukung pengembangan 
 
 ## ☕ Pendukung
 
-Fiber adalah proyek sumber terbuka yang beroperasi dalam donasi untuk membayar tagihan, seperti nama domain, _gitbook, netlify_ dan _serverless hosting_. Jika anda mau mendukung Fiber, anda dapat [**membeli kami kopi disini**](https://buymeacoff.ee/fenny).
+Fiber adalah proyek sumber terbuka yang beroperasi dalam donasi untuk membayar tagihan, seperti nama domain, _gitbook, netlify_ dan _serverless hosting_. Jika anda mau mendukung Fiber, anda dapat [**membelikan kami kopi disini**](https://buymeacoff.ee/fenny).
 
 |                                                            | User                                             | Donation |
 | :--------------------------------------------------------- | :----------------------------------------------- | :------- |
