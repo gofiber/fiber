@@ -1071,6 +1071,19 @@ func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
 	}
 }
 
+// go test -run Test_Ctx_Hostname_Trusted_Multiple
+func Test_Ctx_Hostname_TrustedProxy_Multiple(t *testing.T) {
+	t.Parallel()
+	{
+		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "0.8.0.1"}})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com, google2.com")
+		utils.AssertEqual(t, "google1.com", c.Hostname())
+		app.ReleaseCtx(c)
+	}
+}
+
 // go test -run Test_Ctx_Hostname_UntrustedProxyRange
 func Test_Ctx_Hostname_TrustedProxyRange(t *testing.T) {
 	t.Parallel()
@@ -1821,6 +1834,14 @@ func Test_Ctx_Protocol(t *testing.T) {
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProto, "https, http")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProtocol, "https, http")
 	utils.AssertEqual(t, "https", c.Protocol())
 	c.Request().Header.Reset()
 

@@ -661,7 +661,7 @@ func (c *Ctx) GetRespHeaders() map[string]string {
 func (c *Ctx) Hostname() string {
 	if c.IsProxyTrusted() {
 		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
-			return host
+			return strings.Split(host, ",")[0]
 		}
 	}
 	return c.app.getString(c.fasthttp.Request.URI().Host())
@@ -1015,9 +1015,9 @@ func (c *Ctx) Protocol() string {
 			return // X-Forwarded-
 		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
 			if bytes.Equal(key, []byte(HeaderXForwardedProto)) {
-				scheme = c.app.getString(val)
+				scheme = strings.Split(c.app.getString(val), ",")[0]
 			} else if bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
-				scheme = c.app.getString(val)
+				scheme = strings.Split(c.app.getString(val), ",")[0]
 			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
 				scheme = "https"
 			}
