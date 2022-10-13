@@ -455,9 +455,9 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	// only set max age and expiry when SessionOnly is false
 	// i.e. cookie supposed to last beyond browser session
 	// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
-	if !cookie.SessionOnly {
-		fcookie.SetMaxAge(cookie.MaxAge)
+	if !cookie.SessionOnly && !cookie.Expires.IsZero() {
 		fcookie.SetExpire(cookie.Expires)
+		fcookie.SetMaxAge(cookie.MaxAge)
 	}
 	fcookie.SetSecure(cookie.Secure)
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
