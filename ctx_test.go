@@ -719,6 +719,12 @@ func Test_Ctx_Cookie(t *testing.T) {
 	cookie.MaxAge = 10000
 	c.Cookie(cookie)
 	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
+	// should remove expires and max-age headers when no expire (default time)
+	cookie.SessionOnly = true
+	cookie.Expires = time.Time{}
+	cookie.MaxAge = 10000
+	c.Cookie(cookie)
+	utils.AssertEqual(t, expect, string(c.Response().Header.Peek(HeaderSetCookie)))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
