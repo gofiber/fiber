@@ -596,7 +596,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		c.indexRoute = -1
-		res, err = app.next(c, false)
+		res, err = app.next(c)
 	}
 	require.NoError(b, err)
 	require.True(b, res)
@@ -772,10 +772,10 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 
-			ctx := app.AcquireCtx().(CustomCtx)
+			ctx := app.AcquireCtx().(*DefaultCtx)
 			ctx.Reset(c)
 
-			match, err = app.next(ctx, false)
+			match, err = app.next(ctx)
 			app.ReleaseCtx(ctx)
 		}
 

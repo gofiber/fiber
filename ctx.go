@@ -728,7 +728,11 @@ func (c *DefaultCtx) Next() (err error) {
 		err = c.route.Handlers[c.indexHandler](c)
 	} else {
 		// Continue handler stack
-		_, err = c.app.next(c, c.app.newCtxFunc != nil)
+		if c.app.newCtxFunc != nil {
+			_, err = c.app.nextCustom(c)
+		} else {
+			_, err = c.app.next(c)
+		}
 	}
 	return err
 }
@@ -736,8 +740,14 @@ func (c *DefaultCtx) Next() (err error) {
 // RestartRouting instead of going to the next handler. This may be usefull after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
+	var err error
+
 	c.indexRoute = -1
-	_, err := c.app.next(c, c.app.newCtxFunc != nil)
+	if c.app.newCtxFunc != nil {
+		_, err = c.app.nextCustom(c)
+	} else {
+		_, err = c.app.next(c)
+	}
 	return err
 }
 
