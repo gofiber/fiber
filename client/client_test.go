@@ -336,7 +336,66 @@ func Test_Client_UserAgent(t *testing.T) {
 	})
 }
 
-func Test_Client_Headers(t *testing.T) {
+func Test_Client_Header(t *testing.T) {
+	t.Parallel()
+
+	t.Run("add header", func(t *testing.T) {
+		req := AcquireClient()
+		req.AddHeader("foo", "bar").AddHeader("foo", "fiber")
+
+		res := req.Header("foo")
+		require.Equal(t, 2, len(res))
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "fiber", res[1])
+	})
+
+	t.Run("set header", func(t *testing.T) {
+		req := AcquireClient()
+		req.AddHeader("foo", "bar").SetHeader("foo", "fiber")
+
+		res := req.Header("foo")
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "fiber", res[0])
+	})
+
+	t.Run("add headers", func(t *testing.T) {
+		req := AcquireClient()
+		req.SetHeader("foo", "bar").
+			AddHeaders(map[string][]string{
+				"foo": {"fiber", "buaa"},
+				"bar": {"foo"},
+			})
+
+		res := req.Header("foo")
+		require.Equal(t, 3, len(res))
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "buaa", res[1])
+		require.Equal(t, "fiber", res[2])
+
+		res = req.Header("bar")
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "foo", res[0])
+	})
+
+	t.Run("set headers", func(t *testing.T) {
+		req := AcquireClient()
+		req.SetHeader("foo", "bar").
+			SetHeaders(map[string]string{
+				"foo": "fiber",
+				"bar": "foo",
+			})
+
+		res := req.Header("foo")
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "fiber", res[0])
+
+		res = req.Header("bar")
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "foo", res[0])
+	})
+}
+
+func Test_Client_Header_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
@@ -392,7 +451,127 @@ func Test_Client_Referer(t *testing.T) {
 	testClient(t, handler, wrapAgent, "http://referer.com")
 }
 
-func Test_Client_Params(t *testing.T) {
+func Test_Client_QueryParam(t *testing.T) {
+	t.Parallel()
+
+	t.Run("add param", func(t *testing.T) {
+		req := AcquireClient()
+		req.AddParam("foo", "bar").AddParam("foo", "fiber")
+
+		res := req.Param("foo")
+		require.Equal(t, 2, len(res))
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "fiber", res[1])
+	})
+
+	t.Run("set param", func(t *testing.T) {
+		req := AcquireClient()
+		req.AddParam("foo", "bar").SetParam("foo", "fiber")
+
+		res := req.Param("foo")
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "fiber", res[0])
+	})
+
+	t.Run("add params", func(t *testing.T) {
+		req := AcquireClient()
+		req.SetParam("foo", "bar").
+			AddParams(map[string][]string{
+				"foo": {"fiber", "buaa"},
+				"bar": {"foo"},
+			})
+
+		res := req.Param("foo")
+		require.Equal(t, 3, len(res))
+		require.Equal(t, "bar", res[0])
+		require.Equal(t, "buaa", res[1])
+		require.Equal(t, "fiber", res[2])
+
+		res = req.Param("bar")
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "foo", res[0])
+	})
+
+	t.Run("set headers", func(t *testing.T) {
+		req := AcquireClient()
+		req.SetParam("foo", "bar").
+			SetParams(map[string]string{
+				"foo": "fiber",
+				"bar": "foo",
+			})
+
+		res := req.Param("foo")
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "fiber", res[0])
+
+		res = req.Param("bar")
+		require.Equal(t, 1, len(res))
+		require.Equal(t, "foo", res[0])
+	})
+
+	t.Run("set params with struct", func(t *testing.T) {
+		t.Parallel()
+
+		type args struct {
+			TInt      int
+			TString   string
+			TFloat    float64
+			TBool     bool
+			TSlice    []string
+			TIntSlice []int `param:"int_slice"`
+		}
+
+		p := AcquireClient()
+		p.SetParamsWithStruct(&args{
+			TInt:      5,
+			TString:   "string",
+			TFloat:    3.1,
+			TBool:     true,
+			TSlice:    []string{"foo", "bar"},
+			TIntSlice: []int{1, 2},
+		})
+
+		require.Equal(t, 0, len(p.Param("unexport")))
+
+		require.Equal(t, 1, len(p.Param("TInt")))
+		require.Equal(t, "5", p.Param("TInt")[0])
+
+		require.Equal(t, 1, len(p.Param("TString")))
+		require.Equal(t, "string", p.Param("TString")[0])
+
+		require.Equal(t, 1, len(p.Param("TFloat")))
+		require.Equal(t, "3.1", p.Param("TFloat")[0])
+
+		require.Equal(t, 1, len(p.Param("TBool")))
+
+		tslice := p.Param("TSlice")
+		require.Equal(t, 2, len(tslice))
+		require.Equal(t, "bar", tslice[0])
+		require.Equal(t, "foo", tslice[1])
+
+		tint := p.Param("TSlice")
+		require.Equal(t, 2, len(tint))
+		require.Equal(t, "bar", tint[0])
+		require.Equal(t, "foo", tint[1])
+	})
+
+	t.Run("del params", func(t *testing.T) {
+		req := AcquireClient()
+		req.SetParam("foo", "bar").
+			SetParams(map[string]string{
+				"foo": "fiber",
+				"bar": "foo",
+			}).DelParams("foo", "bar")
+
+		res := req.Param("foo")
+		require.Equal(t, 0, len(res))
+
+		res = req.Param("bar")
+		require.Equal(t, 0, len(res))
+	})
+}
+
+func Test_Client_QueryParam_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
 		c.WriteString(c.Query("k1"))
 		c.WriteString(c.Query("k2"))
@@ -504,12 +683,4 @@ func Test_Client_SetBaseURL(t *testing.T) {
 	client := AcquireClient().SetBaseURL("http://example.com")
 
 	require.Equal(t, "http://example.com", client.BaseURL())
-}
-
-func Test_Client_Header(t *testing.T) {
-	t.Parallel()
-
-	t.Run("", func(t *testing.T) {
-
-	})
 }

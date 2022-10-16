@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -225,6 +226,13 @@ func (c *Client) SetBaseURL(url string) *Client {
 	return c
 }
 
+// Header method returns header value via key,
+// this method will visit all field in the header,
+// then sort them.
+func (c *Client) Header(key string) []string {
+	return c.header.PeekMultiple(key)
+}
+
 // AddHeader method adds a single header field and its value in the client instance.
 // These headers will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level header options.
@@ -255,6 +263,20 @@ func (c *Client) AddHeaders(h map[string][]string) *Client {
 func (c *Client) SetHeaders(h map[string]string) *Client {
 	c.header.SetHeaders(h)
 	return c
+}
+
+// Param method returns params value via key,
+// this method will visit all field in the query param,
+// then sort them.
+func (c *Client) Param(key string) []string {
+	res := []string{}
+	tmp := c.params.PeekMulti(key)
+	for _, v := range tmp {
+		res = append(res, utils.UnsafeString(v))
+	}
+	sort.Strings(res)
+
+	return res
 }
 
 // AddParam method adds a single query param field and its value in the client instance.
