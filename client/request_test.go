@@ -785,21 +785,6 @@ func Test_Request_Header_With_Server(t *testing.T) {
 	testRequest(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
 }
 
-// func Test_Client_Agent_Connection_Close(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		if c.Request().Header.ConnectionClose() {
-// 			return c.SendString("close")
-// 		}
-// 		return c.SendString("not close")
-// 	}
-
-// 	wrapAgent := func(a *Agent) {
-// 		a.ConnectionClose()
-// 	}
-
-// 	testAgent(t, handler, wrapAgent, "close")
-// }
-
 func Test_Request_UserAgent_With_Server(t *testing.T) {
 	t.Parallel()
 
@@ -890,25 +875,6 @@ func Test_Request_QueryString_With_Server(t *testing.T) {
 
 	testRequest(t, handler, wrapAgent, "foo=bar&bar=baz")
 }
-
-// func Test_Client_Agent_BasicAuth(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		// Get authorization header
-// 		auth := c.Get(fiber.HeaderAuthorization)
-// 		// Decode the header contents
-// 		raw, err := base64.StdEncoding.DecodeString(auth[6:])
-// 		utils.AssertEqual(t, nil, err)
-
-// 		return c.Send(raw)
-// 	}
-
-// 	wrapAgent := func(a *Agent) {
-// 		a.BasicAuth("foo", "bar").
-// 			BasicAuthBytes([]byte("foo"), []byte("bar"))
-// 	}
-
-// 	testAgent(t, handler, wrapAgent, "foo:bar")
-// }
 
 func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 	t.Helper()

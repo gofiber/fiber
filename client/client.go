@@ -613,35 +613,35 @@ func Replace(c *Client) func() {
 
 // Get send a get request use defaultClient, a convenient method.
 func Get(url string, cfg ...Config) (*Response, error) {
-	return defaultClient.Get(url, cfg...)
+	return C().Get(url, cfg...)
 }
 
 // Post send a post request use defaultClient, a convenient method.
 func Post(url string, cfg ...Config) (*Response, error) {
-	return defaultClient.Post(url, cfg...)
+	return C().Post(url, cfg...)
 }
 
 // Head send a head request use defaultClient, a convenient method.
 func Head(url string, cfg ...Config) (*Response, error) {
-	return defaultClient.Head(url, cfg...)
+	return C().Head(url, cfg...)
 }
 
 // Put send a put request use defaultClient, a convenient method.
 func Put(url string, cfg ...Config) (*Response, error) {
-	return defaultClient.Put(url, cfg...)
+	return C().Put(url, cfg...)
 }
 
 // Delete send a delete request use defaultClient, a convenient method.
 func Delete(url string, cfg ...Config) (*Response, error) {
-	return defaultClient.Delete(url, cfg...)
+	return C().Delete(url, cfg...)
 }
 
 // Options send a options request use defaultClient, a convenient method.
 func Options(url string, cfg ...Config) (*Response, error) {
-	return defaultClient.Options(url, cfg...)
+	return C().Options(url, cfg...)
 }
 
 // Patch send a patch request use defaultClient, a convenient method.
 func Patch(url string, cfg ...Config) (*Response, error) {
-	return defaultClient.Patch(url, cfg...)
+	return C().Patch(url, cfg...)
 }
