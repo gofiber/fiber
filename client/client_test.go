@@ -336,101 +336,59 @@ func Test_Client_UserAgent(t *testing.T) {
 	})
 }
 
-// func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		c.Request().Header.VisitAll(func(key, value []byte) {
-// 			if k := string(key); k == "K1" || k == "K2" {
-// 				_, _ = c.Write(key)
-// 				_, _ = c.Write(value)
-// 			}
-// 		})
-// 		return nil
-// 	}
+func Test_Client_Headers(t *testing.T) {
+	handler := func(c fiber.Ctx) error {
+		c.Request().Header.VisitAll(func(key, value []byte) {
+			if k := string(key); k == "K1" || k == "K2" {
+				_, _ = c.Write(key)
+				_, _ = c.Write(value)
+			}
+		})
+		return nil
+	}
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.Set("k1", "v1").
-// 			SetBytesK([]byte("k1"), "v1").
-// 			SetBytesV("k1", []byte("v1")).
-// 			AddBytesK([]byte("k1"), "v11").
-// 			AddBytesV("k1", []byte("v22")).
-// 			AddBytesKV([]byte("k1"), []byte("v33")).
-// 			SetBytesKV([]byte("k2"), []byte("v2")).
-// 			Add("k2", "v22")
-// 	}
+	wrapAgent := func(c *Client) {
+		c.SetHeader("k1", "v1").
+			AddHeader("k1", "v2").
+			SetHeaders(map[string]string{
+				"k2": "v2",
+			}).
+			AddHeaders(map[string][]string{
+				"k2": {"v22"},
+			})
+	}
 
-// 	testAgent(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
-// }
+	testClient(t, handler, wrapAgent, "K1v1K1v2K2v2K2v22")
+}
 
-// func Test_Client_Agent_Connection_Close(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		if c.Request().Header.ConnectionClose() {
-// 			return c.SendString("close")
-// 		}
-// 		return c.SendString("not close")
-// 	}
+func Test_Client_Cookie(t *testing.T) {
+	handler := func(c fiber.Ctx) error {
+		return c.SendString(
+			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3"))
+	}
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.ConnectionClose()
-// 	}
+	wrapAgent := func(c *Client) {
+		c.SetCookie("k1", "v1").
+			SetCookies(map[string]string{
+				"k2": "v2",
+				"k3": "v3",
+			})
+	}
 
-// 	testAgent(t, handler, wrapAgent, "close")
-// }
+	testClient(t, handler, wrapAgent, "v1v2v3")
+}
 
-// func Test_Client_Agent_UserAgent(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().Header.UserAgent())
-// 	}
+func Test_Client_Referer(t *testing.T) {
+	handler := func(c fiber.Ctx) error {
+		return c.Send(c.Request().Header.Referer())
+	}
 
-// 	wrapAgent := func(a *Agent) {
-// 		a.UserAgent("ua").
-// 			UserAgentBytes([]byte("ua"))
-// 	}
+	wrapAgent := func(c *Client) {
+		c.SetReferer("http://referer.com")
+	}
 
-// 	testAgent(t, handler, wrapAgent, "ua")
-// }
-
-// func Test_Client_Agent_Cookie(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.SendString(
-// 			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
-// 	}
-
-// 	wrapAgent := func(a *Agent) {
-// 		a.Cookie("k1", "v1").
-// 			CookieBytesK([]byte("k2"), "v2").
-// 			CookieBytesKV([]byte("k2"), []byte("v2")).
-// 			Cookies("k3", "v3", "k4", "v4").
-// 			CookiesBytesKV([]byte("k3"), []byte("v3"), []byte("k4"), []byte("v4"))
-// 	}
-
-// 	testAgent(t, handler, wrapAgent, "v1v2v3v4")
-// }
-
-// func Test_Client_Agent_Referer(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().Header.Referer())
-// 	}
-
-// 	wrapAgent := func(a *Agent) {
-// 		a.Referer("http://referer.com").
-// 			RefererBytes([]byte("http://referer.com"))
-// 	}
-
-// 	testAgent(t, handler, wrapAgent, "http://referer.com")
-// }
-
-// func Test_Client_Agent_ContentType(t *testing.T) {
-// 	handler := func(c fiber.Ctx) error {
-// 		return c.Send(c.Request().Header.ContentType())
-// 	}
-
-// 	wrapAgent := func(a *Agent) {
-// 		a.ContentType("custom-type").
-// 			ContentTypeBytes([]byte("custom-type"))
-// 	}
-
-// 	testAgent(t, handler, wrapAgent, "custom-type")
-// }
+	testClient(t, handler, wrapAgent, "http://referer.com")
+}
 
 // func Test_Client_Agent_Host(t *testing.T) {
 // 	t.Parallel()

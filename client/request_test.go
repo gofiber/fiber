@@ -782,7 +782,7 @@ func Test_Request_Header_With_Server(t *testing.T) {
 			AddHeader("k2", "v22")
 	}
 
-	testAgent(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
+	testRequest(t, handler, wrapAgent, "K1v1K1v11K1v22K1v33K2v2K2v22")
 }
 
 // func Test_Client_Agent_Connection_Close(t *testing.T) {
@@ -808,11 +808,11 @@ func Test_Request_UserAgent_With_Server(t *testing.T) {
 	}
 
 	t.Run("default", func(t *testing.T) {
-		testAgent(t, handler, func(agent *Request) {}, defaultUserAgent, 5)
+		testRequest(t, handler, func(agent *Request) {}, defaultUserAgent, 5)
 	})
 
 	t.Run("custom", func(t *testing.T) {
-		testAgent(t, handler, func(agent *Request) {
+		testRequest(t, handler, func(agent *Request) {
 			agent.SetUserAgent("ua")
 		}, "ua", 5)
 	})
@@ -833,7 +833,7 @@ func Test_Request_Cookie_With_Server(t *testing.T) {
 			}).DelCookies("k4")
 	}
 
-	testAgent(t, handler, wrapAgent, "v1v2v3")
+	testRequest(t, handler, wrapAgent, "v1v2v3")
 }
 
 func Test_Request_Referer_With_Server(t *testing.T) {
@@ -845,7 +845,7 @@ func Test_Request_Referer_With_Server(t *testing.T) {
 		req.SetReferer("http://referer.com")
 	}
 
-	testAgent(t, handler, wrapAgent, "http://referer.com")
+	testRequest(t, handler, wrapAgent, "http://referer.com")
 }
 
 // func Test_Client_Agent_Host(t *testing.T) {
@@ -888,7 +888,7 @@ func Test_Request_QueryString_With_Server(t *testing.T) {
 			})
 	}
 
-	testAgent(t, handler, wrapAgent, "foo=bar&bar=baz")
+	testRequest(t, handler, wrapAgent, "foo=bar&bar=baz")
 }
 
 // func Test_Client_Agent_BasicAuth(t *testing.T) {
@@ -932,7 +932,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	t.Parallel()
 
 	t.Run("json body", func(t *testing.T) {
-		testAgent(t,
+		testRequest(t,
 			func(c fiber.Ctx) error {
 				require.Equal(t, "application/json", string(c.Request().Header.ContentType()))
 				return c.SendString(string(c.Request().Body()))
@@ -947,7 +947,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	})
 
 	t.Run("xml body", func(t *testing.T) {
-		testAgent(t,
+		testRequest(t,
 			func(c fiber.Ctx) error {
 				require.Equal(t, "application/xml", string(c.Request().Header.ContentType()))
 				return c.SendString(string(c.Request().Body()))
@@ -965,7 +965,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	})
 
 	t.Run("formdata", func(t *testing.T) {
-		testAgent(t,
+		testRequest(t,
 			func(c fiber.Ctx) error {
 				require.Equal(t, fiber.MIMEApplicationForm, string(c.Request().Header.ContentType()))
 				return c.Send([]byte("foo=" + c.FormValue("foo") + "&bar=" + c.FormValue("bar") + "&fiber=" + c.FormValue("fiber")))
@@ -1097,7 +1097,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 	})
 
 	t.Run("raw body", func(t *testing.T) {
-		testAgent(t,
+		testRequest(t,
 			func(c fiber.Ctx) error {
 				return c.SendString(string(c.Request().Body()))
 			},
@@ -1111,7 +1111,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 func Test_Request_Error_Body_With_Server(t *testing.T) {
 	t.Run("json error", func(t *testing.T) {
-		testAgentFail(t,
+		testClientFail(t,
 			func(c fiber.Ctx) error {
 				return c.SendString("")
 			},
@@ -1123,7 +1123,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 	})
 
 	t.Run("xml error", func(t *testing.T) {
-		testAgentFail(t,
+		testClientFail(t,
 			func(c fiber.Ctx) error {
 				return c.SendString("")
 			},

@@ -22,7 +22,7 @@ func createHelperServer(t *testing.T) (*fiber.App, func(addr string) (net.Conn, 
 		}
 }
 
-func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted string, count ...int) {
+func testRequest(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted string, count ...int) {
 	t.Parallel()
 
 	app, ln, start := createHelperServer(t)
@@ -47,7 +47,54 @@ func testAgent(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Reques
 	}
 }
 
-func testAgentFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted error, count ...int) {
+func testRequestFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted error, count ...int) {
+	t.Parallel()
+
+	app, ln, start := createHelperServer(t)
+	app.Get("/", handler)
+	go start()
+
+	c := 1
+	if len(count) > 0 {
+		c = count[0]
+	}
+
+	for i := 0; i < c; i++ {
+		req := AcquireRequest().SetDial(ln)
+		wrapAgent(req)
+
+		_, err := req.Get("http://example.com")
+
+		require.Equal(t, excepted.Error(), err.Error())
+	}
+}
+
+func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Client), excepted string, count ...int) {
+	t.Parallel()
+
+	app, ln, start := createHelperServer(t)
+	app.Get("/", handler)
+	go start()
+
+	c := 1
+	if len(count) > 0 {
+		c = count[0]
+	}
+
+	for i := 0; i < c; i++ {
+		client := AcquireClient()
+		wrapAgent(client)
+
+		resp, err := client.Get("http://example.com", Config{Dial: ln})
+
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode())
+		require.Equal(t, excepted, resp.String())
+		resp.Close()
+	}
+}
+
+func testClientFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted error, count ...int) {
 	t.Parallel()
 
 	app, ln, start := createHelperServer(t)

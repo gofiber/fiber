@@ -604,6 +604,9 @@ func Replace(c *Client) func() {
 	defaultClient = c
 
 	return func() {
+		replaceMu.Lock()
+		defer replaceMu.Unlock()
+
 		defaultClient = oldClient
 	}
 }
