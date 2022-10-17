@@ -10,6 +10,94 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func Test_Client_Add_Hook(t *testing.T) {
+	t.Parallel()
+
+	t.Run("add request hooks", func(t *testing.T) {
+		client := AcquireClient().AddRequestHook(func(c *Client, r *Request) error {
+			return nil
+		})
+
+		require.Equal(t, 1, len(client.RequestHook()))
+
+		client.AddRequestHook(func(c *Client, r *Request) error {
+			return nil
+		}, func(c *Client, r *Request) error {
+			return nil
+		})
+
+		require.Equal(t, 3, len(client.RequestHook()))
+	})
+
+	t.Run("add response hooks", func(t *testing.T) {
+		client := AcquireClient().AddResponseHook(func(c *Client, resp *Response, r *Request) error {
+			return nil
+		})
+
+		require.Equal(t, 1, len(client.ResponseHook()))
+
+		client.AddResponseHook(func(c *Client, resp *Response, r *Request) error {
+			return nil
+		}, func(c *Client, resp *Response, r *Request) error {
+			return nil
+		})
+
+		require.Equal(t, 3, len(client.ResponseHook()))
+	})
+}
+
+func Test_Client_Marshal(t *testing.T) {
+	t.Run("set json marshal", func(t *testing.T) {
+		client := AcquireClient().
+			SetJSONMarshal(func(v any) ([]byte, error) {
+				return []byte("hello"), nil
+			})
+		val, err := client.JSONMarshal()(nil)
+
+		require.NoError(t, err)
+		require.Equal(t, []byte("hello"), val)
+	})
+
+	t.Run("set json unmarshal", func(t *testing.T) {
+		client := AcquireClient().
+			SetJSONUnmarshal(func(data []byte, v any) error {
+				return fmt.Errorf("empty json")
+			})
+
+		err := client.JSONUnmarshal()(nil, nil)
+		require.Equal(t, fmt.Errorf("empty json"), err)
+	})
+
+	t.Run("set xml marshal", func(t *testing.T) {
+		client := AcquireClient().
+			SetXMLMarshal(func(v any) ([]byte, error) {
+				return []byte("hello"), nil
+			})
+		val, err := client.XMLMarshal()(nil)
+
+		require.NoError(t, err)
+		require.Equal(t, []byte("hello"), val)
+	})
+
+	t.Run("set xml unmarshal", func(t *testing.T) {
+		client := AcquireClient().
+			SetXMLUnmarshal(func(data []byte, v any) error {
+				return fmt.Errorf("empty xml")
+			})
+
+		err := client.XMLUnmarshal()(nil, nil)
+		require.Equal(t, fmt.Errorf("empty xml"), err)
+	})
+}
+
+func Test_Client_SetBaseURL(t *testing.T) {
+	t.Parallel()
+
+	client := AcquireClient().SetBaseURL("http://example.com")
+
+	require.Equal(t, "http://example.com", client.BaseURL())
+}
+
 func Test_Client_Invalid_URL(t *testing.T) {
 	t.Parallel()
 
@@ -422,6 +510,64 @@ func Test_Client_Header_With_Server(t *testing.T) {
 }
 
 func Test_Client_Cookie(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set cookie", func(t *testing.T) {
+		req := AcquireClient().
+			SetCookie("foo", "bar")
+		require.Equal(t, "bar", req.Cookie("foo"))
+
+		req.SetCookie("foo", "bar1")
+		require.Equal(t, "bar1", req.Cookie("foo"))
+	})
+
+	t.Run("set cookies", func(t *testing.T) {
+		req := AcquireClient().
+			SetCookies(map[string]string{
+				"foo": "bar",
+				"bar": "foo",
+			})
+		require.Equal(t, "bar", req.Cookie("foo"))
+		require.Equal(t, "foo", req.Cookie("bar"))
+
+		req.SetCookies(map[string]string{
+			"foo": "bar1",
+		})
+		require.Equal(t, "bar1", req.Cookie("foo"))
+		require.Equal(t, "foo", req.Cookie("bar"))
+	})
+
+	t.Run("set cookies with struct", func(t *testing.T) {
+		type args struct {
+			CookieInt    int    `cookie:"int"`
+			CookieString string `cookie:"string"`
+		}
+
+		req := AcquireClient().SetCookiesWithStruct(&args{
+			CookieInt:    5,
+			CookieString: "foo",
+		})
+
+		require.Equal(t, "5", req.Cookie("int"))
+		require.Equal(t, "foo", req.Cookie("string"))
+	})
+
+	t.Run("del cookies", func(t *testing.T) {
+		req := AcquireClient().
+			SetCookies(map[string]string{
+				"foo": "bar",
+				"bar": "foo",
+			})
+		require.Equal(t, "bar", req.Cookie("foo"))
+		require.Equal(t, "foo", req.Cookie("bar"))
+
+		req.DelCookies("foo")
+		require.Equal(t, "", req.Cookie("foo"))
+		require.Equal(t, "foo", req.Cookie("bar"))
+	})
+}
+
+func Test_Client_Cookie_With_Server(t *testing.T) {
 	handler := func(c fiber.Ctx) error {
 		return c.SendString(
 			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
@@ -587,6 +733,82 @@ func Test_Client_QueryParam_With_Server(t *testing.T) {
 	testClient(t, handler, wrapAgent, "v1v2")
 }
 
+func Test_Client_PathParam(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set path param", func(t *testing.T) {
+		req := AcquireClient().
+			SetPathParam("foo", "bar")
+		require.Equal(t, "bar", req.PathParam("foo"))
+
+		req.SetPathParam("foo", "bar1")
+		require.Equal(t, "bar1", req.PathParam("foo"))
+	})
+
+	t.Run("set path params", func(t *testing.T) {
+		req := AcquireClient().
+			SetPathParams(map[string]string{
+				"foo": "bar",
+				"bar": "foo",
+			})
+		require.Equal(t, "bar", req.PathParam("foo"))
+		require.Equal(t, "foo", req.PathParam("bar"))
+
+		req.SetPathParams(map[string]string{
+			"foo": "bar1",
+		})
+		require.Equal(t, "bar1", req.PathParam("foo"))
+		require.Equal(t, "foo", req.PathParam("bar"))
+	})
+
+	t.Run("set path params with struct", func(t *testing.T) {
+		type args struct {
+			CookieInt    int    `path:"int"`
+			CookieString string `path:"string"`
+		}
+
+		req := AcquireClient().SetPathParamsWithStruct(&args{
+			CookieInt:    5,
+			CookieString: "foo",
+		})
+
+		require.Equal(t, "5", req.PathParam("int"))
+		require.Equal(t, "foo", req.PathParam("string"))
+	})
+
+	t.Run("del path params", func(t *testing.T) {
+		req := AcquireClient().
+			SetPathParams(map[string]string{
+				"foo": "bar",
+				"bar": "foo",
+			})
+		require.Equal(t, "bar", req.PathParam("foo"))
+		require.Equal(t, "foo", req.PathParam("bar"))
+
+		req.DelPathParams("foo")
+		require.Equal(t, "", req.PathParam("foo"))
+		require.Equal(t, "foo", req.PathParam("bar"))
+	})
+}
+
+func Test_Client_PathParam_With_Server(t *testing.T) {
+	app, dial, start := createHelperServer(t)
+
+	app.Get("/test", func(c fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	go start()
+
+	resp, err := AcquireClient().
+		SetPathParam("path", "test").
+		Get("http://example.com/:path", Config{Dial: dial})
+
+	require.Nil(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "ok", resp.String())
+}
+
 func Test_Client_R(t *testing.T) {
 	t.Parallel()
 
@@ -597,90 +819,34 @@ func Test_Client_R(t *testing.T) {
 	require.Equal(t, client, req.Client())
 }
 
-func Test_Client_Add_Hook(t *testing.T) {
-	t.Parallel()
+func Test_Replace(t *testing.T) {
+	app, dial, start := createHelperServer(t)
 
-	t.Run("add request hooks", func(t *testing.T) {
-		client := AcquireClient().AddRequestHook(func(c *Client, r *Request) error {
-			return nil
-		})
-
-		require.Equal(t, 1, len(client.RequestHook()))
-
-		client.AddRequestHook(func(c *Client, r *Request) error {
-			return nil
-		}, func(c *Client, r *Request) error {
-			return nil
-		})
-
-		require.Equal(t, 3, len(client.RequestHook()))
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(string(c.Request().Header.Peek("k1")))
 	})
 
-	t.Run("add response hooks", func(t *testing.T) {
-		client := AcquireClient().AddResponseHook(func(c *Client, resp *Response, r *Request) error {
-			return nil
-		})
+	go start()
 
-		require.Equal(t, 1, len(client.ResponseHook()))
+	resp, err := Get("http://example.com", Config{Dial: dial})
 
-		client.AddResponseHook(func(c *Client, resp *Response, r *Request) error {
-			return nil
-		}, func(c *Client, resp *Response, r *Request) error {
-			return nil
-		})
+	require.Nil(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "", resp.String())
 
-		require.Equal(t, 3, len(client.ResponseHook()))
-	})
-}
+	r := AcquireClient().SetHeader("k1", "v1")
+	clean := Replace(r)
+	resp, err = Get("http://example.com", Config{Dial: dial})
+	require.Nil(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "v1", resp.String())
 
-func Test_Client_Marshal(t *testing.T) {
-	t.Run("set json marshal", func(t *testing.T) {
-		client := AcquireClient().
-			SetJSONMarshal(func(v any) ([]byte, error) {
-				return []byte("hello"), nil
-			})
-		val, err := client.JSONMarshal()(nil)
+	clean()
+	ReleaseClient(r)
 
-		require.NoError(t, err)
-		require.Equal(t, []byte("hello"), val)
-	})
+	resp, err = Get("http://example.com", Config{Dial: dial})
 
-	t.Run("set json unmarshal", func(t *testing.T) {
-		client := AcquireClient().
-			SetJSONUnmarshal(func(data []byte, v any) error {
-				return fmt.Errorf("empty json")
-			})
-
-		err := client.JSONUnmarshal()(nil, nil)
-		require.Equal(t, fmt.Errorf("empty json"), err)
-	})
-
-	t.Run("set xml marshal", func(t *testing.T) {
-		client := AcquireClient().
-			SetXMLMarshal(func(v any) ([]byte, error) {
-				return []byte("hello"), nil
-			})
-		val, err := client.XMLMarshal()(nil)
-
-		require.NoError(t, err)
-		require.Equal(t, []byte("hello"), val)
-	})
-
-	t.Run("set xml unmarshal", func(t *testing.T) {
-		client := AcquireClient().
-			SetXMLUnmarshal(func(data []byte, v any) error {
-				return fmt.Errorf("empty xml")
-			})
-
-		err := client.XMLUnmarshal()(nil, nil)
-		require.Equal(t, fmt.Errorf("empty xml"), err)
-	})
-}
-
-func Test_Client_SetBaseURL(t *testing.T) {
-	t.Parallel()
-
-	client := AcquireClient().SetBaseURL("http://example.com")
-
-	require.Equal(t, "http://example.com", client.BaseURL())
+	require.Nil(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "", resp.String())
 }

@@ -343,6 +343,16 @@ func (c *Client) SetReferer(r string) *Client {
 	return c
 }
 
+// PathParam returns the path param be set in request instance.
+// if path param doesn't exist, return empty string.
+func (c *Client) PathParam(key string) string {
+	if val, ok := (*c.path)[key]; ok {
+		return val
+	}
+
+	return ""
+}
+
 // SetPathParam method sets a single path param field and its value in the client instance.
 // These path params will be applied to all requests raised from this client instance.
 // Also it can be overridden at request level path params options.
@@ -371,6 +381,15 @@ func (c *Client) SetPathParamsWithStruct(v any) *Client {
 func (c *Client) DelPathParams(key ...string) *Client {
 	c.path.DelParams(key...)
 	return c
+}
+
+// Cookie returns the cookie be set in request instance.
+// if cookie doesn't exist, return empty string.
+func (c *Client) Cookie(key string) string {
+	if val, ok := (*c.cookies)[key]; ok {
+		return val
+	}
+	return ""
 }
 
 // SetCookie method sets a single cookie field and its value in the client instance.
