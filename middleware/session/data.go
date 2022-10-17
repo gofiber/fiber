@@ -27,9 +27,7 @@ func acquireData() *data {
 
 func (d *data) Reset() {
 	d.Lock()
-	for key := range d.Data {
-		delete(d.Data, key)
-	}
+	d.Data = make(map[string]interface{})
 	d.Unlock()
 }
 
