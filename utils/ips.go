@@ -6,6 +6,10 @@ import "net"
 // but without check for IPv6 case and without returning net.IP slice, whereby IsIPv4 makes no allocations.
 func IsIPv4(s string) bool {
 	for i := 0; i < net.IPv4len; i++ {
+		if len(s) == 0 {
+			return false
+		}
+
 		if i > 0 {
 			if s[0] != '.' {
 				return false
@@ -27,6 +31,10 @@ func IsIPv4(s string) bool {
 		}
 
 		s = s[ci:]
+	}
+
+	if len(s) != 0 {
+		return false
 	}
 
 	return true
