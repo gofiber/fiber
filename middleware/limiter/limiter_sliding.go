@@ -3,10 +3,10 @@ package limiter
 import (
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 type SlidingWindow struct{}
@@ -17,7 +17,6 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// Limiter variables
 		mux        = &sync.RWMutex{}
 		max        = strconv.Itoa(cfg.Max)
-		timestamp  = uint64(time.Now().Unix())
 		expiration = uint64(cfg.Expiration.Seconds())
 	)
 
@@ -25,12 +24,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 	manager := newManager(cfg.Storage)
 
 	// Update timestamp every second
-	go func() {
-		for {
-			atomic.StoreUint64(&timestamp, uint64(time.Now().Unix()))
-			time.Sleep(1 * time.Second)
-		}
-	}()
+	utils.StartTimeStampUpdater()
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
@@ -49,7 +43,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		e := manager.get(key)
 
 		// Get timestamp
-		ts := atomic.LoadUint64(&timestamp)
+		ts := uint64(utils.Timestamp.Load())
 
 		// Set expiration if entry does not exist
 		if e.exp == 0 {

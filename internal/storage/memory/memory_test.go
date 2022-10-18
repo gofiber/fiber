@@ -124,57 +124,6 @@ func Test_Memory_Conn(t *testing.T) {
 	utils.AssertEqual(t, true, testStore.Conn() != nil)
 }
 
-// go test -run Test_Memory -v -race
-
-func Test_Memory(t *testing.T) {
-	var store = New()
-	var (
-		key = "john"
-		val = []byte("doe")
-		exp = 1 * time.Second
-	)
-
-	store.Set(key, val, 0)
-
-	result, error := store.Get(key)
-	utils.AssertEqual(t, val, result)
-	utils.AssertEqual(t, nil, error)
-
-	result, error = store.Get("empty")
-	utils.AssertEqual(t, nil, result)
-	utils.AssertEqual(t, nil, error)
-
-	store.Set(key, val, exp)
-	time.Sleep(1100 * time.Millisecond)
-
-	result, error = store.Get(key)
-	utils.AssertEqual(t, nil, result)
-	utils.AssertEqual(t, nil, error)
-
-	store.Set(key, val, 0)
-	result, error = store.Get(key)
-	utils.AssertEqual(t, val, result)
-	utils.AssertEqual(t, nil, error)
-
-	store.Delete(key)
-	result, error = store.Get(key)
-	utils.AssertEqual(t, nil, result)
-	utils.AssertEqual(t, nil, error)
-
-	store.Set("john", val, 0)
-	store.Set("doe", val, 0)
-	store.Reset()
-
-	result, error = store.Get("john")
-	utils.AssertEqual(t, nil, result)
-	utils.AssertEqual(t, nil, error)
-
-	result, error = store.Get("doe")
-	utils.AssertEqual(t, nil, result)
-	utils.AssertEqual(t, nil, error)
-
-}
-
 // go test -v -run=^$ -bench=Benchmark_Memory -benchmem -count=4
 func Benchmark_Memory(b *testing.B) {
 	keyLength := 1000
