@@ -13,6 +13,8 @@ var (
 
 func StartTimeStampUpdater() {
 	timestampTimer.Do(func() {
+		// set initial value
+		Timestamp.Store(uint32(time.Now().Unix()))
 		go func(sleep time.Duration) {
 			ticker := time.NewTicker(sleep)
 			defer ticker.Stop()
