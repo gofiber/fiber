@@ -75,7 +75,7 @@ type Config struct {
 	Methods []string
 	
 	// If no-cache exist in request header
-	NoCache func(c *fiber.Ctx) bool
+	noCache func(c *fiber.Ctx) bool
 }
 
 // ConfigDefault is the default config
