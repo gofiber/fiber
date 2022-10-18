@@ -533,6 +533,7 @@ func (r *Request) Reset() {
 	r.ctx = nil
 	r.body = nil
 	r.bodyType = noBody
+	r.boundary = boundary
 
 	for len(r.files) != 0 {
 		t := r.files[0]
@@ -808,7 +809,7 @@ var requestPool = &sync.Pool{
 			params:     &QueryParam{Args: fasthttp.AcquireArgs()},
 			cookies:    &Cookie{},
 			path:       &PathParam{},
-			boundary:   "--FiberFormBoundary" + randString(16),
+			boundary:   "--FiberFormBoundary",
 			formData:   &FormData{Args: fasthttp.AcquireArgs()},
 			files:      make([]*File, 0),
 			RawRequest: fasthttp.AcquireRequest(),
@@ -822,7 +823,6 @@ var requestPool = &sync.Pool{
 // This allows reducing GC load.
 func AcquireRequest() *Request {
 	req := requestPool.Get().(*Request)
-	req.boundary = "--FiberFormBoundary" + randString(16)
 
 	return req
 }

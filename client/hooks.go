@@ -131,6 +131,9 @@ func parserRequestHeader(c *Client, req *Request) error {
 	case filesBody:
 		req.RawRequest.Header.SetContentType(multipartFormData)
 		// set boundary
+		if req.boundary == boundary {
+			req.boundary = req.boundary + randString(16)
+		}
 		req.RawRequest.Header.SetMultipartFormBoundary(req.boundary)
 	default:
 	}

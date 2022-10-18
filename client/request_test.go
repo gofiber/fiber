@@ -1077,7 +1077,7 @@ func Test_Request_Body_With_Server(t *testing.T) {
 
 func Test_Request_Error_Body_With_Server(t *testing.T) {
 	t.Run("json error", func(t *testing.T) {
-		testClientFail(t,
+		testRequestFail(t,
 			func(c fiber.Ctx) error {
 				return c.SendString("")
 			},
@@ -1089,7 +1089,7 @@ func Test_Request_Error_Body_With_Server(t *testing.T) {
 	})
 
 	t.Run("xml error", func(t *testing.T) {
-		testClientFail(t,
+		testRequestFail(t,
 			func(c fiber.Ctx) error {
 				return c.SendString("")
 			},

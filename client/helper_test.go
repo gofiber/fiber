@@ -9,7 +9,7 @@ import (
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-func createHelperServer(t *testing.T) (*fiber.App, func(addr string) (net.Conn, error), func()) {
+func createHelperServer(t testing.TB) (*fiber.App, func(addr string) (net.Conn, error), func()) {
 	t.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
@@ -91,27 +91,5 @@ func testClient(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Clien
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
 		require.Equal(t, excepted, resp.String())
 		resp.Close()
-	}
-}
-
-func testClientFail(t *testing.T, handler fiber.Handler, wrapAgent func(agent *Request), excepted error, count ...int) {
-	t.Parallel()
-
-	app, ln, start := createHelperServer(t)
-	app.Get("/", handler)
-	go start()
-
-	c := 1
-	if len(count) > 0 {
-		c = count[0]
-	}
-
-	for i := 0; i < c; i++ {
-		req := AcquireRequest().SetDial(ln)
-		wrapAgent(req)
-
-		_, err := req.Get("http://example.com")
-
-		require.Equal(t, excepted.Error(), err.Error())
 	}
 }

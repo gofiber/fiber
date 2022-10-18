@@ -17,6 +17,7 @@ import (
 var (
 	httpBytes  = []byte("http")
 	httpsBytes = []byte("https")
+	boundary   = "--FiberFormBoundary"
 )
 
 // RequestHook is a function that receives Agent and Request,

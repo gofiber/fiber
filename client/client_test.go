@@ -1,11 +1,14 @@
 package client
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net"
 	"reflect"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/utils"
 	"github.com/stretchr/testify/require"
 )
@@ -809,6 +812,67 @@ func Test_Client_PathParam_With_Server(t *testing.T) {
 	require.Equal(t, "ok", resp.String())
 }
 
+// func Test_Client_Cert(t *testing.T) {
+// 	t.Parallel()
+
+// 	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+// 	require.Nil(t, err)
+
+// 	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+// 	require.Nil(t, err)
+
+// 	ln = tls.NewListener(ln, serverTLSConf)
+
+// 	app := fiber.New()
+// 	app.Get("/", func(c fiber.Ctx) error {
+// 		return c.SendString("tls")
+// 	})
+
+// 	go func() {
+// 		require.Nil(t, nil, app.Listener(ln, fiber.ListenConfig{
+// 			DisableStartupMessage: true,
+// 		}))
+// 	}()
+
+// 	client := AcquireClient().SetCertificates(clientTLSConf.Certificates...)
+// 	resp, err := client.Get("https://" + ln.Addr().String())
+
+// 	require.Nil(t, err)
+// 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+// 	require.Equal(t, "tls", resp.String())
+// }
+
+func Test_Client_TLS(t *testing.T) {
+	t.Parallel()
+
+	serverTLSConf, clientTLSConf, err := tlstest.GetTLSConfigs()
+	require.Nil(t, err)
+
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.Nil(t, err)
+
+	ln = tls.NewListener(ln, serverTLSConf)
+
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("tls")
+	})
+
+	go func() {
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
+
+	client := AcquireClient()
+	resp, err := client.SetTLSConfig(clientTLSConf).Get("https://" + ln.Addr().String())
+
+	require.Nil(t, err)
+	require.Equal(t, clientTLSConf, client.TLSConfig())
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "tls", resp.String())
+}
+
 func Test_Client_R(t *testing.T) {
 	t.Parallel()
 
@@ -849,4 +913,22 @@ func Test_Replace(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "", resp.String())
+}
+
+func Benchmark_Client_Request(b *testing.B) {
+	app, dial, start := createHelperServer(b)
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString("hello world")
+	})
+
+	go start()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		resp, _ := Get("http://example.com", Config{Dial: dial})
+		resp.Close()
+	}
 }
