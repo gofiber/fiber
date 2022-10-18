@@ -1265,6 +1265,10 @@ func Test_Ctx_IPs(t *testing.T) {
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.3, 127.0.0.1, 127.0.0.2")
 	utils.AssertEqual(t, []string{"127.0.0.3", "127.0.0.1", "127.0.0.2"}, c.IPs())
 
+	// ensure for IPv6
+	c.Request().Header.Set(HeaderXForwardedFor, "9396:9549:b4f7:8ed0:4791:1330:8c06:e62d, invalid, 2345:0425:2CA1::0567:5673:23b5")
+	utils.AssertEqual(t, []string{"9396:9549:b4f7:8ed0:4791:1330:8c06:e62d", "invalid", "2345:0425:2CA1::0567:5673:23b5"}, c.IPs())
+
 	// empty header
 	c.Request().Header.Set(HeaderXForwardedFor, "")
 	utils.AssertEqual(t, 0, len(c.IPs()))
@@ -1298,6 +1302,10 @@ func Test_Ctx_IPs_With_IP_Validation(t *testing.T) {
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.3, 127.0.0.1, 127.0.0.2")
 	utils.AssertEqual(t, []string{"127.0.0.3", "127.0.0.1", "127.0.0.2"}, c.IPs())
 
+	// ensure for IPv6
+	c.Request().Header.Set(HeaderXForwardedFor, "f037:825e:eadb:1b7b:1667:6f0a:5356:f604, invalid, 9396:9549:b4f7:8ed0:4791:1330:8c06:e62d")
+	utils.AssertEqual(t, []string{"f037:825e:eadb:1b7b:1667:6f0a:5356:f604", "9396:9549:b4f7:8ed0:4791:1330:8c06:e62d"}, c.IPs())
+
 	// empty header
 	c.Request().Header.Set(HeaderXForwardedFor, "")
 	utils.AssertEqual(t, 0, len(c.IPs()))
@@ -1322,6 +1330,20 @@ func Benchmark_Ctx_IPs(b *testing.B) {
 	utils.AssertEqual(b, []string{"127.0.0.1", "invalid", "127.0.0.1"}, res)
 }
 
+func Benchmark_Ctx_IPs_v6(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderXForwardedFor, "f037:825e:eadb:1b7b:1667:6f0a:5356:f604, invalid, 2345:0425:2CA1::0567:5673:23b5")
+	var res []string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IPs()
+	}
+	utils.AssertEqual(b, []string{"f037:825e:eadb:1b7b:1667:6f0a:5356:f604", "invalid", "2345:0425:2CA1::0567:5673:23b5"}, res)
+}
+
 func Benchmark_Ctx_IPs_With_IP_Validation(b *testing.B) {
 	app := New(Config{EnableIPValidation: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1334,6 +1356,20 @@ func Benchmark_Ctx_IPs_With_IP_Validation(b *testing.B) {
 		res = c.IPs()
 	}
 	utils.AssertEqual(b, []string{"127.0.0.1", "127.0.0.1"}, res)
+}
+
+func Benchmark_Ctx_IPs_v6_With_IP_Validation(b *testing.B) {
+	app := New(Config{EnableIPValidation: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderXForwardedFor, "2345:0425:2CA1:0000:0000:0567:5673:23b5, invalid, 2345:0425:2CA1::0567:5673:23b5")
+	var res []string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IPs()
+	}
+	utils.AssertEqual(b, []string{"2345:0425:2CA1:0000:0000:0567:5673:23b5", "2345:0425:2CA1::0567:5673:23b5"}, res)
 }
 
 func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {

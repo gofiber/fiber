@@ -688,72 +688,108 @@ func (c *Ctx) IP() string {
 	return c.fasthttp.RemoteIP().String()
 }
 
-// validateIPIfEnabled will return the input IP when validation is disabled.
-// when validation is enabled, it will return an empty string if the input is not a valid IP.
-func (c *Ctx) validateIPIfEnabled(ip string) string {
-	if c.app.config.EnableIPValidation && net.ParseIP(ip) == nil {
-		return ""
-	}
-	return ip
-}
-
 // extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 // When IP validation is enabled, any invalid IPs will be omitted.
-func (c *Ctx) extractIPsFromHeader(header string) (ipsFound []string) {
+func (c *Ctx) extractIPsFromHeader(header string) []string {
 	headerValue := c.Get(header)
 
-	// try to gather IPs in the input with minimal allocations to improve performance
-	ips := make([]string, bytes.Count([]byte(headerValue), []byte(","))+1)
-	var commaPos, i, validCount int
-	for {
-		commaPos = bytes.IndexByte([]byte(headerValue), ',')
-		if commaPos != -1 {
-			ips[i] = c.validateIPIfEnabled(utils.Trim(headerValue[:commaPos], ' '))
-			if ips[i] != "" {
-				validCount++
-			}
-			headerValue, i = headerValue[commaPos+1:], i+1
-		} else {
-			ips[i] = c.validateIPIfEnabled(utils.Trim(headerValue, ' '))
-			if ips[i] != "" {
-				validCount++
-			}
-			break
-		}
+	// We can't know how many IPs we will return, but we will try to guess with this constant division.
+	// Counting ',' makes function slower for about 50ns in general case.
+	estimatedCount := len(headerValue) / 8
+	if estimatedCount > 8 {
+		estimatedCount = 8 // Avoid big allocation on big header
 	}
 
-	// filter out any invalid IP(s) that we found
-	if len(ips) == validCount {
-		ipsFound = ips
-	} else {
-		ipsFound = make([]string, validCount)
-		var validIndex int
-		for n := range ips {
-			if ips[n] != "" {
-				ipsFound[validIndex] = ips[n]
-				validIndex++
+	ipsFound := make([]string, 0, estimatedCount)
+
+	i := 0
+	j := -1
+
+iploop:
+	for {
+		v4 := false
+		v6 := false
+
+		// Manually splitting string without allocating slice, working with parts directly
+		i, j = j+1, j+2
+
+		if j > len(headerValue) {
+			break
+		}
+
+		for j < len(headerValue) && headerValue[j] != ',' {
+			if headerValue[j] == ':' {
+				v6 = true
+			} else if headerValue[j] == '.' {
+				v4 = true
+			}
+			j++
+		}
+
+		for i < j && headerValue[i] == ' ' {
+			i++
+		}
+
+		s := utils.TrimRight(headerValue[i:j], ' ')
+
+		if c.app.config.EnableIPValidation {
+			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
+			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
+				continue iploop
 			}
 		}
+
+		ipsFound = append(ipsFound, s)
 	}
-	return
+
+	return ipsFound
 }
 
 // extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
 // currently, it will return the first valid IP address in header.
 // when IP validation is disabled, it will simply return the value of the header without any inspection.
+// Implementation is almost the same as in extractIPsFromHeader, but without allocation of []string.
 func (c *Ctx) extractIPFromHeader(header string) string {
 	if c.app.config.EnableIPValidation {
-		// extract all IPs from the header's value
-		ips := c.extractIPsFromHeader(header)
+		headerValue := c.Get(header)
 
-		// since X-Forwarded-For has no RFC, it's really up to the proxy to decide whether to append
-		// or prepend IPs to this list. For example, the AWS ALB will prepend but the F5 BIG-IP will append ;(
-		// for now lets just go with the first value in the list...
-		if len(ips) > 0 {
-			return ips[0]
+		i := 0
+		j := -1
+
+	iploop:
+		for {
+			v4 := false
+			v6 := false
+			i, j = j+1, j+2
+
+			if j > len(headerValue) {
+				break
+			}
+
+			for j < len(headerValue) && headerValue[j] != ',' {
+				if headerValue[j] == ':' {
+					v6 = true
+				} else if headerValue[j] == '.' {
+					v4 = true
+				}
+				j++
+			}
+
+			for i < j && headerValue[i] == ' ' {
+				i++
+			}
+
+			s := utils.TrimRight(headerValue[i:j], ' ')
+
+			if c.app.config.EnableIPValidation {
+				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
+					continue iploop
+				}
+			}
+
+			return s
 		}
 
-		// return the IP from the stack if we could not find any valid Ips
 		return c.fasthttp.RemoteIP().String()
 	}
 
