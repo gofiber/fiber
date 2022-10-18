@@ -2,6 +2,7 @@ package cache
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -72,6 +73,9 @@ type Config struct {
 	//
 	// Default: []string{fiber.MethodGet, fiber.MethodHead}
 	Methods []string
+	
+	// If no-cache exist in request header
+	NoCache func(c *fiber.Ctx) bool
 }
 
 // ConfigDefault is the default config
@@ -88,6 +92,9 @@ var ConfigDefault = Config{
 	Storage:              nil,
 	MaxBytes:             0,
 	Methods:              []string{fiber.MethodGet, fiber.MethodHead},
+	noCache:	func(c *fiber.Ctx) bool {
+		return strings.Contains(c.Get(fiber.HeaderCacheControl), "no-cache")
+	},
 }
 
 // Helper function to set default values
@@ -124,5 +131,6 @@ func configDefault(config ...Config) Config {
 	if len(cfg.Methods) == 0 {
 		cfg.Methods = ConfigDefault.Methods
 	}
+	cfg.noCache = ConfigDefault.noCache
 	return cfg
 }
