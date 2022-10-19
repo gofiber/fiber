@@ -109,47 +109,43 @@ func New(config ...Config) fiber.Handler {
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
-		// Check if no-cache
-		if !cfg.noCache(c) {
-
-			// Check if entry is expired
-			if e.exp != 0 && ts >= e.exp {
-				deleteKey(key)
-				if cfg.MaxBytes > 0 {
-					_, size := heap.remove(e.heapidx)
-					storedBytes -= size
-				}
-			} else if e.exp != 0 {
-				// Separate body value to avoid msgp serialization
-				// We can store raw bytes with Storage 👍
-				if cfg.Storage != nil {
-					e.body = manager.getRaw(key + "_body")
-				}
-				// Set response headers from cache
-				c.Response().SetBodyRaw(e.body)
-				c.Response().SetStatusCode(e.status)
-				c.Response().Header.SetContentTypeBytes(e.ctype)
-				if len(e.cencoding) > 0 {
-					c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
-				}
-				if e.headers != nil {
-					for k, v := range e.headers {
-						c.Response().Header.SetBytesV(k, v)
-					}
-				}
-				// Set Cache-Control header if enabled
-				if cfg.CacheControl {
-					maxAge := strconv.FormatUint(e.exp-ts, 10)
-					c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
-				}
-
-				c.Set(cfg.CacheHeader, cacheHit)
-
-				mux.Unlock()
-
-				// Return response
-				return nil
+		// Check if entry is expired
+		if e.exp != 0 && ts >= e.exp {
+			deleteKey(key)
+			if cfg.MaxBytes > 0 {
+				_, size := heap.remove(e.heapidx)
+				storedBytes -= size
 			}
+		} else if e.exp != 0 && !cfg.noCache(c) {
+			// Separate body value to avoid msgp serialization
+			// We can store raw bytes with Storage 👍
+			if cfg.Storage != nil {
+				e.body = manager.getRaw(key + "_body")
+			}
+			// Set response headers from cache
+			c.Response().SetBodyRaw(e.body)
+			c.Response().SetStatusCode(e.status)
+			c.Response().Header.SetContentTypeBytes(e.ctype)
+			if len(e.cencoding) > 0 {
+				c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
+			}
+			if e.headers != nil {
+				for k, v := range e.headers {
+					c.Response().Header.SetBytesV(k, v)
+				}
+			}
+			// Set Cache-Control header if enabled
+			if cfg.CacheControl {
+				maxAge := strconv.FormatUint(e.exp-ts, 10)
+				c.Set(fiber.HeaderCacheControl, "public, max-age="+maxAge)
+			}
+
+			c.Set(cfg.CacheHeader, cacheHit)
+
+			mux.Unlock()
+
+			// Return response
+			return nil
 		}
 
 		// make sure we're not blocking concurrent requests - do unlock
