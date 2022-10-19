@@ -108,7 +108,7 @@ func Test_Cache(t *testing.T) {
 	utils.AssertEqual(t, cachedBody, body)
 }
 
-func Test_CacheWithCacheControlNoCacheRequestHeader(t *testing.T) {
+func Test_Cache_WithCacheControlNoCacheRequestHeader(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -118,26 +118,46 @@ func Test_CacheWithCacheControlNoCacheRequestHeader(t *testing.T) {
 		return c.SendString(c.Query("id", "1"))
 	})
 
+	// Request id = 1
 	req := httptest.NewRequest("GET", "/", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", resp.Header.Get("X-Cache"))
+	// Response cached, entry id = 1
 
-	// Request with Cache-Control: no-cache in request header
-	noCacheReq := httptest.NewRequest("GET", "/", nil)
+	// Request id = 2 without Cache-Control: no-cache in request header
+	cachedReq := httptest.NewRequest("GET", "/?id=2", nil)
+	cachedResp, err := app.Test(cachedReq)
+	defer cachedResp.Body.Close()
+	cachedBody, _ := ioutil.ReadAll(cachedResp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "hit", cachedResp.Header.Get("X-Cache"))
+	utils.AssertEqual(t, []byte("1"), cachedBody)
+	// Response not cached, returns cached response, entry id = 1
+
+	// Request id = 2 with Cache-Control: no-cache in request header
+	noCacheReq := httptest.NewRequest("GET", "/?id=2", nil)
 	noCacheReq.Header.Set(fiber.HeaderCacheControl, "no-cache")
 	noCacheResp, err := app.Test(noCacheReq)
+	defer noCacheResp.Body.Close()
+	noCacheBody, _ := ioutil.ReadAll(noCacheResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", noCacheResp.Header.Get("X-Cache"))
+	utils.AssertEqual(t, []byte("2"), noCacheBody)
+	// Response cached, entry = 2
 
-	// Request without Cache-Control: no-cache in request header
-	cacheReq := httptest.NewRequest("GET", "/", nil)
-	cacheResp, err := app.Test(cacheReq)
+	// Request id = 1 without Cache-Control: no-cache in request header
+	cachedReq1 := httptest.NewRequest("GET", "/", nil)
+	cachedResp1, err := app.Test(cachedReq1)
+	defer cachedResp1.Body.Close()
+	cachedBody1, _ := ioutil.ReadAll(cachedResp1.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "hit", cacheResp.Header.Get("X-Cache"))
+	utils.AssertEqual(t, "hit", cachedResp1.Header.Get("X-Cache"))
+	utils.AssertEqual(t, []byte("2"), cachedBody1)
+	// Response not cached, returns cached response, entry id = 2
 }
 
-func Test_CacheWithETagAndCacheControlNoCacheRequestHeader(t *testing.T) {
+func Test_Cache_WithETagAndCacheControlNoCacheRequestHeader(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -150,47 +170,46 @@ func Test_CacheWithETagAndCacheControlNoCacheRequestHeader(t *testing.T) {
 		return c.SendString(c.Query("id", "1"))
 	})
 
+	// Request id = 1
 	req := httptest.NewRequest("GET", "/", nil)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", resp.Header.Get("X-Cache"))
+	// Response cached, entry id = 1
 
+	// if success
 	etagToken := resp.Header.Get("Etag")
 
-	// Request with updated response without Cache-Control: no-cache in request header
-	cacheReq := httptest.NewRequest("GET", "/", nil)
-	cacheResp, err := app.Test(cacheReq)
-	fmt.Println(cacheResp)
+	// Request id = 2 with ETag but without Cache-Control: no-cache in request header
+	cachedReq := httptest.NewRequest("GET", "/?id=2", nil)
+	cachedReq.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
+	cachedResp, err := app.Test(cachedReq)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "hit", cacheResp.Header.Get("X-Cache"))
+	utils.AssertEqual(t, "hit", cachedResp.Header.Get("X-Cache"))
+	utils.AssertEqual(t, fiber.StatusNotModified, cachedResp.StatusCode)
+	// Response not cached, returns cached response, entry id = 1, status not modified
 
-	// Request with id equals 2 and etag without Cache-Control: no-cache in request header
-	cacheReq1 := httptest.NewRequest("GET", "/?id=2", nil)
-	cacheReq1.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
-	cacheResp1, err := app.Test(cacheReq1)
-	fmt.Println(cacheResp1)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "hit", cacheResp1.Header.Get("X-Cache"))
-
-	// Request with id equals 2 and etag and Cache-Control: no-cache in request header
+	// Request id = 2 with ETag and Cache-Control: no-cache in request header
 	noCacheReq := httptest.NewRequest("GET", "/?id=2", nil)
 	noCacheReq.Header.Set(fiber.HeaderCacheControl, "no-cache")
 	noCacheReq.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
 	noCacheResp, err := app.Test(noCacheReq)
-	fmt.Println(noCacheResp)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", noCacheResp.Header.Get("X-Cache"))
+	utils.AssertEqual(t, fiber.StatusOK, noCacheResp.StatusCode)
+	// Response cached, entry id = 2
 
+	// if success
 	etagToken = noCacheResp.Header.Get("Etag")
 
-	// Request with id equals 2 and new etag and Cache-Control: no-cache in request header
-	noCacheReq1 := httptest.NewRequest("GET", "/?id=2", nil)
-	noCacheReq1.Header.Set(fiber.HeaderCacheControl, "no-cache")
-	noCacheReq1.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
-	noCacheResp1, err := app.Test(noCacheReq1)
-	fmt.Println(noCacheResp1)
+	// Request id = 1 with ETag but without Cache-Control: no-cache in request header
+	cachedReq1 := httptest.NewRequest("GET", "/", nil)
+	cachedReq1.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
+	cachedResp1, err := app.Test(cachedReq1)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "miss", noCacheResp1.Header.Get("X-Cache"))
+	utils.AssertEqual(t, "hit", cachedResp1.Header.Get("X-Cache"))
+	utils.AssertEqual(t, fiber.StatusNotModified, cachedResp1.StatusCode)
+	// Response not cached, returns cached response, entry id = 2, status not modified
 }
 
 func Test_Cache_WithSeveralRequests(t *testing.T) {
