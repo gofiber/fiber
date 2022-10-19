@@ -123,18 +123,18 @@ func Test_CacheWithCacheControlNoCacheRequestHeader(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", resp.Header.Get("X-Cache"))
 
-	// Request without Cache-Control: no-cache in request header
-	cacheReq := httptest.NewRequest("GET", "/", nil)
-	cacheResp, err := app.Test(cacheReq)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "hit", cacheResp.Header.Get("X-Cache"))
-
 	// Request with Cache-Control: no-cache in request header
 	noCacheReq := httptest.NewRequest("GET", "/", nil)
 	noCacheReq.Header.Set(fiber.HeaderCacheControl, "no-cache")
 	noCacheResp, err := app.Test(noCacheReq)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", noCacheResp.Header.Get("X-Cache"))
+
+	// Request without Cache-Control: no-cache in request header
+	cacheReq := httptest.NewRequest("GET", "/", nil)
+	cacheResp, err := app.Test(cacheReq)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "hit", cacheResp.Header.Get("X-Cache"))
 }
 
 func Test_Cache_WithSeveralRequests(t *testing.T) {
