@@ -9,7 +9,7 @@ import (
 
 var testStore = New()
 
-func Test_Memory_Set(t *testing.T) {
+func Test_Storage_Memory_Set(t *testing.T) {
 	var (
 		key = "john"
 		val = []byte("doe")
@@ -19,7 +19,7 @@ func Test_Memory_Set(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 }
 
-func Test_Memory_Set_Override(t *testing.T) {
+func Test_Storage_Memory_Set_Override(t *testing.T) {
 	var (
 		key = "john"
 		val = []byte("doe")
@@ -32,7 +32,7 @@ func Test_Memory_Set_Override(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 }
 
-func Test_Memory_Get(t *testing.T) {
+func Test_Storage_Memory_Get(t *testing.T) {
 	var (
 		key = "john"
 		val = []byte("doe")
@@ -46,7 +46,7 @@ func Test_Memory_Get(t *testing.T) {
 	utils.AssertEqual(t, val, result)
 }
 
-func Test_Memory_Set_Expiration(t *testing.T) {
+func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 	var (
 		key = "john"
 		val = []byte("doe")
@@ -59,7 +59,7 @@ func Test_Memory_Set_Expiration(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 }
 
-func Test_Memory_Get_Expired(t *testing.T) {
+func Test_Storage_Memory_Get_Expired(t *testing.T) {
 	var (
 		key = "john"
 	)
@@ -69,14 +69,14 @@ func Test_Memory_Get_Expired(t *testing.T) {
 	utils.AssertEqual(t, true, len(result) == 0)
 }
 
-func Test_Memory_Get_NotExist(t *testing.T) {
+func Test_Storage_Memory_Get_NotExist(t *testing.T) {
 
 	result, err := testStore.Get("notexist")
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, len(result) == 0)
 }
 
-func Test_Memory_Delete(t *testing.T) {
+func Test_Storage_Memory_Delete(t *testing.T) {
 	var (
 		key = "john"
 		val = []byte("doe")
@@ -93,7 +93,7 @@ func Test_Memory_Delete(t *testing.T) {
 	utils.AssertEqual(t, true, len(result) == 0)
 }
 
-func Test_Memory_Reset(t *testing.T) {
+func Test_Storage_Memory_Reset(t *testing.T) {
 	var (
 		val = []byte("doe")
 	)
@@ -116,16 +116,16 @@ func Test_Memory_Reset(t *testing.T) {
 	utils.AssertEqual(t, true, len(result) == 0)
 }
 
-func Test_Memory_Close(t *testing.T) {
+func Test_Storage_Memory_Close(t *testing.T) {
 	utils.AssertEqual(t, nil, testStore.Close())
 }
 
-func Test_Memory_Conn(t *testing.T) {
+func Test_Storage_Memory_Conn(t *testing.T) {
 	utils.AssertEqual(t, true, testStore.Conn() != nil)
 }
 
-// go test -v -run=^$ -bench=Benchmark_Memory -benchmem -count=4
-func Benchmark_Memory(b *testing.B) {
+// go test -v -run=^$ -bench=Benchmark_Storage_Memory -benchmem -count=4
+func Benchmark_Storage_Memory(b *testing.B) {
 	keyLength := 1000
 	keys := make([]string, keyLength)
 	for i := 0; i < keyLength; i++ {
