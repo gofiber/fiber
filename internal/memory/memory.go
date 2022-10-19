@@ -4,6 +4,7 @@ package memory
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2/utils"
@@ -34,7 +35,7 @@ func (s *Storage) Get(key string) interface{} {
 	s.RLock()
 	v, ok := s.data[key]
 	s.RUnlock()
-	if !ok || v.e != 0 && v.e <= utils.Timestamp.Load() {
+	if !ok || v.e != 0 && v.e <= atomic.LoadUint32(&utils.Timestamp) {
 		return nil
 	}
 	return v.v
@@ -44,7 +45,7 @@ func (s *Storage) Get(key string) interface{} {
 func (s *Storage) Set(key string, val interface{}, ttl time.Duration) {
 	var exp uint32
 	if ttl > 0 {
-		exp = uint32(ttl.Seconds()) + utils.Timestamp.Load()
+		exp = uint32(ttl.Seconds()) + atomic.LoadUint32(&utils.Timestamp)
 	}
 	s.Lock()
 	s.data[key] = item{exp, val}
@@ -76,7 +77,7 @@ func (s *Storage) gc(sleep time.Duration) {
 			expired = expired[:0]
 			s.RLock()
 			for key, v := range s.data {
-				if v.e != 0 && v.e <= utils.Timestamp.Load() {
+				if v.e != 0 && v.e <= atomic.LoadUint32(&utils.Timestamp) {
 					expired = append(expired, key)
 				}
 			}

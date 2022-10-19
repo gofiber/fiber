@@ -4,6 +4,7 @@ package memory
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v2/utils"
@@ -50,7 +51,7 @@ func (s *Storage) Get(key string) ([]byte, error) {
 	s.mux.RLock()
 	v, ok := s.db[key]
 	s.mux.RUnlock()
-	if !ok || v.expiry != 0 && v.expiry <= utils.Timestamp.Load() {
+	if !ok || v.expiry != 0 && v.expiry <= atomic.LoadUint32(&utils.Timestamp) {
 		return nil, nil
 	}
 
@@ -66,7 +67,7 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 
 	var expire uint32
 	if exp != 0 {
-		expire = uint32(exp.Seconds()) + utils.Timestamp.Load()
+		expire = uint32(exp.Seconds()) + atomic.LoadUint32(&utils.Timestamp)
 	}
 
 	s.mux.Lock()
@@ -114,7 +115,7 @@ func (s *Storage) gc() {
 			expired = expired[:0]
 			s.mux.RLock()
 			for id, v := range s.db {
-				if v.expiry != 0 && v.expiry < utils.Timestamp.Load() {
+				if v.expiry != 0 && v.expiry < atomic.LoadUint32(&utils.Timestamp) {
 					expired = append(expired, id)
 				}
 			}

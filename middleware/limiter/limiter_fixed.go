@@ -3,6 +3,7 @@ package limiter
 import (
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
@@ -42,7 +43,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		e := manager.get(key)
 
 		// Get timestamp
-		ts := uint64(utils.Timestamp.Load())
+		ts := uint64(atomic.LoadUint32(&utils.Timestamp))
 
 		// Set expiration if entry does not exist
 		if e.exp == 0 {
