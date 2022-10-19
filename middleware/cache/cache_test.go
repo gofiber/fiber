@@ -144,9 +144,9 @@ func Test_Cache_WithCacheControlNoCacheRequestHeader(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", noCacheResp.Header.Get("X-Cache"))
 	utils.AssertEqual(t, []byte("2"), noCacheBody)
-	// Response cached, entry = 2
+	// Response cached, returns updated response, entry = 2
 
-	/* If theres an ETag token "If-None-Match" in the request header, this will return 304. */
+	/* Check Test_Cache_WithETagAndCacheControlNoCacheRequestHeader */
 	// Request id = 2 with Cache-Control: no-cache in request header again
 	noCacheReq1 := httptest.NewRequest("GET", "/?id=2", nil)
 	noCacheReq1.Header.Set(fiber.HeaderCacheControl, "no-cache")
@@ -156,7 +156,7 @@ func Test_Cache_WithCacheControlNoCacheRequestHeader(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", noCacheResp1.Header.Get("X-Cache"))
 	utils.AssertEqual(t, []byte("2"), noCacheBody1)
-	// Response cached, entry = 2
+	// Response cached, returns updated response, entry = 2
 
 	// Request id = 1 without Cache-Control: no-cache in request header
 	cachedReq1 := httptest.NewRequest("GET", "/", nil)
@@ -187,9 +187,10 @@ func Test_Cache_WithETagAndCacheControlNoCacheRequestHeader(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", resp.Header.Get("X-Cache"))
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	// Response cached, entry id = 1
 
-	// If success
+	// If response status 200
 	etagToken := resp.Header.Get("Etag")
 
 	// Request id = 2 with ETag but without Cache-Control: no-cache in request header
@@ -209,9 +210,9 @@ func Test_Cache_WithETagAndCacheControlNoCacheRequestHeader(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", noCacheResp.Header.Get("X-Cache"))
 	utils.AssertEqual(t, fiber.StatusOK, noCacheResp.StatusCode)
-	// Response cached, entry id = 2
+	// Response cached, returns updated response, entry id = 2
 
-	// If success
+	// If response status 200
 	etagToken = noCacheResp.Header.Get("Etag")
 
 	// Request id = 2 with ETag and Cache-Control: no-cache in request header again
@@ -222,19 +223,15 @@ func Test_Cache_WithETagAndCacheControlNoCacheRequestHeader(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "miss", noCacheResp1.Header.Get("X-Cache"))
 	utils.AssertEqual(t, fiber.StatusNotModified, noCacheResp1.StatusCode)
-	// Response cached, entry id = 2
+	// Response cached, returns updated response, entry id = 2, status not modified
 
-	// if success
-	etagToken = noCacheResp1.Header.Get("Etag")
-
-	// Request id = 1 with ETag but without Cache-Control: no-cache in request header
+	// Request id = 1 without ETag and Cache-Control: no-cache in request header
 	cachedReq1 := httptest.NewRequest("GET", "/", nil)
-	cachedReq1.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
 	cachedResp1, err := app.Test(cachedReq1)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "hit", cachedResp1.Header.Get("X-Cache"))
-	utils.AssertEqual(t, fiber.StatusNotModified, cachedResp1.StatusCode)
-	// Response not cached, returns cached response, entry id = 2, status not modified
+	utils.AssertEqual(t, fiber.StatusOK, cachedResp1.StatusCode)
+	// Response not cached, returns cached response, entry id = 2
 }
 
 func Test_Cache_WithSeveralRequests(t *testing.T) {
