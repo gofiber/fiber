@@ -1,15 +1,18 @@
+// Package memory Is a slight copy of the memory storage, but far from the storage interface it can not only work with bytes
+// but directly store any kind of data without having to encode it each time, which gives a huge speed advantage
 package memory
 
 import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 type Storage struct {
 	sync.RWMutex
 	data map[string]item // data
-	ts   uint32          // timestamp
 }
 
 type item struct {
@@ -21,10 +24,9 @@ type item struct {
 func New() *Storage {
 	store := &Storage{
 		data: make(map[string]item),
-		ts:   uint32(time.Now().Unix()),
 	}
+	utils.StartTimeStampUpdater()
 	go store.gc(1 * time.Second)
-	go store.updater(1 * time.Second)
 	return store
 }
 
@@ -33,7 +35,7 @@ func (s *Storage) Get(key string) interface{} {
 	s.RLock()
 	v, ok := s.data[key]
 	s.RUnlock()
-	if !ok || v.e != 0 && v.e <= atomic.LoadUint32(&s.ts) {
+	if !ok || v.e != 0 && v.e <= atomic.LoadUint32(&utils.Timestamp) {
 		return nil
 	}
 	return v.v
@@ -43,7 +45,7 @@ func (s *Storage) Get(key string) interface{} {
 func (s *Storage) Set(key string, val interface{}, ttl time.Duration) {
 	var exp uint32
 	if ttl > 0 {
-		exp = uint32(ttl.Seconds()) + atomic.LoadUint32(&s.ts)
+		exp = uint32(ttl.Seconds()) + atomic.LoadUint32(&utils.Timestamp)
 	}
 	s.Lock()
 	s.data[key] = item{exp, val}
@@ -64,28 +66,27 @@ func (s *Storage) Reset() {
 	s.Unlock()
 }
 
-func (s *Storage) updater(sleep time.Duration) {
-	for {
-		time.Sleep(sleep)
-		atomic.StoreUint32(&s.ts, uint32(time.Now().Unix()))
-	}
-}
 func (s *Storage) gc(sleep time.Duration) {
-	expired := []string{}
+	ticker := time.NewTicker(sleep)
+	defer ticker.Stop()
+	var expired []string
+
 	for {
-		time.Sleep(sleep)
-		expired = expired[:0]
-		s.RLock()
-		for key, v := range s.data {
-			if v.e != 0 && v.e <= atomic.LoadUint32(&s.ts) {
-				expired = append(expired, key)
+		select {
+		case <-ticker.C:
+			expired = expired[:0]
+			s.RLock()
+			for key, v := range s.data {
+				if v.e != 0 && v.e <= atomic.LoadUint32(&utils.Timestamp) {
+					expired = append(expired, key)
+				}
 			}
+			s.RUnlock()
+			s.Lock()
+			for i := range expired {
+				delete(s.data, expired[i])
+			}
+			s.Unlock()
 		}
-		s.RUnlock()
-		s.Lock()
-		for i := range expired {
-			delete(s.data, expired[i])
-		}
-		s.Unlock()
 	}
 }
