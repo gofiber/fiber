@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/etag"
 	"github.com/gofiber/fiber/v2/internal/storage/memory"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
@@ -114,8 +115,7 @@ func Test_CacheWithCacheControlNoCacheRequestHeader(t *testing.T) {
 	app.Use(New())
 
 	app.Get("/", func(c *fiber.Ctx) error {
-		now := fmt.Sprintf("%d", time.Now().UnixNano())
-		return c.SendString(now)
+		return c.SendString(c.Query("id", "1"))
 	})
 
 	req := httptest.NewRequest("GET", "/", nil)
@@ -135,6 +135,62 @@ func Test_CacheWithCacheControlNoCacheRequestHeader(t *testing.T) {
 	cacheResp, err := app.Test(cacheReq)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "hit", cacheResp.Header.Get("X-Cache"))
+}
+
+func Test_CacheWithETagAndCacheControlNoCacheRequestHeader(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(
+		etag.New(),
+		New(),
+	)
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString(c.Query("id", "1"))
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	resp, err := app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "miss", resp.Header.Get("X-Cache"))
+
+	etagToken := resp.Header.Get("Etag")
+
+	// Request with updated response without Cache-Control: no-cache in request header
+	cacheReq := httptest.NewRequest("GET", "/", nil)
+	cacheResp, err := app.Test(cacheReq)
+	fmt.Println(cacheResp)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "hit", cacheResp.Header.Get("X-Cache"))
+
+	// Request with id equals 2 and etag without Cache-Control: no-cache in request header
+	cacheReq1 := httptest.NewRequest("GET", "/?id=2", nil)
+	cacheReq1.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
+	cacheResp1, err := app.Test(cacheReq1)
+	fmt.Println(cacheResp1)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "hit", cacheResp1.Header.Get("X-Cache"))
+
+	// Request with id equals 2 and etag and Cache-Control: no-cache in request header
+	noCacheReq := httptest.NewRequest("GET", "/?id=2", nil)
+	noCacheReq.Header.Set(fiber.HeaderCacheControl, "no-cache")
+	noCacheReq.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
+	noCacheResp, err := app.Test(noCacheReq)
+	fmt.Println(noCacheResp)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "miss", noCacheResp.Header.Get("X-Cache"))
+
+	etagToken = noCacheResp.Header.Get("Etag")
+
+	// Request with id equals 2 and new etag and Cache-Control: no-cache in request header
+	noCacheReq1 := httptest.NewRequest("GET", "/?id=2", nil)
+	noCacheReq1.Header.Set(fiber.HeaderCacheControl, "no-cache")
+	noCacheReq1.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
+	noCacheResp1, err := app.Test(noCacheReq1)
+	fmt.Println(noCacheResp1)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "miss", noCacheResp1.Header.Get("X-Cache"))
 }
 
 func Test_Cache_WithSeveralRequests(t *testing.T) {
