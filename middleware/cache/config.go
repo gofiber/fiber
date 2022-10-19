@@ -74,7 +74,7 @@ type Config struct {
 	// Default: []string{fiber.MethodGet, fiber.MethodHead}
 	Methods []string
 	
-	// If no-cache exist in request header
+	// Check if the request header contains Cache-Control: "no-cache"
 	noCache func(c *fiber.Ctx) bool
 }
 
@@ -92,7 +92,7 @@ var ConfigDefault = Config{
 	Storage:              nil,
 	MaxBytes:             0,
 	Methods:              []string{fiber.MethodGet, fiber.MethodHead},
-	noCache:	func(c *fiber.Ctx) bool {
+	noCache: func(c *fiber.Ctx) bool {
 		return strings.Contains(c.Get(fiber.HeaderCacheControl), "no-cache")
 	},
 }
@@ -132,5 +132,6 @@ func configDefault(config ...Config) Config {
 		cfg.Methods = ConfigDefault.Methods
 	}
 	cfg.noCache = ConfigDefault.noCache
+
 	return cfg
 }
