@@ -74,7 +74,7 @@ type Config struct {
 	// Default: []string{fiber.MethodGet, fiber.MethodHead}
 	Methods []string
 	
-	// Check if the request header contains Cache-Control: "no-cache"
+	// Check if the request header contains Cache-Control: no-cache
 	noCache func(c *fiber.Ctx) bool
 }
 
