@@ -1065,6 +1065,7 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 			app.appList[prefix] = subApp
 		}
 
+		// The first element of appList is always the app itself. If there are no other sub apps, we should skip appending nested apps.
 		if len(subApp.appList) > 1 {
 			app.appendSubAppLists(subApp.appList, prefix)
 		}
