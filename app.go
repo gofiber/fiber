@@ -9,7 +9,6 @@ package fiber
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"net"
@@ -882,11 +881,6 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	if err != nil {
 		return nil, err
 	}
-
-	// adding back the query from URL, since dump cleans it
-	dumps := bytes.Split(dump, []byte(" "))
-	dumps[1] = []byte(req.URL.String())
-	dump = bytes.Join(dumps, []byte(" "))
 
 	// Create test connection
 	conn := new(testConn)
