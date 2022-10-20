@@ -103,7 +103,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Refrain from caching
-		if cfg.RequestDirective(c, noStore) {
+		if cfg.requestDirective(c, noStore) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
@@ -128,7 +128,7 @@ func New(config ...Config) fiber.Handler {
 				_, size := heap.remove(e.heapidx)
 				storedBytes -= size
 			}
-		} else if e.exp != 0 && !cfg.RequestDirective(c, noCache) {
+		} else if e.exp != 0 && !cfg.requestDirective(c, noCache) {
 			// Separate body value to avoid msgp serialization
 			// We can store raw bytes with Storage 👍
 			if cfg.Storage != nil {

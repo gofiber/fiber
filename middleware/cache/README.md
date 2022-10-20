@@ -138,7 +138,7 @@ type Config struct {
 	// Default: func(c *fiber.Ctx, directive string) bool {
 	// 	return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
 	// },
-	RequestDirective func(c *fiber.Ctx, directive string) bool
+	requestDirective func(c *fiber.Ctx, directive string) bool
 }
 ```
 
@@ -159,7 +159,7 @@ var ConfigDefault = Config{
 	Storage:              nil,
 	MaxBytes:             0,
 	Methods:              []string{fiber.MethodGet, fiber.MethodHead},
-	RequestDirective: func(c *fiber.Ctx, directive string) bool {
+	requestDirective: func(c *fiber.Ctx, directive string) bool {
 		return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
 	},
 }
