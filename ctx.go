@@ -456,14 +456,8 @@ func (c *Ctx) Cookie(cookie *Cookie) {
 	// i.e. cookie supposed to last beyond browser session
 	// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Cookies#define_the_lifetime_of_a_cookie
 	if !cookie.SessionOnly {
-		// Cookies are session cookies if they do not specify the Expires or Max-Age attribute.
-		// refer: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie
-		// Skipping setting 0 time and seconds to MaxAge and Expires
-		if cookie.MaxAge != 0 {
-			fcookie.SetMaxAge(cookie.MaxAge)
-		} else if !cookie.Expires.IsZero() {
-			fcookie.SetExpire(cookie.Expires)
-		}
+		fcookie.SetMaxAge(cookie.MaxAge)
+		fcookie.SetExpire(cookie.Expires)
 	}
 	fcookie.SetSecure(cookie.Secure)
 	fcookie.SetHTTPOnly(cookie.HTTPOnly)
