@@ -117,7 +117,7 @@ type App struct {
 	// TLS handler
 	tlsHandler *TLSHandler
 	// check added routes of sub-apps
-	subAppsRoutesAdded bool
+	subAppsRoutesAdded sync.Once
 	// Returns parent app if app was mounted
 	parentApp *App
 	// Prefix of app if it was mounted
@@ -1036,12 +1036,10 @@ func (app *App) startupProcess() *App {
 	defer app.mutex.Unlock()
 
 	// add routes of sub-apps
-	if !app.subAppsRoutesAdded {
+	app.subAppsRoutesAdded.Do(func() {
 		app.appendSubAppLists(app.appList)
 		app.addSubAppsRoutes(app.appList)
-
-		app.subAppsRoutesAdded = true
-	}
+	})
 
 	// build route tree stack
 	app.buildTree()
