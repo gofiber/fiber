@@ -150,7 +150,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	utils.AssertEqual(t, []byte("2"), noCacheBody)
 	// Response cached, returns updated response, entry = 2
 
-	/* Check Test_Cache_WithETagAndCacheControlNoCacheRequestHeader */
+	/* Check Test_Cache_WithETagAndNoCacheRequestDirective */
 	// Request id = 2 with Cache-Control: no-cache again
 	noCacheReq1 := httptest.NewRequest("GET", "/?id=2", nil)
 	noCacheReq1.Header.Set(fiber.HeaderCacheControl, noCache)
