@@ -132,12 +132,13 @@ type Config struct {
 	// Default: []string{fiber.MethodGet, fiber.MethodHead}
 	Methods []string
 
-	// Check if the request header contains Cache-Control: no-cache
-	//
-	// Default: func(c *fiber.Ctx) bool {
-	// 	return strings.Contains(c.Get(fiber.HeaderCacheControl), "no-cache")
+	// Allows you to use no-cache and no-store request directives
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+	// 
+	// Default: func(c *fiber.Ctx, directive string) bool {
+	// 	return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
 	// },
-	NoCache func(c *fiber.Ctx) bool
+	RequestDirective func(c *fiber.Ctx, directive string) bool
 }
 ```
 
@@ -158,8 +159,8 @@ var ConfigDefault = Config{
 	Storage:              nil,
 	MaxBytes:             0,
 	Methods:              []string{fiber.MethodGet, fiber.MethodHead},
-	NoCache: func(c *fiber.Ctx) bool {
-		return strings.Contains(c.Get(fiber.HeaderCacheControl), "no-cache")
+	RequestDirective: func(c *fiber.Ctx, directive string) bool {
+		return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
 	},
 }
 ```

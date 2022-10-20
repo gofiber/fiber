@@ -73,13 +73,14 @@ type Config struct {
 	//
 	// Default: []string{fiber.MethodGet, fiber.MethodHead}
 	Methods []string
-	
-	// Check if the request header contains Cache-Control: no-cache
-	//
-	// Default: func(c *fiber.Ctx) bool {
-	// 	return strings.Contains(c.Get(fiber.HeaderCacheControl), "no-cache")
+
+	// Allows you to use no-cache and no-store request directives
+	// https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Cache-Control
+	// 
+	// Default: func(c *fiber.Ctx, directive string) bool {
+	// 	return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
 	// },
-	NoCache func(c *fiber.Ctx) bool
+	RequestDirective func(c *fiber.Ctx, directive string) bool
 }
 
 // ConfigDefault is the default config
@@ -96,8 +97,8 @@ var ConfigDefault = Config{
 	Storage:              nil,
 	MaxBytes:             0,
 	Methods:              []string{fiber.MethodGet, fiber.MethodHead},
-	NoCache: func(c *fiber.Ctx) bool {
-		return strings.Contains(c.Get(fiber.HeaderCacheControl), "no-cache")
+	RequestDirective: func(c *fiber.Ctx, directive string) bool {
+		return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
 	},
 }
 
@@ -135,8 +136,8 @@ func configDefault(config ...Config) Config {
 	if len(cfg.Methods) == 0 {
 		cfg.Methods = ConfigDefault.Methods
 	}
-	if cfg.NoCache == nil {
-		cfg.NoCache = ConfigDefault.NoCache
+	if cfg.RequestDirective == nil {
+		cfg.RequestDirective = ConfigDefault.RequestDirective
 	}
 
 	return cfg

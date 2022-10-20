@@ -27,6 +27,12 @@ const (
 	cacheMiss        = "miss"
 )
 
+// directives
+const (
+	noCache = "no-cache"
+	noStore = "no-store"
+)
+
 var ignoreHeaders = map[string]interface{}{
 	"Connection":          nil,
 	"Keep-Alive":          nil,
@@ -96,6 +102,12 @@ func New(config ...Config) fiber.Handler {
 			return c.Next()
 		}
 
+		// Refrain from caching
+		if cfg.RequestDirective(c, noStore) {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return c.Next()
+		}
+
 		// Get key from request
 		// TODO(allocation optimization): try to minimize the allocation from 2 to 1
 		key := cfg.KeyGenerator(c) + "_" + c.Method()
@@ -116,7 +128,7 @@ func New(config ...Config) fiber.Handler {
 				_, size := heap.remove(e.heapidx)
 				storedBytes -= size
 			}
-		} else if e.exp != 0 && !cfg.NoCache(c) {
+		} else if e.exp != 0 && !cfg.RequestDirective(c, noCache) {
 			// Separate body value to avoid msgp serialization
 			// We can store raw bytes with Storage 👍
 			if cfg.Storage != nil {
