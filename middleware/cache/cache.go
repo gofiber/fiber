@@ -4,6 +4,7 @@ package cache
 
 import (
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -103,7 +104,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Refrain from caching
-		if cfg.requestDirective(c, noStore) {
+		if hasRequestDirective(c, noStore) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
@@ -128,7 +129,7 @@ func New(config ...Config) fiber.Handler {
 				_, size := heap.remove(e.heapidx)
 				storedBytes -= size
 			}
-		} else if e.exp != 0 && !cfg.requestDirective(c, noCache) {
+		} else if e.exp != 0 && !hasRequestDirective(c, noCache) {
 			// Separate body value to avoid msgp serialization
 			// We can store raw bytes with Storage 👍
 			if cfg.Storage != nil {
@@ -246,4 +247,9 @@ func New(config ...Config) fiber.Handler {
 		// Finish response
 		return nil
 	}
+}
+
+// Check if request has directive
+func hasRequestDirective(c *fiber.Ctx, directive string) bool {
+	return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
 }
