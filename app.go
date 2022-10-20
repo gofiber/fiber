@@ -9,7 +9,6 @@ package fiber
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"net"
