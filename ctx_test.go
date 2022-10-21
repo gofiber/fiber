@@ -2761,6 +2761,52 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	utils.AssertEqual(t, "<h1>Hello a!</h1>", string(body))
 }
 
+// go test -run Test_Ctx_Render_Mount_ParentHasViews
+func Test_Ctx_Render_Mount_ParentHasViews(t *testing.T) {
+	t.Parallel()
+
+	engine := &testTemplateEngine{}
+	err := engine.Load()
+	utils.AssertEqual(t, nil, err)
+
+	sub := New(Config{
+		Views: html.New("./.github/testdata/template", ".gohtml"),
+	})
+
+	app := New(Config{
+		Views: engine,
+	})
+
+	app.Get("/test", func(c *Ctx) error {
+		return c.Render("index.tmpl", Map{
+			"Title": "Hello, World!",
+		})
+	})
+
+	sub.Get("/:name", func(c *Ctx) error {
+		return c.Render("hello_world", Map{
+			"Name": c.Params("name"),
+		})
+	})
+	app.Mount("/hello", sub)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", nil))
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello a!</h1>", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test", nil))
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(body))
+}
+
 func Test_Ctx_Render_MountGroup(t *testing.T) {
 	t.Parallel()
 

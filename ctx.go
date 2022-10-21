@@ -1336,9 +1336,10 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	// Pass-locals-to-views & bind
 	c.renderExtensions(bind)
 
-	rendered := false
-	for prefix, app := range c.app.appList {
-		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
+	var rendered bool
+	for i := len(c.app.appList) - 1; i >= 0; i-- {
+		app := c.app.appList[i]
+		if (app.mountPath != "" && strings.Contains(c.OriginalURL(), app.mountPath)) || (app.mountPath == "" && app.parentApp == nil) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
 					app.config.ViewsLayout,

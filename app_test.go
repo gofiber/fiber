@@ -316,7 +316,6 @@ func Test_App_Mount(t *testing.T) {
 
 	app := New()
 	app.Mount("/john", micro)
-
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
@@ -363,15 +362,18 @@ func Test_App_Mount_Nested(t *testing.T) {
 
 // go test -run Test_App_MountPath
 func Test_App_MountPath(t *testing.T) {
-	micro := New()
-	micro.Get("/doe", func(c *Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
 	app := New()
-	app.Mount("/john", micro)
+	one := New()
+	two := New()
+	three := New()
 
-	utils.AssertEqual(t, "/john", micro.MountPath())
+	two.Mount("/three", three)
+	one.Mount("/two", two)
+	app.Mount("/one", one)
+
+	utils.AssertEqual(t, "/one", one.MountPath())
+	utils.AssertEqual(t, "/one/two", two.MountPath())
+	utils.AssertEqual(t, "/one/two/three", three.MountPath())
 	utils.AssertEqual(t, "", app.MountPath())
 }
 
