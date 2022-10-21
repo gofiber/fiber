@@ -257,7 +257,6 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	defer noStoreResp.Body.Close()
 	noStoreBody, _ := ioutil.ReadAll(noStoreResp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, cacheUnreachable, noStoreResp.Header.Get("X-Cache"))
 	utils.AssertEqual(t, []byte("2"), noStoreBody)
 	// Response not cached, returns updated response
 }
