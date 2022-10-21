@@ -20,8 +20,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/gofiber/fiber/v2/internal/colorable"
-	"github.com/gofiber/fiber/v2/internal/isatty"
+	"github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
+	"github.com/mattn/go-runewidth"
 )
 
 // Listener can be used to pass a custom listener.
@@ -238,11 +239,11 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	centerValue := func(s string, width int) string {
-		pad := strconv.Itoa((width - len([]rune(s))) / 2)
+		pad := strconv.Itoa((width - runewidth.StringWidth(s)) / 2)
 		str := fmt.Sprintf("%"+pad+"s", " ")
 		str += fmt.Sprintf("%s%s%s", colors.Cyan, s, colors.Black)
 		str += fmt.Sprintf("%"+pad+"s", " ")
-		if len([]rune(s))-10 < width && len([]rune(s))%2 == 0 {
+		if runewidth.StringWidth(s)-10 < width && runewidth.StringWidth(s)%2 == 0 {
 			// add an ending space if the length of str is even and str is not too long
 			str += " "
 		}
