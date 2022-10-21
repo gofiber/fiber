@@ -90,6 +90,11 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) error {
+		// Refrain from caching
+		if hasRequestDirective(c, noStore) {
+			return c.Next()
+		}
+
 		// Only cache selected methods
 		var isExists bool
 		for _, method := range cfg.Methods {
@@ -99,12 +104,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		if !isExists {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
-			return c.Next()
-		}
-
-		// Refrain from caching
-		if hasRequestDirective(c, noStore) {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
