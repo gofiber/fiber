@@ -124,6 +124,5 @@ func configDefault(config ...Config) Config {
 	if len(cfg.Methods) == 0 {
 		cfg.Methods = ConfigDefault.Methods
 	}
-
 	return cfg
 }
