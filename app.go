@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -107,8 +108,6 @@ type App struct {
 	getBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	getString func(b []byte) string
-	// Mounted and main apps
-	appList []*App
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
@@ -116,6 +115,10 @@ type App struct {
 	latestGroup *Group
 	// TLS handler
 	tlsHandler *TLSHandler
+	// Mounted and main apps
+	appList map[string]*App
+	// Ordered keys of apps (sorted by key length for Render)
+	appListKeys []string
 	// check added routes of sub-apps
 	subAppsRoutesAdded sync.Once
 	// Returns parent app if app was mounted
@@ -487,7 +490,8 @@ func New(config ...Config) *App {
 		config:      Config{},
 		getBytes:    utils.UnsafeBytes,
 		getString:   utils.UnsafeString,
-		appList:     make([]*App, 0),
+		appList:     make(map[string]*App, 0),
+		appListKeys: make([]string, 0),
 		latestRoute: &Route{},
 		latestGroup: &Group{},
 	}
@@ -552,7 +556,7 @@ func New(config ...Config) *App {
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
 
 	// Init appList
-	app.appList = append(app.appList, app)
+	app.appList[""] = app
 
 	// Init app
 	app.init()
@@ -596,9 +600,9 @@ func (app *App) Mount(prefix string, fiber *App) Router {
 	}
 
 	// Support for configs of mounted-apps and sub-mounted-apps
-	for _, subApp := range fiber.appList {
-		subApp.mountPath = prefix + subApp.mountPath
-		app.appList = append(app.appList, subApp)
+	for mountedPrefixes, subApp := range fiber.appList {
+		subApp.mountPath = prefix + mountedPrefixes
+		app.appList[prefix+mountedPrefixes] = subApp
 	}
 
 	// Fill some fields of sub-app
@@ -983,9 +987,9 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
-	for _, subApp := range app.appList {
-		if subApp.mountPath != "" && strings.HasPrefix(ctx.path, subApp.mountPath) {
-			parts := len(strings.Split(subApp.mountPath, "/"))
+	for prefix, subApp := range app.appList {
+		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
+			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
 				mountedErrHandler = subApp.config.ErrorHandler
 				mountedPrefixParts = parts
@@ -1039,6 +1043,7 @@ func (app *App) startupProcess() *App {
 	app.subAppsRoutesAdded.Do(func() {
 		app.appendSubAppLists(app.appList)
 		app.addSubAppsRoutes(app.appList)
+		app.generateAppListKeys()
 	})
 
 	// build route tree stack
@@ -1047,47 +1052,51 @@ func (app *App) startupProcess() *App {
 	return app
 }
 
+// generateAppListKeys generates app list keys for Render, should work after appendSubAppLists
+func (app *App) generateAppListKeys() {
+	for key := range app.appList {
+		app.appListKeys = append(app.appListKeys, key)
+	}
+
+	sort.Slice(app.appListKeys, func(i, j int) bool {
+		return len(app.appListKeys[i]) < len(app.appListKeys[j])
+	})
+}
+
 // appendSubAppLists supports nested for sub apps
-func (app *App) appendSubAppLists(appList []*App, parent ...string) {
-	for _, subApp := range appList {
+func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
+	for prefix, subApp := range appList {
 		// skip real app
-		if subApp.mountPath == "" {
+		if prefix == "" {
 			continue
 		}
 
 		if len(parent) > 0 {
-			subApp.mountPath = parent[0] + subApp.mountPath
+			prefix = parent[0] + prefix
 		}
 
-		// Check same app added before
-		var isAdded bool
-		for _, oldSubApp := range app.appList {
-			if oldSubApp.mountPath == subApp.mountPath {
-				isAdded = true
-			}
-		}
-
-		if !isAdded {
-			app.appList = append(app.appList, subApp)
+		if _, ok := app.appList[prefix]; !ok {
+			app.appList[prefix] = subApp
 		}
 
 		// The first element of appList is always the app itself. If there are no other sub apps, we should skip appending nested apps.
 		if len(subApp.appList) > 1 {
-			app.appendSubAppLists(subApp.appList, subApp.mountPath)
+			app.appendSubAppLists(subApp.appList, prefix)
 		}
+
 	}
 }
 
 // addSubAppsRoutes adds routes of sub apps nestedly when to start the server
-func (app *App) addSubAppsRoutes(appList []*App, parent ...string) {
-	for _, subApp := range appList {
+func (app *App) addSubAppsRoutes(appList map[string]*App, parent ...string) {
+	for prefix, subApp := range appList {
 		// skip real app
-		if subApp.mountPath == "" {
+		if prefix == "" {
 			continue
 		}
 
 		if len(parent) > 0 {
-			subApp.mountPath = parent[0] + subApp.mountPath
+			prefix = parent[0] + prefix
 		}
 
 		// add routes
@@ -1095,7 +1104,7 @@ func (app *App) addSubAppsRoutes(appList []*App, parent ...string) {
 		for m := range stack {
 			for r := range stack[m] {
 				route := app.copyRoute(stack[m][r])
-				app.addRoute(route.Method, app.addPrefixToRoute(subApp.mountPath, route), true)
+				app.addRoute(route.Method, app.addPrefixToRoute(prefix, route), true)
 			}
 		}
 

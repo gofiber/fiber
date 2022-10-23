@@ -2761,16 +2761,24 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	utils.AssertEqual(t, "<h1>Hello a!</h1>", string(body))
 }
 
-// go test -run Test_Ctx_Render_Mount_ParentHasViews
-func Test_Ctx_Render_Mount_ParentHasViews(t *testing.T) {
+// go test -run Test_Ctx_Render_Mount_ParentOrSubHasViews
+func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	t.Parallel()
 
 	engine := &testTemplateEngine{}
 	err := engine.Load()
 	utils.AssertEqual(t, nil, err)
 
+	engine2 := &testTemplateEngine2{}
+	err = engine2.Load()
+	utils.AssertEqual(t, nil, err)
+
 	sub := New(Config{
 		Views: html.New("./.github/testdata/template", ".gohtml"),
+	})
+
+	sub2 := New(Config{
+		Views: engine2,
 	})
 
 	app := New(Config{
@@ -2783,14 +2791,20 @@ func Test_Ctx_Render_Mount_ParentHasViews(t *testing.T) {
 		})
 	})
 
-	sub.Get("/:name", func(c *Ctx) error {
+	sub.Get("/world/:name", func(c *Ctx) error {
 		return c.Render("hello_world", Map{
 			"Name": c.Params("name"),
 		})
 	})
+
+	sub2.Get("/moment", func(c *Ctx) error {
+		return c.Render("bruh.tmpl", Map{})
+	})
+
+	sub.Mount("/bruh", sub2)
 	app.Mount("/hello", sub)
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/world/a", nil))
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 
@@ -2805,6 +2819,15 @@ func Test_Ctx_Render_Mount_ParentHasViews(t *testing.T) {
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/hello/bruh/moment", nil))
+	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+
+	body, err = ioutil.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>I'm Bruh</h1>\n", string(body))
+
 }
 
 func Test_Ctx_Render_MountGroup(t *testing.T) {
@@ -3150,6 +3173,23 @@ func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, 
 
 func (t *testTemplateEngine) Load() error {
 	t.templates = template.Must(template.ParseGlob("./.github/testdata/*.tmpl"))
+	return nil
+}
+
+type testTemplateEngine2 struct {
+	templates *template.Template
+}
+
+func (t *testTemplateEngine2) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
+	if len(layout) == 0 {
+		return t.templates.ExecuteTemplate(w, name, bind)
+	}
+	_ = t.templates.ExecuteTemplate(w, name, bind)
+	return t.templates.ExecuteTemplate(w, layout[0], bind)
+}
+
+func (t *testTemplateEngine2) Load() error {
+	t.templates = template.Must(template.ParseGlob("./.github/testdata2/*.tmpl"))
 	return nil
 }
 

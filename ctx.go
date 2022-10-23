@@ -1333,13 +1333,15 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// Pass-locals-to-views & bind
+	// Pass-locals-to-views, bind, appListKeys
 	c.renderExtensions(bind)
 
 	var rendered bool
-	for i := len(c.app.appList) - 1; i >= 0; i-- {
-		app := c.app.appList[i]
-		if (app.mountPath != "" && strings.Contains(c.OriginalURL(), app.mountPath)) || (app.mountPath == "" && app.parentApp == nil) {
+	fmt.Print(c.app.appListKeys)
+	for i := len(c.app.appListKeys) - 1; i >= 0; i-- {
+		prefix := c.app.appListKeys[i]
+		app := c.app.appList[prefix]
+		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
 					app.config.ViewsLayout,
@@ -1403,6 +1405,10 @@ func (c *Ctx) renderExtensions(bind interface{}) {
 				}
 			})
 		}
+	}
+
+	if len(c.app.appListKeys) == 0 {
+		c.app.generateAppListKeys()
 	}
 }
 
