@@ -2826,7 +2826,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 
 	body, err = ioutil.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "<h1>I'm Bruh</h1>\n", string(body))
+	utils.AssertEqual(t, "<h1>I'm Bruh</h1>", string(body))
 
 }
 

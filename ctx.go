@@ -1337,7 +1337,6 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	c.renderExtensions(bind)
 
 	var rendered bool
-	fmt.Print(c.app.appListKeys)
 	for i := len(c.app.appListKeys) - 1; i >= 0; i-- {
 		prefix := c.app.appListKeys[i]
 		app := c.app.appList[prefix]
