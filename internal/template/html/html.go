@@ -183,15 +183,6 @@ func (e *Engine) Load() error {
 
 // Render will execute the template name along with the given values.
 func (e *Engine) Render(out io.Writer, template string, binding interface{}, layout ...string) error {
-	if !e.loaded || e.reload {
-		if e.reload {
-			e.loaded = false
-		}
-		if err := e.Load(); err != nil {
-			return err
-		}
-	}
-
 	tmpl := e.Templates.Lookup(template)
 	if tmpl == nil {
 		return fmt.Errorf("render: template %s does not exist", template)

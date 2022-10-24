@@ -121,8 +121,6 @@ type App struct {
 	appListKeys []string
 	// check added routes of sub-apps
 	subAppsRoutesAdded sync.Once
-	// Returns parent app if app was mounted
-	parentApp *App
 	// Prefix of app if it was mounted
 	mountPath string
 }
@@ -586,39 +584,6 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	app.mutex.Lock()
 	app.tlsHandler = tlsHandler
 	app.mutex.Unlock()
-}
-
-// Mount attaches another app instance as a sub-router along a routing path.
-// It's very useful to split up a large API as many independent routers and
-// compose them as a single service using Mount. The fiber's error handler and
-// any of the fiber's sub apps are added to the application's error handlers
-// to be invoked on errors that happen within the prefix route.
-func (app *App) Mount(prefix string, fiber *App) Router {
-	prefix = strings.TrimRight(prefix, "/")
-	if prefix == "" {
-		prefix = "/"
-	}
-
-	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subApp := range fiber.appList {
-		subApp.mountPath = prefix + mountedPrefixes
-		app.appList[prefix+mountedPrefixes] = subApp
-	}
-
-	// Fill some fields of sub-app
-	fiber.parentApp = app
-
-	// Execute onMount hooks
-	if err := fiber.hooks.executeOnMountHooks(app); err != nil {
-		panic(err)
-	}
-
-	return app
-}
-
-// The MountPath property contains one or more path patterns on which a sub-app was mounted.
-func (app *App) MountPath() string {
-	return app.mountPath
 }
 
 // Name Assign name to specific route.
