@@ -4,7 +4,7 @@ Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to inter
 
 Request Directives<br>
 `Cache-Control: no-cache` will return the up-to-date response but still caches it. You will always get a `miss` cache status.<br>
-`Cache-Control: no-store` will refrain from caching. You will always get the up-to-date response.<br>
+`Cache-Control: no-store` will refrain from caching. You will always get the up-to-date response.
 
 ## Table of Contents
 
