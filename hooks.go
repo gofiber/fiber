@@ -108,8 +108,8 @@ func (h *Hooks) OnMount(handler ...OnMountHandler) {
 
 func (h *Hooks) executeOnRouteHooks(route Route) error {
 	// Check mounting
-	if h.app.mountPath != "" {
-		route.path = h.app.mountPath + route.path
+	if h.app.mountFields.mountPath != "" {
+		route.path = h.app.mountFields.mountPath + route.path
 		route.Path = route.path
 	}
 
@@ -124,8 +124,8 @@ func (h *Hooks) executeOnRouteHooks(route Route) error {
 
 func (h *Hooks) executeOnNameHooks(route Route) error {
 	// Check mounting
-	if h.app.mountPath != "" {
-		route.path = h.app.mountPath + route.path
+	if h.app.mountFields.mountPath != "" {
+		route.path = h.app.mountFields.mountPath + route.path
 		route.Path = route.path
 	}
 
@@ -140,8 +140,8 @@ func (h *Hooks) executeOnNameHooks(route Route) error {
 
 func (h *Hooks) executeOnGroupHooks(group Group) error {
 	// Check mounting
-	if h.app.mountPath != "" {
-		group.Prefix = h.app.mountPath + group.Prefix
+	if h.app.mountFields.mountPath != "" {
+		group.Prefix = h.app.mountFields.mountPath + group.Prefix
 	}
 
 	for _, v := range h.onGroup {
@@ -155,8 +155,8 @@ func (h *Hooks) executeOnGroupHooks(group Group) error {
 
 func (h *Hooks) executeOnGroupNameHooks(group Group) error {
 	// Check mounting
-	if h.app.mountPath != "" {
-		group.Prefix = h.app.mountPath + group.Prefix
+	if h.app.mountFields.mountPath != "" {
+		group.Prefix = h.app.mountFields.mountPath + group.Prefix
 	}
 
 	for _, v := range h.onGroupName {

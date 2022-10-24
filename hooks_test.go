@@ -252,7 +252,7 @@ func Test_Hook_OnMount(t *testing.T) {
 	subApp.Get("/test", testSimpleHandler)
 
 	subApp.Hooks().OnMount(func(parent *App) error {
-		utils.AssertEqual(t, parent.mountPath, "")
+		utils.AssertEqual(t, parent.mountFields.mountPath, "")
 
 		return nil
 	})

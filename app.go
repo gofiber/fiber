@@ -16,11 +16,9 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"encoding/json"
@@ -115,14 +113,8 @@ type App struct {
 	latestGroup *Group
 	// TLS handler
 	tlsHandler *TLSHandler
-	// Mounted and main apps
-	appList map[string]*App
-	// Ordered keys of apps (sorted by key length for Render)
-	appListKeys []string
-	// check added routes of sub-apps
-	subAppsRoutesAdded sync.Once
-	// Prefix of app if it was mounted
-	mountPath string
+	// Mount fields
+	mountFields *mountFields
 }
 
 // Config is a struct holding the server settings.
@@ -488,14 +480,15 @@ func New(config ...Config) *App {
 		config:      Config{},
 		getBytes:    utils.UnsafeBytes,
 		getString:   utils.UnsafeString,
-		appList:     make(map[string]*App, 0),
-		appListKeys: make([]string, 0),
 		latestRoute: &Route{},
 		latestGroup: &Group{},
 	}
 
 	// Define hooks
 	app.hooks = newHooks(app)
+
+	// Define mountFields
+	app.mountFields = newMountFields(app)
 
 	// Override config if provided
 	if len(config) > 0 {
@@ -552,9 +545,6 @@ func New(config ...Config) *App {
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
-
-	// Init appList
-	app.appList[""] = app
 
 	// Init app
 	app.init()
@@ -952,7 +942,7 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
-	for prefix, subApp := range app.appList {
+	for prefix, subApp := range app.mountFields.appList {
 		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
@@ -1005,9 +995,9 @@ func (app *App) startupProcess() *App {
 	defer app.mutex.Unlock()
 
 	// add routes of sub-apps
-	app.subAppsRoutesAdded.Do(func() {
-		app.appendSubAppLists(app.appList)
-		app.addSubAppsRoutes(app.appList)
+	app.mountFields.subAppsRoutesAdded.Do(func() {
+		app.appendSubAppLists(app.mountFields.appList)
+		app.addSubAppsRoutes(app.mountFields.appList)
 		app.generateAppListKeys()
 	})
 
@@ -1015,64 +1005,4 @@ func (app *App) startupProcess() *App {
 	app.buildTree()
 
 	return app
-}
-
-// generateAppListKeys generates app list keys for Render, should work after appendSubAppLists
-func (app *App) generateAppListKeys() {
-	for key := range app.appList {
-		app.appListKeys = append(app.appListKeys, key)
-	}
-
-	sort.Slice(app.appListKeys, func(i, j int) bool {
-		return len(app.appListKeys[i]) < len(app.appListKeys[j])
-	})
-}
-
-// appendSubAppLists supports nested for sub apps
-func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
-	for prefix, subApp := range appList {
-		// skip real app
-		if prefix == "" {
-			continue
-		}
-
-		if len(parent) > 0 {
-			prefix = parent[0] + prefix
-		}
-
-		if _, ok := app.appList[prefix]; !ok {
-			app.appList[prefix] = subApp
-		}
-
-		// The first element of appList is always the app itself. If there are no other sub apps, we should skip appending nested apps.
-		if len(subApp.appList) > 1 {
-			app.appendSubAppLists(subApp.appList, prefix)
-		}
-
-	}
-}
-
-// addSubAppsRoutes adds routes of sub apps nestedly when to start the server
-func (app *App) addSubAppsRoutes(appList map[string]*App, parent ...string) {
-	for prefix, subApp := range appList {
-		// skip real app
-		if prefix == "" {
-			continue
-		}
-
-		if len(parent) > 0 {
-			prefix = parent[0] + prefix
-		}
-
-		// add routes
-		stack := subApp.stack
-		for m := range stack {
-			for r := range stack[m] {
-				route := app.copyRoute(stack[m][r])
-				app.addRoute(route.Method, app.addPrefixToRoute(prefix, route), true)
-			}
-		}
-
-		atomic.AddUint32(&app.handlersCount, subApp.handlersCount)
-	}
 }

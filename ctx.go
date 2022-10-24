@@ -1337,9 +1337,9 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	c.renderExtensions(bind)
 
 	var rendered bool
-	for i := len(c.app.appListKeys) - 1; i >= 0; i-- {
-		prefix := c.app.appListKeys[i]
-		app := c.app.appList[prefix]
+	for i := len(c.app.mountFields.appListKeys) - 1; i >= 0; i-- {
+		prefix := c.app.mountFields.appListKeys[i]
+		app := c.app.mountFields.appList[prefix]
 		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
@@ -1406,7 +1406,7 @@ func (c *Ctx) renderExtensions(bind interface{}) {
 		}
 	}
 
-	if len(c.app.appListKeys) == 0 {
+	if len(c.app.mountFields.appListKeys) == 0 {
 		c.app.generateAppListKeys()
 	}
 }
