@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync/atomic"
 )
 
 // Group struct
@@ -17,35 +16,6 @@ type Group struct {
 	name string
 
 	Prefix string
-}
-
-// Mount attaches another app instance as a sub-router along a routing path.
-// It's very useful to split up a large API as many independent routers and
-// compose them as a single service using Mount.
-func (grp *Group) Mount(prefix string, fiber *App) Router {
-	stack := fiber.Stack()
-	groupPath := getGroupPath(grp.Prefix, prefix)
-	groupPath = strings.TrimRight(groupPath, "/")
-	if groupPath == "" {
-		groupPath = "/"
-	}
-
-	for m := range stack {
-		for r := range stack[m] {
-			route := grp.app.copyRoute(stack[m][r])
-			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(groupPath, route))
-		}
-	}
-
-	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subApp := range fiber.appList {
-		grp.app.appList[groupPath+mountedPrefixes] = subApp
-		subApp.init()
-	}
-
-	atomic.AddUint32(&grp.app.handlersCount, fiber.handlersCount)
-
-	return grp
 }
 
 // Name Assign name to specific route.

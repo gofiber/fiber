@@ -1384,11 +1384,13 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// Pass-locals-to-views & bind
+	// Pass-locals-to-views, bind, appListKeys
 	c.renderExtensions(bind)
 
-	rendered := false
-	for prefix, app := range c.app.appList {
+	var rendered bool
+	for i := len(c.app.mountFields.appListKeys) - 1; i >= 0; i-- {
+		prefix := c.app.mountFields.appListKeys[i]
+		app := c.app.mountFields.appList[prefix]
 		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
@@ -1453,6 +1455,10 @@ func (c *Ctx) renderExtensions(bind interface{}) {
 				}
 			})
 		}
+	}
+
+	if len(c.app.mountFields.appListKeys) == 0 {
+		c.app.generateAppListKeys()
 	}
 }
 

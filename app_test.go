@@ -246,44 +246,6 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	utils.AssertEqual(t, "1: USE error", string(body))
 }
 
-func Test_App_ErrorHandler_GroupMount(t *testing.T) {
-	micro := New(Config{
-		ErrorHandler: func(c *Ctx, err error) error {
-			utils.AssertEqual(t, "0: GET error", err.Error())
-			return c.Status(500).SendString("1: custom error")
-		},
-	})
-	micro.Get("/doe", func(c *Ctx) error {
-		return errors.New("0: GET error")
-	})
-
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	testErrorResponse(t, err, resp, "1: custom error")
-}
-
-func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
-	micro := New(Config{
-		ErrorHandler: func(c *Ctx, err error) error {
-			utils.AssertEqual(t, "0: GET error", err.Error())
-			return c.Status(500).SendString("1: custom error")
-		},
-	})
-	micro.Get("/john/doe", func(c *Ctx) error {
-		return errors.New("0: GET error")
-	})
-
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Mount("/", micro)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	testErrorResponse(t, err, resp, "1: custom error")
-}
-
 func Test_App_Nested_Params(t *testing.T) {
 	app := New()
 
@@ -305,22 +267,6 @@ func Test_App_Nested_Params(t *testing.T) {
 
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-}
-
-// go test -run Test_App_Mount
-func Test_App_Mount(t *testing.T) {
-	micro := New()
-	micro.Get("/doe", func(c *Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
-	app := New()
-	app.Mount("/john", micro)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, uint32(2), app.handlersCount)
 }
 
 func Test_App_Use_Params(t *testing.T) {
@@ -1046,23 +992,6 @@ func Test_App_Group_Invalid(t *testing.T) {
 	New().Group("/").Use(1)
 }
 
-// go test -run Test_App_Group_Mount
-func Test_App_Group_Mount(t *testing.T) {
-	micro := New()
-	micro.Get("/doe", func(c *Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, uint32(2), app.handlersCount)
-}
-
 func Test_App_Group(t *testing.T) {
 	dummyHandler := testEmptyHandler
 
@@ -1536,96 +1465,6 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "ioutil.ReadAll(resp.Body)")
 
 	utils.AssertEqual(t, testString, string(body))
-}
-
-func Test_App_UseMountedErrorHandler(t *testing.T) {
-	app := New()
-
-	fiber := New(Config{
-		ErrorHandler: func(ctx *Ctx, err error) error {
-			return ctx.Status(500).SendString("hi, i'm a custom error")
-		},
-	})
-	fiber.Get("/", func(c *Ctx) error {
-		return errors.New("something happened")
-	})
-
-	app.Mount("/api", fiber)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
-	testErrorResponse(t, err, resp, "hi, i'm a custom error")
-}
-
-func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
-	app := New()
-
-	fiber := New(Config{
-		ErrorHandler: func(ctx *Ctx, err error) error {
-			return ctx.Status(500).SendString("hi, i'm a custom error")
-		},
-	})
-	fiber.Get("/api", func(c *Ctx) error {
-		return errors.New("something happened")
-	})
-
-	app.Mount("/", fiber)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
-	testErrorResponse(t, err, resp, "hi, i'm a custom error")
-}
-
-func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
-	app := New()
-
-	tsf := func(ctx *Ctx, err error) error {
-		return ctx.Status(200).SendString("hi, i'm a custom sub sub fiber error")
-	}
-	tripleSubFiber := New(Config{
-		ErrorHandler: tsf,
-	})
-	tripleSubFiber.Get("/", func(c *Ctx) error {
-		return errors.New("something happened")
-	})
-
-	sf := func(ctx *Ctx, err error) error {
-		return ctx.Status(200).SendString("hi, i'm a custom sub fiber error")
-	}
-	subfiber := New(Config{
-		ErrorHandler: sf,
-	})
-	subfiber.Get("/", func(c *Ctx) error {
-		return errors.New("something happened")
-	})
-	subfiber.Mount("/third", tripleSubFiber)
-
-	f := func(ctx *Ctx, err error) error {
-		return ctx.Status(200).SendString("hi, i'm a custom error")
-	}
-	fiber := New(Config{
-		ErrorHandler: f,
-	})
-	fiber.Get("/", func(c *Ctx) error {
-		return errors.New("something happened")
-	})
-	fiber.Mount("/sub", subfiber)
-
-	app.Mount("/api", fiber)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub", nil))
-	utils.AssertEqual(t, nil, err, "/api/sub req")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-
-	b, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
-	utils.AssertEqual(t, "hi, i'm a custom sub fiber error", string(b), "Response body")
-
-	resp2, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub/third", nil))
-	utils.AssertEqual(t, nil, err, "/api/sub/third req")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-
-	b, err = ioutil.ReadAll(resp2.Body)
-	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
-	utils.AssertEqual(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
 }
 
 func Test_App_Test_no_timeout_infinitely(t *testing.T) {
