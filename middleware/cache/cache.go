@@ -92,7 +92,6 @@ func New(config ...Config) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Refrain from caching
 		if hasRequestDirective(c, noStore) {
-			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
 
