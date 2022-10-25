@@ -4,6 +4,7 @@
 package msgp
 
 import (
+	"io"
 	"os"
 )
 
