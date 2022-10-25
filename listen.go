@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -154,7 +153,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 	}
 
-	clientCACert, err := ioutil.ReadFile(filepath.Clean(clientCertFile))
+	clientCACert, err := os.ReadFile(filepath.Clean(clientCertFile))
 	if err != nil {
 		return err
 	}

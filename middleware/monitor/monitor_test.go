@@ -3,7 +3,7 @@ package monitor
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -38,7 +38,7 @@ func Test_Monitor_Html(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8,
 		resp.Header.Get(fiber.HeaderContentType))
-	buf, err := ioutil.ReadAll(resp.Body)
+	buf, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("<title>"+defaultTitle+"</title>")))
 	timeoutLine := fmt.Sprintf("setTimeout(fetchJSON, %d)",
@@ -54,7 +54,7 @@ func Test_Monitor_Html(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8,
 		resp.Header.Get(fiber.HeaderContentType))
-	buf, err = ioutil.ReadAll(resp.Body)
+	buf, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("<title>"+conf.Title+"</title>")))
 	timeoutLine = fmt.Sprintf("setTimeout(fetchJSON, %d)",
@@ -74,7 +74,7 @@ func Test_Monitor_Html_CustomCodes(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8,
 		resp.Header.Get(fiber.HeaderContentType))
-	buf, err := ioutil.ReadAll(resp.Body)
+	buf, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("<title>"+defaultTitle+"</title>")))
 	timeoutLine := fmt.Sprintf("setTimeout(fetchJSON, %d)",
@@ -94,7 +94,7 @@ func Test_Monitor_Html_CustomCodes(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, fiber.MIMETextHTMLCharsetUTF8,
 		resp.Header.Get(fiber.HeaderContentType))
-	buf, err = ioutil.ReadAll(resp.Body)
+	buf, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("<title>"+conf.Title+"</title>")))
 	utils.AssertEqual(t, true, bytes.Contains(buf, []byte("https://cdnjs.com/libraries/Chart.js")))
@@ -121,7 +121,7 @@ func Test_Monitor_JSON(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, fiber.MIMEApplicationJSON, resp.Header.Get(fiber.HeaderContentType))
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("pid")))
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("os")))
@@ -189,7 +189,7 @@ func Test_Monitor_APIOnly(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, fiber.MIMEApplicationJSON, resp.Header.Get(fiber.HeaderContentType))
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("pid")))
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("os")))

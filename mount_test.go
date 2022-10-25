@@ -6,7 +6,7 @@ package fiber
 
 import (
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http/httptest"
 	"testing"
 
@@ -216,7 +216,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "/api/sub req")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
 	utils.AssertEqual(t, "hi, i'm a custom sub fiber error", string(b), "Response body")
 
@@ -224,7 +224,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "/api/sub/third req")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	b, err = ioutil.ReadAll(resp2.Body)
+	b, err = io.ReadAll(resp2.Body)
 	utils.AssertEqual(t, nil, err, "iotuil.ReadAll()")
 	utils.AssertEqual(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
 }
@@ -250,7 +250,7 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello a!</h1>", string(body))
 }
@@ -302,7 +302,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello a!</h1>", string(body))
 
@@ -310,7 +310,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello, World!</h1>", string(body))
 
@@ -318,7 +318,7 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>I'm Bruh</h1>", string(body))
 
@@ -345,7 +345,7 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>Hello doe!</h1>", string(body))
 }
