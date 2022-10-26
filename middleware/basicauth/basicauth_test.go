@@ -2,7 +2,7 @@ package basicauth
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http/httptest"
 	"testing"
 
@@ -82,7 +82,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		resp, err := app.Test(req)
 		utils.AssertEqual(t, nil, err)
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, tt.statusCode, resp.StatusCode)

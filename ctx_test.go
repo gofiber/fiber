@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http/httptest"
 	"net/url"
@@ -670,7 +669,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 			utils.AssertEqual(t, nil, err, "Unexpected error from response")
 			utils.AssertEqual(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
 
-			b, err := ioutil.ReadAll(resp.Body)
+			b, err := io.ReadAll(resp.Body)
 			utils.AssertEqual(t, nil, err, "Unexpected error from reading response body")
 			utils.AssertEqual(t, fmt.Sprintf("resp_%d_returned", i), string(b), "response text incorrect")
 		})
@@ -1129,7 +1128,7 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "0", string(body))
 }
@@ -1527,7 +1526,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 
 	// Test without TLS handler
 	resp, _ := app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, []byte("ClientHelloInfo is nil"), body)
 
 	// Test with TLS Handler
@@ -1543,17 +1542,17 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 
 	// Test ServerName
 	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, []byte("example.golang"), body)
 
 	// Test SignatureSchemes
 	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", nil))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, "["+strconv.Itoa(PSSWithSHA256)+"]", string(body))
 
 	// Test SupportedVersions
 	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", nil))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, "["+strconv.Itoa(VersionTLS13)+"]", string(body))
 }
 
@@ -2106,14 +2105,14 @@ func Test_Ctx_SaveFile(t *testing.T) {
 		fh, err := c.FormFile("file")
 		utils.AssertEqual(t, nil, err)
 
-		tempFile, err := ioutil.TempFile(os.TempDir(), "test-")
+		tempFile, err := os.CreateTemp(os.TempDir(), "test-")
 		utils.AssertEqual(t, nil, err)
 
 		defer os.Remove(tempFile.Name())
 		err = c.SaveFile(fh, tempFile.Name())
 		utils.AssertEqual(t, nil, err)
 
-		bs, err := ioutil.ReadFile(tempFile.Name())
+		bs, err := os.ReadFile(tempFile.Name())
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "hello world", string(bs))
 		return nil
@@ -2257,7 +2256,7 @@ func Test_Ctx_Download(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	defer f.Close()
 
-	expect, err := ioutil.ReadAll(f)
+	expect, err := io.ReadAll(f)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, expect, c.Response().Body())
 	utils.AssertEqual(t, `attachment; filename="Awesome+File%21"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
@@ -2275,7 +2274,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 	f, err := os.Open("./ctx.go")
 	utils.AssertEqual(t, nil, err)
 	defer f.Close()
-	expectFileContent, err := ioutil.ReadAll(f)
+	expectFileContent, err := io.ReadAll(f)
 	utils.AssertEqual(t, nil, err)
 	// fetch file info for the not modified test case
 	fI, err := os.Stat("./ctx.go")
@@ -3278,7 +3277,7 @@ func Test_Ctx_Render_Engine_Error(t *testing.T) {
 func Test_Ctx_Render_Go_Template(t *testing.T) {
 	t.Parallel()
 
-	file, err := ioutil.TempFile(os.TempDir(), "fiber")
+	file, err := os.CreateTemp(os.TempDir(), "fiber")
 	utils.AssertEqual(t, nil, err)
 	defer os.Remove(file.Name())
 

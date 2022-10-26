@@ -6,17 +6,17 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/etag"
 	"github.com/gofiber/fiber/v2/internal/storage/memory"
+	"github.com/gofiber/fiber/v2/middleware/etag"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -55,7 +55,7 @@ func Test_Cache_Expired(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	// Sleep until the cache is expired
@@ -63,7 +63,7 @@ func Test_Cache_Expired(t *testing.T) {
 
 	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	bodyCached, err := ioutil.ReadAll(respCached.Body)
+	bodyCached, err := io.ReadAll(respCached.Body)
 	utils.AssertEqual(t, nil, err)
 
 	if bytes.Equal(body, bodyCached) {
@@ -73,7 +73,7 @@ func Test_Cache_Expired(t *testing.T) {
 	// Next response should be also cached
 	respCachedNextRound, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	bodyCachedNextRound, err := ioutil.ReadAll(respCachedNextRound.Body)
+	bodyCachedNextRound, err := io.ReadAll(respCachedNextRound.Body)
 	utils.AssertEqual(t, nil, err)
 
 	if !bytes.Equal(bodyCachedNextRound, bodyCached) {
@@ -100,9 +100,9 @@ func Test_Cache(t *testing.T) {
 	cachedResp, err := app.Test(cachedReq)
 	utils.AssertEqual(t, nil, err)
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	cachedBody, err := ioutil.ReadAll(cachedResp.Body)
+	cachedBody, err := io.ReadAll(cachedResp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	utils.AssertEqual(t, cachedBody, body)
@@ -123,7 +123,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	resp, err := app.Test(req)
 	defer resp.Body.Close()
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheMiss, resp.Header.Get("X-Cache"))
 	utils.AssertEqual(t, []byte("1"), body)
@@ -133,7 +133,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	cachedReq := httptest.NewRequest("GET", "/?id=2", nil)
 	cachedResp, err := app.Test(cachedReq)
 	defer cachedResp.Body.Close()
-	cachedBody, _ := ioutil.ReadAll(cachedResp.Body)
+	cachedBody, _ := io.ReadAll(cachedResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheHit, cachedResp.Header.Get("X-Cache"))
 	utils.AssertEqual(t, []byte("1"), cachedBody)
@@ -144,7 +144,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	noCacheReq.Header.Set(fiber.HeaderCacheControl, noCache)
 	noCacheResp, err := app.Test(noCacheReq)
 	defer noCacheResp.Body.Close()
-	noCacheBody, _ := ioutil.ReadAll(noCacheResp.Body)
+	noCacheBody, _ := io.ReadAll(noCacheResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheMiss, noCacheResp.Header.Get("X-Cache"))
 	utils.AssertEqual(t, []byte("2"), noCacheBody)
@@ -156,7 +156,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	noCacheReq1.Header.Set(fiber.HeaderCacheControl, noCache)
 	noCacheResp1, err := app.Test(noCacheReq1)
 	defer noCacheResp1.Body.Close()
-	noCacheBody1, _ := ioutil.ReadAll(noCacheResp1.Body)
+	noCacheBody1, _ := io.ReadAll(noCacheResp1.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheMiss, noCacheResp1.Header.Get("X-Cache"))
 	utils.AssertEqual(t, []byte("2"), noCacheBody1)
@@ -166,7 +166,7 @@ func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
 	cachedReq1 := httptest.NewRequest("GET", "/", nil)
 	cachedResp1, err := app.Test(cachedReq1)
 	defer cachedResp1.Body.Close()
-	cachedBody1, _ := ioutil.ReadAll(cachedResp1.Body)
+	cachedBody1, _ := io.ReadAll(cachedResp1.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheHit, cachedResp1.Header.Get("X-Cache"))
 	utils.AssertEqual(t, []byte("2"), cachedBody1)
@@ -255,7 +255,7 @@ func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
 	noStoreReq.Header.Set(fiber.HeaderCacheControl, noStore)
 	noStoreResp, err := app.Test(noStoreReq)
 	defer noStoreResp.Body.Close()
-	noStoreBody, _ := ioutil.ReadAll(noStoreResp.Body)
+	noStoreBody, _ := io.ReadAll(noStoreResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, []byte("2"), noStoreBody)
 	// Response not cached, returns updated response
@@ -286,7 +286,7 @@ func Test_Cache_WithSeveralRequests(t *testing.T) {
 					utils.AssertEqual(t, nil, err)
 				}(rsp.Body)
 
-				idFromServ, err := ioutil.ReadAll(rsp.Body)
+				idFromServ, err := io.ReadAll(rsp.Body)
 				utils.AssertEqual(t, nil, err)
 
 				a, err := strconv.Atoi(string(idFromServ))
@@ -319,9 +319,9 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 	cachedResp, err := app.Test(cachedReq)
 	utils.AssertEqual(t, nil, err)
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	cachedBody, err := ioutil.ReadAll(cachedResp.Body)
+	cachedBody, err := io.ReadAll(cachedResp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	utils.AssertEqual(t, cachedBody, body)
@@ -344,25 +344,25 @@ func Test_Cache_Get(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("POST", "/?cache=123", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 
 	resp, err = app.Test(httptest.NewRequest("POST", "/?cache=12345", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "12345", string(body))
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=123", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=12345", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 }
@@ -386,25 +386,25 @@ func Test_Cache_Post(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("POST", "/?cache=123", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 
 	resp, err = app.Test(httptest.NewRequest("POST", "/?cache=12345", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=123", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(body))
 
 	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=12345", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "12345", string(body))
 }
@@ -422,14 +422,14 @@ func Test_Cache_NothingToCache(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	time.Sleep(500 * time.Millisecond)
 
 	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	bodyCached, err := ioutil.ReadAll(respCached.Body)
+	bodyCached, err := io.ReadAll(respCached.Body)
 	utils.AssertEqual(t, nil, err)
 
 	if bytes.Equal(body, bodyCached) {
@@ -459,12 +459,12 @@ func Test_Cache_CustomNext(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	respCached, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	bodyCached, err := ioutil.ReadAll(respCached.Body)
+	bodyCached, err := io.ReadAll(respCached.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Equal(body, bodyCached))
 	utils.AssertEqual(t, true, respCached.Header.Get(fiber.HeaderCacheControl) != "")
@@ -526,9 +526,9 @@ func Test_CustomExpiration(t *testing.T) {
 	cachedResp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	cachedBody, err := ioutil.ReadAll(cachedResp.Body)
+	cachedBody, err := io.ReadAll(cachedResp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	if bytes.Equal(body, cachedBody) {
@@ -538,7 +538,7 @@ func Test_CustomExpiration(t *testing.T) {
 	// Next response should be cached
 	cachedRespNextRound, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
-	cachedBodyNextRound, err := ioutil.ReadAll(cachedRespNextRound.Body)
+	cachedBodyNextRound, err := io.ReadAll(cachedRespNextRound.Body)
 	utils.AssertEqual(t, nil, err)
 
 	if !bytes.Equal(cachedBodyNextRound, cachedBody) {
@@ -632,9 +632,9 @@ func Test_Cache_WithHead(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, cacheHit, cachedResp.Header.Get("X-Cache"))
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	cachedBody, err := ioutil.ReadAll(cachedResp.Body)
+	cachedBody, err := io.ReadAll(cachedResp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	utils.AssertEqual(t, cachedBody, body)
@@ -651,28 +651,28 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 
 	headResp, err := app.Test(httptest.NewRequest("HEAD", "/?cache=123", nil))
 	utils.AssertEqual(t, nil, err)
-	headBody, err := ioutil.ReadAll(headResp.Body)
+	headBody, err := io.ReadAll(headResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "", string(headBody))
 	utils.AssertEqual(t, cacheMiss, headResp.Header.Get("X-Cache"))
 
 	headResp, err = app.Test(httptest.NewRequest("HEAD", "/?cache=123", nil))
 	utils.AssertEqual(t, nil, err)
-	headBody, err = ioutil.ReadAll(headResp.Body)
+	headBody, err = io.ReadAll(headResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "", string(headBody))
 	utils.AssertEqual(t, cacheHit, headResp.Header.Get("X-Cache"))
 
 	getResp, err := app.Test(httptest.NewRequest("GET", "/?cache=123", nil))
 	utils.AssertEqual(t, nil, err)
-	getBody, err := ioutil.ReadAll(getResp.Body)
+	getBody, err := io.ReadAll(getResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(getBody))
 	utils.AssertEqual(t, cacheMiss, getResp.Header.Get("X-Cache"))
 
 	getResp, err = app.Test(httptest.NewRequest("GET", "/?cache=123", nil))
 	utils.AssertEqual(t, nil, err)
-	getBody, err = ioutil.ReadAll(getResp.Body)
+	getBody, err = io.ReadAll(getResp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "123", string(getBody))
 	utils.AssertEqual(t, cacheHit, getResp.Header.Get("X-Cache"))
@@ -785,7 +785,7 @@ func Benchmark_Cache(b *testing.B) {
 	app.Use(New())
 
 	app.Get("/demo", func(c *fiber.Ctx) error {
-		data, _ := ioutil.ReadFile("../../.github/README.md")
+		data, _ := os.ReadFile("../../.github/README.md")
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 
@@ -815,7 +815,7 @@ func Benchmark_Cache_Storage(b *testing.B) {
 	}))
 
 	app.Get("/demo", func(c *fiber.Ctx) error {
-		data, _ := ioutil.ReadFile("../../.github/README.md")
+		data, _ := os.ReadFile("../../.github/README.md")
 		return c.Status(fiber.StatusTeapot).Send(data)
 	})
 

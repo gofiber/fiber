@@ -143,7 +143,7 @@ Fiber è **ispirato** da Express, il web framework più popolare su internet. Ab
 
 ## ⚠️ Limitazioni
 
-* Dato che Fiber utilizza unsafe, la libreria non sempre potrebbe essere compatibile con l'ultima versione di Go. Fiber 2.29.0 è stato testato con la versioni 1.14 alla 1.19 di Go.
+* Dato che Fiber utilizza unsafe, la libreria non sempre potrebbe essere compatibile con l'ultima versione di Go. Fiber 2.40.0 è stato testato con la versioni 1.16 alla 1.19 di Go.
 * Fiber non è compatibile con le interfacce net/http. Questo significa che non è possibile utilizzare progetti come qglgen, go-swagger, o altri che fanno parte dell'ecosistema net/http.
 
 ## 👀 Esempi
