@@ -66,7 +66,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 	// Fetch existing data
 	if loadData {
 		raw, err := s.Storage.Get(id)
-		// Unmashal if we found data
+		// Unmarshal if we found data
 		if raw != nil && err == nil {
 			mux.Lock()
 			defer mux.Unlock()

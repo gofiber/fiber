@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http/httptest"
 	"net/url"
@@ -32,7 +31,6 @@ import (
 
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/internal/storage/memory"
-	"github.com/gofiber/fiber/v2/internal/template/html"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -671,7 +669,7 @@ func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
 			utils.AssertEqual(t, nil, err, "Unexpected error from response")
 			utils.AssertEqual(t, StatusOK, resp.StatusCode, "context.Context returned from c.UserContext() is reused")
 
-			b, err := ioutil.ReadAll(resp.Body)
+			b, err := io.ReadAll(resp.Body)
 			utils.AssertEqual(t, nil, err, "Unexpected error from reading response body")
 			utils.AssertEqual(t, fmt.Sprintf("resp_%d_returned", i), string(b), "response text incorrect")
 		})
@@ -1071,6 +1069,19 @@ func Test_Ctx_Hostname_TrustedProxy(t *testing.T) {
 	}
 }
 
+// go test -run Test_Ctx_Hostname_Trusted_Multiple
+func Test_Ctx_Hostname_TrustedProxy_Multiple(t *testing.T) {
+	t.Parallel()
+	{
+		app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0", "0.8.0.1"}})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		c.Request().SetRequestURI("http://google.com/test")
+		c.Request().Header.Set(HeaderXForwardedHost, "google1.com, google2.com")
+		utils.AssertEqual(t, "google1.com", c.Hostname())
+		app.ReleaseCtx(c)
+	}
+}
+
 // go test -run Test_Ctx_Hostname_UntrustedProxyRange
 func Test_Ctx_Hostname_TrustedProxyRange(t *testing.T) {
 	t.Parallel()
@@ -1117,7 +1128,7 @@ func Test_Ctx_PortInHandler(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "0", string(body))
 }
@@ -1252,6 +1263,10 @@ func Test_Ctx_IPs(t *testing.T) {
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.3, 127.0.0.1, 127.0.0.2")
 	utils.AssertEqual(t, []string{"127.0.0.3", "127.0.0.1", "127.0.0.2"}, c.IPs())
 
+	// ensure for IPv6
+	c.Request().Header.Set(HeaderXForwardedFor, "9396:9549:b4f7:8ed0:4791:1330:8c06:e62d, invalid, 2345:0425:2CA1::0567:5673:23b5")
+	utils.AssertEqual(t, []string{"9396:9549:b4f7:8ed0:4791:1330:8c06:e62d", "invalid", "2345:0425:2CA1::0567:5673:23b5"}, c.IPs())
+
 	// empty header
 	c.Request().Header.Set(HeaderXForwardedFor, "")
 	utils.AssertEqual(t, 0, len(c.IPs()))
@@ -1285,6 +1300,10 @@ func Test_Ctx_IPs_With_IP_Validation(t *testing.T) {
 	c.Request().Header.Set(HeaderXForwardedFor, "127.0.0.3, 127.0.0.1, 127.0.0.2")
 	utils.AssertEqual(t, []string{"127.0.0.3", "127.0.0.1", "127.0.0.2"}, c.IPs())
 
+	// ensure for IPv6
+	c.Request().Header.Set(HeaderXForwardedFor, "f037:825e:eadb:1b7b:1667:6f0a:5356:f604, invalid, 9396:9549:b4f7:8ed0:4791:1330:8c06:e62d")
+	utils.AssertEqual(t, []string{"f037:825e:eadb:1b7b:1667:6f0a:5356:f604", "9396:9549:b4f7:8ed0:4791:1330:8c06:e62d"}, c.IPs())
+
 	// empty header
 	c.Request().Header.Set(HeaderXForwardedFor, "")
 	utils.AssertEqual(t, 0, len(c.IPs()))
@@ -1309,6 +1328,20 @@ func Benchmark_Ctx_IPs(b *testing.B) {
 	utils.AssertEqual(b, []string{"127.0.0.1", "invalid", "127.0.0.1"}, res)
 }
 
+func Benchmark_Ctx_IPs_v6(b *testing.B) {
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderXForwardedFor, "f037:825e:eadb:1b7b:1667:6f0a:5356:f604, invalid, 2345:0425:2CA1::0567:5673:23b5")
+	var res []string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IPs()
+	}
+	utils.AssertEqual(b, []string{"f037:825e:eadb:1b7b:1667:6f0a:5356:f604", "invalid", "2345:0425:2CA1::0567:5673:23b5"}, res)
+}
+
 func Benchmark_Ctx_IPs_With_IP_Validation(b *testing.B) {
 	app := New(Config{EnableIPValidation: true})
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -1321,6 +1354,20 @@ func Benchmark_Ctx_IPs_With_IP_Validation(b *testing.B) {
 		res = c.IPs()
 	}
 	utils.AssertEqual(b, []string{"127.0.0.1", "127.0.0.1"}, res)
+}
+
+func Benchmark_Ctx_IPs_v6_With_IP_Validation(b *testing.B) {
+	app := New(Config{EnableIPValidation: true})
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().Header.Set(HeaderXForwardedFor, "2345:0425:2CA1:0000:0000:0567:5673:23b5, invalid, 2345:0425:2CA1::0567:5673:23b5")
+	var res []string
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		res = c.IPs()
+	}
+	utils.AssertEqual(b, []string{"2345:0425:2CA1:0000:0000:0567:5673:23b5", "2345:0425:2CA1::0567:5673:23b5"}, res)
 }
 
 func Benchmark_Ctx_IP_With_ProxyHeader(b *testing.B) {
@@ -1479,7 +1526,7 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 
 	// Test without TLS handler
 	resp, _ := app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, []byte("ClientHelloInfo is nil"), body)
 
 	// Test with TLS Handler
@@ -1495,17 +1542,17 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 
 	// Test ServerName
 	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, []byte("example.golang"), body)
 
 	// Test SignatureSchemes
 	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", nil))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, "["+strconv.Itoa(PSSWithSHA256)+"]", string(body))
 
 	// Test SupportedVersions
 	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", nil))
-	body, _ = ioutil.ReadAll(resp.Body)
+	body, _ = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, "["+strconv.Itoa(VersionTLS13)+"]", string(body))
 }
 
@@ -1824,6 +1871,14 @@ func Test_Ctx_Protocol(t *testing.T) {
 	utils.AssertEqual(t, "https", c.Protocol())
 	c.Request().Header.Reset()
 
+	c.Request().Header.Set(HeaderXForwardedProto, "https, http")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProtocol, "https, http")
+	utils.AssertEqual(t, "https", c.Protocol())
+	c.Request().Header.Reset()
+
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
 	utils.AssertEqual(t, "https", c.Protocol())
 	c.Request().Header.Reset()
@@ -2050,14 +2105,14 @@ func Test_Ctx_SaveFile(t *testing.T) {
 		fh, err := c.FormFile("file")
 		utils.AssertEqual(t, nil, err)
 
-		tempFile, err := ioutil.TempFile(os.TempDir(), "test-")
+		tempFile, err := os.CreateTemp(os.TempDir(), "test-")
 		utils.AssertEqual(t, nil, err)
 
 		defer os.Remove(tempFile.Name())
 		err = c.SaveFile(fh, tempFile.Name())
 		utils.AssertEqual(t, nil, err)
 
-		bs, err := ioutil.ReadFile(tempFile.Name())
+		bs, err := os.ReadFile(tempFile.Name())
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "hello world", string(bs))
 		return nil
@@ -2201,7 +2256,7 @@ func Test_Ctx_Download(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	defer f.Close()
 
-	expect, err := ioutil.ReadAll(f)
+	expect, err := io.ReadAll(f)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, expect, c.Response().Body())
 	utils.AssertEqual(t, `attachment; filename="Awesome+File%21"`, string(c.Response().Header.Peek(HeaderContentDisposition)))
@@ -2219,7 +2274,7 @@ func Test_Ctx_SendFile(t *testing.T) {
 	f, err := os.Open("./ctx.go")
 	utils.AssertEqual(t, nil, err)
 	defer f.Close()
-	expectFileContent, err := ioutil.ReadAll(f)
+	expectFileContent, err := io.ReadAll(f)
 	utils.AssertEqual(t, nil, err)
 	// fetch file info for the not modified test case
 	fI, err := os.Stat("./ctx.go")
@@ -2399,7 +2454,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 	})
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `callback({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
-	utils.AssertEqual(t, "application/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
+	utils.AssertEqual(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
 	err = c.JSONP(Map{
 		"Name": "Grame",
@@ -2407,7 +2462,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 	}, "john")
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, `john({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
-	utils.AssertEqual(t, "application/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
+	utils.AssertEqual(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
@@ -2735,58 +2790,6 @@ func Test_Ctx_Render(t *testing.T) {
 	utils.AssertEqual(t, false, err == nil)
 }
 
-// go test -run Test_Ctx_Render_Mount
-func Test_Ctx_Render_Mount(t *testing.T) {
-	t.Parallel()
-
-	sub := New(Config{
-		Views: html.New("./.github/testdata/template", ".gohtml"),
-	})
-
-	sub.Get("/:name", func(ctx *Ctx) error {
-		return ctx.Render("hello_world", Map{
-			"Name": ctx.Params("name"),
-		})
-	})
-
-	app := New()
-	app.Mount("/hello", sub)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", nil))
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "<h1>Hello a!</h1>", string(body))
-}
-
-func Test_Ctx_Render_MountGroup(t *testing.T) {
-	t.Parallel()
-
-	micro := New(Config{
-		Views: html.New("./.github/testdata/template", ".gohtml"),
-	})
-
-	micro.Get("/doe", func(c *Ctx) error {
-		return c.Render("hello_world", Map{
-			"Name": "doe",
-		})
-	})
-
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-
-	body, err := ioutil.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "<h1>Hello doe!</h1>", string(body))
-}
-
 func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 	t.Parallel()
 	app := New(Config{
@@ -3092,6 +3095,7 @@ func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
 
 type testTemplateEngine struct {
 	templates *template.Template
+	path      string
 }
 
 func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, layout ...string) error {
@@ -3103,7 +3107,10 @@ func (t *testTemplateEngine) Render(w io.Writer, name string, bind interface{}, 
 }
 
 func (t *testTemplateEngine) Load() error {
-	t.templates = template.Must(template.ParseGlob("./.github/testdata/*.tmpl"))
+	if t.path == "" {
+		t.path = "testdata"
+	}
+	t.templates = template.Must(template.ParseGlob("./.github/" + t.path + "/*.tmpl"))
 	return nil
 }
 
@@ -3270,7 +3277,7 @@ func Test_Ctx_Render_Engine_Error(t *testing.T) {
 func Test_Ctx_Render_Go_Template(t *testing.T) {
 	t.Parallel()
 
-	file, err := ioutil.TempFile(os.TempDir(), "fiber")
+	file, err := os.CreateTemp(os.TempDir(), "fiber")
 	utils.AssertEqual(t, nil, err)
 	defer os.Remove(file.Name())
 

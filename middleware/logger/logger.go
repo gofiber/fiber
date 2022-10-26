@@ -12,9 +12,9 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
-	"github.com/gofiber/fiber/v2/internal/colorable"
 	"github.com/gofiber/fiber/v2/internal/fasttemplate"
-	"github.com/gofiber/fiber/v2/internal/isatty"
+	"github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
 	"github.com/valyala/fasthttp"
 )
 
@@ -84,7 +84,7 @@ func New(config ...Config) fiber.Handler {
 	var timestamp atomic.Value
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
-	// Update date/time every 750 milliseconds in a separate go routine
+	// Update date/time every 500 milliseconds in a separate go routine
 	if strings.Contains(cfg.Format, "${time}") {
 		go func() {
 			for {

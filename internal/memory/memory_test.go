@@ -58,7 +58,7 @@ func Benchmark_Memory(b *testing.B) {
 	for i := 0; i < keyLength; i++ {
 		keys[i] = utils.UUID()
 	}
-	value := []string{"some", "random", "value"}
+	value := []byte("joe")
 
 	ttl := 2 * time.Second
 	b.Run("fiber_memory", func(b *testing.B) {

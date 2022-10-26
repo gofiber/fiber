@@ -145,7 +145,7 @@ Kami **mendengarkan** para pengguna di [GitHub Issues](https://github.com/gofibe
 
 ## ⚠️ Limitasi
 
-* Karena penggunaan Fiber yang tidak aman, perpustakaan mungkin tidak selalu kompatibel dengan versi Go terbaru. Fiber 2.29.0 telah diuji dengan Go versi 1.14 hingga 1.19.
+* Karena penggunaan Fiber yang tidak aman, perpustakaan mungkin tidak selalu kompatibel dengan versi Go terbaru. Fiber 2.40.0 telah diuji dengan Go versi 1.16 hingga 1.19.
 * Fiber tidak kompatibel dengan antarmuka net/http. Ini berarti kamu tidak akan dapat menggunakan proyek seperti gqlgen, go-swagger, atau lainnya yang merupakan bagian dari ekosistem net/http.
 
 ## 👀 Contoh
@@ -621,7 +621,7 @@ Apabila anda ingin mengucapkan **terima kasih** dan/atau mendukung pengembangan 
 
 ## ☕ Pendukung
 
-Fiber adalah proyek sumber terbuka yang beroperasi dalam donasi untuk membayar tagihan, seperti nama domain, _gitbook, netlify_ dan _serverless hosting_. Jika anda mau mendukung Fiber, anda dapat [**membeli kami kopi disini**](https://buymeacoff.ee/fenny).
+Fiber adalah proyek sumber terbuka yang beroperasi dalam donasi untuk membayar tagihan, seperti nama domain, _gitbook, netlify_ dan _serverless hosting_. Jika anda mau mendukung Fiber, anda dapat [**membelikan kami kopi disini**](https://buymeacoff.ee/fenny).
 
 |                                                            | User                                             | Donation |
 | :--------------------------------------------------------- | :----------------------------------------------- | :------- |

@@ -2,7 +2,7 @@ package envvar
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"testing"
@@ -48,7 +48,7 @@ func TestEnvVarHandler(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	utils.AssertEqual(t, expectedEnvVarResponse, respBody)
@@ -68,7 +68,7 @@ func TestEnvVarHandlerNotMatched(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	utils.AssertEqual(t, []byte("OK"), respBody)
@@ -85,7 +85,7 @@ func TestEnvVarHandlerDefaultConfig(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	var envVars EnvVar
@@ -118,7 +118,7 @@ func TestEnvVarHandlerSpecialValue(t *testing.T) {
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
 
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	var envVars EnvVar
@@ -130,7 +130,7 @@ func TestEnvVarHandlerSpecialValue(t *testing.T) {
 	resp, err = app.Test(req)
 	utils.AssertEqual(t, nil, err)
 
-	respBody, err = ioutil.ReadAll(resp.Body)
+	respBody, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 
 	var envVarsExport EnvVar
