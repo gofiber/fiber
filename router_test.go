@@ -281,7 +281,7 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 			require.Equal(t, "missing handler in route: /doe\n", fmt.Sprintf("%v", err))
 		}
 	}()
-	app.register("USE", "/doe")
+	app.register([]string{"USE"}, "/doe")
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
@@ -438,7 +438,7 @@ func registerDummyRoutes(app *App) {
 		return nil
 	}
 	for _, r := range routesFixture.GithubAPI {
-		app.Add(r.Method, r.Path, h)
+		app.Add([]string{r.Method}, r.Path, h)
 	}
 }
 

@@ -94,7 +94,7 @@ func (grp *Group) Use(args ...any) Router {
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	grp.app.register(methodUse, getGroupPath(grp.Prefix, prefix), handlers...)
+	grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), handlers...)
 	return grp
 }
 
@@ -102,59 +102,59 @@ func (grp *Group) Use(args ...any) Router {
 // of the specified resource. Requests using GET should only retrieve data.
 func (grp *Group) Get(path string, handlers ...Handler) Router {
 	path = getGroupPath(grp.Prefix, path)
-	return grp.app.Add(MethodGet, path, handlers...)
+	return grp.app.Add([]string{MethodGet}, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
 func (grp *Group) Head(path string, handlers ...Handler) Router {
-	return grp.Add(MethodHead, path, handlers...)
+	return grp.Add([]string{MethodHead}, path, handlers...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
 func (grp *Group) Post(path string, handlers ...Handler) Router {
-	return grp.Add(MethodPost, path, handlers...)
+	return grp.Add([]string{MethodPost}, path, handlers...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
 func (grp *Group) Put(path string, handlers ...Handler) Router {
-	return grp.Add(MethodPut, path, handlers...)
+	return grp.Add([]string{MethodPut}, path, handlers...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
 func (grp *Group) Delete(path string, handlers ...Handler) Router {
-	return grp.Add(MethodDelete, path, handlers...)
+	return grp.Add([]string{MethodDelete}, path, handlers...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
 func (grp *Group) Connect(path string, handlers ...Handler) Router {
-	return grp.Add(MethodConnect, path, handlers...)
+	return grp.Add([]string{MethodConnect}, path, handlers...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
 func (grp *Group) Options(path string, handlers ...Handler) Router {
-	return grp.Add(MethodOptions, path, handlers...)
+	return grp.Add([]string{MethodOptions}, path, handlers...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
 func (grp *Group) Trace(path string, handlers ...Handler) Router {
-	return grp.Add(MethodTrace, path, handlers...)
+	return grp.Add([]string{MethodTrace}, path, handlers...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
 func (grp *Group) Patch(path string, handlers ...Handler) Router {
-	return grp.Add(MethodPatch, path, handlers...)
+	return grp.Add([]string{MethodPatch}, path, handlers...)
 }
 
-// Add allows you to specify a HTTP method to register a route
-func (grp *Group) Add(method, path string, handlers ...Handler) Router {
-	return grp.app.register(method, getGroupPath(grp.Prefix, path), handlers...)
+// Add allows you to specify multiple HTTP methods to register a route.
+func (grp *Group) Add(methods []string, path string, handlers ...Handler) Router {
+	return grp.app.register(methods, getGroupPath(grp.Prefix, path), handlers...)
 }
 
 // Static will create a file server serving static files
@@ -164,9 +164,7 @@ func (grp *Group) Static(prefix, root string, config ...Static) Router {
 
 // All will register the handler on all HTTP methods
 func (grp *Group) All(path string, handlers ...Handler) Router {
-	for _, method := range intMethod {
-		_ = grp.Add(method, path, handlers...)
-	}
+	grp.Add(intMethod, path, handlers...)
 	return grp
 }
 
@@ -177,7 +175,7 @@ func (grp *Group) All(path string, handlers ...Handler) Router {
 func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 	prefix = getGroupPath(grp.Prefix, prefix)
 	if len(handlers) > 0 {
-		_ = grp.app.register(methodUse, prefix, handlers...)
+		grp.app.register([]string{methodUse}, prefix, handlers...)
 	}
 	return grp.app.Group(prefix)
 }

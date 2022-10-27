@@ -30,7 +30,7 @@ type Router interface {
 	Trace(path string, handlers ...Handler) Router
 	Patch(path string, handlers ...Handler) Router
 
-	Add(method, path string, handlers ...Handler) Router
+	Add(methods []string, path string, handlers ...Handler) Router
 	Static(prefix, root string, config ...Static) Router
 	All(path string, handlers ...Handler) Router
 
@@ -271,77 +271,81 @@ func (app *App) copyRoute(route *Route) *Route {
 	}
 }
 
-func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
-	// Uppercase HTTP methods
-	method = utils.ToUpper(method)
-	// Check if the HTTP method is valid unless it's USE
-	if method != methodUse && methodInt(method) == -1 {
-		panic(fmt.Sprintf("add: invalid http method %s\n", method))
-	}
-	// A route requires atleast one ctx handler
-	if len(handlers) == 0 {
-		panic(fmt.Sprintf("missing handler in route: %s\n", pathRaw))
-	}
-	// Cannot have an empty path
-	if pathRaw == "" {
-		pathRaw = "/"
-	}
-	// Path always start with a '/'
-	if pathRaw[0] != '/' {
-		pathRaw = "/" + pathRaw
-	}
-	// Create a stripped path in-case sensitive / trailing slashes
-	pathPretty := pathRaw
-	// Case sensitive routing, all to lowercase
-	if !app.config.CaseSensitive {
-		pathPretty = utils.ToLower(pathPretty)
-	}
-	// Strict routing, remove trailing slashes
-	if !app.config.StrictRouting && len(pathPretty) > 1 {
-		pathPretty = strings.TrimRight(pathPretty, "/")
-	}
-	// Is layer a middleware?
-	isUse := method == methodUse
-	// Is path a direct wildcard?
-	isStar := pathPretty == "/*"
-	// Is path a root slash?
-	isRoot := pathPretty == "/"
-	// Parse path parameters
-	parsedRaw := parseRoute(pathRaw)
-	parsedPretty := parseRoute(pathPretty)
+func (app *App) register(methods []string, pathRaw string, handlers ...Handler) Router {
+	for _, method := range methods {
 
-	// Create route metadata without pointer
-	route := Route{
-		// Router booleans
-		use:  isUse,
-		star: isStar,
-		root: isRoot,
-
-		// Path data
-		path:        RemoveEscapeChar(pathPretty),
-		routeParser: parsedPretty,
-		Params:      parsedRaw.params,
-
-		// Public data
-		Path:     pathRaw,
-		Method:   method,
-		Handlers: handlers,
-	}
-	// Increment global handler count
-	atomic.AddUint32(&app.handlersCount, uint32(len(handlers)))
-
-	// Middleware route matches all HTTP methods
-	if isUse {
-		// Add route to all HTTP methods stack
-		for _, m := range intMethod {
-			// Create a route copy to avoid duplicates during compression
-			r := route
-			app.addRoute(m, &r)
+		// Uppercase HTTP methods
+		method = utils.ToUpper(method)
+		// Check if the HTTP method is valid unless it's USE
+		if method != methodUse && methodInt(method) == -1 {
+			panic(fmt.Sprintf("add: invalid http method %s\n", method))
 		}
-	} else {
-		// Add route to stack
-		app.addRoute(method, &route)
+		// A route requires atleast one ctx handler
+		if len(handlers) == 0 {
+			panic(fmt.Sprintf("missing handler in route: %s\n", pathRaw))
+		}
+		// Cannot have an empty path
+		if pathRaw == "" {
+			pathRaw = "/"
+		}
+		// Path always start with a '/'
+		if pathRaw[0] != '/' {
+			pathRaw = "/" + pathRaw
+		}
+		// Create a stripped path in-case sensitive / trailing slashes
+		pathPretty := pathRaw
+		// Case sensitive routing, all to lowercase
+		if !app.config.CaseSensitive {
+			pathPretty = utils.ToLower(pathPretty)
+		}
+		// Strict routing, remove trailing slashes
+		if !app.config.StrictRouting && len(pathPretty) > 1 {
+			pathPretty = strings.TrimRight(pathPretty, "/")
+		}
+		// Is layer a middleware?
+		isUse := method == methodUse
+		// Is path a direct wildcard?
+		isStar := pathPretty == "/*"
+		// Is path a root slash?
+		isRoot := pathPretty == "/"
+		// Parse path parameters
+		parsedRaw := parseRoute(pathRaw)
+		parsedPretty := parseRoute(pathPretty)
+
+		// Create route metadata without pointer
+		route := Route{
+			// Router booleans
+			use:  isUse,
+			star: isStar,
+			root: isRoot,
+
+			// Path data
+			path:        RemoveEscapeChar(pathPretty),
+			routeParser: parsedPretty,
+			Params:      parsedRaw.params,
+
+			// Public data
+			Path:     pathRaw,
+			Method:   method,
+			Handlers: handlers,
+		}
+		// Increment global handler count
+		atomic.AddUint32(&app.handlersCount, uint32(len(handlers)))
+
+		// Middleware route matches all HTTP methods
+		if isUse {
+			// Add route to all HTTP methods stack
+			for _, m := range intMethod {
+				// Create a route copy to avoid duplicates during compression
+				r := route
+				app.addRoute(m, &r)
+			}
+		} else {
+			// Add route to stack
+			app.addRoute(method, &route)
+		}
 	}
+
 	return app
 }
 
