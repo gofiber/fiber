@@ -20,19 +20,19 @@ import (
 type Router interface {
 	Use(args ...any) Router
 
-	Get(path string, handlers ...Handler) Router
-	Head(path string, handlers ...Handler) Router
-	Post(path string, handlers ...Handler) Router
-	Put(path string, handlers ...Handler) Router
-	Delete(path string, handlers ...Handler) Router
-	Connect(path string, handlers ...Handler) Router
-	Options(path string, handlers ...Handler) Router
-	Trace(path string, handlers ...Handler) Router
-	Patch(path string, handlers ...Handler) Router
+	Get(path string, handler Handler, middleware ...Handler) Router
+	Head(path string, handler Handler, middleware ...Handler) Router
+	Post(path string, handler Handler, middleware ...Handler) Router
+	Put(path string, handler Handler, middleware ...Handler) Router
+	Delete(path string, handler Handler, middleware ...Handler) Router
+	Connect(path string, handler Handler, middleware ...Handler) Router
+	Options(path string, handler Handler, middleware ...Handler) Router
+	Trace(path string, handler Handler, middleware ...Handler) Router
+	Patch(path string, handler Handler, middleware ...Handler) Router
 
-	Add(methods []string, path string, handlers ...Handler) Router
+	Add(methods []string, path string, handler Handler, middleware ...Handler) Router
 	Static(prefix, root string, config ...Static) Router
-	All(path string, handlers ...Handler) Router
+	All(path string, handler Handler, middleware ...Handler) Router
 
 	Group(prefix string, handlers ...Handler) Router
 
@@ -271,7 +271,12 @@ func (app *App) copyRoute(route *Route) *Route {
 	}
 }
 
-func (app *App) register(methods []string, pathRaw string, handlers ...Handler) Router {
+func (app *App) register(methods []string, pathRaw string, handler Handler, middleware ...Handler) Router {
+	handlers := middleware
+	if handler != nil {
+		handlers = append(handlers, handler)
+	}
+
 	for _, method := range methods {
 
 		// Uppercase HTTP methods
@@ -282,7 +287,7 @@ func (app *App) register(methods []string, pathRaw string, handlers ...Handler) 
 		}
 		// A route requires atleast one ctx handler
 		if len(handlers) == 0 {
-			panic(fmt.Sprintf("missing handler in route: %s\n", pathRaw))
+			panic(fmt.Sprintf("missing handler/middleware in route: %s\n", pathRaw))
 		}
 		// Cannot have an empty path
 		if pathRaw == "" {
