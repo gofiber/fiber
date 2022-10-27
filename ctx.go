@@ -887,9 +887,9 @@ func (c *Ctx) Links(link ...string) {
 	bytebufferpool.Put(bb)
 }
 
-// Locals makes it possible to pass interface{} values under string keys scoped to the request
+// Locals makes it possible to pass interface{} values under keys scoped to the request
 // and therefore available to all following routes that match the request.
-func (c *Ctx) Locals(key string, value ...interface{}) (val interface{}) {
+func (c *Ctx) Locals(key interface{}, value ...interface{}) (val interface{}) {
 	if len(value) == 0 {
 		return c.fasthttp.UserValue(key)
 	}
