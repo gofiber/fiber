@@ -1552,7 +1552,7 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 
 	type Request struct {
 		QueryParam  string `query:"query_param"`
-		HeaderParam string `reqHeader:"header_param"`
+		HeaderParam string `header:"header_param"`
 		BodyParam   string `json:"body_param" xml:"body_param" form:"body_param"`
 	}
 

@@ -46,7 +46,7 @@ func Test_Utils_UniqueRouteStack(t *testing.T) {
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
 	res := getGroupPath("/v1", "/")
-	require.Equal(t, "/v1", res)
+	require.Equal(t, "/v1/", res)
 
 	res = getGroupPath("/v1/", "/")
 	require.Equal(t, "/v1/", res)

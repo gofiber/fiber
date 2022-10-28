@@ -1596,27 +1596,8 @@ func Test_Ctx_Protocol(t *testing.T) {
 
 	require.Equal(t, "HTTP/1.1", c.Protocol())
 
-	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	require.Equal(t, "https", c.Protocol())
-	c.Request().Header.Reset()
-
-	c.Request().Header.Set(HeaderXForwardedProto, "https, http")
-	require.Equal(t, "https", c.Protocol())
-	c.Request().Header.Reset()
-
-	c.Request().Header.Set(HeaderXForwardedProtocol, "https, http")
-	require.Equal(t, "https", c.Protocol())
-	c.Request().Header.Reset()
-
-	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	require.Equal(t, "https", c.Protocol())
-	c.Request().Header.Reset()
-
-	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	require.Equal(t, "https", c.Protocol())
-	c.Request().Header.Reset()
-
-	require.Equal(t, "http", c.Protocol())
+	c.Request().Header.SetProtocol("HTTP/2")
+	require.Equal(t, "HTTP/2", c.Protocol())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Protocol -benchmem -count=4
@@ -2218,7 +2199,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, `callback({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
-	require.Equal(t, "application/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
+	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 
 	err = c.JSONP(Map{
 		"Name": "Grame",
@@ -2226,7 +2207,7 @@ func Test_Ctx_JSONP(t *testing.T) {
 	}, "john")
 	require.NoError(t, err)
 	require.Equal(t, `john({"Age":20,"Name":"Grame"});`, string(c.Response().Body()))
-	require.Equal(t, "application/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
+	require.Equal(t, "text/javascript; charset=utf-8", string(c.Response().Header.Peek("content-type")))
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Ctx_JSONP -benchmem -count=4
@@ -2914,11 +2895,6 @@ func Test_Ctx_SendStream(t *testing.T) {
 
 	c.SendStream(bufio.NewReader(bytes.NewReader([]byte("Hello bufio"))))
 	require.Equal(t, "Hello bufio", string(c.Response().Body()))
-
-	file, err := os.Open("./.github/index.html")
-	require.NoError(t, err)
-	c.SendStream(bufio.NewReader(file))
-	require.True(t, c.Response().Header.ContentLength() > 200)
 }
 
 // go test -run Test_Ctx_Set

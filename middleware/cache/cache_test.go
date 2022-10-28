@@ -618,10 +618,11 @@ func Test_Cache_WithHead(t *testing.T) {
 	app := fiber.New()
 	app.Use(New())
 
-	app.Get("/", func(c fiber.Ctx) error {
+	handler := func(c fiber.Ctx) error {
 		now := fmt.Sprintf("%d", time.Now().UnixNano())
 		return c.SendString(now)
-	})
+	}
+	app.Route("/").Get(handler).Head(handler)
 
 	req := httptest.NewRequest("HEAD", "/", nil)
 	resp, err := app.Test(req)
@@ -646,9 +647,11 @@ func Test_Cache_WithHeadThenGet(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(New())
-	app.Get("/", func(c fiber.Ctx) error {
+
+	handler := func(c fiber.Ctx) error {
 		return c.SendString(c.Query("cache"))
-	})
+	}
+	app.Route("/").Get(handler).Head(handler)
 
 	headResp, err := app.Test(httptest.NewRequest("HEAD", "/?cache=123", nil))
 	require.NoError(t, err)
