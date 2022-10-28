@@ -58,7 +58,9 @@ func (app *App) mount(prefix string, fiber *App) Router {
 
 // Mount attaches another app instance as a sub-router along a routing path.
 // It's very useful to split up a large API as many independent routers and
-// compose them as a single service using Mount.
+// compose them as a single service using Mount. The fiber's error handler and
+// any of the fiber's sub apps are added to the application's error handlers
+// to be invoked on errors that happen within the prefix route.
 func (grp *Group) mount(prefix string, fiber *App) Router {
 	groupPath := getGroupPath(grp.Prefix, prefix)
 	groupPath = strings.TrimRight(groupPath, "/")
