@@ -116,10 +116,6 @@ type App struct {
 	getString func(b []byte) string
 	// Mounted and main apps
 	appList map[string]*App
-	// If application is a parent, It returns nil. It can accessible only from sub app
-	parent *App
-	// Mounted sub app's path
-	mountpath string
 	// Hooks
 	hooks *hooks
 	// Latest route & group
@@ -469,8 +465,6 @@ func New(config ...Config) *App {
 		getBytes:      utils.UnsafeBytes,
 		getString:     utils.UnsafeString,
 		appList:       make(map[string]*App),
-		parent:        nil,
-		mountpath:     "",
 		latestRoute:   &Route{},
 		latestGroup:   &Group{},
 		customBinders: []CustomBinder{},
@@ -707,25 +701,6 @@ func (app *App) All(path string, handlers ...Handler) Router {
 		_ = app.Add(method, path, handlers...)
 	}
 	return app
-}
-
-// The MountPath property contains one or more path patterns on which a sub-app was mounted.
-func (app *App) MountPath() string {
-	return app.mountpath
-}
-
-// The mount event is fired on a sub-app, when it is mounted on a parent app. The parent app is passed to the callback function.
-func (app *App) OnMount(callback func(parent *App)) {
-	if app.parent == nil {
-		panic("not mounted sub app to parent app")
-	}
-
-	if app.mountpath == "" {
-		panic("onmount cannot be used on parent app")
-	}
-
-	// returns parent app in callback
-	callback(app.parent)
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
@@ -1142,8 +1117,6 @@ func (app *App) mount(prefix string, sub *App) *App {
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subApp := range sub.appList {
 		app.appList[prefix+mountedPrefixes] = subApp
-		subApp.parent = app
-		subApp.mountpath = prefix + mountedPrefixes
 		subApp.init()
 	}
 

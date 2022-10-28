@@ -38,8 +38,6 @@ func (grp *Group) mount(prefix string, sub *App) Router {
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subApp := range sub.appList {
 		grp.app.appList[groupPath+mountedPrefixes] = subApp
-		subApp.parent = grp.app
-		subApp.mountpath = groupPath + mountedPrefixes
 		subApp.init()
 	}
 
