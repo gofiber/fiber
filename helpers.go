@@ -183,7 +183,7 @@ func defaultString(value string, defaultValue []string) string {
 }
 
 func getGroupPath(prefix, path string) string {
-	if len(path) == 0 || path == "/" {
+	if len(path) == 0 {
 		return prefix
 	}
 
@@ -377,21 +377,25 @@ const (
 
 // MIME types that are commonly used
 const (
-	MIMETextXML               = "text/xml"
-	MIMETextHTML              = "text/html"
-	MIMETextPlain             = "text/plain"
-	MIMEApplicationXML        = "application/xml"
-	MIMEApplicationJSON       = "application/json"
+	MIMETextXML         = "text/xml"
+	MIMETextHTML        = "text/html"
+	MIMETextPlain       = "text/plain"
+	MIMETextJavaScript  = "text/javascript"
+	MIMEApplicationXML  = "application/xml"
+	MIMEApplicationJSON = "application/json"
+	// Deprecated: use MIMETextJavaScript instead
 	MIMEApplicationJavaScript = "application/javascript"
 	MIMEApplicationForm       = "application/x-www-form-urlencoded"
 	MIMEOctetStream           = "application/octet-stream"
 	MIMEMultipartForm         = "multipart/form-data"
 
-	MIMETextXMLCharsetUTF8               = "text/xml; charset=utf-8"
-	MIMETextHTMLCharsetUTF8              = "text/html; charset=utf-8"
-	MIMETextPlainCharsetUTF8             = "text/plain; charset=utf-8"
-	MIMEApplicationXMLCharsetUTF8        = "application/xml; charset=utf-8"
-	MIMEApplicationJSONCharsetUTF8       = "application/json; charset=utf-8"
+	MIMETextXMLCharsetUTF8         = "text/xml; charset=utf-8"
+	MIMETextHTMLCharsetUTF8        = "text/html; charset=utf-8"
+	MIMETextPlainCharsetUTF8       = "text/plain; charset=utf-8"
+	MIMETextJavaScriptCharsetUTF8  = "text/javascript; charset=utf-8"
+	MIMEApplicationXMLCharsetUTF8  = "application/xml; charset=utf-8"
+	MIMEApplicationJSONCharsetUTF8 = "application/json; charset=utf-8"
+	// Deprecated: use MIMETextJavaScriptCharsetUTF8 instead
 	MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 

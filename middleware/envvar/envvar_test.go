@@ -55,7 +55,7 @@ func TestEnvVarHandlerNotMatched(t *testing.T) {
 		ExportVars: map[string]string{"testKey": ""}}))
 
 	app.Get("/another-path", func(ctx fiber.Ctx) error {
-		ctx.SendString("OK")
+		require.NoError(t, ctx.SendString("OK"))
 		return nil
 	})
 

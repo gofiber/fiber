@@ -47,8 +47,13 @@ type Config struct {
 	// Per-connection buffer size for responses' writing.
 	WriteBufferSize int
 
-	// tls config for the http client
+	// tls config for the http client.
 	TlsConfig *tls.Config
+
+	// Client is custom client when client config is complex.
+	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize and TlsConfig
+	// will not be used if the client are set.
+	Client *fasthttp.LBClient
 }
 
 // ConfigDefault is the default config
@@ -75,7 +80,7 @@ func configDefault(config ...Config) Config {
 	}
 
 	// Set default values
-	if len(cfg.Servers) == 0 {
+	if len(cfg.Servers) == 0 && cfg.Client == nil {
 		panic("Servers cannot be empty")
 	}
 	return cfg

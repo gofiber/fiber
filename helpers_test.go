@@ -51,9 +51,6 @@ func Test_Utils_getGroupPath(t *testing.T) {
 	res = getGroupPath("/v1/", "/")
 	require.Equal(t, "/v1/", res)
 
-	res = getGroupPath("/v1", "/")
-	require.Equal(t, "/v1", res)
-
 	res = getGroupPath("/", "/")
 	require.Equal(t, "/", res)
 

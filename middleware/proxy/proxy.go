@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/utils"
@@ -17,34 +18,39 @@ func Balancer(config Config) fiber.Handler {
 	cfg := configDefault(config)
 
 	// Load balanced client
-	var lbc fasthttp.LBClient
-	// Set timeout
-	lbc.Timeout = cfg.Timeout
+	var lbc = &fasthttp.LBClient{}
+	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize and TlsConfig
+	// will not be used if the client are set.
+	if config.Client == nil {
+		// Set timeout
+		lbc.Timeout = cfg.Timeout
+		// Scheme must be provided, falls back to http
+		for _, server := range cfg.Servers {
+			if !strings.HasPrefix(server, "http") {
+				server = "http://" + server
+			}
 
-	// Scheme must be provided, falls back to http
-	// TODO add https support
-	for _, server := range cfg.Servers {
-		if !strings.HasPrefix(server, "http") {
-			server = "http://" + server
+			u, err := url.Parse(server)
+			if err != nil {
+				panic(err)
+			}
+
+			client := &fasthttp.HostClient{
+				NoDefaultUserAgentHeader: true,
+				DisablePathNormalizing:   true,
+				Addr:                     u.Host,
+
+				ReadBufferSize:  config.ReadBufferSize,
+				WriteBufferSize: config.WriteBufferSize,
+
+				TLSConfig: config.TlsConfig,
+			}
+
+			lbc.Clients = append(lbc.Clients, client)
 		}
-
-		u, err := url.Parse(server)
-		if err != nil {
-			panic(err)
-		}
-
-		client := &fasthttp.HostClient{
-			NoDefaultUserAgentHeader: true,
-			DisablePathNormalizing:   true,
-			Addr:                     u.Host,
-
-			ReadBufferSize:  config.ReadBufferSize,
-			WriteBufferSize: config.WriteBufferSize,
-
-			TLSConfig: config.TlsConfig,
-		}
-
-		lbc.Clients = append(lbc.Clients, client)
+	} else {
+		// Set custom client
+		lbc = config.Client
 	}
 
 	// Return new handler
@@ -90,28 +96,49 @@ func Balancer(config Config) fiber.Handler {
 	}
 }
 
-var client = fasthttp.Client{
+var client = &fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
 }
 
+var lock sync.RWMutex
+
 // WithTlsConfig update http client with a user specified tls.config
 // This function should be called before Do and Forward.
+// Deprecated: use WithClient instead.
 func WithTlsConfig(tlsConfig *tls.Config) {
 	client.TLSConfig = tlsConfig
 }
 
+// WithClient sets the global proxy client.
+// This function should be called before Do and Forward.
+func WithClient(cli *fasthttp.Client) {
+	lock.Lock()
+	defer lock.Unlock()
+	client = cli
+}
+
 // Forward performs the given http request and fills the given http response.
 // This method will return an fiber.Handler
-func Forward(addr string) fiber.Handler {
+func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c fiber.Ctx) error {
-		return Do(c, addr)
+		return Do(c, addr, clients...)
 	}
 }
 
 // Do performs the given http request and fills the given http response.
 // This method can be used within a fiber.Handler
-func Do(c fiber.Ctx, addr string) error {
+func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
+	var cli *fasthttp.Client
+	if len(clients) != 0 {
+		// Set local client
+		cli = clients[0]
+	} else {
+		// Set global client
+		lock.RLock()
+		cli = client
+		lock.RUnlock()
+	}
 	req := c.Request()
 	res := c.Response()
 	originalURL := utils.CopyString(c.OriginalURL())
@@ -127,7 +154,7 @@ func Do(c fiber.Ctx, addr string) error {
 	}
 
 	req.Header.Del(fiber.HeaderConnection)
-	if err := client.Do(req, res); err != nil {
+	if err := cli.Do(req, res); err != nil {
 		return err
 	}
 	res.Header.Del(fiber.HeaderConnection)

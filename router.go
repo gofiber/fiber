@@ -16,7 +16,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Router defines all router handle interface includes app and group router.
+// Router defines all router handle interface, including app and group router.
 type Router interface {
 	Use(args ...any) Router
 
@@ -43,7 +43,7 @@ type Router interface {
 	Name(name string) Router
 }
 
-// Route is a struct that holds all metadata for each registered handler
+// Route is a struct that holds all metadata for each registered handler.
 type Route struct {
 	// Data for routing
 	pos         uint32      // Position in stack -> important for the sort of the matched routes
@@ -417,6 +417,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 
 	// Set config if provided
 	var cacheControlValue string
+	var modifyResponse Handler
 	if len(config) > 0 {
 		maxAge := config[0].MaxAge
 		if maxAge > 0 {
@@ -429,6 +430,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		if config[0].Index != "" {
 			fs.IndexNames = []string{config[0].Index}
 		}
+		modifyResponse = config[0].ModifyResponse
 	}
 	fileHandler := fs.NewRequestHandler()
 	handler := func(c Ctx) error {
@@ -447,6 +449,9 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		if status != StatusNotFound && status != StatusForbidden {
 			if len(cacheControlValue) > 0 {
 				c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
+			}
+			if modifyResponse != nil {
+				return modifyResponse(c)
 			}
 			return nil
 		}
@@ -479,7 +484,13 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	return app
 }
 
-func (app *App) addRoute(method string, route *Route) {
+func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
+	// Check mounted routes
+	var mounted bool
+	if len(isMounted) > 0 {
+		mounted = isMounted[0]
+	}
+
 	// Get unique HTTP method identifier
 	m := methodInt(method)
 
@@ -497,12 +508,15 @@ func (app *App) addRoute(method string, route *Route) {
 		app.routesRefreshed = true
 	}
 
-	app.mutex.Lock()
-	app.latestRoute = route
-	if err := app.hooks.executeOnRouteHooks(*route); err != nil {
-		panic(err)
+	// Execute onRoute hooks & change latestRoute if not adding mounted route
+	if !mounted {
+		app.mutex.Lock()
+		app.latestRoute = route
+		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
+			panic(err)
+		}
+		app.mutex.Unlock()
 	}
-	app.mutex.Unlock()
 }
 
 // buildTree build the prefix tree from the previously registered routes
@@ -510,6 +524,7 @@ func (app *App) buildTree() *App {
 	if !app.routesRefreshed {
 		return app
 	}
+
 	// loop all the methods and stacks and create the prefix tree
 	for m := range intMethod {
 		tsMap := make(map[string][]*Route)
@@ -523,6 +538,7 @@ func (app *App) buildTree() *App {
 		}
 		app.treeStack[m] = tsMap
 	}
+
 	// loop the methods and tree stacks and add global stack and sort everything
 	for m := range intMethod {
 		tsMap := app.treeStack[m]

@@ -59,6 +59,12 @@ type Config struct {
 	//
 	// Default: 0
 	MaxBytes uint
+
+	// You can specify HTTP methods to cache.
+	// The middleware just caches the routes of its methods in this slice.
+	//
+	// Default: []string{fiber.MethodGet, fiber.MethodHead}
+	Methods []string
 }
 
 // ConfigDefault is the default config
@@ -74,6 +80,7 @@ var ConfigDefault = Config{
 	StoreResponseHeaders: false,
 	Storage:              nil,
 	MaxBytes:             0,
+	Methods:              []string{fiber.MethodGet, fiber.MethodHead},
 }
 
 // Helper function to set default values
@@ -98,6 +105,9 @@ func configDefault(config ...Config) Config {
 	}
 	if cfg.KeyGenerator == nil {
 		cfg.KeyGenerator = ConfigDefault.KeyGenerator
+	}
+	if len(cfg.Methods) == 0 {
+		cfg.Methods = ConfigDefault.Methods
 	}
 	return cfg
 }

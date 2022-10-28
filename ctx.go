@@ -317,7 +317,7 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	fasthttp.ReleaseCookie(fcookie)
 }
 
-// Cookies is used for getting a cookie value by key.
+// Cookies are used for getting a cookie value by key.
 // Defaults to the empty string "" if the cookie doesn't exist.
 // If a default value is given, it will return that value if the cookie doesn't exist.
 // The returned value is only valid within the handler. Do not store any references.
@@ -477,6 +477,10 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 func (c *DefaultCtx) Host() string {
 	if c.IsProxyTrusted() {
 		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
+			commaPos := strings.Index(host, ",")
+			if commaPos != -1 {
+				return host[:commaPos]
+			}
 			return host
 		}
 	}
@@ -510,72 +514,108 @@ func (c *DefaultCtx) IP() string {
 	return c.fasthttp.RemoteIP().String()
 }
 
-// validateIPIfEnabled will return the input IP when validation is disabled.
-// when validation is enabled, it will return an empty string if the input is not a valid IP.
-func (c *DefaultCtx) validateIPIfEnabled(ip string) string {
-	if c.app.config.EnableIPValidation && net.ParseIP(ip) == nil {
-		return ""
-	}
-	return ip
-}
-
 // extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 // When IP validation is enabled, any invalid IPs will be omitted.
-func (c *DefaultCtx) extractIPsFromHeader(header string) (ipsFound []string) {
+func (c *DefaultCtx) extractIPsFromHeader(header string) []string {
 	headerValue := c.Get(header)
 
-	// try to gather IPs in the input with minimal allocations to improve performance
-	ips := make([]string, bytes.Count([]byte(headerValue), []byte(","))+1)
-	var commaPos, i, validCount int
-	for {
-		commaPos = bytes.IndexByte([]byte(headerValue), ',')
-		if commaPos != -1 {
-			ips[i] = c.validateIPIfEnabled(strings.Trim(headerValue[:commaPos], " "))
-			if ips[i] != "" {
-				validCount++
-			}
-			headerValue, i = headerValue[commaPos+1:], i+1
-		} else {
-			ips[i] = c.validateIPIfEnabled(strings.Trim(headerValue, " "))
-			if ips[i] != "" {
-				validCount++
-			}
-			break
-		}
+	// We can't know how many IPs we will return, but we will try to guess with this constant division.
+	// Counting ',' makes function slower for about 50ns in general case.
+	estimatedCount := len(headerValue) / 8
+	if estimatedCount > 8 {
+		estimatedCount = 8 // Avoid big allocation on big header
 	}
 
-	// filter out any invalid IP(s) that we found
-	if len(ips) == validCount {
-		ipsFound = ips
-	} else {
-		ipsFound = make([]string, validCount)
-		var validIndex int
-		for n := range ips {
-			if ips[n] != "" {
-				ipsFound[validIndex] = ips[n]
-				validIndex++
+	ipsFound := make([]string, 0, estimatedCount)
+
+	i := 0
+	j := -1
+
+iploop:
+	for {
+		v4 := false
+		v6 := false
+
+		// Manually splitting string without allocating slice, working with parts directly
+		i, j = j+1, j+2
+
+		if j > len(headerValue) {
+			break
+		}
+
+		for j < len(headerValue) && headerValue[j] != ',' {
+			if headerValue[j] == ':' {
+				v6 = true
+			} else if headerValue[j] == '.' {
+				v4 = true
+			}
+			j++
+		}
+
+		for i < j && headerValue[i] == ' ' {
+			i++
+		}
+
+		s := strings.TrimRight(headerValue[i:j], " ")
+
+		if c.app.config.EnableIPValidation {
+			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
+			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
+				continue iploop
 			}
 		}
+
+		ipsFound = append(ipsFound, s)
 	}
-	return
+
+	return ipsFound
 }
 
 // extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
 // currently, it will return the first valid IP address in header.
 // when IP validation is disabled, it will simply return the value of the header without any inspection.
+// Implementation is almost the same as in extractIPsFromHeader, but without allocation of []string.
 func (c *DefaultCtx) extractIPFromHeader(header string) string {
 	if c.app.config.EnableIPValidation {
-		// extract all IPs from the header's value
-		ips := c.extractIPsFromHeader(header)
+		headerValue := c.Get(header)
 
-		// since X-Forwarded-For has no RFC, it's really up to the proxy to decide whether to append
-		// or prepend IPs to this list. For example, the AWS ALB will prepend but the F5 BIG-IP will append ;(
-		// for now lets just go with the first value in the list...
-		if len(ips) > 0 {
-			return ips[0]
+		i := 0
+		j := -1
+
+	iploop:
+		for {
+			v4 := false
+			v6 := false
+			i, j = j+1, j+2
+
+			if j > len(headerValue) {
+				break
+			}
+
+			for j < len(headerValue) && headerValue[j] != ',' {
+				if headerValue[j] == ':' {
+					v6 = true
+				} else if headerValue[j] == '.' {
+					v4 = true
+				}
+				j++
+			}
+
+			for i < j && headerValue[i] == ' ' {
+				i++
+			}
+
+			s := strings.TrimRight(headerValue[i:j], " ")
+
+			if c.app.config.EnableIPValidation {
+				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
+					continue iploop
+				}
+			}
+
+			return s
 		}
 
-		// return the IP from the stack if we could not find any valid Ips
 		return c.fasthttp.RemoteIP().String()
 	}
 
@@ -639,7 +679,7 @@ func (c *DefaultCtx) JSONP(data any, callback ...string) error {
 	result = cb + "(" + c.app.getString(raw) + ");"
 
 	c.setCanonical(HeaderXContentTypeOptions, "nosniff")
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
+	c.fasthttp.Response.Header.SetContentType(MIMETextJavaScriptCharsetUTF8)
 	return c.SendString(result)
 }
 
@@ -674,9 +714,9 @@ func (c *DefaultCtx) Links(link ...string) {
 	bytebufferpool.Put(bb)
 }
 
-// Locals makes it possible to pass any values under string keys scoped to the request
+// Locals makes it possible to pass any values under keys scoped to the request
 // and therefore available to all following routes that match the request.
-func (c *DefaultCtx) Locals(key string, value ...any) (val any) {
+func (c *DefaultCtx) Locals(key any, value ...any) (val any) {
 	if len(value) == 0 {
 		return c.fasthttp.UserValue(key)
 	}
@@ -830,10 +870,21 @@ func (c *DefaultCtx) Scheme() string {
 		if len(key) < 12 {
 			return // X-Forwarded-
 		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
+			v := c.app.getString(val)
 			if bytes.Equal(key, []byte(HeaderXForwardedProto)) {
-				scheme = c.app.getString(val)
+				commaPos := strings.Index(v, ",")
+				if commaPos != -1 {
+					scheme = v[:commaPos]
+				} else {
+					scheme = v
+				}
 			} else if bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
-				scheme = c.app.getString(val)
+				commaPos := strings.Index(v, ",")
+				if commaPos != -1 {
+					scheme = v[:commaPos]
+				} else {
+					scheme = v
+				}
 			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
 				scheme = "https"
 			}
@@ -921,7 +972,7 @@ func (c *DefaultCtx) Redirect() *Redirect {
 	return c.redirect
 }
 
-// Add vars to default view var map binding to template engine.
+// Bind Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
 func (c *DefaultCtx) BindVars(vars Map) error {
 	// init viewBindMap - lazy map
@@ -949,7 +1000,7 @@ func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, erro
 
 		for key, val := range params {
 			isSame := key == segment.ParamName || (!c.app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
-			isGreedy := (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))
+			isGreedy := segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters)
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
@@ -977,11 +1028,13 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// Pass-locals-to-views & bind
+	// Pass-locals-to-views, bind, appListKeys
 	c.renderExtensions(bind)
 
-	rendered := false
-	for prefix, app := range c.app.appList {
+	var rendered bool
+	for i := len(c.app.mountFields.appListKeys) - 1; i >= 0; i-- {
+		prefix := c.app.mountFields.appListKeys[i]
+		app := c.app.mountFields.appList[prefix]
 		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
@@ -1044,6 +1097,10 @@ func (c *DefaultCtx) renderExtensions(bind Map) {
 				bind[utils.UnsafeString(key)] = val
 			}
 		})
+	}
+
+	if len(c.app.mountFields.appListKeys) == 0 {
+		c.app.generateAppListKeys()
 	}
 }
 
@@ -1200,7 +1257,6 @@ func (c *DefaultCtx) SendStream(stream io.Reader, size ...int) error {
 		c.fasthttp.Response.SetBodyStream(stream, size[0])
 	} else {
 		c.fasthttp.Response.SetBodyStream(stream, -1)
-		c.setCanonical(HeaderContentLength, strconv.Itoa(len(c.fasthttp.Response.Body())))
 	}
 
 	return nil

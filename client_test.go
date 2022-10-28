@@ -1187,6 +1187,24 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		require.Equal(t, 1, len(errs))
 		require.Equal(t, "unexpected end of JSON input", errs[0].Error())
 	})
+
+	t.Run("nil jsonDecoder", func(t *testing.T) {
+		a := AcquireAgent()
+		defer ReleaseAgent(a)
+		defer a.ConnectionClose()
+		request := a.Request()
+		request.Header.SetMethod("GET")
+		request.SetRequestURI("http://example.com")
+		err := a.Parse()
+		require.NoError(t, err)
+		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
+		var d data
+		code, body, errs := a.Struct(&d)
+		require.Equal(t, StatusOK, code)
+		require.Equal(t, `{"success":true}`, string(body))
+		require.Equal(t, 0, len(errs))
+		require.True(t, d.Success)
+	})
 }
 
 func Test_Client_Agent_Parse(t *testing.T) {

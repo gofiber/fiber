@@ -4,6 +4,7 @@ package cache
 
 import (
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,7 +28,13 @@ const (
 	cacheMiss        = "miss"
 )
 
-var ignoreHeaders = map[string]any{
+// directives
+const (
+	noCache = "no-cache"
+	noStore = "no-store"
+)
+
+var ignoreHeaders = map[string]interface{}{
 	"Connection":          nil,
 	"Keep-Alive":          nil,
 	"Proxy-Authenticate":  nil,
@@ -83,8 +90,20 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
-		// Only cache GET and HEAD methods
-		if c.Method() != fiber.MethodGet {
+		// Refrain from caching
+		if hasRequestDirective(c, noStore) {
+			return c.Next()
+		}
+
+		// Only cache selected methods
+		var isExists bool
+		for _, method := range cfg.Methods {
+			if c.Method() == method {
+				isExists = true
+			}
+		}
+
+		if !isExists {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
@@ -109,7 +128,7 @@ func New(config ...Config) fiber.Handler {
 				_, size := heap.remove(e.heapidx)
 				storedBytes -= size
 			}
-		} else if e.exp != 0 {
+		} else if e.exp != 0 && !hasRequestDirective(c, noCache) {
 			// Separate body value to avoid msgp serialization
 			// We can store raw bytes with Storage 👍
 			if cfg.Storage != nil {
@@ -227,4 +246,9 @@ func New(config ...Config) fiber.Handler {
 		// Finish response
 		return nil
 	}
+}
+
+// Check if request has directive
+func hasRequestDirective(c fiber.Ctx, directive string) bool {
+	return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
 }

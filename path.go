@@ -362,23 +362,15 @@ func findLastCharsetPosition(search string, charset []byte) int {
 // findNextCharsetPositionConstraint search the next char position from the charset
 // unlike findNextCharsetPosition, it takes care of constraint start-end chars to parse route pattern
 func findNextCharsetPositionConstraint(search string, charset []byte) int {
+	constraintStart := findNextNonEscapedCharsetPosition(search, parameterConstraintStartChars)
+	constraintEnd := findNextNonEscapedCharsetPosition(search, parameterConstraintEndChars)
 	nextPosition := -1
-	constraintStart := -1
-	constraintEnd := -1
 
 	for _, char := range charset {
 		pos := strings.IndexByte(search, char)
 
-		if char == paramConstraintStart {
-			constraintStart = pos
-		}
-
-		if char == paramConstraintEnd {
-			constraintEnd = pos
-		}
-
 		if pos != -1 && (pos < nextPosition || nextPosition == -1) {
-			if pos > constraintStart && pos < constraintEnd {
+			if (pos > constraintStart && pos > constraintEnd) || (pos < constraintStart && pos < constraintEnd) {
 				nextPosition = pos
 			}
 		}

@@ -132,7 +132,7 @@ go get -u github.com/gofiber/fiber/v3
 -   [WebSocket support](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   Verfügbar in [15 Sprachen](https://docs.gofiber.io/)
+-   Verfügbar in [18 Sprachen](https://docs.gofiber.io/)
 -   Und vieles mehr - [erkunde Fiber](https://docs.gofiber.io/)
 
 ## 💡 Philosophie
@@ -142,7 +142,7 @@ Neue Gopher, welche von [Node.js](https://nodejs.org/en/about/) zu [Go](https://
 Fiber ist **inspiriert** von Express.js, dem beliebtesten Web-Framework im Internet. Wir haben die **Leichtigkeit** von Express und die **Rohleistung** von Go kombiniert. Wenn du jemals eine Webanwendung mit Node.js implementiert hast (_mit Express.js oder ähnlichem_), werden dir viele Methoden und Prinzipien **sehr vertraut** vorkommen.
 
 ## ⚠️ Limitations
-* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.29.0 has been tested with Go versions 1.14 to 1.19.
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.16 to 1.19.
 * Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 Beispiele

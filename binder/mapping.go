@@ -25,22 +25,23 @@ type ParserType struct {
 	Converter  func(string) reflect.Value
 }
 
-// decoderPool helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
-var decoderPool = &sync.Pool{New: func() any {
-	return decoderBuilder(ParserConfig{
-		IgnoreUnknownKeys: true,
-		ZeroEmpty:         true,
-	})
-}}
+var (
+	// decoderPoolMap helps to improve binders
+	decoderPoolMap = map[string]*sync.Pool{}
+	// tags is used to classify parser's pool
+	tags = []string{HeaderBinder.Name(), RespHeaderBinder.Name(), CookieBinder.Name(), QueryBinder.Name(), FormBinder.Name(), URIBinder.Name()}
+)
 
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetParserDecoder(parserConfig ParserConfig) {
-	decoderPool = &sync.Pool{New: func() any {
-		return decoderBuilder(parserConfig)
-	}}
+	for _, tag := range tags {
+		decoderPoolMap[tag] = &sync.Pool{New: func() interface{} {
+			return decoderBuilder(parserConfig)
+		}}
+	}
 }
 
-func decoderBuilder(parserConfig ParserConfig) any {
+func decoderBuilder(parserConfig ParserConfig) interface{} {
 	decoder := schema.NewDecoder()
 	decoder.IgnoreUnknownKeys(parserConfig.IgnoreUnknownKeys)
 	if parserConfig.SetAliasTag != "" {
@@ -51,6 +52,17 @@ func decoderBuilder(parserConfig ParserConfig) any {
 	}
 	decoder.ZeroEmpty(parserConfig.ZeroEmpty)
 	return decoder
+}
+
+func init() {
+	for _, tag := range tags {
+		decoderPoolMap[tag] = &sync.Pool{New: func() interface{} {
+			return decoderBuilder(ParserConfig{
+				IgnoreUnknownKeys: true,
+				ZeroEmpty:         true,
+			})
+		}}
+	}
 }
 
 // parse data into the map or struct
@@ -72,10 +84,10 @@ func parse(aliasTag string, out any, data map[string][]string) error {
 }
 
 // Parse data into the struct with gorilla/schema
-func parseToStruct(aliasTag string, out any, data map[string][]string) error {
+func parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
 	// Get decoder from pool
-	schemaDecoder := decoderPool.Get().(*schema.Decoder)
-	defer decoderPool.Put(schemaDecoder)
+	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder)
+	defer decoderPoolMap[aliasTag].Put(schemaDecoder)
 
 	// Set alias tag
 	schemaDecoder.SetAliasTag(aliasTag)

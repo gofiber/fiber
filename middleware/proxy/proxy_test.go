@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/tlstest"
 	"github.com/gofiber/utils"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/fasthttp"
 )
 
 func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, string) {
@@ -380,6 +381,7 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 	require.Nil(t, err2)
 }
 
+// go test -race -run Test_Proxy_Do_HTTP_Prefix_URL
 func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	t.Parallel()
 
@@ -405,4 +407,94 @@ func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
 	s, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "hello world", string(s))
+}
+
+// go test -race -run Test_Proxy_Forward_Global_Client
+func Test_Proxy_Forward_Global_Client(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	WithClient(&fasthttp.Client{
+		NoDefaultUserAgentHeader: true,
+		DisablePathNormalizing:   true,
+	})
+	app := fiber.New()
+	app.Get("/test_global_client", func(c fiber.Ctx) error {
+		return c.SendString("test_global_client")
+	})
+
+	addr := ln.Addr().String()
+	app.Use(Forward("http://" + addr + "/test_global_client"))
+	go func() {
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
+
+	code, body, errs := fiber.Get("http://" + addr).String()
+	require.Equal(t, 0, len(errs))
+	require.Equal(t, fiber.StatusOK, code)
+	require.Equal(t, "test_global_client", body)
+}
+
+// go test -race -run Test_Proxy_Forward_Local_Client
+func Test_Proxy_Forward_Local_Client(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	require.NoError(t, err)
+	app := fiber.New()
+	app.Get("/test_local_client", func(c fiber.Ctx) error {
+		return c.SendString("test_local_client")
+	})
+
+	addr := ln.Addr().String()
+	app.Use(Forward("http://"+addr+"/test_local_client", &fasthttp.Client{
+		NoDefaultUserAgentHeader: true,
+		DisablePathNormalizing:   true,
+		Dial: func(addr string) (net.Conn, error) {
+			return fasthttp.Dial(addr)
+		},
+	}))
+	go func() {
+		require.Nil(t, app.Listener(ln, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}))
+	}()
+
+	code, body, errs := fiber.Get("http://" + addr).String()
+	require.Equal(t, 0, len(errs))
+	require.Equal(t, fiber.StatusOK, code)
+	require.Equal(t, "test_local_client", body)
+}
+
+// go test -run Test_ProxyBalancer_Custom_Client
+func Test_ProxyBalancer_Custom_Client(t *testing.T) {
+	t.Parallel()
+
+	target, addr := createProxyTestServer(
+		func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) }, t,
+	)
+
+	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
+
+	app := fiber.New()
+
+	app.Use(Balancer(Config{Client: &fasthttp.LBClient{
+		Clients: []fasthttp.BalancingClient{
+			&fasthttp.HostClient{
+				NoDefaultUserAgentHeader: true,
+				DisablePathNormalizing:   true,
+				Addr:                     addr,
+			},
+		},
+		Timeout: time.Second,
+	}}))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Host = addr
+	resp, err = app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }

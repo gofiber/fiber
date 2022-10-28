@@ -825,6 +825,10 @@ func (a *Agent) Struct(v any) (code int, body []byte, errs []error) {
 		return
 	}
 
+	if a.jsonDecoder == nil {
+		a.jsonDecoder = json.Unmarshal
+	}
+
 	if err := a.jsonDecoder(body, v); err != nil {
 		errs = append(errs, err)
 	}

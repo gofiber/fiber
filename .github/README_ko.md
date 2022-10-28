@@ -132,7 +132,7 @@ go get -u github.com/gofiber/fiber/v3
 -   [WebSocket support](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   Available in [15 languages](https://docs.gofiber.io/)
+-   Available in [18 languages](https://docs.gofiber.io/)
 -   더 알고 싶다면, [Fiber 둘러보기](https://docs.gofiber.io/)
 
 ## 💡 철학
@@ -144,7 +144,7 @@ Fiber는 인터넷에서 가장 인기있는 웹 프레임워크인 Express에�
 우리는 **어떤한** 작업, **마감일정**, 개발자의 **기술**이던간에 **빠르고**, **유연하고**, **익숙한** Go 웹 프레임워크를 만들기 위해 사용자들의 [이슈들](https://github.com/gofiber/fiber/issues)을(그리고 모든 인터넷을 통해) **듣고 있습니다**! Express가 자바스크립트 세계에서 하는 것 처럼요.
 
 ## ⚠️ 한계점
-* Fiber는 unsafe 패키지를 사용하기 때문에 최신 Go버전과 호환되지 않을 수 있습니다.Fiber 2.29.0은 Go 버전 1.14에서 1.19로 테스트되고 있습니다.
+* Fiber는 unsafe 패키지를 사용하기 때문에 최신 Go버전과 호환되지 않을 수 있습니다.Fiber 2.40.0은 Go 버전 1.16에서 1.19로 테스트되고 있습니다.
 * Fiber는 net/http 인터페이스와 호환되지 않습니다.즉, gqlgen이나 go-swagger 등 net/http 생태계의 일부인 프로젝트를 사용할 수 없습니다.
 
 ## 👀 예제

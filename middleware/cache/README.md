@@ -2,6 +2,10 @@
 
 Cache middleware for [Fiber](https://github.com/gofiber/fiber) designed to intercept responses and cache them. This middleware will cache the `Body`, `Content-Type` and `StatusCode` using the `c.Path()` (or a string returned by the Key function) as unique identifier. Special thanks to [@codemicro](https://github.com/codemicro/fiber-cache) for creating this middleware for Fiber core!
 
+Request Directives<br>
+`Cache-Control: no-cache` will return the up-to-date response but still caches it. You will always get a `miss` cache status.<br>
+`Cache-Control: no-store` will refrain from caching. You will always get the up-to-date response.
+
 ## Table of Contents
 
 - [Cache Middleware](#cache-middleware)
@@ -125,6 +129,12 @@ type Config struct {
 	//
 	// Default: 0
 	MaxBytes uint
+
+	// You can specify HTTP methods to cache.
+	// The middleware just caches the routes of its methods in this slice.
+	//
+	// Default: []string{fiber.MethodGet, fiber.MethodHead}
+	Methods []string
 }
 ```
 
@@ -144,5 +154,6 @@ var ConfigDefault = Config{
 	StoreResponseHeaders: false,
 	Storage:              nil,
 	MaxBytes:             0,
+	Methods:              []string{fiber.MethodGet, fiber.MethodHead},
 }
 ```

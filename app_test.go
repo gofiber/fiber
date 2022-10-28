@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -237,46 +238,8 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	require.Equal(t, 500, resp.StatusCode, "Status code")
 
 	body, err := io.ReadAll(resp.Body)
-	require.NoError(t, err)
+	require.Equal(t, nil, err)
 	require.Equal(t, "1: USE error", string(body))
-}
-
-func Test_App_ErrorHandler_GroupMount(t *testing.T) {
-	micro := New(Config{
-		ErrorHandler: func(c Ctx, err error) error {
-			require.Equal(t, "0: GET error", err.Error())
-			return c.Status(500).SendString("1: custom error")
-		},
-	})
-	micro.Get("/doe", func(c Ctx) error {
-		return errors.New("0: GET error")
-	})
-
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	testErrorResponse(t, err, resp, "1: custom error")
-}
-
-func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
-	micro := New(Config{
-		ErrorHandler: func(c Ctx, err error) error {
-			require.Equal(t, "0: GET error", err.Error())
-			return c.Status(500).SendString("1: custom error")
-		},
-	})
-	micro.Get("/john/doe", func(c Ctx) error {
-		return errors.New("0: GET error")
-	})
-
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Mount("/", micro)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	testErrorResponse(t, err, resp, "1: custom error")
 }
 
 func Test_App_Nested_Params(t *testing.T) {
@@ -300,22 +263,6 @@ func Test_App_Nested_Params(t *testing.T) {
 
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-}
-
-// go test -run Test_App_Mount
-func Test_App_Mount(t *testing.T) {
-	micro := New()
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
-	app := New()
-	app.Mount("/john", micro)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(1), app.handlersCount)
 }
 
 func Test_App_Use_Params(t *testing.T) {
@@ -416,6 +363,72 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 	require.NoError(t, err, "app.Test(req)")
 	// check the detected path result
 	require.Equal(t, "/AbC", app.getString(body))
+}
+
+func Test_App_Not_Use_StrictRouting(t *testing.T) {
+	app := New()
+
+	app.Use("/abc", func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+
+	g := app.Group("/foo")
+	g.Use("/", func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+
+	// wrong path in the requested route -> 404
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", nil))
+	require.Equal(t, nil, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// right path in the requrested route -> 200
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
+	require.Equal(t, nil, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// wrong path with group in the requested route -> 404
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
+	require.Equal(t, nil, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// right path with group in the requrested route -> 200
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/", nil))
+	require.Equal(t, nil, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
+
+func Test_App_Use_StrictRouting(t *testing.T) {
+	app := New(Config{StrictRouting: true})
+
+	app.Get("/abc", func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+
+	g := app.Group("/foo")
+	g.Get("/", func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+
+	// wrong path in the requested route -> 404
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/abc/", nil))
+	require.Equal(t, nil, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+
+	// right path in the requrested route -> 200
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/abc", nil))
+	require.Equal(t, nil, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	// wrong path with group in the requested route -> 404
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo", nil))
+	require.Equal(t, nil, err, "app.Test(req)")
+	require.Equal(t, StatusNotFound, resp.StatusCode, "Status code")
+
+	// right path with group in the requrested route -> 200
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/foo/", nil))
+	require.Equal(t, nil, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
 func Test_App_Add_Method_Test(t *testing.T) {
@@ -691,6 +704,26 @@ func Test_App_Static_MaxAge(t *testing.T) {
 	require.Equal(t, "public, max-age=100", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 }
 
+// go test -run Test_App_Static_Custom_CacheControl
+func Test_App_Static_Custom_CacheControl(t *testing.T) {
+	app := New()
+
+	app.Static("/", "./.github", Static{ModifyResponse: func(c Ctx) error {
+		if strings.Contains(string(c.GetRespHeader("Content-Type")), "text/html") {
+			c.Response().Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		}
+		return nil
+	}})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/index.html", nil))
+	require.Equal(t, nil, err, "app.Test(req)")
+	require.Equal(t, "no-cache, no-store, must-revalidate", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
+
+	normal_resp, normal_err := app.Test(httptest.NewRequest("GET", "/config.yml", nil))
+	require.Equal(t, nil, normal_err, "app.Test(req)")
+	require.Equal(t, "", normal_resp.Header.Get(HeaderCacheControl), "CacheControl Control")
+}
+
 // go test -run Test_App_Static_Download
 func Test_App_Static_Download(t *testing.T) {
 	app := New()
@@ -948,23 +981,6 @@ func Test_App_Group_Invalid(t *testing.T) {
 	New().Group("/").Use(1)
 }
 
-// go test -run Test_App_Group_Mount
-func Test_App_Group_Mount(t *testing.T) {
-	micro := New()
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
-	app := New()
-	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
-	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(1), app.handlersCount)
-}
-
 func Test_App_Group(t *testing.T) {
 	dummyHandler := testEmptyHandler
 
@@ -1016,13 +1032,13 @@ func Test_App_Group(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodPost, "/test/v1/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	// utils.AssertEqual(t, "/test/v1", resp.Header.Get("Location"), "Location")
+	// require.Equal(t, "/test/v1", resp.Header.Get("Location"), "Location")
 
 	api.Get("/users", dummyHandler)
 	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/v1/UsErS", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	// utils.AssertEqual(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
+	// require.Equal(t, "/test/v1/users", resp.Header.Get("Location"), "Location")
 }
 
 func Test_App_Route(t *testing.T) {
@@ -1243,7 +1259,10 @@ func Test_App_ReadTimeout(t *testing.T) {
 
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4004")
 		require.NoError(t, err)
-		defer conn.Close()
+		defer func(conn net.Conn) {
+			err := conn.Close()
+			require.NoError(t, err)
+		}(conn)
 
 		_, err = conn.Write([]byte("HEAD /read-timeout HTTP/1.1\r\n"))
 		require.NoError(t, err)
@@ -1273,7 +1292,10 @@ func Test_App_BadRequest(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 		conn, err := net.Dial(NetworkTCP4, "127.0.0.1:4005")
 		require.NoError(t, err)
-		defer conn.Close()
+		defer func(conn net.Conn) {
+			err := conn.Close()
+			require.NoError(t, err)
+		}(conn)
 
 		_, err = conn.Write([]byte("BadRequest\r\n"))
 		require.NoError(t, err)
@@ -1337,12 +1359,14 @@ func Test_App_New_Test_Parallel(t *testing.T) {
 	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		app.Test(httptest.NewRequest("GET", "/", nil))
+		_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+		require.Equal(t, nil, err)
 	})
 	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		app.Test(httptest.NewRequest("GET", "/", nil))
+		_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+		require.Equal(t, nil, err)
 	})
 }
 
@@ -1407,96 +1431,6 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 	require.Equal(t, testString, string(body))
 }
 
-func Test_App_UseMountedErrorHandler(t *testing.T) {
-	app := New()
-
-	fiber := New(Config{
-		ErrorHandler: func(c Ctx, err error) error {
-			return c.Status(500).SendString("hi, i'm a custom error")
-		},
-	})
-	fiber.Get("/", func(c Ctx) error {
-		return errors.New("something happened")
-	})
-
-	app.Mount("/api", fiber)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
-	testErrorResponse(t, err, resp, "hi, i'm a custom error")
-}
-
-func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
-	app := New()
-
-	fiber := New(Config{
-		ErrorHandler: func(c Ctx, err error) error {
-			return c.Status(500).SendString("hi, i'm a custom error")
-		},
-	})
-	fiber.Get("/api", func(c Ctx) error {
-		return errors.New("something happened")
-	})
-
-	app.Mount("/", fiber)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
-	testErrorResponse(t, err, resp, "hi, i'm a custom error")
-}
-
-func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
-	app := New()
-
-	tsf := func(c Ctx, err error) error {
-		return c.Status(200).SendString("hi, i'm a custom sub sub fiber error")
-	}
-	tripleSubFiber := New(Config{
-		ErrorHandler: tsf,
-	})
-	tripleSubFiber.Get("/", func(c Ctx) error {
-		return errors.New("something happened")
-	})
-
-	sf := func(c Ctx, err error) error {
-		return c.Status(200).SendString("hi, i'm a custom sub fiber error")
-	}
-	subfiber := New(Config{
-		ErrorHandler: sf,
-	})
-	subfiber.Get("/", func(c Ctx) error {
-		return errors.New("something happened")
-	})
-	subfiber.Mount("/third", tripleSubFiber)
-
-	f := func(c Ctx, err error) error {
-		return c.Status(200).SendString("hi, i'm a custom error")
-	}
-	fiber := New(Config{
-		ErrorHandler: f,
-	})
-	fiber.Get("/", func(c Ctx) error {
-		return errors.New("something happened")
-	})
-	fiber.Mount("/sub", subfiber)
-
-	app.Mount("/api", fiber)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub", nil))
-	require.NoError(t, err, "/api/sub req")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	b, err := io.ReadAll(resp.Body)
-	require.NoError(t, err, "iotuil.ReadAll()")
-	require.Equal(t, "hi, i'm a custom sub fiber error", string(b), "Response body")
-
-	resp2, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub/third", nil))
-	require.NoError(t, err, "/api/sub/third req")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	b, err = io.ReadAll(resp2.Body)
-	require.NoError(t, err, "iotuil.ReadAll()")
-	require.Equal(t, "hi, i'm a custom sub sub fiber error", string(b), "Third fiber Response body")
-}
-
 func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 	var err error
 	c := make(chan int)
@@ -1527,4 +1461,48 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 		t.Error("unexpected success request")
 		t.FailNow()
 	}
+}
+
+func Test_App_SetTLSHandler(t *testing.T) {
+	tlsHandler := &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
+		ServerName: "example.golang",
+	}}
+
+	app := New()
+	app.SetTLSHandler(tlsHandler)
+
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+
+	require.Equal(t, "example.golang", c.ClientHelloInfo().ServerName)
+}
+
+func TestApp_GetRoutes(t *testing.T) {
+	app := New()
+	app.Use(func(c Ctx) error {
+		return c.Next()
+	})
+	handler := func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	}
+	app.Delete("/delete", handler).Name("delete")
+	app.Post("/post", handler).Name("post")
+	routes := app.GetRoutes(false)
+	require.Equal(t, 11, len(routes))
+	methodMap := map[string]string{"/delete": "delete", "/post": "post"}
+	for _, route := range routes {
+		name, ok := methodMap[route.Path]
+		if ok {
+			require.Equal(t, name, route.Name)
+		}
+	}
+
+	routes = app.GetRoutes(true)
+	require.Equal(t, 2, len(routes))
+	for _, route := range routes {
+		name, ok := methodMap[route.Path]
+		require.Equal(t, true, ok)
+		require.Equal(t, name, route.Name)
+	}
+
 }

@@ -16,6 +16,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
+	"github.com/gofiber/fiber/v3/middleware/etag"
 	"github.com/gofiber/utils"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
@@ -108,6 +109,159 @@ func Test_Cache(t *testing.T) {
 	require.Equal(t, cachedBody, body)
 }
 
+// go test -run Test_Cache_WithNoCacheRequestDirective
+func Test_Cache_WithNoCacheRequestDirective(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(c.Query("id", "1"))
+	})
+
+	// Request id = 1
+	req := httptest.NewRequest("GET", "/", nil)
+	resp, err := app.Test(req)
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.Equal(t, []byte("1"), body)
+	// Response cached, entry id = 1
+
+	// Request id = 2 without Cache-Control: no-cache
+	cachedReq := httptest.NewRequest("GET", "/?id=2", nil)
+	cachedResp, err := app.Test(cachedReq)
+	defer cachedResp.Body.Close()
+	cachedBody, _ := io.ReadAll(cachedResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, cachedResp.Header.Get("X-Cache"))
+	require.Equal(t, []byte("1"), cachedBody)
+	// Response not cached, returns cached response, entry id = 1
+
+	// Request id = 2 with Cache-Control: no-cache
+	noCacheReq := httptest.NewRequest("GET", "/?id=2", nil)
+	noCacheReq.Header.Set(fiber.HeaderCacheControl, noCache)
+	noCacheResp, err := app.Test(noCacheReq)
+	defer noCacheResp.Body.Close()
+	noCacheBody, _ := io.ReadAll(noCacheResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, noCacheResp.Header.Get("X-Cache"))
+	require.Equal(t, []byte("2"), noCacheBody)
+	// Response cached, returns updated response, entry = 2
+
+	/* Check Test_Cache_WithETagAndNoCacheRequestDirective */
+	// Request id = 2 with Cache-Control: no-cache again
+	noCacheReq1 := httptest.NewRequest("GET", "/?id=2", nil)
+	noCacheReq1.Header.Set(fiber.HeaderCacheControl, noCache)
+	noCacheResp1, err := app.Test(noCacheReq1)
+	defer noCacheResp1.Body.Close()
+	noCacheBody1, _ := io.ReadAll(noCacheResp1.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, noCacheResp1.Header.Get("X-Cache"))
+	require.Equal(t, []byte("2"), noCacheBody1)
+	// Response cached, returns updated response, entry = 2
+
+	// Request id = 1 without Cache-Control: no-cache
+	cachedReq1 := httptest.NewRequest("GET", "/", nil)
+	cachedResp1, err := app.Test(cachedReq1)
+	defer cachedResp1.Body.Close()
+	cachedBody1, _ := io.ReadAll(cachedResp1.Body)
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, cachedResp1.Header.Get("X-Cache"))
+	require.Equal(t, []byte("2"), cachedBody1)
+	// Response not cached, returns cached response, entry id = 2
+}
+
+// go test -run Test_Cache_WithETagAndNoCacheRequestDirective
+func Test_Cache_WithETagAndNoCacheRequestDirective(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(
+		etag.New(),
+		New(),
+	)
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(c.Query("id", "1"))
+	})
+
+	// Request id = 1
+	req := httptest.NewRequest("GET", "/", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	// Response cached, entry id = 1
+
+	// If response status 200
+	etagToken := resp.Header.Get("Etag")
+
+	// Request id = 2 with ETag but without Cache-Control: no-cache
+	cachedReq := httptest.NewRequest("GET", "/?id=2", nil)
+	cachedReq.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
+	cachedResp, err := app.Test(cachedReq)
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, cachedResp.Header.Get("X-Cache"))
+	require.Equal(t, fiber.StatusNotModified, cachedResp.StatusCode)
+	// Response not cached, returns cached response, entry id = 1, status not modified
+
+	// Request id = 2 with ETag and Cache-Control: no-cache
+	noCacheReq := httptest.NewRequest("GET", "/?id=2", nil)
+	noCacheReq.Header.Set(fiber.HeaderCacheControl, noCache)
+	noCacheReq.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
+	noCacheResp, err := app.Test(noCacheReq)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, noCacheResp.Header.Get("X-Cache"))
+	require.Equal(t, fiber.StatusOK, noCacheResp.StatusCode)
+	// Response cached, returns updated response, entry id = 2
+
+	// If response status 200
+	etagToken = noCacheResp.Header.Get("Etag")
+
+	// Request id = 2 with ETag and Cache-Control: no-cache again
+	noCacheReq1 := httptest.NewRequest("GET", "/?id=2", nil)
+	noCacheReq1.Header.Set(fiber.HeaderCacheControl, noCache)
+	noCacheReq1.Header.Set(fiber.HeaderIfNoneMatch, etagToken)
+	noCacheResp1, err := app.Test(noCacheReq1)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, noCacheResp1.Header.Get("X-Cache"))
+	require.Equal(t, fiber.StatusNotModified, noCacheResp1.StatusCode)
+	// Response cached, returns updated response, entry id = 2, status not modified
+
+	// Request id = 1 without ETag and Cache-Control: no-cache
+	cachedReq1 := httptest.NewRequest("GET", "/", nil)
+	cachedResp1, err := app.Test(cachedReq1)
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, cachedResp1.Header.Get("X-Cache"))
+	require.Equal(t, fiber.StatusOK, cachedResp1.StatusCode)
+	// Response not cached, returns cached response, entry id = 2
+}
+
+// go test -run Test_Cache_WithNoStoreRequestDirective
+func Test_Cache_WithNoStoreRequestDirective(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(c.Query("id", "1"))
+	})
+
+	// Request id = 2
+	noStoreReq := httptest.NewRequest("GET", "/?id=2", nil)
+	noStoreReq.Header.Set(fiber.HeaderCacheControl, noStore)
+	noStoreResp, err := app.Test(noStoreReq)
+	defer noStoreResp.Body.Close()
+	noStoreBody, _ := io.ReadAll(noStoreResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, []byte("2"), noStoreBody)
+	// Response not cached, returns updated response
+}
+
 func Test_Cache_WithSeveralRequests(t *testing.T) {
 	t.Parallel()
 
@@ -174,7 +328,7 @@ func Test_Cache_Invalid_Expiration(t *testing.T) {
 	require.Equal(t, cachedBody, body)
 }
 
-func Test_Cache_Invalid_Method(t *testing.T) {
+func Test_Cache_Get(t *testing.T) {
 	t.Parallel()
 
 	app := fiber.New()
@@ -212,6 +366,48 @@ func Test_Cache_Invalid_Method(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.Equal(t, "123", string(body))
+}
+
+func Test_Cache_Post(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	app.Use(New(Config{
+		Methods: []string{fiber.MethodPost},
+	}))
+
+	app.Post("/", func(c fiber.Ctx) error {
+		return c.SendString(c.Query("cache"))
+	})
+
+	app.Get("/get", func(c fiber.Ctx) error {
+		return c.SendString(c.Query("cache"))
+	})
+
+	resp, err := app.Test(httptest.NewRequest("POST", "/?cache=123", nil))
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "123", string(body))
+
+	resp, err = app.Test(httptest.NewRequest("POST", "/?cache=12345", nil))
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "123", string(body))
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=123", nil))
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "123", string(body))
+
+	resp, err = app.Test(httptest.NewRequest("GET", "/get?cache=12345", nil))
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "12345", string(body))
 }
 
 func Test_Cache_NothingToCache(t *testing.T) {
@@ -414,6 +610,73 @@ func Test_CacheHeader(t *testing.T) {
 	errRespCached, err := app.Test(httptest.NewRequest("GET", "/error", nil))
 	require.NoError(t, err)
 	require.Equal(t, cacheUnreachable, errRespCached.Header.Get("X-Cache"))
+}
+
+func Test_Cache_WithHead(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+
+	app.Get("/", func(c fiber.Ctx) error {
+		now := fmt.Sprintf("%d", time.Now().UnixNano())
+		return c.SendString(now)
+	})
+
+	req := httptest.NewRequest("HEAD", "/", nil)
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	require.Equal(t, cacheMiss, resp.Header.Get("X-Cache"))
+
+	cachedReq := httptest.NewRequest("HEAD", "/", nil)
+	cachedResp, err := app.Test(cachedReq)
+	require.NoError(t, err)
+	require.Equal(t, cacheHit, cachedResp.Header.Get("X-Cache"))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	cachedBody, err := io.ReadAll(cachedResp.Body)
+	require.NoError(t, err)
+
+	require.Equal(t, cachedBody, body)
+}
+
+func Test_Cache_WithHeadThenGet(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+	app.Use(New())
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.SendString(c.Query("cache"))
+	})
+
+	headResp, err := app.Test(httptest.NewRequest("HEAD", "/?cache=123", nil))
+	require.NoError(t, err)
+	headBody, err := io.ReadAll(headResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "", string(headBody))
+	require.Equal(t, cacheMiss, headResp.Header.Get("X-Cache"))
+
+	headResp, err = app.Test(httptest.NewRequest("HEAD", "/?cache=123", nil))
+	require.NoError(t, err)
+	headBody, err = io.ReadAll(headResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "", string(headBody))
+	require.Equal(t, cacheHit, headResp.Header.Get("X-Cache"))
+
+	getResp, err := app.Test(httptest.NewRequest("GET", "/?cache=123", nil))
+	require.NoError(t, err)
+	getBody, err := io.ReadAll(getResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "123", string(getBody))
+	require.Equal(t, cacheMiss, getResp.Header.Get("X-Cache"))
+
+	getResp, err = app.Test(httptest.NewRequest("GET", "/?cache=123", nil))
+	require.NoError(t, err)
+	getBody, err = io.ReadAll(getResp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "123", string(getBody))
+	require.Equal(t, cacheHit, getResp.Header.Get("X-Cache"))
 }
 
 func Test_CustomCacheHeader(t *testing.T) {
