@@ -60,7 +60,7 @@ func (grp *Group) Name(name string) Router {
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (grp *Group) Use(args ...any) Router {
 	prefix := ""
-	var subApps []*App
+	var subApp *App
 	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
@@ -68,7 +68,7 @@ func (grp *Group) Use(args ...any) Router {
 		case string:
 			prefix = arg
 		case *App:
-			subApps = append(subApps, arg)
+			subApp = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
@@ -76,10 +76,8 @@ func (grp *Group) Use(args ...any) Router {
 		}
 	}
 
-	if len(subApps) > 0 {
-		for _, subApp := range subApps {
-			grp.mount(prefix, subApp)
-		}
+	if subApp != nil {
+		grp.mount(prefix, subApp)
 		return grp
 	}
 

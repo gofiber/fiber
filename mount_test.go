@@ -28,32 +28,6 @@ func Test_App_Mount(t *testing.T) {
 	require.Equal(t, uint32(1), app.handlersCount)
 }
 
-// go test -run Test_App_Mount_Multiple
-func Test_App_Mount_Multiple(t *testing.T) {
-	micro := New()
-	micro.Get("/doe", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
-	micro2 := New()
-	micro2.Get("/test", func(c Ctx) error {
-		return c.SendStatus(StatusOK)
-	})
-
-	app := New()
-	app.Use("/john", micro, micro2)
-
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
-	require.Equal(t, nil, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest(MethodGet, "/john/test", nil))
-	require.Equal(t, nil, err, "app.Test(req)")
-	require.Equal(t, 200, resp.StatusCode, "Status code")
-
-	require.Equal(t, uint32(2), app.handlersCount)
-}
-
 // go test -run Test_App_Mount_Nested
 func Test_App_Mount_Nested(t *testing.T) {
 	app := New()
