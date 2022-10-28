@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -25,7 +25,7 @@ func TestStore_getSessionID(t *testing.T) {
 		// set cookie
 		ctx.Request().Header.SetCookie(store.sessionName, expectedID)
 
-		utils.AssertEqual(t, expectedID, store.getSessionID(ctx))
+		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
 
 	t.Run("from header", func(t *testing.T) {
@@ -39,7 +39,7 @@ func TestStore_getSessionID(t *testing.T) {
 		// set header
 		ctx.Request().Header.Set(store.sessionName, expectedID)
 
-		utils.AssertEqual(t, expectedID, store.getSessionID(ctx))
+		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
 
 	t.Run("from url query", func(t *testing.T) {
@@ -53,7 +53,7 @@ func TestStore_getSessionID(t *testing.T) {
 		// set url parameter
 		ctx.Request().SetRequestURI(fmt.Sprintf("/path?%s=%s", store.sessionName, expectedID))
 
-		utils.AssertEqual(t, expectedID, store.getSessionID(ctx))
+		require.Equal(t, expectedID, store.getSessionID(ctx))
 	})
 }
 
@@ -73,7 +73,7 @@ func TestStore_Get(t *testing.T) {
 		ctx.Request().Header.SetCookie(store.sessionName, unexpectedID)
 
 		acquiredSession, err := store.Get(ctx)
-		utils.AssertEqual(t, err, nil)
+		require.NoError(t, err)
 
 		if acquiredSession.ID() != unexpectedID {
 			t.Fatal("server should not accept the unexpectedID which is not in the store")

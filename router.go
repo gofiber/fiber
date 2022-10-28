@@ -12,13 +12,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils"
 	"github.com/valyala/fasthttp"
 )
 
-// Router defines all router handle interface includes app and group router.
+// Router defines all router handle interface, including app and group router.
 type Router interface {
-	Use(args ...interface{}) Router
+	Use(args ...any) Router
 
 	Get(path string, handlers ...Handler) Router
 	Head(path string, handlers ...Handler) Router
@@ -36,12 +36,12 @@ type Router interface {
 
 	Group(prefix string, handlers ...Handler) Router
 
-	Route(prefix string, fn func(router Router), name ...string) Router
+	Route(path string) Register
 
 	Name(name string) Router
 }
 
-// Route is a struct that holds all metadata for each registered handler
+// Route is a struct that holds all metadata for each registered handler.
 type Route struct {
 	// Data for routing
 	pos         uint32      // Position in stack -> important for the sort of the matched routes
@@ -94,7 +94,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) (ma
 	return false
 }
 
-func (app *App) next(c CustomCtx, customCtx bool) (match bool, err error) {
+func (app *App) nextCustom(c CustomCtx) (match bool, err error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
 	if !ok {
@@ -134,22 +134,64 @@ func (app *App) next(c CustomCtx, customCtx bool) (match bool, err error) {
 	// If c.Next() does not match, return 404
 	err = NewError(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
 
-	var isMethodExist bool
-	if customCtx {
-		isMethodExist = methodExistCustom(c)
-	} else {
-		isMethodExist = methodExist(c.(*DefaultCtx))
+	// If no match, scan stack again if other methods match the request
+	// Moved from app.handler because middleware may break the route chain
+	if !c.getMatched() && methodExistCustom(c) {
+		err = ErrMethodNotAllowed
 	}
+	return
+}
+
+func (app *App) next(c *DefaultCtx) (match bool, err error) {
+	// Get stack length
+	tree, ok := app.treeStack[c.methodINT][c.treePath]
+	if !ok {
+		tree = app.treeStack[c.methodINT][""]
+	}
+	lenr := len(tree) - 1
+
+	// Loop over the route stack starting from previous index
+	for c.indexRoute < lenr {
+		// Increment route index
+		c.indexRoute++
+
+		// Get *Route
+		route := tree[c.indexRoute]
+
+		// Check if it matches the request path
+		match = route.match(c.detectionPath, c.path, &c.values)
+
+		// No match, next route
+		if !match {
+			continue
+		}
+		// Pass route reference and param values
+		c.route = route
+
+		// Non use handler matched
+		if !c.matched && !route.use {
+			c.matched = true
+		}
+
+		// Execute first handler of route
+		c.indexHandler = 0
+		err = route.Handlers[0](c)
+		return match, err // Stop scanning the stack
+	}
+
+	// If c.Next() does not match, return 404
+	err = NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	if !c.getMatched() && isMethodExist {
+	if !c.matched && methodExist(c) {
 		err = ErrMethodNotAllowed
 	}
 	return
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
+	// Handler for default ctxs
 	var c CustomCtx
 	if app.newCtxFunc != nil {
 		c = app.AcquireCtx().(CustomCtx)
@@ -165,8 +207,18 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	// check flash messages
+	if strings.Contains(utils.UnsafeString(c.Request().Header.RawHeaders()), FlashCookieName) {
+		c.Redirect().setFlash()
+	}
+
 	// Find match in stack
-	_, err := app.next(c, app.newCtxFunc != nil)
+	var err error
+	if app.newCtxFunc != nil {
+		_, err = app.nextCustom(c)
+	} else {
+		_, err = app.next(c.(*DefaultCtx))
+	}
 	if err != nil {
 		if catch := c.App().ErrorHandler(c, err); catch != nil {
 			_ = c.SendStatus(StatusInternalServerError)
@@ -186,7 +238,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	}
 	// Strict routing, remove trailing slashes
 	if !app.config.StrictRouting && len(prettyPath) > 1 {
-		prettyPath = utils.TrimRight(prettyPath, '/')
+		prettyPath = strings.TrimRight(prettyPath, "/")
 	}
 
 	route.Path = prefixedPath
@@ -244,7 +296,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 	}
 	// Strict routing, remove trailing slashes
 	if !app.config.StrictRouting && len(pathPretty) > 1 {
-		pathPretty = utils.TrimRight(pathPretty, '/')
+		pathPretty = strings.TrimRight(pathPretty, "/")
 	}
 	// Is layer a middleware?
 	isUse := method == methodUse
@@ -363,6 +415,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 
 	// Set config if provided
 	var cacheControlValue string
+	var modifyResponse Handler
 	if len(config) > 0 {
 		maxAge := config[0].MaxAge
 		if maxAge > 0 {
@@ -375,6 +428,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		if config[0].Index != "" {
 			fs.IndexNames = []string{config[0].Index}
 		}
+		modifyResponse = config[0].ModifyResponse
 	}
 	fileHandler := fs.NewRequestHandler()
 	handler := func(c Ctx) error {
@@ -393,6 +447,9 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		if status != StatusNotFound && status != StatusForbidden {
 			if len(cacheControlValue) > 0 {
 				c.Context().Response.Header.Set(HeaderCacheControl, cacheControlValue)
+			}
+			if modifyResponse != nil {
+				return modifyResponse(c)
 			}
 			return nil
 		}
@@ -425,7 +482,13 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	return app
 }
 
-func (app *App) addRoute(method string, route *Route) {
+func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
+	// Check mounted routes
+	var mounted bool
+	if len(isMounted) > 0 {
+		mounted = isMounted[0]
+	}
+
 	// Get unique HTTP method identifier
 	m := methodInt(method)
 
@@ -443,12 +506,15 @@ func (app *App) addRoute(method string, route *Route) {
 		app.routesRefreshed = true
 	}
 
-	app.mutex.Lock()
-	app.latestRoute = route
-	if err := app.hooks.executeOnRouteHooks(*route); err != nil {
-		panic(err)
+	// Execute onRoute hooks & change latestRoute if not adding mounted route
+	if !mounted {
+		app.mutex.Lock()
+		app.latestRoute = route
+		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
+			panic(err)
+		}
+		app.mutex.Unlock()
 	}
-	app.mutex.Unlock()
 }
 
 // buildTree build the prefix tree from the previously registered routes
@@ -456,6 +522,7 @@ func (app *App) buildTree() *App {
 	if !app.routesRefreshed {
 		return app
 	}
+
 	// loop all the methods and stacks and create the prefix tree
 	for m := range intMethod {
 		tsMap := make(map[string][]*Route)
@@ -469,6 +536,7 @@ func (app *App) buildTree() *App {
 		}
 		app.treeStack[m] = tsMap
 	}
+
 	// loop the methods and tree stacks and add global stack and sort everything
 	for m := range intMethod {
 		tsMap := app.treeStack[m]

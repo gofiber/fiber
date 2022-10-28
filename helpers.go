@@ -17,41 +17,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/gofiber/fiber/v3/utils"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
-
-/* #nosec */
-// lnMetadata will close the listener and return the addr and tls config
-func lnMetadata(network string, ln net.Listener) (addr string, cfg *tls.Config) {
-	// Get addr
-	addr = ln.Addr().String()
-
-	// Close listener
-	if err := ln.Close(); err != nil {
-		return
-	}
-
-	// Wait for the listener to be closed
-	var closed bool
-	for i := 0; i < 10; i++ {
-		conn, err := net.DialTimeout(network, addr, 3*time.Second)
-		if err != nil || conn == nil {
-			closed = true
-			break
-		}
-		_ = conn.Close()
-		time.Sleep(100 * time.Millisecond)
-	}
-	if !closed {
-		panic("listener: " + addr + ": Only one usage of each socket address (protocol/network address/port) is normally permitted.")
-	}
-
-	cfg = getTlsConfig(ln)
-
-	return
-}
 
 /* #nosec */
 // getTlsConfig returns a net listener's tls config
@@ -215,7 +183,7 @@ func defaultString(value string, defaultValue []string) string {
 }
 
 func getGroupPath(prefix, path string) string {
-	if len(path) == 0 || path == "/" {
+	if len(path) == 0 {
 		return prefix
 	}
 
@@ -223,7 +191,7 @@ func getGroupPath(prefix, path string) string {
 		path = "/" + path
 	}
 
-	return utils.TrimRight(prefix, '/') + path
+	return strings.TrimRight(prefix, "/") + path
 }
 
 // return valid offer for header negotiation
@@ -238,7 +206,7 @@ func getOffer(header string, offers ...string) string {
 	for len(header) > 0 && commaPos != -1 {
 		commaPos = strings.IndexByte(header, ',')
 		if commaPos != -1 {
-			spec = utils.Trim(header[:commaPos], ' ')
+			spec = strings.TrimSpace(header[:commaPos])
 		} else {
 			spec = header
 		}
@@ -409,21 +377,25 @@ const (
 
 // MIME types that are commonly used
 const (
-	MIMETextXML               = "text/xml"
-	MIMETextHTML              = "text/html"
-	MIMETextPlain             = "text/plain"
-	MIMEApplicationXML        = "application/xml"
-	MIMEApplicationJSON       = "application/json"
+	MIMETextXML         = "text/xml"
+	MIMETextHTML        = "text/html"
+	MIMETextPlain       = "text/plain"
+	MIMETextJavaScript  = "text/javascript"
+	MIMEApplicationXML  = "application/xml"
+	MIMEApplicationJSON = "application/json"
+	// Deprecated: use MIMETextJavaScript instead
 	MIMEApplicationJavaScript = "application/javascript"
 	MIMEApplicationForm       = "application/x-www-form-urlencoded"
 	MIMEOctetStream           = "application/octet-stream"
 	MIMEMultipartForm         = "multipart/form-data"
 
-	MIMETextXMLCharsetUTF8               = "text/xml; charset=utf-8"
-	MIMETextHTMLCharsetUTF8              = "text/html; charset=utf-8"
-	MIMETextPlainCharsetUTF8             = "text/plain; charset=utf-8"
-	MIMEApplicationXMLCharsetUTF8        = "application/xml; charset=utf-8"
-	MIMEApplicationJSONCharsetUTF8       = "application/json; charset=utf-8"
+	MIMETextXMLCharsetUTF8         = "text/xml; charset=utf-8"
+	MIMETextHTMLCharsetUTF8        = "text/html; charset=utf-8"
+	MIMETextPlainCharsetUTF8       = "text/plain; charset=utf-8"
+	MIMETextJavaScriptCharsetUTF8  = "text/javascript; charset=utf-8"
+	MIMEApplicationXMLCharsetUTF8  = "application/xml; charset=utf-8"
+	MIMEApplicationJSONCharsetUTF8 = "application/json; charset=utf-8"
+	// Deprecated: use MIMETextJavaScriptCharsetUTF8 instead
 	MIMEApplicationJavaScriptCharsetUTF8 = "application/javascript; charset=utf-8"
 )
 
@@ -685,4 +657,25 @@ const (
 	CookieSameSiteLaxMode    = "lax"
 	CookieSameSiteStrictMode = "strict"
 	CookieSameSiteNoneMode   = "none"
+)
+
+// Route Constraints
+const (
+	ConstraintInt             = "int"
+	ConstraintBool            = "bool"
+	ConstraintFloat           = "float"
+	ConstraintAlpha           = "alpha"
+	ConstraintGuid            = "guid"
+	ConstraintMinLen          = "minLen"
+	ConstraintMaxLen          = "maxLen"
+	ConstraintLen             = "len"
+	ConstraintBetweenLen      = "betweenLen"
+	ConstraintMinLenLower     = "minlen"
+	ConstraintMaxLenLower     = "maxlen"
+	ConstraintBetweenLenLower = "betweenlen"
+	ConstraintMin             = "min"
+	ConstraintMax             = "max"
+	ConstraintRange           = "range"
+	ConstraintDatetime        = "datetime"
+	ConstraintRegex           = "regex"
 )

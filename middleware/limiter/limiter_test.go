@@ -10,7 +10,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/internal/storage/memory"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -34,12 +34,12 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		body, err := io.ReadAll(resp.Body)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "Hello tester!", string(body))
+		require.NoError(t, err)
+		require.Equal(t, "Hello tester!", string(body))
 	}
 
 	for i := 0; i <= 49; i++ {
@@ -50,14 +50,14 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	wg.Wait()
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 429, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_Concurrency -race -v
@@ -79,12 +79,12 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+		require.NoError(t, err)
+		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 		body, err := io.ReadAll(resp.Body)
-		utils.AssertEqual(t, nil, err)
-		utils.AssertEqual(t, "Hello tester!", string(body))
+		require.NoError(t, err)
+		require.Equal(t, "Hello tester!", string(body))
 	}
 
 	for i := 0; i <= 49; i++ {
@@ -95,14 +95,14 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	wg.Wait()
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 429, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_No_Skip_Choices -v
@@ -124,16 +124,16 @@ func Test_Limiter_No_Skip_Choices(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 400, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 400, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 429, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 429, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_Skip_Failed_Requests -v
@@ -154,22 +154,22 @@ func Test_Limiter_Skip_Failed_Requests(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 400, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 400, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 429, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_Skip_Successful_Requests -v
@@ -192,22 +192,22 @@ func Test_Limiter_Skip_Successful_Requests(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 200, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 400, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 400, resp.StatusCode)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 429, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
 	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, 400, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, 400, resp.StatusCode)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Limiter_Custom_Store -benchmem -count=4
@@ -247,8 +247,8 @@ func Test_Limiter_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 func Test_Limiter_Headers(t *testing.T) {
@@ -269,7 +269,7 @@ func Test_Limiter_Headers(t *testing.T) {
 
 	app.Handler()(fctx)
 
-	utils.AssertEqual(t, "50", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
+	require.Equal(t, "50", string(fctx.Response.Header.Peek("X-RateLimit-Limit")))
 	if v := string(fctx.Response.Header.Peek("X-RateLimit-Remaining")); v == "" {
 		t.Errorf("The X-RateLimit-Remaining header is not set correctly - value is an empty string.")
 	}
@@ -321,11 +321,11 @@ func Test_Sliding_Window(t *testing.T) {
 	singleRequest := func(shouldFail bool) {
 		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
 		if shouldFail {
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, 429, resp.StatusCode)
+			require.NoError(t, err)
+			require.Equal(t, 429, resp.StatusCode)
 		} else {
-			utils.AssertEqual(t, nil, err)
-			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+			require.NoError(t, err)
+			require.Equal(t, fiber.StatusOK, resp.StatusCode)
 		}
 	}
 

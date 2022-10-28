@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils"
 	"github.com/valyala/fasthttp"
 )
 
@@ -565,7 +565,8 @@ func (a *Agent) SendFile(filename string, fieldname ...string) *Agent {
 // SendFiles reads files and appends them to multipart form request.
 //
 // Examples:
-//		SendFile("/path/to/file1", "fieldname1", "/path/to/file2")
+//
+//	SendFile("/path/to/file1", "fieldname1", "/path/to/file2")
 func (a *Agent) SendFiles(filenamesAndFieldnames ...string) *Agent {
 	pairs := len(filenamesAndFieldnames)
 	if pairs&1 == 1 {
@@ -737,16 +738,16 @@ func (a *Agent) RetryIf(retryIf RetryIfFunc) *Agent {
 }
 
 /************************** End Agent Setting **************************/
-var warnOnce sync.Once
 
 // Bytes returns the status code, bytes body and errors of url.
+//
+// it's not safe to use Agent after calling [Agent.Bytes]
 func (a *Agent) Bytes() (code int, body []byte, errs []error) {
-	warnOnce.Do(func() {
-		fmt.Println("[Warning] client is still in beta, API might change in the future!")
-	})
-
 	defer a.release()
+	return a.bytes()
+}
 
+func (a *Agent) bytes() (code int, body []byte, errs []error) {
 	if errs = append(errs, a.errs...); len(errs) > 0 {
 		return
 	}
@@ -805,17 +806,27 @@ func printDebugInfo(req *Request, resp *Response, w io.Writer) {
 }
 
 // String returns the status code, string body and errors of url.
+//
+// it's not safe to use Agent after calling [Agent.String]
 func (a *Agent) String() (int, string, []error) {
-	code, body, errs := a.Bytes()
+	defer a.release()
+	code, body, errs := a.bytes()
 
 	return code, utils.UnsafeString(body), errs
 }
 
 // Struct returns the status code, bytes body and errors of url.
 // And bytes body will be unmarshalled to given v.
+//
+// it's not safe to use Agent after calling [Agent.Struct]
 func (a *Agent) Struct(v any) (code int, body []byte, errs []error) {
-	if code, body, errs = a.Bytes(); len(errs) > 0 {
+	defer a.release()
+	if code, body, errs = a.bytes(); len(errs) > 0 {
 		return
+	}
+
+	if a.jsonDecoder == nil {
+		a.jsonDecoder = json.Unmarshal
 	}
 
 	if err := a.jsonDecoder(body, v); err != nil {
@@ -859,8 +870,12 @@ func (a *Agent) reset() {
 }
 
 var (
-	clientPool   sync.Pool
-	agentPool    sync.Pool
+	clientPool sync.Pool
+	agentPool  = sync.Pool{
+		New: func() interface{} {
+			return &Agent{req: &Request{}}
+		},
+	}
 	responsePool sync.Pool
 	argsPool     sync.Pool
 	formFilePool sync.Pool
@@ -898,11 +913,7 @@ func ReleaseClient(c *Client) {
 // no longer needed. This allows Agent recycling, reduces GC pressure
 // and usually improves performance.
 func AcquireAgent() *Agent {
-	v := agentPool.Get()
-	if v == nil {
-		return &Agent{req: &Request{}}
-	}
-	return v.(*Agent)
+	return agentPool.Get().(*Agent)
 }
 
 // ReleaseAgent returns a acquired via AcquireAgent to Agent pool.

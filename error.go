@@ -2,23 +2,33 @@ package fiber
 
 import (
 	errors "encoding/json"
-	goErrors "errors"
+	stdErrors "errors"
 
 	"github.com/gofiber/fiber/v3/internal/schema"
 )
 
+// Graceful shutdown errors
+var (
+	ErrGracefulTimeout = stdErrors.New("shutdown: graceful timeout has been reached, exiting")
+)
+
+// Fiber redirection errors
+var (
+	ErrRedirectBackNoFallback = NewError(StatusInternalServerError, "Referer not found, you have to enter fallback URL for redirection.")
+)
+
 // Range errors
 var (
-	ErrRangeMalformed     = goErrors.New("range: malformed range header string")
-	ErrRangeUnsatisfiable = goErrors.New("range: unsatisfiable range")
+	ErrRangeMalformed     = stdErrors.New("range: malformed range header string")
+	ErrRangeUnsatisfiable = stdErrors.New("range: unsatisfiable range")
 )
 
 // Binder errors
-var ErrCustomBinderNotFound = goErrors.New("binder: custom binder not found, please be sure to enter the right name")
+var ErrCustomBinderNotFound = stdErrors.New("binder: custom binder not found, please be sure to enter the right name")
 
 // gorilla/schema errors
 type (
-	// Conversion error exposes the internal schema.ConversionError for public use.
+	// ConversionError Conversion error exposes the internal schema.ConversionError for public use.
 	ConversionError = schema.ConversionError
 	// UnknownKeyError error exposes the internal schema.UnknownKeyError for public use.
 	UnknownKeyError = schema.UnknownKeyError

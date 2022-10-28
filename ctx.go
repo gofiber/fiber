@@ -7,8 +7,8 @@ package fiber
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -21,7 +21,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils"
 	"github.com/savsgio/dictpool"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -52,6 +52,19 @@ type DefaultCtx struct {
 	matched             bool                 // Non use route matched
 	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
 	bind                *Bind                // Default bind reference
+	redirect            *Redirect            // Default redirect reference
+	redirectionMessages []string             // Messages of the previous redirect
+}
+
+// TLSHandler object
+type TLSHandler struct {
+	clientHelloInfo *tls.ClientHelloInfo
+}
+
+// GetClientInfo Callback function to set CHI
+func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	t.clientHelloInfo = info
+	return nil, nil
 }
 
 // Range data for c.Range
@@ -97,9 +110,9 @@ func (c *DefaultCtx) Accepts(offers ...string) string {
 	for len(header) > 0 && commaPos != -1 {
 		commaPos = strings.IndexByte(header, ',')
 		if commaPos != -1 {
-			spec = utils.Trim(header[:commaPos], ' ')
+			spec = strings.TrimLeft(header[:commaPos], " ")
 		} else {
-			spec = utils.TrimLeft(header, ' ')
+			spec = strings.TrimLeft(header, " ")
 		}
 		if factorSign := strings.IndexByte(spec, ';'); factorSign != -1 {
 			spec = spec[:factorSign]
@@ -199,7 +212,7 @@ func (c *DefaultCtx) BaseURL() string {
 	if c.baseURI != "" {
 		return c.baseURI
 	}
-	c.baseURI = c.Scheme() + "://" + c.Hostname()
+	c.baseURI = c.Scheme() + "://" + c.Host()
 	return c.baseURI
 }
 
@@ -304,7 +317,7 @@ func (c *DefaultCtx) Cookie(cookie *Cookie) {
 	fasthttp.ReleaseCookie(fcookie)
 }
 
-// Cookies is used for getting a cookie value by key.
+// Cookies are used for getting a cookie value by key.
 // Defaults to the empty string "" if the cookie doesn't exist.
 // If a default value is given, it will return that value if the cookie doesn't exist.
 // The returned value is only valid within the handler. Do not store any references.
@@ -370,12 +383,7 @@ func (c *DefaultCtx) Format(body any) error {
 	case "txt":
 		return c.SendString(b)
 	case "xml":
-		raw, err := xml.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("error serializing xml: %v", body)
-		}
-		c.fasthttp.Response.SetBody(raw)
-		return nil
+		return c.XML(body)
 	}
 	return c.SendString(b)
 }
@@ -462,17 +470,31 @@ func (c *DefaultCtx) GetRespHeader(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.Response.Header.Peek(key)), defaultValue)
 }
 
-// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
+// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
 // Returned value is only valid within the handler. Do not store any references.
 // Make copies or use the Immutable setting instead.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
-func (c *DefaultCtx) Hostname() string {
+func (c *DefaultCtx) Host() string {
 	if c.IsProxyTrusted() {
 		if host := c.Get(HeaderXForwardedHost); len(host) > 0 {
+			commaPos := strings.Index(host, ",")
+			if commaPos != -1 {
+				return host[:commaPos]
+			}
 			return host
 		}
 	}
 	return c.app.getString(c.fasthttp.Request.URI().Host())
+}
+
+// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
+// Returned value is only valid within the handler. Do not store any references.
+// Make copies or use the Immutable setting instead.
+// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+func (c *DefaultCtx) Hostname() string {
+	addr, _ := parseAddr(c.Host())
+
+	return addr
 }
 
 // Port returns the remote port of the request.
@@ -482,33 +504,130 @@ func (c *DefaultCtx) Port() string {
 }
 
 // IP returns the remote IP address of the request.
+// If ProxyHeader and IP Validation is configured, it will parse that header and return the first valid IP address.
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) IP() string {
 	if c.IsProxyTrusted() && len(c.app.config.ProxyHeader) > 0 {
-		return c.Get(c.app.config.ProxyHeader)
+		return c.extractIPFromHeader(c.app.config.ProxyHeader)
 	}
 
 	return c.fasthttp.RemoteIP().String()
 }
 
-// IPs returns an string slice of IP addresses specified in the X-Forwarded-For request header.
-func (c *DefaultCtx) IPs() (ips []string) {
-	header := c.fasthttp.Request.Header.Peek(HeaderXForwardedFor)
-	if len(header) == 0 {
-		return
+// extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
+// When IP validation is enabled, any invalid IPs will be omitted.
+func (c *DefaultCtx) extractIPsFromHeader(header string) []string {
+	headerValue := c.Get(header)
+
+	// We can't know how many IPs we will return, but we will try to guess with this constant division.
+	// Counting ',' makes function slower for about 50ns in general case.
+	estimatedCount := len(headerValue) / 8
+	if estimatedCount > 8 {
+		estimatedCount = 8 // Avoid big allocation on big header
 	}
-	ips = make([]string, bytes.Count(header, []byte(","))+1)
-	var commaPos, i int
+
+	ipsFound := make([]string, 0, estimatedCount)
+
+	i := 0
+	j := -1
+
+iploop:
 	for {
-		commaPos = bytes.IndexByte(header, ',')
-		if commaPos != -1 {
-			ips[i] = utils.Trim(c.app.getString(header[:commaPos]), ' ')
-			header, i = header[commaPos+1:], i+1
-		} else {
-			ips[i] = utils.Trim(c.app.getString(header), ' ')
-			return
+		v4 := false
+		v6 := false
+
+		// Manually splitting string without allocating slice, working with parts directly
+		i, j = j+1, j+2
+
+		if j > len(headerValue) {
+			break
 		}
+
+		for j < len(headerValue) && headerValue[j] != ',' {
+			if headerValue[j] == ':' {
+				v6 = true
+			} else if headerValue[j] == '.' {
+				v4 = true
+			}
+			j++
+		}
+
+		for i < j && headerValue[i] == ' ' {
+			i++
+		}
+
+		s := strings.TrimRight(headerValue[i:j], " ")
+
+		if c.app.config.EnableIPValidation {
+			// Skip validation if IP is clearly not IPv4/IPv6, otherwise validate without allocations
+			if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
+				continue iploop
+			}
+		}
+
+		ipsFound = append(ipsFound, s)
 	}
+
+	return ipsFound
+}
+
+// extractIPFromHeader will attempt to pull the real client IP from the given header when IP validation is enabled.
+// currently, it will return the first valid IP address in header.
+// when IP validation is disabled, it will simply return the value of the header without any inspection.
+// Implementation is almost the same as in extractIPsFromHeader, but without allocation of []string.
+func (c *DefaultCtx) extractIPFromHeader(header string) string {
+	if c.app.config.EnableIPValidation {
+		headerValue := c.Get(header)
+
+		i := 0
+		j := -1
+
+	iploop:
+		for {
+			v4 := false
+			v6 := false
+			i, j = j+1, j+2
+
+			if j > len(headerValue) {
+				break
+			}
+
+			for j < len(headerValue) && headerValue[j] != ',' {
+				if headerValue[j] == ':' {
+					v6 = true
+				} else if headerValue[j] == '.' {
+					v4 = true
+				}
+				j++
+			}
+
+			for i < j && headerValue[i] == ' ' {
+				i++
+			}
+
+			s := strings.TrimRight(headerValue[i:j], " ")
+
+			if c.app.config.EnableIPValidation {
+				if (!v6 && !v4) || (v6 && !utils.IsIPv6(s)) || (v4 && !utils.IsIPv4(s)) {
+					continue iploop
+				}
+			}
+
+			return s
+		}
+
+		return c.fasthttp.RemoteIP().String()
+	}
+
+	// default behaviour if IP validation is not enabled is just to return whatever value is
+	// in the proxy header. Even if it is empty or invalid
+	return c.Get(c.app.config.ProxyHeader)
+}
+
+// IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
+// When IP validation is enabled, only valid IPs are returned.
+func (c *DefaultCtx) IPs() (ips []string) {
+	return c.extractIPsFromHeader(HeaderXForwardedFor)
 }
 
 // Is returns the matching content type,
@@ -520,7 +639,7 @@ func (c *DefaultCtx) Is(extension string) bool {
 	}
 
 	return strings.HasPrefix(
-		utils.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), ' '),
+		strings.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), " "),
 		extensionHeader,
 	)
 }
@@ -560,8 +679,20 @@ func (c *DefaultCtx) JSONP(data any, callback ...string) error {
 	result = cb + "(" + c.app.getString(raw) + ");"
 
 	c.setCanonical(HeaderXContentTypeOptions, "nosniff")
-	c.fasthttp.Response.Header.SetContentType(MIMEApplicationJavaScriptCharsetUTF8)
+	c.fasthttp.Response.Header.SetContentType(MIMETextJavaScriptCharsetUTF8)
 	return c.SendString(result)
+}
+
+// XML converts any interface or string to XML.
+// This method also sets the content header to application/xml.
+func (c *DefaultCtx) XML(data any) error {
+	raw, err := c.app.config.XMLEncoder(data)
+	if err != nil {
+		return err
+	}
+	c.fasthttp.Response.SetBodyRaw(raw)
+	c.fasthttp.Response.Header.SetContentType(MIMEApplicationXML)
+	return nil
 }
 
 // Links joins the links followed by the property to populate the response's Link HTTP header field.
@@ -579,13 +710,13 @@ func (c *DefaultCtx) Links(link ...string) {
 			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
 		}
 	}
-	c.setCanonical(HeaderLink, utils.TrimRight(c.app.getString(bb.Bytes()), ','))
+	c.setCanonical(HeaderLink, strings.TrimRight(c.app.getString(bb.Bytes()), ","))
 	bytebufferpool.Put(bb)
 }
 
-// Locals makes it possible to pass any values under string keys scoped to the request
+// Locals makes it possible to pass any values under keys scoped to the request
 // and therefore available to all following routes that match the request.
-func (c *DefaultCtx) Locals(key string, value ...any) (val any) {
+func (c *DefaultCtx) Locals(key any, value ...any) (val any) {
 	if len(value) == 0 {
 		return c.fasthttp.UserValue(key)
 	}
@@ -618,6 +749,15 @@ func (c *DefaultCtx) MultipartForm() (*multipart.Form, error) {
 	return c.fasthttp.MultipartForm()
 }
 
+// ClientHelloInfo return CHI from context
+func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
+	if c.app.tlsHandler != nil {
+		return c.app.tlsHandler.clientHelloInfo
+	}
+
+	return nil
+}
+
 // Next executes the next method in the stack that matches the current route.
 func (c *DefaultCtx) Next() (err error) {
 	// Increment handler index
@@ -628,7 +768,11 @@ func (c *DefaultCtx) Next() (err error) {
 		err = c.route.Handlers[c.indexHandler](c)
 	} else {
 		// Continue handler stack
-		_, err = c.app.next(c, c.app.newCtxFunc != nil)
+		if c.app.newCtxFunc != nil {
+			_, err = c.app.nextCustom(c)
+		} else {
+			_, err = c.app.next(c)
+		}
 	}
 	return err
 }
@@ -636,8 +780,14 @@ func (c *DefaultCtx) Next() (err error) {
 // RestartRouting instead of going to the next handler. This may be usefull after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
+	var err error
+
 	c.indexRoute = -1
-	_, err := c.app.next(c, c.app.newCtxFunc != nil)
+	if c.app.newCtxFunc != nil {
+		_, err = c.app.nextCustom(c)
+	} else {
+		_, err = c.app.next(c)
+	}
 	return err
 }
 
@@ -661,7 +811,7 @@ func (c *DefaultCtx) Params(key string, defaultValue ...string) string {
 		if len(key) != len(c.route.Params[i]) {
 			continue
 		}
-		if c.route.Params[i] == key {
+		if c.route.Params[i] == key || (!c.app.config.CaseSensitive && utils.EqualFold(c.route.Params[i], key)) {
 			// in case values are not here
 			if len(c.values) <= i || len(c.values[i]) == 0 {
 				break
@@ -720,10 +870,21 @@ func (c *DefaultCtx) Scheme() string {
 		if len(key) < 12 {
 			return // X-Forwarded-
 		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
+			v := c.app.getString(val)
 			if bytes.Equal(key, []byte(HeaderXForwardedProto)) {
-				scheme = c.app.getString(val)
+				commaPos := strings.Index(v, ",")
+				if commaPos != -1 {
+					scheme = v[:commaPos]
+				} else {
+					scheme = v
+				}
 			} else if bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
-				scheme = c.app.getString(val)
+				commaPos := strings.Index(v, ",")
+				if commaPos != -1 {
+					scheme = v[:commaPos]
+				} else {
+					scheme = v
+				}
 			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
 				scheme = "https"
 			}
@@ -798,19 +959,20 @@ func (c *DefaultCtx) Range(size int) (rangeData Range, err error) {
 	return
 }
 
-// Redirect to the URL derived from the specified path, with specified status.
+// Redirect returns the Redirect reference.
+// Use Redirect().Status() to set custom redirection status code.
 // If status is not specified, status defaults to 302 Found.
-func (c *DefaultCtx) Redirect(location string, status ...int) error {
-	c.setCanonical(HeaderLocation, location)
-	if len(status) > 0 {
-		c.Status(status[0])
-	} else {
-		c.Status(StatusFound)
+// You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
+func (c *DefaultCtx) Redirect() *Redirect {
+	if c.redirect == nil {
+		c.redirect = AcquireRedirect()
+		c.redirect.c = c
 	}
-	return nil
+
+	return c.redirect
 }
 
-// Add vars to default view var map binding to template engine.
+// Bind Add vars to default view var map binding to template engine.
 // Variables are read by the Render method and may be overwritten.
 func (c *DefaultCtx) BindVars(vars Map) error {
 	// init viewBindMap - lazy map
@@ -828,18 +990,22 @@ func (c *DefaultCtx) BindVars(vars Map) error {
 func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, error) {
 	buf := bytebufferpool.Get()
 	for _, segment := range route.routeParser.segs {
-		for key, val := range params {
-			if segment.IsParam && (key == segment.ParamName || (segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters))) {
-				_, err := buf.WriteString(utils.ToString(val))
-				if err != nil {
-					return "", err
-				}
-			}
-		}
 		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
 				return "", err
+			}
+			continue
+		}
+
+		for key, val := range params {
+			isSame := key == segment.ParamName || (!c.app.config.CaseSensitive && utils.EqualFold(key, segment.ParamName))
+			isGreedy := segment.IsGreedy && len(key) == 1 && isInCharset(key[0], greedyParameters)
+			if isSame || isGreedy {
+				_, err := buf.WriteString(utils.ToString(val))
+				if err != nil {
+					return "", err
+				}
 			}
 		}
 	}
@@ -854,45 +1020,6 @@ func (c *DefaultCtx) GetRouteURL(routeName string, params Map) (string, error) {
 	return c.getLocationFromRoute(c.App().GetRoute(routeName), params)
 }
 
-// RedirectToRoute to the Route registered in the app with appropriate parameters
-// If status is not specified, status defaults to 302 Found.
-// If you want to send queries to route, you must add "queries" key typed as map[string]string to params.
-func (c *DefaultCtx) RedirectToRoute(routeName string, params Map, status ...int) error {
-	location, err := c.getLocationFromRoute(c.App().GetRoute(routeName), params)
-	if err != nil {
-		return err
-	}
-
-	// Check queries
-	if queries, ok := params["queries"].(map[string]string); ok {
-		queryText := bytebufferpool.Get()
-		defer bytebufferpool.Put(queryText)
-
-		i := 1
-		for k, v := range queries {
-			_, _ = queryText.WriteString(k + "=" + v)
-
-			if i != len(queries) {
-				_, _ = queryText.WriteString("&")
-			}
-			i++
-		}
-
-		return c.Redirect(location+"?"+queryText.String(), status...)
-	}
-	return c.Redirect(location, status...)
-}
-
-// RedirectBack to the URL to referer
-// If status is not specified, status defaults to 302 Found.
-func (c *DefaultCtx) RedirectBack(fallback string, status ...int) error {
-	location := c.Get(HeaderReferer)
-	if location == "" {
-		location = fallback
-	}
-	return c.Redirect(location, status...)
-}
-
 // Render a template with data and sends a text/html response.
 // We support the following engines: https://github.com/gofiber/template
 func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
@@ -901,11 +1028,13 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	// Pass-locals-to-views & bind
+	// Pass-locals-to-views, bind, appListKeys
 	c.renderExtensions(bind)
 
-	rendered := false
-	for prefix, app := range c.app.appList {
+	var rendered bool
+	for i := len(c.app.mountFields.appListKeys) - 1; i >= 0; i-- {
+		prefix := c.app.mountFields.appListKeys[i]
+		app := c.app.mountFields.appList[prefix]
 		if prefix == "" || strings.Contains(c.OriginalURL(), prefix) {
 			if len(layouts) == 0 && app.config.ViewsLayout != "" {
 				layouts = []string{
@@ -968,6 +1097,10 @@ func (c *DefaultCtx) renderExtensions(bind Map) {
 				bind[utils.UnsafeString(key)] = val
 			}
 		})
+	}
+
+	if len(c.app.mountFields.appListKeys) == 0 {
+		c.app.generateAppListKeys()
 	}
 }
 
@@ -1124,7 +1257,6 @@ func (c *DefaultCtx) SendStream(stream io.Reader, size ...int) error {
 		c.fasthttp.Response.SetBodyStream(stream, size[0])
 	} else {
 		c.fasthttp.Response.SetBodyStream(stream, -1)
-		c.setCanonical(HeaderContentLength, strconv.Itoa(len(c.fasthttp.Response.Body())))
 	}
 
 	return nil
@@ -1146,7 +1278,7 @@ func (c *DefaultCtx) Subdomains(offset ...int) []string {
 	if len(offset) > 0 {
 		o = offset[0]
 	}
-	subdomains := strings.Split(c.Hostname(), ".")
+	subdomains := strings.Split(c.Host(), ".")
 	l := len(subdomains) - o
 	// Check index to avoid slice bounds out of range panic
 	if l < 0 {
@@ -1218,7 +1350,7 @@ func (c *DefaultCtx) WriteString(s string) (int, error) {
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFoldBytes(utils.UnsafeBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFold(c.Get(HeaderXRequestedWith), "xmlhttprequest")
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
@@ -1240,7 +1372,7 @@ func (c *DefaultCtx) configDependentPaths() {
 	}
 	// If StrictRouting is disabled, we strip all trailing slashes
 	if !c.app.config.StrictRouting && len(c.detectionPathBuffer) > 1 && c.detectionPathBuffer[len(c.detectionPathBuffer)-1] == '/' {
-		c.detectionPathBuffer = utils.TrimRightBytes(c.detectionPathBuffer, '/')
+		c.detectionPathBuffer = bytes.TrimRight(c.detectionPathBuffer, "/")
 	}
 	c.detectionPath = c.app.getString(c.detectionPathBuffer)
 

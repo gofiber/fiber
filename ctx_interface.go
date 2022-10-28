@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"mime/multipart"
 
@@ -122,7 +123,13 @@ type Ctx interface {
 	// Make copies or use the Immutable setting instead.
 	GetRespHeader(key string, defaultValue ...string) string
 
-	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header.
+	// Host contains the host derived from the X-Forwarded-Host or Host HTTP header.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+	Host() string
+
+	// Hostname contains the hostname derived from the X-Forwarded-Host or Host HTTP header using the c.Host() method.
 	// Returned value is only valid within the handler. Do not store any references.
 	// Make copies or use the Immutable setting instead.
 	// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
@@ -154,12 +161,16 @@ type Ctx interface {
 	// By default, the callback name is simply callback.
 	JSONP(data any, callback ...string) error
 
+	// XML converts any interface or string to XML.
+	// This method also sets the content header to application/xml.
+	XML(data any) error
+
 	// Links joins the links followed by the property to populate the response's Link HTTP header field.
 	Links(link ...string)
 
 	// Locals makes it possible to pass any values under string keys scoped to the request
 	// and therefore available to all following routes that match the request.
-	Locals(key string, value ...any) (val any)
+	Locals(key any, value ...any) (val any)
 
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
@@ -218,9 +229,11 @@ type Ctx interface {
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (rangeData Range, err error)
 
-	// Redirect to the URL derived from the specified path, with specified status.
+	// Redirect returns the Redirect reference.
+	// Use Redirect().Status() to set custom redirection status code.
 	// If status is not specified, status defaults to 302 Found.
-	Redirect(location string, status ...int) error
+	// You can use Redirect().To(), Redirect().Route() and Redirect().Back() for redirection.
+	Redirect() *Redirect
 
 	// Add vars to default view var map binding to template engine.
 	// Variables are read by the Render method and may be overwritten.
@@ -228,15 +241,6 @@ type Ctx interface {
 
 	// GetRouteURL generates URLs to named routes, with parameters. URLs are relative, for example: "/user/1831"
 	GetRouteURL(routeName string, params Map) (string, error)
-
-	// RedirectToRoute to the Route registered in the app with appropriate parameters
-	// If status is not specified, status defaults to 302 Found.
-	// If you want to send queries to route, you must add "queries" key typed as map[string]string to params.
-	RedirectToRoute(routeName string, params Map, status ...int) error
-
-	// RedirectBack to the URL to referer
-	// If status is not specified, status defaults to 302 Found.
-	RedirectBack(fallback string, status ...int) error
 
 	// Render a template with data and sends a text/html response.
 	// We support the following engines: https://github.com/gofiber/template
@@ -328,6 +332,9 @@ type Ctx interface {
 	// It gives custom binding support, detailed binding options and more.
 	// Replacement of: BodyParser, ParamsParser, GetReqHeaders, GetRespHeaders, AllParams, QueryParser, ReqHeaderParser
 	Bind() *Bind
+
+	// ClientHelloInfo return CHI from context
+	ClientHelloInfo() *tls.ClientHelloInfo
 
 	// SetReq resets fields of context that is relating to request.
 	setReq(fctx *fasthttp.RequestCtx)
@@ -431,8 +438,14 @@ func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
 	c.bind = nil
+	c.redirectionMessages = c.redirectionMessages[:0]
 	if c.viewBindMap != nil {
 		dictpool.ReleaseDict(c.viewBindMap)
+		c.viewBindMap = nil
+	}
+	if c.redirect != nil {
+		ReleaseRedirect(c.redirect)
+		c.redirect = nil
 	}
 }
 

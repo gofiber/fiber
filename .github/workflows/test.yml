@@ -8,7 +8,7 @@ jobs:
   Build:
     strategy:
       matrix:
-        go-version: [1.19.x]
+        go-version: [1.18.x, 1.19.x]
         platform: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
@@ -35,4 +35,8 @@ jobs:
     - name: Fetch Repository
       uses: actions/checkout@v3
     - name: Run Test
-      run: go test ./... -v -race
+      uses: nick-fields/retry@v2
+      with:
+        max_attempts: 3
+        timeout_minutes: 15
+        command: go test ./... -v -race

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/bytebufferpool"
 )
 
@@ -20,7 +20,7 @@ func Test_Hook_OnRoute(t *testing.T) {
 	app := New()
 
 	app.Hooks().OnRoute(func(r Route) error {
-		utils.AssertEqual(t, "", r.Name)
+		require.Equal(t, "", r.Name)
 
 		return nil
 	})
@@ -33,6 +33,29 @@ func Test_Hook_OnRoute(t *testing.T) {
 	app.Use("/sub", subApp)
 }
 
+func Test_Hook_OnRoute_Mount(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	subApp := New()
+	app.Use("/sub", subApp)
+
+	subApp.Hooks().OnRoute(func(r Route) error {
+		require.Equal(t, "/sub/test", r.Path)
+
+		return nil
+	})
+
+	app.Hooks().OnRoute(func(r Route) error {
+		require.Equal(t, "/", r.Path)
+
+		return nil
+	})
+
+	app.Get("/", testSimpleHandler).Name("x")
+	subApp.Get("/test", testSimpleHandler)
+}
+
 func Test_Hook_OnName(t *testing.T) {
 	t.Parallel()
 
@@ -42,7 +65,8 @@ func Test_Hook_OnName(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnName(func(r Route) error {
-		buf.WriteString(r.Name)
+		_, err := buf.WriteString(r.Name)
+		require.NoError(t, nil, err)
 
 		return nil
 	})
@@ -55,7 +79,7 @@ func Test_Hook_OnName(t *testing.T) {
 
 	app.Use("/sub", subApp)
 
-	utils.AssertEqual(t, "index", buf.String())
+	require.Equal(t, "index", buf.String())
 }
 
 func Test_Hook_OnName_Error(t *testing.T) {
@@ -64,7 +88,7 @@ func Test_Hook_OnName_Error(t *testing.T) {
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
-			utils.AssertEqual(t, "unknown error", fmt.Sprintf("%v", err))
+			require.Equal(t, "unknown error", fmt.Sprintf("%v", err))
 		}
 	}()
 
@@ -84,15 +108,33 @@ func Test_Hook_OnGroup(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnGroup(func(g Group) error {
-		buf.WriteString(g.Prefix)
-
+		_, err := buf.WriteString(g.Prefix)
+		require.NoError(t, nil, err)
 		return nil
 	})
 
 	grp := app.Group("/x").Name("x.")
 	grp.Group("/a")
 
-	utils.AssertEqual(t, "/x/x/a", buf.String())
+	require.Equal(t, "/x/x/a", buf.String())
+}
+
+func Test_Hook_OnGroup_Mount(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	micro := New()
+	micro.Use("/john", app)
+
+	app.Hooks().OnGroup(func(g Group) error {
+		require.Equal(t, "/john/v1", g.Prefix)
+		return nil
+	})
+
+	v1 := app.Group("/v1")
+	v1.Get("/doe", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
 }
 
 func Test_Hook_OnGroupName(t *testing.T) {
@@ -104,7 +146,8 @@ func Test_Hook_OnGroupName(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnGroupName(func(g Group) error {
-		buf.WriteString(g.name)
+		_, err := buf.WriteString(g.name)
+		require.NoError(t, nil, err)
 
 		return nil
 	})
@@ -113,7 +156,7 @@ func Test_Hook_OnGroupName(t *testing.T) {
 	grp.Get("/test", testSimpleHandler)
 	grp.Get("/test2", testSimpleHandler)
 
-	utils.AssertEqual(t, "x.", buf.String())
+	require.Equal(t, "x.", buf.String())
 }
 
 func Test_Hook_OnGroupName_Error(t *testing.T) {
@@ -122,7 +165,7 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
-			utils.AssertEqual(t, "unknown error", fmt.Sprintf("%v", err))
+			require.Equal(t, "unknown error", fmt.Sprintf("%v", err))
 		}
 	}()
 
@@ -143,36 +186,74 @@ func Test_Hook_OnShutdown(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnShutdown(func() error {
-		buf.WriteString("shutdowning")
+		_, err := buf.WriteString("shutdowning")
+		require.NoError(t, nil, err)
 
 		return nil
 	})
 
-	utils.AssertEqual(t, nil, app.Shutdown())
-	utils.AssertEqual(t, "shutdowning", buf.String())
+	require.Nil(t, app.Shutdown())
+	require.Equal(t, "shutdowning", buf.String())
 }
 
 func Test_Hook_OnListen(t *testing.T) {
 	t.Parallel()
 
-	app := New(Config{
-		DisableStartupMessage: true,
-	})
+	app := New()
 
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
 	app.Hooks().OnListen(func() error {
-		buf.WriteString("ready")
+		_, err := buf.WriteString("ready")
+		require.NoError(t, nil, err)
 
 		return nil
 	})
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
-		utils.AssertEqual(t, nil, app.Shutdown())
+		require.Nil(t, app.Shutdown())
 	}()
-	utils.AssertEqual(t, nil, app.Listen(":9000"))
 
-	utils.AssertEqual(t, "ready", buf.String())
+	require.Nil(t, app.Listen(":9000", ListenConfig{DisableStartupMessage: true}))
+	require.Equal(t, "ready", buf.String())
+}
+
+func Test_Hook_OnHook(t *testing.T) {
+	// Reset test var
+	testPreforkMaster = true
+	testOnPrefork = true
+
+	app := New()
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		require.Nil(t, app.Shutdown())
+	}()
+
+	app.Hooks().OnFork(func(pid int) error {
+		require.Equal(t, 1, pid)
+		return nil
+	})
+
+	require.Nil(t, app.prefork(":3000", nil, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+}
+
+func Test_Hook_OnMount(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", testSimpleHandler).Name("x")
+
+	subApp := New()
+	subApp.Get("/test", testSimpleHandler)
+
+	subApp.Hooks().OnMount(func(parent *App) error {
+		require.Equal(t, parent.mountFields.mountPath, "")
+
+		return nil
+	})
+
+	app.Use("/sub", subApp)
 }

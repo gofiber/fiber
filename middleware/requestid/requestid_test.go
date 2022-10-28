@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 )
 
 // go test -run Test_RequestID
@@ -19,19 +19,19 @@ func Test_RequestID(t *testing.T) {
 	})
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
-	utils.AssertEqual(t, 36, len(reqid))
+	require.Equal(t, 36, len(reqid))
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
 
 	resp, err = app.Test(req)
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, reqid, resp.Header.Get(fiber.HeaderXRequestID))
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
+	require.Equal(t, reqid, resp.Header.Get(fiber.HeaderXRequestID))
 }
 
 // go test -run Test_RequestID_Next
@@ -44,9 +44,9 @@ func Test_RequestID_Next(t *testing.T) {
 	}))
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, resp.Header.Get(fiber.HeaderXRequestID), "")
-	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, resp.Header.Get(fiber.HeaderXRequestID), "")
+	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 // go test -run Test_RequestID_Locals
@@ -70,6 +70,6 @@ func Test_RequestID_Locals(t *testing.T) {
 	})
 
 	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, reqId, ctxVal)
+	require.NoError(t, err)
+	require.Equal(t, reqId, ctxVal)
 }

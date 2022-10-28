@@ -1,8 +1,6 @@
 package logger
 
 import (
-	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -11,11 +9,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/mattn/go-colorable"
-	"github.com/mattn/go-isatty"
-	"github.com/valyala/bytebufferpool"
-	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasttemplate"
 )
 
 // Logger variables
@@ -60,19 +53,6 @@ const (
 	TagReset             = "reset"
 )
 
-// Color values
-const (
-	cBlack   = "\u001b[90m"
-	cRed     = "\u001b[91m"
-	cGreen   = "\u001b[92m"
-	cYellow  = "\u001b[93m"
-	cBlue    = "\u001b[94m"
-	cMagenta = "\u001b[95m"
-	cCyan    = "\u001b[96m"
-	cWhite   = "\u001b[97m"
-	cReset   = "\u001b[0m"
-)
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -89,14 +69,11 @@ func New(config ...Config) fiber.Handler {
 	// Check if format contains latency
 	cfg.enableLatency = strings.Contains(cfg.Format, "${latency}")
 
-	// Create template parser
-	tmpl := fasttemplate.New(cfg.Format, "${", "}")
-
 	// Create correct timeformat
 	var timestamp atomic.Value
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
-	// Update date/time every 750 milliseconds in a separate go routine
+	// Update date/time every 500 milliseconds in a separate go routine
 	if strings.Contains(cfg.Format, "${time}") {
 		go func() {
 			for {
@@ -111,20 +88,25 @@ func New(config ...Config) fiber.Handler {
 
 	// Set variables
 	var (
-		once       sync.Once
 		mu         sync.Mutex
+		once       sync.Once
 		errHandler fiber.ErrorHandler
 	)
 
-	// If colors are enabled, check terminal compatibility
-	if cfg.enableColors {
-		cfg.Output = colorable.NewColorableStdout()
-		if os.Getenv("TERM") == "dumb" || os.Getenv("NO_COLOR") == "1" || (!isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd())) {
-			cfg.Output = colorable.NewNonColorable(os.Stdout)
-		}
-	}
+	// Err padding
 	errPadding := 15
 	errPaddingStr := strconv.Itoa(errPadding)
+
+	// Before handling func
+	cfg.BeforeHandlerFunc(cfg)
+
+	// Logger data
+	data := &LoggerData{
+		Pid:           pid,
+		ErrPaddingStr: errPaddingStr,
+		Timestamp:     timestamp,
+	}
+
 	// Return new handler
 	return func(c fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
@@ -170,174 +152,17 @@ func New(config ...Config) fiber.Handler {
 			stop = time.Now()
 		}
 
-		// Get new buffer
-		buf := bytebufferpool.Get()
-
-		// Default output when no custom Format or io.Writer is given
-		if cfg.enableColors && cfg.Format == ConfigDefault.Format {
-			// Format error if exist
-			formatErr := ""
-			if chainErr != nil {
-				formatErr = cRed + " | " + chainErr.Error() + cReset
-			}
-
-			// Format log to buffer
-			_, _ = buf.WriteString(fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
-				timestamp.Load().(string),
-				statusColor(c.Response().StatusCode()), c.Response().StatusCode(), cReset,
-				stop.Sub(start).Round(time.Millisecond),
-				c.IP(),
-				methodColor(c.Method()), c.Method(), cReset,
-				c.Path(),
-				formatErr,
-			))
-
-			// Write buffer to output
-			_, _ = cfg.Output.Write(buf.Bytes())
-
-			// Put buffer back to pool
-			bytebufferpool.Put(buf)
-
-			// End chain
-			return nil
-		}
-
-		// Loop over template tags to replace it with the correct value
-		_, err = tmpl.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
-			switch tag {
-			case TagTime:
-				return buf.WriteString(timestamp.Load().(string))
-			case TagReferer:
-				return buf.WriteString(c.Get(fiber.HeaderReferer))
-			case TagProtocol:
-				return buf.WriteString(c.Protocol())
-			case TagScheme:
-				return buf.WriteString(c.Scheme())
-			case TagPid:
-				return buf.WriteString(pid)
-			case TagPort:
-				return buf.WriteString(c.Port())
-			case TagIP:
-				return buf.WriteString(c.IP())
-			case TagIPs:
-				return buf.WriteString(c.Get(fiber.HeaderXForwardedFor))
-			case TagHost:
-				return buf.WriteString(c.Hostname())
-			case TagPath:
-				return buf.WriteString(c.Path())
-			case TagURL:
-				return buf.WriteString(c.OriginalURL())
-			case TagUA:
-				return buf.WriteString(c.Get(fiber.HeaderUserAgent))
-			case TagLatency:
-				return buf.WriteString(stop.Sub(start).String())
-			case TagBody:
-				return buf.Write(c.Body())
-			case TagBytesReceived:
-				return appendInt(buf, len(c.Request().Body()))
-			case TagBytesSent:
-				return appendInt(buf, len(c.Response().Body()))
-			case TagRoute:
-				return buf.WriteString(c.Route().Path)
-			case TagStatus:
-				if cfg.enableColors {
-					return buf.WriteString(fmt.Sprintf("%s %3d %s", statusColor(c.Response().StatusCode()), c.Response().StatusCode(), cReset))
-				}
-				return appendInt(buf, c.Response().StatusCode())
-			case TagResBody:
-				return buf.Write(c.Response().Body())
-			case TagReqHeaders:
-				out := make(map[string]string, 0)
-				if err := c.Bind().Header(&out); err != nil {
-					return 0, err
-				}
-
-				reqHeaders := make([]string, 0)
-				for k, v := range out {
-					reqHeaders = append(reqHeaders, k+"="+v)
-				}
-				return buf.Write([]byte(strings.Join(reqHeaders, "&")))
-			case TagQueryStringParams:
-				return buf.WriteString(c.Request().URI().QueryArgs().String())
-			case TagMethod:
-				if cfg.enableColors {
-					return buf.WriteString(fmt.Sprintf("%s %-7s %s", methodColor(c.Method()), c.Method(), cReset))
-				}
-				return buf.WriteString(c.Method())
-			case TagBlack:
-				return buf.WriteString(cBlack)
-			case TagRed:
-				return buf.WriteString(cRed)
-			case TagGreen:
-				return buf.WriteString(cGreen)
-			case TagYellow:
-				return buf.WriteString(cYellow)
-			case TagBlue:
-				return buf.WriteString(cBlue)
-			case TagMagenta:
-				return buf.WriteString(cMagenta)
-			case TagCyan:
-				return buf.WriteString(cCyan)
-			case TagWhite:
-				return buf.WriteString(cWhite)
-			case TagReset:
-				return buf.WriteString(cReset)
-			case TagError:
-				if chainErr != nil {
-					return buf.WriteString(chainErr.Error())
-				}
-				return buf.WriteString("-")
-			default:
-				// Check if we have a value tag i.e.: "reqHeader:x-key"
-				switch {
-				case strings.HasPrefix(tag, TagReqHeader):
-					return buf.WriteString(c.Get(tag[10:]))
-				case strings.HasPrefix(tag, TagRespHeader):
-					return buf.WriteString(c.GetRespHeader(tag[11:]))
-				case strings.HasPrefix(tag, TagQuery):
-					return buf.WriteString(c.Query(tag[6:]))
-				case strings.HasPrefix(tag, TagForm):
-					return buf.WriteString(c.FormValue(tag[5:]))
-				case strings.HasPrefix(tag, TagCookie):
-					return buf.WriteString(c.Cookies(tag[7:]))
-				case strings.HasPrefix(tag, TagLocals):
-					switch v := c.Locals(tag[7:]).(type) {
-					case []byte:
-						return buf.Write(v)
-					case string:
-						return buf.WriteString(v)
-					case nil:
-						return 0, nil
-					default:
-						return buf.WriteString(fmt.Sprintf("%v", v))
-					}
-				}
-			}
-			return 0, nil
-		})
-		// Also write errors to the buffer
-		if err != nil {
-			_, _ = buf.WriteString(err.Error())
-		}
+		// Logger instance & update some logger data fields
 		mu.Lock()
-		// Write buffer to output
-		if _, err := cfg.Output.Write(buf.Bytes()); err != nil {
-			// Write error to output
-			if _, err := cfg.Output.Write([]byte(err.Error())); err != nil {
-				// There is something wrong with the given io.Writer
-				fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
-			}
+		data.ChainErr = chainErr
+		data.Start = start
+		data.Stop = stop
+
+		if err = cfg.LoggerFunc(c, data, cfg); err != nil {
+			return err
 		}
 		mu.Unlock()
-		// Put buffer back to pool
-		bytebufferpool.Put(buf)
 
 		return nil
 	}
-}
-
-func appendInt(buf *bytebufferpool.ByteBuffer, v int) (int, error) {
-	old := len(buf.B)
-	buf.B = fasthttp.AppendUint(buf.B, v)
-	return len(buf.B) - old, nil
 }

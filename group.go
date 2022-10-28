@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"sync/atomic"
 )
 
 // Group struct
@@ -19,33 +18,7 @@ type Group struct {
 	Prefix string
 }
 
-// Mount attaches another app instance as a sub-router along a routing path.
-// It's very useful to split up a large API as many independent routers and
-// compose them as a single service using Mount.
-func (grp *Group) mount(prefix string, sub *App) Router {
-	stack := sub.Stack()
-	groupPath := getGroupPath(grp.Prefix, prefix)
-	groupPath = strings.TrimRight(groupPath, "/")
-	if groupPath == "" {
-		groupPath = "/"
-	}
-	for m := range stack {
-		for r := range stack[m] {
-			route := grp.app.copyRoute(stack[m][r])
-			grp.app.addRoute(route.Method, grp.app.addPrefixToRoute(groupPath, route))
-		}
-	}
-	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subApp := range sub.appList {
-		grp.app.appList[groupPath+mountedPrefixes] = subApp
-		subApp.init()
-	}
-
-	atomic.AddUint32(&grp.app.handlersCount, sub.handlersCount)
-	return grp
-}
-
-// Assign name to specific route.
+// Name Assign name to specific route.
 func (grp *Group) Name(name string) Router {
 	grp.app.mutex.Lock()
 	if strings.HasPrefix(grp.Prefix, grp.app.latestGroup.Prefix) {
@@ -80,14 +53,15 @@ func (grp *Group) Name(name string) Router {
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (grp *Group) Use(args ...any) Router {
 	prefix := ""
-	var subApp *App
+	var subApps []*App
 	var handlers []Handler
+
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
 		case *App:
-			subApp = arg
+			subApps = append(subApps, arg)
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
@@ -95,8 +69,10 @@ func (grp *Group) Use(args ...any) Router {
 		}
 	}
 
-	if subApp != nil {
-		grp.mount(prefix, subApp)
+	if len(subApps) > 0 {
+		for _, subApp := range subApps {
+			grp.mount(prefix, subApp)
+		}
 		return grp
 	}
 
@@ -108,7 +84,7 @@ func (grp *Group) Use(args ...any) Router {
 // of the specified resource. Requests using GET should only retrieve data.
 func (grp *Group) Get(path string, handlers ...Handler) Router {
 	path = getGroupPath(grp.Prefix, path)
-	return grp.app.Add(MethodHead, path, handlers...).Add(MethodGet, path, handlers...)
+	return grp.app.Add(MethodGet, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -190,15 +166,9 @@ func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 
 // Route is used to define routes with a common prefix inside the common function.
 // Uses Group method to define new sub-router.
-func (grp *Group) Route(prefix string, fn func(router Router), name ...string) Router {
+func (grp *Group) Route(path string) Register {
 	// Create new group
-	group := grp.Group(prefix)
-	if len(name) > 0 {
-		group.Name(name[0])
-	}
+	register := &Registering{app: grp.app, path: getGroupPath(grp.Prefix, path)}
 
-	// Define routes
-	fn(group)
-
-	return group
+	return register
 }

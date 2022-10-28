@@ -6,7 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/skip"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/stretchr/testify/require"
 )
 
 // go test -run Test_Skip
@@ -17,8 +17,8 @@ func Test_Skip(t *testing.T) {
 	app.Get("/", helloWorldHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
 // go test -run Test_SkipFalse
@@ -29,8 +29,8 @@ func Test_SkipFalse(t *testing.T) {
 	app.Get("/", helloWorldHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
 // go test -run Test_SkipNilFunc
@@ -41,8 +41,8 @@ func Test_SkipNilFunc(t *testing.T) {
 	app.Get("/", helloWorldHandler)
 
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
-	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 }
 
 func helloWorldHandler(c fiber.Ctx) error {

@@ -61,7 +61,7 @@ func New(config ...Config) fiber.Handler {
 		for k, v := range cfg.rulesRegex {
 			replacer := captureTokens(k, c.Path())
 			if replacer != nil {
-				return c.Redirect(replacer.Replace(v), cfg.StatusCode)
+				return c.Redirect().Status(cfg.StatusCode).To(replacer.Replace(v))
 			}
 		}
 		return c.Next()
