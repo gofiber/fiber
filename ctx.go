@@ -21,7 +21,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gofiber/utils"
+	"github.com/gofiber/utils/v2"
 	"github.com/savsgio/dictpool"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"

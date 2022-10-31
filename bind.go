@@ -2,7 +2,7 @@ package fiber
 
 import (
 	"github.com/gofiber/fiber/v3/binder"
-	"github.com/gofiber/utils"
+	"github.com/gofiber/utils/v2"
 )
 
 // An interface to register custom binders.

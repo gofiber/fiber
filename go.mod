@@ -3,12 +3,12 @@ module github.com/gofiber/fiber/v3
 go 1.19
 
 require (
-	github.com/gofiber/utils v1.0.0
+	github.com/gofiber/utils/v2 v2.0.0-beta.1
 	github.com/google/uuid v1.3.0
 	github.com/mattn/go-colorable v0.1.13
 	github.com/mattn/go-isatty v0.0.16
 	github.com/savsgio/dictpool v0.0.0-20221023140959-7bf2e61cea94
-	github.com/stretchr/testify v1.8.0
+	github.com/stretchr/testify v1.8.1
 	github.com/tinylib/msgp v1.1.6
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.41.0
