@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gofiber/utils"
+	"github.com/gofiber/utils/v2"
 )
 
 type Storage struct {
