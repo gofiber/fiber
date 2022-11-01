@@ -644,66 +644,66 @@ func (app *App) Use(args ...any) Router {
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	app.register(methodUse, prefix, handlers...)
+	app.register([]string{methodUse}, prefix, nil, handlers...)
 	return app
 }
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App) Get(path string, handlers ...Handler) Router {
-	return app.Add(MethodGet, path, handlers...)
+func (app *App) Get(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodGet}, path, handler, middleware...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App) Head(path string, handlers ...Handler) Router {
-	return app.Add(MethodHead, path, handlers...)
+func (app *App) Head(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodHead}, path, handler, middleware...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App) Post(path string, handlers ...Handler) Router {
-	return app.Add(MethodPost, path, handlers...)
+func (app *App) Post(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodPost}, path, handler, middleware...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App) Put(path string, handlers ...Handler) Router {
-	return app.Add(MethodPut, path, handlers...)
+func (app *App) Put(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodPut}, path, handler, middleware...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App) Delete(path string, handlers ...Handler) Router {
-	return app.Add(MethodDelete, path, handlers...)
+func (app *App) Delete(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodDelete}, path, handler, middleware...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App) Connect(path string, handlers ...Handler) Router {
-	return app.Add(MethodConnect, path, handlers...)
+func (app *App) Connect(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodConnect}, path, handler, middleware...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App) Options(path string, handlers ...Handler) Router {
-	return app.Add(MethodOptions, path, handlers...)
+func (app *App) Options(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodOptions}, path, handler, middleware...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App) Trace(path string, handlers ...Handler) Router {
-	return app.Add(MethodTrace, path, handlers...)
+func (app *App) Trace(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodTrace}, path, handler, middleware...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App) Patch(path string, handlers ...Handler) Router {
-	return app.Add(MethodPatch, path, handlers...)
+func (app *App) Patch(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodPatch}, path, handler, middleware...)
 }
 
-// Add allows you to specify a HTTP method to register a route
-func (app *App) Add(method, path string, handlers ...Handler) Router {
-	return app.register(method, path, handlers...)
+// Add allows you to specify multiple HTTP methods to register a route.
+func (app *App) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
+	return app.register(methods, path, handler, middleware...)
 }
 
 // Static will create a file server serving static files
@@ -712,10 +712,8 @@ func (app *App) Static(prefix, root string, config ...Static) Router {
 }
 
 // All will register the handler on all HTTP methods
-func (app *App) All(path string, handlers ...Handler) Router {
-	for _, method := range intMethod {
-		_ = app.Add(method, path, handlers...)
-	}
+func (app *App) All(path string, handler Handler, middleware ...Handler) Router {
+	app.Add(intMethod, path, handler, middleware...)
 	return app
 }
 
@@ -725,7 +723,7 @@ func (app *App) All(path string, handlers ...Handler) Router {
 //	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
-		app.register(methodUse, prefix, handlers...)
+		app.register([]string{methodUse}, prefix, nil, handlers...)
 	}
 	grp := &Group{Prefix: prefix, app: app}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
