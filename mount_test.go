@@ -21,7 +21,7 @@ func Test_App_Mount(t *testing.T) {
 	})
 
 	app := New()
-	app.Mount("/john", micro)
+	app.Use("/john", micro)
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john/doe", nil))
 	require.Equal(t, nil, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
@@ -35,9 +35,9 @@ func Test_App_Mount_Nested(t *testing.T) {
 	two := New()
 	three := New()
 
-	two.Mount("/three", three)
-	app.Mount("/one", one)
-	one.Mount("/two", two)
+	two.Use("/three", three)
+	app.Use("/one", one)
+	one.Use("/two", two)
 
 	one.Get("/doe", func(c Ctx) error {
 		return c.SendStatus(StatusOK)
@@ -73,9 +73,9 @@ func Test_App_MountPath(t *testing.T) {
 	two := New()
 	three := New()
 
-	two.Mount("/three", three)
-	one.Mount("/two", two)
-	app.Mount("/one", one)
+	two.Use("/three", three)
+	one.Use("/two", two)
+	app.Use("/one", one)
 
 	require.Equal(t, "/one", one.MountPath())
 	require.Equal(t, "/one/two", two.MountPath())
@@ -96,7 +96,7 @@ func Test_App_ErrorHandler_GroupMount(t *testing.T) {
 
 	app := New()
 	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
+	v1.Use("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	testErrorResponse(t, err, resp, "1: custom error")
@@ -115,7 +115,7 @@ func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
 
 	app := New()
 	v1 := app.Group("/v1")
-	v1.Mount("/", micro)
+	v1.Use("/", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	testErrorResponse(t, err, resp, "1: custom error")
@@ -130,7 +130,7 @@ func Test_App_Group_Mount(t *testing.T) {
 
 	app := New()
 	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
+	v1.Use("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	require.Equal(t, nil, err, "app.Test(req)")
@@ -150,7 +150,7 @@ func Test_App_UseMountedErrorHandler(t *testing.T) {
 		return errors.New("something happened")
 	})
 
-	app.Mount("/api", fiber)
+	app.Use("/api", fiber)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
 	testErrorResponse(t, err, resp, "hi, i'm a custom error")
@@ -168,7 +168,7 @@ func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
 		return errors.New("something happened")
 	})
 
-	app.Mount("/", fiber)
+	app.Use("/", fiber)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
 	testErrorResponse(t, err, resp, "hi, i'm a custom error")
@@ -196,7 +196,7 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	subfiber.Get("/", func(c Ctx) error {
 		return errors.New("something happened")
 	})
-	subfiber.Mount("/third", tripleSubFiber)
+	subfiber.Use("/third", tripleSubFiber)
 
 	f := func(c Ctx, err error) error {
 		return c.Status(200).SendString("hi, i'm a custom error")
@@ -207,9 +207,9 @@ func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
 	fiber.Get("/", func(c Ctx) error {
 		return errors.New("something happened")
 	})
-	fiber.Mount("/sub", subfiber)
+	fiber.Use("/sub", subfiber)
 
-	app.Mount("/api", fiber)
+	app.Use("/api", fiber)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/sub", nil))
 	require.Equal(t, nil, err, "/api/sub req")
@@ -246,7 +246,7 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	})
 
 	app := New()
-	app.Mount("/hello", sub)
+	app.Use("/hello", sub)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/a", nil))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -301,8 +301,8 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 		return c.Render("bruh.tmpl", Map{})
 	})
 
-	sub.Mount("/bruh", sub2)
-	app.Mount("/hello", sub)
+	sub.Use("/bruh", sub2)
+	app.Use("/hello", sub)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/hello/world/a", nil))
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
@@ -348,7 +348,7 @@ func Test_Ctx_Render_MountGroup(t *testing.T) {
 
 	app := New()
 	v1 := app.Group("/v1")
-	v1.Mount("/john", micro)
+	v1.Use("/john", micro)
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v1/john/doe", nil))
 	require.Equal(t, nil, err, "app.Test(req)")

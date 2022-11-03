@@ -38,8 +38,6 @@ type Router interface {
 
 	Route(path string) Register
 
-	Mount(prefix string, fiber *App) Router
-
 	Name(name string) Router
 }
 

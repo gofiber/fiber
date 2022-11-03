@@ -39,32 +39,50 @@ func (grp *Group) Name(name string) Router {
 
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
+// Also, you can pass another app instance as a sub-router along a routing path.
+// It's very useful to split up a large API as many independent routers and
+// compose them as a single service using Use. The fiber's error handler and
+// any of the fiber's sub apps are added to the application's error handlers
+// to be invoked on errors that happen within the prefix route.
 //
-//	app.Use(func(c fiber.Ctx) error {
-//	     return c.Next()
-//	})
-//	app.Use("/api", func(c fiber.Ctx) error {
-//	     return c.Next()
-//	})
-//	app.Use("/api", handler, func(c fiber.Ctx) error {
-//	     return c.Next()
-//	})
+//		app.Use(func(c fiber.Ctx) error {
+//		     return c.Next()
+//		})
+//		app.Use("/api", func(c fiber.Ctx) error {
+//		     return c.Next()
+//		})
+//		app.Use("/api", handler, func(c fiber.Ctx) error {
+//		     return c.Next()
+//		})
+//	 	subApp := fiber.New()
+//		app.Use("/mounted-path", subApp)
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (grp *Group) Use(args ...any) Router {
 	prefix := ""
+	var subApp *App
 	var handlers []Handler
+
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
+		case *App:
+			subApp = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
+
+	if subApp != nil {
+		grp.mount(prefix, subApp)
+		return grp
+	}
+
 	grp.app.register([]string{methodUse}, getGroupPath(grp.Prefix, prefix), nil, handlers...)
+
 	return grp
 }
 

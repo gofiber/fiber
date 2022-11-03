@@ -30,7 +30,7 @@ func Test_Hook_OnRoute(t *testing.T) {
 	subApp := New()
 	subApp.Get("/test", testSimpleHandler)
 
-	app.Mount("/sub", subApp)
+	app.Use("/sub", subApp)
 }
 
 func Test_Hook_OnRoute_Mount(t *testing.T) {
@@ -38,7 +38,7 @@ func Test_Hook_OnRoute_Mount(t *testing.T) {
 
 	app := New()
 	subApp := New()
-	app.Mount("/sub", subApp)
+	app.Use("/sub", subApp)
 
 	subApp.Hooks().OnRoute(func(r Route) error {
 		require.Equal(t, "/sub/test", r.Path)
@@ -77,7 +77,7 @@ func Test_Hook_OnName(t *testing.T) {
 	subApp.Get("/test", testSimpleHandler)
 	subApp.Get("/test2", testSimpleHandler)
 
-	app.Mount("/sub", subApp)
+	app.Use("/sub", subApp)
 
 	require.Equal(t, "index", buf.String())
 }
@@ -124,7 +124,7 @@ func Test_Hook_OnGroup_Mount(t *testing.T) {
 
 	app := New()
 	micro := New()
-	micro.Mount("/john", app)
+	micro.Use("/john", app)
 
 	app.Hooks().OnGroup(func(g Group) error {
 		require.Equal(t, "/john/v1", g.Prefix)
@@ -255,5 +255,5 @@ func Test_Hook_OnMount(t *testing.T) {
 		return nil
 	})
 
-	app.Mount("/sub", subApp)
+	app.Use("/sub", subApp)
 }
