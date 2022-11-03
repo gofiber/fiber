@@ -438,7 +438,7 @@ func Test_App_Add_Method_Test(t *testing.T) {
 			require.Equal(t, "add: invalid http method JOHN\n", fmt.Sprintf("%v", err))
 		}
 	}()
-	app.Add("JOHN", "/doe", testEmptyHandler)
+	app.Add([]string{"JOHN"}, "/doe", testEmptyHandler)
 }
 
 // go test -run Test_App_GETOnly
