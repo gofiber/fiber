@@ -24,7 +24,7 @@ After you initiate your Fiber app, you can use the following possibilities:
 app.Use(pprof.New())
 ```
 
-In systems where you have multiple ingress points, it is common to add a URL prefix, like so:
+In systems where you have multiple ingress endpoints, it is common to add a URL prefix, like so:
 
 ```go
 // Default middleware
