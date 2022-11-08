@@ -151,7 +151,7 @@ func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 
 	// Create new group
 	newGrp := &Group{Prefix: prefix, app: grp.app, parentGroup: grp}
-	if err := grp.app.hooks.executeOnGroupHooks(*grp); err != nil {
+	if err := grp.app.hooks.executeOnGroupHooks(*newGrp); err != nil {
 		panic(err)
 	}
 
