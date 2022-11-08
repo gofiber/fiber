@@ -109,7 +109,6 @@ type App struct {
 	hooks *Hooks
 	// Latest route & group
 	latestRoute *Route
-	latestGroup *Group
 	// TLS handler
 	tlsHandler *TLSHandler
 	// Mount fields
@@ -485,7 +484,6 @@ func New(config ...Config) *App {
 		getBytes:    utils.UnsafeBytes,
 		getString:   utils.UnsafeString,
 		latestRoute: &Route{},
-		latestGroup: &Group{},
 	}
 
 	// Define hooks
@@ -583,8 +581,10 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 // Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
-	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.Prefix) {
-		app.latestRoute.Name = app.latestGroup.name + name
+
+	latestGroup := app.latestRoute.group
+	if latestGroup != nil {
+		app.latestRoute.Name = latestGroup.name + name
 	} else {
 		app.latestRoute.Name = name
 	}
@@ -656,7 +656,7 @@ func (app *App) Use(args ...interface{}) Router {
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	app.register(methodUse, prefix, handlers...)
+	app.register(methodUse, prefix, nil, handlers...)
 	return app
 }
 
@@ -715,7 +715,7 @@ func (app *App) Patch(path string, handlers ...Handler) Router {
 
 // Add allows you to specify a HTTP method to register a route
 func (app *App) Add(method, path string, handlers ...Handler) Router {
-	return app.register(method, path, handlers...)
+	return app.register(method, path, nil, handlers...)
 }
 
 // Static will create a file server serving static files
@@ -737,7 +737,7 @@ func (app *App) All(path string, handlers ...Handler) Router {
 //	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
-		app.register(methodUse, prefix, handlers...)
+		app.register(methodUse, prefix, nil, handlers...)
 	}
 	grp := &Group{Prefix: prefix, app: app}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
