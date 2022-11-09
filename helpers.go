@@ -333,6 +333,33 @@ var getBytesImmutable = func(s string) (b []byte) {
 
 // HTTP methods and their unique INTs
 func (app *App) methodInt(s string) int {
+	// For better performance
+	if app.customMethod {
+		switch s {
+		case MethodGet:
+			return 0
+		case MethodHead:
+			return 1
+		case MethodPost:
+			return 2
+		case MethodPut:
+			return 3
+		case MethodDelete:
+			return 4
+		case MethodConnect:
+			return 5
+		case MethodOptions:
+			return 6
+		case MethodTrace:
+			return 7
+		case MethodPatch:
+			return 8
+		default:
+			return -1
+		}
+	}
+
+	// For method customization
 	for i, v := range app.config.RequestMethods {
 		if s == v {
 			return i
@@ -341,19 +368,6 @@ func (app *App) methodInt(s string) int {
 
 	return -1
 }
-
-// HTTP methods slice
-/*var intMethod = []string{
-	MethodGet,
-	MethodHead,
-	MethodPost,
-	MethodPut,
-	MethodDelete,
-	MethodConnect,
-	MethodOptions,
-	MethodTrace,
-	MethodPatch,
-}*/
 
 // HTTP methods were copied from net/http.
 const (

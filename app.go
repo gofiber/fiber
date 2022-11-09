@@ -116,6 +116,8 @@ type App struct {
 	latestGroup *Group
 	// TLS handler
 	tlsHandler *TLSHandler
+	// custom method check
+	customMethod bool
 }
 
 // Config is a struct holding the server settings.
@@ -553,6 +555,8 @@ func New(config ...Config) *App {
 	}
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
+	} else {
+		app.customMethod = true
 	}
 
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
