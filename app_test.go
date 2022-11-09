@@ -490,7 +490,17 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 }
 
 func Test_App_Add_Method_Test(t *testing.T) {
-	app := New()
+	defer func() {
+		if err := recover(); err != nil {
+			utils.AssertEqual(t, "add: invalid http method JANE\n", fmt.Sprintf("%v", err))
+		}
+	}()
+
+	methods := append(DefaultMethods, "JOHN")
+	app := New(Config{
+		RequestMethods: methods,
+	})
+
 	app.Add("JOHN", "/doe", testEmptyHandler)
 	app.Add("JANE", "/doe", testEmptyHandler)
 
@@ -554,7 +564,7 @@ func Test_App_Chaining(t *testing.T) {
 		return c.SendStatus(202)
 	})
 	// check handler count for registered HEAD route
-	utils.AssertEqual(t, 5, len(app.stack[methodInt(MethodHead)][0].Handlers), "app.Test(req)")
+	utils.AssertEqual(t, 5, len(app.stack[app.methodInt(MethodHead)][0].Handlers), "app.Test(req)")
 
 	req := httptest.NewRequest(MethodPost, "/john", nil)
 
@@ -1313,16 +1323,17 @@ func Test_App_Stack(t *testing.T) {
 	app.Post("/path3", testEmptyHandler)
 
 	stack := app.Stack()
-	utils.AssertEqual(t, len(intMethod), len(stack))
-	utils.AssertEqual(t, 3, len(stack[methodInt(MethodGet)]))
-	utils.AssertEqual(t, 3, len(stack[methodInt(MethodHead)]))
-	utils.AssertEqual(t, 2, len(stack[methodInt(MethodPost)]))
-	utils.AssertEqual(t, 1, len(stack[methodInt(MethodPut)]))
-	utils.AssertEqual(t, 1, len(stack[methodInt(MethodPatch)]))
-	utils.AssertEqual(t, 1, len(stack[methodInt(MethodDelete)]))
-	utils.AssertEqual(t, 1, len(stack[methodInt(MethodConnect)]))
-	utils.AssertEqual(t, 1, len(stack[methodInt(MethodOptions)]))
-	utils.AssertEqual(t, 1, len(stack[methodInt(MethodTrace)]))
+	methodList := app.config.RequestMethods
+	utils.AssertEqual(t, len(methodList), len(stack))
+	utils.AssertEqual(t, 3, len(stack[app.methodInt(MethodGet)]))
+	utils.AssertEqual(t, 3, len(stack[app.methodInt(MethodHead)]))
+	utils.AssertEqual(t, 2, len(stack[app.methodInt(MethodPost)]))
+	utils.AssertEqual(t, 1, len(stack[app.methodInt(MethodPut)]))
+	utils.AssertEqual(t, 1, len(stack[app.methodInt(MethodPatch)]))
+	utils.AssertEqual(t, 1, len(stack[app.methodInt(MethodDelete)]))
+	utils.AssertEqual(t, 1, len(stack[app.methodInt(MethodConnect)]))
+	utils.AssertEqual(t, 1, len(stack[app.methodInt(MethodOptions)]))
+	utils.AssertEqual(t, 1, len(stack[app.methodInt(MethodTrace)]))
 }
 
 // go test -run Test_App_HandlersCount
@@ -1667,13 +1678,16 @@ func Test_App_SetTLSHandler(t *testing.T) {
 }
 
 func Test_App_AddCustomRequestMethod(t *testing.T) {
-	app := New()
-	utils.AssertEqual(t, len(app.stack), len(intMethod))
+	methods := append(DefaultMethods, "TEST")
+	app := New(Config{
+		RequestMethods: methods,
+	})
+	appMethods := app.config.RequestMethods
 
 	// method name is always uppercase - https://datatracker.ietf.org/doc/html/rfc7231#section-4.1
-	app.addCustomRequestMethod("TEST")
-	utils.AssertEqual(t, len(app.stack), len(intMethod))
-	utils.AssertEqual(t, "TEST", intMethod[len(intMethod)-1])
+	utils.AssertEqual(t, len(app.stack), len(appMethods))
+	utils.AssertEqual(t, len(app.stack), len(appMethods))
+	utils.AssertEqual(t, "TEST", appMethods[len(appMethods)-1])
 }
 
 func TestApp_GetRoutes(t *testing.T) {
@@ -1687,7 +1701,7 @@ func TestApp_GetRoutes(t *testing.T) {
 	app.Delete("/delete", handler).Name("delete")
 	app.Post("/post", handler).Name("post")
 	routes := app.GetRoutes(false)
-	utils.AssertEqual(t, 2+len(intMethod), len(routes))
+	utils.AssertEqual(t, 2+len(app.config.RequestMethods), len(routes))
 	methodMap := map[string]string{"/delete": "delete", "/post": "post"}
 	for _, route := range routes {
 		name, ok := methodMap[route.Path]

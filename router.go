@@ -138,7 +138,7 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
-	if !c.matched && methodExist(c) {
+	if !c.matched && app.methodExist(c) {
 		err = ErrMethodNotAllowed
 	}
 	return
@@ -215,8 +215,8 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
-	if method != methodUse && methodInt(method) == -1 {
-		app.addCustomRequestMethod(method)
+	if method != methodUse && app.methodInt(method) == -1 {
+		panic(fmt.Sprintf("add: invalid http method %s\n", method))
 	}
 	// A route requires atleast one ctx handler
 	if len(handlers) == 0 {
@@ -273,7 +273,7 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 	// Middleware route matches all HTTP methods
 	if isUse {
 		// Add route to all HTTP methods stack
-		for _, m := range intMethod {
+		for _, m := range app.config.RequestMethods {
 			// Create a route copy to avoid duplicates during compression
 			r := route
 			app.addRoute(m, &r)
@@ -420,7 +420,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 
 func (app *App) addRoute(method string, route *Route) {
 	// Get unique HTTP method identifier
-	m := methodInt(method)
+	m := app.methodInt(method)
 
 	// prevent identically route registration
 	l := len(app.stack[m])
@@ -450,7 +450,7 @@ func (app *App) buildTree() *App {
 		return app
 	}
 	// loop all the methods and stacks and create the prefix tree
-	for m := range intMethod {
+	for m := range app.config.RequestMethods {
 		tsMap := make(map[string][]*Route)
 		for _, route := range app.stack[m] {
 			treePath := ""
@@ -463,7 +463,7 @@ func (app *App) buildTree() *App {
 		app.treeStack[m] = tsMap
 	}
 	// loop the methods and tree stacks and add global stack and sort everything
-	for m := range intMethod {
+	for m := range app.config.RequestMethods {
 		tsMap := app.treeStack[m]
 		for treePart := range tsMap {
 			if treePart != "" {
