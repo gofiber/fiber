@@ -597,6 +597,12 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/2005-1101/paach", params: nil, match: false},
 		{url: "/api/v1/2005-11-01/peach", params: []string{"2005-11-01", "peach"}, match: true},
 	})
+	testCase("/api/v1/:param<int>?", []testparams{
+		{url: "/api/v1/entity", params: nil, match: false},
+		{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
+		{url: "/api/v1/true", params: nil, match: false},
+		{url: "/api/v1/", params: []string{""}, match: true},
+	})
 }
 
 func Test_Utils_GetTrimmedParam(t *testing.T) {
@@ -850,5 +856,11 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v1/2005-11-01/a", params: nil, match: false},
 		{url: "/api/v1/2005-1101/paach", params: nil, match: false},
 		{url: "/api/v1/2005-11-01/peach", params: []string{"2005-11-01", "peach"}, match: true},
+	})
+	benchCase("/api/v1/:param<int>?", []testparams{
+		{url: "/api/v1/entity", params: nil, match: false},
+		{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
+		{url: "/api/v1/true", params: nil, match: false},
+		{url: "/api/v1/", params: []string{""}, match: true},
 	})
 }

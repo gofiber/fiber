@@ -52,6 +52,7 @@ type Route struct {
 	root        bool        // Path equals '/'
 	path        string      // Prettified path
 	routeParser routeParser // Parameter parser
+	group       *Group      // Group instance. used for routes in groups
 
 	// Public fields
 	Method   string    `json:"method"` // HTTP method
@@ -211,7 +212,7 @@ func (app *App) copyRoute(route *Route) *Route {
 	}
 }
 
-func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
+func (app *App) register(method, pathRaw string, group *Group, handlers ...Handler) Router {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
@@ -261,6 +262,9 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		path:        RemoveEscapeChar(pathPretty),
 		routeParser: parsedPretty,
 		Params:      parsedRaw.params,
+
+		// Group data
+		group: group,
 
 		// Public data
 		Path:     pathRaw,
@@ -357,6 +361,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 
 	// Set config if provided
 	var cacheControlValue string
+	var modifyResponse Handler
 	if len(config) > 0 {
 		maxAge := config[0].MaxAge
 		if maxAge > 0 {
@@ -369,6 +374,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		if config[0].Index != "" {
 			fs.IndexNames = []string{config[0].Index}
 		}
+		modifyResponse = config[0].ModifyResponse
 	}
 	fileHandler := fs.NewRequestHandler()
 	handler := func(c *Ctx) error {
@@ -387,6 +393,9 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		if status != StatusNotFound && status != StatusForbidden {
 			if len(cacheControlValue) > 0 {
 				c.fasthttp.Response.Header.Set(HeaderCacheControl, cacheControlValue)
+			}
+			if modifyResponse != nil {
+				return modifyResponse(c)
 			}
 			return nil
 		}
@@ -418,7 +427,13 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 	return app
 }
 
-func (app *App) addRoute(method string, route *Route) {
+func (app *App) addRoute(method string, route *Route, isMounted ...bool) {
+	// Check mounted routes
+	var mounted bool
+	if len(isMounted) > 0 {
+		mounted = isMounted[0]
+	}
+
 	// Get unique HTTP method identifier
 	m := app.methodInt(method)
 
@@ -436,12 +451,15 @@ func (app *App) addRoute(method string, route *Route) {
 		app.routesRefreshed = true
 	}
 
-	app.mutex.Lock()
-	app.latestRoute = route
-	if err := app.hooks.executeOnRouteHooks(*route); err != nil {
-		panic(err)
+	// Execute onRoute hooks & change latestRoute if not adding mounted route
+	if !mounted {
+		app.mutex.Lock()
+		app.latestRoute = route
+		if err := app.hooks.executeOnRouteHooks(*route); err != nil {
+			panic(err)
+		}
+		app.mutex.Unlock()
 	}
-	app.mutex.Unlock()
 }
 
 // buildTree build the prefix tree from the previously registered routes
@@ -449,6 +467,7 @@ func (app *App) buildTree() *App {
 	if !app.routesRefreshed {
 		return app
 	}
+
 	// loop all the methods and stacks and create the prefix tree
 	for m := range app.config.RequestMethods {
 		tsMap := make(map[string][]*Route)
@@ -462,6 +481,7 @@ func (app *App) buildTree() *App {
 		}
 		app.treeStack[m] = tsMap
 	}
+
 	// loop the methods and tree stacks and add global stack and sort everything
 	for m := range app.config.RequestMethods {
 		tsMap := app.treeStack[m]

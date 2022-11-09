@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
@@ -107,6 +108,8 @@ var client = &fasthttp.Client{
 	DisablePathNormalizing:   true,
 }
 
+var lock sync.RWMutex
+
 // WithTlsConfig update http client with a user specified tls.config
 // This function should be called before Do and Forward.
 // Deprecated: use WithClient instead.
@@ -117,6 +120,8 @@ func WithTlsConfig(tlsConfig *tls.Config) {
 // WithClient sets the global proxy client.
 // This function should be called before Do and Forward.
 func WithClient(cli *fasthttp.Client) {
+	lock.Lock()
+	defer lock.Unlock()
 	client = cli
 }
 
@@ -137,7 +142,9 @@ func Do(c *fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 		cli = clients[0]
 	} else {
 		// Set global client
+		lock.RLock()
 		cli = client
+		lock.RUnlock()
 	}
 	req := c.Request()
 	res := c.Response()
