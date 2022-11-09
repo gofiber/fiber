@@ -9,6 +9,8 @@ package fiber
 
 import (
 	"bufio"
+	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"net"
@@ -19,9 +21,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"encoding/json"
-	"encoding/xml"
 
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
@@ -736,10 +735,10 @@ func (app *App) All(path string, handlers ...Handler) Router {
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
-	if len(handlers) > 0 {
-		app.register(methodUse, prefix, nil, handlers...)
-	}
 	grp := &Group{Prefix: prefix, app: app}
+	if len(handlers) > 0 {
+		app.register(methodUse, prefix, grp, handlers...)
+	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)
 	}
