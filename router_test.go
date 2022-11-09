@@ -280,7 +280,7 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 			utils.AssertEqual(t, "missing handler in route: /doe\n", fmt.Sprintf("%v", err))
 		}
 	}()
-	app.register("USE", "/doe")
+	app.register("USE", "/doe", nil)
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {

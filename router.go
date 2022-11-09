@@ -52,6 +52,7 @@ type Route struct {
 	root        bool        // Path equals '/'
 	path        string      // Prettified path
 	routeParser routeParser // Parameter parser
+	group       *Group      // Group instance. used for routes in groups
 
 	// Public fields
 	Method   string    `json:"method"` // HTTP method
@@ -211,7 +212,7 @@ func (app *App) copyRoute(route *Route) *Route {
 	}
 }
 
-func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
+func (app *App) register(method, pathRaw string, group *Group, handlers ...Handler) Router {
 	// Uppercase HTTP methods
 	method = utils.ToUpper(method)
 	// Check if the HTTP method is valid unless it's USE
@@ -261,6 +262,9 @@ func (app *App) register(method, pathRaw string, handlers ...Handler) Router {
 		path:        RemoveEscapeChar(pathPretty),
 		routeParser: parsedPretty,
 		Params:      parsedRaw.params,
+
+		// Group data
+		group: group,
 
 		// Public data
 		Path:     pathRaw,
