@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -913,6 +914,124 @@ func Test_Replace(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode())
 	require.Equal(t, "", resp.String())
+}
+
+func Test_Set_Config_To_Request(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set ctx", func(t *testing.T) {
+		key := struct{}{}
+
+		ctx := context.Background()
+		ctx = context.WithValue(ctx, key, "v1")
+
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{Ctx: ctx})
+
+		require.Equal(t, "v1", req.Context().Value(key))
+	})
+
+	t.Run("set useragent", func(t *testing.T) {
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{UserAgent: "agent"})
+
+		require.Equal(t, "agent", req.UserAgent())
+	})
+
+	t.Run("set referer", func(t *testing.T) {
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{Referer: "referer"})
+
+		require.Equal(t, "referer", req.Referer())
+	})
+
+	t.Run("set header", func(t *testing.T) {
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{Header: map[string]string{
+			"k1": "v1",
+		}})
+
+		require.Equal(t, "v1", req.Header("k1")[0])
+	})
+
+	t.Run("set params", func(t *testing.T) {
+		req := AcquireRequest()
+
+		setConfigToRequest(req, Config{Param: map[string]string{
+			"k1": "v1",
+		}})
+
+		require.Equal(t, "v1", req.Param("k1")[0])
+	})
+
+	// t.Run("set ctx", func(t *testing.T) {
+	// 	key := struct{}{}
+
+	// 	ctx := context.Background()
+	// 	ctx = context.WithValue(ctx, key, "v1")
+
+	// 	req := AcquireRequest()
+
+	// 	setConfigToRequest(req, Config{Ctx: ctx})
+
+	// 	require.Equal(t, "v1", req.Context().Value(key))
+	// })
+
+	// t.Run("set ctx", func(t *testing.T) {
+	// 	key := struct{}{}
+
+	// 	ctx := context.Background()
+	// 	ctx = context.WithValue(ctx, key, "v1")
+
+	// 	req := AcquireRequest()
+
+	// 	setConfigToRequest(req, Config{Ctx: ctx})
+
+	// 	require.Equal(t, "v1", req.Context().Value(key))
+	// })
+
+	// t.Run("set ctx", func(t *testing.T) {
+	// 	key := struct{}{}
+
+	// 	ctx := context.Background()
+	// 	ctx = context.WithValue(ctx, key, "v1")
+
+	// 	req := AcquireRequest()
+
+	// 	setConfigToRequest(req, Config{Ctx: ctx})
+
+	// 	require.Equal(t, "v1", req.Context().Value(key))
+	// })
+
+	// t.Run("set ctx", func(t *testing.T) {
+	// 	key := struct{}{}
+
+	// 	ctx := context.Background()
+	// 	ctx = context.WithValue(ctx, key, "v1")
+
+	// 	req := AcquireRequest()
+
+	// 	setConfigToRequest(req, Config{Ctx: ctx})
+
+	// 	require.Equal(t, "v1", req.Context().Value(key))
+	// })
+
+	// t.Run("set ctx", func(t *testing.T) {
+	// 	key := struct{}{}
+
+	// 	ctx := context.Background()
+	// 	ctx = context.WithValue(ctx, key, "v1")
+
+	// 	req := AcquireRequest()
+
+	// 	setConfigToRequest(req, Config{Ctx: ctx})
+
+	// 	require.Equal(t, "v1", req.Context().Value(key))
+	// })
 }
 
 func Benchmark_Client_Request(b *testing.B) {
