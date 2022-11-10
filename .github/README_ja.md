@@ -79,7 +79,7 @@
   </a>
 </p>
 <p align="center">
-<strong>FIber</strong>は、<a href="https://github.com/expressjs/express">Express</a>に触発された<strong>Webフレームワーク</strong>です。<a href="https://go.dev/doc/">Go</a><strong> 最速</strong>のHTTPエンジンである<a href="https://github.com/valyala/fasthttp">Fasthttp</a>で作られています。<strong>ゼロメモリアロケーション</strong>と<strong>パフォーマンス</strong>を念頭に置いて設計されており、<strong>迅速</strong>な開発をサポートします。
+<strong>Fiber</strong>は、<a href="https://github.com/expressjs/express">Express</a>に触発された<strong>Webフレームワーク</strong>です。<a href="https://go.dev/doc/">Go</a><strong> 最速</strong>のHTTPエンジンである<a href="https://github.com/valyala/fasthttp">Fasthttp</a>で作られています。<strong>ゼロメモリアロケーション</strong>と<strong>パフォーマンス</strong>を念頭に置いて設計されており、<strong>迅速</strong>な開発をサポートします。
 
 </p>
 
@@ -114,7 +114,6 @@ func main() {
 
 Go がインストールされていることを確認してください ([ダウンロード](https://go.dev/dl/)). バージョン `1.14` またはそれ以上であることが必要です。
 
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
 フォルダを作成し、フォルダ内で `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) を実行してプロジェクトを初期化してください。その後、 Fiber を以下の [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) コマンドでインストールしてください。
 
 ```bash
@@ -127,14 +126,14 @@ go get -u github.com/gofiber/fiber/v3
 -   [静的ファイル](https://docs.gofiber.io/api/app#static)のサポート
 -   究極の[パフォーマンス](https://docs.gofiber.io/extra/benchmarks)
 -   [低メモリ](https://docs.gofiber.io/extra/benchmarks)フットプリント
--   Express [API エンドポイント](https://docs.gofiber.io/api/ctx)
--   Middleware と[Next](https://docs.gofiber.io/api/ctx#next)のサポート
+-   [API エンドポイント](https://docs.gofiber.io/api/ctx)
+-   [Middleware](https://docs.gofiber.io/api/middleware) と[Next](https://docs.gofiber.io/api/ctx#next)のサポート
 -   [迅速](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)なサーバーサイドプログラミング
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   [15 ヶ国語](https://docs.gofiber.io/)で利用可能
+-   [18 ヶ国語](https://docs.gofiber.io/)に翻訳
 -   [Fiber](https://docs.gofiber.io/)をもっと知る
 
 ## 💡 哲学
@@ -146,9 +145,10 @@ Fiber は人気の高い Web フレームワークである Expressjs に**イ�
 わたしたちは Express の**手軽さ**と Go の**パフォーマンス**を組み合わせました。
 もしも、Web アプリケーションを Express 等の Node.js フレームワークで実装した経験があれば、多くの方法や原理がとても**馴染み深い**でしょう。
 
-## ⚠️ 制限時効
-* Fiberはunsafeパッケージを使用しているため、最新のGoバージョンと互換性がない場合があります。Fiber 2.29.0 は、Go のバージョン 1.14 から 1.19 でテストされています。
-* Fiberはnet/httpインターフェースと互換性がありません。つまり、gqlgenやgo-swaggerなど、net/httpのエコシステムの一部であるプロジェクトを使用することができません。
+## ⚠️ 制限事項
+
+-   Fiber は unsafe パッケージを使用しているため、最新の Go バージョンと互換性がない場合があります。Fiber 2.40.0 は、Go のバージョン 1.16 から 1.19 でテストされています。
+-   Fiber は net/http インターフェースと互換性がありません。つまり、gqlgen や go-swagger など、net/http のエコシステムの一部であるプロジェクトを使用することができません。
 
 ## 👀 例
 
@@ -195,7 +195,7 @@ func main() {
 
 ```
 
-#### 📖 [**Route Naming**](https://docs.gofiber.io/api/app#name)
+#### 📖 [**ルートの命名**](https://docs.gofiber.io/api/app#name)
 
 ```go
 func main() {
@@ -285,11 +285,11 @@ func main() {
 📖 [Engines](https://github.com/gofiber/template)
 📖 [Render](https://docs.gofiber.io/api/ctx#render)
 
-view engineが設定されていない時は、Fiberのデフォルトは[html/template](https://pkg.go.dev/html/template/) になります。
+view engine が設定されていない時は、Fiber のデフォルトは[html/template](https://pkg.go.dev/html/template/) になります。
 
 パーシャルを実行したい場合や、[amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) ,[pug](https://github.com/Joker/jade) などの別のエンジンを使用したい場合など、
 
-複数のview engineをサポートする [Template](https://github.com/gofiber/template) パッケージをご覧ください。
+複数の view engine をサポートする [Template](https://github.com/gofiber/template) パッケージをご覧ください。
 
 ```go
 package main
@@ -400,7 +400,7 @@ func main() {
 }
 ```
 
-`Origin`ヘッダーに任意のドメインを渡してCORSのチェックをします:
+`Origin`ヘッダーに任意のドメインを渡して CORS のチェックをします:
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
@@ -520,7 +520,7 @@ func main() {
     c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
       fmt.Println("WRITER")
       var i int
-      
+
       for {
         i++
         msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
@@ -610,7 +610,7 @@ func main() {
 
 ## 🕶️ Awesome List
 
-For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
+その他の記事、ミドルウェア、サンプル、ツールについては、私たちの[awesome list](https://github.com/gofiber/awesome-fiber)をご覧ください。
 
 ## 👍 貢献する
 
@@ -618,7 +618,7 @@ For more articles, middlewares, examples or tools check our [awesome list](https
 
 1. [GitHub Star](https://github.com/gofiber/fiber/stargazers)をつけてください 。
 2. [あなたの Twitter で](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)プロジェクトについてツイートしてください。
-3. [Medium](https://medium.com/) 、 [Dev.to、](https://dev.to/)または個人のブログでレビューまたはチュートリアルを書いてください。
+3. [Medium](https://medium.com/) 、 [Dev.to](https://dev.to/)、または個人のブログでレビューやチュートリアルを書いてください。
 4. [cup of coffee](https://buymeacoff.ee/fenny)の寄付でプロジェクトを支援しましょう。
 
 ## ☕ サポーター

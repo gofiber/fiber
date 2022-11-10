@@ -145,7 +145,7 @@ go get -u github.com/gofiber/fiber/v3
 -   [WebSocket دعم](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   ترجم الى [15 لغة أخرى](https://docs.gofiber.io/)
+-   ترجم الى [18 لغة أخرى](https://docs.gofiber.io/)
 -   وأكثر بكثير, [استكشف Fiber](https://docs.gofiber.io/)
 
 ## 💡 فلسفة
@@ -158,7 +158,7 @@ Fiber هو **مستوحى** من Express, إطار الويب الأكثر شع�
 ** و تطوير **مهارات**! فقط مثل Express تفعل لـ JavaScript عالم.
 
 ## ⚠️ Limitations
-* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.29.0 has been tested with Go versions 1.14 to 1.19.
+* Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.16 to 1.19.
 * Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
 
 ## 👀 أمثلة

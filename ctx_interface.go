@@ -170,7 +170,7 @@ type Ctx interface {
 
 	// Locals makes it possible to pass any values under string keys scoped to the request
 	// and therefore available to all following routes that match the request.
-	Locals(key string, value ...any) (val any)
+	Locals(key any, value ...any) (val any)
 
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)

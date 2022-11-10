@@ -30,7 +30,30 @@ func Test_Hook_OnRoute(t *testing.T) {
 	subApp := New()
 	subApp.Get("/test", testSimpleHandler)
 
-	app.Mount("/sub", subApp)
+	app.Use("/sub", subApp)
+}
+
+func Test_Hook_OnRoute_Mount(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	subApp := New()
+	app.Use("/sub", subApp)
+
+	subApp.Hooks().OnRoute(func(r Route) error {
+		require.Equal(t, "/sub/test", r.Path)
+
+		return nil
+	})
+
+	app.Hooks().OnRoute(func(r Route) error {
+		require.Equal(t, "/", r.Path)
+
+		return nil
+	})
+
+	app.Get("/", testSimpleHandler).Name("x")
+	subApp.Get("/test", testSimpleHandler)
 }
 
 func Test_Hook_OnName(t *testing.T) {
@@ -54,7 +77,7 @@ func Test_Hook_OnName(t *testing.T) {
 	subApp.Get("/test", testSimpleHandler)
 	subApp.Get("/test2", testSimpleHandler)
 
-	app.Mount("/sub", subApp)
+	app.Use("/sub", subApp)
 
 	require.Equal(t, "index", buf.String())
 }
@@ -94,6 +117,24 @@ func Test_Hook_OnGroup(t *testing.T) {
 	grp.Group("/a")
 
 	require.Equal(t, "/x/x/a", buf.String())
+}
+
+func Test_Hook_OnGroup_Mount(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	micro := New()
+	micro.Use("/john", app)
+
+	app.Hooks().OnGroup(func(g Group) error {
+		require.Equal(t, "/john/v1", g.Prefix)
+		return nil
+	})
+
+	v1 := app.Group("/v1")
+	v1.Get("/doe", func(c Ctx) error {
+		return c.SendStatus(StatusOK)
+	})
 }
 
 func Test_Hook_OnGroupName(t *testing.T) {
@@ -197,4 +238,22 @@ func Test_Hook_OnHook(t *testing.T) {
 	})
 
 	require.Nil(t, app.prefork(":3000", nil, ListenConfig{DisableStartupMessage: true, EnablePrefork: true}))
+}
+
+func Test_Hook_OnMount(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	app.Get("/", testSimpleHandler).Name("x")
+
+	subApp := New()
+	subApp.Get("/test", testSimpleHandler)
+
+	subApp.Hooks().OnMount(func(parent *App) error {
+		require.Equal(t, parent.mountFields.mountPath, "")
+
+		return nil
+	})
+
+	app.Use("/sub", subApp)
 }

@@ -28,7 +28,7 @@ var ErrCustomBinderNotFound = stdErrors.New("binder: custom binder not found, pl
 
 // gorilla/schema errors
 type (
-	// Conversion error exposes the internal schema.ConversionError for public use.
+	// ConversionError Conversion error exposes the internal schema.ConversionError for public use.
 	ConversionError = schema.ConversionError
 	// UnknownKeyError error exposes the internal schema.UnknownKeyError for public use.
 	UnknownKeyError = schema.UnknownKeyError

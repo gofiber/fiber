@@ -13,8 +13,8 @@ Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you t
 
 ```go
 func Balancer(config Config) fiber.Handler
-func Forward(addr string) fiber.Handler
-func Do(c fiber.Ctx, addr string) error
+func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
+func Do(c fiber.Ctx, addr string, clients ...*fasthttp.Client) error
 ```
 
 ### Examples
@@ -37,8 +37,20 @@ proxy.WithTlsConfig(&tls.Config{
     InsecureSkipVerify: true,
 })
 
+// if you need to use global self-custom client, you should use proxy.WithClient.
+proxy.WithClient(&fasthttp.Client{
+	NoDefaultUserAgentHeader: true, 
+	DisablePathNormalizing:   true,
+})
+
 // Forward to url
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
+
+// Forward to url with local custom client
+app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif", &fasthttp.Client{
+	NoDefaultUserAgentHeader: true, 
+	DisablePathNormalizing:   true,
+}))
 
 // Make request within handler
 app.Get("/:id", func(c fiber.Ctx) error {
@@ -120,8 +132,13 @@ type Config struct {
 	// Per-connection buffer size for responses' writing.
 	WriteBufferSize int
 
-	// tls config for the http client
-	TlsConfig *tls.Config
+	// tls config for the http client.
+	TlsConfig *tls.Config 
+	
+	// Client is custom client when client config is complex. 
+	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize and TlsConfig 
+	// will not be used if the client are set.
+	Client *fasthttp.LBClient
 }
 ```
 

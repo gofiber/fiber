@@ -1,6 +1,8 @@
 package binder
 
-import "errors"
+import (
+	"errors"
+)
 
 // Binder errors
 var (
