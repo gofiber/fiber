@@ -441,10 +441,14 @@ func Test_Proxy_Forward_Global_Client(t *testing.T) {
 		}))
 	}()
 
-	code, body, errs := fiber.Get("http://" + addr).String()
-	require.Equal(t, 0, len(errs))
-	require.Equal(t, fiber.StatusOK, code)
-	require.Equal(t, "test_global_client", body)
+	resp, err := fiberClient.AcquireClient().
+		R().
+		Get("https://" + addr)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "test_global_client", resp.String())
+	resp.Close()
 }
 
 // go test -race -run Test_Proxy_Forward_Local_Client
@@ -471,10 +475,14 @@ func Test_Proxy_Forward_Local_Client(t *testing.T) {
 		}))
 	}()
 
-	code, body, errs := fiber.Get("http://" + addr).String()
-	require.Equal(t, 0, len(errs))
-	require.Equal(t, fiber.StatusOK, code)
-	require.Equal(t, "test_local_client", body)
+	resp, err := fiberClient.AcquireClient().
+		R().
+		Get("https://" + addr)
+
+	require.NoError(t, err)
+	require.Equal(t, fiber.StatusOK, resp.StatusCode())
+	require.Equal(t, "test_local_client", resp.String())
+	resp.Close()
 }
 
 // go test -run Test_ProxyBalancer_Custom_Client
