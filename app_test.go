@@ -447,13 +447,8 @@ func Test_App_Add_Method_Test(t *testing.T) {
 	})
 
 	app.Add("JOHN", "/doe", testEmptyHandler)
-	app.Add("JANE", "/doe", testEmptyHandler)
 
 	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
-
-	resp, err = app.Test(httptest.NewRequest("JANE", "/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
@@ -464,6 +459,8 @@ func Test_App_Add_Method_Test(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/doe", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusBadRequest, resp.StatusCode, "Status code")
+
+	app.Add("JANE", "/doe", testEmptyHandler)
 }
 
 // go test -run Test_App_GETOnly
