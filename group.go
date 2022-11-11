@@ -133,7 +133,7 @@ func (grp *Group) Static(prefix, root string, config ...Static) Router {
 
 // All will register the handler on all HTTP methods
 func (grp *Group) All(path string, handlers ...Handler) Router {
-	for _, method := range intMethod {
+	for _, method := range grp.app.config.RequestMethods {
 		_ = grp.Add(method, path, handlers...)
 	}
 	return grp

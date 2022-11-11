@@ -163,7 +163,7 @@ func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
 	c.pathOriginal = app.getString(fctx.URI().PathOriginal())
 	// Set method
 	c.method = app.getString(fctx.Request.Header.Method())
-	c.methodINT = methodInt(c.method)
+	c.methodINT = app.methodInt(c.method)
 	// Attach *fasthttp.RequestCtx to ctx
 	c.fasthttp = fctx
 	// reset base uri
@@ -906,7 +906,7 @@ func (c *Ctx) Location(path string) {
 func (c *Ctx) Method(override ...string) string {
 	if len(override) > 0 {
 		method := utils.ToUpper(override[0])
-		mINT := methodInt(method)
+		mINT := c.app.methodInt(method)
 		if mINT == -1 {
 			return c.method
 		}

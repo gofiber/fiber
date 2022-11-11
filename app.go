@@ -110,6 +110,8 @@ type App struct {
 	latestRoute *Route
 	// TLS handler
 	tlsHandler *TLSHandler
+	// custom method check
+	customMethod bool
 	// Mount fields
 	mountFields *mountFields
 }
@@ -380,6 +382,11 @@ type Config struct {
 	//
 	// Optional. Default: DefaultColors
 	ColorScheme Colors `json:"color_scheme"`
+
+	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
+	//
+	// Optional. Defaukt: DefaultMethods
+	RequestMethods []string
 }
 
 // Static defines configuration options when defining static assets.
@@ -445,6 +452,19 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
+// HTTP methods enabled by default
+var DefaultMethods = []string{
+	MethodGet,
+	MethodHead,
+	MethodPost,
+	MethodPut,
+	MethodDelete,
+	MethodConnect,
+	MethodOptions,
+	MethodTrace,
+	MethodPatch,
+}
+
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c *Ctx, err error) error {
 	code := StatusInternalServerError
@@ -469,9 +489,6 @@ var DefaultErrorHandler = func(c *Ctx, err error) error {
 func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
-		// Create router stack
-		stack:     make([][]*Route, len(intMethod)),
-		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create Ctx pool
 		pool: sync.Pool{
 			New: func() interface{} {
@@ -538,11 +555,20 @@ func New(config ...Config) *App {
 	if app.config.Network == "" {
 		app.config.Network = NetworkTCP4
 	}
+	if len(app.config.RequestMethods) == 0 {
+		app.config.RequestMethods = DefaultMethods
+	} else {
+		app.customMethod = true
+	}
 
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
 	for _, ipAddress := range app.config.TrustedProxies {
 		app.handleTrustedProxy(ipAddress)
 	}
+
+	// Create router stack
+	app.stack = make([][]*Route, len(app.config.RequestMethods))
+	app.treeStack = make([]map[string][]*Route, len(app.config.RequestMethods))
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
@@ -724,7 +750,7 @@ func (app *App) Static(prefix, root string, config ...Static) Router {
 
 // All will register the handler on all HTTP methods
 func (app *App) All(path string, handlers ...Handler) Router {
-	for _, method := range intMethod {
+	for _, method := range app.config.RequestMethods {
 		_ = app.Add(method, path, handlers...)
 	}
 	return app
