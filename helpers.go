@@ -476,46 +476,47 @@ const (
 
 // Errors
 var (
-	ErrBadRequest                    = NewError(StatusBadRequest)                    // RFC 7231, 6.5.1
-	ErrUnauthorized                  = NewError(StatusUnauthorized)                  // RFC 7235, 3.1
-	ErrPaymentRequired               = NewError(StatusPaymentRequired)               // RFC 7231, 6.5.2
-	ErrForbidden                     = NewError(StatusForbidden)                     // RFC 7231, 6.5.3
-	ErrNotFound                      = NewError(StatusNotFound)                      // RFC 7231, 6.5.4
-	ErrMethodNotAllowed              = NewError(StatusMethodNotAllowed)              // RFC 7231, 6.5.5
-	ErrNotAcceptable                 = NewError(StatusNotAcceptable)                 // RFC 7231, 6.5.6
-	ErrProxyAuthRequired             = NewError(StatusProxyAuthRequired)             // RFC 7235, 3.2
-	ErrRequestTimeout                = NewError(StatusRequestTimeout)                // RFC 7231, 6.5.7
-	ErrConflict                      = NewError(StatusConflict)                      // RFC 7231, 6.5.8
-	ErrGone                          = NewError(StatusGone)                          // RFC 7231, 6.5.9
-	ErrLengthRequired                = NewError(StatusLengthRequired)                // RFC 7231, 6.5.10
-	ErrPreconditionFailed            = NewError(StatusPreconditionFailed)            // RFC 7232, 4.2
-	ErrRequestEntityTooLarge         = NewError(StatusRequestEntityTooLarge)         // RFC 7231, 6.5.11
-	ErrRequestURITooLong             = NewError(StatusRequestURITooLong)             // RFC 7231, 6.5.12
-	ErrUnsupportedMediaType          = NewError(StatusUnsupportedMediaType)          // RFC 7231, 6.5.13
-	ErrRequestedRangeNotSatisfiable  = NewError(StatusRequestedRangeNotSatisfiable)  // RFC 7233, 4.4
-	ErrExpectationFailed             = NewError(StatusExpectationFailed)             // RFC 7231, 6.5.14
-	ErrTeapot                        = NewError(StatusTeapot)                        // RFC 7168, 2.3.3
-	ErrMisdirectedRequest            = NewError(StatusMisdirectedRequest)            // RFC 7540, 9.1.2
-	ErrUnprocessableEntity           = NewError(StatusUnprocessableEntity)           // RFC 4918, 11.2
-	ErrLocked                        = NewError(StatusLocked)                        // RFC 4918, 11.3
-	ErrFailedDependency              = NewError(StatusFailedDependency)              // RFC 4918, 11.4
-	ErrTooEarly                      = NewError(StatusTooEarly)                      // RFC 8470, 5.2.
-	ErrUpgradeRequired               = NewError(StatusUpgradeRequired)               // RFC 7231, 6.5.15
-	ErrPreconditionRequired          = NewError(StatusPreconditionRequired)          // RFC 6585, 3
-	ErrTooManyRequests               = NewError(StatusTooManyRequests)               // RFC 6585, 4
-	ErrRequestHeaderFieldsTooLarge   = NewError(StatusRequestHeaderFieldsTooLarge)   // RFC 6585, 5
-	ErrUnavailableForLegalReasons    = NewError(StatusUnavailableForLegalReasons)    // RFC 7725, 3
-	ErrInternalServerError           = NewError(StatusInternalServerError)           // RFC 7231, 6.6.1
-	ErrNotImplemented                = NewError(StatusNotImplemented)                // RFC 7231, 6.6.2
-	ErrBadGateway                    = NewError(StatusBadGateway)                    // RFC 7231, 6.6.3
-	ErrServiceUnavailable            = NewError(StatusServiceUnavailable)            // RFC 7231, 6.6.4
-	ErrGatewayTimeout                = NewError(StatusGatewayTimeout)                // RFC 7231, 6.6.5
-	ErrHTTPVersionNotSupported       = NewError(StatusHTTPVersionNotSupported)       // RFC 7231, 6.6.6
-	ErrVariantAlsoNegotiates         = NewError(StatusVariantAlsoNegotiates)         // RFC 2295, 8.1
-	ErrInsufficientStorage           = NewError(StatusInsufficientStorage)           // RFC 4918, 11.5
-	ErrLoopDetected                  = NewError(StatusLoopDetected)                  // RFC 5842, 7.2
-	ErrNotExtended                   = NewError(StatusNotExtended)                   // RFC 2774, 7
-	ErrNetworkAuthenticationRequired = NewError(StatusNetworkAuthenticationRequired) // RFC 6585, 6
+	ErrBadRequest                   = NewError(StatusBadRequest)                   // 400
+	ErrUnauthorized                 = NewError(StatusUnauthorized)                 // 401
+	ErrPaymentRequired              = NewError(StatusPaymentRequired)              // 402
+	ErrForbidden                    = NewError(StatusForbidden)                    // 403
+	ErrNotFound                     = NewError(StatusNotFound)                     // 404
+	ErrMethodNotAllowed             = NewError(StatusMethodNotAllowed)             // 405
+	ErrNotAcceptable                = NewError(StatusNotAcceptable)                // 406
+	ErrProxyAuthRequired            = NewError(StatusProxyAuthRequired)            // 407
+	ErrRequestTimeout               = NewError(StatusRequestTimeout)               // 408
+	ErrConflict                     = NewError(StatusConflict)                     // 409
+	ErrGone                         = NewError(StatusGone)                         // 410
+	ErrLengthRequired               = NewError(StatusLengthRequired)               // 411
+	ErrPreconditionFailed           = NewError(StatusPreconditionFailed)           // 412
+	ErrRequestEntityTooLarge        = NewError(StatusRequestEntityTooLarge)        // 413
+	ErrRequestURITooLong            = NewError(StatusRequestURITooLong)            // 414
+	ErrUnsupportedMediaType         = NewError(StatusUnsupportedMediaType)         // 415
+	ErrRequestedRangeNotSatisfiable = NewError(StatusRequestedRangeNotSatisfiable) // 416
+	ErrExpectationFailed            = NewError(StatusExpectationFailed)            // 417
+	ErrTeapot                       = NewError(StatusTeapot)                       // 418
+	ErrMisdirectedRequest           = NewError(StatusMisdirectedRequest)           // 421
+	ErrUnprocessableEntity          = NewError(StatusUnprocessableEntity)          // 422
+	ErrLocked                       = NewError(StatusLocked)                       // 423
+	ErrFailedDependency             = NewError(StatusFailedDependency)             // 424
+	ErrTooEarly                     = NewError(StatusTooEarly)                     // 425
+	ErrUpgradeRequired              = NewError(StatusUpgradeRequired)              // 426
+	ErrPreconditionRequired         = NewError(StatusPreconditionRequired)         // 428
+	ErrTooManyRequests              = NewError(StatusTooManyRequests)              // 429
+	ErrRequestHeaderFieldsTooLarge  = NewError(StatusRequestHeaderFieldsTooLarge)  // 431
+	ErrUnavailableForLegalReasons   = NewError(StatusUnavailableForLegalReasons)   // 451
+
+	ErrInternalServerError           = NewError(StatusInternalServerError)           // 500
+	ErrNotImplemented                = NewError(StatusNotImplemented)                // 501
+	ErrBadGateway                    = NewError(StatusBadGateway)                    // 502
+	ErrServiceUnavailable            = NewError(StatusServiceUnavailable)            // 503
+	ErrGatewayTimeout                = NewError(StatusGatewayTimeout)                // 504
+	ErrHTTPVersionNotSupported       = NewError(StatusHTTPVersionNotSupported)       // 505
+	ErrVariantAlsoNegotiates         = NewError(StatusVariantAlsoNegotiates)         // 506
+	ErrInsufficientStorage           = NewError(StatusInsufficientStorage)           // 507
+	ErrLoopDetected                  = NewError(StatusLoopDetected)                  // 508
+	ErrNotExtended                   = NewError(StatusNotExtended)                   // 510
+	ErrNetworkAuthenticationRequired = NewError(StatusNetworkAuthenticationRequired) // 511
 )
 
 // HTTP Headers were copied from net/http.
