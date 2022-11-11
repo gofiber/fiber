@@ -429,6 +429,7 @@ const (
 	StatusSeeOther                      = 303 // RFC 7231, 6.4.4
 	StatusNotModified                   = 304 // RFC 7232, 4.1
 	StatusUseProxy                      = 305 // RFC 7231, 6.4.5
+	StatusSwitchProxy                   = 306 // RFC 9110, 15.4.7 (Unused)
 	StatusTemporaryRedirect             = 307 // RFC 7231, 6.4.7
 	StatusPermanentRedirect             = 308 // RFC 7538, 3
 	StatusBadRequest                    = 400 // RFC 7231, 6.5.1
