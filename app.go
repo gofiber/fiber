@@ -669,19 +669,30 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...interface{}) Router {
 	var prefix string
+	var prefixes []string
 	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
+		case []string:
+			prefixes = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	app.register(methodUse, prefix, nil, handlers...)
+
+	if len(prefixes) == 0 {
+		prefixes = append(prefixes, prefix)
+	}
+
+	for _, prefix := range prefixes {
+		app.register(methodUse, prefix, nil, handlers...)
+	}
+
 	return app
 }
 
