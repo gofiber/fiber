@@ -47,8 +47,9 @@ func (s *Storage) Set(key string, val interface{}, ttl time.Duration) {
 	if ttl > 0 {
 		exp = uint32(ttl.Seconds()) + atomic.LoadUint32(&utils.Timestamp)
 	}
+	i := item{exp, val}
 	s.Lock()
-	s.data[key] = item{exp, val}
+	s.data[key] = i
 	s.Unlock()
 }
 
@@ -61,8 +62,9 @@ func (s *Storage) Delete(key string) {
 
 // Reset all keys
 func (s *Storage) Reset() {
+	nd := make(map[string]item)
 	s.Lock()
-	s.data = make(map[string]item)
+	s.data = nd
 	s.Unlock()
 }
 
