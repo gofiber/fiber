@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"mime/multipart"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,6 +17,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 func Test_Request_Method(t *testing.T) {
@@ -1138,6 +1140,51 @@ func Test_Request_Timeout_With_Server(t *testing.T) {
 		Get("http://example.com")
 
 	require.Equal(t, ErrTimeoutOrCancel, err)
+}
+
+func Test_Request_MaxRedirects(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	app := fiber.New()
+
+	app.Get("/", func(c fiber.Ctx) error {
+		if c.Request().URI().QueryArgs().Has("foo") {
+			return c.Redirect().To("/foo")
+		}
+		return c.Redirect().To("/")
+	})
+	app.Get("/foo", func(c fiber.Ctx) error {
+		return c.SendString("redirect")
+	})
+
+	go func() { require.Equal(t, nil, app.Listener(ln, fiber.ListenConfig{DisableStartupMessage: true})) }()
+
+	t.Run("success", func(t *testing.T) {
+		resp, err := AcquireRequest().
+			SetDial(func(addr string) (net.Conn, error) { return ln.Dial() }).
+			SetMaxRedirects(1).
+			Get("http://example.com?foo")
+		body := resp.String()
+		code := resp.StatusCode()
+
+		require.Equal(t, 200, code)
+		require.Equal(t, "redirect", body)
+		require.NoError(t, err)
+
+		resp.Close()
+	})
+
+	t.Run("error", func(t *testing.T) {
+		resp, err := AcquireRequest().
+			SetDial(func(addr string) (net.Conn, error) { return ln.Dial() }).
+			SetMaxRedirects(1).
+			Get("http://example.com")
+
+		require.Nil(t, resp)
+		require.Equal(t, "too many redirects detected when doing the request", err.Error())
+	})
 }
 
 // // readErrorConn is a struct for testing retryIf

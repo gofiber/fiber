@@ -48,7 +48,8 @@ type Request struct {
 	cookies   *Cookie
 	path      *PathParam
 
-	timeout time.Duration
+	timeout      time.Duration
+	maxRedirects int
 
 	client *Client
 
@@ -475,6 +476,18 @@ func (r *Request) SetTimeout(t time.Duration) *Request {
 	return r
 }
 
+// MaxRedirects returns the max redirects count in request.
+func (r *Request) MaxRedirects() int {
+	return r.maxRedirects
+}
+
+// SetMaxRedirects method sets the maximum number of redirects at one go in the request instance.
+// It will override max redirect which set in client instance.
+func (r *Request) SetMaxRedirects(count int) *Request {
+	r.maxRedirects = count
+	return r
+}
+
 // checkClient method checks whether the client has been set in request.
 func (r *Request) checkClient() {
 	if r.client == nil {
@@ -532,6 +545,8 @@ func (r *Request) Reset() {
 	r.referer = ""
 	r.ctx = nil
 	r.body = nil
+	r.timeout = 0
+	r.maxRedirects = 0
 	r.bodyType = noBody
 	r.boundary = boundary
 

@@ -514,7 +514,8 @@ type Config struct {
 	Cookie    map[string]string
 	PathParam map[string]string
 
-	Timeout time.Duration
+	Timeout      time.Duration
+	MaxRedirects int
 
 	Body     any
 	FormData map[string]string
@@ -560,6 +561,10 @@ func setConfigToRequest(req *Request, config ...Config) {
 
 	if cfg.Timeout != 0 {
 		req.SetTimeout(cfg.Timeout)
+	}
+
+	if cfg.MaxRedirects != 0 {
+		req.SetMaxRedirects(cfg.MaxRedirects)
 	}
 
 	if cfg.Dial != nil {

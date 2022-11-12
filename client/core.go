@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/addon/retry"
 	"github.com/valyala/fasthttp"
 )
@@ -95,10 +96,18 @@ func (c *core) execFunc() (*Response, error) {
 		respv := fasthttp.AcquireResponse()
 		if cfg != nil {
 			err = retry.NewExponentialBackoff(*cfg).Retry(func() error {
+				if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+					return c.host.DoRedirects(reqv, respv, c.req.maxRedirects)
+				}
+
 				return c.host.Do(reqv, respv)
 			})
 		} else {
-			err = c.host.Do(reqv, respv)
+			if c.req.maxRedirects > 0 && (string(reqv.Header.Method()) == fiber.MethodGet || string(reqv.Header.Method()) == fiber.MethodHead) {
+				err = c.host.DoRedirects(reqv, respv, c.req.maxRedirects)
+			} else {
+				err = c.host.Do(reqv, respv)
+			}
 		}
 		defer func() {
 			fasthttp.ReleaseRequest(reqv)
