@@ -67,7 +67,7 @@ func parserRequestURL(c *Client, req *Request) error {
 	if !protocolCheck.MatchString(uri) {
 		uri = c.baseUrl + uri
 		if !protocolCheck.MatchString(uri) {
-			return ErrURLForamt
+			return ErrURLFormat
 		}
 	}
 

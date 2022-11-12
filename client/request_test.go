@@ -558,7 +558,7 @@ func Test_Request_Invalid_URL(t *testing.T) {
 	resp, err := AcquireRequest().
 		Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
-	require.Equal(t, ErrURLForamt, err)
+	require.Equal(t, ErrURLFormat, err)
 	require.Equal(t, (*Response)(nil), resp)
 }
 
@@ -567,7 +567,7 @@ func Test_Request_Unsupport_Protocol(t *testing.T) {
 
 	resp, err := AcquireRequest().
 		Get("ftp://example.com")
-	require.Equal(t, ErrURLForamt, err)
+	require.Equal(t, ErrURLFormat, err)
 	require.Equal(t, (*Response)(nil), resp)
 }
 

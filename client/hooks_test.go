@@ -73,7 +73,7 @@ func Test_Parser_Request_URL(t *testing.T) {
 		req := AcquireRequest().SetURL("/v1")
 
 		err := parserRequestURL(client, req)
-		require.Equal(t, ErrURLForamt, err)
+		require.Equal(t, ErrURLFormat, err)
 	})
 
 	t.Run("the path param from client", func(t *testing.T) {

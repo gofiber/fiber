@@ -118,7 +118,7 @@ func Test_Client_Invalid_URL(t *testing.T) {
 		SetDial(dial).
 		Get("http://example.com\r\n\r\nGET /\r\n\r\n")
 
-	require.ErrorIs(t, err, ErrURLForamt)
+	require.ErrorIs(t, err, ErrURLFormat)
 }
 
 func Test_Client_Unsupported_Protocol(t *testing.T) {
@@ -128,7 +128,7 @@ func Test_Client_Unsupported_Protocol(t *testing.T) {
 		R().
 		Get("ftp://example.com")
 
-	require.ErrorIs(t, err, ErrURLForamt)
+	require.ErrorIs(t, err, ErrURLFormat)
 }
 
 func Test_Get(t *testing.T) {
