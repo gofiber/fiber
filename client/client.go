@@ -18,6 +18,14 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+type Logger interface {
+	Printf(format string, args ...any)
+}
+
+type disableLogger struct{}
+
+func (*disableLogger) Printf(format string, args ...any) {}
+
 // The Client is used to create a Fiber Client with
 // client-level settings that apply to all requests
 // raise from the client.
@@ -25,7 +33,7 @@ import (
 // Fiber Client also provides an option to override
 // or merge most of the client settings at the request.
 type Client struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 
 	baseUrl   string
 	userAgent string
@@ -34,6 +42,8 @@ type Client struct {
 	params    *QueryParam
 	cookies   *Cookie
 	path      *PathParam
+
+	logger Logger
 
 	timeout time.Duration
 
@@ -76,6 +86,9 @@ func (c *Client) RequestHook() []RequestHook {
 
 // Add user-defined request hooks.
 func (c *Client) AddRequestHook(h ...RequestHook) *Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.userRequestHooks = append(c.userRequestHooks, h...)
 	return c
 }
@@ -87,6 +100,9 @@ func (c *Client) ResponseHook() []ResponseHook {
 
 // Add user-defined response hooks.
 func (c *Client) AddResponseHook(h ...ResponseHook) *Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.userResponseHooks = append(c.userResponseHooks, h...)
 	return c
 }
@@ -211,6 +227,9 @@ func (c *Client) RetryConfig() *RetryConfig {
 
 // SetRetryConfig sets retry config in client which is impl by addon/retry package.
 func (c *Client) SetRetryConfig(config *RetryConfig) *Client {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	c.retryConfig = config
 	return c
 }
@@ -430,6 +449,21 @@ func (c *Client) SetTimeout(t time.Duration) *Client {
 	return c
 }
 
+func (c *Client) Logger() Logger {
+	if c.logger == nil {
+		return &disableLogger{}
+	}
+
+	return c.logger
+}
+
+// SetLogger set logger field in client.
+// The logger would output relate info with request.
+func (c *Client) SetLogger(logger Logger) *Client {
+	c.logger = logger
+	return c
+}
+
 // Get provide a API like axios which send get request.
 func (c *Client) Get(url string, cfg ...Config) (*Response, error) {
 	req := AcquireRequest().SetClient(c)
@@ -602,11 +636,12 @@ var (
 				},
 				cookies: &Cookie{},
 				path:    &PathParam{},
+				logger:  &disableLogger{},
 
 				userRequestHooks:     []RequestHook{},
 				buildinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
 				userResponseHooks:    []ResponseHook{},
-				buildinResponseHooks: []ResponseHook{parserResponseCookie},
+				buildinResponseHooks: []ResponseHook{parserResponseCookie, logger},
 				jsonMarshal:          json.Marshal,
 				jsonUnmarshal:        json.Unmarshal,
 				xmlMarshal:           xml.Marshal,

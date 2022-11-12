@@ -60,8 +60,8 @@ type core struct {
 }
 
 func (c *core) getRetryConfig() *RetryConfig {
-	c.client.mu.Lock()
-	defer c.client.mu.Unlock()
+	c.client.mu.RLock()
+	defer c.client.mu.RUnlock()
 
 	cfg := c.client.RetryConfig()
 	if cfg == nil {
@@ -141,8 +141,8 @@ func (c *core) execFunc() (*Response, error) {
 
 // Exec request hook
 func (c *core) preHooks() error {
-	c.client.mu.Lock()
-	defer c.client.mu.Unlock()
+	c.client.mu.RLock()
+	defer c.client.mu.RUnlock()
 
 	for _, f := range c.client.userRequestHooks {
 		err := f(c.client, c.req)
@@ -163,8 +163,9 @@ func (c *core) preHooks() error {
 
 // Exec response hooks
 func (c *core) afterHooks(resp *Response) error {
-	c.client.mu.Lock()
-	defer c.client.mu.Unlock()
+	c.client.mu.RLock()
+	defer c.client.mu.RUnlock()
+
 	for _, f := range c.client.buildinResponseHooks {
 		err := f(c.client, resp, c.req)
 		if err != nil {
