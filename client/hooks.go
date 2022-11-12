@@ -58,7 +58,7 @@ func randString(n int) string {
 // Query params and path params deal in this function.
 func parserRequestURL(c *Client, req *Request) error {
 	splitUrl := strings.Split(req.url, "?")
-	// I don't want to judege splitUrl length.
+	// I don't want to judge splitUrl length.
 	splitUrl = append(splitUrl, "")
 
 	// Determine whether to superimpose baseurl based on
@@ -79,7 +79,7 @@ func parserRequestURL(c *Client, req *Request) error {
 		uri = strings.Replace(uri, ":"+key, val, -1)
 	})
 
-	// set uri to request and orther related setting
+	// set uri to request and other related setting
 	req.RawRequest.SetRequestURI(uri)
 
 	// merge query params
@@ -233,7 +233,7 @@ func parserRequestBody(c *Client, req *Request) error {
 				}
 			}
 
-			// wirte file
+			// write file
 			w, err := mw.CreateFormFile(v.fieldName, v.name)
 			if err != nil {
 				return err

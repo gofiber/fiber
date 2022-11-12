@@ -27,10 +27,10 @@ var (
 // Called before a request is sent.
 type RequestHook func(*Client, *Request) error
 
-// ResponseHook is a function that receives Agent, Respose and Request,
-// it can change the data is Respose or deal with some effects.
+// ResponseHook is a function that receives Agent, Response and Request,
+// it can change the data is Response or deal with some effects.
 //
-// Called after a respose has been received.
+// Called after a response has been received.
 type ResponseHook func(*Client, *Response, *Request) error
 
 // RetryConfig is an alias for config in the `addon/retry` package.
@@ -165,7 +165,7 @@ func (c *core) preHooks() error {
 func (c *core) afterHooks(resp *Response) error {
 	c.client.mu.Lock()
 	defer c.client.mu.Unlock()
-	for _, f := range c.client.buildinResposeHooks {
+	for _, f := range c.client.buildinResponseHooks {
 		err := f(c.client, resp, c.req)
 		if err != nil {
 			return err

@@ -227,7 +227,7 @@ func (r *Request) SetUserAgent(ua string) *Request {
 	return r
 }
 
-// Boundary returns bounday in multipart boundary.
+// Boundary returns boundary in multipart boundary.
 func (r *Request) Boundary() string {
 	return r.boundary
 }
@@ -520,7 +520,7 @@ func (r *Request) Delete(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodDelete).Send()
 }
 
-// Send Options reuqest.
+// Send Options request.
 func (r *Request) Options(url string) (*Response, error) {
 	return r.SetURL(url).SetMethod(fiber.MethodOptions).Send()
 }
@@ -570,7 +570,7 @@ type Header struct {
 	*fasthttp.RequestHeader
 }
 
-// Peekmutiple methods returns multiple field in header with same key.
+// Peekmultiple methods returns multiple field in header with same key.
 func (h *Header) PeekMultiple(key string) []string {
 	res := []string{}
 	byteKey := []byte(key)
@@ -642,7 +642,7 @@ func (c Cookie) Del(key string) {
 	delete(c, key)
 }
 
-// SetCookie method sets a signle val in Cookie.
+// SetCookie method sets a single val in Cookie.
 func (c Cookie) SetCookie(key, val string) {
 	c[key] = val
 }
@@ -659,7 +659,7 @@ func (c Cookie) SetCookiesWithStruct(v any) {
 	SetValWithStruct(c, "cookie", v)
 }
 
-// DelCookies method deletes mutiple val in Cookie.
+// DelCookies method deletes multiple val in Cookie.
 func (c Cookie) DelCookies(key ...string) {
 	for _, v := range key {
 		c.Del(v)
@@ -693,7 +693,7 @@ func (p PathParam) Del(key string) {
 	delete(p, key)
 }
 
-// SetParam method sets a signle val in PathParam.
+// SetParam method sets a single val in PathParam.
 func (p PathParam) SetParam(key, val string) {
 	p[key] = val
 }
@@ -710,7 +710,7 @@ func (p PathParam) SetParamsWithStruct(v any) {
 	SetValWithStruct(p, "path", v)
 }
 
-// DelParams method deletes mutiple val in PathParams.
+// DelParams method deletes multiple val in PathParams.
 func (p PathParam) DelParams(key ...string) {
 	for _, v := range key {
 		p.Del(v)
@@ -763,7 +763,7 @@ func (f *FormData) SetDatas(m map[string]string) {
 	}
 }
 
-// SetDatasWithStruct method supports set mutiple fields via a struct.
+// SetDatasWithStruct method supports set multiple fields via a struct.
 func (f *FormData) SetDatasWithStruct(v any) {
 	SetValWithStruct(f, "form", v)
 }
@@ -803,7 +803,7 @@ func (f *File) SetPath(p string) {
 	f.path = p
 }
 
-// SetReader method can reveive a io.ReadCloser
+// SetReader method can receive a io.ReadCloser
 // which will be closed in parserBody hook.
 func (f *File) SetReader(r io.ReadCloser) {
 	f.reader = r

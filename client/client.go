@@ -46,8 +46,8 @@ type Client struct {
 	// user defined response hooks
 	userResponseHooks []ResponseHook
 
-	// client package defined respose hooks
-	buildinResposeHooks []ResponseHook
+	// client package defined response hooks
+	buildinResponseHooks []ResponseHook
 
 	jsonMarshal   utils.JSONMarshal
 	jsonUnmarshal utils.JSONUnmarshal
@@ -80,7 +80,7 @@ func (c *Client) AddRequestHook(h ...RequestHook) *Client {
 	return c
 }
 
-// ResponseHook return user-define reponse hooks.
+// ResponseHook return user-define response hooks.
 func (c *Client) ResponseHook() []ResponseHook {
 	return c.userResponseHooks
 }
@@ -319,7 +319,7 @@ func (c *Client) SetParamsWithStruct(v any) *Client {
 	return c
 }
 
-// DelParams method deletes single or multiple params field and its valus in client.
+// DelParams method deletes single or multiple params field and its values in client.
 func (c *Client) DelParams(key ...string) *Client {
 	for _, v := range key {
 		c.params.Del(v)
@@ -377,7 +377,7 @@ func (c *Client) SetPathParamsWithStruct(v any) *Client {
 	return c
 }
 
-// DelPathParams method deletes single or multiple path params field and its valus in client.
+// DelPathParams method deletes single or multiple path params field and its values in client.
 func (c *Client) DelPathParams(key ...string) *Client {
 	c.path.DelParams(key...)
 	return c
@@ -416,7 +416,7 @@ func (c *Client) SetCookiesWithStruct(v any) *Client {
 	return c
 }
 
-// DelCookies method deletes single or multiple cookies field and its valus in client.
+// DelCookies method deletes single or multiple cookies field and its values in client.
 func (c *Client) DelCookies(key ...string) *Client {
 	c.cookies.DelCookies(key...)
 	return c
@@ -603,14 +603,14 @@ var (
 				cookies: &Cookie{},
 				path:    &PathParam{},
 
-				userRequestHooks:    []RequestHook{},
-				buildinRequestHooks: []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
-				userResponseHooks:   []ResponseHook{},
-				buildinResposeHooks: []ResponseHook{parserResponseCookie},
-				jsonMarshal:         json.Marshal,
-				jsonUnmarshal:       json.Unmarshal,
-				xmlMarshal:          xml.Marshal,
-				xmlUnmarshal:        xml.Unmarshal,
+				userRequestHooks:     []RequestHook{},
+				buildinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
+				userResponseHooks:    []ResponseHook{},
+				buildinResponseHooks: []ResponseHook{parserResponseCookie},
+				jsonMarshal:          json.Marshal,
+				jsonUnmarshal:        json.Unmarshal,
+				xmlMarshal:           xml.Marshal,
+				xmlUnmarshal:         xml.Unmarshal,
 			}
 		},
 	}
@@ -641,7 +641,7 @@ func C() *Client {
 	return defaultClient
 }
 
-// Replce the defaultClient, the returned function can undo.
+// Replace the defaultClient, the returned function can undo.
 func Replace(c *Client) func() {
 	replaceMu.Lock()
 	defer replaceMu.Unlock()
