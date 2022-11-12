@@ -9,8 +9,8 @@ import (
 	"crypto/tls"
 	"io"
 	"mime/multipart"
+	"sync"
 
-	"github.com/savsgio/dictpool"
 	"github.com/valyala/fasthttp"
 )
 
@@ -439,10 +439,7 @@ func (c *DefaultCtx) release() {
 	c.fasthttp = nil
 	c.bind = nil
 	c.redirectionMessages = c.redirectionMessages[:0]
-	if c.viewBindMap != nil {
-		dictpool.ReleaseDict(c.viewBindMap)
-		c.viewBindMap = nil
-	}
+	c.viewBindMap = sync.Map{}
 	if c.redirect != nil {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
