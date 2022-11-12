@@ -74,10 +74,11 @@ func (s *Storage) gc(sleep time.Duration) {
 	for {
 		select {
 		case <-ticker.C:
+			ts := atomic.LoadUint32(&utils.Timestamp)
 			expired = expired[:0]
 			s.RLock()
 			for key, v := range s.data {
-				if v.e != 0 && v.e <= atomic.LoadUint32(&utils.Timestamp) {
+				if v.e != 0 && v.e <= ts {
 					expired = append(expired, key)
 				}
 			}
