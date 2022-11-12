@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gofiber/utils"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 

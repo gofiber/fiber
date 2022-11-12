@@ -972,6 +972,8 @@ func Test_Request_Body_With_Server(t *testing.T) {
 				SetFileReader(io.NopCloser(strings.NewReader("world"))),
 			))
 
+		require.Equal(t, req.Boundary(), "myBoundary")
+
 		resp, err := req.Post("http://exmaple.com")
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode())
