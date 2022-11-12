@@ -84,8 +84,13 @@ func (s *Storage) gc(sleep time.Duration) {
 			}
 			s.RUnlock()
 			s.Lock()
+			// Double-checked locking.
+			// We might have replaced the item in the meantime.
 			for i := range expired {
-				delete(s.data, expired[i])
+				v := s.data[expired[i]]
+				if v.e != 0 && v.e <= ts {
+					delete(s.data, expired[i])
+				}
 			}
 			s.Unlock()
 		}
