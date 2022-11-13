@@ -64,6 +64,8 @@ type Client struct {
 	xmlMarshal    utils.XMLMarshal
 	xmlUnmarshal  utils.XMLUnmarshal
 
+	jar *jar
+
 	// tls config
 	tlsConfig *tls.Config
 
@@ -461,6 +463,18 @@ func (c *Client) Logger() Logger {
 // The logger would output relate info with request.
 func (c *Client) SetLogger(logger Logger) *Client {
 	c.logger = logger
+	return c
+}
+
+// enable cookie jar
+func (c *Client) EnableJar() *Client {
+	c.jar = newJar()
+	return c
+}
+
+// disable cookie jar
+func (c *Client) DisableJar() *Client {
+	c.jar = nil
 	return c
 }
 

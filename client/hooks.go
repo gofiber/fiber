@@ -154,6 +154,14 @@ func parserRequestHeader(c *Client, req *Request) error {
 	}
 
 	// set cookie
+	// add cookie form jar to req
+	if c.jar != nil {
+		cookies := c.jar.Cookies(req.RawRequest.URI())
+		for _, c := range cookies {
+			req.RawRequest.Header.SetCookieBytesKV(c.Key, c.Value)
+		}
+	}
+
 	c.cookies.VisitAll(func(key, val string) {
 		req.RawRequest.Header.SetCookie(key, val)
 	})
@@ -276,6 +284,11 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) (err error) {
 
 		resp.cookie = append(resp.cookie, cookie)
 	})
+
+	// store cookies to jar
+	if c.jar != nil {
+		c.jar.SetCookies(req.RawRequest.URI(), resp.cookie)
+	}
 
 	return
 }
