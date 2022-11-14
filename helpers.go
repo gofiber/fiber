@@ -334,7 +334,7 @@ var getBytesImmutable = func(s string) (b []byte) {
 // HTTP methods and their unique INTs
 func (app *App) methodInt(s string) int {
 	// For better performance
-	if !app.customMethod {
+	if len(app.configured.RequestMethods) == 0 {
 		switch s {
 		case MethodGet:
 			return 0

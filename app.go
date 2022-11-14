@@ -110,8 +110,6 @@ type App struct {
 	latestRoute *Route
 	// TLS handler
 	tlsHandler *TLSHandler
-	// custom method check
-	customMethod bool
 	// Mount fields
 	mountFields *mountFields
 	// Indicates if the value was explicitly configured
@@ -562,8 +560,6 @@ func New(config ...Config) *App {
 	}
 	if len(app.config.RequestMethods) == 0 {
 		app.config.RequestMethods = DefaultMethods
-	} else {
-		app.customMethod = true
 	}
 
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
