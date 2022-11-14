@@ -294,10 +294,14 @@ func parserResponseCookie(c *Client, resp *Response, req *Request) (err error) {
 }
 
 func logger(c *Client, resp *Response, req *Request) (err error) {
+	if !c.debug {
+		return
+	}
+
 	logger := c.Logger()
 
-	logger.Printf("%s\n", req.RawRequest.String())
-	logger.Printf("%s\n", resp.RawResponse.String())
+	logger.Debugf("%s\n", req.RawRequest.String())
+	logger.Debugf("%s\n", resp.RawResponse.String())
 
 	return
 }

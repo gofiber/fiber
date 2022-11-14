@@ -18,13 +18,35 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Define the logger interface so that users can
+// use different log implements to output logs.
 type Logger interface {
-	Printf(format string, args ...any)
+	// The log with error level
+	Errorf(format string, v ...any)
+
+	// The log with warn level
+	Warnf(format string, v ...any)
+
+	// The log with info level
+	Infof(format string, v ...any)
+
+	// The log with debug level
+	Debugf(format string, v ...any)
 }
 
+var _ (Logger) = (*disableLogger)(nil)
+
+// Implement a Logger interface.
+// All logs are turned off by default.
 type disableLogger struct{}
 
-func (*disableLogger) Printf(format string, args ...any) {}
+func (*disableLogger) Errorf(format string, args ...any) {}
+
+func (*disableLogger) Warnf(format string, args ...any) {}
+
+func (*disableLogger) Infof(format string, args ...any) {}
+
+func (*disableLogger) Debugf(format string, args ...any) {}
 
 // The Client is used to create a Fiber Client with
 // client-level settings that apply to all requests
@@ -43,6 +65,7 @@ type Client struct {
 	cookies   *Cookie
 	path      *PathParam
 
+	debug  bool
 	logger Logger
 
 	timeout time.Duration
@@ -463,6 +486,18 @@ func (c *Client) Logger() Logger {
 // The logger would output relate info with request.
 func (c *Client) SetLogger(logger Logger) *Client {
 	c.logger = logger
+	return c
+}
+
+// Debug enable log debug level output.
+func (c *Client) Debug() *Client {
+	c.debug = true
+	return c
+}
+
+// DisableDebug disenable log debug level output.
+func (c *Client) DisableDebug() *Client {
+	c.debug = false
 	return c
 }
 
