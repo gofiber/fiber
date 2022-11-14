@@ -114,8 +114,8 @@ type App struct {
 	customMethod bool
 	// Mount fields
 	mountFields *mountFields
-	// True if the ErrorHandler is explicitly configured
-	errorHandlerConfigured bool
+	// Indicates if the value was explicitly configured
+	configured Config
 }
 
 // Config is a struct holding the server settings.
@@ -515,6 +515,9 @@ func New(config ...Config) *App {
 		app.config = config[0]
 	}
 
+	// Initialize configured before defaults are set
+	app.configured = app.config
+
 	if app.config.ETag {
 		if !IsChild() {
 			fmt.Println("[Warning] Config.ETag is deprecated since v2.0.6, please use 'middleware/etag'.")
@@ -543,8 +546,6 @@ func New(config ...Config) *App {
 
 	if app.config.ErrorHandler == nil {
 		app.config.ErrorHandler = DefaultErrorHandler
-	} else {
-		app.errorHandlerConfigured = true
 	}
 
 	if app.config.JSONEncoder == nil {
@@ -1003,7 +1004,7 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
-				if subApp.errorHandlerConfigured {
+				if subApp.configured.ErrorHandler != nil {
 					mountedErrHandler = subApp.config.ErrorHandler
 				}
 
