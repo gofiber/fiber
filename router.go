@@ -202,7 +202,7 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 
 	// handle invalid http method directly
 	if methodInt(c.Method()) == -1 {
-		_ = c.Status(StatusBadRequest).SendString("Invalid http method")
+		_ = c.SendStatus(StatusNotImplemented)
 		app.ReleaseCtx(c)
 		return
 	}
