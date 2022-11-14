@@ -114,6 +114,8 @@ type App struct {
 	customMethod bool
 	// Mount fields
 	mountFields *mountFields
+	// True if the ErrorHandler is explicitly configured
+	errorHandlerConfigured bool
 }
 
 // Config is a struct holding the server settings.
@@ -247,9 +249,6 @@ type Config struct {
 	//
 	// Default: DefaultErrorHandler
 	ErrorHandler ErrorHandler `json:"-"`
-
-	// ErrorHandlerConfigured is true when the fiber.ErrorHandler is configured explicitly.
-	ErrorHandlerConfigured bool `json:"-"`
 
 	// When set to true, disables keep-alive connections.
 	// The server will close incoming connections after sending the first response to client.
@@ -545,7 +544,7 @@ func New(config ...Config) *App {
 	if app.config.ErrorHandler == nil {
 		app.config.ErrorHandler = DefaultErrorHandler
 	} else {
-		app.config.ErrorHandlerConfigured = true
+		app.errorHandlerConfigured = true
 	}
 
 	if app.config.JSONEncoder == nil {
@@ -1004,7 +1003,7 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 		if prefix != "" && strings.HasPrefix(ctx.path, prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
-				if subApp.config.ErrorHandlerConfigured {
+				if subApp.errorHandlerConfigured {
 					mountedErrHandler = subApp.config.ErrorHandler
 				}
 
