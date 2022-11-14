@@ -1496,9 +1496,9 @@ func (c *Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, s
 	return storage.Set(path, content, 0)
 }
 
-// Secure returns a boolean property, that is true, if a TLS connection is established.
+// Secure returns whether a secure connection was established.
 func (c *Ctx) Secure() bool {
-	return c.fasthttp.IsTLS()
+	return c.Protocol() == "https"
 }
 
 // Send sets the HTTP response body without copying it.
