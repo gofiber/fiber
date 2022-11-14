@@ -10,12 +10,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
-	"github.com/gofiber/fiber/v2/internal/fasttemplate"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/fasthttp"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/gofiber/fiber/v2/internal/fasttemplate"
 )
 
 // Logger variables
@@ -186,6 +187,8 @@ func New(config ...Config) fiber.Handler {
 			// Write buffer to output
 			_, _ = cfg.Output.Write(buf.Bytes())
 
+			cfg.Done(c, buf.Bytes())
+
 			// Put buffer back to pool
 			bytebufferpool.Put(buf)
 
@@ -315,6 +318,9 @@ func New(config ...Config) fiber.Handler {
 			}
 		}
 		mu.Unlock()
+
+		cfg.Done(c, buf.Bytes())
+
 		// Put buffer back to pool
 		bytebufferpool.Put(buf)
 

@@ -16,6 +16,12 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
+	// Done is a function that is called after the log string for a request is written to Output,
+	// and pass the log string as parameter.
+	//
+	// Optional. Default: a function that does nothing.
+	Done func(c *fiber.Ctx, logString []byte)
+
 	// Format defines the logging tags
 	//
 	// Optional. Default: [${time}] ${status} - ${latency} ${method} ${path}\n
@@ -49,6 +55,7 @@ type Config struct {
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:         nil,
+	Done:         func(c *fiber.Ctx, logString []byte) {},
 	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
 	TimeFormat:   "15:04:05",
 	TimeZone:     "Local",
@@ -89,6 +96,9 @@ func configDefault(config ...Config) Config {
 	// Set default values
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
+	}
+	if cfg.Done == nil {
+		cfg.Done = ConfigDefault.Done
 	}
 	if cfg.Format == "" {
 		cfg.Format = ConfigDefault.Format
