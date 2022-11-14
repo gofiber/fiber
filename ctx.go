@@ -1045,23 +1045,20 @@ func (c *Ctx) Protocol() string {
 	if c.fasthttp.IsTLS() {
 		return "https"
 	}
-	scheme := "http"
 	if !c.IsProxyTrusted() {
-		return scheme
+		return "http"
 	}
+
+	scheme := "http"
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
 		if len(key) < 12 {
 			return // X-Forwarded-
-		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
-			v := c.app.getString(val)
-			if bytes.Equal(key, []byte(HeaderXForwardedProto)) {
-				commaPos := strings.Index(v, ",")
-				if commaPos != -1 {
-					scheme = v[:commaPos]
-				} else {
-					scheme = v
-				}
-			} else if bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+		}
+		switch {
+		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
+			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
+				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+				v := c.app.getString(val)
 				commaPos := strings.Index(v, ",")
 				if commaPos != -1 {
 					scheme = v[:commaPos]
@@ -1071,7 +1068,8 @@ func (c *Ctx) Protocol() string {
 			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
 				scheme = "https"
 			}
-		} else if bytes.Equal(key, []byte(HeaderXUrlScheme)) {
+
+		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
 			scheme = c.app.getString(val)
 		}
 	})
