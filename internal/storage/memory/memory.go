@@ -122,8 +122,13 @@ func (s *Storage) gc() {
 			}
 			s.mux.RUnlock()
 			s.mux.Lock()
+			// Double-checked locking.
+			// We might have replaced the item in the meantime.
 			for i := range expired {
-				delete(s.db, expired[i])
+				v := s.db[expired[i]]
+				if v.expiry != 0 && v.expiry <= ts {
+					delete(s.db, expired[i])
+				}
 			}
 			s.mux.Unlock()
 		}
