@@ -57,6 +57,9 @@ type Config struct {
 
 	// The session name
 	sessionName string
+
+	// Session only cookies
+	SessionOnly bool
 }
 
 type Source string
