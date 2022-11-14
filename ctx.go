@@ -1052,7 +1052,7 @@ func (c *Ctx) Protocol() string {
 	scheme := "http"
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
 		if len(key) < 12 {
-			return // X-Forwarded-
+			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
 		switch {
 		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
