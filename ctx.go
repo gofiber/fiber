@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
-	"github.com/savsgio/dictpool"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -50,7 +49,7 @@ type DefaultCtx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
-	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
+	viewBindMap         sync.Map             // Default view map to bind template engine
 	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
 	redirectionMessages []string             // Messages of the previous redirect
@@ -976,11 +975,8 @@ func (c *DefaultCtx) Redirect() *Redirect {
 // Variables are read by the Render method and may be overwritten.
 func (c *DefaultCtx) BindVars(vars Map) error {
 	// init viewBindMap - lazy map
-	if c.viewBindMap == nil {
-		c.viewBindMap = dictpool.AcquireDict()
-	}
 	for k, v := range vars {
-		c.viewBindMap.Set(k, v)
+		c.viewBindMap.Store(k, v)
 	}
 
 	return nil
@@ -1081,11 +1077,11 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 
 func (c *DefaultCtx) renderExtensions(bind Map) {
 	// Bind view map
-	if c.viewBindMap != nil {
-		for _, v := range c.viewBindMap.D {
-			bind[v.Key] = v.Value
-		}
-	}
+	c.viewBindMap.Range(func(key, value any) bool {
+		bind[key.(string)] = value
+
+		return true
+	})
 
 	// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 	if c.app.config.PassLocalsToViews {
