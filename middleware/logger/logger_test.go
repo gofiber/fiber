@@ -119,7 +119,7 @@ func Test_Logger_Done(t *testing.T) {
 
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-	utils.AssertEqual(t, true, len(buf.Bytes()) > 0)
+	utils.AssertEqual(t, true, buf.Len() > 0)
 }
 
 // go test -run Test_Logger_ErrorTimeZone
