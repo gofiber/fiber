@@ -148,11 +148,11 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	// Acquire Ctx with fasthttp request from pool
 	c := app.AcquireCtx(rctx)
+	defer app.ReleaseCtx(c)
 
 	// handle invalid http method directly
 	if c.methodINT == -1 {
 		_ = c.SendStatus(StatusNotImplemented)
-		app.ReleaseCtx(c)
 		return
 	}
 
@@ -167,9 +167,6 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	if match && app.config.ETag {
 		setETag(c, false)
 	}
-
-	// Release Ctx
-	app.ReleaseCtx(c)
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
