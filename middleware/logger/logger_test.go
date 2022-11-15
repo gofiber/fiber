@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -10,11 +11,12 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/valyala/fasthttp"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/gofiber/fiber/v2/utils"
-	"github.com/valyala/fasthttp"
 )
 
 // go test -run Test_Logger
@@ -97,6 +99,27 @@ func Test_Logger_Next(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+// go test -run Test_Logger_Done
+func Test_Logger_Done(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	app := fiber.New()
+	app.Use(New(Config{
+		Done: func(c *fiber.Ctx, logString []byte) {
+			if c.Response().StatusCode() == fiber.StatusOK {
+				buf.Write(logString)
+			}
+		},
+	})).Get("/logging", func(ctx *fiber.Ctx) error {
+		return ctx.SendStatus(fiber.StatusOK)
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/logging", nil))
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, true, buf.Len() > 0)
 }
 
 // go test -run Test_Logger_ErrorTimeZone
