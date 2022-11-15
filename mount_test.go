@@ -139,6 +139,24 @@ func Test_App_Group_Mount(t *testing.T) {
 	utils.AssertEqual(t, uint32(2), app.handlersCount)
 }
 
+func Test_App_UseParentErrorHandler(t *testing.T) {
+	app := New(Config{
+		ErrorHandler: func(ctx *Ctx, err error) error {
+			return ctx.Status(500).SendString("hi, i'm a custom error")
+		},
+	})
+
+	fiber := New()
+	fiber.Get("/", func(c *Ctx) error {
+		return errors.New("something happened")
+	})
+
+	app.Mount("/api", fiber)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
+	testErrorResponse(t, err, resp, "hi, i'm a custom error")
+}
+
 func Test_App_UseMountedErrorHandler(t *testing.T) {
 	app := New()
 
