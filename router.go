@@ -199,11 +199,11 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 		c = app.AcquireCtx().(*DefaultCtx)
 	}
 	c.Reset(rctx)
+	defer app.ReleaseCtx(c)
 
 	// handle invalid http method directly
 	if methodInt(c.Method()) == -1 {
-		_ = c.Status(StatusBadRequest).SendString("Invalid http method")
-		app.ReleaseCtx(c)
+		_ = c.SendStatus(StatusNotImplemented)
 		return
 	}
 
@@ -224,9 +224,6 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 			_ = c.SendStatus(StatusInternalServerError)
 		}
 	}
-
-	// Release Ctx
-	app.ReleaseCtx(c)
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
