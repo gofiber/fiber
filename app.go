@@ -9,7 +9,6 @@ package fiber
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -21,10 +20,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -106,8 +104,6 @@ type App struct {
 	getBytes func(s string) (b []byte)
 	// Converts byte slice to a string
 	getString func(b []byte) string
-	// Mounted and main apps
-	appList map[string]*App
 	// Hooks
 	hooks *Hooks
 	// Latest route & group
@@ -123,6 +119,8 @@ type App struct {
 	formDecoderCache sync.Map
 	// multipart decoder cache
 	multipartDecoderCache sync.Map
+	// Mount fields
+	mountFields *mountFields
 }
 
 // Config is a struct holding the server settings.
@@ -419,6 +417,11 @@ type Static struct {
 	// Optional. Default value 0.
 	MaxAge int `json:"max_age"`
 
+	// ModifyResponse defines a function that allows you to alter the response.
+	//
+	// Optional. Default: nil
+	ModifyResponse Handler
+
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
@@ -473,7 +476,6 @@ func New(config ...Config) *App {
 		config:      Config{},
 		getBytes:    utils.UnsafeBytes,
 		getString:   utils.UnsafeString,
-		appList:     make(map[string]*App),
 		latestRoute: &Route{},
 		latestGroup: &Group{},
 	}
@@ -487,6 +489,9 @@ func New(config ...Config) *App {
 
 	// Define hooks
 	app.hooks = newHooks(app)
+
+	// Define mountFields
+	app.mountFields = newMountFields(app)
 
 	// Override config if provided
 	if len(config) > 0 {
@@ -543,9 +548,6 @@ func New(config ...Config) *App {
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
 
-	// Init appList
-	app.appList[""] = app
-
 	// Init app
 	app.init()
 
@@ -582,37 +584,7 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 	app.mutex.Unlock()
 }
 
-// Mount attaches another app instance as a sub-router along a routing path.
-// It's very useful to split up a large API as many independent routers and
-// compose them as a single service using Mount. The fiber's error handler and
-// any of the fiber's sub apps are added to the application's error handlers
-// to be invoked on errors that happen within the prefix route.
-func (app *App) Mount(prefix string, fiber *App) Router {
-	stack := fiber.Stack()
-	prefix = strings.TrimRight(prefix, "/")
-	if prefix == "" {
-		prefix = "/"
-	}
-
-	for m := range stack {
-		for r := range stack[m] {
-			route := app.copyRoute(stack[m][r])
-			app.addRoute(route.Method, app.addPrefixToRoute(prefix, route))
-		}
-	}
-
-	// Support for configs of mounted-apps and sub-mounted-apps
-	for mountedPrefixes, subApp := range fiber.appList {
-		app.appList[prefix+mountedPrefixes] = subApp
-		subApp.init()
-	}
-
-	atomic.AddUint32(&app.handlersCount, fiber.handlersCount)
-
-	return app
-}
-
-// Assign name to specific route.
+// Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
 	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.Prefix) {
@@ -629,7 +601,7 @@ func (app *App) Name(name string) Router {
 	return app
 }
 
-// Get route by name
+// GetRoute Get route by name
 func (app *App) GetRoute(name string) Route {
 	for _, routes := range app.stack {
 		for _, route := range routes {
@@ -642,94 +614,129 @@ func (app *App) GetRoute(name string) Route {
 	return Route{}
 }
 
+// GetRoutes Get all routes. When filterUseOption equal to true, it will filter the routes registered by the middleware.
+func (app *App) GetRoutes(filterUseOption ...bool) []Route {
+	var rs []Route
+	var filterUse bool
+	if len(filterUseOption) != 0 {
+		filterUse = filterUseOption[0]
+	}
+	for _, routes := range app.stack {
+		for _, route := range routes {
+			if filterUse && route.use {
+				continue
+			}
+			rs = append(rs, *route)
+		}
+	}
+	return rs
+}
+
 // Use registers a middleware route that will match requests
 // with the provided prefix (which is optional and defaults to "/").
+// Also, you can pass another app instance as a sub-router along a routing path.
+// It's very useful to split up a large API as many independent routers and
+// compose them as a single service using Use. The fiber's error handler and
+// any of the fiber's sub apps are added to the application's error handlers
+// to be invoked on errors that happen within the prefix route.
 //
-//	app.Use(func(c fiber.Ctx) error {
-//	     return c.Next()
-//	})
-//	app.Use("/api", func(c fiber.Ctx) error {
-//	     return c.Next()
-//	})
-//	app.Use("/api", handler, func(c fiber.Ctx) error {
-//	     return c.Next()
-//	})
+//		app.Use(func(c fiber.Ctx) error {
+//		     return c.Next()
+//		})
+//		app.Use("/api", func(c fiber.Ctx) error {
+//		     return c.Next()
+//		})
+//		app.Use("/api", handler, func(c fiber.Ctx) error {
+//		     return c.Next()
+//		})
+//	 	subApp := fiber.New()
+//		app.Use("/mounted-path", subApp)
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (app *App) Use(args ...any) Router {
 	var prefix string
+	var subApp *App
 	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
+		case *App:
+			subApp = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	app.register(methodUse, prefix, handlers...)
+
+	if subApp != nil {
+		app.mount(prefix, subApp)
+		return app
+	}
+
+	app.register([]string{methodUse}, prefix, nil, handlers...)
+
 	return app
 }
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
-func (app *App) Get(path string, handlers ...Handler) Router {
-	return app.Add(MethodGet, path, handlers...)
+func (app *App) Get(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodGet}, path, handler, middleware...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
 // to that of a GET request, but without the response body.
-func (app *App) Head(path string, handlers ...Handler) Router {
-	return app.Add(MethodHead, path, handlers...)
+func (app *App) Head(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodHead}, path, handler, middleware...)
 }
 
 // Post registers a route for POST methods that is used to submit an entity to the
 // specified resource, often causing a change in state or side effects on the server.
-func (app *App) Post(path string, handlers ...Handler) Router {
-	return app.Add(MethodPost, path, handlers...)
+func (app *App) Post(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodPost}, path, handler, middleware...)
 }
 
 // Put registers a route for PUT methods that replaces all current representations
 // of the target resource with the request payload.
-func (app *App) Put(path string, handlers ...Handler) Router {
-	return app.Add(MethodPut, path, handlers...)
+func (app *App) Put(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodPut}, path, handler, middleware...)
 }
 
 // Delete registers a route for DELETE methods that deletes the specified resource.
-func (app *App) Delete(path string, handlers ...Handler) Router {
-	return app.Add(MethodDelete, path, handlers...)
+func (app *App) Delete(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodDelete}, path, handler, middleware...)
 }
 
 // Connect registers a route for CONNECT methods that establishes a tunnel to the
 // server identified by the target resource.
-func (app *App) Connect(path string, handlers ...Handler) Router {
-	return app.Add(MethodConnect, path, handlers...)
+func (app *App) Connect(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodConnect}, path, handler, middleware...)
 }
 
 // Options registers a route for OPTIONS methods that is used to describe the
 // communication options for the target resource.
-func (app *App) Options(path string, handlers ...Handler) Router {
-	return app.Add(MethodOptions, path, handlers...)
+func (app *App) Options(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodOptions}, path, handler, middleware...)
 }
 
 // Trace registers a route for TRACE methods that performs a message loop-back
 // test along the path to the target resource.
-func (app *App) Trace(path string, handlers ...Handler) Router {
-	return app.Add(MethodTrace, path, handlers...)
+func (app *App) Trace(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodTrace}, path, handler, middleware...)
 }
 
 // Patch registers a route for PATCH methods that is used to apply partial
 // modifications to a resource.
-func (app *App) Patch(path string, handlers ...Handler) Router {
-	return app.Add(MethodPatch, path, handlers...)
+func (app *App) Patch(path string, handler Handler, middleware ...Handler) Router {
+	return app.Add([]string{MethodPatch}, path, handler, middleware...)
 }
 
-// Add allows you to specify a HTTP method to register a route
-func (app *App) Add(method, path string, handlers ...Handler) Router {
-	return app.register(method, path, handlers...)
+// Add allows you to specify multiple HTTP methods to register a route.
+func (app *App) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
+	return app.register(methods, path, handler, middleware...)
 }
 
 // Static will create a file server serving static files
@@ -738,10 +745,8 @@ func (app *App) Static(prefix, root string, config ...Static) Router {
 }
 
 // All will register the handler on all HTTP methods
-func (app *App) All(path string, handlers ...Handler) Router {
-	for _, method := range intMethod {
-		_ = app.Add(method, path, handlers...)
-	}
+func (app *App) All(path string, handler Handler, middleware ...Handler) Router {
+	app.Add(intMethod, path, handler, middleware...)
 	return app
 }
 
@@ -751,7 +756,7 @@ func (app *App) All(path string, handlers ...Handler) Router {
 //	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
 	if len(handlers) > 0 {
-		app.register(methodUse, prefix, handlers...)
+		app.register([]string{methodUse}, prefix, nil, handlers...)
 	}
 	grp := &Group{Prefix: prefix, app: app}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
@@ -858,11 +863,6 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	if err != nil {
 		return nil, err
 	}
-
-	// adding back the query from URL, since dump cleans it
-	dumps := bytes.Split(dump, []byte(" "))
-	dumps[1] = []byte(req.URL.String())
-	dump = bytes.Join(dumps, []byte(" "))
 
 	// Create test connection
 	conn := new(testConn)
@@ -973,7 +973,7 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 		mountedPrefixParts int
 	)
 
-	for prefix, subApp := range app.appList {
+	for prefix, subApp := range app.mountFields.appList {
 		if prefix != "" && strings.HasPrefix(ctx.Path(), prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
@@ -1026,7 +1026,17 @@ func (app *App) startupProcess() *App {
 	}
 
 	app.mutex.Lock()
+	defer app.mutex.Unlock()
+
+	// add routes of sub-apps
+	app.mountFields.subAppsRoutesAdded.Do(func() {
+		app.appendSubAppLists(app.mountFields.appList)
+		app.addSubAppsRoutes(app.mountFields.appList)
+		app.generateAppListKeys()
+	})
+
+	// build route tree stack
 	app.buildTree()
-	app.mutex.Unlock()
+
 	return app
 }

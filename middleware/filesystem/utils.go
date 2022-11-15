@@ -3,9 +3,9 @@ package filesystem
 import (
 	"fmt"
 	"html"
-	"net/http"
-	"os"
+	"io/fs"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -20,17 +20,23 @@ func getFileExtension(path string) string {
 	return path[n:]
 }
 
-func dirList(c fiber.Ctx, f http.File) error {
-	fileinfos, err := f.Readdir(-1)
+func dirList(c fiber.Ctx, f fs.File) error {
+	ff := f.(fs.ReadDirFile)
+	fileinfos, err := ff.ReadDir(-1)
 	if err != nil {
 		return err
 	}
 
-	fm := make(map[string]os.FileInfo, len(fileinfos))
+	fm := make(map[string]fs.FileInfo, len(fileinfos))
 	filenames := make([]string, 0, len(fileinfos))
 	for _, fi := range fileinfos {
 		name := fi.Name()
-		fm[name] = fi
+		info, err := fi.Info()
+		if err != nil {
+			return err
+		}
+
+		fm[name] = info
 		filenames = append(filenames, name)
 	}
 
@@ -62,4 +68,10 @@ func dirList(c fiber.Ctx, f http.File) error {
 	c.Type("html")
 
 	return nil
+}
+
+func openFile(fs fs.FS, name string) (fs.File, error) {
+	name = filepath.ToSlash(name)
+
+	return fs.Open(name)
 }

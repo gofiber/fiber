@@ -132,7 +132,7 @@ go get -u github.com/gofiber/fiber/v3
 -   支援[WebSocket](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   支援[限速](https://docs.gofiber.io/api/middleware/limiter)
--   被翻譯成[15種語言](https://docs.gofiber.io/)
+-   被翻譯成[18種語言](https://docs.gofiber.io/)
 -   豐富的[文件](https://docs.gofiber.io/)
 
 ## 💡 理念
@@ -144,7 +144,7 @@ Fiber **受到** 網路上最流行的 Web 框架 ExpressJS**啟發**，結合 E
 有什麼問題請發[issues](https://github.com/gofiber/fiber/issues)或加入 Discord [channel](https://gofiber.io/discord)討論，我們想要創造**快速**、**彈性**、**友善**的社群給**任何人**使用！就像 Express 那樣。
 
 ## 限制
-* 由於 Fiber 使用了 unsafe，該庫可能並不總是與最新的 Go 版本兼容。 Fiber 2.29.0 已經用 Go 版本 1.14 到 1.19 進行了測試。
+* 由於 Fiber 使用了 unsafe，該庫可能並不總是與最新的 Go 版本兼容。 Fiber 2.40.0 已經用 Go 版本 1.16 到 1.19 進行了測試。
 * Fiber 與 net/http 接口不兼容。 這意味著您將無法使用 gqlgen、go-swagger 或任何其他屬於 net/http 生態系統的項目。
 
 ## 👀 範例

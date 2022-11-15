@@ -4,7 +4,7 @@ import (
 	"encoding"
 	"reflect"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils/v2"
 )
 
 type textUnmarshalEncoder struct {

@@ -161,7 +161,7 @@ go get -u github.com/gofiber/fiber/v3
 -   [پشتیبانی از وب سوکت](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   قابلیت [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   ترجمه در [15 زبان](https://docs.gofiber.io/)
+-   ترجمه در [18 زبان](https://docs.gofiber.io/)
 -   و امکانات بیشتر, [دیدن در داکیومنت](https://docs.gofiber.io/)
 
 </br>
@@ -182,7 +182,7 @@ Fiber از Express <b>الهام گرفته</b>, که محبوب ترین فری
 </p>
 
 ## ⚠️ محدودیت ها
-* به دلیل استفاده ناامن از Fiber, ممکن است کتابخانه همیشه با آخرین نسخه Go سازگار نباشد. Fiber 2.29.0 با زبان گو نسخه ۱.۱۴ تا ۱.۱۷ تست شده است.
+* به دلیل استفاده ناامن از Fiber, ممکن است کتابخانه همیشه با آخرین نسخه Go سازگار نباشد. Fiber 2.40.0 با زبان گو نسخه 1.16 تا 1.19 تست شده است.
 * فریمورک Fiber با پکیج net/http سازگار نیست. این بدان معناست شما نمی توانید از پکیج های مانند go-swagger, gqlgen یا سایر پروژه هایی که بخشی از اکوسیستم net/http هستند استفاده کنید.
 
 <br>

@@ -9,8 +9,8 @@ import (
 	"crypto/tls"
 	"io"
 	"mime/multipart"
+	"sync"
 
-	"github.com/savsgio/dictpool"
 	"github.com/valyala/fasthttp"
 )
 
@@ -181,7 +181,7 @@ type Ctx interface {
 
 	// Locals makes it possible to pass any values under string keys scoped to the request
 	// and therefore available to all following routes that match the request.
-	Locals(key string, value ...any) (val any)
+	Locals(key any, value ...any) (val any)
 
 	// Location sets the response Location HTTP header to the specified path parameter.
 	Location(path string)
@@ -444,10 +444,7 @@ func (c *DefaultCtx) release() {
 	c.route = nil
 	c.fasthttp = nil
 	c.redirectionMessages = c.redirectionMessages[:0]
-	if c.viewBindMap != nil {
-		dictpool.ReleaseDict(c.viewBindMap)
-		c.viewBindMap = nil
-	}
+	c.viewBindMap = sync.Map{}
 	if c.redirect != nil {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil

@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils/v2"
 	"github.com/valyala/fasthttp"
 )
 
@@ -823,6 +823,10 @@ func (a *Agent) Struct(v any) (code int, body []byte, errs []error) {
 	defer a.release()
 	if code, body, errs = a.bytes(); len(errs) > 0 {
 		return
+	}
+
+	if a.jsonDecoder == nil {
+		a.jsonDecoder = json.Unmarshal
 	}
 
 	if err := a.jsonDecoder(body, v); err != nil {

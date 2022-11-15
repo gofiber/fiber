@@ -213,10 +213,10 @@ func Test_Session_Store_Reset(t *testing.T) {
 	// set value & save
 	sess.Set("hello", "world")
 	ctx.Request().Header.SetCookie(store.sessionName, sess.ID())
-	sess.Save()
+	require.NoError(t, sess.Save())
 
 	// reset store
-	store.Reset()
+	require.NoError(t, store.Reset())
 
 	// make sure the session is recreated
 	sess, _ = store.Get(ctx)
@@ -321,7 +321,7 @@ func Test_Session_Reset(t *testing.T) {
 		sess, _ := store.Get(ctx)
 
 		sess.Set("name", "fenny")
-		sess.Destroy()
+		require.NoError(t, sess.Destroy())
 		name := sess.Get("name")
 		require.Nil(t, name)
 	})
@@ -341,7 +341,7 @@ func Test_Session_Reset(t *testing.T) {
 
 		// set value & save
 		sess.Set("name", "fenny")
-		_ = sess.Save()
+		require.NoError(t, sess.Save())
 		sess, _ = store.Get(ctx)
 
 		err := sess.Destroy()
@@ -375,7 +375,7 @@ func Test_Session_Cookie(t *testing.T) {
 
 	// get session
 	sess, _ := store.Get(ctx)
-	sess.Save()
+	require.NoError(t, sess.Save())
 
 	// cookie should be set on Save ( even if empty data )
 	require.Equal(t, 84, len(ctx.Response().Header.PeekCookie(store.sessionName)))
@@ -394,7 +394,7 @@ func Test_Session_Cookie_In_Response(t *testing.T) {
 	sess, _ := store.Get(ctx)
 	sess.Set("id", "1")
 	require.True(t, sess.Fresh())
-	sess.Save()
+	require.NoError(t, sess.Save())
 
 	sess, _ = store.Get(ctx)
 	sess.Set("name", "john")
@@ -479,14 +479,17 @@ func Benchmark_Session(b *testing.B) {
 	defer app.ReleaseCtx(c)
 	c.Request().Header.SetCookie(store.sessionName, "12356789")
 
+	var err error
 	b.Run("default", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			sess, _ := store.Get(c)
 			sess.Set("john", "doe")
-			_ = sess.Save()
+			err = sess.Save()
 		}
+
+		require.NoError(b, err)
 	})
 
 	b.Run("storage", func(b *testing.B) {
@@ -498,7 +501,9 @@ func Benchmark_Session(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			sess, _ := store.Get(c)
 			sess.Set("john", "doe")
-			_ = sess.Save()
+			err = sess.Save()
 		}
+
+		require.NoError(b, err)
 	})
 }

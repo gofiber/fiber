@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
@@ -278,10 +278,10 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
-			require.Equal(t, "missing handler in route: /doe\n", fmt.Sprintf("%v", err))
+			require.Equal(t, "missing handler/middleware in route: /doe\n", fmt.Sprintf("%v", err))
 		}
 	}()
-	app.register("USE", "/doe")
+	app.register([]string{"USE"}, "/doe", nil)
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
@@ -438,7 +438,7 @@ func registerDummyRoutes(app *App) {
 		return nil
 	}
 	for _, r := range routesFixture.GithubAPI {
-		app.Add(r.Method, r.Path, h)
+		app.Add([]string{r.Method}, r.Path, h)
 	}
 }
 
@@ -596,7 +596,7 @@ func Benchmark_Router_Next(b *testing.B) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		c.indexRoute = -1
-		res, err = app.next(c, false)
+		res, err = app.next(c)
 	}
 	require.NoError(b, err)
 	require.True(b, res)
@@ -772,10 +772,10 @@ func Benchmark_Router_Github_API(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			c.URI().SetPath(routesFixture.TestRoutes[i].Path)
 
-			ctx := app.AcquireCtx().(CustomCtx)
+			ctx := app.AcquireCtx().(*DefaultCtx)
 			ctx.Reset(c)
 
-			match, err = app.next(ctx, false)
+			match, err = app.next(ctx)
 			app.ReleaseCtx(ctx)
 		}
 

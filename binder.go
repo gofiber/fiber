@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/gofiber/fiber/v3/internal/bind"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils/v2"
 )
 
 var binderPool = sync.Pool{New: func() any {

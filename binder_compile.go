@@ -9,7 +9,7 @@ import (
 	"strconv"
 
 	"github.com/gofiber/fiber/v3/internal/bind"
-	"github.com/gofiber/fiber/v3/utils"
+	"github.com/gofiber/utils/v2"
 )
 
 type Decoder func(c Ctx, rv reflect.Value) error
