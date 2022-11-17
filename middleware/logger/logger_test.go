@@ -396,7 +396,7 @@ func Test_CustomTags(t *testing.T) {
 	app.Use(New(Config{
 		Format: "${custom_tag}",
 		CustomTags: map[string]LogFunc{
-			"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, w io.Writer, tag string) (int, error) {
+			"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, params ...string) (int, error) {
 				return buf.WriteString(customTag)
 			},
 		},

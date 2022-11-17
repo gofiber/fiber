@@ -2,7 +2,6 @@ package logger
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -11,14 +10,12 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/utils"
-
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
-	"github.com/gofiber/fiber/v2/internal/fasttemplate"
 )
 
 // Logger variables
@@ -88,9 +85,6 @@ func New(config ...Config) fiber.Handler {
 	// Check if format contains latency
 	cfg.enableLatency = strings.Contains(cfg.Format, "${latency}")
 
-	// Create template parser
-	tmpl := fasttemplate.New(cfg.Format, "${", "}")
-
 	// Create correct timeformat
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
@@ -124,7 +118,10 @@ func New(config ...Config) fiber.Handler {
 	errPadding := 15
 	errPaddingStr := strconv.Itoa(errPadding)
 
-	tagFunctionMap := cfg.tagFunctions
+	templateChain, logFunChain, err := buildLogFuncChain(&cfg, createTagMap(&cfg))
+	if err != nil {
+		panic(err)
+	}
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
@@ -212,19 +209,19 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Loop over template tags to replace it with the correct value
-		_, err = tmpl.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
-			if logFunc, ok := tagFunctionMap[tag]; ok {
-				return logFunc(buf, c, w, tag)
+		for i, logFunc := range logFunChain {
+			if logFunc == nil {
+				_, _ = buf.Write(templateChain[i])
+			} else if templateChain[i] == nil {
+				_, err = logFunc(buf, c)
+			} else {
+				_, err = logFunc(buf, c, utils.UnsafeString(templateChain[i]))
 			}
-
-			if index := strings.Index(tag, ":"); index != -1 {
-				if logFunc, ok := tagFunctionMap[tag[0:index+1]]; ok {
-					return logFunc(buf, c, w, tag)
-				}
+			if err != nil {
+				break
 			}
+		}
 
-			return 0, nil
-		})
 		// Also write errors to the buffer
 		if err != nil {
 			_, _ = buf.WriteString(err.Error())
@@ -253,33 +250,4 @@ func appendInt(buf *bytebufferpool.ByteBuffer, v int) (int, error) {
 	old := len(buf.B)
 	buf.B = fasthttp.AppendUint(buf.B, v)
 	return len(buf.B) - old, nil
-}
-
-func subStr(str string, start int, length int) (result string) {
-	s := utils.UnsafeBytes(str)
-	total := len(s)
-	if total == 0 {
-		return
-	}
-	// 允许从尾部开始计算
-	if start < 0 {
-		start = total + start
-		if start < 0 {
-			return
-		}
-	}
-	if start > total {
-		return
-	}
-	if length < 0 {
-		length = total
-	}
-
-	end := start + length
-	if end > total {
-		result = utils.UnsafeString(s[start:])
-	} else {
-		result = utils.UnsafeString(s[start:end])
-	}
-	return
 }
