@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"github.com/gofiber/fiber/v2/utils"
 	"io"
 	"os"
 	"strconv"
@@ -62,6 +63,14 @@ const (
 	TagReset      = "reset"
 )
 
+const (
+	loggerStart = iota
+	loggerStop
+)
+
+var pid string
+var timestamp atomic.Value
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -82,7 +91,6 @@ func New(config ...Config) fiber.Handler {
 	tmpl := fasttemplate.New(cfg.Format, "${", "}")
 
 	// Create correct timeformat
-	var timestamp atomic.Value
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
 	// Update date/time every 500 milliseconds in a separate go routine
@@ -96,7 +104,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Set PID once
-	pid := strconv.Itoa(os.Getpid())
+	pid = strconv.Itoa(os.Getpid())
 
 	// Set variables
 	var (
@@ -114,6 +122,9 @@ func New(config ...Config) fiber.Handler {
 	}
 	errPadding := 15
 	errPaddingStr := strconv.Itoa(errPadding)
+
+	tagFunctionMap := cfg.tagFunctions
+
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
@@ -145,6 +156,7 @@ func New(config ...Config) fiber.Handler {
 		// Set latency start time
 		if cfg.enableLatency {
 			start = time.Now()
+			c.Context().SetUserValue(loggerStart, start)
 		}
 
 		// Handle request, store err for logging
@@ -152,6 +164,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Manually call error handler
 		if chainErr != nil {
+			c.Context().SetUserValue("loggerChainError", chainErr.Error())
 			if err := errHandler(c, chainErr); err != nil {
 				_ = c.SendStatus(fiber.StatusInternalServerError)
 			}
@@ -160,6 +173,7 @@ func New(config ...Config) fiber.Handler {
 		// Set latency stop time
 		if cfg.enableLatency {
 			stop = time.Now()
+			c.Context().SetUserValue(loggerStop, stop)
 		}
 
 		// Get new buffer
@@ -198,110 +212,16 @@ func New(config ...Config) fiber.Handler {
 
 		// Loop over template tags to replace it with the correct value
 		_, err = tmpl.ExecuteFunc(buf, func(w io.Writer, tag string) (int, error) {
-			switch tag {
-			case TagTime:
-				return buf.WriteString(timestamp.Load().(string))
-			case TagReferer:
-				return buf.WriteString(c.Get(fiber.HeaderReferer))
-			case TagProtocol:
-				return buf.WriteString(c.Protocol())
-			case TagPid:
-				return buf.WriteString(pid)
-			case TagPort:
-				return buf.WriteString(c.Port())
-			case TagIP:
-				return buf.WriteString(c.IP())
-			case TagIPs:
-				return buf.WriteString(c.Get(fiber.HeaderXForwardedFor))
-			case TagHost:
-				return buf.WriteString(c.Hostname())
-			case TagPath:
-				return buf.WriteString(c.Path())
-			case TagURL:
-				return buf.WriteString(c.OriginalURL())
-			case TagUA:
-				return buf.WriteString(c.Get(fiber.HeaderUserAgent))
-			case TagLatency:
-				return buf.WriteString(fmt.Sprintf("%7v", stop.Sub(start).Round(time.Millisecond)))
-			case TagBody:
-				return buf.Write(c.Body())
-			case TagBytesReceived:
-				return appendInt(buf, len(c.Request().Body()))
-			case TagBytesSent:
-				return appendInt(buf, len(c.Response().Body()))
-			case TagRoute:
-				return buf.WriteString(c.Route().Path)
-			case TagStatus:
-				if cfg.enableColors {
-					return buf.WriteString(fmt.Sprintf("%s %3d %s", statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset))
-				}
-				return appendInt(buf, c.Response().StatusCode())
-			case TagResBody:
-				return buf.Write(c.Response().Body())
-			case TagReqHeaders:
-				reqHeaders := make([]string, 0)
-				for k, v := range c.GetReqHeaders() {
-					reqHeaders = append(reqHeaders, k+"="+v)
-				}
-				return buf.Write([]byte(strings.Join(reqHeaders, "&")))
-			case TagQueryStringParams:
-				return buf.WriteString(c.Request().URI().QueryArgs().String())
-			case TagMethod:
-				if cfg.enableColors {
-					return buf.WriteString(fmt.Sprintf("%s %-7s %s", methodColor(c.Method(), colors), c.Method(), colors.Reset))
-				}
-				return buf.WriteString(c.Method())
-			case TagBlack:
-				return buf.WriteString(colors.Black)
-			case TagRed:
-				return buf.WriteString(colors.Red)
-			case TagGreen:
-				return buf.WriteString(colors.Green)
-			case TagYellow:
-				return buf.WriteString(colors.Yellow)
-			case TagBlue:
-				return buf.WriteString(colors.Blue)
-			case TagMagenta:
-				return buf.WriteString(colors.Magenta)
-			case TagCyan:
-				return buf.WriteString(colors.Cyan)
-			case TagWhite:
-				return buf.WriteString(colors.White)
-			case TagReset:
-				return buf.WriteString(colors.Reset)
-			case TagError:
-				if chainErr != nil {
-					return buf.WriteString(chainErr.Error())
-				}
-				return buf.WriteString("-")
-			default:
-				// Check if we have a value tag i.e.: "reqHeader:x-key"
-				switch {
-				case strings.HasPrefix(tag, TagReqHeader):
-					return buf.WriteString(c.Get(tag[10:]))
-				case strings.HasPrefix(tag, TagHeader):
-					return buf.WriteString(c.Get(tag[7:]))
-				case strings.HasPrefix(tag, TagRespHeader):
-					return buf.WriteString(c.GetRespHeader(tag[11:]))
-				case strings.HasPrefix(tag, TagQuery):
-					return buf.WriteString(c.Query(tag[6:]))
-				case strings.HasPrefix(tag, TagForm):
-					return buf.WriteString(c.FormValue(tag[5:]))
-				case strings.HasPrefix(tag, TagCookie):
-					return buf.WriteString(c.Cookies(tag[7:]))
-				case strings.HasPrefix(tag, TagLocals):
-					switch v := c.Locals(tag[7:]).(type) {
-					case []byte:
-						return buf.Write(v)
-					case string:
-						return buf.WriteString(v)
-					case nil:
-						return 0, nil
-					default:
-						return buf.WriteString(fmt.Sprintf("%v", v))
-					}
-				}
+			if logFunc, ok := tagFunctionMap[tag]; ok {
+				return logFunc(buf, c, w, tag)
 			}
+
+			if index := strings.Index(tag, ":"); index != -1 {
+				result := subStr(tag, 0, index+1)
+				logFunc := tagFunctionMap[result]
+				return logFunc(buf, c, w, tag)
+			}
+
 			return 0, nil
 		})
 		// Also write errors to the buffer
@@ -332,4 +252,33 @@ func appendInt(buf *bytebufferpool.ByteBuffer, v int) (int, error) {
 	old := len(buf.B)
 	buf.B = fasthttp.AppendUint(buf.B, v)
 	return len(buf.B) - old, nil
+}
+
+func subStr(str string, start int, length int) (result string) {
+	s := utils.UnsafeBytes(str)
+	total := len(s)
+	if total == 0 {
+		return
+	}
+	// 允许从尾部开始计算
+	if start < 0 {
+		start = total + start
+		if start < 0 {
+			return
+		}
+	}
+	if start > total {
+		return
+	}
+	if length < 0 {
+		length = total
+	}
+
+	end := start + length
+	if end > total {
+		result = utils.UnsafeString(s[start:])
+	} else {
+		result = utils.UnsafeString(s[start:end])
+	}
+	return
 }
