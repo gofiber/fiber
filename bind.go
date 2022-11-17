@@ -36,12 +36,13 @@ func (d *fieldCtxDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
 }
 
 type fieldTextDecoder struct {
-	index     int
-	fieldName string
-	tag       string // query,param,header,respHeader ...
-	reqField  string
-	dec       bind.TextDecoder
-	get       func(c Ctx, key string, defaultValue ...string) string
+	index       int
+	parentIndex []int
+	fieldName   string
+	tag         string // query,param,header,respHeader ...
+	reqField    string
+	dec         bind.TextDecoder
+	get         func(c Ctx, key string, defaultValue ...string) string
 }
 
 func (d *fieldTextDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
@@ -50,7 +51,18 @@ func (d *fieldTextDecoder) Decode(ctx Ctx, reqValue reflect.Value) error {
 		return nil
 	}
 
-	err := d.dec.UnmarshalString(text, reqValue.Field(d.index))
+	var err error
+	if len(d.parentIndex) > 0 {
+		for _, i := range d.parentIndex {
+			reqValue = reqValue.Field(i)
+		}
+
+		err = d.dec.UnmarshalString(text, reqValue.Field(d.index))
+
+	} else {
+		err = d.dec.UnmarshalString(text, reqValue.Field(d.index))
+	}
+
 	if err != nil {
 		return fmt.Errorf("unable to decode '%s' as %s: %w", text, d.reqField, err)
 	}
