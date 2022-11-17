@@ -2,7 +2,6 @@ package logger
 
 import (
 	"fmt"
-	"github.com/gofiber/fiber/v2/utils"
 	"io"
 	"os"
 	"strconv"
@@ -10,6 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/gofiber/fiber/v2/utils"
 
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
@@ -217,9 +218,9 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			if index := strings.Index(tag, ":"); index != -1 {
-				result := subStr(tag, 0, index+1)
-				logFunc := tagFunctionMap[result]
-				return logFunc(buf, c, w, tag)
+				if logFunc, ok := tagFunctionMap[tag[0:index+1]]; ok {
+					return logFunc(buf, c, w, tag)
+				}
 			}
 
 			return 0, nil
