@@ -291,6 +291,7 @@ func Benchmark_Logger(b *testing.B) {
 
 	app.Use(New(Config{
 		Format: "${bytesReceived} ${bytesSent} ${status} ${reqHeader:test}",
+		//Format: "[${time}] ${status} - ${latency} ${method} ${path}\n",// <- produces allocations
 		Output: io.Discard,
 	}))
 	app.Get("/", func(c *fiber.Ctx) error {
@@ -396,7 +397,7 @@ func Test_CustomTags(t *testing.T) {
 	app.Use(New(Config{
 		Format: "${custom_tag}",
 		CustomTags: map[string]LogFunc{
-			"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, params ...string) (int, error) {
+			"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, extraParam string) (int, error) {
 				return buf.WriteString(customTag)
 			},
 		},

@@ -83,13 +83,13 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Check if format contains latency
-	cfg.enableLatency = strings.Contains(cfg.Format, "${latency}")
+	cfg.enableLatency = strings.Contains(cfg.Format, "${"+TagLatency+"}")
 
 	// Create correct timeformat
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
 	// Update date/time every 500 milliseconds in a separate go routine
-	if strings.Contains(cfg.Format, "${time}") {
+	if strings.Contains(cfg.Format, "${"+TagTime+"}") {
 		go func() {
 			for {
 				time.Sleep(cfg.TimeInterval)
@@ -118,6 +118,8 @@ func New(config ...Config) fiber.Handler {
 	errPadding := 15
 	errPaddingStr := strconv.Itoa(errPadding)
 
+	// instead of analyzing the template inside(handler) each time, this is done once before
+	// and we create several slices of the same length with the functions to be executed and fixed parts.
 	templateChain, logFunChain, err := buildLogFuncChain(&cfg, createTagMap(&cfg))
 	if err != nil {
 		panic(err)
@@ -154,6 +156,7 @@ func New(config ...Config) fiber.Handler {
 		// Set latency start time
 		if cfg.enableLatency {
 			start = time.Now()
+			// TODO: optimize it with a data structure and sync pool
 			c.Context().SetUserValue(loggerStart, start)
 		}
 
@@ -208,12 +211,12 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		// Loop over template tags to replace it with the correct value
+		// Loop over template parts execute dynamic parts and add fixed parts to the buffer
 		for i, logFunc := range logFunChain {
 			if logFunc == nil {
 				_, _ = buf.Write(templateChain[i])
 			} else if templateChain[i] == nil {
-				_, err = logFunc(buf, c)
+				_, err = logFunc(buf, c, "")
 			} else {
 				_, err = logFunc(buf, c, utils.UnsafeString(templateChain[i]))
 			}

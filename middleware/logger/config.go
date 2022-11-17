@@ -64,7 +64,7 @@ const (
 	paramSeparator = ":"
 )
 
-type LogFunc func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, params ...string) (int, error)
+type LogFunc func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, extraParam string) (int, error)
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{
