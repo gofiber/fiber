@@ -156,7 +156,9 @@ func New(config ...Config) fiber.Handler {
 			// Write buffer to output
 			_, _ = cfg.Output.Write(buf.Bytes())
 
-			cfg.Done(c, buf.Bytes())
+			if cfg.Done != nil {
+				cfg.Done(c, buf.Bytes())
+			}
 
 			// Put buffer back to pool
 			bytebufferpool.Put(buf)
@@ -194,7 +196,9 @@ func New(config ...Config) fiber.Handler {
 		}
 		mu.Unlock()
 
-		cfg.Done(c, buf.Bytes())
+		if cfg.Done != nil {
+			cfg.Done(c, buf.Bytes())
+		}
 
 		// Put buffer back to pool
 		bytebufferpool.Put(buf)
