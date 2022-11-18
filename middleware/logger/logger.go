@@ -18,57 +18,6 @@ import (
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 )
 
-// Logger variables
-const (
-	TagPid               = "pid"
-	TagTime              = "time"
-	TagReferer           = "referer"
-	TagProtocol          = "protocol"
-	TagPort              = "port"
-	TagIP                = "ip"
-	TagIPs               = "ips"
-	TagHost              = "host"
-	TagMethod            = "method"
-	TagPath              = "path"
-	TagURL               = "url"
-	TagUA                = "ua"
-	TagLatency           = "latency"
-	TagStatus            = "status"
-	TagResBody           = "resBody"
-	TagReqHeaders        = "reqHeaders"
-	TagQueryStringParams = "queryParams"
-	TagBody              = "body"
-	TagBytesSent         = "bytesSent"
-	TagBytesReceived     = "bytesReceived"
-	TagRoute             = "route"
-	TagError             = "error"
-	// DEPRECATED: Use TagReqHeader instead
-	TagHeader     = "header:"
-	TagReqHeader  = "reqHeader:"
-	TagRespHeader = "respHeader:"
-	TagLocals     = "locals:"
-	TagQuery      = "query:"
-	TagForm       = "form:"
-	TagCookie     = "cookie:"
-	TagBlack      = "black"
-	TagRed        = "red"
-	TagGreen      = "green"
-	TagYellow     = "yellow"
-	TagBlue       = "blue"
-	TagMagenta    = "magenta"
-	TagCyan       = "cyan"
-	TagWhite      = "white"
-	TagReset      = "reset"
-)
-
-const (
-	loggerStart = iota
-	loggerStop
-)
-
-var pid string
-var timestamp atomic.Value
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -85,6 +34,7 @@ func New(config ...Config) fiber.Handler {
 	// Check if format contains latency
 	cfg.enableLatency = strings.Contains(cfg.Format, "${"+TagLatency+"}")
 
+	var timestamp atomic.Value
 	// Create correct timeformat
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
@@ -99,7 +49,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Set PID once
-	pid = strconv.Itoa(os.Getpid())
+	pid := strconv.Itoa(os.Getpid())
 
 	// Set variables
 	var (
@@ -127,6 +77,14 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
+		// Logger data
+		data := DataPool.Get().(*Data)
+		// no need for a reset, as long as we always override everything
+		data.Pid = pid
+		data.ErrPaddingStr = errPaddingStr
+		data.Timestamp = timestamp
+		// put data back in the pool
+		defer DataPool.Put(data)
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -151,21 +109,17 @@ func New(config ...Config) fiber.Handler {
 			errHandler = c.App().ErrorHandler
 		})
 
-		var start, stop time.Time
-
 		// Set latency start time
 		if cfg.enableLatency {
-			start = time.Now()
-			// TODO: optimize it with a data structure and sync pool
-			c.Context().SetUserValue(loggerStart, start)
+			data.Start = time.Now()
 		}
 
 		// Handle request, store err for logging
 		chainErr := c.Next()
 
+		data.ChainErr = chainErr
 		// Manually call error handler
 		if chainErr != nil {
-			c.Context().SetUserValue("loggerChainError", chainErr.Error())
 			if err := errHandler(c, chainErr); err != nil {
 				_ = c.SendStatus(fiber.StatusInternalServerError)
 			}
@@ -173,8 +127,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Set latency stop time
 		if cfg.enableLatency {
-			stop = time.Now()
-			c.Context().SetUserValue(loggerStop, stop)
+			data.Stop = time.Now()
 		}
 
 		// Get new buffer
@@ -192,7 +145,7 @@ func New(config ...Config) fiber.Handler {
 			_, _ = buf.WriteString(fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
 				timestamp.Load().(string),
 				statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-				stop.Sub(start).Round(time.Millisecond),
+				data.Stop.Sub(data.Start).Round(time.Millisecond),
 				c.IP(),
 				methodColor(c.Method(), colors), c.Method(), colors.Reset,
 				c.Path(),
@@ -216,9 +169,9 @@ func New(config ...Config) fiber.Handler {
 			if logFunc == nil {
 				_, _ = buf.Write(templateChain[i])
 			} else if templateChain[i] == nil {
-				_, err = logFunc(buf, c, "")
+				_, err = logFunc(buf, c, data, "")
 			} else {
-				_, err = logFunc(buf, c, utils.UnsafeString(templateChain[i]))
+				_, err = logFunc(buf, c, data, utils.UnsafeString(templateChain[i]))
 			}
 			if err != nil {
 				break

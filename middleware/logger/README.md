@@ -80,7 +80,7 @@ app.Use(logger.New(logger.Config{
 ```go
 app.Use(logger.New(logger.Config{
 	CustomTags: map[string]logger.LogFunc{
-		"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, w io.Writer, tag string) (int, error) {
+		"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
 			return buf.WriteString("it is a custom tag")
 		},
 	},
