@@ -11,10 +11,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/gofiber/fiber/v2/utils"
 )
@@ -424,8 +424,8 @@ func Test_CustomTags(t *testing.T) {
 	app.Use(New(Config{
 		Format: "${custom_tag}",
 		CustomTags: map[string]LogFunc{
-			"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
-				return buf.WriteString(customTag)
+			"custom_tag": func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
+				return output.WriteString(customTag)
 			},
 		},
 		Output: buf,

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 )
 
 // Config defines the config for middleware.
@@ -64,7 +63,20 @@ const (
 	paramSeparator = ":"
 )
 
-type LogFunc func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, data *Data, extraParam string) (int, error)
+type Buffer interface {
+	Len() int
+	ReadFrom(r io.Reader) (int64, error)
+	WriteTo(w io.Writer) (int64, error)
+	Bytes() []byte
+	Write(p []byte) (int, error)
+	WriteByte(c byte) error
+	WriteString(s string) (int, error)
+	Set(p []byte)
+	SetString(s string)
+	String() string
+}
+
+type LogFunc func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (int, error)
 
 // ConfigDefault is the default config
 var ConfigDefault = Config{

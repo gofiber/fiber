@@ -80,8 +80,8 @@ app.Use(logger.New(logger.Config{
 ```go
 app.Use(logger.New(logger.Config{
 	CustomTags: map[string]logger.LogFunc{
-		"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
-			return buf.WriteString("it is a custom tag")
+		"custom_tag": func(output logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+			return output.WriteString("it is a custom tag")
 		},
 	},
 }))
@@ -145,11 +145,9 @@ type Config struct {
 	//
 	// Default: os.Stdout
 	Output io.Writer
-
-	enableColors     bool
-	enableLatency    bool
-	timeZoneLocation *time.Location
 }
+
+type LogFunc func(buf logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error)
 ```
 
 ## Default Config
@@ -173,7 +171,7 @@ const (
 	TagTime					= "time"
 	TagReferer				= "referer"
 	TagProtocol				= "protocol"
-	TagPort                                 = "port"
+	TagPort                 = "port"
 	TagIP					= "ip"
 	TagIPs					= "ips"
 	TagHost					= "host"
@@ -184,17 +182,17 @@ const (
 	TagLatency				= "latency"
 	TagStatus				= "status"	// response status
 	TagResBody				= "resBody"	// response body
-	TagReqHeaders                           = "reqHeaders"
-        TagQueryStringParams			= "queryParams"	// request query parameters
-        TagBody					= "body"	// request body
-	TagBytesSent				= "bytesSent"
-	TagBytesReceived			= "bytesReceived"
+	TagReqHeaders           = "reqHeaders"
+	TagQueryStringParams	= "queryParams"	// request query parameters
+	TagBody					= "body"	// request body
+	TagBytesSent			= "bytesSent"
+	TagBytesReceived		= "bytesReceived"
 	TagRoute				= "route"
-	TagError                		= "error"
+	TagError                = "error"
 	// DEPRECATED: Use TagReqHeader instead
-	TagHeader               		= "header:"     // request header
-	TagReqHeader            		= "reqHeader:"  // request header
-	TagRespHeader           		= "respHeader:" // response header
+	TagHeader               = "header:"     // request header
+	TagReqHeader            = "reqHeader:"  // request header
+	TagRespHeader           = "respHeader:" // response header
 	TagQuery				= "query:"      // request query
 	TagForm					= "form:"       // request form
 	TagCookie				= "cookie:"     // request cookie
