@@ -5,7 +5,7 @@ import (
 	"hash/crc32"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
+	"github.com/valyala/bytebufferpool"
 )
 
 var (

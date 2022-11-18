@@ -40,7 +40,7 @@ app.Use(logger.New())
 
 ```go
 app.Use(logger.New(logger.Config{
-        Format:     "[${ip}]:${port} ${status} - ${method} ${path}\n",
+	Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
 }))
 ```
 
@@ -80,8 +80,8 @@ app.Use(logger.New(logger.Config{
 ```go
 app.Use(logger.New(logger.Config{
 	CustomTags: map[string]logger.LogFunc{
-		"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
-			return buf.WriteString("it is a custom tag")
+		"custom_tag": func(output logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+			return output.WriteString("it is a custom tag")
 		},
 	},
 }))
@@ -145,11 +145,9 @@ type Config struct {
 	//
 	// Default: os.Stdout
 	Output io.Writer
-
-	enableColors     bool
-	enableLatency    bool
-	timeZoneLocation *time.Location
 }
+
+type LogFunc func(buf logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error)
 ```
 
 ## Default Config

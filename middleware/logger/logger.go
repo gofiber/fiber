@@ -13,9 +13,8 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
-
-	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 )
 
 // New creates a new middleware handler
@@ -207,8 +206,8 @@ func New(config ...Config) fiber.Handler {
 	}
 }
 
-func appendInt(buf *bytebufferpool.ByteBuffer, v int) (int, error) {
-	old := len(buf.B)
-	buf.B = fasthttp.AppendUint(buf.B, v)
-	return len(buf.B) - old, nil
+func appendInt(output Buffer, v int) (int, error) {
+	old := output.Len()
+	output.Set(fasthttp.AppendUint(output.Bytes(), v))
+	return output.Len() - old, nil
 }
