@@ -161,7 +161,7 @@ var ConfigDefault = Config{
     TimeFormat:   "15:04:05",
     TimeZone:     "Local",
     TimeInterval: 500 * time.Millisecond,
-    Output:       os.Stderr,
+    Output:       os.Stdout,
 }
 ```
 
