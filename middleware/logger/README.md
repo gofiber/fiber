@@ -87,6 +87,20 @@ app.Use(logger.New(logger.Config{
 }))
 ```
 
+### Callback after log is written
+
+```go
+app.Use(logger.New(logger.Config{
+	TimeFormat: time.RFC3339Nano,
+	TimeZone:   "Asia/Shanghai",
+	Done: func(c *fiber.Ctx, logString []byte) {
+		if c.Response().StatusCode() != fiber.StatusOK {
+			reporter.SendToSlack(logString) 
+		}
+	},
+}))
+```
+
 ## Config
 ```go
 // Config defines the config for middleware.
@@ -96,16 +110,22 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// CustomTags defines the custom tag action
+	// Done is a function that is called after the log string for a request is written to Output,
+	// and pass the log string as parameter.
 	//
-	// Optional. Default: map[string]LogFunc{}
+	// Optional. Default: nil
+	Done func(c *fiber.Ctx, logString []byte)
+
+	// tagFunctions defines the custom tag action
+	//
+	// Optional. Default: map[string]LogFunc
 	CustomTags map[string]LogFunc
-	
+
 	// Format defines the logging tags
 	//
 	// Optional. Default: [${time}] ${status} - ${latency} ${method} ${path}\n
 	Format string
-	
+
 	// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
 	//
 	// Optional. Default: 15:04:05
@@ -123,20 +143,25 @@ type Config struct {
 
 	// Output is a writer where logs are written
 	//
-	// Default: os.Stderr
+	// Default: os.Stdout
 	Output io.Writer
+
+	enableColors     bool
+	enableLatency    bool
+	timeZoneLocation *time.Location
 }
 ```
 
 ## Default Config
 ```go
 var ConfigDefault = Config{
-	Next:         nil,
-	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat:   "15:04:05",
-	TimeZone:     "Local",
-	TimeInterval: 500 * time.Millisecond,
-	Output:       os.Stderr,
+    Next:         nil,
+    Done:         nil,
+    Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
+    TimeFormat:   "15:04:05",
+    TimeZone:     "Local",
+    TimeInterval: 500 * time.Millisecond,
+    Output:       os.Stdout,
 }
 ```
 
