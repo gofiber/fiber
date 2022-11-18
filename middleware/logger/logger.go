@@ -9,12 +9,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/fasthttp"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 )
 
@@ -77,14 +77,6 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c *fiber.Ctx) (err error) {
-		// Logger data
-		data := DataPool.Get().(*Data)
-		// no need for a reset, as long as we always override everything
-		data.Pid = pid
-		data.ErrPaddingStr = errPaddingStr
-		data.Timestamp = timestamp
-		// put data back in the pool
-		defer DataPool.Put(data)
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -108,6 +100,15 @@ func New(config ...Config) fiber.Handler {
 			// override error handler
 			errHandler = c.App().ErrorHandler
 		})
+
+		// Logger data
+		data := DataPool.Get().(*Data)
+		// no need for a reset, as long as we always override everything
+		data.Pid = pid
+		data.ErrPaddingStr = errPaddingStr
+		data.Timestamp = timestamp
+		// put data back in the pool
+		defer DataPool.Put(data)
 
 		// Set latency start time
 		if cfg.enableLatency {
