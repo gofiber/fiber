@@ -287,30 +287,59 @@ func Test_Logger_Data_Race(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_Logger -benchmem -count=4
 func Benchmark_Logger(b *testing.B) {
-	app := fiber.New()
+	benchSetup := func(bb *testing.B, app *fiber.App) {
+		h := app.Handler()
 
-	app.Use(New(Config{
-		Format: "${bytesReceived} ${bytesSent} ${status}",
-		Output: io.Discard,
-	}))
-	app.Get("/", func(c *fiber.Ctx) error {
-		return c.SendString("Hello, World!")
-	})
+		fctx := &fasthttp.RequestCtx{}
+		fctx.Request.Header.SetMethod("GET")
+		fctx.Request.SetRequestURI("/")
 
-	h := app.Handler()
+		bb.ReportAllocs()
+		bb.ResetTimer()
 
-	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
-	fctx.Request.SetRequestURI("/")
+		for n := 0; n < bb.N; n++ {
+			h(fctx)
+		}
 
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		h(fctx)
+		utils.AssertEqual(bb, 200, fctx.Response.Header.StatusCode())
 	}
 
-	utils.AssertEqual(b, 200, fctx.Response.Header.StatusCode())
+	b.Run("Base", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${bytesReceived} ${bytesSent} ${status}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c *fiber.Ctx) error {
+			c.Set("test", "test")
+			return c.SendString("Hello, World!")
+		})
+		benchSetup(bb, app)
+	})
+
+	b.Run("DefaultFormat", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c *fiber.Ctx) error {
+			return c.SendString("Hello, World!")
+		})
+		benchSetup(bb, app)
+	})
+
+	b.Run("WithTagParameter", func(bb *testing.B) {
+		app := fiber.New()
+		app.Use(New(Config{
+			Format: "${bytesReceived} ${bytesSent} ${status} ${reqHeader:test}",
+			Output: io.Discard,
+		}))
+		app.Get("/", func(c *fiber.Ctx) error {
+			c.Set("test", "test")
+			return c.SendString("Hello, World!")
+		})
+		benchSetup(bb, app)
+	})
 }
 
 // go test -run Test_Response_Header
@@ -382,4 +411,33 @@ func Test_ReqHeader_Header(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	utils.AssertEqual(t, "Hello fiber!", buf.String())
+}
+
+// go test -run Test_CustomTags
+func Test_CustomTags(t *testing.T) {
+	customTag := "it is a custom tag"
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app := fiber.New()
+	app.Use(New(Config{
+		Format: "${custom_tag}",
+		CustomTags: map[string]LogFunc{
+			"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
+				return buf.WriteString(customTag)
+			},
+		},
+		Output: buf,
+	}))
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello fiber!")
+	})
+	reqHeaderReq := httptest.NewRequest("GET", "/", nil)
+	reqHeaderReq.Header.Add("test", "Hello fiber!")
+	resp, err := app.Test(reqHeaderReq)
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, customTag, buf.String())
 }

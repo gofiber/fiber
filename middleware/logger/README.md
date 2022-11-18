@@ -11,6 +11,7 @@ Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP r
 		- [Logging Request ID](#logging-request-id)
 		- [Changing TimeZone & TimeFormat](#changing-timezone--timeformat)
 		- [Custom File Writer](#custom-file-writer)
+        - [Add Custom Tags](#add-custom-tags)
 	- [Config](#config)
 	- [Default Config](#default-config-1)
 	- [Constants](#constants)
@@ -75,6 +76,16 @@ app.Use(logger.New(logger.Config{
 	Output: file,
 }))
 ```
+### Add Custom Tags
+```go
+app.Use(logger.New(logger.Config{
+	CustomTags: map[string]logger.LogFunc{
+		"custom_tag": func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
+			return buf.WriteString("it is a custom tag")
+		},
+	},
+}))
+```
 
 ## Config
 ```go
@@ -85,11 +96,16 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
+	// CustomTags defines the custom tag action
+	//
+	// Optional. Default: map[string]LogFunc{}
+	CustomTags map[string]LogFunc
+	
 	// Format defines the logging tags
 	//
 	// Optional. Default: [${time}] ${status} - ${latency} ${method} ${path}\n
 	Format string
-
+	
 	// TimeFormat https://programming.guide/go/format-parse-string-time-date-example.html
 	//
 	// Optional. Default: 15:04:05

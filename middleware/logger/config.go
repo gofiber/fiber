@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/internal/bytebufferpool"
 )
 
 // Config defines the config for middleware.
@@ -21,6 +22,11 @@ type Config struct {
 	//
 	// Optional. Default: a function that does nothing.
 	Done func(c *fiber.Ctx, logString []byte)
+
+	// tagFunctions defines the custom tag action
+	//
+	// Optional. Default: map[string]LogFunc
+	CustomTags map[string]LogFunc
 
 	// Format defines the logging tags
 	//
@@ -52,6 +58,14 @@ type Config struct {
 	timeZoneLocation *time.Location
 }
 
+const (
+	startTag       = "${"
+	endTag         = "}"
+	paramSeparator = ":"
+)
+
+type LogFunc func(buf *bytebufferpool.ByteBuffer, c *fiber.Ctx, data *Data, extraParam string) (int, error)
+
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:         nil,
@@ -65,11 +79,8 @@ var ConfigDefault = Config{
 }
 
 // Function to check if the logger format is compatible for coloring
-func validCustomFormat(format string) bool {
+func checkColorEnable(format string) bool {
 	validTemplates := []string{"${status}", "${method}"}
-	if format == "" {
-		return true
-	}
 	for _, template := range validTemplates {
 		if strings.Contains(format, template) {
 			return true
@@ -88,11 +99,6 @@ func configDefault(config ...Config) Config {
 	// Override default config
 	cfg := config[0]
 
-	// Enable colors if no custom format or output is given
-	if validCustomFormat(cfg.Format) && cfg.Output == nil {
-		cfg.enableColors = true
-	}
-
 	// Set default values
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
@@ -103,6 +109,7 @@ func configDefault(config ...Config) Config {
 	if cfg.Format == "" {
 		cfg.Format = ConfigDefault.Format
 	}
+
 	if cfg.TimeZone == "" {
 		cfg.TimeZone = ConfigDefault.TimeZone
 	}
@@ -115,5 +122,11 @@ func configDefault(config ...Config) Config {
 	if cfg.Output == nil {
 		cfg.Output = ConfigDefault.Output
 	}
+
+	// Enable colors if no custom format or output is given
+	if cfg.Output == nil && checkColorEnable(cfg.Format) {
+		cfg.enableColors = true
+	}
+
 	return cfg
 }
