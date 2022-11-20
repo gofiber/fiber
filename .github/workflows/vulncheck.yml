@@ -1,4 +1,9 @@
-on: [push, pull_request_target]
+on:
+    push:
+        branches:
+            - master
+            - main
+    pull_request:
 name: Vulnerability Check
 jobs:
   Security:
