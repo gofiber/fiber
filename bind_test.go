@@ -64,6 +64,33 @@ func Test_Binder_Nested(t *testing.T) {
 	require.Equal(t, 10, req.Nested.And.Age)
 }
 
+func Test_Binder_Nested_Slice(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("name=tom&data[0][name]=john&data[0][age]=10&data[1][name]=doe&data[1][age]=12")
+
+	var req struct {
+		Name string `query:"name"`
+		Data []struct {
+			Name string `query:"name"`
+			Age  int    `query:"age"`
+		} `query:"data"`
+	}
+
+	err := c.Bind().Req(&req).Err()
+	require.NoError(t, err)
+	require.Equal(t, 2, len(req.Data))
+	require.Equal(t, "john", req.Data[0].Name)
+	require.Equal(t, 10, req.Data[0].Age)
+	require.Equal(t, "doe", req.Data[1].Name)
+	require.Equal(t, 12, req.Data[1].Age)
+	require.Equal(t, "tom", req.Name)
+}
+
 // go test -run Test_Bind_BasicType -v
 func Test_Bind_BasicType(t *testing.T) {
 	t.Parallel()
