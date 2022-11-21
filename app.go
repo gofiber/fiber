@@ -385,7 +385,7 @@ type Config struct {
 
 	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
 	//
-	// Optional. Defaukt: DefaultMethods
+	// Optional. Default: DefaultMethods
 	RequestMethods []string
 }
 
