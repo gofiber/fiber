@@ -437,10 +437,12 @@ func (routeParser *routeParser) getMatch(detectionPath, path string, params *[ma
 			// take over the params positions
 			params[paramsIterator] = path[:i]
 
-			// check constraint
-			for _, c := range segment.Constraints {
-				if matched := c.CheckConstraint(params[paramsIterator]); !matched {
-					return false
+			if !(segment.IsOptional && i == 0) {
+				// check constraint
+				for _, c := range segment.Constraints {
+					if matched := c.CheckConstraint(params[paramsIterator]); !matched {
+						return false
+					}
 				}
 			}
 

@@ -70,8 +70,9 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 		expire = uint32(exp.Seconds()) + atomic.LoadUint32(&utils.Timestamp)
 	}
 
+	e := entry{val, expire}
 	s.mux.Lock()
-	s.db[key] = entry{val, expire}
+	s.db[key] = e
 	s.mux.Unlock()
 	return nil
 }
@@ -90,8 +91,9 @@ func (s *Storage) Delete(key string) error {
 
 // Reset all keys
 func (s *Storage) Reset() error {
+	ndb := make(map[string]entry)
 	s.mux.Lock()
-	s.db = make(map[string]entry)
+	s.db = ndb
 	s.mux.Unlock()
 	return nil
 }
@@ -112,17 +114,23 @@ func (s *Storage) gc() {
 		case <-s.done:
 			return
 		case <-ticker.C:
+			ts := atomic.LoadUint32(&utils.Timestamp)
 			expired = expired[:0]
 			s.mux.RLock()
 			for id, v := range s.db {
-				if v.expiry != 0 && v.expiry < atomic.LoadUint32(&utils.Timestamp) {
+				if v.expiry != 0 && v.expiry <= ts {
 					expired = append(expired, id)
 				}
 			}
 			s.mux.RUnlock()
 			s.mux.Lock()
+			// Double-checked locking.
+			// We might have replaced the item in the meantime.
 			for i := range expired {
-				delete(s.db, expired[i])
+				v := s.db[expired[i]]
+				if v.expiry != 0 && v.expiry <= ts {
+					delete(s.db, expired[i])
+				}
 			}
 			s.mux.Unlock()
 		}

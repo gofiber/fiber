@@ -7,13 +7,13 @@ package fiber
 import (
 	"fmt"
 	"reflect"
-	"strings"
 )
 
 // Group struct
 type Group struct {
-	app  *App
-	name string
+	app         *App
+	parentGroup *Group
+	name        string
 
 	Prefix string
 }
@@ -21,15 +21,14 @@ type Group struct {
 // Name Assign name to specific route.
 func (grp *Group) Name(name string) Router {
 	grp.app.mutex.Lock()
-	if strings.HasPrefix(grp.Prefix, grp.app.latestGroup.Prefix) {
-		grp.name = grp.app.latestGroup.name + name
+
+	if grp.parentGroup != nil {
+		grp.name = grp.parentGroup.name + name
 	} else {
 		grp.name = name
 	}
 
-	grp.app.latestGroup = grp
-
-	if err := grp.app.hooks.executeOnGroupNameHooks(*grp.app.latestGroup); err != nil {
+	if err := grp.app.hooks.executeOnGroupNameHooks(*grp); err != nil {
 		panic(err)
 	}
 	grp.app.mutex.Unlock()
@@ -52,27 +51,39 @@ func (grp *Group) Name(name string) Router {
 //
 // This method will match all HTTP verbs: GET, POST, PUT, HEAD etc...
 func (grp *Group) Use(args ...interface{}) Router {
-	prefix := ""
+	var prefix string
+	var prefixes []string
 	var handlers []Handler
+
 	for i := 0; i < len(args); i++ {
 		switch arg := args[i].(type) {
 		case string:
 			prefix = arg
+		case []string:
+			prefixes = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
 			panic(fmt.Sprintf("use: invalid handler %v\n", reflect.TypeOf(arg)))
 		}
 	}
-	grp.app.register(methodUse, getGroupPath(grp.Prefix, prefix), handlers...)
+
+	if len(prefixes) == 0 {
+		prefixes = append(prefixes, prefix)
+	}
+
+	for _, prefix := range prefixes {
+		grp.app.register(methodUse, getGroupPath(grp.Prefix, prefix), grp, handlers...)
+	}
+
 	return grp
 }
 
 // Get registers a route for GET methods that requests a representation
 // of the specified resource. Requests using GET should only retrieve data.
 func (grp *Group) Get(path string, handlers ...Handler) Router {
-	path = getGroupPath(grp.Prefix, path)
-	return grp.app.Add(MethodHead, path, handlers...).Add(MethodGet, path, handlers...)
+	grp.Add(MethodHead, path, handlers...)
+	return grp.Add(MethodGet, path, handlers...)
 }
 
 // Head registers a route for HEAD methods that asks for a response identical
@@ -124,7 +135,7 @@ func (grp *Group) Patch(path string, handlers ...Handler) Router {
 
 // Add allows you to specify a HTTP method to register a route
 func (grp *Group) Add(method, path string, handlers ...Handler) Router {
-	return grp.app.register(method, getGroupPath(grp.Prefix, path), handlers...)
+	return grp.app.register(method, getGroupPath(grp.Prefix, path), grp, handlers...)
 }
 
 // Static will create a file server serving static files
@@ -134,7 +145,7 @@ func (grp *Group) Static(prefix, root string, config ...Static) Router {
 
 // All will register the handler on all HTTP methods
 func (grp *Group) All(path string, handlers ...Handler) Router {
-	for _, method := range intMethod {
+	for _, method := range grp.app.config.RequestMethods {
 		_ = grp.Add(method, path, handlers...)
 	}
 	return grp
@@ -147,9 +158,17 @@ func (grp *Group) All(path string, handlers ...Handler) Router {
 func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 	prefix = getGroupPath(grp.Prefix, prefix)
 	if len(handlers) > 0 {
-		_ = grp.app.register(methodUse, prefix, handlers...)
+		_ = grp.app.register(methodUse, prefix, grp, handlers...)
 	}
-	return grp.app.Group(prefix)
+
+	// Create new group
+	newGrp := &Group{Prefix: prefix, app: grp.app, parentGroup: grp}
+	if err := grp.app.hooks.executeOnGroupHooks(*newGrp); err != nil {
+		panic(err)
+	}
+
+	return newGrp
+
 }
 
 // Route is used to define routes with a common prefix inside the common function.

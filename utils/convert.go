@@ -13,6 +13,8 @@ import (
 	"unsafe"
 )
 
+const MaxStringLen = 0x7fff0000 // Maximum string length for UnsafeBytes. (decimal: 2147418112)
+
 // #nosec G103
 // UnsafeString returns a string pointer without allocation
 func UnsafeString(b []byte) string {
@@ -20,14 +22,16 @@ func UnsafeString(b []byte) string {
 }
 
 // #nosec G103
-// UnsafeBytes returns a byte pointer without allocation
-func UnsafeBytes(s string) (bs []byte) {
-	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	bh := (*reflect.SliceHeader)(unsafe.Pointer(&bs))
-	bh.Data = sh.Data
-	bh.Len = sh.Len
-	bh.Cap = sh.Len
-	return
+// UnsafeBytes returns a byte pointer without allocation.
+// String length shouldn't be more than 2147418112.
+func UnsafeBytes(s string) []byte {
+	if s == "" {
+		return nil
+	}
+
+	return (*[MaxStringLen]byte)(unsafe.Pointer(
+		(*reflect.StringHeader)(unsafe.Pointer(&s)).Data),
+	)[:len(s):len(s)]
 }
 
 // CopyString copies a string to make it immutable

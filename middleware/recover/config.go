@@ -22,8 +22,6 @@ type Config struct {
 	StackTraceHandler func(c *fiber.Ctx, e interface{})
 }
 
-var defaultStackTraceBufLen = 1024
-
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:              nil,

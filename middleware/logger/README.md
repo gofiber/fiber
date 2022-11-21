@@ -11,6 +11,7 @@ Logger middleware for [Fiber](https://github.com/gofiber/fiber) that logs HTTP r
 		- [Logging Request ID](#logging-request-id)
 		- [Changing TimeZone & TimeFormat](#changing-timezone--timeformat)
 		- [Custom File Writer](#custom-file-writer)
+        - [Add Custom Tags](#add-custom-tags)
 	- [Config](#config)
 	- [Default Config](#default-config-1)
 	- [Constants](#constants)
@@ -39,7 +40,7 @@ app.Use(logger.New())
 
 ```go
 app.Use(logger.New(logger.Config{
-        Format:     "[${ip}]:${port} ${status} - ${method} ${path}\n",
+	Format: "[${ip}]:${port} ${status} - ${method} ${path}\n",
 }))
 ```
 
@@ -75,6 +76,30 @@ app.Use(logger.New(logger.Config{
 	Output: file,
 }))
 ```
+### Add Custom Tags
+```go
+app.Use(logger.New(logger.Config{
+	CustomTags: map[string]logger.LogFunc{
+		"custom_tag": func(output logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+			return output.WriteString("it is a custom tag")
+		},
+	},
+}))
+```
+
+### Callback after log is written
+
+```go
+app.Use(logger.New(logger.Config{
+	TimeFormat: time.RFC3339Nano,
+	TimeZone:   "Asia/Shanghai",
+	Done: func(c *fiber.Ctx, logString []byte) {
+		if c.Response().StatusCode() != fiber.StatusOK {
+			reporter.SendToSlack(logString) 
+		}
+	},
+}))
+```
 
 ## Config
 ```go
@@ -84,6 +109,17 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
+
+	// Done is a function that is called after the log string for a request is written to Output,
+	// and pass the log string as parameter.
+	//
+	// Optional. Default: nil
+	Done func(c *fiber.Ctx, logString []byte)
+
+	// tagFunctions defines the custom tag action
+	//
+	// Optional. Default: map[string]LogFunc
+	CustomTags map[string]LogFunc
 
 	// Format defines the logging tags
 	//
@@ -107,20 +143,23 @@ type Config struct {
 
 	// Output is a writer where logs are written
 	//
-	// Default: os.Stderr
+	// Default: os.Stdout
 	Output io.Writer
 }
+
+type LogFunc func(buf logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error)
 ```
 
 ## Default Config
 ```go
 var ConfigDefault = Config{
-	Next:         nil,
-	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
-	TimeFormat:   "15:04:05",
-	TimeZone:     "Local",
-	TimeInterval: 500 * time.Millisecond,
-	Output:       os.Stderr,
+    Next:         nil,
+    Done:         nil,
+    Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
+    TimeFormat:   "15:04:05",
+    TimeZone:     "Local",
+    TimeInterval: 500 * time.Millisecond,
+    Output:       os.Stdout,
 }
 ```
 
