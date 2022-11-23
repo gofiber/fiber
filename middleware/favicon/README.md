@@ -42,6 +42,7 @@ app.Use(favicon.New())
 ```go
 app.Use(favicon.New(favicon.Config{
 	File: "./favicon.ico",
+	Url: "/favicon.ico"
 }))
 ```
 
@@ -54,11 +55,15 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
-
+    
 	// File holds the path to an actual favicon that will be cached
 	//
 	// Optional. Default: ""
 	File string
+	// Url for favicon handler
+	//
+	// Optional. Default: "/favicon.ico
+	Url string `json:"url"`
 }
 ```
 
@@ -67,6 +72,7 @@ type Config struct {
 ```go
 var ConfigDefault = Config{
 	Next: nil,
-	File:	""
+	File:	"",
+	Url: "/favicon.ico"
 }
 ```

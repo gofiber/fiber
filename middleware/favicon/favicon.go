@@ -20,7 +20,10 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	File string `json:"file"`
-
+	// Url for favicon handler
+	//
+	// Optional. Default: "/favicon.ico
+	Url string `json:"url"`
 	// FileSystem is an optional alternate filesystem to search for the favicon in.
 	// An example of this could be an embedded or network filesystem
 	//
@@ -37,6 +40,7 @@ type Config struct {
 var ConfigDefault = Config{
 	Next:         nil,
 	File:         "",
+	Url:          fPath,
 	CacheControl: "public, max-age=31536000",
 }
 
@@ -59,6 +63,9 @@ func New(config ...Config) fiber.Handler {
 		// Set default values
 		if cfg.Next == nil {
 			cfg.Next = ConfigDefault.Next
+		}
+		if cfg.Url == "" {
+			cfg.Url = ConfigDefault.Url
 		}
 		if cfg.File == "" {
 			cfg.File = ConfigDefault.File
@@ -99,7 +106,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Only respond to favicon requests
-		if c.Path() != fPath {
+		if c.Path() != cfg.Url {
 			return c.Next()
 		}
 
