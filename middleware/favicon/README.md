@@ -42,7 +42,7 @@ app.Use(favicon.New())
 ```go
 app.Use(favicon.New(favicon.Config{
 	File: "./favicon.ico",
-	Url: "/favicon.ico"
+	URL: "/favicon.ico"
 }))
 ```
 
@@ -60,10 +60,10 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	File string
-	// Url for favicon handler
+	// URL for favicon handler
 	//
 	// Optional. Default: "/favicon.ico
-	Url string `json:"url"`
+	URL string `json:"url"`
 }
 ```
 
@@ -73,6 +73,6 @@ type Config struct {
 var ConfigDefault = Config{
 	Next: nil,
 	File:	"",
-	Url: "/favicon.ico"
+	URL: "/favicon.ico"
 }
 ```
