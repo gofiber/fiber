@@ -585,12 +585,11 @@ func New(config ...Config) *App {
 func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
-
 		if err != nil {
 			fmt.Printf("[Warning] IP range `%s` could not be parsed. \n", ipAddress)
+		} else {
+			app.config.trustedProxyRanges = append(app.config.trustedProxyRanges, ipNet)
 		}
-
-		app.config.trustedProxyRanges = append(app.config.trustedProxyRanges, ipNet)
 	} else {
 		app.config.trustedProxiesMap[ipAddress] = struct{}{}
 	}
