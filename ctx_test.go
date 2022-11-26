@@ -2851,6 +2851,29 @@ func Test_Ctx_RenderWithBind(t *testing.T) {
 
 }
 
+func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
+	t.Parallel()
+
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+
+	err := c.Bind(Map{
+		"Title": "Hello, World!",
+	})
+	utils.AssertEqual(t, nil, err)
+	defer app.ReleaseCtx(c)
+	err = c.Render("./.github/testdata/index.tmpl", Map{
+		"Title": "Hello from Fiber!",
+	})
+
+	buf := bytebufferpool.Get()
+	_, _ = buf.WriteString("overwrite")
+	defer bytebufferpool.Put(buf)
+
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "<h1>Hello from Fiber!</h1>", string(c.Response().Body()))
+}
+
 func Test_Ctx_RenderWithBindLocals(t *testing.T) {
 	t.Parallel()
 
