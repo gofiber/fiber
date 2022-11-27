@@ -44,7 +44,7 @@ func Test_App_Mount_RootPath_Nested(t *testing.T) {
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/home", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
-	require.Equal(t, uint32(2), app.handlersCount)
+	require.Equal(t, uint32(1), app.handlersCount)
 }
 
 // go test -run Test_App_Mount_Nested

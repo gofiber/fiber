@@ -501,7 +501,7 @@ func Test_App_Add_Method_Test(t *testing.T) {
 
 	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/doe", nil))
 	require.NoError(t, err, "app.Test(req)")
-	require.Equal(t, StatusBadRequest, resp.StatusCode, "Status code")
+	require.Equal(t, StatusNotImplemented, resp.StatusCode, "Status code")
 
 	app.Add([]string{"JANE"}, "/doe", testEmptyHandler)
 }
@@ -1114,6 +1114,7 @@ func Test_App_Route(t *testing.T) {
 
 	register := app.Route("/test").
 		Get(dummyHandler).
+		Head(dummyHandler).
 		Post(dummyHandler).
 		Put(dummyHandler).
 		Delete(dummyHandler).
@@ -1287,7 +1288,7 @@ func Test_App_Stack(t *testing.T) {
 	methodList := app.config.RequestMethods
 	require.Equal(t, len(methodList), len(stack))
 	require.Equal(t, 3, len(stack[app.methodInt(MethodGet)]))
-	require.Equal(t, 3, len(stack[app.methodInt(MethodHead)]))
+	require.Equal(t, 1, len(stack[app.methodInt(MethodHead)]))
 	require.Equal(t, 2, len(stack[app.methodInt(MethodPost)]))
 	require.Equal(t, 1, len(stack[app.methodInt(MethodPut)]))
 	require.Equal(t, 1, len(stack[app.methodInt(MethodPatch)]))
