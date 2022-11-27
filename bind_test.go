@@ -25,7 +25,7 @@ func Test_Binder(t *testing.T) {
 	ctx.Request().Header.Set("content-type", "application/json")
 
 	var req struct {
-		ID string `param:"id"`
+		ID *string `param:"id"`
 	}
 
 	var body struct {
@@ -34,7 +34,7 @@ func Test_Binder(t *testing.T) {
 
 	err := ctx.Bind().Req(&req).JSON(&body).Err()
 	require.NoError(t, err)
-	require.Equal(t, "id string", req.ID)
+	require.Equal(t, "id string", *req.ID)
 	require.Equal(t, "john doe", body.Name)
 }
 
@@ -47,11 +47,12 @@ func Test_Binder_Nested(t *testing.T) {
 	c.Request().Header.SetContentType("")
 	c.Request().URI().SetQueryString("name=tom&nested.and.age=10&nested.and.test=john")
 
+	// TODO: pointer support for structs
 	var req struct {
 		Name   string `query:"name"`
 		Nested struct {
 			And struct {
-				Age  int    `query:"age"`
+				Age  *int   `query:"age"`
 				Test string `query:"test"`
 			} `query:"and"`
 		} `query:"nested"`
@@ -61,7 +62,7 @@ func Test_Binder_Nested(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "tom", req.Name)
 	require.Equal(t, "john", req.Nested.And.Test)
-	require.Equal(t, 10, req.Nested.And.Age)
+	require.Equal(t, 10, *req.Nested.And.Age)
 }
 
 func Test_Binder_Nested_Slice(t *testing.T) {
@@ -90,6 +91,33 @@ func Test_Binder_Nested_Slice(t *testing.T) {
 	require.Equal(t, 12, req.Data[1].Age)
 	require.Equal(t, "tom", req.Name)
 }
+
+/*func Test_Binder_Nested_Deeper_Slice(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c.Request().SetBody([]byte(``))
+	c.Request().Header.SetContentType("")
+	c.Request().URI().SetQueryString("data[0][users][0][name]=john&data[0][users][0][age]=10&data[1][users][0][name]=doe&data[1][users][0][age]=12")
+
+	var req struct {
+		Data []struct {
+			Users []struct {
+				Name string `query:"name"`
+				Age  int    `query:"age"`
+			} `query:"subData"`
+		} `query:"data"`
+	}
+
+	err := c.Bind().Req(&req).Err()
+	require.NoError(t, err)
+	require.Equal(t, 2, len(req.Data))
+	require.Equal(t, "john", req.Data[0].Users[0].Name)
+	require.Equal(t, 10, req.Data[0].Users[0].Age)
+	require.Equal(t, "doe", req.Data[1].Users[0].Name)
+	require.Equal(t, 12, req.Data[1].Users[0].Age)
+}*/
 
 // go test -run Test_Bind_BasicType -v
 func Test_Bind_BasicType(t *testing.T) {

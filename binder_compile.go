@@ -113,6 +113,9 @@ func compileFieldDecoder(field reflect.StructField, index int, opt bindCompileOp
 	}
 
 	// Nested binding support
+	if field.Type.Kind() == reflect.Ptr {
+		field.Type = field.Type.Elem()
+	}
 	if field.Type.Kind() == reflect.Struct {
 		var decoders []decoder
 		el := field.Type
@@ -185,7 +188,12 @@ func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tag
 		return nil, errors.New("unexpected tag scope " + strconv.Quote(tagScope))
 	}
 
-	textDecoder, err := bind.CompileTextDecoder(field.Type)
+	et := field.Type
+	if field.Type.Kind() == reflect.Ptr {
+		et = field.Type.Elem()
+	}
+
+	textDecoder, err := bind.CompileTextDecoder(et)
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +205,7 @@ func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tag
 		reqField:  tagContent,
 		dec:       textDecoder,
 		get:       get,
+		et:        et,
 	}
 
 	if len(parentIndex) > 0 {
@@ -206,11 +215,13 @@ func compileTextBasedDecoder(field reflect.StructField, index int, tagScope, tag
 	return []decoder{fieldDecoder}, nil
 }
 
+// TODO
 type subElem struct {
 	et             reflect.Type
 	tag            string
 	index          int
 	elementDecoder bind.TextDecoder
+	//subElems       []subElem
 }
 
 func compileSliceFieldTextBasedDecoder(field reflect.StructField, index int, tagScope string, tagContent string) ([]decoder, error) {
