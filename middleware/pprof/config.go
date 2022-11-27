@@ -8,6 +8,13 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
+
+	// Prefix defines a URL prefix added before "/debug/pprof".
+	// Note that it should start with (but not end with) a slash.
+	// Example: "/federated-fiber"
+	//
+	// Optional. Default: ""
+	Prefix string
 }
 
 var ConfigDefault = Config{

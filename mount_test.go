@@ -28,6 +28,25 @@ func Test_App_Mount(t *testing.T) {
 	require.Equal(t, uint32(1), app.handlersCount)
 }
 
+func Test_App_Mount_RootPath_Nested(t *testing.T) {
+	app := New()
+	dynamic := New()
+	apiserver := New()
+
+	apiroutes := apiserver.Group("/v1")
+	apiroutes.Get("/home", func(c Ctx) error {
+		return c.SendString("home")
+	})
+
+	dynamic.Use("/api", apiserver)
+	app.Use("/", dynamic)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api/v1/home", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, 200, resp.StatusCode, "Status code")
+	require.Equal(t, uint32(2), app.handlersCount)
+}
+
 // go test -run Test_App_Mount_Nested
 func Test_App_Mount_Nested(t *testing.T) {
 	app := New()
@@ -136,6 +155,24 @@ func Test_App_Group_Mount(t *testing.T) {
 	require.Equal(t, nil, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.Equal(t, uint32(1), app.handlersCount)
+}
+
+func Test_App_UseParentErrorHandler(t *testing.T) {
+	app := New(Config{
+		ErrorHandler: func(ctx Ctx, err error) error {
+			return ctx.Status(500).SendString("hi, i'm a custom error")
+		},
+	})
+
+	fiber := New()
+	fiber.Get("/", func(c Ctx) error {
+		return errors.New("something happened")
+	})
+
+	app.Use("/api", fiber)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/api", nil))
+	testErrorResponse(t, err, resp, "hi, i'm a custom error")
 }
 
 func Test_App_UseMountedErrorHandler(t *testing.T) {

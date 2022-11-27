@@ -281,7 +281,7 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 			require.Equal(t, "missing handler/middleware in route: /doe\n", fmt.Sprintf("%v", err))
 		}
 	}()
-	app.register([]string{"USE"}, "/doe", nil)
+	app.register([]string{"USE"}, "/doe", nil, nil)
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {

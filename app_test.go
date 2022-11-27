@@ -398,6 +398,52 @@ func Test_App_Not_Use_StrictRouting(t *testing.T) {
 	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
 }
 
+func Test_App_Use_MultiplePrefix(t *testing.T) {
+	app := New()
+
+	app.Use([]string{"/john", "/doe"}, func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+
+	g := app.Group("/test")
+	g.Use([]string{"/john", "/doe"}, func(c Ctx) error {
+		return c.SendString(c.Path())
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/john", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "/john", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/doe", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "/doe", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "/test/john", string(body))
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test/doe", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "/test/doe", string(body))
+
+}
+
 func Test_App_Use_StrictRouting(t *testing.T) {
 	app := New(Config{StrictRouting: true})
 
@@ -432,13 +478,32 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 }
 
 func Test_App_Add_Method_Test(t *testing.T) {
-	app := New()
 	defer func() {
 		if err := recover(); err != nil {
-			require.Equal(t, "add: invalid http method JOHN\n", fmt.Sprintf("%v", err))
+			require.Equal(t, "add: invalid http method JANE\n", fmt.Sprintf("%v", err))
 		}
 	}()
+
+	methods := append(DefaultMethods, "JOHN")
+	app := New(Config{
+		RequestMethods: methods,
+	})
+
 	app.Add([]string{"JOHN"}, "/doe", testEmptyHandler)
+
+	resp, err := app.Test(httptest.NewRequest("JOHN", "/doe", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/doe", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusMethodNotAllowed, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest("UNKNOWN", "/doe", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusBadRequest, resp.StatusCode, "Status code")
+
+	app.Add([]string{"JANE"}, "/doe", testEmptyHandler)
 }
 
 // go test -run Test_App_GETOnly
@@ -484,7 +549,7 @@ func Test_App_Chaining(t *testing.T) {
 		return c.SendStatus(202)
 	})
 	// check handler count for registered HEAD route
-	require.Equal(t, 5, len(app.stack[methodInt(MethodHead)][0].Handlers), "app.Test(req)")
+	require.Equal(t, 5, len(app.stack[app.methodInt(MethodHead)][0].Handlers), "app.Test(req)")
 
 	req := httptest.NewRequest(MethodPost, "/john", nil)
 
@@ -581,15 +646,16 @@ func Test_App_Route_Naming(t *testing.T) {
 	app.Name("doe")
 
 	jane := app.Group("/jane").Name("jane.")
+	group := app.Group("/group")
+	subGroup := jane.Group("/sub-group").Name("sub.")
+
 	jane.Get("/test", handler).Name("test")
 	jane.Trace("/trace", handler).Name("trace")
 
-	group := app.Group("/group")
 	group.Get("/test", handler).Name("test")
 
 	app.Post("/post", handler).Name("post")
 
-	subGroup := jane.Group("/sub-group").Name("sub.")
 	subGroup.Get("/done", handler).Name("done")
 
 	require.Equal(t, "post", app.GetRoute("post").Name)
@@ -1218,16 +1284,17 @@ func Test_App_Stack(t *testing.T) {
 	app.Post("/path3", testEmptyHandler)
 
 	stack := app.Stack()
-	require.Equal(t, 9, len(stack))
-	require.Equal(t, 3, len(stack[methodInt(MethodGet)]))
-	require.Equal(t, 1, len(stack[methodInt(MethodHead)]))
-	require.Equal(t, 2, len(stack[methodInt(MethodPost)]))
-	require.Equal(t, 1, len(stack[methodInt(MethodPut)]))
-	require.Equal(t, 1, len(stack[methodInt(MethodPatch)]))
-	require.Equal(t, 1, len(stack[methodInt(MethodDelete)]))
-	require.Equal(t, 1, len(stack[methodInt(MethodConnect)]))
-	require.Equal(t, 1, len(stack[methodInt(MethodOptions)]))
-	require.Equal(t, 1, len(stack[methodInt(MethodTrace)]))
+	methodList := app.config.RequestMethods
+	require.Equal(t, len(methodList), len(stack))
+	require.Equal(t, 3, len(stack[app.methodInt(MethodGet)]))
+	require.Equal(t, 3, len(stack[app.methodInt(MethodHead)]))
+	require.Equal(t, 2, len(stack[app.methodInt(MethodPost)]))
+	require.Equal(t, 1, len(stack[app.methodInt(MethodPut)]))
+	require.Equal(t, 1, len(stack[app.methodInt(MethodPatch)]))
+	require.Equal(t, 1, len(stack[app.methodInt(MethodDelete)]))
+	require.Equal(t, 1, len(stack[app.methodInt(MethodConnect)]))
+	require.Equal(t, 1, len(stack[app.methodInt(MethodOptions)]))
+	require.Equal(t, 1, len(stack[app.methodInt(MethodTrace)]))
 }
 
 // go test -run Test_App_HandlersCount
@@ -1477,6 +1544,19 @@ func Test_App_SetTLSHandler(t *testing.T) {
 	require.Equal(t, "example.golang", c.ClientHelloInfo().ServerName)
 }
 
+func Test_App_AddCustomRequestMethod(t *testing.T) {
+	methods := append(DefaultMethods, "TEST")
+	app := New(Config{
+		RequestMethods: methods,
+	})
+	appMethods := app.config.RequestMethods
+
+	// method name is always uppercase - https://datatracker.ietf.org/doc/html/rfc7231#section-4.1
+	require.Equal(t, len(app.stack), len(appMethods))
+	require.Equal(t, len(app.stack), len(appMethods))
+	require.Equal(t, "TEST", appMethods[len(appMethods)-1])
+}
+
 func TestApp_GetRoutes(t *testing.T) {
 	app := New()
 	app.Use(func(c Ctx) error {
@@ -1488,7 +1568,7 @@ func TestApp_GetRoutes(t *testing.T) {
 	app.Delete("/delete", handler).Name("delete")
 	app.Post("/post", handler).Name("post")
 	routes := app.GetRoutes(false)
-	require.Equal(t, 11, len(routes))
+	require.Equal(t, 2+len(app.config.RequestMethods), len(routes))
 	methodMap := map[string]string{"/delete": "delete", "/post": "post"}
 	for _, route := range routes {
 		name, ok := methodMap[route.Path]
@@ -1504,5 +1584,4 @@ func TestApp_GetRoutes(t *testing.T) {
 		require.Equal(t, true, ok)
 		require.Equal(t, name, route.Name)
 	}
-
 }
