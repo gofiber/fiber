@@ -1,8 +1,7 @@
 on:
     push:
         branches:
-            - master
-            - main
+            - v3-beta
     pull_request:
 name: Security
 jobs:
