@@ -862,7 +862,7 @@ func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
 	return app.shutdownWithContext(ctx)
 }
 
-// shutdownWithContext shutsdown the server including by force if the context's deadline is exceeded.
+// shutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
 func (app *App) shutdownWithContext(ctx context.Context) error {
 	if app.hooks != nil {
 		defer app.hooks.executeOnShutdownHooks()
