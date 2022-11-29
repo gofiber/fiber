@@ -113,6 +113,11 @@ func Test_FileSystem(t *testing.T) {
 			statusCode:  200,
 			contentType: "image/png",
 		},
+		{
+			name:       "Should handle url encoded space",
+			url:        "/test/css/style%20with%20space.css",
+			statusCode: 200,
+		},
 	}
 
 	for _, tt := range tests {

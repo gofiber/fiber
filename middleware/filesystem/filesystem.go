@@ -2,6 +2,7 @@ package filesystem
 
 import (
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -135,6 +136,12 @@ func New(config ...Config) fiber.Handler {
 		if len(path) > 1 {
 			path = utils.TrimRight(path, '/')
 		}
+
+		path, err = url.PathUnescape(path)
+		if err != nil {
+			return
+		}
+
 		file, err = cfg.Root.Open(path)
 		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
 			file, err = cfg.Root.Open(cfg.NotFoundFile)
