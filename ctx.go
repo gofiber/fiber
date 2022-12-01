@@ -1437,7 +1437,10 @@ func (c *Ctx) renderExtensions(bind interface{}) {
 		// Bind view map
 		if c.viewBindMap != nil {
 			for _, v := range c.viewBindMap.D {
-				bindMap[v.Key] = v.Value
+				// make sure key does not exist already
+				if _, ok := bindMap[v.Key]; !ok {
+					bindMap[v.Key] = v.Value
+				}
 			}
 		}
 
