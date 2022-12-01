@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
@@ -440,4 +442,43 @@ func Test_CustomTags(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	utils.AssertEqual(t, customTag, buf.String())
+}
+
+// go test -run Test_Logger_ByteSent_Streaming
+func Test_Logger_ByteSent_Streaming(t *testing.T) {
+	app := fiber.New()
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	app.Use(New(Config{
+		Format: "${bytesReceived} ${bytesSent} ${status}",
+		Output: buf,
+	}))
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		c.Set("Connection", "keep-alive")
+		c.Set("Transfer-Encoding", "chunked")
+		c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+			var i int
+			for {
+				i++
+				msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
+				fmt.Fprintf(w, "data: Message: %s\n\n", msg)
+				err := w.Flush()
+				if err != nil {
+					break
+				}
+				if i == 10 {
+					break
+				}
+			}
+		})
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "0 0 200", buf.String())
 }
