@@ -13,9 +13,9 @@ import (
 func Test_Memory(t *testing.T) {
 	var store = New()
 	var (
-		key             = "john"
-		val interface{} = []byte("doe")
-		exp             = 1 * time.Second
+		key     = "john"
+		val any = []byte("doe")
+		exp     = 1 * time.Second
 	)
 
 	store.Set(key, val, 0)
