@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-func defaultStackTraceHandler(_ fiber.Ctx, e interface{}) {
+func defaultStackTraceHandler(_ fiber.Ctx, e any) {
 	_, _ = os.Stderr.WriteString(fmt.Sprintf("panic: %v\n%s\n", e, debug.Stack()))
 }
 

@@ -42,10 +42,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-<<<<<<< HEAD
 	Next func(c fiber.Ctx) bool
-=======
-	Next func(c *fiber.Ctx) bool
 
 	// Prefix defines a URL prefix added before "/debug/pprof".
 	// Note that it should start with (but not end with) a slash.
@@ -53,7 +50,6 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	Prefix string
->>>>>>> origin/master
 }
 ```
 

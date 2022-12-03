@@ -17,8 +17,8 @@ type Storage struct {
 
 type item struct {
 	// max value is 4294967295 -> Sun Feb 07 2106 06:28:15 GMT+0000
-	e uint32      // exp
-	v interface{} // val
+	e uint32 // exp
+	v any    // val
 }
 
 func New() *Storage {
@@ -31,7 +31,7 @@ func New() *Storage {
 }
 
 // Get value by key
-func (s *Storage) Get(key string) interface{} {
+func (s *Storage) Get(key string) any {
 	s.RLock()
 	v, ok := s.data[key]
 	s.RUnlock()
@@ -42,7 +42,7 @@ func (s *Storage) Get(key string) interface{} {
 }
 
 // Set key with value
-func (s *Storage) Set(key string, val interface{}, ttl time.Duration) {
+func (s *Storage) Set(key string, val any, ttl time.Duration) {
 	var exp uint32
 	if ttl > 0 {
 		exp = uint32(ttl.Seconds()) + atomic.LoadUint32(&utils.Timestamp)

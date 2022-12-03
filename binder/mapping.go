@@ -35,13 +35,13 @@ var (
 // SetParserDecoder allow globally change the option of form decoder, update decoderPool
 func SetParserDecoder(parserConfig ParserConfig) {
 	for _, tag := range tags {
-		decoderPoolMap[tag] = &sync.Pool{New: func() interface{} {
+		decoderPoolMap[tag] = &sync.Pool{New: func() any {
 			return decoderBuilder(parserConfig)
 		}}
 	}
 }
 
-func decoderBuilder(parserConfig ParserConfig) interface{} {
+func decoderBuilder(parserConfig ParserConfig) any {
 	decoder := schema.NewDecoder()
 	decoder.IgnoreUnknownKeys(parserConfig.IgnoreUnknownKeys)
 	if parserConfig.SetAliasTag != "" {
@@ -56,7 +56,7 @@ func decoderBuilder(parserConfig ParserConfig) interface{} {
 
 func init() {
 	for _, tag := range tags {
-		decoderPoolMap[tag] = &sync.Pool{New: func() interface{} {
+		decoderPoolMap[tag] = &sync.Pool{New: func() any {
 			return decoderBuilder(ParserConfig{
 				IgnoreUnknownKeys: true,
 				ZeroEmpty:         true,
@@ -84,7 +84,7 @@ func parse(aliasTag string, out any, data map[string][]string) error {
 }
 
 // Parse data into the struct with gorilla/schema
-func parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
+func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 	// Get decoder from pool
 	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder)
 	defer decoderPoolMap[aliasTag].Put(schemaDecoder)

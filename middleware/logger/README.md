@@ -81,7 +81,7 @@ app.Use(logger.New(logger.Config{
 ```go
 app.Use(logger.New(logger.Config{
 	CustomTags: map[string]logger.LogFunc{
-		"custom_tag": func(output logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
+		"custom_tag": func(output logger.Buffer, c fiber.Ctx, data *logger.Data, extraParam string) (int, error) {
 			return output.WriteString("it is a custom tag")
 		},
 	},
@@ -94,7 +94,7 @@ app.Use(logger.New(logger.Config{
 app.Use(logger.New(logger.Config{
 	TimeFormat: time.RFC3339Nano,
 	TimeZone:   "Asia/Shanghai",
-	Done: func(c *fiber.Ctx, logString []byte) {
+	Done: func(c fiber.Ctx, logString []byte) {
 		if c.Response().StatusCode() != fiber.StatusOK {
 			reporter.SendToSlack(logString) 
 		}
@@ -152,7 +152,7 @@ type Config struct {
 	// and pass the log string as parameter.
 	//
 	// Optional. Default: nil
-	Done func(c *fiber.Ctx, logString []byte)
+	Done func(c fiber.Ctx, logString []byte)
 
 	// tagFunctions defines the custom tag action
 	//
@@ -197,7 +197,7 @@ type Config struct {
 	LoggerFunc func(c fiber.Ctx, data *LoggerData, cfg Config) error
 }
 
-type LogFunc func(buf logger.Buffer, c *fiber.Ctx, data *logger.Data, extraParam string) (int, error)
+type LogFunc func(buf logger.Buffer, c fiber.Ctx, data *logger.Data, extraParam string) (int, error)
 ```
 
 ## Default Config

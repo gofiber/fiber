@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var DataPool = sync.Pool{New: func() interface{} { return new(Data) }}
+var DataPool = sync.Pool{New: func() any { return new(Data) }}
 
 // Data is a struct to define some variables to use in custom logger function.
 type Data struct {

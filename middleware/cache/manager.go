@@ -32,7 +32,7 @@ func newManager(storage fiber.Storage) *manager {
 	// Create new storage handler
 	manager := &manager{
 		pool: sync.Pool{
-			New: func() interface{} {
+			New: func() any {
 				return new(item)
 			},
 		},
