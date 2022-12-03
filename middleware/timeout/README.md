@@ -71,7 +71,7 @@ var ErrFooTimeOut = errors.New("foo context canceled")
 
 func main() {
 	app := fiber.New()
-	h := func(c *fiber.Ctx) error {
+	h := func(c fiber.Ctx) error {
 		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
 		if err := sleepWithContextWithCustomError(c.UserContext(), sleepTime); err != nil {
 			return fmt.Errorf("%w: execution error", err)
