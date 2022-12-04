@@ -53,7 +53,9 @@ func Test_Idempotency(t *testing.T) {
 		return nil
 	})
 
-	const lifetime = 10 * time.Millisecond
+	// Needs to be at least a second as the memory storage doesn't support shorter durations.
+	const lifetime = 1 * time.Second
+
 	app.Use(idempotency.New(idempotency.Config{
 		Lifetime: lifetime,
 	}))
@@ -83,7 +85,7 @@ func Test_Idempotency(t *testing.T) {
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-		resp, err := app.Test(req)
+		resp, err := app.Test(req, 3*int(lifetime.Milliseconds()))
 		require.NoError(t, err)
 		body, err := io.ReadAll(resp.Body)
 		require.NoError(t, err)

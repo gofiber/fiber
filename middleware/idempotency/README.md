@@ -84,7 +84,7 @@ type Config struct {
 	// Storage stores response data by idempotency key.
 	//
 	// Optional. Default: an in-memory storage for this process only.
-	Storage Storage
+	Storage fiber.Storage
 
 	// MarshalFunc is the function used to marshal a Response to a []byte.
 	//
@@ -119,8 +119,10 @@ var ConfigDefault = Config{
 
 	KeepResponseHeaders: nil,
 
-	Lock:    NewMemoryLock(),
-	Storage: NewMemoryStorage(15 * time.Minute), // Cleanup interval is half the key lifetime
+	Lock: NewMemoryLock(),
+	Storage: memory.New(memory.Config{
+		GCInterval: 15 * time.Minute, // Half the key lifetime
+	}),
 
 	MarshalFunc: func(res *Response) ([]byte, error) {
 		var buf bytes.Buffer
