@@ -19,6 +19,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	fasthttp2 "github.com/diamondcdn/fasthttp-http2"
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/mattn/go-runewidth"
@@ -26,6 +27,11 @@ import (
 
 // Listener can be used to pass a custom listener.
 func (app *App) Listener(ln net.Listener) error {
+	// Configure HTTP2 protocol
+	if app.config.EnableHTTP2 {
+		app.configureHTTP2()
+	}
+
 	// prepare the server for the start
 	app.startupProcess()
 
@@ -86,6 +92,11 @@ func (app *App) Listen(addr string) error {
 //
 //	app.ListenTLS(":8080", "./cert.pem", "./cert.key")
 func (app *App) ListenTLS(addr, certFile, keyFile string) error {
+	// Configure HTTP2 protocol
+	if app.config.EnableHTTP2 {
+		app.configureHTTP2()
+	}
+
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
@@ -143,6 +154,11 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 //
 //	app.ListenMutualTLS(":8080", "./cert.pem", "./cert.key", "./client.pem")
 func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) error {
+	// Configure HTTP2 protocol
+	if app.config.EnableHTTP2 {
+		app.configureHTTP2()
+	}
+
 	// Check for valid cert/key path
 	if len(certFile) == 0 || len(keyFile) == 0 {
 		return errors.New("tls: provide a valid cert or key path")
@@ -200,6 +216,11 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 
 	// Start listening
 	return app.server.Serve(ln)
+}
+
+// This function prepares the http2 protocol for server.
+func (app *App) configureHTTP2() {
+	fasthttp2.ConfigureServer(app.server, fasthttp2.ServerConfig{})
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information

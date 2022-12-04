@@ -996,6 +996,19 @@ func Test_Client_Agent_TLS(t *testing.T) {
 	utils.AssertEqual(t, "tls", body)
 }
 
+func Test_HostClient_With_HTTP2(t *testing.T) {
+	a := AcquireAgent()
+	a.Host("example.com:443")
+
+	utils.AssertEqual(t, nil, a.Parse())
+	utils.AssertEqual(t, nil, a.EnableHTTP2())
+
+	statusCode, _, err := a.Get(nil, "https://example.com")
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, 200, statusCode)
+
+}
+
 func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 	t.Parallel()
 

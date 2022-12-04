@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	fasthttp2 "github.com/diamondcdn/fasthttp-http2"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -681,6 +682,13 @@ func (a *Agent) TLSConfig(config *tls.Config) *Agent {
 	a.HostClient.TLSConfig = config
 
 	return a
+}
+
+// Enable HTTP/2 support for client.
+//
+// WARNING: HTTP/2 support is still in early access. Some features may not be working.
+func (a *Agent) EnableHTTP2() error {
+	return fasthttp2.ConfigureClient(a.HostClient, fasthttp2.ClientOpts{})
 }
 
 // MaxRedirectsCount sets max redirect count for GET and HEAD.

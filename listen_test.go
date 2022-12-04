@@ -240,6 +240,55 @@ func Test_App_print_Route_with_group(t *testing.T) {
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))
 }
 
+func Test_App_ListenTLS_With_HTTP2(t *testing.T) {
+	app := New(Config{
+		EnableHTTP2: true,
+	})
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenTLS("127.0.0.1:8080", ".github/testdata/ssl.pem", ".github/testdata/ssl.key"))
+}
+
+func Test_App_ListenTLS_Prefork_With_HTTP2(t *testing.T) {
+	testPreforkMaster = true
+
+	app := New(Config{DisableStartupMessage: true, Prefork: true, EnableHTTP2: true})
+
+	// invalid key file content
+	utils.AssertEqual(t, false, app.ListenTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.tmpl") == nil)
+
+	utils.AssertEqual(t, nil, app.ListenTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key"))
+
+}
+
+func Test_App_ListenMutualTLS_With_HTTP2(t *testing.T) {
+	app := New(Config{
+		EnableHTTP2: true,
+	})
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
+}
+
+func Test_App_ListenMutualTLS_Prefork_With_HTTP2(t *testing.T) {
+	testPreforkMaster = true
+
+	app := New(Config{DisableStartupMessage: true, Prefork: true, EnableHTTP2: true})
+
+	// invalid key file content
+	utils.AssertEqual(t, false, app.ListenMutualTLS(":0", "./.github/testdata/ssl.pem", "./.github/testdata/template.html", "") == nil)
+
+	utils.AssertEqual(t, nil, app.ListenMutualTLS(":99999", "./.github/testdata/ssl.pem", "./.github/testdata/ssl.key", "./.github/testdata/ca-chain.cert.pem"))
+}
+
 func emptyHandler(_ *Ctx) error {
 	return nil
 }

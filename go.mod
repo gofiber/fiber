@@ -13,7 +13,10 @@ require (
 
 require (
 	github.com/andybalholm/brotli v1.0.4 // indirect
-	github.com/klauspost/compress v1.15.9 // indirect
+	github.com/dgrr/http2 v0.3.5 // indirect
+	github.com/diamondcdn/fasthttp-http2 v1.0.0
+	github.com/klauspost/compress v1.15.12 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
+	github.com/valyala/fastrand v1.1.0 // indirect
 	github.com/valyala/tcplisten v1.0.0 // indirect
 )

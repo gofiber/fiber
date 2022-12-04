@@ -387,6 +387,13 @@ type Config struct {
 	//
 	// Optional. Default: DefaultMethods
 	RequestMethods []string
+
+	// Enable HTTP2 protocol
+	//
+	// WARNING: HTTP/2 support is still in early access. Some features may not be working.
+	//
+	// Default: false
+	EnableHTTP2 bool `json:"enable_http2"`
 }
 
 // Static defines configuration options when defining static assets.
