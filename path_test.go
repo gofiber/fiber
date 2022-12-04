@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2/utils"
@@ -525,6 +526,12 @@ func Test_Path_matchParams(t *testing.T) {
 		{url: "/api/v1/15", params: nil, match: false},
 		{url: "/api/v1/peach", params: []string{"peach"}, match: true},
 		{url: "/api/v1/p34ch", params: nil, match: false},
+	})
+	testCase("/api/v1/:param<regex(^[a-z0-9]([a-z0-9-]{1,61}[a-z0-9])?$)>", []testparams{
+		{url: "/api/v1/12", params: nil, match: false},
+		{url: "/api/v1/xy", params: nil, match: false},
+		{url: "/api/v1/test", params: []string{"test"}, match: true},
+		{url: "/api/v1/" + strings.Repeat("a", 64), params: nil, match: false},
 	})
 	testCase("/api/v1/:param<regex(\\d{4}-\\d{2}-\\d{2})}>", []testparams{
 		{url: "/api/v1/ent", params: nil, match: false},

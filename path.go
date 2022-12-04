@@ -271,12 +271,12 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 			// Assign constraint
 			if start != -1 && end != -1 {
 				constraint := &Constraint{
-					ID:   getParamConstraintType(c[:start]),
-					Data: splitNonEscaped(c[start+1:end], string(parameterConstraintDataSeparatorChars)),
+					ID: getParamConstraintType(c[:start]),
 				}
 
 				// remove escapes from data
 				if constraint.ID != regexConstraint {
+					constraint.Data = splitNonEscaped(c[start+1:end], string(parameterConstraintDataSeparatorChars))
 					if len(constraint.Data) == 1 {
 						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
 					} else if len(constraint.Data) == 2 {
@@ -287,6 +287,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 
 				// Precompile regex if has regex constraint
 				if constraint.ID == regexConstraint {
+					constraint.Data = []string{c[start+1 : end]}
 					constraint.RegexCompiler = regexp.MustCompile(constraint.Data[0])
 				}
 
