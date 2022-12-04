@@ -56,7 +56,7 @@ func New(config ...Config) fiber.Handler {
 				return false, fmt.Errorf("failed to read response: %w", err)
 			} else if val != nil {
 				var res Response
-				if err := cfg.UnmarshalFunc(val, &res); err != nil {
+				if _, err := res.UnmarshalMsg(val); err != nil {
 					return false, fmt.Errorf("failed to unmarshal response: %w", err)
 				}
 
@@ -136,7 +136,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Marshal response
-		bs, err := cfg.MarshalFunc(res)
+		bs, err := res.MarshalMsg(nil)
 		if err != nil {
 			return fmt.Errorf("failed to marshal response: %w", err)
 		}

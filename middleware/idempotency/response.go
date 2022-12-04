@@ -1,9 +1,10 @@
 package idempotency
 
+//go:generate msgp -o=response_msgp.go -tests=false
 type Response struct {
-	StatusCode int
+	StatusCode int `msg:"sc"`
 
-	Headers map[string]string
+	Headers map[string]string `msg:"hs"`
 
-	Body []byte
+	Body []byte `msg:"b"`
 }

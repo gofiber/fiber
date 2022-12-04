@@ -81,19 +81,11 @@ type Config struct {
 	//
 	// Optional. Default: an in-memory locker for this process only.
 	Lock Locker
+
 	// Storage stores response data by idempotency key.
 	//
 	// Optional. Default: an in-memory storage for this process only.
 	Storage fiber.Storage
-
-	// MarshalFunc is the function used to marshal a Response to a []byte.
-	//
-	// Optional. Default: a marshal function which uses "encoding/gob" from the Go standard library.
-	MarshalFunc func(*Response) ([]byte, error)
-	// UnmarshalFunc is the function used to unmarshal a []byte back to a Response.
-	//
-	// Optional. Default: an unmarshal function which uses "encoding/gob" from the Go standard library.
-	UnmarshalFunc func([]byte, *Response) error
 }
 ```
 
@@ -119,25 +111,8 @@ var ConfigDefault = Config{
 
 	KeepResponseHeaders: nil,
 
-	Lock:    nil, // Set in configDefault so we don't allocate data here.
-	Storage: nil, // Set in configDefault so we don't allocate data here.
+	Lock: nil, // Set in configDefault so we don't allocate data here.
 
-	MarshalFunc: func(res *Response) ([]byte, error) {
-		var buf bytes.Buffer
-		if err := gob.
-			NewEncoder(&buf).
-			Encode(res); err != nil {
-			return nil, err
-		}
-		return buf.Bytes(), nil
-	},
-	UnmarshalFunc: func(val []byte, res *Response) error {
-		if err := gob.
-			NewDecoder(bytes.NewReader(val)).
-			Decode(res); err != nil {
-			return err
-		}
-		return nil
-	},
+	Storage: nil, // Set in configDefault so we don't allocate data here.
 }
 ```

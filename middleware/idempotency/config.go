@@ -1,8 +1,6 @@
 package idempotency
 
 import (
-	"bytes"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"time"
@@ -45,19 +43,11 @@ type Config struct {
 	//
 	// Optional. Default: an in-memory locker for this process only.
 	Lock Locker
+
 	// Storage stores response data by idempotency key.
 	//
 	// Optional. Default: an in-memory storage for this process only.
 	Storage fiber.Storage
-
-	// MarshalFunc is the function used to marshal a Response to a []byte.
-	//
-	// Optional. Default: a marshal function which uses "encoding/gob" from the Go standard library.
-	MarshalFunc func(*Response) ([]byte, error)
-	// UnmarshalFunc is the function used to unmarshal a []byte back to a Response.
-	//
-	// Optional. Default: an unmarshal function which uses "encoding/gob" from the Go standard library.
-	UnmarshalFunc func([]byte, *Response) error
 }
 
 // ConfigDefault is the default config
@@ -80,26 +70,9 @@ var ConfigDefault = Config{
 
 	KeepResponseHeaders: nil,
 
-	Lock:    nil, // Set in configDefault so we don't allocate data here.
-	Storage: nil, // Set in configDefault so we don't allocate data here.
+	Lock: nil, // Set in configDefault so we don't allocate data here.
 
-	MarshalFunc: func(res *Response) ([]byte, error) {
-		var buf bytes.Buffer
-		if err := gob.
-			NewEncoder(&buf).
-			Encode(res); err != nil {
-			return nil, err
-		}
-		return buf.Bytes(), nil
-	},
-	UnmarshalFunc: func(val []byte, res *Response) error {
-		if err := gob.
-			NewDecoder(bytes.NewReader(val)).
-			Decode(res); err != nil {
-			return err
-		}
-		return nil
-	},
+	Storage: nil, // Set in configDefault so we don't allocate data here.
 }
 
 // Helper function to set default values
@@ -136,17 +109,11 @@ func configDefault(config ...Config) Config {
 	if cfg.Lock == nil {
 		cfg.Lock = NewMemoryLock()
 	}
+
 	if cfg.Storage == nil {
 		cfg.Storage = memory.New(memory.Config{
 			GCInterval: cfg.Lifetime / 2,
 		})
-	}
-
-	if cfg.MarshalFunc == nil {
-		cfg.MarshalFunc = ConfigDefault.MarshalFunc
-	}
-	if cfg.UnmarshalFunc == nil {
-		cfg.UnmarshalFunc = ConfigDefault.UnmarshalFunc
 	}
 
 	return cfg
