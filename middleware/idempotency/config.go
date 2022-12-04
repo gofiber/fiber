@@ -80,10 +80,8 @@ var ConfigDefault = Config{
 
 	KeepResponseHeaders: nil,
 
-	Lock: NewMemoryLock(),
-	Storage: memory.New(memory.Config{
-		GCInterval: 15 * time.Minute, // Half the key lifetime
-	}),
+	Lock:    nil, // Set in configDefault so we don't allocate data here.
+	Storage: nil, // Set in configDefault so we don't allocate data here.
 
 	MarshalFunc: func(res *Response) ([]byte, error) {
 		var buf bytes.Buffer
@@ -136,10 +134,12 @@ func configDefault(config ...Config) Config {
 	}
 
 	if cfg.Lock == nil {
-		cfg.Lock = ConfigDefault.Lock
+		cfg.Lock = NewMemoryLock()
 	}
 	if cfg.Storage == nil {
-		cfg.Storage = ConfigDefault.Storage
+		cfg.Storage = memory.New(memory.Config{
+			GCInterval: cfg.Lifetime / 2,
+		})
 	}
 
 	if cfg.MarshalFunc == nil {
