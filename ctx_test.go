@@ -1023,6 +1023,105 @@ func Test_Ctx_Get(t *testing.T) {
 	utils.AssertEqual(t, "default", c.Get("unknown", "default"))
 }
 
+// go test -run Test_Ctx_IsProxyTrusted
+func Test_Ctx_IsProxyTrusted(t *testing.T) {
+	t.Parallel()
+
+	{
+		app := New()
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, true, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: false,
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, true, c.IsProxyTrusted())
+	}
+
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, false, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, false, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{
+				"127.0.0.1",
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, false, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{
+				"127.0.0.1/8",
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, false, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{
+				"0.0.0.0",
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, true, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{
+				"0.0.0.1/31",
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, true, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{
+				"0.0.0.1/31junk",
+			},
+		})
+		c := app.AcquireCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		utils.AssertEqual(t, false, c.IsProxyTrusted())
+	}
+}
+
 // go test -run Test_Ctx_Hostname
 func Test_Ctx_Hostname(t *testing.T) {
 	t.Parallel()
