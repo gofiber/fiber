@@ -3,7 +3,6 @@ package logger
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -192,7 +191,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(data.Pid)
 		},
 		TagLatency: func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
-			latency := data.Stop.Sub(data.Start).Round(time.Millisecond)
+			latency := data.Stop.Sub(data.Start)
 			return output.WriteString(fmt.Sprintf("%7v", latency))
 		},
 		TagTime: func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
