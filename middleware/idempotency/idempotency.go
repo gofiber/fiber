@@ -55,7 +55,7 @@ func New(config ...Config) fiber.Handler {
 			if val, err := cfg.Storage.Get(key); err != nil {
 				return false, fmt.Errorf("failed to read response: %w", err)
 			} else if val != nil {
-				var res Response
+				var res response
 				if _, err := res.UnmarshalMsg(val); err != nil {
 					return false, fmt.Errorf("failed to unmarshal response: %w", err)
 				}
@@ -110,7 +110,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Construct response
-		res := &Response{
+		res := &response{
 			StatusCode: c.Response().StatusCode(),
 
 			Body: c.Response().Body(),
