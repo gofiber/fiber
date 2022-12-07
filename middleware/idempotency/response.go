@@ -1,6 +1,6 @@
 package idempotency
 
-//go:generate msgp -o=response_msgp.go -unexported
+//go:generate msgp -o=response_msgp.go -io=false -unexported
 type response struct {
 	StatusCode int `msg:"sc"`
 
