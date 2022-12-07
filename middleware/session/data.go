@@ -27,7 +27,7 @@ func acquireData() *data {
 
 func (d *data) Reset() {
 	d.Lock()
-	d.Data = make(map[string]interface{})
+	d.Data = make(map[string]any)
 	d.Unlock()
 }
 

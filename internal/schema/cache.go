@@ -33,7 +33,7 @@ type cache struct {
 }
 
 // registerConverter registers a converter function for a custom type.
-func (c *cache) registerConverter(value interface{}, converterFunc Converter) {
+func (c *cache) registerConverter(value any, converterFunc Converter) {
 	c.regconv[reflect.TypeOf(value)] = converterFunc
 }
 

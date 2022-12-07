@@ -17,8 +17,8 @@ type Storage struct {
 
 type item struct {
 	// max value is 4294967295 -> Sun Feb 07 2106 06:28:15 GMT+0000
-	e uint32      // exp
-	v interface{} // val
+	e uint32 // exp
+	v any    // val
 }
 
 func New() *Storage {
@@ -31,7 +31,7 @@ func New() *Storage {
 }
 
 // Get value by key
-func (s *Storage) Get(key string) interface{} {
+func (s *Storage) Get(key string) any {
 	s.RLock()
 	v, ok := s.data[key]
 	s.RUnlock()
@@ -42,13 +42,14 @@ func (s *Storage) Get(key string) interface{} {
 }
 
 // Set key with value
-func (s *Storage) Set(key string, val interface{}, ttl time.Duration) {
+func (s *Storage) Set(key string, val any, ttl time.Duration) {
 	var exp uint32
 	if ttl > 0 {
 		exp = uint32(ttl.Seconds()) + atomic.LoadUint32(&utils.Timestamp)
 	}
+	i := item{exp, val}
 	s.Lock()
-	s.data[key] = item{exp, val}
+	s.data[key] = i
 	s.Unlock()
 }
 
@@ -61,8 +62,9 @@ func (s *Storage) Delete(key string) {
 
 // Reset all keys
 func (s *Storage) Reset() {
+	nd := make(map[string]item)
 	s.Lock()
-	s.data = make(map[string]item)
+	s.data = nd
 	s.Unlock()
 }
 
@@ -74,17 +76,23 @@ func (s *Storage) gc(sleep time.Duration) {
 	for {
 		select {
 		case <-ticker.C:
+			ts := atomic.LoadUint32(&utils.Timestamp)
 			expired = expired[:0]
 			s.RLock()
 			for key, v := range s.data {
-				if v.e != 0 && v.e <= atomic.LoadUint32(&utils.Timestamp) {
+				if v.e != 0 && v.e <= ts {
 					expired = append(expired, key)
 				}
 			}
 			s.RUnlock()
 			s.Lock()
+			// Double-checked locking.
+			// We might have replaced the item in the meantime.
 			for i := range expired {
-				delete(s.data, expired[i])
+				v := s.data[expired[i]]
+				if v.e != 0 && v.e <= ts {
+					delete(s.data, expired[i])
+				}
 			}
 			s.Unlock()
 		}

@@ -23,14 +23,14 @@ func NewEncoder() *Encoder {
 // Encode encodes a struct into map[string][]string.
 //
 // Intended for use with url.Values.
-func (e *Encoder) Encode(src interface{}, dst map[string][]string) error {
+func (e *Encoder) Encode(src any, dst map[string][]string) error {
 	v := reflect.ValueOf(src)
 
 	return e.encode(v, dst)
 }
 
 // RegisterEncoder registers a converter for encoding a custom type.
-func (e *Encoder) RegisterEncoder(value interface{}, encoder func(reflect.Value) string) {
+func (e *Encoder) RegisterEncoder(value any, encoder func(reflect.Value) string) {
 	e.regenc[reflect.TypeOf(value)] = encoder
 }
 

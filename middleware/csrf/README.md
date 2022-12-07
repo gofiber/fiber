@@ -49,7 +49,7 @@ app.Use(csrf.New(csrf.Config{
 	CookieSameSite: "Lax",
 	Expiration:     1 * time.Hour,
 	KeyGenerator:   utils.UUID,
-	Extractor:      func(c *fiber.Ctx) (string, error) { ... },
+	Extractor:      func(c fiber.Ctx) (string, error) { ... },
 }))
 ```
 
@@ -144,7 +144,7 @@ type Config struct {
 	// If set this will be used in place of an Extractor based on KeyLookup.
 	//
 	// Optional. Default will create an Extractor based on KeyLookup.
-	Extractor func(c *fiber.Ctx) (string, error)
+	Extractor func(c fiber.Ctx) (string, error)
 }
 ```
 

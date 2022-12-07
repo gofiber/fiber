@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/gofiber/utils/v2"
-	"github.com/savsgio/dictpool"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -50,7 +49,7 @@ type DefaultCtx struct {
 	values              [maxParams]string    // Route parameter values
 	fasthttp            *fasthttp.RequestCtx // Reference to *fasthttp.RequestCtx
 	matched             bool                 // Non use route matched
-	viewBindMap         *dictpool.Dict       // Default view map to bind template engine
+	viewBindMap         sync.Map             // Default view map to bind template engine
 	bind                *Bind                // Default bind reference
 	redirect            *Redirect            // Default redirect reference
 	redirectionMessages []string             // Messages of the previous redirect
@@ -733,7 +732,7 @@ func (c *DefaultCtx) Location(path string) {
 func (c *DefaultCtx) Method(override ...string) string {
 	if len(override) > 0 {
 		method := utils.ToUpper(override[0])
-		mINT := methodInt(method)
+		mINT := c.app.methodInt(method)
 		if mINT == -1 {
 			return c.method
 		}
@@ -856,29 +855,26 @@ func (c *DefaultCtx) Path(override ...string) string {
 	return c.path
 }
 
-// Scheme contains the request scheme string: http or https for TLS requests.
-// Use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
+// Scheme contains the request protocol string: http or https for TLS requests.
+// Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Scheme() string {
 	if c.fasthttp.IsTLS() {
 		return "https"
 	}
-	scheme := "http"
 	if !c.IsProxyTrusted() {
-		return scheme
+		return "http"
 	}
+
+	scheme := "http"
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
 		if len(key) < 12 {
-			return // X-Forwarded-
-		} else if bytes.HasPrefix(key, []byte("X-Forwarded-")) {
-			v := c.app.getString(val)
-			if bytes.Equal(key, []byte(HeaderXForwardedProto)) {
-				commaPos := strings.Index(v, ",")
-				if commaPos != -1 {
-					scheme = v[:commaPos]
-				} else {
-					scheme = v
-				}
-			} else if bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
+		}
+		switch {
+		case bytes.HasPrefix(key, []byte("X-Forwarded-")):
+			if bytes.Equal(key, []byte(HeaderXForwardedProto)) ||
+				bytes.Equal(key, []byte(HeaderXForwardedProtocol)) {
+				v := c.app.getString(val)
 				commaPos := strings.Index(v, ",")
 				if commaPos != -1 {
 					scheme = v[:commaPos]
@@ -888,7 +884,8 @@ func (c *DefaultCtx) Scheme() string {
 			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
 				scheme = "https"
 			}
-		} else if bytes.Equal(key, []byte(HeaderXUrlScheme)) {
+
+		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
 			scheme = c.app.getString(val)
 		}
 	})
@@ -976,11 +973,8 @@ func (c *DefaultCtx) Redirect() *Redirect {
 // Variables are read by the Render method and may be overwritten.
 func (c *DefaultCtx) BindVars(vars Map) error {
 	// init viewBindMap - lazy map
-	if c.viewBindMap == nil {
-		c.viewBindMap = dictpool.AcquireDict()
-	}
 	for k, v := range vars {
-		c.viewBindMap.Set(k, v)
+		c.viewBindMap.Store(k, v)
 	}
 
 	return nil
@@ -1081,11 +1075,11 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 
 func (c *DefaultCtx) renderExtensions(bind Map) {
 	// Bind view map
-	if c.viewBindMap != nil {
-		for _, v := range c.viewBindMap.D {
-			bind[v.Key] = v.Value
-		}
-	}
+	c.viewBindMap.Range(func(key, value any) bool {
+		bind[key.(string)] = value
+
+		return true
+	})
 
 	// Check if the PassLocalsToViews option is enabled (by default it is disabled)
 	if c.app.config.PassLocalsToViews {
@@ -1139,9 +1133,9 @@ func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path st
 	return storage.Set(path, content, 0)
 }
 
-// Secure returns a boolean property, that is true, if a TLS connection is established.
+// Secure returns whether a secure connection was established.
 func (c *DefaultCtx) Secure() bool {
-	return c.fasthttp.IsTLS()
+	return c.Protocol() == "https"
 }
 
 // Send sets the HTTP response body without copying it.

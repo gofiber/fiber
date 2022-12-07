@@ -9,8 +9,8 @@ import (
 	"crypto/tls"
 	"io"
 	"mime/multipart"
+	"sync"
 
-	"github.com/savsgio/dictpool"
 	"github.com/valyala/fasthttp"
 )
 
@@ -255,7 +255,7 @@ type Ctx interface {
 	// SaveFileToStorage saves any multipart file to an external storage system.
 	SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error
 
-	// Secure returns a boolean property, that is true, if a TLS connection is established.
+	// Secure returns whether a secure connection was established.
 	Secure() bool
 
 	// Send sets the HTTP response body without copying it.
@@ -427,7 +427,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 	// Set method
 	c.method = c.app.getString(fctx.Request.Header.Method())
-	c.methodINT = methodInt(c.method)
+	c.methodINT = c.app.methodInt(c.method)
 
 	// Prettify path
 	c.configDependentPaths()
@@ -439,10 +439,7 @@ func (c *DefaultCtx) release() {
 	c.fasthttp = nil
 	c.bind = nil
 	c.redirectionMessages = c.redirectionMessages[:0]
-	if c.viewBindMap != nil {
-		dictpool.ReleaseDict(c.viewBindMap)
-		c.viewBindMap = nil
-	}
+	c.viewBindMap = sync.Map{}
 	if c.redirect != nil {
 		ReleaseRedirect(c.redirect)
 		c.redirect = nil
@@ -459,7 +456,7 @@ func (c *DefaultCtx) setReq(fctx *fasthttp.RequestCtx) {
 
 	// Set method
 	c.method = c.app.getString(fctx.Request.Header.Method())
-	c.methodINT = methodInt(c.method)
+	c.methodINT = c.app.methodInt(c.method)
 
 	// Prettify path
 	c.configDependentPaths()

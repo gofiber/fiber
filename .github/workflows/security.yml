@@ -1,4 +1,8 @@
-on: [push, pull_request]
+on:
+    push:
+        branches:
+            - v3-beta
+    pull_request:
 name: Security
 jobs:
   Gosec:

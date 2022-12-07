@@ -1402,8 +1402,8 @@ func Test_Ctx_InvalidMethod(t *testing.T) {
 
 	app.Handler()(fctx)
 
-	require.Equal(t, 400, fctx.Response.StatusCode())
-	require.Equal(t, []byte("Invalid http method"), fctx.Response.Body())
+	require.Equal(t, 501, fctx.Response.StatusCode())
+	require.Equal(t, []byte("Not Implemented"), fctx.Response.Body())
 }
 
 // go test -run Test_Ctx_MultipartForm
