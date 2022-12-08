@@ -120,7 +120,7 @@ func main() {
 
 ## ⚙️ تثبيت
 
-تأكد من تثبيت Go ([تحميل](https://go.dev/dl/)). الإصدار `1.14` أو أعلى مطلوب.
+تأكد من تثبيت Go ([تحميل](https://go.dev/dl/)). الإصدار `1.16` أو أعلى مطلوب.
 
 ابدأ مشروعك بإنشاء مجلد ثم تشغيله `go mod init github.com/your/repo` ([أعرف أكثر](https://go.dev/blog/using-go-modules))
 داخل المجلد. ثم قم بتثبيت Fiber باستخدام ملف [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) أمر:

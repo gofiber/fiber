@@ -114,7 +114,7 @@ func main() {
 
 ## ⚙️ 설치
 
-Go가 설치되어 있는 것을 확인해 주세요 ([download](https://go.dev/dl/)). 버전 1.14 또는 그 이상이어야 합니다.
+Go가 설치되어 있는 것을 확인해 주세요 ([download](https://go.dev/dl/)). 버전 1.16 또는 그 이상이어야 합니다.
 
 폴더를 생성하여 당신의 프로젝트를 초기화하고, 폴더 안에서 `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) 를 실행하세요. 그리고 [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 명령어로 Fiber를 설치하세요:
 
