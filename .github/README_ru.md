@@ -114,7 +114,7 @@ func main() {
 
 ## ⚙️ Установка
 
-Убедитесь, что Go установлен ([скачать](https://go.dev/dl/)). Требуется версия `1.14` или выше.
+Убедитесь, что Go установлен ([скачать](https://go.dev/dl/)). Требуется версия `1.16` или выше.
 
 Инициализируйте проект, создав папку, а затем запустив `go mod init github.com/your/repo` ([подробнее](https://go.dev/blog/using-go-modules)) внутри этой папки. Далее, установите Fiber с помощью команды [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 

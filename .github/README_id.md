@@ -114,7 +114,7 @@ Pengukuran ini dilakukan oleh [TechEmpower](https://www.techempower.com/benchmar
 
 ## ⚙️ Instalasi
 
-Pastikan kamu sudah menginstalasi Golang ([unduh](https://go.dev/dl/)). Dengan versi `1.14` atau lebih tinggi [ Direkomendasikan ].
+Pastikan kamu sudah menginstalasi Golang ([unduh](https://go.dev/dl/)). Dengan versi `1.16` atau lebih tinggi [ Direkomendasikan ].
 
 Inisialisasi proyek kamu dengan membuat folder lalu jalankan `go mod init github.com/nama-kamu/repo` ([belajar lebih banyak](https://go.dev/blog/using-go-modules)) di dalam folder. Kemudian instal Fiber dengan perintah [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 

@@ -114,7 +114,7 @@ Questi test sono stati eseguiti da [TechEmpower](https://www.techempower.com/ben
 
 ## ⚙️ Installazione
 
-Assicurati di avere Go ([per scaricalro](https://go.dev/dl/)) installato. Devi avere la versione `1.14` o superiore.
+Assicurati di avere Go ([per scaricalro](https://go.dev/dl/)) installato. Devi avere la versione `1.16` o superiore.
 
 Inizializza il tuo progetto creando una cartella e successivamente usando il comando `go mod init github.com/la-tua/repo` ([per maggiori informazioni](https://go.dev/blog/using-go-modules)) dentro la cartella. Dopodiche installa Fiber con il comando [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them):
 
