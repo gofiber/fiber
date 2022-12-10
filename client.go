@@ -8,11 +8,9 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -202,25 +200,13 @@ func (a *Agent) Parse() error {
 	}
 
 	a.HostClient = &fasthttp.HostClient{
-		Addr:                     addMissingPort(string(uri.Host()), isTLS),
+		Addr:                     fasthttp.AddMissingPort(string(uri.Host()), isTLS),
 		Name:                     name,
 		NoDefaultUserAgentHeader: a.NoDefaultUserAgentHeader,
 		IsTLS:                    isTLS,
 	}
 
 	return nil
-}
-
-func addMissingPort(addr string, isTLS bool) string {
-	n := strings.Index(addr, ":")
-	if n >= 0 {
-		return addr
-	}
-	port := 80
-	if isTLS {
-		port = 443
-	}
-	return net.JoinHostPort(addr, strconv.Itoa(port))
 }
 
 /************************** Header Setting **************************/

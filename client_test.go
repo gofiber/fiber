@@ -1134,11 +1134,6 @@ func Test_Client_Agent_Parse(t *testing.T) {
 	utils.AssertEqual(t, nil, a.Parse())
 }
 
-func Test_AddMissingPort_TLS(t *testing.T) {
-	addr := addMissingPort("example.com", true)
-	utils.AssertEqual(t, "example.com:443", addr)
-}
-
 func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), excepted string, count ...int) {
 	t.Parallel()
 
