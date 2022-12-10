@@ -13,12 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/valyala/bytebufferpool"
-	"github.com/valyala/fasthttp"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 	"github.com/gofiber/fiber/v2/utils"
+	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasthttp"
 )
 
 // go test -run Test_Logger
