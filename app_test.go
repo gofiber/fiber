@@ -245,6 +245,16 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 	utils.AssertEqual(t, "1: USE error", string(body))
 }
 
+func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
+	app := New()
+	msg := "test err"
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	app.serverErrorHandler(c.fasthttp, errors.New(msg))
+	utils.AssertEqual(t, string(c.fasthttp.Response.Body()), msg)
+	utils.AssertEqual(t, c.fasthttp.Response.StatusCode(), StatusBadRequest)
+}
+
 func Test_App_Nested_Params(t *testing.T) {
 	app := New()
 

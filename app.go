@@ -1031,7 +1031,7 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	} else if strings.Contains(err.Error(), "timeout") {
 		err = ErrRequestTimeout
 	} else {
-		err = ErrBadRequest
+		err = NewError(StatusBadRequest, err.Error())
 	}
 
 	if catch := app.ErrorHandler(c, err); catch != nil {
