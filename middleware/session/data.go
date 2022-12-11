@@ -4,10 +4,6 @@ import (
 	"sync"
 )
 
-// go:generate msgp
-// msgp -file="data.go" -o="data_msgp.go" -tests=false -unexported
-// don't forget to replace the msgp import path to:
-// "github.com/gofiber/fiber/v3/internal/msgp"
 type data struct {
 	sync.RWMutex
 	Data map[string]any

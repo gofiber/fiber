@@ -8,10 +8,7 @@ import (
 	"github.com/gofiber/fiber/v3/internal/memory"
 )
 
-// go:generate msgp
-// msgp -file="manager.go" -o="manager_msgp.go" -tests=false -unexported
-// don't forget to replace the msgp import path to:
-// "github.com/gofiber/fiber/v2/internal/msgp"
+//go:generate msgp -o=manager_msgp.go -io=false -unexported
 type item struct {
 	currHits int
 	prevHits int

@@ -9,8 +9,7 @@ import (
 	"github.com/gofiber/utils/v2"
 )
 
-// go:generate msgp
-// msgp -file="manager.go" -o="manager_msgp.go" -tests=false -unexported
+//go:generate msgp -o=manager_msgp.go -io=false -unexported
 type item struct{}
 
 //msgp:ignore manager
