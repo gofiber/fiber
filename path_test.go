@@ -612,6 +612,459 @@ func Test_Path_matchParams(t *testing.T) {
 	})
 }
 
+// go test -race -run Test_RoutePatternMatch
+func Test_RoutePatternMatch(t *testing.T) {
+	t.Parallel()
+	type testparams struct {
+		url   string
+		match bool
+	}
+	testCase := func(pattern string, cases []testparams) {
+		for _, c := range cases {
+			match := RoutePatternMatch(c.url, pattern)
+			utils.AssertEqual(t, c.match, match, fmt.Sprintf("route: '%s', url: '%s'", pattern, c.url))
+		}
+	}
+	testCase("/api/v1/:param/*", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/entity/", match: true},
+		{url: "/api/v1/entity/1", match: true},
+		{url: "/api/v", match: false},
+		{url: "/api/v2", match: false},
+		{url: "/api/v1/", match: false},
+	})
+	testCase("/api/v1/:param/+", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/entity/", match: false},
+		{url: "/api/v1/entity/1", match: true},
+		{url: "/api/v", match: false},
+		{url: "/api/v2", match: false},
+		{url: "/api/v1/", match: false},
+	})
+	testCase("/api/v1/:param?", []testparams{
+		{url: "/api/v1", match: true},
+		{url: "/api/v1/", match: true},
+		{url: "/api/v1/optional", match: true},
+		{url: "/api/v", match: false},
+		{url: "/api/v2", match: false},
+		{url: "/api/xyz", match: false},
+	})
+	testCase("/v1/some/resource/name\\:customVerb", []testparams{
+		{url: "/v1/some/resource/name:customVerb", match: true},
+		{url: "/v1/some/resource/name:test", match: false},
+	})
+	testCase("/v1/some/resource/:name\\:customVerb", []testparams{
+		{url: "/v1/some/resource/test:customVerb", match: true},
+		{url: "/v1/some/resource/test:test", match: false},
+	})
+	testCase("/v1/some/resource/name\\\\:customVerb?\\?/:param/*", []testparams{
+		{url: "/v1/some/resource/name:customVerb??/test/optionalWildCard/character", match: true},
+		{url: "/v1/some/resource/name:customVerb??/test", match: true},
+	})
+	testCase("/api/v1/*", []testparams{
+		{url: "/api/v1", match: true},
+		{url: "/api/v1/", match: true},
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/entity/1/2", match: true},
+		{url: "/api/v1/Entity/1/2", match: true},
+		{url: "/api/v", match: false},
+		{url: "/api/v2", match: false},
+		{url: "/api/abc", match: false},
+	})
+	testCase("/api/v1/:param", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/entity/8728382", match: false},
+		{url: "/api/v1", match: false},
+		{url: "/api/v1/", match: false},
+	})
+	testCase("/api/v1/:param-:param2", []testparams{
+		{url: "/api/v1/entity-entity2", match: true},
+		{url: "/api/v1/entity/8728382", match: false},
+		{url: "/api/v1/entity-8728382", match: true},
+		{url: "/api/v1", match: false},
+		{url: "/api/v1/", match: false},
+	})
+	testCase("/api/v1/:filename.:extension", []testparams{
+		{url: "/api/v1/test.pdf", match: true},
+		{url: "/api/v1/test/pdf", match: false},
+		{url: "/api/v1/test-pdf", match: false},
+		{url: "/api/v1/test_pdf", match: false},
+		{url: "/api/v1", match: false},
+		{url: "/api/v1/", match: false},
+	})
+	testCase("/api/v1/const", []testparams{
+		{url: "/api/v1/const", match: true},
+		{url: "/api/v1", match: false},
+		{url: "/api/v1/", match: false},
+		{url: "/api/v1/something", match: false},
+	})
+	testCase("/api/:param/fixedEnd", []testparams{
+		{url: "/api/abc/fixedEnd", match: true},
+		{url: "/api/abc/def/fixedEnd", match: false},
+	})
+	testCase("/shop/product/::filter/color::color/size::size", []testparams{
+		{url: "/shop/product/:test/color:blue/size:xs", match: true},
+		{url: "/shop/product/test/color:blue/size:xs", match: false},
+	})
+	testCase("/::param?", []testparams{
+		{url: "/:hello", match: true},
+		{url: "/:", match: true},
+		{url: "/", match: false},
+	})
+	// successive parameters, each take one character and the last parameter gets everything
+	testCase("/test:sign:param", []testparams{
+		{url: "/test-abc", match: true},
+		{url: "/test", match: false},
+	})
+	// optional parameters are not greedy
+	testCase("/:param1:param2?:param3", []testparams{
+		{url: "/abbbc", match: true},
+		// {url: "/ac", params: []string{"a", "", "c"}, match: true}, // TODO: fix it
+		{url: "/test", match: true},
+	})
+	testCase("/test:optional?:mandatory", []testparams{
+		// {url: "/testo", params: []string{"", "o"}, match: true}, // TODO: fix it
+		{url: "/testoaaa", match: true},
+		{url: "/test", match: false},
+	})
+	testCase("/test:optional?:optional2?", []testparams{
+		{url: "/testo", match: true},
+		{url: "/testoaaa", match: true},
+		{url: "/test", match: true},
+		{url: "/tes", match: false},
+	})
+	testCase("/foo:param?bar", []testparams{
+		{url: "/foofaselbar", match: true},
+		{url: "/foobar", match: true},
+		{url: "/fooba", match: false},
+		{url: "/fobar", match: false},
+	})
+	testCase("/foo*bar", []testparams{
+		{url: "/foofaselbar", match: true},
+		{url: "/foobar", match: true},
+		{url: "/", match: false},
+	})
+	testCase("/foo+bar", []testparams{
+		{url: "/foofaselbar", match: true},
+		{url: "/foobar", match: false},
+		{url: "/", match: false},
+	})
+	testCase("/a*cde*g/", []testparams{
+		{url: "/abbbcdefffg", match: true},
+		{url: "/acdeg", match: true},
+		{url: "/", match: false},
+	})
+	testCase("/*v1*/proxy", []testparams{
+		{url: "/customer/v1/cart/proxy", match: true},
+		{url: "/v1/proxy", match: true},
+		{url: "/v1/", match: false},
+	})
+	// successive wildcard -> first wildcard is greedy
+	testCase("/foo***bar", []testparams{
+		{url: "/foo*abar", match: true},
+		{url: "/foo*bar", match: true},
+		{url: "/foobar", match: true},
+		{url: "/fooba", match: false},
+	})
+	// chars in front of an parameter
+	testCase("/name::name", []testparams{
+		{url: "/name:john", match: true},
+	})
+	testCase("/@:name", []testparams{
+		{url: "/@john", match: true},
+	})
+	testCase("/-:name", []testparams{
+		{url: "/-john", match: true},
+	})
+	testCase("/.:name", []testparams{
+		{url: "/.john", match: true},
+	})
+	testCase("/api/v1/:param/abc/*", []testparams{
+		{url: "/api/v1/well/abc/wildcard", match: true},
+		{url: "/api/v1/well/abc/", match: true},
+		{url: "/api/v1/well/abc", match: true},
+		{url: "/api/v1/well/ttt", match: false},
+	})
+	testCase("/api/:day/:month?/:year?", []testparams{
+		{url: "/api/1", match: true},
+		{url: "/api/1/", match: true},
+		{url: "/api/1//", match: true},
+		{url: "/api/1/-/", match: true},
+		{url: "/api/1-", match: true},
+		{url: "/api/1.", match: true},
+		{url: "/api/1/2", match: true},
+		{url: "/api/1/2/3", match: true},
+		{url: "/api/", match: false},
+	})
+	testCase("/api/:day.:month?.:year?", []testparams{
+		{url: "/api/1", match: false},
+		{url: "/api/1/", match: false},
+		{url: "/api/1.", match: false},
+		{url: "/api/1..", match: true},
+		{url: "/api/1.2", match: false},
+		{url: "/api/1.2.", match: true},
+		{url: "/api/1.2.3", match: true},
+		{url: "/api/", match: false},
+	})
+	testCase("/api/:day-:month?-:year?", []testparams{
+		{url: "/api/1", match: false},
+		{url: "/api/1/", match: false},
+		{url: "/api/1-", match: false},
+		{url: "/api/1--", match: true},
+		{url: "/api/1-/", match: false},
+		// {url: "/api/1-/-", params: nil, match: false}, // TODO: fix this part
+		{url: "/api/1-2", match: false},
+		{url: "/api/1-2-", match: true},
+		{url: "/api/1-2-3", match: true},
+		{url: "/api/", match: false},
+	})
+	testCase("/api/*", []testparams{
+		{url: "/api/", match: true},
+		{url: "/api/joker", match: true},
+		{url: "/api", match: true},
+		{url: "/api/v1/entity", match: true},
+		{url: "/api2/v1/entity", match: false},
+		{url: "/api_ignore/v1/entity", match: false},
+	})
+	testCase("/", []testparams{
+		{url: "/api", match: false},
+		{url: "", match: true},
+		{url: "/", match: true},
+	})
+	testCase("/config/abc.json", []testparams{
+		{url: "/config/abc.json", match: true},
+		{url: "config/abc.json", match: false},
+		{url: "/config/efg.json", match: false},
+		{url: "/config", match: false},
+	})
+	testCase("/config/*.json", []testparams{
+		{url: "/config/abc.json", match: true},
+		{url: "/config/efg.json", match: true},
+		{url: "/config/.json", match: true},
+		{url: "/config/efg.csv", match: false},
+		{url: "config/abc.json", match: false},
+		{url: "/config", match: false},
+	})
+	testCase("/config/+.json", []testparams{
+		{url: "/config/abc.json", match: true},
+		{url: "/config/.json", match: false},
+		{url: "/config/efg.json", match: true},
+		{url: "/config/efg.csv", match: false},
+		{url: "config/abc.json", match: false},
+		{url: "/config", match: false},
+	})
+	testCase("/xyz", []testparams{
+		{url: "xyz", match: false},
+		{url: "xyz/", match: false},
+	})
+	testCase("/api/*/:param?", []testparams{
+		{url: "/api/", match: true},
+		{url: "/api/joker", match: true},
+		{url: "/api/joker/batman", match: true},
+		{url: "/api/joker//batman", match: true},
+		{url: "/api/joker/batman/robin", match: true},
+		{url: "/api/joker/batman/robin/1", match: true},
+		{url: "/api/joker/batman/robin/1/", match: true},
+		{url: "/api/joker-batman/robin/1", match: true},
+		{url: "/api/joker-batman-robin/1", match: true},
+		{url: "/api/joker-batman-robin-1", match: true},
+		{url: "/api", match: true},
+	})
+	testCase("/api/*/:param", []testparams{
+		{url: "/api/test/abc", match: true},
+		{url: "/api/joker/batman", match: true},
+		{url: "/api/joker/batman/robin", match: true},
+		{url: "/api/joker/batman/robin/1", match: true},
+		{url: "/api/joker/batman-robin/1", match: true},
+		{url: "/api/joker-batman-robin-1", match: false},
+		{url: "/api", match: false},
+	})
+	testCase("/api/+/:param", []testparams{
+		{url: "/api/test/abc", match: true},
+		{url: "/api/joker/batman/robin/1", match: true},
+		{url: "/api/joker", match: false},
+		{url: "/api", match: false},
+	})
+	testCase("/api/*/:param/:param2", []testparams{
+		{url: "/api/test/abc/1", match: true},
+		{url: "/api/joker/batman", match: false},
+		{url: "/api/joker/batman-robin/1", match: true},
+		{url: "/api/joker-batman-robin-1", match: false},
+		{url: "/api/test/abc", match: false},
+		{url: "/api/joker/batman/robin", match: true},
+		{url: "/api/joker/batman/robin/1", match: true},
+		{url: "/api/joker/batman/robin/1/2", match: true},
+		{url: "/api", match: false},
+		{url: "/api/:test", match: false},
+	})
+	testCase("/api/v1/:param<int>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	testCase("/api/v1/:param<bool>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/true", match: true},
+	})
+	testCase("/api/v1/:param<float>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: true},
+		{url: "/api/v1/8728382.5", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	testCase("/api/v1/:param<alpha>", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/#!?", match: false},
+		{url: "/api/v1/8728382", match: false},
+	})
+	testCase("/api/v1/:param<guid>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/f0fa66cc-d22e-445b-866d-1d76e776371d", match: true},
+	})
+	testCase("/api/v1/:param<minLen>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: false},
+	})
+	testCase("/api/v1/:param<minLen(5)>", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/8728382", match: true},
+		{url: "/api/v1/123", match: false},
+		{url: "/api/v1/12345", match: true},
+	})
+	testCase("/api/v1/:param<maxLen(5)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/ent", match: true},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/123", match: true},
+		{url: "/api/v1/12345", match: true},
+	})
+	testCase("/api/v1/:param<len(5)>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/123", match: false},
+		{url: "/api/v1/12345", match: true},
+	})
+	testCase("/api/v1/:param<betweenLen(1)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/ent", match: false},
+	})
+	testCase("/api/v1/:param<betweenLen(2,5)>", []testparams{
+		{url: "/api/v1/e", match: false},
+		{url: "/api/v1/en", match: true},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/123", match: true},
+		{url: "/api/v1/12345", match: true},
+	})
+	testCase("/api/v1/:param<betweenLen(2,5)>", []testparams{
+		{url: "/api/v1/e", match: false},
+		{url: "/api/v1/en", match: true},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/123", match: true},
+		{url: "/api/v1/12345", match: true},
+	})
+	testCase("/api/v1/:param<min(5)>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/1", match: false},
+		{url: "/api/v1/5", match: true},
+	})
+	testCase("/api/v1/:param<max(5)>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/1", match: true},
+		{url: "/api/v1/5", match: true},
+		{url: "/api/v1/15", match: false},
+	})
+	testCase("/api/v1/:param<range(5,10)>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/9", match: true},
+		{url: "/api/v1/5", match: true},
+		{url: "/api/v1/15", match: false},
+	})
+	testCase("/api/v1/:param<datetime(2006\\-01\\-02)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/2005-11-01", match: true},
+	})
+	testCase("/api/v1/:param<regex(p([a-z]+)ch)>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/15", match: false},
+		{url: "/api/v1/peach", match: true},
+		{url: "/api/v1/p34ch", match: false},
+	})
+	testCase("/api/v1/:param<regex(\\d{4}-\\d{2}-\\d{2})}>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/15", match: false},
+		{url: "/api/v1/2022-08-27", match: true},
+		{url: "/api/v1/2022/08-27", match: false},
+	})
+	testCase("/api/v1/:param<int;bool((>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	testCase("/api/v1/:param<int;max(3000)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/123", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	testCase("/api/v1/:param<int;maxLen(10)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/87283827683", match: false},
+		{url: "/api/v1/123", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	testCase("/api/v1/:param<int;range(10,30)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/87283827683", match: false},
+		{url: "/api/v1/25", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	testCase("/api/v1/:param<int\\;range(10,30)>", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/87283827683", match: true},
+		{url: "/api/v1/25", match: true},
+		{url: "/api/v1/true", match: true},
+	})
+	testCase("/api/v1/:param<range(10\\,30,1500)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/87283827683", match: false},
+		{url: "/api/v1/25", match: true},
+		{url: "/api/v1/1200", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	testCase("/api/v1/:lang<len(2)>/videos/:page<range(100,1500)>", []testparams{
+		{url: "/api/v1/try/videos/200", match: false},
+		{url: "/api/v1/tr/videos/1800", match: false},
+		{url: "/api/v1/tr/videos/100", match: true},
+		{url: "/api/v1/e/videos/10", match: false},
+	})
+	testCase("/api/v1/:lang<len(2)>/:page<range(100,1500)>", []testparams{
+		{url: "/api/v1/try/200", match: false},
+		{url: "/api/v1/tr/1800", match: false},
+		{url: "/api/v1/tr/100", match: true},
+		{url: "/api/v1/e/10", match: false},
+	})
+	testCase("/api/v1/:lang/:page<range(100,1500)>", []testparams{
+		{url: "/api/v1/try/200", match: true},
+		{url: "/api/v1/tr/1800", match: false},
+		{url: "/api/v1/tr/100", match: true},
+		{url: "/api/v1/e/10", match: false},
+	})
+	testCase("/api/v1/:lang<len(2)>/:page", []testparams{
+		{url: "/api/v1/try/200", match: false},
+		{url: "/api/v1/tr/1800", match: true},
+		{url: "/api/v1/tr/100", match: true},
+		{url: "/api/v1/e/10", match: false},
+	})
+	testCase("/api/v1/:date<datetime(2006\\-01\\-02)>/:regex<regex(p([a-z]+)ch)>", []testparams{
+		{url: "/api/v1/2005-11-01/a", match: false},
+		{url: "/api/v1/2005-1101/paach", match: false},
+		{url: "/api/v1/2005-11-01/peach", match: true},
+	})
+}
+
 func Test_Utils_GetTrimmedParam(t *testing.T) {
 	t.Parallel()
 	res := GetTrimmedParam("")
@@ -869,5 +1322,228 @@ func Benchmark_Path_matchParams(t *testing.B) {
 		{url: "/api/v1/8728382", params: []string{"8728382"}, match: true},
 		{url: "/api/v1/true", params: nil, match: false},
 		{url: "/api/v1/", params: []string{""}, match: true},
+	})
+}
+
+// go test -race -run Test_RoutePatternMatch
+func Benchmark_RoutePatternMatch(t *testing.B) {
+	type testparams struct {
+		url   string
+		match bool
+	}
+	benchCase := func(pattern string, cases []testparams) {
+		for _, c := range cases {
+			var matchRes bool
+			state := "match"
+			if !c.match {
+				state = "not match"
+			}
+			t.Run(pattern+" | "+state+" | "+c.url, func(b *testing.B) {
+				for i := 0; i <= b.N; i++ {
+					if match := RoutePatternMatch(c.url, pattern); match {
+						// Get params from the original path
+						matchRes = true
+					}
+				}
+				utils.AssertEqual(t, c.match, matchRes, fmt.Sprintf("route: '%s', url: '%s'", pattern, c.url))
+			})
+
+		}
+	}
+	benchCase("/api/:param/fixedEnd", []testparams{
+		{url: "/api/abc/fixedEnd", match: true},
+		{url: "/api/abc/def/fixedEnd", match: false},
+	})
+	benchCase("/api/v1/:param/*", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/entity/", match: true},
+		{url: "/api/v1/entity/1", match: true},
+		{url: "/api/v", match: false},
+		{url: "/api/v2", match: false},
+		{url: "/api/v1/", match: false},
+	})
+	benchCase("/api/v1/:param", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/entity/8728382", match: false},
+		{url: "/api/v1", match: false},
+		{url: "/api/v1/", match: false},
+	})
+	benchCase("/api/v1", []testparams{
+		{url: "/api/v1", match: true},
+		{url: "/api/v2", match: false},
+	})
+	benchCase("/api/v1/:param/*", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/entity/", match: true},
+		{url: "/api/v1/entity/1", match: true},
+		{url: "/api/v", match: false},
+		{url: "/api/v2", match: false},
+		{url: "/api/v1/", match: false},
+	})
+	benchCase("/api/v1/:param<int>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	benchCase("/api/v1/:param<bool>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/true", match: true},
+	})
+	benchCase("/api/v1/:param<float>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: true},
+		{url: "/api/v1/8728382.5", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	benchCase("/api/v1/:param<alpha>", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/#!?", match: false},
+		{url: "/api/v1/8728382", match: false},
+	})
+	benchCase("/api/v1/:param<guid>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/f0fa66cc-d22e-445b-866d-1d76e776371d", match: true},
+	})
+	benchCase("/api/v1/:param<minLen>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: false},
+	})
+	benchCase("/api/v1/:param<minLen(5)>", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/8728382", match: true},
+		{url: "/api/v1/123", match: false},
+		{url: "/api/v1/12345", match: true},
+	})
+	benchCase("/api/v1/:param<maxLen(5)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/ent", match: true},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/123", match: true},
+		{url: "/api/v1/12345", match: true},
+	})
+	benchCase("/api/v1/:param<len(5)>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/123", match: false},
+		{url: "/api/v1/12345", match: true},
+	})
+	benchCase("/api/v1/:param<betweenLen(1)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/ent", match: false},
+	})
+	benchCase("/api/v1/:param<betweenLen(2,5)>", []testparams{
+		{url: "/api/v1/e", match: false},
+		{url: "/api/v1/en", match: true},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/123", match: true},
+		{url: "/api/v1/12345", match: true},
+	})
+	benchCase("/api/v1/:param<betweenLen(2,5)>", []testparams{
+		{url: "/api/v1/e", match: false},
+		{url: "/api/v1/en", match: true},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/123", match: true},
+		{url: "/api/v1/12345", match: true},
+	})
+	benchCase("/api/v1/:param<min(5)>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/1", match: false},
+		{url: "/api/v1/5", match: true},
+	})
+	benchCase("/api/v1/:param<max(5)>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/1", match: true},
+		{url: "/api/v1/5", match: true},
+		{url: "/api/v1/15", match: false},
+	})
+	benchCase("/api/v1/:param<range(5,10)>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/9", match: true},
+		{url: "/api/v1/5", match: true},
+		{url: "/api/v1/15", match: false},
+	})
+	benchCase("/api/v1/:param<datetime(2006\\-01\\-02)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/2005-11-01", match: true},
+	})
+	benchCase("/api/v1/:param<regex(p([a-z]+)ch)>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/15", match: false},
+		{url: "/api/v1/peach", match: true},
+		{url: "/api/v1/p34ch", match: false},
+	})
+	benchCase("/api/v1/:param<regex(\\d{4}-\\d{2}-\\d{2})}>", []testparams{
+		{url: "/api/v1/ent", match: false},
+		{url: "/api/v1/15", match: false},
+		{url: "/api/v1/2022-08-27", match: true},
+		{url: "/api/v1/2022/08-27", match: false},
+	})
+	benchCase("/api/v1/:param<int;bool((>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	benchCase("/api/v1/:param<int;max(3000)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/8728382", match: false},
+		{url: "/api/v1/123", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	benchCase("/api/v1/:param<int;maxLen(10)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/87283827683", match: false},
+		{url: "/api/v1/123", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	benchCase("/api/v1/:param<int;range(10,30)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/87283827683", match: false},
+		{url: "/api/v1/25", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	benchCase("/api/v1/:param<int\\;range(10,30)>", []testparams{
+		{url: "/api/v1/entity", match: true},
+		{url: "/api/v1/87283827683", match: true},
+		{url: "/api/v1/25", match: true},
+		{url: "/api/v1/true", match: true},
+	})
+	benchCase("/api/v1/:param<range(10\\,30,1500)>", []testparams{
+		{url: "/api/v1/entity", match: false},
+		{url: "/api/v1/87283827683", match: false},
+		{url: "/api/v1/25", match: true},
+		{url: "/api/v1/1200", match: true},
+		{url: "/api/v1/true", match: false},
+	})
+	benchCase("/api/v1/:lang<len(2)>/videos/:page<range(100,1500)>", []testparams{
+		{url: "/api/v1/try/videos/200", match: false},
+		{url: "/api/v1/tr/videos/1800", match: false},
+		{url: "/api/v1/tr/videos/100", match: true},
+		{url: "/api/v1/e/videos/10", match: false},
+	})
+	benchCase("/api/v1/:lang<len(2)>/:page<range(100,1500)>", []testparams{
+		{url: "/api/v1/try/200", match: false},
+		{url: "/api/v1/tr/1800", match: false},
+		{url: "/api/v1/tr/100", match: true},
+		{url: "/api/v1/e/10", match: false},
+	})
+	benchCase("/api/v1/:lang/:page<range(100,1500)>", []testparams{
+		{url: "/api/v1/try/200", match: true},
+		{url: "/api/v1/tr/1800", match: false},
+		{url: "/api/v1/tr/100", match: true},
+		{url: "/api/v1/e/10", match: false},
+	})
+	benchCase("/api/v1/:lang<len(2)>/:page", []testparams{
+		{url: "/api/v1/try/200", match: false},
+		{url: "/api/v1/tr/1800", match: true},
+		{url: "/api/v1/tr/100", match: true},
+		{url: "/api/v1/e/10", match: false},
+	})
+	benchCase("/api/v1/:date<datetime(2006\\-01\\-02)>/:regex<regex(p([a-z]+)ch)>", []testparams{
+		{url: "/api/v1/2005-11-01/a", match: false},
+		{url: "/api/v1/2005-1101/paach", match: false},
+		{url: "/api/v1/2005-11-01/peach", match: true},
 	})
 }
