@@ -77,7 +77,7 @@ func Test_Proxy(t *testing.T) {
 		func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) }, t,
 	)
 
-	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
+	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 
@@ -297,7 +297,7 @@ func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 		Timeout: 3 * time.Second,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), 5000)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), 5*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -321,7 +321,7 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 		Timeout: 100 * time.Millisecond,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), 2000)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), 2*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusInternalServerError, resp.StatusCode)
 
@@ -475,7 +475,7 @@ func Test_ProxyBalancer_Custom_Client(t *testing.T) {
 		func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) }, t,
 	)
 
-	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
+	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusTeapot, resp.StatusCode)
 

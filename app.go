@@ -865,11 +865,11 @@ func (app *App) Hooks() *Hooks {
 
 // Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
-func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, err error) {
+func (app *App) Test(req *http.Request, timeout ...time.Duration) (resp *http.Response, err error) {
 	// Set timeout
-	timeout := 1000
-	if len(msTimeout) > 0 {
-		timeout = msTimeout[0]
+	to := 1 * time.Second
+	if len(timeout) > 0 {
+		to = timeout[0]
 	}
 
 	// Add Content-Length if not provided with body
@@ -908,12 +908,12 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	}()
 
 	// Wait for callback
-	if timeout >= 0 {
+	if to >= 0 {
 		// With timeout
 		select {
 		case err = <-channel:
-		case <-time.After(time.Duration(timeout) * time.Millisecond):
-			return nil, fmt.Errorf("test: timeout error %vms", timeout)
+		case <-time.After(to):
+			return nil, fmt.Errorf("test: timeout error after %s", to)
 		}
 	} else {
 		// Without timeout
