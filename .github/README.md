@@ -647,18 +647,3 @@ Fiber is an open source project that runs on donations to pay the bills e.g. our
 ## ⚠️ License
 
 Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
-
-**Third-party library licenses**
-
--   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
--   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
--   [runewidth](https://github.com/mattn/go-runewidth/blob/master/LICENSE)
--   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
--   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
--   [fwd](https://github.com/philhofer/fwd/blob/master/LICENSE.md)
--   [go-ole](https://github.com/go-ole/go-ole/blob/master/LICENSE)
--   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
--   [msgp](https://github.com/tinylib/msgp/blob/master/LICENSE)
--   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
--   [uuid](https://github.com/google/uuid/blob/master/LICENSE)
--   [wmi](https://github.com/StackExchange/wmi/blob/master/LICENSE)
