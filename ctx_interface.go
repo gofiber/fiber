@@ -342,6 +342,20 @@ type Ctx interface {
 	// ClientHelloInfo return CHI from context
 	ClientHelloInfo() *tls.ClientHelloInfo
 
+	// GetReqHeaders returns the HTTP request headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetReqHeaders() map[string]string
+
+	// GetRespHeaders returns the HTTP response headers.
+	// Returned value is only valid within the handler. Do not store any references.
+	// Make copies or use the Immutable setting instead.
+	GetRespHeaders() map[string]string
+
+	// AllParams Params is used to get all route parameters.
+	// Using Params method to get params.
+	GetParams() map[string]string
+
 	// SetReq resets fields of context that is relating to request.
 	setReq(fctx *fasthttp.RequestCtx)
 

@@ -3358,3 +3358,73 @@ func Test_Ctx_IsFromLocal(t *testing.T) {
 		require.False(t, c.IsFromLocal())
 	}
 }
+
+// go test -run Test_Ctx_GetRespHeaders
+func Test_Ctx_GetRespHeaders(t *testing.T) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Set("test", "Hello, World 👋!")
+	c.Set("foo", "bar")
+	c.Response().Header.Set(HeaderContentType, "application/json")
+
+	require.Equal(t, c.GetRespHeaders(), map[string]string{
+		"Content-Type": "application/json",
+		"Foo":          "bar",
+		"Test":         "Hello, World 👋!",
+	})
+}
+
+// go test -run Test_Ctx_GetReqHeaders
+func Test_Ctx_GetReqHeaders(t *testing.T) {
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().Header.Set("test", "Hello, World 👋!")
+	c.Request().Header.Set("foo", "bar")
+	c.Request().Header.Set(HeaderContentType, "application/json")
+
+	require.Equal(t, c.GetReqHeaders(), map[string]string{
+		"Content-Type": "application/json",
+		"Foo":          "bar",
+		"Test":         "Hello, World 👋!",
+	})
+}
+
+// go test -race -run Test_Ctx_GetParams
+func Test_Ctx_GetParams(t *testing.T) {
+	t.Parallel()
+	app := New()
+	app.Get("/test/:user", func(c Ctx) error {
+		require.Equal(t, map[string]string{"user": "john"}, c.GetParams())
+		return nil
+	})
+	app.Get("/test2/*", func(c Ctx) error {
+		require.Equal(t, map[string]string{"*1": "im/a/cookie"}, c.GetParams())
+		return nil
+	})
+	app.Get("/test3/*/blafasel/*", func(c Ctx) error {
+		require.Equal(t, map[string]string{"*1": "1111", "*2": "2222"}, c.GetParams())
+		return nil
+	})
+	app.Get("/test4/:optional?", func(c Ctx) error {
+		require.Equal(t, map[string]string{"optional": ""}, c.GetParams())
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/test/john", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test2/im/a/cookie", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test3/1111/blafasel/2222", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/test4", nil))
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, StatusOK, resp.StatusCode, "Status code")
+}
