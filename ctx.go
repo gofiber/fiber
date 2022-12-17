@@ -29,6 +29,8 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
 
 // maxParams defines the maximum number of parameters per route.
@@ -816,6 +818,37 @@ func (c *Ctx) Is(extension string) bool {
 		utils.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), ' '),
 		extensionHeader,
 	)
+}
+
+// Protobuf sets the HTTP response body to the specified message.
+// It will serialize the message to:
+// - JSON using protojson if Accept header is set to application/json
+// - []byte if Accept header is set to application/x-protobuf
+// It will fallback to []byte if Accept header is not present
+func (c *Ctx) Protobuf(message proto.Message) error {
+	acceptHeader := string(c.Request().Header.Peek("Accept"))
+	switch acceptHeader {
+	case MIMEApplicationJSON:
+		buf, err := protojson.Marshal(message)
+		if err != nil {
+			return err
+		}
+
+		c.fasthttp.Response.SetBodyRaw(buf)
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
+
+	case MIMEApplicationProtobuf:
+	default:
+		buf, err := proto.Marshal(message)
+		if err != nil {
+			return err
+		}
+
+		c.fasthttp.Response.SetBodyRaw(buf)
+		c.fasthttp.Response.Header.SetContentType(MIMEApplicationProtobuf)
+	}
+
+	return nil
 }
 
 // JSON converts any interface or string to JSON.

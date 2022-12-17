@@ -385,12 +385,13 @@ const (
 
 // MIME types that are commonly used
 const (
-	MIMETextXML         = "text/xml"
-	MIMETextHTML        = "text/html"
-	MIMETextPlain       = "text/plain"
-	MIMETextJavaScript  = "text/javascript"
-	MIMEApplicationXML  = "application/xml"
-	MIMEApplicationJSON = "application/json"
+	MIMETextXML             = "text/xml"
+	MIMETextHTML            = "text/html"
+	MIMETextPlain           = "text/plain"
+	MIMETextJavaScript      = "text/javascript"
+	MIMEApplicationXML      = "application/xml"
+	MIMEApplicationJSON     = "application/json"
+	MIMEApplicationProtobuf = "application/x-protobuf"
 	// Deprecated: use MIMETextJavaScript instead
 	MIMEApplicationJavaScript = "application/javascript"
 	MIMEApplicationForm       = "application/x-www-form-urlencoded"
