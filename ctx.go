@@ -838,7 +838,6 @@ func (c *Ctx) Protobuf(message proto.Message) error {
 		c.fasthttp.Response.Header.SetContentType(MIMEApplicationJSON)
 
 	case MIMEApplicationProtobuf:
-	default:
 		buf, err := proto.Marshal(message)
 		if err != nil {
 			return err
@@ -846,6 +845,9 @@ func (c *Ctx) Protobuf(message proto.Message) error {
 
 		c.fasthttp.Response.SetBodyRaw(buf)
 		c.fasthttp.Response.Header.SetContentType(MIMEApplicationProtobuf)
+
+	default:
+		return ErrUnsupportedMediaType
 	}
 
 	return nil
