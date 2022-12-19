@@ -6,6 +6,7 @@ package fiber
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -23,6 +24,7 @@ import (
 
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
 
 var testEmptyHandler = func(c *Ctx) error {
@@ -715,6 +717,45 @@ func Test_App_Shutdown(t *testing.T) {
 			}
 		}
 	})
+}
+
+func Test_App_ShutdownWithTimeout(t *testing.T) {
+	app := New()
+	app.Get("/", func(ctx *Ctx) error {
+		time.Sleep(5 * time.Second)
+		return ctx.SendString("body")
+	})
+	ln := fasthttputil.NewInmemoryListener()
+	go func() {
+		utils.AssertEqual(t, nil, app.Listener(ln))
+	}()
+	time.Sleep(1 * time.Second)
+	go func() {
+		conn, err := ln.Dial()
+		if err != nil {
+			t.Errorf("unexepcted error: %v", err)
+		}
+
+		if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n")); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	}()
+	time.Sleep(1 * time.Second)
+
+	shutdownErr := make(chan error)
+	go func() {
+		shutdownErr <- app.ShutdownWithTimeout(1 * time.Second)
+	}()
+
+	timer := time.NewTimer(time.Second * 5)
+	select {
+	case <-timer.C:
+		t.Fatal("idle connections not closed on shutdown")
+	case err := <-shutdownErr:
+		if err == nil || err != context.DeadlineExceeded {
+			t.Fatalf("unexpected err %v. Expecting %v", err, context.DeadlineExceeded)
+		}
+	}
 }
 
 // go test -run Test_App_Static_Index_Default
