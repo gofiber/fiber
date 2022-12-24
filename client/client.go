@@ -74,13 +74,13 @@ type Client struct {
 	userRequestHooks []RequestHook
 
 	// client package defined request hooks
-	buildinRequestHooks []RequestHook
+	builtinRequestHooks []RequestHook
 
 	// user defined response hooks
 	userResponseHooks []ResponseHook
 
 	// client package defined response hooks
-	buildinResponseHooks []ResponseHook
+	builtinResponseHooks []ResponseHook
 
 	jsonMarshal   utils.JSONMarshal
 	jsonUnmarshal utils.JSONUnmarshal
@@ -688,9 +688,9 @@ var (
 				logger:  &disableLogger{},
 
 				userRequestHooks:     []RequestHook{},
-				buildinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
+				builtinRequestHooks:  []RequestHook{parserRequestURL, parserRequestHeader, parserRequestBody},
 				userResponseHooks:    []ResponseHook{},
-				buildinResponseHooks: []ResponseHook{parserResponseCookie, logger},
+				builtinResponseHooks: []ResponseHook{parserResponseCookie, logger},
 				jsonMarshal:          json.Marshal,
 				jsonUnmarshal:        json.Unmarshal,
 				xmlMarshal:           xml.Marshal,
