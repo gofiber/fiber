@@ -778,7 +778,9 @@ func (mw *Writer) writeVal(v reflect.Value) error {
 
 	case reflect.Interface, reflect.Ptr:
 		if v.IsNil() {
-			mw.WriteNil()
+			if err := mw.WriteNil(); err != nil {
+				return err
+			}
 		}
 		return mw.writeVal(v.Elem())
 
