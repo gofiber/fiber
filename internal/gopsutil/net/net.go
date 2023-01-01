@@ -125,7 +125,7 @@ func (l *ConntrackStatList) Append(c *ConntrackStat) {
 }
 
 func (l *ConntrackStatList) Items() []ConntrackStat {
-	items := make([]ConntrackStat, len(l.items), len(l.items))
+	items := make([]ConntrackStat, len(l.items))
 	for i, el := range l.items {
 		items[i] = *el
 	}

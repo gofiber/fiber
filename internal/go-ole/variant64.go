@@ -1,5 +1,5 @@
-//go:build ppc64le
-// +build ppc64le
+//go:build amd64 || arm64 || ppc64le || s390x
+// +build amd64 arm64 ppc64le s390x
 
 package ole
 
