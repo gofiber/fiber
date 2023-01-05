@@ -128,7 +128,7 @@ func New(config ...Config) fiber.Handler {
 				// Filter
 				res.Headers = make(map[string]string)
 				for h := range headers {
-					if _, ok := keepResponseHeadersMap[strings.ToLower(h)]; ok {
+					if _, ok := keepResponseHeadersMap[utils.ToLower(h)]; ok {
 						res.Headers[h] = headers[h]
 					}
 				}
