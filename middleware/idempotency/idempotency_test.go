@@ -13,6 +13,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/idempotency"
+	"github.com/valyala/fasthttp"
 
 	"github.com/stretchr/testify/require"
 )
@@ -127,4 +128,48 @@ func Test_Idempotency(t *testing.T) {
 	}
 	time.Sleep(2 * lifetime)
 	require.Equal(t, "12", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
+}
+
+// go test -v -run=^$ -bench=Benchmark_Idempotency -benchmem -count=4
+func Benchmark_Idempotency(b *testing.B) {
+	app := fiber.New()
+
+	// Needs to be at least a second as the memory storage doesn't support shorter durations.
+	const lifetime = 1 * time.Second
+
+	app.Use(idempotency.New(idempotency.Config{
+		Lifetime: lifetime,
+	}))
+
+	app.Post("/", func(c fiber.Ctx) error {
+		return nil
+	})
+
+	h := app.Handler()
+
+	b.Run("hit", func(b *testing.B) {
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod(fiber.MethodPost)
+		c.Request.SetRequestURI("/")
+		c.Request.Header.Set("X-Idempotency-Key", "00000000-0000-0000-0000-000000000000")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			h(c)
+		}
+	})
+
+	b.Run("skip", func(b *testing.B) {
+		c := &fasthttp.RequestCtx{}
+		c.Request.Header.SetMethod(fiber.MethodPost)
+		c.Request.SetRequestURI("/")
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for n := 0; n < b.N; n++ {
+			h(c)
+		}
+	})
+
 }
