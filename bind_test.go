@@ -497,3 +497,22 @@ func Benchmark_Bind(b *testing.B) {
 		}
 	}
 }
+
+func Test_Binder_Float(t *testing.T) {
+	t.Parallel()
+	app := New()
+
+	ctx := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	ctx.values = [maxParams]string{"3.14"}
+	ctx.route = &Route{Params: []string{"id"}}
+
+	var req struct {
+		ID1 float32 `param:"id"`
+		ID2 float64 `param:"id"`
+	}
+
+	err := ctx.Bind().Req(&req).Err()
+	require.NoError(t, err)
+	require.Equal(t, float32(3.14), req.ID1)
+	require.Equal(t, float64(3.14), req.ID2)
+}

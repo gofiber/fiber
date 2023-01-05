@@ -43,6 +43,10 @@ func CompileTextDecoder(rt reflect.Type) (TextDecoder, error) {
 		return &intDecoder{}, nil
 	case reflect.String:
 		return &stringDecoder{}, nil
+	case reflect.Float32:
+		return &floatDecoder{bitSize: 32}, nil
+	case reflect.Float64:
+		return &floatDecoder{bitSize: 64}, nil
 	}
 
 	return nil, errors.New("unsupported type " + rt.String())
