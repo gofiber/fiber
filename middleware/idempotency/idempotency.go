@@ -34,6 +34,35 @@ func New(config ...Config) fiber.Handler {
 		keepResponseHeadersMap[strings.ToLower(h)] = struct{}{}
 	}
 
+	maybeWriteCachedResponse := func(c fiber.Ctx, key string) (bool, error) {
+		if val, err := cfg.Storage.Get(key); err != nil {
+			return false, fmt.Errorf("failed to read response: %w", err)
+		} else if val != nil {
+			var res response
+			if _, err := res.UnmarshalMsg(val); err != nil {
+				return false, fmt.Errorf("failed to unmarshal response: %w", err)
+			}
+
+			_ = c.Status(res.StatusCode)
+
+			for header, val := range res.Headers {
+				c.Set(header, val)
+			}
+
+			if len(res.Body) != 0 {
+				if err := c.Send(res.Body); err != nil {
+					return true, err
+				}
+			}
+
+			_ = c.Locals(localsKeyIsFromCache, true)
+
+			return true, nil
+		}
+
+		return false, nil
+	}
+
 	return func(c fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
@@ -51,37 +80,8 @@ func New(config ...Config) fiber.Handler {
 			return err
 		}
 
-		maybeWriteCachedResponse := func() (bool, error) {
-			if val, err := cfg.Storage.Get(key); err != nil {
-				return false, fmt.Errorf("failed to read response: %w", err)
-			} else if val != nil {
-				var res response
-				if _, err := res.UnmarshalMsg(val); err != nil {
-					return false, fmt.Errorf("failed to unmarshal response: %w", err)
-				}
-
-				_ = c.Status(res.StatusCode)
-
-				for header, val := range res.Headers {
-					c.Set(header, val)
-				}
-
-				if len(res.Body) != 0 {
-					if err := c.Send(res.Body); err != nil {
-						return true, err
-					}
-				}
-
-				_ = c.Locals(localsKeyIsFromCache, true)
-
-				return true, nil
-			}
-
-			return false, nil
-		}
-
 		// First-pass: if the idempotency key is in the storage, get and return the response
-		if ok, err := maybeWriteCachedResponse(); err != nil {
+		if ok, err := maybeWriteCachedResponse(c, key); err != nil {
 			return fmt.Errorf("failed to write cached response at fastpath: %w", err)
 		} else if ok {
 			return nil
@@ -97,7 +97,7 @@ func New(config ...Config) fiber.Handler {
 		}()
 
 		// Lock acquired. If the idempotency key now is in the storage, get and return the response
-		if ok, err := maybeWriteCachedResponse(); err != nil {
+		if ok, err := maybeWriteCachedResponse(c, key); err != nil {
 			return fmt.Errorf("failed to write cached response while locked: %w", err)
 		} else if ok {
 			return nil
