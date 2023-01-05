@@ -10,7 +10,7 @@ var defaultPool = sync.Pool{
 
 // AcquireDict acquire new dict.
 func AcquireDict() *Dict {
-	return defaultPool.Get().(*Dict) // nolint:forcetypeassert
+	return defaultPool.Get().(*Dict)
 }
 
 // ReleaseDict release dict.

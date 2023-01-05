@@ -2,6 +2,7 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package fiber
 
 import (
@@ -23,15 +24,16 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
-var testEmptyHandler = func(c *Ctx) error {
+func testEmptyHandler(_ *Ctx) error {
 	return nil
 }
 
-func testStatus200(t *testing.T, app *App, url string, method string) {
+func testStatus200(t *testing.T, app *App, url, method string) {
 	t.Helper()
 
 	req := httptest.NewRequest(method, url, nil)
@@ -42,6 +44,8 @@ func testStatus200(t *testing.T, app *App, url string, method string) {
 }
 
 func testErrorResponse(t *testing.T, err error, resp *http.Response, expectedBodyError string) {
+	t.Helper()
+
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 500, resp.StatusCode, "Status code")
 
@@ -140,7 +144,6 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 	logHeaderSlice := make([]string, 5000)
 	request.Header.Set("Very-Long-Header", strings.Join(logHeaderSlice, "-"))
 	_, err := app.Test(request)
-
 	if err == nil {
 		t.Error("Expect an error at app.Test(request)")
 	}
@@ -470,7 +473,6 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "/test/doe", string(body))
-
 }
 
 func Test_App_Use_StrictRouting(t *testing.T) {
@@ -515,7 +517,7 @@ func Test_App_Add_Method_Test(t *testing.T) {
 		}
 	}()
 
-	methods := append(DefaultMethods, "JOHN")
+	methods := append(DefaultMethods, "JOHN") //nolint:gocritic // We want a new slice here
 	app := New(Config{
 		RequestMethods: methods,
 	})
@@ -780,7 +782,7 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 	case <-timer.C:
 		t.Fatal("idle connections not closed on shutdown")
 	case err := <-shutdownErr:
-		if err == nil || err != context.DeadlineExceeded {
+		if err == nil || !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("unexpected err %v. Expecting %v", err, context.DeadlineExceeded)
 		}
 	}
@@ -852,7 +854,7 @@ func Test_App_Static_MaxAge(t *testing.T) {
 
 	app.Static("/", "./.github", Static{MaxAge: 100})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/index.html", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
@@ -866,19 +868,19 @@ func Test_App_Static_Custom_CacheControl(t *testing.T) {
 	app := New()
 
 	app.Static("/", "./.github", Static{ModifyResponse: func(c *Ctx) error {
-		if strings.Contains(string(c.GetRespHeader("Content-Type")), "text/html") {
+		if strings.Contains(c.GetRespHeader("Content-Type"), "text/html") {
 			c.Response().Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		}
 		return nil
 	}})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/index.html", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/index.html", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "no-cache, no-store, must-revalidate", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 
-	normal_resp, normal_err := app.Test(httptest.NewRequest("GET", "/config.yml", nil))
-	utils.AssertEqual(t, nil, normal_err, "app.Test(req)")
-	utils.AssertEqual(t, "", normal_resp.Header.Get(HeaderCacheControl), "CacheControl Control")
+	respNormal, errNormal := app.Test(httptest.NewRequest(MethodGet, "/config.yml", nil))
+	utils.AssertEqual(t, nil, errNormal, "app.Test(req)")
+	utils.AssertEqual(t, "", respNormal.Header.Get(HeaderCacheControl), "CacheControl Control")
 }
 
 // go test -run Test_App_Static_Download
@@ -890,7 +892,7 @@ func Test_App_Static_Download(t *testing.T) {
 
 	app.Static("/fiber.png", "./.github/testdata/fs/img/fiber.png", Static{Download: true})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/fiber.png", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/fiber.png", nil))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 	utils.AssertEqual(t, false, resp.Header.Get(HeaderContentLength) == "")
@@ -1067,7 +1069,7 @@ func Test_App_Static_Next(t *testing.T) {
 
 	t.Run("app.Static is skipped: invoking Get handler", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(MethodGet, "/", nil)
 		req.Header.Set("X-Custom-Header", "skip")
 		resp, err := app.Test(req)
 		utils.AssertEqual(t, nil, err)
@@ -1082,7 +1084,7 @@ func Test_App_Static_Next(t *testing.T) {
 
 	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
 		t.Parallel()
-		req := httptest.NewRequest("GET", "/", nil)
+		req := httptest.NewRequest(MethodGet, "/", nil)
 		req.Header.Set("X-Custom-Header", "don't skip")
 		resp, err := app.Test(req)
 		utils.AssertEqual(t, nil, err)
@@ -1379,7 +1381,7 @@ func Test_Test_DumpError(t *testing.T) {
 
 	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", errorReader(0)))
 	utils.AssertEqual(t, true, resp == nil)
-	utils.AssertEqual(t, "errorReader", err.Error())
+	utils.AssertEqual(t, "failed to dump request: errorReader", err.Error())
 }
 
 // go test -run Test_App_Handler
@@ -1393,7 +1395,7 @@ type invalidView struct{}
 
 func (invalidView) Load() error { return errors.New("invalid view") }
 
-func (i invalidView) Render(io.Writer, string, interface{}, ...string) error { panic("implement me") }
+func (invalidView) Render(io.Writer, string, interface{}, ...string) error { panic("implement me") }
 
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
@@ -1405,7 +1407,9 @@ func Test_App_Init_Error_View(t *testing.T) {
 			utils.AssertEqual(t, "implement me", fmt.Sprintf("%v", err))
 		}
 	}()
-	_ = app.config.Views.Render(nil, "", nil)
+
+	err := app.config.Views.Render(nil, "", nil)
+	utils.AssertEqual(t, nil, err)
 }
 
 // go test -run Test_App_Stack
@@ -1535,11 +1539,12 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 
 	go func() {
 		time.Sleep(500 * time.Millisecond)
-		resp, err := http.Get("http://127.0.0.1:4006/small-read-buffer")
-		if resp != nil {
-			utils.AssertEqual(t, 431, resp.StatusCode)
-		}
+		req, err := http.NewRequestWithContext(context.Background(), MethodGet, "http://127.0.0.1:4006/small-read-buffer", http.NoBody)
 		utils.AssertEqual(t, nil, err)
+		var client http.Client
+		resp, err := client.Do(req)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, 431, resp.StatusCode)
 		utils.AssertEqual(t, nil, app.Shutdown())
 	}()
 
@@ -1572,13 +1577,13 @@ func Test_App_New_Test_Parallel(t *testing.T) {
 	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+		_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 		utils.AssertEqual(t, nil, err)
 	})
 	t.Run("Test_App_New_Test_Parallel_2", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
-		_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+		_, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 		utils.AssertEqual(t, nil, err)
 	})
 }
@@ -1591,7 +1596,7 @@ func Test_App_ReadBodyStream(t *testing.T) {
 		return c.SendString(fmt.Sprintf("%v %s", c.Request().IsBodyStream(), c.Body()))
 	})
 	testString := "this is a test"
-	resp, err := app.Test(httptest.NewRequest("POST", "/", bytes.NewBufferString(testString)))
+	resp, err := app.Test(httptest.NewRequest(MethodPost, "/", bytes.NewBufferString(testString)))
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "io.ReadAll(resp.Body)")
@@ -1615,12 +1620,12 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 		}
 		file, err := mpf.File["test"][0].Open()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to open: %w", err)
 		}
 		buffer := make([]byte, len(testString))
 		n, err := file.Read(buffer)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to read: %w", err)
 		}
 		if n != len(testString) {
 			return fmt.Errorf("bad read length")
@@ -1636,7 +1641,7 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 	utils.AssertEqual(t, len(testString), n, "writer n")
 	utils.AssertEqual(t, nil, w.Close(), "w.Close()")
 
-	req := httptest.NewRequest("POST", "/", b)
+	req := httptest.NewRequest(MethodPost, "/", b)
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
@@ -1659,7 +1664,7 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 			return nil
 		})
 
-		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
+		req := httptest.NewRequest(MethodGet, "/", http.NoBody)
 		_, err = app.Test(req, -1)
 	}()
 
@@ -1696,7 +1701,7 @@ func Test_App_SetTLSHandler(t *testing.T) {
 
 func Test_App_AddCustomRequestMethod(t *testing.T) {
 	t.Parallel()
-	methods := append(DefaultMethods, "TEST")
+	methods := append(DefaultMethods, "TEST") //nolint:gocritic // We want a new slice here
 	app := New(Config{
 		RequestMethods: methods,
 	})

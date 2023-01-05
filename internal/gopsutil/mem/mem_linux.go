@@ -57,10 +57,12 @@ func fillFromMeminfoWithContext(ctx context.Context) (*VirtualMemoryStat, *Virtu
 	lines, _ := common.ReadLines(filename)
 
 	// flag if MemAvailable is in /proc/meminfo (kernel 3.14+)
-	memavail := false
-	activeFile := false   // "Active(file)" not available: 2.6.28 / Dec 2008
-	inactiveFile := false // "Inactive(file)" not available: 2.6.28 / Dec 2008
-	sReclaimable := false // "SReclaimable:" not available: 2.6.19 / Nov 2006
+	var (
+		memavail     bool
+		activeFile   bool // "Active(file)" not available: 2.6.28 / Dec 2008
+		inactiveFile bool // "Inactive(file)" not available: 2.6.28 / Dec 2008
+		sReclaimable bool // "SReclaimable:" not available: 2.6.19 / Nov 2006
+	)
 
 	ret := &VirtualMemoryStat{}
 	retEx := &VirtualMemoryExStat{}

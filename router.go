@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
@@ -55,14 +56,15 @@ type Route struct {
 	group       *Group      // Group instance. used for routes in groups
 
 	// Public fields
-	Method   string    `json:"method"` // HTTP method
-	Name     string    `json:"name"`   // Route's name
+	Method string `json:"method"` // HTTP method
+	Name   string `json:"name"`   // Route's name
+	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
 	Path     string    `json:"path"`   // Original registered route path
 	Params   []string  `json:"params"` // Case sensitive param keys
 	Handlers []Handler `json:"-"`      // Ctx handlers
 }
 
-func (r *Route) match(detectionPath, path string, params *[maxParams]string) (match bool) {
+func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
 	// root detectionPath check
 	if r.root && detectionPath == "/" {
 		return true
@@ -97,7 +99,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) (ma
 	return false
 }
 
-func (app *App) next(c *Ctx) (match bool, err error) {
+func (app *App) next(c *Ctx) (bool, error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.methodINT][c.treePath]
 	if !ok {
@@ -114,10 +116,9 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 		route := tree[c.indexRoute]
 
 		// Check if it matches the request path
-		match = route.match(c.detectionPath, c.path, &c.values)
-
-		// No match, next route
+		match := route.match(c.detectionPath, c.path, &c.values)
 		if !match {
+			// No match, next route
 			continue
 		}
 		// Pass route reference and param values
@@ -130,29 +131,28 @@ func (app *App) next(c *Ctx) (match bool, err error) {
 
 		// Execute first handler of route
 		c.indexHandler = 0
-		err = route.Handlers[0](c)
+		err := route.Handlers[0](c)
 		return match, err // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
-	err = NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
-
-	// If no match, scan stack again if other methods match the request
-	// Moved from app.handler because middleware may break the route chain
+	err := NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
 	if !c.matched && app.methodExist(c) {
+		// If no match, scan stack again if other methods match the request
+		// Moved from app.handler because middleware may break the route chain
 		err = ErrMethodNotAllowed
 	}
-	return
+	return false, err
 }
 
-func (app *App) handler(rctx *fasthttp.RequestCtx) {
+func (app *App) handler(rctx *fasthttp.RequestCtx) { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// Acquire Ctx with fasthttp request from pool
 	c := app.AcquireCtx(rctx)
+	defer app.ReleaseCtx(c)
 
 	// handle invalid http method directly
 	if c.methodINT == -1 {
-		_ = c.Status(StatusBadRequest).SendString("Invalid http method")
-		app.ReleaseCtx(c)
+		_ = c.Status(StatusBadRequest).SendString("Invalid http method") //nolint:errcheck // It is fine to ignore the error here
 		return
 	}
 
@@ -160,16 +160,14 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	match, err := app.next(c)
 	if err != nil {
 		if catch := c.app.ErrorHandler(c, err); catch != nil {
-			_ = c.SendStatus(StatusInternalServerError)
+			_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
 		}
+		// TODO: Do we need to return here?
 	}
 	// Generate ETag if enabled
 	if match && app.config.ETag {
 		setETag(c, false)
 	}
-
-	// Release Ctx
-	app.ReleaseCtx(c)
 }
 
 func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
@@ -193,7 +191,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	return route
 }
 
-func (app *App) copyRoute(route *Route) *Route {
+func (*App) copyRoute(route *Route) *Route {
 	return &Route{
 		// Router booleans
 		use:  route.use,
@@ -327,6 +325,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		prefixLen--
 		prefix = prefix[:prefixLen]
 	}
+	const cacheDuration = 10 * time.Second
 	// Fileserver settings
 	fs := &fasthttp.FS{
 		Root:                 root,
@@ -335,7 +334,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		AcceptByteRange:      false,
 		Compress:             false,
 		CompressedFileSuffix: app.config.CompressedFileSuffix,
-		CacheDuration:        10 * time.Second,
+		CacheDuration:        cacheDuration,
 		IndexNames:           []string{"index.html"},
 		PathRewrite: func(fctx *fasthttp.RequestCtx) []byte {
 			path := fctx.Path()

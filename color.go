@@ -53,6 +53,8 @@ type Colors struct {
 }
 
 // DefaultColors Default color codes
+//
+//nolint:gochecknoglobals // Using a global var is fine here
 var DefaultColors = Colors{
 	Black:   "\u001b[90m",
 	Red:     "\u001b[91m",

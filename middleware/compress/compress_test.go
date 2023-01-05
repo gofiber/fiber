@@ -12,8 +12,10 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
+//nolint:gochecknoglobals // Using a global var is fine here
 var filedata []byte
 
+//nolint:gochecknoinits // init() is used to populate a global var from a README file
 func init() {
 	dat, err := os.ReadFile("../../.github/README.md")
 	if err != nil {
@@ -34,7 +36,7 @@ func Test_Compress_Gzip(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
@@ -64,7 +66,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 				return c.Send(filedata)
 			})
 
-			req := httptest.NewRequest("GET", "/", nil)
+			req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 			req.Header.Set("Accept-Encoding", "gzip")
 
 			resp, err := app.Test(req)
@@ -90,7 +92,7 @@ func Test_Compress_Deflate(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "deflate")
 
 	resp, err := app.Test(req)
@@ -114,7 +116,7 @@ func Test_Compress_Brotli(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req, 10000)
@@ -138,7 +140,7 @@ func Test_Compress_Disabled(t *testing.T) {
 		return c.Send(filedata)
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "br")
 
 	resp, err := app.Test(req)
@@ -162,7 +164,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 		return errors.New("next error")
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Set("Accept-Encoding", "gzip")
 
 	resp, err := app.Test(req)
@@ -185,7 +187,7 @@ func Test_Compress_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }

@@ -2,7 +2,6 @@ package limiter
 
 import (
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -11,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/storage/memory"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
@@ -34,7 +34,7 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	var wg sync.WaitGroup
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
@@ -50,13 +50,13 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 
 	wg.Wait()
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 }
@@ -80,7 +80,7 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
@@ -96,13 +96,13 @@ func Test_Limiter_Concurrency(t *testing.T) {
 
 	wg.Wait()
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 }
@@ -120,21 +120,21 @@ func Test_Limiter_No_Skip_Choices(t *testing.T) {
 	}))
 
 	app.Get("/:status", func(c *fiber.Ctx) error {
-		if c.Params("status") == "fail" {
+		if c.Params("status") == "fail" { //nolint:goconst // False positive
 			return c.SendStatus(400)
 		}
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 }
@@ -157,21 +157,21 @@ func Test_Limiter_Skip_Failed_Requests(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 }
@@ -196,21 +196,21 @@ func Test_Limiter_Skip_Successful_Requests(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 400, resp.StatusCode)
 }
@@ -232,7 +232,7 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
 
 	b.ResetTimer()
@@ -252,7 +252,7 @@ func Test_Limiter_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -271,7 +271,7 @@ func Test_Limiter_Headers(t *testing.T) {
 	})
 
 	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
 
 	app.Handler()(fctx)
@@ -301,7 +301,7 @@ func Benchmark_Limiter(b *testing.B) {
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
 
 	b.ResetTimer()
@@ -327,7 +327,7 @@ func Test_Sliding_Window(t *testing.T) {
 	})
 
 	singleRequest := func(shouldFail bool) {
-		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 		if shouldFail {
 			utils.AssertEqual(t, nil, err)
 			utils.AssertEqual(t, 429, resp.StatusCode)

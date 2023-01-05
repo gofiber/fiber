@@ -3,19 +3,20 @@ package proxy
 import (
 	"bytes"
 	"crypto/tls"
-	"fmt"
+	"log"
 	"net/url"
 	"strings"
 	"sync"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
 // New is deprecated
 func New(config Config) fiber.Handler {
-	fmt.Println("proxy.New is deprecated, please use proxy.Balancer instead")
+	log.Printf("proxy.New is deprecated, please use proxy.Balancer instead\n")
 	return Balancer(config)
 }
 
@@ -25,7 +26,7 @@ func Balancer(config Config) fiber.Handler {
 	cfg := configDefault(config)
 
 	// Load balanced client
-	var lbc = &fasthttp.LBClient{}
+	lbc := &fasthttp.LBClient{}
 	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize and TlsConfig
 	// will not be used if the client are set.
 	if config.Client == nil {
@@ -61,7 +62,7 @@ func Balancer(config Config) fiber.Handler {
 	}
 
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -76,7 +77,7 @@ func Balancer(config Config) fiber.Handler {
 
 		// Modify request
 		if cfg.ModifyRequest != nil {
-			if err = cfg.ModifyRequest(c); err != nil {
+			if err := cfg.ModifyRequest(c); err != nil {
 				return err
 			}
 		}
@@ -84,7 +85,7 @@ func Balancer(config Config) fiber.Handler {
 		req.SetRequestURI(utils.UnsafeString(req.RequestURI()))
 
 		// Forward request
-		if err = lbc.Do(req, res); err != nil {
+		if err := lbc.Do(req, res); err != nil {
 			return err
 		}
 
@@ -93,7 +94,7 @@ func Balancer(config Config) fiber.Handler {
 
 		// Modify response
 		if cfg.ModifyResponse != nil {
-			if err = cfg.ModifyResponse(c); err != nil {
+			if err := cfg.ModifyResponse(c); err != nil {
 				return err
 			}
 		}
@@ -103,16 +104,20 @@ func Balancer(config Config) fiber.Handler {
 	}
 }
 
+//nolint:gochecknoglobals // TODO: Do not use a global var here
 var client = &fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
 }
 
+//nolint:gochecknoglobals // TODO: Do not use a global var here
 var lock sync.RWMutex
 
 // WithTlsConfig update http client with a user specified tls.config
 // This function should be called before Do and Forward.
 // Deprecated: use WithClient instead.
+//
+//nolint:stylecheck,revive // TODO: Rename to "WithTLSConfig" in v3
 func WithTlsConfig(tlsConfig *tls.Config) {
 	client.TLSConfig = tlsConfig
 }

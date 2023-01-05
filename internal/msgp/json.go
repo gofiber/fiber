@@ -168,7 +168,7 @@ func rwArray(dst jsWriter, src *Reader) (n int, err error) {
 	if err != nil {
 		return
 	}
-	comma := false
+	var comma bool
 	for i := uint32(0); i < sz; i++ {
 		if comma {
 			err = dst.WriteByte(',')

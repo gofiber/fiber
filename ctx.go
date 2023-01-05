@@ -27,8 +27,14 @@ import (
 	"github.com/gofiber/fiber/v2/internal/dictpool"
 	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
+)
+
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
 )
 
 // maxParams defines the maximum number of parameters per route.
@@ -45,6 +51,7 @@ const (
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey = "__local_user_context__"
 
+//nolint:gochecknoglobals // TODO: Do not use global vars here
 var (
 	// decoderPoolMap helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
 	decoderPoolMap = map[string]*sync.Pool{}
@@ -52,6 +59,7 @@ var (
 	tags = []string{queryTag, bodyTag, reqHeaderTag, paramsTag}
 )
 
+//nolint:gochecknoinits // init() is used to initialize a global map variable
 func init() {
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() interface{} {
@@ -100,9 +108,10 @@ type TLSHandler struct {
 }
 
 // GetClientInfo Callback function to set CHI
+// TODO: Why is this a getter which sets stuff?
 func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	t.clientHelloInfo = info
-	return nil, nil
+	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
 }
 
 // Range data for c.Range
@@ -151,7 +160,10 @@ type ParserConfig struct {
 
 // AcquireCtx retrieves a new Ctx from the pool.
 func (app *App) AcquireCtx(fctx *fasthttp.RequestCtx) *Ctx {
-	c := app.pool.Get().(*Ctx)
+	c, ok := app.pool.Get().(*Ctx)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *Ctx"))
+	}
 	// Set app reference
 	c.app = app
 	// Reset route and handler index
@@ -388,7 +400,6 @@ func (c *Ctx) BodyParser(out interface{}) error {
 			} else {
 				data[k] = append(data[k], v)
 			}
-
 		})
 
 		return c.parseToStruct(bodyTag, out, data)
@@ -401,7 +412,10 @@ func (c *Ctx) BodyParser(out interface{}) error {
 		return c.parseToStruct(bodyTag, out, data.Value)
 	}
 	if strings.HasPrefix(ctype, MIMETextXML) || strings.HasPrefix(ctype, MIMEApplicationXML) {
-		return xml.Unmarshal(c.Body(), out)
+		if err := xml.Unmarshal(c.Body(), out); err != nil {
+			return fmt.Errorf("failed to unmarshal: %w", err)
+		}
+		return nil
 	}
 	// No suitable content type found
 	return ErrUnprocessableEntity
@@ -673,8 +687,11 @@ func (c *Ctx) Hostname() string {
 
 // Port returns the remote port of the request.
 func (c *Ctx) Port() string {
-	port := c.fasthttp.RemoteAddr().(*net.TCPAddr).Port
-	return strconv.Itoa(port)
+	tcpaddr, ok := c.fasthttp.RemoteAddr().(*net.TCPAddr)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *net.TCPAddr"))
+	}
+	return strconv.Itoa(tcpaddr.Port)
 }
 
 // IP returns the remote IP address of the request.
@@ -691,13 +708,16 @@ func (c *Ctx) IP() string {
 // extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 // When IP validation is enabled, any invalid IPs will be omitted.
 func (c *Ctx) extractIPsFromHeader(header string) []string {
+	// TODO: Reuse the c.extractIPFromHeader func somehow in here
+
 	headerValue := c.Get(header)
 
 	// We can't know how many IPs we will return, but we will try to guess with this constant division.
 	// Counting ',' makes function slower for about 50ns in general case.
-	estimatedCount := len(headerValue) / 8
-	if estimatedCount > 8 {
-		estimatedCount = 8 // Avoid big allocation on big header
+	const maxEstimatedCount = 8
+	estimatedCount := len(headerValue) / maxEstimatedCount
+	if estimatedCount > maxEstimatedCount {
+		estimatedCount = maxEstimatedCount // Avoid big allocation on big header
 	}
 
 	ipsFound := make([]string, 0, estimatedCount)
@@ -707,11 +727,10 @@ func (c *Ctx) extractIPsFromHeader(header string) []string {
 
 iploop:
 	for {
-		v4 := false
-		v6 := false
+		var v4, v6 bool
 
 		// Manually splitting string without allocating slice, working with parts directly
-		i, j = j+1, j+2
+		i, j = j+1, j+2 //nolint:gomnd // Using these values is fine
 
 		if j > len(headerValue) {
 			break
@@ -758,9 +777,10 @@ func (c *Ctx) extractIPFromHeader(header string) string {
 
 	iploop:
 		for {
-			v4 := false
-			v6 := false
-			i, j = j+1, j+2
+			var v4, v6 bool
+
+			// Manually splitting string without allocating slice, working with parts directly
+			i, j = j+1, j+2 //nolint:gomnd // Using these values is fine
 
 			if j > len(headerValue) {
 				break
@@ -793,14 +813,14 @@ func (c *Ctx) extractIPFromHeader(header string) string {
 		return c.fasthttp.RemoteIP().String()
 	}
 
-	// default behaviour if IP validation is not enabled is just to return whatever value is
+	// default behavior if IP validation is not enabled is just to return whatever value is
 	// in the proxy header. Even if it is empty or invalid
 	return c.Get(c.app.config.ProxyHeader)
 }
 
 // IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
 // When IP validation is enabled, only valid IPs are returned.
-func (c *Ctx) IPs() (ips []string) {
+func (c *Ctx) IPs() []string {
 	return c.extractIPsFromHeader(HeaderXForwardedFor)
 }
 
@@ -839,7 +859,7 @@ func (c *Ctx) JSON(data interface{}) error {
 func (c *Ctx) JSONP(data interface{}, callback ...string) error {
 	raw, err := json.Marshal(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal: %w", err)
 	}
 
 	var result, cb string
@@ -877,11 +897,11 @@ func (c *Ctx) Links(link ...string) {
 	bb := bytebufferpool.Get()
 	for i := range link {
 		if i%2 == 0 {
-			_ = bb.WriteByte('<')
-			_, _ = bb.WriteString(link[i])
-			_ = bb.WriteByte('>')
+			_ = bb.WriteByte('<')          //nolint:errcheck // This will never fail
+			_, _ = bb.WriteString(link[i]) //nolint:errcheck // This will never fail
+			_ = bb.WriteByte('>')          //nolint:errcheck // This will never fail
 		} else {
-			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
+			_, _ = bb.WriteString(`; rel="` + link[i] + `",`) //nolint:errcheck // This will never fail
 		}
 	}
 	c.setCanonical(HeaderLink, utils.TrimRight(c.app.getString(bb.Bytes()), ','))
@@ -890,7 +910,7 @@ func (c *Ctx) Links(link ...string) {
 
 // Locals makes it possible to pass interface{} values under keys scoped to the request
 // and therefore available to all following routes that match the request.
-func (c *Ctx) Locals(key interface{}, value ...interface{}) (val interface{}) {
+func (c *Ctx) Locals(key interface{}, value ...interface{}) interface{} {
 	if len(value) == 0 {
 		return c.fasthttp.UserValue(key)
 	}
@@ -933,9 +953,10 @@ func (c *Ctx) ClientHelloInfo() *tls.ClientHelloInfo {
 }
 
 // Next executes the next method in the stack that matches the current route.
-func (c *Ctx) Next() (err error) {
+func (c *Ctx) Next() error {
 	// Increment handler index
 	c.indexHandler++
+	var err error
 	// Did we executed all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
@@ -947,7 +968,7 @@ func (c *Ctx) Next() (err error) {
 	return err
 }
 
-// RestartRouting instead of going to the next handler. This may be usefull after
+// RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *Ctx) RestartRouting() error {
 	c.indexRoute = -1
@@ -1017,9 +1038,8 @@ func (c *Ctx) ParamsInt(key string, defaultValue ...int) (int, error) {
 	if err != nil {
 		if len(defaultValue) > 0 {
 			return defaultValue[0], nil
-		} else {
-			return 0, err
 		}
+		return 0, fmt.Errorf("failed to convert: %w", err)
 	}
 
 	return value, nil
@@ -1044,15 +1064,16 @@ func (c *Ctx) Path(override ...string) string {
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *Ctx) Protocol() string {
 	if c.fasthttp.IsTLS() {
-		return "https"
+		return schemeHTTPS
 	}
 	if !c.IsProxyTrusted() {
-		return "http"
+		return schemeHTTP
 	}
 
-	scheme := "http"
+	scheme := schemeHTTP
+	const lenXHeaderName = 12
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
-		if len(key) < 12 {
+		if len(key) < lenXHeaderName {
 			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
 		switch {
@@ -1067,7 +1088,7 @@ func (c *Ctx) Protocol() string {
 					scheme = v
 				}
 			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
-				scheme = "https"
+				scheme = schemeHTTPS
 			}
 
 		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
@@ -1100,9 +1121,8 @@ func (c *Ctx) QueryInt(key string, defaultValue ...int) int {
 	if err != nil {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
-		} else {
-			return 0
 		}
+		return 0
 	}
 
 	return value
@@ -1133,7 +1153,6 @@ func (c *Ctx) QueryParser(out interface{}) error {
 		} else {
 			data[k] = append(data[k], v)
 		}
-
 	})
 
 	if err != nil {
@@ -1150,10 +1169,9 @@ func parseParamSquareBrackets(k string) (string, error) {
 	kbytes := []byte(k)
 
 	for i, b := range kbytes {
-
 		if b == '[' && kbytes[i+1] != ']' {
 			if err := bb.WriteByte('.'); err != nil {
-				return "", err
+				return "", fmt.Errorf("failed to write: %w", err)
 			}
 		}
 
@@ -1162,7 +1180,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 		}
 
 		if err := bb.WriteByte(b); err != nil {
-			return "", err
+			return "", fmt.Errorf("failed to write: %w", err)
 		}
 	}
 
@@ -1184,21 +1202,27 @@ func (c *Ctx) ReqHeaderParser(out interface{}) error {
 		} else {
 			data[k] = append(data[k], v)
 		}
-
 	})
 
 	return c.parseToStruct(reqHeaderTag, out, data)
 }
 
-func (c *Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
+func (*Ctx) parseToStruct(aliasTag string, out interface{}, data map[string][]string) error {
 	// Get decoder from pool
-	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder)
+	schemaDecoder, ok := decoderPoolMap[aliasTag].Get().(*schema.Decoder)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *schema.Decoder"))
+	}
 	defer decoderPoolMap[aliasTag].Put(schemaDecoder)
 
 	// Set alias tag
 	schemaDecoder.SetAliasTag(aliasTag)
 
-	return schemaDecoder.Decode(out, data)
+	if err := schemaDecoder.Decode(out, data); err != nil {
+		return fmt.Errorf("failed to decode: %w", err)
+	}
+
+	return nil
 }
 
 func equalFieldType(out interface{}, kind reflect.Kind, key string) bool {
@@ -1248,24 +1272,23 @@ var (
 )
 
 // Range returns a struct containing the type and a slice of ranges.
-func (c *Ctx) Range(size int) (rangeData Range, err error) {
+func (c *Ctx) Range(size int) (Range, error) {
+	var rangeData Range
 	rangeStr := c.Get(HeaderRange)
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
-		err = ErrRangeMalformed
-		return
+		return rangeData, ErrRangeMalformed
 	}
 	data := strings.Split(rangeStr, "=")
-	if len(data) != 2 {
-		err = ErrRangeMalformed
-		return
+	const expectedDataParts = 2
+	if len(data) != expectedDataParts {
+		return rangeData, ErrRangeMalformed
 	}
 	rangeData.Type = data[0]
 	arr := strings.Split(data[1], ",")
 	for i := 0; i < len(arr); i++ {
 		item := strings.Split(arr[i], "-")
 		if len(item) == 1 {
-			err = ErrRangeMalformed
-			return
+			return rangeData, ErrRangeMalformed
 		}
 		start, startErr := strconv.Atoi(item[0])
 		end, endErr := strconv.Atoi(item[1])
@@ -1290,11 +1313,10 @@ func (c *Ctx) Range(size int) (rangeData Range, err error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		err = ErrRangeUnsatisfiable
-		return
+		return rangeData, ErrRangeUnsatisfiable
 	}
 
-	return
+	return rangeData, nil
 }
 
 // Redirect to the URL derived from the specified path, with specified status.
@@ -1330,7 +1352,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("failed to write string: %w", err)
 			}
 			continue
 		}
@@ -1341,7 +1363,7 @@ func (c *Ctx) getLocationFromRoute(route Route, params Map) (string, error) {
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
-					return "", err
+					return "", fmt.Errorf("failed to write string: %w", err)
 				}
 			}
 		}
@@ -1373,10 +1395,10 @@ func (c *Ctx) RedirectToRoute(routeName string, params Map, status ...int) error
 
 		i := 1
 		for k, v := range queries {
-			_, _ = queryText.WriteString(k + "=" + v)
+			_, _ = queryText.WriteString(k + "=" + v) //nolint:errcheck // This will never fail
 
 			if i != len(queries) {
-				_, _ = queryText.WriteString("&")
+				_, _ = queryText.WriteString("&") //nolint:errcheck // This will never fail
 			}
 			i++
 		}
@@ -1399,7 +1421,6 @@ func (c *Ctx) RedirectBack(fallback string, status ...int) error {
 // Render a template with data and sends a text/html response.
 // We support the following engines: html, amber, handlebars, mustache, pug
 func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
-	var err error
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -1421,7 +1442,7 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 			// Render template from Views
 			if app.config.Views != nil {
 				if err := app.config.Views.Render(buf, name, bind, layouts...); err != nil {
-					return err
+					return fmt.Errorf("failed to render: %w", err)
 				}
 
 				rendered = true
@@ -1433,17 +1454,18 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	if !rendered {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
-		if _, err = readContent(buf, name); err != nil {
+		if _, err := readContent(buf, name); err != nil {
 			return err
 		}
 		// Parse template
-		if tmpl, err = template.New("").Parse(c.app.getString(buf.Bytes())); err != nil {
-			return err
+		tmpl, err := template.New("").Parse(c.app.getString(buf.Bytes()))
+		if err != nil {
+			return fmt.Errorf("failed to parse: %w", err)
 		}
 		buf.Reset()
 		// Render template
-		if err = tmpl.Execute(buf, bind); err != nil {
-			return err
+		if err := tmpl.Execute(buf, bind); err != nil {
+			return fmt.Errorf("failed to execute: %w", err)
 		}
 	}
 
@@ -1451,8 +1473,8 @@ func (c *Ctx) Render(name string, bind interface{}, layouts ...string) error {
 	c.fasthttp.Response.Header.SetContentType(MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
 	c.fasthttp.Response.SetBody(buf.Bytes())
-	// Return err if exist
-	return err
+
+	return nil
 }
 
 func (c *Ctx) renderExtensions(bind interface{}) {
@@ -1501,28 +1523,32 @@ func (c *Ctx) Route() *Route {
 }
 
 // SaveFile saves any multipart file to disk.
-func (c *Ctx) SaveFile(fileheader *multipart.FileHeader, path string) error {
+func (*Ctx) SaveFile(fileheader *multipart.FileHeader, path string) error {
 	return fasthttp.SaveMultipartFile(fileheader, path)
 }
 
 // SaveFileToStorage saves any multipart file to an external storage system.
-func (c *Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
+func (*Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
 	file, err := fileheader.Open()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open: %w", err)
 	}
 
 	content, err := io.ReadAll(file)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read: %w", err)
 	}
 
-	return storage.Set(path, content, 0)
+	if err := storage.Set(path, content, 0); err != nil {
+		return fmt.Errorf("failed to store: %w", err)
+	}
+
+	return nil
 }
 
 // Secure returns whether a secure connection was established.
 func (c *Ctx) Secure() bool {
-	return c.Protocol() == "https"
+	return c.Protocol() == schemeHTTPS
 }
 
 // Send sets the HTTP response body without copying it.
@@ -1533,6 +1559,7 @@ func (c *Ctx) Send(body []byte) error {
 	return nil
 }
 
+//nolint:gochecknoglobals // TODO: Do not use global vars here
 var (
 	sendFileOnce    sync.Once
 	sendFileFS      *fasthttp.FS
@@ -1548,6 +1575,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 
 	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
 	sendFileOnce.Do(func() {
+		const cacheDuration = 10 * time.Second
 		sendFileFS = &fasthttp.FS{
 			Root:                 "",
 			AllowEmptyRoot:       true,
@@ -1555,7 +1583,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 			AcceptByteRange:      true,
 			Compress:             true,
 			CompressedFileSuffix: c.app.config.CompressedFileSuffix,
-			CacheDuration:        10 * time.Second,
+			CacheDuration:        cacheDuration,
 			IndexNames:           []string{"index.html"},
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
 				ctx.Response.SetStatusCode(StatusNotFound)
@@ -1579,7 +1607,7 @@ func (c *Ctx) SendFile(file string, compress ...bool) error {
 		var err error
 		file = filepath.FromSlash(file)
 		if file, err = filepath.Abs(file); err != nil {
-			return err
+			return fmt.Errorf("failed to determine abs file path: %w", err)
 		}
 		if hasTrailingSlash {
 			file += "/"
@@ -1644,11 +1672,11 @@ func (c *Ctx) SendStream(stream io.Reader, size ...int) error {
 }
 
 // Set sets the response's HTTP header field to the specified key, value.
-func (c *Ctx) Set(key string, val string) {
+func (c *Ctx) Set(key, val string) {
 	c.fasthttp.Response.Header.Set(key, val)
 }
 
-func (c *Ctx) setCanonical(key string, val string) {
+func (c *Ctx) setCanonical(key, val string) {
 	c.fasthttp.Response.Header.SetCanonical(c.app.getBytes(key), c.app.getBytes(val))
 }
 
@@ -1719,6 +1747,7 @@ func (c *Ctx) Write(p []byte) (int, error) {
 
 // Writef appends f & a into response body writer.
 func (c *Ctx) Writef(f string, a ...interface{}) (int, error) {
+	//nolint:wrapcheck // This must not be wrapped
 	return fmt.Fprintf(c.fasthttp.Response.BodyWriter(), f, a...)
 }
 
@@ -1760,8 +1789,9 @@ func (c *Ctx) configDependentPaths() {
 	// Define the path for dividing routes into areas for fast tree detection, so that fewer routes need to be traversed,
 	// since the first three characters area select a list of routes
 	c.treePath = c.treePath[0:0]
-	if len(c.detectionPath) >= 3 {
-		c.treePath = c.detectionPath[:3]
+	const maxDetectionPaths = 3
+	if len(c.detectionPath) >= maxDetectionPaths {
+		c.treePath = c.detectionPath[:maxDetectionPaths]
 	}
 }
 
@@ -1786,7 +1816,7 @@ func (c *Ctx) IsProxyTrusted() bool {
 }
 
 // IsLocalHost will return true if address is a localhost address.
-func (c *Ctx) isLocalHost(address string) bool {
+func (*Ctx) isLocalHost(address string) bool {
 	localHosts := []string{"127.0.0.1", "0.0.0.0", "::1"}
 	for _, h := range localHosts {
 		if strings.Contains(address, h) {

@@ -14,4 +14,4 @@ jobs:
       - name: Run Golint
         uses: reviewdog/action-golangci-lint@v2
         with:
-          golangci_lint_flags: "--tests=false"
+          golangci_lint_version: v1.50.1

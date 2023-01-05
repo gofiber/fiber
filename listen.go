@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -31,7 +32,7 @@ func (app *App) Listener(ln net.Listener) error {
 
 	// Print startup message
 	if !app.config.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "")
+		app.startupMessage(ln.Addr().String(), getTLSConfig(ln) != nil, "")
 	}
 
 	// Print routes
@@ -41,7 +42,7 @@ func (app *App) Listener(ln net.Listener) error {
 
 	// Prefork is not supported for custom listeners
 	if app.config.Prefork {
-		fmt.Println("[Warning] Prefork isn't supported for custom listeners.")
+		log.Printf("[Warning] Prefork isn't supported for custom listeners.\n")
 	}
 
 	// Start listening
@@ -61,7 +62,7 @@ func (app *App) Listen(addr string) error {
 	// Setup listener
 	ln, err := net.Listen(app.config.Network, addr)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 
 	// prepare the server for the start
@@ -94,7 +95,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	// Set TLS config with handler
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", certFile, keyFile, err)
 	}
 
 	tlsHandler := &TLSHandler{}
@@ -115,7 +116,7 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 	ln, err := net.Listen(app.config.Network, addr)
 	ln = tls.NewListener(ln, config)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 
 	// prepare the server for the start
@@ -150,12 +151,12 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", certFile, keyFile, err)
 	}
 
 	clientCACert, err := os.ReadFile(filepath.Clean(clientCertFile))
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read file: %w", err)
 	}
 	clientCertPool := x509.NewCertPool()
 	clientCertPool.AppendCertsFromPEM(clientCACert)
@@ -179,7 +180,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	// Setup listener
 	ln, err := tls.Listen(app.config.Network, addr, config)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 
 	// prepare the server for the start
@@ -203,7 +204,7 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, tls bool, pids string) {
+func (app *App) startupMessage(addr string, tls bool, pids string) { //nolint: revive // Accepting a bool param is fine here
 	// ignore child processes
 	if IsChild() {
 		return
@@ -227,7 +228,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	center := func(s string, width int) string {
-		pad := strconv.Itoa((width - len(s)) / 2)
+		const padDiv = 2
+		pad := strconv.Itoa((width - len(s)) / padDiv)
 		str := fmt.Sprintf("%"+pad+"s", " ")
 		str += s
 		str += fmt.Sprintf("%"+pad+"s", " ")
@@ -238,7 +240,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 	}
 
 	centerValue := func(s string, width int) string {
-		pad := strconv.Itoa((width - runewidth.StringWidth(s)) / 2)
+		const padDiv = 2
+		pad := strconv.Itoa((width - runewidth.StringWidth(s)) / padDiv)
 		str := fmt.Sprintf("%"+pad+"s", " ")
 		str += fmt.Sprintf("%s%s%s", colors.Cyan, s, colors.Black)
 		str += fmt.Sprintf("%"+pad+"s", " ")
@@ -249,13 +252,13 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		return str
 	}
 
-	pad := func(s string, width int) (str string) {
+	pad := func(s string, width int) string {
 		toAdd := width - len(s)
-		str += s
+		str := s
 		for i := 0; i < toAdd; i++ {
 			str += " "
 		}
-		return
+		return str
 	}
 
 	host, port := parseAddr(addr)
@@ -267,9 +270,9 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		}
 	}
 
-	scheme := "http"
+	scheme := schemeHTTP
 	if tls {
-		scheme = "https"
+		scheme = schemeHTTPS
 	}
 
 	isPrefork := "Disabled"
@@ -282,19 +285,18 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		procs = "1"
 	}
 
+	const lineLen = 49
 	mainLogo := colors.Black + " ┌───────────────────────────────────────────────────┐\n"
 	if app.config.AppName != "" {
-		mainLogo += " │ " + centerValue(app.config.AppName, 49) + " │\n"
+		mainLogo += " │ " + centerValue(app.config.AppName, lineLen) + " │\n"
 	}
-	mainLogo += " │ " + centerValue("Fiber v"+Version, 49) + " │\n"
+	mainLogo += " │ " + centerValue("Fiber v"+Version, lineLen) + " │\n"
 
 	if host == "0.0.0.0" {
-		mainLogo +=
-			" │ " + center(fmt.Sprintf("%s://127.0.0.1:%s", scheme, port), 49) + " │\n" +
-				" │ " + center(fmt.Sprintf("(bound on host 0.0.0.0 and port %s)", port), 49) + " │\n"
+		mainLogo += " │ " + center(fmt.Sprintf("%s://127.0.0.1:%s", scheme, port), lineLen) + " │\n" +
+			" │ " + center(fmt.Sprintf("(bound on host 0.0.0.0 and port %s)", port), lineLen) + " │\n"
 	} else {
-		mainLogo +=
-			" │ " + center(fmt.Sprintf("%s://%s:%s", scheme, host, port), 49) + " │\n"
+		mainLogo += " │ " + center(fmt.Sprintf("%s://%s:%s", scheme, host, port), lineLen) + " │\n"
 	}
 
 	mainLogo += fmt.Sprintf(
@@ -303,8 +305,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 			" │ Prefork .%s  PID ....%s │\n"+
 			" └───────────────────────────────────────────────────┘"+
 			colors.Reset,
-		value(strconv.Itoa(int(app.handlersCount)), 14), value(procs, 12),
-		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
+		value(strconv.Itoa(int(app.handlersCount)), 14), value(procs, 12), //nolint:gomnd // Using random padding lengths is fine here
+		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14), //nolint:gomnd // Using random padding lengths is fine here
 	)
 
 	var childPidsLogo string
@@ -329,19 +331,21 @@ func (app *App) startupMessage(addr string, tls bool, pids string) {
 		thisLine := "Child PIDs ... "
 		var itemsOnThisLine []string
 
+		const maxLineLen = 49
+
 		addLine := func() {
 			lines = append(lines,
 				fmt.Sprintf(
 					newLine,
 					colors.Black,
-					thisLine+colors.Cyan+pad(strings.Join(itemsOnThisLine, ", "), 49-len(thisLine)),
+					thisLine+colors.Cyan+pad(strings.Join(itemsOnThisLine, ", "), maxLineLen-len(thisLine)),
 					colors.Black,
 				),
 			)
 		}
 
 		for _, pid := range pidSlice {
-			if len(thisLine+strings.Join(append(itemsOnThisLine, pid), ", ")) > 49 {
+			if len(thisLine+strings.Join(append(itemsOnThisLine, pid), ", ")) > maxLineLen {
 				addLine()
 				thisLine = ""
 				itemsOnThisLine = []string{pid}
@@ -415,7 +419,7 @@ func (app *App) printRoutesMessage() {
 	var routes []RouteMessage
 	for _, routeStack := range app.stack {
 		for _, route := range routeStack {
-			var newRoute = RouteMessage{}
+			var newRoute RouteMessage
 			newRoute.name = route.Name
 			newRoute.method = route.Method
 			newRoute.path = route.Path
@@ -443,5 +447,5 @@ func (app *App) printRoutesMessage() {
 		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers)
 	}
 
-	_ = w.Flush()
+	_ = w.Flush() //nolint:errcheck // It is fine to ignore the error here
 }

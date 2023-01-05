@@ -19,14 +19,14 @@ func Test_RequestID(t *testing.T) {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
 	utils.AssertEqual(t, 36, len(reqid))
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
 
 	resp, err = app.Test(req)
@@ -45,7 +45,7 @@ func Test_RequestID_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, resp.Header.Get(fiber.HeaderXRequestID), "")
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
@@ -54,13 +54,13 @@ func Test_RequestID_Next(t *testing.T) {
 // go test -run Test_RequestID_Locals
 func Test_RequestID_Locals(t *testing.T) {
 	t.Parallel()
-	reqId := "ThisIsARequestId"
+	reqID := "ThisIsARequestId"
 	ctxKey := "ThisIsAContextKey"
 
 	app := fiber.New()
 	app.Use(New(Config{
 		Generator: func() string {
-			return reqId
+			return reqID
 		},
 		ContextKey: ctxKey,
 	}))
@@ -68,11 +68,11 @@ func Test_RequestID_Locals(t *testing.T) {
 	var ctxVal string
 
 	app.Use(func(c *fiber.Ctx) error {
-		ctxVal = c.Locals(ctxKey).(string)
+		ctxVal = c.Locals(ctxKey).(string) //nolint:forcetypeassert,errcheck // We always store a string in here
 		return c.Next()
 	})
 
-	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, reqId, ctxVal)
+	utils.AssertEqual(t, reqID, ctxVal)
 }
