@@ -4,9 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3/middleware/idempotency"
-
-	"github.com/stretchr/testify/require"
+	"github.com/gofiber/fiber/v2/middleware/idempotency"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // go test -run Test_MemoryLock
@@ -17,7 +16,7 @@ func Test_MemoryLock(t *testing.T) {
 
 	{
 		err := l.Lock("a")
-		require.NoError(t, err)
+		utils.AssertEqual(t, nil, err)
 	}
 	{
 		done := make(chan struct{})
@@ -25,7 +24,7 @@ func Test_MemoryLock(t *testing.T) {
 			defer close(done)
 
 			err := l.Lock("a")
-			require.NoError(t, err)
+			utils.AssertEqual(t, nil, err)
 		}()
 
 		select {
@@ -37,24 +36,24 @@ func Test_MemoryLock(t *testing.T) {
 
 	{
 		err := l.Lock("b")
-		require.NoError(t, err)
+		utils.AssertEqual(t, nil, err)
 	}
 	{
 		err := l.Unlock("b")
-		require.NoError(t, err)
+		utils.AssertEqual(t, nil, err)
 	}
 	{
 		err := l.Lock("b")
-		require.NoError(t, err)
+		utils.AssertEqual(t, nil, err)
 	}
 
 	{
 		err := l.Unlock("c")
-		require.NoError(t, err)
+		utils.AssertEqual(t, nil, err)
 	}
 
 	{
 		err := l.Lock("d")
-		require.NoError(t, err)
+		utils.AssertEqual(t, nil, err)
 	}
 }

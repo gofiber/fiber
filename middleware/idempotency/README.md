@@ -27,8 +27,8 @@ First import the middleware from Fiber,
 
 ```go
 import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/idempotency"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/idempotency"
 )
 ```
 
@@ -56,7 +56,7 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: a function which skips the middleware on safe HTTP request method.
-	Next func(c fiber.Ctx) bool
+	Next func(c *fiber.Ctx) bool
 
 	// Lifetime is the maximum lifetime of an idempotency key.
 	//
@@ -93,7 +93,7 @@ type Config struct {
 
 ```go
 var ConfigDefault = Config{
-	Next: func(c fiber.Ctx) bool {
+	Next: func(c *fiber.Ctx) bool {
 		// Skip middleware if the request was done using a safe HTTP method
 		return fiber.IsMethodSafe(c.Method())
 	},

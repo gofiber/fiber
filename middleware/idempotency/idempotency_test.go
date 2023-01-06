@@ -11,11 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/idempotency"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/idempotency"
+	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
-
-	"github.com/stretchr/testify/require"
 )
 
 // go test -run Test_Idempotency
@@ -24,7 +23,7 @@ func Test_Idempotency(t *testing.T) {
 
 	app := fiber.New()
 
-	app.Use(func(c fiber.Ctx) error {
+	app.Use(func(c *fiber.Ctx) error {
 		if err := c.Next(); err != nil {
 			return err
 		}
@@ -68,14 +67,16 @@ func Test_Idempotency(t *testing.T) {
 		}
 	}()
 
-	app.Add([]string{
-		fiber.MethodGet,
-		fiber.MethodPost,
-	}, "/", func(c fiber.Ctx) error {
-		return c.SendString(strconv.Itoa(nextCount()))
-	})
+	{
+		handler := func(c *fiber.Ctx) error {
+			return c.SendString(strconv.Itoa(nextCount()))
+		}
 
-	app.Post("/slow", func(c fiber.Ctx) error {
+		app.Get("/", handler)
+		app.Post("/", handler)
+	}
+
+	app.Post("/slow", func(c *fiber.Ctx) error {
 		time.Sleep(2 * lifetime)
 
 		return c.SendString(strconv.Itoa(nextCount()))
@@ -86,32 +87,32 @@ func Test_Idempotency(t *testing.T) {
 		if idempotencyKey != "" {
 			req.Header.Set("X-Idempotency-Key", idempotencyKey)
 		}
-		resp, err := app.Test(req, 3*lifetime)
-		require.NoError(t, err)
+		resp, err := app.Test(req, 3*int(lifetime.Milliseconds()))
+		utils.AssertEqual(t, nil, err)
 		body, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		require.Equal(t, fiber.StatusOK, resp.StatusCode, string(body))
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, string(body))
 		return string(body)
 	}
 
-	require.Equal(t, "1", doReq(fiber.MethodGet, "/", ""))
-	require.Equal(t, "2", doReq(fiber.MethodGet, "/", ""))
+	utils.AssertEqual(t, "1", doReq(fiber.MethodGet, "/", ""))
+	utils.AssertEqual(t, "2", doReq(fiber.MethodGet, "/", ""))
 
-	require.Equal(t, "3", doReq(fiber.MethodPost, "/", ""))
-	require.Equal(t, "4", doReq(fiber.MethodPost, "/", ""))
+	utils.AssertEqual(t, "3", doReq(fiber.MethodPost, "/", ""))
+	utils.AssertEqual(t, "4", doReq(fiber.MethodPost, "/", ""))
 
-	require.Equal(t, "5", doReq(fiber.MethodGet, "/", "00000000-0000-0000-0000-000000000000"))
-	require.Equal(t, "6", doReq(fiber.MethodGet, "/", "00000000-0000-0000-0000-000000000000"))
+	utils.AssertEqual(t, "5", doReq(fiber.MethodGet, "/", "00000000-0000-0000-0000-000000000000"))
+	utils.AssertEqual(t, "6", doReq(fiber.MethodGet, "/", "00000000-0000-0000-0000-000000000000"))
 
-	require.Equal(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
-	require.Equal(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
-	require.Equal(t, "8", doReq(fiber.MethodPost, "/", ""))
-	require.Equal(t, "9", doReq(fiber.MethodPost, "/", "11111111-1111-1111-1111-111111111111"))
+	utils.AssertEqual(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
+	utils.AssertEqual(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
+	utils.AssertEqual(t, "8", doReq(fiber.MethodPost, "/", ""))
+	utils.AssertEqual(t, "9", doReq(fiber.MethodPost, "/", "11111111-1111-1111-1111-111111111111"))
 
-	require.Equal(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
+	utils.AssertEqual(t, "7", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
 	time.Sleep(2 * lifetime)
-	require.Equal(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
-	require.Equal(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
+	utils.AssertEqual(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
+	utils.AssertEqual(t, "10", doReq(fiber.MethodPost, "/", "00000000-0000-0000-0000-000000000000"))
 
 	// Test raciness
 	{
@@ -120,14 +121,14 @@ func Test_Idempotency(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				require.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
+				utils.AssertEqual(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 			}()
 		}
 		wg.Wait()
-		require.Equal(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
+		utils.AssertEqual(t, "11", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 	}
 	time.Sleep(2 * lifetime)
-	require.Equal(t, "12", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
+	utils.AssertEqual(t, "12", doReq(fiber.MethodPost, "/slow", "22222222-2222-2222-2222-222222222222"))
 }
 
 // go test -v -run=^$ -bench=Benchmark_Idempotency -benchmem -count=4
@@ -141,7 +142,7 @@ func Benchmark_Idempotency(b *testing.B) {
 		Lifetime: lifetime,
 	}))
 
-	app.Post("/", func(c fiber.Ctx) error {
+	app.Post("/", func(c *fiber.Ctx) error {
 		return nil
 	})
 
