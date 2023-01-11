@@ -108,7 +108,6 @@ type App struct {
 	hooks *Hooks
 	// Latest route & group
 	latestRoute *Route
-	latestGroup *Group
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// TLS handler
@@ -121,6 +120,8 @@ type App struct {
 	multipartDecoderCache sync.Map
 	// Mount fields
 	mountFields *mountFields
+	// Indicates if the value was explicitly configured
+	configured Config
 }
 
 // Config is a struct holding the server settings.
@@ -380,6 +381,17 @@ type Config struct {
 	//
 	// Optional. Default: DefaultColors
 	ColorScheme Colors `json:"color_scheme"`
+
+	// If you want to validate header/form/query... automatically when to bind, you can define struct validator.
+	// Fiber doesn't have default validator, so it'll skip validator step if you don't use any validator.
+	//
+	// Default: nil
+	StructValidator StructValidator
+
+	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
+	//
+	// Optional. Default: DefaultMethods
+	RequestMethods []string
 }
 
 // Static defines configuration options when defining static assets.
@@ -445,6 +457,19 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
+// HTTP methods enabled by default
+var DefaultMethods = []string{
+	MethodGet,
+	MethodHead,
+	MethodPost,
+	MethodPut,
+	MethodDelete,
+	MethodConnect,
+	MethodOptions,
+	MethodTrace,
+	MethodPatch,
+}
+
 // DefaultErrorHandler that process return errors from handlers
 var DefaultErrorHandler = func(c Ctx, err error) error {
 	code := StatusInternalServerError
@@ -469,15 +494,11 @@ var DefaultErrorHandler = func(c Ctx, err error) error {
 func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
-		// Create router stack
-		stack:     make([][]*Route, len(intMethod)),
-		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create config
 		config:      Config{},
 		getBytes:    utils.UnsafeBytes,
 		getString:   utils.UnsafeString,
 		latestRoute: &Route{},
-		latestGroup: &Group{},
 	}
 
 	// Create Ctx pool
@@ -497,6 +518,9 @@ func New(config ...Config) *App {
 	if len(config) > 0 {
 		app.config = config[0]
 	}
+
+	// Initialize configured before defaults are set
+	app.configured = app.config
 
 	// Override default values
 	if app.config.BodyLimit == 0 {
@@ -532,18 +556,23 @@ func New(config ...Config) *App {
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
 	}
+
 	if app.config.XMLDecoder == nil {
 		app.config.XMLDecoder = xml.Unmarshal
 	}
 
-	if app.config.Network == "" {
-		app.config.Network = NetworkTCP4
+	if len(app.config.RequestMethods) == 0 {
+		app.config.RequestMethods = DefaultMethods
 	}
 
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
 	for _, ipAddress := range app.config.TrustedProxies {
 		app.handleTrustedProxy(ipAddress)
 	}
+
+	// Create router stack
+	app.stack = make([][]*Route, len(app.config.RequestMethods))
+	app.treeStack = make([]map[string][]*Route, len(app.config.RequestMethods))
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
@@ -587,8 +616,10 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 // Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
-	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.Prefix) {
-		app.latestRoute.Name = app.latestGroup.name + name
+
+	latestGroup := app.latestRoute.group
+	if latestGroup != nil {
+		app.latestRoute.Name = latestGroup.name + name
 	} else {
 		app.latestRoute.Name = name
 	}
@@ -656,6 +687,7 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 func (app *App) Use(args ...any) Router {
 	var prefix string
 	var subApp *App
+	var prefixes []string
 	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
@@ -664,6 +696,8 @@ func (app *App) Use(args ...any) Router {
 			prefix = arg
 		case *App:
 			subApp = arg
+		case []string:
+			prefixes = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
@@ -671,9 +705,17 @@ func (app *App) Use(args ...any) Router {
 		}
 	}
 
-	if subApp != nil {
-		app.mount(prefix, subApp)
-		return app
+	if len(prefixes) == 0 {
+		prefixes = append(prefixes, prefix)
+	}
+
+	for _, prefix := range prefixes {
+		if subApp != nil {
+			app.mount(prefix, subApp)
+			return app
+		}
+
+		app.register([]string{methodUse}, prefix, nil, nil, handlers...)
 	}
 
 	app.register([]string{methodUse}, prefix, nil, handlers...)
@@ -736,7 +778,7 @@ func (app *App) Patch(path string, handler Handler, middleware ...Handler) Route
 
 // Add allows you to specify multiple HTTP methods to register a route.
 func (app *App) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
-	return app.register(methods, path, handler, middleware...)
+	return app.register(methods, path, nil, handler, middleware...)
 }
 
 // Static will create a file server serving static files
@@ -746,8 +788,7 @@ func (app *App) Static(prefix, root string, config ...Static) Router {
 
 // All will register the handler on all HTTP methods
 func (app *App) All(path string, handler Handler, middleware ...Handler) Router {
-	app.Add(intMethod, path, handler, middleware...)
-	return app
+	return app.Add(app.config.RequestMethods, path, handler, middleware...)
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
@@ -755,10 +796,10 @@ func (app *App) All(path string, handler Handler, middleware ...Handler) Router 
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
-	if len(handlers) > 0 {
-		app.register([]string{methodUse}, prefix, nil, handlers...)
-	}
 	grp := &Group{Prefix: prefix, app: app}
+	if len(handlers) > 0 {
+		app.register([]string{methodUse}, prefix, grp, nil, handlers...)
+	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)
 	}
@@ -846,11 +887,11 @@ func (app *App) Hooks() *Hooks {
 
 // Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
-func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, err error) {
+func (app *App) Test(req *http.Request, timeout ...time.Duration) (resp *http.Response, err error) {
 	// Set timeout
-	timeout := 1000
-	if len(msTimeout) > 0 {
-		timeout = msTimeout[0]
+	to := 1 * time.Second
+	if len(timeout) > 0 {
+		to = timeout[0]
 	}
 
 	// Add Content-Length if not provided with body
@@ -889,12 +930,12 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	}()
 
 	// Wait for callback
-	if timeout >= 0 {
+	if to >= 0 {
 		// With timeout
 		select {
 		case err = <-channel:
-		case <-time.After(time.Duration(timeout) * time.Millisecond):
-			return nil, fmt.Errorf("test: timeout error %vms", timeout)
+		case <-time.After(to):
+			return nil, fmt.Errorf("test: timeout error after %s", to)
 		}
 	} else {
 		// Without timeout
@@ -977,7 +1018,10 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 		if prefix != "" && strings.HasPrefix(ctx.Path(), prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
-				mountedErrHandler = subApp.config.ErrorHandler
+				if subApp.configured.ErrorHandler != nil {
+					mountedErrHandler = subApp.config.ErrorHandler
+				}
+
 				mountedPrefixParts = parts
 			}
 		}

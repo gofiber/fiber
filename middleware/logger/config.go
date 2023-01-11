@@ -16,6 +16,17 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c fiber.Ctx) bool
 
+	// Done is a function that is called after the log string for a request is written to Output,
+	// and pass the log string as parameter.
+	//
+	// Optional. Default: nil
+	Done func(c fiber.Ctx, logString []byte)
+
+	// tagFunctions defines the custom tag action
+	//
+	// Optional. Default: map[string]LogFunc
+	CustomTags map[string]LogFunc
+
 	// Format defines the logging tags
 	//
 	// Optional. Default: [${time}] ${status} - ${latency} ${method} ${path}\n
@@ -51,23 +62,45 @@ type Config struct {
 	// If you don't define anything for this field, it'll use default logger of Fiber.
 	//
 	// Optional. Default: defaultLogger
-	LoggerFunc func(c fiber.Ctx, data *LoggerData, cfg Config) error
+	LoggerFunc func(c fiber.Ctx, data *Data, cfg Config) error
 
 	enableColors     bool
 	enableLatency    bool
 	timeZoneLocation *time.Location
 }
 
+const (
+	startTag       = "${"
+	endTag         = "}"
+	paramSeparator = ":"
+)
+
+type Buffer interface {
+	Len() int
+	ReadFrom(r io.Reader) (int64, error)
+	WriteTo(w io.Writer) (int64, error)
+	Bytes() []byte
+	Write(p []byte) (int, error)
+	WriteByte(c byte) error
+	WriteString(s string) (int, error)
+	Set(p []byte)
+	SetString(s string)
+	String() string
+}
+
+type LogFunc func(output Buffer, c fiber.Ctx, data *Data, extraParam string) (int, error)
+
 // ConfigDefault is the default config
 var ConfigDefault = Config{
 	Next:              nil,
+	Done:              nil,
 	Format:            defaultFormat,
 	TimeFormat:        "15:04:05",
 	TimeZone:          "Local",
 	TimeInterval:      500 * time.Millisecond,
 	Output:            os.Stdout,
 	BeforeHandlerFunc: beforeHandlerFunc,
-	LoggerFunc:        defaultLogger,
+	LoggerFunc:        defaultLoggerInstance,
 	enableColors:      true,
 }
 
@@ -75,11 +108,8 @@ var ConfigDefault = Config{
 var defaultFormat = "[${time}] ${status} - ${latency} ${method} ${path}\n"
 
 // Function to check if the logger format is compatible for coloring
-func validCustomFormat(format string) bool {
+func checkColorEnable(format string) bool {
 	validTemplates := []string{"${status}", "${method}"}
-	if format == "" {
-		return true
-	}
 	for _, template := range validTemplates {
 		if strings.Contains(format, template) {
 			return true
@@ -98,18 +128,17 @@ func configDefault(config ...Config) Config {
 	// Override default config
 	cfg := config[0]
 
-	// Enable colors if no custom format or output is given
-	if validCustomFormat(cfg.Format) && cfg.Output == nil {
-		cfg.enableColors = true
-	}
-
 	// Set default values
 	if cfg.Next == nil {
 		cfg.Next = ConfigDefault.Next
 	}
+	if cfg.Done == nil {
+		cfg.Done = ConfigDefault.Done
+	}
 	if cfg.Format == "" {
 		cfg.Format = ConfigDefault.Format
 	}
+
 	if cfg.TimeZone == "" {
 		cfg.TimeZone = ConfigDefault.TimeZone
 	}
@@ -129,6 +158,11 @@ func configDefault(config ...Config) Config {
 
 	if cfg.LoggerFunc == nil {
 		cfg.LoggerFunc = ConfigDefault.LoggerFunc
+	}
+
+	// Enable colors if no custom format or output is given
+	if cfg.Output == nil && checkColorEnable(cfg.Format) {
+		cfg.enableColors = true
 	}
 
 	return cfg

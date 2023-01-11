@@ -11,48 +11,6 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// Logger variables
-const (
-	TagPid               = "pid"
-	TagTime              = "time"
-	TagReferer           = "referer"
-	TagProtocol          = "protocol"
-	TagScheme            = "scheme"
-	TagPort              = "port"
-	TagIP                = "ip"
-	TagIPs               = "ips"
-	TagHost              = "host"
-	TagMethod            = "method"
-	TagPath              = "path"
-	TagURL               = "url"
-	TagUA                = "ua"
-	TagLatency           = "latency"
-	TagStatus            = "status"
-	TagResBody           = "resBody"
-	TagReqHeaders        = "reqHeaders"
-	TagQueryStringParams = "queryParams"
-	TagBody              = "body"
-	TagBytesSent         = "bytesSent"
-	TagBytesReceived     = "bytesReceived"
-	TagRoute             = "route"
-	TagError             = "error"
-	TagReqHeader         = "reqHeader:"
-	TagRespHeader        = "respHeader:"
-	TagLocals            = "locals:"
-	TagQuery             = "query:"
-	TagForm              = "form:"
-	TagCookie            = "cookie:"
-	TagBlack             = "black"
-	TagRed               = "red"
-	TagGreen             = "green"
-	TagYellow            = "yellow"
-	TagBlue              = "blue"
-	TagMagenta           = "magenta"
-	TagCyan              = "cyan"
-	TagWhite             = "white"
-	TagReset             = "reset"
-)
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -67,14 +25,14 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Check if format contains latency
-	cfg.enableLatency = strings.Contains(cfg.Format, "${latency}")
+	cfg.enableLatency = strings.Contains(cfg.Format, "${"+TagLatency+"}")
 
-	// Create correct timeformat
 	var timestamp atomic.Value
+	// Create correct timeformat
 	timestamp.Store(time.Now().In(cfg.timeZoneLocation).Format(cfg.TimeFormat))
 
 	// Update date/time every 500 milliseconds in a separate go routine
-	if strings.Contains(cfg.Format, "${time}") {
+	if strings.Contains(cfg.Format, "${"+TagTime+"}") {
 		go func() {
 			for {
 				time.Sleep(cfg.TimeInterval)
@@ -88,7 +46,6 @@ func New(config ...Config) fiber.Handler {
 
 	// Set variables
 	var (
-		mu         sync.Mutex
 		once       sync.Once
 		errHandler fiber.ErrorHandler
 	)
@@ -101,10 +58,11 @@ func New(config ...Config) fiber.Handler {
 	cfg.BeforeHandlerFunc(cfg)
 
 	// Logger data
-	data := &LoggerData{
-		Pid:           pid,
-		ErrPaddingStr: errPaddingStr,
-		Timestamp:     timestamp,
+	// instead of analyzing the template inside(handler) each time, this is done once before
+	// and we create several slices of the same length with the functions to be executed and fixed parts.
+	templateChain, logFunChain, err := buildLogFuncChain(&cfg, createTagMap(&cfg))
+	if err != nil {
+		panic(err)
 	}
 
 	// Return new handler
@@ -130,16 +88,26 @@ func New(config ...Config) fiber.Handler {
 			errHandler = c.App().ErrorHandler
 		})
 
-		var start, stop time.Time
+		// Logger data
+		data := DataPool.Get().(*Data)
+		// no need for a reset, as long as we always override everything
+		data.Pid = pid
+		data.ErrPaddingStr = errPaddingStr
+		data.Timestamp = timestamp
+		data.TemplateChain = templateChain
+		data.LogFuncChain = logFunChain
+		// put data back in the pool
+		defer DataPool.Put(data)
 
 		// Set latency start time
 		if cfg.enableLatency {
-			start = time.Now()
+			data.Start = time.Now()
 		}
 
 		// Handle request, store err for logging
 		chainErr := c.Next()
 
+		data.ChainErr = chainErr
 		// Manually call error handler
 		if chainErr != nil {
 			if err := errHandler(c, chainErr); err != nil {
@@ -149,19 +117,13 @@ func New(config ...Config) fiber.Handler {
 
 		// Set latency stop time
 		if cfg.enableLatency {
-			stop = time.Now()
+			data.Stop = time.Now()
 		}
 
 		// Logger instance & update some logger data fields
-		mu.Lock()
-		data.ChainErr = chainErr
-		data.Start = start
-		data.Stop = stop
-
 		if err = cfg.LoggerFunc(c, data, cfg); err != nil {
 			return err
 		}
-		mu.Unlock()
 
 		return nil
 	}

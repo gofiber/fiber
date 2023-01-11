@@ -113,7 +113,7 @@ func main() {
 
 Go가 설치되어 있는 것을 확인해 주세요 ([download](https://go.dev/dl/)). 버전 1.14 또는 그 이상이어야 합니다.
 
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+폴더를 생성하여 당신의 프로젝트를 초기화하고, 폴더 안에서 `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) 를 실행하세요. 그리고 [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 명령어로 Fiber를 설치하세요:
 
 ```bash
 go get -u github.com/gofiber/fiber/v3
@@ -661,13 +661,16 @@ Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](
 
 **Third-party library licenses**
 
--   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
--   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
--   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
--   [fasttemplate](https://github.com/valyala/fasttemplate/blob/master/LICENSE)
+-   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
+-   [runewidth](https://github.com/mattn/go-runewidth/blob/master/LICENSE)
+-   [fasthttp](https://github.com/valyala/fasthttp/blob/master/LICENSE)
 -   [bytebufferpool](https://github.com/valyala/bytebufferpool/blob/master/LICENSE)
+-   [dictpool](https://github.com/savsgio/dictpool/blob/master/LICENSE)
+-   [fwd](https://github.com/philhofer/fwd/blob/master/LICENSE.md)
+-   [go-ole](https://github.com/go-ole/go-ole/blob/master/LICENSE)
 -   [gopsutil](https://github.com/shirou/gopsutil/blob/master/LICENSE)
--   [go-ole](https://github.com/go-ole/go-ole)
--   [wmi](https://github.com/StackExchange/wmi)
--   [dictpool](https://github.com/savsgio/dictpool)
+-   [msgp](https://github.com/tinylib/msgp/blob/master/LICENSE)
+-   [schema](https://github.com/gorilla/schema/blob/master/LICENSE)
+-   [uuid](https://github.com/google/uuid/blob/master/LICENSE)
+-   [wmi](https://github.com/StackExchange/wmi/blob/master/LICENSE)

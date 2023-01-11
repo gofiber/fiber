@@ -44,8 +44,10 @@ func (app *App) mount(prefix string, fiber *App) Router {
 
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subApp := range fiber.mountFields.appList {
-		subApp.mountFields.mountPath = prefix + mountedPrefixes
-		app.mountFields.appList[prefix+mountedPrefixes] = subApp
+		path := getGroupPath(prefix, mountedPrefixes)
+
+		subApp.mountFields.mountPath = path
+		app.mountFields.appList[path] = subApp
 	}
 
 	// Execute onMount hooks
@@ -70,8 +72,10 @@ func (grp *Group) mount(prefix string, fiber *App) Router {
 
 	// Support for configs of mounted-apps and sub-mounted-apps
 	for mountedPrefixes, subApp := range fiber.mountFields.appList {
-		subApp.mountFields.mountPath = groupPath + mountedPrefixes
-		grp.app.mountFields.appList[groupPath+mountedPrefixes] = subApp
+		path := getGroupPath(groupPath, mountedPrefixes)
+
+		subApp.mountFields.mountPath = path
+		grp.app.mountFields.appList[path] = subApp
 	}
 
 	// Execute onMount hooks
@@ -107,7 +111,7 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 		}
 
 		if len(parent) > 0 {
-			prefix = parent[0] + prefix
+			prefix = getGroupPath(parent[0], prefix)
 		}
 
 		if _, ok := app.mountFields.appList[prefix]; !ok {
@@ -131,7 +135,7 @@ func (app *App) addSubAppsRoutes(appList map[string]*App, parent ...string) {
 		}
 
 		if len(parent) > 0 {
-			prefix = parent[0] + prefix
+			prefix = getGroupPath(parent[0], prefix)
 		}
 
 		// add routes

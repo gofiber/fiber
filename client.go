@@ -872,7 +872,7 @@ func (a *Agent) reset() {
 var (
 	clientPool sync.Pool
 	agentPool  = sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &Agent{req: &Request{}}
 		},
 	}
