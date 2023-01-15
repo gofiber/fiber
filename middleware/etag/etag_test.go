@@ -13,6 +13,7 @@ import (
 
 // go test -run Test_ETag_Next
 func Test_ETag_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
@@ -27,6 +28,7 @@ func Test_ETag_Next(t *testing.T) {
 
 // go test -run Test_ETag_SkipError
 func Test_ETag_SkipError(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -42,6 +44,7 @@ func Test_ETag_SkipError(t *testing.T) {
 
 // go test -run Test_ETag_NotStatusOK
 func Test_ETag_NotStatusOK(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -57,6 +60,7 @@ func Test_ETag_NotStatusOK(t *testing.T) {
 
 // go test -run Test_ETag_NoBody
 func Test_ETag_NoBody(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -72,13 +76,17 @@ func Test_ETag_NoBody(t *testing.T) {
 
 // go test -run Test_ETag_NewEtag
 func Test_ETag_NewEtag(t *testing.T) {
+	t.Parallel()
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
+		t.Parallel()
 		testETagNewEtag(t, false, false)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
+		t.Parallel()
 		testETagNewEtag(t, true, false)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
+		t.Parallel()
 		testETagNewEtag(t, true, true)
 	})
 }
@@ -122,13 +130,17 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 // go test -run Test_ETag_WeakEtag
 func Test_ETag_WeakEtag(t *testing.T) {
+	t.Parallel()
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
+		t.Parallel()
 		testETagWeakEtag(t, false, false)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
+		t.Parallel()
 		testETagWeakEtag(t, true, false)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
+		t.Parallel()
 		testETagWeakEtag(t, true, true)
 	})
 }
@@ -172,13 +184,17 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 // go test -run Test_ETag_CustomEtag
 func Test_ETag_CustomEtag(t *testing.T) {
+	t.Parallel()
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
+		t.Parallel()
 		testETagCustomEtag(t, false, false)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
+		t.Parallel()
 		testETagCustomEtag(t, true, false)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
+		t.Parallel()
 		testETagCustomEtag(t, true, true)
 	})
 }
@@ -226,6 +242,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 // go test -run Test_ETag_CustomEtagPut
 func Test_ETag_CustomEtagPut(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())

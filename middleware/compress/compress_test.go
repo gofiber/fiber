@@ -24,6 +24,7 @@ func init() {
 
 // go test -run Test_Compress_Gzip
 func Test_Compress_Gzip(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -49,9 +50,11 @@ func Test_Compress_Gzip(t *testing.T) {
 
 // go test -run Test_Compress_Different_Level
 func Test_Compress_Different_Level(t *testing.T) {
+	t.Parallel()
 	levels := []Level{LevelBestSpeed, LevelBestCompression}
 	for _, level := range levels {
 		t.Run(fmt.Sprintf("level %d", level), func(t *testing.T) {
+			t.Parallel()
 			app := fiber.New()
 
 			app.Use(New(Config{Level: level}))
@@ -78,6 +81,7 @@ func Test_Compress_Different_Level(t *testing.T) {
 }
 
 func Test_Compress_Deflate(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -101,6 +105,7 @@ func Test_Compress_Deflate(t *testing.T) {
 }
 
 func Test_Compress_Brotli(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -124,6 +129,7 @@ func Test_Compress_Brotli(t *testing.T) {
 }
 
 func Test_Compress_Disabled(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{Level: LevelDisabled}))
@@ -147,6 +153,7 @@ func Test_Compress_Disabled(t *testing.T) {
 }
 
 func Test_Compress_Next_Error(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -170,6 +177,7 @@ func Test_Compress_Next_Error(t *testing.T) {
 
 // go test -run Test_Compress_Next
 func Test_Compress_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {

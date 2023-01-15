@@ -15,6 +15,7 @@ import (
 
 // go test -run Test_Middleware_Favicon
 func Test_Middleware_Favicon(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -44,6 +45,7 @@ func Test_Middleware_Favicon(t *testing.T) {
 
 // go test -run Test_Middleware_Favicon_Not_Found
 func Test_Middleware_Favicon_Not_Found(t *testing.T) {
+	t.Parallel()
 	defer func() {
 		if err := recover(); err == nil {
 			t.Fatal("should cache panic")
@@ -57,6 +59,7 @@ func Test_Middleware_Favicon_Not_Found(t *testing.T) {
 
 // go test -run Test_Middleware_Favicon_Found
 func Test_Middleware_Favicon_Found(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -95,6 +98,7 @@ func (m mockFS) Open(name string) (http.File, error) {
 
 // go test -run Test_Middleware_Favicon_FileSystem
 func Test_Middleware_Favicon_FileSystem(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -111,6 +115,7 @@ func Test_Middleware_Favicon_FileSystem(t *testing.T) {
 
 // go test -run Test_Middleware_Favicon_CacheControl
 func Test_Middleware_Favicon_CacheControl(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -146,6 +151,7 @@ func Benchmark_Middleware_Favicon(b *testing.B) {
 
 // go test -run Test_Favicon_Next
 func Test_Favicon_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {

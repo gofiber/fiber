@@ -16,7 +16,6 @@ var testSimpleHandler = func(c *Ctx) error {
 
 func Test_Hook_OnRoute(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	app.Hooks().OnRoute(func(r Route) error {
@@ -35,7 +34,6 @@ func Test_Hook_OnRoute(t *testing.T) {
 
 func Test_Hook_OnRoute_Mount(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	subApp := New()
 	app.Mount("/sub", subApp)
@@ -58,7 +56,6 @@ func Test_Hook_OnRoute_Mount(t *testing.T) {
 
 func Test_Hook_OnName(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	buf := bytebufferpool.Get()
@@ -84,7 +81,6 @@ func Test_Hook_OnName(t *testing.T) {
 
 func Test_Hook_OnName_Error(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
@@ -101,7 +97,6 @@ func Test_Hook_OnName_Error(t *testing.T) {
 
 func Test_Hook_OnGroup(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	buf := bytebufferpool.Get()
@@ -121,7 +116,6 @@ func Test_Hook_OnGroup(t *testing.T) {
 
 func Test_Hook_OnGroup_Mount(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	micro := New()
 	micro.Mount("/john", app)
@@ -139,7 +133,6 @@ func Test_Hook_OnGroup_Mount(t *testing.T) {
 
 func Test_Hook_OnGroupName(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	buf := bytebufferpool.Get()
@@ -161,7 +154,6 @@ func Test_Hook_OnGroupName(t *testing.T) {
 
 func Test_Hook_OnGroupName_Error(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
@@ -179,7 +171,6 @@ func Test_Hook_OnGroupName_Error(t *testing.T) {
 
 func Test_Hook_OnShutdown(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 
 	buf := bytebufferpool.Get()
@@ -198,7 +189,6 @@ func Test_Hook_OnShutdown(t *testing.T) {
 
 func Test_Hook_OnListen(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{
 		DisableStartupMessage: true,
 	})
@@ -223,11 +213,11 @@ func Test_Hook_OnListen(t *testing.T) {
 }
 
 func Test_Hook_OnHook(t *testing.T) {
+	app := New()
+
 	// Reset test var
 	testPreforkMaster = true
 	testOnPrefork = true
-
-	app := New()
 
 	go func() {
 		time.Sleep(1000 * time.Millisecond)
@@ -244,7 +234,6 @@ func Test_Hook_OnHook(t *testing.T) {
 
 func Test_Hook_OnMount(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	app.Get("/", testSimpleHandler).Name("x")
 
