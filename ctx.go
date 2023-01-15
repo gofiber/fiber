@@ -314,8 +314,8 @@ func (c *Ctx) Body() []byte {
 	var body []byte
 	// faster than peek
 	c.Request().Header.VisitAll(func(key, value []byte) {
-		if utils.UnsafeString(key) == HeaderContentEncoding {
-			encoding = utils.UnsafeString(value)
+		if c.app.getString(key) == HeaderContentEncoding {
+			encoding = c.app.getString(value)
 		}
 	})
 
@@ -356,7 +356,7 @@ func decoderBuilder(parserConfig ParserConfig) interface{} {
 // If none of the content types above are matched, it will return a ErrUnprocessableEntity error
 func (c *Ctx) BodyParser(out interface{}) error {
 	// Get content-type
-	ctype := utils.ToLower(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()))
+	ctype := utils.ToLower(c.app.getString(c.fasthttp.Request.Header.ContentType()))
 
 	ctype = utils.ParseVendorSpecificContentType(ctype)
 
@@ -373,8 +373,8 @@ func (c *Ctx) BodyParser(out interface{}) error {
 				return
 			}
 
-			k := utils.UnsafeString(key)
-			v := utils.UnsafeString(val)
+			k := c.app.getString(key)
+			v := c.app.getString(val)
 
 			if strings.Contains(k, "[") {
 				k, err = parseParamSquareBrackets(k)
@@ -813,7 +813,7 @@ func (c *Ctx) Is(extension string) bool {
 	}
 
 	return strings.HasPrefix(
-		utils.TrimLeft(utils.UnsafeString(c.fasthttp.Request.Header.ContentType()), ' '),
+		utils.TrimLeft(c.app.getString(c.fasthttp.Request.Header.ContentType()), ' '),
 		extensionHeader,
 	)
 }
@@ -1096,8 +1096,8 @@ func (c *Ctx) QueryParser(out interface{}) error {
 			return
 		}
 
-		k := utils.UnsafeString(key)
-		v := utils.UnsafeString(val)
+		k := c.app.getString(key)
+		v := c.app.getString(val)
 
 		if strings.Contains(k, "[") {
 			k, err = parseParamSquareBrackets(k)
@@ -1151,8 +1151,8 @@ func parseParamSquareBrackets(k string) (string, error) {
 func (c *Ctx) ReqHeaderParser(out interface{}) error {
 	data := make(map[string][]string)
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
-		k := utils.UnsafeString(key)
-		v := utils.UnsafeString(val)
+		k := c.app.getString(key)
+		v := c.app.getString(val)
 
 		if strings.Contains(v, ",") && equalFieldType(out, reflect.Slice, k) {
 			values := strings.Split(v, ",")
@@ -1450,9 +1450,9 @@ func (c *Ctx) renderExtensions(bind interface{}) {
 			// Loop through each local and set it in the map
 			c.fasthttp.VisitUserValues(func(key []byte, val interface{}) {
 				// check if bindMap doesn't contain the key
-				if _, ok := bindMap[utils.UnsafeString(key)]; !ok {
+				if _, ok := bindMap[c.app.getString(key)]; !ok {
 					// Set the key and value in the bindMap
-					bindMap[utils.UnsafeString(key)] = val
+					bindMap[c.app.getString(key)] = val
 				}
 			})
 		}
@@ -1627,7 +1627,7 @@ func (c *Ctx) Set(key string, val string) {
 }
 
 func (c *Ctx) setCanonical(key string, val string) {
-	c.fasthttp.Response.Header.SetCanonical(utils.UnsafeBytes(key), utils.UnsafeBytes(val))
+	c.fasthttp.Response.Header.SetCanonical(c.app.getBytes(key), c.app.getBytes(val))
 }
 
 // Subdomains returns a string slice of subdomains in the domain name of the request.
@@ -1709,7 +1709,7 @@ func (c *Ctx) WriteString(s string) (int, error) {
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *Ctx) XHR() bool {
-	return utils.EqualFoldBytes(utils.UnsafeBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
+	return utils.EqualFoldBytes(c.app.getBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
