@@ -870,7 +870,7 @@ func Test_Client_Debug(t *testing.T) {
 
 	str := output.String()
 
-	utils.AssertEqual(t, true, strings.Contains(str, "Connected to example.com(pipe)"))
+	utils.AssertEqual(t, true, strings.Contains(str, "Connected to example.com(InmemoryListener)"))
 	utils.AssertEqual(t, true, strings.Contains(str, "GET / HTTP/1.1"))
 	utils.AssertEqual(t, true, strings.Contains(str, "User-Agent: fiber"))
 	utils.AssertEqual(t, true, strings.Contains(str, "Host: example.com\r\n\r\n"))
