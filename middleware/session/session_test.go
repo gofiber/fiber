@@ -278,6 +278,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 	t.Parallel()
 
 	t.Run("save to cookie", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// fiber instance
@@ -315,6 +316,7 @@ func Test_Session_Reset(t *testing.T) {
 	t.Parallel()
 
 	t.Run("reset from cookie", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// fiber instance
@@ -332,6 +334,7 @@ func Test_Session_Reset(t *testing.T) {
 	})
 
 	t.Run("reset from header", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New(Config{
 			KeyLookup: "header:session_id",
