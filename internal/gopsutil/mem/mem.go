@@ -6,7 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 )
 
-var _ common.Invoke
+var invoke common.Invoker = common.Invoke{}
 
 // Memory usage statistics. Total, Available and Used contain numbers of bytes
 // for human consumption.
