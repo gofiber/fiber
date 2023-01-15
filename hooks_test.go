@@ -213,7 +213,6 @@ func Test_Hook_OnListen(t *testing.T) {
 }
 
 func Test_Hook_OnHook(t *testing.T) {
-	t.Parallel()
 	app := New()
 
 	// Reset test var
