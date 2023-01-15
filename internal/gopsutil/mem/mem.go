@@ -6,7 +6,8 @@ import (
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 )
 
-var invoke common.Invoker = common.Invoke{}
+//lint:ignore U1000 we need this elsewhere
+var invoke common.Invoker = common.Invoke{} //nolint:all
 
 // Memory usage statistics. Total, Available and Used contain numbers of bytes
 // for human consumption.
