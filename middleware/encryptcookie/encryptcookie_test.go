@@ -13,6 +13,7 @@ import (
 var testKey = GenerateKey()
 
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -72,6 +73,7 @@ func Test_Middleware_Encrypt_Cookie(t *testing.T) {
 }
 
 func Test_Encrypt_Cookie_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -95,6 +97,7 @@ func Test_Encrypt_Cookie_Next(t *testing.T) {
 }
 
 func Test_Encrypt_Cookie_Except(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -137,6 +140,7 @@ func Test_Encrypt_Cookie_Except(t *testing.T) {
 }
 
 func Test_Encrypt_Cookie_Custom_Encryptor(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{

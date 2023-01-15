@@ -11,6 +11,7 @@ import (
 )
 
 func Test_CSRF(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -63,6 +64,7 @@ func Test_CSRF(t *testing.T) {
 
 // go test -run Test_CSRF_Next
 func Test_CSRF_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
@@ -76,6 +78,7 @@ func Test_CSRF_Next(t *testing.T) {
 }
 
 func Test_CSRF_Invalid_KeyLookup(t *testing.T) {
+	t.Parallel()
 	defer func() {
 		utils.AssertEqual(t, "[CSRF] KeyLookup must in the form of <source>:<key>", recover())
 	}()
@@ -94,6 +97,7 @@ func Test_CSRF_Invalid_KeyLookup(t *testing.T) {
 }
 
 func Test_CSRF_From_Form(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{KeyLookup: "form:_csrf"}))
@@ -127,6 +131,7 @@ func Test_CSRF_From_Form(t *testing.T) {
 }
 
 func Test_CSRF_From_Query(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{KeyLookup: "query:_csrf"}))
@@ -163,6 +168,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 }
 
 func Test_CSRF_From_Param(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	csrfGroup := app.Group("/:csrf", New(Config{KeyLookup: "param:csrf"}))
@@ -199,6 +205,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 }
 
 func Test_CSRF_From_Cookie(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	csrfGroup := app.Group("/", New(Config{KeyLookup: "cookie:csrf"}))
@@ -237,6 +244,7 @@ func Test_CSRF_From_Cookie(t *testing.T) {
 }
 
 func Test_CSRF_From_Custom(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	extractor := func(c *fiber.Ctx) (string, error) {
@@ -281,6 +289,7 @@ func Test_CSRF_From_Custom(t *testing.T) {
 }
 
 func Test_CSRF_ErrorHandler_InvalidToken(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	errHandler := func(ctx *fiber.Ctx, err error) error {
@@ -312,6 +321,7 @@ func Test_CSRF_ErrorHandler_InvalidToken(t *testing.T) {
 }
 
 func Test_CSRF_ErrorHandler_EmptyToken(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	errHandler := func(ctx *fiber.Ctx, err error) error {
@@ -343,6 +353,7 @@ func Test_CSRF_ErrorHandler_EmptyToken(t *testing.T) {
 
 // TODO: use this test case and make the unsafe header value bug from https://github.com/gofiber/fiber/issues/2045 reproducible and permanently fixed/tested by this testcase
 //func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
+//  t.Parallel()
 //	app := fiber.New()
 //
 //	app.Use(New())

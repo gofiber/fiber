@@ -11,6 +11,7 @@ import (
 
 // go test -run Test_Skip
 func Test_Skip(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(skip.New(errTeapotHandler, func(*fiber.Ctx) bool { return true }))
@@ -23,6 +24,7 @@ func Test_Skip(t *testing.T) {
 
 // go test -run Test_SkipFalse
 func Test_SkipFalse(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(skip.New(errTeapotHandler, func(*fiber.Ctx) bool { return false }))
@@ -35,6 +37,7 @@ func Test_SkipFalse(t *testing.T) {
 
 // go test -run Test_SkipNilFunc
 func Test_SkipNilFunc(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(skip.New(errTeapotHandler, nil))

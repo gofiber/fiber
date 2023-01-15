@@ -728,3 +728,12 @@ const (
 	ConstraintDatetime        = "datetime"
 	ConstraintRegex           = "regex"
 )
+
+func IndexRune(str string, needle int32) bool {
+	for _, b := range str {
+		if b == needle {
+			return true
+		}
+	}
+	return false
+}

@@ -10,6 +10,7 @@ import (
 
 // go test -run Test_RequestID
 func Test_RequestID(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -36,6 +37,7 @@ func Test_RequestID(t *testing.T) {
 
 // go test -run Test_RequestID_Next
 func Test_RequestID_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
@@ -51,6 +53,7 @@ func Test_RequestID_Next(t *testing.T) {
 
 // go test -run Test_RequestID_Locals
 func Test_RequestID_Locals(t *testing.T) {
+	t.Parallel()
 	reqId := "ThisIsARequestId"
 	ctxKey := "ThisIsAContextKey"
 

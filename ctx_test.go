@@ -4,9 +4,6 @@
 
 package fiber
 
-// go test -v -run=^$ -bench=Benchmark_Ctx_Accepts -benchmem -count=4
-// go test -run Test_Ctx
-
 import (
 	"bufio"
 	"bytes"
@@ -453,6 +450,7 @@ func Test_Ctx_ParamParser(t *testing.T) {
 
 // go test -run Test_Ctx_BodyParser_WithSetParserDecoder
 func Test_Ctx_BodyParser_WithSetParserDecoder(t *testing.T) {
+	t.Parallel()
 	type CustomTime time.Time
 
 	timeConverter := func(value string) reflect.Value {
@@ -630,6 +628,7 @@ func Test_Ctx_UserContext(t *testing.T) {
 
 // go test -run Test_Ctx_SetUserContext
 func Test_Ctx_SetUserContext(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -643,6 +642,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 
 // go test -run Test_Ctx_UserContext_Multiple_Requests
 func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
+	t.Parallel()
 	testKey := struct{}{}
 	testValue := "foobar-value"
 
@@ -1564,6 +1564,7 @@ func Benchmark_Ctx_Is(b *testing.B) {
 
 // go test -run Test_Ctx_Locals
 func Test_Ctx_Locals(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use(func(c *Ctx) error {
 		c.Locals("john", "doe")
@@ -1955,6 +1956,7 @@ func Test_Ctx_Path(t *testing.T) {
 
 // go test -run Test_Ctx_Protocol
 func Test_Ctx_Protocol(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	freq := &fasthttp.RequestCtx{}
@@ -2691,6 +2693,7 @@ func Test_Ctx_Location(t *testing.T) {
 
 // go test -run Test_Ctx_Next
 func Test_Ctx_Next(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use("/", func(c *Ctx) error {
 		return c.Next()
@@ -2707,6 +2710,7 @@ func Test_Ctx_Next(t *testing.T) {
 
 // go test -run Test_Ctx_Next_Error
 func Test_Ctx_Next_Error(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use("/", func(c *Ctx) error {
 		c.Set("X-Next-Result", "Works")
@@ -2952,7 +2956,6 @@ func Test_Ctx_RenderWithBind(t *testing.T) {
 
 func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 
@@ -2975,7 +2978,6 @@ func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
 
 func Test_Ctx_RenderWithBindLocals(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{
 		PassLocalsToViews: true,
 	})
@@ -3154,6 +3156,7 @@ func Benchmark_Ctx_RenderBind(b *testing.B) {
 
 // go test -run Test_Ctx_RestartRouting
 func Test_Ctx_RestartRouting(t *testing.T) {
+	t.Parallel()
 	app := New()
 	calls := 0
 	app.Get("/", func(c *Ctx) error {
@@ -3171,6 +3174,7 @@ func Test_Ctx_RestartRouting(t *testing.T) {
 
 // go test -run Test_Ctx_RestartRoutingWithChangedPath
 func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
+	t.Parallel()
 	app := New()
 	executedOldHandler := false
 	executedNewHandler := false
@@ -3197,6 +3201,7 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 
 // go test -run Test_Ctx_RestartRoutingWithChangedPathAnd404
 func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Get("/new", func(c *Ctx) error {
 		return nil
@@ -3238,6 +3243,7 @@ func (t *testTemplateEngine) Load() error {
 
 // go test -run Test_Ctx_Render_Engine
 func Test_Ctx_Render_Engine(t *testing.T) {
+	t.Parallel()
 	engine := &testTemplateEngine{}
 	utils.AssertEqual(t, nil, engine.Load())
 	app := New()
@@ -3253,6 +3259,7 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 
 // go test -run Test_Ctx_Render_Engine_With_View_Layout
 func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
+	t.Parallel()
 	engine := &testTemplateEngine{}
 	utils.AssertEqual(t, nil, engine.Load())
 	app := New(Config{ViewsLayout: "main.tmpl"})
@@ -3307,7 +3314,10 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 
 // go test -run Test_Ctx_Get_Location_From_Route_name
 func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
+	t.Parallel()
+
 	t.Run("case insensitive", func(t *testing.T) {
+		t.Parallel()
 		app := New()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
@@ -3325,6 +3335,7 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 	})
 
 	t.Run("case sensitive", func(t *testing.T) {
+		t.Parallel()
 		app := New(Config{CaseSensitive: true})
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
@@ -3344,6 +3355,7 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 
 // go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy
 func Test_Ctx_Get_Location_From_Route_name_Optional_greedy(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -3362,6 +3374,7 @@ func Test_Ctx_Get_Location_From_Route_name_Optional_greedy(t *testing.T) {
 
 // go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param
 func Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -3387,6 +3400,7 @@ func (t errorTemplateEngine) Load() error { return nil }
 
 // go test -run Test_Ctx_Render_Engine_Error
 func Test_Ctx_Render_Engine_Error(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.config.Views = errorTemplateEngine{}
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -3398,7 +3412,6 @@ func Test_Ctx_Render_Engine_Error(t *testing.T) {
 // go test -run Test_Ctx_Render_Go_Template
 func Test_Ctx_Render_Go_Template(t *testing.T) {
 	t.Parallel()
-
 	file, err := os.CreateTemp(os.TempDir(), "fiber")
 	utils.AssertEqual(t, nil, err)
 	defer os.Remove(file.Name())
@@ -3806,6 +3819,7 @@ func Test_Ctx_QueryParser(t *testing.T) {
 
 // go test -run Test_Ctx_QueryParser_WithSetParserDecoder -v
 func Test_Ctx_QueryParser_WithSetParserDecoder(t *testing.T) {
+	t.Parallel()
 	type NonRFCTime time.Time
 
 	NonRFCConverter := func(value string) reflect.Value {
@@ -4033,6 +4047,7 @@ func Test_Ctx_ReqHeaderParser(t *testing.T) {
 
 // go test -run Test_Ctx_ReqHeaderParser_WithSetParserDecoder -v
 func Test_Ctx_ReqHeaderParser_WithSetParserDecoder(t *testing.T) {
+	t.Parallel()
 	type NonRFCTime time.Time
 
 	NonRFCConverter := func(value string) reflect.Value {
@@ -4174,6 +4189,7 @@ func Test_Ctx_ReqHeaderParser_Schema(t *testing.T) {
 }
 
 func Test_Ctx_EqualFieldType(t *testing.T) {
+	t.Parallel()
 	var out int
 	utils.AssertEqual(t, false, equalFieldType(&out, reflect.Int, "key"))
 
@@ -4310,7 +4326,6 @@ func Benchmark_Ctx_ReqHeaderParser(b *testing.B) {
 // go test -run Test_Ctx_BodyStreamWriter
 func Test_Ctx_BodyStreamWriter(t *testing.T) {
 	t.Parallel()
-
 	ctx := &fasthttp.RequestCtx{}
 
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
@@ -4361,7 +4376,6 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 
 func Test_Ctx_String(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -4371,8 +4385,8 @@ func Test_Ctx_String(t *testing.T) {
 
 func TestCtx_ParamsInt(t *testing.T) {
 	// Create a test context and set some strings (or params)
-
 	// create a fake app to be used within this test
+	t.Parallel()
 	app := New()
 
 	// Create some test endpoints
@@ -4472,6 +4486,7 @@ func TestCtx_ParamsInt(t *testing.T) {
 
 // go test -run Test_Ctx_GetRespHeader
 func Test_Ctx_GetRespHeader(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -4484,6 +4499,7 @@ func Test_Ctx_GetRespHeader(t *testing.T) {
 
 // go test -run Test_Ctx_GetRespHeaders
 func Test_Ctx_GetRespHeaders(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -4501,6 +4517,7 @@ func Test_Ctx_GetRespHeaders(t *testing.T) {
 
 // go test -run Test_Ctx_GetReqHeaders
 func Test_Ctx_GetReqHeaders(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)

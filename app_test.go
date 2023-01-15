@@ -51,6 +51,7 @@ func testErrorResponse(t *testing.T, err error, resp *http.Response, expectedBod
 }
 
 func Test_App_MethodNotAllowed(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Use(func(c *Ctx) error {
@@ -100,6 +101,7 @@ func Test_App_MethodNotAllowed(t *testing.T) {
 }
 
 func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Use(func(c *Ctx) error {
@@ -124,6 +126,7 @@ func Test_App_Custom_Middleware_404_Should_Not_SetMethodNotAllowed(t *testing.T)
 }
 
 func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
+	t.Parallel()
 	expectedError := regexp.MustCompile(
 		`error when reading request headers: small read buffer\. Increase ReadBufferSize\. Buffer size=4096, contents: "GET / HTTP/1.1\\r\\nHost: example\.com\\r\\nVery-Long-Header: -+`,
 	)
@@ -151,6 +154,7 @@ func Test_App_ServerErrorHandler_SmallReadBuffer(t *testing.T) {
 }
 
 func Test_App_Errors(t *testing.T) {
+	t.Parallel()
 	app := New(Config{
 		BodyLimit: 4,
 	})
@@ -174,6 +178,7 @@ func Test_App_Errors(t *testing.T) {
 }
 
 func Test_App_ErrorHandler_Custom(t *testing.T) {
+	t.Parallel()
 	app := New(Config{
 		ErrorHandler: func(c *Ctx, err error) error {
 			return c.Status(200).SendString("hi, i'm an custom error")
@@ -194,6 +199,7 @@ func Test_App_ErrorHandler_Custom(t *testing.T) {
 }
 
 func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
+	t.Parallel()
 	app := New(Config{
 		ErrorHandler: func(c *Ctx, err error) error {
 			utils.AssertEqual(t, "1: USE error", err.Error())
@@ -223,6 +229,7 @@ func Test_App_ErrorHandler_HandlerStack(t *testing.T) {
 }
 
 func Test_App_ErrorHandler_RouteStack(t *testing.T) {
+	t.Parallel()
 	app := New(Config{
 		ErrorHandler: func(c *Ctx, err error) error {
 			utils.AssertEqual(t, "1: USE error", err.Error())
@@ -248,6 +255,7 @@ func Test_App_ErrorHandler_RouteStack(t *testing.T) {
 }
 
 func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
+	t.Parallel()
 	app := New()
 	msg := "test err"
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
@@ -258,6 +266,7 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 }
 
 func Test_App_Nested_Params(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) error {
@@ -281,6 +290,7 @@ func Test_App_Nested_Params(t *testing.T) {
 }
 
 func Test_App_Use_Params(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Use("/prefix/:param", func(c *Ctx) error {
@@ -323,6 +333,7 @@ func Test_App_Use_Params(t *testing.T) {
 }
 
 func Test_App_Use_UnescapedPath(t *testing.T) {
+	t.Parallel()
 	app := New(Config{UnescapePath: true, CaseSensitive: true})
 
 	app.Use("/cRéeR/:param", func(c *Ctx) error {
@@ -351,6 +362,7 @@ func Test_App_Use_UnescapedPath(t *testing.T) {
 }
 
 func Test_App_Use_CaseSensitive(t *testing.T) {
+	t.Parallel()
 	app := New(Config{CaseSensitive: true})
 
 	app.Use("/abc", func(c *Ctx) error {
@@ -381,6 +393,7 @@ func Test_App_Use_CaseSensitive(t *testing.T) {
 }
 
 func Test_App_Not_Use_StrictRouting(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Use("/abc", func(c *Ctx) error {
@@ -414,6 +427,7 @@ func Test_App_Not_Use_StrictRouting(t *testing.T) {
 }
 
 func Test_App_Use_MultiplePrefix(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Use([]string{"/john", "/doe"}, func(c *Ctx) error {
@@ -460,6 +474,7 @@ func Test_App_Use_MultiplePrefix(t *testing.T) {
 }
 
 func Test_App_Use_StrictRouting(t *testing.T) {
+	t.Parallel()
 	app := New(Config{StrictRouting: true})
 
 	app.Get("/abc", func(c *Ctx) error {
@@ -493,6 +508,7 @@ func Test_App_Use_StrictRouting(t *testing.T) {
 }
 
 func Test_App_Add_Method_Test(t *testing.T) {
+	t.Parallel()
 	defer func() {
 		if err := recover(); err != nil {
 			utils.AssertEqual(t, "add: invalid http method JANE\n", fmt.Sprintf("%v", err))
@@ -523,6 +539,7 @@ func Test_App_Add_Method_Test(t *testing.T) {
 
 // go test -run Test_App_GETOnly
 func Test_App_GETOnly(t *testing.T) {
+	t.Parallel()
 	app := New(Config{
 		GETOnly: true,
 	})
@@ -538,6 +555,7 @@ func Test_App_GETOnly(t *testing.T) {
 }
 
 func Test_App_Use_Params_Group(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	group := app.Group("/prefix/:param/*")
@@ -556,6 +574,7 @@ func Test_App_Use_Params_Group(t *testing.T) {
 }
 
 func Test_App_Chaining(t *testing.T) {
+	t.Parallel()
 	n := func(c *Ctx) error {
 		return c.Next()
 	}
@@ -584,6 +603,7 @@ func Test_App_Chaining(t *testing.T) {
 }
 
 func Test_App_Order(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Get("/test", func(c *Ctx) error {
@@ -616,6 +636,7 @@ func Test_App_Order(t *testing.T) {
 }
 
 func Test_App_Methods(t *testing.T) {
+	t.Parallel()
 	dummyHandler := testEmptyHandler
 
 	app := New()
@@ -655,6 +676,7 @@ func Test_App_Methods(t *testing.T) {
 }
 
 func Test_App_Route_Naming(t *testing.T) {
+	t.Parallel()
 	app := New()
 	handler := func(c *Ctx) error {
 		return c.SendStatus(StatusOK)
@@ -685,6 +707,7 @@ func Test_App_Route_Naming(t *testing.T) {
 }
 
 func Test_App_New(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Get("/", testEmptyHandler)
 
@@ -695,6 +718,7 @@ func Test_App_New(t *testing.T) {
 }
 
 func Test_App_Config(t *testing.T) {
+	t.Parallel()
 	app := New(Config{
 		DisableStartupMessage: true,
 	})
@@ -702,7 +726,9 @@ func Test_App_Config(t *testing.T) {
 }
 
 func Test_App_Shutdown(t *testing.T) {
+	t.Parallel()
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		app := New(Config{
 			DisableStartupMessage: true,
 		})
@@ -710,6 +736,7 @@ func Test_App_Shutdown(t *testing.T) {
 	})
 
 	t.Run("no server", func(t *testing.T) {
+		t.Parallel()
 		app := &App{}
 		if err := app.Shutdown(); err != nil {
 			if err.Error() != "shutdown: server is not running" {
@@ -720,6 +747,7 @@ func Test_App_Shutdown(t *testing.T) {
 }
 
 func Test_App_ShutdownWithTimeout(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Get("/", func(ctx *Ctx) error {
 		time.Sleep(5 * time.Second)
@@ -760,6 +788,7 @@ func Test_App_ShutdownWithTimeout(t *testing.T) {
 
 // go test -run Test_App_Static_Index_Default
 func Test_App_Static_Index_Default(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/prefix", "./.github/workflows")
@@ -789,6 +818,7 @@ func Test_App_Static_Index_Default(t *testing.T) {
 
 // go test -run Test_App_Static_Index
 func Test_App_Static_Direct(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/", "./.github")
@@ -817,6 +847,7 @@ func Test_App_Static_Direct(t *testing.T) {
 
 // go test -run Test_App_Static_MaxAge
 func Test_App_Static_MaxAge(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/", "./.github", Static{MaxAge: 100})
@@ -831,6 +862,7 @@ func Test_App_Static_MaxAge(t *testing.T) {
 
 // go test -run Test_App_Static_Custom_CacheControl
 func Test_App_Static_Custom_CacheControl(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/", "./.github", Static{ModifyResponse: func(c *Ctx) error {
@@ -851,6 +883,7 @@ func Test_App_Static_Custom_CacheControl(t *testing.T) {
 
 // go test -run Test_App_Static_Download
 func Test_App_Static_Download(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
@@ -867,6 +900,7 @@ func Test_App_Static_Download(t *testing.T) {
 
 // go test -run Test_App_Static_Group
 func Test_App_Static_Group(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	grp := app.Group("/v1", func(c *Ctx) error {
@@ -896,6 +930,7 @@ func Test_App_Static_Group(t *testing.T) {
 }
 
 func Test_App_Static_Wildcard(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("*", "./.github/index.html")
@@ -913,6 +948,7 @@ func Test_App_Static_Wildcard(t *testing.T) {
 }
 
 func Test_App_Static_Prefix_Wildcard(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Static("/test/*", "./.github/index.html")
@@ -938,6 +974,7 @@ func Test_App_Static_Prefix_Wildcard(t *testing.T) {
 }
 
 func Test_App_Static_Prefix(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Static("/john", "./.github")
 
@@ -968,6 +1005,7 @@ func Test_App_Static_Prefix(t *testing.T) {
 }
 
 func Test_App_Static_Trailing_Slash(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Static("/john", "./.github")
 
@@ -1014,6 +1052,7 @@ func Test_App_Static_Trailing_Slash(t *testing.T) {
 }
 
 func Test_App_Static_Next(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Static("/", ".github", Static{
 		Next: func(c *Ctx) bool {
@@ -1027,6 +1066,7 @@ func Test_App_Static_Next(t *testing.T) {
 	})
 
 	t.Run("app.Static is skipped: invoking Get handler", func(t *testing.T) {
+		t.Parallel()
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Header.Set("X-Custom-Header", "skip")
 		resp, err := app.Test(req)
@@ -1041,6 +1081,7 @@ func Test_App_Static_Next(t *testing.T) {
 	})
 
 	t.Run("app.Static is not skipped: serving index.html", func(t *testing.T) {
+		t.Parallel()
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Header.Set("X-Custom-Header", "don't skip")
 		resp, err := app.Test(req)
@@ -1057,6 +1098,7 @@ func Test_App_Static_Next(t *testing.T) {
 
 // go test -run Test_App_Mixed_Routes_WithSameLen
 func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	// middleware
@@ -1100,6 +1142,7 @@ func Test_App_Mixed_Routes_WithSameLen(t *testing.T) {
 }
 
 func Test_App_Group_Invalid(t *testing.T) {
+	t.Parallel()
 	defer func() {
 		if err := recover(); err != nil {
 			utils.AssertEqual(t, "use: invalid handler int\n", fmt.Sprintf("%v", err))
@@ -1109,6 +1152,7 @@ func Test_App_Group_Invalid(t *testing.T) {
 }
 
 func Test_App_Group(t *testing.T) {
+	t.Parallel()
 	dummyHandler := testEmptyHandler
 
 	app := New()
@@ -1169,6 +1213,7 @@ func Test_App_Group(t *testing.T) {
 }
 
 func Test_App_Route(t *testing.T) {
+	t.Parallel()
 	dummyHandler := testEmptyHandler
 
 	app := New()
@@ -1218,6 +1263,7 @@ func Test_App_Route(t *testing.T) {
 }
 
 func Test_App_Deep_Group(t *testing.T) {
+	t.Parallel()
 	runThroughCount := 0
 	dummyHandler := func(c *Ctx) error {
 		runThroughCount++
@@ -1238,6 +1284,7 @@ func Test_App_Deep_Group(t *testing.T) {
 
 // go test -run Test_App_Next_Method
 func Test_App_Next_Method(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.config.DisableStartupMessage = true
 
@@ -1289,6 +1336,7 @@ func Benchmark_App_ETag_Weak(b *testing.B) {
 
 // go test -run Test_NewError
 func Test_NewError(t *testing.T) {
+	t.Parallel()
 	err := NewError(StatusForbidden, "permission denied")
 	utils.AssertEqual(t, StatusForbidden, err.Code)
 	utils.AssertEqual(t, "permission denied", err.Message)
@@ -1296,6 +1344,7 @@ func Test_NewError(t *testing.T) {
 
 // go test -run Test_Test_Timeout
 func Test_Test_Timeout(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.config.DisableStartupMessage = true
 
@@ -1322,6 +1371,7 @@ func (errorReader) Read([]byte) (int, error) {
 
 // go test -run Test_Test_DumpError
 func Test_Test_DumpError(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.config.DisableStartupMessage = true
 
@@ -1334,6 +1384,7 @@ func Test_Test_DumpError(t *testing.T) {
 
 // go test -run Test_App_Handler
 func Test_App_Handler(t *testing.T) {
+	t.Parallel()
 	h := New().Handler()
 	utils.AssertEqual(t, "fasthttp.RequestHandler", reflect.TypeOf(h).String())
 }
@@ -1346,6 +1397,7 @@ func (i invalidView) Render(io.Writer, string, interface{}, ...string) error { p
 
 // go test -run Test_App_Init_Error_View
 func Test_App_Init_Error_View(t *testing.T) {
+	t.Parallel()
 	app := New(Config{Views: invalidView{}})
 
 	defer func() {
@@ -1358,6 +1410,7 @@ func Test_App_Init_Error_View(t *testing.T) {
 
 // go test -run Test_App_Stack
 func Test_App_Stack(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Use("/path0", testEmptyHandler)
@@ -1381,6 +1434,7 @@ func Test_App_Stack(t *testing.T) {
 
 // go test -run Test_App_HandlersCount
 func Test_App_HandlersCount(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	app.Use("/path0", testEmptyHandler)
@@ -1393,6 +1447,7 @@ func Test_App_HandlersCount(t *testing.T) {
 
 // go test -run Test_App_ReadTimeout
 func Test_App_ReadTimeout(t *testing.T) {
+	t.Parallel()
 	app := New(Config{
 		ReadTimeout:           time.Nanosecond,
 		IdleTimeout:           time.Minute,
@@ -1432,6 +1487,7 @@ func Test_App_ReadTimeout(t *testing.T) {
 
 // go test -run Test_App_BadRequest
 func Test_App_BadRequest(t *testing.T) {
+	t.Parallel()
 	app := New(Config{
 		DisableStartupMessage: true,
 	})
@@ -1467,6 +1523,7 @@ func Test_App_BadRequest(t *testing.T) {
 
 // go test -run Test_App_SmallReadBuffer
 func Test_App_SmallReadBuffer(t *testing.T) {
+	t.Parallel()
 	app := New(Config{
 		ReadBufferSize:        1,
 		DisableStartupMessage: true,
@@ -1490,12 +1547,14 @@ func Test_App_SmallReadBuffer(t *testing.T) {
 }
 
 func Test_App_Server(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	utils.AssertEqual(t, false, app.Server() == nil)
 }
 
 func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
 		return errors.New("fake error")
@@ -1509,6 +1568,7 @@ func Test_App_Error_In_Fasthttp_Server(t *testing.T) {
 
 // go test -race -run Test_App_New_Test_Parallel
 func Test_App_New_Test_Parallel(t *testing.T) {
+	t.Parallel()
 	t.Run("Test_App_New_Test_Parallel_1", func(t *testing.T) {
 		t.Parallel()
 		app := New(Config{Immutable: true})
@@ -1524,6 +1584,7 @@ func Test_App_New_Test_Parallel(t *testing.T) {
 }
 
 func Test_App_ReadBodyStream(t *testing.T) {
+	t.Parallel()
 	app := New(Config{StreamRequestBody: true})
 	app.Post("/", func(c *Ctx) error {
 		// Calling c.Body() automatically reads the entire stream.
@@ -1538,6 +1599,7 @@ func Test_App_ReadBodyStream(t *testing.T) {
 }
 
 func Test_App_DisablePreParseMultipartForm(t *testing.T) {
+	t.Parallel()
 	// Must be used with both otherwise there is no point.
 	testString := "this is a test"
 
@@ -1585,6 +1647,7 @@ func Test_App_DisablePreParseMultipartForm(t *testing.T) {
 }
 
 func Test_App_Test_no_timeout_infinitely(t *testing.T) {
+	t.Parallel()
 	var err error
 	c := make(chan int)
 
@@ -1617,6 +1680,7 @@ func Test_App_Test_no_timeout_infinitely(t *testing.T) {
 }
 
 func Test_App_SetTLSHandler(t *testing.T) {
+	t.Parallel()
 	tlsHandler := &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
 		ServerName: "example.golang",
 	}}
@@ -1631,6 +1695,7 @@ func Test_App_SetTLSHandler(t *testing.T) {
 }
 
 func Test_App_AddCustomRequestMethod(t *testing.T) {
+	t.Parallel()
 	methods := append(DefaultMethods, "TEST")
 	app := New(Config{
 		RequestMethods: methods,
@@ -1644,6 +1709,7 @@ func Test_App_AddCustomRequestMethod(t *testing.T) {
 }
 
 func TestApp_GetRoutes(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use(func(c *Ctx) error {
 		return c.Next()

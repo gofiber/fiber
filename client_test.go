@@ -256,6 +256,7 @@ func Test_Client_UserAgent(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("default", func(t *testing.T) {
+		t.Parallel()
 		for i := 0; i < 5; i++ {
 			a := Get("http://example.com")
 
@@ -270,6 +271,7 @@ func Test_Client_UserAgent(t *testing.T) {
 	})
 
 	t.Run("custom", func(t *testing.T) {
+		t.Parallel()
 		for i := 0; i < 5; i++ {
 			c := AcquireClient()
 			c.UserAgent = "ua"
@@ -289,6 +291,7 @@ func Test_Client_UserAgent(t *testing.T) {
 }
 
 func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
@@ -314,6 +317,7 @@ func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
 }
 
 func Test_Client_Agent_Connection_Close(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		if c.Request().Header.ConnectionClose() {
 			return c.SendString("close")
@@ -329,6 +333,7 @@ func Test_Client_Agent_Connection_Close(t *testing.T) {
 }
 
 func Test_Client_Agent_UserAgent(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Header.UserAgent())
 	}
@@ -342,6 +347,7 @@ func Test_Client_Agent_UserAgent(t *testing.T) {
 }
 
 func Test_Client_Agent_Cookie(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.SendString(
 			c.Cookies("k1") + c.Cookies("k2") + c.Cookies("k3") + c.Cookies("k4"))
@@ -359,6 +365,7 @@ func Test_Client_Agent_Cookie(t *testing.T) {
 }
 
 func Test_Client_Agent_Referer(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Header.Referer())
 	}
@@ -372,6 +379,7 @@ func Test_Client_Agent_Referer(t *testing.T) {
 }
 
 func Test_Client_Agent_ContentType(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Header.ContentType())
 	}
@@ -413,6 +421,7 @@ func Test_Client_Agent_Host(t *testing.T) {
 }
 
 func Test_Client_Agent_QueryString(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().URI().QueryString())
 	}
@@ -426,6 +435,7 @@ func Test_Client_Agent_QueryString(t *testing.T) {
 }
 
 func Test_Client_Agent_BasicAuth(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		// Get authorization header
 		auth := c.Get(HeaderAuthorization)
@@ -445,6 +455,7 @@ func Test_Client_Agent_BasicAuth(t *testing.T) {
 }
 
 func Test_Client_Agent_BodyString(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Body())
 	}
@@ -457,6 +468,7 @@ func Test_Client_Agent_BodyString(t *testing.T) {
 }
 
 func Test_Client_Agent_Body(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Body())
 	}
@@ -469,6 +481,7 @@ func Test_Client_Agent_Body(t *testing.T) {
 }
 
 func Test_Client_Agent_BodyStream(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.Send(c.Request().Body())
 	}
@@ -531,6 +544,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("small dest", func(t *testing.T) {
+		t.Parallel()
 		dest := []byte("de")
 
 		a := Get("http://example.com")
@@ -546,6 +560,7 @@ func Test_Client_Agent_Dest(t *testing.T) {
 	})
 
 	t.Run("enough dest", func(t *testing.T) {
+		t.Parallel()
 		dest := []byte("foobar")
 
 		a := Get("http://example.com")
@@ -622,6 +637,7 @@ func Test_Client_Agent_RetryIf(t *testing.T) {
 }
 
 func Test_Client_Agent_Json(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationJSON, string(c.Request().Header.ContentType()))
 
@@ -636,6 +652,7 @@ func Test_Client_Agent_Json(t *testing.T) {
 }
 
 func Test_Client_Agent_Json_Error(t *testing.T) {
+	t.Parallel()
 	a := Get("http://example.com").
 		JSONEncoder(json.Marshal).
 		JSON(complex(1, 1))
@@ -648,6 +665,7 @@ func Test_Client_Agent_Json_Error(t *testing.T) {
 }
 
 func Test_Client_Agent_XML(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationXML, string(c.Request().Header.ContentType()))
 
@@ -662,6 +680,7 @@ func Test_Client_Agent_XML(t *testing.T) {
 }
 
 func Test_Client_Agent_XML_Error(t *testing.T) {
+	t.Parallel()
 	a := Get("http://example.com").
 		XML(complex(1, 1))
 
@@ -673,6 +692,7 @@ func Test_Client_Agent_XML_Error(t *testing.T) {
 }
 
 func Test_Client_Agent_Form(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		utils.AssertEqual(t, MIMEApplicationForm, string(c.Request().Header.ContentType()))
 
@@ -856,6 +876,7 @@ func Test_Client_Agent_SendFile_Error(t *testing.T) {
 }
 
 func Test_Client_Debug(t *testing.T) {
+	t.Parallel()
 	handler := func(c *Ctx) error {
 		return c.SendString("debug")
 	}
@@ -1016,6 +1037,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
 
 	t.Run("success", func(t *testing.T) {
+		t.Parallel()
 		a := Get("http://example.com?foo").
 			MaxRedirectsCount(1)
 
@@ -1029,6 +1051,7 @@ func Test_Client_Agent_MaxRedirectsCount(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
+		t.Parallel()
 		a := Get("http://example.com").
 			MaxRedirectsCount(1)
 
@@ -1093,6 +1116,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
+		t.Parallel()
 		a := Get("http://example.com/error")
 
 		a.HostClient.Dial = func(addr string) (net.Conn, error) { return ln.Dial() }
@@ -1108,6 +1132,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 	})
 
 	t.Run("nil jsonDecoder", func(t *testing.T) {
+		t.Parallel()
 		a := AcquireAgent()
 		defer ReleaseAgent(a)
 		defer a.ConnectionClose()
@@ -1135,7 +1160,7 @@ func Test_Client_Agent_Parse(t *testing.T) {
 }
 
 func testAgent(t *testing.T, handler Handler, wrapAgent func(agent *Agent), excepted string, count ...int) {
-	t.Parallel()
+	t.Helper()
 
 	ln := fasthttputil.NewInmemoryListener()
 

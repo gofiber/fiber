@@ -22,6 +22,7 @@ import (
 
 // go test -run Test_App_Listen
 func Test_App_Listen(t *testing.T) {
+	t.Parallel()
 	app := New(Config{DisableStartupMessage: true})
 
 	utils.AssertEqual(t, false, app.Listen(":99999") == nil)
@@ -36,6 +37,7 @@ func Test_App_Listen(t *testing.T) {
 
 // go test -run Test_App_Listen_Prefork
 func Test_App_Listen_Prefork(t *testing.T) {
+	t.Parallel()
 	testPreforkMaster = true
 
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
@@ -45,6 +47,7 @@ func Test_App_Listen_Prefork(t *testing.T) {
 
 // go test -run Test_App_ListenTLS
 func Test_App_ListenTLS(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	// invalid port
@@ -62,6 +65,7 @@ func Test_App_ListenTLS(t *testing.T) {
 
 // go test -run Test_App_ListenTLS_Prefork
 func Test_App_ListenTLS_Prefork(t *testing.T) {
+	t.Parallel()
 	testPreforkMaster = true
 
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
@@ -74,6 +78,7 @@ func Test_App_ListenTLS_Prefork(t *testing.T) {
 
 // go test -run Test_App_ListenMutualTLS
 func Test_App_ListenMutualTLS(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	// invalid port
@@ -91,6 +96,7 @@ func Test_App_ListenMutualTLS(t *testing.T) {
 
 // go test -run Test_App_ListenMutualTLS_Prefork
 func Test_App_ListenMutualTLS_Prefork(t *testing.T) {
+	t.Parallel()
 	testPreforkMaster = true
 
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
@@ -103,6 +109,7 @@ func Test_App_ListenMutualTLS_Prefork(t *testing.T) {
 
 // go test -run Test_App_Listener
 func Test_App_Listener(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	go func() {
@@ -115,6 +122,7 @@ func Test_App_Listener(t *testing.T) {
 }
 
 func Test_App_Listener_TLS_Listener(t *testing.T) {
+	t.Parallel()
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
@@ -172,6 +180,7 @@ func captureOutput(f func()) string {
 }
 
 func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
+	t.Parallel()
 	startupMessage := captureOutput(func() {
 		New(Config{Prefork: true}).
 			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
@@ -185,6 +194,7 @@ func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 }
 
 func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
+	t.Parallel()
 	app := New(Config{Prefork: true, AppName: "Test App v1.0.1"})
 	startupMessage := captureOutput(func() {
 		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
@@ -195,6 +205,7 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 }
 
 func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.T) {
+	t.Parallel()
 	appName := "Serveur de vérification des données"
 	app := New(Config{Prefork: true, AppName: appName})
 	startupMessage := captureOutput(func() {
@@ -205,6 +216,7 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.
 }
 
 func Test_App_print_Route(t *testing.T) {
+	t.Parallel()
 	app := New(Config{EnablePrintRoutes: true})
 	app.Get("/", emptyHandler).Name("routeName")
 	printRoutesMessage := captureOutput(func() {
@@ -218,6 +230,7 @@ func Test_App_print_Route(t *testing.T) {
 }
 
 func Test_App_print_Route_with_group(t *testing.T) {
+	t.Parallel()
 	app := New(Config{EnablePrintRoutes: true})
 	app.Get("/", emptyHandler)
 

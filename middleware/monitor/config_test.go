@@ -12,6 +12,7 @@ func Test_Config_Default(t *testing.T) {
 	t.Parallel()
 
 	t.Run("use default", func(t *testing.T) {
+		t.Parallel()
 		cfg := configDefault()
 
 		utils.AssertEqual(t, defaultTitle, cfg.Title)
@@ -25,6 +26,7 @@ func Test_Config_Default(t *testing.T) {
 	})
 
 	t.Run("set title", func(t *testing.T) {
+		t.Parallel()
 		title := "title"
 		cfg := configDefault(Config{
 			Title: title,
@@ -41,6 +43,7 @@ func Test_Config_Default(t *testing.T) {
 	})
 
 	t.Run("set refresh less than default", func(t *testing.T) {
+		t.Parallel()
 		cfg := configDefault(Config{
 			Refresh: 100 * time.Millisecond,
 		})
@@ -56,6 +59,7 @@ func Test_Config_Default(t *testing.T) {
 	})
 
 	t.Run("set refresh", func(t *testing.T) {
+		t.Parallel()
 		refresh := time.Second
 		cfg := configDefault(Config{
 			Refresh: refresh,
@@ -72,6 +76,7 @@ func Test_Config_Default(t *testing.T) {
 	})
 
 	t.Run("set font url", func(t *testing.T) {
+		t.Parallel()
 		fontUrl := "https://example.com"
 		cfg := configDefault(Config{
 			FontURL: fontUrl,
@@ -88,6 +93,7 @@ func Test_Config_Default(t *testing.T) {
 	})
 
 	t.Run("set chart js url", func(t *testing.T) {
+		t.Parallel()
 		chartUrl := "http://example.com"
 		cfg := configDefault(Config{
 			ChartJsURL: chartUrl,
@@ -104,6 +110,7 @@ func Test_Config_Default(t *testing.T) {
 	})
 
 	t.Run("set custom head", func(t *testing.T) {
+		t.Parallel()
 		head := "head"
 		cfg := configDefault(Config{
 			CustomHead: head,
@@ -120,6 +127,7 @@ func Test_Config_Default(t *testing.T) {
 	})
 
 	t.Run("set api only", func(t *testing.T) {
+		t.Parallel()
 		cfg := configDefault(Config{
 			APIOnly: true,
 		})
@@ -135,6 +143,7 @@ func Test_Config_Default(t *testing.T) {
 	})
 
 	t.Run("set next", func(t *testing.T) {
+		t.Parallel()
 		f := func(c *fiber.Ctx) bool {
 			return true
 		}

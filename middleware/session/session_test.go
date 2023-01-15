@@ -442,6 +442,7 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 // go test -run Test_Session_Regenerate
 // Regression: https://github.com/gofiber/fiber/issues/1395
 func Test_Session_Regenerate(t *testing.T) {
+	t.Parallel()
 	// fiber instance
 	app := fiber.New()
 	t.Run("set fresh to be true when regenerating a session", func(t *testing.T) {

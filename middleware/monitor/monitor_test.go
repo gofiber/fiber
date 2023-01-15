@@ -174,7 +174,7 @@ func Test_Monitor_Next(t *testing.T) {
 
 // go test -run Test_Monitor_APIOnly -race
 func Test_Monitor_APIOnly(t *testing.T) {
-	//t.Parallel()
+	t.Parallel()
 
 	app := fiber.New()
 

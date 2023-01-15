@@ -10,6 +10,7 @@ import (
 // go test -run Test_Memory -v -race
 
 func Test_Memory(t *testing.T) {
+	t.Parallel()
 	var store = New()
 	var (
 		key             = "john"

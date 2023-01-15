@@ -15,6 +15,7 @@ import (
 )
 
 func Test_App_Prefork_Child_Process(t *testing.T) {
+	t.Parallel()
 	// Reset test var
 	testPreforkMaster = true
 
@@ -49,6 +50,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 }
 
 func Test_App_Prefork_Master_Process(t *testing.T) {
+	t.Parallel()
 	// Reset test var
 	testPreforkMaster = true
 
@@ -68,6 +70,7 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
+	t.Parallel()
 	setupIsChild(t)
 	defer teardownIsChild(t)
 

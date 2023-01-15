@@ -14,6 +14,7 @@ import (
 
 // go test -run Test_Timeout
 func Test_Timeout(t *testing.T) {
+	t.Parallel()
 	// fiber instance
 	app := fiber.New()
 	h := New(func(c *fiber.Ctx) error {
@@ -44,6 +45,7 @@ var ErrFooTimeOut = errors.New("foo context canceled")
 
 // go test -run Test_TimeoutWithCustomError
 func Test_TimeoutWithCustomError(t *testing.T) {
+	t.Parallel()
 	// fiber instance
 	app := fiber.New()
 	h := New(func(c *fiber.Ctx) error {

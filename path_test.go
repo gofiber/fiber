@@ -14,6 +14,7 @@ import (
 
 // go test -race -run Test_Path_parseRoute
 func Test_Path_parseRoute(t *testing.T) {
+	t.Parallel()
 	var rp routeParser
 
 	rp = parseRoute("/shop/product/::filter/color::color/size::size")
