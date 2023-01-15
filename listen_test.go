@@ -37,7 +37,6 @@ func Test_App_Listen(t *testing.T) {
 
 // go test -run Test_App_Listen_Prefork
 func Test_App_Listen_Prefork(t *testing.T) {
-	t.Parallel()
 	testPreforkMaster = true
 
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
@@ -65,7 +64,6 @@ func Test_App_ListenTLS(t *testing.T) {
 
 // go test -run Test_App_ListenTLS_Prefork
 func Test_App_ListenTLS_Prefork(t *testing.T) {
-	t.Parallel()
 	testPreforkMaster = true
 
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
@@ -96,7 +94,6 @@ func Test_App_ListenMutualTLS(t *testing.T) {
 
 // go test -run Test_App_ListenMutualTLS_Prefork
 func Test_App_ListenMutualTLS_Prefork(t *testing.T) {
-	t.Parallel()
 	testPreforkMaster = true
 
 	app := New(Config{DisableStartupMessage: true, Prefork: true})
