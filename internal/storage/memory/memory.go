@@ -3,6 +3,7 @@
 package memory
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -44,7 +45,7 @@ func New(config ...Config) *Storage {
 }
 
 // Get value by key
-func (s *Storage) Get(key string) ([]byte, error) {
+func (s *Storage) Get(_ context.Context, key string) ([]byte, error) {
 	if len(key) <= 0 {
 		return nil, nil
 	}
@@ -59,7 +60,7 @@ func (s *Storage) Get(key string) ([]byte, error) {
 }
 
 // Set key with value
-func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
+func (s *Storage) Set(_ context.Context, key string, val []byte, exp time.Duration) error {
 	// Ain't Nobody Got Time For That
 	if len(key) <= 0 || len(val) <= 0 {
 		return nil
@@ -78,7 +79,7 @@ func (s *Storage) Set(key string, val []byte, exp time.Duration) error {
 }
 
 // Delete key by key
-func (s *Storage) Delete(key string) error {
+func (s *Storage) Delete(_ context.Context, key string) error {
 	// Ain't Nobody Got Time For That
 	if len(key) <= 0 {
 		return nil
@@ -90,7 +91,7 @@ func (s *Storage) Delete(key string) error {
 }
 
 // Reset all keys
-func (s *Storage) Reset() error {
+func (s *Storage) Reset(_ context.Context) error {
 	ndb := make(map[string]entry)
 	s.mux.Lock()
 	s.db = ndb
@@ -99,7 +100,7 @@ func (s *Storage) Reset() error {
 }
 
 // Close the memory storage
-func (s *Storage) Close() error {
+func (s *Storage) Close(_ context.Context) error {
 	s.done <- struct{}{}
 	return nil
 }
@@ -137,7 +138,7 @@ func (s *Storage) gc() {
 	}
 }
 
-// Return database client
+// Conn Return database client
 func (s *Storage) Conn() map[string]entry {
 	return s.db
 }

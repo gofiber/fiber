@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/gob"
 	"sync"
 
@@ -65,7 +66,7 @@ func (s *Store) Get(c *fiber.Ctx) (*Session, error) {
 
 	// Fetch existing data
 	if loadData {
-		raw, err := s.Storage.Get(id)
+		raw, err := s.Storage.Get(c.Context(), id)
 		// Unmarshal if we found data
 		if raw != nil && err == nil {
 			mux.Lock()
@@ -135,6 +136,6 @@ func (s *Store) responseCookies(c *fiber.Ctx) (string, error) {
 }
 
 // Reset will delete all session from the storage
-func (s *Store) Reset() error {
-	return s.Storage.Reset()
+func (s *Store) Reset(ctx context.Context) error {
+	return s.Storage.Reset(ctx)
 }

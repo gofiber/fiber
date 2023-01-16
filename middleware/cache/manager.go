@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -69,57 +70,57 @@ func (m *manager) release(e *item) {
 }
 
 // get data from storage or memory
-func (m *manager) get(key string) (it *item) {
+func (m *manager) get(ctx context.Context, key string) (it *item) {
 	if m.storage != nil {
 		it = m.acquire()
-		if raw, _ := m.storage.Get(key); raw != nil {
+		if raw, _ := m.storage.Get(ctx, key); raw != nil {
 			if _, err := it.UnmarshalMsg(raw); err != nil {
 				return
 			}
 		}
 		return
 	}
-	if it, _ = m.memory.Get(key).(*item); it == nil {
+	if it, _ = m.memory.Get(ctx, key).(*item); it == nil {
 		it = m.acquire()
 	}
 	return
 }
 
 // get raw data from storage or memory
-func (m *manager) getRaw(key string) (raw []byte) {
+func (m *manager) getRaw(ctx context.Context, key string) (raw []byte) {
 	if m.storage != nil {
-		raw, _ = m.storage.Get(key)
+		raw, _ = m.storage.Get(ctx, key)
 	} else {
-		raw, _ = m.memory.Get(key).([]byte)
+		raw, _ = m.memory.Get(ctx, key).([]byte)
 	}
 	return
 }
 
 // set data to storage or memory
-func (m *manager) set(key string, it *item, exp time.Duration) {
+func (m *manager) set(ctx context.Context, key string, it *item, exp time.Duration) {
 	if m.storage != nil {
 		if raw, err := it.MarshalMsg(nil); err == nil {
-			_ = m.storage.Set(key, raw, exp)
+			_ = m.storage.Set(ctx, key, raw, exp)
 		}
 	} else {
-		m.memory.Set(key, it, exp)
+		m.memory.Set(ctx, key, it, exp)
 	}
 }
 
 // set data to storage or memory
-func (m *manager) setRaw(key string, raw []byte, exp time.Duration) {
+func (m *manager) setRaw(ctx context.Context, key string, raw []byte, exp time.Duration) {
 	if m.storage != nil {
-		_ = m.storage.Set(key, raw, exp)
+		_ = m.storage.Set(ctx, key, raw, exp)
 	} else {
-		m.memory.Set(key, raw, exp)
+		m.memory.Set(ctx, key, raw, exp)
 	}
 }
 
 // delete data from storage or memory
-func (m *manager) delete(key string) {
+func (m *manager) delete(ctx context.Context, key string) {
 	if m.storage != nil {
-		_ = m.storage.Delete(key)
+		_ = m.storage.Delete(ctx, key)
 	} else {
-		m.memory.Delete(key)
+		m.memory.Delete(ctx, key)
 	}
 }

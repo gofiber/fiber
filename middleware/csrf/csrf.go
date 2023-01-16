@@ -45,7 +45,7 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// if token does not exist in Storage
-			if manager.getRaw(token) == nil {
+			if manager.getRaw(c.Context(), token) == nil {
 				// Expire cookie
 				c.Cookie(&fiber.Cookie{
 					Name:        cfg.CookieName,
@@ -68,7 +68,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Add/update token to Storage
-		manager.setRaw(token, dummyValue, cfg.Expiration)
+		manager.setRaw(c.Context(), token, dummyValue, cfg.Expiration)
 
 		// Create cookie to pass token to client
 		cookie := &fiber.Cookie{

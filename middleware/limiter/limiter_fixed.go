@@ -40,7 +40,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		mux.Lock()
 
 		// Get entry from pool and release when finished
-		e := manager.get(key)
+		e := manager.get(c.Context(), key)
 
 		// Get timestamp
 		ts := uint64(atomic.LoadUint32(&utils.Timestamp))
@@ -64,7 +64,7 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 		remaining := cfg.Max - e.currHits
 
 		// Update storage
-		manager.set(key, e, cfg.Expiration)
+		manager.set(c.Context(), key, e, cfg.Expiration)
 
 		// Unlock entry
 		mux.Unlock()
@@ -88,10 +88,10 @@ func (FixedWindow) New(cfg Config) fiber.Handler {
 			(cfg.SkipFailedRequests && c.Response().StatusCode() >= fiber.StatusBadRequest) {
 			// Lock entry
 			mux.Lock()
-			e = manager.get(key)
+			e = manager.get(c.Context(), key)
 			e.currHits--
 			remaining++
-			manager.set(key, e, cfg.Expiration)
+			manager.set(c.Context(), key, e, cfg.Expiration)
 			// Unlock entry
 			mux.Unlock()
 		}

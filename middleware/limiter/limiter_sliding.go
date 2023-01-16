@@ -41,7 +41,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		mux.Lock()
 
 		// Get entry from pool and release when finished
-		e := manager.get(key)
+		e := manager.get(c.Context(), key)
 
 		// Get timestamp
 		ts := uint64(atomic.LoadUint32(&utils.Timestamp))
@@ -95,7 +95,7 @@ func (SlidingWindow) New(cfg Config) fiber.Handler {
 		// we add the expiration to the duration.
 		// Otherwise after the end of "sample window", attackers could launch
 		// a new request with the full window length.
-		manager.set(key, e, time.Duration(resetInSec+expiration)*time.Second)
+		manager.set(c.Context(), key, e, time.Duration(resetInSec+expiration)*time.Second)
 
 		// Unlock entry
 		mux.Unlock()

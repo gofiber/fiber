@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -18,37 +19,37 @@ func Test_Memory(t *testing.T) {
 		exp             = 1 * time.Second
 	)
 
-	store.Set(key, val, 0)
-	store.Set(key, val, 0)
+	store.Set(context.TODO(), key, val, 0)
+	store.Set(context.TODO(), key, val, 0)
 
-	result := store.Get(key)
+	result := store.Get(context.TODO(), key)
 	utils.AssertEqual(t, val, result)
 
-	result = store.Get("empty")
+	result = store.Get(context.TODO(), "empty")
 	utils.AssertEqual(t, nil, result)
 
-	store.Set(key, val, exp)
+	store.Set(context.TODO(), key, val, exp)
 	time.Sleep(1100 * time.Millisecond)
 
-	result = store.Get(key)
+	result = store.Get(context.TODO(), key)
 	utils.AssertEqual(t, nil, result)
 
-	store.Set(key, val, 0)
-	result = store.Get(key)
+	store.Set(context.TODO(), key, val, 0)
+	result = store.Get(context.TODO(), key)
 	utils.AssertEqual(t, val, result)
 
-	store.Delete(key)
-	result = store.Get(key)
+	store.Delete(context.TODO(), key)
+	result = store.Get(context.TODO(), key)
 	utils.AssertEqual(t, nil, result)
 
-	store.Set("john", val, 0)
-	store.Set("doe", val, 0)
-	store.Reset()
+	store.Set(context.TODO(), "john", val, 0)
+	store.Set(context.TODO(), "doe", val, 0)
+	store.Reset(context.TODO())
 
-	result = store.Get("john")
+	result = store.Get(context.TODO(), "john")
 	utils.AssertEqual(t, nil, result)
 
-	result = store.Get("doe")
+	result = store.Get(context.TODO(), "doe")
 	utils.AssertEqual(t, nil, result)
 }
 
@@ -68,13 +69,13 @@ func Benchmark_Memory(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			for _, key := range keys {
-				d.Set(key, value, ttl)
+				d.Set(context.TODO(), key, value, ttl)
 			}
 			for _, key := range keys {
-				_ = d.Get(key)
+				_ = d.Get(context.TODO(), key)
 			}
 			for _, key := range keys {
-				d.Delete(key)
+				d.Delete(context.TODO(), key)
 
 			}
 		}

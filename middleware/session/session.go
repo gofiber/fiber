@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"encoding/gob"
 	"sync"
 	"time"
@@ -91,7 +92,7 @@ func (s *Session) Delete(key string) {
 }
 
 // Destroy will delete the session from Storage and expire session cookie
-func (s *Session) Destroy() error {
+func (s *Session) Destroy(ctx context.Context) error {
 	// Better safe than sorry
 	if s.data == nil {
 		return nil
@@ -101,7 +102,7 @@ func (s *Session) Destroy() error {
 	s.data.Reset()
 
 	// Use external Storage if exist
-	if err := s.config.Storage.Delete(s.id); err != nil {
+	if err := s.config.Storage.Delete(ctx, s.id); err != nil {
 		return err
 	}
 
@@ -111,9 +112,9 @@ func (s *Session) Destroy() error {
 }
 
 // Regenerate generates a new session id and delete the old one from Storage
-func (s *Session) Regenerate() error {
+func (s *Session) Regenerate(ctx context.Context) error {
 	// Delete old id from storage
-	if err := s.config.Storage.Delete(s.id); err != nil {
+	if err := s.config.Storage.Delete(ctx, s.id); err != nil {
 		return err
 	}
 
@@ -133,7 +134,7 @@ func (s *Session) refresh() {
 }
 
 // Save will update the storage and client cookie
-func (s *Session) Save() error {
+func (s *Session) Save(ctx context.Context) error {
 	// Better safe than sorry
 	if s.data == nil {
 		return nil
@@ -161,7 +162,7 @@ func (s *Session) Save() error {
 	copy(encodedBytes, s.byteBuffer.Bytes())
 
 	// pass copied bytes with session id to provider
-	if err := s.config.Storage.Set(s.id, encodedBytes, s.exp); err != nil {
+	if err := s.config.Storage.Set(ctx, s.id, encodedBytes, s.exp); err != nil {
 		return err
 	}
 

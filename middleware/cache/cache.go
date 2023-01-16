@@ -3,6 +3,7 @@
 package cache
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"sync"
@@ -80,11 +81,11 @@ func New(config ...Config) fiber.Handler {
 	}()
 
 	// Delete key from both manager and storage
-	deleteKey := func(dkey string) {
-		manager.delete(dkey)
+	deleteKey := func(ctx context.Context, dkey string) {
+		manager.delete(ctx, dkey)
 		// External storage saves body data with different key
 		if cfg.Storage != nil {
-			manager.delete(dkey + "_body")
+			manager.delete(ctx, dkey+"_body")
 		}
 	}
 
@@ -113,7 +114,7 @@ func New(config ...Config) fiber.Handler {
 		key := cfg.KeyGenerator(c) + "_" + c.Method()
 
 		// Get entry from pool
-		e := manager.get(key)
+		e := manager.get(c.Context(), key)
 
 		// Lock entry
 		mux.Lock()
@@ -123,7 +124,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Check if entry is expired
 		if e.exp != 0 && ts >= e.exp {
-			deleteKey(key)
+			deleteKey(c.Context(), key)
 			if cfg.MaxBytes > 0 {
 				_, size := heap.remove(e.heapidx)
 				storedBytes -= size
@@ -132,7 +133,7 @@ func New(config ...Config) fiber.Handler {
 			// Separate body value to avoid msgp serialization
 			// We can store raw bytes with Storage 👍
 			if cfg.Storage != nil {
-				e.body = manager.getRaw(key + "_body")
+				e.body = manager.getRaw(c.Context(), key+"_body")
 			}
 			// Set response headers from cache
 			c.Response().SetBodyRaw(e.body)
@@ -189,7 +190,7 @@ func New(config ...Config) fiber.Handler {
 		if cfg.MaxBytes > 0 {
 			for storedBytes+bodySize > cfg.MaxBytes {
 				key, size := heap.removeFirst()
-				deleteKey(key)
+				deleteKey(c.Context(), key)
 				storedBytes -= size
 			}
 		}
@@ -231,14 +232,14 @@ func New(config ...Config) fiber.Handler {
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			manager.setRaw(key+"_body", e.body, expiration)
+			manager.setRaw(c.Context(), key+"_body", e.body, expiration)
 			// avoid body msgp encoding
 			e.body = nil
-			manager.set(key, e, expiration)
+			manager.set(c.Context(), key, e, expiration)
 			manager.release(e)
 		} else {
 			// Store entry in memory
-			manager.set(key, e, expiration)
+			manager.set(c.Context(), key, e, expiration)
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)

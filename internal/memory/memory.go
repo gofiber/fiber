@@ -3,6 +3,7 @@
 package memory
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,7 +32,7 @@ func New() *Storage {
 }
 
 // Get value by key
-func (s *Storage) Get(key string) interface{} {
+func (s *Storage) Get(_ context.Context, key string) interface{} {
 	s.RLock()
 	v, ok := s.data[key]
 	s.RUnlock()
@@ -42,7 +43,7 @@ func (s *Storage) Get(key string) interface{} {
 }
 
 // Set key with value
-func (s *Storage) Set(key string, val interface{}, ttl time.Duration) {
+func (s *Storage) Set(_ context.Context, key string, val interface{}, ttl time.Duration) {
 	var exp uint32
 	if ttl > 0 {
 		exp = uint32(ttl.Seconds()) + atomic.LoadUint32(&utils.Timestamp)
@@ -54,14 +55,14 @@ func (s *Storage) Set(key string, val interface{}, ttl time.Duration) {
 }
 
 // Delete key by key
-func (s *Storage) Delete(key string) {
+func (s *Storage) Delete(_ context.Context, key string) {
 	s.Lock()
 	delete(s.data, key)
 	s.Unlock()
 }
 
 // Reset all keys
-func (s *Storage) Reset() {
+func (s *Storage) Reset(_ context.Context) {
 	nd := make(map[string]item)
 	s.Lock()
 	s.data = nd

@@ -1495,7 +1495,7 @@ func (c *Ctx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, s
 		return err
 	}
 
-	return storage.Set(path, content, 0)
+	return storage.Set(c.Context(), path, content, 0)
 }
 
 // Secure returns whether a secure connection was established.

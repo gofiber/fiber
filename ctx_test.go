@@ -2251,11 +2251,11 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 		err = c.SaveFileToStorage(fh, "test", storage)
 		utils.AssertEqual(t, nil, err)
 
-		file, err := storage.Get("test")
+		file, err := storage.Get(c.Context(), "test")
 		utils.AssertEqual(t, []byte("hello world"), file)
 		utils.AssertEqual(t, nil, err)
 
-		err = storage.Delete("test")
+		err = storage.Delete(c.Context(), "test")
 		utils.AssertEqual(t, nil, err)
 
 		return nil
