@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -141,6 +142,28 @@ func defaultString(value string, defaultValue []string) string {
 		return defaultValue[0]
 	}
 	return value
+}
+
+// defaultInt returns the value or a default value if it is set.
+func defaultInt(value string, defaultValue []int) int {
+	if len(value) == 0 {
+		if len(defaultValue) == 0 {
+			return 0
+		}
+
+		return defaultValue[0]
+	}
+
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+
+		return 0
+	}
+
+	return intValue
 }
 
 const normalizedHeaderETag = "Etag"

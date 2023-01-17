@@ -2119,6 +2119,10 @@ func Test_Ctx_Query(t *testing.T) {
 	utils.AssertEqual(t, "john", c.Query("search"))
 	utils.AssertEqual(t, "20", c.Query("age"))
 	utils.AssertEqual(t, "default", c.Query("unknown", "default"))
+	utils.AssertEqual(t, 0, c.QueryInt("20"))
+	utils.AssertEqual(t, 20, c.QueryInt("age", 12))
+	utils.AssertEqual(t, 0, c.QueryInt("search"))
+	utils.AssertEqual(t, 1, c.QueryInt("search", 1))
 }
 
 // go test -run Test_Ctx_Range

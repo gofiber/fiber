@@ -1086,6 +1086,18 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
 
+// QueryInt returns integer value of key string parameter in the url.
+// Default to empty or invalid key is 0.
+//
+//	GET /?name=alex&wanna_cake=2&id=
+//	QueryInt("wanna_cake", 1) == 2
+//	QueryInt("name", 1) == 1
+//	QueryInt("id", 1) == 1
+//	QueryInt("id") == 0
+func (c *Ctx) QueryInt(key string, defaultValue ...int) int {
+	return defaultInt(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
+}
+
 // QueryParser binds the query string to a struct.
 func (c *Ctx) QueryParser(out interface{}) error {
 	data := make(map[string][]string)
