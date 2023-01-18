@@ -2,7 +2,7 @@ package basicauth
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http/httptest"
 	"testing"
 
@@ -16,7 +16,6 @@ import (
 // go test -run Test_BasicAuth_Next
 func Test_BasicAuth_Next(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
@@ -82,7 +81,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		resp, err := app.Test(req)
 		utils.AssertEqual(t, nil, err)
 
-		body, err := ioutil.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
 
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, tt.statusCode, resp.StatusCode)

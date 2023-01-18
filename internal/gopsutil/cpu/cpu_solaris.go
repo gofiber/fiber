@@ -29,7 +29,7 @@ func init() {
 	}
 }
 
-//sum all values in a float64 map with float64 keys
+// sum all values in a float64 map with float64 keys
 func msum(x map[float64]float64) float64 {
 	total := 0.0
 	for _, y := range x {

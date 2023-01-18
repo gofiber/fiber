@@ -10,6 +10,7 @@ import (
 // go test -run Test_Memory -v -race
 
 func Test_Memory(t *testing.T) {
+	t.Parallel()
 	var store = New()
 	var (
 		key             = "john"
@@ -58,7 +59,7 @@ func Benchmark_Memory(b *testing.B) {
 	for i := 0; i < keyLength; i++ {
 		keys[i] = utils.UUID()
 	}
-	value := []string{"some", "random", "value"}
+	value := []byte("joe")
 
 	ttl := 2 * time.Second
 	b.Run("fiber_memory", func(b *testing.B) {

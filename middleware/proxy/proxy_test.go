@@ -2,8 +2,9 @@ package proxy
 
 import (
 	"crypto/tls"
-	"io/ioutil"
+	"io"
 	"net"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
+	"github.com/valyala/fasthttp"
 )
 
 func createProxyTestServer(handler fiber.Handler, t *testing.T) (*fiber.App, string) {
@@ -172,7 +174,7 @@ func Test_Proxy_Forward(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "forwarded", string(b))
 }
@@ -232,7 +234,7 @@ func Test_Proxy_Modify_Response(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "modified response", string(b))
 }
@@ -259,7 +261,7 @@ func Test_Proxy_Modify_Request(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "modified request", string(b))
 }
@@ -283,7 +285,7 @@ func Test_Proxy_Timeout_Slow_Server(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "fiber is awesome", string(b))
 }
@@ -307,7 +309,7 @@ func Test_Proxy_With_Timeout(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "timeout", string(b))
 }
@@ -338,4 +340,137 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 	resp, err = app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+}
+
+// go test -race -run Test_Proxy_Do_RestoreOriginalURL
+func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/proxy", func(c *fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+	app.Get("/test", func(c *fiber.Ctx) error {
+		originalURL := utils.CopyString(c.OriginalURL())
+		if err := Do(c, "/proxy"); err != nil {
+			return err
+		}
+		utils.AssertEqual(t, originalURL, c.OriginalURL())
+		return c.SendString("ok")
+	})
+	_, err1 := app.Test(httptest.NewRequest("GET", "/test", nil))
+	// This test requires multiple requests due to zero allocation used in fiber
+	_, err2 := app.Test(httptest.NewRequest("GET", "/test", nil))
+
+	utils.AssertEqual(t, nil, err1)
+	utils.AssertEqual(t, nil, err2)
+}
+
+// go test -race -run Test_Proxy_Do_HTTP_Prefix_URL
+func Test_Proxy_Do_HTTP_Prefix_URL(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServer(func(c *fiber.Ctx) error {
+		return c.SendString("hello world")
+	}, t)
+
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app.Get("/*", func(c *fiber.Ctx) error {
+		path := c.OriginalURL()
+		url := strings.TrimPrefix(path, "/")
+
+		utils.AssertEqual(t, "http://"+addr, url)
+		if err := Do(c, url); err != nil {
+			return err
+		}
+		c.Response().Header.Del(fiber.HeaderServer)
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/http://"+addr, nil))
+	utils.AssertEqual(t, nil, err)
+	s, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "hello world", string(s))
+}
+
+// go test -race -run Test_Proxy_Forward_Global_Client
+func Test_Proxy_Forward_Global_Client(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+	WithClient(&fasthttp.Client{
+		NoDefaultUserAgentHeader: true,
+		DisablePathNormalizing:   true,
+	})
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app.Get("/test_global_client", func(c *fiber.Ctx) error {
+		return c.SendString("test_global_client")
+	})
+
+	addr := ln.Addr().String()
+	app.Use(Forward("http://" + addr + "/test_global_client"))
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+
+	code, body, errs := fiber.Get("http://" + addr).String()
+	utils.AssertEqual(t, 0, len(errs))
+	utils.AssertEqual(t, fiber.StatusOK, code)
+	utils.AssertEqual(t, "test_global_client", body)
+}
+
+// go test -race -run Test_Proxy_Forward_Local_Client
+func Test_Proxy_Forward_Local_Client(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen(fiber.NetworkTCP4, "127.0.0.1:0")
+	utils.AssertEqual(t, nil, err)
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app.Get("/test_local_client", func(c *fiber.Ctx) error {
+		return c.SendString("test_local_client")
+	})
+
+	addr := ln.Addr().String()
+	app.Use(Forward("http://"+addr+"/test_local_client", &fasthttp.Client{
+		NoDefaultUserAgentHeader: true,
+		DisablePathNormalizing:   true,
+		Dial: func(addr string) (net.Conn, error) {
+			return fasthttp.Dial(addr)
+		},
+	}))
+	go func() { utils.AssertEqual(t, nil, app.Listener(ln)) }()
+
+	code, body, errs := fiber.Get("http://" + addr).String()
+	utils.AssertEqual(t, 0, len(errs))
+	utils.AssertEqual(t, fiber.StatusOK, code)
+	utils.AssertEqual(t, "test_local_client", body)
+}
+
+// go test -run Test_ProxyBalancer_Custom_Client
+func Test_ProxyBalancer_Custom_Client(t *testing.T) {
+	t.Parallel()
+
+	target, addr := createProxyTestServer(
+		func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusTeapot) }, t,
+	)
+
+	resp, err := target.Test(httptest.NewRequest("GET", "/", nil), 2000)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
+
+	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+
+	app.Use(Balancer(Config{Client: &fasthttp.LBClient{
+		Clients: []fasthttp.BalancingClient{
+			&fasthttp.HostClient{
+				NoDefaultUserAgentHeader: true,
+				DisablePathNormalizing:   true,
+				Addr:                     addr,
+			},
+		},
+		Timeout: time.Second,
+	}}))
+
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Host = addr
+	resp, err = app.Test(req)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusTeapot, resp.StatusCode)
 }

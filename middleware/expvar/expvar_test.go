@@ -2,7 +2,7 @@ package expvar
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"net/http/httptest"
 	"testing"
 
@@ -11,6 +11,7 @@ import (
 )
 
 func Test_Non_Expvar_Path(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -23,12 +24,13 @@ func Test_Non_Expvar_Path(t *testing.T) {
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 200, resp.StatusCode)
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "escaped", string(b))
 }
 
 func Test_Expvar_Index(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -42,13 +44,14 @@ func Test_Expvar_Index(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("cmdline")))
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("memstat")))
 }
 
 func Test_Expvar_Filter(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -62,13 +65,14 @@ func Test_Expvar_Filter(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode)
 	utils.AssertEqual(t, fiber.MIMEApplicationJSONCharsetUTF8, resp.Header.Get(fiber.HeaderContentType))
 
-	b, err := ioutil.ReadAll(resp.Body)
+	b, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, true, bytes.Contains(b, []byte("cmdline")))
 	utils.AssertEqual(t, false, bytes.Contains(b, []byte("memstat")))
 }
 
 func Test_Expvar_Other_Path(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -85,7 +89,6 @@ func Test_Expvar_Other_Path(t *testing.T) {
 // go test -run Test_Expvar_Next
 func Test_Expvar_Next(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{

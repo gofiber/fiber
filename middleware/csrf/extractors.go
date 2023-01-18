@@ -15,7 +15,7 @@ var (
 )
 
 // csrfFromParam returns a function that extracts token from the url param string.
-func csrfFromParam(param string) func(c *fiber.Ctx) (string, error) {
+func CsrfFromParam(param string) func(c *fiber.Ctx) (string, error) {
 	return func(c *fiber.Ctx) (string, error) {
 		token := c.Params(param)
 		if token == "" {
@@ -26,7 +26,7 @@ func csrfFromParam(param string) func(c *fiber.Ctx) (string, error) {
 }
 
 // csrfFromForm returns a function that extracts a token from a multipart-form.
-func csrfFromForm(param string) func(c *fiber.Ctx) (string, error) {
+func CsrfFromForm(param string) func(c *fiber.Ctx) (string, error) {
 	return func(c *fiber.Ctx) (string, error) {
 		token := c.FormValue(param)
 		if token == "" {
@@ -37,7 +37,7 @@ func csrfFromForm(param string) func(c *fiber.Ctx) (string, error) {
 }
 
 // csrfFromCookie returns a function that extracts token from the cookie header.
-func csrfFromCookie(param string) func(c *fiber.Ctx) (string, error) {
+func CsrfFromCookie(param string) func(c *fiber.Ctx) (string, error) {
 	return func(c *fiber.Ctx) (string, error) {
 		token := c.Cookies(param)
 		if token == "" {
@@ -48,7 +48,7 @@ func csrfFromCookie(param string) func(c *fiber.Ctx) (string, error) {
 }
 
 // csrfFromHeader returns a function that extracts token from the request header.
-func csrfFromHeader(param string) func(c *fiber.Ctx) (string, error) {
+func CsrfFromHeader(param string) func(c *fiber.Ctx) (string, error) {
 	return func(c *fiber.Ctx) (string, error) {
 		token := c.Get(param)
 		if token == "" {
@@ -59,7 +59,7 @@ func csrfFromHeader(param string) func(c *fiber.Ctx) (string, error) {
 }
 
 // csrfFromQuery returns a function that extracts token from the query string.
-func csrfFromQuery(param string) func(c *fiber.Ctx) (string, error) {
+func CsrfFromQuery(param string) func(c *fiber.Ctx) (string, error) {
 	return func(c *fiber.Ctx) (string, error) {
 		token := c.Query(param)
 		if token == "" {

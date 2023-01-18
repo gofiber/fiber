@@ -281,9 +281,5 @@ func calcuateAvailVmem(ret *VirtualMemoryStat, retEx *VirtualMemoryExStat) uint6
 	availMemory += pageCache
 	availMemory += ret.SReclaimable - uint64(math.Min(float64(ret.SReclaimable/2.0), float64(watermarkLow)))
 
-	if availMemory < 0 {
-		availMemory = 0
-	}
-
 	return availMemory
 }

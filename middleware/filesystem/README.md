@@ -2,7 +2,8 @@
 
 Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables you to serve files from a directory.
 
-⚠️ **`:params` & `:optionals?` within the prefix path are not supported!**
+⚠️ **`:params` & `:optionals?` within the prefix path are not supported!**  
+⚠️ **To handle paths with spaces (or other url encoded values) make sure to set `fiber.Config{ UnescapePath: true}`**
 
 ## Table of Contents
 
@@ -123,7 +124,7 @@ func main() {
 
 	app.Use("/assets", filesystem.New(filesystem.Config{
 		Root: pkger.Dir("/assets"),
-	})
+	}))
 
 	log.Fatal(app.Listen(":3000"))
 }
@@ -148,7 +149,7 @@ func main() {
 
 	app.Use("/assets", filesystem.New(filesystem.Config{
 		Root: packr.New("Assets Box", "/assets"),
-	})
+	}))
 
 	log.Fatal(app.Listen(":3000"))
 }
@@ -173,7 +174,7 @@ func main() {
 
 	app.Use("/assets", filesystem.New(filesystem.Config{
 		Root: rice.MustFindBox("assets").HTTPBox(),
-	})
+	}))
 
 	log.Fatal(app.Listen(":3000"))
 }
@@ -198,7 +199,7 @@ func main() {
 
 	app.Use("/assets", filesystem.New(filesystem.Config{
 		Root: myEmbeddedFiles.HTTP,
-	})
+	}))
 
 	log.Fatal(app.Listen(":3000"))
 }
@@ -215,12 +216,13 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 
-	"<Your go module>/statik"
+	// Use blank to invoke init function and register data to statik
+	_ "<Your go module>/statik" 
 	fs "github.com/rakyll/statik/fs"
 )
 
 func main() {
-	statik, err := fs.New()
+	statikFS, err := fs.New()
 	if err != nil {
 		panic(err)
 	}
@@ -229,7 +231,7 @@ func main() {
 
 	app.Use("/", filesystem.New(filesystem.Config{
 		Root: statikFS,
-	})
+	}))
 
 	log.Fatal(app.Listen(":3000"))
 }

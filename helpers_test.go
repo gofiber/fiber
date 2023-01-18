@@ -5,9 +5,7 @@
 package fiber
 
 import (
-	"crypto/tls"
 	"fmt"
-	"net"
 	"strings"
 	"testing"
 	"time"
@@ -18,17 +16,21 @@ import (
 
 // go test -v -run=Test_Utils_ -count=3
 func Test_Utils_ETag(t *testing.T) {
+	t.Parallel()
 	app := New()
 	t.Run("Not Status OK", func(t *testing.T) {
+		t.Parallel()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		c.Status(201)
 		setETag(c, false)
 		utils.AssertEqual(t, "", string(c.Response().Header.Peek(HeaderETag)))
 	})
 
 	t.Run("No Body", func(t *testing.T) {
+		t.Parallel()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
 		setETag(c, false)
@@ -36,9 +38,11 @@ func Test_Utils_ETag(t *testing.T) {
 	})
 
 	t.Run("Has HeaderIfNoneMatch", func(t *testing.T) {
+		t.Parallel()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		c.Request().Header.Set(HeaderIfNoneMatch, `"13-1831710635"`)
 		setETag(c, false)
 		utils.AssertEqual(t, 304, c.Response().StatusCode())
@@ -47,9 +51,11 @@ func Test_Utils_ETag(t *testing.T) {
 	})
 
 	t.Run("No HeaderIfNoneMatch", func(t *testing.T) {
+		t.Parallel()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		setETag(c, false)
 		utils.AssertEqual(t, `"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
 	})
@@ -60,7 +66,8 @@ func Benchmark_Utils_ETag(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.SendString("Hello, World!")
+	err := c.SendString("Hello, World!")
+	utils.AssertEqual(b, nil, err)
 	for n := 0; n < b.N; n++ {
 		setETag(c, false)
 	}
@@ -69,19 +76,24 @@ func Benchmark_Utils_ETag(b *testing.B) {
 
 // go test -v -run=Test_Utils_ETag_Weak -count=1
 func Test_Utils_ETag_Weak(t *testing.T) {
+	t.Parallel()
 	app := New()
 	t.Run("Set Weak", func(t *testing.T) {
+		t.Parallel()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		setETag(c, true)
 		utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
 	})
 
 	t.Run("Match Weak ETag", func(t *testing.T) {
+		t.Parallel()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		c.Request().Header.Set(HeaderIfNoneMatch, `W/"13-1831710635"`)
 		setETag(c, true)
 		utils.AssertEqual(t, 304, c.Response().StatusCode())
@@ -90,9 +102,11 @@ func Test_Utils_ETag_Weak(t *testing.T) {
 	})
 
 	t.Run("Not Match Weak ETag", func(t *testing.T) {
+		t.Parallel()
 		c := app.AcquireCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
-		c.SendString("Hello, World!")
+		err := c.SendString("Hello, World!")
+		utils.AssertEqual(t, nil, err)
 		c.Request().Header.Set(HeaderIfNoneMatch, `W/"13-1831710635xx"`)
 		setETag(c, true)
 		utils.AssertEqual(t, `W/"13-1831710635"`, string(c.Response().Header.Peek(HeaderETag)))
@@ -100,6 +114,7 @@ func Test_Utils_ETag_Weak(t *testing.T) {
 }
 
 func Test_Utils_UniqueRouteStack(t *testing.T) {
+	t.Parallel()
 	route1 := &Route{}
 	route2 := &Route{}
 	route3 := &Route{}
@@ -132,7 +147,8 @@ func Benchmark_Utils_ETag_Weak(b *testing.B) {
 	app := New()
 	c := app.AcquireCtx(&fasthttp.RequestCtx{})
 	defer app.ReleaseCtx(c)
-	c.SendString("Hello, World!")
+	err := c.SendString("Hello, World!")
+	utils.AssertEqual(b, nil, err)
 	for n := 0; n < b.N; n++ {
 		setETag(c, true)
 	}
@@ -142,13 +158,10 @@ func Benchmark_Utils_ETag_Weak(b *testing.B) {
 func Test_Utils_getGroupPath(t *testing.T) {
 	t.Parallel()
 	res := getGroupPath("/v1", "/")
-	utils.AssertEqual(t, "/v1", res)
+	utils.AssertEqual(t, "/v1/", res)
 
 	res = getGroupPath("/v1/", "/")
 	utils.AssertEqual(t, "/v1/", res)
-
-	res = getGroupPath("/v1", "/")
-	utils.AssertEqual(t, "/v1", res)
 
 	res = getGroupPath("/", "/")
 	utils.AssertEqual(t, "/", res)
@@ -191,6 +204,7 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 }
 
 func Test_Utils_Parse_Address(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		addr, host, port string
 	}{
@@ -207,17 +221,14 @@ func Test_Utils_Parse_Address(t *testing.T) {
 }
 
 func Test_Utils_GetOffset(t *testing.T) {
+	t.Parallel()
 	utils.AssertEqual(t, "", getOffer("hello"))
 	utils.AssertEqual(t, "1", getOffer("", "1"))
 	utils.AssertEqual(t, "", getOffer("2", "1"))
 }
 
-func Test_Utils_TestAddr_Network(t *testing.T) {
-	var addr testAddr = "addr"
-	utils.AssertEqual(t, "addr", addr.Network())
-}
-
 func Test_Utils_TestConn_Deadline(t *testing.T) {
+	t.Parallel()
 	conn := &testConn{}
 	utils.AssertEqual(t, nil, conn.SetDeadline(time.Time{}))
 	utils.AssertEqual(t, nil, conn.SetReadDeadline(time.Time{}))
@@ -225,6 +236,7 @@ func Test_Utils_TestConn_Deadline(t *testing.T) {
 }
 
 func Test_Utils_IsNoCache(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		string
 		bool
@@ -250,56 +262,14 @@ func Test_Utils_IsNoCache(t *testing.T) {
 func Benchmark_Utils_IsNoCache(b *testing.B) {
 	var ok bool
 	for i := 0; i < b.N; i++ {
-		ok = isNoCache("public")
-		ok = isNoCache("no-cache")
-		ok = isNoCache("public, no-cache, max-age=30")
-		ok = isNoCache("public,no-cache")
-		ok = isNoCache("no-cache, public")
+		_ = isNoCache("public")
+		_ = isNoCache("no-cache")
+		_ = isNoCache("public, no-cache, max-age=30")
+		_ = isNoCache("public,no-cache")
+		_ = isNoCache("no-cache, public")
 		ok = isNoCache("max-age=30, no-cache,public")
 	}
 	utils.AssertEqual(b, true, ok)
-}
-
-func Test_Utils_lnMetadata(t *testing.T) {
-	t.Run("closed listen", func(t *testing.T) {
-		ln, err := net.Listen(NetworkTCP, ":0")
-		utils.AssertEqual(t, nil, err)
-
-		utils.AssertEqual(t, nil, ln.Close())
-
-		addr, config := lnMetadata(NetworkTCP, ln)
-
-		utils.AssertEqual(t, ln.Addr().String(), addr)
-		utils.AssertEqual(t, true, config == nil)
-	})
-
-	t.Run("non tls", func(t *testing.T) {
-		ln, err := net.Listen(NetworkTCP, ":0")
-
-		utils.AssertEqual(t, nil, err)
-
-		addr, config := lnMetadata(NetworkTCP4, ln)
-
-		utils.AssertEqual(t, ln.Addr().String(), addr)
-		utils.AssertEqual(t, true, config == nil)
-	})
-
-	t.Run("tls", func(t *testing.T) {
-		cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
-		utils.AssertEqual(t, nil, err)
-
-		config := &tls.Config{Certificates: []tls.Certificate{cer}}
-
-		ln, err := net.Listen(NetworkTCP4, ":0")
-		utils.AssertEqual(t, nil, err)
-
-		ln = tls.NewListener(ln, config)
-
-		addr, config := lnMetadata(NetworkTCP4, ln)
-
-		utils.AssertEqual(t, ln.Addr().String(), addr)
-		utils.AssertEqual(t, true, config != nil)
-	})
 }
 
 // go test -v -run=^$ -bench=Benchmark_SlashRecognition -benchmem -count=4
@@ -336,13 +306,4 @@ func Benchmark_SlashRecognition(b *testing.B) {
 		}
 		utils.AssertEqual(b, true, result)
 	})
-}
-
-func IndexRune(str string, needle int32) bool {
-	for _, b := range str {
-		if b == needle {
-			return true
-		}
-	}
-	return false
 }

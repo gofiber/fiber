@@ -84,4 +84,7 @@ Benchmark_Trim/default-16                       18457221                 66.0 ns
 Benchmark_Trim/default-16                       18177328                 65.9 ns/op           32 B/op          1 allocs/op
 Benchmark_Trim/default.trimspace-16            188933770                 6.33 ns/op            0 B/op          0 allocs/op
 Benchmark_Trim/default.trimspace-16            184007649                 6.42 ns/op            0 B/op          0 allocs/op
+
+Benchmark_ConvertToBytes/fiber-8                43773547                24.43 ns/op            0 B/op          0 allocs/op
+Benchmark_ConvertToBytes/fiber-8                45849477                25.33 ns/op            0 B/op          0 allocs/op
 ```

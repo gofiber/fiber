@@ -10,6 +10,7 @@ import (
 
 // go test -run Test_Recover
 func Test_Recover(t *testing.T) {
+	t.Parallel()
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			utils.AssertEqual(t, "Hi, I'm an error!", err.Error())
@@ -30,6 +31,7 @@ func Test_Recover(t *testing.T) {
 
 // go test -run Test_Recover_Next
 func Test_Recover_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
@@ -43,6 +45,7 @@ func Test_Recover_Next(t *testing.T) {
 }
 
 func Test_Recover_EnableStackTrace(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		EnableStackTrace: true,

@@ -64,9 +64,9 @@ func New(config ...Config) fiber.Handler {
 
 		go func() {
 			for {
-				updateStatistics(p)
+				time.Sleep(cfg.Refresh)
 
-				time.Sleep(1 * time.Second)
+				updateStatistics(p)
 			}
 		}()
 	})
@@ -95,8 +95,8 @@ func New(config ...Config) fiber.Handler {
 			mutex.Unlock()
 			return c.Status(fiber.StatusOK).JSON(data)
 		}
-		c.Response().Header.SetContentType(fiber.MIMETextHTMLCharsetUTF8)
-		return c.Status(fiber.StatusOK).Send(index)
+		c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
+		return c.Status(fiber.StatusOK).SendString(cfg.index)
 	}
 }
 

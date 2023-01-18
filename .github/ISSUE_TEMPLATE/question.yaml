@@ -1,0 +1,55 @@
+name: "🤔 Question"
+title: "\U0001F917 [Question]: "
+description: Ask a question so we can help you easily.
+labels: ["🤔 Question"]
+
+body:
+  - type: markdown
+    id: notice
+    attributes:
+      value: |
+        ### Notice
+        - Dont't forget you can ask your questions on our [Discord server](https://gofiber.io/discord).
+        - If you think this is just a bug, open the issue with **☢️ Bug Report** template.
+        - If you think Fiber doesn't have a nice feature that you think, open the issue with **✏️ Feature Request** template.
+        - Write your issue with clear and understandable English.
+  - type: textarea
+    id: description
+    attributes:
+      label: "Question Description"
+      description: "A clear and detailed description of the question."
+      placeholder: "Explain your question as clear and detailed."
+    validations:
+      required: true
+  - type: textarea
+    id: snippet
+    attributes:
+      label: "Code Snippet (optional)"
+      description: "Code snippet may be really helpful to describe some features."
+      placeholder: "Share a code to explain the feature better."
+      render: go
+      value: |
+        package main
+
+        import "github.com/gofiber/fiber/v2"
+        import "log"
+
+        func main() {
+          app := fiber.New()
+
+          // An example to describe the question
+
+          log.Fatal(app.Listen(":3000"))
+        }
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: "Checklist:"
+      description: "By submitting this issue, you confirm that:"
+      options:
+        - label: "I agree to follow Fiber's [Code of Conduct](https://github.com/gofiber/fiber/blob/master/.github/CODE_OF_CONDUCT.md)."
+          required: true
+        - label: "I have checked for existing issues that describe my questions prior to opening this one."
+          required: true
+        - label: "I understand that improperly formatted questions may be closed without explanation."
+          required: true

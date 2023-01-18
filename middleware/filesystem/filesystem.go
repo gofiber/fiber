@@ -64,7 +64,11 @@ var ConfigDefault = Config{
 	MaxAge:     0,
 }
 
-// New creates a new middleware handler
+// New creates a new middleware handler.
+//
+// filesystem does not handle url encoded values (for example spaces)
+// on it's own. If you need that functionality, set "UnescapePath"
+// in fiber.Config
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := ConfigDefault

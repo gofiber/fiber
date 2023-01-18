@@ -4,14 +4,13 @@
 
 package fiber
 
-// go test -v ./... -run=^$ -bench=Benchmark_Router -benchmem -count=2
-
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -22,7 +21,7 @@ import (
 var routesFixture = routeJSON{}
 
 func init() {
-	dat, err := ioutil.ReadFile("./.github/testdata/testRoutes.json")
+	dat, err := os.ReadFile("./.github/testdata/testRoutes.json")
 	if err != nil {
 		panic(err)
 	}
@@ -32,6 +31,8 @@ func init() {
 }
 
 func Test_Route_Match_SameLength(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/:param", func(c *Ctx) error {
@@ -42,7 +43,7 @@ func Test_Route_Match_SameLength(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, ":param", app.getString(body))
 
@@ -51,12 +52,14 @@ func Test_Route_Match_SameLength(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "test", app.getString(body))
 }
 
 func Test_Route_Match_Star(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/*", func(c *Ctx) error {
@@ -67,7 +70,7 @@ func Test_Route_Match_Star(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "*", app.getString(body))
 
@@ -76,7 +79,7 @@ func Test_Route_Match_Star(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "test", app.getString(body))
 
@@ -103,6 +106,8 @@ func Test_Route_Match_Star(t *testing.T) {
 }
 
 func Test_Route_Match_Root(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/", func(c *Ctx) error {
@@ -113,12 +118,14 @@ func Test_Route_Match_Root(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "root", app.getString(body))
 }
 
 func Test_Route_Match_Parser(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/foo/:ParamName", func(c *Ctx) error {
@@ -131,7 +138,7 @@ func Test_Route_Match_Parser(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "bar", app.getString(body))
 
@@ -140,12 +147,14 @@ func Test_Route_Match_Parser(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "test", app.getString(body))
 }
 
 func Test_Route_Match_Middleware(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Use("/foo/*", func(c *Ctx) error {
@@ -156,7 +165,7 @@ func Test_Route_Match_Middleware(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "*", app.getString(body))
 
@@ -165,12 +174,14 @@ func Test_Route_Match_Middleware(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "bar/fasel", app.getString(body))
 }
 
 func Test_Route_Match_UnescapedPath(t *testing.T) {
+	t.Parallel()
+
 	app := New(Config{UnescapePath: true})
 
 	app.Use("/créer", func(c *Ctx) error {
@@ -181,7 +192,7 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "test", app.getString(body))
 	// without special chars
@@ -197,6 +208,8 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 }
 
 func Test_Route_Match_WithEscapeChar(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	// static route and escaped part
 	app.Get("/v1/some/resource/name\\:customVerb", func(c *Ctx) error {
@@ -217,7 +230,7 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "static", app.getString(body))
 
@@ -226,7 +239,7 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "group", app.getString(body))
 
@@ -235,12 +248,14 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, StatusOK, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "awesome", app.getString(body))
 }
 
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Use("/foo", func(c *Ctx) error {
@@ -251,12 +266,14 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "middleware", app.getString(body))
 }
 
 func Test_Route_Match_Middleware_Root(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Use("/", func(c *Ctx) error {
@@ -267,22 +284,26 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, "middleware", app.getString(body))
 }
 
 func Test_Router_Register_Missing_Handler(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
 			utils.AssertEqual(t, "missing handler in route: /doe\n", fmt.Sprintf("%v", err))
 		}
 	}()
-	app.register("USE", "/doe")
+	app.register("USE", "/doe", nil)
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
+	t.Parallel()
+
 	var app interface{} = (*App)(nil)
 	_, ok := app.(Router)
 	utils.AssertEqual(t, true, ok)
@@ -293,6 +314,8 @@ func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 }
 
 func Test_Router_Handler_SetETag(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	app.config.ETag = true
 
@@ -308,6 +331,8 @@ func Test_Router_Handler_SetETag(t *testing.T) {
 }
 
 func Test_Router_Handler_Catch_Error(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	app.config.ErrorHandler = func(ctx *Ctx, err error) error {
 		return errors.New("fake error")
@@ -325,6 +350,8 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 }
 
 func Test_Route_Static_Root(t *testing.T) {
+	t.Parallel()
+
 	dir := "./.github/testdata/fs/css"
 	app := New()
 	app.Static("/", dir, Static{
@@ -339,7 +366,7 @@ func Test_Route_Static_Root(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
@@ -354,12 +381,14 @@ func Test_Route_Static_Root(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 }
 
 func Test_Route_Static_HasPrefix(t *testing.T) {
+	t.Parallel()
+
 	dir := "./.github/testdata/fs/css"
 	app := New()
 	app.Static("/static", dir, Static{
@@ -378,7 +407,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
@@ -399,7 +428,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
@@ -418,7 +447,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 
@@ -437,7 +466,7 @@ func Test_Route_Static_HasPrefix(t *testing.T) {
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, true, strings.Contains(app.getString(body), "color"))
 }
@@ -579,6 +608,15 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		appHandler(c)
+	}
+}
+
+// go test -run=^$ -bench=Benchmark_Startup_Process -benchmem -count=9
+func Benchmark_Startup_Process(b *testing.B) {
+	for n := 0; n < b.N; n++ {
+		app := New()
+		registerDummyRoutes(app)
+		app.startupProcess()
 	}
 }
 

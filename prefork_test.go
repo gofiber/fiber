@@ -6,7 +6,7 @@ package fiber
 
 import (
 	"crypto/tls"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 	"time"
@@ -68,6 +68,7 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
+	t.Parallel()
 	setupIsChild(t)
 	defer teardownIsChild(t)
 
@@ -83,7 +84,7 @@ func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
 
 	utils.AssertEqual(t, nil, w.Close())
 
-	out, err := ioutil.ReadAll(r)
+	out, err := io.ReadAll(r)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, 0, len(out))
 }

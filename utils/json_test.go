@@ -1,10 +1,8 @@
 package utils
 
 import (
-	goJson "encoding/json"
+	"encoding/json"
 	"testing"
-
-	"github.com/gofiber/fiber/v2/internal/go-json"
 )
 
 type sampleStructure struct {
@@ -19,7 +17,7 @@ func Test_GolangJSONEncoder(t *testing.T) {
 			ImportantString: "Hello World",
 		}
 		importantString             = `{"important_string":"Hello World"}`
-		jsonEncoder     JSONMarshal = goJson.Marshal
+		jsonEncoder     JSONMarshal = json.Marshal
 	)
 
 	raw, err := jsonEncoder(ss)

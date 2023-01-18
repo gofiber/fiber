@@ -4,6 +4,7 @@ package cache
 
 import (
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,6 +28,25 @@ const (
 	cacheMiss        = "miss"
 )
 
+// directives
+const (
+	noCache = "no-cache"
+	noStore = "no-store"
+)
+
+var ignoreHeaders = map[string]interface{}{
+	"Connection":          nil,
+	"Keep-Alive":          nil,
+	"Proxy-Authenticate":  nil,
+	"Proxy-Authorization": nil,
+	"TE":                  nil,
+	"Trailers":            nil,
+	"Transfer-Encoding":   nil,
+	"Upgrade":             nil,
+	"Content-Type":        nil, // already stored explicitely by the cache manager
+	"Content-Encoding":    nil, // already stored explicitely by the cache manager
+}
+
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
@@ -46,6 +66,10 @@ func New(config ...Config) fiber.Handler {
 	)
 	// Create manager to simplify storage operations ( see manager.go )
 	manager := newManager(cfg.Storage)
+	// Create indexed heap for tracking expirations ( see heap.go )
+	heap := &indexedHeap{}
+	// count stored bytes (sizes of response bodies)
+	var storedBytes uint = 0
 
 	// Update timestamp in the configured interval
 	go func() {
@@ -55,10 +79,31 @@ func New(config ...Config) fiber.Handler {
 		}
 	}()
 
+	// Delete key from both manager and storage
+	deleteKey := func(dkey string) {
+		manager.delete(dkey)
+		// External storage saves body data with different key
+		if cfg.Storage != nil {
+			manager.delete(dkey + "_body")
+		}
+	}
+
 	// Return new handler
 	return func(c *fiber.Ctx) error {
-		// Only cache GET and HEAD methods
-		if c.Method() != fiber.MethodGet && c.Method() != fiber.MethodHead {
+		// Refrain from caching
+		if hasRequestDirective(c, noStore) {
+			return c.Next()
+		}
+
+		// Only cache selected methods
+		var isExists bool
+		for _, method := range cfg.Methods {
+			if c.Method() == method {
+				isExists = true
+			}
+		}
+
+		if !isExists {
 			c.Set(cfg.CacheHeader, cacheUnreachable)
 			return c.Next()
 		}
@@ -76,14 +121,14 @@ func New(config ...Config) fiber.Handler {
 		// Get timestamp
 		ts := atomic.LoadUint64(&timestamp)
 
+		// Check if entry is expired
 		if e.exp != 0 && ts >= e.exp {
-			// Check if entry is expired
-			manager.delete(key)
-			// External storage saves body data with different key
-			if cfg.Storage != nil {
-				manager.delete(key + "_body")
+			deleteKey(key)
+			if cfg.MaxBytes > 0 {
+				_, size := heap.remove(e.heapidx)
+				storedBytes -= size
 			}
-		} else if e.exp != 0 {
+		} else if e.exp != 0 && !hasRequestDirective(c, noCache) {
 			// Separate body value to avoid msgp serialization
 			// We can store raw bytes with Storage 👍
 			if cfg.Storage != nil {
@@ -95,6 +140,11 @@ func New(config ...Config) fiber.Handler {
 			c.Response().Header.SetContentTypeBytes(e.ctype)
 			if len(e.cencoding) > 0 {
 				c.Response().Header.SetBytesV(fiber.HeaderContentEncoding, e.cencoding)
+			}
+			if e.headers != nil {
+				for k, v := range e.headers {
+					c.Response().Header.SetBytesV(k, v)
+				}
 			}
 			// Set Cache-Control header if enabled
 			if cfg.CacheControl {
@@ -128,30 +178,67 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
+		// Don't try to cache if body won't fit into cache
+		bodySize := uint(len(c.Response().Body()))
+		if cfg.MaxBytes > 0 && bodySize > cfg.MaxBytes {
+			c.Set(cfg.CacheHeader, cacheUnreachable)
+			return nil
+		}
+
+		// Remove oldest to make room for new
+		if cfg.MaxBytes > 0 {
+			for storedBytes+bodySize > cfg.MaxBytes {
+				key, size := heap.removeFirst()
+				deleteKey(key)
+				storedBytes -= size
+			}
+		}
+
 		// Cache response
 		e.body = utils.CopyBytes(c.Response().Body())
 		e.status = c.Response().StatusCode()
 		e.ctype = utils.CopyBytes(c.Response().Header.ContentType())
 		e.cencoding = utils.CopyBytes(c.Response().Header.Peek(fiber.HeaderContentEncoding))
 
+		// Store all response headers
+		// (more: https://datatracker.ietf.org/doc/html/rfc2616#section-13.5.1)
+		if cfg.StoreResponseHeaders {
+			e.headers = make(map[string][]byte)
+			c.Response().Header.VisitAll(
+				func(key []byte, value []byte) {
+					// create real copy
+					keyS := string(key)
+					if _, ok := ignoreHeaders[keyS]; !ok {
+						e.headers[keyS] = utils.CopyBytes(value)
+					}
+				},
+			)
+		}
+
 		// default cache expiration
-		expiration := uint64(cfg.Expiration.Seconds())
+		expiration := cfg.Expiration
 		// Calculate expiration by response header or other setting
 		if cfg.ExpirationGenerator != nil {
-			expiration = uint64(cfg.ExpirationGenerator(c, &cfg).Seconds())
+			expiration = cfg.ExpirationGenerator(c, &cfg)
 		}
-		e.exp = ts + expiration
+		e.exp = ts + uint64(expiration.Seconds())
+
+		// Store entry in heap
+		if cfg.MaxBytes > 0 {
+			e.heapidx = heap.put(key, e.exp, bodySize)
+			storedBytes += bodySize
+		}
 
 		// For external Storage we store raw body separated
 		if cfg.Storage != nil {
-			manager.setRaw(key+"_body", e.body, cfg.Expiration)
+			manager.setRaw(key+"_body", e.body, expiration)
 			// avoid body msgp encoding
 			e.body = nil
-			manager.set(key, e, cfg.Expiration)
+			manager.set(key, e, expiration)
 			manager.release(e)
 		} else {
 			// Store entry in memory
-			manager.set(key, e, cfg.Expiration)
+			manager.set(key, e, expiration)
 		}
 
 		c.Set(cfg.CacheHeader, cacheMiss)
@@ -159,4 +246,9 @@ func New(config ...Config) fiber.Handler {
 		// Finish response
 		return nil
 	}
+}
+
+// Check if request has directive
+func hasRequestDirective(c *fiber.Ctx, directive string) bool {
+	return strings.Contains(c.Get(fiber.HeaderCacheControl), directive)
 }

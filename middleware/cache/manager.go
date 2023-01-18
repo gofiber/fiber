@@ -18,6 +18,9 @@ type item struct {
 	cencoding []byte
 	status    int
 	exp       uint64
+	headers   map[string][]byte
+	// used for finding the item in an indexed heap
+	heapidx int
 }
 
 //msgp:ignore manager
@@ -40,7 +43,7 @@ func newManager(storage fiber.Storage) *manager {
 		// Use provided storage if provided
 		manager.storage = storage
 	} else {
-		// Fallback too memory storage
+		// Fallback to memory storage
 		manager.memory = memory.New()
 	}
 	return manager
@@ -61,6 +64,7 @@ func (m *manager) release(e *item) {
 	e.ctype = nil
 	e.status = 0
 	e.exp = 0
+	e.headers = nil
 	m.pool.Put(e)
 }
 

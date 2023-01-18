@@ -3,20 +3,17 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
-	"net"
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v2/internal/go-json"
 	"github.com/gofiber/fiber/v2/utils"
 	"github.com/valyala/fasthttp"
 )
@@ -59,6 +56,7 @@ var defaultClient Client
 //
 // It is safe calling Client methods from concurrently running goroutines.
 type Client struct {
+	mutex sync.RWMutex
 	// UserAgent is used in User-Agent request header.
 	UserAgent string
 
@@ -132,10 +130,15 @@ func (c *Client) createAgent(method, url string) *Agent {
 	a.req.Header.SetMethod(method)
 	a.req.SetRequestURI(url)
 
+	c.mutex.RLock()
 	a.Name = c.UserAgent
 	a.NoDefaultUserAgentHeader = c.NoDefaultUserAgentHeader
 	a.jsonDecoder = c.JSONDecoder
 	a.jsonEncoder = c.JSONEncoder
+	if a.jsonDecoder == nil {
+		a.jsonDecoder = json.Unmarshal
+	}
+	c.mutex.RUnlock()
 
 	if err := a.Parse(); err != nil {
 		a.errs = append(a.errs, err)
@@ -197,25 +200,13 @@ func (a *Agent) Parse() error {
 	}
 
 	a.HostClient = &fasthttp.HostClient{
-		Addr:                     addMissingPort(string(uri.Host()), isTLS),
+		Addr:                     fasthttp.AddMissingPort(string(uri.Host()), isTLS),
 		Name:                     name,
 		NoDefaultUserAgentHeader: a.NoDefaultUserAgentHeader,
 		IsTLS:                    isTLS,
 	}
 
 	return nil
-}
-
-func addMissingPort(addr string, isTLS bool) string {
-	n := strings.Index(addr, ":")
-	if n >= 0 {
-		return addr
-	}
-	port := 80
-	if isTLS {
-		port = 443
-	}
-	return net.JoinHostPort(addr, strconv.Itoa(port))
 }
 
 /************************** Header Setting **************************/
@@ -536,7 +527,7 @@ func (a *Agent) FileData(formFiles ...*FormFile) *Agent {
 
 // SendFile reads file and appends it to multipart form request.
 func (a *Agent) SendFile(filename string, fieldname ...string) *Agent {
-	content, err := ioutil.ReadFile(filepath.Clean(filename))
+	content, err := os.ReadFile(filepath.Clean(filename))
 	if err != nil {
 		a.errs = append(a.errs, err)
 		return a
@@ -560,7 +551,8 @@ func (a *Agent) SendFile(filename string, fieldname ...string) *Agent {
 // SendFiles reads files and appends them to multipart form request.
 //
 // Examples:
-//		SendFile("/path/to/file1", "fieldname1", "/path/to/file2")
+//
+//	SendFile("/path/to/file1", "fieldname1", "/path/to/file2")
 func (a *Agent) SendFiles(filenamesAndFieldnames ...string) *Agent {
 	pairs := len(filenamesAndFieldnames)
 	if pairs&1 == 1 {
@@ -732,16 +724,16 @@ func (a *Agent) RetryIf(retryIf RetryIfFunc) *Agent {
 }
 
 /************************** End Agent Setting **************************/
-var warnOnce sync.Once
 
 // Bytes returns the status code, bytes body and errors of url.
+//
+// it's not safe to use Agent after calling [Agent.Bytes]
 func (a *Agent) Bytes() (code int, body []byte, errs []error) {
-	warnOnce.Do(func() {
-		fmt.Println("[Warning] client is still in beta, API might change in the future!")
-	})
-
 	defer a.release()
+	return a.bytes()
+}
 
+func (a *Agent) bytes() (code int, body []byte, errs []error) {
 	if errs = append(errs, a.errs...); len(errs) > 0 {
 		return
 	}
@@ -800,21 +792,27 @@ func printDebugInfo(req *Request, resp *Response, w io.Writer) {
 }
 
 // String returns the status code, string body and errors of url.
+//
+// it's not safe to use Agent after calling [Agent.String]
 func (a *Agent) String() (int, string, []error) {
-	code, body, errs := a.Bytes()
+	defer a.release()
+	code, body, errs := a.bytes()
 
 	return code, utils.UnsafeString(body), errs
 }
 
 // Struct returns the status code, bytes body and errors of url.
 // And bytes body will be unmarshalled to given v.
+//
+// it's not safe to use Agent after calling [Agent.Struct]
 func (a *Agent) Struct(v interface{}) (code int, body []byte, errs []error) {
-	if a.jsonDecoder == nil {
-		a.jsonDecoder = json.Unmarshal
+	defer a.release()
+	if code, body, errs = a.bytes(); len(errs) > 0 {
+		return
 	}
 
-	if code, body, errs = a.Bytes(); len(errs) > 0 {
-		return
+	if a.jsonDecoder == nil {
+		a.jsonDecoder = json.Unmarshal
 	}
 
 	if err := a.jsonDecoder(body, v); err != nil {
@@ -858,8 +856,12 @@ func (a *Agent) reset() {
 }
 
 var (
-	clientPool   sync.Pool
-	agentPool    sync.Pool
+	clientPool sync.Pool
+	agentPool  = sync.Pool{
+		New: func() interface{} {
+			return &Agent{req: &Request{}}
+		},
+	}
 	responsePool sync.Pool
 	argsPool     sync.Pool
 	formFilePool sync.Pool
@@ -885,6 +887,8 @@ func AcquireClient() *Client {
 func ReleaseClient(c *Client) {
 	c.UserAgent = ""
 	c.NoDefaultUserAgentHeader = false
+	c.JSONEncoder = nil
+	c.JSONDecoder = nil
 
 	clientPool.Put(c)
 }
@@ -895,11 +899,7 @@ func ReleaseClient(c *Client) {
 // no longer needed. This allows Agent recycling, reduces GC pressure
 // and usually improves performance.
 func AcquireAgent() *Agent {
-	v := agentPool.Get()
-	if v == nil {
-		return &Agent{req: &Request{}}
-	}
-	return v.(*Agent)
+	return agentPool.Get().(*Agent)
 }
 
 // ReleaseAgent returns a acquired via AcquireAgent to Agent pool.

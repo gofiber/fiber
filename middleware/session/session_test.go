@@ -127,9 +127,9 @@ func Test_Session_Types(t *testing.T) {
 		Name: "John",
 	}
 	// set value
-	var vbool bool = true
-	var vstring string = "str"
-	var vint int = 13
+	var vbool = true
+	var vstring = "str"
+	var vint = 13
 	var vint8 int8 = 13
 	var vint16 int16 = 13
 	var vint32 int32 = 13
@@ -218,10 +218,10 @@ func Test_Session_Store_Reset(t *testing.T) {
 	// set value & save
 	sess.Set("hello", "world")
 	ctx.Request().Header.SetCookie(store.sessionName, sess.ID())
-	sess.Save()
+	utils.AssertEqual(t, nil, sess.Save())
 
 	// reset store
-	store.Reset()
+	utils.AssertEqual(t, nil, store.Reset())
 
 	// make sure the session is recreated
 	sess, _ = store.Get(ctx)
@@ -278,6 +278,7 @@ func Test_Session_Save_Expiration(t *testing.T) {
 	t.Parallel()
 
 	t.Run("save to cookie", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// fiber instance
@@ -315,6 +316,7 @@ func Test_Session_Reset(t *testing.T) {
 	t.Parallel()
 
 	t.Run("reset from cookie", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// fiber instance
@@ -326,12 +328,13 @@ func Test_Session_Reset(t *testing.T) {
 		sess, _ := store.Get(ctx)
 
 		sess.Set("name", "fenny")
-		sess.Destroy()
+		utils.AssertEqual(t, nil, sess.Destroy())
 		name := sess.Get("name")
 		utils.AssertEqual(t, nil, name)
 	})
 
 	t.Run("reset from header", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New(Config{
 			KeyLookup: "header:session_id",
@@ -346,7 +349,7 @@ func Test_Session_Reset(t *testing.T) {
 
 		// set value & save
 		sess.Set("name", "fenny")
-		_ = sess.Save()
+		utils.AssertEqual(t, nil, sess.Save())
 		sess, _ = store.Get(ctx)
 
 		err := sess.Destroy()
@@ -381,7 +384,7 @@ func Test_Session_Cookie(t *testing.T) {
 
 	// get session
 	sess, _ := store.Get(ctx)
-	sess.Save()
+	utils.AssertEqual(t, nil, sess.Save())
 
 	// cookie should be set on Save ( even if empty data )
 	utils.AssertEqual(t, 84, len(ctx.Response().Header.PeekCookie(store.sessionName)))
@@ -401,7 +404,7 @@ func Test_Session_Cookie_In_Response(t *testing.T) {
 	sess, _ := store.Get(ctx)
 	sess.Set("id", "1")
 	utils.AssertEqual(t, true, sess.Fresh())
-	sess.Save()
+	utils.AssertEqual(t, nil, sess.Save())
 
 	sess, _ = store.Get(ctx)
 	sess.Set("name", "john")
@@ -442,6 +445,7 @@ func Test_Session_Deletes_Single_Key(t *testing.T) {
 // go test -run Test_Session_Regenerate
 // Regression: https://github.com/gofiber/fiber/issues/1395
 func Test_Session_Regenerate(t *testing.T) {
+	t.Parallel()
 	// fiber instance
 	app := fiber.New()
 	t.Run("set fresh to be true when regenerating a session", func(t *testing.T) {
@@ -488,14 +492,17 @@ func Benchmark_Session(b *testing.B) {
 	defer app.ReleaseCtx(c)
 	c.Request().Header.SetCookie(store.sessionName, "12356789")
 
+	var err error
 	b.Run("default", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			sess, _ := store.Get(c)
 			sess.Set("john", "doe")
-			_ = sess.Save()
+			err = sess.Save()
 		}
+
+		utils.AssertEqual(b, nil, err)
 	})
 
 	b.Run("storage", func(b *testing.B) {
@@ -507,7 +514,9 @@ func Benchmark_Session(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			sess, _ := store.Get(c)
 			sess.Set("john", "doe")
-			_ = sess.Save()
+			err = sess.Save()
 		}
+
+		utils.AssertEqual(b, nil, err)
 	})
 }

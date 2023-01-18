@@ -66,83 +66,90 @@ func StatusMessage(status int) string {
 	return statusMessage[status]
 }
 
-// HTTP status codes were copied from net/http.
+// NOTE: Keep this in sync with the status code list
 var statusMessage = []string{
-	100: "Continue",
-	101: "Switching Protocols",
-	102: "Processing",
-	103: "Early Hints",
-	200: "OK",
-	201: "Created",
-	202: "Accepted",
-	203: "Non-Authoritative Information",
-	204: "No Content",
-	205: "Reset Content",
-	206: "Partial Content",
-	207: "Multi-Status",
-	208: "Already Reported",
-	226: "IM Used",
-	300: "Multiple Choices",
-	301: "Moved Permanently",
-	302: "Found",
-	303: "See Other",
-	304: "Not Modified",
-	305: "Use Proxy",
-	306: "Switch Proxy",
-	307: "Temporary Redirect",
-	308: "Permanent Redirect",
-	400: "Bad Request",
-	401: "Unauthorized",
-	402: "Payment Required",
-	403: "Forbidden",
-	404: "Not Found",
-	405: "Method Not Allowed",
-	406: "Not Acceptable",
-	407: "Proxy Authentication Required",
-	408: "Request Timeout",
-	409: "Conflict",
-	410: "Gone",
-	411: "Length Required",
-	412: "Precondition Failed",
-	413: "Request Entity Too Large",
-	414: "Request URI Too Long",
-	415: "Unsupported Media Type",
-	416: "Requested Range Not Satisfiable",
-	417: "Expectation Failed",
-	418: "I'm a teapot",
-	421: "Misdirected Request",
-	422: "Unprocessable Entity",
-	423: "Locked",
-	424: "Failed Dependency",
-	426: "Upgrade Required",
-	428: "Precondition Required",
-	429: "Too Many Requests",
-	431: "Request Header Fields Too Large",
-	451: "Unavailable For Legal Reasons",
-	500: "Internal Server Error",
-	501: "Not Implemented",
-	502: "Bad Gateway",
-	503: "Service Unavailable",
-	504: "Gateway Timeout",
-	505: "HTTP Version Not Supported",
-	506: "Variant Also Negotiates",
-	507: "Insufficient Storage",
-	508: "Loop Detected",
-	510: "Not Extended",
-	511: "Network Authentication Required",
+	100: "Continue",            // StatusContinue
+	101: "Switching Protocols", // StatusSwitchingProtocols
+	102: "Processing",          // StatusProcessing
+	103: "Early Hints",         // StatusEarlyHints
+
+	200: "OK",                            // StatusOK
+	201: "Created",                       // StatusCreated
+	202: "Accepted",                      // StatusAccepted
+	203: "Non-Authoritative Information", // StatusNonAuthoritativeInformation
+	204: "No Content",                    // StatusNoContent
+	205: "Reset Content",                 // StatusResetContent
+	206: "Partial Content",               // StatusPartialContent
+	207: "Multi-Status",                  // StatusMultiStatus
+	208: "Already Reported",              // StatusAlreadyReported
+	226: "IM Used",                       // StatusIMUsed
+
+	300: "Multiple Choices",   // StatusMultipleChoices
+	301: "Moved Permanently",  // StatusMovedPermanently
+	302: "Found",              // StatusFound
+	303: "See Other",          // StatusSeeOther
+	304: "Not Modified",       // StatusNotModified
+	305: "Use Proxy",          // StatusUseProxy
+	306: "Switch Proxy",       // StatusSwitchProxy
+	307: "Temporary Redirect", // StatusTemporaryRedirect
+	308: "Permanent Redirect", // StatusPermanentRedirect
+
+	400: "Bad Request",                     // StatusBadRequest
+	401: "Unauthorized",                    // StatusUnauthorized
+	402: "Payment Required",                // StatusPaymentRequired
+	403: "Forbidden",                       // StatusForbidden
+	404: "Not Found",                       // StatusNotFound
+	405: "Method Not Allowed",              // StatusMethodNotAllowed
+	406: "Not Acceptable",                  // StatusNotAcceptable
+	407: "Proxy Authentication Required",   // StatusProxyAuthRequired
+	408: "Request Timeout",                 // StatusRequestTimeout
+	409: "Conflict",                        // StatusConflict
+	410: "Gone",                            // StatusGone
+	411: "Length Required",                 // StatusLengthRequired
+	412: "Precondition Failed",             // StatusPreconditionFailed
+	413: "Request Entity Too Large",        // StatusRequestEntityTooLarge
+	414: "Request URI Too Long",            // StatusRequestURITooLong
+	415: "Unsupported Media Type",          // StatusUnsupportedMediaType
+	416: "Requested Range Not Satisfiable", // StatusRequestedRangeNotSatisfiable
+	417: "Expectation Failed",              // StatusExpectationFailed
+	418: "I'm a teapot",                    // StatusTeapot
+	421: "Misdirected Request",             // StatusMisdirectedRequest
+	422: "Unprocessable Entity",            // StatusUnprocessableEntity
+	423: "Locked",                          // StatusLocked
+	424: "Failed Dependency",               // StatusFailedDependency
+	425: "Too Early",                       // StatusTooEarly
+	426: "Upgrade Required",                // StatusUpgradeRequired
+	428: "Precondition Required",           // StatusPreconditionRequired
+	429: "Too Many Requests",               // StatusTooManyRequests
+	431: "Request Header Fields Too Large", // StatusRequestHeaderFieldsTooLarge
+	451: "Unavailable For Legal Reasons",   // StatusUnavailableForLegalReasons
+
+	500: "Internal Server Error",           // StatusInternalServerError
+	501: "Not Implemented",                 // StatusNotImplemented
+	502: "Bad Gateway",                     // StatusBadGateway
+	503: "Service Unavailable",             // StatusServiceUnavailable
+	504: "Gateway Timeout",                 // StatusGatewayTimeout
+	505: "HTTP Version Not Supported",      // StatusHTTPVersionNotSupported
+	506: "Variant Also Negotiates",         // StatusVariantAlsoNegotiates
+	507: "Insufficient Storage",            // StatusInsufficientStorage
+	508: "Loop Detected",                   // StatusLoopDetected
+	510: "Not Extended",                    // StatusNotExtended
+	511: "Network Authentication Required", // StatusNetworkAuthenticationRequired
 }
 
-// MIME types were copied from https://github.com/nginx/nginx/blob/master/conf/mime.types
+// MIME types were copied from https://github.com/nginx/nginx/blob/67d2a9541826ecd5db97d604f23460210fd3e517/conf/mime.types with the following updates:
+// - Use "application/xml" instead of "text/xml" as recommended per https://datatracker.ietf.org/doc/html/rfc7303#section-4.1
+// - Use "text/javascript" instead of "application/javascript" as recommended per https://www.rfc-editor.org/rfc/rfc9239#name-text-javascript
 var mimeExtensions = map[string]string{
 	"html":    "text/html",
 	"htm":     "text/html",
 	"shtml":   "text/html",
 	"css":     "text/css",
+	"xml":     "application/xml",
 	"gif":     "image/gif",
 	"jpeg":    "image/jpeg",
 	"jpg":     "image/jpeg",
-	"xml":     "application/xml",
-	"js":      "application/javascript",
+	"js":      "text/javascript",
 	"atom":    "application/atom+xml",
 	"rss":     "application/rss+xml",
 	"mml":     "text/mathml",
@@ -150,6 +157,7 @@ var mimeExtensions = map[string]string{
 	"jad":     "text/vnd.sun.j2me.app-descriptor",
 	"wml":     "text/vnd.wap.wml",
 	"htc":     "text/x-component",
+	"avif":    "image/avif",
 	"png":     "image/png",
 	"svg":     "image/svg+xml",
 	"svgz":    "image/svg+xml",
@@ -183,7 +191,11 @@ var mimeExtensions = map[string]string{
 	"odp":     "application/vnd.oasis.opendocument.presentation",
 	"ods":     "application/vnd.oasis.opendocument.spreadsheet",
 	"odt":     "application/vnd.oasis.opendocument.text",
+	"pptx":    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	"xlsx":    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+	"docx":    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 	"wmlc":    "application/vnd.wap.wmlc",
+	"wasm":    "application/wasm",
 	"7z":      "application/x-7z-compressed",
 	"cco":     "application/x-cocoa",
 	"jardiff": "application/x-java-archive-diff",

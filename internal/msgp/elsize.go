@@ -4,7 +4,6 @@ package msgp
 // plus type information. gives us
 // constant-time type information
 // for traversing composite objects.
-//
 var sizes = [256]bytespec{
 	mnil:      {size: 1, extra: constsize, typ: NilType},
 	mfalse:    {size: 1, extra: constsize, typ: BoolType},
@@ -84,14 +83,14 @@ type bytespec struct {
 type varmode int8
 
 const (
-	constsize varmode = 0  // constant size (size bytes + uint8(varmode) objects)
-	extra8            = -1 // has uint8(p[1]) extra bytes
-	extra16           = -2 // has be16(p[1:]) extra bytes
-	extra32           = -3 // has be32(p[1:]) extra bytes
-	map16v            = -4 // use map16
-	map32v            = -5 // use map32
-	array16v          = -6 // use array16
-	array32v          = -7 // use array32
+	constsize varmode = -iota // constant size (size bytes + uint8(varmode) objects)
+	extra8                    // has uint8(p[1]) extra bytes
+	extra16                   // has be16(p[1:]) extra bytes
+	extra32                   // has be32(p[1:]) extra bytes
+	map16v                    // use map16
+	map32v                    // use map32
+	array16v                  // use array16
+	array32v                  // use array32
 )
 
 func getType(v byte) Type {

@@ -24,20 +24,20 @@ func Test_ToLowerBytes(t *testing.T) {
 }
 
 func Benchmark_ToLowerBytes(b *testing.B) {
-	path := []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
+	path := []byte(largeStr)
+	want := []byte(lowerStr)
 	var res []byte
-
 	b.Run("fiber", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToLowerBytes(path)
 		}
-		AssertEqual(b, bytes.Equal(UnsafeBytes("/repos/gofiber/fiber/issues/187643/comments"), res), true)
+		AssertEqual(b, bytes.Equal(want, res), true)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = bytes.ToLower(path)
 		}
-		AssertEqual(b, bytes.Equal(UnsafeBytes("/repos/gofiber/fiber/issues/187643/comments"), res), true)
+		AssertEqual(b, bytes.Equal(want, res), true)
 	})
 }
 
@@ -56,20 +56,20 @@ func Test_ToUpperBytes(t *testing.T) {
 }
 
 func Benchmark_ToUpperBytes(b *testing.B) {
-	path := []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
+	path := []byte(largeStr)
+	want := []byte(upperStr)
 	var res []byte
-
 	b.Run("fiber", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = ToUpperBytes(path)
 		}
-		AssertEqual(b, bytes.Equal(UnsafeBytes("/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS"), res), true)
+		AssertEqual(b, bytes.Equal(want, res), true)
 	})
 	b.Run("default", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = bytes.ToUpper(path)
 		}
-		AssertEqual(b, bytes.Equal(UnsafeBytes("/REPOS/GOFIBER/FIBER/ISSUES/187643/COMMENTS"), res), true)
+		AssertEqual(b, bytes.Equal(want, res), true)
 	})
 }
 
@@ -182,10 +182,9 @@ func Benchmark_TrimBytes(b *testing.B) {
 }
 
 func Benchmark_EqualFoldBytes(b *testing.B) {
-	left := []byte("/RePos/GoFiBer/FibEr/iSsues/187643/CoMmEnts")
-	right := []byte("/RePos/goFiber/Fiber/issues/187643/COMMENTS")
+	left := []byte(upperStr)
+	right := []byte(lowerStr)
 	var res bool
-
 	b.Run("fiber", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			res = EqualFoldBytes(left, right)
@@ -209,6 +208,8 @@ func Test_EqualFoldBytes(t *testing.T) {
 	res = EqualFoldBytes([]byte("/my2/name/is/:param/*"), []byte("/my2/name"))
 	AssertEqual(t, false, res)
 	res = EqualFoldBytes([]byte("/dddddd"), []byte("eeeeee"))
+	AssertEqual(t, false, res)
+	res = EqualFoldBytes([]byte("\na"), []byte("*A"))
 	AssertEqual(t, false, res)
 	res = EqualFoldBytes([]byte("/MY3/NAME/IS/:PARAM/*"), []byte("/my3/name/is/:param/*"))
 	AssertEqual(t, true, res)

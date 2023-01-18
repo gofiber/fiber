@@ -5,7 +5,7 @@ package load
 
 import (
 	"context"
-	"io/ioutil"
+	"os"
 	"strconv"
 	"strings"
 	"syscall"
@@ -76,7 +76,7 @@ func Misc() (*MiscStat, error) {
 
 func MiscWithContext(ctx context.Context) (*MiscStat, error) {
 	filename := common.HostProc("stat")
-	out, err := ioutil.ReadFile(filename)
+	out, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func getProcsTotal() (int64, error) {
 
 func readLoadAvgFromFile() ([]string, error) {
 	loadavgFilename := common.HostProc("loadavg")
-	line, err := ioutil.ReadFile(loadavgFilename)
+	line, err := os.ReadFile(loadavgFilename)
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ type Config struct {
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
 
-	// Max number of recent connections during `Duration` seconds before sending a 429 response
+	// Max number of recent connections during `Expiration` seconds before sending a 429 response
 	//
 	// Default: 5
 	Max int

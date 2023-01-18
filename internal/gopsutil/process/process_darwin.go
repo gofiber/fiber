@@ -417,9 +417,9 @@ func convertCPUTimes(s string) (ret float64, err error) {
 	if err != nil {
 		return ret, err
 	}
-	h, err := strconv.Atoi(_t[0])
+	h, _ := strconv.Atoi(_t[0])
 	t += h * ClockTicks
-	h, err = strconv.Atoi(_t[1])
+	h, _ = strconv.Atoi(_t[1])
 	t += h
 	return float64(t) / ClockTicks, nil
 }
@@ -608,8 +608,7 @@ func (p *Process) getKProc() (*KinfoProc, error) {
 
 func (p *Process) getKProcWithContext(ctx context.Context) (*KinfoProc, error) {
 	mib := []int32{CTLKern, KernProc, KernProcPID, p.Pid}
-	procK := KinfoProc{}
-	length := uint64(unsafe.Sizeof(procK))
+	length := uint64(unsafe.Sizeof(KinfoProc{}))
 	buf := make([]byte, length)
 	_, _, syserr := unix.Syscall6(
 		202, // unix.SYS___SYSCTL https://github.com/golang/sys/blob/76b94024e4b621e672466e8db3d7f084e7ddcad2/unix/zsysnum_darwin_amd64.go#L146
