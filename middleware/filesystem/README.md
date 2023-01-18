@@ -216,12 +216,13 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 
-	"<Your go module>/statik"
+	// Use blank to invoke init function and register data to statik
+	_ "<Your go module>/statik" 
 	fs "github.com/rakyll/statik/fs"
 )
 
 func main() {
-	statik, err := fs.New()
+	statikFS, err := fs.New()
 	if err != nil {
 		panic(err)
 	}
