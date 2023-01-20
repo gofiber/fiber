@@ -1095,7 +1095,17 @@ func (c *Ctx) Query(key string, defaultValue ...string) string {
 //	QueryInt("id", 1) == 1
 //	QueryInt("id") == 0
 func (c *Ctx) QueryInt(key string, defaultValue ...int) int {
-	return defaultInt(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
+	// Use Atoi to convert the param to an int or return zero and an error
+	value, err := strconv.Atoi(c.app.getString(c.fasthttp.QueryArgs().Peek(key)))
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		} else {
+			return 0
+		}
+	}
+
+	return value
 }
 
 // QueryParser binds the query string to a struct.
