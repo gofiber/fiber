@@ -2119,6 +2119,15 @@ func Test_Ctx_Query(t *testing.T) {
 	utils.AssertEqual(t, "john", c.Query("search"))
 	utils.AssertEqual(t, "20", c.Query("age"))
 	utils.AssertEqual(t, "default", c.Query("unknown", "default"))
+}
+
+func Test_Ctx_QueryInt(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().URI().SetQueryString("search=john&age=20&id=")
+
 	utils.AssertEqual(t, 0, c.QueryInt("foo"))
 	utils.AssertEqual(t, 20, c.QueryInt("age", 12))
 	utils.AssertEqual(t, 0, c.QueryInt("search"))
