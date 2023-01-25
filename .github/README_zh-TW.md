@@ -86,10 +86,10 @@
 
 </p>
 <p align="center">
-  <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
+  <b>Fiber</b> 是款啟發自 <a href="https://github.com/expressjs/express">Express</a> 的 <b>Web 框架</b>，建基於 <a href="https://github.com/valyala/fasthttp">Fasthttp</a>，<a href="https://go.dev/doc/">Go</a> 上 <b>最快的</b> HTTP 引擎。設計旨在 <b>減輕</b> 快速開發的負擔，兼顧 <b>零記憶體分配</b> 和 <b>效能</b>。
 </p>
 
-## ⚡️ Quickstart
+## ⚡️ 快速入門
 
 ```go
 package main
@@ -107,59 +107,59 @@ func main() {
 }
 ```
 
-## 🤖 Benchmarks
+## 🤖 效能評定結果
 
-These tests are performed by [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all the results, please visit our [Wiki](https://docs.gofiber.io/extra/benchmarks).
+這些測試由 [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) 和 [Go Web](https://github.com/smallnest/go-web-framework-benchmark) 進行。若想參閱完整結果，請參閱我們的 [Wiki](https://docs.gofiber.io/extra/benchmarks) 資訊。
 
 <p float="left" align="middle">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
   <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
 </p>
 
-## ⚙️ Installation
+## ⚙️ 安裝
 
-Make sure you have Go installed ([download](https://go.dev/dl/)). Version `1.16` or higher is required.
+先確定您已經安裝 Go（[點此下載](https://go.dev/dl/)）。需要 `1.16` 或更新版本。
 
-Initialize your project by creating a folder and then running `go mod init github.com/your/repo` ([learn more](https://go.dev/blog/using-go-modules)) inside the folder. Then install Fiber with the [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) command:
+要初始化專案，首先建立檔案夾，然後在檔案夾中執行 `go mod init github.com/名稱/儲存庫`（[深入了解](https://go.dev/blog/using-go-modules)）。接著，使用 [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 命令安裝 Fiber：
 
 ```bash
 go get -u github.com/gofiber/fiber/v2
 ```
 
-## 🎯 Features
+## 🎯 特色
 
--   Robust [routing](https://docs.gofiber.io/routing)
--   Serve [static files](https://docs.gofiber.io/api/app#static)
--   Extreme [performance](https://docs.gofiber.io/extra/benchmarks)
--   [Low memory](https://docs.gofiber.io/extra/benchmarks) footprint
--   [API endpoints](https://docs.gofiber.io/api/ctx)
--   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) support
--   [Rapid](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
--   [Template engines](https://github.com/gofiber/template)
--   [WebSocket support](https://github.com/gofiber/websocket)
+-   強固的[路由系統](https://docs.gofiber.io/routing)
+-   可以寄存[靜態檔案](https://docs.gofiber.io/api/app#static)
+-   疾速[效能](https://docs.gofiber.io/extra/benchmarks)
+-   相當低的[記憶體使用量](https://docs.gofiber.io/extra/benchmarks)
+-   [API 端點](https://docs.gofiber.io/api/ctx)
+-   支援 [中介模組](https://docs.gofiber.io/middleware) 和 [接續功能 (Next)](https://docs.gofiber.io/api/ctx#next)
+-   [迅速開發](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 伺服器端服務
+-   [樣板引擎](https://github.com/gofiber/template)
+-   [支援 WebSocket](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
--   [Rate Limiter](https://docs.gofiber.io/api/middleware/limiter)
--   Translated in [18 languages](https://docs.gofiber.io/)
--   And much more, [explore Fiber](https://docs.gofiber.io/)
+-   支援[速率限制器](https://docs.gofiber.io/api/middleware/limiter)
+-   有 [18 門語言](https://docs.gofiber.io/)的翻譯
+-   還有很多功能，[開始探索 Fiber](https://docs.gofiber.io/)
 
-## 💡 Philosophy
+## 💡 設計哲學
 
-New gophers that make the switch from [Node.js](https://nodejs.org/en/about/) to [Go](https://go.dev/doc/) are dealing with a learning curve before they can start building their web applications or microservices. Fiber, as a **web framework**, was created with the idea of **minimalism** and follows the **UNIX way**, so that new gophers can quickly enter the world of Go with a warm and trusted welcome.
+從 [Node.js](https://nodejs.org/en/about/) 轉到 [Go](https://go.dev/doc/) 的新進 Go 開發者，得先學習 Go 的各個層面和知識，才能開始建構自己的 Web 應用程式或微服務。Fiber 作為一款 **Web 框架**，設計之初便以 **極簡主義** 為理念，並遵循 **UNIX 之道**，讓新進 Go 開發者能夠快速隨著友善且值得信賴的社群，進入 Go 的世界。
 
-Fiber is **inspired** by Express, the most popular web framework on the Internet. We combined the **ease** of Express and **raw performance** of Go. If you have ever implemented a web application in Node.js (_using Express or similar_), then many methods and principles will seem **very common** to you.
+Fiber **啟發自** Express——網際網路上最知名的 Web 框架，我們將 Express 的 **易用性** 和 Go 的 **原始效能** 結合在一起。如果您曾經在 Node.js（使用 Express 或類似框架）實作過 Web 應用程式，那麼許多方法和開發準則，將讓您感到 **無比熟悉**。
 
-We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues), Discord [channel](https://gofiber.io/discord) _and all over the Internet_ to create a **fast**, **flexible** and **friendly** Go web framework for **any** task, **deadline** and developer **skill**! Just like Express does in the JavaScript world.
+我們 **傾聽** 使用者在 [issues](https://github.com/gofiber/fiber/issues)、Discord [群組](https://gofiber.io/discord) 和 **網路上任何角落** 的意見、建議，製作出 **快速**、**靈活** 且 **易於上手** 的 Go Web 框架，來應對 **任何** 工作、**繳件期限** 和開發者的 **能力區間**——如同 Express 在 JavaScript 世界所扮演的角色！
 
-## ⚠️ Limitations
+## ⚠️ 限制
 
--   Due to Fiber's usage of unsafe, the library may not always be compatible with the latest Go version. Fiber 2.40.0 has been tested with Go versions 1.16 to 1.19.
--   Fiber is not compatible with net/http interfaces. This means you will not be able to use projects like gqlgen, go-swagger, or any others which are part of the net/http ecosystem.
+-   由於 Fiber 有用到 Unsafe，本函式庫有時可能跟最新版的 Go 語言不相容。Fiber 2.40.0 已在 Go 1.16 至 1.19 的版本測試過。
+-   Fiber 不相容 net/http 的介面，意味著您無法使用像是 gqlgen、go-swagger 或其他任何屬於 net/http 生態系統的專案。
 
-## 👀 Examples
+## 👀 範例
 
-Listed below are some of the common examples. If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
+下方列出一些常見範例。如果您想查看更多程式碼範例，請參閱我們的 [Recipes 儲存庫](https://github.com/gofiber/recipes)，或前往我們架設的 [API 文件](https://docs.gofiber.io)。
 
-#### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
+#### 📖 [**基礎路由**](https://docs.gofiber.io/#basic-routing)
 
 ```go
 func main() {
@@ -200,7 +200,7 @@ func main() {
 
 ```
 
-#### 📖 [**Route Naming**](https://docs.gofiber.io/api/app#name)
+#### 📖 [**路由命名**](https://docs.gofiber.io/api/app#name)
 
 ```go
 func main() {
@@ -230,7 +230,7 @@ func main() {
 
 ```
 
-#### 📖 [**Serving Static Files**](https://docs.gofiber.io/api/app#static)
+#### 📖 [**寄存靜態檔案**](https://docs.gofiber.io/api/app#static)
 
 ```go
 func main() {
@@ -252,7 +252,7 @@ func main() {
 
 ```
 
-#### 📖 [**Middleware & Next**](https://docs.gofiber.io/api/ctx#next)
+#### 📖 [**中介模組和接續功能 (Next)**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {
@@ -282,19 +282,19 @@ func main() {
 ```
 
 <details>
-  <summary>📚 Show more code examples</summary>
+  <summary>📚 查看更多程式碼範例</summary>
 
-### Views engines
+### 檢視引擎
 
-📖 [Config](https://docs.gofiber.io/api/fiber#config)
-📖 [Engines](https://github.com/gofiber/template)
-📖 [Render](https://docs.gofiber.io/api/ctx#render)
+📖 [組態設定](https://docs.gofiber.io/api/fiber#config)
+📖 [引擎](https://github.com/gofiber/template)
+📖 [轉譯 (render)](https://docs.gofiber.io/api/ctx#render)
 
-Fiber defaults to the [html/template](https://pkg.go.dev/html/template/) when no view engine is set.
+若未指定檢視引擎，Fiber 預設採用 [html/template](https://pkg.go.dev/html/template/)。
 
-If you want to execute partials or use a different engine like [amber](https://github.com/eknkc/amber), [handlebars](https://github.com/aymerick/raymond), [mustache](https://github.com/cbroglie/mustache) or [pug](https://github.com/Joker/jade) etc..
+如果您想執行 partials，或者是使用如 [amber](https://github.com/eknkc/amber)、[handlebars](https://github.com/aymerick/raymond)、[mustache](https://github.com/cbroglie/mustache) 或 [pug](https://github.com/Joker/jade) 等不同的引擎……
 
-Checkout our [Template](https://github.com/gofiber/template) package that support multiple view engines.
+請參考我們的 [Template](https://github.com/gofiber/template) 套件——它支援多種檢視引擎。
 
 ```go
 package main
@@ -305,12 +305,12 @@ import (
 )
 
 func main() {
-    // You can setup Views engine before initiation app:
+    // 您可以在 app 初始化前設定檢視 (Views) 引擎：
     app := fiber.New(fiber.Config{
         Views: pug.New("./views", ".pug"),
     })
 
-    // And now, you can call template `./views/home.pug` like this:
+    // 現在，您可以用下面這種方式呼叫 `./views/home.pug` 樣板：
     app.Get("/", func(c *fiber.Ctx) error {
         return c.Render("home", fiber.Map{
             "title": "Homepage",
@@ -322,13 +322,13 @@ func main() {
 }
 ```
 
-### Grouping routes into chains
+### 將路由分組為一串列
 
-📖 [Group](https://docs.gofiber.io/api/app#group)
+📖 [分組](https://docs.gofiber.io/api/app#group)
 
 ```go
 func middleware(c *fiber.Ctx) error {
-    fmt.Println("Don't mind me!")
+    fmt.Println("不要理我！")
     return c.Next()
 }
 
@@ -339,15 +339,15 @@ func handler(c *fiber.Ctx) error {
 func main() {
     app := fiber.New()
 
-    // Root API route
+    // 根 API 路由
     api := app.Group("/api", middleware) // /api
 
-    // API v1 routes
+    // API v1 路由
     v1 := api.Group("/v1", middleware) // /api/v1
     v1.Get("/list", handler)           // /api/v1/list
     v1.Get("/user", handler)           // /api/v1/user
 
-    // API v2 routes
+    // API v2 路由
     v2 := api.Group("/v2", middleware) // /api/v2
     v2.Get("/list", handler)           // /api/v2/list
     v2.Get("/user", handler)           // /api/v2/user
@@ -357,9 +357,9 @@ func main() {
 
 ```
 
-### Middleware logger
+### 中介模組記錄器
 
-📖 [Logger](https://docs.gofiber.io/api/middleware/logger)
+📖 [記錄器](https://docs.gofiber.io/api/middleware/logger)
 
 ```go
 package main
@@ -382,7 +382,7 @@ func main() {
 }
 ```
 
-### Cross-Origin Resource Sharing (CORS)
+### 跨原始來源資源共用 (CORS)
 
 📖 [CORS](https://docs.gofiber.io/api/middleware/cors)
 
@@ -405,15 +405,15 @@ func main() {
 }
 ```
 
-Check CORS by passing any domain in `Origin` header:
+在 `Origin` 標頭傳入任何網域來檢查 CORS 功能：
 
 ```bash
 curl -H "Origin: http://example.com" --verbose http://localhost:3000
 ```
 
-### Custom 404 response
+### 自訂 404 回應
 
-📖 [HTTP Methods](https://docs.gofiber.io/api/ctx#status)
+📖 [HTTP 方法](https://docs.gofiber.io/api/ctx#status)
 
 ```go
 func main() {
@@ -429,7 +429,7 @@ func main() {
         return c.SendString("Welcome!")
     })
 
-    // Last middleware to match anything
+    // 最後一個中介模組，符合所有條件
     app.Use(func(c *fiber.Ctx) error {
         return c.SendStatus(404)
         // => 404 "Not Found"
@@ -439,7 +439,7 @@ func main() {
 }
 ```
 
-### JSON Response
+### JSON 回應
 
 📖 [JSON](https://docs.gofiber.io/ctx#json)
 
@@ -469,7 +469,7 @@ func main() {
 }
 ```
 
-### WebSocket Upgrade
+### WebSocket 升級 (Upgrade)
 
 📖 [Websocket](https://github.com/gofiber/websocket)
 
@@ -505,7 +505,7 @@ func main() {
 
 ### Server-Sent Events
 
-📖 [More Info](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
+📖 [更多資訊](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
 
 ```go
 import (
@@ -528,8 +528,8 @@ func main() {
 
       for {
         i++
-        msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
-        fmt.Fprintf(w, "data: Message: %s\n\n", msg)
+        msg := fmt.Sprintf("%d - 目前時間為 %v", i, time.Now())
+        fmt.Fprintf(w, "data: 訊息: %s\n\n", msg)
         fmt.Println(msg)
 
         w.Flush()
@@ -544,9 +544,9 @@ func main() {
 }
 ```
 
-### Recover middleware
+### 錯誤復原中介模組
 
-📖 [Recover](https://docs.gofiber.io/api/middleware/recover)
+📖 [復原](https://docs.gofiber.io/api/middleware/recover)
 
 ```go
 import (
@@ -560,7 +560,7 @@ func main() {
     app.Use(recover.New())
 
     app.Get("/", func(c *fiber.Ctx) error {
-        panic("normally this would crash your app")
+        panic("正常來說，這會導致 app 當機")
     })
 
     log.Fatal(app.Listen(":3000"))
@@ -569,9 +569,9 @@ func main() {
 
 </details>
 
-### Using Trusted Proxy
+### 使用信任的代理伺服器
 
-📖 [Config](https://docs.gofiber.io/api/fiber#config)
+📖 [組態設定](https://docs.gofiber.io/api/fiber#config)
 
 ```go
 import (
@@ -582,7 +582,7 @@ import (
 func main() {
     app := fiber.New(fiber.Config{
         EnableTrustedProxyCheck: true,
-        TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30"}, // IP address or IP address range
+        TrustedProxies: []string{"0.0.0.0", "1.1.1.1/30"}, // IP 地址或 IP 地址區間
         ProxyHeader: fiber.HeaderXForwardedFor},
     })
 
@@ -594,11 +594,11 @@ func main() {
 
 </details>
 
-## 🧬 Internal Middleware
+## 🧬 內建中介模組
 
-Here is a list of middleware that are included within the Fiber framework.
+這裡列出了 Fiber 框架內建的中介模組。
 
-| Middleware                                                                             | Description                                                                                                                                                                  |
+| 中介模組                                                                               | 描述                                                                                                                                                                         |
 | :------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials.        |
 | [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 | Intercept and cache responses                                                                                                                                                |
@@ -622,11 +622,11 @@ Here is a list of middleware that are included within the Fiber framework.
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Skip middleware that skips a wrapped handler if a predicate is true.                                                                                                         |
 | [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                                |
 
-## 🧬 External Middleware
+## 🧬 外掛中介模組
 
-List of externally hosted middleware modules and maintained by the [Fiber team](https://github.com/orgs/gofiber/people).
+這裡列出由 [Fiber 團隊](https://github.com/orgs/gofiber/people) 維護、存放在外部的中介模組。
 
-| Middleware                                        | Description                                                                                                                                                         |
+| 中介模組                                          | 描述                                                                                                                                                                |
 | :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | [adaptor](https://github.com/gofiber/adaptor)     | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn!                                                                           |
 | [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
@@ -640,55 +640,55 @@ List of externally hosted middleware modules and maintained by the [Fiber team](
 
 ## 🕶️ Awesome List
 
-For more articles, middlewares, examples or tools check our [awesome list](https://github.com/gofiber/awesome-fiber).
+如需更多文章、中介模組、範例或工具，請參考我們的 [Awesome List](https://github.com/gofiber/awesome-fiber)。
 
-## 👍 Contribute
+## 👍 貢獻
 
-If you want to say **thank you** and/or support the active development of `Fiber`:
+如果您想和我們 **道謝**，或者是支持 `Fiber` 繼續積極開發下去（也可以兩個都做）：
 
-1. Add a [GitHub Star](https://github.com/gofiber/fiber/stargazers) to the project.
-2. Tweet about the project [on your Twitter](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber).
-3. Write a review or tutorial on [Medium](https://medium.com/), [Dev.to](https://dev.to/) or personal blog.
-4. Support the project by donating a [cup of coffee](https://buymeacoff.ee/fenny).
+1. 送給專案一顆 [GitHub 星星](https://github.com/gofiber/fiber/stargazers)。
+2. [在您的 Twitter 上](https://twitter.com/intent/tweet?text=Fiber%20is%20an%20Express%20inspired%20%23web%20%23framework%20built%20on%20top%20of%20Fasthttp%2C%20the%20fastest%20HTTP%20engine%20for%20%23Go.%20Designed%20to%20ease%20things%20up%20for%20%23fast%20development%20with%20zero%20memory%20allocation%20and%20%23performance%20in%20mind%20%F0%9F%9A%80%20https%3A%2F%2Fgithub.com%2Fgofiber%2Ffiber)傳個關於本專案的推文。
+3. 在 [Medium](https://medium.com/)、[Dev.to](https://dev.to/) 或者是個人部落格上寫下意見回饋或教學。
+4. 送專案 [一杯咖啡](https://buymeacoff.ee/fenny) 以示支持。
 
-## ☕ Supporters
+## ☕ 支持者
 
-Fiber is an open source project that runs on donations to pay the bills e.g. our domain name, gitbook, netlify and serverless hosting. If you want to support Fiber, you can ☕ [**buy a coffee here**](https://buymeacoff.ee/fenny).
+Fiber 是個仰賴捐款的開放原始碼專案——用來支付如域名、Gitbook、Netlify 和無服務器運算服務的費用。如果您想支持 Fiber，可以在 ☕ [**這裡捐杯咖啡**](https://buymeacoff.ee/fenny)。
 
-|                                                            | User                                             | Donation |
-| :--------------------------------------------------------- | :----------------------------------------------- | :------- |
-| ![](https://avatars.githubusercontent.com/u/204341?s=25)   | [@destari](https://github.com/destari)           | ☕ x 10  |
-| ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/56607882?s=25) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/27820675?s=25) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/1094221?s=25)  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5   |
-| ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3   |
-| ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3   |
-| ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3   |
-| ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/29042462?s=25) | [@lapolinar](https://github.com/lapolinar)       | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/2978730?s=25)  | [@diegowifi](https://github.com/diegowifi)       | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1   |
-| ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1   |
+|                                                            | 使用者                                           | 捐款    |
+| :--------------------------------------------------------- | :----------------------------------------------- | :------ |
+| ![](https://avatars.githubusercontent.com/u/204341?s=25)   | [@destari](https://github.com/destari)           | ☕ x 10 |
+| ![](https://avatars.githubusercontent.com/u/63164982?s=25) | [@dembygenesis](https://github.com/dembygenesis) | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/56607882?s=25) | [@thomasvvugt](https://github.com/thomasvvugt)   | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/27820675?s=25) | [@hendratommy](https://github.com/hendratommy)   | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/1094221?s=25)  | [@ekaputra07](https://github.com/ekaputra07)     | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/194590?s=25)   | [@jorgefuertes](https://github.com/jorgefuertes) | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/186637?s=25)   | [@candidosales](https://github.com/candidosales) | ☕ x 5  |
+| ![](https://avatars.githubusercontent.com/u/29659953?s=25) | [@l0nax](https://github.com/l0nax)               | ☕ x 3  |
+| ![](https://avatars.githubusercontent.com/u/635852?s=25)   | [@bihe](https://github.com/bihe)                 | ☕ x 3  |
+| ![](https://avatars.githubusercontent.com/u/307334?s=25)   | [@justdave](https://github.com/justdave)         | ☕ x 3  |
+| ![](https://avatars.githubusercontent.com/u/11155743?s=25) | [@koddr](https://github.com/koddr)               | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/29042462?s=25) | [@lapolinar](https://github.com/lapolinar)       | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/2978730?s=25)  | [@diegowifi](https://github.com/diegowifi)       | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/44171355?s=25) | [@ssimk0](https://github.com/ssimk0)             | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/5638101?s=25)  | [@raymayemir](https://github.com/raymayemir)     | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/619996?s=25)   | [@melkorm](https://github.com/melkorm)           | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/31022056?s=25) | [@marvinjwendt](https://github.com/marvinjwendt) | ☕ x 1  |
+| ![](https://avatars.githubusercontent.com/u/31921460?s=25) | [@toishy](https://github.com/toishy)             | ☕ x 1  |
 
-## ‎‍💻 Code Contributors
+## ‎‍💻 程式碼貢獻者
 
 <img src="https://opencollective.com/fiber/contributors.svg?width=890&button=false" alt="Code Contributors" style="max-width:100%;">
 
-## ⭐️ Stargazers
+## ⭐️ 收藏數
 
 <img src="https://starchart.cc/gofiber/fiber.svg" alt="Stargazers over time" style="max-width: 100%">
 
-## ⚠️ License
+## ⚠️ 授權條款
 
-Copyright (c) 2019-present [Fenny](https://github.com/fenny) and [Contributors](https://github.com/gofiber/fiber/graphs/contributors). `Fiber` is free and open-source software licensed under the [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE). Official logo was created by [Vic Shóstak](https://github.com/koddr) and distributed under [Creative Commons](https://creativecommons.org/licenses/by-sa/4.0/) license (CC BY-SA 4.0 International).
+著作權所有 (c) 2019-現在 [Fenny](https://github.com/fenny) 和 [貢獻者](https://github.com/gofiber/fiber/graphs/contributors)。`Fiber` 是款依 [MIT License](https://github.com/gofiber/fiber/blob/master/LICENSE) 授權，免費且開放原始碼的軟體。官方圖示 (logo) 由 [Vic Shóstak](https://github.com/koddr) 製作，並依據 [創用 CC](https://creativecommons.org/licenses/by-sa/4.0/) 授權條款散佈 (CC BY-SA 4.0 International)。
 
-**Third-party library licenses**
+**第三方函式庫的授權條款**
 
 -   [colorable](https://github.com/mattn/go-colorable/blob/master/LICENSE)
 -   [isatty](https://github.com/mattn/go-isatty/blob/master/LICENSE)
