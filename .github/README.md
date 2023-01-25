@@ -156,7 +156,7 @@ We **listen** to our users in [issues](https://github.com/gofiber/fiber/issues),
 
 ## 👀 Examples
 
-Listed below are some of the common examples. If you want to see more code examples , please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
+Listed below are some of the common examples. If you want to see more code examples, please visit our [Recipes repository](https://github.com/gofiber/recipes) or visit our hosted [API documentation](https://docs.gofiber.io).
 
 #### 📖 [**Basic Routing**](https://docs.gofiber.io/#basic-routing)
 
