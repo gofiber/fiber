@@ -25,6 +25,7 @@ func Test_IsIPv4(t *testing.T) {
 	AssertEqual(t, false, IsIPv4(""))
 	AssertEqual(t, false, IsIPv4("2345:0425:2CA1::0567:5673:23b5"))
 	AssertEqual(t, false, IsIPv4("invalid"))
+	AssertEqual(t, false, IsIPv4("189.12.34.260"))
 }
 
 // go test -v -run=^$ -bench=UnsafeString -benchmem -count=2

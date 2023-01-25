@@ -1,6 +1,8 @@
 package utils
 
-import "net"
+import (
+	"net"
+)
 
 // IsIPv4 works the same way as net.ParseIP,
 // but without check for IPv6 case and without returning net.IP slice, whereby IsIPv4 makes no allocations.
@@ -26,7 +28,7 @@ func IsIPv4(s string) bool {
 			}
 		}
 
-		if ci == 0 || n > 0xFF || (ci > 1 && s[0] == '0') {
+		if ci == 0 || (ci > 1 && s[0] == '0') {
 			return false
 		}
 
