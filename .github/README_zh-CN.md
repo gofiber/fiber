@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://gofiber.io">
-    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
@@ -110,8 +110,8 @@ func main() {
 这些测试由 [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) 和 [Go Web](https://github.com/smallnest/go-web-framework-benchmark) 完成。如果您想查看所有结果，请访问我们的 [Wiki](https://docs.gofiber.io/extra/benchmarks) 。
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark-pipeline.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark_alloc.png" width="49%">
 </p>
 
 ## ⚙️ 安装
@@ -142,7 +142,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 💡 哲学
 
-从 [Node.js](https://nodejs.org/en/about/) 切换到 [Go](https://go.dev/doc/) 的新 `gopher` 在开始构建 `Web` 
+从 [Node.js](https://nodejs.org/en/about/) 切换到 [Go](https://go.dev/doc/) 的新 `gopher` 在开始构建 `Web`
 应用程序或微服务之前需要经历一段艰难的学习过程。 而 `Fiber`，一个基于**极简主义**并且遵循 **UNIX 方式**创建的 **Web 框架**，
 使新的 `gopher` 可以在热烈和可信赖的欢迎中迅速进入 `Go` 的世界。
 
@@ -526,7 +526,7 @@ func main() {
     c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
       fmt.Println("WRITER")
       var i int
-      
+
       for {
         i++
         msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
