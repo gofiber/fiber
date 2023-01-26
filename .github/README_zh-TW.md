@@ -544,9 +544,9 @@ func main() {
 }
 ```
 
-### 錯誤復原中介模組
+### 錯誤救援中介模組
 
-📖 [復原](https://docs.gofiber.io/api/middleware/recover)
+📖 [救援](https://docs.gofiber.io/api/middleware/recover)
 
 ```go
 import (
@@ -598,45 +598,45 @@ func main() {
 
 這裡列出了 Fiber 框架內建的中介模組。
 
-| 中介模組                                                                               | 描述                                                                                                                                                                         |
-| :------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | Basic auth middleware provides an HTTP basic authentication. It calls the next handler for valid credentials and 401 Unauthorized for missing or invalid credentials.        |
-| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 | Intercept and cache responses                                                                                                                                                |
-| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)           | Compression middleware for Fiber, it supports `deflate`, `gzip` and `brotli` by default.                                                                                     |
-| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | Enable cross-origin resource sharing \(CORS\) with various options.                                                                                                          |
-| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | Protect from CSRF exploits.                                                                                                                                                  |
-| [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | Encrypt middleware which encrypts cookie values.                                                                                                                             |
-| [envvar](https://github.com/gofiber/fiber/tree/master/middleware/envvar)               | Expose environment variables with providing an optional config.                                                                                                              |
-| [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | ETag middleware that lets caches be more efficient and save bandwidth, as a web server does not need to resend a full response if the content has not changed.               |
-| [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar middleware that serves via its HTTP server runtime exposed variants in the JSON format.                                                                               |
-| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | Ignore favicon from logs or serve from memory if a file path is provided.                                                                                                    |
-| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem)       | FileSystem middleware for Fiber, special thanks and credits to Alireza Salary                                                                                                |
-| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)             | Rate-limiting middleware for Fiber. Use to limit repeated requests to public APIs and/or endpoints such as password reset.                                                   |
-| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)               | HTTP request/response logger.                                                                                                                                                |
-| [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             | Monitor middleware that reports server metrics, inspired by express-status-monitor                                                                                           |
-| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)                 | Special thanks to Matthew Lee \(@mthli\)                                                                                                                                     |
-| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)                 | Allows you to proxy requests to a multiple servers                                                                                                                           |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)             | Recover middleware recovers from panics anywhere in the stack chain and handles the control to the centralized[ ErrorHandler](https://docs.gofiber.io/guide/error-handling). |
-| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)         | Adds a requestid to every request.                                                                                                                                           |
-| [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | Session middleware. NOTE: This middleware uses our Storage package.                                                                                                          |
-| [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | Skip middleware that skips a wrapped handler if a predicate is true.                                                                                                         |
-| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | Adds a max time for a request and forwards to ErrorHandler if it is exceeded.                                                                                                |
+| 中介模組                                                                               | 描述                                                                                                                                                                   |
+| :------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [basicauth](https://github.com/gofiber/fiber/tree/master/middleware/basicauth)         | 提供 HTTP Basic 認證的基本認證中介模組。如果憑證有效，則會呼叫接續函式 (next)；如果沒有憑證或失效，則回傳 401 Unauthorized。                                           |
+| [cache](https://github.com/gofiber/fiber/tree/master/middleware/cache)                 | 攔截並快取回應。                                                                                                                                                       |
+| [compress](https://github.com/gofiber/fiber/tree/master/middleware/compress)           | 適用於 Fiber 的壓縮中介模組。預設支援 `deflate`、`gzip` 和 `brotli`。                                                                                                  |
+| [cors](https://github.com/gofiber/fiber/tree/master/middleware/cors)                   | 啟用跨來源資源共用 (CORS)，可調整多種選項。                                                                                                                            |
+| [csrf](https://github.com/gofiber/fiber/tree/master/middleware/csrf)                   | 保護資源防止 CSRF 利用。                                                                                                                                               |
+| [encryptcookie](https://github.com/gofiber/fiber/tree/master/middleware/encryptcookie) | 加密中介模組，會將 Cookie 的值進行加密。                                                                                                                               |
+| [envvar](https://github.com/gofiber/fiber/tree/master/middleware/envvar)               | 公開環境變數，並提供可調整設定。                                                                                                                                       |
+| [etag](https://github.com/gofiber/fiber/tree/master/middleware/etag)                   | ETag 中介模組，讓快取更高效，同時因為 Web 伺服器不需要在內容未更動時重新傳送完整請求，因此可以減少流量使用。                                                           |
+| [expvar](https://github.com/gofiber/fiber/tree/master/middleware/expvar)               | Expvar 中介模組，透過其 HTTP 伺服器執行階段，提供 JSON 格式的公用變數。                                                                                                |
+| [favicon](https://github.com/gofiber/fiber/tree/master/middleware/favicon)             | 不輸出 Favicons 請求記錄；若有提供檔案路徑，則從記憶體提供圖示。                                                                                                       |
+| [filesystem](https://github.com/gofiber/fiber/tree/master/middleware/filesystem)       | 適用於 Fiber 的檔案系統中介模組。特別銘謝 Alireza Salary！                                                                                                             |
+| [limiter](https://github.com/gofiber/fiber/tree/master/middleware/limiter)             | 適用於 Fiber 的速率限制中介模組。用來限制傳入公開 API 或者（以及）端點（如密碼重設）的重複請求。                                                                       |
+| [logger](https://github.com/gofiber/fiber/tree/master/middleware/logger)               | HTTP 請求/回應記錄工具。                                                                                                                                               |
+| [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             | 監控中介模組，用來回報伺服器指標。啟發自 express-status-monitor。                                                                                                      |
+| [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)                 | 特別感謝 Matthew Lee \(@mthli\)                                                                                                                                        |
+| [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)                 | 讓您可以將請求代理 (proxy) 至多台伺服器。                                                                                                                              |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)             | 救援中介模組：可以從呼叫堆疊鏈中任何部分的當機 (panic) 中復原，並將控制權交由中央的 [錯誤處理常式 (ErrorHandler)](https://docs.gofiber.io/guide/error-handling) 處理。 |
+| [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)         | 為每個請求加上 requestid。                                                                                                                                             |
+| [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | 連線階段中介模組。注意：這個中介模組有用到我們的 Storage 套件。                                                                                                        |
+| [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | 略過中介模組，會在條件成立時略過封裝過的處理常式。                                                                                                                     |
+| [timeout](https://github.com/gofiber/fiber/tree/master/middleware/timeout)             | 為請求加上最長時限，並在逾時後轉送至錯誤處理常式 (ErrorHandler)。                                                                                                      |
 
 ## 🧬 外掛中介模組
 
 這裡列出由 [Fiber 團隊](https://github.com/orgs/gofiber/people) 維護、存放在外部的中介模組。
 
-| 中介模組                                          | 描述                                                                                                                                                                |
-| :------------------------------------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [adaptor](https://github.com/gofiber/adaptor)     | Converter for net/http handlers to/from Fiber request handlers, special thanks to @arsmn!                                                                           |
-| [helmet](https://github.com/gofiber/helmet)       | Helps secure your apps by setting various HTTP headers.                                                                                                             |
-| [jwt](https://github.com/gofiber/jwt)             | JWT returns a JSON Web Token \(JWT\) auth middleware.                                                                                                               |
-| [keyauth](https://github.com/gofiber/keyauth)     | Key auth middleware provides a key based authentication.                                                                                                            |
-| [redirect](https://github.com/gofiber/redirect)   | Redirect middleware                                                                                                                                                 |
-| [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware rewrites the URL path based on provided rules. It can be helpful for backward compatibility or just creating cleaner and more descriptive links. |
-| [storage](https://github.com/gofiber/storage)     | Premade storage drivers that implement the Storage interface, designed to be used with various Fiber middlewares.                                                   |
-| [template](https://github.com/gofiber/template)   | This package contains 8 template engines that can be used with Fiber `v1.10.x` Go version 1.13 or higher is required.                                               |
-| [websocket](https://github.com/gofiber/websocket) | Based on Fasthttp WebSocket for Fiber with Locals support!                                                                                                          |
+| 中介模組                                          | 描述                                                                                                   |
+| :------------------------------------------------ | :----------------------------------------------------------------------------------------------------- |
+| [adaptor](https://github.com/gofiber/adaptor)     | 將 net/http 處理常式轉換至 Fiber 處理常式，或者是反著做。特別感謝 @arsmn！                             |
+| [helmet](https://github.com/gofiber/helmet)       | 透過設定多種 HTTP 標頭，協助保護您應用程式的安全。                                                     |
+| [jwt](https://github.com/gofiber/jwt)             | JWT 回傳 JSON Web Token \(JWT\) 認證中介模組。                                                         |
+| [keyauth](https://github.com/gofiber/keyauth)     | Key auth 中介模組提供以金鑰為基礎的認證模式。                                                          |
+| [redirect](https://github.com/gofiber/redirect)   | 用來重新導向的中介模組。                                                                               |
+| [rewrite](https://github.com/gofiber/rewrite)     | 重寫 (Rewrite) 中介模組：根據提供規則重寫 URL 路徑，適合用來向後相容，或者是製作更乾淨且更好懂的連結。 |
+| [storage](https://github.com/gofiber/storage)     | 已經做好，實作 Storage 介面的儲存區驅動模組，設計用來與各種 Fiber 中介模組搭配使用。                   |
+| [template](https://github.com/gofiber/template)   | 本套件包含 8 種樣板引擎，可以和 Fiber `v1.10.x` 一起使用。需要 Go 1.13 或更新版本。                    |
+| [websocket](https://github.com/gofiber/websocket) | 適用於 Fiber，建基於 Fasthttp 的 WebSocket。支援本機空間 (Locals)！                                    |
 
 ## 🕶️ Awesome List
 
