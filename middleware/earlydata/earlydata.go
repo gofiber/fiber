@@ -20,6 +20,11 @@ func New(config ...Config) fiber.Handler {
 
 	// Return new handler
 	return func(c fiber.Ctx) error {
+		// Don't execute middleware if Next returns true
+		if cfg.Next != nil && cfg.Next(c) {
+			return c.Next()
+		}
+
 		// Abort if we can't trust the early-data header
 		if !c.IsProxyTrusted() {
 			return cfg.Error
