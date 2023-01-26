@@ -137,7 +137,7 @@ go get -u github.com/gofiber/fiber/v2
 -   [迅速開發](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 伺服器端服務
 -   [樣板引擎](https://github.com/gofiber/template)
 -   [支援 WebSocket](https://github.com/gofiber/websocket)
--   [Server-Sent 事件](https://github.com/gofiber/recipes/tree/master/sse)
+-   [Server-Sent Events](https://github.com/gofiber/recipes/tree/master/sse)
 -   支援[速率限制](https://docs.gofiber.io/api/middleware/limiter)
 -   有 [18 門語言](https://docs.gofiber.io/)的翻譯
 -   還有很多功能，[開始探索 Fiber](https://docs.gofiber.io/)
@@ -503,7 +503,7 @@ func main() {
 }
 ```
 
-### Server-Sent 事件
+### Server-Sent Events
 
 📖 [更多資訊](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events)
 
@@ -544,9 +544,9 @@ func main() {
 }
 ```
 
-### 錯誤救援中介模組
+### Recover 中介模組
 
-📖 [救援](https://docs.gofiber.io/api/middleware/recover)
+📖 [Recover](https://docs.gofiber.io/api/middleware/recover)
 
 ```go
 import (
@@ -616,7 +616,7 @@ func main() {
 | [monitor](https://github.com/gofiber/fiber/tree/master/middleware/monitor)             | 監控中介模組，用來回報伺服器指標。啟發自 express-status-monitor。                                                                                                      |
 | [pprof](https://github.com/gofiber/fiber/tree/master/middleware/pprof)                 | 特別感謝 Matthew Lee \(@mthli\)                                                                                                                                        |
 | [proxy](https://github.com/gofiber/fiber/tree/master/middleware/proxy)                 | 讓您可以將請求代理 (proxy) 至多台伺服器。                                                                                                                              |
-| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)             | 救援中介模組：可以從呼叫堆疊鏈中任何部分的當機 (panic) 中復原，並將控制權交由中央的 [錯誤處理常式 (ErrorHandler)](https://docs.gofiber.io/guide/error-handling) 處理。 |
+| [recover](https://github.com/gofiber/fiber/tree/master/middleware/recover)             | Recover 中介模組：可以從呼叫堆疊鏈中任何部分的當機 (panic) 中復原，並將控制權交由中央的 [錯誤處理常式 (ErrorHandler)](https://docs.gofiber.io/guide/error-handling) 處理。 |
 | [requestid](https://github.com/gofiber/fiber/tree/master/middleware/requestid)         | 為每個請求加上 requestid。                                                                                                                                             |
 | [session](https://github.com/gofiber/fiber/tree/master/middleware/session)             | 連線階段中介模組。注意：這個中介模組有用到我們的 Storage 套件。                                                                                                        |
 | [skip](https://github.com/gofiber/fiber/tree/master/middleware/skip)                   | 略過中介模組，會在條件成立時略過封裝過的處理常式。                                                                                                                     |
