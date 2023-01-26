@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://gofiber.io">
-    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
@@ -109,8 +109,8 @@ func main() {
 これらのテストは[TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)および[Go Web](https://github.com/smallnest/go-web-framework-benchmark)によって計測を行っています 。すべての結果を表示するには、 [Wiki](https://docs.gofiber.io/extra/benchmarks)にアクセスしてください。
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark-pipeline.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark_alloc.png" width="49%">
 </p>
 
 ## ⚙️ インストール

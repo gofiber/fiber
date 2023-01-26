@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://gofiber.io">
-    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
@@ -108,8 +108,8 @@ func main() {
 이 테스트들은 [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext)와 [Go Web](https://github.com/smallnest/go-web-framework-benchmark)을 통해 측정되었습니다. 만약 모든 결과를 보고 싶다면, [Wiki](https://docs.gofiber.io/extra/benchmarks)를 확인해 주세요.
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark-pipeline.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark_alloc.png" width="49%">
 </p>
 
 ## ⚙️ 설치
@@ -524,7 +524,7 @@ func main() {
     c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
       fmt.Println("WRITER")
       var i int
-      
+
       for {
         i++
         msg := fmt.Sprintf("%d - the time is %v", i, time.Now())

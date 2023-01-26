@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://gofiber.io">
-    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
@@ -83,7 +83,7 @@
   <a href="https://gofiber.io/discord">
     <img src="https://img.shields.io/discord/704680098577514527?style=flat-square&label=%F0%9F%92%AC%20discord&color=00ACD7">
   </a>
-  
+
 </p>
 <p align="center">
   <b>Fiber</b> is an <a href="https://github.com/expressjs/express">Express</a> inspired <b>web framework</b> built on top of <a href="https://github.com/valyala/fasthttp">Fasthttp</a>, the <b>fastest</b> HTTP engine for <a href="https://go.dev/doc/">Go</a>. Designed to <b>ease</b> things up for <b>fast</b> development with <b>zero memory allocation</b> and <b>performance</b> in mind.
@@ -112,8 +112,8 @@ func main() {
 These tests are performed by [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) and [Go Web](https://github.com/smallnest/go-web-framework-benchmark). If you want to see all the results, please visit our [Wiki](https://docs.gofiber.io/extra/benchmarks).
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark-pipeline.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark_alloc.png" width="49%">
 </p>
 
 ## ⚙️ Installation
@@ -524,7 +524,7 @@ func main() {
     c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
       fmt.Println("WRITER")
       var i int
-      
+
       for {
         i++
         msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
