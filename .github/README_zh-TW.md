@@ -86,7 +86,7 @@
 
 </p>
 <p align="center">
-  <b>Fiber</b> 是款啟發自 <a href="https://github.com/expressjs/express">Express</a> 的 <b>Web 框架</b>，建基於 <a href="https://github.com/valyala/fasthttp">Fasthttp</a>——<a href="https://go.dev/doc/">Go</a> 上<b>最快的</b>HTTP 引擎。設計旨在 <b>減輕</b> 快速開發的負擔，兼顧 <b>零記憶體分配</b> 和 <b>效能</b>。
+  <b>Fiber</b> 是款啟發自 <a href="https://github.com/expressjs/express">Express</a> 的 <b>Web 框架</b>，建基於 <a href="https://github.com/valyala/fasthttp">Fasthttp</a>——<a href="https://go.dev/doc/">Go</a> 上<b>最快的</b> HTTP 引擎。設計旨在 <b>減輕</b> 快速開發的負擔，兼顧 <b>零記憶體分配</b> 和 <b>效能</b>。
 </p>
 
 ## ⚡️ 快速入門
