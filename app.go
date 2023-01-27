@@ -14,6 +14,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
@@ -306,7 +308,7 @@ type Config struct {
 
 	// FEATURE: v2.3.x
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
-	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
+	// Enabling RedirectFixedPath will change this behavior into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
 	//
 	// Default: false
@@ -454,6 +456,8 @@ const (
 )
 
 // HTTP methods enabled by default
+//
+//nolint:gochecknoglobals // Using a global var is fine here
 var DefaultMethods = []string{
 	MethodGet,
 	MethodHead,
@@ -467,7 +471,7 @@ var DefaultMethods = []string{
 }
 
 // DefaultErrorHandler that process return errors from handlers
-var DefaultErrorHandler = func(c *Ctx, err error) error {
+func DefaultErrorHandler(c *Ctx, err error) error {
 	code := StatusInternalServerError
 	var e *Error
 	if errors.As(err, &e) {
@@ -519,7 +523,7 @@ func New(config ...Config) *App {
 
 	if app.config.ETag {
 		if !IsChild() {
-			fmt.Println("[Warning] Config.ETag is deprecated since v2.0.6, please use 'middleware/etag'.")
+			log.Printf("[Warning] Config.ETag is deprecated since v2.0.6, please use 'middleware/etag'.\n")
 		}
 	}
 
@@ -587,7 +591,7 @@ func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
 		if err != nil {
-			fmt.Printf("[Warning] IP range %q could not be parsed: %v\n", ipAddress, err)
+			log.Printf("[Warning] IP range %q could not be parsed: %v\n", ipAddress, err)
 		} else {
 			app.config.trustedProxyRanges = append(app.config.trustedProxyRanges, ipNet)
 		}
@@ -822,7 +826,7 @@ func (app *App) Config() Config {
 }
 
 // Handler returns the server handler.
-func (app *App) Handler() fasthttp.RequestHandler {
+func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
 	return app.handler
@@ -887,7 +891,7 @@ func (app *App) Hooks() *Hooks {
 
 // Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
-func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, err error) {
+func (app *App) Test(req *http.Request, msTimeout ...int) (*http.Response, error) {
 	// Set timeout
 	timeout := 1000
 	if len(msTimeout) > 0 {
@@ -902,15 +906,15 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	// Dump raw http request
 	dump, err := httputil.DumpRequest(req, true)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to dump request: %w", err)
 	}
 
 	// Create test connection
 	conn := new(testConn)
 
 	// Write raw http request
-	if _, err = conn.r.Write(dump); err != nil {
-		return nil, err
+	if _, err := conn.r.Write(dump); err != nil {
+		return nil, fmt.Errorf("failed to write: %w", err)
 	}
 	// prepare the server for the start
 	app.startupProcess()
@@ -943,7 +947,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	}
 
 	// Check for errors
-	if err != nil && err != fasthttp.ErrGetOnly {
+	if err != nil && !errors.Is(err, fasthttp.ErrGetOnly) {
 		return nil, err
 	}
 
@@ -951,12 +955,17 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	buffer := bufio.NewReader(&conn.w)
 
 	// Convert raw http response to *http.Response
-	return http.ReadResponse(buffer, req)
+	res, err := http.ReadResponse(buffer, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return res, nil
 }
 
 type disableLogger struct{}
 
-func (dl *disableLogger) Printf(_ string, _ ...interface{}) {
+func (*disableLogger) Printf(_ string, _ ...interface{}) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
@@ -967,7 +976,7 @@ func (app *App) init() *App {
 	// Only load templates if a view engine is specified
 	if app.config.Views != nil {
 		if err := app.config.Views.Load(); err != nil {
-			fmt.Printf("views: %v\n", err)
+			log.Printf("[Warning]: failed to load views: %v\n", err)
 		}
 	}
 
@@ -1039,25 +1048,30 @@ func (app *App) ErrorHandler(ctx *Ctx, err error) error {
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	c := app.AcquireCtx(fctx)
-	if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
+	defer app.ReleaseCtx(c)
+
+	var errNetOP *net.OpError
+
+	switch {
+	case errors.As(err, new(*fasthttp.ErrSmallBuffer)):
 		err = ErrRequestHeaderFieldsTooLarge
-	} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
+	case errors.As(err, &errNetOP) && errNetOP.Timeout():
 		err = ErrRequestTimeout
-	} else if err == fasthttp.ErrBodyTooLarge {
+	case errors.Is(err, fasthttp.ErrBodyTooLarge):
 		err = ErrRequestEntityTooLarge
-	} else if err == fasthttp.ErrGetOnly {
+	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
-	} else if strings.Contains(err.Error(), "timeout") {
+	case strings.Contains(err.Error(), "timeout"):
 		err = ErrRequestTimeout
-	} else {
+	default:
 		err = NewError(StatusBadRequest, err.Error())
 	}
 
 	if catch := app.ErrorHandler(c, err); catch != nil {
-		_ = c.SendStatus(StatusInternalServerError)
+		log.Printf("serverErrorHandler: failed to call ErrorHandler: %v\n", catch)
+		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
+		return
 	}
-
-	app.ReleaseCtx(c)
 }
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.

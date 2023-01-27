@@ -149,13 +149,13 @@ func Benchmark_Storage_Memory(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			for _, key := range keys {
-				d.Set(key, value, ttl)
+				_ = d.Set(key, value, ttl)
 			}
 			for _, key := range keys {
 				_, _ = d.Get(key)
 			}
 			for _, key := range keys {
-				d.Delete(key)
+				_ = d.Delete(key)
 			}
 		}
 	})

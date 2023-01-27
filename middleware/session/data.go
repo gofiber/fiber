@@ -13,6 +13,7 @@ type data struct {
 	Data map[string]interface{}
 }
 
+//nolint:gochecknoglobals // TODO: Do not use a global var here
 var dataPool = sync.Pool{
 	New: func() interface{} {
 		d := new(data)
@@ -22,7 +23,7 @@ var dataPool = sync.Pool{
 }
 
 func acquireData() *data {
-	return dataPool.Get().(*data)
+	return dataPool.Get().(*data) //nolint:forcetypeassert // We store nothing else in the pool
 }
 
 func (d *data) Reset() {

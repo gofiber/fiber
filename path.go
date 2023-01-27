@@ -88,12 +88,14 @@ const (
 )
 
 // list of possible parameter and segment delimiter
+//
+//nolint:gochecknoglobals // TODO: Do not use a global var here
 var (
 	// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
 	// list of greedy parameters
 	greedyParameters = []byte{wildcardParam, plusParam}
-	// list of chars for the parameter recognising
+	// list of chars for the parameter recognizing
 	parameterStartChars = []byte{wildcardParam, plusParam, paramStarterChar}
 	// list of chars of delimiters and the starting parameter name char
 	parameterDelimiterChars = append([]byte{paramStarterChar, escapeChar}, routeDelimiter...)
@@ -268,7 +270,7 @@ func findNextParamPosition(pattern string) int {
 }
 
 // analyseConstantPart find the end of the constant part and create the route segment
-func (routeParser *routeParser) analyseConstantPart(pattern string, nextParamPosition int) (string, *routeSegment) {
+func (*routeParser) analyseConstantPart(pattern string, nextParamPosition int) (string, *routeSegment) {
 	// handle the constant part
 	processedPart := pattern
 	if nextParamPosition != -1 {
@@ -297,11 +299,12 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 	parameterConstraintStart := -1
 	parameterConstraintEnd := -1
 	// handle wildcard end
-	if isWildCard || isPlusParam {
+	switch {
+	case isWildCard, isPlusParam:
 		parameterEndPosition = 0
-	} else if parameterEndPosition == -1 {
+	case parameterEndPosition == -1:
 		parameterEndPosition = len(pattern) - 1
-	} else if !isInCharset(pattern[parameterEndPosition+1], parameterDelimiterChars) {
+	case !isInCharset(pattern[parameterEndPosition+1], parameterDelimiterChars):
 		parameterEndPosition++
 	}
 
@@ -338,7 +341,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 					constraint.Data = splitNonEscaped(c[start+1:end], string(parameterConstraintDataSeparatorChars))
 					if len(constraint.Data) == 1 {
 						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
-					} else if len(constraint.Data) == 2 {
+					} else if len(constraint.Data) == 2 { //nolint:gomnd // This is fine, we simply expect two parts
 						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
 						constraint.Data[1] = RemoveEscapeChar(constraint.Data[1])
 					}
@@ -474,7 +477,7 @@ func splitNonEscaped(s, sep string) []string {
 }
 
 // getMatch parses the passed url and tries to match it against the route segments and determine the parameter positions
-func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool {
+func (routeParser *routeParser) getMatch(detectionPath, path string, params *[maxParams]string, partialCheck bool) bool { //nolint: revive // Accepting a bool param is fine here
 	var i, paramsIterator, partLen int
 	for _, segment := range routeParser.segs {
 		partLen = len(detectionPath)
@@ -638,9 +641,9 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 	default:
 		return noConstraint
 	}
-
 }
 
+//nolint:errcheck // TODO: Properly check _all_ errors in here, log them & immediately return
 func (c *Constraint) CheckConstraint(param string) bool {
 	var err error
 	var num int
@@ -663,6 +666,8 @@ func (c *Constraint) CheckConstraint(param string) bool {
 
 	// check constraints
 	switch c.ID {
+	case noConstraint:
+		// Nothing to check
 	case intConstraint:
 		_, err = strconv.Atoi(param)
 	case boolConstraint:

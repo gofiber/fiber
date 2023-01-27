@@ -41,7 +41,7 @@ func (h indexedHeap) Swap(i, j int) {
 }
 
 func (h *indexedHeap) Push(x interface{}) {
-	h.pushInternal(x.(heapEntry))
+	h.pushInternal(x.(heapEntry)) //nolint:forcetypeassert // Forced type assertion required to implement the heap.Interface interface
 }
 
 func (h *indexedHeap) Pop() interface{} {
@@ -65,7 +65,7 @@ func (h *indexedHeap) put(key string, exp uint64, bytes uint) int {
 		idx = h.entries[:n+1][n].idx
 	} else {
 		idx = h.maxidx
-		h.maxidx += 1
+		h.maxidx++
 		h.indices = append(h.indices, idx)
 	}
 	// Push manually to avoid allocation
@@ -77,7 +77,7 @@ func (h *indexedHeap) put(key string, exp uint64, bytes uint) int {
 }
 
 func (h *indexedHeap) removeInternal(realIdx int) (string, uint) {
-	x := heap.Remove(h, realIdx).(heapEntry)
+	x := heap.Remove(h, realIdx).(heapEntry) //nolint:forcetypeassert,errcheck // Forced type assertion required to implement the heap.Interface interface
 	return x.key, x.bytes
 }
 

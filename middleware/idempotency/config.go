@@ -9,9 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2/internal/storage/memory"
 )
 
-var (
-	ErrInvalidIdempotencyKey = errors.New("invalid idempotency key")
-)
+var ErrInvalidIdempotencyKey = errors.New("invalid idempotency key")
 
 // Config defines the config for middleware.
 type Config struct {
@@ -51,13 +49,15 @@ type Config struct {
 }
 
 // ConfigDefault is the default config
+//
+//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Next: func(c *fiber.Ctx) bool {
 		// Skip middleware if the request was done using a safe HTTP method
 		return fiber.IsMethodSafe(c.Method())
 	},
 
-	Lifetime: 30 * time.Minute,
+	Lifetime: 30 * time.Minute, //nolint:gomnd // No magic number, just the default config
 
 	KeyHeader: "X-Idempotency-Key",
 	KeyHeaderValidate: func(k string) error {
@@ -112,7 +112,7 @@ func configDefault(config ...Config) Config {
 
 	if cfg.Storage == nil {
 		cfg.Storage = memory.New(memory.Config{
-			GCInterval: cfg.Lifetime / 2,
+			GCInterval: cfg.Lifetime / 2, //nolint:gomnd // Half the lifetime interval
 		})
 	}
 

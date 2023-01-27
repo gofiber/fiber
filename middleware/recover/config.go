@@ -1,4 +1,4 @@
-package recover
+package recover //nolint:predeclared // TODO: Rename to some non-builtin
 
 import (
 	"github.com/gofiber/fiber/v2"
@@ -23,6 +23,8 @@ type Config struct {
 }
 
 // ConfigDefault is the default config
+//
+//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Next:              nil,
 	EnableStackTrace:  false,

@@ -11,6 +11,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/mattn/go-colorable"
 	"github.com/mattn/go-isatty"
 	"github.com/valyala/bytebufferpool"
@@ -55,6 +56,8 @@ func New(config ...Config) fiber.Handler {
 		once       sync.Once
 		mu         sync.Mutex
 		errHandler fiber.ErrorHandler
+
+		dataPool = sync.Pool{New: func() interface{} { return new(Data) }}
 	)
 
 	// If colors are enabled, check terminal compatibility
@@ -75,7 +78,7 @@ func New(config ...Config) fiber.Handler {
 	}
 
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -101,13 +104,13 @@ func New(config ...Config) fiber.Handler {
 		})
 
 		// Logger data
-		data := DataPool.Get().(*Data)
+		data := dataPool.Get().(*Data) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 		// no need for a reset, as long as we always override everything
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr
 		data.Timestamp = timestamp
 		// put data back in the pool
-		defer DataPool.Put(data)
+		defer dataPool.Put(data)
 
 		// Set latency start time
 		if cfg.enableLatency {
@@ -121,7 +124,7 @@ func New(config ...Config) fiber.Handler {
 		// Manually call error handler
 		if chainErr != nil {
 			if err := errHandler(c, chainErr); err != nil {
-				_ = c.SendStatus(fiber.StatusInternalServerError)
+				_ = c.SendStatus(fiber.StatusInternalServerError) //nolint:errcheck // TODO: Explain why we ignore the error here
 			}
 		}
 
@@ -142,18 +145,20 @@ func New(config ...Config) fiber.Handler {
 			}
 
 			// Format log to buffer
-			_, _ = buf.WriteString(fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
-				timestamp.Load().(string),
-				statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-				data.Stop.Sub(data.Start).Round(time.Millisecond),
-				c.IP(),
-				methodColor(c.Method(), colors), c.Method(), colors.Reset,
-				c.Path(),
-				formatErr,
-			))
+			_, _ = buf.WriteString( //nolint:errcheck // This will never fail
+				fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+errPaddingStr+"s %s\n",
+					timestamp.Load().(string),
+					statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
+					data.Stop.Sub(data.Start).Round(time.Millisecond),
+					c.IP(),
+					methodColor(c.Method(), colors), c.Method(), colors.Reset,
+					c.Path(),
+					formatErr,
+				),
+			)
 
 			// Write buffer to output
-			_, _ = cfg.Output.Write(buf.Bytes())
+			_, _ = cfg.Output.Write(buf.Bytes()) //nolint:errcheck // This will never fail
 
 			if cfg.Done != nil {
 				cfg.Done(c, buf.Bytes())
@@ -169,7 +174,7 @@ func New(config ...Config) fiber.Handler {
 		// Loop over template parts execute dynamic parts and add fixed parts to the buffer
 		for i, logFunc := range logFunChain {
 			if logFunc == nil {
-				_, _ = buf.Write(templateChain[i])
+				_, _ = buf.Write(templateChain[i]) //nolint:errcheck // This will never fail
 			} else if templateChain[i] == nil {
 				_, err = logFunc(buf, c, data, "")
 			} else {
@@ -182,7 +187,7 @@ func New(config ...Config) fiber.Handler {
 
 		// Also write errors to the buffer
 		if err != nil {
-			_, _ = buf.WriteString(err.Error())
+			_, _ = buf.WriteString(err.Error()) //nolint:errcheck // This will never fail
 		}
 		mu.Lock()
 		// Write buffer to output
@@ -190,7 +195,7 @@ func New(config ...Config) fiber.Handler {
 			// Write error to output
 			if _, err := cfg.Output.Write([]byte(err.Error())); err != nil {
 				// There is something wrong with the given io.Writer
-				fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
+				_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
 			}
 		}
 		mu.Unlock()

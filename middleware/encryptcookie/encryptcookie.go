@@ -2,6 +2,7 @@ package encryptcookie
 
 import (
 	"github.com/gofiber/fiber/v2"
+
 	"github.com/valyala/fasthttp"
 )
 

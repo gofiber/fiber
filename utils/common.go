@@ -31,6 +31,11 @@ const (
 // github.com/rogpeppe/fastuuid
 // All rights reserved.
 
+const (
+	emptyUUID = "00000000-0000-0000-0000-000000000000"
+)
+
+//nolint:gochecknoglobals // TODO: Do not use a global var here
 var (
 	uuidSeed    [24]byte
 	uuidCounter uint64
@@ -39,6 +44,8 @@ var (
 )
 
 // UUID generates an universally unique identifier (UUID)
+//
+//nolint:gomnd // Those are not random numbers, it's the fastuuid algorithm
 func UUID() string {
 	// Setup seed & counter once
 	uuidSetup.Do(func() {
@@ -48,7 +55,7 @@ func UUID() string {
 		uuidCounter = binary.LittleEndian.Uint64(uuidSeed[:8])
 	})
 	if atomic.LoadUint64(&uuidCounter) <= 0 {
-		return "00000000-0000-0000-0000-000000000000"
+		return emptyUUID
 	}
 	// first 8 bytes differ, taking a slice of the first 16 bytes
 	x := atomic.AddUint64(&uuidCounter, 1)
@@ -147,7 +154,8 @@ func ConvertToBytes(humanReadableString string) int {
 		// convert multiplier char to lowercase and check if exists in units slice
 		index := bytes.IndexByte(unitsSlice, toLowerTable[humanReadableString[unitPrefixPos]])
 		if index != -1 {
-			size *= math.Pow(1000, float64(index+1))
+			const bytesPerKB = 1000
+			size *= math.Pow(bytesPerKB, float64(index+1))
 		}
 	}
 

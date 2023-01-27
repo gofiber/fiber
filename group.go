@@ -168,7 +168,6 @@ func (grp *Group) Group(prefix string, handlers ...Handler) Router {
 	}
 
 	return newGrp
-
 }
 
 // Route is used to define routes with a common prefix inside the common function.

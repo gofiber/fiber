@@ -6,9 +6,12 @@ import (
 	"time"
 )
 
-func checkTimeStamp(t testing.TB, expectedCurrent, actualCurrent uint32) {
+func checkTimeStamp(tb testing.TB, expectedCurrent, actualCurrent uint32) { //nolint:thelper // TODO: Verify if tb can be nil
+	if tb != nil {
+		tb.Helper()
+	}
 	// test with some buffer in front and back of the expectedCurrent time -> because of the timing on the work machine
-	AssertEqual(t, true, actualCurrent >= expectedCurrent-1 || actualCurrent <= expectedCurrent+1)
+	AssertEqual(tb, true, actualCurrent >= expectedCurrent-1 || actualCurrent <= expectedCurrent+1)
 }
 
 func Test_TimeStampUpdater(t *testing.T) {

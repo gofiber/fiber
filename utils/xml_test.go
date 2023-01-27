@@ -16,7 +16,7 @@ type serverXMLStructure struct {
 	Name    string   `xml:"name"`
 }
 
-var xmlString = `<servers version="1"><server><name>fiber one</name></server><server><name>fiber two</name></server></servers>`
+const xmlString = `<servers version="1"><server><name>fiber one</name></server><server><name>fiber two</name></server></servers>`
 
 func Test_GolangXMLEncoder(t *testing.T) {
 	t.Parallel()

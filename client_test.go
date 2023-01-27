@@ -1,3 +1,4 @@
+//nolint:wrapcheck // We must not wrap errors in tests
 package fiber
 
 import (
@@ -19,6 +20,7 @@ import (
 
 	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -295,8 +297,10 @@ func Test_Client_Agent_Set_Or_Add_Headers(t *testing.T) {
 	handler := func(c *Ctx) error {
 		c.Request().Header.VisitAll(func(key, value []byte) {
 			if k := string(key); k == "K1" || k == "K2" {
-				_, _ = c.Write(key)
-				_, _ = c.Write(value)
+				_, err := c.Write(key)
+				utils.AssertEqual(t, nil, err)
+				_, err = c.Write(value)
+				utils.AssertEqual(t, nil, err)
 			}
 		})
 		return nil
@@ -581,25 +585,26 @@ type readErrorConn struct {
 	net.Conn
 }
 
-func (r *readErrorConn) Read(p []byte) (int, error) {
+func (*readErrorConn) Read(_ []byte) (int, error) {
 	return 0, fmt.Errorf("error")
 }
 
-func (r *readErrorConn) Write(p []byte) (int, error) {
+func (*readErrorConn) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (r *readErrorConn) Close() error {
+func (*readErrorConn) Close() error {
 	return nil
 }
 
-func (r *readErrorConn) LocalAddr() net.Addr {
+func (*readErrorConn) LocalAddr() net.Addr {
 	return nil
 }
 
-func (r *readErrorConn) RemoteAddr() net.Addr {
+func (*readErrorConn) RemoteAddr() net.Addr {
 	return nil
 }
+
 func Test_Client_Agent_RetryIf(t *testing.T) {
 	t.Parallel()
 
@@ -783,7 +788,10 @@ func Test_Client_Agent_MultipartForm_SendFiles(t *testing.T) {
 		buf := make([]byte, fh1.Size)
 		f, err := fh1.Open()
 		utils.AssertEqual(t, nil, err)
-		defer func() { _ = f.Close() }()
+		defer func() {
+			err := f.Close()
+			utils.AssertEqual(t, nil, err)
+		}()
 		_, err = f.Read(buf)
 		utils.AssertEqual(t, nil, err)
 		utils.AssertEqual(t, "form file", string(buf))
@@ -831,13 +839,16 @@ func checkFormFile(t *testing.T, fh *multipart.FileHeader, filename string) {
 	basename := filepath.Base(filename)
 	utils.AssertEqual(t, fh.Filename, basename)
 
-	b1, err := os.ReadFile(filename)
+	b1, err := os.ReadFile(filename) //nolint:gosec // We're in a test so reading user-provided files by name is fine
 	utils.AssertEqual(t, nil, err)
 
 	b2 := make([]byte, fh.Size)
 	f, err := fh.Open()
 	utils.AssertEqual(t, nil, err)
-	defer func() { _ = f.Close() }()
+	defer func() {
+		err := f.Close()
+		utils.AssertEqual(t, nil, err)
+	}()
 	_, err = f.Read(b2)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, b1, b2)
@@ -962,6 +973,7 @@ func Test_Client_Agent_InsecureSkipVerify(t *testing.T) {
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	utils.AssertEqual(t, nil, err)
 
+	//nolint:gosec // We're in a test so using old ciphers is fine
 	serverTLSConf := &tls.Config{
 		Certificates: []tls.Certificate{cer},
 	}
@@ -1137,7 +1149,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		defer ReleaseAgent(a)
 		defer a.ConnectionClose()
 		request := a.Request()
-		request.Header.SetMethod("GET")
+		request.Header.SetMethod(MethodGet)
 		request.SetRequestURI("http://example.com")
 		err := a.Parse()
 		utils.AssertEqual(t, nil, err)
@@ -1198,8 +1210,8 @@ type errorMultipartWriter struct {
 	count int
 }
 
-func (e *errorMultipartWriter) Boundary() string           { return "myBoundary" }
-func (e *errorMultipartWriter) SetBoundary(_ string) error { return nil }
+func (*errorMultipartWriter) Boundary() string           { return "myBoundary" }
+func (*errorMultipartWriter) SetBoundary(_ string) error { return nil }
 func (e *errorMultipartWriter) CreateFormFile(_, _ string) (io.Writer, error) {
 	if e.count == 0 {
 		e.count++
@@ -1207,8 +1219,8 @@ func (e *errorMultipartWriter) CreateFormFile(_, _ string) (io.Writer, error) {
 	}
 	return errorWriter{}, nil
 }
-func (e *errorMultipartWriter) WriteField(_, _ string) error { return errors.New("WriteField error") }
-func (e *errorMultipartWriter) Close() error                 { return errors.New("Close error") }
+func (*errorMultipartWriter) WriteField(_, _ string) error { return errors.New("WriteField error") }
+func (*errorMultipartWriter) Close() error                 { return errors.New("Close error") }
 
 type errorWriter struct{}
 

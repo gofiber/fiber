@@ -7,10 +7,11 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/bytebufferpool"
 )
 
-var testSimpleHandler = func(c *Ctx) error {
+func testSimpleHandler(c *Ctx) error {
 	return c.SendString("simple")
 }
 

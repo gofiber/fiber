@@ -2,6 +2,7 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package fiber
 
 import (
@@ -369,7 +370,6 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "<h1>I'm Bruh</h1>", string(body))
-
 }
 
 func Test_Ctx_Render_MountGroup(t *testing.T) {

@@ -18,11 +18,11 @@ func Test_Config_Default(t *testing.T) {
 		utils.AssertEqual(t, defaultTitle, cfg.Title)
 		utils.AssertEqual(t, defaultRefresh, cfg.Refresh)
 		utils.AssertEqual(t, defaultFontURL, cfg.FontURL)
-		utils.AssertEqual(t, defaultChartJsURL, cfg.ChartJsURL)
+		utils.AssertEqual(t, defaultChartJSURL, cfg.ChartJSURL)
 		utils.AssertEqual(t, defaultCustomHead, cfg.CustomHead)
 		utils.AssertEqual(t, false, cfg.APIOnly)
 		utils.AssertEqual(t, (func(*fiber.Ctx) bool)(nil), cfg.Next)
-		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, defaultChartJsURL, defaultCustomHead}), cfg.index)
+		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, defaultChartJSURL, defaultCustomHead}), cfg.index)
 	})
 
 	t.Run("set title", func(t *testing.T) {
@@ -35,11 +35,11 @@ func Test_Config_Default(t *testing.T) {
 		utils.AssertEqual(t, title, cfg.Title)
 		utils.AssertEqual(t, defaultRefresh, cfg.Refresh)
 		utils.AssertEqual(t, defaultFontURL, cfg.FontURL)
-		utils.AssertEqual(t, defaultChartJsURL, cfg.ChartJsURL)
+		utils.AssertEqual(t, defaultChartJSURL, cfg.ChartJSURL)
 		utils.AssertEqual(t, defaultCustomHead, cfg.CustomHead)
 		utils.AssertEqual(t, false, cfg.APIOnly)
 		utils.AssertEqual(t, (func(*fiber.Ctx) bool)(nil), cfg.Next)
-		utils.AssertEqual(t, newIndex(viewBag{title, defaultRefresh, defaultFontURL, defaultChartJsURL, defaultCustomHead}), cfg.index)
+		utils.AssertEqual(t, newIndex(viewBag{title, defaultRefresh, defaultFontURL, defaultChartJSURL, defaultCustomHead}), cfg.index)
 	})
 
 	t.Run("set refresh less than default", func(t *testing.T) {
@@ -51,11 +51,11 @@ func Test_Config_Default(t *testing.T) {
 		utils.AssertEqual(t, defaultTitle, cfg.Title)
 		utils.AssertEqual(t, minRefresh, cfg.Refresh)
 		utils.AssertEqual(t, defaultFontURL, cfg.FontURL)
-		utils.AssertEqual(t, defaultChartJsURL, cfg.ChartJsURL)
+		utils.AssertEqual(t, defaultChartJSURL, cfg.ChartJSURL)
 		utils.AssertEqual(t, defaultCustomHead, cfg.CustomHead)
 		utils.AssertEqual(t, false, cfg.APIOnly)
 		utils.AssertEqual(t, (func(*fiber.Ctx) bool)(nil), cfg.Next)
-		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, minRefresh, defaultFontURL, defaultChartJsURL, defaultCustomHead}), cfg.index)
+		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, minRefresh, defaultFontURL, defaultChartJSURL, defaultCustomHead}), cfg.index)
 	})
 
 	t.Run("set refresh", func(t *testing.T) {
@@ -68,45 +68,45 @@ func Test_Config_Default(t *testing.T) {
 		utils.AssertEqual(t, defaultTitle, cfg.Title)
 		utils.AssertEqual(t, refresh, cfg.Refresh)
 		utils.AssertEqual(t, defaultFontURL, cfg.FontURL)
-		utils.AssertEqual(t, defaultChartJsURL, cfg.ChartJsURL)
+		utils.AssertEqual(t, defaultChartJSURL, cfg.ChartJSURL)
 		utils.AssertEqual(t, defaultCustomHead, cfg.CustomHead)
 		utils.AssertEqual(t, false, cfg.APIOnly)
 		utils.AssertEqual(t, (func(*fiber.Ctx) bool)(nil), cfg.Next)
-		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, refresh, defaultFontURL, defaultChartJsURL, defaultCustomHead}), cfg.index)
+		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, refresh, defaultFontURL, defaultChartJSURL, defaultCustomHead}), cfg.index)
 	})
 
 	t.Run("set font url", func(t *testing.T) {
 		t.Parallel()
-		fontUrl := "https://example.com"
+		fontURL := "https://example.com"
 		cfg := configDefault(Config{
-			FontURL: fontUrl,
+			FontURL: fontURL,
 		})
 
 		utils.AssertEqual(t, defaultTitle, cfg.Title)
 		utils.AssertEqual(t, defaultRefresh, cfg.Refresh)
-		utils.AssertEqual(t, fontUrl, cfg.FontURL)
-		utils.AssertEqual(t, defaultChartJsURL, cfg.ChartJsURL)
+		utils.AssertEqual(t, fontURL, cfg.FontURL)
+		utils.AssertEqual(t, defaultChartJSURL, cfg.ChartJSURL)
 		utils.AssertEqual(t, defaultCustomHead, cfg.CustomHead)
 		utils.AssertEqual(t, false, cfg.APIOnly)
 		utils.AssertEqual(t, (func(*fiber.Ctx) bool)(nil), cfg.Next)
-		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, fontUrl, defaultChartJsURL, defaultCustomHead}), cfg.index)
+		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, fontURL, defaultChartJSURL, defaultCustomHead}), cfg.index)
 	})
 
 	t.Run("set chart js url", func(t *testing.T) {
 		t.Parallel()
-		chartUrl := "http://example.com"
+		chartURL := "http://example.com"
 		cfg := configDefault(Config{
-			ChartJsURL: chartUrl,
+			ChartJSURL: chartURL,
 		})
 
 		utils.AssertEqual(t, defaultTitle, cfg.Title)
 		utils.AssertEqual(t, defaultRefresh, cfg.Refresh)
 		utils.AssertEqual(t, defaultFontURL, cfg.FontURL)
-		utils.AssertEqual(t, chartUrl, cfg.ChartJsURL)
+		utils.AssertEqual(t, chartURL, cfg.ChartJSURL)
 		utils.AssertEqual(t, defaultCustomHead, cfg.CustomHead)
 		utils.AssertEqual(t, false, cfg.APIOnly)
 		utils.AssertEqual(t, (func(*fiber.Ctx) bool)(nil), cfg.Next)
-		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, chartUrl, defaultCustomHead}), cfg.index)
+		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, chartURL, defaultCustomHead}), cfg.index)
 	})
 
 	t.Run("set custom head", func(t *testing.T) {
@@ -119,11 +119,11 @@ func Test_Config_Default(t *testing.T) {
 		utils.AssertEqual(t, defaultTitle, cfg.Title)
 		utils.AssertEqual(t, defaultRefresh, cfg.Refresh)
 		utils.AssertEqual(t, defaultFontURL, cfg.FontURL)
-		utils.AssertEqual(t, defaultChartJsURL, cfg.ChartJsURL)
+		utils.AssertEqual(t, defaultChartJSURL, cfg.ChartJSURL)
 		utils.AssertEqual(t, head, cfg.CustomHead)
 		utils.AssertEqual(t, false, cfg.APIOnly)
 		utils.AssertEqual(t, (func(*fiber.Ctx) bool)(nil), cfg.Next)
-		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, defaultChartJsURL, head}), cfg.index)
+		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, defaultChartJSURL, head}), cfg.index)
 	})
 
 	t.Run("set api only", func(t *testing.T) {
@@ -135,11 +135,11 @@ func Test_Config_Default(t *testing.T) {
 		utils.AssertEqual(t, defaultTitle, cfg.Title)
 		utils.AssertEqual(t, defaultRefresh, cfg.Refresh)
 		utils.AssertEqual(t, defaultFontURL, cfg.FontURL)
-		utils.AssertEqual(t, defaultChartJsURL, cfg.ChartJsURL)
+		utils.AssertEqual(t, defaultChartJSURL, cfg.ChartJSURL)
 		utils.AssertEqual(t, defaultCustomHead, cfg.CustomHead)
 		utils.AssertEqual(t, true, cfg.APIOnly)
 		utils.AssertEqual(t, (func(*fiber.Ctx) bool)(nil), cfg.Next)
-		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, defaultChartJsURL, defaultCustomHead}), cfg.index)
+		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, defaultChartJSURL, defaultCustomHead}), cfg.index)
 	})
 
 	t.Run("set next", func(t *testing.T) {
@@ -154,10 +154,10 @@ func Test_Config_Default(t *testing.T) {
 		utils.AssertEqual(t, defaultTitle, cfg.Title)
 		utils.AssertEqual(t, defaultRefresh, cfg.Refresh)
 		utils.AssertEqual(t, defaultFontURL, cfg.FontURL)
-		utils.AssertEqual(t, defaultChartJsURL, cfg.ChartJsURL)
+		utils.AssertEqual(t, defaultChartJSURL, cfg.ChartJSURL)
 		utils.AssertEqual(t, defaultCustomHead, cfg.CustomHead)
 		utils.AssertEqual(t, false, cfg.APIOnly)
 		utils.AssertEqual(t, f(nil), cfg.Next(nil))
-		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, defaultChartJsURL, defaultCustomHead}), cfg.index)
+		utils.AssertEqual(t, newIndex(viewBag{defaultTitle, defaultRefresh, defaultFontURL, defaultChartJSURL, defaultCustomHead}), cfg.index)
 	})
 }
