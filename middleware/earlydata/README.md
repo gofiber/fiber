@@ -62,6 +62,10 @@ app.Use(earlydata.New(earlydata.Config{
 
 ```go
 type Config struct {
+	// Next defines a function to skip this middleware when returned true.
+	//
+	// Optional. Default: nil
+	Next func(c fiber.Ctx) bool
 	// IsEarlyData returns whether the request is an early-data request.
 	//
 	// Optional. Default: a function which checks if the "Early-Data" request header equals "1".
