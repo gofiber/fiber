@@ -1,3 +1,4 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package earlydata_test
 
 import (
@@ -7,9 +8,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/earlydata"
-	"github.com/stretchr/testify/require"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/earlydata"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 const (
@@ -33,12 +34,11 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 
 	// Middleware to test IsEarly func
 	const localsKeyTestValid = "earlydata_testvalid"
-	app.Use(func(c fiber.Ctx) error {
+	app.Use(func(c *fiber.Ctx) error {
 		isEarly := earlydata.IsEarly(c)
 
 		switch h := c.Get(headerName); h {
-		case "",
-			headerValOff:
+		case "", headerValOff:
 			if isEarly {
 				return errors.New("is early-data even though it's not")
 			}
@@ -64,16 +64,20 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 		return c.Next()
 	})
 
-	app.Add([]string{
-		fiber.MethodGet,
-		fiber.MethodPost,
-	}, "/", func(c fiber.Ctx) error {
-		if !c.Locals(localsKeyTestValid).(bool) {
-			return errors.New("handler called even though validation failed")
-		}
+	{
+		{
+			handler := func(c *fiber.Ctx) error {
+				if !c.Locals(localsKeyTestValid).(bool) { //nolint:forcetypeassert // We store nothing else in the pool
+					return errors.New("handler called even though validation failed")
+				}
 
-		return nil
-	})
+				return nil
+			}
+
+			app.Get("/", handler)
+			app.Post("/", handler)
+		}
+	}
 
 	return app
 }
@@ -89,36 +93,36 @@ func Test_EarlyData(t *testing.T) {
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 
 			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
 			req.Header.Set(headerName, headerValOff)
 			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
 			req.Header.Set(headerName, headerValOn)
 			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 		}
 
 		{
 			req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
 
 			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
 			req.Header.Set(headerName, headerValOff)
 			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusOK, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 
 			req.Header.Set(headerName, headerValOn)
 			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusTooEarly, resp.StatusCode)
 		}
 	}
 
@@ -129,36 +133,36 @@ func Test_EarlyData(t *testing.T) {
 			req := httptest.NewRequest(fiber.MethodGet, "/", http.NoBody)
 
 			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusTooEarly, resp.StatusCode)
 
 			req.Header.Set(headerName, headerValOff)
 			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusTooEarly, resp.StatusCode)
 
 			req.Header.Set(headerName, headerValOn)
 			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusTooEarly, resp.StatusCode)
 		}
 
 		{
 			req := httptest.NewRequest(fiber.MethodPost, "/", http.NoBody)
 
 			resp, err := app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusTooEarly, resp.StatusCode)
 
 			req.Header.Set(headerName, headerValOff)
 			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusTooEarly, resp.StatusCode)
 
 			req.Header.Set(headerName, headerValOn)
 			resp, err = app.Test(req)
-			require.NoError(t, err)
-			require.Equal(t, fiber.StatusTooEarly, resp.StatusCode)
+			utils.AssertEqual(t, nil, err)
+			utils.AssertEqual(t, fiber.StatusTooEarly, resp.StatusCode)
 		}
 	}
 

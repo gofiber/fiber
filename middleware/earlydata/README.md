@@ -36,8 +36,8 @@ First import the middleware from Fiber,
 
 ```go
 import (
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/earlydata"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/earlydata"
 )
 ```
 
@@ -65,17 +65,17 @@ type Config struct {
 	// Next defines a function to skip this middleware when returned true.
 	//
 	// Optional. Default: nil
-	Next func(c fiber.Ctx) bool
+	Next func(c *fiber.Ctx) bool
 
 	// IsEarlyData returns whether the request is an early-data request.
 	//
 	// Optional. Default: a function which checks if the "Early-Data" request header equals "1".
-	IsEarlyData func(c fiber.Ctx) bool
+	IsEarlyData func(c *fiber.Ctx) bool
 
 	// AllowEarlyData returns whether the early-data request should be allowed or rejected.
 	//
 	// Optional. Default: a function which rejects the request on unsafe and allows the request on safe HTTP request methods.
-	AllowEarlyData func(c fiber.Ctx) bool
+	AllowEarlyData func(c *fiber.Ctx) bool
 
 	// Error is returned in case an early-data request is rejected.
 	//
@@ -88,11 +88,11 @@ type Config struct {
 
 ```go
 var ConfigDefault = Config{
-	IsEarlyData: func(c fiber.Ctx) bool {
+	IsEarlyData: func(c *fiber.Ctx) bool {
 		return c.Get("Early-Data") == "1"
 	},
 
-	AllowEarlyData: func(c fiber.Ctx) bool {
+	AllowEarlyData: func(c *fiber.Ctx) bool {
 		return fiber.IsMethodSafe(c.Method())
 	},
 
