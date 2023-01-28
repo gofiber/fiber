@@ -218,7 +218,7 @@ import (
 
 	// Use blank to invoke init function and register data to statik
 	_ "<Your go module>/statik" 
-	fs "github.com/rakyll/statik/fs"
+	"github.com/rakyll/statik/fs"
 )
 
 func main() {
