@@ -156,6 +156,7 @@ func (e *Engine) Load() error {
 		name = strings.TrimSuffix(name, e.extension)
 		// name = strings.Replace(name, e.extension, "", -1)
 		// Read the file
+		// #gosec G304
 		buf, err := utils.ReadFile(path, e.fileSystem)
 		if err != nil {
 			return err

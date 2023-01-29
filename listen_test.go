@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -16,7 +17,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2/utils"
-
 	"github.com/valyala/fasthttp/fasthttputil"
 )
 
@@ -125,10 +125,8 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 	if err != nil {
 		utils.AssertEqual(t, nil, err)
 	}
-	//nolint:gosec // We're in a test so using old ciphers is fine
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
-	//nolint:gosec // We're in a test so listening on all interfaces is fine
 	ln, err := tls.Listen(NetworkTCP4, ":0", config)
 	utils.AssertEqual(t, nil, err)
 
@@ -184,6 +182,7 @@ func Test_App_Master_Process_Show_Startup_Message(t *testing.T) {
 		New(Config{Prefork: true}).
 			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
 	})
+	fmt.Println(startupMessage)
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, "https://127.0.0.1:3000"))
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, "Child PIDs"))
@@ -197,6 +196,7 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	startupMessage := captureOutput(func() {
 		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10))
 	})
+	fmt.Println(startupMessage)
 	utils.AssertEqual(t, "Test App v1.0.1", app.Config().AppName)
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, app.Config().AppName))
 }
@@ -208,6 +208,7 @@ func Test_App_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testing.
 	startupMessage := captureOutput(func() {
 		app.startupMessage(":3000", false, "")
 	})
+	fmt.Println(startupMessage)
 	utils.AssertEqual(t, true, strings.Contains(startupMessage, "│        Serveur de vérification des données        │"))
 }
 
@@ -218,7 +219,8 @@ func Test_App_print_Route(t *testing.T) {
 	printRoutesMessage := captureOutput(func() {
 		app.printRoutesMessage()
 	})
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, MethodGet))
+	fmt.Println(printRoutesMessage)
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "GET"))
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/"))
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "routeName"))
@@ -238,11 +240,11 @@ func Test_App_print_Route_with_group(t *testing.T) {
 		app.printRoutesMessage()
 	})
 
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, MethodGet))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "GET"))
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/"))
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "emptyHandler"))
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test"))
-	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, MethodPost))
+	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "POST"))
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber"))
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "PUT"))
 	utils.AssertEqual(t, true, strings.Contains(printRoutesMessage, "/v1/test/fiber/*"))

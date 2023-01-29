@@ -1119,6 +1119,7 @@ func Benchmark_Path_matchParams(t *testing.B) {
 					utils.AssertEqual(t, c.params[0:len(c.params)-1], ctxParams[0:len(c.params)-1], fmt.Sprintf("route: '%s', url: '%s'", r, c.url))
 				}
 			})
+
 		}
 	}
 	benchCase("/api/:param/fixedEnd", []testparams{
@@ -1347,6 +1348,7 @@ func Benchmark_RoutePatternMatch(t *testing.B) {
 				}
 				utils.AssertEqual(t, c.match, matchRes, fmt.Sprintf("route: '%s', url: '%s'", pattern, c.url))
 			})
+
 		}
 	}
 	benchCase("/api/:param/fixedEnd", []testparams{

@@ -34,7 +34,6 @@ const (
 	noStore = "no-store"
 )
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var ignoreHeaders = map[string]interface{}{
 	"Connection":          nil,
 	"Keep-Alive":          nil,
@@ -44,8 +43,8 @@ var ignoreHeaders = map[string]interface{}{
 	"Trailers":            nil,
 	"Transfer-Encoding":   nil,
 	"Upgrade":             nil,
-	"Content-Type":        nil, // already stored explicitly by the cache manager
-	"Content-Encoding":    nil, // already stored explicitly by the cache manager
+	"Content-Type":        nil, // already stored explicitely by the cache manager
+	"Content-Encoding":    nil, // already stored explicitely by the cache manager
 }
 
 // New creates a new middleware handler
@@ -70,7 +69,7 @@ func New(config ...Config) fiber.Handler {
 	// Create indexed heap for tracking expirations ( see heap.go )
 	heap := &indexedHeap{}
 	// count stored bytes (sizes of response bodies)
-	var storedBytes uint
+	var storedBytes uint = 0
 
 	// Update timestamp in the configured interval
 	go func() {
@@ -82,10 +81,10 @@ func New(config ...Config) fiber.Handler {
 
 	// Delete key from both manager and storage
 	deleteKey := func(dkey string) {
-		manager.del(dkey)
+		manager.delete(dkey)
 		// External storage saves body data with different key
 		if cfg.Storage != nil {
-			manager.del(dkey + "_body")
+			manager.delete(dkey + "_body")
 		}
 	}
 
@@ -206,7 +205,7 @@ func New(config ...Config) fiber.Handler {
 		if cfg.StoreResponseHeaders {
 			e.headers = make(map[string][]byte)
 			c.Response().Header.VisitAll(
-				func(key, value []byte) {
+				func(key []byte, value []byte) {
 					// create real copy
 					keyS := string(key)
 					if _, ok := ignoreHeaders[keyS]; !ok {

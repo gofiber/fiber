@@ -4,9 +4,7 @@
 
 package utils
 
-import (
-	"testing"
-)
+import "testing"
 
 func Test_UnsafeString(t *testing.T) {
 	t.Parallel()

@@ -5,8 +5,12 @@ import (
 	"hash/crc32"
 
 	"github.com/gofiber/fiber/v2"
-
 	"github.com/valyala/bytebufferpool"
+)
+
+var (
+	normalizedHeaderETag = []byte("Etag")
+	weakPrefix           = []byte("W/")
 )
 
 // New creates a new middleware handler
@@ -14,38 +18,32 @@ func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
 
-	var (
-		normalizedHeaderETag = []byte("Etag")
-		weakPrefix           = []byte("W/")
-	)
-
-	const crcPol = 0xD5828281
-	crc32q := crc32.MakeTable(crcPol)
+	crc32q := crc32.MakeTable(0xD5828281)
 
 	// Return new handler
-	return func(c *fiber.Ctx) error {
+	return func(c *fiber.Ctx) (err error) {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
 		}
 
 		// Return err if next handler returns one
-		if err := c.Next(); err != nil {
-			return err
+		if err = c.Next(); err != nil {
+			return
 		}
 
 		// Don't generate ETags for invalid responses
 		if c.Response().StatusCode() != fiber.StatusOK {
-			return nil
+			return
 		}
 		body := c.Response().Body()
 		// Skips ETag if no response body is present
 		if len(body) == 0 {
-			return nil
+			return
 		}
 		// Skip ETag if header is already present
 		if c.Response().Header.PeekBytes(normalizedHeaderETag) != nil {
-			return nil
+			return
 		}
 
 		// Generate ETag for response
@@ -54,14 +52,14 @@ func New(config ...Config) fiber.Handler {
 
 		// Enable weak tag
 		if cfg.Weak {
-			_, _ = bb.Write(weakPrefix) //nolint:errcheck // This will never fail
+			_, _ = bb.Write(weakPrefix)
 		}
 
-		_ = bb.WriteByte('"') //nolint:errcheck // This will never fail
+		_ = bb.WriteByte('"')
 		bb.B = appendUint(bb.Bytes(), uint32(len(body)))
-		_ = bb.WriteByte('-') //nolint:errcheck // This will never fail
+		_ = bb.WriteByte('-')
 		bb.B = appendUint(bb.Bytes(), crc32.Checksum(body, crc32q))
-		_ = bb.WriteByte('"') //nolint:errcheck // This will never fail
+		_ = bb.WriteByte('"')
 
 		etag := bb.Bytes()
 
@@ -80,7 +78,7 @@ func New(config ...Config) fiber.Handler {
 			// W/1 != W/2 || W/1 != 2
 			c.Response().Header.SetCanonical(normalizedHeaderETag, etag)
 
-			return nil
+			return
 		}
 
 		if bytes.Contains(clientEtag, etag) {
@@ -92,7 +90,7 @@ func New(config ...Config) fiber.Handler {
 		// 1 != 2
 		c.Response().Header.SetCanonical(normalizedHeaderETag, etag)
 
-		return nil
+		return
 	}
 }
 
@@ -104,7 +102,7 @@ func appendUint(dst []byte, n uint32) []byte {
 	var q uint32
 	for n >= 10 {
 		i--
-		q = n / 10 //nolint:gomnd // TODO: Explain why we divide by 10 here
+		q = n / 10
 		buf[i] = '0' + byte(n-q*10)
 		n = q
 	}

@@ -3,13 +3,11 @@ package session
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -23,7 +21,6 @@ type Session struct {
 	exp        time.Duration // expiration of this session
 }
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var sessionPool = sync.Pool{
 	New: func() interface{} {
 		return new(Session)
@@ -31,7 +28,7 @@ var sessionPool = sync.Pool{
 }
 
 func acquireSession() *Session {
-	s := sessionPool.Get().(*Session) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
+	s := sessionPool.Get().(*Session)
 	if s.data == nil {
 		s.data = acquireData()
 	}
@@ -156,7 +153,7 @@ func (s *Session) Save() error {
 	encCache := gob.NewEncoder(s.byteBuffer)
 	err := encCache.Encode(&s.data.Data)
 	if err != nil {
-		return fmt.Errorf("failed to encode data: %w", err)
+		return err
 	}
 
 	// copy the data in buffer

@@ -1,8 +1,6 @@
 package encryptcookie
 
-import (
-	"github.com/gofiber/fiber/v2"
-)
+import "github.com/gofiber/fiber/v2"
 
 // Config defines the config for middleware.
 type Config struct {
@@ -34,8 +32,6 @@ type Config struct {
 }
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Next:      nil,
 	Except:    []string{"csrf_"},

@@ -6,56 +6,47 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
 )
 
 // EncryptCookie Encrypts a cookie value with specific encryption key
 func EncryptCookie(value, key string) (string, error) {
-	keyDecoded, err := base64.StdEncoding.DecodeString(key)
-	if err != nil {
-		return "", fmt.Errorf("failed to base64-decode key: %w", err)
-	}
+	keyDecoded, _ := base64.StdEncoding.DecodeString(key)
+	plaintext := []byte(value)
 
 	block, err := aes.NewCipher(keyDecoded)
 	if err != nil {
-		return "", fmt.Errorf("failed to create AES cipher: %w", err)
+		return "", err
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", fmt.Errorf("failed to create GCM mode: %w", err)
+		return "", err
 	}
 
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
-		return "", fmt.Errorf("failed to read: %w", err)
+		return "", err
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, []byte(value), nil)
+	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
 
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
 // DecryptCookie Decrypts a cookie value with specific encryption key
 func DecryptCookie(value, key string) (string, error) {
-	keyDecoded, err := base64.StdEncoding.DecodeString(key)
-	if err != nil {
-		return "", fmt.Errorf("failed to base64-decode key: %w", err)
-	}
-	enc, err := base64.StdEncoding.DecodeString(value)
-	if err != nil {
-		return "", fmt.Errorf("failed to base64-decode value: %w", err)
-	}
+	keyDecoded, _ := base64.StdEncoding.DecodeString(key)
+	enc, _ := base64.StdEncoding.DecodeString(value)
 
 	block, err := aes.NewCipher(keyDecoded)
 	if err != nil {
-		return "", fmt.Errorf("failed to create AES cipher: %w", err)
+		return "", err
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", fmt.Errorf("failed to create GCM mode: %w", err)
+		return "", err
 	}
 
 	nonceSize := gcm.NonceSize()
@@ -68,7 +59,7 @@ func DecryptCookie(value, key string) (string, error) {
 
 	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to decrypt ciphertext: %w", err)
+		return "", err
 	}
 
 	return string(plaintext), nil
@@ -76,8 +67,7 @@ func DecryptCookie(value, key string) (string, error) {
 
 // GenerateKey Generates an encryption key
 func GenerateKey() string {
-	const keyLen = 32
-	ret := make([]byte, keyLen)
+	ret := make([]byte, 32)
 
 	if _, err := rand.Read(ret); err != nil {
 		panic(err)

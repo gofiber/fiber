@@ -4,14 +4,14 @@ on:
             - master
             - main
     pull_request:
-name: Linter
+name: Security
 jobs:
-  Golint:
+  Gosec:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Repository
         uses: actions/checkout@v3
-      - name: Run Golint
-        uses: reviewdog/action-golangci-lint@v2
+      - name: Run Gosec
+        uses: securego/gosec@master
         with:
-          golangci_lint_flags: "--tests=false"
+          args: -exclude-dir=internal/*/ ./...

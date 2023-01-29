@@ -10,7 +10,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -62,7 +61,6 @@ func Test_Monitor_Html(t *testing.T) {
 		conf.Refresh.Milliseconds()-timeoutDiff)
 	utils.AssertEqual(t, true, bytes.Contains(buf, []byte(timeoutLine)))
 }
-
 func Test_Monitor_Html_CustomCodes(t *testing.T) {
 	t.Parallel()
 
@@ -84,10 +82,8 @@ func Test_Monitor_Html_CustomCodes(t *testing.T) {
 	utils.AssertEqual(t, true, bytes.Contains(buf, []byte(timeoutLine)))
 
 	// custom config
-	conf := Config{
-		Title:      "New " + defaultTitle,
-		Refresh:    defaultRefresh + time.Second,
-		ChartJSURL: "https://cdnjs.com/libraries/Chart.js",
+	conf := Config{Title: "New " + defaultTitle, Refresh: defaultRefresh + time.Second,
+		ChartJsURL: "https://cdnjs.com/libraries/Chart.js",
 		FontURL:    "/public/my-font.css",
 		CustomHead: `<style>body{background:#fff}</style>`,
 	}
@@ -140,7 +136,7 @@ func Benchmark_Monitor(b *testing.B) {
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod(fiber.MethodGet)
+	fctx.Request.Header.SetMethod("GET")
 	fctx.Request.SetRequestURI("/")
 	fctx.Request.Header.Set(fiber.HeaderAccept, fiber.MIMEApplicationJSON)
 

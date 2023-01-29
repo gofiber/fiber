@@ -2,7 +2,6 @@ package session
 
 import (
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -50,7 +49,7 @@ type Config struct {
 	// Optional. Default value utils.UUIDv4
 	KeyGenerator func() string
 
-	// Deprecated: Please use KeyLookup
+	// Deprecated, please use KeyLookup
 	CookieName string
 
 	// Source defines where to obtain the session id
@@ -69,10 +68,8 @@ const (
 )
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
-	Expiration:   24 * time.Hour, //nolint:gomnd // No magic number, just the default config
+	Expiration:   24 * time.Hour,
 	KeyLookup:    "cookie:session_id",
 	KeyGenerator: utils.UUIDv4,
 	source:       "cookie",
@@ -94,7 +91,7 @@ func configDefault(config ...Config) Config {
 		cfg.Expiration = ConfigDefault.Expiration
 	}
 	if cfg.CookieName != "" {
-		log.Printf("[session] CookieName is deprecated, please use KeyLookup\n")
+		fmt.Println("[session] CookieName is deprecated, please use KeyLookup")
 		cfg.KeyLookup = fmt.Sprintf("cookie:%s", cfg.CookieName)
 	}
 	if cfg.KeyLookup == "" {
@@ -105,8 +102,7 @@ func configDefault(config ...Config) Config {
 	}
 
 	selectors := strings.Split(cfg.KeyLookup, ":")
-	const numSelectors = 2
-	if len(selectors) != numSelectors {
+	if len(selectors) != 2 {
 		panic("[session] KeyLookup must in the form of <source>:<name>")
 	}
 	switch Source(selectors[0]) {

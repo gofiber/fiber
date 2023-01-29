@@ -2,15 +2,13 @@ package fiber
 
 import (
 	"crypto/tls"
-	"errors"
 	"fmt"
-	"log"
+	"net"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/valyala/fasthttp/reuseport"
@@ -21,11 +19,8 @@ const (
 	envPreforkChildVal = "1"
 )
 
-//nolint:gochecknoglobals // TODO: Do not use global vars here
-var (
-	testPreforkMaster = false
-	testOnPrefork     = false
-)
+var testPreforkMaster = false
+var testOnPrefork = false
 
 // IsChild determines if the current process is a child of Prefork
 func IsChild() bool {
@@ -33,20 +28,19 @@ func IsChild() bool {
 }
 
 // prefork manages child processes to make use of the OS REUSEPORT or REUSEADDR feature
-func (app *App) prefork(network, addr string, tlsConfig *tls.Config) error {
+func (app *App) prefork(network, addr string, tlsConfig *tls.Config) (err error) {
 	// 👶 child process 👶
 	if IsChild() {
 		// use 1 cpu core per child process
 		runtime.GOMAXPROCS(1)
+		var ln net.Listener
 		// Linux will use SO_REUSEPORT and Windows falls back to SO_REUSEADDR
 		// Only tcp4 or tcp6 is supported when preforking, both are not supported
-		ln, err := reuseport.Listen(network, addr)
-		if err != nil {
+		if ln, err = reuseport.Listen(network, addr); err != nil {
 			if !app.config.DisableStartupMessage {
-				const sleepDuration = 100 * time.Millisecond
-				time.Sleep(sleepDuration) // avoid colliding with startup message
+				time.Sleep(100 * time.Millisecond) // avoid colliding with startup message
 			}
-			return fmt.Errorf("prefork: %w", err)
+			return fmt.Errorf("prefork: %v", err)
 		}
 		// wrap a tls config around the listener if provided
 		if tlsConfig != nil {
@@ -76,11 +70,7 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) error {
 	// kill child procs when master exits
 	defer func() {
 		for _, proc := range childs {
-			if err := proc.Process.Kill(); err != nil {
-				if !errors.Is(err, os.ErrProcessDone) {
-					log.Printf("prefork: failed to kill child: %v\n", err)
-				}
-			}
+			_ = proc.Process.Kill()
 		}
 	}()
 
@@ -89,7 +79,8 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) error {
 
 	// launch child procs
 	for i := 0; i < max; i++ {
-		cmd := exec.Command(os.Args[0], os.Args[1:]...) //nolint:gosec // It's fine to launch the same process again
+		/* #nosec G204 */
+		cmd := exec.Command(os.Args[0], os.Args[1:]...) // #nosec G204
 		if testPreforkMaster {
 			// When test prefork master,
 			// just start the child process with a dummy cmd,
@@ -103,8 +94,8 @@ func (app *App) prefork(network, addr string, tlsConfig *tls.Config) error {
 		cmd.Env = append(os.Environ(),
 			fmt.Sprintf("%s=%s", envPreforkChildKey, envPreforkChildVal),
 		)
-		if err := cmd.Start(); err != nil {
-			return fmt.Errorf("failed to start a child prefork process, error: %w", err)
+		if err = cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start a child prefork process, error: %v", err)
 		}
 
 		// store child process
@@ -143,34 +134,27 @@ func watchMaster() {
 		// and waits for it to exit
 		p, err := os.FindProcess(os.Getppid())
 		if err == nil {
-			_, _ = p.Wait() //nolint:errcheck // It is fine to ignore the error here
+			_, _ = p.Wait()
 		}
-		os.Exit(1) //nolint:revive // Calling os.Exit is fine here in the prefork
+		os.Exit(1)
 	}
 	// if it is equal to 1 (init process ID),
 	// it indicates that the master process has exited
-	const watchInterval = 500 * time.Millisecond
-	for range time.NewTicker(watchInterval).C {
+	for range time.NewTicker(time.Millisecond * 500).C {
 		if os.Getppid() == 1 {
-			os.Exit(1) //nolint:revive // Calling os.Exit is fine here in the prefork
+			os.Exit(1)
 		}
 	}
 }
 
-//nolint:gochecknoglobals // TODO: Do not use global vars here
-var (
-	dummyPid      = 1
-	dummyChildCmd atomic.Value
-)
+var dummyChildCmd = "go"
 
 // dummyCmd is for internal prefork testing
 func dummyCmd() *exec.Cmd {
-	command := "go"
-	if storeCommand := dummyChildCmd.Load(); storeCommand != nil && storeCommand != "" {
-		command = storeCommand.(string) //nolint:forcetypeassert,errcheck // We always store a string in here
-	}
 	if runtime.GOOS == "windows" {
-		return exec.Command("cmd", "/C", command, "version")
+		return exec.Command("cmd", "/C", dummyChildCmd, "version")
 	}
-	return exec.Command(command, "version")
+	return exec.Command(dummyChildCmd, "version")
 }
+
+var dummyPid = 1

@@ -7,7 +7,6 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -24,7 +23,7 @@ func Test_CSRF(t *testing.T) {
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
 
-	methods := [4]string{fiber.MethodGet, fiber.MethodHead, fiber.MethodOptions, fiber.MethodTrace}
+	methods := [4]string{"GET", "HEAD", "OPTIONS", "TRACE"}
 
 	for _, method := range methods {
 		// Generate CSRF token
@@ -34,14 +33,14 @@ func Test_CSRF(t *testing.T) {
 		// Without CSRF cookie
 		ctx.Request.Reset()
 		ctx.Response.Reset()
-		ctx.Request.Header.SetMethod(fiber.MethodPost)
+		ctx.Request.Header.SetMethod("POST")
 		h(ctx)
 		utils.AssertEqual(t, 403, ctx.Response.StatusCode())
 
 		// Empty/invalid CSRF token
 		ctx.Request.Reset()
 		ctx.Response.Reset()
-		ctx.Request.Header.SetMethod(fiber.MethodPost)
+		ctx.Request.Header.SetMethod("POST")
 		ctx.Request.Header.Set(HeaderName, "johndoe")
 		h(ctx)
 		utils.AssertEqual(t, 403, ctx.Response.StatusCode())
@@ -56,7 +55,7 @@ func Test_CSRF(t *testing.T) {
 
 		ctx.Request.Reset()
 		ctx.Response.Reset()
-		ctx.Request.Header.SetMethod(fiber.MethodPost)
+		ctx.Request.Header.SetMethod("POST")
 		ctx.Request.Header.Set(HeaderName, token)
 		h(ctx)
 		utils.AssertEqual(t, 200, ctx.Response.StatusCode())
@@ -73,7 +72,7 @@ func Test_CSRF_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -93,7 +92,7 @@ func Test_CSRF_Invalid_KeyLookup(t *testing.T) {
 
 	h := app.Handler()
 	ctx := &fasthttp.RequestCtx{}
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetMethod("GET")
 	h(ctx)
 }
 
@@ -111,7 +110,7 @@ func Test_CSRF_From_Form(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// Invalid CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 	h(ctx)
 	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
@@ -119,12 +118,12 @@ func Test_CSRF_From_Form(t *testing.T) {
 	// Generate CSRF token
 	ctx.Request.Reset()
 	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetMethod("GET")
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMEApplicationForm)
 	ctx.Request.SetBodyString("_csrf=" + token)
 	h(ctx)
@@ -145,7 +144,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// Invalid CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	ctx.Request.SetRequestURI("/?_csrf=" + utils.UUID())
 	h(ctx)
 	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
@@ -153,7 +152,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 	// Generate CSRF token
 	ctx.Request.Reset()
 	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetMethod("GET")
 	ctx.Request.SetRequestURI("/")
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
@@ -162,7 +161,7 @@ func Test_CSRF_From_Query(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.SetRequestURI("/?_csrf=" + token)
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	h(ctx)
 	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
 	utils.AssertEqual(t, "OK", string(ctx.Response.Body()))
@@ -182,7 +181,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// Invalid CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	ctx.Request.SetRequestURI("/" + utils.UUID())
 	h(ctx)
 	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
@@ -190,7 +189,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 	// Generate CSRF token
 	ctx.Request.Reset()
 	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetMethod("GET")
 	ctx.Request.SetRequestURI("/" + utils.UUID())
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
@@ -199,7 +198,7 @@ func Test_CSRF_From_Param(t *testing.T) {
 	ctx.Request.Reset()
 	ctx.Response.Reset()
 	ctx.Request.SetRequestURI("/" + token)
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	h(ctx)
 	utils.AssertEqual(t, 200, ctx.Response.StatusCode())
 	utils.AssertEqual(t, "OK", string(ctx.Response.Body()))
@@ -219,7 +218,7 @@ func Test_CSRF_From_Cookie(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// Invalid CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	ctx.Request.SetRequestURI("/")
 	ctx.Request.Header.Set(fiber.HeaderCookie, "csrf="+utils.UUID()+";")
 	h(ctx)
@@ -228,7 +227,7 @@ func Test_CSRF_From_Cookie(t *testing.T) {
 	// Generate CSRF token
 	ctx.Request.Reset()
 	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetMethod("GET")
 	ctx.Request.SetRequestURI("/")
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
@@ -236,7 +235,7 @@ func Test_CSRF_From_Cookie(t *testing.T) {
 
 	ctx.Request.Reset()
 	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	ctx.Request.Header.Set(fiber.HeaderCookie, "csrf="+token+";")
 	ctx.Request.SetRequestURI("/")
 	h(ctx)
@@ -269,7 +268,7 @@ func Test_CSRF_From_Custom(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// Invalid CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
 	h(ctx)
 	utils.AssertEqual(t, 403, ctx.Response.StatusCode())
@@ -277,12 +276,12 @@ func Test_CSRF_From_Custom(t *testing.T) {
 	// Generate CSRF token
 	ctx.Request.Reset()
 	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetMethod("GET")
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	ctx.Request.Header.Set(fiber.HeaderContentType, fiber.MIMETextPlain)
 	ctx.Request.SetBodyString("_csrf=" + token)
 	h(ctx)
@@ -308,13 +307,13 @@ func Test_CSRF_ErrorHandler_InvalidToken(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// Generate CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetMethod("GET")
 	h(ctx)
 
 	// invalid CSRF token
 	ctx.Request.Reset()
 	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	ctx.Request.Header.Set(HeaderName, "johndoe")
 	h(ctx)
 	utils.AssertEqual(t, 419, ctx.Response.StatusCode())
@@ -340,69 +339,69 @@ func Test_CSRF_ErrorHandler_EmptyToken(t *testing.T) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// Generate CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetMethod("GET")
 	h(ctx)
 
 	// empty CSRF token
 	ctx.Request.Reset()
 	ctx.Response.Reset()
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	h(ctx)
 	utils.AssertEqual(t, 419, ctx.Response.StatusCode())
 	utils.AssertEqual(t, "empty CSRF token", string(ctx.Response.Body()))
 }
 
 // TODO: use this test case and make the unsafe header value bug from https://github.com/gofiber/fiber/issues/2045 reproducible and permanently fixed/tested by this testcase
-// func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
+//func Test_CSRF_UnsafeHeaderValue(t *testing.T) {
 //  t.Parallel()
-// 	app := fiber.New()
-
-// 	app.Use(New())
-// 	app.Get("/", func(c *fiber.Ctx) error {
-// 		return c.SendStatus(fiber.StatusOK)
-// 	})
-// 	app.Get("/test", func(c *fiber.Ctx) error {
-// 		return c.SendStatus(fiber.StatusOK)
-// 	})
-// 	app.Post("/", func(c *fiber.Ctx) error {
-// 		return c.SendStatus(fiber.StatusOK)
-// 	})
-
-// 	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
-// 	utils.AssertEqual(t, nil, err)
-// 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
-
-// 	var token string
-// 	for _, c := range resp.Cookies() {
-// 		if c.Name != ConfigDefault.CookieName {
-// 			continue
-// 		}
-// 		token = c.Value
-// 		break
-// 	}
-
-// 	fmt.Println("token", token)
-
-// 	getReq := httptest.NewRequest(fiber.MethodGet, "/", nil)
-// 	getReq.Header.Set(HeaderName, token)
-// 	resp, err = app.Test(getReq)
-
-// 	getReq = httptest.NewRequest(fiber.MethodGet, "/test", nil)
-// 	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
-// 	getReq.Header.Set(fiber.HeaderCacheControl, "no")
-// 	getReq.Header.Set(HeaderName, token)
-
-// 	resp, err = app.Test(getReq)
-
-// 	getReq.Header.Set(fiber.HeaderAccept, "*/*")
-// 	getReq.Header.Del(HeaderName)
-// 	resp, err = app.Test(getReq)
-
-// 	postReq := httptest.NewRequest(fiber.MethodPost, "/", nil)
-// 	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
-// 	postReq.Header.Set(HeaderName, token)
-// 	resp, err = app.Test(postReq)
-// }
+//	app := fiber.New()
+//
+//	app.Use(New())
+//	app.Get("/", func(c *fiber.Ctx) error {
+//		return c.SendStatus(fiber.StatusOK)
+//	})
+//	app.Get("/test", func(c *fiber.Ctx) error {
+//		return c.SendStatus(fiber.StatusOK)
+//	})
+//	app.Post("/", func(c *fiber.Ctx) error {
+//		return c.SendStatus(fiber.StatusOK)
+//	})
+//
+//	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+//	utils.AssertEqual(t, nil, err)
+//	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+//
+//	var token string
+//	for _, c := range resp.Cookies() {
+//		if c.Name != ConfigDefault.CookieName {
+//			continue
+//		}
+//		token = c.Value
+//		break
+//	}
+//
+//	fmt.Println("token", token)
+//
+//	getReq := httptest.NewRequest(http.MethodGet, "/", nil)
+//	getReq.Header.Set(HeaderName, token)
+//	resp, err = app.Test(getReq)
+//
+//	getReq = httptest.NewRequest(http.MethodGet, "/test", nil)
+//	getReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+//	getReq.Header.Set(fiber.HeaderCacheControl, "no")
+//	getReq.Header.Set(HeaderName, token)
+//
+//	resp, err = app.Test(getReq)
+//
+//	getReq.Header.Set(fiber.HeaderAccept, "*/*")
+//	getReq.Header.Del(HeaderName)
+//	resp, err = app.Test(getReq)
+//
+//	postReq := httptest.NewRequest(http.MethodPost, "/", nil)
+//	postReq.Header.Set("X-Requested-With", "XMLHttpRequest")
+//	postReq.Header.Set(HeaderName, token)
+//	resp, err = app.Test(postReq)
+//}
 
 // go test -v -run=^$ -bench=Benchmark_Middleware_CSRF_Check -benchmem -count=4
 func Benchmark_Middleware_CSRF_Check(b *testing.B) {
@@ -418,12 +417,12 @@ func Benchmark_Middleware_CSRF_Check(b *testing.B) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// Generate CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetMethod("GET")
 	h(ctx)
 	token := string(ctx.Response.Header.Peek(fiber.HeaderSetCookie))
 	token = strings.Split(strings.Split(token, ";")[0], "=")[1]
 
-	ctx.Request.Header.SetMethod(fiber.MethodPost)
+	ctx.Request.Header.SetMethod("POST")
 	ctx.Request.Header.Set(HeaderName, token)
 
 	b.ReportAllocs()
@@ -450,7 +449,7 @@ func Benchmark_Middleware_CSRF_GenerateToken(b *testing.B) {
 	ctx := &fasthttp.RequestCtx{}
 
 	// Generate CSRF token
-	ctx.Request.Header.SetMethod(fiber.MethodGet)
+	ctx.Request.Header.SetMethod("GET")
 	b.ReportAllocs()
 	b.ResetTimer()
 

@@ -1,7 +1,7 @@
 package csrf
 
 import (
-	"log"
+	"fmt"
 	"net/textproto"
 	"strings"
 	"time"
@@ -80,13 +80,13 @@ type Config struct {
 	// Optional. Default: utils.UUID
 	KeyGenerator func() string
 
-	// Deprecated: Please use Expiration
+	// Deprecated, please use Expiration
 	CookieExpires time.Duration
 
-	// Deprecated: Please use Cookie* related fields
+	// Deprecated, please use Cookie* related fields
 	Cookie *fiber.Cookie
 
-	// Deprecated: Please use KeyLookup
+	// Deprecated, please use KeyLookup
 	TokenLookup string
 
 	// ErrorHandler is executed when an error is returned from fiber.Handler.
@@ -105,8 +105,6 @@ type Config struct {
 const HeaderName = "X-Csrf-Token"
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	KeyLookup:      "header:" + HeaderName,
 	CookieName:     "csrf_",
@@ -118,7 +116,7 @@ var ConfigDefault = Config{
 }
 
 // default ErrorHandler that process return error from fiber.Handler
-func defaultErrorHandler(_ *fiber.Ctx, _ error) error {
+var defaultErrorHandler = func(c *fiber.Ctx, err error) error {
 	return fiber.ErrForbidden
 }
 
@@ -134,15 +132,15 @@ func configDefault(config ...Config) Config {
 
 	// Set default values
 	if cfg.TokenLookup != "" {
-		log.Printf("[CSRF] TokenLookup is deprecated, please use KeyLookup\n")
+		fmt.Println("[CSRF] TokenLookup is deprecated, please use KeyLookup")
 		cfg.KeyLookup = cfg.TokenLookup
 	}
 	if int(cfg.CookieExpires.Seconds()) > 0 {
-		log.Printf("[CSRF] CookieExpires is deprecated, please use Expiration\n")
+		fmt.Println("[CSRF] CookieExpires is deprecated, please use Expiration")
 		cfg.Expiration = cfg.CookieExpires
 	}
 	if cfg.Cookie != nil {
-		log.Printf("[CSRF] Cookie is deprecated, please use Cookie* related fields\n")
+		fmt.Println("[CSRF] Cookie is deprecated, please use Cookie* related fields")
 		if cfg.Cookie.Name != "" {
 			cfg.CookieName = cfg.Cookie.Name
 		}
@@ -180,8 +178,7 @@ func configDefault(config ...Config) Config {
 	// Generate the correct extractor to get the token from the correct location
 	selectors := strings.Split(cfg.KeyLookup, ":")
 
-	const numParts = 2
-	if len(selectors) != numParts {
+	if len(selectors) != 2 {
 		panic("[CSRF] KeyLookup must in the form of <source>:<key>")
 	}
 

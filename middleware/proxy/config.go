@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-
 	"github.com/valyala/fasthttp"
 )
 
@@ -49,7 +48,7 @@ type Config struct {
 	WriteBufferSize int
 
 	// tls config for the http client.
-	TlsConfig *tls.Config //nolint:stylecheck,revive // TODO: Rename to "TLSConfig" in v3
+	TlsConfig *tls.Config
 
 	// Client is custom client when client config is complex.
 	// Note that Servers, Timeout, WriteBufferSize, ReadBufferSize and TlsConfig
@@ -58,8 +57,6 @@ type Config struct {
 }
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Next:           nil,
 	ModifyRequest:  nil,

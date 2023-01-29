@@ -9,22 +9,23 @@ import (
 type viewBag struct {
 	title      string
 	refresh    time.Duration
-	fontURL    string
-	chartJSURL string
+	fontUrl    string
+	chartJsUrl string
 	customHead string
 }
 
 // returns index with new title/refresh
 func newIndex(dat viewBag) string {
+
 	timeout := dat.refresh.Milliseconds() - timeoutDiff
 	if timeout < timeoutDiff {
 		timeout = timeoutDiff
 	}
 	ts := strconv.FormatInt(timeout, 10)
 	replacer := strings.NewReplacer("$TITLE", dat.title, "$TIMEOUT", ts,
-		"$FONT_URL", dat.fontURL, "$CHART_JS_URL", dat.chartJSURL, "$CUSTOM_HEAD", dat.customHead,
+		"$FONT_URL", dat.fontUrl, "$CHART_JS_URL", dat.chartJsUrl, "$CUSTOM_HEAD", dat.customHead,
 	)
-	return replacer.Replace(indexHTML)
+	return replacer.Replace(indexHtml)
 }
 
 const (
@@ -34,11 +35,11 @@ const (
 	timeoutDiff       = 200 // timeout will be Refresh (in milliseconds) - timeoutDiff
 	minRefresh        = timeoutDiff * time.Millisecond
 	defaultFontURL    = `https://fonts.googleapis.com/css2?family=Roboto:wght@400;900&display=swap`
-	defaultChartJSURL = `https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js`
+	defaultChartJsURL = `https://cdn.jsdelivr.net/npm/chart.js@2.9/dist/Chart.bundle.min.js`
 	defaultCustomHead = ``
 
 	// parametrized by $TITLE and $TIMEOUT
-	indexHTML = `<!DOCTYPE html>
+	indexHtml = `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">

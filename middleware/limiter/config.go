@@ -1,7 +1,7 @@
 package limiter
 
 import (
-	"log"
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -58,21 +58,19 @@ type Config struct {
 	// Default: a new Fixed Window Rate Limiter
 	LimiterMiddleware LimiterHandler
 
-	// Deprecated: Use Expiration instead
+	// DEPRECATED: Use Expiration instead
 	Duration time.Duration
 
-	// Deprecated: Use Storage instead
+	// DEPRECATED, use Storage instead
 	Store fiber.Storage
 
-	// Deprecated: Use KeyGenerator instead
+	// DEPRECATED, use KeyGenerator instead
 	Key func(*fiber.Ctx) string
 }
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
-	Max:        5, //nolint:gomnd // No magic number, just the default config
+	Max:        5,
 	Expiration: 1 * time.Minute,
 	KeyGenerator: func(c *fiber.Ctx) string {
 		return c.IP()
@@ -97,15 +95,15 @@ func configDefault(config ...Config) Config {
 
 	// Set default values
 	if int(cfg.Duration.Seconds()) > 0 {
-		log.Printf("[LIMITER] Duration is deprecated, please use Expiration\n")
+		fmt.Println("[LIMITER] Duration is deprecated, please use Expiration")
 		cfg.Expiration = cfg.Duration
 	}
 	if cfg.Key != nil {
-		log.Printf("[LIMITER] Key is deprecated, please us KeyGenerator\n")
+		fmt.Println("[LIMITER] Key is deprecated, please us KeyGenerator")
 		cfg.KeyGenerator = cfg.Key
 	}
 	if cfg.Store != nil {
-		log.Printf("[LIMITER] Store is deprecated, please use Storage\n")
+		fmt.Println("[LIMITER] Store is deprecated, please use Storage")
 		cfg.Storage = cfg.Store
 	}
 	if cfg.Next == nil {

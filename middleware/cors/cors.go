@@ -1,6 +1,7 @@
 package cors
 
 import (
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -53,8 +54,6 @@ type Config struct {
 }
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Next:         nil,
 	AllowOrigins: "*",
@@ -129,7 +128,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Simple request
-		if c.Method() != fiber.MethodOptions {
+		if c.Method() != http.MethodOptions {
 			c.Vary(fiber.HeaderOrigin)
 			c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 

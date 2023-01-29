@@ -31,7 +31,7 @@ const (
 	TagBytesReceived     = "bytesReceived"
 	TagRoute             = "route"
 	TagError             = "error"
-	// Deprecated: Use TagReqHeader instead
+	// DEPRECATED: Use TagReqHeader instead
 	TagHeader     = "header:"
 	TagReqHeader  = "reqHeader:"
 	TagRespHeader = "respHeader:"
@@ -195,7 +195,7 @@ func createTagMap(cfg *Config) map[string]LogFunc {
 			return output.WriteString(fmt.Sprintf("%7v", latency))
 		},
 		TagTime: func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (int, error) {
-			return output.WriteString(data.Timestamp.Load().(string)) //nolint:forcetypeassert // We always store a string in here
+			return output.WriteString(data.Timestamp.Load().(string))
 		},
 	}
 	// merge with custom tags from user

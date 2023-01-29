@@ -1,8 +1,6 @@
 package skip
 
-import (
-	"github.com/gofiber/fiber/v2"
-)
+import "github.com/gofiber/fiber/v2"
 
 // New creates a middleware handler which skips the wrapped handler
 // if the exclude predicate returns true.

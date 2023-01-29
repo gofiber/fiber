@@ -20,13 +20,13 @@ import (
 	"unsafe"
 
 	"github.com/gofiber/fiber/v2/utils"
-
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
 
-// getTLSConfig returns a net listener's tls config
-func getTLSConfig(ln net.Listener) *tls.Config {
+/* #nosec */
+// getTlsConfig returns a net listener's tls config
+func getTlsConfig(ln net.Listener) *tls.Config {
 	// Get listener type
 	pointer := reflect.ValueOf(ln)
 
@@ -37,16 +37,12 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 			// Get private field from value
 			if field := val.FieldByName("config"); field.Type() != nil {
 				// Copy value from pointer field (unsafe)
-				newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
+				newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) // #nosec G103
 				if newval.Type() != nil {
 					// Get element from pointer
 					if elem := newval.Elem(); elem.Type() != nil {
 						// Cast value to *tls.Config
-						c, ok := elem.Interface().(*tls.Config)
-						if !ok {
-							panic(fmt.Errorf("failed to type-assert to *tls.Config"))
-						}
-						return c
+						return elem.Interface().(*tls.Config)
 					}
 				}
 			}
@@ -57,21 +53,19 @@ func getTLSConfig(ln net.Listener) *tls.Config {
 }
 
 // readContent opens a named file and read content from it
-func readContent(rf io.ReaderFrom, name string) (int64, error) {
+func readContent(rf io.ReaderFrom, name string) (n int64, err error) {
 	// Read file
 	f, err := os.Open(filepath.Clean(name))
 	if err != nil {
-		return 0, fmt.Errorf("failed to open: %w", err)
+		return 0, err
 	}
+	// #nosec G307
 	defer func() {
 		if err = f.Close(); err != nil {
 			log.Printf("Error closing file: %s\n", err)
 		}
 	}()
-	if n, err := rf.ReadFrom(f); err != nil {
-		return n, fmt.Errorf("failed to read: %w", err)
-	}
-	return 0, nil
+	return rf.ReadFrom(f)
 }
 
 // quoteString escape special characters in a given string
@@ -84,8 +78,7 @@ func (app *App) quoteString(raw string) string {
 }
 
 // Scan stack if other methods match the request
-func (app *App) methodExist(ctx *Ctx) bool {
-	var exists bool
+func (app *App) methodExist(ctx *Ctx) (exist bool) {
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
@@ -115,7 +108,7 @@ func (app *App) methodExist(ctx *Ctx) bool {
 			// No match, next route
 			if match {
 				// We matched
-				exists = true
+				exist = true
 				// Add method to Allow header
 				ctx.Append(HeaderAllow, methods[i])
 				// Break stack loop
@@ -123,7 +116,7 @@ func (app *App) methodExist(ctx *Ctx) bool {
 			}
 		}
 	}
-	return exists
+	return
 }
 
 // uniqueRouteStack drop all not unique routes from the slice
@@ -153,7 +146,7 @@ func defaultString(value string, defaultValue []string) string {
 const normalizedHeaderETag = "Etag"
 
 // Generate and set ETag header to response
-func setETag(c *Ctx, weak bool) { //nolint: revive // Accepting a bool param is fine here
+func setETag(c *Ctx, weak bool) {
 	// Don't generate ETags for invalid responses
 	if c.fasthttp.Response.StatusCode() != StatusOK {
 		return
@@ -167,8 +160,7 @@ func setETag(c *Ctx, weak bool) { //nolint: revive // Accepting a bool param is 
 	clientEtag := c.Get(HeaderIfNoneMatch)
 
 	// Generate ETag for response
-	const pol = 0xD5828281
-	crc32q := crc32.MakeTable(pol)
+	crc32q := crc32.MakeTable(0xD5828281)
 	etag := fmt.Sprintf("\"%d-%v\"", len(body), crc32.Checksum(body, crc32q))
 
 	// Enable weak tag
@@ -181,9 +173,7 @@ func setETag(c *Ctx, weak bool) { //nolint: revive // Accepting a bool param is 
 		// Check if server's ETag is weak
 		if clientEtag[2:] == etag || clientEtag[2:] == etag[2:] {
 			// W/1 == 1 || W/1 == W/1
-			if err := c.SendStatus(StatusNotModified); err != nil {
-				log.Printf("setETag: failed to SendStatus: %v\n", err)
-			}
+			_ = c.SendStatus(StatusNotModified)
 			c.fasthttp.ResetBody()
 			return
 		}
@@ -193,9 +183,7 @@ func setETag(c *Ctx, weak bool) { //nolint: revive // Accepting a bool param is 
 	}
 	if strings.Contains(clientEtag, etag) {
 		// 1 == 1
-		if err := c.SendStatus(StatusNotModified); err != nil {
-			log.Printf("setETag: failed to SendStatus: %v\n", err)
-		}
+		_ = c.SendStatus(StatusNotModified)
 		c.fasthttp.ResetBody()
 		return
 	}
@@ -251,7 +239,7 @@ func getOffer(header string, offers ...string) string {
 	return ""
 }
 
-func matchEtag(s, etag string) bool {
+func matchEtag(s string, etag string) bool {
 	if s == etag || s == "W/"+etag || "W/"+s == etag {
 		return true
 	}
@@ -266,12 +254,12 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
 	for i := range noneMatchBytes {
 		switch noneMatchBytes[i] {
-		case 0x20: //nolint:gomnd // This is a space (" ")
+		case 0x20:
 			if start == end {
 				start = i + 1
 				end = i + 1
 			}
-		case 0x2c: //nolint:gomnd // This is a comma (",")
+		case 0x2c:
 			if matchEtag(app.getString(noneMatchBytes[start:end]), etag) {
 				return false
 			}
@@ -285,7 +273,7 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(app.getString(noneMatchBytes[start:end]), etag)
 }
 
-func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, port)
+func parseAddr(raw string) (host, port string) {
 	if i := strings.LastIndex(raw, ":"); i != -1 {
 		return raw[:i], raw[i+1:]
 	}
@@ -325,21 +313,21 @@ type testConn struct {
 	w bytes.Buffer
 }
 
-func (c *testConn) Read(b []byte) (int, error)  { return c.r.Read(b) }  //nolint:wrapcheck // This must not be wrapped
-func (c *testConn) Write(b []byte) (int, error) { return c.w.Write(b) } //nolint:wrapcheck // This must not be wrapped
-func (*testConn) Close() error                  { return nil }
+func (c *testConn) Read(b []byte) (int, error)  { return c.r.Read(b) }
+func (c *testConn) Write(b []byte) (int, error) { return c.w.Write(b) }
+func (c *testConn) Close() error                { return nil }
 
-func (*testConn) LocalAddr() net.Addr                { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
-func (*testConn) RemoteAddr() net.Addr               { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
-func (*testConn) SetDeadline(_ time.Time) error      { return nil }
-func (*testConn) SetReadDeadline(_ time.Time) error  { return nil }
-func (*testConn) SetWriteDeadline(_ time.Time) error { return nil }
+func (c *testConn) LocalAddr() net.Addr                { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
+func (c *testConn) RemoteAddr() net.Addr               { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
+func (c *testConn) SetDeadline(_ time.Time) error      { return nil }
+func (c *testConn) SetReadDeadline(_ time.Time) error  { return nil }
+func (c *testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
-func getStringImmutable(b []byte) string {
+var getStringImmutable = func(b []byte) string {
 	return string(b)
 }
 
-func getBytesImmutable(s string) []byte {
+var getBytesImmutable = func(s string) (b []byte) {
 	return []byte(s)
 }
 
@@ -347,7 +335,6 @@ func getBytesImmutable(s string) []byte {
 func (app *App) methodInt(s string) int {
 	// For better performance
 	if len(app.configured.RequestMethods) == 0 {
-		//nolint:gomnd // TODO: Use iota instead
 		switch s {
 		case MethodGet:
 			return 0
@@ -404,7 +391,8 @@ func IsMethodIdempotent(m string) bool {
 	}
 
 	switch m {
-	case MethodPut, MethodDelete:
+	case MethodPut,
+		MethodDelete:
 		return true
 	default:
 		return false
@@ -726,7 +714,7 @@ const (
 	ConstraintBool            = "bool"
 	ConstraintFloat           = "float"
 	ConstraintAlpha           = "alpha"
-	ConstraintGuid            = "guid" //nolint:revive,stylecheck // TODO: Rename to "ConstraintGUID" in v3
+	ConstraintGuid            = "guid"
 	ConstraintMinLen          = "minLen"
 	ConstraintMaxLen          = "maxLen"
 	ConstraintLen             = "len"

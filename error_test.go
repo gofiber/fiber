@@ -1,9 +1,10 @@
 package fiber
 
 import (
-	"encoding/json"
 	"errors"
 	"testing"
+
+	jerrors "encoding/json"
 
 	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/utils"
@@ -35,42 +36,42 @@ func TestMultiError(t *testing.T) {
 
 func TestInvalidUnmarshalError(t *testing.T) {
 	t.Parallel()
-	var e *json.InvalidUnmarshalError
+	var e *jerrors.InvalidUnmarshalError
 	ok := errors.As(&InvalidUnmarshalError{}, &e)
 	utils.AssertEqual(t, true, ok)
 }
 
 func TestMarshalerError(t *testing.T) {
 	t.Parallel()
-	var e *json.MarshalerError
+	var e *jerrors.MarshalerError
 	ok := errors.As(&MarshalerError{}, &e)
 	utils.AssertEqual(t, true, ok)
 }
 
 func TestSyntaxError(t *testing.T) {
 	t.Parallel()
-	var e *json.SyntaxError
+	var e *jerrors.SyntaxError
 	ok := errors.As(&SyntaxError{}, &e)
 	utils.AssertEqual(t, true, ok)
 }
 
 func TestUnmarshalTypeError(t *testing.T) {
 	t.Parallel()
-	var e *json.UnmarshalTypeError
+	var e *jerrors.UnmarshalTypeError
 	ok := errors.As(&UnmarshalTypeError{}, &e)
 	utils.AssertEqual(t, true, ok)
 }
 
 func TestUnsupportedTypeError(t *testing.T) {
 	t.Parallel()
-	var e *json.UnsupportedTypeError
+	var e *jerrors.UnsupportedTypeError
 	ok := errors.As(&UnsupportedTypeError{}, &e)
 	utils.AssertEqual(t, true, ok)
 }
 
 func TestUnsupportedValeError(t *testing.T) {
 	t.Parallel()
-	var e *json.UnsupportedValueError
+	var e *jerrors.UnsupportedValueError
 	ok := errors.As(&UnsupportedValueError{}, &e)
 	utils.AssertEqual(t, true, ok)
 }

@@ -23,8 +23,10 @@ func (envVar *EnvVar) set(key, val string) {
 	envVar.Vars[key] = val
 }
 
+var defaultConfig = Config{}
+
 func New(config ...Config) fiber.Handler {
-	var cfg Config
+	var cfg = defaultConfig
 	if len(config) > 0 {
 		cfg = config[0]
 	}
@@ -55,9 +57,8 @@ func newEnvVar(cfg Config) *EnvVar {
 			}
 		}
 	} else {
-		const numElems = 2
 		for _, envVal := range os.Environ() {
-			keyVal := strings.SplitN(envVal, "=", numElems)
+			keyVal := strings.SplitN(envVal, "=", 2)
 			if _, exists := cfg.ExcludeVars[keyVal[0]]; !exists {
 				vars.set(keyVal[0], keyVal[1])
 			}
