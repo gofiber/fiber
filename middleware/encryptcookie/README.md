@@ -69,7 +69,7 @@ type Config struct {
 
 	// Base64 encoded unique key to encode & decode cookies.
 	//
-	// Required. Key length should be 32 characters.
+	// Required. The key should be 32 bytes of random data in base64-encoded form.
 	// You may run `openssl rand -base64 32` or use `encryptcookie.GenerateKey()` to generate a new key.
 	Key string
 
