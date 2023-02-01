@@ -86,6 +86,7 @@ func SwapMemory() (*SwapMemoryStat, error) {
 }
 
 // Constants from vm/vm_param.h
+// nolint: golint
 const (
 	XSWDEV_VERSION11 = 1
 	XSWDEV_VERSION   = 2
