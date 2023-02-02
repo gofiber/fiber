@@ -82,17 +82,17 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 // go test -run Test_Custom_Favicon_Url
 func Test_Custom_Favicon_Url(t *testing.T) {
 	app := fiber.New()
-	const customUrl = "/favicon.svg"
+	const customURL = "/favicon.svg"
 	app.Use(New(Config{
 		File: "../../.github/testdata/favicon.ico",
-		URL:  customUrl,
+		URL:  customURL,
 	}))
 
 	app.Get("/", func(c *fiber.Ctx) error {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", customUrl, nil))
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, customURL, nil))
 
 	utils.AssertEqual(t, nil, err, "app.Test(req)")
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode, "Status code")
