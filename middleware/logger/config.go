@@ -136,7 +136,7 @@ func configDefault(config ...Config) Config {
 	}
 
 	// Enable colors if no custom format or output is given
-	if cfg.Output == nil && checkColorEnable(cfg.Format) {
+	if cfg.Output == ConfigDefault.Output && checkColorEnable(cfg.Format) {
 		cfg.enableColors = true
 	}
 

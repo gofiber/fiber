@@ -95,7 +95,7 @@ app.Use(logger.New(logger.Config{
 	TimeZone:   "Asia/Shanghai",
 	Done: func(c *fiber.Ctx, logString []byte) {
 		if c.Response().StatusCode() != fiber.StatusOK {
-			reporter.SendToSlack(logString) 
+			reporter.SendToSlack(logString)
 		}
 	},
 }))
@@ -189,7 +189,7 @@ const (
 	TagBytesReceived			= "bytesReceived"
 	TagRoute				= "route"
 	TagError                		= "error"
-	// DEPRECATED: Use TagReqHeader instead
+	// Deprecated: Use TagReqHeader instead
 	TagHeader               		= "header:"     // request header
 	TagReqHeader            		= "reqHeader:"  // request header
 	TagRespHeader           		= "respHeader:" // response header

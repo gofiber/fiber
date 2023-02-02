@@ -3,11 +3,13 @@ package session
 import (
 	"bytes"
 	"encoding/gob"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
@@ -28,7 +30,7 @@ var sessionPool = sync.Pool{
 }
 
 func acquireSession() *Session {
-	s := sessionPool.Get().(*Session)
+	s := sessionPool.Get().(*Session) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	if s.data == nil {
 		s.data = acquireData()
 	}
@@ -153,7 +155,7 @@ func (s *Session) Save() error {
 	encCache := gob.NewEncoder(s.byteBuffer)
 	err := encCache.Encode(&s.data.Data)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to encode data: %w", err)
 	}
 
 	// copy the data in buffer

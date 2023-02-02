@@ -1,14 +1,20 @@
 package fiber
 
+import (
+	"log"
+)
+
 // OnRouteHandler Handlers define a function to create hooks for Fiber.
-type OnRouteHandler = func(Route) error
-type OnNameHandler = OnRouteHandler
-type OnGroupHandler = func(Group) error
-type OnGroupNameHandler = OnGroupHandler
-type OnListenHandler = func() error
-type OnShutdownHandler = OnListenHandler
-type OnForkHandler = func(int) error
-type OnMountHandler = func(*App) error
+type (
+	OnRouteHandler     = func(Route) error
+	OnNameHandler      = OnRouteHandler
+	OnGroupHandler     = func(Group) error
+	OnGroupNameHandler = OnGroupHandler
+	OnListenHandler    = func() error
+	OnShutdownHandler  = OnListenHandler
+	OnForkHandler      = func(int) error
+	OnMountHandler     = func(*App) error
+)
 
 // Hooks is a struct to use it with App.
 type Hooks struct {
@@ -180,13 +186,17 @@ func (h *Hooks) executeOnListenHooks() error {
 
 func (h *Hooks) executeOnShutdownHooks() {
 	for _, v := range h.onShutdown {
-		_ = v()
+		if err := v(); err != nil {
+			log.Printf("failed to call shutdown hook: %v\n", err)
+		}
 	}
 }
 
 func (h *Hooks) executeOnForkHooks(pid int) {
 	for _, v := range h.onFork {
-		_ = v(pid)
+		if err := v(pid); err != nil {
+			log.Printf("failed to call fork hook: %v\n", err)
+		}
 	}
 }
 

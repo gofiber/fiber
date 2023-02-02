@@ -1,6 +1,7 @@
 package filesystem
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -64,7 +65,11 @@ var ConfigDefault = Config{
 	MaxAge:     0,
 }
 
-// New creates a new middleware handler
+// New creates a new middleware handler.
+//
+// filesystem does not handle url encoded values (for example spaces)
+// on it's own. If you need that functionality, set "UnescapePath"
+// in fiber.Config
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := ConfigDefault
@@ -98,7 +103,7 @@ func New(config ...Config) fiber.Handler {
 	cacheControlStr := "public, max-age=" + strconv.Itoa(cfg.MaxAge)
 
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -127,28 +132,23 @@ func New(config ...Config) fiber.Handler {
 			path = cfg.PathPrefix + path
 		}
 
-		var (
-			file http.File
-			stat os.FileInfo
-		)
-
 		if len(path) > 1 {
 			path = utils.TrimRight(path, '/')
 		}
-		file, err = cfg.Root.Open(path)
+		file, err := cfg.Root.Open(path)
 		if err != nil && os.IsNotExist(err) && cfg.NotFoundFile != "" {
 			file, err = cfg.Root.Open(cfg.NotFoundFile)
 		}
-
 		if err != nil {
 			if os.IsNotExist(err) {
 				return c.Status(fiber.StatusNotFound).Next()
 			}
-			return
+			return fmt.Errorf("failed to open: %w", err)
 		}
 
-		if stat, err = file.Stat(); err != nil {
-			return
+		stat, err := file.Stat()
+		if err != nil {
+			return fmt.Errorf("failed to stat: %w", err)
 		}
 
 		// Serve index if path is directory
@@ -196,7 +196,7 @@ func New(config ...Config) fiber.Handler {
 			c.Response().SkipBody = true
 			c.Response().Header.SetContentLength(contentLength)
 			if err := file.Close(); err != nil {
-				return err
+				return fmt.Errorf("failed to close: %w", err)
 			}
 			return nil
 		}
@@ -206,22 +206,18 @@ func New(config ...Config) fiber.Handler {
 }
 
 // SendFile ...
-func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) (err error) {
-	var (
-		file http.File
-		stat os.FileInfo
-	)
-
-	file, err = fs.Open(path)
+func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) error {
+	file, err := fs.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return fiber.ErrNotFound
 		}
-		return err
+		return fmt.Errorf("failed to open: %w", err)
 	}
 
-	if stat, err = file.Stat(); err != nil {
-		return err
+	stat, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to stat: %w", err)
 	}
 
 	// Serve index if path is directory
@@ -264,7 +260,7 @@ func SendFile(c *fiber.Ctx, fs http.FileSystem, path string) (err error) {
 		c.Response().SkipBody = true
 		c.Response().Header.SetContentLength(contentLength)
 		if err := file.Close(); err != nil {
-			return err
+			return fmt.Errorf("failed to close: %w", err)
 		}
 		return nil
 	}

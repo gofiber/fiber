@@ -7,9 +7,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-var (
-	errTokenNotFound = errors.New("csrf token not found")
-)
+var errTokenNotFound = errors.New("csrf token not found")
 
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
@@ -22,7 +20,7 @@ func New(config ...Config) fiber.Handler {
 	dummyValue := []byte{'+'}
 
 	// Return new handler
-	return func(c *fiber.Ctx) (err error) {
+	return func(c *fiber.Ctx) error {
 		// Don't execute middleware if Next returns true
 		if cfg.Next != nil && cfg.Next(c) {
 			return c.Next()
@@ -39,7 +37,7 @@ func New(config ...Config) fiber.Handler {
 			// Assume that anything not defined as 'safe' by RFC7231 needs protection
 
 			// Extract token from client request i.e. header, query, param, form or cookie
-			token, err = cfg.Extractor(c)
+			token, err := cfg.Extractor(c)
 			if err != nil {
 				return cfg.ErrorHandler(c, err)
 			}

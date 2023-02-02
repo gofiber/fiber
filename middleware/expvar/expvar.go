@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+
 	"github.com/valyala/fasthttp/expvarhandler"
 )
 
@@ -29,6 +30,6 @@ func New(config ...Config) fiber.Handler {
 			return nil
 		}
 
-		return c.Redirect("/debug/vars", 302)
+		return c.Redirect("/debug/vars", fiber.StatusFound)
 	}
 }

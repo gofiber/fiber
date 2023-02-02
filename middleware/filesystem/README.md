@@ -2,7 +2,8 @@
 
 Filesystem middleware for [Fiber](https://github.com/gofiber/fiber) that enables you to serve files from a directory.
 
-⚠️ **`:params` & `:optionals?` within the prefix path are not supported!**
+⚠️ **`:params` & `:optionals?` within the prefix path are not supported!**  
+⚠️ **To handle paths with spaces (or other url encoded values) make sure to set `fiber.Config{ UnescapePath: true}`**
 
 ## Table of Contents
 
@@ -215,12 +216,13 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/filesystem"
 
-	"<Your go module>/statik"
-	fs "github.com/rakyll/statik/fs"
+	// Use blank to invoke init function and register data to statik
+	_ "<Your go module>/statik" 
+	"github.com/rakyll/statik/fs"
 )
 
 func main() {
-	statik, err := fs.New()
+	statikFS, err := fs.New()
 	if err != nil {
 		panic(err)
 	}

@@ -1,7 +1,6 @@
 package cors
 
 import (
-	"net/http"
 	"strconv"
 	"strings"
 
@@ -128,7 +127,7 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Simple request
-		if c.Method() != http.MethodOptions {
+		if c.Method() != fiber.MethodOptions {
 			c.Vary(fiber.HeaderOrigin)
 			c.Set(fiber.HeaderAccessControlAllowOrigin, allowOrigin)
 

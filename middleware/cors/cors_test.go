@@ -6,10 +6,12 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
 func Test_CORS_Defaults(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New())
 
@@ -17,6 +19,7 @@ func Test_CORS_Defaults(t *testing.T) {
 }
 
 func Test_CORS_Empty_Config(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{}))
 
@@ -49,6 +52,7 @@ func testDefaultOrEmptyConfig(t *testing.T, app *fiber.App) {
 
 // go test -run -v Test_CORS_Wildcard
 func Test_CORS_Wildcard(t *testing.T) {
+	t.Parallel()
 	// New fiber instance
 	app := fiber.New()
 	// OPTIONS (preflight) response headers when AllowOrigins is *
@@ -88,6 +92,7 @@ func Test_CORS_Wildcard(t *testing.T) {
 
 // go test -run -v Test_CORS_Subdomain
 func Test_CORS_Subdomain(t *testing.T) {
+	t.Parallel()
 	// New fiber instance
 	app := fiber.New()
 	// OPTIONS (preflight) response headers when AllowOrigins is set to a subdomain
@@ -122,6 +127,7 @@ func Test_CORS_Subdomain(t *testing.T) {
 }
 
 func Test_CORS_AllowOriginScheme(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		reqOrigin, pattern string
 		shouldAllowOrigin  bool
@@ -224,6 +230,7 @@ func Test_CORS_AllowOriginScheme(t *testing.T) {
 
 // go test -run Test_CORS_Next
 func Test_CORS_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
@@ -231,7 +238,7 @@ func Test_CORS_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }

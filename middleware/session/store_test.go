@@ -6,17 +6,20 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
 // go test -run TestStore_getSessionID
 func TestStore_getSessionID(t *testing.T) {
+	t.Parallel()
 	expectedID := "test-session-id"
 
 	// fiber instance
 	app := fiber.New()
 
 	t.Run("from cookie", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// fiber context
@@ -29,6 +32,7 @@ func TestStore_getSessionID(t *testing.T) {
 	})
 
 	t.Run("from header", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New(Config{
 			KeyLookup: "header:session_id",
@@ -43,6 +47,7 @@ func TestStore_getSessionID(t *testing.T) {
 	})
 
 	t.Run("from url query", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New(Config{
 			KeyLookup: "query:session_id",
@@ -60,10 +65,12 @@ func TestStore_getSessionID(t *testing.T) {
 // go test -run TestStore_Get
 // Regression: https://github.com/gofiber/fiber/issues/1408
 func TestStore_Get(t *testing.T) {
+	t.Parallel()
 	unexpectedID := "test-session-id"
 	// fiber instance
 	app := fiber.New()
 	t.Run("session should persisted even session is invalid", func(t *testing.T) {
+		t.Parallel()
 		// session store
 		store := New()
 		// fiber context

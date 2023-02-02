@@ -4,15 +4,18 @@
 
 package utils
 
-import "strings"
+import (
+	"strings"
+)
 
 const MIMEOctetStream = "application/octet-stream"
 
 // GetMIME returns the content-type of a file extension
-func GetMIME(extension string) (mime string) {
+func GetMIME(extension string) string {
 	if len(extension) == 0 {
-		return mime
+		return ""
 	}
+	var mime string
 	if extension[0] == '.' {
 		mime = mimeExtensions[extension[1:]]
 	} else {

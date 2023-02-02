@@ -8,11 +8,13 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
+
 	"github.com/valyala/fasthttp"
 )
 
 // go test -run Test_ETag_Next
 func Test_ETag_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ *fiber.Ctx) bool {
@@ -20,13 +22,14 @@ func Test_ETag_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 // go test -run Test_ETag_SkipError
 func Test_ETag_SkipError(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -35,13 +38,14 @@ func Test_ETag_SkipError(t *testing.T) {
 		return fiber.ErrForbidden
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusForbidden, resp.StatusCode)
 }
 
 // go test -run Test_ETag_NotStatusOK
 func Test_ETag_NotStatusOK(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -50,13 +54,14 @@ func Test_ETag_NotStatusOK(t *testing.T) {
 		return c.SendStatus(fiber.StatusCreated)
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusCreated, resp.StatusCode)
 }
 
 // go test -run Test_ETag_NoBody
 func Test_ETag_NoBody(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -65,25 +70,29 @@ func Test_ETag_NoBody(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 }
 
 // go test -run Test_ETag_NewEtag
 func Test_ETag_NewEtag(t *testing.T) {
+	t.Parallel()
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
+		t.Parallel()
 		testETagNewEtag(t, false, false)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
+		t.Parallel()
 		testETagNewEtag(t, true, false)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
+		t.Parallel()
 		testETagNewEtag(t, true, true)
 	})
 }
 
-func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
+func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:revive // We're in a test, so using bools as a flow-control is fine
 	t.Helper()
 
 	app := fiber.New()
@@ -94,7 +103,7 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 		return c.SendString("Hello, World!")
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	if headerIfNoneMatch {
 		etag := `"non-match"`
 		if matched {
@@ -122,18 +131,22 @@ func testETagNewEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 // go test -run Test_ETag_WeakEtag
 func Test_ETag_WeakEtag(t *testing.T) {
+	t.Parallel()
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
+		t.Parallel()
 		testETagWeakEtag(t, false, false)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
+		t.Parallel()
 		testETagWeakEtag(t, true, false)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
+		t.Parallel()
 		testETagWeakEtag(t, true, true)
 	})
 }
 
-func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
+func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:revive // We're in a test, so using bools as a flow-control is fine
 	t.Helper()
 
 	app := fiber.New()
@@ -144,7 +157,7 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 		return c.SendString("Hello, World!")
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	if headerIfNoneMatch {
 		etag := `W/"non-match"`
 		if matched {
@@ -172,18 +185,22 @@ func testETagWeakEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 // go test -run Test_ETag_CustomEtag
 func Test_ETag_CustomEtag(t *testing.T) {
+	t.Parallel()
 	t.Run("without HeaderIfNoneMatch", func(t *testing.T) {
+		t.Parallel()
 		testETagCustomEtag(t, false, false)
 	})
 	t.Run("with HeaderIfNoneMatch and not matched", func(t *testing.T) {
+		t.Parallel()
 		testETagCustomEtag(t, true, false)
 	})
 	t.Run("with HeaderIfNoneMatch and matched", func(t *testing.T) {
+		t.Parallel()
 		testETagCustomEtag(t, true, true)
 	})
 }
 
-func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
+func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) { //nolint:revive // We're in a test, so using bools as a flow-control is fine
 	t.Helper()
 
 	app := fiber.New()
@@ -198,7 +215,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 		return c.SendString("Hello, World!")
 	})
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	if headerIfNoneMatch {
 		etag := `"non-match"`
 		if matched {
@@ -226,6 +243,7 @@ func testETagCustomEtag(t *testing.T, headerIfNoneMatch, matched bool) {
 
 // go test -run Test_ETag_CustomEtagPut
 func Test_ETag_CustomEtagPut(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -238,7 +256,7 @@ func Test_ETag_CustomEtagPut(t *testing.T) {
 		return c.SendString("Hello, World!")
 	})
 
-	req := httptest.NewRequest("PUT", "/", nil)
+	req := httptest.NewRequest(fiber.MethodPut, "/", nil)
 	req.Header.Set(fiber.HeaderIfMatch, `"non-match"`)
 	resp, err := app.Test(req)
 	utils.AssertEqual(t, nil, err)
@@ -258,7 +276,7 @@ func Benchmark_Etag(b *testing.B) {
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
 
 	b.ReportAllocs()

@@ -24,7 +24,7 @@ func Test_UUID(t *testing.T) {
 	t.Parallel()
 	res := UUID()
 	AssertEqual(t, 36, len(res))
-	AssertEqual(t, true, res != "00000000-0000-0000-0000-000000000000")
+	AssertEqual(t, true, res != emptyUUID)
 }
 
 func Test_UUID_Concurrency(t *testing.T) {
@@ -49,7 +49,7 @@ func Test_UUIDv4(t *testing.T) {
 	t.Parallel()
 	res := UUIDv4()
 	AssertEqual(t, 36, len(res))
-	AssertEqual(t, true, res != "00000000-0000-0000-0000-000000000000")
+	AssertEqual(t, true, res != emptyUUID)
 }
 
 func Test_UUIDv4_Concurrency(t *testing.T) {
@@ -82,7 +82,8 @@ func Benchmark_UUID(b *testing.B) {
 	})
 	b.Run("default", func(b *testing.B) {
 		rnd := make([]byte, 16)
-		_, _ = rand.Read(rnd)
+		_, err := rand.Read(rnd)
+		AssertEqual(b, nil, err)
 		for n := 0; n < b.N; n++ {
 			res = fmt.Sprintf("%x-%x-%x-%x-%x", rnd[0:4], rnd[4:6], rnd[6:8], rnd[8:10], rnd[10:])
 		}
