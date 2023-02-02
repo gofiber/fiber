@@ -49,7 +49,7 @@ func CopyBytes(b []byte) []byte {
 }
 
 const (
-	uByte = 1 << (10 * iota) //nolint:gomnd // 1 << 10 == 1024
+	uByte = 1 << (10 * iota) // 1 << 10 == 1024
 	uKilobyte
 	uMegabyte
 	uGigabyte

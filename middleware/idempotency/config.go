@@ -49,15 +49,13 @@ type Config struct {
 }
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Next: func(c *fiber.Ctx) bool {
 		// Skip middleware if the request was done using a safe HTTP method
 		return fiber.IsMethodSafe(c.Method())
 	},
 
-	Lifetime: 30 * time.Minute, //nolint:gomnd // No magic number, just the default config
+	Lifetime: 30 * time.Minute,
 
 	KeyHeader: "X-Idempotency-Key",
 	KeyHeaderValidate: func(k string) error {
@@ -112,7 +110,7 @@ func configDefault(config ...Config) Config {
 
 	if cfg.Storage == nil {
 		cfg.Storage = memory.New(memory.Config{
-			GCInterval: cfg.Lifetime / 2, //nolint:gomnd // Half the lifetime interval
+			GCInterval: cfg.Lifetime / 2, // Half the lifetime interval
 		})
 	}
 

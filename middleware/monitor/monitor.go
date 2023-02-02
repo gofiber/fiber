@@ -33,7 +33,6 @@ type statsOS struct {
 	Conns    int     `json:"conns"`
 }
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var (
 	monitPIDCPU   atomic.Value
 	monitPIDRAM   atomic.Value
@@ -46,7 +45,6 @@ var (
 	monitOSConns    atomic.Value
 )
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var (
 	mutex sync.RWMutex
 	once  sync.Once
@@ -105,34 +103,34 @@ func New(config ...Config) fiber.Handler {
 
 func updateStatistics(p *process.Process) {
 	pidCPU, err := p.CPUPercent()
-	if err != nil {
-		monitPIDCPU.Store(pidCPU / 10) //nolint:gomnd // TODO: Explain why we divide by 10 here
+	if err == nil {
+		monitPIDCPU.Store(pidCPU / 10)
 	}
 
-	if osCPU, err := cpu.Percent(0, false); err != nil && len(osCPU) > 0 {
+	if osCPU, err := cpu.Percent(0, false); err == nil && len(osCPU) > 0 {
 		monitOSCPU.Store(osCPU[0])
 	}
 
-	if pidRAM, err := p.MemoryInfo(); err != nil && pidRAM != nil {
+	if pidRAM, err := p.MemoryInfo(); err == nil && pidRAM != nil {
 		monitPIDRAM.Store(pidRAM.RSS)
 	}
 
-	if osRAM, err := mem.VirtualMemory(); err != nil && osRAM != nil {
+	if osRAM, err := mem.VirtualMemory(); err == nil && osRAM != nil {
 		monitOSRAM.Store(osRAM.Used)
 		monitOSTotalRAM.Store(osRAM.Total)
 	}
 
-	if loadAvg, err := load.Avg(); err != nil && loadAvg != nil {
+	if loadAvg, err := load.Avg(); err == nil && loadAvg != nil {
 		monitOSLoadAvg.Store(loadAvg.Load1)
 	}
 
 	pidConns, err := net.ConnectionsPid("tcp", p.Pid)
-	if err != nil {
+	if err == nil {
 		monitPIDConns.Store(len(pidConns))
 	}
 
 	osConns, err := net.Connections("tcp")
-	if err != nil {
+	if err == nil {
 		monitOSConns.Store(len(osConns))
 	}
 }

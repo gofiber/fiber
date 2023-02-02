@@ -79,15 +79,13 @@ type Buffer interface {
 type LogFunc func(output Buffer, c *fiber.Ctx, data *Data, extraParam string) (int, error)
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Next:         nil,
 	Done:         nil,
 	Format:       "[${time}] ${status} - ${latency} ${method} ${path}\n",
 	TimeFormat:   "15:04:05",
 	TimeZone:     "Local",
-	TimeInterval: 500 * time.Millisecond, //nolint:gomnd // No magic number, just the default config
+	TimeInterval: 500 * time.Millisecond,
 	Output:       os.Stdout,
 	enableColors: true,
 }

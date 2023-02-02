@@ -12,7 +12,6 @@ type Config struct {
 	Next func(c *fiber.Ctx) bool
 }
 
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Next: nil,
 }

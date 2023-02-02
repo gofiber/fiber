@@ -23,7 +23,6 @@ type Session struct {
 	exp        time.Duration // expiration of this session
 }
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var sessionPool = sync.Pool{
 	New: func() interface{} {
 		return new(Session)

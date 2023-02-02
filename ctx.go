@@ -24,10 +24,10 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/gofiber/fiber/v2/internal/dictpool"
 	"github.com/gofiber/fiber/v2/internal/schema"
 	"github.com/gofiber/fiber/v2/utils"
 
+	"github.com/savsgio/dictpool"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasthttp"
 )
@@ -51,7 +51,6 @@ const (
 // userContextKey define the key name for storing context.Context in *fasthttp.RequestCtx
 const userContextKey = "__local_user_context__"
 
-//nolint:gochecknoglobals // TODO: Do not use global vars here
 var (
 	// decoderPoolMap helps to improve BodyParser's, QueryParser's and ReqHeaderParser's performance
 	decoderPoolMap = map[string]*sync.Pool{}
@@ -59,7 +58,6 @@ var (
 	tags = []string{queryTag, bodyTag, reqHeaderTag, paramsTag}
 )
 
-//nolint:gochecknoinits // init() is used to initialize a global map variable
 func init() {
 	for _, tag := range tags {
 		decoderPoolMap[tag] = &sync.Pool{New: func() interface{} {
@@ -730,7 +728,7 @@ iploop:
 		var v4, v6 bool
 
 		// Manually splitting string without allocating slice, working with parts directly
-		i, j = j+1, j+2 //nolint:gomnd // Using these values is fine
+		i, j = j+1, j+2
 
 		if j > len(headerValue) {
 			break
@@ -780,7 +778,7 @@ func (c *Ctx) extractIPFromHeader(header string) string {
 			var v4, v6 bool
 
 			// Manually splitting string without allocating slice, working with parts directly
-			i, j = j+1, j+2 //nolint:gomnd // Using these values is fine
+			i, j = j+1, j+2
 
 			if j > len(headerValue) {
 				break
@@ -1559,7 +1557,6 @@ func (c *Ctx) Send(body []byte) error {
 	return nil
 }
 
-//nolint:gochecknoglobals // TODO: Do not use global vars here
 var (
 	sendFileOnce    sync.Once
 	sendFileFS      *fasthttp.FS

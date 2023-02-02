@@ -69,10 +69,8 @@ type Config struct {
 }
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
-	Max:        5, //nolint:gomnd // No magic number, just the default config
+	Max:        5,
 	Expiration: 1 * time.Minute,
 	KeyGenerator: func(c *fiber.Ctx) string {
 		return c.IP()

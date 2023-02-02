@@ -163,7 +163,7 @@ func (c *cache) createField(field reflect.StructField, parentAlias string) *fiel
 	}
 	// Check if the type is supported and don't cache it if not.
 	// First let's get the basic type.
-	var isSlice, isStruct bool
+	isSlice, isStruct := false, false
 	ft := field.Type
 	m := isTextUnmarshaler(reflect.Zero(ft))
 	if ft.Kind() == reflect.Ptr {

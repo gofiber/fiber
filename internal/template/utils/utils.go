@@ -21,6 +21,7 @@ func Walk(fs http.FileSystem, root string, walkFn filepath.WalkFunc) error {
 	return walk(fs, root, info, walkFn)
 }
 
+// #nosec G304
 // ReadFile returns the raw content of a file
 func ReadFile(path string, fs http.FileSystem) ([]byte, error) {
 	if fs != nil {

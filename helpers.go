@@ -266,12 +266,12 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	// https://github.com/jshttp/fresh/blob/10e0471669dbbfbfd8de65bc6efac2ddd0bfa057/index.js#L110
 	for i := range noneMatchBytes {
 		switch noneMatchBytes[i] {
-		case 0x20: //nolint:gomnd // This is a space (" ")
+		case 0x20:
 			if start == end {
 				start = i + 1
 				end = i + 1
 			}
-		case 0x2c: //nolint:gomnd // This is a comma (",")
+		case 0x2c:
 			if matchEtag(app.getString(noneMatchBytes[start:end]), etag) {
 				return false
 			}
@@ -347,7 +347,7 @@ func getBytesImmutable(s string) []byte {
 func (app *App) methodInt(s string) int {
 	// For better performance
 	if len(app.configured.RequestMethods) == 0 {
-		//nolint:gomnd // TODO: Use iota instead
+		// TODO: Use iota instead
 		switch s {
 		case MethodGet:
 			return 0

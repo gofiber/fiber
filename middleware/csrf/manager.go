@@ -11,8 +11,6 @@ import (
 
 // go:generate msgp
 // msgp -file="manager.go" -o="manager_msgp.go" -tests=false -unexported
-// don't forget to replace the msgp import path to:
-// "github.com/gofiber/fiber/v2/internal/msgp"
 type item struct{}
 
 //msgp:ignore manager

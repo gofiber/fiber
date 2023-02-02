@@ -33,8 +33,6 @@ const (
 )
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Next:  nil,
 	Level: LevelDefault,

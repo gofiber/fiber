@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"unicode"
 
-	googleuuid "github.com/gofiber/fiber/v2/internal/uuid"
+	googleuuid "github.com/google/uuid"
 )
 
 const (
@@ -35,7 +35,6 @@ const (
 	emptyUUID = "00000000-0000-0000-0000-000000000000"
 )
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var (
 	uuidSeed    [24]byte
 	uuidCounter uint64
@@ -44,8 +43,6 @@ var (
 )
 
 // UUID generates an universally unique identifier (UUID)
-//
-//nolint:gomnd // Those are not random numbers, it's the fastuuid algorithm
 func UUID() string {
 	// Setup seed & counter once
 	uuidSetup.Do(func() {

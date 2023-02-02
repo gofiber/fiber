@@ -5,26 +5,12 @@ run:
   modules-download-mode: readonly
   skip-dirs-use-default: false
   skip-dirs:
-    - internal # TODO: Also apply proper linting for internal dir
+    - internal
 
 output:
   sort-results: true
 
 linters-settings:
-  # TODO: Eventually enable these checks
-  # depguard:
-  #   include-go-root: true
-  #   packages:
-  #     - flag
-  #     - io/ioutil
-  #     - reflect
-  #     - unsafe
-  #   packages-with-error-message:
-  #     - flag: '`flag` package is only allowed in main.go'
-  #     - io/ioutil: '`io/ioutil` package is deprecated, use the `io` and `os` package instead'
-  #     - reflect: '`reflect` package is dangerous to use'
-  #     - unsafe: '`unsafe` package is dangerous to use'
-
   errcheck:
      check-type-assertions: true
      check-blank: true
@@ -43,15 +29,6 @@ linters-settings:
       # TODO: Eventually enable these patterns
       # - 'time\.Sleep'
       # - 'panic'
-
-  gci:
-    sections:
-      - standard
-      - prefix(github.com/gofiber/fiber)
-      - default
-      - blank
-      - dot
-    custom-order: true
 
   gocritic:
     disabled-checks:
@@ -162,13 +139,8 @@ linters:
     - bodyclose
     - containedctx
     - contextcheck
-    # - cyclop
-    # - deadcode
-    # - decorder
     - depguard
     - dogsled
-    # - dupl
-    # - dupword
     - durationcheck
     - errcheck
     - errchkjson
@@ -176,72 +148,38 @@ linters:
     - errorlint
     - execinquery
     - exhaustive
-    # - exhaustivestruct
-    # - exhaustruct
     - exportloopref
     - forbidigo
     - forcetypeassert
-    # - funlen
-    - gci
-    - gochecknoglobals
-    - gochecknoinits
-    # - gocognit
     - goconst
     - gocritic
-    # - gocyclo
-    # - godot
-    # - godox
-    # - goerr113
     - gofmt
     - gofumpt
-    # - goheader
     - goimports
-    # - golint
-    - gomnd
     - gomoddirectives
-    # - gomodguard
     - goprintffuncname
     - gosec
     - gosimple
     - govet
     - grouper
-    # - ifshort
-    # - importas
-    - ineffassign
-    # - interfacebloat
-    # - interfacer
-    # - ireturn
-    # - lll
     - loggercheck
-    # - maintidx
-    # - makezero
-    # - maligned
     - misspell
     - nakedret
-    # - nestif
     - nilerr
     - nilnil
-    # - nlreturn
     - noctx
     - nolintlint
     - nonamedreturns
-    # - nosnakecase
     - nosprintfhostport
-    # - paralleltest # TODO: Enable once https://github.com/gofiber/fiber/issues/2254 is implemented
-    # - prealloc
     - predeclared
     - promlinter
     - reassign
     - revive
     - rowserrcheck
-    # - scopelint
     - sqlclosecheck
     - staticcheck
-    # - structcheck
     - stylecheck
     - tagliatelle
-    # - tenv # TODO: Enable once we drop support for Go 1.16
-    # - testableexamples
     # - testpackage # TODO: Enable once https://github.com/gofiber/fiber/issues/2252 is implemented
     - thelper
     # - tparallel # TODO: Enable once https://github.com/gofiber/fiber/issues/2254 is implemented
@@ -250,9 +188,6 @@ linters:
     - unparam
     - unused
     - usestdlibvars
-    # - varcheck
-    # - varnamelen
     - wastedassign
     - whitespace
     - wrapcheck
-    # - wsl

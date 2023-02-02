@@ -6,14 +6,11 @@ import (
 
 // go:generate msgp
 // msgp -file="data.go" -o="data_msgp.go" -tests=false -unexported
-// don't forget to replace the msgp import path to:
-// "github.com/gofiber/fiber/v2/internal/msgp"
 type data struct {
 	sync.RWMutex
 	Data map[string]interface{}
 }
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var dataPool = sync.Pool{
 	New: func() interface{} {
 		d := new(data)

@@ -87,7 +87,7 @@ func Test_Monitor_Html_CustomCodes(t *testing.T) {
 	conf := Config{
 		Title:      "New " + defaultTitle,
 		Refresh:    defaultRefresh + time.Second,
-		ChartJSURL: "https://cdnjs.com/libraries/Chart.js",
+		ChartJsURL: "https://cdnjs.com/libraries/Chart.js",
 		FontURL:    "/public/my-font.css",
 		CustomHead: `<style>body{background:#fff}</style>`,
 	}

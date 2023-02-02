@@ -71,8 +71,6 @@ func StatusMessage(status int) string {
 }
 
 // NOTE: Keep this in sync with the status code list
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var statusMessage = []string{
 	100: "Continue",            // StatusContinue
 	101: "Switching Protocols", // StatusSwitchingProtocols
@@ -146,8 +144,6 @@ var statusMessage = []string{
 // MIME types were copied from https://github.com/nginx/nginx/blob/67d2a9541826ecd5db97d604f23460210fd3e517/conf/mime.types with the following updates:
 // - Use "application/xml" instead of "text/xml" as recommended per https://datatracker.ietf.org/doc/html/rfc7303#section-4.1
 // - Use "text/javascript" instead of "application/javascript" as recommended per https://www.rfc-editor.org/rfc/rfc9239#name-text-javascript
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var mimeExtensions = map[string]string{
 	"html":    "text/html",
 	"htm":     "text/html",

@@ -33,8 +33,6 @@ type Config struct {
 // It uses a fast UUID generator which will expose the number of
 // requests made to the server. To conceal this value for better
 // privacy, use the "utils.UUIDv4" generator.
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Next:       nil,
 	Header:     fiber.HeaderXRequestID,

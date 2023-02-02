@@ -11,7 +11,6 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-//nolint:gochecknoglobals // Using a global var is fine here
 var testKey = GenerateKey()
 
 func Test_Middleware_Encrypt_Cookie(t *testing.T) {

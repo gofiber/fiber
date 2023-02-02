@@ -21,7 +21,6 @@ const (
 	envPreforkChildVal = "1"
 )
 
-//nolint:gochecknoglobals // TODO: Do not use global vars here
 var (
 	testPreforkMaster = false
 	testOnPrefork     = false
@@ -157,7 +156,6 @@ func watchMaster() {
 	}
 }
 
-//nolint:gochecknoglobals // TODO: Do not use global vars here
 var (
 	dummyPid      = 1
 	dummyChildCmd atomic.Value
