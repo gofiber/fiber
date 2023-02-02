@@ -831,6 +831,6 @@ type testRoute struct {
 }
 
 type routeJSON struct {
-	TestRoutes []testRoute `json:"testRoutes"`
-	GithubAPI  []testRoute `json:"githubAPI"`
+	TestRoutes []testRoute `json:"test_routes"`
+	GithubAPI  []testRoute `json:"github_api"`
 }
