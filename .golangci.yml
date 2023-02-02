@@ -49,6 +49,7 @@ linters-settings:
     disable:
       - shadow
       - fieldalignment
+      - loopclosure
 
   grouper:
     import-require-single-import: true
