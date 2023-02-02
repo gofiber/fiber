@@ -152,7 +152,7 @@ Fiber **啟發自** Express——網際網路上最知名的 Web 框架，我們
 
 ## ⚠️ 限制
 
--   由於 Fiber 有用到 Unsafe，本函式庫有時可能無法相容最新版的 Go 語言。Fiber 2.40.0 已在 Go 1.16 至 1.19 的版本測試過。
+-   由於 Fiber 有用到 Unsafe，本函式庫有時可能無法相容最新版的 Go 語言。Fiber 2.40.0 已在 Go 1.16 至 1.20 的版本測試過。
 -   Fiber 不相容 net/http 的介面，意味著您無法使用像是 gqlgen、go-swagger 或其他任何屬於 net/http 生態系統的專案。
 
 ## 👀 範例
