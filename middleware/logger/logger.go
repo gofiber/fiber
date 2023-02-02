@@ -104,7 +104,7 @@ func New(config ...Config) fiber.Handler {
 		})
 
 		// Logger data
-		data := dataPool.Get().(*Data)
+		data := dataPool.Get().(*Data) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 		// no need for a reset, as long as we always override everything
 		data.Pid = pid
 		data.ErrPaddingStr = errPaddingStr

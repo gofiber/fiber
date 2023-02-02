@@ -39,6 +39,7 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 		},
 	}))
 
+	//nolint:forcetypeassert,errcheck // TODO: Do not force-type assert
 	app.Get("/testauth", func(c *fiber.Ctx) error {
 		username := c.Locals("username").(string)
 		password := c.Locals("password").(string)

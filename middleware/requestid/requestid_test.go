@@ -68,7 +68,7 @@ func Test_RequestID_Locals(t *testing.T) {
 	var ctxVal string
 
 	app.Use(func(c *fiber.Ctx) error {
-		ctxVal = c.Locals(ctxKey).(string)
+		ctxVal = c.Locals(ctxKey).(string) //nolint:forcetypeassert,errcheck // We always store a string in here
 		return c.Next()
 	})
 

@@ -30,7 +30,7 @@ var sessionPool = sync.Pool{
 }
 
 func acquireSession() *Session {
-	s := sessionPool.Get().(*Session)
+	s := sessionPool.Get().(*Session) //nolint:forcetypeassert,errcheck // We store nothing else in the pool
 	if s.data == nil {
 		s.data = acquireData()
 	}

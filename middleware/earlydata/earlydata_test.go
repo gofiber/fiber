@@ -67,7 +67,7 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 	{
 		{
 			handler := func(c *fiber.Ctx) error {
-				if !c.Locals(localsKeyTestValid).(bool) {
+				if !c.Locals(localsKeyTestValid).(bool) { //nolint:forcetypeassert // We store nothing else in the pool
 					return errors.New("handler called even though validation failed")
 				}
 

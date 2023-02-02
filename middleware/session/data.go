@@ -20,7 +20,7 @@ var dataPool = sync.Pool{
 }
 
 func acquireData() *data {
-	return dataPool.Get().(*data)
+	return dataPool.Get().(*data) //nolint:forcetypeassert // We store nothing else in the pool
 }
 
 func (d *data) Reset() {

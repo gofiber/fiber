@@ -150,6 +150,7 @@ linters:
     - exhaustive
     - exportloopref
     - forbidigo
+    - forcetypeassert
     - goconst
     - gocritic
     - gofmt
