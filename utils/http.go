@@ -38,7 +38,6 @@ func ParseVendorSpecificContentType(cType string) string {
 	}
 
 	var parsableType string
-	//nolint:revive // Actually not simpler
 	if semiColonIndex := strings.Index(cType, ";"); semiColonIndex == -1 {
 		parsableType = cType[plusIndex+1:]
 	} else if plusIndex < semiColonIndex {
