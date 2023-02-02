@@ -844,7 +844,7 @@ func Test_App_Static_Direct(t *testing.T) {
 
 	body, err = io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, true, strings.Contains(string(body), "testRoutes"))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "test_routes"))
 }
 
 // go test -run Test_App_Static_MaxAge
