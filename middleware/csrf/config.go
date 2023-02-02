@@ -105,8 +105,6 @@ type Config struct {
 const HeaderName = "X-Csrf-Token"
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	KeyLookup:      "header:" + HeaderName,
 	CookieName:     "csrf_",

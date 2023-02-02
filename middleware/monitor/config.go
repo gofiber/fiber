@@ -46,7 +46,6 @@ type Config struct {
 	index string
 }
 
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	Title:      defaultTitle,
 	Refresh:    defaultRefresh,

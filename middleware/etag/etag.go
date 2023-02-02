@@ -104,7 +104,7 @@ func appendUint(dst []byte, n uint32) []byte {
 	var q uint32
 	for n >= 10 {
 		i--
-		q = n / 10 //nolint:gomnd // TODO: Explain why we divide by 10 here
+		q = n / 10
 		buf[i] = '0' + byte(n-q*10)
 		n = q
 	}

@@ -104,13 +104,11 @@ func Balancer(config Config) fiber.Handler {
 	}
 }
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var client = &fasthttp.Client{
 	NoDefaultUserAgentHeader: true,
 	DisablePathNormalizing:   true,
 }
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var lock sync.RWMutex
 
 // WithTlsConfig update http client with a user specified tls.config

@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-//nolint:gochecknoglobals // TODO: Do not use global vars here
 var (
 	timestampTimer sync.Once
 	// Timestamp please start the timer function before you use this value

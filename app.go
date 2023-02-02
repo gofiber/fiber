@@ -456,8 +456,6 @@ const (
 )
 
 // HTTP methods enabled by default
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var DefaultMethods = []string{
 	MethodGet,
 	MethodHead,

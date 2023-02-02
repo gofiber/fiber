@@ -305,8 +305,8 @@ func (app *App) startupMessage(addr string, tls bool, pids string) { //nolint: r
 			" │ Prefork .%s  PID ....%s │\n"+
 			" └───────────────────────────────────────────────────┘"+
 			colors.Reset,
-		value(strconv.Itoa(int(app.handlersCount)), 14), value(procs, 12), //nolint:gomnd // Using random padding lengths is fine here
-		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14), //nolint:gomnd // Using random padding lengths is fine here
+		value(strconv.Itoa(int(app.handlersCount)), 14), value(procs, 12),
+		value(isPrefork, 14), value(strconv.Itoa(os.Getpid()), 14),
 	)
 
 	var childPidsLogo string

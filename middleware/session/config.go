@@ -69,10 +69,8 @@ const (
 )
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
-	Expiration:   24 * time.Hour, //nolint:gomnd // No magic number, just the default config
+	Expiration:   24 * time.Hour,
 	KeyLookup:    "cookie:session_id",
 	KeyGenerator: utils.UUIDv4,
 	source:       "cookie",

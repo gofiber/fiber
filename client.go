@@ -51,7 +51,6 @@ type Args = fasthttp.Args
 // Copy from fasthttp
 type RetryIfFunc = fasthttp.RetryIfFunc
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var defaultClient Client
 
 // Client implements http client.
@@ -859,7 +858,6 @@ func (a *Agent) reset() {
 	a.formFiles = a.formFiles[:0]
 }
 
-//nolint:gochecknoglobals // TODO: Do not use global vars here
 var (
 	clientPool sync.Pool
 	agentPool  = sync.Pool{

@@ -12,10 +12,8 @@ import (
 	"github.com/gofiber/fiber/v2/utils"
 )
 
-//nolint:gochecknoglobals // Using a global var is fine here
 var filedata []byte
 
-//nolint:gochecknoinits // init() is used to populate a global var from a README file
 func init() {
 	dat, err := os.ReadFile("../../.github/README.md")
 	if err != nil {

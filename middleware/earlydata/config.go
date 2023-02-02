@@ -33,8 +33,6 @@ type Config struct {
 }
 
 // ConfigDefault is the default config
-//
-//nolint:gochecknoglobals // Using a global var is fine here
 var ConfigDefault = Config{
 	IsEarlyData: func(c *fiber.Ctx) bool {
 		return c.Get(DefaultHeaderName) == DefaultHeaderTrueValue

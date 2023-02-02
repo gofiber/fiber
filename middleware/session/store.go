@@ -16,7 +16,6 @@ type Store struct {
 	Config
 }
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var mux sync.Mutex
 
 func New(config ...Config) *Store {

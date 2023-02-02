@@ -33,7 +33,6 @@ type statsOS struct {
 	Conns    int     `json:"conns"`
 }
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var (
 	monitPIDCPU   atomic.Value
 	monitPIDRAM   atomic.Value
@@ -46,7 +45,6 @@ var (
 	monitOSConns    atomic.Value
 )
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var (
 	mutex sync.RWMutex
 	once  sync.Once
@@ -106,7 +104,7 @@ func New(config ...Config) fiber.Handler {
 func updateStatistics(p *process.Process) {
 	pidCPU, err := p.CPUPercent()
 	if err == nil {
-		monitPIDCPU.Store(pidCPU / 10) //nolint:gomnd // TODO: Explain why we divide by 10 here
+		monitPIDCPU.Store(pidCPU / 10)
 	}
 
 	if osCPU, err := cpu.Percent(0, false); err == nil && len(osCPU) > 0 {

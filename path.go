@@ -13,8 +13,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/gofiber/fiber/v2/internal/uuid"
 	"github.com/gofiber/fiber/v2/utils"
+	"github.com/google/uuid"
 )
 
 // routeParser holds the path segments and param names
@@ -88,8 +88,6 @@ const (
 )
 
 // list of possible parameter and segment delimiter
-//
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var (
 	// slash has a special role, unlike the other parameters it must not be interpreted as a parameter
 	routeDelimiter = []byte{slashDelimiter, '-', '.'}
@@ -341,7 +339,7 @@ func (routeParser *routeParser) analyseParameterPart(pattern string) (string, *r
 					constraint.Data = splitNonEscaped(c[start+1:end], string(parameterConstraintDataSeparatorChars))
 					if len(constraint.Data) == 1 {
 						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
-					} else if len(constraint.Data) == 2 { //nolint:gomnd // This is fine, we simply expect two parts
+					} else if len(constraint.Data) == 2 { // This is fine, we simply expect two parts
 						constraint.Data[0] = RemoveEscapeChar(constraint.Data[0])
 						constraint.Data[1] = RemoveEscapeChar(constraint.Data[1])
 					}

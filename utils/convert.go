@@ -16,16 +16,12 @@ import (
 const MaxStringLen = 0x7fff0000 // Maximum string length for UnsafeBytes. (decimal: 2147418112)
 
 // UnsafeString returns a string pointer without allocation
-//
-//nolint:gosec // unsafe is used for better performance here
 func UnsafeString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
 // UnsafeBytes returns a byte pointer without allocation.
 // String length shouldn't be more than 2147418112.
-//
-//nolint:gosec // unsafe is used for better performance here
 func UnsafeBytes(s string) []byte {
 	if s == "" {
 		return nil
@@ -49,7 +45,7 @@ func CopyBytes(b []byte) []byte {
 }
 
 const (
-	uByte = 1 << (10 * iota) //nolint:gomnd // 1 << 10 == 1024
+	uByte = 1 << (10 * iota) // 1 << 10 == 1024
 	uKilobyte
 	uMegabyte
 	uGigabyte

@@ -34,7 +34,6 @@ const (
 	noStore = "no-store"
 )
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var ignoreHeaders = map[string]interface{}{
 	"Connection":          nil,
 	"Keep-Alive":          nil,

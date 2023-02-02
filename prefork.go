@@ -21,7 +21,6 @@ const (
 	envPreforkChildVal = "1"
 )
 
-//nolint:gochecknoglobals // TODO: Do not use global vars here
 var (
 	testPreforkMaster = false
 	testOnPrefork     = false
@@ -157,7 +156,6 @@ func watchMaster() {
 	}
 }
 
-//nolint:gochecknoglobals // TODO: Do not use global vars here
 var (
 	dummyPid      = 1
 	dummyChildCmd atomic.Value
@@ -167,7 +165,7 @@ var (
 func dummyCmd() *exec.Cmd {
 	command := "go"
 	if storeCommand := dummyChildCmd.Load(); storeCommand != nil && storeCommand != "" {
-		command = storeCommand.(string) //nolint:forcetypeassert,errcheck // We always store a string in here
+		command = storeCommand.(string) //nolint:errcheck // We always store a string in here
 	}
 	if runtime.GOOS == "windows" {
 		return exec.Command("cmd", "/C", command, "version")

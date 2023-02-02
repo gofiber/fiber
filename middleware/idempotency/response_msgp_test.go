@@ -5,7 +5,7 @@ package idempotency
 import (
 	"testing"
 
-	"github.com/gofiber/fiber/v2/internal/msgp"
+	"github.com/tinylib/msgp/msgp"
 )
 
 func TestMarshalUnmarshalresponse(t *testing.T) {

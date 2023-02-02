@@ -20,10 +20,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-//nolint:gochecknoglobals // TODO: Do not use a global var here
 var routesFixture routeJSON
 
-//nolint:gochecknoinits // init() is used to populate a global struct from a JSON file
 func init() {
 	dat, err := os.ReadFile("./.github/testdata/testRoutes.json")
 	if err != nil {

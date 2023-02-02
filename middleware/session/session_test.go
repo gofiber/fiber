@@ -95,8 +95,6 @@ func Test_Session(t *testing.T) {
 }
 
 // go test -run Test_Session_Types
-//
-//nolint:forcetypeassert // TODO: Do not force-type assert
 func Test_Session_Types(t *testing.T) {
 	t.Parallel()
 
