@@ -42,7 +42,7 @@ app.Use(favicon.New())
 ```go
 app.Use(favicon.New(favicon.Config{
 	File: "./favicon.ico",
-	URL: "/favicon.ico"
+	URL: "/favicon.ico",
 }))
 ```
 
@@ -55,15 +55,27 @@ type Config struct {
 	//
 	// Optional. Default: nil
 	Next func(c *fiber.Ctx) bool
-    
+
 	// File holds the path to an actual favicon that will be cached
 	//
 	// Optional. Default: ""
-	File string
+	File string `json:"file"`
+
 	// URL for favicon handler
 	//
-	// Optional. Default: "/favicon.ico
+	// Optional. Default: "/favicon.ico"
 	URL string `json:"url"`
+
+	// FileSystem is an optional alternate filesystem to search for the favicon in.
+	// An example of this could be an embedded or network filesystem
+	//
+	// Optional. Default: nil
+	FileSystem http.FileSystem `json:"-"`
+
+	// CacheControl defines how the Cache-Control header in the response should be set
+	//
+	// Optional. Default: "public, max-age=31536000"
+	CacheControl string `json:"cache_control"`
 }
 ```
 
@@ -73,6 +85,6 @@ type Config struct {
 var ConfigDefault = Config{
 	Next: nil,
 	File:	"",
-	URL: "/favicon.ico"
+	URL: "/favicon.ico",
 }
 ```

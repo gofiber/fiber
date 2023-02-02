@@ -20,10 +20,12 @@ type Config struct {
 	//
 	// Optional. Default: ""
 	File string `json:"file"`
+
 	// URL for favicon handler
 	//
-	// Optional. Default: "/favicon.ico
+	// Optional. Default: "/favicon.ico"
 	URL string `json:"url"`
+
 	// FileSystem is an optional alternate filesystem to search for the favicon in.
 	// An example of this could be an embedded or network filesystem
 	//
