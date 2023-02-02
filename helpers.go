@@ -362,6 +362,36 @@ func (app *App) methodInt(s string) int {
 	return -1
 }
 
+// IsMethodSafe reports whether the HTTP method is considered safe.
+// See https://datatracker.ietf.org/doc/html/rfc9110#section-9.2.1
+func IsMethodSafe(m string) bool {
+	switch m {
+	case MethodGet,
+		MethodHead,
+		MethodOptions,
+		MethodTrace:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsMethodIdempotent reports whether the HTTP method is considered idempotent.
+// See https://datatracker.ietf.org/doc/html/rfc9110#section-9.2.2
+func IsMethodIdempotent(m string) bool {
+	if IsMethodSafe(m) {
+		return true
+	}
+
+	switch m {
+	case MethodPut,
+		MethodDelete:
+		return true
+	default:
+		return false
+	}
+}
+
 // HTTP methods were copied from net/http.
 const (
 	MethodGet     = "GET"     // RFC 7231, 4.3.1
