@@ -183,7 +183,7 @@ func getScheme(uri []byte) []byte {
 
 // DomainForward performs an http request based on the given domain and populates the given http response.
 // This method will return an fiber.Handler
-func DomainForward(hostname string, addr string, clients ...*fasthttp.Client) fiber.Handler {
+func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		host := string(c.Request().Host())
 		if host == hostname {
@@ -206,7 +206,7 @@ func (r *roundrobin) get() string {
 	defer r.Unlock()
 
 	if r.current >= len(r.pool) {
-		r.current = r.current % len(r.pool)
+		r.current %= len(r.pool)
 	}
 
 	result := r.pool[r.current]
