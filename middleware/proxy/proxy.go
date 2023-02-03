@@ -178,3 +178,53 @@ func getScheme(uri []byte) []byte {
 	}
 	return uri[:i-1]
 }
+
+// DomainForward performs an http request based on the given domain and populates the given http response.
+// This method will return an fiber.Handler
+func DomainForward(hostname, addr string, clients ...*fasthttp.Client) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		host := string(c.Request().Host())
+		if host == hostname {
+			return Do(c, addr+c.OriginalURL(), clients...)
+		}
+		return nil
+	}
+}
+
+type roundrobin struct {
+	sync.Mutex
+
+	current int
+	pool    []string
+}
+
+// this method will return a string of addr server from list server.
+func (r *roundrobin) get() string {
+	r.Lock()
+	defer r.Unlock()
+
+	if r.current >= len(r.pool) {
+		r.current %= len(r.pool)
+	}
+
+	result := r.pool[r.current]
+	r.current++
+	return result
+}
+
+// BalancerForward Forward performs the given http request with round robin algorithm to server and fills the given http response.
+// This method will return an fiber.Handler
+func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler {
+	r := &roundrobin{
+		current: 0,
+		pool:    servers,
+	}
+	return func(c *fiber.Ctx) error {
+		server := r.get()
+		if !strings.HasPrefix(server, "http") {
+			server = "http://" + server
+		}
+		c.Request().Header.Add("X-Real-IP", c.IP())
+		return Do(c, server+c.OriginalURL(), clients...)
+	}
+}
