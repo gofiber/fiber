@@ -15,7 +15,9 @@ Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you t
 func Balancer(config Config) fiber.Handler
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
 func Do(c *fiber.Ctx, addr string, clients ...*fasthttp.Client) error
+// Forward using a specific domain
 func DomainForward(hostname string, addr string, clients ...*fasthttp.Client) fiber.Handler
+// Forward to service/url with minimal round robin balancer
 func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler
 ```
 
