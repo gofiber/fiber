@@ -6,7 +6,6 @@
 package fiber
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +13,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/goccy/go-json"
 
 	"github.com/gofiber/fiber/v2/utils"
 

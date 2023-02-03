@@ -2,11 +2,12 @@ package process
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"runtime"
 	"sort"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 	"github.com/gofiber/fiber/v2/internal/gopsutil/cpu"

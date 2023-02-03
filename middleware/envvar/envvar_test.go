@@ -3,11 +3,12 @@ package envvar
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"testing"
+
+	"github.com/goccy/go-json"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"

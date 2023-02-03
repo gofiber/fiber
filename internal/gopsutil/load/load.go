@@ -1,7 +1,7 @@
 package load
 
 import (
-	"encoding/json"
+	"github.com/goccy/go-json"
 )
 
 //var invoke common.Invoker = common.Invoke{}

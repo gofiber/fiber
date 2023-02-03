@@ -45,7 +45,7 @@ func (d *Decoder) ZeroEmpty(z bool) {
 // IgnoreUnknownKeys controls the behaviour when the decoder encounters unknown
 // keys in the map.
 // If i is true and an unknown field is encountered, it is ignored. This is
-// similar to how unknown keys are handled by encoding/json.
+// similar to how unknown keys are handled by github.com/goccy/go-json.
 // If i is false then Decode will return an error. Note that any valid keys
 // will still be decoded in to the target struct.
 //

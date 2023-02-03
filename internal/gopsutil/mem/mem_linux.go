@@ -5,14 +5,15 @@ package mem
 
 import (
 	"context"
-	"encoding/json"
 	"math"
 	"os"
 	"strconv"
 	"strings"
 
-	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
+	"github.com/goccy/go-json"
 	"golang.org/x/sys/unix"
+
+	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 )
 
 type VirtualMemoryExStat struct {

@@ -3,7 +3,6 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -13,6 +12,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/gofiber/fiber/v2/utils"
 

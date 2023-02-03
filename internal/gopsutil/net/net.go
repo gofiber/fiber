@@ -2,8 +2,9 @@ package net
 
 import (
 	"context"
-	"encoding/json"
 	"net"
+
+	"github.com/goccy/go-json"
 
 	"github.com/gofiber/fiber/v2/internal/gopsutil/common"
 )

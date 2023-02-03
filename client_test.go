@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/goccy/go-json"
 
 	"github.com/gofiber/fiber/v2/internal/tlstest"
 	"github.com/gofiber/fiber/v2/utils"
@@ -1140,7 +1141,7 @@ func Test_Client_Agent_Struct(t *testing.T) {
 		utils.AssertEqual(t, StatusOK, code)
 		utils.AssertEqual(t, `{"success"`, string(body))
 		utils.AssertEqual(t, 1, len(errs))
-		utils.AssertEqual(t, "unexpected end of JSON input", errs[0].Error())
+		utils.AssertEqual(t, "expected colon after object key", errs[0].Error())
 	})
 
 	t.Run("nil jsonDecoder", func(t *testing.T) {

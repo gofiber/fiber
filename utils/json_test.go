@@ -1,8 +1,9 @@
 package utils
 
 import (
-	"encoding/json"
 	"testing"
+
+	"github.com/goccy/go-json"
 )
 
 type sampleStructure struct {
