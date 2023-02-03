@@ -19,23 +19,23 @@ type Config struct {
 	// File holds the path to an actual favicon that will be cached
 	//
 	// Optional. Default: ""
-	File string
+	File string `json:"file"`
 
 	// URL for favicon handler
 	//
 	// Optional. Default: "/favicon.ico"
-	URL string
+	URL string `json:"url"`
 
 	// FileSystem is an optional alternate filesystem to search for the favicon in.
 	// An example of this could be an embedded or network filesystem
 	//
 	// Optional. Default: nil
-	FileSystem http.FileSystem
+	FileSystem http.FileSystem `json:"-"`
 
 	// CacheControl defines how the Cache-Control header in the response should be set
 	//
 	// Optional. Default: "public, max-age=31536000"
-	CacheControl string
+	CacheControl string `json:"cache_control"`
 }
 
 // ConfigDefault is the default config

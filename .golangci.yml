@@ -86,6 +86,9 @@ linters-settings:
         disabled: true
       - name: cyclomatic
         disabled: true
+      - name: early-return
+        severity: warning
+        disabled: true
       - name: exported
         disabled: true
       - name: file-header
