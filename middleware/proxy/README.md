@@ -12,12 +12,15 @@ Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you t
 ### Signatures
 
 ```go
+// Balancer create a load balancer among multiple upstrem servers.
 func Balancer(config Config) fiber.Handler
+// Forward performs the given http request and fills the given http response.
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
+// Do performs the given http request and fills the given http response.
 func Do(c *fiber.Ctx, addr string, clients ...*fasthttp.Client) error
-// Forward using a specific domain
+// DomainForward the given http request based on the given domain and fills the given http response
 func DomainForward(hostname string, addr string, clients ...*fasthttp.Client) fiber.Handler
-// Forward to service/url with minimal round robin balancer
+// BalancerForward performs the given http request based round robin balancer and fills the given http response
 func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler
 ```
 
