@@ -223,6 +223,10 @@ func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handle
 	}
 	return func(c *fiber.Ctx) error {
 		server := r.get()
-		return Do(c, server+c.OriginalURL())
+		if !strings.HasPrefix(server, "http") {
+			server = "http://" + server
+		}
+		c.Request().Header.Add("X-Real-IP", c.IP())
+		return Do(c, server+c.OriginalURL(), clients...)
 	}
 }

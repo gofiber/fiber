@@ -508,3 +508,25 @@ func Test_Proxy_Domain_Forward_Local(t *testing.T) {
 	utils.AssertEqual(t, fiber.StatusOK, code)
 	utils.AssertEqual(t, "test_local_client:true", body)
 }
+
+// go test -run Test_Proxy_Balancer_Forward_Local
+func Test_Proxy_Balancer_Forward_Local(t *testing.T) {
+	t.Parallel()
+
+	app := fiber.New()
+
+	_, addr := createProxyTestServer(t, func(c *fiber.Ctx) error {
+		return c.SendString("forwarded")
+	})
+
+	app.Use(BalancerForward([]string{addr}))
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+
+	b, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	utils.AssertEqual(t, string(b), "forwarded")
+}

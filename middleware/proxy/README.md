@@ -15,7 +15,8 @@ Proxy middleware for [Fiber](https://github.com/gofiber/fiber) that allows you t
 func Balancer(config Config) fiber.Handler
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
 func Do(c *fiber.Ctx, addr string, clients ...*fasthttp.Client) error
-func DomainForward(hostname string, addr string, clients ...*fasthttp.Client) fiber.Handler 
+func DomainForward(hostname string, addr string, clients ...*fasthttp.Client) fiber.Handler
+func BalancerForward(servers []string, clients ...*fasthttp.Client) fiber.Handler
 ```
 
 ### Examples
@@ -47,7 +48,7 @@ proxy.WithClient(&fasthttp.Client{
 // Forward to url
 app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif"))
 
-// Specific domain forward to url
+// If you want to forward with a specific domain. You have to use proxy.DomainForward.
 app.Get("/payments", proxy.DomainForward("docs.gofiber.io", "http://localhost:8000"))
 
 // Forward to url with local custom client
@@ -91,6 +92,13 @@ app.Use(proxy.Balancer(proxy.Config{
   c.Response().Header.Del(fiber.HeaderServer)
   return nil
  },
+}))
+
+// Or this way if the balancer is using https and the destination server is only using http.
+app.Use(proxy.BalancerForward([]string{
+  "http://localhost:3001",
+  "http://localhost:3002",
+  "http://localhost:3003",
 }))
 ```
 
