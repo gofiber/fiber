@@ -30,7 +30,7 @@ import (
 )
 
 // Version of current fiber package
-const Version = "2.41.0"
+const Version = "2.42.0"
 
 // Handler defines a function to serve HTTP requests.
 type Handler = func(*Ctx) error
