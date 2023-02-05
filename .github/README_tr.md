@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://gofiber.io">
-    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
@@ -52,6 +52,9 @@
          <a href="https://github.com/gofiber/fiber/blob/master/.github/README_fa.md">
      <img height="20px" src="https://img.shields.io/badge/IR-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB3aWR0aD0iMTAwMCIgaGVpZ2h0PSI1NzIuMiIgdmlld0JveD0iLTcuMjE3IC00LjEyOSAxMDAwIDU3Mi4yIj48cGF0aCBkPSJNLTcuMjE3LTQuMTI5aDEwMDB2NTcyLjJoLTEwMDB6IiBmaWxsPSIjMjM5ZjQwIi8+PHBhdGggZD0iTS03LjIxNyAyODEuOTcxaDEwMDB2Mjg2LjFoLTEwMDB6IiBmaWxsPSIjZGEwMDAwIi8+PHBhdGggZD0iTS03LjIxNyAxODYuNTcxaDEwMDB2MTkwLjc1aC0xMDAweiIgZmlsbD0iI2ZmZiIvPjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKC03LjIxNyAxNTUuNDcxKSBzY2FsZSg0LjQ0NDUpIj48ZyBpZD0iZSI+PGcgaWQ9ImMiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmZiI+PHBhdGggaWQ9ImIiIGQ9Ik0zIC41aDEzTTMuNSA1VjIuNWg0djJoNHYtMkg5bS00IDJoMW0xMCAwaC0yLjV2LTJoNG0wLTIuNXY0LjVoNFYwbS0yIDB2NC41Ii8+PHBhdGggaWQ9ImEiIGQ9Ik0zIDdoOW0xIDBoOSIgc3Ryb2tlLXdpZHRoPSIyIi8+PHVzZSB4bGluazpocmVmPSIjYSIgeT0iNDIuOTEzIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjYiIgeT0iNTEuOTEzIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9nPjxnIGlkPSJkIj48dXNlIHhsaW5rOmhyZWY9IiNjIiB4PSIyMCIgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIvPjx1c2UgeGxpbms6aHJlZj0iI2MiIHg9IjQwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjYyIgeD0iNjAiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L2c+PC9nPjx1c2UgeGxpbms6aHJlZj0iI2QiIHg9IjYwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PHVzZSB4bGluazpocmVmPSIjZSIgeD0iMTQwIiB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIi8+PC9nPjxnIHRyYW5zZm9ybT0ibWF0cml4KDY5LjI4NSAwIDAgNjkuMjg1IDQ5Mi43ODMgMjgxLjk3MSkiIGZpbGw9IiNkYTAwMDAiPjxnIGlkPSJmIj48cGF0aCBkPSJNLS41NDguODM2QS45MTIuOTEyIDAgMCAwIC4zMjktLjcyMiAxIDEgMCAwIDEtLjU0OC44MzYiLz48cGF0aCBkPSJNLjYxOC42NjFBLjc2NC43NjQgMCAwIDAgLjQyMi0uNzQgMSAxIDAgMCAxIC42MTguNjYxTTAgMWwtLjA1LTFMMC0uNzg3YS4zMS4zMSAwIDAgMCAuMTE4LjA5OVYtLjFsLS4wNC45OTN6TS0uMDItLjg1TDAtLjgzMWEuMTQ0LjE0NCAwIDAgMCAuMjUyLS4xMzdBLjEzNi4xMzYgMCAwIDEgMC0uOTI1Ii8+PC9nPjx1c2UgeGxpbms6aHJlZj0iI2YiIHRyYW5zZm9ybT0ic2NhbGUoLTEgMSkiIHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiLz48L2c+PC9zdmc+">
    </a>
+   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_uk.md">
+    <img height="20px" src="https://img.shields.io/badge/UK-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2ZXJzaW9uPSIxLjEiIGlkPSJMYXllcl8xIiB4PSIwcHgiIHk9IjBweCIgdmlld0JveD0iMCAwIDU1LjIgMzguNCIgc3R5bGU9ImVuYWJsZS1iYWNrZ3JvdW5kOm5ldyAwIDAgNTUuMiAzOC40IiB4bWw6c3BhY2U9InByZXNlcnZlIj48c3R5bGUgdHlwZT0idGV4dC9jc3MiPjwhW0NEQVRBWwoJLnN0MHtmaWxsOiNGRkQ1MDA7fQoJLnN0MXtmaWxsOiMwMDVCQkI7fQpdXT48L3N0eWxlPjxnPjxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik0zLjAzLDBoNDkuMTNjMS42NywwLDMuMDMsMS4zNiwzLjAzLDMuMDN2MzIuMzNjMCwxLjY3LTEuMzcsMy4wMy0zLjAzLDMuMDNIMy4wM0MxLjM3LDM4LjQsMCwzNy4wNCwwLDM1LjM3IFYzLjAzQzAsMS4zNiwxLjM3LDAsMy4wMywwTDMuMDMsMHoiLz48cGF0aCBjbGFzcz0ic3QwIiBkPSJNMCwxOS4yaDU1LjJ2MTYuMTdjMCwxLjY3LTEuMzcsMy4wMy0zLjAzLDMuMDNIMy4wM0MxLjM3LDM4LjQsMCwzNy4wNCwwLDM1LjM3VjE5LjJMMCwxOS4yeiIvPjwvZz48L3N2Zz4=">
+  </a>
   <br>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber/v3#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat-square">
@@ -63,10 +66,10 @@
     <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-97.8%25-75C46B.svg?style=flat-square">
   </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ASecurity">
-    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Security?label=%F0%9F%94%91%20gosec&style=flat-square&color=75C46B">
+    <img src="https://img.shields.io/github/actions/workflow/status/gofiber/fiber/security.yml?branch=master&label=%F0%9F%94%91%20gosec&style=flat-square&color=75C46B">
   </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
-    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=%F0%9F%A7%AA%20tests&style=flat-square&color=75C46B">
+    <img src="https://img.shields.io/github/actions/workflow/status/gofiber/fiber/test.yml?branch=master&label=%F0%9F%A7%AA%20tests&style=flat-square&color=75C46B">
   </a>
     <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat-square">
@@ -105,13 +108,13 @@ func main() {
 Bu testler [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) ve [Go Web](https://github.com/smallnest/go-web-framework-benchmark) tarafından gerçekleştirildi. Bütün sonuçları görmek için lütfen [Wiki](https://docs.gofiber.io/extra/benchmarks) sayfasını ziyaret ediniz.
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark-pipeline.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark_alloc.png" width="49%">
 </p>
 
 ## ⚙️ Kurulum
 
-Go'nun `1.14` sürümü ([indir](https://go.dev/dl/)) veya daha yüksek bir sürüm gerekli.
+Go'nun `1.16` sürümü ([indir](https://go.dev/dl/)) veya daha yüksek bir sürüm gerekli.
 
 Bir dizin oluşturup dizinin içinde `go mod init github.com/your/repo` komutunu yazarak projenizi geliştirmeye başlayın ([daha fazla öğren](https://go.dev/blog/using-go-modules)). Ardından Fiber'ı kurmak için [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) komutunu çalıştırın:
 
@@ -143,7 +146,7 @@ Fiber, internet üzerinde en popüler web framework'ü olan Express'ten **esinle
 
 ## ⚠️ Sınırlamalar
 
--   Fiber unsafe kullanımı sebebiyle Go'nun son sürümüyle her zaman uyumlu olmayabilir. Fiber 2.40.0, Go 1.14 ile 1.19 sürümleriyle test edildi.
+-   Fiber unsafe kullanımı sebebiyle Go'nun son sürümüyle her zaman uyumlu olmayabilir. Fiber 2.40.0, Go 1.16 ile 1.20 sürümleriyle test edildi.
 -   Fiber net/http arabirimiyle uyumlu değildir. Yani gqlgen veya go-swagger gibi net/http ekosisteminin parçası olan projeleri kullanamazsınız.
 
 ## 👀 Örnekler
@@ -254,7 +257,7 @@ func main() {
 		fmt.Println("🥇 İlk handler")
 		return c.Next()
 	})
-	
+
 	// /api ile başlayan bütün routelara etki eder.
 	app.Use("/api", func(c fiber.Ctx) error {
 		fmt.Println("🥈 İkinci handler")
@@ -515,7 +518,7 @@ func main() {
     c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
       fmt.Println("WRITER")
       var i int
-      
+
       for {
         i++
         msg := fmt.Sprintf("%d - the time is %v", i, time.Now())
@@ -600,7 +603,7 @@ Harici olarak barındırılan middlewareların modüllerinin listesi. Bu middlew
 | [redirect](https://github.com/gofiber/redirect)   | Yönlendirme middleware  'ı.                                                                                                                                               |
 | [rewrite](https://github.com/gofiber/rewrite)     | Rewrite middleware, sağlanan kurallara göre URL yolunu yeniden yazar. Geriye dönük uyumluluk için veya yalnızca daha temiz ve daha açıklayıcı bağlantılar oluşturmak için yardımcı olabilir. |
 | [storage](https://github.com/gofiber/storage)     | Fiber'in Storage yapısını destekleyen birçok storage driver'ı verir. Bu sayede depolama gerektiren Fiber middlewarelarında kolaylıkla kullanılabilir.                                                   |
-| [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v2.x.x`, Go sürüm 1.14 veya üzeri gerekli olduğunda kullanılabilecek 9 template motoru içerir.                                                                             |
+| [template](https://github.com/gofiber/template)   | Bu paket, Fiber `v2.x.x`, Go sürüm 1.16 veya üzeri gerekli olduğunda kullanılabilecek 9 template motoru içerir.                                                                             |
 | [websocket](https://github.com/gofiber/websocket) | Yereller desteğiyle Fiber için Fasthttp WebSocket'a dayalıdır!                                                                                                                               |
 
 ## 🕶️ Awesome Listesi

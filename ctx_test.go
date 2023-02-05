@@ -2,6 +2,7 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package fiber
 
 import (
@@ -404,6 +405,7 @@ func Test_Ctx_UserContext(t *testing.T) {
 
 // go test -run Test_Ctx_SetUserContext
 func Test_Ctx_SetUserContext(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -416,6 +418,7 @@ func Test_Ctx_SetUserContext(t *testing.T) {
 
 // go test -run Test_Ctx_UserContext_Multiple_Requests
 func Test_Ctx_UserContext_Multiple_Requests(t *testing.T) {
+	t.Parallel()
 	testKey := struct{}{}
 	testValue := "foobar-value"
 
@@ -641,12 +644,13 @@ func Test_Ctx_FormFile(t *testing.T) {
 
 		f, err := fh.Open()
 		require.NoError(t, err)
+		defer func() {
+			require.Equal(t, nil, f.Close())
+		}()
 
 		b := new(bytes.Buffer)
 		_, err = io.Copy(b, f)
 		require.NoError(t, err)
-
-		f.Close()
 		require.Equal(t, "hello world", b.String())
 		return nil
 	})
@@ -659,8 +663,7 @@ func Test_Ctx_FormFile(t *testing.T) {
 
 	_, err = ioWriter.Write([]byte("hello world"))
 	require.NoError(t, err)
-
-	writer.Close()
+	require.NoError(t, writer.Close())
 
 	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set(HeaderContentType, writer.FormDataContentType())
@@ -683,10 +686,9 @@ func Test_Ctx_FormValue(t *testing.T) {
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
-
 	require.Nil(t, writer.WriteField("name", "john"))
+	require.Nil(t, writer.Close())
 
-	writer.Close()
 	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set("Content-Type", fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
 	req.Header.Set("Content-Length", strconv.Itoa(len(body.Bytes())))
@@ -867,6 +869,97 @@ func Benchmark_Ctx_Host(b *testing.B) {
 	require.Equal(b, "google.com", host)
 }
 
+// go test -run Test_Ctx_IsProxyTrusted
+func Test_Ctx_IsProxyTrusted(t *testing.T) {
+	t.Parallel()
+
+	{
+		app := New()
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		defer app.ReleaseCtx(c)
+		require.True(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: false,
+		})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		require.True(t, c.IsProxyTrusted())
+	}
+
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+		})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		require.False(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{},
+		})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		require.False(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{
+				"127.0.0.1",
+			},
+		})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		require.False(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{
+				"127.0.0.1/8",
+			},
+		})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		require.False(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{
+				"0.0.0.0",
+			},
+		})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		require.True(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{
+				"0.0.0.1/31",
+			},
+		})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		require.True(t, c.IsProxyTrusted())
+	}
+	{
+		app := New(Config{
+			EnableTrustedProxyCheck: true,
+
+			TrustedProxies: []string{
+				"0.0.0.1/31junk",
+			},
+		})
+		c := app.NewCtx(&fasthttp.RequestCtx{})
+		require.False(t, c.IsProxyTrusted())
+	}
+}
+
 // go test -run Test_Ctx_Hostname
 func Test_Ctx_Hostname(t *testing.T) {
 	t.Parallel()
@@ -998,7 +1091,7 @@ func Test_Ctx_IP(t *testing.T) {
 func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 	t.Parallel()
 
-	// make sure that the same behaviour exists for different proxy header names
+	// make sure that the same behavior exists for different proxy header names
 	proxyHeaderNames := []string{"Real-Ip", HeaderXForwardedFor}
 
 	for _, proxyHeaderName := range proxyHeaderNames {
@@ -1030,7 +1123,7 @@ func Test_Ctx_IP_ProxyHeader(t *testing.T) {
 func Test_Ctx_IP_ProxyHeader_With_IP_Validation(t *testing.T) {
 	t.Parallel()
 
-	// make sure that the same behaviour exists for different proxy header names
+	// make sure that the same behavior exists for different proxy header names
 	proxyHeaderNames := []string{"Real-Ip", HeaderXForwardedFor}
 
 	for _, proxyHeaderName := range proxyHeaderNames {
@@ -1297,6 +1390,7 @@ func Benchmark_Ctx_Is(b *testing.B) {
 
 // go test -run Test_Ctx_Locals
 func Test_Ctx_Locals(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use(func(c Ctx) error {
 		c.Locals("john", "doe")
@@ -1357,35 +1451,45 @@ func Test_Ctx_ClientHelloInfo(t *testing.T) {
 	})
 
 	// Test without TLS handler
-	resp, _ := app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
-	body, _ := io.ReadAll(resp.Body)
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
+	require.NoError(t, err)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, []byte("ClientHelloInfo is nil"), body)
 
 	// Test with TLS Handler
 	const (
-		PSSWithSHA256 = 0x0804
-		VersionTLS13  = 0x0304
+		pssWithSHA256 = 0x0804
+		versionTLS13  = 0x0304
 	)
 	app.tlsHandler = &TLSHandler{clientHelloInfo: &tls.ClientHelloInfo{
 		ServerName:        "example.golang",
-		SignatureSchemes:  []tls.SignatureScheme{PSSWithSHA256},
-		SupportedVersions: []uint16{VersionTLS13},
+		SignatureSchemes:  []tls.SignatureScheme{pssWithSHA256},
+		SupportedVersions: []uint16{versionTLS13},
 	}}
 
 	// Test ServerName
-	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
-	body, _ = io.ReadAll(resp.Body)
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/ServerName", nil))
+	require.NoError(t, err)
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
 	require.Equal(t, []byte("example.golang"), body)
 
 	// Test SignatureSchemes
-	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", nil))
-	body, _ = io.ReadAll(resp.Body)
-	require.Equal(t, "["+strconv.Itoa(PSSWithSHA256)+"]", string(body))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SignatureSchemes", nil))
+	require.NoError(t, err)
+
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "["+strconv.Itoa(pssWithSHA256)+"]", string(body))
 
 	// Test SupportedVersions
-	resp, _ = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", nil))
-	body, _ = io.ReadAll(resp.Body)
-	require.Equal(t, "["+strconv.Itoa(VersionTLS13)+"]", string(body))
+	resp, err = app.Test(httptest.NewRequest(MethodGet, "/SupportedVersions", nil))
+	require.NoError(t, err)
+	body, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, "["+strconv.Itoa(versionTLS13)+"]", string(body))
 }
 
 // go test -run Test_Ctx_InvalidMethod
@@ -1422,8 +1526,8 @@ func Test_Ctx_MultipartForm(t *testing.T) {
 	writer := multipart.NewWriter(body)
 
 	require.Nil(t, writer.WriteField("name", "john"))
+	require.NoError(t, writer.Close())
 
-	writer.Close()
 	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set(HeaderContentType, fmt.Sprintf("multipart/form-data; boundary=%s", writer.Boundary()))
 	req.Header.Set(HeaderContentLength, strconv.Itoa(len(body.Bytes())))
@@ -1438,8 +1542,8 @@ func Benchmark_Ctx_MultipartForm(b *testing.B) {
 	app := New()
 
 	app.Post("/", func(c Ctx) error {
-		_, _ = c.MultipartForm()
-		return nil
+		_, err := c.MultipartForm()
+		return err
 	})
 
 	c := &fasthttp.RequestCtx{}
@@ -1590,6 +1694,7 @@ func Test_Ctx_Path(t *testing.T) {
 
 // go test -run Test_Ctx_Protocol
 func Test_Ctx_Protocol(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	c := app.NewCtx(&fasthttp.RequestCtx{})
@@ -1625,23 +1730,31 @@ func Test_Ctx_Scheme(t *testing.T) {
 
 	c := app.NewCtx(freq)
 
-	c.Request().Header.Set(HeaderXForwardedProto, "https")
-	require.Equal(t, "https", c.Scheme())
+	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	require.Equal(t, "https", c.Scheme())
+	c.Request().Header.Set(HeaderXForwardedProtocol, schemeHTTPS)
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProto, "https, http")
+	require.Equal(t, schemeHTTPS, c.Scheme())
+	c.Request().Header.Reset()
+
+	c.Request().Header.Set(HeaderXForwardedProtocol, "https, http")
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	require.Equal(t, "https", c.Scheme())
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	require.Equal(t, "https", c.Scheme())
+	c.Request().Header.Set(HeaderXUrlScheme, schemeHTTPS)
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
-	require.Equal(t, "http", c.Scheme())
+	require.Equal(t, schemeHTTP, c.Scheme())
 }
 
 // go test -v -run=^$ -bench=Benchmark_Ctx_Scheme -benchmem -count=4
@@ -1664,23 +1777,23 @@ func Test_Ctx_Scheme_TrustedProxy(t *testing.T) {
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0"}})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Request().Header.Set(HeaderXForwardedProto, "https")
-	require.Equal(t, "https", c.Scheme())
+	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	require.Equal(t, "https", c.Scheme())
+	c.Request().Header.Set(HeaderXForwardedProtocol, schemeHTTPS)
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	require.Equal(t, "https", c.Scheme())
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	require.Equal(t, "https", c.Scheme())
+	c.Request().Header.Set(HeaderXUrlScheme, schemeHTTPS)
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
-	require.Equal(t, "http", c.Scheme())
+	require.Equal(t, schemeHTTP, c.Scheme())
 }
 
 // go test -run Test_Ctx_Scheme_TrustedProxyRange
@@ -1689,23 +1802,23 @@ func Test_Ctx_Scheme_TrustedProxyRange(t *testing.T) {
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.0.0.0/30"}})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Request().Header.Set(HeaderXForwardedProto, "https")
-	require.Equal(t, "https", c.Scheme())
+	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	require.Equal(t, "https", c.Scheme())
+	c.Request().Header.Set(HeaderXForwardedProtocol, schemeHTTPS)
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	require.Equal(t, "https", c.Scheme())
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	require.Equal(t, "https", c.Scheme())
+	c.Request().Header.Set(HeaderXUrlScheme, schemeHTTPS)
+	require.Equal(t, schemeHTTPS, c.Scheme())
 	c.Request().Header.Reset()
 
-	require.Equal(t, "http", c.Scheme())
+	require.Equal(t, schemeHTTP, c.Scheme())
 }
 
 // go test -run Test_Ctx_Scheme_UntrustedProxyRange
@@ -1714,23 +1827,23 @@ func Test_Ctx_Scheme_UntrustedProxyRange(t *testing.T) {
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"1.1.1.1/30"}})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Request().Header.Set(HeaderXForwardedProto, "https")
-	require.Equal(t, "http", c.Scheme())
+	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
+	require.Equal(t, schemeHTTP, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	require.Equal(t, "http", c.Scheme())
+	c.Request().Header.Set(HeaderXForwardedProtocol, schemeHTTPS)
+	require.Equal(t, schemeHTTP, c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	require.Equal(t, "http", c.Scheme())
+	require.Equal(t, schemeHTTP, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	require.Equal(t, "http", c.Scheme())
+	c.Request().Header.Set(HeaderXUrlScheme, schemeHTTPS)
+	require.Equal(t, schemeHTTP, c.Scheme())
 	c.Request().Header.Reset()
 
-	require.Equal(t, "http", c.Scheme())
+	require.Equal(t, schemeHTTP, c.Scheme())
 }
 
 // go test -run Test_Ctx_Scheme_UnTrustedProxy
@@ -1739,23 +1852,23 @@ func Test_Ctx_Scheme_UnTrustedProxy(t *testing.T) {
 	app := New(Config{EnableTrustedProxyCheck: true, TrustedProxies: []string{"0.8.0.1"}})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Request().Header.Set(HeaderXForwardedProto, "https")
-	require.Equal(t, "http", c.Scheme())
+	c.Request().Header.Set(HeaderXForwardedProto, schemeHTTPS)
+	require.Equal(t, schemeHTTP, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set(HeaderXForwardedProtocol, "https")
-	require.Equal(t, "http", c.Scheme())
+	c.Request().Header.Set(HeaderXForwardedProtocol, schemeHTTPS)
+	require.Equal(t, schemeHTTP, c.Scheme())
 	c.Request().Header.Reset()
 
 	c.Request().Header.Set(HeaderXForwardedSsl, "on")
-	require.Equal(t, "http", c.Scheme())
+	require.Equal(t, schemeHTTP, c.Scheme())
 	c.Request().Header.Reset()
 
-	c.Request().Header.Set(HeaderXUrlScheme, "https")
-	require.Equal(t, "http", c.Scheme())
+	c.Request().Header.Set(HeaderXUrlScheme, schemeHTTPS)
+	require.Equal(t, schemeHTTP, c.Scheme())
 	c.Request().Header.Reset()
 
-	require.Equal(t, "http", c.Scheme())
+	require.Equal(t, schemeHTTP, c.Scheme())
 }
 
 // go test -run Test_Ctx_Query
@@ -1768,6 +1881,20 @@ func Test_Ctx_Query(t *testing.T) {
 	require.Equal(t, "john", c.Query("search"))
 	require.Equal(t, "20", c.Query("age"))
 	require.Equal(t, "default", c.Query("unknown", "default"))
+}
+
+func Test_Ctx_QueryInt(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	c.Request().URI().SetQueryString("search=john&age=20&id=")
+	require.Equal(t, 0, c.QueryInt("foo"))
+	require.Equal(t, 20, c.QueryInt("age", 12))
+	require.Equal(t, 0, c.QueryInt("search"))
+	require.Equal(t, 1, c.QueryInt("search", 1))
+	require.Equal(t, 0, c.QueryInt("id"))
+	require.Equal(t, 2, c.QueryInt("id", 2))
 }
 
 // go test -run Test_Ctx_Range
@@ -1856,7 +1983,12 @@ func Test_Ctx_SaveFile(t *testing.T) {
 		tempFile, err := os.CreateTemp(os.TempDir(), "test-")
 		require.NoError(t, err)
 
-		defer os.Remove(tempFile.Name())
+		defer func(file *os.File) {
+			err := file.Close()
+			require.NoError(t, err)
+			err = os.Remove(file.Name())
+			require.NoError(t, err)
+		}(tempFile)
 		err = c.SaveFile(fh, tempFile.Name())
 		require.NoError(t, err)
 
@@ -1874,7 +2006,7 @@ func Test_Ctx_SaveFile(t *testing.T) {
 
 	_, err = ioWriter.Write([]byte("hello world"))
 	require.NoError(t, err)
-	writer.Close()
+	require.NoError(t, writer.Close())
 
 	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -1916,7 +2048,7 @@ func Test_Ctx_SaveFileToStorage(t *testing.T) {
 
 	_, err = ioWriter.Write([]byte("hello world"))
 	require.NoError(t, err)
-	writer.Close()
+	require.NoError(t, writer.Close())
 
 	req := httptest.NewRequest(MethodPost, "/test", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
@@ -2001,7 +2133,9 @@ func Test_Ctx_Download(t *testing.T) {
 
 	f, err := os.Open("./ctx.go")
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() {
+		require.NoError(t, f.Close())
+	}()
 
 	expect, err := io.ReadAll(f)
 	require.NoError(t, err)
@@ -2020,7 +2154,9 @@ func Test_Ctx_SendFile(t *testing.T) {
 	// fetch file content
 	f, err := os.Open("./ctx.go")
 	require.NoError(t, err)
-	defer f.Close()
+	defer func() {
+		require.NoError(t, nil, f.Close())
+	}()
 	expectFileContent, err := io.ReadAll(f)
 	require.NoError(t, err)
 	// fetch file info for the not modified test case
@@ -2066,7 +2202,7 @@ func Test_Ctx_SendFile_404(t *testing.T) {
 		return err
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, StatusNotFound, resp.StatusCode)
 }
@@ -2104,11 +2240,11 @@ func Test_Ctx_SendFile_Immutable(t *testing.T) {
 	for _, endpoint := range endpointsForTest {
 		t.Run(endpoint, func(t *testing.T) {
 			// 1st try
-			resp, err := app.Test(httptest.NewRequest("GET", endpoint, nil))
+			resp, err := app.Test(httptest.NewRequest(MethodGet, endpoint, nil))
 			require.NoError(t, err)
 			require.Equal(t, StatusOK, resp.StatusCode)
 			// 2nd try
-			resp, err = app.Test(httptest.NewRequest("GET", endpoint, nil))
+			resp, err = app.Test(httptest.NewRequest(MethodGet, endpoint, nil))
 			require.NoError(t, err)
 			require.Equal(t, StatusOK, resp.StatusCode)
 		})
@@ -2126,9 +2262,9 @@ func Test_Ctx_SendFile_RestoreOriginalURL(t *testing.T) {
 		return err
 	})
 
-	_, err1 := app.Test(httptest.NewRequest("GET", "/?test=true", nil))
+	_, err1 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", nil))
 	// second request required to confirm with zero allocation
-	_, err2 := app.Test(httptest.NewRequest("GET", "/?test=true", nil))
+	_, err2 := app.Test(httptest.NewRequest(MethodGet, "/?test=true", nil))
 
 	require.Nil(t, err1)
 	require.Nil(t, err2)
@@ -2334,6 +2470,7 @@ func Test_Ctx_Location(t *testing.T) {
 
 // go test -run Test_Ctx_Next
 func Test_Ctx_Next(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use("/", func(c Ctx) error {
 		return c.Next()
@@ -2350,6 +2487,7 @@ func Test_Ctx_Next(t *testing.T) {
 
 // go test -run Test_Ctx_Next_Error
 func Test_Ctx_Next_Error(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Use("/", func(c Ctx) error {
 		c.Set("X-Next-Result", "Works")
@@ -2371,12 +2509,12 @@ func Test_Ctx_Render(t *testing.T) {
 	err := c.Render("./.github/testdata/index.tmpl", Map{
 		"Title": "Hello, World!",
 	})
+	require.NoError(t, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite")
+	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
 	defer bytebufferpool.Put(buf)
 
-	require.NoError(t, err)
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 
 	err = c.Render("./.github/testdata/template-non-exists.html", nil)
@@ -2396,12 +2534,12 @@ func Test_Ctx_RenderWithoutLocals(t *testing.T) {
 	c.Locals("Title", "Hello, World!")
 
 	err := c.Render("./.github/testdata/index.tmpl", Map{})
+	require.NoError(t, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite")
+	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
 	defer bytebufferpool.Put(buf)
 
-	require.NoError(t, err)
 	require.Equal(t, "<h1><no value></h1>", string(c.Response().Body()))
 }
 
@@ -2415,12 +2553,12 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	c.Locals("Title", "Hello, World!")
 
 	err := c.Render("./.github/testdata/index.tmpl", Map{})
+	require.NoError(t, err)
 
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite")
+	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
 	defer bytebufferpool.Put(buf)
 
-	require.NoError(t, err)
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 
 }
@@ -2438,17 +2576,37 @@ func Test_Ctx_RenderWithBindVars(t *testing.T) {
 	err := c.Render("./.github/testdata/index.tmpl", Map{})
 	require.NoError(t, err)
 	buf := bytebufferpool.Get()
-	_, _ = buf.WriteString("overwrite")
+	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
 	defer bytebufferpool.Put(buf)
 
 	require.NoError(t, err)
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
+}
 
+func Test_Ctx_RenderWithOverwrittenBind(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.NewCtx(&fasthttp.RequestCtx{})
+
+	err := c.BindVars(Map{
+		"Title": "Hello, World!",
+	})
+	require.NoError(t, err)
+
+	err = c.Render("./.github/testdata/index.tmpl", Map{
+		"Title": "Hello from Fiber!",
+	})
+	require.NoError(t, err)
+
+	buf := bytebufferpool.Get()
+	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
+	defer bytebufferpool.Put(buf)
+
+	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
 }
 
 func Test_Ctx_RenderWithBindVarsLocals(t *testing.T) {
 	t.Parallel()
-
 	app := New(Config{
 		PassLocalsToViews: true,
 	})
@@ -2466,6 +2624,7 @@ func Test_Ctx_RenderWithBindVarsLocals(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
 
+	require.Equal(t, "<h1>Hello, World! Test</h1>", string(c.Response().Body()))
 }
 
 func Test_Ctx_RenderWithLocalsAndBinding(t *testing.T) {
@@ -2566,6 +2725,7 @@ func Benchmark_Ctx_RenderBindVars(b *testing.B) {
 
 // go test -run Test_Ctx_RestartRouting
 func Test_Ctx_RestartRouting(t *testing.T) {
+	t.Parallel()
 	app := New()
 	calls := 0
 	app.Get("/", func(c Ctx) error {
@@ -2583,9 +2743,9 @@ func Test_Ctx_RestartRouting(t *testing.T) {
 
 // go test -run Test_Ctx_RestartRoutingWithChangedPath
 func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
+	t.Parallel()
 	app := New()
-	executedOldHandler := false
-	executedNewHandler := false
+	var executedOldHandler, executedNewHandler bool
 
 	app.Get("/old", func(c Ctx) error {
 		c.Path("/new")
@@ -2609,6 +2769,7 @@ func Test_Ctx_RestartRoutingWithChangedPath(t *testing.T) {
 
 // go test -run Test_Ctx_RestartRoutingWithChangedPathAnd404
 func Test_Ctx_RestartRoutingWithChangedPathAndCatchAll(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.Get("/new", func(c Ctx) error {
 		return nil
@@ -2634,10 +2795,18 @@ type testTemplateEngine struct {
 
 func (t *testTemplateEngine) Render(w io.Writer, name string, bind any, layout ...string) error {
 	if len(layout) == 0 {
-		return t.templates.ExecuteTemplate(w, name, bind)
+		if err := t.templates.ExecuteTemplate(w, name, bind); err != nil {
+			return fmt.Errorf("failed to execute template without layout: %w", err)
+		}
+		return nil
 	}
-	_ = t.templates.ExecuteTemplate(w, name, bind)
-	return t.templates.ExecuteTemplate(w, layout[0], bind)
+	if err := t.templates.ExecuteTemplate(w, name, bind); err != nil {
+		return fmt.Errorf("failed to execute template: %w", err)
+	}
+	if err := t.templates.ExecuteTemplate(w, layout[0], bind); err != nil {
+		return fmt.Errorf("failed to execute template with layout: %w", err)
+	}
+	return nil
 }
 
 func (t *testTemplateEngine) Load() error {
@@ -2650,6 +2819,7 @@ func (t *testTemplateEngine) Load() error {
 
 // go test -run Test_Ctx_Render_Engine
 func Test_Ctx_Render_Engine(t *testing.T) {
+	t.Parallel()
 	engine := &testTemplateEngine{}
 	require.Equal(t, nil, engine.Load())
 	app := New()
@@ -2665,6 +2835,7 @@ func Test_Ctx_Render_Engine(t *testing.T) {
 
 // go test -run Test_Ctx_Render_Engine_With_View_Layout
 func Test_Ctx_Render_Engine_With_View_Layout(t *testing.T) {
+	t.Parallel()
 	engine := &testTemplateEngine{}
 	require.Equal(t, nil, engine.Load())
 	app := New(Config{ViewsLayout: "main.tmpl"})
@@ -2712,14 +2883,17 @@ func Benchmark_Ctx_Get_Location_From_Route(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		location, err = c.getLocationFromRoute(app.GetRoute("User"), Map{"name": "fiber"})
 	}
+
 	require.Equal(b, "/user/fiber", location)
 	require.Equal(b, nil, err)
-
 }
 
 // go test -run Test_Ctx_Get_Location_From_Route_name
 func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
+	t.Parallel()
+
 	t.Run("case insensitive", func(t *testing.T) {
+		t.Parallel()
 		app := New()
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		app.Get("/user/:name", func(c Ctx) error {
@@ -2736,6 +2910,7 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 	})
 
 	t.Run("case sensitive", func(t *testing.T) {
+		t.Parallel()
 		app := New(Config{CaseSensitive: true})
 		c := app.NewCtx(&fasthttp.RequestCtx{})
 		defer app.ReleaseCtx(c)
@@ -2755,6 +2930,7 @@ func Test_Ctx_Get_Location_From_Route_name(t *testing.T) {
 
 // go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy
 func Test_Ctx_Get_Location_From_Route_name_Optional_greedy(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -2773,6 +2949,7 @@ func Test_Ctx_Get_Location_From_Route_name_Optional_greedy(t *testing.T) {
 
 // go test -run Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param
 func Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -2790,14 +2967,15 @@ func Test_Ctx_Get_Location_From_Route_name_Optional_greedy_one_param(t *testing.
 
 type errorTemplateEngine struct{}
 
-func (t errorTemplateEngine) Render(w io.Writer, name string, bind any, layout ...string) error {
+func (errorTemplateEngine) Render(_ io.Writer, _ string, _ any, _ ...string) error {
 	return errors.New("errorTemplateEngine")
 }
 
-func (t errorTemplateEngine) Load() error { return nil }
+func (errorTemplateEngine) Load() error { return nil }
 
 // go test -run Test_Ctx_Render_Engine_Error
 func Test_Ctx_Render_Engine_Error(t *testing.T) {
+	t.Parallel()
 	app := New()
 	app.config.Views = errorTemplateEngine{}
 	c := app.NewCtx(&fasthttp.RequestCtx{})
@@ -2809,10 +2987,12 @@ func Test_Ctx_Render_Engine_Error(t *testing.T) {
 // go test -run Test_Ctx_Render_Go_Template
 func Test_Ctx_Render_Go_Template(t *testing.T) {
 	t.Parallel()
-
 	file, err := os.CreateTemp(os.TempDir(), "fiber")
 	require.NoError(t, err)
-	defer os.Remove(file.Name())
+	defer func() {
+		err := os.Remove(file.Name())
+		require.NoError(t, err)
+	}()
 
 	_, err = file.Write([]byte("template"))
 	require.NoError(t, err)
@@ -3134,7 +3314,6 @@ func Benchmark_Ctx_SendString_B(b *testing.B) {
 // go test -run Test_Ctx_BodyStreamWriter
 func Test_Ctx_BodyStreamWriter(t *testing.T) {
 	t.Parallel()
-
 	ctx := &fasthttp.RequestCtx{}
 
 	ctx.SetBodyStreamWriter(func(w *bufio.Writer) {
@@ -3185,7 +3364,6 @@ func Benchmark_Ctx_BodyStreamWriter(b *testing.B) {
 
 func Test_Ctx_String(t *testing.T) {
 	t.Parallel()
-
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -3194,8 +3372,8 @@ func Test_Ctx_String(t *testing.T) {
 
 func TestCtx_ParamsInt(t *testing.T) {
 	// Create a test context and set some strings (or params)
-
 	// create a fake app to be used within this test
+	t.Parallel()
 	app := New()
 
 	// Create some test endpoints
@@ -3295,6 +3473,7 @@ func TestCtx_ParamsInt(t *testing.T) {
 
 // go test -run Test_Ctx_GetRespHeader
 func Test_Ctx_GetRespHeader(t *testing.T) {
+	t.Parallel()
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 

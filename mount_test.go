@@ -2,6 +2,7 @@
 // 🤖 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package fiber
 
 import (
@@ -15,6 +16,7 @@ import (
 
 // go test -run Test_App_Mount
 func Test_App_Mount(t *testing.T) {
+	t.Parallel()
 	micro := New()
 	micro.Get("/doe", func(c Ctx) error {
 		return c.SendStatus(StatusOK)
@@ -29,6 +31,7 @@ func Test_App_Mount(t *testing.T) {
 }
 
 func Test_App_Mount_RootPath_Nested(t *testing.T) {
+	t.Parallel()
 	app := New()
 	dynamic := New()
 	apiserver := New()
@@ -49,6 +52,7 @@ func Test_App_Mount_RootPath_Nested(t *testing.T) {
 
 // go test -run Test_App_Mount_Nested
 func Test_App_Mount_Nested(t *testing.T) {
+	t.Parallel()
 	app := New()
 	one := New()
 	two := New()
@@ -87,6 +91,7 @@ func Test_App_Mount_Nested(t *testing.T) {
 
 // go test -run Test_App_MountPath
 func Test_App_MountPath(t *testing.T) {
+	t.Parallel()
 	app := New()
 	one := New()
 	two := New()
@@ -103,6 +108,7 @@ func Test_App_MountPath(t *testing.T) {
 }
 
 func Test_App_ErrorHandler_GroupMount(t *testing.T) {
+	t.Parallel()
 	micro := New(Config{
 		ErrorHandler: func(c Ctx, err error) error {
 			require.Equal(t, "0: GET error", err.Error())
@@ -122,6 +128,7 @@ func Test_App_ErrorHandler_GroupMount(t *testing.T) {
 }
 
 func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
+	t.Parallel()
 	micro := New(Config{
 		ErrorHandler: func(c Ctx, err error) error {
 			require.Equal(t, "0: GET error", err.Error())
@@ -142,6 +149,7 @@ func Test_App_ErrorHandler_GroupMountRootLevel(t *testing.T) {
 
 // go test -run Test_App_Group_Mount
 func Test_App_Group_Mount(t *testing.T) {
+	t.Parallel()
 	micro := New()
 	micro.Get("/doe", func(c Ctx) error {
 		return c.SendStatus(StatusOK)
@@ -158,6 +166,7 @@ func Test_App_Group_Mount(t *testing.T) {
 }
 
 func Test_App_UseParentErrorHandler(t *testing.T) {
+	t.Parallel()
 	app := New(Config{
 		ErrorHandler: func(ctx Ctx, err error) error {
 			return ctx.Status(500).SendString("hi, i'm a custom error")
@@ -176,6 +185,7 @@ func Test_App_UseParentErrorHandler(t *testing.T) {
 }
 
 func Test_App_UseMountedErrorHandler(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	fiber := New(Config{
@@ -194,6 +204,7 @@ func Test_App_UseMountedErrorHandler(t *testing.T) {
 }
 
 func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	fiber := New(Config{
@@ -212,6 +223,7 @@ func Test_App_UseMountedErrorHandlerRootLevel(t *testing.T) {
 }
 
 func Test_App_UseMountedErrorHandlerForBestPrefixMatch(t *testing.T) {
+	t.Parallel()
 	app := New()
 
 	tsf := func(c Ctx, err error) error {

@@ -1,3 +1,4 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package favicon
 
 import (
@@ -13,6 +14,7 @@ import (
 
 // go test -run Test_Middleware_Favicon
 func Test_Middleware_Favicon(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -22,19 +24,19 @@ func Test_Middleware_Favicon(t *testing.T) {
 	})
 
 	// Skip Favicon middleware
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusNoContent, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest("OPTIONS", "/favicon.ico", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodOptions, "/favicon.ico", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 
-	resp, err = app.Test(httptest.NewRequest("PUT", "/favicon.ico", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodPut, "/favicon.ico", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusMethodNotAllowed, resp.StatusCode, "Status code")
 	require.Equal(t, "GET, HEAD, OPTIONS", resp.Header.Get(fiber.HeaderAllow))
@@ -42,6 +44,7 @@ func Test_Middleware_Favicon(t *testing.T) {
 
 // go test -run Test_Middleware_Favicon_Not_Found
 func Test_Middleware_Favicon_Not_Found(t *testing.T) {
+	t.Parallel()
 	defer func() {
 		if err := recover(); err == nil {
 			t.Fatal("should cache panic")
@@ -55,6 +58,7 @@ func Test_Middleware_Favicon_Not_Found(t *testing.T) {
 
 // go test -run Test_Middleware_Favicon_Found
 func Test_Middleware_Favicon_Found(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -65,7 +69,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 		return nil
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
 
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
@@ -75,6 +79,7 @@ func Test_Middleware_Favicon_Found(t *testing.T) {
 
 // go test -run Test_Middleware_Favicon_FileSystem
 func Test_Middleware_Favicon_FileSystem(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -82,7 +87,7 @@ func Test_Middleware_Favicon_FileSystem(t *testing.T) {
 		FileSystem: os.DirFS("../../.github/testdata"),
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
@@ -91,6 +96,7 @@ func Test_Middleware_Favicon_FileSystem(t *testing.T) {
 
 // go test -run Test_Middleware_Favicon_CacheControl
 func Test_Middleware_Favicon_CacheControl(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -98,7 +104,7 @@ func Test_Middleware_Favicon_CacheControl(t *testing.T) {
 		File:         "../../.github/testdata/favicon.ico",
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/favicon.ico", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/favicon.ico", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
@@ -126,6 +132,7 @@ func Benchmark_Middleware_Favicon(b *testing.B) {
 
 // go test -run Test_Favicon_Next
 func Test_Favicon_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ fiber.Ctx) bool {
@@ -133,7 +140,27 @@ func Test_Favicon_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
+}
+
+// go test -run Test_Custom_Favicon_URL
+func Test_Custom_Favicon_URL(t *testing.T) {
+	app := fiber.New()
+	const customURL = "/favicon.svg"
+	app.Use(New(Config{
+		File: "../../.github/testdata/favicon.ico",
+		URL:  customURL,
+	}))
+
+	app.Get("/", func(c fiber.Ctx) error {
+		return nil
+	})
+
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, customURL, nil))
+
+	require.NoError(t, err, "app.Test(req)")
+	require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
+	require.Equal(t, "image/x-icon", resp.Header.Get(fiber.HeaderContentType))
 }

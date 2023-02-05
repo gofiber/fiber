@@ -26,6 +26,11 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
 // maxParams defines the maximum number of parameters per route.
 const maxParams = 30
 
@@ -61,9 +66,10 @@ type TLSHandler struct {
 }
 
 // GetClientInfo Callback function to set CHI
+// TODO: Why is this a getter which sets stuff?
 func (t *TLSHandler) GetClientInfo(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	t.clientHelloInfo = info
-	return nil, nil
+	return nil, nil //nolint:nilnil // Not returning anything useful here is probably fine
 }
 
 // Range data for c.Range
@@ -224,8 +230,8 @@ func (c *DefaultCtx) Body() []byte {
 	var body []byte
 	// faster than peek
 	c.Request().Header.VisitAll(func(key, value []byte) {
-		if utils.UnsafeString(key) == HeaderContentEncoding {
-			encoding = utils.UnsafeString(value)
+		if c.app.getString(key) == HeaderContentEncoding {
+			encoding = c.app.getString(value)
 		}
 	})
 
@@ -393,6 +399,7 @@ func (c *DefaultCtx) FormFile(key string) (*multipart.FileHeader, error) {
 }
 
 // FormValue returns the first value by key from a MultipartForm.
+// Search is performed in QueryArgs, PostArgs, MultipartForm and FormFile in this particular order.
 // Defaults to the empty string "" if the form value doesn't exist.
 // If a default value is given, it will return that value if the form value does not exist.
 // Returned value is only valid within the handler. Do not store any references.
@@ -498,8 +505,11 @@ func (c *DefaultCtx) Hostname() string {
 
 // Port returns the remote port of the request.
 func (c *DefaultCtx) Port() string {
-	port := c.fasthttp.RemoteAddr().(*net.TCPAddr).Port
-	return strconv.Itoa(port)
+	tcpaddr, ok := c.fasthttp.RemoteAddr().(*net.TCPAddr)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *net.TCPAddr"))
+	}
+	return strconv.Itoa(tcpaddr.Port)
 }
 
 // IP returns the remote IP address of the request.
@@ -516,13 +526,16 @@ func (c *DefaultCtx) IP() string {
 // extractIPsFromHeader will return a slice of IPs it found given a header name in the order they appear.
 // When IP validation is enabled, any invalid IPs will be omitted.
 func (c *DefaultCtx) extractIPsFromHeader(header string) []string {
+	// TODO: Reuse the c.extractIPFromHeader func somehow in here
+
 	headerValue := c.Get(header)
 
 	// We can't know how many IPs we will return, but we will try to guess with this constant division.
 	// Counting ',' makes function slower for about 50ns in general case.
-	estimatedCount := len(headerValue) / 8
-	if estimatedCount > 8 {
-		estimatedCount = 8 // Avoid big allocation on big header
+	const maxEstimatedCount = 8
+	estimatedCount := len(headerValue) / maxEstimatedCount
+	if estimatedCount > maxEstimatedCount {
+		estimatedCount = maxEstimatedCount // Avoid big allocation on big header
 	}
 
 	ipsFound := make([]string, 0, estimatedCount)
@@ -532,8 +545,7 @@ func (c *DefaultCtx) extractIPsFromHeader(header string) []string {
 
 iploop:
 	for {
-		v4 := false
-		v6 := false
+		var v4, v6 bool
 
 		// Manually splitting string without allocating slice, working with parts directly
 		i, j = j+1, j+2
@@ -583,8 +595,9 @@ func (c *DefaultCtx) extractIPFromHeader(header string) string {
 
 	iploop:
 		for {
-			v4 := false
-			v6 := false
+			var v4, v6 bool
+
+			// Manually splitting string without allocating slice, working with parts directly
 			i, j = j+1, j+2
 
 			if j > len(headerValue) {
@@ -618,14 +631,14 @@ func (c *DefaultCtx) extractIPFromHeader(header string) string {
 		return c.fasthttp.RemoteIP().String()
 	}
 
-	// default behaviour if IP validation is not enabled is just to return whatever value is
+	// default behavior if IP validation is not enabled is just to return whatever value is
 	// in the proxy header. Even if it is empty or invalid
 	return c.Get(c.app.config.ProxyHeader)
 }
 
 // IPs returns a string slice of IP addresses specified in the X-Forwarded-For request header.
 // When IP validation is enabled, only valid IPs are returned.
-func (c *DefaultCtx) IPs() (ips []string) {
+func (c *DefaultCtx) IPs() []string {
 	return c.extractIPsFromHeader(HeaderXForwardedFor)
 }
 
@@ -664,7 +677,7 @@ func (c *DefaultCtx) JSON(data any) error {
 func (c *DefaultCtx) JSONP(data any, callback ...string) error {
 	raw, err := json.Marshal(data)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal: %w", err)
 	}
 
 	var result, cb string
@@ -702,11 +715,11 @@ func (c *DefaultCtx) Links(link ...string) {
 	bb := bytebufferpool.Get()
 	for i := range link {
 		if i%2 == 0 {
-			_ = bb.WriteByte('<')
-			_, _ = bb.WriteString(link[i])
-			_ = bb.WriteByte('>')
+			_ = bb.WriteByte('<')          //nolint:errcheck // This will never fail
+			_, _ = bb.WriteString(link[i]) //nolint:errcheck // This will never fail
+			_ = bb.WriteByte('>')          //nolint:errcheck // This will never fail
 		} else {
-			_, _ = bb.WriteString(`; rel="` + link[i] + `",`)
+			_, _ = bb.WriteString(`; rel="` + link[i] + `",`) //nolint:errcheck // This will never fail
 		}
 	}
 	c.setCanonical(HeaderLink, strings.TrimRight(c.app.getString(bb.Bytes()), ","))
@@ -715,7 +728,7 @@ func (c *DefaultCtx) Links(link ...string) {
 
 // Locals makes it possible to pass any values under keys scoped to the request
 // and therefore available to all following routes that match the request.
-func (c *DefaultCtx) Locals(key any, value ...any) (val any) {
+func (c *DefaultCtx) Locals(key any, value ...any) any {
 	if len(value) == 0 {
 		return c.fasthttp.UserValue(key)
 	}
@@ -758,9 +771,10 @@ func (c *DefaultCtx) ClientHelloInfo() *tls.ClientHelloInfo {
 }
 
 // Next executes the next method in the stack that matches the current route.
-func (c *DefaultCtx) Next() (err error) {
+func (c *DefaultCtx) Next() error {
 	// Increment handler index
 	c.indexHandler++
+	var err error
 	// Did we executed all route handlers?
 	if c.indexHandler < len(c.route.Handlers) {
 		// Continue route stack
@@ -776,7 +790,7 @@ func (c *DefaultCtx) Next() (err error) {
 	return err
 }
 
-// RestartRouting instead of going to the next handler. This may be usefull after
+// RestartRouting instead of going to the next handler. This may be useful after
 // changing the request path. Note that handlers might be executed again.
 func (c *DefaultCtx) RestartRouting() error {
 	var err error
@@ -832,9 +846,8 @@ func (c *DefaultCtx) ParamsInt(key string, defaultValue ...int) (int, error) {
 	if err != nil {
 		if len(defaultValue) > 0 {
 			return defaultValue[0], nil
-		} else {
-			return 0, err
 		}
+		return 0, fmt.Errorf("failed to convert: %w", err)
 	}
 
 	return value, nil
@@ -859,15 +872,16 @@ func (c *DefaultCtx) Path(override ...string) string {
 // Please use Config.EnableTrustedProxyCheck to prevent header spoofing, in case when your app is behind the proxy.
 func (c *DefaultCtx) Scheme() string {
 	if c.fasthttp.IsTLS() {
-		return "https"
+		return schemeHTTPS
 	}
 	if !c.IsProxyTrusted() {
-		return "http"
+		return schemeHTTP
 	}
 
-	scheme := "http"
+	scheme := schemeHTTP
+	const lenXHeaderName = 12
 	c.fasthttp.Request.Header.VisitAll(func(key, val []byte) {
-		if len(key) < 12 {
+		if len(key) < lenXHeaderName {
 			return // Neither "X-Forwarded-" nor "X-Url-Scheme"
 		}
 		switch {
@@ -882,7 +896,7 @@ func (c *DefaultCtx) Scheme() string {
 					scheme = v
 				}
 			} else if bytes.Equal(key, []byte(HeaderXForwardedSsl)) && bytes.Equal(val, []byte("on")) {
-				scheme = "https"
+				scheme = schemeHTTPS
 			}
 
 		case bytes.Equal(key, []byte(HeaderXUrlScheme)):
@@ -906,25 +920,45 @@ func (c *DefaultCtx) Query(key string, defaultValue ...string) string {
 	return defaultString(c.app.getString(c.fasthttp.QueryArgs().Peek(key)), defaultValue)
 }
 
+// QueryInt returns integer value of key string parameter in the url.
+// Default to empty or invalid key is 0.
+//
+//	GET /?name=alex&wanna_cake=2&id=
+//	QueryInt("wanna_cake", 1) == 2
+//	QueryInt("name", 1) == 1
+//	QueryInt("id", 1) == 1
+//	QueryInt("id") == 0
+func (c *DefaultCtx) QueryInt(key string, defaultValue ...int) int {
+	// Use Atoi to convert the param to an int or return zero and an error
+	value, err := strconv.Atoi(c.app.getString(c.fasthttp.QueryArgs().Peek(key)))
+	if err != nil {
+		if len(defaultValue) > 0 {
+			return defaultValue[0]
+		}
+		return 0
+	}
+
+	return value
+}
+
 // Range returns a struct containing the type and a slice of ranges.
-func (c *DefaultCtx) Range(size int) (rangeData Range, err error) {
+func (c *DefaultCtx) Range(size int) (Range, error) {
+	var rangeData Range
 	rangeStr := c.Get(HeaderRange)
 	if rangeStr == "" || !strings.Contains(rangeStr, "=") {
-		err = ErrRangeMalformed
-		return
+		return rangeData, ErrRangeMalformed
 	}
 	data := strings.Split(rangeStr, "=")
-	if len(data) != 2 {
-		err = ErrRangeMalformed
-		return
+	const expectedDataParts = 2
+	if len(data) != expectedDataParts {
+		return rangeData, ErrRangeMalformed
 	}
 	rangeData.Type = data[0]
 	arr := strings.Split(data[1], ",")
 	for i := 0; i < len(arr); i++ {
 		item := strings.Split(arr[i], "-")
 		if len(item) == 1 {
-			err = ErrRangeMalformed
-			return
+			return rangeData, ErrRangeMalformed
 		}
 		start, startErr := strconv.Atoi(item[0])
 		end, endErr := strconv.Atoi(item[1])
@@ -949,11 +983,10 @@ func (c *DefaultCtx) Range(size int) (rangeData Range, err error) {
 		})
 	}
 	if len(rangeData.Ranges) < 1 {
-		err = ErrRangeUnsatisfiable
-		return
+		return rangeData, ErrRangeUnsatisfiable
 	}
 
-	return
+	return rangeData, nil
 }
 
 // Redirect returns the Redirect reference.
@@ -987,7 +1020,7 @@ func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, erro
 		if !segment.IsParam {
 			_, err := buf.WriteString(segment.Const)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("failed to write string: %w", err)
 			}
 			continue
 		}
@@ -998,7 +1031,7 @@ func (c *DefaultCtx) getLocationFromRoute(route Route, params Map) (string, erro
 			if isSame || isGreedy {
 				_, err := buf.WriteString(utils.ToString(val))
 				if err != nil {
-					return "", err
+					return "", fmt.Errorf("failed to write string: %w", err)
 				}
 			}
 		}
@@ -1017,7 +1050,6 @@ func (c *DefaultCtx) GetRouteURL(routeName string, params Map) (string, error) {
 // Render a template with data and sends a text/html response.
 // We support the following engines: https://github.com/gofiber/template
 func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
-	var err error
 	// Get new buffer from pool
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
@@ -1039,7 +1071,7 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 			// Render template from Views
 			if app.config.Views != nil {
 				if err := app.config.Views.Render(buf, name, bind, layouts...); err != nil {
-					return err
+					return fmt.Errorf("failed to render: %w", err)
 				}
 
 				rendered = true
@@ -1051,17 +1083,18 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	if !rendered {
 		// Render raw template using 'name' as filepath if no engine is set
 		var tmpl *template.Template
-		if _, err = readContent(buf, name); err != nil {
+		if _, err := readContent(buf, name); err != nil {
 			return err
 		}
 		// Parse template
-		if tmpl, err = template.New("").Parse(c.app.getString(buf.Bytes())); err != nil {
-			return err
+		tmpl, err := template.New("").Parse(c.app.getString(buf.Bytes()))
+		if err != nil {
+			return fmt.Errorf("failed to parse: %w", err)
 		}
 		buf.Reset()
 		// Render template
-		if err = tmpl.Execute(buf, bind); err != nil {
-			return err
+		if err := tmpl.Execute(buf, bind); err != nil {
+			return fmt.Errorf("failed to execute: %w", err)
 		}
 	}
 
@@ -1069,8 +1102,8 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 	c.fasthttp.Response.Header.SetContentType(MIMETextHTMLCharsetUTF8)
 	// Set rendered template to body
 	c.fasthttp.Response.SetBody(buf.Bytes())
-	// Return err if exist
-	return err
+
+	return nil
 }
 
 func (c *DefaultCtx) renderExtensions(bind Map) {
@@ -1122,20 +1155,24 @@ func (c *DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) err
 func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
 	file, err := fileheader.Open()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open: %w", err)
 	}
 
 	content, err := io.ReadAll(file)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read: %w", err)
 	}
 
-	return storage.Set(path, content, 0)
+	if err := storage.Set(path, content, 0); err != nil {
+		return fmt.Errorf("failed to store: %w", err)
+	}
+
+	return nil
 }
 
 // Secure returns whether a secure connection was established.
 func (c *DefaultCtx) Secure() bool {
-	return c.Protocol() == "https"
+	return c.Protocol() == schemeHTTPS
 }
 
 // Send sets the HTTP response body without copying it.
@@ -1161,6 +1198,7 @@ func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
 
 	// https://github.com/valyala/fasthttp/blob/c7576cc10cabfc9c993317a2d3f8355497bea156/fs.go#L129-L134
 	sendFileOnce.Do(func() {
+		const cacheDuration = 10 * time.Second
 		sendFileFS = &fasthttp.FS{
 			Root:                 "",
 			AllowEmptyRoot:       true,
@@ -1168,7 +1206,7 @@ func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
 			AcceptByteRange:      true,
 			Compress:             true,
 			CompressedFileSuffix: c.app.config.CompressedFileSuffix,
-			CacheDuration:        10 * time.Second,
+			CacheDuration:        cacheDuration,
 			IndexNames:           []string{"index.html"},
 			PathNotFound: func(ctx *fasthttp.RequestCtx) {
 				ctx.Response.SetStatusCode(StatusNotFound)
@@ -1192,7 +1230,7 @@ func (c *DefaultCtx) SendFile(file string, compress ...bool) error {
 		var err error
 		file = filepath.FromSlash(file)
 		if file, err = filepath.Abs(file); err != nil {
-			return err
+			return fmt.Errorf("failed to determine abs file path: %w", err)
 		}
 		if hasTrailingSlash {
 			file += "/"
@@ -1257,11 +1295,11 @@ func (c *DefaultCtx) SendStream(stream io.Reader, size ...int) error {
 }
 
 // Set sets the response's HTTP header field to the specified key, value.
-func (c *DefaultCtx) Set(key string, val string) {
+func (c *DefaultCtx) Set(key, val string) {
 	c.fasthttp.Response.Header.Set(key, val)
 }
 
-func (c *DefaultCtx) setCanonical(key string, val string) {
+func (c *DefaultCtx) setCanonical(key, val string) {
 	c.fasthttp.Response.Header.SetCanonical(utils.UnsafeBytes(key), utils.UnsafeBytes(val))
 }
 
@@ -1332,6 +1370,7 @@ func (c *DefaultCtx) Write(p []byte) (int, error) {
 
 // Writef appends f & a into response body writer.
 func (c *DefaultCtx) Writef(f string, a ...any) (int, error) {
+	//nolint:wrapcheck // This must not be wrapped
 	return fmt.Fprintf(c.fasthttp.Response.BodyWriter(), f, a...)
 }
 
@@ -1344,7 +1383,7 @@ func (c *DefaultCtx) WriteString(s string) (int, error) {
 // XHR returns a Boolean property, that is true, if the request's X-Requested-With header field is XMLHttpRequest,
 // indicating that the request was issued by a client library (such as jQuery).
 func (c *DefaultCtx) XHR() bool {
-	return utils.EqualFold(c.Get(HeaderXRequestedWith), "xmlhttprequest")
+	return utils.EqualFold(c.app.getBytes(c.Get(HeaderXRequestedWith)), []byte("xmlhttprequest"))
 }
 
 // configDependentPaths set paths for route recognition and prepared paths for the user,
@@ -1373,8 +1412,9 @@ func (c *DefaultCtx) configDependentPaths() {
 	// Define the path for dividing routes into areas for fast tree detection, so that fewer routes need to be traversed,
 	// since the first three characters area select a list of routes
 	c.treePath = c.treePath[0:0]
-	if len(c.detectionPath) >= 3 {
-		c.treePath = c.detectionPath[:3]
+	const maxDetectionPaths = 3
+	if len(c.detectionPath) >= maxDetectionPaths {
+		c.treePath = c.detectionPath[:maxDetectionPaths]
 	}
 }
 
@@ -1386,13 +1426,14 @@ func (c *DefaultCtx) IsProxyTrusted() bool {
 		return true
 	}
 
-	_, trusted := c.app.config.trustedProxiesMap[c.fasthttp.RemoteIP().String()]
-	if trusted {
-		return trusted
+	ip := c.fasthttp.RemoteIP()
+
+	if _, trusted := c.app.config.trustedProxiesMap[ip.String()]; trusted {
+		return true
 	}
 
 	for _, ipNet := range c.app.config.trustedProxyRanges {
-		if ipNet.Contains(c.fasthttp.RemoteIP()) {
+		if ipNet.Contains(ip) {
 			return true
 		}
 	}

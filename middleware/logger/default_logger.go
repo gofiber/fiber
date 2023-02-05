@@ -18,14 +18,13 @@ var mu sync.Mutex
 
 // default logger for fiber
 func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
+	var err error
+
 	// Alias colors
 	colors := c.App().Config().ColorScheme
 
 	// Get new buffer
 	buf := bytebufferpool.Get()
-
-	// Put buffer back to pool
-	defer bytebufferpool.Put(buf)
 
 	// Default output when no custom Format or io.Writer is given
 	if cfg.enableColors && cfg.Format == defaultFormat {
@@ -36,32 +35,36 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 		}
 
 		// Format log to buffer
-		_, _ = buf.WriteString(fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
-			data.Timestamp.Load().(string),
-			statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
-			data.Stop.Sub(data.Start).Round(time.Millisecond),
-			c.IP(),
-			methodColor(c.Method(), colors), c.Method(), colors.Reset,
-			c.Path(),
-			formatErr,
-		))
+		_, _ = buf.WriteString( //nolint:errcheck // This will never fail
+			fmt.Sprintf("%s |%s %3d %s| %7v | %15s |%s %-7s %s| %-"+data.ErrPaddingStr+"s %s\n",
+				data.Timestamp.Load().(string),
+				statusColor(c.Response().StatusCode(), colors), c.Response().StatusCode(), colors.Reset,
+				data.Stop.Sub(data.Start).Round(time.Millisecond),
+				c.IP(),
+				methodColor(c.Method(), colors), c.Method(), colors.Reset,
+				c.Path(),
+				formatErr,
+			),
+		)
 
 		// Write buffer to output
-		_, _ = cfg.Output.Write(buf.Bytes())
+		_, _ = cfg.Output.Write(buf.Bytes()) //nolint:errcheck // This will never fail
 
 		if cfg.Done != nil {
 			cfg.Done(c, buf.Bytes())
 		}
 
+		// Put buffer back to pool
+		bytebufferpool.Put(buf)
+
 		// End chain
 		return nil
 	}
 
-	var err error
 	// Loop over template parts execute dynamic parts and add fixed parts to the buffer
 	for i, logFunc := range data.LogFuncChain {
 		if logFunc == nil {
-			_, _ = buf.Write(data.TemplateChain[i])
+			_, _ = buf.Write(data.TemplateChain[i]) //nolint:errcheck // This will never fail
 		} else if data.TemplateChain[i] == nil {
 			_, err = logFunc(buf, c, data, "")
 		} else {
@@ -74,7 +77,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 
 	// Also write errors to the buffer
 	if err != nil {
-		_, _ = buf.WriteString(err.Error())
+		_, _ = buf.WriteString(err.Error()) //nolint:errcheck // This will never fail
 	}
 	mu.Lock()
 	// Write buffer to output
@@ -82,7 +85,7 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 		// Write error to output
 		if _, err := cfg.Output.Write([]byte(err.Error())); err != nil {
 			// There is something wrong with the given io.Writer
-			fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
+			_, _ = fmt.Fprintf(os.Stderr, "Failed to write to log, %v\n", err)
 		}
 	}
 	mu.Unlock()
@@ -90,6 +93,9 @@ func defaultLoggerInstance(c fiber.Ctx, data *Data, cfg Config) error {
 	if cfg.Done != nil {
 		cfg.Done(c, buf.Bytes())
 	}
+
+	// Put buffer back to pool
+	bytebufferpool.Put(buf)
 
 	return nil
 }

@@ -7,6 +7,7 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -21,9 +22,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-/* #nosec */
-// getTlsConfig returns a net listener's tls config
-func getTlsConfig(ln net.Listener) *tls.Config {
+// getTLSConfig returns a net listener's tls config
+func getTLSConfig(ln net.Listener) *tls.Config {
 	// Get listener type
 	pointer := reflect.ValueOf(ln)
 
@@ -34,12 +34,16 @@ func getTlsConfig(ln net.Listener) *tls.Config {
 			// Get private field from value
 			if field := val.FieldByName("config"); field.Type() != nil {
 				// Copy value from pointer field (unsafe)
-				newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) // #nosec G103
+				newval := reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())) //nolint:gosec // Probably the only way to extract the *tls.Config from a net.Listener. TODO: Verify there really is no easier way without using unsafe.
 				if newval.Type() != nil {
 					// Get element from pointer
 					if elem := newval.Elem(); elem.Type() != nil {
 						// Cast value to *tls.Config
-						return elem.Interface().(*tls.Config)
+						c, ok := elem.Interface().(*tls.Config)
+						if !ok {
+							panic(fmt.Errorf("failed to type-assert to *tls.Config"))
+						}
+						return c
 					}
 				}
 			}
@@ -50,19 +54,21 @@ func getTlsConfig(ln net.Listener) *tls.Config {
 }
 
 // readContent opens a named file and read content from it
-func readContent(rf io.ReaderFrom, name string) (n int64, err error) {
+func readContent(rf io.ReaderFrom, name string) (int64, error) {
 	// Read file
 	f, err := os.Open(filepath.Clean(name))
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to open: %w", err)
 	}
-	// #nosec G307
 	defer func() {
 		if err = f.Close(); err != nil {
 			log.Printf("Error closing file: %s\n", err)
 		}
 	}()
-	return rf.ReadFrom(f)
+	if n, err := rf.ReadFrom(f); err != nil {
+		return n, fmt.Errorf("failed to read: %w", err)
+	}
+	return 0, nil
 }
 
 // quoteString escape special characters in a given string
@@ -75,7 +81,9 @@ func (app *App) quoteString(raw string) string {
 }
 
 // Scan stack if other methods match the request
-func (app *App) methodExist(c *DefaultCtx) (exist bool) {
+func (app *App) methodExist(c *DefaultCtx) bool {
+	var exists bool
+
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
@@ -106,7 +114,7 @@ func (app *App) methodExist(c *DefaultCtx) (exist bool) {
 			// No match, next route
 			if match {
 				// We matched
-				exist = true
+				exists = true
 				// Add method to Allow header
 				c.Append(HeaderAllow, methods[i])
 				// Break stack loop
@@ -114,11 +122,12 @@ func (app *App) methodExist(c *DefaultCtx) (exist bool) {
 			}
 		}
 	}
-	return
+	return exists
 }
 
 // Scan stack if other methods match the request
-func (app *App) methodExistCustom(c CustomCtx) (exist bool) {
+func (app *App) methodExistCustom(c CustomCtx) bool {
+	var exists bool
 	methods := app.config.RequestMethods
 	for i := 0; i < len(methods); i++ {
 		// Skip original method
@@ -149,7 +158,7 @@ func (app *App) methodExistCustom(c CustomCtx) (exist bool) {
 			// No match, next route
 			if match {
 				// We matched
-				exist = true
+				exists = true
 				// Add method to Allow header
 				c.Append(HeaderAllow, methods[i])
 				// Break stack loop
@@ -157,7 +166,7 @@ func (app *App) methodExistCustom(c CustomCtx) (exist bool) {
 			}
 		}
 	}
-	return
+	return exists
 }
 
 // uniqueRouteStack drop all not unique routes from the slice
@@ -232,7 +241,7 @@ func getOffer(header string, offers ...string) string {
 	return ""
 }
 
-func matchEtag(s string, etag string) bool {
+func matchEtag(s, etag string) bool {
 	if s == etag || s == "W/"+etag || "W/"+s == etag {
 		return true
 	}
@@ -266,7 +275,7 @@ func (app *App) isEtagStale(etag string, noneMatchBytes []byte) bool {
 	return !matchEtag(app.getString(noneMatchBytes[start:end]), etag)
 }
 
-func parseAddr(raw string) (host, port string) {
+func parseAddr(raw string) (string, string) { //nolint:revive // Returns (host, port)
 	if i := strings.LastIndex(raw, ":"); i != -1 {
 		return raw[:i], raw[i+1:]
 	}
@@ -306,21 +315,21 @@ type testConn struct {
 	w bytes.Buffer
 }
 
-func (c *testConn) Read(b []byte) (int, error)  { return c.r.Read(b) }
-func (c *testConn) Write(b []byte) (int, error) { return c.w.Write(b) }
-func (c *testConn) Close() error                { return nil }
+func (c *testConn) Read(b []byte) (int, error)  { return c.r.Read(b) }  //nolint:wrapcheck // This must not be wrapped
+func (c *testConn) Write(b []byte) (int, error) { return c.w.Write(b) } //nolint:wrapcheck // This must not be wrapped
+func (*testConn) Close() error                  { return nil }
 
-func (c *testConn) LocalAddr() net.Addr                { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
-func (c *testConn) RemoteAddr() net.Addr               { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
-func (c *testConn) SetDeadline(_ time.Time) error      { return nil }
-func (c *testConn) SetReadDeadline(_ time.Time) error  { return nil }
-func (c *testConn) SetWriteDeadline(_ time.Time) error { return nil }
+func (*testConn) LocalAddr() net.Addr                { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
+func (*testConn) RemoteAddr() net.Addr               { return &net.TCPAddr{Port: 0, Zone: "", IP: net.IPv4zero} }
+func (*testConn) SetDeadline(_ time.Time) error      { return nil }
+func (*testConn) SetReadDeadline(_ time.Time) error  { return nil }
+func (*testConn) SetWriteDeadline(_ time.Time) error { return nil }
 
-var getStringImmutable = func(b []byte) string {
+func getStringImmutable(b []byte) string {
 	return string(b)
 }
 
-var getBytesImmutable = func(s string) (b []byte) {
+func getBytesImmutable(s string) []byte {
 	return []byte(s)
 }
 
@@ -328,6 +337,7 @@ var getBytesImmutable = func(s string) (b []byte) {
 func (app *App) methodInt(s string) int {
 	// For better performance
 	if len(app.configured.RequestMethods) == 0 {
+		// TODO: Use iota instead
 		switch s {
 		case MethodGet:
 			return 0
@@ -384,8 +394,7 @@ func IsMethodIdempotent(m string) bool {
 	}
 
 	switch m {
-	case MethodPut,
-		MethodDelete:
+	case MethodPut, MethodDelete:
 		return true
 	default:
 		return false
@@ -705,7 +714,7 @@ const (
 	ConstraintBool            = "bool"
 	ConstraintFloat           = "float"
 	ConstraintAlpha           = "alpha"
-	ConstraintGuid            = "guid"
+	ConstraintGuid            = "guid" //nolint:revive,stylecheck // TODO: Rename to "ConstraintGUID" in v3
 	ConstraintMinLen          = "minLen"
 	ConstraintMaxLen          = "maxLen"
 	ConstraintLen             = "len"
@@ -719,3 +728,12 @@ const (
 	ConstraintDatetime        = "datetime"
 	ConstraintRegex           = "regex"
 )
+
+func IndexRune(str string, needle int32) bool {
+	for _, b := range str {
+		if b == needle {
+			return true
+		}
+	}
+	return false
+}

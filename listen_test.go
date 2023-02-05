@@ -217,13 +217,16 @@ func Test_Listener(t *testing.T) {
 }
 
 func Test_App_Listener_TLS_Listener(t *testing.T) {
+	t.Parallel()
 	// Create tls certificate
 	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
 	if err != nil {
 		require.NoError(t, err)
 	}
+	//nolint:gosec // We're in a test so using old ciphers is fine
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
+	//nolint:gosec // We're in a test so listening on all interfaces is fine
 	ln, err := tls.Listen(NetworkTCP4, ":0", config)
 	require.NoError(t, err)
 

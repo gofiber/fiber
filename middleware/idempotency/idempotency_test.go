@@ -1,3 +1,4 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package idempotency_test
 
 import (
@@ -171,5 +172,4 @@ func Benchmark_Idempotency(b *testing.B) {
 			h(c)
 		}
 	})
-
 }

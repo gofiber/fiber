@@ -2,9 +2,8 @@
 // 📃 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package fiber
-
-// go test -v ./... -run=^$ -bench=Benchmark_Router -benchmem -count=2
 
 import (
 	"encoding/json"
@@ -21,7 +20,7 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-var routesFixture = routeJSON{}
+var routesFixture routeJSON
 
 func init() {
 	dat, err := os.ReadFile("./.github/testdata/testRoutes.json")
@@ -34,6 +33,8 @@ func init() {
 }
 
 func Test_Route_Match_SameLength(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/:param", func(c Ctx) error {
@@ -59,6 +60,8 @@ func Test_Route_Match_SameLength(t *testing.T) {
 }
 
 func Test_Route_Match_Star(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/*", func(c Ctx) error {
@@ -105,6 +108,8 @@ func Test_Route_Match_Star(t *testing.T) {
 }
 
 func Test_Route_Match_Root(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/", func(c Ctx) error {
@@ -121,6 +126,8 @@ func Test_Route_Match_Root(t *testing.T) {
 }
 
 func Test_Route_Match_Parser(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Get("/foo/:ParamName", func(c Ctx) error {
@@ -148,6 +155,8 @@ func Test_Route_Match_Parser(t *testing.T) {
 }
 
 func Test_Route_Match_Middleware(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Use("/foo/*", func(c Ctx) error {
@@ -173,6 +182,8 @@ func Test_Route_Match_Middleware(t *testing.T) {
 }
 
 func Test_Route_Match_UnescapedPath(t *testing.T) {
+	t.Parallel()
+
 	app := New(Config{UnescapePath: true})
 
 	app.Use("/créer", func(c Ctx) error {
@@ -199,6 +210,8 @@ func Test_Route_Match_UnescapedPath(t *testing.T) {
 }
 
 func Test_Route_Match_WithEscapeChar(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	// static route and escaped part
 	app.Get("/v1/some/resource/name\\:customVerb", func(c Ctx) error {
@@ -243,6 +256,8 @@ func Test_Route_Match_WithEscapeChar(t *testing.T) {
 }
 
 func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Use("/foo", func(c Ctx) error {
@@ -259,6 +274,8 @@ func Test_Route_Match_Middleware_HasPrefix(t *testing.T) {
 }
 
 func Test_Route_Match_Middleware_Root(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 
 	app.Use("/", func(c Ctx) error {
@@ -275,6 +292,8 @@ func Test_Route_Match_Middleware_Root(t *testing.T) {
 }
 
 func Test_Router_Register_Missing_Handler(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	defer func() {
 		if err := recover(); err != nil {
@@ -285,7 +304,9 @@ func Test_Router_Register_Missing_Handler(t *testing.T) {
 }
 
 func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
-	var app any = (*App)(nil)
+	t.Parallel()
+
+	var app interface{} = (*App)(nil)
 	_, ok := app.(Router)
 	require.True(t, ok)
 
@@ -295,6 +316,8 @@ func Test_Ensure_Router_Interface_Implementation(t *testing.T) {
 }
 
 func Test_Router_Handler_Catch_Error(t *testing.T) {
+	t.Parallel()
+
 	app := New()
 	app.config.ErrorHandler = func(c Ctx, err error) error {
 		return errors.New("fake error")
@@ -312,6 +335,8 @@ func Test_Router_Handler_Catch_Error(t *testing.T) {
 }
 
 func Test_Route_Static_Root(t *testing.T) {
+	t.Parallel()
+
 	dir := "./.github/testdata/fs/css"
 	app := New()
 	app.Static("/", dir, Static{
@@ -347,6 +372,8 @@ func Test_Route_Static_Root(t *testing.T) {
 }
 
 func Test_Route_Static_HasPrefix(t *testing.T) {
+	t.Parallel()
+
 	dir := "./.github/testdata/fs/css"
 	app := New()
 	app.Static("/static", dir, Static{
@@ -537,7 +564,7 @@ func Benchmark_Router_Chain(b *testing.B) {
 
 	c := &fasthttp.RequestCtx{}
 
-	c.Request.Header.SetMethod("GET")
+	c.Request.Header.SetMethod(MethodGet)
 	c.URI().SetPath("/")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -561,7 +588,7 @@ func Benchmark_Router_WithCompression(b *testing.B) {
 	appHandler := app.Handler()
 	c := &fasthttp.RequestCtx{}
 
-	c.Request.Header.SetMethod("GET")
+	c.Request.Header.SetMethod(MethodGet)
 	c.URI().SetPath("/")
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
@@ -790,6 +817,6 @@ type testRoute struct {
 }
 
 type routeJSON struct {
-	TestRoutes []testRoute `json:"testRoutes"`
-	GithubAPI  []testRoute `json:"githubAPI"`
+	TestRoutes []testRoute `json:"test_routes"`
+	GithubAPI  []testRoute `json:"github_api"`
 }

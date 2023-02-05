@@ -11,6 +11,7 @@ import (
 var testStore = New()
 
 func Test_Storage_Memory_Set(t *testing.T) {
+	t.Parallel()
 	var (
 		key = "john"
 		val = []byte("doe")
@@ -21,6 +22,7 @@ func Test_Storage_Memory_Set(t *testing.T) {
 }
 
 func Test_Storage_Memory_Set_Override(t *testing.T) {
+	t.Parallel()
 	var (
 		key = "john"
 		val = []byte("doe")
@@ -34,6 +36,7 @@ func Test_Storage_Memory_Set_Override(t *testing.T) {
 }
 
 func Test_Storage_Memory_Get(t *testing.T) {
+	t.Parallel()
 	var (
 		key = "john"
 		val = []byte("doe")
@@ -48,6 +51,7 @@ func Test_Storage_Memory_Get(t *testing.T) {
 }
 
 func Test_Storage_Memory_Set_Expiration(t *testing.T) {
+	t.Parallel()
 	var (
 		key = "john"
 		val = []byte("doe")
@@ -71,6 +75,7 @@ func Test_Storage_Memory_Get_Expired(t *testing.T) {
 }
 
 func Test_Storage_Memory_Get_NotExist(t *testing.T) {
+	t.Parallel()
 
 	result, err := testStore.Get("notexist")
 	require.NoError(t, err)
@@ -78,6 +83,7 @@ func Test_Storage_Memory_Get_NotExist(t *testing.T) {
 }
 
 func Test_Storage_Memory_Delete(t *testing.T) {
+	t.Parallel()
 	var (
 		key = "john"
 		val = []byte("doe")
@@ -95,6 +101,7 @@ func Test_Storage_Memory_Delete(t *testing.T) {
 }
 
 func Test_Storage_Memory_Reset(t *testing.T) {
+	t.Parallel()
 	var (
 		val = []byte("doe")
 	)
@@ -118,10 +125,12 @@ func Test_Storage_Memory_Reset(t *testing.T) {
 }
 
 func Test_Storage_Memory_Close(t *testing.T) {
+	t.Parallel()
 	require.NoError(t, testStore.Close())
 }
 
 func Test_Storage_Memory_Conn(t *testing.T) {
+	t.Parallel()
 	require.True(t, testStore.Conn() != nil)
 }
 

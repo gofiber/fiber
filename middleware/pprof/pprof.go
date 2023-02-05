@@ -8,25 +8,25 @@ import (
 	"github.com/valyala/fasthttp/fasthttpadaptor"
 )
 
-// Set pprof adaptors
-var (
-	pprofIndex        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Index)
-	pprofCmdline      = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Cmdline)
-	pprofProfile      = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Profile)
-	pprofSymbol       = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Symbol)
-	pprofTrace        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Trace)
-	pprofAllocs       = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("allocs").ServeHTTP)
-	pprofBlock        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("block").ServeHTTP)
-	pprofGoroutine    = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("goroutine").ServeHTTP)
-	pprofHeap         = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("heap").ServeHTTP)
-	pprofMutex        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("mutex").ServeHTTP)
-	pprofThreadcreate = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("threadcreate").ServeHTTP)
-)
-
 // New creates a new middleware handler
 func New(config ...Config) fiber.Handler {
 	// Set default config
 	cfg := configDefault(config...)
+
+	// Set pprof adaptors
+	var (
+		pprofIndex        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Index)
+		pprofCmdline      = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Cmdline)
+		pprofProfile      = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Profile)
+		pprofSymbol       = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Symbol)
+		pprofTrace        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Trace)
+		pprofAllocs       = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("allocs").ServeHTTP)
+		pprofBlock        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("block").ServeHTTP)
+		pprofGoroutine    = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("goroutine").ServeHTTP)
+		pprofHeap         = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("heap").ServeHTTP)
+		pprofMutex        = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("mutex").ServeHTTP)
+		pprofThreadcreate = fasthttpadaptor.NewFastHTTPHandlerFunc(pprof.Handler("threadcreate").ServeHTTP)
+	)
 
 	// Return new handler
 	return func(c fiber.Ctx) error {

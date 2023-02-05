@@ -14,10 +14,12 @@ import (
 
 // go test -run Test_Timeout
 func Test_Timeout(t *testing.T) {
+	t.Parallel()
 	// fiber instance
 	app := fiber.New()
 	h := New(func(c fiber.Ctx) error {
-		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+		sleepTime, err := time.ParseDuration(c.Params("sleepTime") + "ms")
+		require.NoError(t, err)
 		if err := sleepWithContext(c.UserContext(), sleepTime, context.DeadlineExceeded); err != nil {
 			return fmt.Errorf("%w: l2 wrap", fmt.Errorf("%w: l1 wrap ", err))
 		}
@@ -25,13 +27,13 @@ func Test_Timeout(t *testing.T) {
 	}, 100*time.Millisecond)
 	app.Get("/test/:sleepTime", h)
 	testTimeout := func(timeoutStr string) {
-		resp, err := app.Test(httptest.NewRequest("GET", "/test/"+timeoutStr, nil))
-		require.Equal(t, nil, err, "app.Test(req)")
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, nil))
+		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Status code")
 	}
 	testSucces := func(timeoutStr string) {
-		resp, err := app.Test(httptest.NewRequest("GET", "/test/"+timeoutStr, nil))
-		require.Equal(t, nil, err, "app.Test(req)")
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, nil))
+		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	}
 	testTimeout("300")
@@ -44,10 +46,12 @@ var ErrFooTimeOut = errors.New("foo context canceled")
 
 // go test -run Test_TimeoutWithCustomError
 func Test_TimeoutWithCustomError(t *testing.T) {
+	t.Parallel()
 	// fiber instance
 	app := fiber.New()
 	h := New(func(c fiber.Ctx) error {
-		sleepTime, _ := time.ParseDuration(c.Params("sleepTime") + "ms")
+		sleepTime, err := time.ParseDuration(c.Params("sleepTime") + "ms")
+		require.NoError(t, err)
 		if err := sleepWithContext(c.UserContext(), sleepTime, ErrFooTimeOut); err != nil {
 			return fmt.Errorf("%w: execution error", err)
 		}
@@ -55,13 +59,13 @@ func Test_TimeoutWithCustomError(t *testing.T) {
 	}, 100*time.Millisecond, ErrFooTimeOut)
 	app.Get("/test/:sleepTime", h)
 	testTimeout := func(timeoutStr string) {
-		resp, err := app.Test(httptest.NewRequest("GET", "/test/"+timeoutStr, nil))
-		require.Equal(t, nil, err, "app.Test(req)")
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, nil))
+		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, fiber.StatusRequestTimeout, resp.StatusCode, "Status code")
 	}
 	testSucces := func(timeoutStr string) {
-		resp, err := app.Test(httptest.NewRequest("GET", "/test/"+timeoutStr, nil))
-		require.Equal(t, nil, err, "app.Test(req)")
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/test/"+timeoutStr, nil))
+		require.NoError(t, err, "app.Test(req)")
 		require.Equal(t, fiber.StatusOK, resp.StatusCode, "Status code")
 	}
 	testTimeout("300")

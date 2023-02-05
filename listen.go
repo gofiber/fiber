@@ -194,7 +194,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	// Configure Listener
 	ln, err := app.createListener(addr, tlsConfig, cfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 
 	// prepare the server for the start
@@ -268,7 +268,7 @@ func (app *App) createListener(addr string, tlsConfig *tls.Config, cfg ListenCon
 func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 	// Print startup message
 	if !cfg.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "", cfg)
+		app.startupMessage(ln.Addr().String(), getTLSConfig(ln) != nil, "", cfg)
 	}
 
 	// Print routes
@@ -296,9 +296,9 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 		}
 	}
 
-	scheme := "http"
+	scheme := schemeHTTP
 	if tls {
-		scheme = "https"
+		scheme = schemeHTTPS
 	}
 
 	isPrefork := "Disabled"
@@ -389,7 +389,7 @@ func (app *App) printRoutesMessage() {
 	var routes []RouteMessage
 	for _, routeStack := range app.stack {
 		for _, route := range routeStack {
-			var newRoute = RouteMessage{}
+			var newRoute RouteMessage
 			newRoute.name = route.Name
 			newRoute.method = route.Method
 			newRoute.path = route.Path
@@ -417,7 +417,7 @@ func (app *App) printRoutesMessage() {
 		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers)
 	}
 
-	_ = w.Flush()
+	_ = w.Flush() //nolint:errcheck // It is fine to ignore the error here
 }
 
 // shutdown goroutine

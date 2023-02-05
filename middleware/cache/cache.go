@@ -43,8 +43,8 @@ var ignoreHeaders = map[string]any{
 	"Trailers":            nil,
 	"Transfer-Encoding":   nil,
 	"Upgrade":             nil,
-	"Content-Type":        nil, // already stored explicitely by the cache manager
-	"Content-Encoding":    nil, // already stored explicitely by the cache manager
+	"Content-Type":        nil, // already stored explicitly by the cache manager
+	"Content-Encoding":    nil, // already stored explicitly by the cache manager
 }
 
 // New creates a new middleware handler
@@ -69,7 +69,7 @@ func New(config ...Config) fiber.Handler {
 	// Create indexed heap for tracking expirations ( see heap.go )
 	heap := &indexedHeap{}
 	// count stored bytes (sizes of response bodies)
-	var storedBytes uint = 0
+	var storedBytes uint
 
 	// Update timestamp in the configured interval
 	go func() {
@@ -81,10 +81,10 @@ func New(config ...Config) fiber.Handler {
 
 	// Delete key from both manager and storage
 	deleteKey := func(dkey string) {
-		manager.delete(dkey)
+		manager.del(dkey)
 		// External storage saves body data with different key
 		if cfg.Storage != nil {
-			manager.delete(dkey + "_body")
+			manager.del(dkey + "_body")
 		}
 	}
 
@@ -205,7 +205,7 @@ func New(config ...Config) fiber.Handler {
 		if cfg.StoreResponseHeaders {
 			e.headers = make(map[string][]byte)
 			c.Response().Header.VisitAll(
-				func(key []byte, value []byte) {
+				func(key, value []byte) {
 					// create real copy
 					keyS := string(key)
 					if _, ok := ignoreHeaders[keyS]; !ok {

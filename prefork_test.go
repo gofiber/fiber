@@ -38,6 +38,7 @@ func Test_App_Prefork_Child_Process(t *testing.T) {
 	if err != nil {
 		require.NoError(t, err)
 	}
+	//nolint:gosec // We're in a test so using old ciphers is fine
 	config := &tls.Config{Certificates: []tls.Certificate{cer}}
 
 	go func() {
@@ -61,15 +62,16 @@ func Test_App_Prefork_Master_Process(t *testing.T) {
 
 	require.Nil(t, app.prefork(":3000", nil, listenConfigDefault()))
 
-	dummyChildCmd = "invalid"
+	dummyChildCmd.Store("invalid")
 
 	err := app.prefork("127.0.0.1:", nil, listenConfigDefault())
 	require.False(t, err == nil)
 
-	dummyChildCmd = "go"
+	dummyChildCmd.Store("go")
 }
 
 func Test_App_Prefork_Child_Process_Never_Show_Startup_Message(t *testing.T) {
+	t.Parallel()
 	setupIsChild(t)
 	defer teardownIsChild(t)
 

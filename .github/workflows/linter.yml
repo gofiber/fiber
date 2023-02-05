@@ -1,16 +1,29 @@
+# Adapted from https://github.com/golangci/golangci-lint-action/blob/b56f6f529003f1c81d4d759be6bd5f10bf9a0fa0/README.md#how-to-use
+
+name: golangci-lint
 on:
-    push:
-        branches:
-            - v3-beta
-    pull_request:
-name: Linter
+  push:
+    tags:
+      - v*
+    branches:
+      #- master
+      #- main
+      - v3-beta
+  pull_request:
+permissions:
+  contents: read
 jobs:
-  Golint:
+  golangci:
+    name: lint
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch Repository
-        uses: actions/checkout@v3
-      - name: Run Golint
-        uses: reviewdog/action-golangci-lint@v2
+      - uses: actions/setup-go@v3
         with:
-          golangci_lint_flags: "--tests=false"
+          # NOTE: Keep this in sync with the version from go.mod
+          go-version: 1.20.x
+      - uses: actions/checkout@v3
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v3
+        with:
+          # NOTE: Keep this in sync with the version from .golangci.yml
+          version: v1.51.0

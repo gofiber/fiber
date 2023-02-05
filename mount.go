@@ -122,7 +122,6 @@ func (app *App) appendSubAppLists(appList map[string]*App, parent ...string) {
 		if len(subApp.mountFields.appList) > 1 {
 			app.appendSubAppLists(subApp.mountFields.appList, prefix)
 		}
-
 	}
 }
 

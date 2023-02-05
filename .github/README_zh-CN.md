@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://gofiber.io">
-    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/fiber_v2_logo.svg">
+    <img alt="Fiber" height="125" src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/logo.svg">
   </a>
   <br>
   <!-- base64 flags are available at https://www.phoca.cz/cssflags/ -->
@@ -55,6 +55,9 @@
   <a href="https://github.com/gofiber/fiber/blob/master/.github/README_it.md">
     <img height="20px" src="https://img.shields.io/badge/IT-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBoZWlnaHQ9IjEwMDAiIHZpZXdCb3g9IjAgMCAzIDIiPg0KPHBhdGggZmlsbD0iIzAwOTI0NiIgZD0ibTAsMGgxdjJoLTF6Ii8+DQo8cGF0aCBmaWxsPSIjZmZmIiBkPSJtMSwwaDF2MmgtMXoiLz4NCjxwYXRoIGZpbGw9IiNjZTJiMzciIGQ9Im0yLDBoMXYyaC0xeiIvPg0KPC9zdmc+DQo=">
   </a>
+  <a href="https://github.com/gofiber/fiber/blob/master/.github/README_uk.md">
+    <img height="20px" src="https://img.shields.io/badge/UK-flag.svg?color=555555&style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2ZXJzaW9uPSIxLjEiIGlkPSJMYXllcl8xIiB4PSIwcHgiIHk9IjBweCIgdmlld0JveD0iMCAwIDU1LjIgMzguNCIgc3R5bGU9ImVuYWJsZS1iYWNrZ3JvdW5kOm5ldyAwIDAgNTUuMiAzOC40IiB4bWw6c3BhY2U9InByZXNlcnZlIj48c3R5bGUgdHlwZT0idGV4dC9jc3MiPjwhW0NEQVRBWwoJLnN0MHtmaWxsOiNGRkQ1MDA7fQoJLnN0MXtmaWxsOiMwMDVCQkI7fQpdXT48L3N0eWxlPjxnPjxwYXRoIGNsYXNzPSJzdDEiIGQ9Ik0zLjAzLDBoNDkuMTNjMS42NywwLDMuMDMsMS4zNiwzLjAzLDMuMDN2MzIuMzNjMCwxLjY3LTEuMzcsMy4wMy0zLjAzLDMuMDNIMy4wM0MxLjM3LDM4LjQsMCwzNy4wNCwwLDM1LjM3IFYzLjAzQzAsMS4zNiwxLjM3LDAsMy4wMywwTDMuMDMsMHoiLz48cGF0aCBjbGFzcz0ic3QwIiBkPSJNMCwxOS4yaDU1LjJ2MTYuMTdjMCwxLjY3LTEuMzcsMy4wMy0zLjAzLDMuMDNIMy4wM0MxLjM3LDM4LjQsMCwzNy4wNCwwLDM1LjM3VjE5LjJMMCwxOS4yeiIvPjwvZz48L3N2Zz4=">
+  </a>
   <br>
   <a href="https://pkg.go.dev/github.com/gofiber/fiber/v3#pkg-overview">
     <img src="https://img.shields.io/badge/%F0%9F%93%9A%20godoc-pkg-00ACD7.svg?color=00ACD7&style=flat-square">
@@ -66,10 +69,10 @@
     <img src="https://img.shields.io/badge/%F0%9F%94%8E%20gocover-97.8%25-75C46B.svg?style=flat-square">
   </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ASecurity">
-    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Security?label=%F0%9F%94%91%20gosec&style=flat-square&color=75C46B">
+    <img src="https://img.shields.io/github/actions/workflow/status/gofiber/fiber/security.yml?branch=master&label=%F0%9F%94%91%20gosec&style=flat-square&color=75C46B">
   </a>
   <a href="https://github.com/gofiber/fiber/actions?query=workflow%3ATest">
-    <img src="https://img.shields.io/github/workflow/status/gofiber/fiber/Test?label=%F0%9F%A7%AA%20tests&style=flat-square&color=75C46B">
+    <img src="https://img.shields.io/github/actions/workflow/status/gofiber/fiber/test.yml?branch=master&label=%F0%9F%A7%AA%20tests&style=flat-square&color=75C46B">
   </a>
     <a href="https://docs.gofiber.io">
     <img src="https://img.shields.io/badge/%F0%9F%92%A1%20fiber-docs-00ACD7.svg?style=flat-square">
@@ -107,13 +110,13 @@ func main() {
 这些测试由 [TechEmpower](https://www.techempower.com/benchmarks/#section=data-r19&hw=ph&test=plaintext) 和 [Go Web](https://github.com/smallnest/go-web-framework-benchmark) 完成。如果您想查看所有结果，请访问我们的 [Wiki](https://docs.gofiber.io/extra/benchmarks) 。
 
 <p float="left" align="middle">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark-pipeline.png" width="49%">
-  <img src="https://raw.githubusercontent.com/gofiber/docs/master/.gitbook/assets/benchmark_alloc.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark-pipeline.png" width="49%">
+  <img src="https://raw.githubusercontent.com/gofiber/docs/master/static/img/benchmark_alloc.png" width="49%">
 </p>
 
 ## ⚙️ 安装
 
-确保已安装 `1.14` 或更高版本的 Go ([下载](https://go.dev/dl/))。
+确保已安装 `1.16` 或更高版本的 Go ([下载](https://go.dev/dl/))。
 
 通过创建文件夹并在文件夹内运行 `go mod init github.com/your/repo` ([了解更多](https://go.dev/blog/using-go-modules)) 来初始化项目，然后使用 [`go get`](https://pkg.go.dev/cmd/go/#hdr-Add_dependencies_to_current_module_and_install_them) 命令安装 Fiber：
 
@@ -139,7 +142,7 @@ go get -u github.com/gofiber/fiber/v3
 
 ## 💡 哲学
 
-从 [Node.js](https://nodejs.org/en/about/) 切换到 [Go](https://go.dev/doc/) 的新 `gopher` 在开始构建 `Web` 
+从 [Node.js](https://nodejs.org/en/about/) 切换到 [Go](https://go.dev/doc/) 的新 `gopher` 在开始构建 `Web`
 应用程序或微服务之前需要经历一段艰难的学习过程。 而 `Fiber`，一个基于**极简主义**并且遵循 **UNIX 方式**创建的 **Web 框架**，
 使新的 `gopher` 可以在热烈和可信赖的欢迎中迅速进入 `Go` 的世界。
 
@@ -149,7 +152,7 @@ go get -u github.com/gofiber/fiber/v3
 以及在互联网上的所有诉求，为了创建一个能让有着任何技术栈的开发者都能在 deadline 前完成任务的**迅速**，**灵活**以及**友好**的 `Go web` 框架，就像 `Express` 在 `JavaScript` 世界中一样。
 
 ## ⚠️ 限制
-* 由于 Fiber 使用了 unsafe 特性，导致其可能与最新的 Go 版本不兼容。Fiber 2.40.0 已经在 Go 1.16 到 1.19 上测试过。
+* 由于 Fiber 使用了 unsafe 特性，导致其可能与最新的 Go 版本不兼容。Fiber 2.40.0 已经在 Go 1.16 到 1.20 上测试过。
 * Fiber 与 net/http 接口不兼容。也就是说你无法直接使用例如 gqlen，go-swagger 或者任何其他属于 net/http 生态的项目。
 
 ## 👀 示例
@@ -523,7 +526,7 @@ func main() {
     c.Context().SetBodyStreamWriter(fasthttp.StreamWriter(func(w *bufio.Writer) {
       fmt.Println("WRITER")
       var i int
-      
+
       for {
         i++
         msg := fmt.Sprintf("%d - the time is %v", i, time.Now())

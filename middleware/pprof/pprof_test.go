@@ -12,6 +12,7 @@ import (
 )
 
 func Test_Non_Pprof_Path(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -30,6 +31,7 @@ func Test_Non_Pprof_Path(t *testing.T) {
 }
 
 func Test_Non_Pprof_Path_WithPrefix(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{Prefix: "/federated-fiber"}))
@@ -48,6 +50,7 @@ func Test_Non_Pprof_Path_WithPrefix(t *testing.T) {
 }
 
 func Test_Pprof_Index(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -67,6 +70,7 @@ func Test_Pprof_Index(t *testing.T) {
 }
 
 func Test_Pprof_Index_WithPrefix(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{Prefix: "/federated-fiber"}))
@@ -86,6 +90,7 @@ func Test_Pprof_Index_WithPrefix(t *testing.T) {
 }
 
 func Test_Pprof_Subs(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -101,6 +106,7 @@ func Test_Pprof_Subs(t *testing.T) {
 
 	for _, sub := range subs {
 		t.Run(sub, func(t *testing.T) {
+			t.Parallel()
 			target := "/debug/pprof/" + sub
 			if sub == "profile" {
 				target += "?seconds=1"
@@ -113,6 +119,7 @@ func Test_Pprof_Subs(t *testing.T) {
 }
 
 func Test_Pprof_Subs_WithPrefix(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{Prefix: "/federated-fiber"}))
@@ -128,6 +135,7 @@ func Test_Pprof_Subs_WithPrefix(t *testing.T) {
 
 	for _, sub := range subs {
 		t.Run(sub, func(t *testing.T) {
+			t.Parallel()
 			target := "/federated-fiber/debug/pprof/" + sub
 			if sub == "profile" {
 				target += "?seconds=1"
@@ -140,6 +148,7 @@ func Test_Pprof_Subs_WithPrefix(t *testing.T) {
 }
 
 func Test_Pprof_Other(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -154,6 +163,7 @@ func Test_Pprof_Other(t *testing.T) {
 }
 
 func Test_Pprof_Other_WithPrefix(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{Prefix: "/federated-fiber"}))
@@ -170,7 +180,6 @@ func Test_Pprof_Other_WithPrefix(t *testing.T) {
 // go test -run Test_Pprof_Next
 func Test_Pprof_Next(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -187,7 +196,6 @@ func Test_Pprof_Next(t *testing.T) {
 // go test -run Test_Pprof_Next_WithPrefix
 func Test_Pprof_Next_WithPrefix(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 
 	app.Use(New(Config{

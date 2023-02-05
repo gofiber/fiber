@@ -53,14 +53,15 @@ type Route struct {
 	group       *Group      // Group instance. used for routes in groups
 
 	// Public fields
-	Method   string    `json:"method"` // HTTP method
-	Name     string    `json:"name"`   // Route's name
+	Method string `json:"method"` // HTTP method
+	Name   string `json:"name"`   // Route's name
+	//nolint:revive // Having both a Path (uppercase) and a path (lowercase) is fine
 	Path     string    `json:"path"`   // Original registered route path
 	Params   []string  `json:"params"` // Case sensitive param keys
 	Handlers []Handler `json:"-"`      // Ctx handlers
 }
 
-func (r *Route) match(detectionPath, path string, params *[maxParams]string) (match bool) {
+func (r *Route) match(detectionPath, path string, params *[maxParams]string) bool {
 	// root detectionPath check
 	if r.root && detectionPath == "/" {
 		return true
@@ -160,10 +161,9 @@ func (app *App) next(c *DefaultCtx) (match bool, err error) {
 		route := tree[c.indexRoute]
 
 		// Check if it matches the request path
-		match = route.match(c.detectionPath, c.path, &c.values)
-
-		// No match, next route
+		match := route.match(c.detectionPath, c.path, &c.values)
 		if !match {
+			// No match, next route
 			continue
 		}
 		// Pass route reference and param values
@@ -176,19 +176,18 @@ func (app *App) next(c *DefaultCtx) (match bool, err error) {
 
 		// Execute first handler of route
 		c.indexHandler = 0
-		err = route.Handlers[0](c)
+		err := route.Handlers[0](c)
 		return match, err // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
 	err = NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
-
-	// If no match, scan stack again if other methods match the request
-	// Moved from app.handler because middleware may break the route chain
 	if !c.matched && app.methodExist(c) {
+		// If no match, scan stack again if other methods match the request
+		// Moved from app.handler because middleware may break the route chain
 		err = ErrMethodNotAllowed
 	}
-	return
+	return false, err
 }
 
 func (app *App) handler(rctx *fasthttp.RequestCtx) {
@@ -222,8 +221,9 @@ func (app *App) handler(rctx *fasthttp.RequestCtx) {
 	}
 	if err != nil {
 		if catch := c.App().ErrorHandler(c, err); catch != nil {
-			_ = c.SendStatus(StatusInternalServerError)
+			_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
 		}
+		// TODO: Do we need to return here?
 	}
 }
 
@@ -248,7 +248,7 @@ func (app *App) addPrefixToRoute(prefix string, route *Route) *Route {
 	return route
 }
 
-func (app *App) copyRoute(route *Route) *Route {
+func (*App) copyRoute(route *Route) *Route {
 	return &Route{
 		// Router booleans
 		use:  route.use,
@@ -391,6 +391,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		prefixLen--
 		prefix = prefix[:prefixLen]
 	}
+	const cacheDuration = 10 * time.Second
 	// Fileserver settings
 	fs := &fasthttp.FS{
 		Root:                 root,
@@ -399,7 +400,7 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		AcceptByteRange:      false,
 		Compress:             false,
 		CompressedFileSuffix: app.config.CompressedFileSuffix,
-		CacheDuration:        10 * time.Second,
+		CacheDuration:        cacheDuration,
 		IndexNames:           []string{"index.html"},
 		PathRewrite: func(fctx *fasthttp.RequestCtx) []byte {
 			path := fctx.Path()
@@ -467,7 +468,6 @@ func (app *App) registerStatic(prefix, root string, config ...Static) Router {
 		c.Context().SetContentType("") // Issue #420
 		c.Context().Response.SetStatusCode(StatusOK)
 		c.Context().Response.SetBodyString("")
-
 		// Next middleware
 		return c.Next()
 	}

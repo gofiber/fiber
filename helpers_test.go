@@ -16,6 +16,7 @@ import (
 )
 
 func Test_Utils_UniqueRouteStack(t *testing.T) {
+	t.Parallel()
 	route1 := &Route{}
 	route2 := &Route{}
 	route3 := &Route{}
@@ -92,6 +93,7 @@ func Benchmark_Utils_Unescape(b *testing.B) {
 }
 
 func Test_Utils_Parse_Address(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		addr, host, port string
 	}{
@@ -114,6 +116,7 @@ func Test_Utils_GetOffset(t *testing.T) {
 }
 
 func Test_Utils_TestConn_Deadline(t *testing.T) {
+	t.Parallel()
 	conn := &testConn{}
 	require.Nil(t, conn.SetDeadline(time.Time{}))
 	require.Nil(t, conn.SetReadDeadline(time.Time{}))
@@ -121,6 +124,7 @@ func Test_Utils_TestConn_Deadline(t *testing.T) {
 }
 
 func Test_Utils_IsNoCache(t *testing.T) {
+	t.Parallel()
 	testCases := []struct {
 		string
 		bool
@@ -191,13 +195,4 @@ func Benchmark_SlashRecognition(b *testing.B) {
 		}
 		require.True(b, result)
 	})
-}
-
-func IndexRune(str string, needle int32) bool {
-	for _, b := range str {
-		if b == needle {
-			return true
-		}
-	}
-	return false
 }

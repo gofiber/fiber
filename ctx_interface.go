@@ -226,6 +226,16 @@ type Ctx interface {
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Query(key string, defaultValue ...string) string
 
+	// QueryInt returns integer value of key string parameter in the url.
+	// Default to empty or invalid key is 0.
+	//
+	//	GET /?name=alex&wanna_cake=2&id=
+	//	QueryInt("wanna_cake", 1) == 2
+	//	QueryInt("name", 1) == 1
+	//	QueryInt("id", 1) == 1
+	//	QueryInt("id") == 0
+	QueryInt(key string, defaultValue ...int) int
+
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (rangeData Range, err error)
 

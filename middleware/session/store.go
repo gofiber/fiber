@@ -2,6 +2,7 @@ package session
 
 import (
 	"encoding/gob"
+	"fmt"
 	"sync"
 
 	"github.com/gofiber/fiber/v3"
@@ -31,7 +32,7 @@ func New(config ...Config) *Store {
 
 // RegisterType will allow you to encode/decode custom types
 // into any Storage provider
-func (s *Store) RegisterType(i any) {
+func (*Store) RegisterType(i any) {
 	gob.Register(i)
 }
 
@@ -70,11 +71,11 @@ func (s *Store) Get(c fiber.Ctx) (*Session, error) {
 		if raw != nil && err == nil {
 			mux.Lock()
 			defer mux.Unlock()
-			_, _ = sess.byteBuffer.Write(raw)
+			_, _ = sess.byteBuffer.Write(raw) //nolint:errcheck // This will never fail
 			encCache := gob.NewDecoder(sess.byteBuffer)
 			err := encCache.Decode(&sess.data.Data)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to decode session data: %w", err)
 			}
 		} else if err != nil {
 			return nil, err

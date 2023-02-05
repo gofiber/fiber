@@ -1,12 +1,11 @@
 package basicauth
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http/httptest"
 	"testing"
-
-	b64 "encoding/base64"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/require"
@@ -16,7 +15,6 @@ import (
 // go test -run Test_BasicAuth_Next
 func Test_BasicAuth_Next(t *testing.T) {
 	t.Parallel()
-
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ fiber.Ctx) bool {
@@ -24,7 +22,7 @@ func Test_BasicAuth_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -75,9 +73,9 @@ func Test_Middleware_BasicAuth(t *testing.T) {
 
 	for _, tt := range tests {
 		// Base64 encode credentials for http auth header
-		creds := b64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", tt.username, tt.password)))
+		creds := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", tt.username, tt.password)))
 
-		req := httptest.NewRequest("GET", "/testauth", nil)
+		req := httptest.NewRequest(fiber.MethodGet, "/testauth", nil)
 		req.Header.Add("Authorization", "Basic "+creds)
 		resp, err := app.Test(req)
 		require.NoError(t, err)
@@ -109,7 +107,7 @@ func Benchmark_Middleware_BasicAuth(b *testing.B) {
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
 	fctx.Request.Header.Set(fiber.HeaderAuthorization, "basic am9objpkb2U=") // john:doe
 

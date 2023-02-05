@@ -73,28 +73,25 @@ func (s *Storage) gc(sleep time.Duration) {
 	defer ticker.Stop()
 	var expired []string
 
-	for {
-		select {
-		case <-ticker.C:
-			ts := atomic.LoadUint32(&utils.Timestamp)
-			expired = expired[:0]
-			s.RLock()
-			for key, v := range s.data {
-				if v.e != 0 && v.e <= ts {
-					expired = append(expired, key)
-				}
+	for range ticker.C {
+		ts := atomic.LoadUint32(&utils.Timestamp)
+		expired = expired[:0]
+		s.RLock()
+		for key, v := range s.data {
+			if v.e != 0 && v.e <= ts {
+				expired = append(expired, key)
 			}
-			s.RUnlock()
-			s.Lock()
-			// Double-checked locking.
-			// We might have replaced the item in the meantime.
-			for i := range expired {
-				v := s.data[expired[i]]
-				if v.e != 0 && v.e <= ts {
-					delete(s.data, expired[i])
-				}
-			}
-			s.Unlock()
 		}
+		s.RUnlock()
+		s.Lock()
+		// Double-checked locking.
+		// We might have replaced the item in the meantime.
+		for i := range expired {
+			v := s.data[expired[i]]
+			if v.e != 0 && v.e <= ts {
+				delete(s.data, expired[i])
+			}
+		}
+		s.Unlock()
 	}
 }
