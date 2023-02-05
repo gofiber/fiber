@@ -48,7 +48,7 @@ linters-settings:
     packages:
       - flag
       - io/ioutil
-     packages-with-error-message:
+    packages-with-error-message:
       - flag: '`flag` package is only allowed in main.go'
       - io/ioutil: '`io/ioutil` package is deprecated, use the `io` and `os` package instead'
 
