@@ -16,6 +16,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+const helloWorld = "hello world"
+
 // go test -run Test_Bind_Query -v
 func Test_Bind_Query(t *testing.T) {
 	t.Parallel()
@@ -63,7 +65,7 @@ func Test_Bind_Query(t *testing.T) {
 	c.Request().URI().SetQueryString("id=1&name=tom&hobby=basketball,football&favouriteDrinks=milo,coke,pepsi&alloc=&no=1")
 	q2 := new(Query2)
 	q2.Bool = true
-	q2.Name = "hello world"
+	q2.Name = helloWorld
 	require.Nil(t, c.Bind().Query(q2))
 	require.Equal(t, "basketball,football", q2.Hobby)
 	require.True(t, q2.Bool)
@@ -133,7 +135,7 @@ func Test_Bind_Query_Map(t *testing.T) {
 func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
 
-	NonRFCConverter := func(value string) reflect.Value {
+	nonRFCConverter := func(value string) reflect.Value {
 		if v, err := time.Parse("2006-01-02", value); err == nil {
 			return reflect.ValueOf(v)
 		}
@@ -142,7 +144,7 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 
 	nonRFCTime := binder.ParserType{
 		Customtype: NonRFCTime{},
-		Converter:  NonRFCConverter,
+		Converter:  nonRFCConverter,
 	}
 
 	binder.SetParserDecoder(binder.ParserConfig{
@@ -167,7 +169,6 @@ func Test_Bind_Query_WithSetParserDecoder(t *testing.T) {
 
 	c.Request().URI().SetQueryString("date=2021-04-10&title=CustomDateTest&Body=October")
 	require.Nil(t, c.Bind().Query(q))
-	fmt.Println(q.Date, "q.Date")
 	require.Equal(t, "CustomDateTest", q.Title)
 	date := fmt.Sprintf("%v", q.Date)
 	require.Equal(t, "{0 63753609600 <nil>}", date)
@@ -336,7 +337,7 @@ func Test_Bind_Header(t *testing.T) {
 
 	h2 := new(Header2)
 	h2.Bool = true
-	h2.Name = "hello world"
+	h2.Name = helloWorld
 	require.Nil(t, c.Bind().Header(h2))
 	require.Equal(t, "go,fiber", h2.Hobby)
 	require.True(t, h2.Bool)
@@ -388,7 +389,7 @@ func Test_Bind_Header_Map(t *testing.T) {
 func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
 
-	NonRFCConverter := func(value string) reflect.Value {
+	nonRFCConverter := func(value string) reflect.Value {
 		if v, err := time.Parse("2006-01-02", value); err == nil {
 			return reflect.ValueOf(v)
 		}
@@ -397,7 +398,7 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 
 	nonRFCTime := binder.ParserType{
 		Customtype: NonRFCTime{},
-		Converter:  NonRFCConverter,
+		Converter:  nonRFCConverter,
 	}
 
 	binder.SetParserDecoder(binder.ParserConfig{
@@ -425,7 +426,6 @@ func Test_Bind_Header_WithSetParserDecoder(t *testing.T) {
 	c.Request().Header.Add("Body", "October")
 
 	require.Nil(t, c.Bind().Header(r))
-	fmt.Println(r.Date, "q.Date")
 	require.Equal(t, "CustomDateTest", r.Title)
 	date := fmt.Sprintf("%v", r.Date)
 	require.Equal(t, "{0 63753609600 <nil>}", date)
@@ -578,7 +578,7 @@ func Test_Bind_RespHeader(t *testing.T) {
 
 	h2 := new(Header2)
 	h2.Bool = true
-	h2.Name = "hello world"
+	h2.Name = helloWorld
 	require.Nil(t, c.Bind().RespHeader(h2))
 	require.Equal(t, "go,fiber", h2.Hobby)
 	require.True(t, h2.Bool)
@@ -1214,7 +1214,7 @@ func Test_Bind_Cookie(t *testing.T) {
 
 	h2 := new(Cookie2)
 	h2.Bool = true
-	h2.Name = "hello world"
+	h2.Name = helloWorld
 	require.Nil(t, c.Bind().Cookie(h2))
 	require.Equal(t, "go,fiber", h2.Hobby)
 	require.True(t, h2.Bool)
@@ -1266,7 +1266,7 @@ func Test_Bind_Cookie_Map(t *testing.T) {
 func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 	type NonRFCTime time.Time
 
-	NonRFCConverter := func(value string) reflect.Value {
+	nonRFCConverter := func(value string) reflect.Value {
 		if v, err := time.Parse("2006-01-02", value); err == nil {
 			return reflect.ValueOf(v)
 		}
@@ -1275,7 +1275,7 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 
 	nonRFCTime := binder.ParserType{
 		Customtype: NonRFCTime{},
-		Converter:  NonRFCConverter,
+		Converter:  nonRFCConverter,
 	}
 
 	binder.SetParserDecoder(binder.ParserConfig{
@@ -1303,7 +1303,6 @@ func Test_Bind_Cookie_WithSetParserDecoder(t *testing.T) {
 	c.Request().Header.SetCookie("Body", "October")
 
 	require.Nil(t, c.Bind().Cookie(r))
-	fmt.Println(r.Date, "q.Date")
 	require.Equal(t, "CustomDateTest", r.Title)
 	date := fmt.Sprintf("%v", r.Date)
 	require.Equal(t, "{0 63753609600 <nil>}", date)
@@ -1456,15 +1455,15 @@ func Benchmark_Bind_Cookie_Map(b *testing.B) {
 // custom binder for testing
 type customBinder struct{}
 
-func (b *customBinder) Name() string {
+func (*customBinder) Name() string {
 	return "custom"
 }
 
-func (b *customBinder) MIMETypes() []string {
+func (*customBinder) MIMETypes() []string {
 	return []string{"test", "test2"}
 }
 
-func (b *customBinder) Parse(c Ctx, out any) error {
+func (*customBinder) Parse(c Ctx, out any) error {
 	return json.Unmarshal(c.Body(), out)
 }
 
@@ -1474,8 +1473,8 @@ func Test_Bind_CustomBinder(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	// Register binder
-	binder := &customBinder{}
-	app.RegisterCustomBinder(binder)
+	customBinder := &customBinder{}
+	app.RegisterCustomBinder(customBinder)
 
 	type Demo struct {
 		Name string `json:"name"`
@@ -1510,11 +1509,11 @@ func Test_Bind_Must(t *testing.T) {
 // simple struct validator for testing
 type structValidator struct{}
 
-func (v *structValidator) Engine() any {
+func (*structValidator) Engine() any {
 	return ""
 }
 
-func (v *structValidator) ValidateStruct(out any) error {
+func (*structValidator) ValidateStruct(out any) error {
 	out = reflect.ValueOf(out).Elem().Interface()
 	sq := out.(simpleQuery)
 

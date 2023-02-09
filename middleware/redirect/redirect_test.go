@@ -1,3 +1,4 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 // 🚀 Fiber is an Express inspired web framework written in Go with 💖
 // 📌 API Documentation: https://fiber.wiki
 // 📝 Github Repository: https://github.com/gofiber/fiber
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Redirect(t *testing.T) {
@@ -108,7 +110,8 @@ func Test_Redirect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", tt.url, nil)
+			req, err := http.NewRequest(fiber.MethodGet, tt.url, nil)
+			require.NoError(t, err)
 			req.Header.Set("Location", "github.com/gofiber/redirect")
 			resp, err := app.Test(req)
 			if err != nil {
@@ -122,5 +125,4 @@ func Test_Redirect(t *testing.T) {
 			}
 		})
 	}
-
 }

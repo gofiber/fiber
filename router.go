@@ -96,7 +96,7 @@ func (r *Route) match(detectionPath, path string, params *[maxParams]string) boo
 	return false
 }
 
-func (app *App) nextCustom(c CustomCtx) (match bool, err error) {
+func (app *App) nextCustom(c CustomCtx) (bool, error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.getMethodINT()][c.getTreePath()]
 	if !ok {
@@ -113,7 +113,7 @@ func (app *App) nextCustom(c CustomCtx) (match bool, err error) {
 		route := tree[c.getIndexRoute()]
 
 		// Check if it matches the request path
-		match = route.match(c.getDetectionPath(), c.Path(), c.getValues())
+		match := route.match(c.getDetectionPath(), c.Path(), c.getValues())
 
 		// No match, next route
 		if !match {
@@ -129,22 +129,22 @@ func (app *App) nextCustom(c CustomCtx) (match bool, err error) {
 
 		// Execute first handler of route
 		c.setIndexHandler(0)
-		err = route.Handlers[0](c)
+		err := route.Handlers[0](c)
 		return match, err // Stop scanning the stack
 	}
 
 	// If c.Next() does not match, return 404
-	err = NewError(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
+	err := NewError(StatusNotFound, "Cannot "+c.Method()+" "+c.getPathOriginal())
 
 	// If no match, scan stack again if other methods match the request
 	// Moved from app.handler because middleware may break the route chain
 	if !c.getMatched() && app.methodExistCustom(c) {
 		err = ErrMethodNotAllowed
 	}
-	return
+	return false, err
 }
 
-func (app *App) next(c *DefaultCtx) (match bool, err error) {
+func (app *App) next(c *DefaultCtx) (bool, error) {
 	// Get stack length
 	tree, ok := app.treeStack[c.methodINT][c.treePath]
 	if !ok {
@@ -181,7 +181,7 @@ func (app *App) next(c *DefaultCtx) (match bool, err error) {
 	}
 
 	// If c.Next() does not match, return 404
-	err = NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
+	err := NewError(StatusNotFound, "Cannot "+c.method+" "+c.pathOriginal)
 	if !c.matched && app.methodExist(c) {
 		// If no match, scan stack again if other methods match the request
 		// Moved from app.handler because middleware may break the route chain
@@ -274,7 +274,6 @@ func (app *App) register(methods []string, pathRaw string, group *Group, handler
 	}
 
 	for _, method := range methods {
-
 		// Uppercase HTTP methods
 		method = utils.ToUpper(method)
 		// Check if the HTTP method is valid unless it's USE

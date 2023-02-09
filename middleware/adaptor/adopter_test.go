@@ -141,7 +141,6 @@ func Test_HTTPHandler(t *testing.T) {
 }
 
 func Test_HTTPMiddleware(t *testing.T) {
-
 	tests := []struct {
 		name       string
 		url        string

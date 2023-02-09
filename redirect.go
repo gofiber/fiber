@@ -287,7 +287,7 @@ func (r *Redirect) setFlash() {
 	r.c.ClearCookie(FlashCookieName)
 }
 
-func parseMessage(raw string) (key, value string) {
+func parseMessage(raw string) (string, string) {
 	if i := findNextNonEscapedCharsetPosition(raw, []byte(CookieDataAssigner)); i != -1 {
 		return RemoveEscapeChar(raw[:i]), RemoveEscapeChar(raw[i+1:])
 	}

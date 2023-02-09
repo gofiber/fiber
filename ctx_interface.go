@@ -185,7 +185,7 @@ type Ctx interface {
 	// Next executes the next method in the stack that matches the current route.
 	Next() (err error)
 
-	// RestartRouting instead of going to the next handler. This may be usefull after
+	// RestartRouting instead of going to the next handler. This may be useful after
 	// changing the request path. Note that handlers might be executed again.
 	RestartRouting() error
 

@@ -605,17 +605,23 @@ func Test_App_Order(t *testing.T) {
 	app := New()
 
 	app.Get("/test", func(c Ctx) error {
-		c.Write([]byte("1"))
+		_, err := c.Write([]byte("1"))
+		require.NoError(t, err)
+
 		return c.Next()
 	})
 
 	app.All("/test", func(c Ctx) error {
-		c.Write([]byte("2"))
+		_, err := c.Write([]byte("2"))
+		require.NoError(t, err)
+
 		return c.Next()
 	})
 
 	app.Use(func(c Ctx) error {
-		c.Write([]byte("3"))
+		_, err := c.Write([]byte("3"))
+		require.NoError(t, err)
+
 		return nil
 	})
 
@@ -865,9 +871,9 @@ func Test_App_Static_Custom_CacheControl(t *testing.T) {
 	require.Equal(t, nil, err, "app.Test(req)")
 	require.Equal(t, "no-cache, no-store, must-revalidate", resp.Header.Get(HeaderCacheControl), "CacheControl Control")
 
-	normal_resp, normal_err := app.Test(httptest.NewRequest(MethodGet, "/config.yml", nil))
-	require.Equal(t, nil, normal_err, "app.Test(req)")
-	require.Equal(t, "", normal_resp.Header.Get(HeaderCacheControl), "CacheControl Control")
+	normalResp, normalErr := app.Test(httptest.NewRequest(MethodGet, "/config.yml", nil))
+	require.Equal(t, nil, normalErr, "app.Test(req)")
+	require.Equal(t, "", normalResp.Header.Get(HeaderCacheControl), "CacheControl Control")
 }
 
 // go test -run Test_App_Static_Download

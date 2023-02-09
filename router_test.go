@@ -489,7 +489,7 @@ func Benchmark_App_MethodNotAllowed(b *testing.B) {
 	}
 	b.StopTimer()
 	require.Equal(b, 405, c.Response.StatusCode())
-	require.Equal(b, "GET", string(c.Response.Header.Peek("Allow")))
+	require.Equal(b, MethodGet, string(c.Response.Header.Peek("Allow")))
 	require.Equal(b, utils.StatusMessage(StatusMethodNotAllowed), string(c.Response.Body()))
 }
 

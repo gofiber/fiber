@@ -118,7 +118,6 @@ func Test_Listen_TLS(t *testing.T) {
 		CertFile:    "./.github/testdata/ssl.pem",
 		CertKeyFile: "./.github/testdata/ssl.key",
 	}))
-
 }
 
 // go test -run Test_Listen_TLS_Prefork
@@ -146,7 +145,6 @@ func Test_Listen_TLS_Prefork(t *testing.T) {
 		CertFile:              "./.github/testdata/ssl.pem",
 		CertKeyFile:           "./.github/testdata/ssl.key",
 	}))
-
 }
 
 // go test -run Test_Listen_MutualTLS
@@ -419,7 +417,7 @@ func Test_Listen_Print_Route(t *testing.T) {
 		app.printRoutesMessage()
 	})
 	fmt.Println(printRoutesMessage)
-	require.True(t, strings.Contains(printRoutesMessage, "GET"))
+	require.True(t, strings.Contains(printRoutesMessage, MethodGet))
 	require.True(t, strings.Contains(printRoutesMessage, "/"))
 	require.True(t, strings.Contains(printRoutesMessage, "emptyHandler"))
 	require.True(t, strings.Contains(printRoutesMessage, "routeName"))
@@ -439,7 +437,7 @@ func Test_Listen_Print_Route_With_Group(t *testing.T) {
 		app.printRoutesMessage()
 	})
 
-	require.True(t, strings.Contains(printRoutesMessage, "GET"))
+	require.True(t, strings.Contains(printRoutesMessage, MethodGet))
 	require.True(t, strings.Contains(printRoutesMessage, "/"))
 	require.True(t, strings.Contains(printRoutesMessage, "emptyHandler"))
 	require.True(t, strings.Contains(printRoutesMessage, "/v1/test"))

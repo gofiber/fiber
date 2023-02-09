@@ -1147,12 +1147,12 @@ func (c *DefaultCtx) Route() *Route {
 }
 
 // SaveFile saves any multipart file to disk.
-func (c *DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error {
+func (*DefaultCtx) SaveFile(fileheader *multipart.FileHeader, path string) error {
 	return fasthttp.SaveMultipartFile(fileheader, path)
 }
 
 // SaveFileToStorage saves any multipart file to an external storage system.
-func (c *DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
+func (*DefaultCtx) SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error {
 	file, err := fileheader.Open()
 	if err != nil {
 		return fmt.Errorf("failed to open: %w", err)
@@ -1442,7 +1442,7 @@ func (c *DefaultCtx) IsProxyTrusted() bool {
 }
 
 // IsLocalHost will return true if address is a localhost address.
-func (c *DefaultCtx) isLocalHost(address string) bool {
+func (*DefaultCtx) isLocalHost(address string) bool {
 	localHosts := []string{"127.0.0.1", "0.0.0.0", "::1"}
 	for _, h := range localHosts {
 		if strings.Contains(address, h) {

@@ -1044,6 +1044,8 @@ func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	c := app.AcquireCtx().(*DefaultCtx)
 	c.Reset(fctx)
 
+	defer app.ReleaseCtx(c)
+
 	var errNetOP *net.OpError
 
 	switch {

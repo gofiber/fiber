@@ -359,7 +359,8 @@ func Test_Session_Reset(t *testing.T) {
 		// set value & save
 		sess.Set("name", "fenny")
 		require.NoError(t, sess.Save())
-		sess, _ = store.Get(ctx)
+		sess, err = store.Get(ctx)
+		require.NoError(t, err)
 
 		err = sess.Destroy()
 		require.NoError(t, err)

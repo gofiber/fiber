@@ -69,7 +69,7 @@ func New(config ...Config) fiber.Handler {
 	}
 	if cfg.ErrorHandler == nil {
 		cfg.ErrorHandler = func(c fiber.Ctx, err error) error {
-			if err == ErrMissingOrMalformedAPIKey {
+			if errors.Is(err, ErrMissingOrMalformedAPIKey) {
 				return c.Status(fiber.StatusBadRequest).SendString(err.Error())
 			}
 			return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")

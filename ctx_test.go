@@ -78,7 +78,7 @@ type customCtx struct {
 	DefaultCtx
 }
 
-func (c *customCtx) Params(key string, defaultValue ...string) string {
+func (c *customCtx) Params(key string, defaultValue ...string) string { //nolint:revive
 	return "prefix_" + c.DefaultCtx.Params(key)
 }
 
@@ -97,7 +97,7 @@ func Test_Ctx_CustomCtx(t *testing.T) {
 	app.Get("/:id", func(c Ctx) error {
 		return c.SendString(c.Params("id"))
 	})
-	resp, err := app.Test(httptest.NewRequest("GET", "/v3", &bytes.Buffer{}))
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/v3", &bytes.Buffer{}))
 	require.NoError(t, err, "app.Test(req)")
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err, "io.ReadAll(resp.Body)")
@@ -531,27 +531,32 @@ func Test_Ctx_Format(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	c.Format([]byte("Hello, World!"))
+	err := c.Format([]byte("Hello, World!"))
+	require.NoError(t, err)
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextHTML)
-	c.Format("Hello, World!")
+	err = c.Format("Hello, World!")
+	require.NoError(t, err)
 	require.Equal(t, "<p>Hello, World!</p>", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationJSON)
-	c.Format("Hello, World!")
+	err = c.Format("Hello, World!")
+	require.NoError(t, err)
 	require.Equal(t, `"Hello, World!"`, string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	c.Format(complex(1, 1))
+	err = c.Format(complex(1, 1))
+	require.NoError(t, err)
 	require.Equal(t, "(1+1i)", string(c.Response().Body()))
 
 	c.Request().Header.Set(HeaderAccept, MIMEApplicationXML)
-	c.Format("Hello, World!")
+	err = c.Format("Hello, World!")
+	require.NoError(t, err)
 	require.Equal(t, `<string>Hello, World!</string>`, string(c.Response().Body()))
 
-	err := c.Format(complex(1, 1))
-	require.True(t, err != nil)
+	err = c.Format(complex(1, 1))
+	require.Error(t, err)
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
 	c.Format(Map{})
@@ -1079,7 +1084,7 @@ func Test_Ctx_IP(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	// default behaviour will return the remote IP from the stack
+	// default behavior will return the remote IP from the stack
 	require.Equal(t, "0.0.0.0", c.IP())
 
 	// X-Forwarded-For is set, but it is ignored because proxyHeader is not set
@@ -2569,11 +2574,12 @@ func Test_Ctx_RenderWithBindVars(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.BindVars(Map{
+	err := c.BindVars(Map{
 		"Title": "Hello, World!",
 	})
+	require.NoError(t, err)
 
-	err := c.Render("./.github/testdata/index.tmpl", Map{})
+	err = c.Render("./.github/testdata/index.tmpl", Map{})
 	require.NoError(t, err)
 	buf := bytebufferpool.Get()
 	_, _ = buf.WriteString("overwrite") //nolint:errcheck // This will never fail
@@ -2659,10 +2665,10 @@ func Benchmark_Ctx_RenderWithLocalsAndBindVars(b *testing.B) {
 	})
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.BindVars(Map{
+	err = c.BindVars(Map{
 		"Title": "Hello, World!",
 	})
-	require.Equal(b, nil, err)
+	require.NoError(b, err)
 	c.Locals("Summary", "Test")
 
 	b.ReportAllocs()
@@ -2707,10 +2713,10 @@ func Benchmark_Ctx_RenderBindVars(b *testing.B) {
 	app.config.Views = engine
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.BindVars(Map{
+	err = c.BindVars(Map{
 		"Title": "Hello, World!",
 	})
-	require.Equal(b, nil, err)
+	require.NoError(b, err)
 
 	b.ReportAllocs()
 	b.ResetTimer()

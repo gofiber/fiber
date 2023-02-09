@@ -11,11 +11,13 @@ var (
 )
 
 // Init default binders for Fiber
-var HeaderBinder = &headerBinding{}
-var RespHeaderBinder = &respHeaderBinding{}
-var CookieBinder = &cookieBinding{}
-var QueryBinder = &queryBinding{}
-var FormBinder = &formBinding{}
-var URIBinder = &uriBinding{}
-var XMLBinder = &xmlBinding{}
-var JSONBinder = &jsonBinding{}
+var (
+	HeaderBinder     = &headerBinding{}
+	RespHeaderBinder = &respHeaderBinding{}
+	CookieBinder     = &cookieBinding{}
+	QueryBinder      = &queryBinding{}
+	FormBinder       = &formBinding{}
+	URIBinder        = &uriBinding{}
+	XMLBinder        = &xmlBinding{}
+	JSONBinder       = &jsonBinding{}
+)
