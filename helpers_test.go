@@ -41,7 +41,6 @@ func Test_Utils_UniqueRouteStack(t *testing.T) {
 			route2,
 			route3,
 		}))
-
 }
 
 func Test_Utils_getGroupPath(t *testing.T) {
@@ -143,7 +142,6 @@ func Test_Utils_IsNoCache(t *testing.T) {
 		ok := isNoCache(c.string)
 		require.Equal(t, c.bool, ok,
 			fmt.Sprintf("want %t, got isNoCache(%s)=%t", c.bool, c.string, ok))
-
 	}
 }
 

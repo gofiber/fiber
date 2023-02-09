@@ -145,7 +145,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	if cfg.CertFile != "" && cfg.CertKeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.CertKeyFile)
 		if err != nil {
-			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", cfg.CertFile, cfg.CertKeyFile, err)
+			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", cfg.CertFile, cfg.CertKeyFile, err)
 		}
 
 		tlsHandler := &TLSHandler{}
@@ -241,7 +241,7 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 
 	// Prefork is not supported for custom listeners
 	if cfg.EnablePrefork {
-		fmt.Println("[Warning] Prefork isn't supported for custom listeners.")
+		log.Print("[Warning] Prefork isn't supported for custom listeners.")
 	}
 
 	return app.server.Serve(ln)

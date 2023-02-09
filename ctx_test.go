@@ -559,12 +559,15 @@ func Test_Ctx_Format(t *testing.T) {
 	require.Error(t, err)
 
 	c.Request().Header.Set(HeaderAccept, MIMETextPlain)
-	c.Format(Map{})
+	err = c.Format(Map{})
+	require.NoError(t, err)
 	require.Equal(t, "map[]", string(c.Response().Body()))
 
 	type broken string
 	c.Request().Header.Set(HeaderAccept, "broken/accept")
-	c.Format(broken("Hello, World!"))
+	require.NoError(t, err)
+	err = c.Format(broken("Hello, World!"))
+	require.NoError(t, err)
 	require.Equal(t, `Hello, World!`, string(c.Response().Body()))
 }
 
@@ -2565,7 +2568,6 @@ func Test_Ctx_RenderWithLocals(t *testing.T) {
 	defer bytebufferpool.Put(buf)
 
 	require.Equal(t, "<h1>Hello, World!</h1>", string(c.Response().Body()))
-
 }
 
 func Test_Ctx_RenderWithBindVars(t *testing.T) {
@@ -3073,13 +3075,16 @@ func Test_Ctx_SendStream(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.SendStream(bytes.NewReader([]byte("Don't crash please")))
+	err := c.SendStream(bytes.NewReader([]byte("Don't crash please")))
+	require.NoError(t, err)
 	require.Equal(t, "Don't crash please", string(c.Response().Body()))
 
-	c.SendStream(bytes.NewReader([]byte("Don't crash please")), len([]byte("Don't crash please")))
+	err = c.SendStream(bytes.NewReader([]byte("Don't crash please")), len([]byte("Don't crash please")))
+	require.NoError(t, err)
 	require.Equal(t, "Don't crash please", string(c.Response().Body()))
 
-	c.SendStream(bufio.NewReader(bytes.NewReader([]byte("Hello bufio"))))
+	err = c.SendStream(bufio.NewReader(bytes.NewReader([]byte("Hello bufio"))))
+	require.NoError(t, err)
 	require.Equal(t, "Hello bufio", string(c.Response().Body()))
 }
 
@@ -3215,8 +3220,10 @@ func Test_Ctx_Write(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Write([]byte("Hello, "))
-	c.Write([]byte("World!"))
+	_, err := c.Write([]byte("Hello, "))
+	require.NoError(t, err)
+	_, err = c.Write([]byte("World!"))
+	require.NoError(t, err)
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 }
 
@@ -3270,8 +3277,10 @@ func Test_Ctx_WriteString(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.WriteString("Hello, ")
-	c.WriteString("World!")
+	_, err := c.WriteString("Hello, ")
+	require.NoError(t, err)
+	_, err = c.WriteString("World!")
+	require.NoError(t, err)
 	require.Equal(t, "Hello, World!", string(c.Response().Body()))
 }
 

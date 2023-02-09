@@ -714,7 +714,7 @@ const (
 	ConstraintBool            = "bool"
 	ConstraintFloat           = "float"
 	ConstraintAlpha           = "alpha"
-	ConstraintGuid            = "guid" //nolint:revive,stylecheck // TODO: Rename to "ConstraintGUID" in v3
+	ConstraintGUID            = "guid"
 	ConstraintMinLen          = "minLen"
 	ConstraintMaxLen          = "maxLen"
 	ConstraintLen             = "len"

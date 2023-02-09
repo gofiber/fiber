@@ -617,7 +617,7 @@ func getParamConstraintType(constraintPart string) TypeConstraint {
 		return floatConstraint
 	case ConstraintAlpha:
 		return alphaConstraint
-	case ConstraintGuid:
+	case ConstraintGUID:
 		return guidConstraint
 	case ConstraintMinLen, ConstraintMinLenLower:
 		return minLenConstraint

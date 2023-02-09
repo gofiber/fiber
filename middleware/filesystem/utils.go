@@ -70,8 +70,8 @@ func dirList(c fiber.Ctx, f fs.File) error {
 	return nil
 }
 
-func openFile(fs fs.FS, name string) (fs.File, error) {
+func openFile(filesystem fs.FS, name string) (fs.File, error) {
 	name = filepath.ToSlash(name)
 
-	return fs.Open(name)
+	return filesystem.Open(name)
 }

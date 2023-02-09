@@ -171,7 +171,6 @@ func (r *Redirect) OldInput(key string) string {
 		}
 	}
 	return ""
-
 }
 
 // Redirect to the URL derived from the specified path, with specified status.
@@ -204,10 +203,10 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 		// flash messages
 		for i, message := range r.messages {
-			_, _ = messageText.WriteString(message)
+			_, _ = messageText.WriteString(message) //nolint:errcheck // Always return nil
 			// when there are more messages or oldInput -> add a comma
 			if len(r.messages)-1 != i || (len(r.messages)-1 == i && len(r.oldInput) > 0) {
-				_, _ = messageText.WriteString(CookieDataSeparator)
+				_, _ = messageText.WriteString(CookieDataSeparator) //nolint:errcheck // Always return nil
 			}
 		}
 		r.messages = r.messages[:0]
@@ -215,9 +214,9 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		// old input data
 		i := 1
 		for k, v := range r.oldInput {
-			_, _ = messageText.WriteString(OldInputDataPrefix + k + CookieDataAssigner + v)
+			_, _ = messageText.WriteString(OldInputDataPrefix + k + CookieDataAssigner + v) //nolint:errcheck // Always return nil
 			if len(r.oldInput) != i {
-				_, _ = messageText.WriteString(CookieDataSeparator)
+				_, _ = messageText.WriteString(CookieDataSeparator) //nolint:errcheck // Always return nil
 			}
 			i++
 		}
@@ -236,10 +235,10 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 		i := 1
 		for k, v := range cfg.Queries {
-			_, _ = queryText.WriteString(k + "=" + v)
+			_, _ = queryText.WriteString(k + "=" + v) //nolint:errcheck // Always return nil
 
 			if i != len(cfg.Queries) {
-				_, _ = queryText.WriteString("&")
+				_, _ = queryText.WriteString("&") //nolint:errcheck // Always return nil
 			}
 			i++
 		}

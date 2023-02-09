@@ -133,7 +133,6 @@ func Test_Path_parseRoute(t *testing.T) {
 		params:        []string{"*1", "*2"},
 		wildCardCount: 2,
 	}, rp)
-
 }
 
 // go test -race -run Test_Path_matchParams

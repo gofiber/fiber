@@ -282,7 +282,8 @@ func Test_Ctx_Render_Mount(t *testing.T) {
 	t.Parallel()
 
 	engine := &testTemplateEngine{}
-	engine.Load()
+	err := engine.Load()
+	require.NoError(t, err)
 
 	sub := New(Config{
 		Views: engine,
@@ -376,14 +377,14 @@ func Test_Ctx_Render_Mount_ParentOrSubHasViews(t *testing.T) {
 	body, err = io.ReadAll(resp.Body)
 	require.Equal(t, nil, err)
 	require.Equal(t, "<h1>I'm Bruh</h1>", string(body))
-
 }
 
 func Test_Ctx_Render_MountGroup(t *testing.T) {
 	t.Parallel()
 
 	engine := &testTemplateEngine{}
-	engine.Load()
+	err := engine.Load()
+	require.NoError(t, err)
 
 	micro := New(Config{
 		Views: engine,

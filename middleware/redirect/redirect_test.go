@@ -6,6 +6,7 @@
 package redirect
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
@@ -110,7 +111,7 @@ func Test_Redirect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, err := http.NewRequest(fiber.MethodGet, tt.url, nil)
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tt.url, nil)
 			require.NoError(t, err)
 			req.Header.Set("Location", "github.com/gofiber/redirect")
 			resp, err := app.Test(req)

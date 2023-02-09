@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -94,7 +95,8 @@ func Test_HTTPHandler(t *testing.T) {
 		w.Header().Set("Header1", "value1")
 		w.Header().Set("Header2", "value2")
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "request body is %q", body)
+		_, err = fmt.Fprintf(w, "request body is %q", body)
+		require.NoError(t, err)
 	}
 	fiberH := HTTPHandlerFunc(http.HandlerFunc(nethttpH))
 	fiberH = setFiberContextValueMiddleware(fiberH, expectedContextKey, expectedContextValue)
@@ -211,7 +213,7 @@ func Test_FiberAppDefaultPort(t *testing.T) {
 	testFiberToHandlerFunc(t, true, fiber.New())
 }
 
-func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.App) {
+func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.App) { //revive:disable-line:flag-parameter
 	expectedMethod := fiber.MethodPost
 	expectedRequestURI := "/foo/bar?baz=123"
 	expectedBody := "body 123 foo bar baz"

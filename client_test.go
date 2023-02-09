@@ -63,7 +63,6 @@ func Test_Client_Unsupported_Protocol(t *testing.T) {
 	require.Equal(t, 1, len(errs))
 	require.Equal(t, `unsupported protocol "ftp". http and https are supported`,
 		errs[0].Error())
-
 }
 
 func Test_Client_Get(t *testing.T) {

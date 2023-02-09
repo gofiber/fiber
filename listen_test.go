@@ -168,7 +168,6 @@ func Test_Listen_MutualTLS(t *testing.T) {
 		CertKeyFile:    "./.github/testdata/ssl.key",
 		CertClientFile: "./.github/testdata/ca-chain.cert.pem",
 	}))
-
 }
 
 // go test -run Test_Listen_MutualTLS_Prefork
@@ -198,7 +197,6 @@ func Test_Listen_MutualTLS_Prefork(t *testing.T) {
 		CertKeyFile:           "./.github/testdata/ssl.key",
 		CertClientFile:        "./.github/testdata/ca-chain.cert.pem",
 	}))
-
 }
 
 // go test -run Test_Listener
@@ -351,7 +349,6 @@ func Test_Listen_Master_Process_Show_Startup_Message(t *testing.T) {
 			startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
 	colors := Colors{}
-	fmt.Println(startupMessage)
 	require.True(t, strings.Contains(startupMessage, "https://127.0.0.1:3000"))
 	require.True(t, strings.Contains(startupMessage, "(bound on host 0.0.0.0 and port 3000)"))
 	require.True(t, strings.Contains(startupMessage, "Child PIDs"))
@@ -369,7 +366,6 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppName(t *testing.T) {
 	startupMessage := captureOutput(func() {
 		app.startupMessage(":3000", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 10), cfg)
 	})
-	fmt.Println(startupMessage)
 	require.Equal(t, "Test App v3.0.0", app.Config().AppName)
 	require.True(t, strings.Contains(startupMessage, app.Config().AppName))
 }
@@ -386,7 +382,6 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithAppNameNonAscii(t *testi
 	startupMessage := captureOutput(func() {
 		app.startupMessage(":3000", false, "", cfg)
 	})
-	fmt.Println(startupMessage)
 	require.True(t, strings.Contains(startupMessage, "Serveur de vérification des données"))
 }
 
@@ -402,7 +397,6 @@ func Test_Listen_Master_Process_Show_Startup_MessageWithDisabledPreforkAndCustom
 		app.startupMessage("server.com:8081", true, strings.Repeat(",11111,22222,33333,44444,55555,60000", 5), cfg)
 	})
 	colors := Colors{}
-	fmt.Println(startupMessage)
 	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%sINFO%s", colors.Green, colors.Reset)))
 	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, appName, colors.Reset)))
 	require.True(t, strings.Contains(startupMessage, fmt.Sprintf("%s%s%s", colors.Blue, "https://server.com:8081", colors.Reset)))
@@ -416,7 +410,6 @@ func Test_Listen_Print_Route(t *testing.T) {
 	printRoutesMessage := captureOutput(func() {
 		app.printRoutesMessage()
 	})
-	fmt.Println(printRoutesMessage)
 	require.True(t, strings.Contains(printRoutesMessage, MethodGet))
 	require.True(t, strings.Contains(printRoutesMessage, "/"))
 	require.True(t, strings.Contains(printRoutesMessage, "emptyHandler"))
