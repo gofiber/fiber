@@ -1142,10 +1142,8 @@ func (c *Ctx) QueryBool(key string, defaultValue ...bool) bool {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
 		}
-
 		return true
 	}
-
 	return value
 }
 
@@ -1165,10 +1163,8 @@ func (c *Ctx) QueryFloat(key string, defaultValue ...float64) float64 {
 		if len(defaultValue) > 0 {
 			return defaultValue[0]
 		}
-
 		return 0
 	}
-
 	return value
 }
 
