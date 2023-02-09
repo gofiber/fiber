@@ -2149,6 +2149,21 @@ func Test_Ctx_QueryInt(t *testing.T) {
 	utils.AssertEqual(t, 2, c.QueryInt("id", 2))
 }
 
+func Test_Ctx_QueryBool(t *testing.T) {
+	t.Parallel()
+	app := New()
+	c := app.AcquireCtx(&fasthttp.RequestCtx{})
+	defer app.ReleaseCtx(c)
+	c.Request().URI().SetQueryString("name=alex&want_pizza=false&id=")
+
+	utils.AssertEqual(t, false, c.QueryBool("want_pizza"))
+	utils.AssertEqual(t, false, c.QueryBool("want_pizza", true))
+	utils.AssertEqual(t, true, c.QueryBool("name"))
+	utils.AssertEqual(t, false, c.QueryBool("name", false))
+	utils.AssertEqual(t, true, c.QueryBool("id"))
+	utils.AssertEqual(t, false, c.QueryBool("id", false))
+}
+
 func Test_Ctx_QueryFloat(t *testing.T) {
 	t.Parallel()
 	app := New()
