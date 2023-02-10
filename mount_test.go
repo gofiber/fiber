@@ -6,6 +6,7 @@
 package fiber
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http/httptest"
@@ -88,6 +89,39 @@ func Test_App_Mount_Nested(t *testing.T) {
 	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
 
 	utils.AssertEqual(t, uint32(6), app.handlersCount)
+}
+
+// go test -run Test_App_Mount_Registration_Order
+func Test_App_Mount_Registration_Order(t *testing.T) {
+	t.Parallel()
+	app := New()
+	testHandler := func(c *Ctx) error {
+		return c.JSON(Map{
+			"Route":  c.Route().path,
+			"Method": c.Route().Method,
+		})
+	}
+
+	app.Get("/app", testHandler)
+	subApp := New()
+	subApp.Get("/subApp", testHandler)
+	app.Mount("/", subApp)
+	app.Use(testHandler)
+
+	resp, err := app.Test(httptest.NewRequest(MethodGet, "/subApp", nil))
+	utils.AssertEqual(t, nil, err, "app.Test(req)")
+	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+
+	out, err := json.Marshal(Map{
+		"Route":  "/subApp",
+		"Method": "GET",
+	})
+	utils.AssertEqual(t, nil, err, "json marshal")
+	utils.AssertEqual(t, string(out), string(body), "Response body")
+
+	utils.AssertEqual(t, uint32(5), app.handlersCount)
 }
 
 // go test -run Test_App_MountPath
