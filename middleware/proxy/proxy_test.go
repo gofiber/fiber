@@ -350,19 +350,85 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 		return c.SendString("ok")
 	})
 	app.Get("/test", func(c *fiber.Ctx) error {
-		originalURL := utils.CopyString(c.OriginalURL())
 		if err := Do(c, "/proxy"); err != nil {
 			return err
 		}
-		utils.AssertEqual(t, originalURL, c.OriginalURL())
 		return c.SendString("ok")
 	})
-	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
-	// This test requires multiple requests due to zero allocation used in fiber
-	_, err2 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
-
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	utils.AssertEqual(t, nil, err1)
-	utils.AssertEqual(t, nil, err2)
+	utils.AssertEqual(t, "/test", resp.Request.URL.String())
+}
+
+// go test -race -run Test_Proxy_Do_WithRealURL
+func Test_Proxy_Do_WithRealURL(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/test", func(c *fiber.Ctx) error {
+		if err := Do(c, "https://www.google.com"); err != nil {
+			return err
+		}
+		return c.SendString("ok")
+	})
+
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	utils.AssertEqual(t, nil, err1)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "/test", resp.Request.URL.String())
+}
+
+// go test -race -run Test_Proxy_Do_WithRedirect
+func Test_Proxy_Do_WithRedirect(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/test", func(c *fiber.Ctx) error {
+		if err := Do(c, "https://google.com"); err != nil {
+			return err
+		}
+		return c.SendString("ok")
+	})
+
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	utils.AssertEqual(t, nil, err1)
+	body, _ := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, "ok", string(body))
+	utils.AssertEqual(t, 301, resp.StatusCode)
+}
+
+// go test -race -run Test_Proxy_DoRedirects_RestoreOriginalURL
+func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/test", func(c *fiber.Ctx) error {
+		if err := DoRedirects(c, "http://google.com", 1); err != nil {
+			return err
+		}
+		return c.SendString("ok")
+	})
+
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	utils.AssertEqual(t, nil, err1)
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "/test", resp.Request.URL.String())
+}
+
+// go test -race -run Test_Proxy_DoRedirects_TooManyRedirects
+func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
+	t.Parallel()
+	app := fiber.New()
+	app.Get("/test", func(c *fiber.Ctx) error {
+		if err := DoRedirects(c, "http://google.com", 0); err != nil {
+			return err
+		}
+		return c.SendString("ok")
+	})
+
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	utils.AssertEqual(t, nil, err1)
+	body, _ := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, string(body), "too many redirects detected when doing the request")
+	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
+	utils.AssertEqual(t, "/test", resp.Request.URL.String())
 }
 
 // go test -race -run Test_Proxy_Do_HTTP_Prefix_URL

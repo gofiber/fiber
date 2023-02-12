@@ -171,6 +171,39 @@ func Do(c *fiber.Ctx, addr string, clients ...*fasthttp.Client) error {
 	return nil
 }
 
+func DoRedirects(c *fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error {
+	var cli *fasthttp.Client
+	if len(clients) != 0 {
+		// Set local client
+		cli = clients[0]
+	} else {
+		// Set global client
+		lock.RLock()
+		cli = client
+		lock.RUnlock()
+	}
+	req := c.Request()
+	res := c.Response()
+	originalURL := utils.CopyString(c.OriginalURL())
+	defer req.SetRequestURI(originalURL)
+
+	copiedURL := utils.CopyString(addr)
+	req.SetRequestURI(copiedURL)
+	// NOTE: if req.isTLS is true, SetRequestURI keeps the scheme as https.
+	// issue reference:
+	// https://github.com/gofiber/fiber/issues/1762
+	if scheme := getScheme(utils.UnsafeBytes(copiedURL)); len(scheme) > 0 {
+		req.URI().SetSchemeBytes(scheme)
+	}
+
+	req.Header.Del(fiber.HeaderConnection)
+	if err := cli.DoRedirects(req, res, maxRedirectsCount); err != nil {
+		return err
+	}
+	res.Header.Del(fiber.HeaderConnection)
+	return nil
+}
+
 func getScheme(uri []byte) []byte {
 	i := bytes.IndexByte(uri, '/')
 	if i < 1 || uri[i-1] != ':' || i == len(uri)-1 || uri[i+1] != '/' {

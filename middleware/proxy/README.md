@@ -18,6 +18,8 @@ func Balancer(config Config) fiber.Handler
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
 // Do performs the given http request and fills the given http response.
 func Do(c *fiber.Ctx, addr string, clients ...*fasthttp.Client) error
+// DoRedirects performs the given http request and fills the given http response while following up to maxRedirectsCount redirects.
+func DoRedirects(c *fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error
 // DomainForward the given http request based on the given domain and fills the given http response
 func DomainForward(hostname string, addr string, clients ...*fasthttp.Client) fiber.Handler
 // BalancerForward performs the given http request based round robin balancer and fills the given http response
