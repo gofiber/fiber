@@ -390,7 +390,8 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	utils.AssertEqual(t, nil, err1)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, "ok", string(body))
 	utils.AssertEqual(t, 301, resp.StatusCode)
 }
@@ -408,6 +409,8 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	utils.AssertEqual(t, nil, err1)
+	_, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	utils.AssertEqual(t, "/test", resp.Request.URL.String())
 }
@@ -425,7 +428,8 @@ func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	utils.AssertEqual(t, nil, err1)
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
 	utils.AssertEqual(t, string(body), "too many redirects detected when doing the request")
 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 	utils.AssertEqual(t, "/test", resp.Request.URL.String())
