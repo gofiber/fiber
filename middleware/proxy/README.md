@@ -75,6 +75,16 @@ app.Get("/:id", func(c *fiber.Ctx) error {
  return nil
 })
 
+// Make proxy requests while following redirects
+app.Get("/proxy", func(c *fiber.Ctx) error {
+ if err := proxy.DoRedirects(c, "http://google.com", 3); err != nil {
+  return err
+ }
+ // Remove Server header from response
+ c.Response().Header.Del(fiber.HeaderServer)
+ return nil
+})
+
 // Minimal round robin balancer
 app.Use(proxy.Balancer(proxy.Config{
  Servers: []string{
