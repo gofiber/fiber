@@ -24,7 +24,7 @@ func New(config Config) fiber.Handler {
 		auth := c.Get(fiber.HeaderAuthorization)
 
 		// Check if the header contains content besides "basic".
-		if len(auth) <= 6 || strings.ToLower(auth[:5]) != "basic" {
+		if len(auth) <= 6 || !utils.EqualFold(auth[:6], "basic ") {
 			return cfg.Unauthorized(c)
 		}
 
