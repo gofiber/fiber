@@ -91,6 +91,7 @@ func Test_App_Mount_Nested(t *testing.T) {
 	utils.AssertEqual(t, uint32(6), app.handlersCount)
 }
 
+// TODO: add example cases from the comments -> https://github.com/gofiber/fiber/pull/2331
 // go test -run Test_App_Mount_Registration_Order
 func Test_App_Mount_Registration_Order(t *testing.T) {
 	t.Parallel()
