@@ -2,13 +2,13 @@ package proxy
 
 import (
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
-	"errors"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/tlstest"
@@ -365,10 +365,7 @@ func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		if err := Do(c, "http://" + addr); err != nil {
-			return err
-		}
-		return nil
+		return Do(c, "http://"+addr)
 	})
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	utils.AssertEqual(t, nil, err1)
@@ -384,10 +381,7 @@ func Test_Proxy_Do_WithRealURL(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		if err := Do(c, "https://www.google.com"); err != nil {
-			return err
-		}
-		return nil
+		return Do(c, "https://www.google.com")
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
@@ -404,10 +398,7 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		if err := Do(c, "https://google.com"); err != nil {
-			return err
-		}
-		return nil
+		return Do(c, "https://google.com")
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
@@ -423,10 +414,7 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		if err := DoRedirects(c, "http://google.com", 1); err != nil {
-			return err
-		}
-		return nil
+		return DoRedirects(c, "http://google.com", 1)
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
@@ -442,10 +430,7 @@ func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
 	t.Parallel()
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		if err := DoRedirects(c, "http://google.com", 0); err != nil {
-			return err
-		}
-		return nil
+		return DoRedirects(c, "http://google.com", 0)
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
@@ -467,10 +452,7 @@ func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		if err := DoTimeout(c, "http://" + addr, time.Second); err != nil {
-			return err
-		}
-		return nil
+		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
@@ -493,10 +475,7 @@ func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		if err := DoTimeout(c, "http://" + addr, time.Second); err != nil {
-			return err
-		}
-		return nil
+		return DoTimeout(c, "http://"+addr, time.Second)
 	})
 
 	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
@@ -513,10 +492,7 @@ func Test_Proxy_DoDeadline_RestoreOriginalURL(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		if err := DoDeadline(c, "http://" + addr, time.Now().Add(time.Second)); err != nil {
-			return err
-		}
-		return nil
+		return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second))
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
@@ -539,10 +515,7 @@ func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
 
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		if err := DoDeadline(c, "http://" + addr, time.Now().Add(time.Second)); err != nil {
-			return err
-		}
-		return nil
+		return DoDeadline(c, "http://"+addr, time.Now().Add(time.Second))
 	})
 
 	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
