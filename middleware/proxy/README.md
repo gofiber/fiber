@@ -89,6 +89,26 @@ app.Get("/proxy", func(c *fiber.Ctx) error {
  return nil
 })
 
+// Make proxy requests and wait up to 5 seconds before timing out
+app.Get("/proxy", func(c *fiber.Ctx) error {
+ if err := proxy.DoTimeout(c, "http://localhost:3000", time.Second * 5); err != nil {
+  return err
+ }
+ // Remove Server header from response
+ c.Response().Header.Del(fiber.HeaderServer)
+ return nil
+})
+
+// Make proxy requests, timeout a minute from now
+app.Get("/proxy", func(c *fiber.Ctx) error {
+ if err := DoDeadline(c, "http://localhost", time.Now().Add(time.Minute)); err != nil {
+  return err
+ }
+ // Remove Server header from response
+ c.Response().Header.Del(fiber.HeaderServer)
+ return nil
+})
+
 // Minimal round robin balancer
 app.Use(proxy.Balancer(proxy.Config{
  Servers: []string{
