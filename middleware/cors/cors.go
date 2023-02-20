@@ -112,11 +112,11 @@ func New(config ...Config) fiber.Handler {
 
 		// Check allowed origins
 		for _, o := range allowOrigins {
-			if o == "*" && cfg.AllowCredentials {
-				allowOrigin = origin
+			if o == "*" {
+				allowOrigin = "*"
 				break
 			}
-			if o == "*" || o == origin {
+			if o == origin {
 				allowOrigin = o
 				break
 			}
