@@ -20,6 +20,10 @@ func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
 func Do(c *fiber.Ctx, addr string, clients ...*fasthttp.Client) error
 // DoRedirects performs the given http request and fills the given http response while following up to maxRedirectsCount redirects.
 func DoRedirects(c *fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error
+// DoDeadline performs the given request and waits for response until the given deadline.
+func DoDeadline(c *fiber.Ctx, addr string, deadline time.Time, clients ...*fasthttp.Client) error
+// DoTimeout performs the given request and waits for response during the given timeout duration.
+func DoTimeout(c *fiber.Ctx, addr string, timeout time.Duration, clients ...*fasthttp.Client) error
 // DomainForward the given http request based on the given domain and fills the given http response
 func DomainForward(hostname string, addr string, clients ...*fasthttp.Client) fiber.Handler
 // BalancerForward performs the given http request based round robin balancer and fills the given http response

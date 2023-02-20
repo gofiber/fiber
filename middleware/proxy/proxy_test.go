@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"errors"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/internal/tlstest"
@@ -46,6 +47,19 @@ func Test_Proxy_Empty_Upstream_Servers(t *testing.T) {
 	}()
 	app := fiber.New()
 	app.Use(Balancer(Config{Servers: []string{}}))
+}
+
+// go test -run Test_Proxy_Empty_Config
+func Test_Proxy_Empty_Config(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		if r := recover(); r != nil {
+			utils.AssertEqual(t, "Servers cannot be empty", r)
+		}
+	}()
+	app := fiber.New()
+	app.Use(New(Config{}))
 }
 
 // go test -run Test_Proxy_Next
@@ -345,19 +359,24 @@ func Test_Proxy_Buffer_Size_Response(t *testing.T) {
 // go test -race -run Test_Proxy_Do_RestoreOriginalURL
 func Test_Proxy_Do_RestoreOriginalURL(t *testing.T) {
 	t.Parallel()
-	app := fiber.New()
-	app.Get("/proxy", func(c *fiber.Ctx) error {
-		return c.SendString("ok")
+	_, addr := createProxyTestServer(t, func(c *fiber.Ctx) error {
+		return c.SendString("proxied")
 	})
+
+	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
-		if err := Do(c, "/proxy"); err != nil {
+		if err := Do(c, "http://" + addr); err != nil {
 			return err
 		}
-		return c.SendString("ok")
+		return nil
 	})
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	utils.AssertEqual(t, nil, err1)
 	utils.AssertEqual(t, "/test", resp.Request.URL.String())
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "proxied", string(body))
 }
 
 // go test -race -run Test_Proxy_Do_WithRealURL
@@ -368,13 +387,16 @@ func Test_Proxy_Do_WithRealURL(t *testing.T) {
 		if err := Do(c, "https://www.google.com"); err != nil {
 			return err
 		}
-		return c.SendString("ok")
+		return nil
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	utils.AssertEqual(t, nil, err1)
 	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
 	utils.AssertEqual(t, "/test", resp.Request.URL.String())
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, true, strings.Contains(string(body), "https://www.google.com/"))
 }
 
 // go test -race -run Test_Proxy_Do_WithRedirect
@@ -385,14 +407,14 @@ func Test_Proxy_Do_WithRedirect(t *testing.T) {
 		if err := Do(c, "https://google.com"); err != nil {
 			return err
 		}
-		return c.SendString("ok")
+		return nil
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	utils.AssertEqual(t, nil, err1)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, "ok", string(body))
+	utils.AssertEqual(t, true, strings.Contains(string(body), "https://www.google.com/"))
 	utils.AssertEqual(t, 301, resp.StatusCode)
 }
 
@@ -404,7 +426,7 @@ func Test_Proxy_DoRedirects_RestoreOriginalURL(t *testing.T) {
 		if err := DoRedirects(c, "http://google.com", 1); err != nil {
 			return err
 		}
-		return c.SendString("ok")
+		return nil
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
@@ -423,16 +445,108 @@ func Test_Proxy_DoRedirects_TooManyRedirects(t *testing.T) {
 		if err := DoRedirects(c, "http://google.com", 0); err != nil {
 			return err
 		}
-		return c.SendString("ok")
+		return nil
 	})
 
 	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
 	utils.AssertEqual(t, nil, err1)
 	body, err := io.ReadAll(resp.Body)
 	utils.AssertEqual(t, nil, err)
-	utils.AssertEqual(t, string(body), "too many redirects detected when doing the request")
+	utils.AssertEqual(t, "too many redirects detected when doing the request", string(body))
 	utils.AssertEqual(t, fiber.StatusInternalServerError, resp.StatusCode)
 	utils.AssertEqual(t, "/test", resp.Request.URL.String())
+}
+
+// go test -race -run Test_Proxy_DoTimeout_RestoreOriginalURL
+func Test_Proxy_DoTimeout_RestoreOriginalURL(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServer(t, func(c *fiber.Ctx) error {
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	app.Get("/test", func(c *fiber.Ctx) error {
+		if err := DoTimeout(c, "http://" + addr, time.Second); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	utils.AssertEqual(t, nil, err1)
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "proxied", string(body))
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "/test", resp.Request.URL.String())
+}
+
+// go test -race -run Test_Proxy_DoTimeout_Timeout
+func Test_Proxy_DoTimeout_Timeout(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServer(t, func(c *fiber.Ctx) error {
+		time.Sleep(time.Second * 5)
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	app.Get("/test", func(c *fiber.Ctx) error {
+		if err := DoTimeout(c, "http://" + addr, time.Second); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	utils.AssertEqual(t, errors.New("test: timeout error 1000ms"), err1)
+}
+
+// go test -race -run Test_Proxy_DoDeadline_RestoreOriginalURL
+func Test_Proxy_DoDeadline_RestoreOriginalURL(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServer(t, func(c *fiber.Ctx) error {
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	app.Get("/test", func(c *fiber.Ctx) error {
+		if err := DoDeadline(c, "http://" + addr, time.Now().Add(time.Second)); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	resp, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	utils.AssertEqual(t, nil, err1)
+	body, err := io.ReadAll(resp.Body)
+	utils.AssertEqual(t, nil, err)
+	utils.AssertEqual(t, "proxied", string(body))
+	utils.AssertEqual(t, fiber.StatusOK, resp.StatusCode)
+	utils.AssertEqual(t, "/test", resp.Request.URL.String())
+}
+
+// go test -race -run Test_Proxy_DoDeadline_PastDeadline
+func Test_Proxy_DoDeadline_PastDeadline(t *testing.T) {
+	t.Parallel()
+
+	_, addr := createProxyTestServer(t, func(c *fiber.Ctx) error {
+		time.Sleep(time.Second * 5)
+		return c.SendString("proxied")
+	})
+
+	app := fiber.New()
+	app.Get("/test", func(c *fiber.Ctx) error {
+		if err := DoDeadline(c, "http://" + addr, time.Now().Add(time.Second)); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	_, err1 := app.Test(httptest.NewRequest(fiber.MethodGet, "/test", nil))
+	utils.AssertEqual(t, errors.New("test: timeout error 1000ms"), err1)
 }
 
 // go test -race -run Test_Proxy_Do_HTTP_Prefix_URL
