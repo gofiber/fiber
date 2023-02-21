@@ -5,6 +5,7 @@
 package utils
 
 import (
+	goMime "mime"
 	"strings"
 )
 
@@ -22,7 +23,14 @@ func GetMIME(extension string) string {
 		mime = mimeExtensions[extension]
 	}
 	if len(mime) == 0 {
-		return MIMEOctetStream
+		if extension[0] != '.' {
+			mime = goMime.TypeByExtension("." + extension)
+		} else {
+			mime = goMime.TypeByExtension(extension)
+		}
+		if mime == "" {
+			return MIMEOctetStream
+		}
 	}
 	return mime
 }
