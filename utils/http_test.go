@@ -23,6 +23,11 @@ func Test_GetMIME(t *testing.T) {
 
 	res = GetMIME("unknown")
 	AssertEqual(t, MIMEOctetStream, res)
+
+	_ = mime.AddExtensionType(".mjs", "application/javascript")
+	res = GetMIME(".mjs")
+	AssertEqual(t, "application/javascript", res)
+
 	// empty case
 	res = GetMIME("")
 	AssertEqual(t, "", res)
