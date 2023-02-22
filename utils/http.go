@@ -22,12 +22,14 @@ func GetMIME(extension string) string {
 	} else {
 		mime = mimeExtensions[extension]
 	}
+
 	if len(mime) == 0 {
 		if extension[0] != '.' {
 			mime = goMime.TypeByExtension("." + extension)
 		} else {
 			mime = goMime.TypeByExtension(extension)
 		}
+
 		if mime == "" {
 			return MIMEOctetStream
 		}
