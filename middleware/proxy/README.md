@@ -18,6 +18,12 @@ func Balancer(config Config) fiber.Handler
 func Forward(addr string, clients ...*fasthttp.Client) fiber.Handler
 // Do performs the given http request and fills the given http response.
 func Do(c *fiber.Ctx, addr string, clients ...*fasthttp.Client) error
+// DoRedirects performs the given http request and fills the given http response while following up to maxRedirectsCount redirects.
+func DoRedirects(c *fiber.Ctx, addr string, maxRedirectsCount int, clients ...*fasthttp.Client) error
+// DoDeadline performs the given request and waits for response until the given deadline.
+func DoDeadline(c *fiber.Ctx, addr string, deadline time.Time, clients ...*fasthttp.Client) error
+// DoTimeout performs the given request and waits for response during the given timeout duration.
+func DoTimeout(c *fiber.Ctx, addr string, timeout time.Duration, clients ...*fasthttp.Client) error
 // DomainForward the given http request based on the given domain and fills the given http response
 func DomainForward(hostname string, addr string, clients ...*fasthttp.Client) fiber.Handler
 // BalancerForward performs the given http request based round robin balancer and fills the given http response
@@ -66,6 +72,36 @@ app.Get("/gif", proxy.Forward("https://i.imgur.com/IWaBepg.gif", &fasthttp.Clien
 app.Get("/:id", func(c *fiber.Ctx) error {
  url := "https://i.imgur.com/"+c.Params("id")+".gif"
  if err := proxy.Do(c, url); err != nil {
+  return err
+ }
+ // Remove Server header from response
+ c.Response().Header.Del(fiber.HeaderServer)
+ return nil
+})
+
+// Make proxy requests while following redirects
+app.Get("/proxy", func(c *fiber.Ctx) error {
+ if err := proxy.DoRedirects(c, "http://google.com", 3); err != nil {
+  return err
+ }
+ // Remove Server header from response
+ c.Response().Header.Del(fiber.HeaderServer)
+ return nil
+})
+
+// Make proxy requests and wait up to 5 seconds before timing out
+app.Get("/proxy", func(c *fiber.Ctx) error {
+ if err := proxy.DoTimeout(c, "http://localhost:3000", time.Second * 5); err != nil {
+  return err
+ }
+ // Remove Server header from response
+ c.Response().Header.Del(fiber.HeaderServer)
+ return nil
+})
+
+// Make proxy requests, timeout a minute from now
+app.Get("/proxy", func(c *fiber.Ctx) error {
+ if err := DoDeadline(c, "http://localhost", time.Now().Add(time.Minute)); err != nil {
   return err
  }
  // Remove Server header from response
