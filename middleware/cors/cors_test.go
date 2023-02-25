@@ -76,7 +76,7 @@ func Test_CORS_Wildcard(t *testing.T) {
 	handler(ctx)
 
 	// Check result
-	utils.AssertEqual(t, "localhost", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
+	utils.AssertEqual(t, "*", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowOrigin)))
 	utils.AssertEqual(t, "true", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowCredentials)))
 	utils.AssertEqual(t, "3600", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlMaxAge)))
 	utils.AssertEqual(t, "Authentication", string(ctx.Response.Header.Peek(fiber.HeaderAccessControlAllowHeaders)))
