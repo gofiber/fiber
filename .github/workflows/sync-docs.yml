@@ -5,9 +5,13 @@ on:
     branches:
       - master
       - main
+    paths:
+      - 'docs/**'
   release:
     types: [published]
-    
+    paths:
+      - 'docs/**'
+
 jobs:
   sync-docs:
     runs-on: ubuntu-latest

@@ -3,7 +3,13 @@ on:
         branches:
             - master
             - main
+        paths:
+          - '**'
+          - '!docs/**'
     pull_request:
+        paths:
+          - '**'
+          - '!docs/**'
 name: Vulnerability Check
 jobs:
   Security:
