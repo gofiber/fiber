@@ -37,7 +37,7 @@ app.Use("/expose/envvars", envvar.New())
 ```go
 app.Use("/expose/envvars", envvar.New(envvar.Config{
     ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
-    ExcludeVars: map[string]string{"excludeKey": ""}}
+    ExcludeVars: map[string]string{"excludeKey": ""},
 }))
 ```
 
