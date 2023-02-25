@@ -1,0 +1,25 @@
+name: 'Sync docs'
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  release:
+    types: [published]
+    
+jobs:
+  sync-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 2
+
+      - name: Sync docs
+        run: ./.github/scripts/sync_docs.sh
+        env:
+          EVENT: ${{ github.event_name }}
+          TOKEN: ${{ secrets.TOKEN }}
