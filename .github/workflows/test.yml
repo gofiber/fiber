@@ -2,7 +2,14 @@ on:
   push:
     branches:
       - master
+      - main
+    paths:
+      - '**'
+      - '!docs/**'
   pull_request:
+    paths:
+      - '**'
+      - '!docs/**'
 name: Test
 jobs:
   Build:
