@@ -141,7 +141,7 @@ app.Use(proxy.BalancerForward([]string{
 ## Config
 
 ```go
-// Config defines the confi^g for middleware.
+// Config defines the config for middleware.
 type Config struct {
     // Next defines a function to skip this middleware when returned true.
     //
