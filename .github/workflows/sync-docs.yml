@@ -9,8 +9,6 @@ on:
       - 'docs/**'
   release:
     types: [published]
-    paths:
-      - 'docs/**'
 
 jobs:
   sync-docs:
