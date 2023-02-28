@@ -147,14 +147,14 @@ go get -u github.com/gofiber/fiber/v2
 
 <div dir="rtl">
 
--   [ניתוב](https://docs.gofiber.io/routing) רובסטי
+-   [ניתוב](https://docs.gofiber.io/guide/routing) רובסטי
 -   הנגשת [קבצים סטטיים](https://docs.gofiber.io/api/app#static)
 -   [ביצועים](https://docs.gofiber.io/extra/benchmarks) גבוהים במיוחד
 -   צורך כמות [זכרון קטנה](https://docs.gofiber.io/extra/benchmarks)
 -   [נקודות קצה עבור API](https://docs.gofiber.io/api/ctx)
--   תמיכה ב-[Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next)
+-   תמיכה ב-[Middleware](https://docs.gofiber.io/category/-middleware) & [Next](https://docs.gofiber.io/api/ctx#next)
 -   תכנות [מהיר](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) של צד שרת
--   [מנועי תבניות](https://docs.gofiber.io/middleware#template)
+-   [מנועי תבניות](https://docs.gofiber.io/category/-middleware#template)
 -   [תמיכה ב-WebSocket](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
 -   [הגבלת קצבים ובקשות](https://docs.gofiber.io/api/middleware/limiter)
@@ -526,7 +526,7 @@ func main() {
 
 ### תגובת JSON
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 <div dir="ltr">
 

@@ -124,7 +124,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 Fitur
 
--   Sistem [Routing](https://docs.gofiber.io/routing) yang padu
+-   Sistem [Routing](https://docs.gofiber.io/guide/routing) yang padu
 -   Menyajikan [file statis](https://docs.gofiber.io/api/app#static)
 -   [Kinerja](https://docs.gofiber.io/extra/benchmarks) ekstrim
 -   [Penggunaan memori](https://docs.gofiber.io/extra/benchmarks) yang kecil
@@ -437,7 +437,7 @@ func main() {
 
 ### JSON Response
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {
