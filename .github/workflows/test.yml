@@ -6,10 +6,12 @@ on:
     paths:
       - '**'
       - '!docs/**'
+      - '!**.md'
   pull_request:
     paths:
       - '**'
       - '!docs/**'
+      - '!**.md'
 name: Test
 jobs:
   Build:

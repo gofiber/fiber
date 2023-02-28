@@ -6,10 +6,12 @@ on:
     paths:
       - '**'
       - '!docs/**'
+      - '!**.md'
   pull_request:
     paths:
       - '**'
       - '!docs/**'
+      - '!**.md'
 name: Benchmark
 jobs:
   Compare:
@@ -37,4 +39,4 @@ jobs:
         benchmark-data-dir-path: 'benchmarks'
         fail-on-alert: true
         comment-on-alert: true
-        auto-push: true
+        auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
