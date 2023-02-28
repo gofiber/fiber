@@ -124,17 +124,17 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 Features
 
--   Robuuste [routing](https://docs.gofiber.io/routing)
+-   Robuuste [routing](https://docs.gofiber.io/guide/routing)
 -   Serveer [statische bestanden](https://docs.gofiber.io/api/app#static)
 -   Extreme [prestaties](https://docs.gofiber.io/extra/benchmarks)
 -   [Weinig geheugenruimte](https://docs.gofiber.io/extra/benchmarks)
 -   [API endpoints](https://docs.gofiber.io/api/ctx)
--   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) ondersteuning
+-   [Middleware](https://docs.gofiber.io/category/-middleware) & [Next](https://docs.gofiber.io/api/ctx#next) ondersteuning
 -   [Snelle](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programmering
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket ondersteuning](https://github.com/gofiber/websocket)
 -   [Server-Sent events](https://github.com/gofiber/recipes/tree/master/sse)
--   [Rate Limiter](https://docs.gofiber.io/middleware/limiter)
+-   [Rate Limiter](https://docs.gofiber.io/category/-middleware/limiter)
 -   Vertaald in [18 talen](https://docs.gofiber.io/)
 -   En nog veel meer, [ontdek Fiber](https://docs.gofiber.io/)
 
@@ -440,7 +440,7 @@ func main() {
 
 ### JSON Response
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {

@@ -128,13 +128,20 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 特色
 
--   強固的[路由系統](https://docs.gofiber.io/routing)
+-   強固的[路由系統](https://docs.gofiber.io/guide/routing)
 -   可以寄存[靜態檔案](https://docs.gofiber.io/api/app#static)
 -   疾速[效能](https://docs.gofiber.io/extra/benchmarks)
 -   相當低的[記憶體使用量](https://docs.gofiber.io/extra/benchmarks)
 -   [API 端點](https://docs.gofiber.io/api/ctx)
--   支援 [中介模組](https://docs.gofiber.io/middleware) 和 [接續函式 (Next)](https://docs.gofiber.io/api/ctx#next)
+-   支援 [中介模組](https://docs.gofiber.io/category/-middleware) 和 [接續函式 (Next)](https://docs.gofiber.io/api/ctx#next)
 -   [迅速開發](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) 伺服器端服務
+-   強大的[路由](https://docs.gofiber.io/guide/routing)
+-   [靜態檔案](https://docs.gofiber.io/api/app#static)服務
+-   [超快速](https://docs.gofiber.io/extra/benchmarks)
+-   [佔用很少記憶體](https://docs.gofiber.io/extra/benchmarks)
+-   支援 Express 的[API](https://docs.gofiber.io/api/ctx)
+-   支援中介器和[下一步](https://docs.gofiber.io/api/ctx#next)
+-   [立即上手](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 -   [樣板引擎](https://github.com/gofiber/template)
 -   [支援 WebSocket](https://github.com/gofiber/websocket)
 -   [Server-Sent Events](https://github.com/gofiber/recipes/tree/master/sse)
@@ -441,7 +448,7 @@ func main() {
 
 ### JSON 回應
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {

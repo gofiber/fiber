@@ -137,12 +137,12 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 الميزات
 
--   قوي [routing](https://docs.gofiber.io/routing)
+-   قوي [routing](https://docs.gofiber.io/guide/routing)
 -   يقدم خدمة [static files](https://docs.gofiber.io/api/app#static)
 -   أقصى [أداء](https://docs.gofiber.io/extra/benchmarks)
 -   [ذاكرة منخفضة](https://docs.gofiber.io/extra/benchmarks)
 -   [API endpoints](https://docs.gofiber.io/api/ctx)
--   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) مدعوم
+-   [Middleware](https://docs.gofiber.io/category/-middleware) & [Next](https://docs.gofiber.io/api/ctx#next) مدعوم
 -   [سريع](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) server-side programming
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket دعم](https://github.com/gofiber/websocket)
@@ -490,7 +490,7 @@ func main() {
 
 ### JSON Response
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 <div dir="ltr" >
 

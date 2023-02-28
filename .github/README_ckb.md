@@ -124,12 +124,12 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 تایبەتمەندییەکان
 
--   [ناونیشانی ئاڵۆز](https://docs.gofiber.io/routing)
+-   [ناونیشانی ئاڵۆز](https://docs.gofiber.io/guide/routing)
 -   [فایلی جێگیر](https://docs.gofiber.io/api/app#static)
 -   [خێراییەکی](https://docs.gofiber.io/extra/benchmarks) بێوێنە
 -   بەکارهێنانی [میمۆریی کەم](https://docs.gofiber.io/extra/benchmarks)
 -   توانای هەبوونی لقی [API](https://docs.gofiber.io/api/ctx)
--   پشتگیریی [Middleware](https://docs.gofiber.io/middleware) و [Next](https://docs.gofiber.io/api/ctx#next) وەک Express
+-   پشتگیریی [Middleware](https://docs.gofiber.io/category/-middleware) و [Next](https://docs.gofiber.io/api/ctx#next) وەک Express
 -   پڕۆگرامکردنی [خێرا](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)ی ڕاژە
 -   [داڕێژە](https://github.com/gofiber/template)
 -   پشتگیریی [WebSocket](https://github.com/gofiber/websocket)
@@ -439,7 +439,7 @@ func main() {
 
 ### وەڵامی JSON
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {

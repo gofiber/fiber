@@ -125,7 +125,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 機能
 
--   堅牢な[ルーティング](https://docs.gofiber.io/routing)
+-   堅牢な[ルーティング](https://docs.gofiber.io/guide/routing)
 -   [静的ファイル](https://docs.gofiber.io/api/app#static)のサポート
 -   究極の[パフォーマンス](https://docs.gofiber.io/extra/benchmarks)
 -   [低メモリ](https://docs.gofiber.io/extra/benchmarks)フットプリント
@@ -439,7 +439,7 @@ func main() {
 
 ### JSON Response
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {
