@@ -525,6 +525,27 @@ Using `ListenTLS` defaults to the following config \( use `Listener` to provide 
 }
 ```
 
+## ListenTLSWithCertificate
+
+```go title="Signature"
+func (app *App) ListenTLS(addr string, cert tls.Certificate) error
+```
+
+```go title="Examples"
+app.ListenTLSWithCertificate(":443", cert);
+```
+
+Using `ListenTLSWithCertificate` defaults to the following config \( use `Listener` to provide your own config \)
+
+```go title="Default \*tls.Config"
+&tls.Config{
+    MinVersion:               tls.VersionTLS12,
+    Certificates: []tls.Certificate{
+        cert,
+    },
+}
+```
+
 ## ListenMutualTLS
 
 ListenMutualTLS serves HTTPs requests from the given address using certFile, keyFile and clientCertFile are the paths to TLS certificate and key file
@@ -538,6 +559,31 @@ app.ListenMutualTLS(":443", "./cert.pem", "./cert.key", "./ca-chain-cert.pem");
 ```
 
 Using `ListenMutualTLS` defaults to the following config \( use `Listener` to provide your own config \)
+
+```go title="Default \*tls.Config"
+&tls.Config{
+	MinVersion: tls.VersionTLS12,
+	ClientAuth: tls.RequireAndVerifyClientCert,
+	ClientCAs:  clientCertPool,
+	Certificates: []tls.Certificate{
+		cert,
+	},
+}
+```
+
+## ListenMutualTLSWithCertificate
+
+ListenMutualTLSWithCertificate serves HTTPs requests from the given address using certFile, keyFile and clientCertFile are the paths to TLS certificate and key file
+
+```go title="Signature"
+func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate, clientCertPool *x509.CertPool) error
+```
+
+```go title="Examples"
+app.ListenMutualTLSWithCertificate(":443", cert, clientCertPool);
+```
+
+Using `ListenMutualTLSWithCertificate` defaults to the following config \( use `Listener` to provide your own config \)
 
 ```go title="Default \*tls.Config"
 &tls.Config{
