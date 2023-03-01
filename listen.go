@@ -172,6 +172,10 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	return app.ListenMutualTLSWithCertificate(addr, cert, clientCertPool)
 }
 
+// ListenMutualTLSWithCertificate serves HTTPS requests from the given addr.
+// cert is a tls.Certificate and clientCertPool is a *x509.CertPool:
+//
+//	app.ListenMutualTLS(":8080", cert, clientCertPool)
 func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate, clientCertPool *x509.CertPool) error {
 	tlsHandler := &TLSHandler{}
 	config := &tls.Config{
