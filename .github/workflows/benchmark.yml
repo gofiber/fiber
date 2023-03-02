@@ -12,6 +12,10 @@ on:
       - '**'
       - '!docs/**'
       - '!**.md'
+permissions:
+  contents: write
+  deployments: write
+  pull-requests: write
 name: Benchmark
 jobs:
   Compare:
