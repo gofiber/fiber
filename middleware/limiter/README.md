@@ -56,11 +56,11 @@ app.Use(limiter.New(limiter.Config{
 	Expiration: 30 * time.Second,
 	KeyGenerator: func(c *fiber.Ctx) string{
   		return "key"
-	}
+	},
 	LimitReached: func(c *fiber.Ctx) error {
 		return c.SendFile("./toofast.html")
 	},
-	Storage: myCustomStore{}
+	Storage: myCustomStore{},
 }))
 ```
 
