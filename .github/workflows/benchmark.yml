@@ -7,15 +7,11 @@ on:
       - '**'
       - '!docs/**'
       - '!**.md'
-  pull_request:
+  pull_request_target:
     paths:
       - '**'
       - '!docs/**'
       - '!**.md'
-permissions:
-  contents: write
-  deployments: write
-  pull-requests: write
 name: Benchmark
 jobs:
   Compare:
