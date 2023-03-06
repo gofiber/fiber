@@ -5,6 +5,7 @@
 package adaptor
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -71,9 +72,12 @@ func Test_HTTPHandler(t *testing.T) {
 			t.Fatalf("unexpected remoteAddr %q. Expecting %q", r.RemoteAddr, expectedRemoteAddr)
 		}
 		body, err := io.ReadAll(r.Body)
-		r.Body.Close()
 		if err != nil {
 			t.Fatalf("unexpected error when reading request body: %s", err)
+		}
+		err = r.Body.Close()
+		if err != nil {
+			t.Fatalf("unexpected error when closing request body: %s", err)
 		}
 		if string(body) != expectedBody {
 			t.Fatalf("unexpected body %q. Expecting %q", body, expectedBody)
@@ -107,7 +111,10 @@ func Test_HTTPHandler(t *testing.T) {
 	req.Header.SetMethod(expectedMethod)
 	req.SetRequestURI(expectedRequestURI)
 	req.Header.SetHost(expectedHost)
-	req.BodyWriter().Write([]byte(expectedBody)) // nolint:errcheck
+	_, err = req.BodyWriter().Write([]byte(expectedBody))
+	if err != nil {
+		t.Fatalf("unexpected error when writing the request body: %s", err)
+	}
 	for k, v := range expectedHeader {
 		req.Header.Set(k, v)
 	}
@@ -186,13 +193,20 @@ func Test_HTTPMiddleware(t *testing.T) {
 	})
 
 	for _, tt := range tests {
-		req, _ := http.NewRequest(tt.method, tt.url, nil)
+		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, nil)
+		if err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 		resp, err := app.Test(req)
 		if err != nil {
 			t.Fatalf(`%s: %s`, t.Name(), err)
 		}
 		if resp.StatusCode != tt.statusCode {
 			t.Fatalf(`%s: StatusCode: got %v - expected %v`, t.Name(), resp.StatusCode, tt.statusCode)
+		}
+		err = resp.Body.Close()
+		if err != nil {
+			t.Fatalf("unexpected error when closing request body: %s", err)
 		}
 	}
 }
@@ -214,6 +228,8 @@ func Test_FiberAppDefaultPort(t *testing.T) {
 }
 
 func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.App) { //revive:disable-line:flag-parameter
+	t.Helper()
+
 	expectedMethod := fiber.MethodPost
 	expectedRequestURI := "/foo/bar?baz=123"
 	expectedBody := "body 123 foo bar baz"

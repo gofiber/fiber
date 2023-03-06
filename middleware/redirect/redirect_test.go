@@ -1,8 +1,8 @@
-//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 // 🚀 Fiber is an Express inspired web framework written in Go with 💖
 // 📌 API Documentation: https://fiber.wiki
 // 📝 Github Repository: https://github.com/gofiber/fiber
 
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package redirect
 
 import (

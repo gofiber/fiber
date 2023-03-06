@@ -257,7 +257,7 @@ func Test_App_serverErrorHandler_Internal_Error(t *testing.T) {
 	t.Parallel()
 	app := New()
 	msg := "test err"
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	app.serverErrorHandler(c.fasthttp, errors.New(msg))
 	require.Equal(t, string(c.fasthttp.Response.Body()), msg)
@@ -1294,7 +1294,7 @@ func Benchmark_AcquireCtx(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_NewError -benchmem -count=4
 func Benchmark_NewError(b *testing.B) {
 	for n := 0; n < b.N; n++ {
-		NewError(200, "test")
+		NewError(200, "test") //nolint:errcheck // not needed
 	}
 }
 

@@ -1,3 +1,4 @@
+//nolint:wrapcheck,tagliatelle,bodyclose // We must not wrap errors in tests
 package fiber
 
 import (
@@ -628,6 +629,8 @@ func Test_Bind_RespHeader_Map(t *testing.T) {
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query -benchmem -count=4
 func Benchmark_Bind_Query(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -643,13 +646,15 @@ func Benchmark_Bind_Query(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Bind().Query(q)
+		err = c.Bind().Query(q)
 	}
-	require.Nil(b, c.Bind().Query(q))
+	require.Nil(b, err)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query_Map -benchmem -count=4
 func Benchmark_Bind_Query_Map(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -660,13 +665,15 @@ func Benchmark_Bind_Query_Map(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Bind().Query(&q)
+		err = c.Bind().Query(&q)
 	}
-	require.Nil(b, c.Bind().Query(&q))
+	require.Nil(b, err)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query_WithParseParam -benchmem -count=4
 func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -687,14 +694,16 @@ func Benchmark_Bind_Query_WithParseParam(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Bind().Query(cq)
+		err = c.Bind().Query(cq)
 	}
 
-	require.Nil(b, c.Bind().Query(cq))
+	require.Nil(b, err)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Query_Comma -benchmem -count=4
 func Benchmark_Bind_Query_Comma(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -711,13 +720,15 @@ func Benchmark_Bind_Query_Comma(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Bind().Query(q)
+		err = c.Bind().Query(q)
 	}
-	require.Nil(b, c.Bind().Query(q))
+	require.Nil(b, err)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Header -benchmem -count=4
 func Benchmark_Bind_Header(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -737,13 +748,14 @@ func Benchmark_Bind_Header(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Bind().Header(q)
+		err = c.Bind().Header(q)
 	}
-	require.Nil(b, c.Bind().Header(q))
+	require.Nil(b, err)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Header_Map -benchmem -count=4
 func Benchmark_Bind_Header_Map(b *testing.B) {
+	var err error
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -758,13 +770,15 @@ func Benchmark_Bind_Header_Map(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Bind().Header(&q)
+		err = c.Bind().Header(&q)
 	}
-	require.Nil(b, c.Bind().Header(&q))
+	require.Nil(b, err)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_RespHeader -benchmem -count=4
 func Benchmark_Bind_RespHeader(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -784,13 +798,14 @@ func Benchmark_Bind_RespHeader(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Bind().RespHeader(q)
+		err = c.Bind().RespHeader(q)
 	}
-	require.Nil(b, c.Bind().RespHeader(q))
+	require.Nil(b, err)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_RespHeader_Map -benchmem -count=4
 func Benchmark_Bind_RespHeader_Map(b *testing.B) {
+	var err error
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -805,9 +820,9 @@ func Benchmark_Bind_RespHeader_Map(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		c.Bind().RespHeader(&q)
+		err = c.Bind().RespHeader(&q)
 	}
-	require.Nil(b, c.Bind().RespHeader(&q))
+	require.Nil(b, err)
 }
 
 // go test -run Test_Bind_Body
@@ -823,8 +838,10 @@ func Test_Bind_Body(t *testing.T) {
 	{
 		var gzipJSON bytes.Buffer
 		w := gzip.NewWriter(&gzipJSON)
-		_, _ = w.Write([]byte(`{"name":"john"}`))
-		_ = w.Close()
+		_, err := w.Write([]byte(`{"name":"john"}`))
+		require.NoError(t, err)
+		err = w.Close()
+		require.NoError(t, err)
 
 		c.Request().Header.SetContentType(MIMEApplicationJSON)
 		c.Request().Header.Set(HeaderContentEncoding, "gzip")
@@ -938,6 +955,8 @@ func Test_Bind_Body_WithSetParserDecoder(t *testing.T) {
 
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_JSON -benchmem -count=4
 func Benchmark_Bind_Body_JSON(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -954,14 +973,16 @@ func Benchmark_Bind_Body_JSON(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.Bind().Body(d)
+		err = c.Bind().Body(d)
 	}
-	require.Nil(b, c.Bind().Body(d))
+	require.Nil(b, err)
 	require.Equal(b, "john", d.Name)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_XML -benchmem -count=4
 func Benchmark_Bind_Body_XML(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -978,14 +999,16 @@ func Benchmark_Bind_Body_XML(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.Bind().Body(d)
+		err = c.Bind().Body(d)
 	}
-	require.Nil(b, c.Bind().Body(d))
+	require.Nil(b, err)
 	require.Equal(b, "john", d.Name)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_Form -benchmem -count=4
 func Benchmark_Bind_Body_Form(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -1002,14 +1025,16 @@ func Benchmark_Bind_Body_Form(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.Bind().Body(d)
+		err = c.Bind().Body(d)
 	}
-	require.Nil(b, c.Bind().Body(d))
+	require.Nil(b, err)
 	require.Equal(b, "john", d.Name)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_MultipartForm -benchmem -count=4
 func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -1027,14 +1052,16 @@ func Benchmark_Bind_Body_MultipartForm(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.Bind().Body(d)
+		err = c.Bind().Body(d)
 	}
-	require.Nil(b, c.Bind().Body(d))
+	require.Nil(b, err)
 	require.Equal(b, "john", d.Name)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_Body_Form_Map -benchmem -count=4
 func Benchmark_Bind_Body_Form_Map(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -1048,9 +1075,9 @@ func Benchmark_Bind_Body_Form_Map(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		_ = c.Bind().Body(&d)
+		err = c.Bind().Body(&d)
 	}
-	require.Nil(b, c.Bind().Body(&d))
+	require.Nil(b, err)
 	require.Equal(b, "john", d["name"])
 }
 
@@ -1064,9 +1091,7 @@ func Test_Bind_URI(t *testing.T) {
 			UserID uint `uri:"userId"`
 			RoleID uint `uri:"roleId"`
 		}
-		var (
-			d = new(Demo)
-		)
+		d := new(Demo)
 		if err := c.Bind().URI(d); err != nil {
 			t.Fatal(err)
 		}
@@ -1074,8 +1099,10 @@ func Test_Bind_URI(t *testing.T) {
 		require.Equal(t, uint(222), d.RoleID)
 		return nil
 	})
-	app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
-	app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	require.NoError(t, err)
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	require.NoError(t, err)
 }
 
 // go test -run Test_Bind_URI_Map
@@ -1093,14 +1120,18 @@ func Test_Bind_URI_Map(t *testing.T) {
 		require.Equal(t, uint(222), d["roleId"])
 		return nil
 	})
-	app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
-	app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	_, err := app.Test(httptest.NewRequest(MethodGet, "/test1/111/role/222", nil))
+	require.NoError(t, err)
+	_, err = app.Test(httptest.NewRequest(MethodGet, "/test2/111/role/222", nil))
+	require.NoError(t, err)
 }
 
 // go test -v -run=^$ -bench=Benchmark_Bind_URI -benchmem -count=4
 func Benchmark_Bind_URI(b *testing.B) {
+	var err error
+
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.route = &Route{
 		Params: []string{
@@ -1122,9 +1153,10 @@ func Benchmark_Bind_URI(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Bind().URI(&res)
+		err = c.Bind().URI(&res)
 	}
 
+	require.NoError(b, err)
 	require.Equal(b, "john", res.Param1)
 	require.Equal(b, "doe", res.Param2)
 	require.Equal(b, "is", res.Param3)
@@ -1133,8 +1165,10 @@ func Benchmark_Bind_URI(b *testing.B) {
 
 // go test -v -run=^$ -bench=Benchmark_Bind_URI_Map -benchmem -count=4
 func Benchmark_Bind_URI_Map(b *testing.B) {
+	var err error
+
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.route = &Route{
 		Params: []string{
@@ -1151,9 +1185,10 @@ func Benchmark_Bind_URI_Map(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Bind().URI(&res)
+		err = c.Bind().URI(&res)
 	}
 
+	require.NoError(b, err)
 	require.Equal(b, "john", res["param1"])
 	require.Equal(b, "doe", res["param2"])
 	require.Equal(b, "is", res["param3"])
@@ -1405,6 +1440,8 @@ func Test_Bind_Cookie_Schema(t *testing.T) {
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Cookie -benchmem -count=4
 func Benchmark_Bind_Cookie(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -1425,13 +1462,15 @@ func Benchmark_Bind_Cookie(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Bind().Cookie(q)
+		err = c.Bind().Cookie(q)
 	}
-	require.Nil(b, c.Bind().Cookie(q))
+	require.Nil(b, err)
 }
 
 // go test -v  -run=^$ -bench=Benchmark_Bind_Cookie_Map -benchmem -count=4
 func Benchmark_Bind_Cookie_Map(b *testing.B) {
+	var err error
+
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
@@ -1447,9 +1486,9 @@ func Benchmark_Bind_Cookie_Map(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Bind().Cookie(&q)
+		err = c.Bind().Cookie(&q)
 	}
-	require.Nil(b, c.Bind().Cookie(&q))
+	require.Nil(b, err)
 }
 
 // custom binder for testing
@@ -1515,10 +1554,13 @@ func (*structValidator) Engine() any {
 
 func (*structValidator) ValidateStruct(out any) error {
 	out = reflect.ValueOf(out).Elem().Interface()
-	sq := out.(simpleQuery)
+	sq, ok := out.(simpleQuery)
+	if !ok {
+		return fmt.Errorf("failed to type-assert to simpleQuery")
+	}
 
 	if sq.Name != "john" {
-		return errors.New("you should have entered right name!")
+		return errors.New("you should have entered right name")
 	}
 
 	return nil
@@ -1567,8 +1609,10 @@ func Test_Bind_RepeatParserWithSameStruct(t *testing.T) {
 
 	var gzipJSON bytes.Buffer
 	w := gzip.NewWriter(&gzipJSON)
-	_, _ = w.Write([]byte(`{"body_param":"body_param"}`))
-	_ = w.Close()
+	_, err := w.Write([]byte(`{"body_param":"body_param"}`))
+	require.NoError(t, err)
+	err = w.Close()
+	require.NoError(t, err)
 	c.Request().Header.SetContentType(MIMEApplicationJSON)
 	c.Request().Header.Set(HeaderContentEncoding, "gzip")
 	c.Request().SetBody(gzipJSON.Bytes())

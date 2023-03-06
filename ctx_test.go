@@ -62,7 +62,7 @@ func Test_Ctx_Accepts(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Accepts -benchmem -count=4
 func Benchmark_Ctx_Accepts(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9")
 	var res string
@@ -78,7 +78,7 @@ type customCtx struct {
 	DefaultCtx
 }
 
-func (c *customCtx) Params(key string, defaultValue ...string) string { //nolint:revive
+func (c *customCtx) Params(key string, defaultValue ...string) string { //revive:disable-line:unused-parameter // We need defaultValue for some cases
 	return "prefix_" + c.DefaultCtx.Params(key)
 }
 
@@ -140,7 +140,7 @@ func Test_Ctx_AcceptsCharsets(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsCharsets -benchmem -count=4
 func Benchmark_Ctx_AcceptsCharsets(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set("Accept-Charset", "utf-8, iso-8859-1;q=0.5")
 	var res string
@@ -166,7 +166,7 @@ func Test_Ctx_AcceptsEncodings(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsEncodings -benchmem -count=4
 func Benchmark_Ctx_AcceptsEncodings(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set(HeaderAcceptEncoding, "deflate, gzip;q=1.0, *;q=0.5")
 	var res string
@@ -191,7 +191,7 @@ func Test_Ctx_AcceptsLanguages(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_AcceptsLanguages -benchmem -count=4
 func Benchmark_Ctx_AcceptsLanguages(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set(HeaderAcceptLanguage, "fr-CH, fr;q=0.9, en;q=0.8, de;q=0.7, *;q=0.5")
 	var res string
@@ -252,7 +252,7 @@ func Test_Ctx_Append(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Append -benchmem -count=4
 func Benchmark_Ctx_Append(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -285,7 +285,7 @@ func Test_Ctx_Attachment(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Attachment -benchmem -count=4
 func Benchmark_Ctx_Attachment(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -311,7 +311,7 @@ func Test_Ctx_BaseURL(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_BaseURL -benchmem
 func Benchmark_Ctx_BaseURL(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().SetHost("google.com:1337")
 	c.Request().URI().SetPath("/haha/oke/lol")
@@ -500,7 +500,7 @@ func Test_Ctx_Cookie(t *testing.T) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Cookie -benchmem -count=4
 func Benchmark_Ctx_Cookie(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
+	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx) //nolint:errcheck, forcetypeassert // not needed
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -591,7 +591,7 @@ func Benchmark_Ctx_Format(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Format_HTML -benchmem -count=4
 func Benchmark_Ctx_Format_HTML(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.NewCtx(&fasthttp.RequestCtx{}) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set("Accept", "text/html")
 	b.ReportAllocs()
@@ -608,7 +608,7 @@ func Benchmark_Ctx_Format_HTML(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Format_JSON -benchmem -count=4
 func Benchmark_Ctx_Format_JSON(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.NewCtx(&fasthttp.RequestCtx{}) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set("Accept", "application/json")
 	b.ReportAllocs()
@@ -625,7 +625,7 @@ func Benchmark_Ctx_Format_JSON(b *testing.B) {
 // go test -v -run=^$ -bench=Benchmark_Ctx_Format_XML -benchmem -count=4
 func Benchmark_Ctx_Format_XML(b *testing.B) {
 	app := New()
-	c := app.NewCtx(&fasthttp.RequestCtx{})
+	c := app.NewCtx(&fasthttp.RequestCtx{}) //nolint:errcheck, forcetypeassert // not needed
 
 	c.Request().Header.Set("Accept", "application/xml")
 	b.ReportAllocs()

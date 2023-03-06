@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -13,17 +14,15 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-var (
-	// Pool for redirection
-	redirectPool = sync.Pool{
-		New: func() any {
-			return &Redirect{
-				status:   StatusFound,
-				oldInput: make(map[string]string, 0),
-			}
-		},
-	}
-)
+// Pool for redirection
+var redirectPool = sync.Pool{
+	New: func() any {
+		return &Redirect{
+			status:   StatusFound,
+			oldInput: make(map[string]string, 0),
+		}
+	},
+}
 
 // Cookie name to send flash messages when to use redirection.
 const (
@@ -52,7 +51,12 @@ type RedirectConfig struct {
 
 // AcquireRedirect return default Redirect reference from the redirect pool
 func AcquireRedirect() *Redirect {
-	return redirectPool.Get().(*Redirect)
+	redirect, ok := redirectPool.Get().(*Redirect)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *Redirect"))
+	}
+
+	return redirect
 }
 
 // ReleaseRedirect returns c acquired via Redirect to redirect pool.
@@ -103,11 +107,11 @@ func (r *Redirect) WithInput() *Redirect {
 
 	switch ctype {
 	case MIMEApplicationForm:
-		_ = r.c.Bind().Form(r.oldInput)
+		_ = r.c.Bind().Form(r.oldInput) //nolint:errcheck // not needed
 	case MIMEMultipartForm:
-		_ = r.c.Bind().MultipartForm(r.oldInput)
+		_ = r.c.Bind().MultipartForm(r.oldInput) //nolint:errcheck // not needed
 	default:
-		_ = r.c.Bind().Query(r.oldInput)
+		_ = r.c.Bind().Query(r.oldInput) //nolint:errcheck // not needed
 	}
 
 	return r
@@ -286,7 +290,7 @@ func (r *Redirect) setFlash() {
 	r.c.ClearCookie(FlashCookieName)
 }
 
-func parseMessage(raw string) (string, string) {
+func parseMessage(raw string) (key string, value string) {
 	if i := findNextNonEscapedCharsetPosition(raw, []byte(CookieDataAssigner)); i != -1 {
 		return RemoveEscapeChar(raw[:i]), RemoveEscapeChar(raw[i+1:])
 	}

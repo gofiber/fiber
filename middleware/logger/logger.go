@@ -123,10 +123,6 @@ func New(config ...Config) fiber.Handler {
 		}
 
 		// Logger instance & update some logger data fields
-		if err = cfg.LoggerFunc(c, data, cfg); err != nil {
-			return err
-		}
-
-		return nil
+		return cfg.LoggerFunc(c, data, cfg)
 	}
 }

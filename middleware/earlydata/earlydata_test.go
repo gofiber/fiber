@@ -38,8 +38,7 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 		isEarly := earlydata.IsEarly(c)
 
 		switch h := c.Get(headerName); h {
-		case "",
-			headerValOff:
+		case "", headerValOff:
 			if isEarly {
 				return errors.New("is early-data even though it's not")
 			}
@@ -69,7 +68,11 @@ func appWithConfig(t *testing.T, c *fiber.Config) *fiber.App {
 		fiber.MethodGet,
 		fiber.MethodPost,
 	}, "/", func(c fiber.Ctx) error {
-		if !c.Locals(localsKeyTestValid).(bool) {
+		valid, ok := c.Locals(localsKeyTestValid).(bool)
+		if !ok {
+			panic(fmt.Errorf("failed to type-assert to bool"))
+		}
+		if !valid {
 			return errors.New("handler called even though validation failed")
 		}
 

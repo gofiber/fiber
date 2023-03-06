@@ -65,9 +65,7 @@ func Test_Storage_Memory_Set_Expiration(t *testing.T) {
 }
 
 func Test_Storage_Memory_Get_Expired(t *testing.T) {
-	var (
-		key = "john"
-	)
+	key := "john"
 
 	result, err := testStore.Get(key)
 	require.NoError(t, err)
@@ -102,9 +100,7 @@ func Test_Storage_Memory_Delete(t *testing.T) {
 
 func Test_Storage_Memory_Reset(t *testing.T) {
 	t.Parallel()
-	var (
-		val = []byte("doe")
-	)
+	val := []byte("doe")
 
 	err := testStore.Set("john1", val, 0)
 	require.NoError(t, err)

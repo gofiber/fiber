@@ -1109,7 +1109,11 @@ func (c *DefaultCtx) Render(name string, bind Map, layouts ...string) error {
 func (c *DefaultCtx) renderExtensions(bind Map) {
 	// Bind view map
 	c.viewBindMap.Range(func(key, value any) bool {
-		bind[key.(string)] = value
+		keyS, ok := key.(string)
+		if !ok {
+			panic(fmt.Errorf("failed to type-assert to string"))
+		}
+		bind[keyS] = value
 
 		return true
 	})

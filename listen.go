@@ -63,7 +63,7 @@ type ListenConfig struct {
 	// GracefulContext is a field to shutdown Fiber by given context gracefully.
 	//
 	// Default: nil
-	GracefulContext context.Context `json:"graceful_context"`
+	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
 
 	// TLSConfigFunc allows customizing tls.Config as you want.
 	//
@@ -112,7 +112,7 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		return ListenConfig{
 			ListenerNetwork: NetworkTCP4,
 			OnShutdownError: func(err error) {
-				log.Fatalf("shutdown: %v", err)
+				log.Fatalf("shutdown: %v", err) //nolint:revive // It's an optipn
 			},
 		}
 	}
@@ -124,7 +124,7 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 
 	if cfg.OnShutdownError == nil {
 		cfg.OnShutdownError = func(err error) {
-			log.Fatalf("shutdown: %v", err)
+			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an optipn
 		}
 	}
 
@@ -141,7 +141,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	cfg := listenConfigDefault(config...)
 
 	// Configure TLS
-	var tlsConfig *tls.Config = nil
+	var tlsConfig *tls.Config
 	if cfg.CertFile != "" && cfg.CertKeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.CertKeyFile)
 		if err != nil {
@@ -160,7 +160,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		if cfg.CertClientFile != "" {
 			clientCACert, err := os.ReadFile(filepath.Clean(cfg.CertClientFile))
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to read file: %w", err)
 			}
 
 			clientCertPool := x509.NewCertPool()
@@ -248,7 +248,7 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 }
 
 // Create listener function.
-func (app *App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig) (net.Listener, error) {
+func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig) (net.Listener, error) {
 	var listener net.Listener
 	var err error
 
@@ -260,6 +260,11 @@ func (app *App) createListener(addr string, tlsConfig *tls.Config, cfg ListenCon
 
 	if cfg.ListenerAddrFunc != nil {
 		cfg.ListenerAddrFunc(listener.Addr())
+	}
+
+	// Wrap error comes from tls.Listen/net.Listen
+	if err != nil {
+		err = fmt.Errorf("failed to listen: %w", err)
 	}
 
 	return listener, err
@@ -278,7 +283,7 @@ func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenConfig) {
+func (app *App) startupMessage(addr string, enableTLS bool, pids string, cfg ListenConfig) { //nolint:revive TODO: Check CertKeyFile instead of control-flag.
 	// ignore child processes
 	if IsChild() {
 		return
@@ -297,7 +302,7 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 	}
 
 	scheme := schemeHTTP
-	if tls {
+	if enableTLS {
 		scheme = schemeHTTPS
 	}
 
@@ -424,7 +429,7 @@ func (app *App) printRoutesMessage() {
 func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 	<-ctx.Done()
 
-	if err := app.Shutdown(); err != nil {
+	if err := app.Shutdown(); err != nil { //nolint:contextcheck // TODO: Implement it
 		cfg.OnShutdownError(err)
 	}
 

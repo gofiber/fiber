@@ -7,6 +7,7 @@ package fiber
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"sync"
@@ -408,7 +409,11 @@ func (app *App) NewCtx(fctx *fasthttp.RequestCtx) Ctx {
 
 // AcquireCtx retrieves a new Ctx from the pool.
 func (app *App) AcquireCtx() Ctx {
-	return app.pool.Get().(Ctx)
+	ctx, ok := app.pool.Get().(Ctx)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to Ctx"))
+	}
+	return ctx
 }
 
 // ReleaseCtx releases the ctx back into the pool.

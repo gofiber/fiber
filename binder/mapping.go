@@ -86,7 +86,7 @@ func parse(aliasTag string, out any, data map[string][]string) error {
 // Parse data into the struct with gorilla/schema
 func parseToStruct(aliasTag string, out any, data map[string][]string) error {
 	// Get decoder from pool
-	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder)
+	schemaDecoder := decoderPoolMap[aliasTag].Get().(*schema.Decoder) //nolint:errcheck,forcetypeassert // not needed
 	defer decoderPoolMap[aliasTag].Put(schemaDecoder)
 
 	// Set alias tag
@@ -136,7 +136,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 	for i, b := range kbytes {
 		if b == '[' && kbytes[i+1] != ']' {
 			if err := bb.WriteByte('.'); err != nil {
-				return "", err //nolint:wrapchec
+				return "", err //nolint:wrapchec,wrapcheck // unnecessary to wrap it
 			}
 		}
 
@@ -145,7 +145,7 @@ func parseParamSquareBrackets(k string) (string, error) {
 		}
 
 		if err := bb.WriteByte(b); err != nil {
-			return "", err //nolint:wrapchec
+			return "", err //nolint:wrapchec,wrapcheck // unnecessary to wrap it
 		}
 	}
 

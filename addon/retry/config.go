@@ -1,6 +1,8 @@
 package retry
 
-import "time"
+import (
+	"time"
+)
 
 // Config defines the config for addon.
 type Config struct {

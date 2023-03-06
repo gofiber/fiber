@@ -45,7 +45,7 @@ func HTTPMiddleware(mw func(http.Handler) http.Handler) fiber.Handler {
 				}
 			}
 		})
-		_ = HTTPHandler(mw(nextHandler))(c)
+		_ = HTTPHandler(mw(nextHandler))(c) //nolint:errcheck // TODO
 		if next {
 			return c.Next()
 		}
@@ -81,7 +81,7 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 				return
 			}
 			req.Header.SetContentLength(len(body))
-			_, _ = req.BodyWriter().Write(body)
+			_, _ = req.BodyWriter().Write(body) //nolint:errcheck // TODO
 		}
 		req.Header.SetMethod(r.Method)
 		req.SetRequestURI(r.RequestURI)
@@ -121,6 +121,6 @@ func handlerFunc(app *fiber.App, h ...fiber.Handler) http.HandlerFunc {
 			w.Header().Add(string(k), string(v))
 		})
 		w.WriteHeader(fctx.Response.StatusCode())
-		_, _ = w.Write(fctx.Response.Body())
+		_, _ = w.Write(fctx.Response.Body()) //nolint:errcheck // not needed
 	}
 }

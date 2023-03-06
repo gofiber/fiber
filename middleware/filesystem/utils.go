@@ -21,7 +21,10 @@ func getFileExtension(p string) string {
 }
 
 func dirList(c fiber.Ctx, f fs.File) error {
-	ff := f.(fs.ReadDirFile)
+	ff, ok := f.(fs.ReadDirFile)
+	if !ok {
+		return fmt.Errorf("failed to type-assert to fs.ReadDirFile")
+	}
 	fileinfos, err := ff.ReadDir(-1)
 	if err != nil {
 		return fmt.Errorf("failed to read dir: %w", err)
@@ -33,7 +36,7 @@ func dirList(c fiber.Ctx, f fs.File) error {
 		name := fi.Name()
 		info, err := fi.Info()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get file info: %w", err)
 		}
 
 		fm[name] = info
@@ -73,5 +76,10 @@ func dirList(c fiber.Ctx, f fs.File) error {
 func openFile(filesystem fs.FS, name string) (fs.File, error) {
 	name = filepath.ToSlash(name)
 
-	return filesystem.Open(name)
+	file, err := filesystem.Open(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+
+	return file, nil
 }

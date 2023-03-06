@@ -190,7 +190,7 @@ func (app *App) next(c *DefaultCtx) (bool, error) {
 	return false, err
 }
 
-func (app *App) handler(rctx *fasthttp.RequestCtx) {
+func (app *App) requestHandler(rctx *fasthttp.RequestCtx) {
 	// Handler for default ctxs
 	var c CustomCtx
 	if app.newCtxFunc != nil {
