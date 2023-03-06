@@ -98,6 +98,14 @@ func (app *App) ListenTLS(addr, certFile, keyFile string) error {
 		return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", certFile, keyFile, err)
 	}
 
+	return app.ListenTLSWithCertificate(addr, cert)
+}
+
+// ListenTLS serves HTTPS requests from the given addr.
+// cert is a tls.Certificate
+//
+//	app.ListenTLSWithCertificate(":8080", cert)
+func (app *App) ListenTLSWithCertificate(addr string, cert tls.Certificate) error {
 	tlsHandler := &TLSHandler{}
 	config := &tls.Config{
 		MinVersion: tls.VersionTLS12,
@@ -161,6 +169,14 @@ func (app *App) ListenMutualTLS(addr, certFile, keyFile, clientCertFile string) 
 	clientCertPool := x509.NewCertPool()
 	clientCertPool.AppendCertsFromPEM(clientCACert)
 
+	return app.ListenMutualTLSWithCertificate(addr, cert, clientCertPool)
+}
+
+// ListenMutualTLSWithCertificate serves HTTPS requests from the given addr.
+// cert is a tls.Certificate and clientCertPool is a *x509.CertPool:
+//
+//	app.ListenMutualTLS(":8080", cert, clientCertPool)
+func (app *App) ListenMutualTLSWithCertificate(addr string, cert tls.Certificate, clientCertPool *x509.CertPool) error {
 	tlsHandler := &TLSHandler{}
 	config := &tls.Config{
 		MinVersion: tls.VersionTLS12,
