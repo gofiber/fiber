@@ -26,7 +26,7 @@ func Test_GetMIME(t *testing.T) {
 
 	err := mime.AddExtensionType(".mjs", "application/javascript")
 	if err == nil {
-		res = GetMIME(".text")
+		res = GetMIME(".mjs")
 		AssertEqual(t, "application/javascript", res)
 	}
 	AssertEqual(t, nil, err)
