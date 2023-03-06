@@ -24,12 +24,12 @@ func Test_GetMIME(t *testing.T) {
 	res = GetMIME("unknown")
 	AssertEqual(t, MIMEOctetStream, res)
 
-	if err := mime.AddExtensionType(".mjs", "application/javascript"); err == nil {
-		res = GetMIME(".mjs")
+	err := mime.AddExtensionType(".mjs", "application/javascript")
+	if err == nil {
+		res = GetMIME(".text")
 		AssertEqual(t, "application/javascript", res)
-	} else {
-		t.Logf("failed to add extension type, err: %v", err)
 	}
+	AssertEqual(t, nil, err)
 
 	// empty case
 	res = GetMIME("")
