@@ -40,5 +40,5 @@ jobs:
         fail-on-alert: true
         comment-on-alert: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
         # Enable Job Summary for PRs
-        summary-always: ${{ github.event_name != 'push' && github.event_name != 'workflow_dispatch' }}
+        #summary-always: ${{ github.event_name != 'push' && github.event_name != 'workflow_dispatch' }}
         auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
