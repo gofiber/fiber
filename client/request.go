@@ -570,7 +570,7 @@ type Header struct {
 	*fasthttp.RequestHeader
 }
 
-// Peekmultiple methods returns multiple field in header with same key.
+// PeekMultiple methods returns multiple field in header with same key.
 func (h *Header) PeekMultiple(key string) []string {
 	res := []string{}
 	byteKey := []byte(key)

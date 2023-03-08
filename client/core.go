@@ -151,7 +151,7 @@ func (c *core) preHooks() error {
 		}
 	}
 
-	for _, f := range c.client.buildinRequestHooks {
+	for _, f := range c.client.builtinRequestHooks {
 		err := f(c.client, c.req)
 		if err != nil {
 			return err
@@ -166,7 +166,7 @@ func (c *core) afterHooks(resp *Response) error {
 	c.client.mu.RLock()
 	defer c.client.mu.RUnlock()
 
-	for _, f := range c.client.buildinResponseHooks {
+	for _, f := range c.client.builtinResponseHooks {
 		err := f(c.client, resp, c.req)
 		if err != nil {
 			return err
