@@ -60,7 +60,7 @@ app.Use([]string{"/api", "/home"}, func(c *fiber.Ctx) error {
 })
 
 // Attach multiple handlers 
-app.Use("/api",func(c *fiber.Ctx) error {
+app.Use("/api", func(c *fiber.Ctx) error {
   c.Set("X-Custom-Header", random.String(32))
     return c.Next()
 }, func(c *fiber.Ctx) error {
