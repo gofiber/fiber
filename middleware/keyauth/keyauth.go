@@ -11,10 +11,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-var (
-	// When there is no request of the key thrown ErrMissingOrMalformedAPIKey
-	ErrMissingOrMalformedAPIKey = errors.New("missing or malformed API Key")
-)
+// When there is no request of the key thrown ErrMissingOrMalformedAPIKey
+var ErrMissingOrMalformedAPIKey = errors.New("missing or malformed API Key")
 
 type Config struct {
 	// Filter defines a function to skip middleware.
@@ -69,7 +67,7 @@ func New(config ...Config) fiber.Handler {
 	}
 	if cfg.ErrorHandler == nil {
 		cfg.ErrorHandler = func(c fiber.Ctx, err error) error {
-			if err == ErrMissingOrMalformedAPIKey {
+			if errors.Is(err, ErrMissingOrMalformedAPIKey) {
 				return c.Status(fiber.StatusBadRequest).SendString(err.Error())
 			}
 			return c.Status(fiber.StatusUnauthorized).SendString("Invalid or expired API Key")

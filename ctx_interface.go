@@ -7,6 +7,7 @@ package fiber
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"sync"
@@ -185,7 +186,7 @@ type Ctx interface {
 	// Next executes the next method in the stack that matches the current route.
 	Next() (err error)
 
-	// RestartRouting instead of going to the next handler. This may be usefull after
+	// RestartRouting instead of going to the next handler. This may be useful after
 	// changing the request path. Note that handlers might be executed again.
 	RestartRouting() error
 
@@ -226,6 +227,16 @@ type Ctx interface {
 	// Make copies or use the Immutable setting to use the value outside the Handler.
 	Query(key string, defaultValue ...string) string
 
+	// QueryInt returns integer value of key string parameter in the url.
+	// Default to empty or invalid key is 0.
+	//
+	//	GET /?name=alex&wanna_cake=2&id=
+	//	QueryInt("wanna_cake", 1) == 2
+	//	QueryInt("name", 1) == 1
+	//	QueryInt("id", 1) == 1
+	//	QueryInt("id") == 0
+	QueryInt(key string, defaultValue ...int) int
+
 	// Range returns a struct containing the type and a slice of ranges.
 	Range(size int) (rangeData Range, err error)
 
@@ -255,7 +266,7 @@ type Ctx interface {
 	// SaveFileToStorage saves any multipart file to an external storage system.
 	SaveFileToStorage(fileheader *multipart.FileHeader, path string, storage Storage) error
 
-	// Secure returns a boolean property, that is true, if a TLS connection is established.
+	// Secure returns whether a secure connection was established.
 	Secure() bool
 
 	// Send sets the HTTP response body without copying it.
@@ -398,7 +409,11 @@ func (app *App) NewCtx(fctx *fasthttp.RequestCtx) Ctx {
 
 // AcquireCtx retrieves a new Ctx from the pool.
 func (app *App) AcquireCtx() Ctx {
-	return app.pool.Get().(Ctx)
+	ctx, ok := app.pool.Get().(Ctx)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to Ctx"))
+	}
+	return ctx
 }
 
 // ReleaseCtx releases the ctx back into the pool.
@@ -427,7 +442,7 @@ func (c *DefaultCtx) Reset(fctx *fasthttp.RequestCtx) {
 
 	// Set method
 	c.method = c.app.getString(fctx.Request.Header.Method())
-	c.methodINT = methodInt(c.method)
+	c.methodINT = c.app.methodInt(c.method)
 
 	// Prettify path
 	c.configDependentPaths()
@@ -456,7 +471,7 @@ func (c *DefaultCtx) setReq(fctx *fasthttp.RequestCtx) {
 
 	// Set method
 	c.method = c.app.getString(fctx.Request.Header.Method())
-	c.methodINT = methodInt(c.method)
+	c.methodINT = c.app.methodInt(c.method)
 
 	// Prettify path
 	c.configDependentPaths()

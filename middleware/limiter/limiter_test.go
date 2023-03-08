@@ -2,7 +2,6 @@ package limiter
 
 import (
 	"io"
-	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -16,6 +15,7 @@ import (
 
 // go test -run Test_Limiter_Concurrency_Store -race -v
 func Test_Limiter_Concurrency_Store(t *testing.T) {
+	t.Parallel()
 	// Test concurrency using a custom store
 
 	app := fiber.New()
@@ -33,7 +33,7 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 	var wg sync.WaitGroup
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -49,19 +49,20 @@ func Test_Limiter_Concurrency_Store(t *testing.T) {
 
 	wg.Wait()
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_Concurrency -race -v
 func Test_Limiter_Concurrency(t *testing.T) {
+	t.Parallel()
 	// Test concurrency using a default store
 
 	app := fiber.New()
@@ -78,7 +79,7 @@ func Test_Limiter_Concurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	singleRequest := func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 		require.NoError(t, err)
 		require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
@@ -94,19 +95,20 @@ func Test_Limiter_Concurrency(t *testing.T) {
 
 	wg.Wait()
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_No_Skip_Choices -v
 func Test_Limiter_No_Skip_Choices(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -117,27 +119,28 @@ func Test_Limiter_No_Skip_Choices(t *testing.T) {
 	}))
 
 	app.Get("/:status", func(c fiber.Ctx) error {
-		if c.Params("status") == "fail" {
+		if c.Params("status") == "fail" { //nolint:goconst // False positive
 			return c.SendStatus(400)
 		}
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_Skip_Failed_Requests -v
 func Test_Limiter_Skip_Failed_Requests(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -153,27 +156,28 @@ func Test_Limiter_Skip_Failed_Requests(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
 
 // go test -run Test_Limiter_Skip_Successful_Requests -v
 func Test_Limiter_Skip_Successful_Requests(t *testing.T) {
+	t.Parallel()
 	// Test concurrency using a default store
 
 	app := fiber.New()
@@ -191,21 +195,21 @@ func Test_Limiter_Skip_Successful_Requests(t *testing.T) {
 		return c.SendStatus(200)
 	})
 
-	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/success", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/success", nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(3 * time.Second)
 
-	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/fail", nil))
+	resp, err = app.Test(httptest.NewRequest(fiber.MethodGet, "/fail", nil))
 	require.NoError(t, err)
 	require.Equal(t, 400, resp.StatusCode)
 }
@@ -227,7 +231,7 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
 
 	b.ResetTimer()
@@ -239,6 +243,7 @@ func Benchmark_Limiter_Custom_Store(b *testing.B) {
 
 // go test -run Test_Limiter_Next
 func Test_Limiter_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ fiber.Ctx) bool {
@@ -246,12 +251,13 @@ func Test_Limiter_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
 
 func Test_Limiter_Headers(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New(Config{
@@ -264,7 +270,7 @@ func Test_Limiter_Headers(t *testing.T) {
 	})
 
 	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
 
 	app.Handler()(fctx)
@@ -294,7 +300,7 @@ func Benchmark_Limiter(b *testing.B) {
 	h := app.Handler()
 
 	fctx := &fasthttp.RequestCtx{}
-	fctx.Request.Header.SetMethod("GET")
+	fctx.Request.Header.SetMethod(fiber.MethodGet)
 	fctx.Request.SetRequestURI("/")
 
 	b.ResetTimer()
@@ -306,6 +312,7 @@ func Benchmark_Limiter(b *testing.B) {
 
 // go test -run Test_Sliding_Window -race -v
 func Test_Sliding_Window(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Max:               10,
@@ -319,7 +326,7 @@ func Test_Sliding_Window(t *testing.T) {
 	})
 
 	singleRequest := func(shouldFail bool) {
-		resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/", nil))
+		resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 		if shouldFail {
 			require.NoError(t, err)
 			require.Equal(t, 429, resp.StatusCode)

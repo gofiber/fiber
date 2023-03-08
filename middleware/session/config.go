@@ -94,7 +94,8 @@ func configDefault(config ...Config) Config {
 	}
 
 	selectors := strings.Split(cfg.KeyLookup, ":")
-	if len(selectors) != 2 {
+	const numSelectors = 2
+	if len(selectors) != numSelectors {
 		panic("[session] KeyLookup must in the form of <source>:<name>")
 	}
 	switch Source(selectors[0]) {

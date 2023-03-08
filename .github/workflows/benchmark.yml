@@ -7,7 +7,7 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v3
       with:
-        go-version: 1.19.x
+        go-version: 1.20.x
     - name: Fetch Repository
       uses: actions/checkout@v3
     - name: Run Benchmark
@@ -24,6 +24,7 @@ jobs:
         tool: 'go'
         output-file-path: output.txt
         github-token: ${{ secrets.BENCHMARK_TOKEN }}
+        benchmark-data-dir-path: 'benchmarks'
         fail-on-alert: true
         comment-on-alert: true
         # TODO: reactivate it later -> when v3 is the stable one

@@ -5,6 +5,7 @@
 package adaptor
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -14,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 )
 
@@ -70,9 +72,12 @@ func Test_HTTPHandler(t *testing.T) {
 			t.Fatalf("unexpected remoteAddr %q. Expecting %q", r.RemoteAddr, expectedRemoteAddr)
 		}
 		body, err := io.ReadAll(r.Body)
-		r.Body.Close()
 		if err != nil {
 			t.Fatalf("unexpected error when reading request body: %s", err)
+		}
+		err = r.Body.Close()
+		if err != nil {
+			t.Fatalf("unexpected error when closing request body: %s", err)
 		}
 		if string(body) != expectedBody {
 			t.Fatalf("unexpected body %q. Expecting %q", body, expectedBody)
@@ -94,7 +99,8 @@ func Test_HTTPHandler(t *testing.T) {
 		w.Header().Set("Header1", "value1")
 		w.Header().Set("Header2", "value2")
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "request body is %q", body)
+		_, err = fmt.Fprintf(w, "request body is %q", body)
+		require.NoError(t, err)
 	}
 	fiberH := HTTPHandlerFunc(http.HandlerFunc(nethttpH))
 	fiberH = setFiberContextValueMiddleware(fiberH, expectedContextKey, expectedContextValue)
@@ -105,7 +111,10 @@ func Test_HTTPHandler(t *testing.T) {
 	req.Header.SetMethod(expectedMethod)
 	req.SetRequestURI(expectedRequestURI)
 	req.Header.SetHost(expectedHost)
-	req.BodyWriter().Write([]byte(expectedBody)) // nolint:errcheck
+	_, err = req.BodyWriter().Write([]byte(expectedBody))
+	if err != nil {
+		t.Fatalf("unexpected error when writing the request body: %s", err)
+	}
 	for k, v := range expectedHeader {
 		req.Header.Set(k, v)
 	}
@@ -141,7 +150,6 @@ func Test_HTTPHandler(t *testing.T) {
 }
 
 func Test_HTTPMiddleware(t *testing.T) {
-
 	tests := []struct {
 		name       string
 		url        string
@@ -185,13 +193,20 @@ func Test_HTTPMiddleware(t *testing.T) {
 	})
 
 	for _, tt := range tests {
-		req, _ := http.NewRequest(tt.method, tt.url, nil)
+		req, err := http.NewRequestWithContext(context.Background(), tt.method, tt.url, nil)
+		if err != nil {
+			t.Fatalf(`%s: %s`, t.Name(), err)
+		}
 		resp, err := app.Test(req)
 		if err != nil {
 			t.Fatalf(`%s: %s`, t.Name(), err)
 		}
 		if resp.StatusCode != tt.statusCode {
 			t.Fatalf(`%s: StatusCode: got %v - expected %v`, t.Name(), resp.StatusCode, tt.statusCode)
+		}
+		err = resp.Body.Close()
+		if err != nil {
+			t.Fatalf("unexpected error when closing request body: %s", err)
 		}
 	}
 }
@@ -212,7 +227,9 @@ func Test_FiberAppDefaultPort(t *testing.T) {
 	testFiberToHandlerFunc(t, true, fiber.New())
 }
 
-func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.App) {
+func testFiberToHandlerFunc(t *testing.T, checkDefaultPort bool, app ...*fiber.App) { //revive:disable-line:flag-parameter
+	t.Helper()
+
 	expectedMethod := fiber.MethodPost
 	expectedRequestURI := "/foo/bar?baz=123"
 	expectedBody := "body 123 foo bar baz"

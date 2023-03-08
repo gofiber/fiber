@@ -10,6 +10,7 @@ import (
 
 // go test -run Test_RequestID
 func Test_RequestID(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use(New())
@@ -18,14 +19,14 @@ func Test_RequestID(t *testing.T) {
 		return c.SendString("Hello, World 👋!")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	reqid := resp.Header.Get(fiber.HeaderXRequestID)
 	require.Equal(t, 36, len(reqid))
 
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequest(fiber.MethodGet, "/", nil)
 	req.Header.Add(fiber.HeaderXRequestID, reqid)
 
 	resp, err = app.Test(req)
@@ -36,6 +37,7 @@ func Test_RequestID(t *testing.T) {
 
 // go test -run Test_RequestID_Next
 func Test_RequestID_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Next: func(_ fiber.Ctx) bool {
@@ -43,7 +45,7 @@ func Test_RequestID_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, resp.Header.Get(fiber.HeaderXRequestID), "")
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
@@ -51,13 +53,14 @@ func Test_RequestID_Next(t *testing.T) {
 
 // go test -run Test_RequestID_Locals
 func Test_RequestID_Locals(t *testing.T) {
-	reqId := "ThisIsARequestId"
+	t.Parallel()
+	reqID := "ThisIsARequestId"
 	ctxKey := "ThisIsAContextKey"
 
 	app := fiber.New()
 	app.Use(New(Config{
 		Generator: func() string {
-			return reqId
+			return reqID
 		},
 		ContextKey: ctxKey,
 	}))
@@ -65,11 +68,11 @@ func Test_RequestID_Locals(t *testing.T) {
 	var ctxVal string
 
 	app.Use(func(c fiber.Ctx) error {
-		ctxVal = c.Locals(ctxKey).(string)
+		ctxVal = c.Locals(ctxKey).(string) //nolint:forcetypeassert,errcheck // We always store a string in here
 		return c.Next()
 	})
 
-	_, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
-	require.Equal(t, reqId, ctxVal)
+	require.Equal(t, reqID, ctxVal)
 }

@@ -69,8 +69,8 @@ type Config struct {
 
 	// Base64 encoded unique key to encode & decode cookies.
 	//
-	// Required. Key length should be 32 characters.
-	// You may use `encryptcookie.GenerateKey()` to generate a new key.
+	// Required. The key should be 32 bytes of random data in base64-encoded form.
+	// You may run `openssl rand -base64 32` or use `encryptcookie.GenerateKey()` to generate a new key.
 	Key string
 
 	// Custom function to encrypt cookies.
@@ -89,7 +89,7 @@ type Config struct {
 
 ```go
 // `Key` must be a 32 character string. It's used to encrpyt the values, so make sure it is random and keep it secret.
-// You can call `encryptcookie.GenerateKey()` to create a random key for you.
+// You can run `openssl rand -base64 32` or call `encryptcookie.GenerateKey()` to create a random key for you.
 // Make sure not to set `Key` to `encryptcookie.GenerateKey()` because that will create a new key every run.
 app.Use(encryptcookie.New(encryptcookie.Config{
     Key: "secret-thirty-2-character-string",

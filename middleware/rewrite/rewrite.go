@@ -50,8 +50,8 @@ func New(config ...Config) fiber.Handler {
 	cfg.rulesRegex = map[*regexp.Regexp]string{}
 	// Initialize
 	for k, v := range cfg.Rules {
-		k = strings.Replace(k, "*", "(.*)", -1)
-		k = k + "$"
+		k = strings.ReplaceAll(k, "*", "(.*)")
+		k += "$"
 		cfg.rulesRegex[regexp.MustCompile(k)] = v
 	}
 	// Middleware function

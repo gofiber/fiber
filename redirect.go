@@ -5,6 +5,7 @@
 package fiber
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -13,17 +14,15 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
-var (
-	// Pool for redirection
-	redirectPool = sync.Pool{
-		New: func() any {
-			return &Redirect{
-				status:   StatusFound,
-				oldInput: make(map[string]string, 0),
-			}
-		},
-	}
-)
+// Pool for redirection
+var redirectPool = sync.Pool{
+	New: func() any {
+		return &Redirect{
+			status:   StatusFound,
+			oldInput: make(map[string]string, 0),
+		}
+	},
+}
 
 // Cookie name to send flash messages when to use redirection.
 const (
@@ -52,7 +51,12 @@ type RedirectConfig struct {
 
 // AcquireRedirect return default Redirect reference from the redirect pool
 func AcquireRedirect() *Redirect {
-	return redirectPool.Get().(*Redirect)
+	redirect, ok := redirectPool.Get().(*Redirect)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *Redirect"))
+	}
+
+	return redirect
 }
 
 // ReleaseRedirect returns c acquired via Redirect to redirect pool.
@@ -103,11 +107,11 @@ func (r *Redirect) WithInput() *Redirect {
 
 	switch ctype {
 	case MIMEApplicationForm:
-		_ = r.c.Bind().Form(r.oldInput)
+		_ = r.c.Bind().Form(r.oldInput) //nolint:errcheck // not needed
 	case MIMEMultipartForm:
-		_ = r.c.Bind().MultipartForm(r.oldInput)
+		_ = r.c.Bind().MultipartForm(r.oldInput) //nolint:errcheck // not needed
 	default:
-		_ = r.c.Bind().Query(r.oldInput)
+		_ = r.c.Bind().Query(r.oldInput) //nolint:errcheck // not needed
 	}
 
 	return r
@@ -171,7 +175,6 @@ func (r *Redirect) OldInput(key string) string {
 		}
 	}
 	return ""
-
 }
 
 // Redirect to the URL derived from the specified path, with specified status.
@@ -204,10 +207,10 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 		// flash messages
 		for i, message := range r.messages {
-			_, _ = messageText.WriteString(message)
+			_, _ = messageText.WriteString(message) //nolint:errcheck // Always return nil
 			// when there are more messages or oldInput -> add a comma
 			if len(r.messages)-1 != i || (len(r.messages)-1 == i && len(r.oldInput) > 0) {
-				_, _ = messageText.WriteString(CookieDataSeparator)
+				_, _ = messageText.WriteString(CookieDataSeparator) //nolint:errcheck // Always return nil
 			}
 		}
 		r.messages = r.messages[:0]
@@ -215,9 +218,9 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 		// old input data
 		i := 1
 		for k, v := range r.oldInput {
-			_, _ = messageText.WriteString(OldInputDataPrefix + k + CookieDataAssigner + v)
+			_, _ = messageText.WriteString(OldInputDataPrefix + k + CookieDataAssigner + v) //nolint:errcheck // Always return nil
 			if len(r.oldInput) != i {
-				_, _ = messageText.WriteString(CookieDataSeparator)
+				_, _ = messageText.WriteString(CookieDataSeparator) //nolint:errcheck // Always return nil
 			}
 			i++
 		}
@@ -236,10 +239,10 @@ func (r *Redirect) Route(name string, config ...RedirectConfig) error {
 
 		i := 1
 		for k, v := range cfg.Queries {
-			_, _ = queryText.WriteString(k + "=" + v)
+			_, _ = queryText.WriteString(k + "=" + v) //nolint:errcheck // Always return nil
 
 			if i != len(cfg.Queries) {
-				_, _ = queryText.WriteString("&")
+				_, _ = queryText.WriteString("&") //nolint:errcheck // Always return nil
 			}
 			i++
 		}
@@ -287,7 +290,7 @@ func (r *Redirect) setFlash() {
 	r.c.ClearCookie(FlashCookieName)
 }
 
-func parseMessage(raw string) (key, value string) {
+func parseMessage(raw string) (key string, value string) {
 	if i := findNextNonEscapedCharsetPosition(raw, []byte(CookieDataAssigner)); i != -1 {
 		return RemoveEscapeChar(raw[:i]), RemoveEscapeChar(raw[i+1:])
 	}

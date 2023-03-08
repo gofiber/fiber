@@ -9,10 +9,12 @@ package fiber
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -108,7 +110,6 @@ type App struct {
 	hooks *Hooks
 	// Latest route & group
 	latestRoute *Route
-	latestGroup *Group
 	// newCtxFunc
 	newCtxFunc func(app *App) CustomCtx
 	// custom binders
@@ -117,6 +118,8 @@ type App struct {
 	tlsHandler *TLSHandler
 	// Mount fields
 	mountFields *mountFields
+	// Indicates if the value was explicitly configured
+	configured Config
 }
 
 // Config is a struct holding the server settings.
@@ -292,7 +295,7 @@ type Config struct {
 
 	// FEATURE: v2.3.x
 	// The router executes the same handler by default if StrictRouting or CaseSensitive is disabled.
-	// Enabling RedirectFixedPath will change this behaviour into a client redirect to the original route path.
+	// Enabling RedirectFixedPath will change this behavior into a client redirect to the original route path.
 	// Using the status code 301 for GET requests and 308 for all other request methods.
 	//
 	// Default: false
@@ -365,6 +368,11 @@ type Config struct {
 	//
 	// Default: nil
 	StructValidator StructValidator
+
+	// RequestMethods provides customizibility for HTTP methods. You can add/remove methods as you wish.
+	//
+	// Optional. Default: DefaultMethods
+	RequestMethods []string
 }
 
 // Static defines configuration options when defining static assets.
@@ -430,8 +438,21 @@ const (
 	DefaultCompressedFileSuffix = ".fiber.gz"
 )
 
+// HTTP methods enabled by default
+var DefaultMethods = []string{
+	MethodGet,
+	MethodHead,
+	MethodPost,
+	MethodPut,
+	MethodDelete,
+	MethodConnect,
+	MethodOptions,
+	MethodTrace,
+	MethodPatch,
+}
+
 // DefaultErrorHandler that process return errors from handlers
-var DefaultErrorHandler = func(c Ctx, err error) error {
+func DefaultErrorHandler(c Ctx, err error) error {
 	code := StatusInternalServerError
 	var e *Error
 	if errors.As(err, &e) {
@@ -454,15 +475,11 @@ var DefaultErrorHandler = func(c Ctx, err error) error {
 func New(config ...Config) *App {
 	// Create a new app
 	app := &App{
-		// Create router stack
-		stack:     make([][]*Route, len(intMethod)),
-		treeStack: make([]map[string][]*Route, len(intMethod)),
 		// Create config
 		config:        Config{},
 		getBytes:      utils.UnsafeBytes,
 		getString:     utils.UnsafeString,
 		latestRoute:   &Route{},
-		latestGroup:   &Group{},
 		customBinders: []CustomBinder{},
 	}
 
@@ -483,6 +500,9 @@ func New(config ...Config) *App {
 	if len(config) > 0 {
 		app.config = config[0]
 	}
+
+	// Initialize configured before defaults are set
+	app.configured = app.config
 
 	// Override default values
 	if app.config.BodyLimit == 0 {
@@ -517,11 +537,18 @@ func New(config ...Config) *App {
 	if app.config.XMLEncoder == nil {
 		app.config.XMLEncoder = xml.Marshal
 	}
+	if len(app.config.RequestMethods) == 0 {
+		app.config.RequestMethods = DefaultMethods
+	}
 
 	app.config.trustedProxiesMap = make(map[string]struct{}, len(app.config.TrustedProxies))
 	for _, ipAddress := range app.config.TrustedProxies {
 		app.handleTrustedProxy(ipAddress)
 	}
+
+	// Create router stack
+	app.stack = make([][]*Route, len(app.config.RequestMethods))
+	app.treeStack = make([]map[string][]*Route, len(app.config.RequestMethods))
 
 	// Override colors
 	app.config.ColorScheme = defaultColors(app.config.ColorScheme)
@@ -537,12 +564,11 @@ func New(config ...Config) *App {
 func (app *App) handleTrustedProxy(ipAddress string) {
 	if strings.Contains(ipAddress, "/") {
 		_, ipNet, err := net.ParseCIDR(ipAddress)
-
 		if err != nil {
-			fmt.Printf("[Warning] IP range `%s` could not be parsed. \n", ipAddress)
+			log.Printf("[Warning] IP range %q could not be parsed: %v\n", ipAddress, err)
+		} else {
+			app.config.trustedProxyRanges = append(app.config.trustedProxyRanges, ipNet)
 		}
-
-		app.config.trustedProxyRanges = append(app.config.trustedProxyRanges, ipNet)
 	} else {
 		app.config.trustedProxiesMap[ipAddress] = struct{}{}
 	}
@@ -571,8 +597,10 @@ func (app *App) SetTLSHandler(tlsHandler *TLSHandler) {
 // Name Assign name to specific route.
 func (app *App) Name(name string) Router {
 	app.mutex.Lock()
-	if strings.HasPrefix(app.latestRoute.path, app.latestGroup.Prefix) {
-		app.latestRoute.Name = app.latestGroup.name + name
+
+	latestGroup := app.latestRoute.group
+	if latestGroup != nil {
+		app.latestRoute.Name = latestGroup.name + name
 	} else {
 		app.latestRoute.Name = name
 	}
@@ -640,6 +668,7 @@ func (app *App) GetRoutes(filterUseOption ...bool) []Route {
 func (app *App) Use(args ...any) Router {
 	var prefix string
 	var subApp *App
+	var prefixes []string
 	var handlers []Handler
 
 	for i := 0; i < len(args); i++ {
@@ -648,6 +677,8 @@ func (app *App) Use(args ...any) Router {
 			prefix = arg
 		case *App:
 			subApp = arg
+		case []string:
+			prefixes = arg
 		case Handler:
 			handlers = append(handlers, arg)
 		default:
@@ -655,13 +686,19 @@ func (app *App) Use(args ...any) Router {
 		}
 	}
 
-	if subApp != nil {
-		app.mount(prefix, subApp)
-		return app
+	if len(prefixes) == 0 {
+		prefixes = append(prefixes, prefix)
 	}
 
-	app.register([]string{methodUse}, prefix, nil, handlers...)
-  
+	for _, prefix := range prefixes {
+		if subApp != nil {
+			app.mount(prefix, subApp)
+			return app
+		}
+
+		app.register([]string{methodUse}, prefix, nil, nil, handlers...)
+	}
+
 	return app
 }
 
@@ -720,7 +757,7 @@ func (app *App) Patch(path string, handler Handler, middleware ...Handler) Route
 
 // Add allows you to specify multiple HTTP methods to register a route.
 func (app *App) Add(methods []string, path string, handler Handler, middleware ...Handler) Router {
-	return app.register(methods, path, handler, middleware...)
+	return app.register(methods, path, nil, handler, middleware...)
 }
 
 // Static will create a file server serving static files
@@ -730,8 +767,7 @@ func (app *App) Static(prefix, root string, config ...Static) Router {
 
 // All will register the handler on all HTTP methods
 func (app *App) All(path string, handler Handler, middleware ...Handler) Router {
-	app.Add(intMethod, path, handler, middleware...)
-	return app
+	return app.Add(app.config.RequestMethods, path, handler, middleware...)
 }
 
 // Group is used for Routes with common prefix to define a new sub-router with optional middleware.
@@ -739,10 +775,10 @@ func (app *App) All(path string, handler Handler, middleware ...Handler) Router 
 //	api := app.Group("/api")
 //	api.Get("/users", handler)
 func (app *App) Group(prefix string, handlers ...Handler) Router {
-	if len(handlers) > 0 {
-		app.register([]string{methodUse}, prefix, nil, handlers...)
-	}
 	grp := &Group{Prefix: prefix, app: app}
+	if len(handlers) > 0 {
+		app.register([]string{methodUse}, prefix, grp, nil, handlers...)
+	}
 	if err := app.hooks.executeOnGroupHooks(*grp); err != nil {
 		panic(err)
 	}
@@ -782,10 +818,10 @@ func (app *App) Config() Config {
 }
 
 // Handler returns the server handler.
-func (app *App) Handler() fasthttp.RequestHandler {
+func (app *App) Handler() fasthttp.RequestHandler { //revive:disable-line:confusing-naming // Having both a Handler() (uppercase) and a handler() (lowercase) is fine. TODO: Use nolint:revive directive instead. See https://github.com/golangci/golangci-lint/issues/3476
 	// prepare the server for the start
 	app.startupProcess()
-	return app.handler
+	return app.requestHandler
 }
 
 // Stack returns the raw router stack.
@@ -799,12 +835,30 @@ func (app *App) HandlersCount() uint32 {
 }
 
 // Shutdown gracefully shuts down the server without interrupting any active connections.
-// Shutdown works by first closing all open listeners and then waiting indefinitely for all connections to return to idle and then shut down.
+// Shutdown works by first closing all open listeners and then waiting indefinitely for all connections to return to idle before shutting down.
 //
 // Make sure the program doesn't exit and waits instead for Shutdown to return.
 //
 // Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (app *App) Shutdown() error {
+	return app.shutdownWithContext(context.Background())
+}
+
+// ShutdownWithTimeout gracefully shuts down the server without interrupting any active connections. However, if the timeout is exceeded,
+// ShutdownWithTimeout will forcefully close any active connections.
+// ShutdownWithTimeout works by first closing all open listeners and then waiting for all connections to return to idle before shutting down.
+//
+// Make sure the program doesn't exit and waits instead for ShutdownWithTimeout to return.
+//
+// ShutdownWithTimeout does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
+func (app *App) ShutdownWithTimeout(timeout time.Duration) error {
+	ctx, cancelFunc := context.WithTimeout(context.Background(), timeout)
+	defer cancelFunc()
+	return app.shutdownWithContext(ctx)
+}
+
+// shutdownWithContext shuts down the server including by force if the context's deadline is exceeded.
+func (app *App) shutdownWithContext(ctx context.Context) error {
 	if app.hooks != nil {
 		// TODO: check should be defered?
 		app.hooks.executeOnShutdownHooks()
@@ -815,7 +869,7 @@ func (app *App) Shutdown() error {
 	if app.server == nil {
 		return fmt.Errorf("shutdown: server is not running")
 	}
-	return app.server.Shutdown()
+	return app.server.ShutdownWithContext(ctx)
 }
 
 // Server returns the underlying fasthttp server
@@ -830,11 +884,11 @@ func (app *App) Hooks() *Hooks {
 
 // Test is used for internal debugging by passing a *http.Request.
 // Timeout is optional and defaults to 1s, -1 will disable it completely.
-func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, err error) {
+func (app *App) Test(req *http.Request, timeout ...time.Duration) (*http.Response, error) {
 	// Set timeout
-	timeout := 1000
-	if len(msTimeout) > 0 {
-		timeout = msTimeout[0]
+	to := 1 * time.Second
+	if len(timeout) > 0 {
+		to = timeout[0]
 	}
 
 	// Add Content-Length if not provided with body
@@ -845,15 +899,15 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	// Dump raw http request
 	dump, err := httputil.DumpRequest(req, true)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to dump request: %w", err)
 	}
 
 	// Create test connection
 	conn := new(testConn)
 
 	// Write raw http request
-	if _, err = conn.r.Write(dump); err != nil {
-		return nil, err
+	if _, err := conn.r.Write(dump); err != nil {
+		return nil, fmt.Errorf("failed to write: %w", err)
 	}
 	// prepare the server for the start
 	app.startupProcess()
@@ -873,12 +927,12 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	}()
 
 	// Wait for callback
-	if timeout >= 0 {
+	if to >= 0 {
 		// With timeout
 		select {
 		case err = <-channel:
-		case <-time.After(time.Duration(timeout) * time.Millisecond):
-			return nil, fmt.Errorf("test: timeout error %vms", timeout)
+		case <-time.After(to):
+			return nil, fmt.Errorf("test: timeout error after %s", to)
 		}
 	} else {
 		// Without timeout
@@ -886,7 +940,7 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	}
 
 	// Check for errors
-	if err != nil && err != fasthttp.ErrGetOnly {
+	if err != nil && !errors.Is(err, fasthttp.ErrGetOnly) {
 		return nil, err
 	}
 
@@ -894,12 +948,17 @@ func (app *App) Test(req *http.Request, msTimeout ...int) (resp *http.Response, 
 	buffer := bufio.NewReader(&conn.w)
 
 	// Convert raw http response to *http.Response
-	return http.ReadResponse(buffer, req)
+	res, err := http.ReadResponse(buffer, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return res, nil
 }
 
 type disableLogger struct{}
 
-func (dl *disableLogger) Printf(_ string, _ ...any) {
+func (*disableLogger) Printf(_ string, _ ...any) {
 	// fmt.Println(fmt.Sprintf(format, args...))
 }
 
@@ -910,7 +969,7 @@ func (app *App) init() *App {
 	// Only load templates if a view engine is specified
 	if app.config.Views != nil {
 		if err := app.config.Views.Load(); err != nil {
-			fmt.Printf("views: %v\n", err)
+			log.Printf("[Warning]: failed to load views: %v\n", err)
 		}
 	}
 
@@ -922,7 +981,7 @@ func (app *App) init() *App {
 	}
 
 	// fasthttp server settings
-	app.server.Handler = app.handler
+	app.server.Handler = app.requestHandler
 	app.server.Name = app.config.ServerHeader
 	app.server.Concurrency = app.config.Concurrency
 	app.server.NoDefaultDate = app.config.DisableDefaultDate
@@ -961,7 +1020,10 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 		if prefix != "" && strings.HasPrefix(ctx.Path(), prefix) {
 			parts := len(strings.Split(prefix, "/"))
 			if mountedPrefixParts <= parts {
-				mountedErrHandler = subApp.config.ErrorHandler
+				if subApp.configured.ErrorHandler != nil {
+					mountedErrHandler = subApp.config.ErrorHandler
+				}
+
 				mountedPrefixParts = parts
 			}
 		}
@@ -979,28 +1041,36 @@ func (app *App) ErrorHandler(ctx Ctx, err error) error {
 // errors before calling the application's error handler method.
 func (app *App) serverErrorHandler(fctx *fasthttp.RequestCtx, err error) {
 	// Acquire Ctx with fasthttp request from pool
-	c := app.AcquireCtx().(*DefaultCtx)
+	c, ok := app.AcquireCtx().(*DefaultCtx)
+	if !ok {
+		panic(fmt.Errorf("failed to type-assert to *DefaultCtx"))
+	}
 	c.Reset(fctx)
 
-	if _, ok := err.(*fasthttp.ErrSmallBuffer); ok {
+	defer app.ReleaseCtx(c)
+
+	var errNetOP *net.OpError
+
+	switch {
+	case errors.As(err, new(*fasthttp.ErrSmallBuffer)):
 		err = ErrRequestHeaderFieldsTooLarge
-	} else if netErr, ok := err.(*net.OpError); ok && netErr.Timeout() {
+	case errors.As(err, &errNetOP) && errNetOP.Timeout():
 		err = ErrRequestTimeout
-	} else if err == fasthttp.ErrBodyTooLarge {
+	case errors.Is(err, fasthttp.ErrBodyTooLarge):
 		err = ErrRequestEntityTooLarge
-	} else if err == fasthttp.ErrGetOnly {
+	case errors.Is(err, fasthttp.ErrGetOnly):
 		err = ErrMethodNotAllowed
-	} else if strings.Contains(err.Error(), "timeout") {
+	case strings.Contains(err.Error(), "timeout"):
 		err = ErrRequestTimeout
-	} else {
-		err = ErrBadRequest
+	default:
+		err = NewError(StatusBadRequest, err.Error())
 	}
 
 	if catch := app.ErrorHandler(c, err); catch != nil {
-		_ = c.SendStatus(StatusInternalServerError)
+		log.Printf("serverErrorHandler: failed to call ErrorHandler: %v\n", catch)
+		_ = c.SendStatus(StatusInternalServerError) //nolint:errcheck // It is fine to ignore the error here
+		return
 	}
-
-	app.ReleaseCtx(c)
 }
 
 // startupProcess Is the method which executes all the necessary processes just before the start of the server.

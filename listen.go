@@ -63,7 +63,7 @@ type ListenConfig struct {
 	// GracefulContext is a field to shutdown Fiber by given context gracefully.
 	//
 	// Default: nil
-	GracefulContext context.Context `json:"graceful_context"`
+	GracefulContext context.Context `json:"graceful_context"` //nolint:containedctx // It's needed to set context inside Listen.
 
 	// TLSConfigFunc allows customizing tls.Config as you want.
 	//
@@ -112,7 +112,7 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 		return ListenConfig{
 			ListenerNetwork: NetworkTCP4,
 			OnShutdownError: func(err error) {
-				log.Fatalf("shutdown: %v", err)
+				log.Fatalf("shutdown: %v", err) //nolint:revive // It's an optipn
 			},
 		}
 	}
@@ -124,7 +124,7 @@ func listenConfigDefault(config ...ListenConfig) ListenConfig {
 
 	if cfg.OnShutdownError == nil {
 		cfg.OnShutdownError = func(err error) {
-			log.Fatalf("shutdown: %v", err)
+			log.Fatalf("shutdown: %v", err) //nolint:revive // It's an optipn
 		}
 	}
 
@@ -141,11 +141,11 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	cfg := listenConfigDefault(config...)
 
 	// Configure TLS
-	var tlsConfig *tls.Config = nil
+	var tlsConfig *tls.Config
 	if cfg.CertFile != "" && cfg.CertKeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.CertFile, cfg.CertKeyFile)
 		if err != nil {
-			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %s", cfg.CertFile, cfg.CertKeyFile, err)
+			return fmt.Errorf("tls: cannot load TLS key pair from certFile=%q and keyFile=%q: %w", cfg.CertFile, cfg.CertKeyFile, err)
 		}
 
 		tlsHandler := &TLSHandler{}
@@ -160,7 +160,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 		if cfg.CertClientFile != "" {
 			clientCACert, err := os.ReadFile(filepath.Clean(cfg.CertClientFile))
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to read file: %w", err)
 			}
 
 			clientCertPool := x509.NewCertPool()
@@ -194,7 +194,7 @@ func (app *App) Listen(addr string, config ...ListenConfig) error {
 	// Configure Listener
 	ln, err := app.createListener(addr, tlsConfig, cfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 
 	// prepare the server for the start
@@ -241,14 +241,14 @@ func (app *App) Listener(ln net.Listener, config ...ListenConfig) error {
 
 	// Prefork is not supported for custom listeners
 	if cfg.EnablePrefork {
-		fmt.Println("[Warning] Prefork isn't supported for custom listeners.")
+		log.Print("[Warning] Prefork isn't supported for custom listeners.")
 	}
 
 	return app.server.Serve(ln)
 }
 
 // Create listener function.
-func (app *App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig) (net.Listener, error) {
+func (*App) createListener(addr string, tlsConfig *tls.Config, cfg ListenConfig) (net.Listener, error) {
 	var listener net.Listener
 	var err error
 
@@ -262,13 +262,18 @@ func (app *App) createListener(addr string, tlsConfig *tls.Config, cfg ListenCon
 		cfg.ListenerAddrFunc(listener.Addr())
 	}
 
+	// Wrap error comes from tls.Listen/net.Listen
+	if err != nil {
+		err = fmt.Errorf("failed to listen: %w", err)
+	}
+
 	return listener, err
 }
 
 func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 	// Print startup message
 	if !cfg.DisableStartupMessage {
-		app.startupMessage(ln.Addr().String(), getTlsConfig(ln) != nil, "", cfg)
+		app.startupMessage(ln.Addr().String(), getTLSConfig(ln) != nil, "", cfg)
 	}
 
 	// Print routes
@@ -278,7 +283,7 @@ func (app *App) printMessages(cfg ListenConfig, ln net.Listener) {
 }
 
 // startupMessage prepares the startup message with the handler number, port, address and other information
-func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenConfig) {
+func (app *App) startupMessage(addr string, enableTLS bool, pids string, cfg ListenConfig) { //nolint:revive TODO: Check CertKeyFile instead of control-flag.
 	// ignore child processes
 	if IsChild() {
 		return
@@ -296,9 +301,9 @@ func (app *App) startupMessage(addr string, tls bool, pids string, cfg ListenCon
 		}
 	}
 
-	scheme := "http"
-	if tls {
-		scheme = "https"
+	scheme := schemeHTTP
+	if enableTLS {
+		scheme = schemeHTTPS
 	}
 
 	isPrefork := "Disabled"
@@ -389,7 +394,7 @@ func (app *App) printRoutesMessage() {
 	var routes []RouteMessage
 	for _, routeStack := range app.stack {
 		for _, route := range routeStack {
-			var newRoute = RouteMessage{}
+			var newRoute RouteMessage
 			newRoute.name = route.Name
 			newRoute.method = route.Method
 			newRoute.path = route.Path
@@ -417,14 +422,14 @@ func (app *App) printRoutesMessage() {
 		_, _ = fmt.Fprintf(w, "%s%s\t%s| %s%s\t%s| %s%s\t%s| %s%s\n", colors.Blue, route.method, colors.White, colors.Green, route.path, colors.White, colors.Cyan, route.name, colors.White, colors.Yellow, route.handlers)
 	}
 
-	_ = w.Flush()
+	_ = w.Flush() //nolint:errcheck // It is fine to ignore the error here
 }
 
 // shutdown goroutine
 func (app *App) gracefulShutdown(ctx context.Context, cfg ListenConfig) {
 	<-ctx.Done()
 
-	if err := app.Shutdown(); err != nil {
+	if err := app.Shutdown(); err != nil { //nolint:contextcheck // TODO: Implement it
 		cfg.OnShutdownError(err)
 	}
 

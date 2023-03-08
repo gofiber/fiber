@@ -52,8 +52,8 @@ app.Use(limiter.New(limiter.Config{
 	Next: func(c fiber.Ctx) bool {
 		return c.IP() == "127.0.0.1"
 	},
-	Max:          20,
-	Expiration:     30 * time.Second,
+	Max:        20,
+	Expiration: 30 * time.Second,
 	KeyGenerator: func(c fiber.Ctx) string{
   		return "key"
 	}

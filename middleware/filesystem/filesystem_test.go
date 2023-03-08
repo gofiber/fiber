@@ -1,6 +1,8 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package filesystem
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,7 @@ import (
 
 // go test -run Test_FileSystem
 func Test_FileSystem(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use("/test", New(Config{
@@ -118,7 +121,7 @@ func Test_FileSystem(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, err := app.Test(httptest.NewRequest("GET", tt.url, nil))
+			resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, tt.url, nil))
 			require.NoError(t, err)
 			require.Equal(t, tt.statusCode, resp.StatusCode)
 
@@ -132,6 +135,7 @@ func Test_FileSystem(t *testing.T) {
 
 // go test -run Test_FileSystem_Next
 func Test_FileSystem_Next(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 	app.Use(New(Config{
 		Root: os.DirFS("../../.github/testdata/fs"),
@@ -140,7 +144,7 @@ func Test_FileSystem_Next(t *testing.T) {
 		},
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
 	require.NoError(t, err)
 	require.Equal(t, fiber.StatusNotFound, resp.StatusCode)
 }
@@ -153,7 +157,7 @@ func Test_FileSystem_Download(t *testing.T) {
 		Download: true,
 	}))
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/img/fiber.png", nil))
+	resp, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/img/fiber.png", nil))
 	require.NoError(t, err, "app.Test(req)")
 	require.Equal(t, 200, resp.StatusCode, "Status code")
 	require.False(t, resp.Header.Get(fiber.HeaderContentLength) == "")
@@ -162,6 +166,7 @@ func Test_FileSystem_Download(t *testing.T) {
 }
 
 func Test_FileSystem_NonGetAndHead(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use("/test", New(Config{
@@ -174,49 +179,57 @@ func Test_FileSystem_NonGetAndHead(t *testing.T) {
 }
 
 func Test_FileSystem_Head(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use("/test", New(Config{
 		Root: os.DirFS("../../.github/testdata/fs"),
 	}))
 
-	req, _ := http.NewRequest(fiber.MethodHead, "/test", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodHead, "/test", nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
 
 func Test_FileSystem_NoRoot(t *testing.T) {
+	t.Parallel()
 	defer func() {
 		require.Equal(t, "filesystem: Root cannot be nil", recover())
 	}()
 
 	app := fiber.New()
 	app.Use(New())
-	_, _ = app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	_, err := app.Test(httptest.NewRequest(fiber.MethodGet, "/", nil))
+	require.NoError(t, err)
 }
 
 func Test_FileSystem_UsingParam(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use("/:path", func(c fiber.Ctx) error {
 		return SendFile(c, os.DirFS("../../.github/testdata/fs"), c.Params("path")+".html")
 	})
 
-	req, _ := http.NewRequest(fiber.MethodHead, "/index", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodHead, "/index", nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 }
 
 func Test_FileSystem_UsingParam_NonFile(t *testing.T) {
+	t.Parallel()
 	app := fiber.New()
 
 	app.Use("/:path", func(c fiber.Ctx) error {
 		return SendFile(c, os.DirFS("../../.github/testdata/fs"), c.Params("path")+".html")
 	})
 
-	req, _ := http.NewRequest(fiber.MethodHead, "/template", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodHead, "/template", nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	require.Equal(t, 404, resp.StatusCode)

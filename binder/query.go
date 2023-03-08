@@ -38,7 +38,6 @@ func (b *queryBinding) Bind(reqCtx *fasthttp.RequestCtx, out any) error {
 		} else {
 			data[k] = append(data[k], v)
 		}
-
 	})
 
 	if err != nil {

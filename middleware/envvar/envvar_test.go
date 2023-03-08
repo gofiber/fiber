@@ -1,6 +1,8 @@
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package envvar
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -17,7 +19,8 @@ func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
 
 	vars := newEnvVar(Config{
 		ExportVars:  map[string]string{"testKey": "", "testDefaultKey": "testDefaultVal"},
-		ExcludeVars: map[string]string{"excludeKey": ""}})
+		ExcludeVars: map[string]string{"excludeKey": ""},
+	})
 
 	require.Equal(t, vars.Vars["testKey"], "testEnvValue")
 	require.Equal(t, vars.Vars["testDefaultKey"], "testDefaultVal")
@@ -28,18 +31,21 @@ func TestEnvVarStructWithExportVarsExcludeVars(t *testing.T) {
 func TestEnvVarHandler(t *testing.T) {
 	t.Setenv("testKey", "testVal")
 
-	expectedEnvVarResponse, _ := json.Marshal(
+	expectedEnvVarResponse, err := json.Marshal(
 		struct {
 			Vars map[string]string `json:"vars"`
 		}{
 			map[string]string{"testKey": "testVal"},
 		})
+	require.NoError(t, err)
 
 	app := fiber.New()
 	app.Use("/envvars", New(Config{
-		ExportVars: map[string]string{"testKey": ""}}))
+		ExportVars: map[string]string{"testKey": ""},
+	}))
 
-	req, _ := http.NewRequest("GET", "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.Equal(t, nil, err)
 
@@ -52,14 +58,16 @@ func TestEnvVarHandler(t *testing.T) {
 func TestEnvVarHandlerNotMatched(t *testing.T) {
 	app := fiber.New()
 	app.Use("/envvars", New(Config{
-		ExportVars: map[string]string{"testKey": ""}}))
+		ExportVars: map[string]string{"testKey": ""},
+	}))
 
 	app.Get("/another-path", func(ctx fiber.Ctx) error {
 		require.NoError(t, ctx.SendString("OK"))
 		return nil
 	})
 
-	req, _ := http.NewRequest("GET", "http://localhost/another-path", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/another-path", nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.Equal(t, nil, err)
 
@@ -75,7 +83,8 @@ func TestEnvVarHandlerDefaultConfig(t *testing.T) {
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	req, _ := http.NewRequest("GET", "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.Equal(t, nil, err)
 
@@ -92,7 +101,8 @@ func TestEnvVarHandlerMethod(t *testing.T) {
 	app := fiber.New()
 	app.Use("/envvars", New())
 
-	req, _ := http.NewRequest("POST", "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodPost, "http://localhost/envvars", nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
 	require.Equal(t, nil, err)
 	require.Equal(t, fiber.StatusMethodNotAllowed, resp.StatusCode)
@@ -107,19 +117,21 @@ func TestEnvVarHandlerSpecialValue(t *testing.T) {
 	app.Use("/envvars", New())
 	app.Use("/envvars/export", New(Config{ExportVars: map[string]string{testEnvKey: ""}}))
 
-	req, _ := http.NewRequest("GET", "http://localhost/envvars", nil)
+	req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars", nil)
+	require.NoError(t, err)
 	resp, err := app.Test(req)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	respBody, err := io.ReadAll(resp.Body)
-	require.Equal(t, nil, err)
+	require.NoError(t, err)
 
 	var envVars EnvVar
 	require.Equal(t, nil, json.Unmarshal(respBody, &envVars))
 	val := envVars.Vars[testEnvKey]
 	require.Equal(t, fakeBase64, val)
 
-	req, _ = http.NewRequest("GET", "http://localhost/envvars/export", nil)
+	req, err = http.NewRequestWithContext(context.Background(), fiber.MethodGet, "http://localhost/envvars/export", nil)
+	require.NoError(t, err)
 	resp, err = app.Test(req)
 	require.Equal(t, nil, err)
 

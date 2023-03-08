@@ -2,6 +2,7 @@
 // 📝 Github Repository: https://github.com/gofiber/fiber
 // 📌 API Documentation: https://docs.gofiber.io
 
+//nolint:wrapcheck // We must not wrap errors in tests
 package fiber
 
 import (
@@ -22,11 +23,13 @@ func Test_Redirect_To(t *testing.T) {
 	app := New()
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Redirect().To("http://default.com")
+	err := c.Redirect().To("http://default.com")
+	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "http://default.com", string(c.Response().Header.Peek(HeaderLocation)))
 
-	c.Redirect().Status(301).To("http://example.com")
+	err = c.Redirect().Status(301).To("http://example.com")
+	require.NoError(t, err)
 	require.Equal(t, 301, c.Response().StatusCode())
 	require.Equal(t, "http://example.com", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -40,11 +43,12 @@ func Test_Redirect_Route_WithParams(t *testing.T) {
 	}).Name("user")
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Redirect().Route("user", RedirectConfig{
+	err := c.Redirect().Route("user", RedirectConfig{
 		Params: Map{
 			"name": "fiber",
 		},
 	})
+	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -58,12 +62,13 @@ func Test_Redirect_Route_WithParams_WithQueries(t *testing.T) {
 	}).Name("user")
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Redirect().Route("user", RedirectConfig{
+	err := c.Redirect().Route("user", RedirectConfig{
 		Params: Map{
 			"name": "fiber",
 		},
 		Queries: map[string]string{"data[0][name]": "john", "data[0][age]": "10", "test": "doe"},
 	})
+	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	// analysis of query parameters with url parsing, since a map pass is always randomly ordered
 	location, err := url.Parse(string(c.Response().Header.Peek(HeaderLocation)))
@@ -81,11 +86,12 @@ func Test_Redirect_Route_WithOptionalParams(t *testing.T) {
 	}).Name("user")
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Redirect().Route("user", RedirectConfig{
+	err := c.Redirect().Route("user", RedirectConfig{
 		Params: Map{
 			"name": "fiber",
 		},
 	})
+	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user/fiber", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -99,7 +105,8 @@ func Test_Redirect_Route_WithOptionalParamsWithoutValue(t *testing.T) {
 	}).Name("user")
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Redirect().Route("user")
+	err := c.Redirect().Route("user")
+	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user/", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -113,11 +120,12 @@ func Test_Redirect_Route_WithGreedyParameters(t *testing.T) {
 	}).Name("user")
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Redirect().Route("user", RedirectConfig{
+	err := c.Redirect().Route("user", RedirectConfig{
 		Params: Map{
 			"+": "test/routes",
 		},
 	})
+	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user/test/routes", string(c.Response().Header.Peek(HeaderLocation)))
 }
@@ -131,11 +139,12 @@ func Test_Redirect_Back(t *testing.T) {
 	}).Name("home")
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
-	c.Redirect().Back("/")
+	err := c.Redirect().Back("/")
+	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/", string(c.Response().Header.Peek(HeaderLocation)))
 
-	err := c.Redirect().Back()
+	err = c.Redirect().Back()
 	require.Equal(t, 500, c.Response().StatusCode())
 	require.ErrorAs(t, ErrRedirectBackNoFallback, &err)
 }
@@ -153,7 +162,8 @@ func Test_Redirect_Back_WithReferer(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{})
 
 	c.Request().Header.Set(HeaderReferer, "/back")
-	c.Redirect().Back("/")
+	err := c.Redirect().Back("/")
+	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/back", c.Get(HeaderReferer))
 	require.Equal(t, "/back", string(c.Response().Header.Peek(HeaderLocation)))
@@ -170,8 +180,8 @@ func Test_Redirect_Route_WithFlashMessages(t *testing.T) {
 
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
-	c.Redirect().With("success", "1").With("message", "test").Route("user")
-
+	err := c.Redirect().With("success", "1").With("message", "test").Route("user")
+	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
@@ -194,8 +204,8 @@ func Test_Redirect_Route_WithOldInput(t *testing.T) {
 	c := app.NewCtx(&fasthttp.RequestCtx{}).(*DefaultCtx)
 
 	c.Request().URI().SetQueryString("id=1&name=tom")
-	c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
-
+	err := c.Redirect().With("success", "1").With("message", "test").WithInput().Route("user")
+	require.NoError(t, err)
 	require.Equal(t, 302, c.Response().StatusCode())
 	require.Equal(t, "/user", string(c.Response().Header.Peek(HeaderLocation)))
 
@@ -336,7 +346,7 @@ func Benchmark_Redirect_Route(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Redirect().Route("user", RedirectConfig{
+		c.Redirect().Route("user", RedirectConfig{ //nolint:errcheck,gosec,revive // we don't need to handle error here
 			Params: Map{
 				"name": "fiber",
 			},
@@ -360,7 +370,7 @@ func Benchmark_Redirect_Route_WithQueries(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Redirect().Route("user", RedirectConfig{
+		c.Redirect().Route("user", RedirectConfig{ //nolint:errcheck,gosec,revive // we don't need to handle error here
 			Params: Map{
 				"name": "fiber",
 			},
@@ -389,7 +399,7 @@ func Benchmark_Redirect_Route_WithFlashMessages(b *testing.B) {
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
-		c.Redirect().With("success", "1").With("message", "test").Route("user")
+		c.Redirect().With("success", "1").With("message", "test").Route("user") //nolint:errcheck,gosec,revive // we don't need to handle error here
 	}
 
 	require.Equal(b, 302, c.Response().StatusCode())

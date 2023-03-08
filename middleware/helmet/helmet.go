@@ -103,7 +103,6 @@ func New(config ...Config) fiber.Handler {
 		}
 		if cfg.PermissionPolicy != "" {
 			c.Set(fiber.HeaderPermissionsPolicy, cfg.PermissionPolicy)
-
 		}
 		return c.Next()
 	}

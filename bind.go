@@ -66,9 +66,9 @@ func (b *Bind) validateStruct(out any) error {
 // NOTE: Should/Must is still valid for Custom binders.
 func (b *Bind) Custom(name string, dest any) error {
 	binders := b.ctx.App().customBinders
-	for _, binder := range binders {
-		if binder.Name() == name {
-			return b.returnErr(binder.Parse(b.ctx, dest))
+	for _, customBinder := range binders {
+		if customBinder.Name() == name {
+			return b.returnErr(customBinder.Parse(b.ctx, dest))
 		}
 	}
 
@@ -181,10 +181,10 @@ func (b *Bind) Body(out any) error {
 
 	// Check custom binders
 	binders := b.ctx.App().customBinders
-	for _, binder := range binders {
-		for _, mime := range binder.MIMETypes() {
+	for _, customBinder := range binders {
+		for _, mime := range customBinder.MIMETypes() {
 			if mime == ctype {
-				return b.returnErr(binder.Parse(b.ctx, out))
+				return b.returnErr(customBinder.Parse(b.ctx, out))
 			}
 		}
 	}

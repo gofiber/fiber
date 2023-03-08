@@ -10,6 +10,6 @@ func (*jsonBinding) Name() string {
 	return "json"
 }
 
-func (b *jsonBinding) Bind(body []byte, jsonDecoder utils.JSONUnmarshal, out any) error {
+func (*jsonBinding) Bind(body []byte, jsonDecoder utils.JSONUnmarshal, out any) error {
 	return jsonDecoder(body, out)
 }

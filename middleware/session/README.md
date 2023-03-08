@@ -32,7 +32,7 @@ func (s *Session) Save() error
 func (s *Session) Fresh() bool
 func (s *Session) ID() string
 func (s *Session) Keys() []string
-func (s *Session) SetExpiry(time.Duration) 
+func (s *Session) SetExpiry(time.Duration)
 ```
 
 **⚠ _Storing `any` values are limited to built-ins Go types_**
@@ -148,7 +148,7 @@ type Config struct {
 	// Optional. Default value utils.UUID
 	KeyGenerator func() string
 
-	// Deprecated, please use KeyLookup
+	// Deprecated: Please use KeyLookup
 	CookieName string
 
 	// Source defines where to obtain the session id

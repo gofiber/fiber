@@ -2,13 +2,16 @@
 // 📌 API Documentation: https://fiber.wiki
 // 📝 Github Repository: https://github.com/gofiber/fiber
 
+//nolint:bodyclose // Much easier to just ignore memory leaks in tests
 package redirect
 
 import (
+	"context"
 	"net/http"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Redirect(t *testing.T) {
@@ -108,7 +111,8 @@ func Test_Redirect(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", tt.url, nil)
+			req, err := http.NewRequestWithContext(context.Background(), fiber.MethodGet, tt.url, nil)
+			require.NoError(t, err)
 			req.Header.Set("Location", "github.com/gofiber/redirect")
 			resp, err := app.Test(req)
 			if err != nil {
@@ -122,5 +126,4 @@ func Test_Redirect(t *testing.T) {
 			}
 		})
 	}
-
 }
