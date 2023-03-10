@@ -124,7 +124,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 특징
 
--   견고한 [라우팅](https://docs.gofiber.io/routing)
+-   견고한 [라우팅](https://docs.gofiber.io/guide/routing)
 -   [정적 파일](https://docs.gofiber.io/api/app#static) 제공
 -   뛰어난 [성능](https://docs.gofiber.io/extra/benchmarks)
 -   [적은 메모리](https://docs.gofiber.io/extra/benchmarks) 공간
@@ -440,7 +440,7 @@ func main() {
 
 ### JSON Response
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {

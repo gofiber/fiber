@@ -45,7 +45,7 @@ app.Use(limiter.New(limiter.Config{
     LimitReached: func(c *fiber.Ctx) error {
         return c.SendFile("./toofast.html")
     },
-    Storage: myCustomStorage{}
+    Storage: myCustomStorage{},
 }))
 ```
 
@@ -59,7 +59,7 @@ A example of such configuration is:
 app.Use(limiter.New(limiter.Config{
     Max:            20,
     Expiration:     30 * time.Second,
-    LimiterMiddleware: limiter.SlidingWindow{}
+    LimiterMiddleware: limiter.SlidingWindow{},
 }))
 ```
 

@@ -124,7 +124,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 Características
 
--   [Enrutamiento](https://docs.gofiber.io/routing) robusto
+-   [Enrutamiento](https://docs.gofiber.io/guide/routing) robusto
 -   Servir [archivos estáticos](https://docs.gofiber.io/api/app#static)
 -   [Rendimiento](https://docs.gofiber.io/extra/benchmarks) extremo
 -   [Bajo](https://docs.gofiber.io/extra/benchmarks) uso de [memoria](https://docs.gofiber.io/extra/benchmarks)
@@ -434,7 +434,7 @@ func main() {
 
 ### Respuesta JSON
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {

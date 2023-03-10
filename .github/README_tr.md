@@ -124,7 +124,7 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 Özellikler
 
--   Güçlü [routing](https://docs.gofiber.io/routing)
+-   Güçlü [routing](https://docs.gofiber.io/guide/routing)
 -   [Statik dosya](https://docs.gofiber.io/api/app#static) sunumu
 -   Olağanüstü [performans](https://docs.gofiber.io/extra/benchmarks)
 -   [Düşük bellek](https://docs.gofiber.io/extra/benchmarks) kullanımı
@@ -434,7 +434,7 @@ func main() {
 
 ### JSON Yanıtları
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {

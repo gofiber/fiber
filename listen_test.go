@@ -7,9 +7,11 @@ package fiber
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -140,6 +142,98 @@ func Test_App_Listener_TLS_Listener(t *testing.T) {
 	}()
 
 	utils.AssertEqual(t, nil, app.Listener(ln))
+}
+
+// go test -run Test_App_ListenTLSWithCertificate
+func Test_App_ListenTLSWithCertificate(t *testing.T) {
+	t.Parallel()
+
+	// Create tls certificate
+	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+
+	app := New()
+
+	// invalid port
+	utils.AssertEqual(t, false, app.ListenTLSWithCertificate(":99999", cer) == nil)
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenTLSWithCertificate(":0", cer))
+}
+
+// go test -run Test_App_ListenTLSWithCertificate_Prefork
+func Test_App_ListenTLSWithCertificate_Prefork(t *testing.T) {
+	testPreforkMaster = true
+
+	// Create tls certificate
+	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+
+	app := New(Config{DisableStartupMessage: true, Prefork: true})
+
+	utils.AssertEqual(t, nil, app.ListenTLSWithCertificate(":99999", cer))
+}
+
+// go test -run Test_App_ListenMutualTLSWithCertificate
+func Test_App_ListenMutualTLSWithCertificate(t *testing.T) {
+	t.Parallel()
+
+	// Create tls certificate
+	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+
+	// Create pool
+	clientCACert, err := os.ReadFile(filepath.Clean("./.github/testdata/ca-chain.cert.pem"))
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	clientCertPool := x509.NewCertPool()
+	clientCertPool.AppendCertsFromPEM(clientCACert)
+
+	app := New()
+
+	// invalid port
+	utils.AssertEqual(t, false, app.ListenMutualTLSWithCertificate(":99999", cer, clientCertPool) == nil)
+
+	go func() {
+		time.Sleep(1000 * time.Millisecond)
+		utils.AssertEqual(t, nil, app.Shutdown())
+	}()
+
+	utils.AssertEqual(t, nil, app.ListenMutualTLSWithCertificate(":0", cer, clientCertPool))
+}
+
+// go test -run Test_App_ListenMutualTLS_Prefork
+func Test_App_ListenMutualTLSWithCertificate_Prefork(t *testing.T) {
+	testPreforkMaster = true
+
+	// Create tls certificate
+	cer, err := tls.LoadX509KeyPair("./.github/testdata/ssl.pem", "./.github/testdata/ssl.key")
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+
+	// Create pool
+	clientCACert, err := os.ReadFile(filepath.Clean("./.github/testdata/ca-chain.cert.pem"))
+	if err != nil {
+		utils.AssertEqual(t, nil, err)
+	}
+	clientCertPool := x509.NewCertPool()
+	clientCertPool.AppendCertsFromPEM(clientCACert)
+
+	app := New(Config{DisableStartupMessage: true, Prefork: true})
+
+	utils.AssertEqual(t, nil, app.ListenMutualTLSWithCertificate(":99999", cer, clientCertPool))
 }
 
 func captureOutput(f func()) string {

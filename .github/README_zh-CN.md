@@ -126,12 +126,12 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 特点
 
--   强大的[路由](https://docs.gofiber.io/routing)
+-   强大的[路由](https://docs.gofiber.io/guide/routing)
 -   [静态文件](https://docs.gofiber.io/api/app#static)服务
 -   极致[性能](https://docs.gofiber.io/extra/benchmarks)
 -   [低内存占用](https://docs.gofiber.io/extra/benchmarks)
 -   [API 接口](https://docs.gofiber.io/api/ctx)
--   支持[中间件](https://docs.gofiber.io/middleware)和 [Next](https://docs.gofiber.io/api/ctx#next)
+-   支持[中间件](https://docs.gofiber.io/category/-middleware)和 [Next](https://docs.gofiber.io/api/ctx#next)
 -   [快速上手](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 -   [模版引擎](https://github.com/gofiber/template)
 -   [支持 WebSocket](https://github.com/gofiber/websocket)
@@ -252,7 +252,7 @@ func main() {
 
 ```
 
-#### 📖 [**中间件**](https://docs.gofiber.io/middleware)和 [**Next**](https://docs.gofiber.io/api/ctx#next)
+#### 📖 [**中间件**](https://docs.gofiber.io/category/-middleware)和 [**Next**](https://docs.gofiber.io/api/ctx#next)
 
 ```go
 func main() {
@@ -442,7 +442,7 @@ func main() {
 
 ### JSON 响应
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {

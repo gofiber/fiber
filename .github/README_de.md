@@ -124,12 +124,12 @@ go get -u github.com/gofiber/fiber/v2
 
 ## 🎯 Eigenschaften
 
--   Robustes [Routing](https://docs.gofiber.io/routing)
+-   Robustes [Routing](https://docs.gofiber.io/guide/routing)
 -   Bereitstellen von [statischen Dateien](https://docs.gofiber.io/api/app#static)
 -   Extreme [Performance](https://docs.gofiber.io/extra/benchmarks)
 -   [Geringe Arbeitsspeichernutzung](https://docs.gofiber.io/extra/benchmarks)
 -   Express [API Endpunkte](https://docs.gofiber.io/api/ctx)
--   [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next) Support
+-   [Middleware](https://docs.gofiber.io/category/-middleware) & [Next](https://docs.gofiber.io/api/ctx#next) Support
 -   [Schnelle](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497) serverseitige Programmierung
 -   [Template engines](https://github.com/gofiber/template)
 -   [WebSocket support](https://github.com/gofiber/websocket)
@@ -434,7 +434,7 @@ func main() {
 
 ### JSON Response
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 ```go
 type User struct {

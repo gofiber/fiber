@@ -153,12 +153,12 @@ go get -u github.com/gofiber/fiber/v2
 
 </br>
 
--   [مسیریابی](https://docs.gofiber.io/routing) قدرتمند
+-   [مسیریابی](https://docs.gofiber.io/guide/routing) قدرتمند
 -   Serve [پرونده های ثابت](https://docs.gofiber.io/api/app#static)
 -   حداکثر [عملکرد](https://docs.gofiber.io/extra/benchmarks)
 -   مصرف [حافظه کم](https://docs.gofiber.io/extra/benchmarks)
 -   قابلیت [API endpoints](https://docs.gofiber.io/api/ctx)
--   پشتیبانی از [Middleware](https://docs.gofiber.io/middleware) & [Next](https://docs.gofiber.io/api/ctx#next)
+-   پشتیبانی از [Middleware](https://docs.gofiber.io/category/-middleware) & [Next](https://docs.gofiber.io/api/ctx#next)
 -   برنامه نویسی سمت سرور [سریع](https://dev.to/koddr/welcome-to-fiber-an-express-js-styled-fastest-web-framework-written-with-on-golang-497)
 -   دارای [Template engines](https://github.com/gofiber/template) اختصاصی
 -   [پشتیبانی از وب سوکت](https://github.com/gofiber/websocket)
@@ -530,7 +530,7 @@ func main() {
 
 ### JSON Response
 
-📖 [JSON](https://docs.gofiber.io/ctx#json)
+📖 [JSON](https://docs.gofiber.io/api/ctx#json)
 
 <div dir="ltr">
 
