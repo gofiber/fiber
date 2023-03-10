@@ -31,7 +31,7 @@ jobs:
         path: ./cache
         key: ${{ runner.os }}-benchmark
     - name: Save Benchmark Results
-      uses: rhysd/github-action-benchmark@v1
+      uses: benchmark-action/github-action-benchmark@v1
       with:
         tool: 'go'
         output-file-path: output.txt
@@ -40,5 +40,6 @@ jobs:
         fail-on-alert: true
         comment-on-alert: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
         # Enable Job Summary for PRs
-        #summary-always: ${{ github.event_name != 'push' && github.event_name != 'workflow_dispatch' }}
+        summary-always: ${{ github.event_name != 'push' && github.event_name != 'workflow_dispatch' }}
         auto-push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        save-data-file: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
