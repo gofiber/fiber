@@ -6,7 +6,6 @@
 package fiber
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http/httptest"
@@ -91,36 +90,50 @@ func Test_App_Mount_Nested(t *testing.T) {
 	utils.AssertEqual(t, uint32(6), app.handlersCount)
 }
 
-// TODO: add example cases from the comments -> https://github.com/gofiber/fiber/pull/2331
-// go test -run Test_App_Mount_Registration_Order
-func Test_App_Mount_Registration_Order(t *testing.T) {
+// go test -run Test_App_Mount_Express_Behavior
+func Test_App_Mount_Express_Behavior(t *testing.T) {
 	t.Parallel()
-	app := New()
-	testHandler := func(c *Ctx) error {
-		return c.JSON(Map{
-			"Route":  c.Route().path,
-			"Method": c.Route().Method,
-		})
+	createTestHandler := func(body string) func(c *Ctx) error {
+		return func(c *Ctx) error {
+			return c.SendString(body)
+		}
+	}
+	testEndpoint := func(app *App, route, expectedBody string) {
+		resp, err := app.Test(httptest.NewRequest(MethodGet, route, nil))
+		utils.AssertEqual(t, nil, err, "app.Test(req)")
+		body, err := io.ReadAll(resp.Body)
+		utils.AssertEqual(t, nil, err)
+		utils.AssertEqual(t, expectedBody, string(body), "Response body")
 	}
 
-	app.Get("/app", testHandler)
+	app := New()
 	subApp := New()
-	subApp.Get("/subApp", testHandler)
-	app.Mount("/", subApp)
-	app.Use(testHandler)
+	// app setup
+	{
+		subApp.Get("/hello", createTestHandler("subapp hello!"))
+		subApp.Get("/world", createTestHandler("subapp world!")) // <- wins
 
-	resp, err := app.Test(httptest.NewRequest(MethodGet, "/subApp", nil))
-	utils.AssertEqual(t, nil, err, "app.Test(req)")
-	utils.AssertEqual(t, 200, resp.StatusCode, "Status code")
-	body, err := io.ReadAll(resp.Body)
-	utils.AssertEqual(t, nil, err)
+		app.Get("/hello", createTestHandler("app hello!")) // <- wins
+		app.Mount("/", subApp)                             // <- subApp registration
+		app.Get("/world", createTestHandler("app world!"))
 
-	out, err := json.Marshal(Map{
-		"Route":  "/subApp",
-		"Method": "GET",
-	})
-	utils.AssertEqual(t, nil, err, "json marshal")
-	utils.AssertEqual(t, string(out), string(body), "Response body")
+		app.Get("/bar", createTestHandler("app bar!"))
+		subApp.Get("/bar", createTestHandler("subapp bar!")) // <- wins
+
+		subApp.Get("/foo", createTestHandler("subapp foo!")) // <- wins
+		app.Get("/foo", createTestHandler("app foo!"))
+
+		// 404 Handler
+		app.Use(func(c *Ctx) error {
+			return c.SendStatus(StatusNotFound)
+		})
+	}
+	// expectation check
+	testEndpoint(app, "/world", "subapp world!")
+	testEndpoint(app, "/hello", "app hello!")
+	testEndpoint(app, "/bar", "subapp bar!")
+	testEndpoint(app, "/foo", "subapp foo!")
+	testEndpoint(app, "/unknown", ErrNotFound.Message)
 
 	utils.AssertEqual(t, uint32(5), app.handlersCount)
 }
